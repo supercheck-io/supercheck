@@ -18,6 +18,8 @@ jest.mock("@/utils/db", () => {
   return { db };
 });
 jest.mock("@/lib/execution/trial-lifecycle", () => ({ unscheduleMonitors: jest.fn() }));
+jest.mock("@/lib/deletion/project", () => ({ softDeleteProject: jest.fn() }));
+import { softDeleteProject } from "@/lib/deletion/project";
 import { DELETE, GET, PUT } from "./route";
 import { PgDialect } from "drizzle-orm/pg-core";
 import { db } from "@/utils/db";
@@ -142,18 +144,19 @@ describe("audit, conflicts and ordering", () => {
     expect((await put({ slug: "taken" })).status).toBe(409);
   });
 
-  it("audits project deletion", async () => {
+  it("soft deletes through the lifecycle module (restorable, purged later) and reports the purge date", async () => {
     (db.select as jest.Mock).mockReturnValue(row(false));
-    set.mockReturnValue({ where: () => ({ returning: async () => [{ name: "n", slug: "s", description: null }] }) });
-    expect((await del()).status).toBe(200);
-    expect(logAuditEvent).toHaveBeenCalledWith(expect.objectContaining({ action: "project_deleted", resourceId: ID, organizationId: "org-1", metadata: expect.objectContaining({ projectName: "n", projectSlug: "s" }) }));
+    (softDeleteProject as jest.Mock).mockResolvedValue({ name: "n", purgeAfter: new Date("2026-12-01T00:00:00Z") });
+    const response = await del();
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ success: true, purgeAfter: "2026-12-01T00:00:00.000Z" });
+    expect(softDeleteProject).toHaveBeenCalledWith({ projectId: ID, actorUserId: expect.any(String) });
   });
 
-  it("does not audit a deletion that lost the race to another delete", async () => {
+  it("answers 404 for a deletion that lost the race to another delete", async () => {
     (db.select as jest.Mock).mockReturnValue(row(false));
-    set.mockReturnValue({ where: () => ({ returning: async () => [] }) });
+    (softDeleteProject as jest.Mock).mockResolvedValue(null);
     expect((await del()).status).toBe(404);
-    expect(logAuditEvent).not.toHaveBeenCalledWith(expect.objectContaining({ action: "project_deleted" }));
   });
 
   it("checks delete permission before revealing the default project", async () => {
@@ -162,44 +165,5 @@ describe("audit, conflicts and ordering", () => {
     expect((await del()).status).toBe(403);
     (hasPermissionForUser as jest.Mock).mockResolvedValue(true);
     expect((await del()).status).toBe(400);
-  });
-});
-
-describe("DELETE schedules", () => {
-  it("removes repeatables for the project's scheduled jobs after soft-deleting", async () => {
-    (db.select as jest.Mock)
-      .mockReturnValueOnce({ from: () => ({ where: () => ({ limit: async () => [{ organizationId: "org-1", isDefault: false }] }) }) })
-      .mockReturnValueOnce({ from: () => ({ where: async () => [{ id: "job-1" }, { id: "job-2" }] }) });
-    set.mockReturnValue({ where: () => ({ returning: async () => [{ name: "n", slug: "s", description: null }] }) });
-    const res = await DELETE(new NextRequest(`http://localhost/api/projects/${ID}`, { method: "DELETE" }), { params: Promise.resolve({ id: ID }) });
-    expect(res.status).toBe(200);
-    expect(deleteScheduledJob).toHaveBeenCalledWith("job-1");
-    expect(deleteScheduledJob).toHaveBeenCalledWith("job-2");
-  });
-
-  it("audits the deletion even when scheduler cleanup never settles", async () => {
-    (db.select as jest.Mock)
-      .mockReturnValueOnce({ from: () => ({ where: () => ({ limit: async () => [{ organizationId: "org-1", isDefault: false }] }) }) })
-      .mockReturnValueOnce({ from: () => ({ where: async () => [{ id: "job-1" }] }) });
-    set.mockReturnValue({ where: () => ({ returning: async () => [{ name: "n", slug: "s", description: null }] }) });
-    (deleteScheduledJob as jest.Mock).mockReturnValueOnce(new Promise(() => {}));
-    (logAuditEvent as jest.Mock).mockClear();
-    void DELETE(new NextRequest(`http://localhost/api/projects/${ID}`, { method: "DELETE" }), { params: Promise.resolve({ id: ID }) });
-    await new Promise((r) => setTimeout(r, 20));
-    expect(logAuditEvent).toHaveBeenCalledWith(expect.objectContaining({ action: "project_deleted" }));
-  });
-
-  it("pauses the project's monitors in the delete transaction and unschedules them", async () => {
-    (db.select as jest.Mock)
-      .mockReturnValueOnce({ from: () => ({ where: () => ({ limit: async () => [{ organizationId: "org-1", isDefault: false }] }) }) })
-      .mockReturnValueOnce({ from: () => ({ where: async () => [] }) });
-    set
-      .mockReturnValueOnce({ where: () => ({ returning: async () => [{ name: "n", slug: "s", description: null }] }) })
-      .mockReturnValueOnce({ where: () => ({ returning: async () => [{ id: "m1", scheduledJobId: "s1" }] }) });
-    const res = await DELETE(new NextRequest(`http://localhost/api/projects/${ID}`, { method: "DELETE" }), { params: Promise.resolve({ id: ID }) });
-    expect(res.status).toBe(200);
-    expect(db.transaction).toHaveBeenCalled();
-    expect(set).toHaveBeenCalledWith(expect.objectContaining({ status: "paused" }));
-    expect(unscheduleMonitors).toHaveBeenCalledWith([{ id: "m1", scheduledJobId: "s1" }], db);
   });
 });

@@ -19,7 +19,8 @@ import { z } from 'zod';
 import { logAdminEvent, logImpersonationEvent } from '@/lib/audit-logger';
 import { checkAdminRateLimit } from '@/lib/session-security';
 import { pruneAvatars } from '@/lib/user-avatar';
-import { BillingCancellationError, OrganizationMembershipChangedError, StorageCleanupError, deleteOrganizationCompletely, soleMemberOrganizations } from '@/lib/organization-teardown';
+import { readOrgPendingOn } from '@/lib/deletion/org-state';
+import { OrganizationMembershipChangedError, requestOrganizationDeletion, soleMemberOrganizations } from '@/lib/deletion/organization';
 import { isImpersonatedSession } from '@/lib/rbac/middleware';
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -158,6 +159,10 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
   }
 }
 
+class OrganizationCancelledDuringUserDeletionError extends Error {
+  constructor() { super('An organization deletion was cancelled while the user was being deleted; nothing was deleted'); }
+}
+
 export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = await params;
   // Organizations already deleted by this request; reported even when a later step fails.
@@ -238,24 +243,21 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
     }
     for (const org of soleMemberOrgs) {
       try {
-        const deleted = await deleteOrganizationCompletely(org.id, { onlyMemberUserId: userId }, currentAdmin.id);
-        if (deleted) {
+        // Same pending-window path as every other organization deletion; the purge removes it (and its data) when due.
+        const requested = await requestOrganizationDeletion({ organizationId: org.id, actorUserId: currentAdmin.id, guard: { onlyMemberUserId: userId }, reason: 'account_deletion' });
+        if (requested) {
           deletedOrganizationIds.push(org.id);
           try {
-            await logAdminEvent(currentAdmin.id, 'organization_deleted', org.id, 'organization', org.id, {
-            organizationName: org.name, reason: 'sole_member_user_deleted', userId,
-            subscriptionCancelled: deleted.subscriptionCancelled,
-          });
+            await logAdminEvent(currentAdmin.id, 'organization_deletion_requested', org.id, 'organization', org.id, {
+              organizationName: org.name, reason: 'sole_member_user_deleted', userId, purgeAfter: requested.purgeAfter.toISOString(), billing: requested.billing,
+            });
           } catch (error) {
             console.error('Failed to audit organization deletion:', error);
           }
         }
       } catch (error) {
-        // Earlier organizations in this request are already gone; say so, the user is kept.
+        // Earlier organizations in this request are already pending; say so, the user is kept.
         const alreadyDeleted = { deletedOrganizationIds };
-        if (error instanceof BillingCancellationError || error instanceof StorageCleanupError) {
-          return NextResponse.json({ success: false, error: `${org.name}: ${error.message}. The user was not deleted.`, ...alreadyDeleted }, { status: 502 });
-        }
         if (error instanceof OrganizationMembershipChangedError) {
           return NextResponse.json({
             success: false,
@@ -270,6 +272,12 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
     }
 
     await db.transaction(async (tx) => {
+      // 0. The organizations this request put into the pending window must still be pending. A cancel that landed meanwhile
+      // (it takes the same row lock) would otherwise leave an active organization with no members and no scheduled purge.
+      for (const orgId of deletedOrganizationIds) {
+        if ((await readOrgPendingOn(tx, orgId, 'update')) === false) throw new OrganizationCancelledDuringUserDeletionError();
+      }
+
       // 1. Delete API keys (onDelete: "no action" would block user deletion)
       await tx.delete(apikey).where(eq(apikey.referenceId, userId));
 
@@ -320,6 +328,9 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
   } catch (error) {
     const denied = adminDeniedResponse(error);
     if (denied) return denied;
+    if (error instanceof OrganizationCancelledDuringUserDeletionError) {
+      return NextResponse.json({ success: false, error: error.message, ...(deletedOrganizationIds.length ? { deletedOrganizationIds } : {}) }, { status: 409 });
+    }
     console.error('Admin user DELETE error:', error);
     return NextResponse.json(
       { success: false, error: 'Failed to delete user', ...(deletedOrganizationIds.length ? { deletedOrganizationIds } : {}) },

@@ -1,4 +1,5 @@
 /** @jest-environment node */
+jest.mock("@/lib/deletion/org-state");
 // Stateful fake queues: a job fires once per queue that holds a repeatable for it,
 // so "exactly one repeatable across both queues" means "exactly one firing per tick".
 type Repeatable = { key: string; name: string; pattern: string; tz: string | null; data: Record<string, unknown> };
@@ -37,8 +38,8 @@ jest.mock("@/utils/db", () => ({
     update: () => ({ set: () => ({ where: async () => undefined }) }),
   },
 }));
-jest.mock("drizzle-orm", () => ({ eq: jest.fn(), and: jest.fn(), isNotNull: jest.fn(), isNull: jest.fn() }));
-jest.mock("@/db/schema", () => ({ jobs: {} }));
+jest.mock("drizzle-orm", () => ({ eq: jest.fn(), and: jest.fn(), isNotNull: jest.fn(), isNull: jest.fn(), sql: jest.fn() }));
+jest.mock("@/db/schema", () => ({ jobs: {}, projects: {} }));
 jest.mock("@/lib/cron-utils", () => ({ getNextRunDate: () => new Date("2030-01-01T00:00:00Z") }));
 jest.mock("./data-lifecycle-service", () => ({ createDataLifecycleService: jest.fn(), setDataLifecycleInstance: jest.fn() }));
 jest.mock("./scheduler/job-scheduler", () => ({ processScheduledJob: jest.fn() }));

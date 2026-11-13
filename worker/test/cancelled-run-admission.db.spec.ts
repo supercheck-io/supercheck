@@ -24,7 +24,10 @@ beforeAll(async () => {
   url.pathname = `/${name}`;
   client = postgres(url.toString(), { max: 2 });
   await client.unsafe(
-    'CREATE TABLE runs (id uuid PRIMARY KEY, job_id uuid, status text, started_at timestamptz, created_at timestamptz, completed_at timestamptz, error_details text, location text, duration_ms integer)',
+    'CREATE TABLE runs (id uuid PRIMARY KEY, job_id uuid, project_id uuid, status text, started_at timestamptz, created_at timestamptz, completed_at timestamptz, error_details text, location text, duration_ms integer)',
+  );
+  await client.unsafe(
+    'CREATE TABLE organization (id uuid PRIMARY KEY, deletion_requested_at timestamptz); CREATE TABLE projects (id uuid PRIMARY KEY, organization_id uuid, status text)',
   );
   await client.unsafe(
     readFileSync(

@@ -25,6 +25,8 @@ import { ExecutionQueueError } from "./execution-errors";
 async function assertEnqueueWorkload(
   organizationId: string, policy: ExecutionPolicy, kind: "playwright" | "k6",
 ): Promise<void> {
+  // Last line of defence behind the routes' own checks: every enqueue path funnels through here, and this reads the database (admission must not trust a cache).
+  if (organizationId !== "global" && (await isOrgPendingDeletion(organizationId, { fresh: true }))) throw new OrgPendingDeletionError();
   try {
     await assertExecutionWorkload(organizationId, policy, kind);
   } catch (error) {
@@ -48,6 +50,7 @@ import {
   partitionMonitorLocationsByAvailability,
   resolveMonitorLocations,
 } from "./monitor-location-routing";
+import { isOrgPendingDeletion, OrgPendingDeletionError } from "./deletion/org-state";
 import { NoLiveWorkersError } from "./no-live-workers-error";
 
 // Local interface for cleanup queues (separate from capacity management)

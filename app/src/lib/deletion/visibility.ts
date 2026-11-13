@@ -4,6 +4,9 @@
  * Every read, count, aggregate, list and by-id load of monitors, jobs or runs goes through these predicates, so a
  * deleting target reads exactly like one that does not exist (404, not counted, not acted on). Only the purge and
  * admin code that must see deleting rows may query the columns directly (see visibility.spec.ts allowlist).
+ * Organizations pending deletion and soft-deleted projects are read-only, not hidden: reads stay allowed, writes are
+ * refused in the permission layer (rbac/permissions.ts) and by the org-state helpers; the SQL predicate below keeps
+ * schedulers and sweeps from admitting new work for a pending organization.
  * Run predicates use an uncorrelated `NOT IN` over the few deleting jobs, so Postgres hashes it once (jobs_deleting_idx, migration 0076).
  */
 import { isNull, sql, type AnyColumn, type SQL } from "drizzle-orm";
@@ -29,6 +32,10 @@ export const liveJob = (table: { deletingAt: AnyColumn } | string = jobs): SQL =
  */
 export const liveRunOfLiveJob = (jobId: AnyColumn): SQL =>
   sql`(${jobId} IS NULL OR ${jobId} NOT IN (SELECT id FROM jobs WHERE deleting_at IS NOT NULL))`;
+
+/** SQL predicate for scheduler and sweep queries: the organization behind this column is not pending deletion. */
+export const notInPendingOrganization = (organizationIdColumn: unknown): SQL =>
+  sql`NOT EXISTS (SELECT 1 FROM organization pend WHERE pend.id = ${organizationIdColumn} AND pend.deletion_requested_at IS NOT NULL)`;
 
 /** By-id guard for a row already loaded: the row, or null when it is being deleted (callers answer not found). */
 export function notFoundIfDeleting<T extends { deletingAt?: Date | null }>(row: T | null | undefined): T | null {

@@ -6,6 +6,7 @@ import { resolveEffectiveProjectRole } from '@/lib/rbac/effective-project-role';
 import { requireUserAuthContext, isAuthError, authErrorStatus } from '@/lib/auth-context';
 import { db } from '@/utils/db';
 import { projects, projectMembers, jobs, tests, monitors, statusPages } from '@/db/schema';
+import { ProjectDeletionError, softDeleteProject } from '@/lib/deletion/project';
 import { eq, and, ne, count, isNotNull } from 'drizzle-orm';
 import { z } from 'zod';
 import { logAuditEvent } from '@/lib/audit-logger';
@@ -221,7 +222,7 @@ export async function PUT(
 
 /**
  * DELETE /api/projects/[id]
- * Delete project (owner only)
+ * Soft delete a project (org owners and admins); restorable for 7 days via POST /api/projects/[id]/restore
  */
 export async function DELETE(
   _request: NextRequest,
@@ -269,76 +270,17 @@ export async function DELETE(
       );
     }
     
-    // Soft delete project (mark as deleted)
-    // Guarded + RETURNING: a concurrent delete/rename cannot produce a duplicate or stale audit entry.
-    // Pause the project's monitors in the same transaction: nothing else stops them checking
-    // and alerting once the project is gone.
-    const { deleted, pausedMonitors } = await db.transaction(async (tx) => {
-      const [deleted] = await tx
-        .update(projects)
-        .set({
-          status: 'deleted',
-          updatedAt: new Date()
-        })
-        .where(and(eq(projects.id, projectId), ne(projects.status, 'deleted')))
-        .returning({ name: projects.name, slug: projects.slug, description: projects.description });
-      if (!deleted) return { deleted, pausedMonitors: [] };
-      const pausedMonitors = await tx
-        .update(monitors)
-        .set({ status: 'paused', updatedAt: new Date() })
-        .where(and(eq(monitors.projectId, projectId), ne(monitors.status, 'paused')))
-        .returning({ id: monitors.id, scheduledJobId: monitors.scheduledJobId });
-      // Its public status pages would otherwise stay live with no way to manage them.
-      await tx
-        .update(statusPages)
-        .set({ status: 'archived', updatedAt: new Date() })
-        .where(and(eq(statusPages.projectId, projectId), ne(statusPages.status, 'archived')));
-      return { deleted, pausedMonitors };
-    });
-
+    // Soft delete: hidden at once, restorable for 7 days, then purged by the background worker.
+    const deleted = await softDeleteProject({ projectId, actorUserId: userId });
     if (!deleted) {
       return NextResponse.json({ error: 'Project not found' }, { status: 404 });
     }
 
-    await logAuditEvent({
-      userId,
-      organizationId,
-      action: 'project_deleted',
-      resource: 'project',
-      resourceId: projectId,
-      metadata: { projectName: deleted.name, projectSlug: deleted.slug, description: deleted.description, organizationId },
-      success: true,
-    });
-
-    // Best effort: a paused monitor's scheduled check is a no-op, this only removes the repeatable.
-    try {
-      const { unscheduleMonitors } = await import('@/lib/execution/trial-lifecycle');
-      await unscheduleMonitors(pausedMonitors, db);
-    } catch (error) {
-      console.error('Failed to unschedule monitors for deleted project', projectId, error);
-    }
-
-    // Best effort: processScheduledJob also drops the repeatable if this fails.
-    try {
-      const { deleteScheduledJob } = await import('@/lib/job-scheduler');
-      const scheduled = await db
-        .select({ id: jobs.id })
-        .from(jobs)
-        .where(and(eq(jobs.projectId, projectId), isNotNull(jobs.cronSchedule)));
-      await Promise.all(
-        scheduled.map(async (job) => {
-          if (!(await deleteScheduledJob(job.id))) {
-            console.error('Failed to remove schedule for job of deleted project', job.id);
-          }
-        }),
-      );
-    } catch (error) {
-      console.error('Failed to remove schedules for deleted project', projectId, error);
-    }
-    
     return NextResponse.json({
       success: true,
-      message: 'Project deleted successfully'
+      message: 'Project deleted successfully',
+      // Until then POST /api/projects/[id]/restore brings it back.
+      purgeAfter: deleted.purgeAfter,
     });
     
   } catch (error) {
@@ -347,6 +289,9 @@ export async function DELETE(
         { error: error instanceof Error ? error.message : 'Authentication required' },
         { status: authErrorStatus(error) }
       );
+    }
+    if (error instanceof ProjectDeletionError) {
+      return NextResponse.json({ error: error.message, code: error.code }, { status: error.status });
     }
     console.error('Failed to delete project:', error);
     return NextResponse.json(

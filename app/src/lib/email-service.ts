@@ -88,6 +88,11 @@ export function smtpSender(env: NodeJS.ProcessEnv = process.env): {
   };
 }
 
+/** True when SMTP is fully configured; without it deletion confirmations happen in the app and no mail is attempted. */
+export function isEmailConfigured(): boolean {
+  return !("error" in buildSmtpConfig());
+}
+
 export class EmailService {
   private static instance: EmailService;
   private transporter?: Transporter;

@@ -1,4 +1,5 @@
 /** @jest-environment node */
+jest.mock("@/lib/deletion/org-state");
 import { EventEmitter } from "node:events";
 
 describe("queue location refresh", () => {

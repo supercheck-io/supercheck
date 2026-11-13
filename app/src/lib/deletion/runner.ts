@@ -1,6 +1,7 @@
 import { BATCH_PAUSE_MS, MAX_ATTEMPTS, MAX_TOTAL_STEPS } from "./config";
 import { BLOCKED_RETRY_MS, LostClaimError, claimDeletion, completeDeletion, failDeletion, heartbeat, releaseDeletion, type DeletionRow } from "./jobs";
 import { purgeJobStep, purgeMonitorStep, type StepContext, type StepResult } from "./purge";
+import { purgeOrganizationStep, purgeProjectStep } from "./purge-tenant";
 
 /** One invocation works for at most this long, then hands the rest to the next trigger so a worker slot is never pinned. */
 const SLICE_MS = 4 * 60_000;
@@ -8,6 +9,8 @@ const SLICE_MS = 4 * 60_000;
 const handlers: Record<string, (row: DeletionRow, ctx: StepContext) => Promise<StepResult>> = {
   job: purgeJobStep,
   monitor: purgeMonitorStep,
+  project: purgeProjectStep,
+  organization: purgeOrganizationStep,
 };
 
 class StepCapError extends Error {}

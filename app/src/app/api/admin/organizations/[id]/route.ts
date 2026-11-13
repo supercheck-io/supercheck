@@ -6,7 +6,7 @@ import { requireAdmin } from '@/lib/admin';
 import { adminDeniedResponse } from '@/lib/admin-errors';
 import { getCurrentUser } from '@/lib/session';
 import { logAdminEvent } from '@/lib/audit-logger';
-import { BillingCancellationError, OrganizationMembershipChangedError, StorageCleanupError, deleteOrganizationCompletely } from '@/lib/organization-teardown';
+import { OrganizationMembershipChangedError, requestOrganizationDeletion } from '@/lib/deletion/organization';
 import { isImpersonatedSession } from '@/lib/rbac/middleware';
 import { checkAdminRateLimit } from '@/lib/session-security';
 import { eq, count } from 'drizzle-orm';
@@ -185,32 +185,26 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
       );
     }
 
-    // Full teardown: cancels billing, stops schedules, removes stored files and all projects.
+    // Same path as the owner flow: a pending window (not an immediate teardown). Super admins can purge early via /purge.
     try {
-      const deleted = await deleteOrganizationCompletely(resolvedParams.id, { noMembers: true }, admin.id);
-      if (deleted) {
+      const result = await requestOrganizationDeletion({ organizationId: resolvedParams.id, actorUserId: admin.id, guard: { noMembers: true }, reason: 'admin' });
+      if (result) {
         try {
-          await logAdminEvent(admin.id, 'organization_deleted', resolvedParams.id, 'organization', resolvedParams.id, {
-          organizationName: orgData.name, subscriptionCancelled: deleted.subscriptionCancelled,
-        });
+          await logAdminEvent(admin.id, 'organization_deletion_requested', resolvedParams.id, 'organization', resolvedParams.id, {
+            organizationName: orgData.name, purgeAfter: result.purgeAfter.toISOString(), billing: result.billing,
+          });
         } catch (error) {
           console.error('Failed to audit organization deletion:', error);
         }
+        return NextResponse.json({ success: true, data: { message: 'Organization scheduled for deletion', status: result.status, purgeAfter: result.purgeAfter, billing: result.billing } });
       }
     } catch (error) {
-      if (error instanceof BillingCancellationError || error instanceof StorageCleanupError) {
-        return NextResponse.json({ success: false, error: error.message }, { status: 502 });
-      }
       if (error instanceof OrganizationMembershipChangedError) {
         return NextResponse.json({ success: false, error: 'Cannot delete organization with members' }, { status: 400 });
       }
       throw error;
     }
-
-    return NextResponse.json({
-      success: true,
-      data: { message: 'Organization deleted successfully' }
-    });
+    return NextResponse.json({ success: false, error: 'Organization not found' }, { status: 404 });
   } catch (error) {
     const denied = adminDeniedResponse(error);
     if (denied) return denied;

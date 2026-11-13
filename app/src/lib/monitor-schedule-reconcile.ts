@@ -1,5 +1,6 @@
 import { and, eq, ne, sql } from "drizzle-orm";
 import { db } from "@/utils/db";
+import { readOrgPendingOn } from "@/lib/deletion/org-state";
 import { monitors } from "@/db/schema";
 import { removeScheduledMonitor, scheduleMonitor } from "@/lib/monitor-scheduler";
 import type { MonitorJobData } from "@/lib/queue";
@@ -45,7 +46,10 @@ async function reconcileOnce(id: string, projectId: string, state: { active: boo
       .for("update");
     if (!row) return;
     const deadline = Date.now() + RECONCILE_BUDGET_MS;
-    if (row.status === "paused" || !row.enabled || row.deletingAt || row.frequencyMinutes <= 0) {
+    // A pending organization's monitors are stopped; the cancel path restores them through this same reconcile.
+    // Read on this transaction: a second pool connection while holding one can deadlock a saturated pool.
+    const pendingOrganization = row.organizationId ? !!(await readOrgPendingOn(tx, row.organizationId, "share")) : false;
+    if (row.status === "paused" || !row.enabled || row.deletingAt || pendingOrganization || row.frequencyMinutes <= 0) {
       // A scheduler failure throws (rolling back, so scheduledJobId stays and a retry converges); an absent job is fine.
       const removed = row.scheduledJobId ? await withDeadline(deadline, (signal) => removeScheduledMonitor(row.scheduledJobId!, signal)) : false;
       if (!removed) await withDeadline(deadline, (signal) => removeScheduledMonitor(id, signal));

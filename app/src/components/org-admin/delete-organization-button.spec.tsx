@@ -28,7 +28,7 @@ it("enables deletion only after the exact name is typed and sends the confirmed 
   fireEvent.change(screen.getByLabelText(/Type the organization name/), { target: { value: "Acme" } });
   fireEvent.click(confirm);
   await waitFor(() => expect(toast.error).toHaveBeenCalledWith("Only organization owners can delete organizations"));
-  expect(fetchMock).toHaveBeenCalledWith("/api/organizations/org-1", expect.objectContaining({ method: "DELETE", body: JSON.stringify({ confirmOrganizationId: "org-1" }) }));
+  expect(fetchMock).toHaveBeenCalledWith("/api/organizations/org-1", expect.objectContaining({ method: "DELETE", body: JSON.stringify({ confirmName: "Acme" }) }));
 });
 
 it("explains a non-JSON response instead of claiming failure", async () => {

@@ -63,6 +63,7 @@ import { isPolarEnabled } from "@/lib/feature-flags";
 import { removeK6RunLinks } from "@/lib/resource-deletion/linked-records";
 import { monitorAggregationService } from "./monitor-aggregation-service";
 import { endExpiredTrials, reconcilePaidTrialSuspensions, sendTrialReminders, suspendLapsedOrganizations } from "@/lib/execution/trial-lifecycle";
+import { AUDIT_RETENTION_DAYS, scrubAuditEmails } from "@/lib/audit-scrub";
 import { deliverTrialReminder } from "@/lib/execution/trial-reminder-delivery";
 
 const QUEUE_EVENTS_READY_TIMEOUT_MS = 10_000;
@@ -2326,101 +2327,15 @@ export class TelemetryRetentionStrategy implements ICleanupStrategy {
   }
 }
 
-type AuditActionCategory =
-  | "authentication"
-  | "authorization"
-  | "resource"
-  | "execution"
-  | "configuration"
-  | "security"
-  | "default";
-
-const SECURITY_AUDIT_ACTIONS = new Set([
-  "failed_login",
-  "unauthorized_access_attempt",
-  "suspicious_activity",
-  "security_violation",
-  "rate_limit_exceeded",
-]);
-
-function getAuditActionCategory(action: string): AuditActionCategory {
-  const normalized = action.toLowerCase();
-
-  if (
-    SECURITY_AUDIT_ACTIONS.has(normalized) ||
-    normalized.startsWith("security_") ||
-    normalized.includes("unauthorized_access") ||
-    normalized.includes("rate_limit")
-  ) {
-    return "security";
-  }
-
-  if (
-    normalized === "login" ||
-    normalized === "logout" ||
-    normalized === "password_reset" ||
-    normalized === "login_failed" ||
-    normalized.startsWith("impersonation_")
-  ) {
-    return "authentication";
-  }
-
-  if (
-    normalized === "role_change" ||
-    normalized.startsWith("permission_")
-  ) {
-    return "authorization";
-  }
-
-  if (normalized.includes("settings") || normalized.includes("integration")) {
-    return "configuration";
-  }
-
-  if (normalized.includes("executed") || normalized.includes("triggered")) {
-    return "execution";
-  }
-
-  if (
-    normalized.endsWith("_created") ||
-    normalized.endsWith("_updated") ||
-    normalized.endsWith("_deleted") ||
-    normalized.endsWith("_create") ||
-    normalized.endsWith("_update") ||
-    normalized.endsWith("_delete")
-  ) {
-    return "resource";
-  }
-
-  return "default";
-}
-
-function getAuditActionRetentionDays(
-  action: string,
-  fallbackRetentionDays: number
-): number {
-  const category = getAuditActionCategory(action);
-  switch (category) {
-    case "resource":
-    case "execution":
-      return 30;
-    case "authentication":
-    case "authorization":
-    case "configuration":
-      return 90;
-    case "security":
-      return 365;
-    default:
-      return fallbackRetentionDays;
-  }
-}
-
 /**
  * Audit Logs Cleanup Strategy
  *
- * Category-aware retention aligned with 06-data audit spec:
- * - Resource management / Execution: 30 days
- * - Authentication / Authorization / Configuration: 90 days
- * - Security: 365 days
+ * Every record is kept for 12 months. After AUDIT_EMAIL_SCRUB_DAYS (default 30) email addresses in the details are
+ * replaced by a stable hash, then the record is purged at 12 months.
+ */
+/**
+ * Replace email addresses in audit details older than AUDIT_EMAIL_SCRUB_DAYS and mark the row, so each row is rewritten once.
+ * Keyset-batched over the created_at index; the marker keeps finished rows out of later runs.
  */
 export class AuditLogsCleanupStrategy implements ICleanupStrategy {
   entityType: CleanupEntityType = "audit_logs";
@@ -2475,11 +2390,11 @@ export class AuditLogsCleanupStrategy implements ICleanupStrategy {
 
   async execute(dryRun = false): Promise<CleanupOperationResult> {
     const startTime = Date.now();
-    const fallbackRetentionDays = this.config.retentionDays || 90;
     const batchSize = this.config.batchSize || 1000;
     const maxRecords = this.config.maxRecordsPerRun || 100000;
 
-    const minRetentionDays = 30;
+    // Owner decision: every audit record is kept for AUDIT_RETENTION_DAYS; the email scrub runs its own scan first.
+    const minRetentionDays = AUDIT_RETENTION_DAYS;
     const minCutoffDate = new Date(
       Date.now() - minRetentionDays * 24 * 60 * 60 * 1000
     );
@@ -2493,11 +2408,17 @@ export class AuditLogsCleanupStrategy implements ICleanupStrategy {
       details: {
         dryRun,
         minRetentionDays,
-        fallbackRetentionDays,
       },
     };
 
     try {
+      // A scrub failure (for example a missing server secret) is reported but must not stop the retention delete below.
+      try {
+        result.details.emailsScrubbed = await scrubAuditEmails({ dryRun, batchSize, maxRecords });
+      } catch (scrubError) {
+        result.errors.push(`audit email scrub failed: ${scrubError instanceof Error ? scrubError.message : String(scrubError)}`);
+        result.success = false;
+      }
       let totalDeleted = 0;
       let scannedRecords = 0;
       let iterations = 0;
@@ -2538,19 +2459,7 @@ export class AuditLogsCleanupStrategy implements ICleanupStrategy {
 
         scannedRecords += candidates.length;
 
-        const eligibleIds = candidates
-          .filter((record) => {
-            if (!record.createdAt) return false;
-            const retentionDays = getAuditActionRetentionDays(
-              record.action,
-              fallbackRetentionDays
-            );
-            const actionCutoffDate = new Date(
-              Date.now() - retentionDays * 24 * 60 * 60 * 1000
-            );
-            return record.createdAt < actionCutoffDate;
-          })
-          .map((record) => record.id);
+        const eligibleIds = candidates.map((record) => record.id);
 
         const remainingQuota = maxRecords - totalDeleted;
         const quotaEligibleIds = eligibleIds.slice(0, Math.max(0, remainingQuota));
@@ -3354,7 +3263,7 @@ export function createDataLifecycleService(): DataLifecycleService {
         process.env.AUDIT_LOGS_CLEANUP_CRON,
         "0 1 * * *"
       ),
-      retentionDays: parseInt(process.env.AUDIT_LOGS_RETENTION_DAYS || "90", 10),
+      retentionDays: AUDIT_RETENTION_DAYS,
       batchSize: parseInt(process.env.AUDIT_LOGS_CLEANUP_BATCH_SIZE || "1000", 10),
       maxRecordsPerRun: parseInt(
         process.env.AUDIT_LOGS_CLEANUP_SAFETY_LIMIT || "100000",

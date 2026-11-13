@@ -1,4 +1,5 @@
 import { getExecutionPolicy, ExecutionWorkloadError } from "@/lib/execution/execution-policy";
+import { isOrgPendingDeletion } from '@/lib/deletion/org-state';
 /**
  * Job Scheduler Processor
  *
@@ -152,6 +153,12 @@ export async function processScheduledJob(
     // Deletion in progress: a late tick does nothing and drops its own schedule (the purge also removes it).
     if (jobRecord.deletingAt) {
       await removeOrphanedSchedule(jobId, 'job_deleting');
+      return { success: true };
+    }
+    // Pending organization deletion: the tick does nothing. Quiescing already removed the schedule; it is deliberately not
+    // removed here, so a tick that raced a cancellation cannot strip the schedule the cancellation just restored.
+    if (await isOrgPendingDeletion(jobRecord.organizationId, { fresh: true })) {
+      logger.info({ jobId }, 'Skipping scheduled job: organization is pending deletion');
       return { success: true };
     }
     const jobType = jobRecord.jobType ?? 'playwright';

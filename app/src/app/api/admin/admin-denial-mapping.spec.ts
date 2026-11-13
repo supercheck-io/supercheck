@@ -14,11 +14,9 @@ jest.mock("@/lib/user-avatar", () => ({ pruneAvatars: jest.fn() }));
 jest.mock("@/lib/data-lifecycle-service", () => ({ getDataLifecycleService: jest.fn() }));
 jest.mock("@/lib/job-scheduler", () => ({ initializeJobSchedulers: jest.fn(), cleanupJobScheduler: jest.fn() }));
 jest.mock("@/lib/monitor-scheduler", () => ({ initializeMonitorSchedulers: jest.fn() }));
-jest.mock("@/lib/organization-teardown", () => ({
-  BillingCancellationError: class extends Error {},
+jest.mock("@/lib/deletion/organization", () => ({
   OrganizationMembershipChangedError: class extends Error {},
-  StorageCleanupError: class extends Error {},
-  deleteOrganizationCompletely: jest.fn(),
+  requestOrganizationDeletion: jest.fn(),
   soleMemberOrganizations: jest.fn(),
 }));
 

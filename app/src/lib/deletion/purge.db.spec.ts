@@ -618,3 +618,59 @@ describe("claims, retries and the sweep", () => {
     expect(await enqueueOrphanedDeletions()).toBe(0);
   });
 });
+
+describe("open incidents of a deleted job or monitor", () => {
+  async function seedIncident(base: { orgId: string; projectId: string }, sourceType: "job" | "monitor", sourceId: string, status = "triggered") {
+    const [alert] = await client`INSERT INTO sre_alert_events (id, organization_id, project_id, fingerprint_hash, source_type, source_id, title, fired_at, status)
+      VALUES (uuidv7(), ${base.orgId}, ${base.projectId}, ${randomUUID().replaceAll("-", "")}, ${sourceType}, ${sourceId}, 'Failure', now(), 'firing') RETURNING id`;
+    const [incident] = await client`INSERT INTO sre_incidents (id, organization_id, project_id, incident_number, title, status)
+      VALUES (uuidv7(), ${base.orgId}, ${base.projectId}, ${Math.floor(Math.random() * 1e9)}, 'Down', ${status}) RETURNING id`;
+    await client`INSERT INTO sre_incident_alerts (id, incident_id, alert_event_id, role) VALUES (uuidv7(), ${incident.id}, ${alert.id}, 'trigger')`;
+    return { incidentId: incident.id as string, alertId: alert.id as string };
+  }
+  const incidentState = async (id: string) => (await client`SELECT status, resolution_summary, resolved_at FROM sre_incidents WHERE id = ${id}`)[0];
+
+  it("resolves the open incident, ends its firing alert and notes it on the timeline when a job is deleted", async () => {
+    const seeded = await seedJob(0);
+    const open = await seedIncident(seeded, "job", seeded.jobId);
+    const acknowledged = await seedIncident(seeded, "job", seeded.jobId, "investigating");
+    const other = await seedJob(0);
+    const unrelated = await seedIncident(other, "job", other.jobId);
+
+    expect((await requestJobDeletion(scope(seeded))).status).toBe("requested");
+
+    for (const { incidentId, alertId } of [open, acknowledged]) {
+      const incident = await incidentState(incidentId);
+      expect(incident.status).toBe("resolved");
+      expect(incident.resolution_summary).toBe("Resolved automatically: Job was deleted.");
+      expect(incident.resolved_at).not.toBeNull();
+      expect((await client`SELECT status FROM sre_alert_events WHERE id = ${alertId}`)[0].status).toBe("resolved");
+      expect(await client`SELECT actor_type, event_data FROM sre_incident_timeline_events WHERE incident_id = ${incidentId}`).toEqual([
+        { actor_type: "system", event_data: expect.objectContaining({ state: "resolved", automatic: true }) },
+      ]);
+    }
+    expect((await incidentState(unrelated.incidentId)).status).toBe("triggered");
+    expect((await client`SELECT status FROM sre_alert_events WHERE id = ${unrelated.alertId}`)[0].status).toBe("firing");
+  });
+
+  it("does the same for a monitor, and leaves a resolved incident untouched", async () => {
+    const seeded = await seedMonitor(0);
+    const open = await seedIncident(seeded, "monitor", seeded.monitorId);
+    const done = await seedIncident(seeded, "monitor", seeded.monitorId, "resolved");
+    await client`UPDATE sre_incidents SET resolution_summary = 'fixed by hand' WHERE id = ${done.incidentId}`;
+
+    expect((await requestMonitorDeletion(scope(seeded))).status).toBe("requested");
+
+    expect((await incidentState(open.incidentId)).status).toBe("resolved");
+    expect((await incidentState(done.incidentId)).resolution_summary).toBe("fixed by hand");
+    expect(await client`SELECT 1 FROM sre_incident_timeline_events WHERE incident_id = ${done.incidentId}`).toHaveLength(0);
+  });
+
+  it("is idempotent: a repeated request changes nothing more", async () => {
+    const seeded = await seedMonitor(0);
+    const open = await seedIncident(seeded, "monitor", seeded.monitorId);
+    await requestMonitorDeletion(scope(seeded));
+    expect((await requestMonitorDeletion(scope(seeded))).status).toBe("already");
+    expect(await client`SELECT 1 FROM sre_incident_timeline_events WHERE incident_id = ${open.incidentId}`).toHaveLength(1);
+  });
+});
