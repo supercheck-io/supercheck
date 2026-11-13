@@ -71,7 +71,7 @@ export async function requestOrganizationDeletion(input: {
   const outcome = await db.transaction(async (tx) => {
     await lockTimeout(tx);
     const [org] = await tx.select({
-      id: organization.id, pending: organization.deletionRequestedAt, purgeAfter: organization.deletionPurgeAfter,
+      id: organization.id, pending: organization.deletionRequestedAt, purgeAfter: organization.deletionPurgeAfter, meta: organization.deletionMeta,
     }).from(organization).where(eq(organization.id, input.organizationId)).for("update");
     if (!org) return null;
     await assertMembership(tx, input.organizationId, input.guard);
@@ -80,7 +80,8 @@ export async function requestOrganizationDeletion(input: {
       deletionRequestedAt: sql`now()`,
       deletionPurgeAfter: sql`now() + make_interval(days => ${graceDays})`,
       deletionRequestedByUserId: input.actorUserId,
-      deletionMeta: {},
+      // An earlier cancel could not turn renewal back on: that cancellation is still ours, so this deletion inherits it.
+      deletionMeta: (org.meta as DeletionMeta | null)?.billingReinstatePending ? { billingCancelRequested: true } : {},
     }).where(eq(organization.id, input.organizationId)).returning({ purgeAfter: organization.deletionPurgeAfter });
     // A failed row from an earlier, cancelled cycle would block the unique live-row index; cancel closes them, this is the belt.
     await closeDeletionJobs(tx, "organization", input.organizationId);
@@ -94,18 +95,26 @@ export async function requestOrganizationDeletion(input: {
   invalidateOrgState(input.organizationId);
   if (!outcome.flipped) return { status: "already", purgeAfter: outcome.purgeAfter, deletionId: null, billing: "skipped" };
 
-  const billing = await settleBillingOnRequest(input.organizationId);
+  // The organization is pending now: nothing below may turn that into an error response. The sweep resumes billing and quiesce.
+  const billing = await settleBillingOnRequest(input.organizationId).catch((error) => {
+    console.error("[ORG_DELETION] billing settle failed; the sweep retries it:", error);
+    return "retry" as const;
+  });
   await logAuditEvent({
     userId: input.actorUserId, organizationId: input.organizationId, action: "organization_deletion_requested", resource: "organization",
     resourceId: input.organizationId, metadata: { purgeAfter: outcome.purgeAfter.toISOString(), reason: input.reason ?? "owner" }, success: true,
-  });
-  await quiesceOrganization(input.organizationId).catch((error) => console.error("[ORG_DELETION] quiesce failed; the sweep resumes it:", error));
+  }).catch((error) => console.error("[ORG_DELETION] audit write failed:", error));
+  await quiesceOrganization(input.organizationId, { budgetMs: REQUEST_QUIESCE_BUDGET_MS }).catch((error) => console.error("[ORG_DELETION] quiesce failed; the sweep resumes it:", error));
   await sendOrganizationNotice(input.organizationId, "noticeRequested").catch(() => undefined);
-  if (new Date(outcome.purgeAfter).getTime() <= Date.now() && outcome.deletionId) await triggerDeletion(outcome.deletionId); // self-hosted grace 0
+  if (new Date(outcome.purgeAfter).getTime() <= Date.now() && outcome.deletionId) {
+    await triggerDeletion(outcome.deletionId).catch((error) => console.error("[ORG_DELETION] trigger failed; the sweep picks the due row up:", error)); // self-hosted grace 0
+  }
   return { status: "requested", purgeAfter: outcome.purgeAfter, deletionId: outcome.deletionId, billing };
 }
 
 const BILLING_CLAIM_TTL = "2 minutes";
+/** The request path quiesces briefly so the response stays fast; the sweep finishes a large organization. */
+const REQUEST_QUIESCE_BUDGET_MS = 5_000;
 
 /**
  * After the flip: cancel at period end once, flush usage. A provider outage leaves the marker unsettled and the sweep retries.
@@ -129,7 +138,7 @@ export async function settleBillingOnRequest(organizationId: string): Promise<"c
     const [claimed] = await db.update(organization)
       .set({ deletionMeta: sql`${organization.deletionMeta} || jsonb_build_object('billingCancelAttempted', true, 'billingCancelClaimAt', ${claimAt}::text)` })
       .where(and(
-        eq(organization.id, organizationId), isNotNull(organization.deletionRequestedAt), sql`NOT (${organization.deletionMeta} ? 'billingCancelSettled')`,
+        eq(organization.id, organizationId), sql`${organization.deletionRequestedAt}::text = ${org.requestedAt}`, sql`NOT (${organization.deletionMeta} ? 'billingCancelSettled')`,
         sql`(NOT (${organization.deletionMeta} ? 'billingCancelClaimAt') OR (${organization.deletionMeta} ->> 'billingCancelClaimAt')::timestamptz < clock_timestamp() - ${sql.raw(`interval '${BILLING_CLAIM_TTL}'`)})`,
       )).returning({ id: organization.id });
     if (!claimed) return "retry"; // another caller holds a live claim (or the deletion was cancelled / settled meanwhile)
@@ -245,7 +254,8 @@ export async function cancelOrganizationDeletion(input: { organizationId: string
         return now?.pending ? "skipped" as const : reinstateSubscription(cleared.org);
       });
     } catch (error) {
-      if (!(error instanceof BillingCancellationError)) throw error;
+      // Any failure (provider, lock timeout, database): the organization is already restored, so record it for the sweep and carry on.
+      if (!(error instanceof BillingCancellationError)) console.error("[ORG_DELETION] reinstate failed:", error);
       billing = "failed";
       await db.update(organization).set({ deletionMeta: metaPatch(organization.deletionMeta, { billingReinstatePending: true }) })
         .where(and(eq(organization.id, input.organizationId), sql`${organization.deletionRequestedAt} IS NULL`)).catch(() => undefined);
@@ -254,8 +264,8 @@ export async function cancelOrganizationDeletion(input: { organizationId: string
   await logAuditEvent({
     userId: input.actorUserId, organizationId: input.organizationId, action: "organization_deletion_cancelled", resource: "organization",
     resourceId: input.organizationId, metadata: { billing }, success: true,
-  });
-  await rescheduleOrganization(input.organizationId).catch((error) => console.error("[ORG_DELETION] reschedule after cancel failed; schedulers repair on the next start:", error));
+  }).catch((error) => console.error("[ORG_DELETION] audit write failed:", error));
+  await rescheduleOrganization(input.organizationId).catch((error) => console.error("[ORG_DELETION] reschedule after cancel failed; the schedule repair sweeps restore it:", error));
   return { billing };
 }
 
@@ -401,10 +411,11 @@ export type OrganizationDeletionState = {
   pending: boolean;
   requestedAt: Date | null;
   purgeAfter: Date | null;
-  requestedByUserId: string | null;
   /** The owner can still cancel (window not over, purge not started). */
   canCancel: boolean;
-  purge: { state: string; phase: string | null; lastError: string | null } | null;
+  /** No error text: members of every role can read this, and driver errors carry query detail (super admins see it in their panel). */
+  purge: { state: string; phase: string | null } | null;
+  /** The pending deletion's own window, else the window a new request would get. */
   graceDays: number;
   /** False: no mail is sent, so the UI confirms in-app only. */
   emailAvailable: boolean;
@@ -414,19 +425,20 @@ export type OrganizationDeletionState = {
 
 export async function getOrganizationDeletionState(organizationId: string): Promise<OrganizationDeletionState | null> {
   const [org] = await db.select({
-    requestedAt: organization.deletionRequestedAt, purgeAfter: organization.deletionPurgeAfter, by: organization.deletionRequestedByUserId,
+    requestedAt: organization.deletionRequestedAt, purgeAfter: organization.deletionPurgeAfter,
     meta: organization.deletionMeta, subscriptionId: organization.subscriptionId,
   }).from(organization).where(eq(organization.id, organizationId));
   if (!org) return null;
   const [purge] = org.requestedAt
-    ? await db.select({ state: deletionJobs.state, phase: deletionJobs.phase, lastError: deletionJobs.lastError }).from(deletionJobs)
+    ? await db.select({ state: deletionJobs.state, phase: deletionJobs.phase }).from(deletionJobs)
       .where(and(eq(deletionJobs.scope, "organization"), eq(deletionJobs.targetId, organizationId), ne(deletionJobs.state, "completed"))).limit(1)
     : [];
   const started = !!(org.meta as DeletionMeta).purgeStartedAt;
   return {
-    pending: !!org.requestedAt, requestedAt: org.requestedAt, purgeAfter: org.purgeAfter, requestedByUserId: org.by,
+    pending: !!org.requestedAt, requestedAt: org.requestedAt, purgeAfter: org.purgeAfter,
     canCancel: !!org.requestedAt && !started && !!org.purgeAfter && org.purgeAfter.getTime() > Date.now(),
-    purge: purge ?? null, graceDays: organizationGraceDays(), emailAvailable: isEmailConfigured(), selfHosted: isSelfHosted(),
+    purge: purge ?? null,
+    graceDays: org.requestedAt && org.purgeAfter ? Math.round((org.purgeAfter.getTime() - org.requestedAt.getTime()) / 86_400_000) : organizationGraceDays(), emailAvailable: isEmailConfigured(), selfHosted: isSelfHosted(),
     hasSubscription: hasCancellableSubscription({ subscriptionId: org.subscriptionId }),
   };
 }

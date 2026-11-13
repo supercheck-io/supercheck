@@ -4,7 +4,7 @@ import { getUserOrgRole } from '@/lib/rbac/middleware';
 import { requireUserAuthContext, isAuthError, authErrorStatus } from '@/lib/auth-context';
 import { db } from '@/utils/db';
 import { organization, member, projects, session } from '@/db/schema';
-import { eq, and, count } from 'drizzle-orm';
+import { eq, and, count, isNull } from 'drizzle-orm';
 import { Role } from '@/lib/rbac/permissions';
 import { z } from 'zod';
 import { OrganizationMembershipChangedError, requestOrganizationDeletion } from '@/lib/deletion/organization';
@@ -195,10 +195,12 @@ export async function PUT(
     const [updatedOrg] = await db
       .update(organization)
       .set(updateData)
-      .where(eq(organization.id, organizationId))
+      // Atomic with the pending check above: a deletion that committed while this request read its body wins.
+      .where(and(eq(organization.id, organizationId), isNull(organization.deletionRequestedAt)))
       .returning();
     
     if (!updatedOrg) {
+      if (await isOrgPendingDeletion(organizationId, { fresh: true })) return pendingDeletionResponse();
       return NextResponse.json(
         { error: 'Organization not found' },
         { status: 404 }
