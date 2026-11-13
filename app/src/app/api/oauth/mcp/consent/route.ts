@@ -7,6 +7,7 @@ import { ConsentRejectedError, submitConsent } from "@/lib/mcp/auth-api";
 import { isSafeRedirectTarget } from "@/lib/mcp/redirect";
 import { isImpersonatedSession } from "@/lib/rbac/middleware";
 import { requireSameOriginRequest } from "@/lib/security/same-origin";
+import { OrgPendingDeletionError, pendingDeletionResponse } from "@/lib/deletion/org-state";
 import { logAuditEvent } from "@/lib/audit-logger";
 import { createLogger } from "@/lib/logger/pino-config";
 import { MCP_READ_SCOPE } from "@/lib/mcp/config";
@@ -78,6 +79,7 @@ export async function POST(request: NextRequest) {
       await assertCanConnectProject(userId, projectId);
     } catch (error) {
       if (error instanceof McpProjectAccessError) return mcpJson({ error: "forbidden" }, 403);
+      if (error instanceof OrgPendingDeletionError) return pendingDeletionResponse();
       throw error;
     }
   }

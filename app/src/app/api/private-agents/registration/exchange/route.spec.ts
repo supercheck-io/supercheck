@@ -10,6 +10,8 @@ const mockTx = {
 };
 jest.mock("@/utils/db", () => ({ db: { transaction: jest.fn((fn: (tx: unknown) => unknown) => fn(mockTx)) } }));
 jest.mock("@/lib/auth/device-auth-rate-limit", () => ({ allowDeviceAuthRequest: jest.fn() }));
+jest.mock("@/lib/deletion/org-state");
+import { isOrgPendingDeletion } from "@/lib/deletion/org-state";
 
 import { hashApiKey } from "@/lib/security/api-key-hash";
 import { POST } from "./route";
@@ -79,6 +81,17 @@ describe("Private Agent registration exchange abuse limits", () => {
     });
     const res = await POST(req());
     expect(res.status).toBe(403);
+    expect(mockUpdate).not.toHaveBeenCalled();
+  });
+
+  it("registers nothing for an organization pending deletion, once the token is proven", async () => {
+    jest.mocked(isOrgPendingDeletion).mockResolvedValueOnce(true);
+    mockTx.select.mockReturnValue({
+      from: () => ({ where: () => ({ limit: async () => [{ id: AGENT_ID, organizationId: "org-1", status: "pending", registrationTokenHash: hashApiKey("wrong-token"), metadata: {} }] }) }),
+    });
+    const res = await POST(req());
+    expect(res.status).toBe(403);
+    expect(await res.json()).toEqual({ code: "ORG_PENDING_DELETION" });
     expect(mockUpdate).not.toHaveBeenCalled();
   });
 

@@ -45,7 +45,8 @@ export async function register() {
     // Initialize job schedulers (MOVED from SchedulerInitializer component)
     try {
       console.log('[Instrumentation] Initializing job schedulers...');
-      const { initializeJobSchedulers } = await import('@/lib/job-scheduler');
+      const { initializeJobSchedulers, startJobScheduleRepair } = await import('@/lib/job-scheduler');
+      startJobScheduleRepair();
       const jobResult = await initializeJobSchedulers();
       if (jobResult.success) {
         console.log(`[Instrumentation] ✅ Job scheduler initialized (${jobResult.initialized} scheduled)`);

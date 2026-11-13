@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
-import { eq, sql, type SQL } from "drizzle-orm";
+import { and, eq, sql, type SQL } from "drizzle-orm";
 import { db } from "@/utils/db";
-import { organization, projects } from "@/db/schema";
+import { member, organization, projects } from "@/db/schema";
 import { isSelfHosted } from "@/lib/feature-flags";
 
 /**
@@ -89,16 +89,29 @@ export function pendingDeletionResponse(): NextResponse {
  * Response for a permission denial on organization-owned data. A member of an organization pending deletion is told why
  * (code ORG_PENDING_DELETION, the same body as the guards that answer it directly) instead of a generic "insufficient
  * permissions", so a client can point at Cancel deletion. Only the denial path calls it, so the lookup costs nothing on
- * the hot path. Never reveals the state to someone who is not a member: callers use it after standing is established.
+ * the hot path. Never reveals the state to someone who is not a member (a session can still point at an organization
+ * the user has left): the caller's membership is checked here, and any doubt answers with the generic message.
  */
 export async function permissionDeniedResponse(organizationId: string | null | undefined, message: string): Promise<NextResponse> {
-  if (await isOrgPendingDeletion(organizationId)) return pendingDeletionResponse();
+  if (await pendingForCallingMember(organizationId)) return pendingDeletionResponse();
   return NextResponse.json({ error: message }, { status: 403 });
+}
+
+async function pendingForCallingMember(organizationId: string | null | undefined): Promise<boolean> {
+  if (!organizationId || !(await isOrgPendingDeletion(organizationId))) return false;
+  try {
+    const { requireUserAuthContext } = await import("@/lib/auth-context"); // lazy: auth-context depends on this module
+    const { userId } = await requireUserAuthContext();
+    const [row] = await db.select({ id: member.id }).from(member).where(and(eq(member.userId, userId), eq(member.organizationId, organizationId))).limit(1);
+    return !!row;
+  } catch {
+    return false;
+  }
 }
 
 /** Server-action twin of permissionDeniedResponse: the failure result, with the code when the organization is pending. */
 export async function permissionDeniedResult(organizationId: string | null | undefined, message: string): Promise<{ success: false; error: string; message: string; code?: string }> {
-  const pending = await isOrgPendingDeletion(organizationId);
+  const pending = await pendingForCallingMember(organizationId);
   const text = pending ? new OrgPendingDeletionError().message : message;
   return { success: false, error: text, message: text, ...(pending ? { code: PENDING_ORG_CODE } : {}) };
 }

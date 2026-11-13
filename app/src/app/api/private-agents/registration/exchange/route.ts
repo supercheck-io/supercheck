@@ -13,6 +13,7 @@ import { hashApiKey } from "@/lib/security/api-key-hash";
 import { db } from "@/utils/db";
 import { allowDeviceAuthRequest } from "@/lib/auth/device-auth-rate-limit";
 import { getClientIP } from "@/lib/session-security";
+import { isOrgPendingDeletion, pendingDeletionResponse } from "@/lib/deletion/org-state";
 import { PRIVATE_AGENT_LIMITS } from "@/lib/private-agents/request-limits";
 import { getBearerToken, unauthorized } from "../../jobs/auth";
 import { knownConnectorTypes, withReportedConnectorTypes } from "@/lib/private-agents/agent-registry";
@@ -104,6 +105,11 @@ export async function POST(request: NextRequest) {
         return { status: "disabled" as const };
       }
 
+      // Checked after the token, like the disabled state: a pending organization registers nothing new.
+      if (await isOrgPendingDeletion(agent.organizationId, { fresh: true })) {
+        return { status: "pending_deletion" as const };
+      }
+
       const expiresAt = getPrivateAgentRegistrationTokenExpiresAt(agent.metadata);
       if (!expiresAt || expiresAt <= now) {
         await tx
@@ -169,6 +175,9 @@ export async function POST(request: NextRequest) {
 
     if (result.status === "disabled") {
       return NextResponse.json({ error: "Private Agent is disabled" }, { status: 403 });
+    }
+    if (result.status === "pending_deletion") {
+      return pendingDeletionResponse();
     }
     if (result.status === "expired") {
       return NextResponse.json({ error: "Registration token expired" }, { status: 410 });

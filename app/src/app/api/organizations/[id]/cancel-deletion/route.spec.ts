@@ -2,6 +2,8 @@
 import { NextRequest } from "next/server";
 jest.mock("@/lib/auth-context", () => ({ requireUserAuthContext: jest.fn(), isAuthError: jest.fn(() => false), authErrorStatus: jest.fn(() => 401) }));
 jest.mock("@/lib/rbac/middleware", () => ({ getUserOrgRole: jest.fn(), isImpersonatedSession: jest.fn(async () => false) }));
+const mockRateLimit = jest.fn();
+jest.mock("@/lib/session-security", () => ({ checkAdminRateLimit: (...a: unknown[]) => mockRateLimit(...a) }));
 jest.mock("@/lib/deletion/organization", () => {
   class OrganizationDeletionError extends Error {
     constructor(message: string, readonly status: number, readonly code?: string) { super(message); }
@@ -24,6 +26,13 @@ describe("cancel organization deletion", () => {
     (requireUserAuthContext as jest.Mock).mockResolvedValue({ userId: "owner", isCliAuth: false });
     (getUserOrgRole as jest.Mock).mockResolvedValue("org_owner");
     (cancelOrganizationDeletion as jest.Mock).mockResolvedValue({ billing: "reinstated" });
+    mockRateLimit.mockResolvedValue({ allowed: true });
+  });
+
+  it("returns 429 without cancelling when the rate limit is exhausted", async () => {
+    mockRateLimit.mockResolvedValue({ allowed: false });
+    expect((await call()).status).toBe(429);
+    expect(cancelOrganizationDeletion).not.toHaveBeenCalled();
   });
 
   it("lets the owner cancel and reports what happened to billing", async () => {
