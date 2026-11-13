@@ -112,7 +112,8 @@ export async function restoreProjectRows(input: RestoreInput, executor: Pick<typ
     if (!project || project.status !== "deleted" || !project.deletedAt) throw new ProjectDeletionError("Project not found", 404, "NOT_FOUND");
     if (project.expired) throw new ProjectDeletionError("The restore window has ended", 409, "RESTORE_WINDOW_ENDED");
     // Admitting work reads the organization fresh, under the same transaction: a pending organization stays read-only.
-    const [org] = await tx.select({ pending: organization.deletionRequestedAt }).from(organization).where(eq(organization.id, project.organizationId));
+    // FOR SHARE: an organization deletion (FOR UPDATE) waits for this restore, or commits first and is seen here.
+    const [org] = await tx.select({ pending: organization.deletionRequestedAt }).from(organization).where(eq(organization.id, project.organizationId)).for("share");
     if (org?.pending) throw new ProjectDeletionError("This organization is scheduled for deletion and read-only", 403, "ORG_PENDING_DELETION");
     const [purge] = await tx.select({ cursor: deletionJobs.cursor, state: deletionJobs.state }).from(deletionJobs)
       .where(and(eq(deletionJobs.scope, "project"), eq(deletionJobs.targetId, input.projectId), ne(deletionJobs.state, "completed"))).for("update");
@@ -161,15 +162,17 @@ async function capRestoredChildren(tx: RestoreTx, organizationId: string, monito
 export async function finishProjectRestore(input: RestoreInput, outcome: RestoreOutcome) {
   invalidateProjectState(input.projectId);
   await logAuditEvent({ userId: input.actorUserId, organizationId: outcome.project.organizationId, action: "project_restored", resource: "project", resourceId: input.projectId, metadata: { projectName: outcome.project.name }, success: true });
-  // Re-create schedules after the commit; a failure is repaired by the periodic monitor schedule repair and job init.
+  // Re-create schedules after the commit; a failure is repaired by the periodic monitor and job schedule repair sweeps.
   await Promise.allSettled(outcome.resumed.map((monitor) => reconcileMonitorSchedule(monitor.id, input.projectId)));
   try {
     const { scheduleJob } = await import("@/lib/job-scheduler");
     const { getNextRunDate } = await import("@/lib/scheduler/cron-utils");
     const scheduled = await db.select({ id: jobs.id, name: jobs.name, cron: jobs.cronSchedule }).from(jobs).where(and(eq(jobs.projectId, input.projectId), isNotNull(jobs.cronSchedule), sql`${jobs.deletingAt} IS NULL`));
     for (const job of scheduled) {
-      const schedulerId = await scheduleJob({ name: job.name, cron: job.cron!, jobId: job.id, retryLimit: 3 });
-      await db.update(jobs).set({ scheduledJobId: schedulerId, nextRunAt: getNextRunDate(job.cron!) }).where(eq(jobs.id, job.id));
+      try {
+        const schedulerId = await scheduleJob({ name: job.name, cron: job.cron!, jobId: job.id, retryLimit: 3 });
+        await db.update(jobs).set({ scheduledJobId: schedulerId, nextRunAt: getNextRunDate(job.cron!) }).where(eq(jobs.id, job.id));
+      } catch (error) { console.error("Failed to reschedule job of restored project", job.id, error); } // one failure must not skip the rest
     }
   } catch (error) { console.error("Failed to reschedule jobs of restored project", input.projectId, error); }
   return outcome.project;

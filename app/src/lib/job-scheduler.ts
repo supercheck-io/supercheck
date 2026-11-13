@@ -1,4 +1,6 @@
 import { liveJob, notInPendingOrganization } from "@/lib/deletion/visibility";
+import { notInDeletedProject } from "@/lib/middleware/plan-limit-lock";
+import { checkedTick } from "@/lib/sentry-lazy";
 import { Job, type RepeatableJob } from "bullmq";
 import { randomUUID } from "crypto";
 import type { Redis } from "ioredis";
@@ -455,6 +457,61 @@ export async function cleanupJobScheduler() {
     console.error("Failed to cleanup job scheduler:", error);
     return false;
   }
+}
+
+const JOB_REPAIR_INTERVAL_MS = 5 * 60_000;
+const JOB_REPAIR_BATCH = 100;
+const JOB_REPAIR_BUDGET_MS = 45_000;
+const JOB_REPAIR_LOCK_KEY = 'job:scheduler:init:lock'; // shared with init (and its orphan cleanup) so the two never interleave
+
+/**
+ * Periodic repair: schedules live cron jobs whose repeatable is missing (a restore or a cancelled organization deletion
+ * that failed to reschedule, or a cleanup that raced a cancel). Init only runs at startup, so without this a lost
+ * schedule stays lost until the next restart. Only adds what is missing, at most JOB_REPAIR_BATCH jobs per sweep.
+ */
+export async function repairJobSchedules(): Promise<{ repaired: number; failed: number; skipped?: boolean }> {
+  const { jobSchedulerQueue, k6JobSchedulerQueue } = await getQueues();
+  const redisClient = (await jobSchedulerQueue.client) as unknown as Redis;
+  const lockToken = `${process.pid}:${randomUUID()}`;
+  if (!(await redisClient.set(JOB_REPAIR_LOCK_KEY, lockToken, 'EX', 60, 'NX'))) return { repaired: 0, failed: 0, skipped: true };
+  try {
+    const prefetched: [RepeatableJob[], RepeatableJob[]] = await Promise.all([jobSchedulerQueue.getRepeatableJobs(), k6JobSchedulerQueue.getRepeatableJobs()]);
+    const scheduled = new Set(prefetched.flat().map((job) => job.name?.match(/^scheduled-job-([0-9a-f-]+)$/)?.[1]));
+    const candidates = await db.select({ id: jobs.id, name: jobs.name, cron: jobs.cronSchedule }).from(jobs)
+      .where(and(isNotNull(jobs.cronSchedule), liveJob(), notInPendingOrganization(jobs.organizationId), notInDeletedProject(jobs.projectId)))
+      .orderBy(jobs.id);
+    const missing = candidates.filter((job) => !scheduled.has(job.id)).slice(0, JOB_REPAIR_BATCH);
+    let repaired = 0;
+    let failed = 0;
+    const startedAt = Date.now();
+    for (const job of missing) {
+      if (Date.now() - startedAt >= JOB_REPAIR_BUDGET_MS) break; // the lock TTL is 60s: stop well inside it
+      try {
+        const schedulerId = await scheduleJob({ name: job.name, cron: job.cron!, jobId: job.id, retryLimit: 3 }, prefetched);
+        await db.update(jobs).set({ scheduledJobId: schedulerId, nextRunAt: getNextRunDate(job.cron!) }).where(eq(jobs.id, job.id));
+        repaired++;
+      } catch (error) {
+        console.error(`[JobScheduler] Repair failed for job ${job.id}:`, error);
+        failed++;
+      }
+    }
+    if (repaired > 0 || failed > 0) console.log(`[JobScheduler] Repair sweep rescheduled ${repaired} job(s), ${failed} failed`);
+    return { repaired, failed };
+  } finally {
+    await redisClient
+      .eval("if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('del', KEYS[1]) else return 0 end", 1, JOB_REPAIR_LOCK_KEY, lockToken)
+      .catch((unlockError: unknown) => console.error('[JobScheduler] Failed to release repair lock:', unlockError));
+  }
+}
+
+/** Starts the repair sweep once per process (survives hot reload). */
+export function startJobScheduleRepair(): void {
+  const state = globalThis as { __jobRepairTimer?: ReturnType<typeof setInterval> };
+  if (state.__jobRepairTimer) return;
+  state.__jobRepairTimer = setInterval(() => {
+    checkedTick('job-schedule-repair', { type: 'interval', value: 5, unit: 'minute' }, repairJobSchedules, (r) => (r.skipped ? false : r.failed > 0 ? 'error' : true)).catch((error) => console.error('[JobScheduler] Repair sweep failed:', error));
+  }, JOB_REPAIR_INTERVAL_MS);
+  state.__jobRepairTimer.unref?.();
 }
 
 /**

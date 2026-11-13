@@ -133,7 +133,8 @@ export async function revokeRemainingSubscription(org: BillingOrg): Promise<{ su
   const polar = client();
   if (!polar) {
     // A billing subscription must never outlive its organization silently.
-    if (hasCancellableSubscription(org) && !isSelfHosted()) throw new BillingCancellationError("Billing is not configured, so the subscription cannot be cancelled");
+    // A provider customer without a stored subscription id may still have one (checkout finished before its webhook): fail closed.
+    if ((hasCancellableSubscription(org) || org.polarCustomerId) && !isSelfHosted()) throw new BillingCancellationError("Billing is not configured, so the subscription cannot be cancelled");
     return { subscriptionId: null };
   }
   const subscriptionId = await resolveSubscriptionId(org);

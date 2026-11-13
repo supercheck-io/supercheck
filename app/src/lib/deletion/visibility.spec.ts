@@ -150,6 +150,7 @@ const PENDING_COLUMN_OK: Record<string, string> = {
   "lib/session.ts": "exposes the flag to the client for the banner",
   "app/(main)/layout.tsx": "reads the flag to render the banner",
   "app/api/admin/organizations/route.ts": "super-admin list shows the state",
+  "app/api/organizations/[id]/route.ts": "the settings update refuses a pending organization in its own UPDATE predicate",
 };
 const PENDING_COLUMN = /\bdeletionRequestedAt\b|\bdeletion_requested_at\b|\bdeletionPurgeAfter\b/;
 

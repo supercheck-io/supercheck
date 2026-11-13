@@ -686,4 +686,70 @@ describe("review fixes: project guards, restore quotas, reinstate retry", () => 
     expect(await settleBillingOnRequest(seeded.orgId)).toBe("already");
     expect((await orgRow(seeded.orgId)).deletion_meta.billingCancelRequested).toBe(true); // a crashed earlier attempt of ours
   });
+  it("a reinstate that never succeeded carries over to a new request, so cancelling that one turns renewal back on", async () => {
+    cloud();
+    mockPolarGet.mockResolvedValueOnce({ cancel_at_period_end: false, status: "active" }).mockResolvedValue({ cancel_at_period_end: true, status: "active" });
+    const seeded = await seedOrg({ subscription: "sub_r11" });
+    const guard = { ownerUserId: seeded.ownerId };
+    await requestOrganizationDeletion({ organizationId: seeded.orgId, actorUserId: seeded.ownerId, guard });
+    mockPolarUpdate.mockRejectedValueOnce(new Error("polar down"));
+    expect((await cancelOrganizationDeletion({ organizationId: seeded.orgId, actorUserId: seeded.ownerId })).billing).toBe("failed");
+    // Re-requested before the sweep ran: the provider now says "already", and that cancellation is still ours.
+    await requestOrganizationDeletion({ organizationId: seeded.orgId, actorUserId: seeded.ownerId, guard });
+    expect((await orgRow(seeded.orgId)).deletion_meta.billingCancelRequested).toBe(true);
+    mockPolarUpdate.mockClear();
+    expect((await cancelOrganizationDeletion({ organizationId: seeded.orgId, actorUserId: seeded.ownerId })).billing).toBe("reinstated");
+    expect(mockPolarUpdate).toHaveBeenLastCalledWith("sub_r11", { cancel_at_period_end: false });
+  });
+
+  it("a settle that read an older deletion request cannot claim the newer one", async () => {
+    cloud();
+    mockPolarGet.mockResolvedValue({ cancel_at_period_end: true, status: "active" });
+    const seeded = await seedOrg({ subscription: "sub_r12" });
+    await requestOrganizationDeletion({ organizationId: seeded.orgId, actorUserId: seeded.ownerId, guard: { ownerUserId: seeded.ownerId } });
+    await client`UPDATE organization SET deletion_meta = '{}'::jsonb WHERE id = ${seeded.orgId}`;
+    mockPolarGet.mockClear();
+    const { settleBillingOnRequest } = await import("./organization");
+    let settle: Promise<string> | undefined;
+    // Hold the row so the settle reads the current request, then blocks on its claim; meanwhile a new request replaces it.
+    await client.begin(async (tx) => {
+      await tx`SELECT id FROM organization WHERE id = ${seeded.orgId} FOR UPDATE`;
+      settle = settleBillingOnRequest(seeded.orgId);
+      for (let i = 0; i < 100; i++) {
+        const [waiting] = await client`SELECT count(*)::int AS n FROM pg_locks l JOIN pg_class c ON c.oid = l.relation WHERE NOT l.granted AND c.relname = 'organization'`;
+        const [tuple] = await client`SELECT count(*)::int AS n FROM pg_locks WHERE NOT granted AND locktype IN ('tuple', 'transactionid')`;
+        if (waiting.n + tuple.n > 0) break;
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      }
+      await tx`UPDATE organization SET deletion_requested_at = clock_timestamp(), deletion_meta = '{}'::jsonb WHERE id = ${seeded.orgId}`;
+    });
+    expect(await settle).toBe("retry");
+    expect(mockPolarGet).not.toHaveBeenCalled();
+    expect((await orgRow(seeded.orgId)).deletion_meta.billingCancelAttempted).toBeUndefined();
+  });
+
+  it("an audit failure after the state change does not fail the request or the cancel", async () => {
+    const seeded = await seedOrg();
+    const jobId = await seedJob(seeded.orgId, seeded.projectId, 0);
+    await client`UPDATE jobs SET cron_schedule = '0 * * * *' WHERE id = ${jobId}`;
+    mockAudit.mockRejectedValue(new Error("audit store down"));
+    const requested = await requestOrganizationDeletion({ organizationId: seeded.orgId, actorUserId: seeded.ownerId, guard: { ownerUserId: seeded.ownerId } });
+    expect(requested?.status).toBe("requested");
+    expect((await orgRow(seeded.orgId)).deletion_meta.quiesced).toBe(true);
+    const { scheduleJob } = jest.requireMock("@/lib/job-scheduler") as { scheduleJob: jest.Mock };
+    scheduleJob.mockClear();
+    await cancelOrganizationDeletion({ organizationId: seeded.orgId, actorUserId: seeded.ownerId });
+    expect(scheduleJob).toHaveBeenCalledWith(expect.objectContaining({ jobId }));
+  });
+
+  it("the deletion state reports the pending window and no error text", async () => {
+    const seeded = await seedOrg();
+    await requestOrganizationDeletion({ organizationId: seeded.orgId, actorUserId: seeded.ownerId, guard: { ownerUserId: seeded.ownerId }, graceDays: 3 });
+    await client`UPDATE deletion_jobs SET last_error = 'secret driver detail' WHERE target_id = ${seeded.orgId}`;
+    const { getOrganizationDeletionState } = await import("./organization");
+    const state = await getOrganizationDeletionState(seeded.orgId);
+    expect(state?.graceDays).toBe(3);
+    expect(JSON.stringify(state)).not.toContain("secret driver detail");
+    expect(state).not.toHaveProperty("requestedByUserId");
+  });
 });
