@@ -1,4 +1,5 @@
 /** @jest-environment node */
+jest.mock("@/lib/deletion/org-state");
 import { NextRequest } from "next/server";
 
 const mockGetSession = jest.fn();
@@ -171,6 +172,15 @@ describe("POST /api/oauth/mcp/consent", () => {
     mockAssert.mockRejectedValue(new McpProjectAccessError());
     const response = await consentPost(consentRequest(approve));
     expect(response.status).toBe(403);
+    expect(mockConsent).not.toHaveBeenCalled();
+  });
+
+  it("refuses a new connection to an organization pending deletion and issues nothing", async () => {
+    const { OrgPendingDeletionError } = jest.requireMock("@/lib/deletion/org-state") as { OrgPendingDeletionError: new () => Error };
+    mockAssert.mockRejectedValue(new OrgPendingDeletionError());
+    const response = await consentPost(consentRequest(approve));
+    expect(response.status).toBe(403);
+    expect(await response.json()).toEqual({ code: "ORG_PENDING_DELETION" });
     expect(mockConsent).not.toHaveBeenCalled();
   });
 

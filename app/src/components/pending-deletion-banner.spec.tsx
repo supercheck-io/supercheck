@@ -28,6 +28,19 @@ it("renders nothing for an active organization", () => {
   expect(fetchMock).not.toHaveBeenCalled();
 });
 
+it("hides once the server says the organization is active, even with a cached pending state", async () => {
+  const client = new QueryClient();
+  const view = (pending: boolean) => (
+    <QueryClientProvider client={client}>
+      <PendingDeletionBanner organizationId="org-1" pending={pending} isOwner />
+    </QueryClientProvider>
+  );
+  const { container, rerender } = render(view(true));
+  await screen.findByText(/scheduled for deletion/);
+  rerender(view(false));
+  expect(container).toBeEmptyDOMElement();
+});
+
 it("hides itself when the fetched state says the deletion was cancelled elsewhere", async () => {
   fetchMock.mockResolvedValue({ ok: true, json: async () => ({ deletion: { pending: false, purgeAfter: null, canCancel: false } }) });
   const { container } = renderBanner({ pending: true, isOwner: true });

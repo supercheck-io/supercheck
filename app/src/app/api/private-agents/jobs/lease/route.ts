@@ -12,6 +12,7 @@ import { redactEndpointQuery } from "@/lib/sre/connectors/endpoint-policy";
 import { db } from "@/utils/db";
 import { authenticatePrivateAgent, unauthorized } from "../auth";
 import { isOrgPendingDeletion, pendingDeletionResponse } from "@/lib/deletion/org-state";
+import { notInDeletedProject } from "@/lib/middleware/plan-limit-lock";
 
 const LEASE_TTL_MS = 5 * 60_000;
 const MAX_QUEUED_AGE_MS = 10 * 60_000;
@@ -140,7 +141,9 @@ export async function POST(request: NextRequest) {
               eq(privateAgentJobs.privateAgentId, auth.agent.id),
               eq(privateAgentJobs.organizationId, auth.agent.organizationId),
               eq(privateAgentJobs.jobClass, "sre_connector_query"),
-              eq(privateAgentJobs.status, "queued")
+              eq(privateAgentJobs.status, "queued"),
+              // A job of a soft-deleted project is never handed out; organization-level jobs (no project) stay eligible.
+              notInDeletedProject(privateAgentJobs.projectId)
             )
           )
           .orderBy(asc(privateAgentJobs.createdAt))
