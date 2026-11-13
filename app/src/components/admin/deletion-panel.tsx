@@ -1,42 +1,28 @@
 "use client";
 
 import { useState } from "react";
-import { useAdminDeletionJobs, useRetryDeletionJob } from "@/hooks/use-deletion-jobs";
+import { useQueryClient } from "@tanstack/react-query";
+import { ADMIN_DELETION_JOBS_QUERY_KEY } from "@/hooks/use-deletion-jobs";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
-import { TableBadge } from "@/components/ui/table-badge";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import type { AdminOrganization } from "@/hooks/use-super-admin";
 
-type DeletionJob = {
-  id: string;
-  scope: string;
-  targetId: string;
-  organizationId: string | null;
-  state: string;
-  phase: string | null;
-  attempts: number;
-  lastError: string | null;
-  createdAt: string;
-};
-
 export const MIN_PURGE_REASON = 10;
 
-/** Super admin: organizations pending deletion (early purge for legal erasure) and unfinished background purges. */
-export function DeletionPanel({ organizations, onChanged }: { organizations: AdminOrganization[]; onChanged: () => void }) {
+/** Super admin: organizations pending deletion (early purge for legal erasure). Unfinished purges are listed by DeletionJobsTable. */
+export function DeletionPanel({ organizations, isLoading = false, error = null, onRetry, onChanged }: {
+  organizations: AdminOrganization[]; isLoading?: boolean; error?: Error | null; onRetry?: () => void; onChanged: () => void;
+}) {
   const [target, setTarget] = useState<AdminOrganization | null>(null);
   const [reason, setReason] = useState("");
   const [typedId, setTypedId] = useState("");
   const [busy, setBusy] = useState(false);
-  const [retrying, setRetrying] = useState<string | null>(null);
+  const queryClient = useQueryClient();
   const pending = organizations.filter((o) => o.deletionRequestedAt);
-
-  // Same query and retry hook as the jobs table, so a purge or retry in either view refreshes both.
-  const { jobs, isLoading, isError, refetch: loadJobs } = useAdminDeletionJobs();
-  const retryJob = useRetryDeletionJob();
 
   const reasonOk = reason.trim().length >= MIN_PURGE_REASON;
   const confirmed = !!target && reasonOk && typedId.trim() === target.id;
@@ -59,7 +45,7 @@ export function DeletionPanel({ organizations, onChanged }: { organizations: Adm
         setReason("");
         setTypedId("");
         onChanged();
-        void loadJobs();
+        void queryClient.invalidateQueries({ queryKey: ADMIN_DELETION_JOBS_QUERY_KEY });
       }
     } catch {
       toast.error("Failed to purge organization");
@@ -67,20 +53,18 @@ export function DeletionPanel({ organizations, onChanged }: { organizations: Adm
     setBusy(false);
   };
 
-  const retry = (id: string) => {
-    setRetrying(id);
-    retryJob.mutate(id, {
-      onSuccess: () => toast.success("Retry queued"),
-      onError: () => toast.error("Only a failed deletion job can be retried"),
-      onSettled: () => setRetrying(null),
-    });
-  };
-
   return (
     <div className="space-y-6">
       <section aria-label="Organizations pending deletion" className="space-y-2">
         <h3 className="text-sm font-semibold">Organizations pending deletion</h3>
-        {pending.length === 0 ? (
+        {error && pending.length === 0 ? (
+          <p role="alert" className="text-sm text-destructive">
+            Could not load organizations.{" "}
+            {onRetry && <button type="button" className="underline" onClick={onRetry}>Retry</button>}
+          </p>
+        ) : isLoading && pending.length === 0 ? (
+          <p className="text-sm text-muted-foreground" role="status">Loading...</p>
+        ) : pending.length === 0 ? (
           <p className="text-sm text-muted-foreground">None.</p>
         ) : (
           <ul className="divide-y rounded-lg border">
@@ -95,40 +79,6 @@ export function DeletionPanel({ organizations, onChanged }: { organizations: Adm
                 <Button size="sm" variant="destructive" aria-label={`Purge ${o.name} now`} onClick={() => { setTarget(o); setReason(""); setTypedId(""); }}>
                   Purge now
                 </Button>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
-
-      <section aria-label="Deletion jobs" className="space-y-2">
-        <h3 className="text-sm font-semibold">Unfinished deletion jobs</h3>
-        {isError ? (
-          <p role="alert" className="text-sm text-destructive">Could not load deletion jobs. Reload to try again.</p>
-        ) : isLoading ? (
-          <p className="text-sm text-muted-foreground">Loading...</p>
-        ) : jobs.length === 0 ? (
-          <p className="text-sm text-muted-foreground">None.</p>
-        ) : (
-          <ul className="divide-y rounded-lg border">
-            {jobs.map((j) => (
-              <li key={j.id} className="flex flex-wrap items-center justify-between gap-2 p-3 text-sm">
-                <span className="min-w-0">
-                  <span className="flex items-center gap-2">
-                    <TableBadge tone={j.state === "failed" ? "danger" : "info"}>{j.state}</TableBadge>
-                    <span className="font-medium">{j.scope}</span>
-                    <span className="font-mono text-xs text-muted-foreground">{j.targetId.slice(0, 8)}</span>
-                  </span>
-                  <span className="block text-xs text-muted-foreground">
-                    {j.phase ?? "queued"}, attempts {j.attempts}
-                    {j.lastError ? `, ${j.lastError}` : ""}
-                  </span>
-                </span>
-                {j.state === "failed" && (
-                  <Button size="sm" variant="outline" disabled={retrying === j.id} aria-label={`Retry ${j.scope} deletion ${j.targetId.slice(0, 8)}`} onClick={() => retry(j.id)}>
-                    Retry
-                  </Button>
-                )}
               </li>
             ))}
           </ul>

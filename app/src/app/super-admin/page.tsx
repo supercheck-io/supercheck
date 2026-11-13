@@ -64,7 +64,7 @@ export default function AdminDashboard() {
 
   const { stats, isLoading: statsLoading } = useSuperAdminStats();
   const { users, isLoading: usersLoading } = useSuperAdminUsers();
-  const { organizations, isLoading: orgsLoading } = useSuperAdminOrganizations();
+  const { organizations, isLoading: orgsLoading, error: orgsError, refetch: refetchOrganizations } = useSuperAdminOrganizations();
   const { invalidateStats, invalidateUsers, invalidateOrganizations } = useSuperAdminDataInvalidation();
 
   const hasData = stats !== null;
@@ -310,6 +310,9 @@ export default function AdminDashboard() {
         <TabsContent value="deletions" className="mt-0 space-y-4">
           <DeletionPanel
             organizations={organizations}
+            isLoading={orgsLoading}
+            error={orgsError}
+            onRetry={() => void refetchOrganizations()}
             onChanged={() => {
               invalidateOrganizations();
               invalidateStats();

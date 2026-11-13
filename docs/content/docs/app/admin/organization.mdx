@@ -122,6 +122,7 @@ Deletion is never immediate. The organization enters a **pending deletion** wind
 
 - **Read-only.** Every member sees a banner with the date. Members can still view and export, but nothing runs, schedules and monitors stop, and nothing can be created, changed or invited.
 - **Cancel.** The owner can select **Cancel deletion** in the banner at any time before the date. Schedules and monitors resume. Other members see who can cancel but cannot.
+- **Early purge.** A Super Admin can end the window early with **Purge now**, for example to honor a legal erasure request (see [Super Admin](/docs/app/admin/super-admin)). The organization can no longer be cancelled after that.
 - **Billing.** A subscription stops renewing and ends at the end of the paid period. Cancelling the deletion turns renewal back on while the period is still running; if the period already ended, subscribe again.
 - **Emails.** The owners are emailed when the deletion is requested, 7 days and 1 day before it happens, and when it is complete. Without a mail server (some self-hosted installations) no email is sent and the dialog confirms the date in the app instead.
 - **After the window.** Every project, test, job, run, monitor, status page and stored report is deleted permanently, and every member loses access. This cannot be undone.

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { RotateCcw } from "lucide-react";
 import { toast } from "sonner";
@@ -10,7 +10,9 @@ type DeletedProject = { id: string; name: string; deletedAt: string | null; purg
 
 /** Owners and admins: recently deleted projects that can still be restored. Renders nothing when there are none. */
 export function DeletedProjects({ onRestored, refreshKey = 0 }: { onRestored: () => void; refreshKey?: number }) {
-  const [busyId, setBusyId] = useState<string | null>(null);
+  // Every restore in flight, not only the latest: a second restore must not re-enable the first one's button.
+  const [busy, setBusy] = useState<ReadonlySet<string>>(new Set());
+  const inFlight = useRef(new Set<string>());
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 30_000); // a restore window that ends while the page is open drops the row
@@ -30,7 +32,9 @@ export function DeletedProjects({ onRestored, refreshKey = 0 }: { onRestored: ()
   });
 
   const restore = async (project: DeletedProject) => {
-    setBusyId(project.id);
+    if (inFlight.current.has(project.id)) return;
+    inFlight.current.add(project.id);
+    setBusy(new Set(inFlight.current));
     try {
       const res = await fetch(`/api/projects/${project.id}/restore`, { method: "POST" });
       const data = await res.json().catch(() => null);
@@ -42,7 +46,8 @@ export function DeletedProjects({ onRestored, refreshKey = 0 }: { onRestored: ()
     } catch {
       toast.error("Failed to restore project");
     }
-    setBusyId(null);
+    inFlight.current.delete(project.id);
+    setBusy(new Set(inFlight.current));
     void refetch();
   };
 
@@ -69,9 +74,9 @@ export function DeletedProjects({ onRestored, refreshKey = 0 }: { onRestored: ()
             <span className="min-w-0 truncate text-sm font-medium">{p.name}</span>
             <span className="flex items-center gap-3">
               <span className="text-xs text-muted-foreground">
-                {p.purgeAfter ? `Restorable until ${new Date(p.purgeAfter).toLocaleDateString()}` : ""}
+                {p.purgeAfter ? `Restorable until ${new Date(p.purgeAfter).toLocaleString(undefined, { year: "numeric", month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZoneName: "short" })}` : ""}
               </span>
-              <Button size="sm" variant="outline" aria-label={`Restore ${p.name}`} disabled={busyId === p.id} onClick={() => void restore(p)}>
+              <Button size="sm" variant="outline" aria-label={`Restore ${p.name}`} disabled={busy.has(p.id)} onClick={() => void restore(p)}>
                 <RotateCcw className="mr-1.5 h-3.5 w-3.5" />
                 Restore
               </Button>

@@ -59,10 +59,12 @@ Use the matrix below for each role's exact permissions and project scope.
 |----------|:-----------:|:---------:|:---------:|:-------------:|:--------------:|:--------------:|
 | **View organization** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | **Update organization** | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ |
-| **Delete organization** (request, then cancel during the window) | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ |
+| **Delete organization** (request, then cancel during the window) | ⚠️ ¹ | ✅ | ❌ | ❌ | ❌ | ❌ |
 | **Invite members** | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ |
 | **Manage members** | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ |
 | **Remove members** | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ |
+
+¹ A Super Admin can request deletion only of an organization that has no members left, and cannot cancel it.
 
 </Tab>
 <Tab value="Project">

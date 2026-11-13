@@ -20,8 +20,8 @@ const copy = (kind: OrganizationDeletionKind, purgeDate: string, days: number) =
     return {
       title: "Organization scheduled for deletion",
       heading: "Your organization is scheduled for deletion",
-      body: `Everything in it becomes read-only now and is permanently deleted on ${purgeDate}. Monitors and schedules are stopped. Until then an owner can cancel the deletion from the organization settings.`,
-      cta: "Cancel deletion",
+      body: `Everything in it becomes read-only now and is permanently deleted on ${purgeDate}. Monitors and schedules are stopped. Until then an owner can cancel the deletion from the organization page.`,
+      cta: "Review deletion",
     };
   }
   if (kind === "reminder") {
@@ -29,7 +29,7 @@ const copy = (kind: OrganizationDeletionKind, purgeDate: string, days: number) =
       title: `Deletion in ${days} ${days === 1 ? "day" : "days"}`,
       heading: `Your organization will be deleted in ${days} ${days === 1 ? "day" : "days"}`,
       body: `All data, reports and stored files are permanently deleted on ${purgeDate}. To keep the organization, cancel the deletion before then.`,
-      cta: "Cancel deletion",
+      cta: "Review deletion",
     };
   }
   return {

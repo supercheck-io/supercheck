@@ -117,3 +117,14 @@ it("keeps the request disabled and offers a retry while the deletion settings ca
   fireEvent.click(screen.getByRole("button", { name: "Retry" }));
   await waitFor(() => expect(confirmButton()).toBeEnabled());
 });
+
+it("does not reuse settings from an earlier opening when the next load fails", async () => {
+  fetchMock.mockResolvedValueOnce(info());
+  await openDialog();
+  fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+  fetchMock.mockRejectedValueOnce(new Error("offline"));
+  fireEvent.click(screen.getByRole("button", { name: "Delete organization" }));
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+  typeName("Acme");
+  expect(confirmButton()).toBeDisabled();
+});

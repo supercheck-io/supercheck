@@ -116,6 +116,9 @@ export function DeleteOrganizationButton({ organizationId, organizationName }: D
           setTypedName("");
           setNeedsReauth(false);
           setRequested(null);
+          // Each opening loads the settings again: a stale answer must never enable deletion while this load fails or is in flight.
+          setInfo(null);
+          setInfoFailed(false);
           setOpen(true);
         }}
         title="Delete organization"
@@ -198,7 +201,7 @@ export function DeleteOrganizationButton({ organizationId, organizationName }: D
               {infoFailed && (
                 <p role="alert" className="text-sm text-destructive">
                   Could not load the deletion settings, so the cancellation window is unknown.{" "}
-                  <button type="button" className="underline" onClick={() => { setInfoFailed(false); setInfoAttempt((n) => n + 1); }}>Retry</button>
+                  <button type="button" className="underline" onClick={() => { setInfo(null); setInfoFailed(false); setInfoAttempt((n) => n + 1); }}>Retry</button>
                 </p>
               )}
             </>

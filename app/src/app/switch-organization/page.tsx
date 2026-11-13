@@ -1,7 +1,10 @@
 "use client";
 
-import { Suspense, useEffect } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
+import { Button } from "@/components/ui/button";
+import { clearProjectsCache } from "@/hooks/use-project-context";
+import { reloadProjectContext } from "@/lib/project-navigation";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -12,15 +15,29 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
  */
 function SwitchOrganization() {
   const org = useSearchParams().get("org");
+  const [failed, setFailed] = useState(false);
+  const [attempt, setAttempt] = useState(0);
+  // Like the in-app organization selector: drop the cached data of the previous organization before landing.
+  const done = () => reloadProjectContext(clearProjectsCache, "/org-admin");
   useEffect(() => {
-    const done = () => window.location.replace("/org-admin");
     if (!org || !UUID.test(org)) return done();
     fetch("/api/organizations/switch", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ organizationId: org }),
-    }).catch(() => undefined).finally(done);
-  }, [org]);
+    }).then((res) => (res.ok ? done() : setFailed(true)), () => setFailed(true));
+  }, [org, attempt]);
+  if (failed) {
+    return (
+      <div className="space-y-3 p-6">
+        <p role="alert" className="text-sm text-destructive">Could not switch back to your organization.</p>
+        <div className="flex gap-2">
+          <Button size="sm" onClick={() => { setFailed(false); setAttempt((n) => n + 1); }}>Retry</Button>
+          <Button size="sm" variant="outline" onClick={done}>Continue</Button>
+        </div>
+      </div>
+    );
+  }
   return <p className="p-6 text-sm text-muted-foreground" role="status">Returning to your organization...</p>;
 }
 

@@ -55,7 +55,7 @@ Seat changes are made only in the app with **Change member seats**, and plan cha
 </Steps>
 
 <Callout type="info" title="Deleting an organization">
-Requesting deletion stops the subscription from renewing; it ends at the end of the paid period, and usage so far is still billed. Cancelling the deletion turns renewal back on if the period is still running. If the period already ended, subscribe again. Self-hosted installations have no billing, so none of this applies.
+Requesting deletion stops the subscription from renewing, and usage so far is still billed. The subscription ends at the end of the paid period, or at the purge if that comes first: when the deletion window ends before the paid period does, or a Super Admin purges the organization early, the remaining paid time is not used. Cancelling the deletion turns renewal back on if the period is still running and the deletion request turned it off; if you had already turned renewal off yourself, it stays off. If the billing provider is unavailable at that moment, renewal is turned back on automatically once it responds again. If the period already ended, subscribe again. Self-hosted installations have no billing, so none of this applies.
 </Callout>
 
 <Callout type="warn" title="What happens at the cap">

@@ -14,20 +14,29 @@ const orgs = [
 beforeEach(() => {
   jest.clearAllMocks();
   global.fetch = fetchMock as unknown as typeof fetch;
-  fetchMock.mockResolvedValue({ ok: true, json: async () => ({ data: [{ id: "j1", scope: "organization", targetId: ID, organizationId: ID, state: "failed", phase: "storage", attempts: 8, lastError: "boom", createdAt: "" }] }) });
 });
 
-it("lists only pending organizations and failed jobs", async () => {
+it("lists only pending organizations", () => {
   render(<QueryClientProvider client={new QueryClient()}><DeletionPanel organizations={orgs} onChanged={jest.fn()} /></QueryClientProvider>);
-  expect(await screen.findByText("boom", { exact: false })).toBeTruthy();
   expect(screen.getByText("Acme")).toBeTruthy();
   expect(screen.queryByText("Active Co")).toBeNull();
+});
+
+it("reports loading and a failed organization load instead of an empty list", () => {
+  const onRetry = jest.fn();
+  const { rerender } = render(<QueryClientProvider client={new QueryClient()}><DeletionPanel organizations={[]} isLoading onChanged={jest.fn()} /></QueryClientProvider>);
+  expect(screen.getByRole("status").textContent).toContain("Loading");
+  expect(screen.queryByText("None.")).toBeNull();
+  rerender(<QueryClientProvider client={new QueryClient()}><DeletionPanel organizations={[]} error={new Error("x")} onRetry={onRetry} onChanged={jest.fn()} /></QueryClientProvider>);
+  expect(screen.getByRole("alert").textContent).toContain("Could not load organizations");
+  fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+  expect(onRetry).toHaveBeenCalled();
 });
 
 it("requires a reason and the organization id before purging", async () => {
   const onChanged = jest.fn();
   render(<QueryClientProvider client={new QueryClient()}><DeletionPanel organizations={orgs} onChanged={onChanged} /></QueryClientProvider>);
-  fireEvent.click(await screen.findByRole("button", { name: "Purge Acme now" }));
+  fireEvent.click(screen.getByRole("button", { name: "Purge Acme now" }));
   const go = screen.getByRole("button", { name: "Purge organization" });
   expect(go).toBeDisabled();
   fireEvent.change(screen.getByLabelText(/Reason/), { target: { value: "too short" } });

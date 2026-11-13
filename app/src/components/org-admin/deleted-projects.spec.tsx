@@ -97,3 +97,28 @@ it("drops a project whose restore window ends while the page stays open", async 
     jest.useRealTimers();
   }
 });
+
+it("keeps every restore in flight disabled until its own request finishes", async () => {
+  let finishA: (v: unknown) => void = () => undefined;
+  fetchMock.mockResolvedValueOnce(list([project("a", "Alpha", 3 * day), project("b", "Beta", 3 * day)]));
+  fetchMock.mockReturnValueOnce(new Promise((resolve) => { finishA = resolve; }));
+  fetchMock.mockReturnValueOnce(new Promise(() => undefined)); // Beta never answers
+  renderList();
+  const alpha = await screen.findByRole("button", { name: "Restore Alpha" });
+  fireEvent.click(alpha);
+  fireEvent.click(screen.getByRole("button", { name: "Restore Beta" }));
+  fireEvent.click(alpha); // a second click on a pending restore sends nothing
+  expect(alpha).toBeDisabled();
+  expect(screen.getByRole("button", { name: "Restore Beta" })).toBeDisabled();
+  fetchMock.mockResolvedValue(list([project("a", "Alpha", 3 * day), project("b", "Beta", 3 * day)]));
+  await act(async () => finishA({ ok: true, json: async () => ({ success: true }) }));
+  await waitFor(() => expect(screen.getByRole("button", { name: "Restore Alpha" })).toBeEnabled());
+  expect(screen.getByRole("button", { name: "Restore Beta" })).toBeDisabled();
+  expect(fetchMock.mock.calls.filter(([url]) => url === "/api/projects/a/restore")).toHaveLength(1);
+});
+
+it("shows the restore deadline with its time", async () => {
+  fetchMock.mockResolvedValueOnce(list([project("a", "Alpha", 3 * day)]));
+  renderList();
+  expect((await screen.findByText(/Restorable until/)).textContent).toMatch(/\d{1,2}:\d{2}/);
+});

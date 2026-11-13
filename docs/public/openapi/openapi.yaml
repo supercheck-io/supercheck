@@ -4078,18 +4078,20 @@ paths:
     delete:
       operationId: deleteOrganization
       summary: Request organization deletion
-      description: Owner only. Schedules the organization for deletion; nothing is
-        removed immediately. The organization becomes read-only for a grace
-        window (14 days by default, ORG_DELETION_GRACE_DAYS on self-hosted
-        installations) during which the owner can cancel. A subscription stops
-        renewing and ends at the end of the paid period, and the owners are
-        emailed when mail is configured. After the window the projects, data and
-        stored files are deleted permanently. Audit log entries are kept for 12
-        months with email addresses removed. The body must repeat the
-        organization name in confirmName. Needs a session created within the
-        last few minutes (403 with code REAUTH_REQUIRED otherwise). Not allowed
-        while impersonating. Requires an interactive, same-origin browser
-        session; project-scoped CLI tokens receive 403.
+      description: "Owner only. Schedules the organization for deletion. The
+        organization becomes read-only for a grace window (14 days by default,
+        ORG_DELETION_GRACE_DAYS on self-hosted installations) during which the
+        owner can cancel. A self-hosted installation with
+        ORG_DELETION_GRACE_DAYS=0 has no window: the purge is queued at once and
+        the deletion cannot be cancelled. A subscription stops renewing and ends
+        at the end of the paid period, and the owners are emailed when mail is
+        configured. After the window the projects, data and stored files are
+        deleted permanently. Audit log entries are kept for 12 months with email
+        addresses removed. The body must repeat the organization name in
+        confirmName. Needs a session created within the last few minutes (403
+        with code REAUTH_REQUIRED otherwise). Not allowed while impersonating.
+        Requires an interactive, same-origin browser session; project-scoped CLI
+        tokens receive 403."
       tags:
         - Organizations
       requestBody:
@@ -4185,6 +4187,183 @@ paths:
         "409":
           description: The purge has already started (PURGE_STARTED) or the organization
             is not pending deletion.
+      security:
+        - sessionCookie: []
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+  /api/organizations/{id}/deletion:
+    get:
+      operationId: getOrganizationDeletion
+      summary: Get organization deletion state
+      description: Any member. The deletion state shown by the pending-deletion banner
+        and the delete dialog. Non-members receive 404. Requires an interactive
+        browser session; project-scoped CLI tokens receive 403.
+      tags:
+        - Organizations
+      responses:
+        "200":
+          description: Deletion state
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  deletion:
+                    type: object
+                    properties:
+                      pending:
+                        type: boolean
+                      requestedAt:
+                        type:
+                          - string
+                          - "null"
+                        format: date-time
+                      purgeAfter:
+                        type:
+                          - string
+                          - "null"
+                        format: date-time
+                      canCancel:
+                        type: boolean
+                        description: "The owner can still cancel: the window is not over and the purge
+                          has not started."
+                      purge:
+                        type:
+                          - object
+                          - "null"
+                        description: The unfinished purge job, if any.
+                        properties:
+                          state:
+                            type: string
+                          phase:
+                            type:
+                              - string
+                              - "null"
+                      graceDays:
+                        type: integer
+                        description: "Length of the cancellation window in days: the pending deletion's
+                          own window, or the configured window when nothing is
+                          pending."
+                      emailAvailable:
+                        type: boolean
+                        description: False when no mail server is configured, so confirmations are shown
+                          in the app only.
+                      selfHosted:
+                        type: boolean
+                      hasSubscription:
+                        type: boolean
+                      reauthMaxAgeSeconds:
+                        type: integer
+                        description: How old a session may be before requesting deletion needs a fresh
+                          sign-in.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+      security:
+        - sessionCookie: []
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+  /api/projects/deleted:
+    get:
+      operationId: listDeletedProjects
+      summary: List deleted projects
+      description: Organization owners and admins. Soft-deleted projects of the active
+        organization that can still be restored. Requires an interactive browser
+        session; project-scoped CLI tokens receive 403.
+      tags:
+        - Organizations
+      responses:
+        "200":
+          description: Restorable projects
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  projects:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                          format: uuid
+                        name:
+                          type: string
+                        deletedAt:
+                          type:
+                            - string
+                            - "null"
+                          format: date-time
+                        purgeAfter:
+                          type:
+                            - string
+                            - "null"
+                          format: date-time
+                          description: End of the restore window; after it the project is deleted
+                            permanently.
+        "400":
+          description: No active organization.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+      security:
+        - sessionCookie: []
+  /api/projects/{id}/restore:
+    post:
+      operationId: restoreProject
+      summary: Restore a deleted project
+      description: Organization owners and admins. Undoes a project deletion within
+        its 7 day restore window. Monitors and status pages beyond the plan
+        limits stay paused or archived. Returns 409 with code
+        RESTORE_WINDOW_ENDED once the window is over, or PURGE_STARTED while the
+        project is being purged; 403 with code ORG_PENDING_DELETION while the
+        organization is pending deletion, or PLAN_LIMIT when the plan has no
+        room for another project. Not allowed while impersonating. Requires an
+        interactive, same-origin browser session.
+      tags:
+        - Organizations
+      responses:
+        "200":
+          description: Project restored
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: The restore window has ended (RESTORE_WINDOW_ENDED) or the purge
+            has started (PURGE_STARTED).
+        "503":
+          description: Too many concurrent requests; retry shortly.
       security:
         - sessionCookie: []
     parameters:
