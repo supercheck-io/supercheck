@@ -73,6 +73,7 @@ jest.mock("drizzle-orm", () => ({
 
 jest.mock("@/db/schema", () => ({
   jobs: {},
+  projects: {},
   runs: {},
   JobTrigger: { schedule: "schedule" },
 }));
