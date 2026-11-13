@@ -196,7 +196,8 @@ export async function POST(request: NextRequest) {
             eq(privateAgentJobs.privateAgentId, auth.agent.id),
             eq(privateAgentJobs.organizationId, auth.agent.organizationId),
             eq(privateAgentJobs.jobClass, "sre_connector_query"),
-            eq(privateAgentJobs.status, "queued")
+            eq(privateAgentJobs.status, "queued"),
+            notInDeletedProject(privateAgentJobs.projectId) // same filter as the lease select, or a deleted project's job wakes every tick
           )
         )
         .limit(1);
