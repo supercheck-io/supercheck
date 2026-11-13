@@ -7,6 +7,8 @@ import { createPolarClient } from "@/lib/billing/polar-client";
 /** Billing side of an organization deletion. Self-hosted and Polar-less installs: every function here is a no-op. */
 
 export class BillingCancellationError extends Error {}
+/** The provider failed before any change was sent, so nothing can have been cancelled on our behalf. */
+export class BillingPreWriteError extends BillingCancellationError {}
 
 type BillingOrg = { id: string; subscriptionId: string | null; polarCustomerId: string | null };
 type Executor = Pick<typeof db, "select">;
@@ -95,10 +97,18 @@ export type CancelAtPeriodEndResult = { status: "skipped" | "none" | "already" |
 export async function cancelSubscriptionAtPeriodEnd(org: BillingOrg): Promise<CancelAtPeriodEndResult> {
   const polar = client();
   if (!polar) return { status: "skipped", subscriptionId: null };
-  const subscriptionId = await resolveSubscriptionId(org);
-  if (!subscriptionId) return { status: "none", subscriptionId: null };
+  let subscriptionId: string | null;
+  let current: Awaited<ReturnType<NonNullable<ReturnType<typeof client>>["subscriptions"]["get"]>>;
   try {
-    const current = await polar.subscriptions.get(subscriptionId);
+    subscriptionId = await resolveSubscriptionId(org);
+    if (!subscriptionId) return { status: "none", subscriptionId: null };
+    current = await polar.subscriptions.get(subscriptionId);
+  } catch (error) {
+    if (isAlreadyGone(error)) return { status: "already", subscriptionId: org.subscriptionId };
+    console.error("[ORG_DELETION] Failed to read the subscription before cancelling it:", error);
+    throw new BillingPreWriteError(error instanceof BillingCancellationError ? error.message : "Could not check the subscription with the billing provider. Nothing was changed; retry once billing is available.");
+  }
+  try {
     if (current.cancel_at_period_end || current.status === "canceled") return { status: "already", subscriptionId };
     await polar.subscriptions.update(subscriptionId, { cancel_at_period_end: true });
     return { status: "cancelled", subscriptionId };
