@@ -4,6 +4,7 @@ import { requireUserAuthContext, isAuthError, authErrorStatus } from "@/lib/auth
 import { getUserOrgRole, isImpersonatedSession } from "@/lib/rbac/middleware";
 import { Role } from "@/lib/rbac/permissions";
 import { requireSameOriginRequest } from "@/lib/security/same-origin";
+import { checkAdminRateLimit } from "@/lib/session-security";
 import { OrganizationDeletionError, cancelOrganizationDeletion } from "@/lib/deletion/organization";
 
 /**
@@ -23,6 +24,10 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     if (!role) return NextResponse.json({ error: "Organization not found" }, { status: 404 });
     if (role !== Role.ORG_OWNER) return NextResponse.json({ error: "Only organization owners can cancel the deletion" }, { status: 403 });
     if (await isImpersonatedSession()) return NextResponse.json({ error: "Stop impersonating before changing the deletion" }, { status: 403 });
+    // Each cancel may call the external provider: bound it per user.
+    if (!(await checkAdminRateLimit(userId, "cancel_organization_deletion", 10, 10 * 60 * 1000)).allowed) {
+      return NextResponse.json({ error: "Too many attempts. Try again later." }, { status: 429 });
+    }
     const result = await cancelOrganizationDeletion({ organizationId: id, actorUserId: userId });
     return NextResponse.json({ success: true, billing: result.billing });
   } catch (error) {
