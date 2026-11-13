@@ -5,6 +5,7 @@ jest.mock("@/utils/db", () => ({ db: { select: () => ({ from: () => ({ where: ()
 jest.mock("@/lib/feature-flags", () => ({ isSelfHosted: () => false }));
 jest.mock("@/lib/auth-context", () => ({
   requireAuthContext: jest.fn(async () => ({ userId: "u", organizationId: "org-1", orgPendingDeletion: false, project: { id: "p", userRole: "org_owner" } })),
+  requireUserAuthContext: jest.fn(async () => ({ userId: "u", organizationId: "org-1" })),
   isAuthError: () => false,
   authErrorStatus: () => 401,
 }));
