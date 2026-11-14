@@ -1,0 +1,28 @@
+// Free tools API. Deployed by hand into the SEPARATE Cloudflare tools account
+// (see the ops runbook). account_id is deliberately absent: wrangler reads
+// CLOUDFLARE_ACCOUNT_ID at deploy time. No routes, no zones, no data bindings.
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "supercheck-tools",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-11-01",
+  "workers_dev": true,
+  "preview_urls": false,
+  // Dashboard edits (BLOCKED_HOSTS opt-outs, kill switch) survive later deploys.
+  "keep_vars": true,
+  "observability": { "enabled": true },
+  "vars": {
+    "CHECKS_ENABLED": "true",
+    "TOOLS": "uptime,api,https,headers,agents,dns,social,domain",
+    "ALLOWED_ORIGINS": "https://supercheck.io,https://www.supercheck.io",
+    "ALLOW_PREVIEW_ORIGINS": "false",
+    "TURNSTILE_HOSTNAMES": "supercheck.io,supercheck.pages.dev",
+    "BLOCKED_HOSTS": ""
+  },
+  // Counts are per Cloudflare location and eventually consistent: best effort.
+  "ratelimits": [
+    { "name": "IP_MINUTE", "namespace_id": "8101", "simple": { "limit": 6, "period": 60 } },
+    { "name": "IP_BURST", "namespace_id": "8102", "simple": { "limit": 3, "period": 10 } },
+    { "name": "TARGET_MINUTE", "namespace_id": "8103", "simple": { "limit": 10, "period": 60 } }
+  ]
+}
