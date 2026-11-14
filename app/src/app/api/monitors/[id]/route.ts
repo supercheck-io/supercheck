@@ -32,6 +32,7 @@ import {
 } from "@/lib/s3-cleanup";
 import { createLogger } from "@/lib/logger/index";
 import { validateMonitorConfiguration } from "@/lib/monitor-validation";
+import { validateMonitorSecretRefs } from "@/lib/monitor-secret-refs";
 import { validateMonitorTargetAddress } from "@/lib/monitor-target-policy";
 import {
   alertProvidersSent,
@@ -276,6 +277,10 @@ export async function PUT(
     if (!configurationValidation.success) {
       return NextResponse.json(configurationValidation, { status: 400 });
     }
+    const secretRefs = await validateMonitorSecretRefs(authCtx.project.id, updateData.config);
+    if (!secretRefs.success) {
+      return NextResponse.json(secretRefs, { status: 400 });
+    }
     // Only a changed target or type is checked, so a monitor already pointing at an internal host stays editable.
     const effectiveU1 = { type: updateData.type ?? currentMonitor.type, target: updateData.target ?? currentMonitor.target };
     if (effectiveU1.type !== currentMonitor.type || effectiveU1.target !== currentMonitor.target) {
@@ -503,6 +508,7 @@ export async function PUT(
       resource: "monitor",
       resourceId: id,
       metadata: {
+        ...(updatedMonitor.config?.aiEndpoint ? { preset: "ai_endpoint" } : {}),
         monitorName: updatedMonitor.name,
         monitorType: updatedMonitor.type,
         target: updatedMonitor.target,
@@ -689,6 +695,10 @@ export async function PATCH(
     if (!configurationValidation.success) {
       return NextResponse.json(configurationValidation, { status: 400 });
     }
+    const secretRefs = await validateMonitorSecretRefs(authCtx.project.id, rawData.config);
+    if (!secretRefs.success) {
+      return NextResponse.json(secretRefs, { status: 400 });
+    }
     // Only a changed target or type is checked, so a monitor already pointing at an internal host stays editable.
     const effectiveU2 = { type: updatePayload.type ?? currentMonitor.type, target: updatePayload.target ?? currentMonitor.target };
     if (effectiveU2.type !== currentMonitor.type || effectiveU2.target !== currentMonitor.target) {
@@ -796,6 +806,7 @@ export async function PATCH(
       resource: "monitor",
       resourceId: id,
       metadata: {
+        ...(updatedMonitor.config?.aiEndpoint ? { preset: "ai_endpoint" } : {}),
         monitorName: updatedMonitor.name,
         updateType: "partial",
         statusChanged:

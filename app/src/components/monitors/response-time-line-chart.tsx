@@ -30,6 +30,7 @@ const chartConfig = {
 interface ResponseTimeChartDataPoint {
   name: string;
   time: number | null; // null (no response, e.g. failed check) leaves a gap
+  firstToken?: number | null; // AI endpoint preset only
   fullDate?: string;
   isUp?: boolean;
   status?: string;
@@ -45,6 +46,8 @@ interface ProcessedDataPoint extends ResponseTimeChartDataPoint {
 
 interface ResponseTimeBarChartProps {
   data: ResponseTimeChartDataPoint[];
+  /** AI endpoint preset: draw a dashed first-token series beside the total time. */
+  showFirstToken?: boolean;
 }
 
 interface TooltipProps {
@@ -97,6 +100,12 @@ const CustomTooltip = ({ active, payload, label }: TooltipProps) => {
               {originalTime ? `${originalTime} ms` : "N/A"}
             </span>
           </div>
+          {typeof data.firstToken === "number" && (
+            <div className="flex items-center justify-between">
+              <span className="text-muted-foreground">First token:</span>
+              <span className="font-medium">{data.firstToken} ms</span>
+            </div>
+          )}
         </div>
       </div>
     );
@@ -104,7 +113,7 @@ const CustomTooltip = ({ active, payload, label }: TooltipProps) => {
   return null;
 };
 
-export function ResponseTimeBarChart({ data }: ResponseTimeBarChartProps) {
+export function ResponseTimeBarChart({ data, showFirstToken = false }: ResponseTimeBarChartProps) {
   const [visiblePoints, setVisiblePoints] = React.useState(0);
 
   // Input validation
@@ -274,6 +283,7 @@ export function ResponseTimeBarChart({ data }: ResponseTimeBarChartProps) {
         <CardTitle className="text-lg font-semibold">Response Time</CardTitle>
         <CardDescription className="text-sm">
           Recent response times in milliseconds ({data.length} data points)
+          {showFirstToken ? ". Solid: total time. Dashed: first token." : ""}
         </CardDescription>
       </CardHeader>
       <CardContent className="p-3 pl-0 pr-8 flex-1">
@@ -336,6 +346,20 @@ export function ResponseTimeBarChart({ data }: ResponseTimeBarChartProps) {
                   strokeDasharray: "3 3",
                 }}
               />
+              {showFirstToken && (
+                <Line
+                  type="monotone"
+                  dataKey="firstToken"
+                  name="First token"
+                  stroke="var(--chart-2)"
+                  strokeWidth={1.5}
+                  strokeDasharray="5 4"
+                  dot={false}
+                  activeDot={false}
+                  connectNulls={false}
+                  isAnimationActive={false}
+                />
+              )}
               <Line
                 type="monotone"
                 dataKey="time"

@@ -20,6 +20,7 @@ jest.mock("@/utils/db", () => ({
 jest.mock("@/lib/auth-context", () => ({
   requireAuthContext: jest.fn(async () => ({ userId: "u", organizationId: "org-1", project: { id: "project-1", name: "P" }, isCliAuth: false })),
   isAuthError: jest.fn(() => false),
+  authErrorStatus: jest.fn(() => 401),
 }));
 jest.mock("@/lib/session-security", () => ({ checkMonitorApiRateLimit: jest.fn(async () => ({ allowed: true })) }));
 jest.mock("@/lib/services/subscription-service", () => ({
@@ -333,8 +334,8 @@ describe("collection write paths", () => {
   });
 
   it("PUT audits a saved change, then answers 503, when the schedule cannot be updated", async () => {
-    const { logAuditEvent } = jest.requireMock("@/lib/audit-logger") as { logAuditEvent: jest.Mock };
     updateMonitorHandler.mockRejectedValue(new MonitorScheduleError(new Error("redis down"), { id: MONITOR } as never));
+    const { logAuditEvent } = jest.requireMock("@/lib/audit-logger") as { logAuditEvent: jest.Mock };
     const res = await put({ frequencyMinutes: 10 });
     expect(res.status).toBe(503);
     expect(logAuditEvent).toHaveBeenCalledWith(expect.objectContaining({ action: "monitor_updated", resourceId: MONITOR }));
@@ -461,5 +462,55 @@ describe("collection write paths", () => {
       const res = await GET(new Request(`http://localhost/api/monitors?${query}`));
       expect(res.status).toBe(400);
     }
+  });
+});
+
+describe("POST with the AI endpoint preset", () => {
+  const preset = { aiEndpoint: { model: "gpt-4o-mini", secretKey: "OPENAI_KEY" } };
+  const create = (config: object = preset) =>
+    POST(
+      new NextRequest("http://localhost/api/monitors", {
+        method: "POST",
+        body: JSON.stringify({ name: "m", type: "http_request", target: "https://api.openai.com/v1/chat/completions", config }),
+        headers: { "content-type": "application/json" },
+      }),
+    );
+  const { checkPermissionWithContext } = jest.requireMock("@/lib/rbac/middleware") as { checkPermissionWithContext: jest.Mock };
+  const { requireAuthContext, isAuthError } = jest.requireMock("@/lib/auth-context") as { requireAuthContext: jest.Mock; isAuthError: jest.Mock };
+
+  it("refuses a secret name that is not a secret of the caller's project before inserting", async () => {
+    const res = await create(); // dbSelect default resolves no rows
+    expect(res.status).toBe(400);
+    expect(await res.json()).toMatchObject({ details: "Secret OPENAI_KEY was not found in this project" });
+    expect(insertWithinPlanLimit).not.toHaveBeenCalled();
+  });
+
+  it("refuses a preset combined with request fields", async () => {
+    const res = await create({ ...preset, headers: { a: "b" } });
+    expect(res.status).toBe(400);
+    expect(insertWithinPlanLimit).not.toHaveBeenCalled();
+  });
+
+  it("creates with a secret that exists in the caller's project", async () => {
+    dbSelect.mockReturnValue({ from: () => ({ where: async () => [{ key: "OPENAI_KEY" }] }) });
+    insertWithinPlanLimit.mockResolvedValue({ ok: true, row: { newMonitor: { id: "new-monitor" }, enabled: false } });
+    await create();
+    expect(insertWithinPlanLimit).toHaveBeenCalledTimes(1);
+  });
+
+  it("denies a viewer (and a viewer's CLI token) with 403 before any secret lookup", async () => {
+    checkPermissionWithContext.mockReturnValue(false);
+    requireAuthContext.mockResolvedValueOnce({ userId: "u", organizationId: "org-1", project: { id: "project-1", name: "P" }, isCliAuth: true });
+    expect((await create()).status).toBe(403);
+    expect(dbSelect).not.toHaveBeenCalled();
+    expect(insertWithinPlanLimit).not.toHaveBeenCalled();
+  });
+
+  it("answers 401 without a session", async () => {
+    requireAuthContext.mockRejectedValueOnce(Object.assign(new Error("Authentication required"), { status: 401 }));
+    isAuthError.mockReturnValueOnce(true);
+    const res = await create();
+    expect(res.status).toBe(401);
+    expect(insertWithinPlanLimit).not.toHaveBeenCalled();
   });
 });

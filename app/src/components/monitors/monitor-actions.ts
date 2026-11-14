@@ -54,13 +54,16 @@ export function withCurrentInterval(options: IntervalOption[], current?: string 
 
 // Optional keys the form owns per type: if the form leaves one out, it was cleared and must not survive the merge.
 const CLEARABLE: Record<string, string[]> = {
-  http_request: ["headers", "body", "auth", "keywordInBody", "keywordInBodyShouldBePresent"],
+  http_request: ["headers", "body", "auth", "keywordInBody", "keywordInBodyShouldBePresent", "aiEndpoint"],
   website: ["headers", "auth", "keywordInBody", "keywordInBodyShouldBePresent", "sslDaysUntilExpirationWarning"],
 };
 // Defaults the form hardcodes but does not expose; on edit the stored value wins.
 const UNMANAGED = ["timeoutSeconds", "playwrightOptions"];
 // Legacy keys the PUT validator now rejects (see UNEVALUATED_CONFIG_KEYS in monitor-validation.ts); drop them so old monitors stay saveable.
 const REJECTED_LEGACY = ["responseBodyJsonPath", "checkExpiration", "daysUntilExpirationWarning", "checkRevocation", "sslCheckOnStatusChange"];
+
+// Request settings a plain HTTP monitor has and the AI endpoint preset must not carry (the API rejects the mix).
+const AI_REPLACED = ["method", "headers", "body", "auth", "keywordInBody", "keywordInBodyShouldBePresent", "expectedStatusCodes"];
 
 /** Edit mode: start from the stored config and overlay only what the form manages. */
 export function mergeEditConfig(
@@ -70,9 +73,12 @@ export function mergeEditConfig(
 ): Record<string, unknown> {
   if (!stored) return built;
   const managed = { ...built };
-  for (const key of UNMANAGED) delete managed[key];
+  // The AI endpoint preset owns the total time limit and replaces the request settings of a plain HTTP monitor.
+  const preset = type === "http_request" && built.aiEndpoint !== undefined;
+  for (const key of UNMANAGED) if (!(preset && key === "timeoutSeconds")) delete managed[key];
   if (type === "website") delete managed.method; // the form forces GET here; keep the stored method
   const merged = { ...stored, ...managed };
+  if (preset) for (const key of AI_REPLACED) delete merged[key];
   for (const key of CLEARABLE[type] ?? []) if (!(key in built)) delete merged[key];
   for (const key of REJECTED_LEGACY) delete merged[key];
   const t = merged.timeoutSeconds; // validator accepts a finite number in 1..3600

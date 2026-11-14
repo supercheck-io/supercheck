@@ -70,6 +70,8 @@ import {
 } from '../common/utils/pinned-monitor-request';
 import type { LookupFunction } from 'node:net';
 import { allowInternalMonitorTargets } from '../common/utils/url-validator';
+import { executeAiEndpointCheck } from './ai-endpoint-check';
+import { resolveMonitorSecret } from './monitor-secret';
 import {
   MonitorRedirectError,
   isDnsError,
@@ -266,7 +268,11 @@ export class MonitorService {
       switch (jobData.type) {
         case 'http_request':
           ({ status, details, responseTimeMs, isUp } =
-            await this.executeHttpRequest(jobData.target, jobData.config));
+            await this.executeHttpRequest(
+              jobData.target,
+              jobData.config,
+              jobData.monitorId,
+            ));
           break;
         case 'website': {
           // Website monitoring - allow user configuration but provide sensible defaults
@@ -279,7 +285,11 @@ export class MonitorService {
               jobData.config?.expectedStatusCodes || '200-299',
           };
           ({ status, details, responseTimeMs, isUp } =
-            await this.executeHttpRequest(jobData.target, websiteConfig));
+            await this.executeHttpRequest(
+              jobData.target,
+              websiteConfig,
+              jobData.monitorId,
+            ));
 
           // SSL checking - check independently of website success for better monitoring
           // SSL Check off or not HTTPS: drop a probe-failure marker left from an earlier run
@@ -1177,6 +1187,7 @@ export class MonitorService {
   private async executeHttpRequest(
     target: string,
     config?: MonitorConfig,
+    monitorId?: string,
   ): Promise<{
     status: MonitorResultStatus;
     details: MonitorResultDetails;
@@ -1250,7 +1261,18 @@ export class MonitorService {
       return await this.resourceManager.executeWithResourceLimits(
         operationId,
         async () =>
-          this.performHttpRequest(sanitizedTarget, config, errorContext),
+          config?.aiEndpoint
+            ? executeAiEndpointCheck(sanitizedTarget, config, {
+                execute: (cfg) => firstValueFrom(this.httpService.request(cfg)),
+                resolveSecret: (key) =>
+                  resolveMonitorSecret(this.dbService.db, monitorId ?? '', key),
+              })
+            : this.performHttpRequest(
+                sanitizedTarget,
+                config,
+                errorContext,
+                monitorId,
+              ),
         {
           timeoutMs:
             (config?.timeoutSeconds ?? TIMEOUTS_SECONDS.HTTP_REQUEST_DEFAULT) *
@@ -1277,6 +1299,7 @@ export class MonitorService {
     target: string,
     config?: MonitorConfig,
     _errorContext?: ErrorContext,
+    monitorId?: string,
   ): Promise<{
     status: MonitorResultStatus;
     details: MonitorResultDetails;
@@ -1349,14 +1372,35 @@ export class MonitorService {
           1024,
       };
 
+      // A project secret supplies the bearer token or basic password; never logged.
+      let auth = config?.auth;
+      if (auth?.secretKey && auth.type !== 'none') {
+        const secret = await resolveMonitorSecret(
+          this.dbService.db,
+          monitorId ?? '',
+          auth.secretKey,
+        );
+        if (!secret.ok) {
+          return {
+            status: 'error',
+            details: { errorMessage: secret.message },
+            isUp: false,
+          };
+        }
+        auth =
+          auth.type === 'basic'
+            ? { ...auth, password: secret.value }
+            : { ...auth, token: secret.value };
+      }
+
       // 🔴 CRITICAL: Secure authentication handling
-      if (config?.auth && config.auth.type !== 'none') {
+      if (auth && auth.type !== 'none') {
         // Create credential object for secure handling
         const credentialData: CredentialData = {
-          type: config.auth.type,
-          username: config.auth.username,
-          password: config.auth.password,
-          token: config.auth.token,
+          type: auth.type,
+          username: auth.username,
+          password: auth.password,
+          token: auth.token,
         };
 
         // Validate credential strength
@@ -1371,31 +1415,27 @@ export class MonitorService {
           );
         }
 
-        if (
-          config.auth.type === 'basic' &&
-          config.auth.username &&
-          config.auth.password
-        ) {
+        if (auth.type === 'basic' && auth.username && auth.password) {
           requestConfig.auth = {
-            username: config.auth.username,
-            password: config.auth.password,
+            username: auth.username,
+            password: auth.password,
           };
 
           // Secure logging
           this.logger.debug(
-            `Using Basic authentication for user: ${String(this.credentialSecurityService.maskCredentials(config.auth.username))}`,
+            `Using Basic authentication for user: ${String(this.credentialSecurityService.maskCredentials(auth.username))}`,
           );
-        } else if (config.auth.type === 'bearer' && config.auth.token) {
+        } else if (auth.type === 'bearer' && auth.token) {
           (requestConfig.headers as Record<string, string>)['Authorization'] =
-            `Bearer ${config.auth.token}`;
+            `Bearer ${auth.token}`;
 
           // Secure logging
           this.logger.debug(
-            `Using Bearer authentication with token: ${String(this.credentialSecurityService.maskCredentials(config.auth.token))}`,
+            `Using Bearer authentication with token: ${String(this.credentialSecurityService.maskCredentials(auth.token))}`,
           );
         } else {
           this.logger.warn(
-            `Invalid auth configuration: type=${config.auth.type}, has credentials=${!!(config.auth.username || config.auth.token)}`,
+            `Invalid auth configuration: type=${auth.type}, has credentials=${!!(auth.username || auth.token)}`,
           );
         }
       }

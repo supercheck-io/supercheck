@@ -26,7 +26,13 @@ jest.mock("@/hooks/use-monitor-details", () => ({
 }));
 jest.mock("@/components/shared/report-viewer", () => ({ ReportViewer: () => null }));
 jest.mock("@/components/monitors/ai-monitor-analyze-button", () => ({ AIMonitorAnalyzeButton: () => null }));
-jest.mock("@/components/monitors/response-time-line-chart", () => ({ ResponseTimeBarChart: () => null }));
+let chartProps: { data: { firstToken?: number | null }[]; showFirstToken?: boolean } | null = null;
+jest.mock("@/components/monitors/response-time-line-chart", () => ({
+  ResponseTimeBarChart: (props: typeof chartProps) => {
+    chartProps = props;
+    return null;
+  },
+}));
 jest.mock("./AvailabilityBarChart", () => ({
   AvailabilityBarChart: ({ headerActions }: { headerActions?: React.ReactNode }) => <>{headerActions}</>,
 }));
@@ -135,4 +141,52 @@ it("offers every configured location in the filter, not only those seen in recen
 it("ignores a non-array locations value instead of crashing", async () => {
   const bad = { ...(monitor as object), config: { locationConfig: { locations: "eu-central" } }, recentResults: [] } as never;
   expect(() => render(<MonitorDetailClient monitor={bad} />)).not.toThrow();
+});
+
+describe("AI endpoint monitor", () => {
+  const ai = { firstTokenMs: 420, totalMs: 900, servedModel: "gpt-4o-mini-2024-07-18", promptTokens: 15, completionTokens: 6, totalTokens: 1234 };
+  const result = (details: object) => ({
+    id: "r1", monitorId: "m2", checkedAt: new Date(Date.now() - 20_000).toISOString(), isUp: true, status: "up", isStatusChange: false, responseTimeMs: 900, location: "eu-central", details,
+  });
+  const aiMonitor = (extra: object = {}) =>
+    ({
+      id: "m2", name: "LLM", type: "http_request", target: "https://api.openai.com/v1/chat/completions", status: "up", frequencyMinutes: 5,
+      config: { aiEndpoint: { model: "gpt-4o-mini" } }, recentResults: [result({ ai })], ...extra,
+    }) as never;
+
+  it("shows first token, tokens per call and served model, with host and model as the subtitle", async () => {
+    mockResults = [result({ ai })];
+    try {
+      render(<MonitorDetailClient monitor={aiMonitor()} />);
+      expect(screen.getByTestId("ai-stat-first-token")).toHaveTextContent("First token");
+      expect(screen.getByTestId("ai-stat-first-token")).toHaveTextContent("420");
+      expect(screen.getByTestId("ai-stat-tokens")).toHaveTextContent("Tokens per call");
+      expect(screen.getByTestId("ai-stat-tokens")).toHaveTextContent("1,234");
+      expect(screen.getByTestId("ai-stat-served-model")).toHaveTextContent("gpt-4o-mini-2024-07-18");
+      expect(screen.getByTestId("monitor-ai-subtitle")).toHaveTextContent("api.openai.com · gpt-4o-mini");
+      expect(screen.getByRole("columnheader", { name: "First token" })).toBeInTheDocument();
+      expect(screen.getByRole("columnheader", { name: "Tokens" })).toBeInTheDocument();
+      expect(await screen.findByTestId("ai-row-first-token")).toHaveTextContent("420");
+      expect(screen.getByTestId("ai-row-tokens")).toHaveTextContent("1,234");
+      expect(chartProps?.showFirstToken).toBe(true);
+      expect(chartProps?.data[0].firstToken).toBe(420);
+    } finally {
+      mockResults = [];
+    }
+  });
+
+  it("falls back to the last served model the worker stored and shows dashes before the first check", () => {
+    render(<MonitorDetailClient monitor={aiMonitor({ recentResults: [], config: { aiEndpoint: { model: "m" }, aiEndpointState: { lastServedModel: "stored-model" } } })} />);
+    expect(screen.getByTestId("ai-stat-served-model")).toHaveTextContent("stored-model");
+    expect(screen.getByTestId("ai-stat-first-token")).toHaveTextContent("—");
+  });
+
+  it("adds nothing for a plain HTTP monitor", () => {
+    render(<MonitorDetailClient monitor={{ ...(monitor as object), type: "http_request", config: { method: "GET" } } as never} />);
+    expect(screen.queryByTestId("ai-stat-first-token")).toBeNull();
+    expect(screen.queryByTestId("monitor-ai-subtitle")).toBeNull();
+    expect(screen.queryByRole("columnheader", { name: "First token" })).toBeNull();
+    expect(screen.queryByRole("columnheader", { name: "Tokens" })).toBeNull();
+    expect(chartProps?.showFirstToken).toBe(false);
+  });
 });

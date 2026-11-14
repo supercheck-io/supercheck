@@ -50,7 +50,7 @@ import { MonitorTypesPopover } from "./monitor-types-popover";
 import { LocationConfigSection } from "./location-config-section";
 import { DEFAULT_LOCATION_CONFIG } from "@/lib/location-service";
 import type { LocationConfig } from "@/lib/location-service";
-import { sanitizeMonitorFormData } from "@/lib/input-sanitizer";
+import { sanitizeMonitorFormData, type MonitorFormData } from "@/lib/input-sanitizer";
 
 import {
   Card,
@@ -73,6 +73,8 @@ import { useAvailableLocations } from "@/hooks/use-locations";
 import { useQueryClient } from "@tanstack/react-query";
 import { invalidateMonitorCaches, mergeEditConfig, withCurrentInterval } from "./monitor-actions";
 import { useTest } from "@/hooks/use-tests";
+import { CredentialField } from "./credential-field";
+import { AiEndpointFields, AI_ENDPOINT_DEFAULT_URL, buildAiEndpointConfig } from "./ai-endpoint-fields";
 
 // Define presets for Expected Status Codes
 /** Parsed like the form's URL validation, so what validates as https shows the SSL section. */
@@ -116,6 +118,39 @@ const syntheticCheckIntervalOptions = [
   { value: "43200", label: "12 hours" },
   { value: "86400", label: "24 hours" },
 ];
+
+const intInRange = (value: string | undefined, min: number, max: number) =>
+  value === undefined || value.trim() === "" || (/^\d+$/.test(value.trim()) && Number(value) >= min && Number(value) <= max);
+
+type AiFormFields = {
+  interval: string;
+  aiConfig_secretKey?: string;
+  aiConfig_noKey?: boolean;
+  aiConfig_keyHeader?: string;
+  aiConfig_model?: string;
+  aiConfig_prompt?: string;
+  aiConfig_maxTokens?: string;
+  aiConfig_firstTokenTimeoutMs?: string;
+  aiConfig_timeoutSeconds?: string;
+};
+
+/** Field errors for the AI endpoint preset; mirrors the limits the API enforces. */
+function addAiEndpointIssues(data: AiFormFields, ctx: z.RefinementCtx) {
+  const issue = (path: string, message: string) => ctx.addIssue({ code: z.ZodIssueCode.custom, message, path: [path] });
+  if (!data.aiConfig_model || data.aiConfig_model.trim() === "") issue("aiConfig_model", "Model is required");
+  else if (data.aiConfig_model.length > 200) issue("aiConfig_model", "Model must be 200 characters or less");
+  if (!data.aiConfig_noKey && (!data.aiConfig_secretKey || data.aiConfig_secretKey.trim() === "")) {
+    issue("aiConfig_secretKey", "Select a secret, or tick No key");
+  }
+  const header = data.aiConfig_keyHeader?.trim();
+  if (header && !/^[A-Za-z0-9-]{1,64}$/.test(header)) issue("aiConfig_keyHeader", "Use letters, digits and hyphens only");
+  if ((data.aiConfig_prompt ?? "").length > 2000) issue("aiConfig_prompt", "Prompt must be 2000 characters or less");
+  if (!intInRange(data.aiConfig_maxTokens, 1, 512)) issue("aiConfig_maxTokens", "Enter a whole number from 1 to 512");
+  if (!intInRange(data.aiConfig_firstTokenTimeoutMs, 500, 60000)) issue("aiConfig_firstTokenTimeoutMs", "Enter a whole number from 500 to 60000");
+  if (!intInRange(data.aiConfig_timeoutSeconds, 5, 120)) issue("aiConfig_timeoutSeconds", "Enter a whole number from 5 to 120");
+  const total = Number(data.aiConfig_timeoutSeconds || 60);
+  if (total > parseInt(data.interval, 10)) issue("aiConfig_timeoutSeconds", "The total time limit cannot exceed the check interval");
+}
 
 // Create schema for the form with conditional validation
 const formSchema = z
@@ -163,6 +198,20 @@ const formSchema = z
     httpConfig_authUsername: z.string().optional(),
     httpConfig_authPassword: z.string().optional(),
     httpConfig_authToken: z.string().optional(),
+    // Where a bearer token / basic password comes from: a project secret (default for new monitors) or typed inline
+    httpConfig_authSource: z.enum(["secret", "inline"]).optional(),
+    httpConfig_authSecretKey: z.string().optional(),
+    // AI endpoint preset (http_request only)
+    preset: z.enum(["none", "ai_endpoint"]).optional(),
+    aiConfig_secretKey: z.string().optional(),
+    aiConfig_noKey: z.boolean().optional(),
+    aiConfig_keyHeader: z.string().optional(),
+    aiConfig_model: z.string().optional(),
+    aiConfig_prompt: z.string().optional(),
+    aiConfig_maxTokens: z.string().optional(),
+    aiConfig_expectText: z.string().optional(),
+    aiConfig_firstTokenTimeoutMs: z.string().optional(),
+    aiConfig_timeoutSeconds: z.string().optional(),
     // Port Check specific
     portConfig_port: z.coerce
       .number()
@@ -273,8 +322,21 @@ const formSchema = z
       }
     }
 
+    // AI endpoint preset: its own fields replace the request settings, so authentication below does not apply
+    const aiPreset = data.type === "http_request" && data.preset === "ai_endpoint";
+    if (aiPreset) addAiEndpointIssues(data, ctx);
+    const authFromSecret = (data.httpConfig_authSource ?? "secret") === "secret";
+    const secretMissing = !data.httpConfig_authSecretKey || data.httpConfig_authSecretKey.trim() === "";
+
     // Authentication validation
-    if (data.httpConfig_authType === "basic") {
+    if (!aiPreset && authFromSecret && data.httpConfig_authType !== "none" && secretMissing) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Select a project secret",
+        path: ["httpConfig_authSecretKey"],
+      });
+    }
+    if (!aiPreset && data.httpConfig_authType === "basic") {
       if (
         !data.httpConfig_authUsername ||
         data.httpConfig_authUsername.trim() === ""
@@ -286,8 +348,9 @@ const formSchema = z
         });
       }
       if (
-        !data.httpConfig_authPassword ||
-        data.httpConfig_authPassword.trim() === ""
+        !authFromSecret &&
+        (!data.httpConfig_authPassword ||
+          data.httpConfig_authPassword.trim() === "")
       ) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
@@ -297,10 +360,11 @@ const formSchema = z
       }
     }
 
-    if (data.httpConfig_authType === "bearer") {
+    if (!aiPreset && data.httpConfig_authType === "bearer") {
       if (
-        !data.httpConfig_authToken ||
-        data.httpConfig_authToken.trim() === ""
+        !authFromSecret &&
+        (!data.httpConfig_authToken ||
+          data.httpConfig_authToken.trim() === "")
       ) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
@@ -414,6 +478,27 @@ interface MonitorFormProps {
   alertConfig?: AlertConfiguration | null; // Use proper type
   initialConfig?: Record<string, unknown> | null; // Monitor config including locationConfig
   setMonitorData?: (data: Record<string, unknown>) => void; // For wizard state management
+}
+
+/** Basic or bearer auth, from a project secret (default) or an inline value. */
+function buildAuthConfig(data: MonitorFormData): Record<string, unknown> | undefined {
+  const type = data.httpConfig_authType;
+  if (type !== "basic" && type !== "bearer") return undefined;
+  const fromSecret = (data.httpConfig_authSource ?? "secret") === "secret";
+  if (fromSecret) {
+    if (!data.httpConfig_authSecretKey) throw new Error("Select a project secret for authentication");
+    return type === "basic"
+      ? { type, username: data.httpConfig_authUsername, secretKey: data.httpConfig_authSecretKey }
+      : { type, secretKey: data.httpConfig_authSecretKey };
+  }
+  if (type === "basic") {
+    if (!data.httpConfig_authUsername || !data.httpConfig_authPassword) {
+      throw new Error("Username and password are required for Basic Auth");
+    }
+    return { type, username: data.httpConfig_authUsername, password: data.httpConfig_authPassword };
+  }
+  if (!data.httpConfig_authToken) throw new Error("Token is required for Bearer Auth");
+  return { type, token: data.httpConfig_authToken };
 }
 
 export function MonitorForm({
@@ -588,6 +673,22 @@ export function MonitorForm({
   const authType = form.watch("httpConfig_authType");
   const expectedStatusCodes = form.watch("httpConfig_expectedStatusCodes");
   const syntheticTestId = form.watch("syntheticConfig_testId");
+  const preset = form.watch("preset");
+  const aiPreset = type === "http_request" && preset === "ai_endpoint";
+  const aiLocationCount = locationConfig.enabled ? Math.max(1, locationConfig.locations.length) : 1;
+
+  // Choosing the preset swaps the request fields; a new monitor also takes the preset's interval and alert threshold.
+  function choosePreset(value: "none" | "ai_endpoint") {
+    form.setValue("preset", value, { shouldDirty: true });
+    if (value !== "ai_endpoint") return;
+    const target = form.getValues("target");
+    if (!target || !target.trim()) form.setValue("target", AI_ENDPOINT_DEFAULT_URL, { shouldDirty: true });
+    if (!form.getValues("aiConfig_timeoutSeconds")) form.setValue("aiConfig_timeoutSeconds", "60");
+    if (!editMode) {
+      form.setValue("interval", "300", { shouldDirty: true });
+      setAlertConfig((current) => ({ ...current, failureThreshold: 2 }));
+    }
+  }
 
   // Auto-adjust interval when switching to synthetic monitor
   useEffect(() => {
@@ -727,7 +828,9 @@ export function MonitorForm({
     };
 
     // Build config based on monitor type
-    if (sanitizedData.type === "http_request") {
+    if (sanitizedData.type === "http_request" && sanitizedData.preset === "ai_endpoint") {
+      config = buildAiEndpointConfig(sanitizedData);
+    } else if (sanitizedData.type === "http_request") {
       config = {
         method: sanitizedData.httpConfig_method || "GET",
         expectedStatusCodes:
@@ -761,35 +864,8 @@ export function MonitorForm({
         config.body = sanitizedData.httpConfig_body;
       }
 
-      // Add auth if configured
-      if (
-        sanitizedData.httpConfig_authType &&
-        sanitizedData.httpConfig_authType !== "none"
-      ) {
-        if (sanitizedData.httpConfig_authType === "basic") {
-          if (
-            !sanitizedData.httpConfig_authUsername ||
-            !sanitizedData.httpConfig_authPassword
-          ) {
-            throw new Error(
-              "Username and password are required for Basic Auth"
-            );
-          }
-          config.auth = {
-            type: "basic",
-            username: sanitizedData.httpConfig_authUsername,
-            password: sanitizedData.httpConfig_authPassword,
-          };
-        } else if (sanitizedData.httpConfig_authType === "bearer") {
-          if (!sanitizedData.httpConfig_authToken) {
-            throw new Error("Token is required for Bearer Auth");
-          }
-          config.auth = {
-            type: "bearer",
-            token: sanitizedData.httpConfig_authToken,
-          };
-        }
-      }
+      const auth = buildAuthConfig(sanitizedData);
+      if (auth) config.auth = auth;
 
       // Add keyword checking if configured, or explicitly remove if empty
       if (
@@ -831,35 +907,8 @@ export function MonitorForm({
         }
       }
 
-      // Add auth if configured
-      if (
-        sanitizedData.httpConfig_authType &&
-        sanitizedData.httpConfig_authType !== "none"
-      ) {
-        if (data.httpConfig_authType === "basic") {
-          if (
-            !sanitizedData.httpConfig_authUsername ||
-            !sanitizedData.httpConfig_authPassword
-          ) {
-            throw new Error(
-              "Username and password are required for Basic Auth"
-            );
-          }
-          config.auth = {
-            type: "basic",
-            username: sanitizedData.httpConfig_authUsername,
-            password: sanitizedData.httpConfig_authPassword,
-          };
-        } else if (sanitizedData.httpConfig_authType === "bearer") {
-          if (!sanitizedData.httpConfig_authToken) {
-            throw new Error("Token is required for Bearer Auth");
-          }
-          config.auth = {
-            type: "bearer",
-            token: sanitizedData.httpConfig_authToken,
-          };
-        }
-      }
+      const auth = buildAuthConfig(sanitizedData);
+      if (auth) config.auth = auth;
 
       // Add keyword checking if configured
       if (
@@ -1409,6 +1458,32 @@ export function MonitorForm({
                 />
               )}
 
+              {type === "http_request" && (
+                <FormField
+                  control={form.control}
+                  name="preset"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Preset</FormLabel>
+                      <Select
+                        value={field.value ?? "none"}
+                        onValueChange={(value) => choosePreset(value as "none" | "ai_endpoint")}
+                      >
+                        <FormControl>
+                          <SelectTrigger className="w-full" data-testid="monitor-preset">
+                            <SelectValue />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="none">None</SelectItem>
+                          <SelectItem value="ai_endpoint">AI endpoint (OpenAI-compatible)</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </FormItem>
+                  )}
+                />
+              )}
+
               {/* Target field for non-synthetic monitors */}
               {type !== "synthetic_test" && (
                 <div className={(type === "port_check" || type === "ping_host") ? "grid grid-cols-1 md:grid-cols-2 gap-4" : ""}>
@@ -1495,7 +1570,10 @@ export function MonitorForm({
               )}
 
               {/* Conditional fields based on type (formerly method) */}
-              {type === "http_request" && (
+              {aiPreset && (
+                <AiEndpointFields form={form} projectId={currentProject?.id} locationCount={aiLocationCount} />
+              )}
+              {type === "http_request" && !aiPreset && (
                 <div className="space-y-4 pt-4">
                   {/* <h3 className=" font-medium">HTTP Request Settings</h3> */}
 
@@ -1792,45 +1870,13 @@ export function MonitorForm({
                                     </FormItem>
                                   )}
                                 />
-                                <FormField
-                                  control={form.control}
-                                  name="httpConfig_authPassword"
-                                  render={({ field }) => (
-                                    <FormItem>
-                                      <FormLabel>Password</FormLabel>
-                                      <FormControl>
-                                        <Input
-                                          type="password"
-                                          placeholder="Enter password"
-                                          {...field}
-                                        />
-                                      </FormControl>
-                                      <FormMessage />
-                                    </FormItem>
-                                  )}
-                                />
+                                <CredentialField form={form} projectId={currentProject?.id} kind="password" hasStoredInline={Boolean(initialData?.httpConfig_authPassword)} />
                               </div>
                             )}
 
                             {authType === "bearer" && (
                               <div className="mb-4">
-                                <FormField
-                                  control={form.control}
-                                  name="httpConfig_authToken"
-                                  render={({ field }) => (
-                                    <FormItem>
-                                      <FormLabel>Bearer Token</FormLabel>
-                                      <FormControl>
-                                        <Input
-                                          type="password"
-                                          placeholder="Enter bearer token"
-                                          {...field}
-                                        />
-                                      </FormControl>
-                                      <FormMessage />
-                                    </FormItem>
-                                  )}
-                                />
+                                <CredentialField form={form} projectId={currentProject?.id} kind="token" hasStoredInline={Boolean(initialData?.httpConfig_authToken)} />
                               </div>
                             )}
                           </CardContent>
@@ -2239,45 +2285,13 @@ export function MonitorForm({
                                     </FormItem>
                                   )}
                                 />
-                                <FormField
-                                  control={form.control}
-                                  name="httpConfig_authPassword"
-                                  render={({ field }) => (
-                                    <FormItem>
-                                      <FormLabel>Password</FormLabel>
-                                      <FormControl>
-                                        <Input
-                                          type="password"
-                                          placeholder="Enter password"
-                                          {...field}
-                                        />
-                                      </FormControl>
-                                      <FormMessage />
-                                    </FormItem>
-                                  )}
-                                />
+                                <CredentialField form={form} projectId={currentProject?.id} kind="password" hasStoredInline={Boolean(initialData?.httpConfig_authPassword)} />
                               </div>
                             )}
 
                             {authType === "bearer" && (
                               <div className="mb-4">
-                                <FormField
-                                  control={form.control}
-                                  name="httpConfig_authToken"
-                                  render={({ field }) => (
-                                    <FormItem>
-                                      <FormLabel>Bearer Token</FormLabel>
-                                      <FormControl>
-                                        <Input
-                                          type="password"
-                                          placeholder="Enter bearer token"
-                                          {...field}
-                                        />
-                                      </FormControl>
-                                      <FormMessage />
-                                    </FormItem>
-                                  )}
-                                />
+                                <CredentialField form={form} projectId={currentProject?.id} kind="token" hasStoredInline={Boolean(initialData?.httpConfig_authToken)} />
                               </div>
                             )}
                           </CardContent>

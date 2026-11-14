@@ -453,6 +453,25 @@ describe('AI SRE CLI Commands', () => {
       expect(mockPost).toHaveBeenCalledWith('/api/monitors', expect.objectContaining({ target, type, frequencyMinutes: 5 }))
     })
 
+    it('creates an AI endpoint preset monitor with a secret name, never a key, and no request fields', async () => {
+      mockPost.mockResolvedValueOnce({ data: { id: 'monitor-1' } })
+      await monitorCommand.parseAsync(['node', 'monitor', 'create', '--name', 'LLM', '--url', 'https://api.openai.com/v1/chat/completions', '--preset', 'ai-endpoint', '--model', 'gpt-4o-mini', '--secret', 'OPENAI_KEY', '--expect', 'ok'])
+      expect(mockPost).toHaveBeenCalledWith('/api/monitors', expect.objectContaining({
+        type: 'http_request',
+        config: { timeoutSeconds: 60, aiEndpoint: { model: 'gpt-4o-mini', secretKey: 'OPENAI_KEY', expectText: 'ok' } },
+      }))
+    })
+
+    it.each([
+      [['--preset', 'ai-endpoint'], /--model is required/],
+      [['--preset', 'nope', '--model', 'm'], /Unknown preset/],
+      [['--model', 'm'], /--model requires --preset ai-endpoint/],
+      [['--type', 'website', '--preset', 'ai-endpoint', '--model', 'm'], /requires --type http_request/],
+    ])('rejects an invalid preset invocation %j', async (args, message) => {
+      await expect(monitorCommand.parseAsync(['node', 'monitor', 'create', '--name', 'LLM', '--url', 'https://api.example.com/v1/chat/completions', ...args])).rejects.toMatchObject({ exitCode: 3, message: expect.stringMatching(message) })
+      expect(mockPost).not.toHaveBeenCalled()
+    })
+
     it('creates port checks with the required numeric port and protocol', async () => {
       mockPost.mockResolvedValueOnce({ data: { id: 'monitor-1' } })
       await monitorCommand.parseAsync(['node', 'monitor', 'create', '--name', 'Port', '--type', 'port_check', '--url', 'example.com', '--port', '443'])

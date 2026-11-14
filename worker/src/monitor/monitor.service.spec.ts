@@ -1,4 +1,5 @@
 import { AxiosError } from 'axios';
+import { resolveMonitorSecret } from './monitor-secret';
 import { throwError } from 'rxjs';
 /**
  * Monitor Service Tests
@@ -31,6 +32,8 @@ jest.mock('../execution/services/execution.service', () => ({
     execute: jest.fn().mockResolvedValue({ success: true }),
   })),
 }));
+
+jest.mock('./monitor-secret', () => ({ resolveMonitorSecret: jest.fn() }));
 
 jest.mock('../common/utils/pinned-monitor-request', () => ({
   requestPinnedMonitorTarget: jest.fn(
@@ -1456,6 +1459,73 @@ describe('MonitorService', () => {
     };
     const http = (config: Record<string, unknown> = {}) =>
       service['executeHttpRequest']('https://example.com', config);
+
+    describe('auth from a project secret', () => {
+      const withSecret = (
+        auth: Record<string, unknown>,
+        value = 'sekret-value',
+      ) => {
+        jest
+          .mocked(resolveMonitorSecret)
+          .mockResolvedValueOnce({ ok: true, value });
+        (service['httpService'].request as jest.Mock).mockImplementationOnce(
+          () => of({ status: 200, statusText: 'OK', headers: {}, data: 'ok' }),
+        );
+        return service['executeHttpRequest'](
+          'https://example.com',
+          { auth: { ...auth, type: auth.type } } as never,
+          'mon-1',
+        );
+      };
+      const sentConfig = () =>
+        (service['httpService'].request as jest.Mock).mock.calls.at(
+          -1,
+        )?.[0] as {
+          headers: Record<string, string>;
+          auth?: { username: string; password: string };
+        };
+
+      it('uses the secret as the bearer token', async () => {
+        const result = await withSecret({ type: 'bearer', secretKey: 'TOKEN' });
+        expect(result.status).toBe('up');
+        expect(resolveMonitorSecret).toHaveBeenCalledWith(
+          mockDbService.db,
+          'mon-1',
+          'TOKEN',
+        );
+        expect(sentConfig().headers.Authorization).toBe('Bearer sekret-value');
+      });
+
+      it('uses the secret as the basic password', async () => {
+        await withSecret({ type: 'basic', username: 'me', secretKey: 'PW' });
+        expect(sentConfig().auth).toEqual({
+          username: 'me',
+          password: 'sekret-value',
+        });
+      });
+
+      it('returns an error result when the secret is missing', async () => {
+        jest.mocked(resolveMonitorSecret).mockResolvedValueOnce({
+          ok: false,
+          message: 'Secret TOKEN was not found',
+        });
+        const before = (service['httpService'].request as jest.Mock).mock.calls
+          .length;
+        const result = await service['executeHttpRequest'](
+          'https://example.com',
+          { auth: { type: 'bearer', secretKey: 'TOKEN' } },
+          'mon-1',
+        );
+        expect(result).toMatchObject({
+          status: 'error',
+          isUp: false,
+          details: { errorMessage: 'Secret TOKEN was not found' },
+        });
+        expect(
+          (service['httpService'].request as jest.Mock).mock.calls.length,
+        ).toBe(before);
+      });
+    });
 
     describe('HTTP', () => {
       it('reports ETIMEDOUT (code only, any case) as a timeout', async () => {

@@ -35,6 +35,7 @@ import type { LocationConfig } from "@/db/schema";
 import { createLogger } from "@/lib/logger/index";
 import { channelsOptional } from "@/lib/incident-settings";
 import { validateMonitorConfiguration } from "@/lib/monitor-validation";
+import { validateMonitorSecretRefs } from "@/lib/monitor-secret-refs";
 import { validateMonitorTargetAddress } from "@/lib/monitor-target-policy";
 import {
   AlertConfigConflictError,
@@ -276,10 +277,7 @@ export async function POST(req: NextRequest) {
 
     // Special logging for heartbeat monitors
     if (rawData.type === "heartbeat") {
-      logger.debug(
-        { config: rawData.config },
-        "[MONITOR_CREATE] Processing heartbeat monitor",
-      );
+      logger.debug("[MONITOR_CREATE] Processing heartbeat monitor");
     }
 
     // Validate required fields
@@ -402,6 +400,10 @@ export async function POST(req: NextRequest) {
     if (!configurationValidation.success) {
       return NextResponse.json(configurationValidation, { status: 400 });
     }
+    const secretRefs = await validateMonitorSecretRefs(project.id, rawData.config);
+    if (!secretRefs.success) {
+      return NextResponse.json(secretRefs, { status: 400 });
+    }
     const targetValidation = await validateMonitorTargetAddress({ type: rawData.type, target: rawData.target });
     if (!targetValidation.success) {
       return NextResponse.json(targetValidation, { status: 400 });
@@ -449,8 +451,6 @@ export async function POST(req: NextRequest) {
         { status: 400 },
       );
     }
-
-    logger.debug({ finalConfig }, "[MONITOR_CREATE] Final config");
 
     // Use current project context
     const targetProjectId = project.id;
@@ -637,6 +637,7 @@ export async function POST(req: NextRequest) {
         alertsEnabled: alertConfig?.enabled || false,
         notificationProvidersCount:
           alertConfig?.notificationProviders?.length || 0,
+        ...(finalConfig.aiEndpoint ? { preset: "ai_endpoint" } : {}),
       },
       success: true,
     });
@@ -781,6 +782,10 @@ export async function PUT(req: NextRequest) {
     });
     if (!configurationValidation.success) {
       return NextResponse.json(configurationValidation, { status: 400 });
+    }
+    const secretRefs = await validateMonitorSecretRefs(project.id, updateData.config);
+    if (!secretRefs.success) {
+      return NextResponse.json(secretRefs, { status: 400 });
     }
     // Only a changed target or type is checked, so a monitor already pointing at an internal host stays editable.
     const effectiveU3 = { type: updateData.type ?? monitorData[0].type, target: updateData.target ?? monitorData[0].target };
@@ -1001,6 +1006,7 @@ export async function PUT(req: NextRequest) {
       resource: "monitor",
       resourceId: id,
       metadata: {
+        ...(monitorUpdateData.config?.aiEndpoint ? { preset: "ai_endpoint" } : {}),
         monitorName: monitorUpdateData.name,
         monitorType: monitorUpdateData.type,
         target: monitorUpdateData.target,

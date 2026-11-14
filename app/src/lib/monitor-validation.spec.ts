@@ -126,3 +126,67 @@ describe("target length and control characters", () => {
     expect(check(`https://example.com/${"a".repeat(2048 - 20)}`)).toEqual({ success: true });
   });
 });
+
+describe("AI endpoint preset validation", () => {
+  const ok = { model: "gpt-4o-mini" };
+  const run = (config: Record<string, unknown>, type = "http_request") =>
+    validateMonitorConfiguration({ type, target: "https://api.openai.com/v1/chat/completions", config, incomingConfig: config });
+
+  it("accepts a minimal and a full preset", () => {
+    expect(run({ aiEndpoint: ok })).toEqual({ success: true });
+    expect(
+      run({
+        timeoutSeconds: 60,
+        aiEndpoint: { ...ok, secretKey: "OPENAI_KEY", keyHeader: "x-api-key", prompt: "hi", maxTokens: 512, expectText: "ok", firstTokenTimeoutMs: 500 },
+      }),
+    ).toEqual({ success: true });
+  });
+
+  it("rejects the preset on website monitors", () => {
+    expect(run({ aiEndpoint: ok }, "website")).toMatchObject({ success: false, details: expect.stringContaining("http_request") });
+  });
+
+  it.each([
+    [{}],
+    [{ model: "" }],
+    [{ model: "x".repeat(201) }],
+    [{ ...ok, prompt: "" }],
+    [{ ...ok, prompt: "x".repeat(2001) }],
+    [{ ...ok, maxTokens: 0 }],
+    [{ ...ok, maxTokens: 513 }],
+    [{ ...ok, firstTokenTimeoutMs: 499 }],
+    [{ ...ok, firstTokenTimeoutMs: 60001 }],
+    [{ ...ok, keyHeader: "bad header" }],
+    [{ ...ok, keyHeader: "Cookie" }],
+    [{ ...ok, secretKey: "" }],
+    [{ ...ok, extra: 1 }],
+  ])("rejects invalid aiEndpoint %j", (aiEndpoint) => {
+    expect(run({ aiEndpoint })).toMatchObject({ success: false, error: "Invalid monitor configuration" });
+  });
+
+  it.each([
+    [{ method: "POST" }],
+    [{ headers: { a: "b" } }],
+    [{ body: "x" }],
+    [{ keywordInBody: "x" }],
+    [{ expectedStatusCodes: "200" }],
+    [{ auth: { type: "bearer", token: "t" } }],
+  ])("rejects request field %j beside the preset", (extra) => {
+    expect(run({ aiEndpoint: ok, ...extra })).toMatchObject({ success: false, details: expect.stringContaining("cannot be set together") });
+  });
+
+  it("allows auth type none and rejects a total time limit outside 5-120", () => {
+    expect(run({ aiEndpoint: ok, auth: { type: "none" } })).toEqual({ success: true });
+    expect(run({ aiEndpoint: ok, timeoutSeconds: 4 })).toMatchObject({ success: false });
+    expect(run({ aiEndpoint: ok, timeoutSeconds: 121 })).toMatchObject({ success: false });
+  });
+
+  it("validates auth.secretKey shape and exclusivity", () => {
+    expect(run({ auth: { type: "bearer", secretKey: "API_TOKEN" } })).toEqual({ success: true });
+    expect(run({ auth: { type: "basic", username: "u", secretKey: "PW" } })).toEqual({ success: true });
+    expect(run({ auth: { type: "bearer", secretKey: "API_TOKEN", token: "inline" } })).toMatchObject({ success: false });
+    expect(run({ auth: { type: "basic", secretKey: "PW", password: "inline" } })).toMatchObject({ success: false });
+    expect(run({ auth: { type: "none", secretKey: "PW" } })).toMatchObject({ success: false });
+    expect(run({ auth: { type: "bearer", secretKey: "" } })).toMatchObject({ success: false });
+  });
+});

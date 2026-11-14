@@ -245,6 +245,22 @@ export default function EditMonitorPage({
     httpConfig_authUsername: monitor.config?.auth?.username || "",
     httpConfig_authPassword: monitor.config?.auth?.password || "",
     httpConfig_authToken: monitor.config?.auth?.token || "",
+    // A stored inline credential stays inline (with a hint to move it); otherwise the secret picker is the default
+    httpConfig_authSource:
+      monitor.config?.auth?.token || monitor.config?.auth?.password ? "inline" : "secret",
+    httpConfig_authSecretKey: monitor.config?.auth?.secretKey || "",
+
+    // AI endpoint preset: edit reopens in the preset when the monitor has one
+    preset: formType === "http_request" && monitor.config?.aiEndpoint ? "ai_endpoint" : "none",
+    aiConfig_secretKey: monitor.config?.aiEndpoint?.secretKey || "",
+    aiConfig_noKey: Boolean(monitor.config?.aiEndpoint) && !monitor.config?.aiEndpoint?.secretKey,
+    aiConfig_keyHeader: monitor.config?.aiEndpoint?.keyHeader || "",
+    aiConfig_model: monitor.config?.aiEndpoint?.model || "",
+    aiConfig_prompt: monitor.config?.aiEndpoint?.prompt || "",
+    aiConfig_maxTokens: monitor.config?.aiEndpoint?.maxTokens?.toString() || "",
+    aiConfig_expectText: monitor.config?.aiEndpoint?.expectText || "",
+    aiConfig_firstTokenTimeoutMs: monitor.config?.aiEndpoint?.firstTokenTimeoutMs?.toString() || "",
+    aiConfig_timeoutSeconds: monitor.config?.aiEndpoint ? String(monitor.config?.timeoutSeconds ?? 60) : "",
 
     // Port Check specific
     portConfig_port:

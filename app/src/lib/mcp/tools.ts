@@ -6,6 +6,7 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import {
   jobs,
   jobTests,
+  monitorResults,
   monitors,
   projectVariables,
   projects,
@@ -394,7 +395,36 @@ export function registerMcpTools(server: McpServer, ctx: McpCallContext): void {
       protocol: c?.protocol === "tcp" || c?.protocol === "udp" ? c.protocol : null,
       timeoutSeconds: typeof c?.timeoutSeconds === "number" ? c.timeoutSeconds : null,
       enableSslCheck: typeof c?.enableSslCheck === "boolean" ? c.enableSslCheck : null,
+      // Model and limits only: never the prompt, the secret name or any key.
+      aiEndpoint: c?.aiEndpoint
+        ? {
+            model: safeText(typeof c.aiEndpoint.model === "string" ? c.aiEndpoint.model : null, 200),
+            firstTokenTimeoutMs: typeof c.aiEndpoint.firstTokenTimeoutMs === "number" ? c.aiEndpoint.firstTokenTimeoutMs : 15000,
+            expectTextSet: typeof c.aiEndpoint.expectText === "string" && c.aiEndpoint.expectText !== "",
+          }
+        : null,
     };
+    let latestAi: Record<string, unknown> | null = null;
+    if (c?.aiEndpoint) {
+      const [latest] = await db
+        .select({ ai: sql<Record<string, unknown> | null>`${monitorResults.details}->'ai'` })
+        .from(monitorResults)
+        .where(eq(monitorResults.monitorId, m.id))
+        .orderBy(desc(monitorResults.checkedAt))
+        .limit(1);
+      const ai = latest?.ai;
+      const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : null);
+      latestAi = ai
+        ? {
+            firstTokenMs: num(ai.firstTokenMs),
+            totalMs: num(ai.totalMs),
+            servedModel: safeText(typeof ai.servedModel === "string" ? ai.servedModel : null, 200),
+            promptTokens: num(ai.promptTokens),
+            completionTokens: num(ai.completionTokens),
+            totalTokens: num(ai.totalTokens),
+          }
+        : null;
+    }
     const loc = c?.locationConfig;
     const locations = loc?.enabled === true && Array.isArray(loc.locations)
       ? loc.locations.filter((r): r is string => typeof r === "string").slice(0, 50).map((r) => safeText(r, 50))
@@ -414,6 +444,7 @@ export function registerMcpTools(server: McpServer, ctx: McpCallContext): void {
         locationStrategy: locations.length ? (loc?.strategy ?? "majority") : null,
         locationThreshold: locations.length && typeof loc?.threshold === "number" ? loc.threshold : null,
         settings,
+        ...(latestAi ? { latestAi } : {}),
         alerts: {
           enabled: m.alertConfig?.enabled === true,
           alertOnFailure: m.alertConfig?.alertOnFailure === true,

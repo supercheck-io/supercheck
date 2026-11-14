@@ -403,11 +403,15 @@ jobCommand
   .option('--playwright-config <path>', 'Use an existing Playwright config')
   .option('--local', 'Run locally')
   .option('--cloud', 'Run on cloud')
-  .action(async (options: { id: string; local?: boolean; cloud?: boolean; offline?: boolean; playwrightConfig?: string }) => {
+  .option('--wait', 'Wait for the cloud run to finish (exit 1 if it fails, 5 on timeout)')
+  .option('--timeout <seconds>', 'Maximum wait time in seconds (with --wait)', '300')
+  .action(async (options: { id: string; local?: boolean; cloud?: boolean; offline?: boolean; playwrightConfig?: string; wait?: boolean; timeout: string }) => {
     if (!options.id.trim()) throw new CLIError('Job ID must not be empty.', ExitCode.ConfigError)
     if (options.local && options.cloud) {
       throw new CLIError('--local and --cloud are mutually exclusive.', ExitCode.ConfigError)
     }
+    if (options.wait && options.local) throw new CLIError('--wait applies to cloud runs only; a local run already waits.', ExitCode.ConfigError)
+    const timeoutMs = parseIntStrict(options.timeout, '--timeout', { min: 1 }) * 1000
 
     if (options.offline && !options.local) throw new CLIError('--offline requires --local.', ExitCode.ConfigError)
     const useLocal = options.local === true
@@ -476,7 +480,12 @@ jobCommand
     )
 
     logger.success(`Job started. Run ID: ${data.runId}`)
-    outputDetail(data as Record<string, unknown>)
+    if (!options.wait) {
+      outputDetail(data as Record<string, unknown>)
+      return
+    }
+    try { outputDetail({ runId: data.runId, ...await waitForRun(client, data.runId, timeoutMs) }) }
+    catch (error) { throw new CLIError(error instanceof Error ? error.message : 'Waiting failed', error instanceof CLIError ? error.exitCode : ExitCode.ApiError, { runId: data.runId }) }
   })
 
 jobCommand

@@ -133,3 +133,19 @@ describe("invalidateDeletedMonitorCaches", () => {
     expect(calls.filter((key) => key.includes("m2"))).toHaveLength(3);
   });
 });
+
+describe("mergeEditConfig with the AI endpoint preset", () => {
+  const ai = { model: "gpt-4o-mini", secretKey: "OPENAI_KEY" };
+
+  it("turning a plain HTTP monitor into the preset drops the request settings and takes the new time limit", () => {
+    const stored = { method: "POST", headers: { a: "b" }, body: "x", auth: { type: "bearer", token: "t" }, expectedStatusCodes: "200", keywordInBody: "ok", timeoutSeconds: 12, regions: ["eu"] };
+    const merged = mergeEditConfig("http_request", stored, { aiEndpoint: ai, timeoutSeconds: 60 });
+    expect(merged).toEqual({ aiEndpoint: ai, timeoutSeconds: 60, regions: ["eu"] });
+  });
+
+  it("turning the preset back off removes aiEndpoint and keeps worker state for the server to preserve", () => {
+    const merged = mergeEditConfig("http_request", { aiEndpoint: ai, aiEndpointState: { lastServedModel: "m" }, timeoutSeconds: 60 }, { method: "GET", expectedStatusCodes: "200-299", timeoutSeconds: 30 });
+    expect(merged).not.toHaveProperty("aiEndpoint");
+    expect(merged.timeoutSeconds).toBe(60);
+  });
+});
