@@ -1,4 +1,4 @@
-import { getClientIP } from "@/lib/session-security";
+import { getClientIP, UNKNOWN_CLIENT_IP } from "@/lib/session-security";
 import { createLogger } from "@/lib/logger/index";
 import { hashHeartbeatToken, isHeartbeatTokenFormat } from "./token";
 import { checkHeartbeatRateLimit } from "./rate-limit";
@@ -27,7 +27,8 @@ export async function handleHeartbeatPing(request: Request, token: string, kind:
   if (!isHeartbeatTokenFormat(token)) return respond(request, 200, "OK");
 
   const tokenHash = hashHeartbeatToken(token);
-  const limit = await checkHeartbeatRateLimit(tokenHash, getClientIP(request.headers));
+  const ip = getClientIP(request.headers);
+  const limit = await checkHeartbeatRateLimit(tokenHash, ip === UNKNOWN_CLIENT_IP ? null : ip);
   if (!limit.allowed) {
     return respond(request, 429, "Too Many Requests", { "Retry-After": String(limit.retryAfterSeconds) });
   }

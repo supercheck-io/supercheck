@@ -364,7 +364,7 @@ export async function cleanupRateLimitEntries(): Promise<void> {
 }
 
 const DEFAULT_TRUSTED_PROXY_HOPS = 0;
-const UNKNOWN_CLIENT_IP = "unknown";
+export const UNKNOWN_CLIENT_IP = "unknown";
 
 /**
  * Number of right-hand X-Forwarded-For entries appended by our own edge.

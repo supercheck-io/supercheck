@@ -170,14 +170,20 @@ export const monitorResults = pgTable(
 
 
 // Zod schemas for monitors
+// Heartbeat token and runtime columns are server-owned: no client write schema may accept them.
+const SERVER_OWNED_MONITOR_COLUMNS = {
+  heartbeatTokenHash: true,
+  heartbeatTokenEncrypted: true,
+  heartbeatState: true,
+} as const;
 export const monitorsInsertSchema = createInsertSchema(monitors, {
   type: z.enum(MONITOR_TYPE_VALUES),
   status: z.enum(MONITOR_STATUS_VALUES).optional(),
-});
+}).omit(SERVER_OWNED_MONITOR_COLUMNS);
 export const monitorsUpdateSchema = createUpdateSchema(monitors, {
   type: z.enum(MONITOR_TYPE_VALUES).optional(),
   status: z.enum(MONITOR_STATUS_VALUES).optional(),
-});
+}).omit(SERVER_OWNED_MONITOR_COLUMNS);
 export const monitorsSelectSchema = createSelectSchema(monitors);
 
 // Zod schemas for monitor results

@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import { db } from "@/utils/db";
+import { notInPendingOrganization } from "@/lib/deletion/visibility";
 
 export type HeartbeatPingKind = "ping" | "start" | "fail";
 
@@ -28,14 +29,12 @@ export async function recordHeartbeatPing(
     UPDATE monitors AS m
     SET heartbeat_state = coalesce(m.heartbeat_state, '{}'::jsonb) || ${patch}
       ${kind === "start" ? sql`` : sql`, last_check_at = now()`}
-    FROM organization AS o
     WHERE m.heartbeat_token_hash = ${tokenHash}
       AND m.type = 'heartbeat'
       AND m.enabled = true
       AND m.status <> 'paused'
       AND m.deleting_at IS NULL
-      AND o.id = m.organization_id
-      AND o.deletion_requested_at IS NULL
+      AND ${notInPendingOrganization(sql`m.organization_id`)}
     RETURNING m.id
   `);
   return rows.length > 0;

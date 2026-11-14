@@ -10,10 +10,14 @@ export type HeartbeatRateLimitResult = { allowed: true } | { allowed: false; ret
  * Sliding one-minute windows per token hash and per client IP hash. Fails OPEN when Redis is
  * unavailable: dropping a real ping would raise a false "missed run" alert (spec 4.3).
  */
-export async function checkHeartbeatRateLimit(tokenHash: string, clientIp: string): Promise<HeartbeatRateLimitResult> {
+export async function checkHeartbeatRateLimit(tokenHash: string, clientIp: string | null): Promise<HeartbeatRateLimitResult> {
   try {
     const redis = await getRedisConnection();
-    const ipHash = createHash("sha256").update(clientIp).digest("hex");
+    // Unknown client IP (no trusted proxy header): skip the IP window, or every such caller across
+    // all customers would share one bucket and real pings would be dropped. The token limit still applies.
+    const ipKey = clientIp
+      ? `supercheck:heartbeat:rl:ip:${createHash("sha256").update(clientIp).digest("hex")}`
+      : `supercheck:heartbeat:rl:ip:none:${tokenHash}`;
     const now = Date.now();
     const result = await redis.eval(
       `
@@ -33,7 +37,7 @@ export async function checkHeartbeatRateLimit(tokenHash: string, clientIp: strin
     `,
       2,
       `supercheck:heartbeat:rl:token:${tokenHash}`,
-      `supercheck:heartbeat:rl:ip:${ipHash}`,
+      ipKey,
       now,
       randomUUID(),
       HEARTBEAT_TOKEN_LIMIT_PER_MINUTE,

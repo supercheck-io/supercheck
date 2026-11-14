@@ -174,6 +174,8 @@ export type MonitorConfig = {
  * worker sweep writes the bookkeeping keys, each as a jsonb expression on the current row value.
  */
 export type HeartbeatState = {
+  /** Set on create and on resume: the deadline counts from max(lastPingAt, anchorAt). */
+  anchorAt?: string;
   lastPingAt?: string;
   lastPingKind?: "ping" | "fail";
   lastStartAt?: string;

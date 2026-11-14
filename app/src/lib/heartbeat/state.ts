@@ -32,12 +32,17 @@ function toMs(value: Date | string | null | undefined): number | null {
   return Number.isFinite(ms) ? ms : null;
 }
 
-/**
- * The time a ping is next expected, or null before the first ping.
- * `last` = last ping (spec 4.1); creation/resume are covered by the worker deadline, the UI only needs pings.
- */
+/** `last` (spec 4.1): the newer of the last success/fail ping and `anchorAt` (create or resume). */
+export function heartbeatLastAt(monitor: HeartbeatMonitorLike): number | null {
+  const ping = toMs(monitor.heartbeatState?.lastPingAt);
+  const anchor = toMs(monitor.heartbeatState?.anchorAt) ?? toMs(monitor.createdAt);
+  if (ping === null) return anchor;
+  return anchor === null ? ping : Math.max(ping, anchor);
+}
+
+/** When the next ping is expected (`last + interval`), or null when nothing anchors it yet. */
 export function heartbeatNextExpectedAt(monitor: HeartbeatMonitorLike): Date | null {
-  const last = toMs(monitor.heartbeatState?.lastPingAt);
+  const last = heartbeatLastAt(monitor);
   if (last === null) return null;
   return new Date(last + monitor.frequencyMinutes * 60_000);
 }
