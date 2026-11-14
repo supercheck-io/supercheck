@@ -182,7 +182,7 @@ const formSchema = z
     aiConfig_prompt: z.string().optional(),
     aiConfig_maxTokens: z.string().optional(),
     aiConfig_expectText: z.string().optional(),
-    aiConfig_firstTokenTimeoutMs: z.string().optional(),
+    aiConfig_firstTokenTimeoutSeconds: z.string().optional(),
     aiConfig_timeoutSeconds: z.string().optional(),
     // Port Check specific
     portConfig_port: z.coerce
@@ -1438,7 +1438,7 @@ export function MonitorForm({
                             <SelectItem value="ai_endpoint">AI endpoint (OpenAI-compatible)</SelectItem>
                           </SelectContent>
                         </Select>
-                        <FormDescription>AI endpoint checks an OpenAI-compatible chat API</FormDescription>
+                        {field.value === "ai_endpoint" && <FormDescription>Checks an OpenAI-compatible chat API</FormDescription>}
                         <FormMessage />
                       </FormItem>
                     )}

@@ -259,7 +259,8 @@ export default function EditMonitorPage({
     aiConfig_prompt: monitor.config?.aiEndpoint?.prompt || "",
     aiConfig_maxTokens: monitor.config?.aiEndpoint?.maxTokens?.toString() || "",
     aiConfig_expectText: monitor.config?.aiEndpoint?.expectText || "",
-    aiConfig_firstTokenTimeoutMs: monitor.config?.aiEndpoint?.firstTokenTimeoutMs?.toString() || "",
+    aiConfig_firstTokenTimeoutSeconds:
+      typeof monitor.config?.aiEndpoint?.firstTokenTimeoutMs === "number" ? String(monitor.config.aiEndpoint.firstTokenTimeoutMs / 1000) : "",
     aiConfig_timeoutSeconds: monitor.config?.aiEndpoint ? String(monitor.config?.timeoutSeconds ?? 60) : "",
 
     // Port Check specific

@@ -25,7 +25,7 @@ describe("buildAiEndpointConfig", () => {
   });
   it("sends no key fields when No key is ticked, and carries numeric limits", () => {
     expect(
-      buildAiEndpointConfig({ ...base, aiConfig_model: "m", aiConfig_noKey: true, aiConfig_secretKey: "STALE", aiConfig_keyHeader: "x-api-key", aiConfig_maxTokens: "32", aiConfig_firstTokenTimeoutMs: "8000", aiConfig_expectText: "ok", aiConfig_prompt: "Say hi", aiConfig_timeoutSeconds: "30" }),
+      buildAiEndpointConfig({ ...base, aiConfig_model: "m", aiConfig_noKey: true, aiConfig_secretKey: "STALE", aiConfig_keyHeader: "x-api-key", aiConfig_maxTokens: "32", aiConfig_firstTokenTimeoutSeconds: "8", aiConfig_expectText: "ok", aiConfig_prompt: "Say hi", aiConfig_timeoutSeconds: "30" }),
     ).toEqual({ aiEndpoint: { model: "m", prompt: "Say hi", maxTokens: 32, expectText: "ok", firstTokenTimeoutMs: 8000 }, timeoutSeconds: 30 });
   });
 });
@@ -80,7 +80,7 @@ describe("AiEndpointFields", () => {
 
   it("renders every preset field with a label and the monthly call count", () => {
     render(<Harness defaults={{}} locations={3} />);
-    for (const label of ["Key header", "Model", "Prompt", "Max tokens", "Reply must contain", "First token limit (ms)", "Total time limit (seconds)"]) {
+    for (const label of ["Key header", "Model", "Prompt", "Max tokens", "Reply must contain", "First token limit (seconds)", "Total time limit (seconds)"]) {
       expect(screen.getByLabelText(label)).toBeInTheDocument();
     }
     expect(screen.getByRole("combobox", { name: "API key secret" })).toBeInTheDocument();
@@ -116,8 +116,10 @@ describe("addAiEndpointIssues", () => {
   });
 
   it("keeps the first token limit within the total time limit (default 60 s)", () => {
-    expect(issues({ aiConfig_firstTokenTimeoutMs: "60000" })).toEqual([]);
-    expect(issues({ aiConfig_firstTokenTimeoutMs: "10001", aiConfig_timeoutSeconds: "10" })).toEqual(["aiConfig_firstTokenTimeoutMs"]);
-    expect(issues({ aiConfig_firstTokenTimeoutMs: "10000", aiConfig_timeoutSeconds: "10" })).toEqual([]);
+    expect(issues({ aiConfig_firstTokenTimeoutSeconds: "60" })).toEqual([]);
+    expect(issues({ aiConfig_firstTokenTimeoutSeconds: "10.5", aiConfig_timeoutSeconds: "10" })).toEqual(["aiConfig_firstTokenTimeoutSeconds"]);
+    expect(issues({ aiConfig_firstTokenTimeoutSeconds: "10", aiConfig_timeoutSeconds: "10" })).toEqual([]);
+    expect(issues({ aiConfig_firstTokenTimeoutSeconds: "0.5" })).toEqual([]);
+    expect(issues({ aiConfig_firstTokenTimeoutSeconds: "0.4" })).toEqual(["aiConfig_firstTokenTimeoutSeconds"]);
   });
 });

@@ -302,7 +302,7 @@ export interface MonitorFormData {
   aiConfig_prompt?: string;
   aiConfig_maxTokens?: string;
   aiConfig_expectText?: string;
-  aiConfig_firstTokenTimeoutMs?: string;
+  aiConfig_firstTokenTimeoutSeconds?: string;
   aiConfig_timeoutSeconds?: string;
   portConfig_port?: number | string;
   websiteConfig_sslDaysUntilExpirationWarning?: number | string;

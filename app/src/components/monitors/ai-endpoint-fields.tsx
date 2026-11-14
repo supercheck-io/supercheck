@@ -22,7 +22,7 @@ type AiFormFields = {
   aiConfig_model?: string;
   aiConfig_prompt?: string;
   aiConfig_maxTokens?: string;
-  aiConfig_firstTokenTimeoutMs?: string;
+  aiConfig_firstTokenTimeoutSeconds?: string;
   aiConfig_timeoutSeconds?: string;
 };
 
@@ -39,13 +39,15 @@ export function addAiEndpointIssues(data: AiFormFields, ctx: z.RefinementCtx) {
   else if (header && FORBIDDEN_KEY_HEADERS.has(header.toLowerCase())) issue("aiConfig_keyHeader", "This header name is not allowed");
   if ((data.aiConfig_prompt ?? "").length > 2000) issue("aiConfig_prompt", "Prompt must be 2000 characters or less");
   if (!intInRange(data.aiConfig_maxTokens, 1, 512)) issue("aiConfig_maxTokens", "Enter a whole number from 1 to 512");
-  if (!intInRange(data.aiConfig_firstTokenTimeoutMs, 500, 60000)) issue("aiConfig_firstTokenTimeoutMs", "Enter a whole number from 500 to 60000");
+  const firstTokenText = data.aiConfig_firstTokenTimeoutSeconds?.trim();
+  if (firstTokenText && !(/^\d+(\.\d+)?$/.test(firstTokenText) && Number(firstTokenText) >= 0.5 && Number(firstTokenText) <= 60)) {
+    issue("aiConfig_firstTokenTimeoutSeconds", "Enter a number of seconds from 0.5 to 60");
+  }
   if (!intInRange(data.aiConfig_timeoutSeconds, 5, 120)) issue("aiConfig_timeoutSeconds", "Enter a whole number from 5 to 120");
   const total = Number(data.aiConfig_timeoutSeconds || 60);
   if (total > parseInt(data.interval, 10)) issue("aiConfig_timeoutSeconds", "The total time limit cannot exceed the check interval");
-  const firstToken = data.aiConfig_firstTokenTimeoutMs?.trim();
-  if (firstToken && /^\d+$/.test(firstToken) && Number(firstToken) > total * 1000) {
-    issue("aiConfig_firstTokenTimeoutMs", "The first token limit cannot exceed the total time limit");
+  if (firstTokenText && Number(firstTokenText) > total) {
+    issue("aiConfig_firstTokenTimeoutSeconds", "The first token limit cannot exceed the total time limit");
   }
 }
 
@@ -70,7 +72,9 @@ export function buildAiEndpointConfig(data: MonitorFormData): Record<string, unk
   aiEndpoint.prompt = data.aiConfig_prompt && data.aiConfig_prompt.trim() !== "" ? data.aiConfig_prompt : undefined;
   aiEndpoint.maxTokens = num(data.aiConfig_maxTokens);
   aiEndpoint.expectText = text(data.aiConfig_expectText);
-  aiEndpoint.firstTokenTimeoutMs = num(data.aiConfig_firstTokenTimeoutMs);
+  // The form takes seconds; the API stores milliseconds.
+  const firstTokenSeconds = num(data.aiConfig_firstTokenTimeoutSeconds);
+  aiEndpoint.firstTokenTimeoutMs = firstTokenSeconds === undefined ? undefined : Math.round(firstTokenSeconds * 1000);
   for (const key of Object.keys(aiEndpoint)) if (aiEndpoint[key] === undefined) delete aiEndpoint[key];
   return { aiEndpoint, timeoutSeconds: num(data.aiConfig_timeoutSeconds) ?? 60 };
 }
@@ -200,12 +204,12 @@ export function AiEndpointFields({ form, projectId, locationCount }: AiEndpointF
         />
         <FormField
           control={form.control}
-          name="aiConfig_firstTokenTimeoutMs"
+          name="aiConfig_firstTokenTimeoutSeconds"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>First token limit (ms)</FormLabel>
+              <FormLabel>First token limit (seconds)</FormLabel>
               <FormControl>
-                <Input inputMode="numeric" placeholder="15000" data-testid="ai-first-token-limit" {...field} value={field.value ?? ""} />
+                <Input inputMode="decimal" placeholder="15" data-testid="ai-first-token-limit" {...field} value={field.value ?? ""} />
               </FormControl>
               <FormMessage />
             </FormItem>
