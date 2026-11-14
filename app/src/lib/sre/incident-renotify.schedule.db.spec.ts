@@ -24,7 +24,7 @@ jest.mock("./incident-maintenance", () => {
 const isAssignableUser = jest.fn();
 jest.mock("./incident-lifecycle", () => ({ isAssignableUser: (...a: unknown[]) => isAssignableUser(...a) }));
 
-import { renotifyUnacknowledgedIncidents } from "./incident-renotify";
+import { renotifyUnacknowledgedIncidents, resetHeldIncidentsForTest } from "./incident-renotify";
 
 const APP_ROOT = path.resolve(__dirname, "../../..");
 const databaseName = `renotify_sched_${randomUUID().replaceAll("-", "")}`;
@@ -81,6 +81,7 @@ beforeEach(async () => {
   await client`DELETE FROM notification_providers`;
   await client`UPDATE organization SET deletion_requested_at = NULL`;
   mockHeldIds.clear();
+  resetHeldIncidentsForTest();
   notifyIncidentEvent.mockReset().mockResolvedValue(true);
   isAssignableUser.mockReset().mockResolvedValue(true);
 });
@@ -151,7 +152,7 @@ it("rollout: a first reminder sent by an older replica (no count) still gets its
 
 it("held claims do not use the tick's budget: 60 held incidents cannot starve another org's reminder or an escalation", async () => {
   const otherChannel = randomUUID();
-  await client`INSERT INTO notification_providers (id, organization_id, project_id, name, type, config, is_enabled) VALUES (${otherChannel}, ${otherOrg}, ${otherProject}, 'ops', 'slack', ${client.json({ webhookUrl: "https://hooks.slack.com/x" })}, true)`;
+  await client`INSERT INTO notification_providers (id, organization_id, project_id, name, type, config, is_enabled) VALUES (${otherChannel}, ${otherOrg}, ${otherProject}, 'ops', 'slack', ${JSON.stringify({ webhookUrl: "https://hooks.slack.com/x" })}::jsonb, true)`;
   await policy({ first: 15 });
   await policy({ first: 15, escalate: 15, channel: otherChannel }, otherProject, otherOrg);
   for (let i = 0; i < 60; i++) mockHeldIds.add(await incident({ openedAt: at(-60) }));
@@ -230,12 +231,13 @@ it("A7: a scheduled maintenance holds the send without using a reminder", async 
   const [monitor, component, statusPage, maintenanceId, alertEvent] = [randomUUID(), randomUUID(), randomUUID(), randomUUID(), randomUUID()];
   await client`INSERT INTO sre_alert_events (id, organization_id, project_id, fingerprint_hash, source_type, source_id, title, fired_at)
     VALUES (${alertEvent}, ${org}, ${project}, ${randomUUID().replaceAll("-", "")}, 'monitor', ${monitor}, 'down', ${T0.toISOString()})`;
-  await client`INSERT INTO sre_incident_alerts (incident_id, alert_event_id, role, alert_title, alert_severity, alert_fired_at)
-    VALUES (${id}, ${alertEvent}, 'trigger', 'down', 'sev2', ${T0.toISOString()})`;
+  // Ids come from the app (uuidv7 in drizzle), so these tables have no database default.
+  await client`INSERT INTO sre_incident_alerts (id, incident_id, alert_event_id, role, alert_title, alert_severity, alert_fired_at)
+    VALUES (${randomUUID()}, ${id}, ${alertEvent}, 'trigger', 'down', 'sev2', ${T0.toISOString()})`;
   await client`INSERT INTO status_page_component_monitors (component_id, monitor_id) VALUES (${component}, ${monitor})`;
   await client`INSERT INTO incidents (id, status_page_id, name, status, impact, scheduled_for, scheduled_until)
     VALUES (${maintenanceId}, ${statusPage}, 'm', 'scheduled', 'maintenance', ${at(0).toISOString()}, ${at(60).toISOString()})`;
-  await client`INSERT INTO incident_components (incident_id, component_id, old_status, new_status) VALUES (${maintenanceId}, ${component}, 'operational', 'under_maintenance')`;
+  await client`INSERT INTO incident_components (id, incident_id, component_id, old_status, new_status) VALUES (${randomUUID()}, ${maintenanceId}, ${component}, 'operational', 'under_maintenance')`;
 
   // Held: nothing sent, nothing counted, no reminder used.
   expect(await renotifyUnacknowledgedIncidents(at(20))).toBe(0);
@@ -250,7 +252,7 @@ it("A7: a scheduled maintenance holds the send without using a reminder", async 
 describe("A9: escalation", () => {
   it("escalates once to the channel after E minutes and stops on acknowledge", async () => {
     const channel = randomUUID();
-    await client`INSERT INTO notification_providers (id, organization_id, project_id, name, type, config, is_enabled) VALUES (${channel}, ${org}, ${project}, 'ops', 'slack', ${client.json({ webhookUrl: "https://hooks.slack.com/x" })}, true)`;
+    await client`INSERT INTO notification_providers (id, organization_id, project_id, name, type, config, is_enabled) VALUES (${channel}, ${org}, ${project}, 'ops', 'slack', ${JSON.stringify({ webhookUrl: "https://hooks.slack.com/x" })}::jsonb, true)`;
     await policy({ escalate: 30, channel });
     const [id, acked] = [await incident(), await incident()];
     await client`UPDATE sre_incidents SET acknowledged_at = ${at(5).toISOString()} WHERE id = ${acked}`;
@@ -286,8 +288,8 @@ describe("A9: escalation", () => {
   it("does not escalate to a deleted channel, a paging preset, or a channel of another project", async () => {
     const preset = randomUUID();
     const foreign = randomUUID();
-    await client`INSERT INTO notification_providers (id, organization_id, project_id, name, type, config, is_enabled) VALUES (${preset}, ${org}, ${project}, 'pd', 'webhook', ${client.json({ url: "https://events.pagerduty.com/v2/enqueue", preset: "pagerduty" })}, true)`;
-    await client`INSERT INTO notification_providers (id, organization_id, project_id, name, type, config, is_enabled) VALUES (${foreign}, ${otherOrg}, ${otherProject}, 'x', 'slack', ${client.json({ webhookUrl: "https://hooks.slack.com/x" })}, true)`;
+    await client`INSERT INTO notification_providers (id, organization_id, project_id, name, type, config, is_enabled) VALUES (${preset}, ${org}, ${project}, 'pd', 'webhook', ${JSON.stringify({ url: "https://events.pagerduty.com/v2/enqueue", preset: "pagerduty" })}::jsonb, true)`;
+    await client`INSERT INTO notification_providers (id, organization_id, project_id, name, type, config, is_enabled) VALUES (${foreign}, ${otherOrg}, ${otherProject}, 'x', 'slack', ${JSON.stringify({ webhookUrl: "https://hooks.slack.com/x" })}::jsonb, true)`;
     for (const target of [preset, foreign, null]) {
       await client`DELETE FROM sre_incident_timeline_events`;
       await client`DELETE FROM sre_incidents`;
@@ -302,7 +304,7 @@ describe("A9: escalation", () => {
 
   it("a transient send failure releases the escalation for a later tick", async () => {
     const channel = randomUUID();
-    await client`INSERT INTO notification_providers (id, organization_id, project_id, name, type, config, is_enabled) VALUES (${channel}, ${org}, ${project}, 'ops', 'slack', ${client.json({ webhookUrl: "https://hooks.slack.com/x" })}, true)`;
+    await client`INSERT INTO notification_providers (id, organization_id, project_id, name, type, config, is_enabled) VALUES (${channel}, ${org}, ${project}, 'ops', 'slack', ${JSON.stringify({ webhookUrl: "https://hooks.slack.com/x" })}::jsonb, true)`;
     await policy({ escalate: 30, channel });
     const id = await incident();
     notifyIncidentEvent.mockResolvedValueOnce(false);

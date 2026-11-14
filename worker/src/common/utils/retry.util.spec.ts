@@ -308,6 +308,19 @@ describe('retry.util', () => {
   });
 
   describe('fetchWithRetry', () => {
+    it('never logs response bodies or error text, which can echo credentials', async () => {
+      const logger = { warn: jest.fn(), debug: jest.fn(), error: jest.fn(), log: jest.fn() };
+      global.fetch = jest
+        .fn()
+        .mockResolvedValueOnce(makeResponse(503, 'echo Authorization: Bearer sk_live_SECRET'))
+        .mockResolvedValueOnce(makeResponse(401, 'echo sk_live_SECRET'))
+        .mockRejectedValueOnce(new Error('connect to https://user:sk_live_SECRET@x failed'));
+      await fetchWithRetry('https://example.com', {}, FAST_RETRY, logger as never);
+      await fetchWithRetry('https://example.com', {}, { ...FAST_RETRY, maxRetries: 0 }, logger as never);
+      const logged = JSON.stringify([...logger.warn.mock.calls, ...logger.debug.mock.calls]);
+      expect(logged).not.toContain('sk_live_SECRET');
+    });
+
     it('returns immediately on a successful response', async () => {
       const response = makeResponse(200);
       global.fetch = jest.fn().mockResolvedValue(response);

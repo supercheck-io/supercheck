@@ -1190,7 +1190,8 @@ export class NotificationService implements OnApplicationShutdown {
         const reason = terminal
           ? `Authentication rejected (HTTP ${status}). Check the integration key.`
           : status !== undefined
-            ? `Webhook returned ${status} after ${result.attempts} attempt(s). Response: ${clip(responseText ?? '', 1024)}`
+            ? // The response body is hashed into delivery metadata, never shown: receivers can echo template credentials.
+              `Webhook returned ${status} after ${result.attempts} attempt(s)`
             : (result.error ?? 'request failed');
         const errorMessage = this.safeSendError('Webhook', reason, secrets);
         this.logger.error(errorMessage);

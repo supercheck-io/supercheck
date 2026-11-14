@@ -9,7 +9,8 @@ import { drizzle } from "drizzle-orm/postgres-js";
 
 let mockDatabase: ReturnType<typeof drizzle>;
 jest.mock("@/utils/db", () => ({ get db() { return mockDatabase; } }));
-jest.mock("@/lib/queue", () => ({ getRedisConnection: jest.fn(), queueLogger: { error: jest.fn() } }));
+// No Redis: the per-org reminder cap fails open.
+jest.mock("@/lib/queue", () => ({ getRedisConnection: jest.fn(async () => { throw new Error("no redis"); }), queueLogger: { error: jest.fn(), warn: jest.fn() } }));
 const notifyIncidentEvent = jest.fn().mockResolvedValue(undefined);
 jest.mock("@/lib/sre/incident-notifier", () => ({ notifyIncidentEvent: (...a: unknown[]) => notifyIncidentEvent(...a) }));
 

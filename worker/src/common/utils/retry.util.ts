@@ -226,6 +226,7 @@ export async function fetchWithRetry(
 
       // Check if this status code is retryable
       if (!isRetryableStatusCode(response.status)) {
+        // Callers redact this before showing or storing it; the helper's own logs never include it.
         lastError = `HTTP ${response.status}: ${response.statusText}. ${lastResponseBody}`;
 
         // Non-retryable error - return immediately
@@ -263,7 +264,8 @@ export async function fetchWithRetry(
 
       // Check if error is retryable
       if (!isRetryableError(error)) {
-        logger?.warn(`Non-retryable error: ${errorMessage}, not retrying`);
+        // No error text in logs: a network error can carry a credential-bearing URL.
+        logger?.warn('Non-retryable network error, not retrying');
 
         return {
           success: false,
@@ -293,7 +295,7 @@ export async function fetchWithRetry(
       }
 
       logger?.debug(
-        `Retry attempt ${attempt + 1}/${retryConfig.maxRetries} in ${delay}ms. Error: ${lastError}`,
+        `Retry attempt ${attempt + 1}/${retryConfig.maxRetries} in ${delay}ms${lastStatusCode !== undefined ? ` after HTTP ${lastStatusCode}` : ' after a network error'}`,
       );
 
       await sleep(delay);

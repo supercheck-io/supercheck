@@ -32,6 +32,8 @@ const bodySchema = z.object({ action: z.enum(["trigger", "resolve"]).default("tr
 const MAX_BODY_BYTES = 1_024;
 const TIMEOUT_MS = 10_000;
 const EXCERPT_CHARS = 1_024;
+/** Larger vendor responses are cut off while reading, so a test can never buffer much memory. */
+const MAX_RESPONSE_BYTES = 16 * 1_024;
 const TEST_TITLE = "Test page from Supercheck";
 
 type TestResult = {
@@ -61,9 +63,9 @@ export async function POST(req: NextRequest, context: { params: Promise<{ id: st
 
     const read = await readCappedJson(req, MAX_BODY_BYTES);
     if (read.tooLarge) return NextResponse.json({ error: "Request body too large" }, { status: 413 });
-    // An empty body is a trigger; readCappedJson gives null for empty or invalid JSON.
-    const parsed = bodySchema.safeParse(read.data ?? {});
-    if (!parsed.success) return NextResponse.json({ error: "action must be trigger or resolve" }, { status: 400 });
+    // A JSON object is required ({} triggers): a malformed body must never send a real page.
+    const parsed = bodySchema.safeParse(read.data);
+    if (!parsed.success) return NextResponse.json({ error: "Body must be a JSON object; action must be trigger or resolve" }, { status: 400 });
     const { action } = parsed.data;
 
     const [provider] = await db
@@ -72,6 +74,10 @@ export async function POST(req: NextRequest, context: { params: Promise<{ id: st
       .where(and(eq(notificationProviders.id, id), eq(notificationProviders.organizationId, auth.organizationId), eq(notificationProviders.projectId, auth.project.id)))
       .limit(1);
     if (!provider) return NextResponse.json({ error: "Notification provider not found" }, { status: 404 });
+    // Only webhooks have a page to close; a resolve on any other channel would just send another message.
+    if (action === "resolve" && provider.type !== "webhook") {
+      return NextResponse.json({ error: "Only webhook channels can resolve a test page" }, { status: 400 });
+    }
 
     // Email has its own tighter limit inside its tester; every other outbound test is capped here.
     if (provider.type !== "email") {
@@ -172,17 +178,18 @@ async function sendTestPage(providerId: string, config: Record<string, unknown>,
       headers: { "Content-Type": "application/json", ...normalizeWebhookHeaders(config.headers) },
       body: request.body,
       signal: controller.signal,
-    });
-    const text = await response.text().catch(() => "");
+    }, MAX_RESPONSE_BYTES);
     const auth = response.status === 401 || response.status === 403;
-    // Internal targets would make the excerpt a way to read internal services: show status only there.
+    // Internal targets would make the excerpt a way to read internal services: show status only, and skip the body.
     const internalAllowed = allowInternalWebhookTargets();
+    const text = internalAllowed ? "" : await response.text().catch(() => "");
     return {
       ok: response.ok,
       action,
       dedupKey,
       responseStatus: response.status,
-      responseStatusText: response.statusText,
+      // Status text is receiver-controlled too: same redaction, short.
+      responseStatusText: safeText(redactChannelSecrets(response.statusText ?? "", config), 100) ?? "",
       // Redacted (generic patterns plus this channel's own header values and URL tokens) and clipped.
       ...(internalAllowed ? {} : { responseExcerpt: safeText(redactChannelSecrets(text, config), EXCERPT_CHARS) ?? "" }),
       elapsedMs: Date.now() - startedAt,
@@ -190,7 +197,14 @@ async function sendTestPage(providerId: string, config: Record<string, unknown>,
     };
   } catch (error) {
     const timedOut = error instanceof Error && error.name === "AbortError";
-    return { ok: false, action, dedupKey, elapsedMs: Date.now() - startedAt, error: timedOut ? "The request timed out after 10 seconds" : "The request could not be sent" };
+    const tooLarge = error instanceof Error && /exceeded \d+ bytes/.test(error.message);
+    return {
+      ok: false,
+      action,
+      dedupKey,
+      elapsedMs: Date.now() - startedAt,
+      error: timedOut ? "The request timed out after 10 seconds" : tooLarge ? "The receiver's response was too large to read" : "The request could not be sent",
+    };
   } finally {
     clearTimeout(timeout);
   }

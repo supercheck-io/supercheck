@@ -148,6 +148,14 @@ describe('incident policy', () => {
     expect(mockPut.mock.calls[0][1]).toMatchObject({ renotifyUnackedMinutes: null, renotifyRepeatMinutes: null, escalateAfterMinutes: null, escalateChannelId: null, escalateUserId: null })
   })
 
+  it('set --repeat errors when reminders are off instead of dropping it', async () => {
+    mockGet.mockResolvedValueOnce({ data: { policy: { ...policy, renotifyUnackedMinutes: null } } })
+    await expect(incidentCommand.parseAsync(['node', 'incident', 'policy', 'set', '--repeat', '60'])).rejects.toMatchObject({
+      exitCode: ExitCode.ConfigError, message: expect.stringContaining('Set --first-reminder as well'),
+    })
+    expect(mockPut).not.toHaveBeenCalled()
+  })
+
   it('set with a channel target clears the member target', async () => {
     mockGet.mockResolvedValueOnce({ data: { policy: { ...policy, escalateAfterMinutes: 30, escalateUserId: MEMBER } } })
     mockPut.mockResolvedValueOnce({ data: { policy } })

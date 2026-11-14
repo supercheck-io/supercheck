@@ -70,3 +70,33 @@ it("shows a failure when the request throws", async () => {
   render(<ChannelTestDialog channel={channel()} onOpenChange={jest.fn()} />);
   expect(await screen.findByText("The test could not be sent")).toBeInTheDocument();
 });
+
+it("keeps the page resolvable after a failed resolve, so it can be retried", async () => {
+  (global.fetch as jest.Mock)
+    .mockResolvedValueOnce(reply(200, { ok: true, action: "trigger", responseStatus: 202 }))
+    .mockResolvedValueOnce(reply(200, { ok: false, action: "resolve", responseStatus: 503 }))
+    .mockResolvedValueOnce(reply(200, { ok: true, action: "resolve", responseStatus: 202 }));
+  render(<ChannelTestDialog channel={channel()} onOpenChange={jest.fn()} />);
+  const resolve = await screen.findByRole("button", { name: "Resolve test page" });
+  await waitFor(() => expect(resolve).toBeEnabled());
+  fireEvent.click(resolve);
+  await waitFor(() => expect(screen.getByTestId("channel-test-status")).toHaveTextContent("Failed"));
+  expect(resolve).toBeEnabled();
+  fireEvent.click(resolve);
+  await waitFor(() => expect(screen.getByTestId("channel-test-status")).toHaveTextContent("Resolved"));
+  expect(resolve).toBeDisabled();
+});
+
+it("drops a result that arrives after the dialog moved to another channel", async () => {
+  let finishFirst: (value: unknown) => void = () => undefined;
+  (global.fetch as jest.Mock)
+    .mockReturnValueOnce(new Promise((resolve) => { finishFirst = resolve; }))
+    .mockResolvedValueOnce(reply(200, { ok: true, action: "trigger", responseStatus: 202, responseStatusText: "From B" }));
+  const { rerender } = render(<ChannelTestDialog channel={channel({ id: "ch-a" })} onOpenChange={jest.fn()} />);
+  rerender(<ChannelTestDialog channel={channel({ id: "ch-b" })} onOpenChange={jest.fn()} />);
+  expect(await screen.findByText("HTTP 202 From B")).toBeInTheDocument();
+  finishFirst(reply(200, { ok: false, action: "trigger", responseStatus: 500, responseStatusText: "From A" }));
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  expect(screen.queryByText(/From A/)).not.toBeInTheDocument();
+  expect(screen.getByText("HTTP 202 From B")).toBeInTheDocument();
+});

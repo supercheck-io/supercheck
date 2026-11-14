@@ -18,7 +18,7 @@ jest.mock("@/lib/notification-providers/crypto", () => ({
 }));
 jest.mock("@/sre/lib/incident-sweep", () => ({ sweepSreIncidents: jest.fn() }));
 
-import { ORG_SENDS_PER_HOUR, allowOrgIncidentSend, recordOrgIncidentSend, renotifyUnacknowledgedIncidents } from "./incident-renotify";
+import { ORG_SENDS_PER_HOUR, allowOrgIncidentSend, recordOrgIncidentSend, renotifyUnacknowledgedIncidents, resetHeldIncidentsForTest } from "./incident-renotify";
 
 const counts = new Map<string, number>();
 beforeEach(() => {
@@ -81,6 +81,21 @@ describe("renotifyUnacknowledgedIncidents branching (SQL is covered by the .db s
     db.select = jest.fn(() => ({ from: () => ({ where: () => ({ limit: async () => channelRows }) }) }));
     notifyIncidentEvent.mockReset().mockResolvedValue(true);
     mockHeld.mockReset().mockResolvedValue(false);
+    resetHeldIncidentsForTest();
+  });
+
+  it("skips incidents found held for maintenance in later ticks for a few minutes, then rechecks them", async () => {
+    const { PgDialect } = jest.requireActual("drizzle-orm/pg-core");
+    const params = (call: number) => new PgDialect().sqlToQuery((db.execute as jest.Mock).mock.calls[call][0]).params as unknown[];
+    mockHeld.mockResolvedValueOnce(true);
+    executeQueue.push([reminder()], [], []);
+    await renotifyUnacknowledgedIncidents(now);
+    (db.execute as jest.Mock).mockClear();
+    await renotifyUnacknowledgedIncidents(new Date(now.getTime() + 60_000));
+    expect(params(0)).toContain("i1");
+    (db.execute as jest.Mock).mockClear();
+    await renotifyUnacknowledgedIncidents(new Date(now.getTime() + 6 * 60_000));
+    expect(params(0)).not.toContain("i1");
   });
 
   it("sends a claimed reminder with its number and per-reminder dedupe key", async () => {

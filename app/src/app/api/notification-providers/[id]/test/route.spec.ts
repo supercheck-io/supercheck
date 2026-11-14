@@ -38,7 +38,7 @@ import { PgDialect } from "drizzle-orm/pg-core";
 import { POST } from "./route";
 
 const send = (body?: unknown, id = PROVIDER) =>
-  POST(new NextRequest(`https://example.com/api/notification-providers/${id}/test`, { method: "POST", body: body === undefined ? "" : JSON.stringify(body) }), { params: Promise.resolve({ id }) });
+  POST(new NextRequest(`https://example.com/api/notification-providers/${id}/test`, { method: "POST", body: body === undefined ? "{}" : typeof body === "string" ? body : JSON.stringify(body) }), { params: Promise.resolve({ id }) });
 const pagerduty = { id: PROVIDER, type: "webhook", projectId: "proj-1", config: { url: "https://events.pagerduty.com/v2/enqueue", preset: "pagerduty", bodyTemplate: '{"event_action":"{{pagerDutyEventAction}}","dedup_key":"{{dedupKey}}","payload":{"severity":"{{normalizedSeverity}}"}}', headers: { "X-Key": "secret-integration-key" } } };
 const opsgenie = { id: PROVIDER, type: "webhook", projectId: "proj-1", config: { url: "https://api.eu.opsgenie.com/v2/alerts", preset: "opsgenie", bodyTemplate: '{"alias":"{{dedupKey}}"}', headers: { Authorization: "GenieKey k" } } };
 const response = (status: number, body = "") => ({ ok: status < 300, status, statusText: status === 202 ? "Accepted" : "Error", text: async () => body });
@@ -73,6 +73,21 @@ describe("POST /api/notification-providers/[id]/test (A20)", () => {
     const [url, init] = fetchChannel.mock.calls[0];
     expect(url).toBe(`https://api.eu.opsgenie.com/v2/alerts/${encodeURIComponent(`test:${PROVIDER}`)}/close?identifierType=alias`);
     expect(init.method).toBe("POST");
+  });
+
+  it("rejects resolve for a non-webhook channel instead of sending another message", async () => {
+    mockProviders = [{ id: PROVIDER, type: "slack", projectId: "proj-1", config: { webhookUrl: "https://hooks.slack.com/x" } }];
+    const res = await send({ action: "resolve" });
+    expect(res.status).toBe(400);
+    expect(testSlack).not.toHaveBeenCalled();
+  });
+
+  it("redacts the receiver's status text and reports an oversized response", async () => {
+    fetchChannel.mockResolvedValueOnce({ ok: false, status: 400, statusText: "bad secret-integration-key", text: async () => "" });
+    expect((await (await send()).json()).responseStatusText).not.toContain("secret-integration-key");
+    fetchChannel.mockRejectedValueOnce(new Error("Connector response exceeded 16384 bytes"));
+    expect(await (await send()).json()).toMatchObject({ ok: false, error: "The receiver's response was too large to read" });
+    expect(fetchChannel.mock.calls[0][2]).toBe(16 * 1024);
   });
 
   it("names the integration key on a 401", async () => {
@@ -137,7 +152,9 @@ describe("POST /api/notification-providers/[id]/test (A20)", () => {
   it("rejects an unknown action or an oversized body", async () => {
     expect((await send({ action: "acknowledge" })).status).toBe(400);
     expect((await send({ action: "trigger", pad: "x".repeat(2000) })).status).toBe(413);
-    expect((await send("not an object")).status).toBe(400);
+    expect((await send("not json")).status).toBe(400);
+    expect((await send("")).status).toBe(400);
+    expect(fetchChannel).not.toHaveBeenCalled();
   });
 });
 
@@ -153,7 +170,11 @@ describe("response excerpt safety", () => {
 
   it("returns no excerpt when internal webhook targets are allowed", async () => {
     mockInternal = true;
+    const text = jest.fn(async () => "internal secrets");
+    fetchChannel.mockResolvedValueOnce({ ok: true, status: 202, statusText: "Accepted", text });
     const body = await (await send()).json();
+    // The body is not even read.
+    expect(text).not.toHaveBeenCalled();
     expect(body).toMatchObject({ ok: true, responseStatus: 202 });
     expect(body).not.toHaveProperty("responseExcerpt");
     mockInternal = false;

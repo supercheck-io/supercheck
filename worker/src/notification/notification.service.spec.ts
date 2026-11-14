@@ -1469,10 +1469,15 @@ describe('NotificationService', () => {
     it.each([400, 404])(
       'does not retry HTTP %s and leaves it retryable on later checks',
       async (status) => {
-        mockFetch.mockResolvedValueOnce(respond(status, 'bad'));
+        mockFetch.mockResolvedValueOnce(
+          respond(status, 'bad routing_key R0UTINGKEY123456 echoed'),
+        );
         const result = await send(webhookProvider, failure);
         expect(mockFetch).toHaveBeenCalledTimes(1);
         expect(result.success).toBe(false);
+        // The receiver's body can echo template credentials that are not in the redaction list.
+        expect(result.error).toContain(`Webhook returned ${status}`);
+        expect(result.error).not.toContain('R0UTINGKEY123456');
         expect(result.deliveryMetadata?.delivery.terminal).toBeUndefined();
         expect(result.deliveryMetadata?.delivery.responseStatus).toBe(status);
       },

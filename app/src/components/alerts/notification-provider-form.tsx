@@ -688,8 +688,10 @@ export function NotificationProviderForm({
                       setLastWebhookTestDetails(null);
                       // Paging services are webhooks with a preset; storage does not change.
                       if (value.startsWith("paging:")) {
+                        const presetId = value.slice("paging:".length) as WebhookPresetId;
                         field.onChange("webhook");
-                        handleWebhookPresetChange(value.slice("paging:".length) as WebhookPresetId);
+                        // Coming back to the same service (for example via Email) keeps the edited template and headers.
+                        if (presetId !== selectedPresetId) handleWebhookPresetChange(presetId);
                         return;
                       }
                       field.onChange(value);

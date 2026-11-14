@@ -125,7 +125,12 @@ policyCommand.command('set')
     if (options.escalateChannel) Object.assign(next, { escalateChannelId: options.escalateChannel, escalateUserId: null })
     if (options.escalateMember) Object.assign(next, { escalateUserId: options.escalateMember, escalateChannelId: null })
     // Turning reminders off also clears the repeat, which the server rejects without a first reminder.
-    if (next.renotifyUnackedMinutes === null) next.renotifyRepeatMinutes = null
+    if (next.renotifyUnackedMinutes === null) {
+      if (options.repeat !== undefined && options.repeat.toLowerCase() !== 'off') {
+        throw new CLIError('Set --first-reminder as well: reminders are off, so a repeat would be dropped', ExitCode.ConfigError)
+      }
+      next.renotifyRepeatMinutes = null
+    }
     if (next.escalateAfterMinutes === null) {
       // A target without a delay would be dropped silently; say so instead.
       if (options.escalateChannel || options.escalateMember) {

@@ -25,6 +25,31 @@ const MAX_PER_TICK = 50;
 /** Hard bound on claims per tick, including ones given straight back (maintenance, org cap). */
 const MAX_CLAIMS_PER_TICK = 500;
 
+/** Incidents found held for maintenance are skipped by this process's claims for a few minutes, so a large held
+ * backlog cannot fill every tick's claim budget for the length of the window. Per process; a recheck after the TTL. */
+const HELD_TTL_MS = 5 * 60_000;
+const HELD_MAX = 2_000;
+const heldUntil = new Map<string, number>();
+
+function rememberHeld(id: string, now: Date) {
+  if (heldUntil.size >= HELD_MAX) heldUntil.delete(heldUntil.keys().next().value as string);
+  heldUntil.set(id, now.getTime() + HELD_TTL_MS);
+}
+
+function recentlyHeld(now: Date) {
+  const ids: string[] = [];
+  for (const [id, until] of heldUntil) {
+    if (until <= now.getTime()) heldUntil.delete(id);
+    else ids.push(id);
+  }
+  return ids;
+}
+
+/** Test hook: forget remembered holds. */
+export function resetHeldIncidentsForTest() {
+  heldUntil.clear();
+}
+
 /** Reminder and escalation sends per organization per hour; a flapping monitor restarts the schedule on each reopen. */
 export const ORG_SENDS_PER_HOUR = 30;
 
@@ -209,7 +234,10 @@ export async function renotifyUnacknowledgedIncidents(now = new Date(), stats?: 
   const cappedOrgs: string[] = [];
   /** Held or capped: the claim goes back unused. Returns true when the send must not happen now. */
   const holdBack = async (incident: { id: string; organizationId: string }) => {
-    if (await incidentHeldForMaintenance(incident.id, now).catch(() => false)) return true;
+    if (await incidentHeldForMaintenance(incident.id, now).catch(() => false)) {
+      rememberHeld(incident.id, now);
+      return true;
+    }
     if (cappedOrgs.includes(incident.organizationId)) return true;
     if (await allowOrgIncidentSend(incident.organizationId, now)) return false;
     cappedOrgs.push(incident.organizationId);
@@ -218,7 +246,8 @@ export async function renotifyUnacknowledgedIncidents(now = new Date(), stats?: 
 
   let reminderSends = 0;
   let claims = 0;
-  const released: string[] = [];
+  const held = recentlyHeld(now);
+  const released: string[] = [...held];
   while (reminderSends < MAX_PER_TICK && claims < MAX_CLAIMS_PER_TICK) {
     const claimed = await claimReminders(now, Math.min(CLAIM_BATCH, MAX_PER_TICK - reminderSends), released, cappedOrgs);
     if (!claimed.length) break;
@@ -263,7 +292,7 @@ export async function renotifyUnacknowledgedIncidents(now = new Date(), stats?: 
   // Escalations have their own budget, so a reminder backlog cannot hold them up.
   let escalationSends = 0;
   claims = 0;
-  const releasedEscalations: string[] = [];
+  const releasedEscalations: string[] = [...held];
   while (escalationSends < MAX_PER_TICK && claims < MAX_CLAIMS_PER_TICK) {
     const claimed = await claimEscalations(now, Math.min(CLAIM_BATCH, MAX_PER_TICK - escalationSends), releasedEscalations, cappedOrgs);
     if (!claimed.length) break;
