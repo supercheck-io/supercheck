@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { authErrorStatus, isAuthError, requireAuthContext } from "@/lib/auth-context";
 import { permissionDeniedResponse } from "@/lib/deletion/org-state";
+import { readCappedJson } from "@/lib/http/read-capped-json";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { getNotificationPolicy, saveNotificationPolicy } from "@/lib/sre/notification-policy";
 
@@ -29,14 +30,10 @@ export async function PUT(req: NextRequest) {
     if (!checkPermissionWithContext("project", "update", context)) {
       return await permissionDeniedResponse(context.organizationId, "Insufficient permissions to update the notification policy");
     }
-    const raw = await req.text();
-    if (raw.length > MAX_BODY_BYTES) return NextResponse.json({ error: "Request body too large" }, { status: 413 });
-    let body: unknown;
-    try {
-      body = JSON.parse(raw);
-    } catch {
-      return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
-    }
+    const read = await readCappedJson(req, MAX_BODY_BYTES);
+    if (read.tooLarge) return NextResponse.json({ error: "Request body too large" }, { status: 413 });
+    if (read.data === null || typeof read.data !== "object") return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+    const body = read.data;
     const result = await saveNotificationPolicy(
       { organizationId: context.organizationId, projectId: context.project.id, userId: context.userId },
       body,

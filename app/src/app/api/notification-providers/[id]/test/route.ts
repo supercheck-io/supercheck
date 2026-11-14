@@ -5,6 +5,8 @@ import { z } from "zod";
 import { notificationProviders } from "@/db/schema";
 import { apiKeyRateLimiter, createRateLimitHeaders } from "@/lib/api-key-rate-limiter";
 import { logAuditEvent } from "@/lib/audit-logger";
+import { readCappedJson } from "@/lib/http/read-capped-json";
+import { redactChannelSecrets } from "@/lib/notification-providers/redact-channel";
 import { authErrorStatus, isAuthError, requireAuthContext } from "@/lib/auth-context";
 import { permissionDeniedResponse } from "@/lib/deletion/org-state";
 import { safeText } from "@/lib/mcp/redact";
@@ -57,17 +59,10 @@ export async function POST(req: NextRequest, context: { params: Promise<{ id: st
     }
     if (!isUuid(id)) return NextResponse.json({ error: "Notification provider not found" }, { status: 404 });
 
-    const raw = await req.text();
-    if (raw.length > MAX_BODY_BYTES) return NextResponse.json({ error: "Request body too large" }, { status: 413 });
-    let json: unknown = {};
-    if (raw.trim()) {
-      try {
-        json = JSON.parse(raw);
-      } catch {
-        return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
-      }
-    }
-    const parsed = bodySchema.safeParse(json);
+    const read = await readCappedJson(req, MAX_BODY_BYTES);
+    if (read.tooLarge) return NextResponse.json({ error: "Request body too large" }, { status: 413 });
+    // An empty body is a trigger; readCappedJson gives null for empty or invalid JSON.
+    const parsed = bodySchema.safeParse(read.data ?? {});
     if (!parsed.success) return NextResponse.json({ error: "action must be trigger or resolve" }, { status: 400 });
     const { action } = parsed.data;
 
@@ -180,14 +175,16 @@ async function sendTestPage(providerId: string, config: Record<string, unknown>,
     });
     const text = await response.text().catch(() => "");
     const auth = response.status === 401 || response.status === 403;
+    // Internal targets would make the excerpt a way to read internal services: show status only there.
+    const internalAllowed = allowInternalWebhookTargets();
     return {
       ok: response.ok,
       action,
       dedupKey,
       responseStatus: response.status,
       responseStatusText: response.statusText,
-      // Redacted and clipped; request headers (the integration key) are never echoed.
-      responseExcerpt: safeText(text, EXCERPT_CHARS) ?? "",
+      // Redacted (generic patterns plus this channel's own header values and URL tokens) and clipped.
+      ...(internalAllowed ? {} : { responseExcerpt: safeText(redactChannelSecrets(text, config), EXCERPT_CHARS) ?? "" }),
       elapsedMs: Date.now() - startedAt,
       ...(auth ? { error: `Authentication rejected (HTTP ${response.status}). Check the integration key.` } : {}),
     };
@@ -198,3 +195,4 @@ async function sendTestPage(providerId: string, config: Record<string, unknown>,
     clearTimeout(timeout);
   }
 }
+

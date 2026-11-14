@@ -31,6 +31,8 @@ jest.mock("@/lib/notification-providers/connection-test", () => ({
   testEmailConnection: jest.fn(), testTeamsConnection: jest.fn(), testTelegramConnection: jest.fn(), testDiscordConnection: jest.fn(),
 }));
 jest.mock("@/lib/deletion/org-state");
+let mockInternal = false;
+jest.mock("@/lib/url-validator", () => ({ ...jest.requireActual("@/lib/url-validator"), allowInternalWebhookTargets: () => mockInternal }));
 
 import { PgDialect } from "drizzle-orm/pg-core";
 import { POST } from "./route";
@@ -135,5 +137,25 @@ describe("POST /api/notification-providers/[id]/test (A20)", () => {
   it("rejects an unknown action or an oversized body", async () => {
     expect((await send({ action: "acknowledge" })).status).toBe(400);
     expect((await send({ action: "trigger", pad: "x".repeat(2000) })).status).toBe(413);
+    expect((await send("not an object")).status).toBe(400);
+  });
+});
+
+describe("response excerpt safety", () => {
+  it("redacts the channel's own integration key and URL token when the receiver echoes them", async () => {
+    mockProviders = [{ ...pagerduty, config: { ...pagerduty.config, url: "https://events.pagerduty.com/v2/enqueue/routingKeyABC123456" } }];
+    fetchChannel.mockResolvedValue(response(400, "echo: secret-integration-key routingKeyABC123456"));
+    const body = await (await send()).json();
+    expect(body.responseExcerpt).not.toContain("secret-integration-key");
+    expect(body.responseExcerpt).not.toContain("routingKeyABC123456");
+    expect(body.responseExcerpt).toContain("[redacted]");
+  });
+
+  it("returns no excerpt when internal webhook targets are allowed", async () => {
+    mockInternal = true;
+    const body = await (await send()).json();
+    expect(body).toMatchObject({ ok: true, responseStatus: 202 });
+    expect(body).not.toHaveProperty("responseExcerpt");
+    mockInternal = false;
   });
 });
