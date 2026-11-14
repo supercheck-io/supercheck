@@ -582,9 +582,13 @@ export class DbService implements OnModuleInit {
             eq(schema.alertHistory.status, 'sent'),
           ),
         )
+        // By when each send finished (delivery metadata), not when its row was reserved: a failure reserved
+        // before a resolve but delivered after it has reopened the page.
         .orderBy(
           schema.alertHistory.provider,
-          desc(schema.alertHistory.sentAt),
+          desc(
+            sql`coalesce((${schema.alertHistory.deliveryMetadata}->'delivery'->>'sentAt')::timestamptz, ${schema.alertHistory.sentAt})`,
+          ),
         );
       return new Set(
         rows

@@ -130,6 +130,12 @@ export async function saveNotificationPolicy(
   const stored = await getNotificationPolicy(projectId);
   const data = { ...parsed.data };
   for (const key of omitted) Object.assign(data, { [key]: stored[key] });
+  // Turning reminders off in an older tab also turns off the stored repeat it does not know about.
+  const derived = new Set<string>();
+  if (data.renotifyUnackedMinutes === null && omitted.includes("renotifyRepeatMinutes")) {
+    data.renotifyRepeatMinutes = null;
+    derived.add("renotifyRepeatMinutes");
+  }
   // An unchanged target is not re-checked: a target that has since been disabled or lost access must not block
   // saving other settings (the reminder tick treats it as removed and notes that on the incident).
   const channelChanged = data.escalateChannelId !== stored.escalateChannelId;
@@ -188,6 +194,10 @@ export async function saveNotificationPolicy(
   }
 
   const values = { ...data, channelIds, updatedAt: new Date() };
+  // Omitted fields are left out of the update, so an older tab cannot write back stale copies over another admin's
+  // change made in the meantime (the copies above are only for validation and for a first insert).
+  const updates: Partial<typeof values> = { ...values };
+  for (const key of omitted) if (!derived.has(key)) delete updates[key];
   // Stamped when auto-investigate turns on (kept while it stays on, cleared when off), so unrelated saves
   // never move the cut-off that keeps older incidents from being auto-run.
   await db
@@ -196,7 +206,7 @@ export async function saveNotificationPolicy(
     .onConflictDoUpdate({
       target: notificationPolicies.projectId,
       set: {
-        ...values,
+        ...updates,
         autoInvestigateEnabledAt: values.autoInvestigateOnOpen ? sql`coalesce(${notificationPolicies.autoInvestigateEnabledAt}, now())` : null,
       },
     });

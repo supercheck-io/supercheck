@@ -62,9 +62,11 @@ export async function POST(req: NextRequest, context: { params: Promise<{ id: st
     }
     if (!isUuid(id)) return NextResponse.json({ error: "Notification provider not found" }, { status: 404 });
 
-    const read = await readCappedJson(req, MAX_BODY_BYTES);
+    // No body at all means a trigger (the documented default); a body that is not a JSON object is rejected, so a
+    // malformed request can never send a real page.
+    const absent = req.body === null || req.headers.get("content-length") === "0";
+    const read = absent ? { tooLarge: false as const, data: {} } : await readCappedJson(req, MAX_BODY_BYTES);
     if (read.tooLarge) return NextResponse.json({ error: "Request body too large" }, { status: 413 });
-    // A JSON object is required ({} triggers): a malformed body must never send a real page.
     const parsed = bodySchema.safeParse(read.data);
     if (!parsed.success) return NextResponse.json({ error: "Body must be a JSON object; action must be trigger or resolve" }, { status: 400 });
     const { action } = parsed.data;

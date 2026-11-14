@@ -103,7 +103,17 @@ it("an older client's save keeps the stored repeat and escalation settings", asy
   const stored = { ...base, renotifyRepeatMinutes: 60, renotifyMax: 4, escalateAfterMinutes: 30, escalateUserId: member, autoInvestigateEnabledAt: null };
   storedPolicy = [stored];
   expect(await saveNotificationPolicy(scope, legacy)).toEqual({ success: true });
-  expect(upserted?.set).toMatchObject({ renotifyRepeatMinutes: 60, renotifyMax: 4, escalateAfterMinutes: 30, escalateUserId: member, escalateChannelId: null });
+  // Not written back: a concurrent change by another admin is kept.
+  for (const key of ["renotifyRepeatMinutes", "renotifyMax", "escalateAfterMinutes", "escalateChannelId", "escalateUserId"]) {
+    expect(upserted?.set).not.toHaveProperty(key);
+  }
+});
+
+it("an older client turning reminders off also clears the stored repeat", async () => {
+  storedPolicy = [{ ...base, renotifyRepeatMinutes: 60, autoInvestigateEnabledAt: null }];
+  expect(await saveNotificationPolicy(scope, { ...legacy, renotifyUnackedMinutes: null })).toEqual({ success: true });
+  expect(upserted?.set).toMatchObject({ renotifyUnackedMinutes: null, renotifyRepeatMinutes: null });
+  expect(upserted?.set).not.toHaveProperty("renotifyMax");
 });
 
 it("validates the schedule that will be saved, including stored values an older client omits", async () => {

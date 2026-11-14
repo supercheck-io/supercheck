@@ -79,6 +79,11 @@ describe("POST /api/notification-providers/[id]/test (A20)", () => {
     expect(init.method).toBe("POST");
   });
 
+  it("treats a request without a body as a trigger (the documented default)", async () => {
+    const res = await POST(new NextRequest(`https://example.com/api/notification-providers/${PROVIDER}/test`, { method: "POST" }), { params: Promise.resolve({ id: PROVIDER }) });
+    expect(await res.json()).toMatchObject({ ok: true, action: "trigger" });
+  });
+
   it("rejects resolve for a non-webhook channel instead of sending another message", async () => {
     mockProviders = [{ id: PROVIDER, type: "slack", projectId: "proj-1", config: { webhookUrl: "https://hooks.slack.com/x" } }];
     const res = await send({ action: "resolve" });
@@ -157,7 +162,7 @@ describe("POST /api/notification-providers/[id]/test (A20)", () => {
     expect((await send({ action: "acknowledge" })).status).toBe(400);
     expect((await send({ action: "trigger", pad: "x".repeat(2000) })).status).toBe(413);
     expect((await send("not json")).status).toBe(400);
-    expect((await send("")).status).toBe(400);
+    expect((await send("[1]")).status).toBe(400);
     expect(fetchChannel).not.toHaveBeenCalled();
   });
 });
