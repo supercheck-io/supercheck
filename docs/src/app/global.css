@@ -12,6 +12,10 @@
   --respond: oklch(0.553 0.195 38.402);
   --communicate: oklch(0.525 0.223 3.958);
   --ai: oklch(0.541 0.281 293.009);
+  /* Status, same strong values as the app (text on cards). Free tool results only, always beside a word. */
+  --success: oklch(0.527 0.154 150.069);
+  --warning: oklch(0.555 0.163 48.998);
+  --failure: oklch(0.505 0.213 27.518);
 }
 
 .dark {
@@ -21,6 +25,9 @@
   --respond: oklch(0.75 0.183 55.934);
   --communicate: oklch(0.718 0.202 349.761);
   --ai: oklch(0.702 0.183 293.541);
+  --success: oklch(0.696 0.17 162.48);
+  --warning: oklch(0.769 0.188 70.08);
+  --failure: oklch(0.637 0.237 25.331);
 }
 
 @theme inline {
@@ -31,6 +38,9 @@
   --color-respond: var(--respond);
   --color-communicate: var(--communicate);
   --color-ai: var(--ai);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-failure: var(--failure);
 }
 
 html {

@@ -30,3 +30,6 @@ yarn-error.log*
 .env*.local
 .vercel
 next-env.d.ts
+# free tools e2e
+/test-results
+/playwright-report

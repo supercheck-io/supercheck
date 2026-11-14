@@ -14,9 +14,13 @@ const sources = {
   'solutions page': read('../src/app/solutions/[persona]/page.tsx'),
   'site-header.tsx': read('../src/components/site-header.tsx'),
   'site-footer.tsx': read('../src/components/site-footer.tsx'),
+  'tools.ts': read('../src/lib/tools.ts'),
+  'tools hub': read('../src/app/tools/page.tsx'),
+  'tool page': read('../src/app/tools/[tool]/page.tsx'),
+  'bot page': read('../src/app/tools/bot/page.tsx'),
 };
 // Site routes outside the docs that marketing pages may link to.
-const siteRoutes = new Set(['/', '/pricing', '/privacy', '/terms']);
+const siteRoutes = new Set(['/', '/pricing', '/privacy', '/terms', '/tools', '/tools/bot']);
 
 const slug = (heading) =>
   heading.toLowerCase().replace(/[`*]/g, '').replace(/[^a-z0-9 -]/g, '').trim().replace(/\s+/g, '-');
@@ -76,7 +80,8 @@ test('every product screenshot exists', () => {
 test('every other internal link on the marketing site points at an existing route', () => {
   const productSlugs = [...sources['products.ts'].matchAll(/slug: "([^"]+)"/g)].map(([, s]) => `/product/${s}`);
   const solutionSlugs = [...sources['solutions.ts'].matchAll(/slug: "([^"]+)"/g)].map(([, s]) => `/solutions/${s}`);
-  const routes = new Set([...siteRoutes, ...productSlugs, ...solutionSlugs]);
+  const toolSlugs = [...sources['tools.ts'].matchAll(/slug: "([^"]+)"/g)].map(([, s]) => `/tools/${s}`);
+  const routes = new Set([...siteRoutes, ...productSlugs, ...solutionSlugs, ...toolSlugs]);
   for (const [name, source] of Object.entries(sources)) {
     for (const [, href] of source.matchAll(/href(?:: |=)"(\/(?!docs\/)[^"]*)"/g)) {
       assert.ok(routes.has(href.split('#')[0]), `${name}: ${href} is not a site route`);
@@ -103,4 +108,16 @@ test('site screenshots are loaded through the cache-busting version', () => {
   for (const [name, source] of Object.entries(sources)) {
     assert.doesNotMatch(source, /["']\/screenshots\/playground-editor\.png["']/, `${name}: use OG_IMAGE`);
   }
+});
+
+test('every free tool page, the hub and the bot page are in the sitemap and llms.txt', () => {
+  const sitemap = read('../public/sitemap.xml');
+  const llms = read('../public/llms.txt');
+  const slugs = [...sources['tools.ts'].matchAll(/slug: "([^"]+)"/g)].map(([, s]) => s);
+  assert.equal(slugs.length, 8);
+  for (const path of ['/tools', '/tools/bot', ...slugs.map((s) => `/tools/${s}`)]) {
+    assert.ok(sitemap.includes(`<loc>https://supercheck.io${path}</loc>`), `${path} missing from sitemap`);
+  }
+  for (const s of slugs) assert.ok(llms.includes(`https://supercheck.io/tools/${s}`), `${s} missing from llms.txt`);
+  assert.match(sources['site-nav.ts'], /href: "\/tools"/);
 });

@@ -71,6 +71,24 @@ jobs:
         working-directory: docs
         run: npm run test:rendered-api
 
+      - name: Install Playwright Chromium
+        working-directory: docs
+        run: npx playwright install --with-deps chromium
+
+      # Default build: no tools API configured, so pages show the methodology only.
+      - name: Free tools pages (unconfigured)
+        working-directory: docs
+        run: npx playwright test -c e2e/playwright.config.ts
+
+      # The checks API and Turnstile are mocked in the browser; these values are placeholders.
+      - name: Free tools pages (configured)
+        working-directory: docs
+        env:
+          NEXT_PUBLIC_CHECKS_API_URL: https://tools-api.test
+          NEXT_PUBLIC_TOOLS_TURNSTILE_SITE_KEY: test-site-key
+          E2E_TOOLS: configured
+        run: npx next build && npx playwright test -c e2e/playwright.config.ts
+
   deploy-docs:
     name: Build and Deploy Docs
     # Production Pages content must always come from the reviewed default branch.
@@ -97,8 +115,12 @@ jobs:
         working-directory: docs
         run: npm ci --prefer-offline --no-audit
 
+      # Public values for the free tools (separate Cloudflare account). Unset: tool pages show methodology only.
       - name: Build static site
         working-directory: docs
+        env:
+          NEXT_PUBLIC_CHECKS_API_URL: ${{ vars.TOOLS_API_URL }}
+          NEXT_PUBLIC_TOOLS_TURNSTILE_SITE_KEY: ${{ vars.TOOLS_TURNSTILE_SITE_KEY }}
         run: npm run build
 
       - name: Deploy to Cloudflare Pages
