@@ -28,6 +28,8 @@ export async function dns(ctx: CheckContext, domain: string) {
     if (answer.records.length) records[type] = answer.records;
   });
   const count = Object.values(records).reduce((sum, list) => sum + (list?.length ?? 0), 0);
+  // An incomplete answer must not be served from cache after the resolver recovers.
+  if (failed > 0) ctx.degraded = true;
   return { domain, resolves: !nxdomain, count, records, dnssec, failedQueries: failed };
 }
 

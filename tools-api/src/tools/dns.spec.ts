@@ -40,7 +40,9 @@ describe("dns tool", () => {
       "doh:f.com:AAAA": new Response("", { status: 502 }),
       "doh:f.com:MX": () => Promise.reject(new Error("x")),
     });
-    expect((await dns(ctxFor("dns"), "f.com")).failedQueries).toBe(3);
+    const ctx = ctxFor("dns");
+    expect((await dns(ctx, "f.com")).failedQueries).toBe(3);
+    expect(ctx.degraded).toBe(true);
   });
 
   it("caps answers at 50 and data at 512 characters", async () => {

@@ -59,6 +59,12 @@ function scriptSources(policy: Policy): string[] | null {
   return policy.get("script-src") ?? policy.get("default-src") ?? null;
 }
 
+/** script-src-elem and script-src-attr override script-src for elements and inline handlers. */
+function unsafeScripts(policy: Policy): boolean {
+  const base = scriptSources(policy);
+  return [base, policy.get("script-src-elem") ?? base, policy.get("script-src-attr") ?? base].some(unsafeScript);
+}
+
 function unsafeScript(sources: string[] | null): boolean {
   if (sources === null) return true;
   const hasNonceOrHash = sources.some((s) => /^'(nonce-|sha256-|sha384-|sha512-)/.test(s));
@@ -88,7 +94,7 @@ export function grade(headers: Record<string, string | undefined>, finalUrlIsHtt
   if (policies.length === 0) {
     add("csp", "fail", -25, cspHeader, "Content-Security-Policy is missing");
   } else {
-    const unsafe = policies.every((p) => unsafeScript(scriptSources(p)));
+    const unsafe = policies.every(unsafeScripts);
     const unsafeEval = policies.every((p) => (scriptSources(p) ?? ["'unsafe-eval'"]).includes("'unsafe-eval'"));
     if (unsafe) add("csp", "fail", -20, cspHeader, "script-src allows unsafe-inline, data:, * or http:");
     if (unsafeEval) add("csp-eval", "warn", -10, cspHeader, "script-src allows unsafe-eval");

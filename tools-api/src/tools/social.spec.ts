@@ -35,6 +35,17 @@ describe("social tool", () => {
     expect(r.image).toBeNull();
   });
 
+  it("keeps a long signed og:image URL intact", async () => {
+    const long = `https://cdn.site.com/i.png?sig=${"a".repeat(600)}`;
+    const { calls } = mockFetch({
+      "https://site.com/": page(`<meta property="og:image" content="${long}">`),
+      "https://cdn.site.com/i.png": new Response(null, { headers: { "content-type": "image/png" } }),
+    });
+    const r = await run(ctxFor("social"), new URL("https://site.com/"));
+    expect(r.image).toMatchObject({ url: long, reachable: true });
+    expect(calls.some((c) => c.url === long)).toBe(true);
+  });
+
   it("flags a non-image content type", async () => {
     mockFetch({
       "https://site.com/": page(`<meta property="og:image" content="https://site.com/i">`),

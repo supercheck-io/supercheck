@@ -49,6 +49,12 @@ describe("https tool", () => {
     expect(await run()).toMatchObject({ certificateValid: true, preload: "error" });
   });
 
+  it("asks hstspreload.org about the ICANN domain of a private-suffix host", async () => {
+    const { calls } = mockFetch({ "https://me.blogspot.com/": new Response("ok"), "http://me.blogspot.com/": new Response("ok"), "https://hstspreload.org": Response.json({ status: "preloaded" }) });
+    await run("me.blogspot.com");
+    expect(calls.some((c) => c.url.endsWith("domain=blogspot.com"))).toBe(true);
+  });
+
   it("reads unknown preload states as unknown", async () => {
     mockFetch({ "https://site.com/": new Response("ok"), "http://site.com/": new Response("ok"), "https://hstspreload.org": Response.json({ status: "weird" }) });
     expect((await run()).preload).toBe("unknown");

@@ -1,5 +1,6 @@
 import { CheckContext, keptHeaders, walk } from "../context";
 import { parseHsts } from "../grade";
+import { getDomain } from "tldts";
 import { registrable } from "../url-policy";
 
 type Preload = "preloaded" | "pending" | "unknown" | "error";
@@ -25,9 +26,9 @@ export async function https(ctx: CheckContext, url: URL) {
   const redirectsToHttps = plain.ok && plain.url.protocol === "https:" && registrable(plain.url.hostname) === site;
   if (plain.ok) await plain.res.body?.cancel();
 
-  let preload: Preload = "error";
+  let preload: Preload;
   try {
-    const res = await ctx.fetch(`https://hstspreload.org/api/v2/status?domain=${encodeURIComponent(site)}`);
+    const res = await ctx.fetch(`https://hstspreload.org/api/v2/status?domain=${encodeURIComponent(getDomain(host) ?? host)}`);
     const body = (await res.json()) as { status?: string };
     preload = body.status === "preloaded" || body.status === "pending" ? body.status : "unknown";
   } catch {

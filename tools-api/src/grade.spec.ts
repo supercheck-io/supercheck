@@ -74,6 +74,12 @@ describe("grade rules", () => {
     expect(row({ "content-security-policy": "img-src 'self'" }, "csp")?.modifier).toBe(-20);
   });
 
+  it("script-src-elem and script-src-attr can make a strict script-src unsafe", () => {
+    expect(row({ "content-security-policy": "script-src 'self'; script-src-elem 'unsafe-inline'; object-src 'none'" }, "csp")?.modifier).toBe(-20);
+    expect(row({ "content-security-policy": "default-src 'self'; script-src-attr 'unsafe-inline'" }, "csp")?.modifier).toBe(-20);
+    expect(row({ "content-security-policy": "script-src 'unsafe-inline' 'nonce-a'; script-src-elem 'self'; object-src 'none'" }, "csp")?.modifier).toBe(5);
+  });
+
   it("CSP unsafe-eval: -10", () => {
     expect(row({ "content-security-policy": "script-src 'self' 'unsafe-eval'" }, "csp-eval")?.modifier).toBe(-10);
   });

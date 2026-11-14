@@ -3,6 +3,7 @@ import { checkUrl } from "../url-policy";
 
 const HEAD_CAP = 64 * 1024;
 const TEXT_CAP = 300;
+const URL_CAP = 2048;
 export const SOCIAL_TAGS = [
   "og:title",
   "og:description",
@@ -37,7 +38,9 @@ export async function extractHead(res: Response): Promise<SocialTags> {
         const key = (el.getAttribute("property") ?? el.getAttribute("name") ?? "").toLowerCase();
         const content = el.getAttribute("content");
         if (content === null) return;
-        if ((SOCIAL_TAGS as readonly string[]).includes(key) && !(key in tags)) tags[key] = content.slice(0, TEXT_CAP);
+        // Image URLs keep their full length (signed CDN URLs); display text is capped.
+        const cap = key === "og:image" || key === "twitter:image" ? URL_CAP : TEXT_CAP;
+        if ((SOCIAL_TAGS as readonly string[]).includes(key) && !(key in tags)) tags[key] = content.slice(0, cap);
         if (key === "description" && description === null) description = content.slice(0, TEXT_CAP);
       },
     })

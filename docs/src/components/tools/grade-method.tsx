@@ -2,7 +2,7 @@
 // Must match tools-api/src/grade.ts.
 const RULES: [string, string, string][] = [
   ["Content-Security-Policy", "Missing (report-only counts as missing)", "−25"],
-  ["", "script-src allows 'unsafe-inline' without a nonce or hash, data:, * or http:", "−20"],
+  ["", "script-src (or script-src-elem / script-src-attr) allows 'unsafe-inline' without a nonce or hash, data:, * or http:", "−20"],
   ["", "script-src allows 'unsafe-eval'", "−10"],
   ["", "No unsafe sources and object-src 'none'", "+5"],
   ["Strict-Transport-Security", "Missing, invalid, or the final URL is http", "−20"],
