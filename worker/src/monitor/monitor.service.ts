@@ -70,8 +70,12 @@ import {
 } from '../common/utils/pinned-monitor-request';
 import type { LookupFunction } from 'node:net';
 import { allowInternalMonitorTargets } from '../common/utils/url-validator';
-import { executeAiEndpointCheck } from './ai-endpoint-check';
+import {
+  AI_ENDPOINT_DEFAULT_TIMEOUT_SECONDS,
+  executeAiEndpointCheck,
+} from './ai-endpoint-check';
 import { resolveMonitorSecret } from './monitor-secret';
+import { scrubSecrets } from '../common/utils/scrub-secrets';
 import {
   MonitorRedirectError,
   isDnsError,
@@ -1275,10 +1279,12 @@ export class MonitorService {
               ),
         {
           // The AI check enforces its own limits; the grace lets it report "timeout", not a system error.
-          timeoutMs:
-            (config?.timeoutSeconds ?? TIMEOUTS_SECONDS.HTTP_REQUEST_DEFAULT) *
-              1000 +
-            (config?.aiEndpoint ? 5000 : 0),
+          timeoutMs: config?.aiEndpoint
+            ? (config.timeoutSeconds ?? AI_ENDPOINT_DEFAULT_TIMEOUT_SECONDS) *
+                1000 +
+              5000
+            : (config?.timeoutSeconds ??
+                TIMEOUTS_SECONDS.HTTP_REQUEST_DEFAULT) * 1000,
           maxMemoryMB: MEMORY_LIMITS.MAX_MEMORY_PER_REQUEST_MB,
         },
       );
@@ -1683,12 +1689,8 @@ export class MonitorService {
     this.logger.debug(
       `HTTP Request completed: ${target}, Status: ${status}, Response Time: ${responseTimeMs}ms`,
     );
-    if (resolvedSecretValue) {
-      const scrub = (text?: string) =>
-        text?.split(resolvedSecretValue).join('***');
-      details.responseBodySnippet = scrub(details.responseBodySnippet);
-      details.errorMessage = scrub(details.errorMessage);
-    }
+    if (resolvedSecretValue)
+      details = scrubSecrets(details, [resolvedSecretValue]);
     return { status, details, responseTimeMs, isUp };
   }
 

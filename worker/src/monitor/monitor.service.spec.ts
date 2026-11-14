@@ -1512,8 +1512,8 @@ describe('MonitorService', () => {
           () =>
             of({
               status: 200,
-              statusText: 'OK',
-              headers: {},
+              statusText: 'OK sekret-value',
+              headers: { 'x-debug': 'token=sekret-value' },
               data: 'echo: sekret-value',
             }),
         );

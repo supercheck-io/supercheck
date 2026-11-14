@@ -27,6 +27,8 @@ export async function readSse(
     for await (const chunk of stream) {
       const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk));
       bytes += buf.length;
+      // Over budget: stop before reading this chunk, so an oversized reply is never "done".
+      if (bytes > maxBytes) return { done: false, truncated: true };
       buffer += decoder.write(buf);
       let newline: number;
       while ((newline = buffer.indexOf('\n')) !== -1) {
@@ -34,7 +36,6 @@ export async function readSse(
         buffer = buffer.slice(newline + 1);
         if (handleLine(line)) return { done: true, truncated: false };
       }
-      if (bytes > maxBytes) return { done: false, truncated: true };
     }
     // A final line without a trailing newline still counts.
     return { done: handleLine(buffer + decoder.end()), truncated: false };

@@ -116,6 +116,26 @@ export async function deleteMonitor(request: APIRequestContext, monitorId: strin
   );
 }
 
+/** Create a project secret (a variable with isSecret) in the current E2E project. */
+export async function createProjectSecret(request: APIRequestContext, key: string, value: string): Promise<{ id: string; projectId: string }> {
+  const headers = await getProjectHeaders(request);
+  const projectId = headers['x-project-id'];
+  const response = await request.post(`/api/projects/${projectId}/variables`, { headers, data: { key, value, isSecret: true } });
+  if (!response.ok()) throw new Error(`Failed to create secret ${key}: ${await responseFailure(response)}`);
+  const body = (await response.json()) as { data?: { id?: string }; id?: string };
+  const id = body.data?.id ?? body.id;
+  if (!id) throw new Error(`Failed to create secret ${key}: response did not include an ID`);
+  return { id, projectId };
+}
+
+export async function deleteProjectSecret(request: APIRequestContext, projectId: string, variableId: string): Promise<void> {
+  const headers = await getProjectHeaders(request);
+  await expectCleanupSuccess(
+    await request.delete(`/api/projects/${projectId}/variables/${variableId}`, { headers }),
+    `secret ${variableId}`,
+  );
+}
+
 /**
  * Create a new job via API
  */

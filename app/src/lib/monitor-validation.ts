@@ -114,6 +114,15 @@ const aiEndpointSchema = z
 /** Request fields the AI endpoint preset replaces; none may be set beside it. */
 const AI_CONFLICTING_KEYS = ["method", "headers", "body", "keywordInBody", "expectedStatusCodes"] as const;
 
+/** The protocol the URL parser (and so the worker) will use; "http:api.example.com" is http too. */
+function parsedProtocol(target: string): string | null {
+  try {
+    return new URL(target.trim()).protocol;
+  } catch {
+    return null;
+  }
+}
+
 function validateAiEndpoint(monitorType: string, config: Record<string, unknown>): MonitorValidationResult {
   if (config.aiEndpoint == null) return { success: true };
   if (monitorType !== "http_request") {
@@ -270,7 +279,7 @@ export function validateMonitorConfiguration({
   if (
     sendsSecret &&
     typeof target === "string" &&
-    /^http:\/\//i.test(target.trim()) &&
+    parsedProtocol(target) === "http:" &&
     process.env.ALLOW_INTERNAL_TARGETS !== "true"
   ) {
     return invalid(

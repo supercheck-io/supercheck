@@ -63,18 +63,11 @@ jest.mock("@/lib/location-registry", () => ({
 }));
 jest.mock("@/lib/worker-registry", () => ({ getActiveWorkerQueueNames: jest.fn() }));
 
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 jest.mock("@/lib/sre/connectors/endpoint-policy", () => ({
   lookupBounded: jest.fn(async () => [{ address: "93.184.216.34", family: 4 }]),
 }));
 import { PATCH, PUT } from "./route";
-
-const locationConfig = (locations: string[], enabled = true) => ({
-  enabled,
-  locations,
-  threshold: 50,
-  strategy: "majority",
-});
 
 
 const existing = {

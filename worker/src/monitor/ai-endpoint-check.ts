@@ -14,10 +14,13 @@ import {
 } from '../common/utils/network-error';
 import { allowInternalMonitorTargets } from '../common/utils/url-validator';
 import { readSse } from '../common/utils/sse';
+import { scrubSecrets } from '../common/utils/scrub-secrets';
 import type { MonitorSecretResult } from './monitor-secret';
 
 const MAX_STREAM_BYTES = 1024 * 1024;
 const MAX_ERROR_BODY_BYTES = 64 * 1024;
+export const AI_ENDPOINT_DEFAULT_TIMEOUT_SECONDS = 60;
+const MAX_META_CHARS = 200;
 const MAX_MESSAGE_CHARS = 300;
 const DEFAULT_PROMPT = 'Reply with the single word OK.';
 
@@ -98,8 +101,11 @@ function parseJson(text: string): Json | undefined {
 function applyPayload(payload: Json, out: Outcome, startedAt: bigint): void {
   const error = obj(payload.error);
   if (error) out.innerError ??= errorCode(error);
-  out.ai.servedModel ??= str(payload.model);
-  out.ai.systemFingerprint ??= str(payload.system_fingerprint);
+  out.ai.servedModel ??= str(payload.model)?.slice(0, MAX_META_CHARS);
+  out.ai.systemFingerprint ??= str(payload.system_fingerprint)?.slice(
+    0,
+    MAX_META_CHARS,
+  );
   const usage = obj(payload.usage);
   if (usage) {
     out.ai.promptTokens = num(usage.prompt_tokens) ?? out.ai.promptTokens;
@@ -259,7 +265,8 @@ export async function executeAiEndpointCheck(
 ): Promise<AiEndpointResult> {
   const ai = config.aiEndpoint!;
   const startedAt = process.hrtime.bigint();
-  const totalLimitMs = (config.timeoutSeconds ?? 60) * 1000;
+  const totalLimitMs =
+    (config.timeoutSeconds ?? AI_ENDPOINT_DEFAULT_TIMEOUT_SECONDS) * 1000;
   const firstTokenLimitMs = ai.firstTokenTimeoutMs ?? 15000;
   const secrets: string[] = [];
   const totalMs = () =>
@@ -269,13 +276,14 @@ export async function executeAiEndpointCheck(
     message: string | undefined,
     details: MonitorResultDetails = {},
   ): AiEndpointResult => {
-    let text = message ?? '';
-    for (const secret of secrets)
-      if (secret) text = text.split(secret).join('***');
-    if (text) details.errorMessage = text.slice(0, MAX_MESSAGE_CHARS);
+    if (message) details.errorMessage = message;
     const ms = totalMs();
     details.ai = { ...details.ai, totalMs: ms };
-    return { status, details, responseTimeMs: ms, isUp: status === 'up' };
+    // Scrub before capping, so a cut can never leave part of a secret behind.
+    const safe = scrubSecrets(details, secrets);
+    if (safe.errorMessage)
+      safe.errorMessage = safe.errorMessage.slice(0, MAX_MESSAGE_CHARS);
+    return { status, details: safe, responseTimeMs: ms, isUp: status === 'up' };
   };
 
   const headers: Record<string, string> = {

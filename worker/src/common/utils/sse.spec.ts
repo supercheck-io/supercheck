@@ -27,6 +27,15 @@ describe('readSse', () => {
     expect(result).toEqual({ done: false, truncated: false });
   });
 
+  it('never reports done for a chunk past the byte budget', async () => {
+    const result = await readSse(
+      stream('data: x\ndata: [DONE]\n'),
+      () => undefined,
+      5,
+    );
+    expect(result).toEqual({ done: false, truncated: true });
+  });
+
   it('accepts a final [DONE] without a trailing newline', async () => {
     const seen: string[] = [];
     const result = await readSse(

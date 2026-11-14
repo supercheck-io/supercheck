@@ -137,6 +137,11 @@ describe("AI endpoint preset validation", () => {
       validateMonitorConfiguration({ type: "http_request", target: "http://api.example.com/v1/chat/completions", config, incomingConfig: config });
     expect(http({ aiEndpoint: { ...ok, secretKey: "KEY" } })).toMatchObject({ success: false, details: expect.stringContaining("https") });
     expect(http({ auth: { type: "bearer", secretKey: "KEY" } })).toMatchObject({ success: false });
+    for (const target of ["http:api.example.com/v1/chat/completions", "http:/api.example.com/v1", "HTTP://api.example.com/v1"]) {
+      expect(
+        validateMonitorConfiguration({ type: "http_request", target, config: { aiEndpoint: { ...ok, secretKey: "KEY" } }, incomingConfig: {} }),
+      ).toMatchObject({ success: false });
+    }
     expect(http({ aiEndpoint: ok })).toEqual({ success: true });
     process.env.ALLOW_INTERNAL_TARGETS = "true";
     try {

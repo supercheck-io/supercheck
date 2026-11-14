@@ -127,6 +127,20 @@ describe('executeAiEndpointCheck', () => {
     expect(seen[0].headers.authorization).toBeUndefined();
   });
 
+  it('scrubs a key echoed in model or system_fingerprint and bounds their length', async () => {
+    resolveSecret.mockResolvedValue({ ok: true, value: 'sk-echoed-key' });
+    handler = sse(
+      `data: ${JSON.stringify({ model: 'm-sk-echoed-key', system_fingerprint: 'sk-echoed-key' + 'x'.repeat(500), choices: [{ delta: { content: 'OK' } }] })}\n\ndata: [DONE]\n\n`,
+    );
+    const r = await run({ secretKey: 'KEY' });
+    expect(r.status).toBe('up');
+    expect(JSON.stringify(r.details)).not.toContain('sk-echoed-key');
+    expect(r.details.ai?.servedModel).toBe('m-***');
+    expect((r.details.ai?.systemFingerprint ?? '').length).toBeLessThanOrEqual(
+      200,
+    );
+  });
+
   it('errors with the resolver message when the key is missing', async () => {
     resolveSecret.mockResolvedValue({
       ok: false,

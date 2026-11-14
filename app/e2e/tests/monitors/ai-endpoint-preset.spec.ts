@@ -1,36 +1,22 @@
-import { expect, type APIRequestContext } from '@playwright/test';
+import { expect } from '@playwright/test';
 import { test } from '../../fixtures';
-import { deleteMonitor } from '../../utils/test-data';
+import { createProjectSecret, deleteMonitor, deleteProjectSecret } from '../../utils/test-data';
 import { waitForHydration } from '../../utils/hydration';
-
-async function currentProjectId(request: APIRequestContext): Promise<string> {
-  const response = await request.get('/api/projects');
-  expect(response.ok()).toBe(true);
-  const body = (await response.json()) as { currentProject?: { id?: string } | null; data?: Array<{ id?: string }> };
-  const id = body.currentProject?.id ?? body.data?.[0]?.id;
-  if (!id) throw new Error('E2E account has no active project');
-  return id;
-}
 
 test.describe('AI endpoint monitor preset @monitors', () => {
   test('creates a preset monitor with a project secret and reopens it in the preset @high @positive', async ({ projectAdminPage: page, cleanup }) => {
     const request = page.request;
-    const projectId = await currentProjectId(request);
     const secretKey = `E2E_AI_${String(Date.now()).slice(-6)}`;
-    const created = await request.post(`/api/projects/${projectId}/variables`, {
-      data: { key: secretKey, value: 'sk-e2e-not-a-real-key', isSecret: true },
-    });
-    expect(created.status(), await created.text()).toBeLessThan(300);
-    const variableId = ((await created.json()) as { data?: { id?: string }; id?: string }).data?.id;
-    cleanup.add(`secret ${secretKey}`, async () => {
-      if (variableId) await request.delete(`/api/projects/${projectId}/variables/${variableId}`);
-    });
+    const secret = await createProjectSecret(request, secretKey, 'sk-e2e-not-a-real-key');
+    cleanup.add(`secret ${secretKey}`, () => deleteProjectSecret(request, secret.projectId, secret.id));
 
     const name = `E2E AI endpoint ${Date.now()}`;
     await page.goto('/monitors/create?type=http_request');
     await waitForHydration(page);
 
     await page.getByRole('textbox', { name: 'Title' }).fill(name);
+    // Invalid plain-request headers are hidden by the preset and must not block saving.
+    await page.getByPlaceholder('{ "Authorization": "Bearer ..." }').fill('not json');
     await page.getByTestId('monitor-preset').click();
     await page.getByRole('option', { name: 'AI endpoint (OpenAI-compatible)' }).click();
 

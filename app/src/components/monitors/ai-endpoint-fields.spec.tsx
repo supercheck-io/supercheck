@@ -1,5 +1,5 @@
 import { render, screen, fireEvent } from "@testing-library/react";
-import { buildAiEndpointConfig, monthlyCalls } from "./ai-endpoint-fields";
+import { addAiEndpointIssues, buildAiEndpointConfig, monthlyCalls } from "./ai-endpoint-fields";
 import { SecretPicker } from "./secret-picker";
 
 let hookState: { data?: string[]; isLoading: boolean; isError: boolean; error?: Error; isFetching: boolean; refetch: jest.Mock };
@@ -91,5 +91,20 @@ describe("AiEndpointFields", () => {
     expect(screen.getByTestId("ai-key-header")).toBeDisabled();
     fireEvent.click(screen.getByTestId("ai-no-key"));
     expect(screen.getByRole("combobox", { name: "API key secret" })).toBeInTheDocument();
+  });
+});
+
+describe("addAiEndpointIssues", () => {
+  const issues = (data: Record<string, unknown>) => {
+    const found: string[] = [];
+    addAiEndpointIssues({ interval: "300", aiConfig_model: "m", aiConfig_secretKey: "KEY", ...data } as never, {
+      addIssue: (i: { path?: (string | number)[] }) => found.push(String(i.path?.[0])),
+    } as never);
+    return found;
+  };
+
+  it("rejects an invalid key header only while a key is sent", () => {
+    expect(issues({ aiConfig_keyHeader: "bad header" })).toEqual(["aiConfig_keyHeader"]);
+    expect(issues({ aiConfig_keyHeader: "bad header", aiConfig_noKey: true, aiConfig_secretKey: "" })).toEqual([]);
   });
 });

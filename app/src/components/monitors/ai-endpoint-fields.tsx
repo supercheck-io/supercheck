@@ -8,6 +8,40 @@ import { Textarea } from "@/components/ui/textarea";
 import { SecretPicker } from "./secret-picker";
 import type { FormValues } from "./monitor-form";
 import type { MonitorFormData } from "@/lib/input-sanitizer";
+import { z } from "zod";
+
+const intInRange = (value: string | undefined, min: number, max: number) =>
+  value === undefined || value.trim() === "" || (/^\d+$/.test(value.trim()) && Number(value) >= min && Number(value) <= max);
+
+type AiFormFields = {
+  interval: string;
+  aiConfig_secretKey?: string;
+  aiConfig_noKey?: boolean;
+  aiConfig_keyHeader?: string;
+  aiConfig_model?: string;
+  aiConfig_prompt?: string;
+  aiConfig_maxTokens?: string;
+  aiConfig_firstTokenTimeoutMs?: string;
+  aiConfig_timeoutSeconds?: string;
+};
+
+/** Field errors for the AI endpoint preset; mirrors the limits the API enforces. */
+export function addAiEndpointIssues(data: AiFormFields, ctx: z.RefinementCtx) {
+  const issue = (path: string, message: string) => ctx.addIssue({ code: z.ZodIssueCode.custom, message, path: [path] });
+  if (!data.aiConfig_model || data.aiConfig_model.trim() === "") issue("aiConfig_model", "Model is required");
+  else if (data.aiConfig_model.length > 200) issue("aiConfig_model", "Model must be 200 characters or less");
+  if (!data.aiConfig_noKey && (!data.aiConfig_secretKey || data.aiConfig_secretKey.trim() === "")) {
+    issue("aiConfig_secretKey", "Select a secret, or tick No key");
+  }
+  const header = data.aiConfig_noKey ? "" : data.aiConfig_keyHeader?.trim();
+  if (header && !/^[A-Za-z0-9-]{1,64}$/.test(header)) issue("aiConfig_keyHeader", "Use letters, digits and hyphens only");
+  if ((data.aiConfig_prompt ?? "").length > 2000) issue("aiConfig_prompt", "Prompt must be 2000 characters or less");
+  if (!intInRange(data.aiConfig_maxTokens, 1, 512)) issue("aiConfig_maxTokens", "Enter a whole number from 1 to 512");
+  if (!intInRange(data.aiConfig_firstTokenTimeoutMs, 500, 60000)) issue("aiConfig_firstTokenTimeoutMs", "Enter a whole number from 500 to 60000");
+  if (!intInRange(data.aiConfig_timeoutSeconds, 5, 120)) issue("aiConfig_timeoutSeconds", "Enter a whole number from 5 to 120");
+  const total = Number(data.aiConfig_timeoutSeconds || 60);
+  if (total > parseInt(data.interval, 10)) issue("aiConfig_timeoutSeconds", "The total time limit cannot exceed the check interval");
+}
 
 export const AI_ENDPOINT_DEFAULT_URL = "https://api.openai.com/v1/chat/completions";
 const MONTH_MINUTES = 30 * 24 * 60;

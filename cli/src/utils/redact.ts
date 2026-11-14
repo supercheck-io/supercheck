@@ -35,7 +35,7 @@ export function redact<T>(value: T, inConfig = false, code = false): T {
   const secretRefAuth = (key: string, item: unknown) => key === 'auth' && !!item && typeof item === 'object'
     && Object.keys(item).every((k) => k === 'type' || k === 'secretKey' || k === 'username') && typeof (item as Record<string, unknown>).secretKey === 'string'
   return Object.fromEntries(Object.entries(record).map(([key, item]) => [key,
-    secretRefAuth(key, item) ? item : (credentialKey.test(key.replace(/[-_]/g, '')) || (inConfig && ['url', 'headers', 'username'].includes(key)) || (key === 'value' && (record.isSecret || record.type === 'secret'))) && item != null && typeof item !== 'boolean'
+    secretRefAuth(key, item) ? redact(item, false) : (credentialKey.test(key.replace(/[-_]/g, '')) || (inConfig && ['url', 'headers', 'username'].includes(key)) || (key === 'value' && (record.isSecret || record.type === 'secret'))) && item != null && typeof item !== 'boolean'
       ? (typeof item === 'string' && ['[local secret provided]', '[remote secret masked]'].includes(item) ? item : '[REDACTED]') : redact(item, key === 'config' && sensitiveConfig, codeKeys.has(key.toLowerCase())),
   ])) as T
 }
