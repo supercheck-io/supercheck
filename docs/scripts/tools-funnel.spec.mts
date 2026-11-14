@@ -2,12 +2,12 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { invalidMessage, loadableImage, monitorTarget, monitorThisHref, shareHref, toState } from "../src/lib/tools-funnel.ts";
 // The app's own allow-list for `next`, so a change on either side fails here, not in production.
-import { sanitizeNextPath } from "../../app/src/lib/auth/safe-next-path.ts";
+import { sanitizeNextPath, withNextPath } from "../../app/src/lib/auth/safe-next-path.ts";
 
 /** What AuthGuard sends for a signed-out visitor, then what sign-in reads back and resumes. */
 function resumedNext(href: string): string | null {
   const url = new URL(href);
-  const signIn = new URL(`https://app.test/sign-in?next=${encodeURIComponent(url.pathname + url.search)}`);
+  const signIn = new URL(withNextPath("/sign-in", url.pathname + url.search), "https://app.test");
   return sanitizeNextPath(signIn.searchParams.get("next"));
 }
 
@@ -59,6 +59,8 @@ test("every Monitor-this link the pages build survives sign-in unchanged", () =>
     monitorThisHref("https", "ex.com"),
     monitorThisHref("uptime", "https://ex.com/a+b%20c/100%"),
     monitorThisHref("uptime", `https://ex.com/${"a".repeat(2000)}`), // falls back to the type-only form
+    monitorThisHref("uptime", ""), // the "Try it in Supercheck" button
+    monitorThisHref("api", "user:pw@ex.com"), // input we won't pre-fill
   ]) {
     const u = new URL(href);
     assert.equal(resumedNext(href), u.pathname + u.search, href);
@@ -73,7 +75,7 @@ test("monitorTarget picks the monitor type and target per tool", () => {
   assert.equal(monitorTarget("uptime", ""), null);
   assert.equal(monitorTarget("uptime", "javascript:alert(1)"), null);
   assert.equal(monitorTarget("uptime", "https://u:p@ex.com"), null);
-  assert.equal(monitorThisHref("uptime", ""), "https://app.supercheck.io/monitors/create");
+  assert.equal(monitorThisHref("uptime", ""), "https://app.supercheck.io/monitors/create?type=website");
   // Too long for the continuation: the form opens without the pre-fill instead of losing it silently later.
   assert.equal(monitorThisHref("uptime", `https://ex.com/${"a".repeat(2000)}`), "https://app.supercheck.io/monitors/create?type=website");
   // Measured after encoding: 140 non-ASCII characters are short raw but long encoded.
