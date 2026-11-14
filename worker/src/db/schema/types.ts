@@ -111,6 +111,8 @@ export type McpToolChange = {
   added: string[];
   removed: string[];
   changed: { name: string; reasons: Array<'description' | 'schema'> }[];
+  /** The list hash changed but the stored (first 500) names did not: the change is past the stored subset. */
+  beyondStored?: boolean;
 };
 
 /** Worker-owned MCP state (`config.mcpState`); clients can never write it. */
@@ -119,6 +121,9 @@ export type McpMonitorState = {
   lastCycleKey?: string;
   /** ISO time of the newest evaluated cycle; an older cycle redelivered later is ignored. */
   lastCycleAt?: string;
+  /** Tool-list part of the evaluation, tracked apart: it needs every expected location to have reported. */
+  toolsCycleKey?: string;
+  toolsCycleAt?: string;
   baseline?: { hash: string; takenAt: string; tools: McpToolFingerprint[] };
   /** Newest last; at most 10 kept. */
   changes?: McpToolChange[];

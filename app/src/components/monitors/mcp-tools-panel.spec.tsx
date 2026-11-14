@@ -47,6 +47,11 @@ describe("McpToolsPanel", () => {
     expect(screen.queryByText("Tools changed")).not.toBeInTheDocument();
   });
 
+  it("names a change outside the stored tools", () => {
+    render(<McpToolsPanel baseline={baseline(["a"])} now={NOW} changes={[{ ...change("2026-11-14T10:00:00Z"), beyondStored: true }]} />);
+    expect(screen.getByText("changed beyond the first 500 tools")).toBeInTheDocument();
+  });
+
   it("shows pending, empty and error states", () => {
     const { rerender } = render(<McpToolsPanel pending now={NOW} />);
     expect(screen.getByText("Waiting for the first check")).toBeInTheDocument();

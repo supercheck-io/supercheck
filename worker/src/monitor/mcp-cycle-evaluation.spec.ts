@@ -13,7 +13,11 @@ import type {
   McpToolFingerprint,
   MonitorConfig,
 } from '../db/schema/types';
-import { evaluateMcpCycle } from './mcp-cycle-evaluation';
+import {
+  completeMcpTools,
+  evaluateMcpCycle,
+  toolsInputOf,
+} from './mcp-cycle-evaluation';
 import { fingerprintTool, hashToolList } from './mcp-tool-diff';
 import { dispatchMonitorWarning } from './monitor-warning-dispatch';
 import { persistGuardedState } from './monitor-warning-state';
@@ -77,13 +81,27 @@ describe('evaluateMcpCycle', () => {
     persist
       .mockReset()
       .mockImplementation(
-        (_db, _id, _key, readKey, cycleKey, cycleAt, next) => {
-          const stored = config?.mcpState?.lastCycleKey ?? '';
-          const lastAt = config?.mcpState?.lastCycleAt;
+        (_db, _id, _key, readKey, cycleKey, cycleAt, next, opts) => {
+          const o = opts as
+            | {
+                keyField?: string;
+                atField?: string;
+                also?: Record<string, string | undefined>;
+              }
+            | undefined;
+          const st = (config?.mcpState ?? {}) as Record<
+            string,
+            string | undefined
+          >;
+          const stored = st[o?.keyField ?? 'lastCycleKey'] ?? '';
+          const lastAt = st[o?.atField ?? 'lastCycleAt'];
           if (
             stored !== (readKey ?? '') ||
             stored === cycleKey ||
-            (lastAt && Date.parse(lastAt) >= (cycleAt as Date).getTime())
+            (lastAt && Date.parse(lastAt) >= (cycleAt as Date).getTime()) ||
+            Object.entries(o?.also ?? {}).some(
+              ([k, v]) => (st[k] ?? '') !== (v ?? ''),
+            )
           )
             return Promise.resolve(false);
           config = { ...config, mcpState: next as McpMonitorState };
@@ -164,6 +182,235 @@ describe('evaluateMcpCycle', () => {
   it('a cycle at exactly the same time as the last one is ignored', async () => {
     await evaluate('c1', [result(A)], 1000);
     expect(await evaluate('twin', [result(A)], 1000)).toBe(false);
+  });
+
+  it('re-reads once when a tool-list completion wrote between our read and write', async () => {
+    await evaluate('c1', [result(A)]);
+    persist.mockResolvedValueOnce(false);
+    expect(await evaluate('c2', [result([tool('n')])])).toBe(true);
+    expect(persist).toHaveBeenCalledTimes(3);
+  });
+
+  describe('a cycle closed early (a location still pending)', () => {
+    const pending = (ups: ReturnType<typeof result>[]) => ({
+      complete: false,
+      upResults: ups,
+    });
+    const B = [tool('x')];
+
+    it('records no change from the early rows, but still counts the slow streak and the cycle', async () => {
+      await evaluate('c1', [result(A)]);
+      const key = 'c2';
+      expect(
+        await evaluateMcpCycle(
+          db,
+          'm1',
+          key,
+          at(key),
+          [result(B, 2000)],
+          pending([result(B)]),
+        ),
+      ).toBe(true);
+      expect(state().baseline!.hash).toBe(hashToolList(A));
+      expect(state().changes).toBeUndefined();
+      expect(state().slowStreak).toBe(1);
+      expect(state().lastCycleKey).toBe('c2');
+      expect(state().toolsCycleKey).toBe('c1');
+      expect(dispatch).not.toHaveBeenCalled();
+    });
+
+    it('does not even take a baseline from early rows', async () => {
+      await evaluateMcpCycle(
+        db,
+        'm1',
+        'c1',
+        at('c1'),
+        [result(A)],
+        pending([result(A)]),
+      );
+      expect(state().baseline).toBeUndefined();
+      expect(state().toolsCycleKey).toBeUndefined();
+    });
+  });
+
+  describe('completeMcpTools (late rows reach a closed cycle)', () => {
+    const cycleRow = (over: Record<string, unknown> = {}) => ({
+      status: 'closed',
+      monitorId: 'm1',
+      scheduledFor: new Date(1_800_000_005_000),
+      expectedLocations: ['eu', 'us'],
+      ...over,
+    });
+    const row = (
+      location: string,
+      tools: McpToolFingerprint[],
+      over: Record<string, unknown> = {},
+    ) => ({
+      location,
+      isUp: true,
+      responseTimeMs: 5,
+      checkedAt: new Date(1_800_000_006_000),
+      details: result(tools).details,
+      ...over,
+    });
+    let cycle: ReturnType<typeof cycleRow> | undefined;
+    let rows: ReturnType<typeof row>[];
+    const complete = (key = 'cyc') => {
+      let n = 0;
+      const dbc = {
+        select: () => ({
+          from: () => ({
+            where: () => {
+              n += 1;
+              if (n === 1)
+                return { limit: () => Promise.resolve(cycle ? [cycle] : []) };
+              return n === 2
+                ? Promise.resolve(rows)
+                : { limit: () => Promise.resolve(config ? [{ config }] : []) };
+            },
+          }),
+        }),
+      } as unknown as PostgresJsDatabase<typeof schema>;
+      return completeMcpTools(dbc, 'm1', key);
+    };
+    const B = [tool('x')];
+
+    beforeEach(() => {
+      cycle = cycleRow();
+      rows = [row('eu', B), row('us', B)];
+      config = {
+        mcp: { auth: { type: 'none' } },
+        mcpState: {
+          lastCycleKey: 'cyc',
+          lastCycleAt: new Date(1_800_000_005_000).toISOString(),
+          baseline: { hash: hashToolList(A), takenAt: 't', tools: A },
+        },
+      };
+    });
+
+    it('records the change once every expected region is in and they agree, without touching the slow streak', async () => {
+      config!.mcpState!.slowStreak = 2;
+      expect(await complete()).toBe(true);
+      expect(kinds()).toEqual([['mcp_tools_changed', 'mcp_tools_changed:cyc']]);
+      expect(state().baseline!.hash).toBe(hashToolList(B));
+      expect(state().slowStreak).toBe(2);
+      expect(state().lastCycleKey).toBe('cyc');
+      expect(state().toolsCycleKey).toBe('cyc');
+    });
+
+    it('does nothing while a region is still missing, or only has a synthetic row', async () => {
+      rows = [row('eu', B)];
+      expect(await complete()).toBe(false);
+      rows = [
+        row('eu', B),
+        row('us', B, { isUp: false, details: { synthetic: true } }),
+      ];
+      expect(await complete()).toBe(false);
+      expect(dispatch).not.toHaveBeenCalled();
+    });
+
+    it('records nothing when the regions disagree, but completes the cycle', async () => {
+      rows = [row('eu', B), row('us', A)];
+      expect(await complete()).toBe(true);
+      expect(state().baseline!.hash).toBe(hashToolList(A));
+      expect(dispatch).not.toHaveBeenCalled();
+    });
+
+    it('a region that is down has reported and does not block; only up regions are compared', async () => {
+      rows = [row('eu', B), row('us', B, { isUp: false })];
+      expect(await complete()).toBe(true);
+      expect(kinds()).toHaveLength(1);
+    });
+
+    it('runs once per cycle, and never for an older cycle than one already completed', async () => {
+      expect(await complete()).toBe(true);
+      expect(await complete()).toBe(false);
+      cycle = cycleRow({ scheduledFor: new Date(1_800_000_001_000) });
+      expect(await complete('older')).toBe(false);
+      expect(dispatch).toHaveBeenCalledTimes(1);
+    });
+
+    it('ignores open cycles, other monitors cycles and missing cycles', async () => {
+      cycle = cycleRow({ status: 'open' });
+      expect(await complete()).toBe(false);
+      cycle = cycleRow({ monitorId: 'other' });
+      expect(await complete()).toBe(false);
+      cycle = undefined;
+      expect(await complete()).toBe(false);
+    });
+
+    it('uses the newest real row of a region', async () => {
+      rows = [
+        row('eu', A, { checkedAt: new Date(1_800_000_001_000) }),
+        row('eu', B, { checkedAt: new Date(1_800_000_009_000) }),
+        row('us', B),
+      ];
+      expect(await complete()).toBe(true);
+      expect(kinds()).toHaveLength(1);
+    });
+
+    it('persists with its own guard fields and the other pair as an extra guard', async () => {
+      await complete();
+      expect(persist).toHaveBeenCalledWith(
+        expect.anything(),
+        'm1',
+        'mcpState',
+        undefined,
+        'cyc',
+        cycleRow().scheduledFor,
+        expect.any(Object),
+        {
+          keyField: 'toolsCycleKey',
+          atField: 'toolsCycleAt',
+          also: { lastCycleKey: 'cyc' },
+        },
+      );
+    });
+
+    it('swallows a failure', async () => {
+      cycle = undefined;
+      persist.mockRejectedValue(new Error('x'));
+      expect(await complete()).toBe(false);
+      const bad = {
+        select: () => {
+          throw new Error('db down');
+        },
+      } as unknown as PostgresJsDatabase<typeof schema>;
+      await expect(completeMcpTools(bad, 'm1', 'cyc')).resolves.toBe(false);
+    });
+
+    it('does nothing for a monitor that is gone or has no MCP settings', async () => {
+      config = null;
+      expect(await complete()).toBe(false);
+    });
+  });
+
+  it('a list change past the stored tools is still recorded and warned, flagged beyondStored', async () => {
+    await evaluate('c1', [result(A)]);
+    // same stored names and fingerprints, but the whole-list hash differs (a tool beyond the stored 500 changed)
+    const beyond = {
+      ...result(A),
+      details: { mcp: { ...result(A).details.mcp, toolsHash: 'f'.repeat(64) } },
+    };
+    await evaluate('c2', [beyond]);
+    expect(state().changes).toHaveLength(1);
+    expect(state().changes![0]).toMatchObject({
+      added: [],
+      removed: [],
+      changed: [],
+      beyondStored: true,
+    });
+    expect(kinds()).toEqual([['mcp_tools_changed', 'mcp_tools_changed:c2']]);
+    expect(dispatch.mock.calls[0][2]).toBe(
+      'Tool list changed beyond the stored tools',
+    );
+    expect(state().baseline!.hash).toBe('f'.repeat(64));
+  });
+
+  it('a visible change is not flagged beyondStored', async () => {
+    await evaluate('c1', [result(A)]);
+    await evaluate('c2', [result([tool('n')])]);
+    expect(state().changes![0].beyondStored).toBeUndefined();
   });
 
   it('records lastCycleAt as an ISO time', async () => {
@@ -331,7 +578,7 @@ describe('evaluateMcpCycle', () => {
 
   it('sends nothing when its UPDATE changed no row (another worker moved first)', async () => {
     await evaluate('c1', [result(A)]);
-    persist.mockResolvedValueOnce(false);
+    persist.mockResolvedValueOnce(false).mockResolvedValueOnce(false);
     expect(await evaluate('c2', [result([tool('n')])])).toBe(false);
     expect(dispatch).not.toHaveBeenCalled();
   });
@@ -363,6 +610,55 @@ describe('evaluateMcpCycle', () => {
       'new',
       at('new'),
       expect.any(Object),
+      { also: { toolsCycleKey: undefined } },
     );
+  });
+});
+
+describe('toolsInputOf', () => {
+  const up = (location: string, ms = 0) => ({
+    location,
+    isUp: true,
+    checkedAt: new Date(ms),
+    details: {},
+  });
+  it('needs every distinct expected location to have a real row', () => {
+    expect(toolsInputOf(['a', 'b', 'a'], [up('a'), up('b')]).complete).toBe(
+      true,
+    );
+    expect(toolsInputOf(['a', 'b'], [up('a')]).complete).toBe(false);
+    expect(toolsInputOf([], []).complete).toBe(false);
+    expect(
+      toolsInputOf(
+        ['a'],
+        [{ location: 'a', isUp: false, details: { synthetic: true } }],
+      ).complete,
+    ).toBe(false);
+  });
+  it('keeps each location newest row, ignores unexpected locations, and drops down rows from upResults', () => {
+    const newer = up('a', 20);
+    const input = toolsInputOf(
+      ['a', 'b'],
+      [
+        up('a', 10),
+        newer,
+        up('z'),
+        { location: 'b', isUp: false, details: {} },
+      ],
+    );
+    expect(input.complete).toBe(true);
+    expect(input.upResults).toEqual([newer]);
+  });
+  it('treats rows without a checkedAt as oldest', () => {
+    const dated = up('a', 5);
+    const input = toolsInputOf(
+      ['a'],
+      [
+        { location: 'a', isUp: true, details: {} },
+        dated,
+        { location: 'a', isUp: true, details: {} },
+      ],
+    );
+    expect(input.upResults).toEqual([dated]);
   });
 });

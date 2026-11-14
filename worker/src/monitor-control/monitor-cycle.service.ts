@@ -4,6 +4,7 @@ import { DbService } from '../db/db.service';
 import * as schema from '../db/schema';
 import type { MonitorCycleEvaluation } from '../db/schema';
 import { evaluateCycleWarnings } from '../monitor/monitor-cycle-warnings';
+import { toolsInputOf } from '../monitor/mcp-cycle-evaluation';
 import { MonitorAlertService } from '../monitor/services/monitor-alert.service';
 import {
   MonitorEvaluator,
@@ -432,6 +433,8 @@ export class MonitorCycleService {
           ? [row]
           : [];
       }),
+      // The closure's frozen view drives the slow streak; the tool-list part needs every expected region in.
+      toolsInputOf(cycle.expectedLocations, rows),
     );
     if (outcome.deliveryFailed) {
       // The caller gave up waiting and already counted this attempt; counting it again would

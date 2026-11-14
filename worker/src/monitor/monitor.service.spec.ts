@@ -2,6 +2,7 @@ import { AxiosError } from 'axios';
 import { resolveMonitorSecret } from './monitor-secret';
 import { executeMcpCheck } from './mcp-check';
 import { evaluateCycleWarnings } from './monitor-cycle-warnings';
+import { completeMcpTools } from './mcp-cycle-evaluation';
 import { throwError } from 'rxjs';
 /**
  * Monitor Service Tests
@@ -37,6 +38,10 @@ jest.mock('../execution/services/execution.service', () => ({
 
 jest.mock('./monitor-cycle-warnings', () => ({
   evaluateCycleWarnings: jest.fn().mockResolvedValue(undefined),
+}));
+
+jest.mock('./mcp-cycle-evaluation', () => ({
+  completeMcpTools: jest.fn().mockResolvedValue(false),
 }));
 
 jest.mock('./mcp-check', () => ({
@@ -4132,6 +4137,36 @@ describe('MonitorService', () => {
           row.checkedAt,
           [row],
         );
+      });
+
+      it('a late regional row of an already closed cycle completes its tool-list check', async () => {
+        jest
+          .spyOn(service as any, 'recordCycleArrival')
+          .mockResolvedValue(true);
+        (completeMcpTools as jest.Mock).mockClear();
+        await service.saveDistributedMonitorResult(row, {
+          executionGroupId: 'cycle-9',
+          monitorCycle: true,
+          persisted: true,
+        });
+        expect(completeMcpTools).toHaveBeenCalledWith(
+          mockDbService.db,
+          mockMonitor.id,
+          'cycle-9',
+        );
+        expect(evaluateCycleWarnings).not.toHaveBeenCalled();
+      });
+
+      it('rows that are not MCP results never trigger the completion', async () => {
+        jest
+          .spyOn(service as any, 'recordCycleArrival')
+          .mockResolvedValue(true);
+        (completeMcpTools as jest.Mock).mockClear();
+        await service.saveDistributedMonitorResult(
+          { ...row, details: { statusCode: 200 } },
+          { executionGroupId: 'cycle-9', monitorCycle: true, persisted: true },
+        );
+        expect(completeMcpTools).not.toHaveBeenCalled();
       });
 
       it('legacy group path: the execution group id is the cycle key, even when the group was already evaluated', async () => {

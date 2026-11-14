@@ -295,8 +295,10 @@ export class McpHttpClient {
         'tools/list',
         cursor ? { cursor } : undefined,
       );
-      if (Array.isArray(result.tools))
-        tools.push(...(result.tools as unknown[]));
+      // A successful reply must carry the list; a missing one is not an empty server.
+      if (!Array.isArray(result.tools))
+        throw new McpError('mcp_protocol_error');
+      tools.push(...(result.tools as unknown[]));
       cursor =
         typeof result.nextCursor === 'string' ? result.nextCursor : undefined;
       if (!cursor || tools.length >= stopAt) break;

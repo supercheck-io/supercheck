@@ -96,6 +96,8 @@ export type McpToolChange = {
   added: string[];
   removed: string[];
   changed: { name: string; reasons: Array<"description" | "schema"> }[];
+  /** The full-list hash changed but the stored first 500 tools show no difference. */
+  beyondStored?: boolean;
 };
 
 /** Worker-owned MCP state (`config.mcpState`); clients can never write it. */
@@ -104,6 +106,9 @@ export type McpMonitorState = {
   lastCycleKey?: string;
   /** ISO time of the newest evaluated cycle; an older cycle is never evaluated after it. */
   lastCycleAt?: string;
+  /** Cycle whose complete tool lists were last compared (may lag lastCycleKey on early-closed cycles). */
+  toolsCycleKey?: string;
+  toolsCycleAt?: string;
   baseline?: { hash: string; takenAt: string; tools: McpToolFingerprint[] };
   /** Newest last; at most 10 kept. */
   changes?: McpToolChange[];

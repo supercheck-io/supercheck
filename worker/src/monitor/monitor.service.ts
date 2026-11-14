@@ -5,6 +5,7 @@ import { AxiosError, AxiosRequestConfig, Method } from 'axios'; // Import Method
 import * as tls from 'tls';
 import { randomUUID } from 'node:crypto';
 import { evaluateCycleWarnings } from './monitor-cycle-warnings';
+import { completeMcpTools } from './mcp-cycle-evaluation';
 import { executeMcpCheck, MCP_DEFAULT_TIMEOUT_SECONDS } from './mcp-check';
 import { createMcpMonitorRequest } from './mcp-monitor-transport';
 import { firstValueFrom } from 'rxjs'; // To convert Observable to Promise
@@ -902,8 +903,16 @@ export class MonitorService {
         result.monitorId,
         result.location,
       ))
-    )
+    ) {
+      // A late region of a cycle the closure judged early: finish its tool-list check once every region is in.
+      if ((result.details as { mcp?: unknown } | undefined)?.mcp)
+        await completeMcpTools(
+          this.dbService.db,
+          result.monitorId,
+          executionGroupId,
+        );
       return;
+    }
 
     await this.evaluateLegacyGroup(
       result.monitorId,

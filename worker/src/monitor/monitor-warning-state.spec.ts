@@ -56,6 +56,40 @@ describe('persistGuardedState', () => {
     );
   });
 
+  it('can guard on another field pair and require other fields to be unchanged', async () => {
+    const { db, captured } = fakeDb([{ id: 'm1' }]);
+    await persistGuardedState(
+      db,
+      'm1',
+      'mcpState',
+      'tk',
+      'cyc',
+      CYCLE_AT,
+      {},
+      {
+        keyField: 'toolsCycleKey',
+        atField: 'toolsCycleAt',
+        also: { lastCycleKey: 'lk', toolsGone: undefined },
+      },
+    );
+    const where = dialect.sqlToQuery(captured.where!);
+    expect(where.sql).toContain(
+      `coalesce(config->'mcpState'->>'toolsCycleKey','') <> $`,
+    );
+    expect(where.sql).toContain(
+      `(config->'mcpState'->>'toolsCycleAt') is null`,
+    );
+    expect(where.sql).toContain(
+      `coalesce(config->'mcpState'->>'lastCycleKey','') = $`,
+    );
+    expect(where.sql).toContain(
+      `coalesce(config->'mcpState'->>'toolsGone','') = $`,
+    );
+    expect(where.params).toEqual(
+      expect.arrayContaining(['tk', 'cyc', 'lk', '']),
+    );
+  });
+
   it('uses the other worker-owned key and an empty previous key', async () => {
     const { db, captured } = fakeDb([]);
     expect(

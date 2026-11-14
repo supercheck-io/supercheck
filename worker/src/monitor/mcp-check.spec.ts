@@ -290,6 +290,46 @@ describe('executeMcpCheck', () => {
       );
     });
 
+    it('hashes the whole list: a change on tool 550 of 600 changes the hash though only 500 are stored', async () => {
+      const list = (desc: string) =>
+        Array.from({ length: 600 }, (_, i) => ({
+          name: `tool_${String(i).padStart(3, '0')}`,
+          description: i === 550 ? desc : 'same',
+        }));
+      b.tools = list('before');
+      const one = await run();
+      b.tools = list('after');
+      const two = await run();
+      expect(one.details.mcp.tools).toHaveLength(500);
+      expect(two.details.mcp.tools).toEqual(one.details.mcp.tools);
+      expect(two.details.mcp.toolsHash).not.toBe(one.details.mcp.toolsHash);
+    });
+
+    it('a tools/list reply without a tools array is failure list', async () => {
+      b.tools = undefined;
+      const request: McpRequest = (_u, init, read) => {
+        const m = (JSON.parse(init.body as string) as { method: string })
+          .method;
+        return read(
+          new Response(
+            JSON.stringify({
+              jsonrpc: '2.0',
+              id: 1,
+              result:
+                m === 'server/discover'
+                  ? { supportedVersions: ['2026-07-28'] }
+                  : {},
+            }),
+            { status: 200, headers: { 'content-type': 'application/json' } },
+          ),
+        );
+      };
+      const r = await run({}, {}, url, request);
+      expect(r.status).toBe('down');
+      expect(r.details.mcp.failure).toBe('list');
+      expect(r.details.errorMessage).toBe('Could not list tools');
+    });
+
     it('stops listing after 10 pages', async () => {
       b.pages = true;
       const r = await run();

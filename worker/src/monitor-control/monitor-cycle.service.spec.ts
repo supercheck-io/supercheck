@@ -91,7 +91,26 @@ describe('MonitorCycleService.notifyCycle runs the MCP and AI warning evaluation
       'cycle-1',
       cycle.scheduledFor,
       [eu],
+      { complete: false, upResults: [eu] },
     );
+  });
+
+  it('an early-closed cycle: the slow regions late rows count for the tool-list input, not for the frozen view', async () => {
+    const early = {
+      ...cycle,
+      closedBy: 'arrival',
+      observedLocations: ['eu'],
+      missingLocations: ['us'],
+      evaluation: { ...cycle.evaluation, observedAt: '2026-01-01T00:01:01Z' },
+    };
+    const fast = row('eu', { checkedAt: new Date('2026-01-01T00:01:01Z') });
+    const late = row('us', { checkedAt: new Date('2026-01-01T00:01:09Z') });
+    const { service } = build([[early], [monitor], [fast, late]]);
+    await service.notifyCycle('cycle-1');
+    const args = evaluate.mock.calls[0];
+    expect(args[4]).toEqual([fast]);
+    expect(args[5]).toMatchObject({ complete: true });
+    expect(args[5].upResults).toHaveLength(2);
   });
 
   it('still evaluates when alert delivery failed, so a redelivery cannot skip it', async () => {
@@ -106,6 +125,7 @@ describe('MonitorCycleService.notifyCycle runs the MCP and AI warning evaluation
       'cycle-1',
       cycle.scheduledFor,
       [expect.objectContaining({ location: 'eu' })],
+      expect.objectContaining({ complete: false }),
     );
   });
 

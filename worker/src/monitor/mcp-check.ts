@@ -224,13 +224,13 @@ export async function executeMcpCheck(
       if (fingerprint) byName.set(fingerprint.name, fingerprint.fingerprint);
     }
     // Sorted before the cap, so a server listing more than the cap in a shifting order stays stable.
-    const tools = [...byName]
+    const all = [...byName]
       .map(([name, fingerprint]) => ({ name, fingerprint }))
-      .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
-      .slice(0, MCP_MAX_TOOLS);
+      .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
     mcp.toolCount = byName.size;
-    mcp.toolsHash = hashToolList(tools);
-    mcp.tools = tools;
+    // The hash covers every tool, so a change past the stored 500 is still seen.
+    mcp.toolsHash = hashToolList(all);
+    mcp.tools = all.slice(0, MCP_MAX_TOOLS);
     Object.assign(mcp, client.timings);
     // A remembered mode that was re-detected during the list changes the protocol and server info.
     mcp.protocol = client.protocolVersion;

@@ -22,10 +22,21 @@ export async function persistGuardedState(
   cycleKey: string,
   cycleAt: Date,
   next: object,
+  opts: {
+    /** Which pair of fields carries the guard; the tool-list completion has its own pair. */
+    keyField?: string;
+    atField?: string;
+    /** Other guard fields that must still hold the value the caller read (no lost update). */
+    also?: Record<string, string | undefined>;
+  } = {},
 ): Promise<boolean> {
-  // `key` is a closed union of literals, so interpolating it into the path is safe.
-  const lastKey = sql.raw(`coalesce(config->'${key}'->>'lastCycleKey','')`);
-  const lastAt = sql.raw(`(config->'${key}'->>'lastCycleAt')`);
+  // `key` and the field names are closed literals from this module, so interpolating them is safe.
+  const field = (name: string) =>
+    sql.raw(`coalesce(config->'${key}'->>'${name}','')`);
+  const lastKey = field(opts.keyField ?? 'lastCycleKey');
+  const lastAt = sql.raw(
+    `(config->'${key}'->>'${opts.atField ?? 'lastCycleAt'}')`,
+  );
   const rows = await db
     .update(schema.monitors)
     .set({
@@ -39,6 +50,9 @@ export async function persistGuardedState(
         sql`${lastKey} = ${readCycleKey ?? ''}`,
         // Strictly later than the newest evaluated cycle: a redelivered older cycle changes nothing.
         sql`(${lastAt} is null or ${lastAt}::timestamptz < ${cycleAt.toISOString()}::timestamptz)`,
+        ...Object.entries(opts.also ?? {}).map(
+          ([name, value]) => sql`${field(name)} = ${value ?? ''}`,
+        ),
       ),
     )
     .returning({ id: schema.monitors.id });

@@ -666,14 +666,40 @@ describe('McpHttpClient replies, pagination and caps', () => {
     expect(seen.filter((s) => s.body!.method === 'tools/list')).toHaveLength(2);
   });
 
-  it('ignores a non-array tools field and a non-string cursor', async () => {
+  it.each([[{ tools: 'x' }], [{}], [{ tools: null }], [{ nextCursor: 'p2' }]])(
+    'a successful tools/list without a tools array is a protocol error, not an empty server (%j)',
+    async (result) => {
+      const { request } = script((req) =>
+        req.body!.method === 'server/discover'
+          ? modernServer(req, 1)
+          : ok(req.body!.id, result),
+      );
+      const client = await connect(request);
+      expect((await failure(client.listTools())).code).toBe(
+        'mcp_protocol_error',
+      );
+    },
+  );
+
+  it('ignores a non-string cursor', async () => {
     const { request } = script((req) =>
       req.body!.method === 'server/discover'
         ? modernServer(req, 1)
-        : ok(req.body!.id, { tools: 'x', nextCursor: 5 }),
+        : ok(req.body!.id, { tools: [], nextCursor: 5 }),
     );
     const client = await connect(request);
     expect(await client.listTools()).toEqual({ tools: [], hasMore: false });
+  });
+
+  it('a second page without tools is also a protocol error', async () => {
+    const { request } = script((req) => {
+      if (req.body!.method === 'server/discover') return modernServer(req, 1);
+      return req.body!.params.cursor
+        ? ok(req.body!.id, {})
+        : ok(req.body!.id, { tools: [{ name: 'a' }], nextCursor: 'p2' });
+    });
+    const client = await connect(request);
+    expect((await failure(client.listTools())).code).toBe('mcp_protocol_error');
   });
 
   it('rejects a reply over the cap, JSON or SSE, and one without a body', async () => {

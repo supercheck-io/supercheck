@@ -2,7 +2,7 @@ import type { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import * as schema from '../db/schema';
 import type { MonitorConfig } from '../db/schema/types';
 import { evaluateAiEndpointWarnings } from './ai-endpoint-warnings';
-import { evaluateMcpCycle } from './mcp-cycle-evaluation';
+import { evaluateMcpCycle, type McpToolsInput } from './mcp-cycle-evaluation';
 
 type CycleResult = {
   isUp: boolean;
@@ -22,6 +22,8 @@ export async function evaluateCycleWarnings(
   cycleKey: string,
   cycleAt: Date,
   results: CycleResult[],
+  /** MCP only: the cycle's full row set when it closed before every location reported. */
+  tools?: McpToolsInput,
 ): Promise<void> {
   if (monitor.type === 'mcp_server')
     await evaluateMcpCycle(
@@ -30,6 +32,7 @@ export async function evaluateCycleWarnings(
       cycleKey,
       cycleAt,
       results.filter((result) => result.isUp),
+      tools,
     );
   else if (monitor.type === 'http_request' && monitor.config?.aiEndpoint)
     await evaluateAiEndpointWarnings(

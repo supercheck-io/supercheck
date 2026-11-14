@@ -51,6 +51,7 @@ function ChangeRow({ change, index }: { change: McpToolChange; index: number }) 
     change.added.length ? `+${change.added.length} added` : null,
     change.removed.length ? `-${change.removed.length} removed` : null,
     change.changed.length ? `~${change.changed.length} changed` : null,
+    change.beyondStored ? "changed beyond the first 500 tools" : null,
   ].filter(Boolean);
   return (
     <li className="py-2" data-testid="mcp-change">

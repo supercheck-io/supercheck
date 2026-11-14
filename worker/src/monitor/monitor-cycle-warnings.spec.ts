@@ -26,7 +26,34 @@ describe('evaluateCycleWarnings', () => {
       cycleAt,
       [up, down],
     );
-    expect(evaluateMcpCycle).toHaveBeenCalledWith(db, 'm', 'c1', cycleAt, [up]);
+    expect(evaluateMcpCycle).toHaveBeenCalledWith(
+      db,
+      'm',
+      'c1',
+      cycleAt,
+      [up],
+      undefined,
+    );
+  });
+
+  it('passes the full-row tool input through for an early-closed cycle', async () => {
+    const tools = { complete: false, upResults: [up] };
+    await evaluateCycleWarnings(
+      db,
+      { id: 'm', type: 'mcp_server', config: null },
+      'c1',
+      cycleAt,
+      [up],
+      tools,
+    );
+    expect(evaluateMcpCycle).toHaveBeenCalledWith(
+      db,
+      'm',
+      'c1',
+      cycleAt,
+      [up],
+      tools,
+    );
     expect(evaluateAiEndpointWarnings).not.toHaveBeenCalled();
   });
 
