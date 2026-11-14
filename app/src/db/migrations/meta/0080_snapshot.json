@@ -1,5 +1,5 @@
 {
-  "id": "9a161564-71a0-466c-adb9-64273e1926d8",
+  "id": "c1e97fe5-e7ac-41e6-8a59-c8c2f61a60e4",
   "prevId": "6b56f1f8-769b-4853-8a02-da5a7ec0d11d",
   "version": "7",
   "dialect": "postgresql",
@@ -13828,6 +13828,36 @@
           "columns": [
             {
               "expression": "organization_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "notification_policies_escalate_channel_id_idx": {
+          "name": "notification_policies_escalate_channel_id_idx",
+          "columns": [
+            {
+              "expression": "escalate_channel_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "notification_policies_escalate_user_id_idx": {
+          "name": "notification_policies_escalate_user_id_idx",
+          "columns": [
+            {
+              "expression": "escalate_user_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"

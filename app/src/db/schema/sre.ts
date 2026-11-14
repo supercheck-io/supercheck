@@ -539,6 +539,9 @@ export const notificationPolicies = pgTable(
   (table) => ({
     projectUniqueIdx: uniqueIndex("notification_policies_project_unique_idx").on(table.projectId),
     organizationIdIdx: index("notification_policies_organization_id_idx").on(table.organizationId),
+    // Channel and user deletes set these to null.
+    escalateChannelIdIdx: index("notification_policies_escalate_channel_id_idx").on(table.escalateChannelId),
+    escalateUserIdIdx: index("notification_policies_escalate_user_id_idx").on(table.escalateUserId),
     renotifyRangeCheck: check("notification_policies_renotify_range_check", sql`${table.renotifyUnackedMinutes} IS NULL OR (${table.renotifyUnackedMinutes} BETWEEN 5 AND 1440)`),
     renotifyRepeatRangeCheck: check("notification_policies_renotify_repeat_range_check", sql`${table.renotifyRepeatMinutes} IS NULL OR (${table.renotifyRepeatMinutes} BETWEEN 5 AND 1440)`),
     renotifyMaxRangeCheck: check("notification_policies_renotify_max_range_check", sql`${table.renotifyMax} BETWEEN 1 AND 10`),

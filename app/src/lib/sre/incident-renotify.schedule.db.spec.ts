@@ -66,9 +66,9 @@ beforeAll(async () => {
     env: { ...process.env, DATABASE_URL: url.toString(), SELF_HOSTED: "true", NODE_ENV: "test" },
     timeout: 90_000,
   });
-  client = postgres(url.toString(), { max: 4, onnotice: () => {} });
+  // Fixtures skip foreign keys; set per connection, since the pool (two concurrent ticks) uses several.
+  client = postgres(url.toString(), { max: 4, onnotice: () => {}, connection: { session_replication_role: "replica" } });
   mockDatabase = drizzle(client);
-  await client.unsafe("SET session_replication_role = replica");
   for (const [o, p] of [[org, project], [otherOrg, otherProject]]) {
     await client`INSERT INTO organization (id, name, slug, created_at) VALUES (${o}, 'o', ${o}, ${new Date().toISOString()})`;
     await client`INSERT INTO projects (id, organization_id, name, slug) VALUES (${p}, ${o}, 'p', ${p})`;
