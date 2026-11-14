@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { and, asc, desc, eq } from "drizzle-orm";
+import { and, asc, count, desc, eq } from "drizzle-orm";
 import { z } from "zod";
 
 import {
@@ -19,17 +19,23 @@ import {
   generatePostmortemDraft,
   postmortemSectionsSchema,
   postmortemTimeline,
+  TIMELINE_GAP_EVENT,
   toStoredPostmortem,
   type PostmortemContext,
 } from "@/lib/sre/postmortem";
 import { checkSrePostmortemRateLimit } from "@/lib/sre/sre-rate-limiter";
 import { isNoEvidenceBrief, storedRootCause, withoutNoEvidenceNotice } from "@/lib/sre/evidence-brief-summary";
+import { loadTimelineRefs } from "@/lib/sre/timeline-refs";
 import { readStoredHypotheses } from "@/sre/lib/investigation-output";
 import { db } from "@/utils/db";
 
 const logger = createLogger({ module: "sre-postmortem" }) as {
   error: (data: unknown, message?: string) => void;
 };
+
+// Oldest and newest events loaded for the draft, so a long incident keeps both its start and its resolution.
+const HEAD_EVENTS = 50;
+const TAIL_EVENTS = 150;
 
 const generateSchema = z.object({ incidentId: z.string().uuid() });
 const saveSchema = z.object({ incidentId: z.string().uuid(), sections: postmortemSectionsSchema });
@@ -102,11 +108,12 @@ export async function generateSrePostmortem(
         .select({ id: sreIncidentTimelineEvents.id, at: sreIncidentTimelineEvents.createdAt, eventType: sreIncidentTimelineEvents.eventType, data: sreIncidentTimelineEvents.eventData })
         .from(sreIncidentTimelineEvents)
         .where(eq(sreIncidentTimelineEvents.incidentId, incident.id));
-    const [tail, head, evidence, [run]] = await Promise.all([
+    const [tail, head, [total], evidence, [run]] = await Promise.all([
       // Newest 150 plus the first 50, so a long incident keeps both its start and its resolution.
       // Generous because postmortemTimeline drops briefs, edits and repeat investigations afterwards.
-      timelineQuery().orderBy(desc(sreIncidentTimelineEvents.createdAt)).limit(150),
-      timelineQuery().orderBy(asc(sreIncidentTimelineEvents.createdAt)).limit(50),
+      timelineQuery().orderBy(desc(sreIncidentTimelineEvents.createdAt)).limit(TAIL_EVENTS),
+      timelineQuery().orderBy(asc(sreIncidentTimelineEvents.createdAt)).limit(HEAD_EVENTS),
+      db.select({ count: count() }).from(sreIncidentTimelineEvents).where(eq(sreIncidentTimelineEvents.incidentId, incident.id)),
       db
         .select({ id: sreEvidenceItems.id, title: sreEvidenceItems.title })
         .from(sreEvidenceItems)
@@ -133,6 +140,15 @@ export async function generateSrePostmortem(
         .orderBy(desc(sreInvestigationRuns.createdAt))
         .limit(1),
     ]);
+
+    // Head rows, then one gap row for the events between the two windows, then the tail; the sort keeps this order on equal timestamps.
+    const omitted = Number(total?.count ?? 0) - HEAD_EVENTS - TAIL_EVENTS;
+    const tailIds = new Set(tail.map((event) => event.id));
+    const rows = [
+      ...head.filter((event) => !tailIds.has(event.id)),
+      ...(omitted > 0 && head.length > 0 ? [{ at: head.at(-1)!.at, eventType: TIMELINE_GAP_EVENT, data: { count: omitted } }] : []),
+      ...[...tail].reverse(),
+    ].map((event) => ({ at: event.at, eventType: event.eventType, eventData: event.data as Record<string, unknown> | null }));
 
     const structured = run?.snapshot && typeof run.snapshot === "object"
       ? (run.snapshot as { structured?: { nextChecks?: unknown; outcome?: string } | null }).structured
@@ -162,13 +178,7 @@ export async function generateSrePostmortem(
         ? structured.nextChecks.filter((check): check is string => typeof check === "string").slice(0, 5)
         : [],
       evidence,
-      timeline: postmortemTimeline(
-        [...new Map([...tail, ...head].map((event) => [event.id, event])).values()].map((event) => ({
-          at: event.at,
-          eventType: event.eventType,
-          eventData: event.data,
-        })),
-      ),
+      timeline: postmortemTimeline(rows, await loadTimelineRefs(db, { organizationId: auth.organizationId, projectId: auth.projectId, rows })),
     };
 
     // Same usage gate as chat; when it is closed the template still works, with no model call.

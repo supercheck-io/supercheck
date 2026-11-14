@@ -516,6 +516,23 @@ export const sreIncidentWatchers = pgTable(
   })
 );
 
+/** Services and monitors a person listed as affected on an incident. No org/project column: always joined through sre_incidents. */
+export const sreIncidentResources = pgTable(
+  "sre_incident_resources",
+  {
+    id: uuidPk(),
+    incidentId: uuid("incident_id").notNull().references(() => sreIncidents.id, { onDelete: "cascade" }),
+    resourceType: varchar("resource_type", { length: 10 }).$type<"service" | "monitor">().notNull(),
+    resourceId: uuid("resource_id").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => ({
+    incidentResourceUniqueIdx: uniqueIndex("sre_incident_resources_incident_resource_unique_idx").on(table.incidentId, table.resourceType, table.resourceId),
+    resourceIdx: index("sre_incident_resources_resource_idx").on(table.resourceType, table.resourceId),
+    resourceTypeCheck: check("sre_incident_resources_resource_type_check", sql`${table.resourceType} IN ('service', 'monitor')`),
+  })
+);
+
 /** The project's one Default incident policy. No row means defaults: no channels, every option off. */
 export const notificationPolicies = pgTable(
   "notification_policies",

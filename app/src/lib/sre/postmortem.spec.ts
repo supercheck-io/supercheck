@@ -9,6 +9,7 @@ import {
   formatPostmortemDate,
   formatPostmortemDuration,
   postmortemTimeline,
+  TIMELINE_GAP_EVENT,
   postmortemToMarkdown,
   toStoredPostmortem,
   type PostmortemContext,
@@ -199,5 +200,44 @@ describe("toStoredPostmortem / postmortemToMarkdown", () => {
     expect(md).toContain("## Summary\n\nS");
     expect(md).toContain("## Impact\n\n_Not filled in._");
     expect(md).toContain("## Follow-ups\n\n- a");
+  });
+
+  describe("investigation runs, gaps and refs", () => {
+    const at = (minute: number) => new Date(Date.UTC(2026, 9, 6, 14, minute));
+    const inv = (minute: number, outcome: "identified" | "inconclusive", text: string) => ({
+      at: at(minute), eventType: "ai_finding", eventData: { type: "sre_investigation", outcome, summary: text },
+    });
+    it("keeps the latest identified run over a later inconclusive one (P3)", () => {
+      const labels = postmortemTimeline([inv(1, "identified", "Cause: bad deploy"), inv(2, "inconclusive", "Nothing found"), inv(3, "inconclusive", "Still nothing")]).map((e) => e.label);
+      expect(labels).toEqual(["AI investigation: Cause: bad deploy"]);
+    });
+    it("keeps the latest run when none identified, and the latest identified when several did", () => {
+      expect(postmortemTimeline([inv(1, "inconclusive", "A"), inv(2, "inconclusive", "B")]).map((e) => e.label)).toEqual(["AI investigation: B"]);
+      expect(postmortemTimeline([inv(1, "identified", "A"), inv(2, "identified", "B"), inv(3, "inconclusive", "C")]).map((e) => e.label)).toEqual(["AI investigation: B"]);
+    });
+    it("treats skipped rows as adjacent but a gap row as a break (P2)", () => {
+      const skipped = { at: at(2), eventType: "state_change", eventData: { state: "assigned" } };
+      expect(postmortemTimeline([inv(1, "inconclusive", "A"), skipped, inv(3, "inconclusive", "B")]).map((e) => e.label)).toEqual(["AI investigation: B"]);
+      const gap = { at: at(1), eventType: TIMELINE_GAP_EVENT, eventData: { count: 214 } };
+      expect(postmortemTimeline([inv(1, "inconclusive", "A"), gap, inv(3, "inconclusive", "B")]).map((e) => e.label)).toEqual([
+        "AI investigation: A", "… 214 events not shown …", "AI investigation: B",
+      ]);
+    });
+    it("names linked alerts and the declaring user from refs (P1, P4)", () => {
+      const refs = { users: { "11111111-1111-4111-8111-111111111111": "Priya" }, alerts: { "22222222-2222-4222-8222-222222222222": "Checkout 5xx" } };
+      const labels = postmortemTimeline([
+        { at: at(1), eventType: "state_change", eventData: { state: "manual_incident_created", createdByUserId: "11111111-1111-4111-8111-111111111111", summary: "Users report errors" } },
+        { at: at(2), eventType: "state_change", eventData: { state: "alert_correlated", alertEventId: "22222222-2222-4222-8222-222222222222" } },
+        { at: at(3), eventType: "state_change", eventData: { state: "resources_affected", added: [{ type: "service", name: "Checkout API" }, { type: "monitor", name: "a" }, { type: "monitor", name: "b" }] } },
+      ], refs).map((e) => e.label);
+      expect(labels).toEqual([
+        "Incident created: Declared by Priya Users report errors",
+        "Alert linked: Linked: Checkout 5xx",
+        "Affected resources changed: Affected: Checkout API, 2 monitors",
+      ]);
+    });
+    it("shows a bare title for a manual incident with no summary and an unknown user", () => {
+      expect(postmortemTimeline([{ at: at(1), eventType: "state_change", eventData: { state: "manual_incident_created", summary: null } }]).map((e) => e.label)).toEqual(["Incident created"]);
+    });
   });
 });

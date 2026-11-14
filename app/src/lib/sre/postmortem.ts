@@ -4,7 +4,7 @@ import {
   postmortemSectionsSchema,
   type PostmortemSections,
 } from "@/lib/sre/postmortem-format";
-import type { SreIncidentTimelineItem } from "@/actions/sre-incident-lifecycle";
+import type { SreIncidentTimelineItem, SreIncidentTimelineRefs } from "@/actions/sre-incident-lifecycle";
 import { withoutNoEvidenceNotice } from "@/lib/sre/evidence-brief-summary";
 import { aiFindingHeadline, describeTimelineEvent } from "@/lib/sre/incident-timeline-format";
 import { runSreAgent } from "@/sre/lib/agent-runner";
@@ -59,17 +59,27 @@ const DETAIL_LENGTH = 160;
 
 type TimelineRow = Pick<SreIncidentTimelineItem, "eventType" | "eventData"> & { at: Date };
 
+/** Synthetic row the draft inserts where a long incident's middle events were not loaded. */
+export const TIMELINE_GAP_EVENT = "timeline_gap";
+
 /**
  * The key moments of an incident, oldest first, named as in the Activity feed.
- * A run of back-to-back AI investigations keeps only the last one, which is what responders acted on.
+ * A run of back-to-back AI investigations keeps one: the latest that identified a cause, else the latest.
+ * Skipped rows do not break a run; a gap row does, so runs on either side of unloaded events stay apart.
  */
-export function postmortemTimeline(rows: TimelineRow[]): PostmortemContext["timeline"] {
-  const kept: Array<{ at: Date; label: string; investigation: boolean }> = [];
+export function postmortemTimeline(rows: TimelineRow[], refs?: SreIncidentTimelineRefs): PostmortemContext["timeline"] {
+  const kept: Array<{ at: Date; label: string; investigation: boolean; identified: boolean }> = [];
+  // Stable sort: a gap row keeps its place among rows with the same timestamp.
   for (const row of [...rows].sort((a, b) => a.at.getTime() - b.at.getTime())) {
     const data = row.eventData ?? {};
+    if (row.eventType === TIMELINE_GAP_EVENT) {
+      const count = Number(data.count) || 0;
+      kept.push({ at: row.at, label: `… ${count} event${count === 1 ? "" : "s"} not shown …`, investigation: false, identified: false });
+      continue;
+    }
     if (row.eventType === "ai_finding" && SKIPPED_AI_FINDINGS.has(String(data.type))) continue;
     if (row.eventType === "state_change" && SKIPPED_STATES.has(String(data.state))) continue;
-    const { title, body } = describeTimelineEvent(row);
+    const { title, body } = describeTimelineEvent(row, refs);
     const detail =
       row.eventType === "ai_finding"
         ? aiFindingHeadline(data.summary, DETAIL_LENGTH) ?? body
@@ -77,8 +87,14 @@ export function postmortemTimeline(rows: TimelineRow[]): PostmortemContext["time
     const oneLine = withoutNoEvidenceNotice(detail)?.replace(/\s+/g, " ").trim();
     const label = oneLine ? `${title}: ${oneLine.length > DETAIL_LENGTH ? `${oneLine.slice(0, DETAIL_LENGTH - 1).trimEnd()}…` : oneLine}` : title;
     const investigation = row.eventType === "ai_finding" && data.type === "sre_investigation";
-    if (investigation && kept.at(-1)?.investigation) kept.pop();
-    kept.push({ at: row.at, label, investigation });
+    const identified = investigation && data.outcome === "identified";
+    const previous = kept.at(-1);
+    if (investigation && previous?.investigation) {
+      // A later inconclusive re-run must not erase the run that found the cause.
+      if (previous.identified && !identified) continue;
+      kept.pop();
+    }
+    kept.push({ at: row.at, label, investigation, identified });
   }
   return kept.map(({ at, label }) => ({ at, label }));
 }
