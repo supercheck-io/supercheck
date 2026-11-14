@@ -63,7 +63,7 @@ test('new incident', async ({ page }, testInfo) => {
   const frame = frames(page, testInfo, 'new-incident');
   await open(page, '/incidents');
   await page.getByRole('button', { name: 'New incident' }).click();
-  const dialog = page.getByRole('dialog', { name: 'Create incident' });
+  const dialog = page.getByRole('dialog', { name: 'Declare incident' });
   await dialog.getByLabel('Title').fill('Payments worker queue backlog');
   await dialog.getByLabel('Initial notes').fill('Queue depth above 5k for 10 minutes.');
   await frame('dialog');
@@ -138,10 +138,10 @@ test('incident lifecycle', async ({ page }, testInfo) => {
   const frame = frames(page, testInfo, 'incident-lifecycle');
   await open(page, '/incidents');
   await page.getByRole('button', { name: 'New incident' }).click();
-  const create = page.getByRole('dialog', { name: 'Create incident' });
+  const create = page.getByRole('dialog', { name: 'Declare incident' });
   await create.getByLabel('Title').fill('Card payments failing for EU customers');
   await create.getByLabel('Initial notes').fill('Stripe returns 402 for about 8% of EU card payments since 09:10.');
-  await create.getByRole('button', { name: 'Create incident', exact: true }).click();
+  await create.getByRole('button', { name: 'Declare incident', exact: true }).click();
   await page.waitForURL(/\/incidents\/[0-9a-f-]{36}$/);
   await waitForHydration(page);
   await frame('triggered');

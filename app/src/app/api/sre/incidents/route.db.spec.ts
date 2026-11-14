@@ -8,6 +8,8 @@ import { GET } from "./route";
 let mockDatabase: ReturnType<typeof drizzle>;
 let mockAllowed = true;
 jest.mock("@/utils/db", () => ({ get db() { return mockDatabase; } }));
+// POST pulls the declare core (RBAC, auth) at import; this spec covers GET only.
+jest.mock("@/lib/sre/manual-incident", () => ({ createManualIncident: jest.fn() }));
 jest.mock("../_auth", () => ({
   requireSreApiPermissions: jest.fn(async () => mockAllowed
     ? { success: true, context: { organizationId: "org-1", project: { id: "project-1" } } }

@@ -121,10 +121,10 @@ setup('sign up and seed screenshot data', async ({ page, baseURL, playwright }) 
   await page.goto('/incidents');
   await waitForHydration(page);
   await page.getByRole('button', { name: 'New incident' }).click();
-  const incidentDialog = page.getByRole('dialog', { name: 'Create incident' });
+  const incidentDialog = page.getByRole('dialog', { name: 'Declare incident' });
   await incidentDialog.getByLabel('Title').fill('Checkout latency above 2s');
   await incidentDialog.getByLabel('Initial notes').fill('p95 latency on checkout-api rose after the 14:00 deploy.');
-  await incidentDialog.getByRole('button', { name: 'Create incident' }).click();
+  await incidentDialog.getByRole('button', { name: 'Declare incident' }).click();
   await page.waitForURL(/\/incidents\/[0-9a-f-]{36}$/);
   const incident = new URL(page.url()).pathname.split('/').pop() ?? '';
   await ok('incident acknowledge', await api.post(`/api/sre/incidents/${incident}/acknowledge`, { headers }));
