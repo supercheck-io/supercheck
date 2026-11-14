@@ -19,6 +19,7 @@ import { db } from "@/utils/db";
 
 import {
   notifyIncidentEvent,
+  type IncidentFallback,
   type IncidentNotifyEvent,
 } from "./incident-notifier";
 import { watchIncident } from "./incident-watchers";
@@ -934,6 +935,13 @@ export async function reopenRecentlyAutoResolved(
       acknowledgedAt: null,
       acknowledgedByUserId: null,
       renotifiedAt: null,
+      renotifyCount: 0,
+      renotifyStoppedAt: null,
+      escalatedAt: null,
+      renotifyFailures: 0,
+      renotifyRetryAt: null,
+      escalateFailures: 0,
+      escalateRetryAt: null,
       reopenedAt: now,
       updatedAt: now,
     })
@@ -964,7 +972,7 @@ export async function announceSystemTransition(
   projectId: string,
   incidentId: string,
   event: "resolved" | "recovered" | "reopened",
-  extra: { assigneeUserId?: string | null; discriminator: string },
+  extra: { assigneeUserId?: string | null; discriminator: string; triggerAlertHistoryId?: string; report?: { fallback?: IncidentFallback } },
 ) {
   await logAuditEvent({
     organizationId,
@@ -982,5 +990,7 @@ export async function announceSystemTransition(
     automatic: event === "resolved" || event === "reopened",
     assigneeUserId: extra.assigneeUserId,
     dedupeDiscriminator: extra.discriminator,
+    triggerAlertHistoryId: extra.triggerAlertHistoryId,
+    report: extra.report,
   }).catch(() => undefined);
 }

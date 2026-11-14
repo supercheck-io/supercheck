@@ -236,6 +236,15 @@ export function AlertSettings({
     context,
   ]);
 
+  // Every chosen channel is a paging preset: a vendor outage would leave nothing to fall back on.
+  const chosen = providers.filter((provider) => (config.notificationProviders || []).includes(provider.id));
+  const pagingOnly =
+    chosen.length > 0 &&
+    chosen.every((provider) => {
+      const preset = (provider.config as Record<string, unknown> | undefined)?.preset;
+      return provider.type === "webhook" && typeof preset === "string" && preset !== "custom";
+    });
+
   const toggleProvider = (providerId: string) => {
     const currentProviders = config.notificationProviders || [];
     const maxChannels =
@@ -665,6 +674,12 @@ export function AlertSettings({
               {validationErrors.notificationProviders && (
                 <p className="text-sm text-destructive">
                   {validationErrors.notificationProviders}
+                </p>
+              )}
+
+              {pagingOnly && (
+                <p className="text-xs text-warning" data-testid="paging-only-hint">
+                  Add an email or chat channel so alerts still arrive if the paging service is down.
                 </p>
               )}
 

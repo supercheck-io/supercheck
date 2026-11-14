@@ -19,7 +19,9 @@ import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
@@ -36,7 +38,8 @@ import {
   CHARACTER_LIMITS,
 } from "@/lib/error-utils";
 import { parseWebhookJsonTemplate } from "@/lib/notification-providers/webhook-template";
-import { notificationProviders } from "@/components/alerts/data";
+import { notificationProviders, PAGING_SERVICE_NAMES } from "@/components/alerts/data";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   WEBHOOK_PRESET_IDS,
   WEBHOOK_PRESETS,
@@ -375,6 +378,27 @@ const MASKED_PLACEHOLDER = "Unchanged — leave blank to keep";
 const SAVE_ERROR_TOAST_ID = "notification-provider-save-error";
 
 /** The API's 400 messages are specific and safe to show; only network failures need the generic text. */
+/**
+ * The endpoint after choosing a webhook preset, or undefined to keep the current one. Moving from one paging service to
+ * another drops the old endpoint: keeping it would send the new service's key (now in the headers) to the old service.
+ * An empty endpoint gets the new preset's fixed URL when it has one.
+ */
+export function nextPresetUrl(
+  previousPresetId: string,
+  presetId: string,
+  currentUrl: string | undefined,
+  preset: { id: string; endpointPlaceholder: string } | undefined,
+): string | undefined {
+  const switchedService = previousPresetId !== "custom" && previousPresetId !== presetId;
+  const url = switchedService ? "" : (currentUrl ?? "");
+  const fixed =
+    preset && preset.id !== "custom" && preset.endpointPlaceholder.startsWith("https://") && !preset.endpointPlaceholder.includes("<") && !preset.endpointPlaceholder.includes("...")
+      ? preset.endpointPlaceholder
+      : undefined;
+  if (!url && fixed) return fixed;
+  return switchedService ? "" : undefined;
+}
+
 export function getSaveErrorMessage(error: unknown, type: string): string {
   return error instanceof Error && !(error instanceof TypeError || error instanceof SyntaxError) && error.message
     ? error.message
@@ -503,6 +527,7 @@ export function NotificationProviderForm({
       ? buildWebhookPayloadPreview({
         method: selectedWebhookMethod,
         bodyTemplate: selectedWebhookBodyTemplate,
+        preset: selectedPresetId,
       })
       : null;
 
@@ -533,6 +558,7 @@ export function NotificationProviderForm({
 
   const handleWebhookPresetChange = (presetId: WebhookPresetId) => {
     const currentConfig = form.getValues("config") as NotificationProviderConfig;
+    const previousPresetId = form.getValues("config.preset") || "custom";
     const nextConfig = applyWebhookPresetConfig(presetId, currentConfig);
     const preset = getWebhookPreset(presetId);
     setLastWebhookTestDetails(null);
@@ -555,20 +581,8 @@ export function NotificationProviderForm({
     setHeadersText(nextHeadersText);
     setHeadersError(getHeadersError(nextHeadersText));
 
-    const currentUrl = form.getValues("config.url");
-    if (
-      !currentUrl &&
-      preset &&
-      preset.id !== "custom" &&
-      preset.endpointPlaceholder.startsWith("https://") &&
-      !preset.endpointPlaceholder.includes("<") &&
-      !preset.endpointPlaceholder.includes("...")
-    ) {
-      form.setValue("config.url", preset.endpointPlaceholder, {
-        shouldDirty: true,
-        shouldValidate: true,
-      });
-    }
+    const nextUrl = nextPresetUrl(previousPresetId, presetId, form.getValues("config.url"), preset);
+    if (nextUrl !== undefined) form.setValue("config.url", nextUrl, { shouldDirty: true, shouldValidate: true });
   };
 
   const testConnection = async () => {
@@ -681,14 +695,23 @@ export function NotificationProviderForm({
                   <FormLabel>Channel Type</FormLabel>
                   <Select
                     onValueChange={(value) => {
-                      field.onChange(value);
                       setLastWebhookTestDetails(null);
+                      // Paging services are webhooks with a preset; storage does not change.
+                      if (value.startsWith("paging:")) {
+                        const presetId = value.slice("paging:".length) as WebhookPresetId;
+                        field.onChange("webhook");
+                        // Coming back to the same service (for example via Email) keeps the edited template and headers.
+                        if (presetId !== selectedPresetId) handleWebhookPresetChange(presetId);
+                        return;
+                      }
+                      field.onChange(value);
+                      if (value === "webhook" && selectedPresetId !== "custom") handleWebhookPresetChange("custom");
                     }}
-                    value={field.value}
+                    value={field.value === "webhook" && selectedPresetId !== "custom" ? `paging:${selectedPresetId}` : field.value}
                     disabled={isSubmitting || isTesting}
                   >
                     <FormControl>
-                      <SelectTrigger>
+                      <SelectTrigger data-testid="channel-type-select">
                         <SelectValue placeholder="Select channel type">
                           {field.value && (
                             <div className="flex items-center gap-2">
@@ -696,10 +719,11 @@ export function NotificationProviderForm({
                                 const provider = notificationProviders.find(p => p.type === field.value);
                                 if (!provider) return null;
                                 const Icon = provider.icon;
+                                const pagingName = field.value === "webhook" ? PAGING_SERVICE_NAMES[selectedPresetId] : undefined;
                                 return (
                                   <>
                                     <Icon size={16} className={provider.color} />
-                                    <span>{provider.label}</span>
+                                    <span>{pagingName ?? (field.value === "webhook" ? "Custom webhook" : provider.label)}</span>
                                   </>
                                 );
                               })()}
@@ -709,17 +733,35 @@ export function NotificationProviderForm({
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
-                      {notificationProviders.map((provider) => {
-                        const Icon = provider.icon;
-                        return (
-                          <SelectItem key={provider.type} value={provider.type}>
+                      <SelectGroup>
+                        <SelectLabel>Chat and email</SelectLabel>
+                        {notificationProviders.filter((p) => p.type !== "webhook").map((provider) => {
+                          const Icon = provider.icon;
+                          return (
+                            <SelectItem key={provider.type} value={provider.type}>
+                              <div className="flex items-center gap-2">
+                                <Icon size={16} className={provider.color} />
+                                <span>{provider.label}</span>
+                              </div>
+                            </SelectItem>
+                          );
+                        })}
+                      </SelectGroup>
+                      <SelectGroup>
+                        <SelectLabel>Paging and on-call</SelectLabel>
+                        {WEBHOOK_PRESETS.filter((preset) => preset.id !== "custom").map((preset) => (
+                          <SelectItem key={preset.id} value={`paging:${preset.id}`}>
                             <div className="flex items-center gap-2">
-                              <Icon size={16} className={provider.color} />
-                              <span>{provider.label}</span>
+                              <span>{PAGING_SERVICE_NAMES[preset.id] ?? preset.label}</span>
+                              {preset.endsAt && <span className="text-xs text-muted-foreground">Ends {preset.endsAt}</span>}
                             </div>
                           </SelectItem>
-                        );
-                      })}
+                        ))}
+                      </SelectGroup>
+                      <SelectGroup>
+                        <SelectLabel>Other</SelectLabel>
+                        <SelectItem value="webhook">Custom webhook</SelectItem>
+                      </SelectGroup>
                     </SelectContent>
                   </Select>
                   <FormMessage />
@@ -847,6 +889,7 @@ export function NotificationProviderForm({
                             {WEBHOOK_PRESETS.map((preset) => (
                               <SelectItem key={preset.id} value={preset.id}>
                                 {preset.label}
+                                {preset.endsAt ? ` (ends ${preset.endsAt})` : ""}
                               </SelectItem>
                             ))}
                           </SelectContent>
@@ -855,6 +898,15 @@ export function NotificationProviderForm({
                       </FormItem>
                     )}
                   />
+
+                  {selectedPresetId !== "custom" && (
+                    <Alert variant="info" data-testid="one-way-paging-note">
+                      <AlertDescription>
+                        Supercheck opens and resolves the page. Acknowledging or closing it in{" "}
+                        {PAGING_SERVICE_NAMES[selectedPresetId] ?? "the paging service"} does not change the Supercheck incident.
+                      </AlertDescription>
+                    </Alert>
+                  )}
 
                   <div className="grid grid-cols-1 gap-4 sm:grid-cols-[minmax(0,1fr)_7rem]">
                     <FormField

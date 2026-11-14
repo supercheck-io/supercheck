@@ -6,6 +6,7 @@
     "getSreIncident",
     "getSreIncidentTimeline",
     "acknowledgeSreIncident","assignSreIncident","resolveSreIncident",
+    "getIncidentPolicy","updateIncidentPolicy",
     "triageSreIncident",
     "startSreInvestigation",
     "streamSreChat",

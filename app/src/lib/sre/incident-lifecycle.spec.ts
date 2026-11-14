@@ -364,7 +364,7 @@ describe("reopenRecentlyAutoResolved", () => {
     expect(inserts[0]).toMatchObject({ eventData: { state: "reopened" }, actorType: "system" });
     // The previous resolution summary is kept across the reopen.
     const set = (executor.update as jest.Mock).mock.results[0].value.set.mock.calls[0][0];
-    expect(set).toMatchObject({ status: "triggered", resolvedAt: null, renotifiedAt: null });
+    expect(set).toMatchObject({ status: "triggered", resolvedAt: null, renotifiedAt: null, renotifyCount: 0, renotifyStoppedAt: null, escalatedAt: null });
     expect(set).not.toHaveProperty("resolutionSummary");
   });
 

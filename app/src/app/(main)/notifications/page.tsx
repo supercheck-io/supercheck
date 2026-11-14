@@ -302,6 +302,7 @@ function NotificationsPage() {
                         createdAt: p.createdAt,
                         updatedAt: p.updatedAt || p.createdAt,
                         lastUsed: p.lastUsed,
+                        health: p.health,
                         createdByName: p.createdByName ?? null,
                         createdByImage: p.createdByImage ?? null,
                       }))}

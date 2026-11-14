@@ -234,7 +234,8 @@
           "404": {
             "description": "Incident not found in the active project"
           }
-        }
+        },
+        "description": "Timeline events (`eventType`, `actorType`, `eventData`, `createdAt`). Events of type `notification` record reminders (`kind: reminder`, `n`, `of`), the escalation step (`kind: escalation`; `reached: 0` when its target was removed) and failed pages (`kind: page_failed`, `preset`, `status`, `fallback`), with provider ids and types only."
       }
     },
     "/api/sre/incidents/{id}/resolve": {
@@ -8623,6 +8624,196 @@
           }
         }
       }
+    },
+    "/api/notification-providers/{id}/test": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "post": {
+        "operationId": "testSavedNotificationProvider",
+        "summary": "Send a test through a saved channel",
+        "description": "Sends a test through a saved channel using its stored configuration. Webhook channels (including paging presets) receive a test page with dedup key `test:<id>`; `action: resolve` closes it on paging presets (Opsgenie and Jira Service Management by alias); a custom webhook receives the same template with the resolve action and dedup key, and closes the page only if the receiver uses them. `resolve` is rejected for non-webhook channels. Requires notification update permission. Rate limited per user (20 per 10 minutes; email 5).",
+        "tags": [
+          "Notifications"
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "action": {
+                    "type": "string",
+                    "enum": [
+                      "trigger",
+                      "resolve"
+                    ],
+                    "default": "trigger"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Test result (ok false when the receiver rejected it)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    },
+                    "action": {
+                      "type": "string",
+                      "enum": [
+                        "trigger",
+                        "resolve"
+                      ]
+                    },
+                    "responseStatus": {
+                      "type": "integer"
+                    },
+                    "responseStatusText": {
+                      "type": "string"
+                    },
+                    "responseExcerpt": {
+                      "type": "string",
+                      "description": "First 1024 characters of the response, redacted"
+                    },
+                    "elapsedMs": {
+                      "type": "integer"
+                    },
+                    "dedupKey": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "action"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid body"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "description": "Insufficient permissions"
+          },
+          "404": {
+            "description": "Channel not found in the active project"
+          },
+          "413": {
+            "description": "Body too large"
+          },
+          "429": {
+            "description": "Too many tests"
+          }
+        }
+      }
+    },
+    "/api/notification-policy": {
+      "get": {
+        "operationId": "getIncidentPolicy",
+        "summary": "Get the incident policy",
+        "description": "The active project's incident policy: channels, unacknowledged reminders and the one escalation step. Requires project view permission.",
+        "tags": [
+          "AI SRE"
+        ],
+        "responses": {
+          "200": {
+            "description": "The project's incident policy",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "policy": {
+                      "$ref": "#/components/schemas/IncidentPolicy"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "description": "Insufficient permissions"
+          }
+        }
+      },
+      "put": {
+        "operationId": "updateIncidentPolicy",
+        "summary": "Replace the incident policy",
+        "description": "Replaces the active project's incident policy. Requires project update permission. Rejects a repeat without a first reminder, a reminder schedule longer than 2 days, both escalation targets, escalation without a target, a channel that is not an enabled non-paging channel of this project, and a member who is not in this project. Writes the audit event incident_policy_updated.",
+        "tags": [
+          "AI SRE"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IncidentPolicyInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The project's incident policy",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "policy": {
+                      "$ref": "#/components/schemas/IncidentPolicy"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation failed"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "description": "Insufficient permissions, or the organization is pending deletion"
+          },
+          "413": {
+            "description": "Body too large"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -9932,6 +10123,30 @@
           "createdAt": {
             "type": "string",
             "format": "date-time"
+          },
+          "health": {
+            "type": "object",
+            "description": "Channel health from the newest delivery in the last 7 days. auth_failed: the receiver rejected the integration key (HTTP 401/403, never retried).",
+            "properties": {
+              "state": {
+                "type": "string",
+                "enum": [
+                  "ok",
+                  "auth_failed",
+                  "failing",
+                  "unknown"
+                ]
+              },
+              "at": {
+                "type": "string",
+                "format": "date-time",
+                "nullable": true
+              }
+            },
+            "required": [
+              "state",
+              "at"
+            ]
           }
         }
       },
@@ -12137,6 +12352,136 @@
             "type": "integer",
             "minimum": 1,
             "maximum": 100
+          }
+        }
+      },
+      "IncidentPolicyInput": {
+        "type": "object",
+        "properties": {
+          "channelIds": {
+            "type": "array",
+            "maxItems": 10,
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "emailServiceOwnersOnSev12": {
+            "type": "boolean"
+          },
+          "renotifyUnackedMinutes": {
+            "type": "integer",
+            "minimum": 5,
+            "maximum": 1440,
+            "nullable": true,
+            "description": "Minutes unacknowledged before the first reminder; null turns reminders off"
+          },
+          "renotifyRepeatMinutes": {
+            "type": "integer",
+            "minimum": 5,
+            "maximum": 1440,
+            "nullable": true,
+            "description": "Minutes between later reminders; null reminds once"
+          },
+          "renotifyMax": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 10,
+            "default": 3,
+            "description": "Total reminders, counting the first. The schedule must finish within 2 days"
+          },
+          "escalateAfterMinutes": {
+            "type": "integer",
+            "minimum": 5,
+            "maximum": 1440,
+            "nullable": true,
+            "description": "Minutes unacknowledged before the one escalation step; null turns it off"
+          },
+          "escalateChannelId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true,
+            "description": "An enabled, non-paging channel of this project"
+          },
+          "escalateUserId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true,
+            "description": "A project member who can act on incidents; emailed"
+          },
+          "autoInvestigateOnOpen": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "channelIds",
+          "emailServiceOwnersOnSev12",
+          "renotifyUnackedMinutes",
+          "autoInvestigateOnOpen"
+        ],
+        "additionalProperties": false
+      },
+      "IncidentPolicy": {
+        "type": "object",
+        "properties": {
+          "channelIds": {
+            "type": "array",
+            "maxItems": 10,
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "emailServiceOwnersOnSev12": {
+            "type": "boolean"
+          },
+          "renotifyUnackedMinutes": {
+            "type": "integer",
+            "minimum": 5,
+            "maximum": 1440,
+            "nullable": true,
+            "description": "Minutes unacknowledged before the first reminder; null turns reminders off"
+          },
+          "renotifyRepeatMinutes": {
+            "type": "integer",
+            "minimum": 5,
+            "maximum": 1440,
+            "nullable": true,
+            "description": "Minutes between later reminders; null reminds once"
+          },
+          "renotifyMax": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 10,
+            "default": 3,
+            "description": "Total reminders, counting the first. The schedule must finish within 2 days"
+          },
+          "escalateAfterMinutes": {
+            "type": "integer",
+            "minimum": 5,
+            "maximum": 1440,
+            "nullable": true,
+            "description": "Minutes unacknowledged before the one escalation step; null turns it off"
+          },
+          "escalateChannelId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true,
+            "description": "An enabled, non-paging channel of this project"
+          },
+          "escalateUserId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true,
+            "description": "A project member who can act on incidents; emailed"
+          },
+          "autoInvestigateOnOpen": {
+            "type": "boolean"
+          },
+          "autoInvestigateEnabledAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
           }
         }
       }

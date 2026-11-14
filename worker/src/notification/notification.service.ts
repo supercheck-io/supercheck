@@ -6,6 +6,7 @@ import {
   type SmtpDeliveryResult,
 } from '../common/utils/smtp-transport';
 import {
+  AlertDeliveryAttempt,
   AlertDeliveryMetadata,
   AlertType,
   AlertStatus,
@@ -26,6 +27,7 @@ import {
   isUrlSafeForOutbound,
 } from '../common/utils/url-validator';
 import { fetchPublicEndpoint } from '../common/utils/pinned-public-fetch';
+import { presetOverrides, presetResolveRequest } from './preset-lifecycle';
 import { isUndeliverableRecipient } from '../common/utils/email-recipient-policy';
 import {
   redactTargetUrl,
@@ -180,6 +182,9 @@ type ProviderDeliveryDetails = {
   eventAction?: string;
   externalIncidentKey?: string;
   externalUrl?: string;
+  /** 401/403: a bad integration key, never retried (in-process or on later checks). */
+  terminal?: boolean;
+  attemptLog?: AlertDeliveryAttempt[];
 };
 
 const WEBHOOK_TEMPLATE_PATTERN = /\{\{(\w+)\}\}/g;
@@ -476,6 +481,10 @@ export class NotificationService implements OnApplicationShutdown {
           responseStatus: details.responseStatus,
           responseHash,
           errorHash,
+          terminal: details.terminal,
+          attemptLog: details.attemptLog?.length
+            ? details.attemptLog
+            : undefined,
         }) as AlertDeliveryMetadata['delivery'],
       },
     };
@@ -1120,50 +1129,76 @@ export class NotificationService implements OnApplicationShutdown {
         ...customHeaders,
       };
 
-      const body = this.buildWebhookRequestBody(config, formatted, payload);
-
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
-
-      // The timer stays armed through the body read, so a trickling response cannot stall delivery.
-      let response: Awaited<ReturnType<typeof fetchPublicEndpoint>>;
-      let responseText: string;
-      try {
-        response = await fetchPublicEndpoint(
-          webhookUrl,
-          {
-            method,
-            headers,
-            body: method === 'GET' ? undefined : body,
-            signal: controller.signal,
-          },
-          { allowInternal: allowInternalWebhookTargets() },
-        );
-        responseText = await response
-          .text()
-          .catch(() => 'Unable to read response');
-      } finally {
-        clearTimeout(timeoutId);
+      let url = webhookUrl;
+      let body: string | undefined = this.buildWebhookRequestBody(
+        config,
+        formatted,
+        payload,
+      );
+      let requestMethod: 'GET' | 'POST' | 'PUT' = method;
+      const resolveRequest =
+        deliveryDetails.eventAction === 'resolve'
+          ? presetResolveRequest(
+              config.preset,
+              webhookUrl,
+              deliveryDetails.dedupKey ?? '',
+              formatted.title,
+            )
+          : null;
+      if (resolveRequest) {
+        ({ url, body } = resolveRequest);
+        requestMethod = resolveRequest.method;
       }
+
+      const allowInternal = allowInternalWebhookTargets();
+      // Retries 429, 5xx and network errors only; every attempt goes through the SSRF-pinned fetch.
+      const result = await fetchWithRetry(
+        url,
+        {
+          method: requestMethod,
+          headers,
+          body: requestMethod === 'GET' ? undefined : body,
+        },
+        createRetryConfig(),
+        this.logger,
+        (target, init) => fetchPublicEndpoint(target, init, { allowInternal }),
+      );
+      const responseText = result.lastResponseBody;
+      const status = result.lastStatusCode;
+      const terminal = status === 401 || status === 403;
       const responseDetails: ProviderDeliveryDetails = {
         ...deliveryDetails,
-        attempts: 1,
-        responseStatus: response.status,
+        attempts: result.attempts,
+        responseStatus: status,
         responseBody: responseText,
+        terminal: terminal || undefined,
+        attemptLog: (result.attemptLog ?? []).slice(0, 4).map((attempt) => ({
+          n: attempt.n,
+          status: attempt.status,
+          error:
+            attempt.error === undefined
+              ? undefined
+              : clip(
+                  this.safeSendError('Webhook', attempt.error, secrets),
+                  1024,
+                ),
+          ms: attempt.ms,
+        })),
       };
 
-      if (!response.ok) {
+      if (!result.success) {
+        const reason = terminal
+          ? `Authentication rejected (HTTP ${status}). Check the integration key.`
+          : status !== undefined
+            ? // The response body is hashed into delivery metadata, never shown: receivers can echo template credentials.
+              `Webhook returned ${status} after ${result.attempts} attempt(s)`
+            : (result.error ?? 'request failed');
+        const errorMessage = this.safeSendError('Webhook', reason, secrets);
+        this.logger.error(errorMessage);
         return this.withDeliveryMetadata(
           provider,
           payload,
-          {
-            success: false,
-            error: this.safeSendError(
-              'Webhook',
-              `Webhook returned ${response.status}: ${response.statusText}. Response: ${clip(responseText, 1024)}`,
-              secrets,
-            ),
-          },
+          { success: false, error: errorMessage },
           responseDetails,
         );
       }
@@ -1177,9 +1212,7 @@ export class NotificationService implements OnApplicationShutdown {
     } catch (error) {
       const errorMessage = this.safeSendError(
         'Webhook',
-        error instanceof Error && error.name === 'AbortError'
-          ? 'timed out after 10 seconds'
-          : getErrorMessage(error),
+        getErrorMessage(error),
         secrets,
       );
       this.logger.error(errorMessage);
@@ -1312,7 +1345,7 @@ export class NotificationService implements OnApplicationShutdown {
 
     const renderedTemplate = this.renderWebhookTemplateValue(
       this.parseWebhookTemplate(config.bodyTemplate),
-      this.getWebhookTemplateVariables(formatted, payload),
+      this.getWebhookTemplateVariables(formatted, payload, config.preset),
     );
 
     return JSON.stringify(renderedTemplate);
@@ -1321,6 +1354,7 @@ export class NotificationService implements OnApplicationShutdown {
   private getWebhookTemplateVariables(
     formatted: FormattedNotification,
     payload: NotificationPayload,
+    preset?: unknown,
   ): Record<string, string> {
     const alertAction = this.getWebhookAlertAction(payload);
 
@@ -1351,6 +1385,12 @@ export class NotificationService implements OnApplicationShutdown {
       victorOpsMessageType: this.getVictorOpsMessageType(alertAction),
       splunkOnCallMessageType: this.getVictorOpsMessageType(alertAction),
       dedupKey: this.getWebhookDedupKey(payload),
+      // Saved preset channels keep their old template; fix what the vendor needs here, by preset id.
+      ...presetOverrides(
+        preset,
+        alertAction === 'resolve' ? 'resolve' : 'trigger',
+        { alertType: payload.type },
+      ),
     };
   }
 
@@ -1367,13 +1407,14 @@ export class NotificationService implements OnApplicationShutdown {
     }
 
     switch (payload.type) {
-      // A renewed certificate closes the SSL warning (same dedup key, see getWebhookDedupScope).
+      // A renewed certificate closes the SSL warning and a green run closes the page its failure
+      // opened (same dedup key, see getWebhookDedupScope).
       case 'monitor_recovery':
       case 'ssl_renewed':
+      case 'job_success':
         return 'resolve';
       case 'monitor_failure':
       case 'job_failed':
-      case 'job_success':
       case 'job_timeout':
       case 'ssl_expiring':
         return 'trigger';

@@ -2,6 +2,8 @@
 
 import { ColumnDef } from "@tanstack/react-table";
 import Link from "next/link";
+import type { AlertDeliveryAttempt } from "@/db/schema";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { TableBadge, type TableBadgeTone } from "@/components/ui/table-badge";
 import { DateCell } from "@/components/ui/table-cells";
 import { DataTableColumnHeader } from "./data-table-column-header";
@@ -70,6 +72,16 @@ const NotificationProviderCell = ({
   );
 };
 
+type DeliveryAttempt = AlertDeliveryAttempt;
+
+/** The worker's per-attempt log for a webhook delivery (max 4), if the row has one. */
+export function deliveryAttempts(alert: AlertHistory): DeliveryAttempt[] {
+  const log = alert.metadata?.delivery?.attemptLog;
+  return Array.isArray(log)
+    ? log.filter((entry): entry is DeliveryAttempt => typeof entry === "object" && entry !== null && typeof (entry as DeliveryAttempt).n === "number").slice(0, 4)
+    : [];
+}
+
 export const columns: ColumnDef<AlertHistory>[] = [
   {
     accessorKey: "id",
@@ -135,10 +147,37 @@ export const columns: ColumnDef<AlertHistory>[] = [
     ),
     cell: ({ row }) => {
       const status = row.getValue("status") as string;
-      return (
+      const badge = (
         <TableBadge tone={statusTones[status] ?? "neutral"} compact className="capitalize">
           {status}
         </TableBadge>
+      );
+      const attempts = deliveryAttempts(row.original);
+      if (attempts.length === 0) return badge;
+      return (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button type="button" className="rounded-md" aria-label={`${status}, ${attempts.length} attempt${attempts.length === 1 ? "" : "s"}`} data-testid="delivery-attempts">
+              {badge}
+            </button>
+          </TooltipTrigger>
+          <TooltipContent>
+            <table className="text-xs">
+              <thead>
+                <tr><th className="pr-3 text-left font-medium">Attempt</th><th className="pr-3 text-left font-medium">Result</th><th className="text-right font-medium">Time</th></tr>
+              </thead>
+              <tbody>
+                {attempts.map((attempt) => (
+                  <tr key={attempt.n}>
+                    <td className="pr-3">{attempt.n}</td>
+                    <td className="pr-3">{attempt.status !== undefined ? `HTTP ${attempt.status}` : (attempt.error ?? "No response")}</td>
+                    <td className="text-right">{attempt.ms} ms</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </TooltipContent>
+        </Tooltip>
       );
     },
     filterFn: (row, id, value) => {

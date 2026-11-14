@@ -153,8 +153,9 @@ export function fetchConnectorEndpoint(
 export function fetchChannelWebhookEndpoint(
   input: string | URL,
   init: RequestInit = {},
+  maxResponseBytes = MAX_RESPONSE_BYTES,
 ) {
-  return fetchPinnedEndpoint(input, init, allowInternalWebhookTargets());
+  return fetchPinnedEndpoint(input, init, allowInternalWebhookTargets(), maxResponseBytes);
 }
 
 /** Public webhook variant: always validates and pins the destination. */

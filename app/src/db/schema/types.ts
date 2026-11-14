@@ -202,7 +202,18 @@ export type AlertDeliveryMetadata = {
     responseStatus?: number;
     responseHash?: string;
     errorHash?: string;
+    /** 401/403 from the receiver: never retried, shown as a channel error. */
+    terminal?: boolean;
+    /** Each HTTP attempt (max 4): status, or a redacted error when no response arrived. */
+    attemptLog?: AlertDeliveryAttempt[];
   };
+};
+
+export type AlertDeliveryAttempt = {
+  n: number;
+  status?: number;
+  error?: string;
+  ms: number;
 };
 
 // Notification types
@@ -226,6 +237,7 @@ export type PlainNotificationProviderConfig = {
     | "custom"
     | "pagerduty"
     | "opsgenie"
+    | "jsm_ops"
     | "splunk_on_call"
     | "better_stack"
     | "incident_io";

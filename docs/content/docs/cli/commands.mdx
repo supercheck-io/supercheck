@@ -582,12 +582,13 @@ supercheck tag delete <id> --force    # Skip confirmation
 
 | Command | What it does | Key flags |
 |---|---|---|
-| `notification list` | List providers | — |
+| `notification list` | List providers, with each channel's health (`ok`, `auth_failed`, `failing`, `unknown`) from its latest delivery in the past 7 days | — |
 | `notification get <id>` | Get provider details | — |
 | `notification create` | Create a provider | `--type`, `--name` (both required), `--payload` |
 | `notification update <id>` | Update a provider | `--name`, `--type`, `--payload` |
 | `notification delete <id>` | Delete a provider | `--force` |
-| `notification test` | Send a test notification | `--type`, `--payload` (one payload option required) |
+| `notification test <id>` | Send a test through a saved channel; webhooks and paging services get a test page with dedup key `test:<id>` and the receiver's HTTP status | `--resolve` (close the test page) |
+| `notification test` | Test an unsaved configuration | `--type`, `--payload` (one payload option required) |
 
 Types: `email`, `slack`, `webhook`, `telegram`, `discord`, `teams`. `--payload` is a JSON object; `--data` and `--config` are aliases.
 
@@ -601,6 +602,8 @@ supercheck notification update <id> --name "Updated Name" --payload '{...}'
 supercheck notification update <id> --type webhook --payload '{...}'
 supercheck notification delete <id> --force
 supercheck notification test --type slack --payload '{"webhookUrl":"https://hooks.slack.com/..."}'
+supercheck notification test <id>            # test page through a saved channel
+supercheck notification test <id> --resolve  # close that test page
 ```
 
 </Accordion>
@@ -611,7 +614,7 @@ supercheck notification test --type slack --payload '{"webhookUrl":"https://hook
 
 `--payload` on update replaces the entire config, so include all fields. When a provider has secret fields (for example webhook URLs or API keys), the CLI never merges your input with masked values from the server. If you omit the payload, only `--name` and `--type` are updated and existing secrets are preserved.
 
-For `notification test`, supply exactly one of `--payload`, `--data` or `--config`.
+For `notification test` without an id, supply exactly one of `--payload`, `--data` or `--config`. With an id, the saved channel's stored configuration is used and the payload options are rejected. A test that the receiver rejects exits with a general error and prints the result, including `Authentication rejected (HTTP 401). Check the integration key.` for a bad key.
 
 </Accordion>
 </Accordions>
@@ -658,7 +661,9 @@ AI SRE commands use the active project from the CLI token and follow your role's
 |---|---|---|
 | `incident list` | List incidents (status label, assignee and acknowledgement shown) | `--status`, `--severity`, `--assignee me\|unassigned\|<user-id>` |
 | `incident get <ref>` | Get an incident | — |
-| `incident timeline <ref>` | Incident timeline | — |
+| `incident timeline <ref>` | Incident timeline; reminders, escalations and failed pages are shown as one line each | — |
+| `incident policy get` | Show the project's incident policy (reminders and escalation) | — |
+| `incident policy set` | Change reminders and escalation; flags you omit are kept | `--first-reminder <min\|off>`, `--repeat <min\|off>`, `--max <1-10>`, `--escalate-after <min\|off>`, `--escalate-channel <id>`, `--escalate-member <user-id>` |
 | `incident assign <ref>` | Assign the incident, or its commander, to a project editor or admin | `--user <user-id\|me>` (required), `--commander` |
 | `incident unassign <ref>` | Clear the assignee (or commander) | `--commander` |
 | `incident ack <ref>` | Acknowledge an incident | — |
@@ -688,6 +693,15 @@ supercheck incident resolve <incident-number-or-uuid> --summary "Traffic restore
 The **Status** column shows the display label (Triggered, Acknowledged, Investigating, Fixing, Monitoring, Resolved), also returned as `statusLabel` with `--json`. `--status` filters on the stored values: `open`, `triggered`, `investigating`, `identified`, `recommendations_ready`, `user_applying_fix`, `verifying`, `resolved`.
 
 Resolution prompts for confirmation and stores the required summary in the incident timeline and audit log. Use `--force` only in reviewed automation.
+
+```bash
+supercheck incident policy get --json
+supercheck incident policy set --first-reminder 15 --repeat 60 --max 3
+supercheck incident policy set --escalate-after 30 --escalate-member <user-id>
+supercheck incident policy set --first-reminder off --escalate-after off
+```
+
+`incident policy set` needs project update permission. Minutes are 5 to 1,440, and the reminder schedule must finish within two days. Turning reminders off also clears the repeat; turning escalation off clears its target. The escalation channel cannot be a paging service. See [Default policy](/docs/app/investigate/incidents).
 
 ### Triage and investigation
 

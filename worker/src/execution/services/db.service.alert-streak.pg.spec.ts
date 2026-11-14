@@ -116,6 +116,65 @@ suite('DbService.getJobAlertStreakState (PostgreSQL)', () => {
     expect((await service.getJobAlertStreakState(jobId)).sent).toBe(1);
   });
 
+  describe('getOpenJobPages', () => {
+    const page = (
+      provider: string,
+      type: string,
+      status: string,
+      reservedAt: string,
+      deliveredAt?: string,
+    ) =>
+      testDb.db.insert(schema.alertHistory).values({
+        jobId,
+        provider,
+        status: status as never,
+        type: type as never,
+        target: 'J',
+        targetType: 'job',
+        message: 'm',
+        sentAt: new Date(reservedAt),
+        deliveryMetadata: deliveredAt
+          ? ({ delivery: { status, sentAt: deliveredAt } } as never)
+          : null,
+      });
+
+    it('is open after a delivered failure, closed after a delivered resolve, and ignores failed sends', async () => {
+      await page('open', 'job_failed', 'sent', '2026-01-01T00:01:00Z');
+      await page('closed', 'job_failed', 'sent', '2026-01-01T00:01:00Z');
+      await page('closed', 'job_success', 'sent', '2026-01-01T00:02:00Z');
+      await page(
+        'undelivered',
+        'job_timeout',
+        'failed',
+        '2026-01-01T00:01:00Z',
+      );
+      expect(
+        await service.getOpenJobPages(jobId, ['open', 'closed', 'undelivered']),
+      ).toEqual(new Set(['open']));
+      expect(await service.getOpenJobPages(jobId, [])).toEqual(new Set());
+    });
+
+    it('orders by when the send finished: a failure reserved before a resolve but delivered after it reopens the page', async () => {
+      await page(
+        'p1',
+        'job_failed',
+        'sent',
+        '2026-01-01T00:01:00Z',
+        '2026-01-01T00:03:00Z',
+      );
+      await page(
+        'p1',
+        'job_success',
+        'sent',
+        '2026-01-01T00:02:00Z',
+        '2026-01-01T00:02:00Z',
+      );
+      expect(await service.getOpenJobPages(jobId, ['p1'])).toEqual(
+        new Set(['p1']),
+      );
+    });
+  });
+
   describe('claimJobAlertSlots', () => {
     const claim = (
       runId: string,
@@ -157,6 +216,41 @@ suite('DbService.getJobAlertStreakState (PostgreSQL)', () => {
       expect([...retry.keys()]).toEqual(['p2']);
       expect(await rowStatus(runId, 'p2')).toBe('pending');
       expect(await rowStatus(runId, 'p1')).toBe('sent');
+    });
+
+    it('never reclaims a terminal (401/403) failure', async () => {
+      const runId = randomUUID();
+      const first = await claim(runId);
+      const metadata = (terminal: boolean) =>
+        ({
+          version: 1,
+          provider: { id: 'x' },
+          source: {
+            alertType: 'job_failed',
+            targetType: 'job',
+            targetId: jobId,
+          },
+          delivery: {
+            status: 'failed',
+            sentAt: new Date().toISOString(),
+            terminal,
+          },
+        }) as never;
+      await service.finishJobAlert(
+        first.get('p1')!,
+        'failed',
+        'auth',
+        metadata(true),
+      );
+      await service.finishJobAlert(
+        first.get('p2')!,
+        'failed',
+        'boom',
+        metadata(false),
+      );
+      const retry = await claim(runId);
+      expect([...retry.keys()]).toEqual(['p2']);
+      expect(await rowStatus(runId, 'p1')).toBe('failed');
     });
 
     it('lets concurrent runs claim at most the cap allows', async () => {

@@ -123,6 +123,9 @@ export const notificationProviders = [
   },
 ];
 
+/** Short vendor names for the paging presets (picker, badges, incident timeline). */
+export { PAGING_SERVICE_NAMES } from "@/lib/notification-providers/constants";
+
 export const getNotificationProviderConfig = (type: string) => {
   // First try exact match
   const exactMatch = notificationProviders.find(provider => provider.type === type);

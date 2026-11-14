@@ -37,6 +37,7 @@ import { getDisplayStatus } from "@/lib/sre/incident-status-display";
 import { storedRootCause } from "@/lib/sre/evidence-brief-summary";
 import { safeTarget, safeText } from "./redact";
 import { incidentsEnabled } from "@/lib/incident-settings";
+import { getNotificationPolicy } from "@/lib/sre/notification-policy";
 
 const MAX_LIMIT = 50;
 const ANNOTATIONS = {
@@ -331,6 +332,12 @@ export function registerMcpTools(server: McpServer, ctx: McpCallContext): void {
     if (!i) throw new NotFoundError("Incident not found");
     return { incident: { ...i, ...lifecycleDto(i), lastAlertAt: iso(i.lastAlertAt), title: safeText(i.title, 500), rootCauseSummary: safeText(storedRootCause(i.rootCauseSummary)), // A reopened incident keeps its previous resolution in the database; only a resolved one reports it.
       resolutionSummary: i.status === "resolved" ? safeText(i.resolutionSummary) : null, createdAt: iso(i.createdAt), resolvedAt: iso(i.resolvedAt) } };
+  });
+
+  tool("get_incident_policy", "Get the project's incident policy: which channels hear about incidents, unacknowledged reminders (first after N minutes, then every M, at most K) and the one escalation step. Channel and member ids only." + UNTRUSTED, "project", {}, async () => {
+    // ctx.projectId is the connection's project, already bound to ctx.organizationId.
+    const { autoInvestigateEnabledAt, ...policy } = await getNotificationPolicy(ctx.projectId);
+    return { policy: { ...policy, autoInvestigateEnabledAt: iso(autoInvestigateEnabledAt) } };
   });
 
   // Incident settings of an alert config; both switches default to on.
