@@ -10,6 +10,7 @@ import { RUN_CANCELLATION_MARKER, setCancellationSignal } from "@/lib/cancellati
 import { deleteScheduledJob } from "@/lib/job-scheduler";
 import { reconcileMonitorSchedule } from "@/lib/monitor-schedule-reconcile";
 import { closeDeletionJobs, insertDeletionJob } from "./jobs";
+import { sendDeletionChangeNotice } from "./notices";
 import { invalidateProjectState, PROJECT_RESTORE_DAYS } from "./org-state";
 
 export class ProjectDeletionError extends Error {
@@ -56,6 +57,7 @@ export async function softDeleteProject(input: { projectId: string; actorUserId:
     success: true,
   });
   await stopProjectActivity(input.projectId, outcome.pausedMonitors);
+  void sendDeletionChangeNotice({ organizationId: outcome.deleted.organizationId, kind: "projectDeleted", projectName: outcome.deleted.name, restoreUntil: purgeAfter });
   return { ...outcome.deleted, purgeAfter };
 }
 
@@ -184,6 +186,6 @@ export async function restoreProject(input: RestoreInput) {
 
 /** Soft-deleted projects of an organization still inside their restore window (for the restore list). */
 export async function listDeletedProjects(organizationId: string) {
-  return db.select({ id: projects.id, name: projects.name, deletedAt: projects.deletedAt, purgeAfter: projects.purgeAfter }).from(projects)
+  return db.select({ id: projects.id, name: projects.name, description: projects.description, createdAt: projects.createdAt, deletedAt: projects.deletedAt, purgeAfter: projects.purgeAfter }).from(projects)
     .where(and(eq(projects.organizationId, organizationId), eq(projects.status, "deleted"), isNotNull(projects.deletedAt))).orderBy(asc(projects.deletedAt));
 }

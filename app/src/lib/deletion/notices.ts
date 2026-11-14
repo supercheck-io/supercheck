@@ -1,4 +1,4 @@
-import { and, asc, eq, gt, isNotNull, sql } from "drizzle-orm";
+import { and, asc, eq, gt, inArray, isNotNull, sql } from "drizzle-orm";
 import { db } from "@/utils/db";
 import { member, organization, user } from "@/db/schema";
 import { EmailService, isEmailConfigured } from "@/lib/email-service";
@@ -44,9 +44,7 @@ export async function sendOrganizationNotice(organizationId: string, key: Notice
   const patch = (value: DeletionMeta) => db.update(organization).set({ deletionMeta: metaPatch(organization.deletionMeta, value) }).where(and(eq(organization.id, organizationId), ours));
   const release = () => db.update(organization).set({ deletionMeta: sql`${organization.deletionMeta} - ${key}::text` }).where(and(eq(organization.id, organizationId), ours));
   try {
-    const owners = await db.select({ email: user.email }).from(member).innerJoin(user, eq(user.id, member.userId))
-      .where(and(eq(member.organizationId, organizationId), eq(member.role, "org_owner"), isNotNull(user.email)));
-    const recipients = [...new Set(owners.map((owner) => owner.email))];
+    const recipients = await memberEmails(organizationId, ["org_owner"]);
     if (recipients.length === 0) { await patch({ [sentKey(key)]: true }); return "skipped"; } // sole-member account deletion: the owner is already gone
     // Owners an earlier, partly failed attempt already reached are skipped, so a retry never mails them twice.
     const [current] = await db.select({ meta: organization.deletionMeta }).from(organization).where(eq(organization.id, organizationId));
@@ -98,6 +96,38 @@ export async function sendDueReminders(now = new Date()): Promise<number> {
     if (pending.length < SWEEP_PAGE) break;
   }
   return sent;
+}
+
+async function memberEmails(organizationId: string, roles: string[]): Promise<string[]> {
+  const rows = await db.select({ email: user.email }).from(member).innerJoin(user, eq(user.id, member.userId))
+    .where(and(eq(member.organizationId, organizationId), inArray(member.role, roles), isNotNull(user.email)));
+  return [...new Set(rows.map((row) => row.email))];
+}
+
+/**
+ * One-off notices with no reminder cycle, sent once right after the change commits: a cancelled organization deletion (to
+ * owners) and a deleted project (to owners and admins, who can restore it). Best effort: a failure is logged, never retried.
+ */
+export async function sendDeletionChangeNotice(input:
+  | { organizationId: string; kind: "cancelled" }
+  | { organizationId: string; kind: "projectDeleted"; projectName: string; restoreUntil: Date }): Promise<void> {
+  if (!isEmailConfigured()) return;
+  try {
+    const [org] = await db.select({ name: organization.name }).from(organization).where(eq(organization.id, input.organizationId));
+    if (!org) return;
+    const recipients = await memberEmails(input.organizationId, input.kind === "cancelled" ? ["org_owner"] : ["org_owner", "org_admin"]);
+    if (recipients.length === 0) return;
+    const rendered = await renderOrganizationDeletionEmail({
+      organizationName: org.name,
+      kind: input.kind,
+      ...(input.kind === "projectDeleted" ? { projectName: input.projectName, purgeDate: input.restoreUntil.toUTCString() } : {}),
+      settingsUrl: `${appUrl()}/org-admin`,
+    });
+    const result = await EmailService.getInstance().sendEmailToMultiple({ recipients, subject: rendered.subject, text: rendered.text, html: rendered.html });
+    if (result.failedAddresses.length > 0) console.error(`[DELETION] The ${input.kind} notice for organization ${input.organizationId} failed for ${result.failedAddresses.length} recipient(s)`);
+  } catch (error) {
+    console.error(`[DELETION] Could not send the ${input.kind} notice for organization ${input.organizationId}:`, error);
+  }
 }
 
 /** After the organization row is gone there is no marker to claim: best effort, once, from the purge's final step. */

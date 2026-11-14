@@ -3,7 +3,7 @@ import * as React from "react";
 import { PALETTE } from "./palette";
 import { BaseLayout } from "./base-layout";
 
-export type OrganizationDeletionKind = "requested" | "reminder" | "completed";
+export type OrganizationDeletionKind = "requested" | "reminder" | "completed" | "cancelled" | "projectDeleted";
 
 interface OrganizationDeletionEmailProps {
   organizationName: string;
@@ -13,9 +13,27 @@ interface OrganizationDeletionEmailProps {
   daysRemaining?: number;
   /** Where the owner can cancel the deletion. */
   settingsUrl?: string;
+  /** projectDeleted: the deleted project. */
+  projectName?: string;
 }
 
-const copy = (kind: OrganizationDeletionKind, purgeDate: string, days: number) => {
+const copy = (kind: OrganizationDeletionKind, purgeDate: string, days: number, projectName = "") => {
+  if (kind === "cancelled") {
+    return {
+      title: "Organization deletion cancelled",
+      heading: "The deletion of your organization was cancelled",
+      body: "An owner cancelled the deletion. The organization is active again, and its schedules and monitors resume.",
+      cta: "Open organization",
+    };
+  }
+  if (kind === "projectDeleted") {
+    return {
+      title: `Project deleted: ${projectName}`,
+      heading: "A project was deleted",
+      body: `The project ${projectName} was deleted and its monitors and schedules are stopped. An owner or admin can restore it from the organization page until ${purgeDate}. After that it is deleted permanently.`,
+      cta: "Review deleted projects",
+    };
+  }
   if (kind === "requested") {
     return {
       title: "Organization scheduled for deletion",
@@ -40,8 +58,8 @@ const copy = (kind: OrganizationDeletionKind, purgeDate: string, days: number) =
   };
 };
 
-export function organizationDeletionSubject(kind: OrganizationDeletionKind, organizationName: string, days = 0): string {
-  return `[Supercheck] ${copy(kind, "", days).title}: ${organizationName}`;
+export function organizationDeletionSubject(kind: OrganizationDeletionKind, organizationName: string, days = 0, projectName = ""): string {
+  return `[Supercheck] ${copy(kind, "", days, projectName).title}${kind === "projectDeleted" ? "" : `: ${organizationName}`}`;
 }
 
 export const OrganizationDeletionEmail = ({
@@ -50,10 +68,11 @@ export const OrganizationDeletionEmail = ({
   purgeDate = "",
   daysRemaining = 7,
   settingsUrl,
+  projectName,
 }: OrganizationDeletionEmailProps) => {
-  const text = copy(kind, purgeDate, daysRemaining);
+  const text = copy(kind, purgeDate, daysRemaining, projectName);
   return (
-    <BaseLayout preview={text.heading} title="Organization deletion" headerColor={kind === "completed" ? PALETTE.info : PALETTE.warning}>
+    <BaseLayout preview={text.heading} title={kind === "projectDeleted" ? "Project deletion" : "Organization deletion"} headerColor={kind === "completed" || kind === "cancelled" ? PALETTE.info : PALETTE.warning}>
       <Section style={contentSection}>
         <Text style={heading}>{text.heading}</Text>
         <Text style={paragraph}><strong>{organizationName}</strong></Text>

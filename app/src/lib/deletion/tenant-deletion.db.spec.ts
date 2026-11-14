@@ -765,4 +765,25 @@ describe("review fixes: project guards, restore quotas, reinstate retry", () => 
     await cancelOrganizationDeletion({ organizationId: seeded.orgId, actorUserId: seeded.ownerId });
     expect(mockPolarUpdate).not.toHaveBeenCalled();
   });
+  it("emails owners when a deletion is cancelled, and owners and admins when a project is deleted", async () => {
+    const sent = async () => { for (let i = 0; i < 100 && mockSend.mock.calls.length === 0; i++) await new Promise((resolve) => setTimeout(resolve, 20)); };
+    mockEmailConfigured = true;
+    const seeded = await seedOrg({ projects: 2 });
+    const [admin] = await mockDatabase.insert(schema.user).values({ name: "Admin", email: `${randomUUID()}@example.test` }).returning();
+    await mockDatabase.insert(schema.member).values({ organizationId: seeded.orgId, userId: admin.id, role: "org_admin", createdAt: new Date() });
+    const [owner] = await client`SELECT u.email FROM "user" u WHERE u.id = ${seeded.ownerId}`;
+    await requestOrganizationDeletion({ organizationId: seeded.orgId, actorUserId: seeded.ownerId, guard: { ownerUserId: seeded.ownerId } });
+    mockSend.mockClear();
+    await cancelOrganizationDeletion({ organizationId: seeded.orgId, actorUserId: seeded.ownerId });
+    await sent(); // sent after the response, not awaited by the cancel
+    expect(mockSend).toHaveBeenCalledTimes(1);
+    expect(mockSend).toHaveBeenCalledWith(expect.objectContaining({ subject: "s-cancelled", recipients: [owner.email] }));
+    mockSend.mockClear();
+    await softDeleteProject({ projectId: seeded.projectIds[1], actorUserId: seeded.ownerId });
+    await sent();
+    expect(mockSend).toHaveBeenCalledTimes(1);
+    expect(mockSend.mock.calls[0][0]).toMatchObject({ subject: "s-projectDeleted" });
+    expect([...mockSend.mock.calls[0][0].recipients].sort()).toEqual([owner.email, admin.email].sort());
+  });
 });
+

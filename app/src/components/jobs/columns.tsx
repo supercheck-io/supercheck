@@ -40,6 +40,7 @@ import {
 } from "@/lib/billing-errors";
 import { createdByColumn } from "@/components/ui/created-by-column";
 import { DateCell } from "@/components/ui/table-cells";
+import { runErrorMessage } from "./run-error-message";
 
 // Type definition for the extended meta object used in this table
 interface JobsTableMeta {
@@ -197,13 +198,7 @@ function RunButton({ job }: { job: Job }) {
             errorMessage = formatBillingBlockedMessage(errorText);
           }
         } else {
-          // Use the original error message but trim it to be more concise
-          errorMessage = errorText.replace("Failed to run job: ", "");
-
-          // Limit the length of the error message
-          if (errorMessage.length > 100) {
-            errorMessage = errorMessage.substring(0, 100) + "...";
-          }
+          errorMessage = runErrorMessage(errorText);
         }
 
         toast.error("Error running job", {

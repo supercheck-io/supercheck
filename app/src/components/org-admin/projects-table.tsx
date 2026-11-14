@@ -13,14 +13,17 @@ interface ProjectsTableProps {
   onManageIncidentPolicy?: (project: Project) => void;
   /** Owners and admins only: omit to hide the action. */
   onDeleteProject?: (project: Project) => void;
+  /** Owners and admins: restore a soft-deleted row. */
+  onRestoreProject?: (project: Project) => void;
+  restoringIds?: ReadonlySet<string>;
   canCreateProjects?: boolean;
   canManageProject?: boolean;
 }
 
 
 
-export function ProjectsTable({ projects, onCreateProject, onEditProject, onManageLocations, onManageIncidentPolicy, onDeleteProject, canCreateProjects = false, canManageProject = false }: ProjectsTableProps) {
-  const columns = React.useMemo(() => createProjectColumns(onEditProject, canManageProject, onManageLocations, onManageIncidentPolicy, onDeleteProject), [onEditProject, canManageProject, onManageLocations, onManageIncidentPolicy, onDeleteProject]);
+export function ProjectsTable({ projects, onCreateProject, onEditProject, onManageLocations, onManageIncidentPolicy, onDeleteProject, onRestoreProject, restoringIds, canCreateProjects = false, canManageProject = false }: ProjectsTableProps) {
+  const columns = React.useMemo(() => createProjectColumns(onEditProject, canManageProject, onManageLocations, onManageIncidentPolicy, onDeleteProject, onRestoreProject, restoringIds), [onEditProject, canManageProject, onManageLocations, onManageIncidentPolicy, onDeleteProject, onRestoreProject, restoringIds]);
 
    
   const CustomToolbar = React.useCallback(({ table }: { table: any }) => (

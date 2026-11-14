@@ -45,7 +45,7 @@ import { ProjectLocationsDialog } from "@/components/org-admin/project-locations
 import { ProjectIncidentPolicyDialog } from "@/components/org-admin/project-incident-policy-dialog";
 import { SubscriptionTab } from "@/components/org-admin/subscription-tab";
 import { DeleteProjectDialog } from "@/components/org-admin/delete-project-dialog";
-import { DeletedProjects } from "@/components/org-admin/deleted-projects";
+import { useDeletedProjects } from "@/components/org-admin/deleted-projects";
 import { DeleteOrganizationButton } from "@/components/org-admin/delete-organization-button";
 import { MemberAccessDialog } from "@/components/members/MemberAccessDialog";
 import { PrivateAgentsAdminView } from "@/components/sre/private-agents/private-agents-admin-view";
@@ -365,7 +365,8 @@ function OrgAdminDashboardContent() {
   const hasData = orgDetails !== null;
   const isInitialLoading = !isMounted || (!hasData && detailsLoading);
 
-  const projects: Project[] = orgProjects.map((p) => ({
+  // Memoized: the projects table resets to its first page whenever its rows array changes identity.
+  const projects: Project[] = useMemo(() => orgProjects.map((p) => ({
     id: p.id,
     name: p.name,
     slug: p.slug,
@@ -373,7 +374,7 @@ function OrgAdminDashboardContent() {
     isDefault: p.isDefault,
     createdAt: p.createdAt,
     membersCount: p.membersCount ?? 0,
-  }));
+  })), [orgProjects]);
 
   const [showInviteDialog, setShowInviteDialog] = useState(false);
   const [inviting, setInviting] = useState(false);
@@ -733,6 +734,22 @@ function OrgAdminDashboardContent() {
   const [policyProject, setPolicyProject] = useState<Project | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Project | null>(null);
   const [deletedRefresh, setDeletedRefresh] = useState(0);
+  // Restorable deleted projects are rows of the projects table (owners and admins), marked Deleted with a Restore action.
+  const deletedProjects = useDeletedProjects({
+    enabled: canDeleteProject(normalizeRole(currentUserRole)),
+    refreshKey: deletedRefresh,
+    onRestored: () => {
+      invalidateProjects();
+      invalidateStats();
+      clearProjectsCache();
+      void refreshProjects();
+    },
+  });
+  // A just-restored project may be in both lists for a moment: show it once.
+  const tableProjects = useMemo(
+    () => [...projects, ...deletedProjects.rows.filter((row) => !projects.some((p) => p.id === row.id))],
+    [projects, deletedProjects.rows],
+  );
 
   const handleUpdateProject = async () => {
     if (!editingProject) return;
@@ -867,7 +884,9 @@ function OrgAdminDashboardContent() {
             <TabLoadingSpinner message="Loading projects..." />
           ) : (
             <ProjectsTable
-              projects={projects}
+              projects={tableProjects}
+              onRestoreProject={(project) => void deletedProjects.restore(project)}
+              restoringIds={deletedProjects.restoring}
               onCreateProject={() => setShowCreateProjectDialog(true)}
               onEditProject={handleEditProject}
               onManageLocations={handleManageLocations}
@@ -886,17 +905,15 @@ function OrgAdminDashboardContent() {
             />
           )}
 
+          {deletedProjects.isError && (
+            <p role="alert" className="text-sm text-destructive">
+              Could not load recently deleted projects.{" "}
+              <button type="button" className="underline" onClick={() => void deletedProjects.refetch()}>Retry</button>
+            </p>
+          )}
+
           {canDeleteProject(normalizeRole(currentUserRole)) && (
             <>
-              <DeletedProjects
-                refreshKey={deletedRefresh}
-                onRestored={() => {
-                  invalidateProjects();
-                  invalidateStats();
-                  clearProjectsCache();
-                  void refreshProjects();
-                }}
-              />
               <DeleteProjectDialog
                 project={deleteTarget}
                 onOpenChange={(open) => !open && setDeleteTarget(null)}
