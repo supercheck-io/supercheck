@@ -145,6 +145,17 @@ describe("MCP tools", () => {
     expect(JSON.stringify(res)).not.toMatch(/HEADERSECRET|AUTHSECRET|BODYSECRET|pw|k=1/);
   });
 
+  it("get_monitor shows the AI endpoint model and latest numbers, never prompt or secret name", async () => {
+    queue.push([{ id: id(1), name: "m", description: null, type: "http_request", target: "https://api.example.com/v1/chat/completions", status: "up", enabled: true, frequencyMinutes: 5, lastCheckAt: null, config: { aiEndpoint: { model: "gpt-4o-mini", secretKey: "OPENAI_SECRET_NAME", prompt: "PROMPTTEXT", expectText: "ok", firstTokenTimeoutMs: 8000 } } }]);
+    queue.push([{ ai: { firstTokenMs: 420, totalMs: 900, servedModel: "gpt-4o-mini-2024", totalTokens: 21, promptTokens: 15, completionTokens: 6, systemFingerprint: "fp" } }]);
+    const res = await handlers.get("get_monitor")!({ id: id(1) });
+    expect(res.structuredContent.monitor).toMatchObject({
+      settings: { aiEndpoint: { model: "gpt-4o-mini", firstTokenTimeoutMs: 8000, expectTextSet: true } },
+      latestAi: { firstTokenMs: 420, totalMs: 900, servedModel: "gpt-4o-mini-2024", totalTokens: 21 },
+    });
+    expect(JSON.stringify(res)).not.toMatch(/PROMPTTEXT|OPENAI_SECRET_NAME|secretKey|"fp"/);
+  });
+
   it("get_monitor reads locations from locationConfig", async () => {
     queue.push([{ id: id(1), name: "m", description: null, type: "http_request", target: "https://example.com", status: "up", enabled: true, frequencyMinutes: 5, lastCheckAt: null, config: { locationConfig: { enabled: true, locations: ["eu-central", "us-east"], threshold: 50, strategy: "majority" } } }]);
     const res = await handlers.get("get_monitor")!({ id: id(1) });

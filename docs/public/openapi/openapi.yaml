@@ -2645,6 +2645,9 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
+        "409":
+          description: "Rename or secret-to-plain change refused: a live monitor
+            references the secret. The error names up to five monitors."
     delete:
       operationId: deleteVariable
       summary: Delete a variable
@@ -2658,6 +2661,9 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
+        "409":
+          description: "Delete refused: a live monitor references the secret. The error
+            names up to five monitors."
   /api/tags:
     get:
       operationId: listTags
@@ -7285,6 +7291,70 @@ components:
               type: string
             token:
               type: string
+            secretKey:
+              type: string
+              minLength: 1
+              maxLength: 255
+              description: Name of a secret in the monitor's own project that supplies the
+                bearer token or basic password. Needs auth type `bearer` or
+                `basic` (basic also needs a `username`). Exclusive with an
+                inline token or password; an unknown name is rejected. Using a
+                secret needs the variable secret-view permission and is refused
+                in an impersonated session.
+        aiEndpoint:
+          type: object
+          required:
+            - model
+          additionalProperties: false
+          description: "AI endpoint preset: an OpenAI-compatible streaming chat call. Only
+            on http_request monitors; method, headers, body, auth, keywordInBody
+            and expectedStatusCodes must be absent. The prompt and secretKey are
+            returned to editors only."
+          properties:
+            secretKey:
+              type: string
+              minLength: 1
+              maxLength: 255
+              description: Project secret holding the API key. Omit to send no key.
+            keyHeader:
+              type: string
+              pattern: ^[A-Za-z0-9-]{1,64}$
+              default: Authorization
+              description: Authorization sends a Bearer key; any other header name sends the
+                raw key.
+            model:
+              type: string
+              minLength: 1
+              maxLength: 200
+            prompt:
+              type: string
+              minLength: 1
+              maxLength: 2000
+              default: Reply with the single word OK.
+            maxTokens:
+              type: integer
+              minimum: 1
+              maximum: 512
+              default: 16
+              description: Reasoning models (gpt-5, o-series) spend tokens on thinking and
+                need more, for example 256.
+            expectText:
+              type: string
+              description: The reply must contain this text (not case sensitive).
+            firstTokenTimeoutMs:
+              type: integer
+              minimum: 500
+              maximum: 60000
+              default: 15000
+              description: Must not exceed the total timeout (`timeoutSeconds` x 1000, default
+                60 s).
+        aiEndpointState:
+          type: object
+          readOnly: true
+          description: Written by the worker; ignored on create and update.
+          properties:
+            lastServedModel:
+              type: string
         port:
           type: integer
         protocol:
@@ -7345,10 +7415,11 @@ components:
         timeoutSeconds:
           type: integer
           minimum: 1
-          description: 1-3600; must not exceed `frequencyMinutes` x 60. A save that raises
-            the timeout above the interval, or shortens the interval below the
-            timeout, returns 400; a monitor already in that state still saves
-            other changes.
+          description: 1-3600 (5-120 with `aiEndpoint`, where it is the total time limit
+            and defaults to 60); must not exceed `frequencyMinutes` x 60. A save
+            that raises the timeout above the interval, or shortens the interval
+            below the timeout, returns 400; a monitor already in that state
+            still saves other changes.
           maximum: 3600
         regions:
           type: array

@@ -161,3 +161,21 @@ describe('monitorResultForRead', () => {
     expect(masked).toContain('q=ok');
   });
 });
+
+describe('AI endpoint config reads', () => {
+  const ai: MonitorConfig = {
+    aiEndpoint: { model: 'gpt-4o-mini', secretKey: 'OPENAI_KEY', prompt: 'private prompt', firstTokenTimeoutMs: 9000 },
+    aiEndpointState: { lastServedModel: 'gpt-4o-mini-2024' },
+    auth: { type: 'bearer', secretKey: 'TOKEN_NAME' },
+  };
+  it('hides prompt and secret name from viewers, keeps model, limits and worker state', () => {
+    const read = monitorConfigForRead(ai, false)!;
+    expect(read.aiEndpoint).toEqual({ model: 'gpt-4o-mini', firstTokenTimeoutMs: 9000 });
+    expect(read.aiEndpointState).toEqual({ lastServedModel: 'gpt-4o-mini-2024' });
+    expect(read.auth).toEqual({ type: 'bearer' });
+    expect(JSON.stringify(read)).not.toMatch(/private prompt|OPENAI_KEY|TOKEN_NAME/);
+  });
+  it('gives updaters the complete AI endpoint config', () => {
+    expect(monitorConfigForRead(ai, true)).toBe(ai);
+  });
+});

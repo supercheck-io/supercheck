@@ -238,6 +238,7 @@ env:
 | Inspect before writing | `supercheck diff --json` or `supercheck deploy --dry-run --json` |
 | Block until tests finish | Use `--wait`, and set `--timeout` to suit your suite |
 | Resume a wait | `supercheck run wait <run-id>` never triggers a new run |
+| Coding agents | Have the agent run your job after each ship: [Check after every ship](/docs/cli/after-ship-check) |
 | Least privilege | Use trigger keys (`sck_trigger_*`) for single-job triggers |
 | Preview config changes | Run `supercheck diff` in PRs |
 | Faster builds | Cache the CLI in your CI/CD environment |

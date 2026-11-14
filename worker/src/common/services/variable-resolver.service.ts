@@ -46,7 +46,10 @@ function decodeEnvelope(serialized: string): SecretEnvelope {
  * @param encryptedValue The encrypted value string (starting with enc:v1:)
  * @param projectId The project ID used as encryption context
  */
-function decryptValue(encryptedValue: string, projectId: string): string {
+export function decryptValue(
+  encryptedValue: string,
+  projectId: string,
+): string {
   if (!encryptedValue.startsWith(ENCRYPTED_PREFIX)) {
     throw new Error('Unsupported encrypted value format');
   }

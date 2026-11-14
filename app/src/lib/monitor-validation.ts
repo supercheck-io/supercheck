@@ -90,6 +90,87 @@ function validateLocationPolicy(config: Record<string, unknown>): MonitorValidat
   return { success: true };
 }
 
+// Same header-name rule as the MCP connector's buildAuthHeaders.
+const HEADER_NAME = /^[A-Za-z0-9-]{1,64}$/;
+/** Shared with the monitor form, so it rejects exactly what the API rejects. */
+export const FORBIDDEN_KEY_HEADERS = new Set(["host", "content-length", "content-type", "accept", "transfer-encoding", "connection", "cookie"]);
+const secretName = z.string().trim().min(1).max(255);
+
+const aiEndpointSchema = z
+  .object({
+    secretKey: secretName.optional(),
+    keyHeader: z
+      .string()
+      .regex(HEADER_NAME, "must be a valid header name")
+      .refine((name) => !FORBIDDEN_KEY_HEADERS.has(name.toLowerCase()), "header name is not allowed")
+      .optional(),
+    model: z.string().trim().min(1).max(200),
+    prompt: z.string().min(1).max(2000).optional(),
+    maxTokens: z.number().int().min(1).max(512).optional(),
+    expectText: z.string().max(500).optional(),
+    firstTokenTimeoutMs: z.number().int().min(500).max(60000).optional(),
+  })
+  .strict();
+
+/** Request fields the AI endpoint preset replaces; none may be set beside it. */
+const AI_CONFLICTING_KEYS = ["method", "headers", "body", "keywordInBody", "expectedStatusCodes"] as const;
+
+/** The protocol the URL parser (and so the worker) will use; "http:api.example.com" is http too. */
+function parsedProtocol(target: string): string | null {
+  try {
+    return new URL(target.trim()).protocol;
+  } catch {
+    return null;
+  }
+}
+
+/** Total time limit the worker applies to an AI endpoint check when none is set. */
+export const AI_DEFAULT_TIMEOUT_SECONDS = 60;
+
+function validateAiEndpoint(monitorType: string, config: Record<string, unknown>): MonitorValidationResult {
+  if (config.aiEndpoint == null) return { success: true };
+  if (monitorType !== "http_request") {
+    return invalid("Invalid monitor configuration", "config.aiEndpoint is only supported on http_request monitors");
+  }
+  const parsed = aiEndpointSchema.safeParse(config.aiEndpoint);
+  if (!parsed.success) {
+    const issue = parsed.error.issues[0];
+    return invalid("Invalid monitor configuration", `config.aiEndpoint.${issue.path.join(".") || "value"}: ${issue.message}`);
+  }
+  const auth = isRecord(config.auth) && config.auth.type !== "none" ? config.auth : null;
+  const conflict = AI_CONFLICTING_KEYS.find((key) => config[key] != null && config[key] !== "") ?? (auth ? "auth" : undefined);
+  if (conflict) {
+    return invalid("Invalid monitor configuration", `config.${conflict} cannot be set together with config.aiEndpoint`);
+  }
+  const timeout = config.timeoutSeconds;
+  if (timeout !== undefined && (typeof timeout !== "number" || timeout < 5 || timeout > 120)) {
+    return invalid("Invalid monitor configuration", "config.timeoutSeconds must be between 5 and 120 for the AI endpoint preset");
+  }
+  const firstToken = parsed.data.firstTokenTimeoutMs;
+  if (firstToken !== undefined && firstToken > (timeout ?? AI_DEFAULT_TIMEOUT_SECONDS) * 1000) {
+    return invalid("Invalid monitor configuration", "config.aiEndpoint.firstTokenTimeoutMs cannot exceed the total timeout (config.timeoutSeconds)");
+  }
+  return { success: true };
+}
+
+function validateAuthSecret(config: Record<string, unknown>): MonitorValidationResult {
+  const auth = config.auth;
+  if (!isRecord(auth) || auth.secretKey === undefined) return { success: true };
+  if (!secretName.safeParse(auth.secretKey).success) {
+    return invalid("Invalid monitor configuration", "config.auth.secretKey must be a secret name of 1-255 characters");
+  }
+  if (auth.type !== "bearer" && auth.type !== "basic") {
+    return invalid("Invalid monitor configuration", "config.auth.secretKey needs auth type bearer or basic");
+  }
+  if (auth.type === "basic" && (typeof auth.username !== "string" || auth.username.trim() === "")) {
+    return invalid("Invalid monitor configuration", "config.auth.username is required for basic auth with a secret");
+  }
+  if (auth.token || auth.password) {
+    return invalid("Invalid monitor configuration", "config.auth.secretKey cannot be combined with an inline token or password");
+  }
+  return { success: true };
+}
+
 /** Matches the monitors.target varchar(2048) column. */
 export const MAX_TARGET_LENGTH = 2048;
 
@@ -195,6 +276,27 @@ export function validateMonitorConfiguration({
         'config.protocol must be either "tcp" or "udp"',
       );
     }
+  }
+
+  const aiResult = validateAiEndpoint(monitorType, monitorConfig);
+  if (!aiResult.success) return aiResult;
+  const authSecretResult = validateAuthSecret(monitorConfig);
+  if (!authSecretResult.success) return authSecretResult;
+
+  // A project secret goes only over TLS; self-hosted internal model servers (ALLOW_INTERNAL_TARGETS) are exempt.
+  const sendsSecret =
+    (isRecord(monitorConfig.aiEndpoint) && typeof monitorConfig.aiEndpoint.secretKey === "string") ||
+    (isRecord(monitorConfig.auth) && typeof monitorConfig.auth.secretKey === "string");
+  if (
+    sendsSecret &&
+    typeof target === "string" &&
+    parsedProtocol(target) === "http:" &&
+    process.env.ALLOW_INTERNAL_TARGETS !== "true"
+  ) {
+    return invalid(
+      "Invalid monitor target",
+      "target must use https when a project secret is sent",
+    );
   }
 
   if (monitorType === "http_request" || monitorType === "website") {

@@ -25,6 +25,7 @@ import { useAvailableLocations } from "@/hooks/use-locations";
 import { useQueryClient } from "@tanstack/react-query";
 import { invalidateMonitorCaches } from "./monitor-actions";
 import { Loader2, SaveIcon } from "lucide-react";
+import { presetFailureThreshold } from "./ai-endpoint-fields";
 
 type WizardStep = "monitor" | "location" | "alerts";
 
@@ -134,6 +135,8 @@ export function MonitorCreationWizard() {
     getInitialAlertConfig
   );
   const [isCreating, setIsCreating] = useState(false);
+  // Restored wizard state (sessionStorage) already carries the preset default, so it is not applied again.
+  const presetThresholdAppliedRef = useRef((monitorData as { preset?: string } | undefined)?.preset === "ai_endpoint");
 
   // Cleanup on unmount - only if not creating
   useEffect(() => {
@@ -260,6 +263,14 @@ export function MonitorCreationWizard() {
     // Store the form data for state persistence and API data for creation
     setMonitorData(formData);
     setApiData(monitorApiData);
+
+    const preset = presetFailureThreshold({
+      aiPreset: (formData as { preset?: string }).preset === "ai_endpoint",
+      applied: presetThresholdAppliedRef.current,
+      threshold: alertConfig.failureThreshold,
+    });
+    presetThresholdAppliedRef.current = preset.applied;
+    if (preset.threshold !== alertConfig.failureThreshold) setAlertConfig({ ...alertConfig, failureThreshold: preset.threshold });
 
     // When skipping the location step (single location), auto-set the
     // locationConfig to the actual available location. DEFAULT_LOCATION_CONFIG

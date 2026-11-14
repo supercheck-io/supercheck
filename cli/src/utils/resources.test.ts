@@ -222,6 +222,7 @@ describe('notification provider resources', () => {
                     sslProbeFailure: { since: 't', host: 'example.com' },
                     sslAlertState: { id: 'w', host: 'example.com', warnedAt: 't' },
                     aggregatedAlertState: { consecutiveFailureCount: 1 },
+                    aiEndpointState: { lastServedModel: 'gpt-4o-mini-2024-07-18' },
                   },
                 },
               ],

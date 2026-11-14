@@ -186,6 +186,32 @@ monitorCommand
     outputDetail(statusInfo)
   })
 
+const AI_PRESET_ONLY = ['model', 'secret', 'keyHeader', 'prompt', 'expect', 'maxTokens', 'firstTokenTimeout'] as const
+const flagName = (key: string) => `--${key.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`)}`
+
+/** `--preset ai-endpoint`: the request is built by the worker from these fields, so method/headers/body are not sent. */
+export function buildAiEndpointPreset(options: { preset?: string; model?: string; secret?: string; keyHeader?: string; prompt?: string; expect?: string; maxTokens?: string; firstTokenTimeout?: string; method?: string }, monitorType: string): Record<string, unknown> | undefined {
+  if (options.preset === undefined) {
+    const stray = AI_PRESET_ONLY.find((key) => options[key] !== undefined)
+    if (stray) throw new CLIError(`${flagName(stray)} requires --preset ai-endpoint.`, ExitCode.ConfigError)
+    return undefined
+  }
+  if (options.preset !== 'ai-endpoint') throw new CLIError(`Unknown preset: ${options.preset}. Use ai-endpoint.`, ExitCode.ConfigError)
+  if (monitorType !== 'http_request') throw new CLIError('--preset ai-endpoint requires --type http_request.', ExitCode.ConfigError)
+  if (!options.model?.trim()) throw new CLIError('--model is required with --preset ai-endpoint.', ExitCode.ConfigError)
+  // The preset always sends POST; an explicit other method would be silently ignored.
+  if (options.method !== undefined && options.method.toUpperCase() !== 'POST') throw new CLIError('--method cannot be used with --preset ai-endpoint (it always sends POST).', ExitCode.ConfigError)
+  return {
+    model: options.model.trim(),
+    ...(options.secret ? { secretKey: options.secret } : {}),
+    ...(options.keyHeader ? { keyHeader: options.keyHeader } : {}),
+    ...(options.prompt ? { prompt: options.prompt } : {}),
+    ...(options.expect ? { expectText: options.expect } : {}),
+    ...(options.maxTokens !== undefined ? { maxTokens: parseIntStrict(options.maxTokens, '--max-tokens', { min: 1, max: 512 }) } : {}),
+    ...(options.firstTokenTimeout !== undefined ? { firstTokenTimeoutMs: parseIntStrict(options.firstTokenTimeout, '--first-token-timeout', { min: 500, max: 60000 }) } : {}),
+  }
+}
+
 monitorCommand
   .command('create')
   .description('Create a new monitor')
@@ -194,16 +220,25 @@ monitorCommand
   .option('--type <type>', 'Monitor type (http_request, website, ping_host, port_check, synthetic_test)', 'http_request')
   .option('--interval-minutes <minutes>', 'Check interval in minutes (1-1440)', '5')
   .option('--interval <seconds>', '[deprecated: use --interval-minutes] Check interval in seconds')
-  .option('--timeout <seconds>', 'Request timeout in seconds', '30')
-  .option('--method <method>', 'HTTP method (GET, POST, PUT, DELETE, PATCH, HEAD, OPTIONS)', 'GET')
+  .option('--timeout <seconds>', 'Request timeout in seconds (default 30; 60 with --preset ai-endpoint)')
+  .option('--method <method>', 'HTTP method (GET, POST, PUT, DELETE, PATCH, HEAD, OPTIONS; default GET)')
   .option('--test-id <id>', 'Test UUID (required for synthetic_test)')
   .option('--port <port>', 'Port number (required for port_check)')
   .option('--protocol <protocol>', 'Port check protocol (tcp or udp)', 'tcp')
+  .option('--preset <preset>', 'Request preset for http_request: ai-endpoint (OpenAI-compatible chat completions)')
+  .option('--model <model>', 'Model name (ai-endpoint preset)')
+  .option('--secret <name>', 'Project secret that holds the API key (ai-endpoint preset); omit to send no key')
+  .option('--key-header <header>', 'Header for the key (ai-endpoint preset; Authorization sends Bearer <key>)')
+  .option('--prompt <text>', 'Prompt to send (ai-endpoint preset)')
+  .option('--expect <text>', 'Text the reply must contain (ai-endpoint preset)')
+  .option('--max-tokens <n>', 'Token limit for the reply, 1-512 (ai-endpoint preset; reasoning models need more, e.g. 256)')
+  .option('--first-token-timeout <ms>', 'Slower first token fails the check, 500-60000 ms (ai-endpoint preset)')
   .option('--dry-run', 'Show what would be sent without creating')
-  .action(async (options: { name: string; url?: string; type: string; intervalMinutes: string; interval?: string; timeout: string; method: string; testId?: string; port?: string; protocol: string; dryRun?: boolean }) => {
+  .action(async (options: { name: string; url?: string; type: string; intervalMinutes: string; interval?: string; timeout?: string; method?: string; testId?: string; port?: string; protocol: string; dryRun?: boolean; preset?: string; model?: string; secret?: string; keyHeader?: string; prompt?: string; expect?: string; maxTokens?: string; firstTokenTimeout?: string }) => {
     const client = createAuthenticatedClient()
     const monitorType = normalizeMonitorType(options.type)
-    const method = normalizeHttpMethod(options.method)
+    const aiEndpoint = buildAiEndpointPreset(options, monitorType)
+    const method = normalizeHttpMethod(options.method ?? 'GET')
     if (monitorType !== 'synthetic_test' && !options.url) {
       throw new CLIError('--url is required for this monitor type.', ExitCode.ConfigError)
     }
@@ -238,8 +273,11 @@ monitorCommand
       target: options.url ?? '',
       type: monitorType,
       frequencyMinutes,
-      config: {
-        timeoutSeconds: parseIntStrict(options.timeout, '--timeout', { min: 1, max: 3600 }),
+      config: aiEndpoint ? {
+        timeoutSeconds: parseIntStrict(options.timeout ?? '60', '--timeout', { min: 5, max: 120 }),
+        aiEndpoint,
+      } : {
+        timeoutSeconds: parseIntStrict(options.timeout ?? '30', '--timeout', { min: 1, max: 3600 }),
         method,
         ...(monitorType === 'synthetic_test' ? { testId: options.testId } : {}),
         ...(monitorType === 'port_check' ? { port: parseIntStrict(options.port!, '--port', { min: 1, max: 65535 }), protocol: options.protocol } : {}),
