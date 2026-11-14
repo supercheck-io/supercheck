@@ -61,8 +61,8 @@ for (const c of CASES) {
       expect(requests[0]).toMatchObject({ tool: c.tool, input: c.input, token: "tok", method: "POST" });
       expect(String(requests[0].contentType)).toMatch(/^text\/plain/);
       const href = await page.getByTestId("tool-monitor-this").getAttribute("href");
-      const next = new URL(href!).searchParams.get("next")!;
-      expect(next).toMatch(/^\/monitors\/create\?type=(website|http_request)&url=/);
+      const target = new URL(href!);
+      expect(target.pathname + target.search).toMatch(/^\/monitors\/create\?type=(website|http_request)&url=/);
     });
 
     test("invalid input, rate limit and busy states", async ({ page }) => {

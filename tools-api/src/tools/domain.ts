@@ -71,7 +71,11 @@ export async function domain(ctx: CheckContext, host: string) {
 
   const primary = await getRdap(ctx, `${base}domain/${encodeURIComponent(name)}`);
   if (primary.status === 404) return { domain: name, hasData: false, reason: "not_found", tld, server: base };
-  if (!primary.body) return { domain: name, hasData: false, reason: "rdap_error", tld, server: base };
+  if (!primary.body) {
+    // Registry 429/5xx or a bad body: a retry may succeed, so never cache it.
+    ctx.degraded = true;
+    return { domain: name, hasData: false, reason: "rdap_error", tld, server: base };
+  }
 
   let expires = expiry(primary.body);
   let registrarName = registrar(primary.body);

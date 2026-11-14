@@ -64,10 +64,24 @@ describe("checkUrl (SSRF suite)", () => {
     expect(["reserved_name", "single_label"]).toContain(reason(`https://${host}/`));
   });
 
-  it.each(["x.workers.dev", "workers.dev", "y.pages.dev", "app.supercheck.io", "demo.supercheck.io", "a.app.supercheck.io"])(
-    "rejects our own and Cloudflare platform host %s",
-    (host) => expect(reason(`https://${host}/`)).toBe("reserved_name"),
+  it.each(["x.workers.dev", "workers.dev", "y.pages.dev"])("rejects Cloudflare platform host %s", (host) =>
+    expect(reason(`https://${host}/`)).toBe("platform_host"),
   );
+
+  it.each(["app.supercheck.io", "demo.supercheck.io", "a.app.supercheck.io"])("rejects our own app host %s", (host) =>
+    expect(reason(`https://${host}/`)).toBe("reserved_name"),
+  );
+
+  it("reads host:port as a host with a port, not as a scheme", () => {
+    expect(reason("example.com:8080")).toBe("port");
+    expect(reason("localhost:3000")).toBe("port");
+    expect(reason("javascript:alert(1)")).toBe("scheme");
+    expect(reason("data:text/html,x")).toBe("scheme");
+  });
+
+  it("rejects empty labels", () => {
+    expect(reason("https://a..b.com/")).toBe("invalid_url");
+  });
 
   it("keeps the marketing site checkable", () => {
     expect(reason("https://supercheck.io/")).toBeNull();

@@ -21,6 +21,7 @@ export interface SocialTags {
   title: string | null;
   description: string | null;
   truncated: boolean;
+  interrupted?: boolean;
 }
 
 /** Extracts head metadata, stopping at </head> or after 64 KB of HTML. */
@@ -76,12 +77,19 @@ export async function extractHead(res: Response): Promise<SocialTags> {
   // Feed at most HEAD_CAP bytes, stopping as soon as the head is over.
   const capped = capStream(res, HEAD_CAP, () => done);
   const out = rewriter.transform(new Response(capped.stream));
-  await out.body?.pipeTo(new WritableStream());
+  let interrupted = false;
+  try {
+    await out.body?.pipeTo(new WritableStream());
+  } catch {
+    // A body that stalls or drops: keep what the head gave us.
+    interrupted = true;
+  }
   return {
     tags,
     title: title.trim().slice(0, TEXT_CAP) || null,
     description,
-    truncated: capped.truncated(),
+    truncated: capped.truncated() || interrupted,
+    ...(interrupted ? { interrupted } : {}),
   };
 }
 
@@ -122,6 +130,7 @@ export async function social(ctx: CheckContext, url: URL) {
   const r = await walk(ctx, url, { maxHops: 3 });
   if (!r.ok) return { error: r.error, hops: r.hops };
   const head = await extractHead(r.res);
+  if (head.interrupted) ctx.degraded = true;
   const missing = SOCIAL_TAGS.filter((tag) => !(tag in head.tags));
   const image = head.tags["og:image"] ? await checkImage(ctx, head.tags["og:image"], r.url) : null;
   return {
@@ -145,16 +154,23 @@ async function checkImage(ctx: CheckContext, raw: string, base: URL) {
   if (!policy.ok) return { url: shown, reachable: false, reason: policy.reason, loadable: false };
   const loadable = policy.value.protocol === "https:";
   try {
-    const r = await walk(ctx, policy.value, { method: "HEAD", maxHops: 3 });
+    let r = await walk(ctx, policy.value, { method: "HEAD", maxHops: 3 });
+    // Many CDNs and object stores refuse HEAD; ask for one byte with GET instead.
+    if (r.ok && [403, 405, 501].includes(r.res.status)) {
+      await r.res.body?.cancel();
+      r = await walk(ctx, policy.value, { method: "GET", maxHops: 3, headers: { range: "bytes=0-0" } });
+    }
     if (!r.ok) return { url: shown, reachable: false, reason: r.error, loadable };
     await r.res.body?.cancel();
     const type = r.res.headers.get("content-type")?.slice(0, 100) ?? null;
     const length = Number(r.res.headers.get("content-length")) || null;
     const isImage = !!type && /^image\//i.test(type);
+    const okStatus = r.res.status >= 200 && r.res.status < 300;
+    if (!okStatus) ctx.degraded = true;
     return {
       url: shown,
-      reachable: r.res.status >= 200 && r.res.status < 300 && isImage,
-      reason: isImage ? null : "not_an_image",
+      reachable: okStatus && isImage,
+      reason: !okStatus ? `http_${r.res.status}` : isImage ? null : "not_an_image",
       contentType: type,
       bytes: length,
       loadable,

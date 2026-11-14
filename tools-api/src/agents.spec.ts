@@ -123,6 +123,14 @@ describe("agents tool", () => {
     expect(targets().some((c) => c.url.endsWith("server-card.json"))).toBe(true);
   });
 
+  it("does not call an off-site home redirect a bot block, and does not count it", async () => {
+    mockFetch({ [`${O}/`]: new Response(null, { status: 301, headers: { location: "https://brand.com/" } }) });
+    const r = await run();
+    expect(check(r, "not_blocked")?.status).toBe("info");
+    expect(check(r, "https")?.status).toBe("info");
+    expect(r.total).toBe(2);
+  });
+
   it("ends blocked when the input host resolves privately, instead of reporting passes", async () => {
     mockFetch({}, { "site.com": ["10.0.0.1"] });
     await expect(run()).rejects.toMatchObject({ kind: "blocked", reason: "private_address" });

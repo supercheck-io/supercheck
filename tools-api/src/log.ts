@@ -2,7 +2,6 @@ export interface CheckLog {
   tool: string;
   method?: string;
   host?: string;
-  pathPrefix?: string;
   ipHash?: string;
   colo?: string;
   cached?: boolean;
@@ -11,12 +10,6 @@ export interface CheckLog {
   outcome: string;
   subrequests?: number;
   durationMs?: number;
-}
-
-/** Host plus the first path segment only: never the full path, query, IP or token. */
-export function describeTarget(url: URL | null): { host?: string; pathPrefix?: string } {
-  if (!url) return {};
-  return { host: url.hostname, pathPrefix: `/${url.pathname.split("/")[1] ?? ""}`.slice(0, 32) };
 }
 
 export async function hashIp(bucket: string, key: string | undefined): Promise<string | undefined> {

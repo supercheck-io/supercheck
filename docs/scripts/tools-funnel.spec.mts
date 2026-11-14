@@ -26,12 +26,12 @@ test("invalidMessage has copy for known reasons and a fallback", () => {
   assert.match(invalidMessage("whatever"), /public domain/);
 });
 
-test("monitorThisHref builds a double-encoded next that the app's monitor pattern accepts", () => {
+test("monitorThisHref links the app's form in the shape its monitor pattern accepts", () => {
   const href = monitorThisHref("uptime", "https://ex.com/a b?api_key=SECRET#frag");
   assert.ok(!href.includes("SECRET"));
   const url = new URL(href);
-  assert.equal(url.origin + url.pathname, "https://app.supercheck.io/sign-in");
-  const next = url.searchParams.get("next")!; // decoded once, as the app reads it
+  assert.equal(url.origin + url.pathname, "https://app.supercheck.io/monitors/create");
+  const next = url.pathname + url.search; // what the app's AuthGuard forwards as next
   assert.match(next, /^\/monitors\/create\?type=(website|http_request)&url=[A-Za-z0-9%._~-]{1,6200}(&name=[A-Za-z0-9%._~-]{1,300})?(&method=(GET|HEAD))?$/);
   const inner = new URLSearchParams(next.split("?")[1]);
   assert.equal(inner.get("url"), "https://ex.com/a%20b");
@@ -40,7 +40,8 @@ test("monitorThisHref builds a double-encoded next that the app's monitor patter
 });
 
 test("URLs with ( ) * ! ' still match the app's monitor pattern", () => {
-  const next = new URL(monitorThisHref("uptime", "https://en.wikipedia.org/wiki/Foo_(bar)*!'")).searchParams.get("next")!;
+  const u = new URL(monitorThisHref("uptime", "https://en.wikipedia.org/wiki/Foo_(bar)*!'"));
+  const next = u.pathname + u.search;
   assert.match(next, /^\/monitors\/create\?type=website&url=[A-Za-z0-9%._~!*'()-]{1,6200}&name=[A-Za-z0-9%._~!*'()-]{1,300}$/);
 });
 
@@ -52,7 +53,9 @@ test("monitorTarget picks the monitor type and target per tool", () => {
   assert.equal(monitorTarget("uptime", ""), null);
   assert.equal(monitorTarget("uptime", "javascript:alert(1)"), null);
   assert.equal(monitorTarget("uptime", "https://u:p@ex.com"), null);
-  assert.equal(monitorThisHref("uptime", ""), "https://app.supercheck.io/sign-in");
+  assert.equal(monitorThisHref("uptime", ""), "https://app.supercheck.io/monitors/create");
+  // Too long for the continuation: the form opens without the pre-fill instead of losing it silently later.
+  assert.equal(monitorThisHref("uptime", `https://ex.com/${"a".repeat(2000)}`), "https://app.supercheck.io/monitors/create?type=website");
 });
 
 test("shareHref only for inputs without a query or userinfo", () => {

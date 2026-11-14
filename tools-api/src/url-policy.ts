@@ -4,7 +4,10 @@ export type Policy<T> = { ok: true; value: T } | { ok: false; reason: string };
 
 const SPECIAL_SUFFIXES = ["localhost", "local", "internal", "home.arpa", "onion", "test", "example", "invalid", "arpa"];
 // Never loop through Cloudflare's own platforms or probe the product itself.
-const OWN_SUFFIXES = ["workers.dev", "pages.dev", "app.supercheck.io", "demo.supercheck.io"];
+const PLATFORM_SUFFIXES = ["workers.dev", "pages.dev"];
+const OWN_SUFFIXES = ["app.supercheck.io", "demo.supercheck.io"];
+// "host:port" has no "//"; only these are read as a scheme without one.
+const SCHEME_WITHOUT_SLASHES = /^(?:javascript|data|file|mailto|blob|about|vbscript|tel|ftp|gopher|ws|wss):/i;
 
 function hasSuffix(host: string, suffix: string): boolean {
   return host === suffix || host.endsWith(`.${suffix}`);
@@ -15,7 +18,9 @@ export function hostReason(rawHost: string, blocked: string[]): string | null {
   const host = rawHost.toLowerCase().replace(/\.$/, "");
   if (host.startsWith("[") || host.includes(":") || /^\d+(\.\d+){3}$/.test(host)) return "ip_literal";
   if (!host.includes(".")) return "single_label";
+  if (host.split(".").some((label) => label === "")) return "invalid_url";
   if (SPECIAL_SUFFIXES.some((s) => hasSuffix(host, s))) return "reserved_name";
+  if (PLATFORM_SUFFIXES.some((s) => hasSuffix(host, s))) return "platform_host";
   if (OWN_SUFFIXES.some((s) => hasSuffix(host, s))) return "reserved_name";
   if (blocked.some((s) => hasSuffix(host, s.replace(/^\./, "")))) return "blocked_host";
   return null;
@@ -24,7 +29,7 @@ export function hostReason(rawHost: string, blocked: string[]): string | null {
 /** Rules 1-5 and 9: parse a user or redirect URL into a checkable URL. */
 export function checkUrl(input: string, blocked: string[]): Policy<URL> {
   const raw = input.trim();
-  const withScheme = /^[a-z][a-z0-9+.-]*:/i.test(raw) ? raw : `https://${raw}`;
+  const withScheme = /^[a-z][a-z0-9+.-]*:\/\//i.test(raw) || SCHEME_WITHOUT_SLASHES.test(raw) ? raw : `https://${raw}`;
   let url: URL;
   try {
     url = new URL(withScheme);

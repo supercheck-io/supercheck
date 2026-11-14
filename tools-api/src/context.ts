@@ -3,7 +3,9 @@ import { isReservedIp } from "./ip-ranges";
 import { checkUrl, registrable } from "./url-policy";
 
 export const SUBREQUEST_BUDGET = 40;
+// DoH and service calls answer fast; targets get longer so a slow site reads as slow, not down.
 const FETCH_TIMEOUT_MS = 5_000;
+export const TARGET_TIMEOUT_MS = 10_000;
 const DOH = "https://cloudflare-dns.com/dns-query";
 
 /** Distinct hosts one check may touch (bounds the DoH column of the budget). */
@@ -60,9 +62,9 @@ export class CheckContext {
     this.subrequests += 1;
   }
 
-  async fetch(url: string, init: RequestInit = {}): Promise<Response> {
+  async fetch(url: string, init: RequestInit = {}, timeoutMs = FETCH_TIMEOUT_MS): Promise<Response> {
     this.charge();
-    const signal = AbortSignal.any([this.signal, AbortSignal.timeout(FETCH_TIMEOUT_MS)]);
+    const signal = AbortSignal.any([this.signal, AbortSignal.timeout(timeoutMs)]);
     return fetch(url, { ...init, signal });
   }
 
@@ -128,36 +130,41 @@ export type Walk =
 export async function walk(
   ctx: CheckContext,
   start: URL,
-  opts: { method?: "GET" | "HEAD"; maxHops: number },
+  opts: { method?: "GET" | "HEAD"; maxHops: number; headers?: Record<string, string> },
 ): Promise<Walk> {
   let url = start;
   const hops: Hop[] = [];
-  const t0 = Date.now();
   for (;;) {
     await ctx.vetHost(url.hostname, hops.length === 0 ? "blocked" : "blocked_redirect");
     let res: Response;
+    // Time to response headers of this request only: no DoH, rate-limit calls or earlier hops.
+    const t0 = Date.now();
     try {
       res = await ctx.fetch(url.toString(), {
         method: opts.method ?? "GET",
         redirect: "manual",
-        headers: { "user-agent": USER_AGENT },
-      });
+        headers: { ...opts.headers, "user-agent": USER_AGENT },
+      }, TARGET_TIMEOUT_MS);
     } catch (error) {
       if (error instanceof CheckStop) throw error;
       if (ctx.signal.aborted) {
         ctx.degraded = true;
         throw new CheckStop("limited", "deadline");
       }
+      // A failure is never cached: a fixed site must show as fixed on the next check.
+      ctx.degraded = true;
       return { ok: false, error: fetchErrorClass(error), url, hops, timeMs: Date.now() - t0 };
     }
+    const timeMs = Date.now() - t0;
     const location = res.headers.get("location");
     if (res.status < 300 || res.status >= 400 || !location) {
-      return { ok: true, res, url, hops, timeMs: Date.now() - t0 };
+      return { ok: true, res, url, hops, timeMs };
     }
     await res.body?.cancel();
     hops.push({ host: url.hostname, status: res.status });
     if (hops.length > opts.maxHops) {
-      return { ok: false, error: "too_many_redirects", url, hops, timeMs: Date.now() - t0 };
+      ctx.degraded = true;
+      return { ok: false, error: "too_many_redirects", url, hops, timeMs };
     }
     let next: string;
     try {
@@ -181,25 +188,37 @@ export function fetchErrorClass(error: unknown): string {
   return "connection_failed";
 }
 
-/** Reads at most `cap` bytes of a body, then cancels the rest. */
-export async function readCapped(res: { body: ReadableStream<Uint8Array> | null }, cap: number): Promise<{ text: string; truncated: boolean }> {
+/**
+ * Reads at most `cap` bytes of a body, then cancels the rest. A body that stalls past the
+ * per-request timeout or drops mid-way ends the read with `interrupted`, never an exception.
+ */
+export async function readCapped(
+  res: { body: ReadableStream<Uint8Array> | null },
+  cap: number,
+): Promise<{ text: string; truncated: boolean; interrupted?: boolean }> {
   if (!res.body) return { text: "", truncated: false };
   const reader = res.body.getReader();
   const chunks: Uint8Array[] = [];
   let size = 0;
   let truncated = false;
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    const room = cap - size;
-    if (value.byteLength >= room) {
-      chunks.push(value.subarray(0, room));
-      size = cap;
-      truncated = value.byteLength > room || !(await isDrained(reader));
-      break;
+  let interrupted = false;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      const room = cap - size;
+      if (value.byteLength >= room) {
+        chunks.push(value.subarray(0, room));
+        size = cap;
+        truncated = value.byteLength > room || !(await isDrained(reader));
+        break;
+      }
+      chunks.push(value);
+      size += value.byteLength;
     }
-    chunks.push(value);
-    size += value.byteLength;
+  } catch {
+    interrupted = true;
+    truncated = true;
   }
   await reader.cancel().catch(() => undefined);
   const bytes = new Uint8Array(size);
@@ -208,7 +227,7 @@ export async function readCapped(res: { body: ReadableStream<Uint8Array> | null 
     bytes.set(chunk, offset);
     offset += chunk.byteLength;
   }
-  return { text: new TextDecoder().decode(bytes), truncated };
+  return { text: new TextDecoder().decode(bytes), truncated, ...(interrupted ? { interrupted } : {}) };
 }
 
 async function isDrained(reader: ReadableStreamDefaultReader<Uint8Array>): Promise<boolean> {
@@ -238,12 +257,12 @@ export const KEPT_HEADERS = [
 
 const MAX_HEADER = 4096;
 
-/** Allow-listed response headers only, each capped at 4 KB. Never set-cookie. */
-export function keptHeaders(headers: Headers): Record<string, string> {
+/** Allow-listed response headers only, each capped at 4 KB for display (pass Infinity to grade). Never set-cookie. */
+export function keptHeaders(headers: Headers, cap = MAX_HEADER): Record<string, string> {
   const out: Record<string, string> = {};
   for (const name of KEPT_HEADERS) {
     const value = headers.get(name);
-    if (value !== null) out[name] = value.slice(0, MAX_HEADER);
+    if (value !== null) out[name] = value.slice(0, cap);
   }
   return out;
 }

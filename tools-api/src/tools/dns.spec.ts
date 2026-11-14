@@ -45,6 +45,11 @@ describe("dns tool", () => {
     expect(ctx.degraded).toBe(true);
   });
 
+  it("reports unknown, not resolving, when every query failed", async () => {
+    mockFetch({ "doh:down.com": new Response("", { status: 502 }) });
+    expect(await dns(ctxFor("dns"), "down.com")).toMatchObject({ resolves: null, failedQueries: 7 });
+  });
+
   it("caps answers at 50 and data at 512 characters", async () => {
     const many = Array.from({ length: 80 }, (_, i) => ({ name: "x.com.", type: 16, TTL: 1, data: `"${i}${"a".repeat(600)}"` }));
     mockFetch({ "doh:x.com:TXT": Response.json({ Status: 0, Answer: many }) });

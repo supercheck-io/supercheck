@@ -8,13 +8,18 @@ export interface MonitorPrefill {
   target?: string;
   name?: string;
   httpConfig_method?: "GET" | "HEAD";
+  websiteConfig_enableSslCheck?: boolean;
 }
 
 export function monitorPrefill(params: Pick<URLSearchParams, "get"> | null | undefined, type: string): MonitorPrefill {
   if (!params || (type !== "website" && type !== "http_request")) return {};
   const out: MonitorPrefill = {};
   const url = params.get("url");
-  if (url && url.length <= 2048 && /^https?:\/\//i.test(url)) out.target = url;
+  if (url && url.length <= 2048 && /^https?:\/\//i.test(url)) {
+    out.target = url;
+    // The free tools promise certificate expiry alerts, which is the website monitor's SSL check.
+    if (type === "website" && /^https:/i.test(url)) out.websiteConfig_enableSslCheck = true;
+  }
   const name = params.get("name")?.trim();
   if (name) out.name = name.slice(0, 100);
   const method = params.get("method");

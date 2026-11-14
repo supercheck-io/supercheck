@@ -13,6 +13,12 @@ export async function https(ctx: CheckContext, url: URL) {
   const secure = await walk(ctx, new URL(`https://${host}/`), { maxHops: 3 });
   let certificateValid = secure.ok;
   let certificateError: string | null = secure.ok ? null : secure.error;
+  // Cloudflare answers a failed origin handshake with a 525/526 page instead of throwing.
+  if (secure.ok && (secure.res.status === 525 || secure.res.status === 526)) {
+    certificateValid = false;
+    certificateError = "tls_error";
+    ctx.degraded = true;
+  }
   // A redirect loop still proved the handshake worked.
   if (!secure.ok && secure.error === "too_many_redirects") {
     certificateValid = true;
@@ -35,7 +41,9 @@ export async function https(ctx: CheckContext, url: URL) {
     preload = "error";
   }
 
-  const hsts = parseHsts(hstsHeader);
+  const parsed = parseHsts(hstsHeader);
+  // max-age=0 tells browsers to forget HSTS: report it as off.
+  const hsts = parsed && parsed.maxAge > 0 ? parsed : null;
   const problems = [!certificateValid, !redirectsToHttps, !hsts].filter(Boolean).length;
   return {
     ok: problems === 0,
@@ -46,6 +54,7 @@ export async function https(ctx: CheckContext, url: URL) {
     httpHops: plain.hops,
     hsts: hsts ? { ...hsts, maxAgeDays: Math.floor(hsts.maxAge / 86_400) } : null,
     hstsHeader: hstsHeader ?? null,
+    hstsDisabled: parsed?.maxAge === 0,
     preload,
   };
 }

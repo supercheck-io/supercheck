@@ -46,6 +46,22 @@ describe("social tool", () => {
     expect(calls.some((c) => c.url === long)).toBe(true);
   });
 
+  it("falls back to a one-byte GET when the CDN refuses HEAD, and names an HTTP failure", async () => {
+    const { calls } = mockFetch({
+      "https://site.com/": page(`<meta property="og:image" content="https://cdn.site.com/i.png">`),
+      "https://cdn.site.com/i.png": (req) =>
+        req.method === "HEAD" ? new Response(null, { status: 405 }) : new Response("x", { status: 206, headers: { "content-type": "image/png" } }),
+    });
+    expect((await run(ctxFor("social"), new URL("https://site.com/"))).image).toMatchObject({ reachable: true });
+    expect(calls.find((c) => c.method === "GET" && c.url.endsWith("i.png"))?.headers.get("range")).toBe("bytes=0-0");
+    vi.restoreAllMocks();
+    mockFetch({
+      "https://site.com/": page(`<meta property="og:image" content="https://cdn.site.com/i.png">`),
+      "https://cdn.site.com/i.png": new Response(null, { status: 404 }),
+    });
+    expect((await run(ctxFor("social"), new URL("https://site.com/"))).image).toMatchObject({ reachable: false, reason: "http_404" });
+  });
+
   it("flags a non-image content type", async () => {
     mockFetch({
       "https://site.com/": page(`<meta property="og:image" content="https://site.com/i">`),

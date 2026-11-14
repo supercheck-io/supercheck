@@ -53,11 +53,12 @@ describe("per-IP limits", () => {
 describe("per-target limits", () => {
   it("429s the 11th check on one registrable domain from many IPs; subdomains share the bucket", async () => {
     mockFetch({ "https://a1.victim.com/": new Response("ok"), "https://a2.victim.com/": new Response("ok") });
+    // Distinct paths, so no check is a cache hit (hits never reach the target and are not counted).
     for (let i = 0; i < 10; i++) {
-      const res = await call(body(i % 2 ? "https://a1.victim.com/" : "https://a2.victim.com/"), { env: { TARGET_MINUTE: real.TARGET_MINUTE } });
+      const res = await call(body(`https://${i % 2 ? "a1" : "a2"}.victim.com/${i}`), { env: { TARGET_MINUTE: real.TARGET_MINUTE } });
       expect(res.status).toBe(200);
     }
-    const res = await call(body("https://a1.victim.com/"), { env: { TARGET_MINUTE: real.TARGET_MINUTE } });
+    const res = await call(body("https://a1.victim.com/x"), { env: { TARGET_MINUTE: real.TARGET_MINUTE } });
     expect(res.status).toBe(429);
     expect(res.headers.get("retry-after")).toBe("60");
   });

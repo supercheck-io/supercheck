@@ -4,6 +4,7 @@ import { useEffect, useRef, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { useSession } from "@/utils/auth-client";
 import { SupercheckLoading } from "@/components/shared/supercheck-loading";
+import { withNextPath } from "@/lib/auth/safe-next-path";
 
 /**
  * AuthGuard - Client-side authentication guard using Better Auth
@@ -74,7 +75,8 @@ export function AuthGuard({ children, initialSession }: AuthGuardProps) {
         // SECURITY: If session expired or no session exists, redirect to sign-in
         if ((sessionExpired || !effectiveSession) && !isRedirectingRef.current) {
             isRedirectingRef.current = true;
-            router.replace("/sign-in");
+            // Resume allow-listed pages (e.g. a pre-filled monitor form) after sign-in.
+            router.replace(withNextPath("/sign-in", `${window.location.pathname}${window.location.search}`));
         }
     }, [effectiveSession, isEffectivelyPending, sessionExpired, router]);
 

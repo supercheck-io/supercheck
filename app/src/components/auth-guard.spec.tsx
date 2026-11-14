@@ -37,6 +37,19 @@ describe("AuthGuard", () => {
     expect(replace).toHaveBeenCalledWith("/sign-in");
   });
 
+  it("carries an allow-listed page (a pre-filled monitor form) into sign-in as next", () => {
+    const form = "/monitors/create?type=website&url=https%3A%2F%2Fex.com%2F&name=ex.com";
+    window.history.pushState({}, "", form);
+    mockSession = { data: null, isPending: false, error: null };
+    renderGuard(null);
+    expect(replace).toHaveBeenCalledWith(`/sign-in?next=${encodeURIComponent(form)}`);
+    window.history.pushState({}, "", "/dashboard");
+    replace.mockReset();
+    renderGuard(null);
+    expect(replace).toHaveBeenCalledWith("/sign-in");
+    window.history.pushState({}, "", "/");
+  });
+
   it("renders for a confirmed session", () => {
     mockSession = { data: initialSession, isPending: false, error: null };
     renderGuard(null);

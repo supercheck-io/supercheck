@@ -47,6 +47,8 @@ const INVALID_COPY: Record<string, string> = {
   scheme: "Use an http:// or https:// address.",
   single_label: "Enter a full public domain like example.com.",
   reserved_name: "Private, reserved and Supercheck app names can't be checked.",
+  platform_host: "Sites on workers.dev and pages.dev can't be checked from here, because the checker runs on Cloudflare Workers.",
+  invalid_url: "That doesn't look like a valid address.",
   blocked_host: "This site's owner has asked us not to check it.",
   missing_input: "Enter a URL or domain to check.",
 };
@@ -80,18 +82,21 @@ export function monitorTarget(tool: ToolId, input: string, method: "GET" | "HEAD
   };
 }
 
+/** Above this the app drops the continuation (its success_url budget), so link the form without it. */
+const MAX_FORM_PATH = 1500;
+
 /**
- * Sign-in link that resumes at a pre-filled create form. The create path's values are encoded once,
- * then the whole path is encoded again, so after the browser decodes `next` the values stay encoded
- * (the app's sanitizeNextPath expects exactly this shape).
+ * Link to the pre-filled create form in the app. Signed-in users land on it directly; others are
+ * sent through sign-in and plan selection with the form path as `next` (values encoded once, the
+ * shape the app's sanitizeNextPath accepts).
  */
 export function monitorThisHref(tool: ToolId, input: string, method: "GET" | "HEAD" = "GET"): string {
   const t = monitorTarget(tool, input, method);
-  if (!t) return `${CLOUD_APP_URL}/sign-in`;
+  if (!t) return `${CLOUD_APP_URL}/monitors/create`;
   const path =
     `/monitors/create?type=${t.type}&url=${encodeURIComponent(t.url)}&name=${encodeURIComponent(t.name)}` +
     (t.method ? `&method=${t.method}` : "");
-  return `${CLOUD_APP_URL}/sign-in?next=${encodeURIComponent(path)}`;
+  return `${CLOUD_APP_URL}${path.length <= MAX_FORM_PATH ? path : `/monitors/create?type=${t.type}`}`;
 }
 
 /** Share links only for inputs without a query string (queries can hold tokens) or userinfo. */

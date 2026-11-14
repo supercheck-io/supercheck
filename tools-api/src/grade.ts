@@ -68,6 +68,9 @@ function unsafeScripts(policy: Policy): boolean {
 function unsafeScript(sources: string[] | null): boolean {
   if (sources === null) return true;
   const hasNonceOrHash = sources.some((s) => /^'(nonce-|sha256-|sha384-|sha512-)/.test(s));
+  // CSP3: with 'strict-dynamic' and a nonce or hash, browsers ignore host, scheme and 'unsafe-inline' sources
+  // (Google's recommended strict CSP lists them only as fallbacks for old browsers).
+  if (hasNonceOrHash && sources.includes("'strict-dynamic'")) return false;
   return (
     (sources.includes("'unsafe-inline'") && !hasNonceOrHash) ||
     sources.some((s) => s === "data:" || s === "*" || s === "http:")
@@ -110,7 +113,7 @@ export function grade(headers: Record<string, string | undefined>, finalUrlIsHtt
     add("hsts", "fail", -20, hsts, "The final URL is not served over HTTPS");
   } else {
     const parsed = parseHsts(hsts);
-    if (!parsed) add("hsts", "fail", -20, hsts, "Strict-Transport-Security is missing or invalid");
+    if (!parsed || parsed.maxAge === 0) add("hsts", "fail", -20, hsts, parsed ? "max-age=0 turns HSTS off" : "Strict-Transport-Security is missing or invalid");
     else if (parsed.maxAge < 15_768_000) add("hsts", "warn", -10, hsts, "max-age is shorter than six months");
     else if (parsed.maxAge >= 31_536_000 && parsed.includeSubDomains && parsed.preload)
       add("hsts", "pass", 5, hsts, "Long max-age with includeSubDomains and preload");
@@ -122,7 +125,11 @@ export function grade(headers: Record<string, string | undefined>, finalUrlIsHtt
   else add("x-content-type-options", "fail", -5, xcto, "X-Content-Type-Options is not nosniff");
 
   const xfo = headers["x-frame-options"]?.trim().toLowerCase();
-  const frameAncestors = policies.some((p) => p.has("frame-ancestors"));
+  // frame-ancestors * (or a bare scheme) allows any site to frame the page, so it protects nothing.
+  const frameAncestors = policies.some((p) => {
+    const sources = p.get("frame-ancestors");
+    return sources !== undefined && !sources.some((s) => s === "*" || /^[a-z][a-z0-9+.-]*:$/.test(s));
+  });
   if (frameAncestors) add("framing", "pass", 5, headers["x-frame-options"], "CSP frame-ancestors is set");
   else if (xfo === "deny" || xfo === "sameorigin") add("framing", "pass", 0, headers["x-frame-options"], "X-Frame-Options is set");
   else add("framing", "fail", -20, headers["x-frame-options"], "No X-Frame-Options or CSP frame-ancestors");

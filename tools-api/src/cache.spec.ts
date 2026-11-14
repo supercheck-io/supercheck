@@ -24,6 +24,21 @@ describe("cache", () => {
     expect(head.url).toMatch(/^https:\/\/cache\.invalid\/v1\/api\/HEAD\/[0-9a-f]{64}$/);
   });
 
+  it("never caches a Down result, so a fixed site shows as fixed", async () => {
+    mockFetch({ "https://down.com/": new Response("x", { status: 503 }) });
+    await call({ tool: "uptime", input: "https://down.com/", token: "t" });
+    const again = (await (await call({ tool: "uptime", input: "https://down.com/", token: "t" })).json()) as Record<string, unknown>;
+    expect(again.cached).toBe(false);
+  });
+
+  it("serves a hit without spending the per-site limit", async () => {
+    mockFetch({ "https://hit.com/": new Response("ok") });
+    await call({ tool: "uptime", input: "https://hit.com/", token: "t" });
+    const deny = { limit: async () => ({ success: false }) } as unknown as RateLimit;
+    const res = await call({ tool: "uptime", input: "https://hit.com/", token: "t" }, { env: { TARGET_MINUTE: deny } });
+    expect(await res.json()).toMatchObject({ cached: true });
+  });
+
   it("never caches a partial result (an absorbed stop)", async () => {
     mockFetch({
       "https://partial.com/": new Response('<head><meta property="og:image" content="https://img.partial.com/i.png"></head>', { headers: { "content-type": "text/html" } }),

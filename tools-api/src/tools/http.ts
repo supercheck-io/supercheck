@@ -8,8 +8,10 @@ export async function uptime(ctx: CheckContext, url: URL) {
   const r = await walk(ctx, url, { maxHops: 5 });
   if (!r.ok) return { up: false, error: r.error, timeMs: r.timeMs, finalUrl: r.url.toString(), hops: r.hops };
   await r.res.body?.cancel();
+  const up = r.res.status >= 200 && r.res.status < 300;
+  if (!up) ctx.degraded = true;
   return {
-    up: r.res.status >= 200 && r.res.status < 300,
+    up,
     status: r.res.status,
     timeMs: r.timeMs,
     finalUrl: r.url.toString(),
@@ -28,6 +30,7 @@ export async function api(ctx: CheckContext, url: URL, method: "GET" | "HEAD") {
   if (method === "HEAD") json = "not_read";
   else if (type && /json/i.test(type)) {
     const body = await readCapped(r.res, BODY_CAP);
+    if (body.interrupted) ctx.degraded = true;
     if (body.truncated) json = "truncated";
     else {
       try {
@@ -39,6 +42,7 @@ export async function api(ctx: CheckContext, url: URL, method: "GET" | "HEAD") {
     }
   }
   await r.res.body?.cancel().catch(() => undefined);
+  if (r.res.status >= 500) ctx.degraded = true;
   return {
     responding: r.res.status < 500,
     status: r.res.status,
@@ -56,12 +60,14 @@ export async function headers(ctx: CheckContext, url: URL) {
   const r = await walk(ctx, url, { maxHops: 5 });
   if (!r.ok) return { error: r.error, finalUrl: r.url.toString(), hops: r.hops };
   await r.res.body?.cancel();
-  const kept = keptHeaders(r.res.headers);
+  // Grade the full values (a long CSP keeps its trailing directives); show capped ones.
+  const graded = grade(keptHeaders(r.res.headers, Infinity), r.url.protocol === "https:");
   return {
     status: r.res.status,
     finalUrl: r.url.toString(),
     hops: r.hops,
-    headers: kept,
-    ...grade(kept, r.url.protocol === "https:"),
+    headers: keptHeaders(r.res.headers),
+    ...graded,
+    rows: graded.rows.map((row) => ({ ...row, value: row.value?.slice(0, 4096) ?? null })),
   };
 }

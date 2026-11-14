@@ -196,7 +196,11 @@ function Https({ r }: { r: R }) {
           [
             "HSTS",
             <Status key="s" tone={r.hsts ? "pass" : "fail"} label={r.hsts ? "Present" : "Missing"} />,
-            r.hsts ? `max-age ${num(hsts.maxAgeDays)} days${hsts.includeSubDomains ? ", includeSubDomains" : ""}${hsts.preload ? ", preload" : ""}` : null,
+            r.hsts
+              ? `max-age ${num(hsts.maxAgeDays)} days${hsts.includeSubDomains ? ", includeSubDomains" : ""}${hsts.preload ? ", preload" : ""}`
+              : r.hstsDisabled
+                ? "max-age=0 turns HSTS off"
+                : null,
           ],
           ["Preload list", <Status key="p" tone="info" label={preload[str(r.preload) ?? ""] ?? "Unknown"} />, "hstspreload.org"],
           ["Expiry date and issuer", <Status key="e" tone="info" label="Not visible" />, "A Supercheck website monitor with SSL checks tracks expiry."],
@@ -291,6 +295,7 @@ function Agents({ r }: { r: R }) {
 
 function Dns({ r }: { r: R }) {
   if (r.resolves === false) return <Verdict tone="fail" title="Domain does not resolve" sub={`${str(r.domain)} · NXDOMAIN`} />;
+  if (r.resolves === null) return <Verdict tone="warn" title="Lookup failed" sub={`${str(r.domain)} · the resolver didn't answer. Try again in a minute.`} />;
   const records = obj(r.records);
   const count = num(r.count) ?? 0;
   const rows = Object.entries(records).flatMap(([type, list]) => arr(list).map((rec) => [type, str(rec.ttl), str(rec.data)]));

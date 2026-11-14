@@ -117,13 +117,18 @@ export async function agents(ctx: CheckContext, url: URL) {
   // A blocked input host ends the check like every other URL tool; only later paths may be partial.
   await ctx.vetHost(origin.hostname, "blocked");
   // Two sequential groups of at most three requests keep us well under six connections.
+  let homeStop: string | null = null;
   const home = await walk(ctx, origin, { maxHops: 2 }).catch((error) => {
     if (error instanceof CheckStop && error.reason !== "subrequest_budget" && error.reason !== "deadline") {
+      homeStop = error.reason;
       ctx.degraded = true;
       return null;
     }
     throw error;
   });
+  // A home page that moves to another site (a brand domain, a www host on another registrable
+  // domain) is not an agent block; we just don't follow it.
+  const leftSite = homeStop === "off_site_redirect";
   const [llms, robots] = await Promise.all([get(ctx, origin, "/llms.txt", 16 * 1024), get(ctx, origin, "/robots.txt", 128 * 1024)]);
   const [card, catalog] = await Promise.all([
     get(ctx, origin, "/.well-known/agent-card.json", 64 * 1024),
@@ -135,11 +140,15 @@ export async function agents(ctx: CheckContext, url: URL) {
   const checks: { id: string; status: Status; detail: string | null }[] = [];
 
   const finalUrl = home && home.ok ? home.url : null;
-  checks.push({
-    id: "https",
-    status: finalUrl?.protocol === "https:" ? "pass" : "fail",
-    detail: finalUrl ? finalUrl.protocol.replace(":", "") : null,
-  });
+  checks.push(
+    leftSite
+      ? { id: "https", status: "info", detail: "redirects to another site (not followed)" }
+      : {
+          id: "https",
+          status: finalUrl?.protocol === "https:" ? "pass" : "fail",
+          detail: finalUrl ? finalUrl.protocol.replace(":", "") : null,
+        },
+  );
 
   if (llms.status === 200) {
     const firstLine = llms.text.split(/\r?\n/).find((l) => l.trim() !== "")?.trim() ?? "";
@@ -174,8 +183,10 @@ export async function agents(ctx: CheckContext, url: URL) {
     challenged = mitigated || ((status === 403 || status === 429 || status === 503) && (await looksLikeChallenge(home.res)));
     await home.res.body?.cancel().catch(() => undefined);
     checks.push({ id: "not_blocked", status: challenged || status >= 400 ? "fail" : "pass", detail: String(status) });
+  } else if (leftSite) {
+    checks.push({ id: "not_blocked", status: "info", detail: "redirects to another site (not followed)" });
   } else {
-    checks.push({ id: "not_blocked", status: "fail", detail: home && !home.ok ? home.error : "blocked" });
+    checks.push({ id: "not_blocked", status: "fail", detail: home && !home.ok ? home.error : (homeStop ?? "blocked") });
   }
 
   const cardJson = card.status === 200 ? parseJson(card.text) : null;
@@ -199,7 +210,8 @@ export async function agents(ctx: CheckContext, url: URL) {
 
   return {
     passed: checks.filter((c) => c.status === "pass").length,
-    total: checks.length,
+    // A check we could not run (info) is not counted against the site.
+    total: checks.filter((c) => c.status !== "info").length,
     checks,
     training: robotsUnknown ? [] : AI_TRAINING_AGENTS.map((agent) => ({ agent, allowed: isAllowed(groups, agent) })),
     robotsTruncated: robots.truncated,

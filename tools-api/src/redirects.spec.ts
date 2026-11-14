@@ -89,6 +89,13 @@ describe("manual redirect walk", () => {
     expect(r.ok && r.res.status).toBe(304);
   });
 
+  it("times only the final request, not DoH or earlier hops", async () => {
+    mockFetch({ "https://start.com/": redirect("/x"), "https://start.com/x": new Response("ok") });
+    const r = await walk(ctxFor("uptime"), start, { maxHops: 5 });
+    expect(r.timeMs).toBeGreaterThanOrEqual(0);
+    expect(r.timeMs).toBeLessThan(1000);
+  });
+
   it("maps a thrown fetch error to a class", async () => {
     mockFetch({ "https://start.com/": () => Promise.reject(new TypeError("SSL certificate error")) });
     const r = await walk(ctxFor("uptime"), start, { maxHops: 5 });

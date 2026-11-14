@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { describeTarget, hashIp } from "./log";
+import { hashIp } from "./log";
 import { call, mockFetch } from "./test-helpers";
 
 afterEach(() => vi.restoreAllMocks());
@@ -16,13 +16,12 @@ describe("check log", () => {
     const line = log.mock.calls.map((c) => String(c[0])).find((l) => l.includes('"event":"check"'))!;
     expect(line).toBeDefined();
     for (const secret of ["secret-path", "abc123", "turnstile-token-xyz", ip]) expect(line).not.toContain(secret);
-    expect(JSON.parse(line)).toMatchObject({ tool: "uptime", host: "site.com", pathPrefix: "/account", outcome: "ok", turnstile: "ok" });
+    expect(JSON.parse(line)).toMatchObject({ tool: "uptime", host: "site.com", outcome: "ok", turnstile: "ok" });
+    expect(line).not.toContain("account");
     expect(JSON.parse(line).ipHash).toMatch(/^[0-9a-f]{16}$/);
   });
 
-  it("caps the path prefix at 32 characters and hashes deterministically", async () => {
-    expect(describeTarget(new URL(`https://x.com/${"a".repeat(50)}/b`)).pathPrefix).toHaveLength(32);
-    expect(describeTarget(null)).toEqual({});
+  it("hashes deterministically", async () => {
     expect(await hashIp("1.2.3.4", "k")).toBe(await hashIp("1.2.3.4", "k"));
     expect(await hashIp("1.2.3.4", undefined)).toBeUndefined();
   });

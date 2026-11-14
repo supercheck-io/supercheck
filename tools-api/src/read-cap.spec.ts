@@ -39,6 +39,19 @@ describe("readCapped", () => {
     expect(r.truncated).toBe(true);
   });
 
+  it("ends a read that errors mid-body as interrupted, not as an exception", async () => {
+    let n = 0;
+    const res = new Response(
+      new ReadableStream({
+        pull(c) {
+          if (n++ === 0) c.enqueue(new TextEncoder().encode("ab"));
+          else c.error(new DOMException("t", "TimeoutError"));
+        },
+      }),
+    );
+    expect(await readCapped(res, 100)).toEqual({ text: "ab", truncated: true, interrupted: true });
+  });
+
   it("handles a missing body", async () => {
     expect(await readCapped(new Response(null), 10)).toEqual({ text: "", truncated: false });
   });

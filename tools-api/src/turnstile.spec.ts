@@ -49,6 +49,15 @@ describe("Turnstile gate", () => {
 
   it("fails closed when siteverify is unreachable", async () => {
     mockFetch({ turnstile: () => Promise.reject(new Error("down")) });
-    expect(await verifyTurnstile(testEnv(strict), "t", "uptime", "1.1.1.1")).toBe("fail");
+    expect(await verifyTurnstile(testEnv(strict), "t", "uptime", "1.1.1.1", ["supercheck.io"])).toBe("fail");
+  });
+
+  it("trusts preview hostnames only while preview origins are on", async () => {
+    mockFetch({ turnstile: Response.json({ success: true, action: "uptime", hostname: "abc.supercheck.pages.dev" }) });
+    const env = { ...strict, ALLOWED_ORIGINS: "https://supercheck.io" };
+    expect((await call(body, { env })).status).toBe(403);
+    vi.restoreAllMocks();
+    mockFetch({ turnstile: Response.json({ success: true, action: "uptime", hostname: "abc.supercheck.pages.dev" }), "https://site.com/": new Response("ok") });
+    expect((await call(body, { env: { ...env, ALLOW_PREVIEW_ORIGINS: "true" } })).status).toBe(200);
   });
 });

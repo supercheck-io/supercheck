@@ -80,6 +80,23 @@ describe("grade rules", () => {
     expect(row({ "content-security-policy": "script-src 'unsafe-inline' 'nonce-a'; script-src-elem 'self'; object-src 'none'" }, "csp")?.modifier).toBe(5);
   });
 
+  it("Google's strict CSP ('strict-dynamic' + nonce, with fallbacks for old browsers) is not unsafe", () => {
+    const strictCsp = "object-src 'none'; script-src 'nonce-abc' 'unsafe-inline' 'unsafe-eval' 'strict-dynamic' https: http:; base-uri 'none'";
+    expect(row({ "content-security-policy": strictCsp }, "csp")).toMatchObject({ status: "pass", modifier: 0 });
+    expect(row({ "content-security-policy": strictCsp }, "csp-eval")?.modifier).toBe(-10);
+    // strict-dynamic without a nonce or hash changes nothing
+    expect(row({ "content-security-policy": "script-src 'strict-dynamic' 'unsafe-inline'" }, "csp")?.modifier).toBe(-20);
+  });
+
+  it("frame-ancestors * protects nothing", () => {
+    expect(row({ "content-security-policy": "frame-ancestors *" }, "framing")?.modifier).toBe(-20);
+    expect(row({ "content-security-policy": "frame-ancestors https:" }, "framing")?.modifier).toBe(-20);
+  });
+
+  it("HSTS max-age=0 counts as off", () => {
+    expect(row({ "strict-transport-security": "max-age=0" }, "hsts")).toMatchObject({ modifier: -20, note: "max-age=0 turns HSTS off" });
+  });
+
   it("CSP unsafe-eval: -10", () => {
     expect(row({ "content-security-policy": "script-src 'self' 'unsafe-eval'" }, "csp-eval")?.modifier).toBe(-10);
   });

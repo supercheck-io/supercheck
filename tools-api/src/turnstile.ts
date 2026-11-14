@@ -1,4 +1,4 @@
-import { list, type Env, type Tool } from "./env";
+import type { Env, Tool } from "./env";
 
 const SITEVERIFY = "https://challenges.cloudflare.com/turnstile/v0/siteverify";
 
@@ -10,7 +10,7 @@ export function hostnameAllowed(hostname: string, allowed: string[]): boolean {
 
 export type Verdict = "ok" | "fail";
 
-export async function verifyTurnstile(env: Env, token: string, tool: Tool, ip: string): Promise<Verdict> {
+export async function verifyTurnstile(env: Env, token: string, tool: Tool, ip: string, hostnames: string[]): Promise<Verdict> {
   const form = new FormData();
   form.set("secret", env.TURNSTILE_SECRET ?? "");
   form.set("response", token);
@@ -24,5 +24,5 @@ export async function verifyTurnstile(env: Env, token: string, tool: Tool, ip: s
   }
   if (body.success !== true) return "fail";
   if (body.action !== tool) return "fail";
-  return hostnameAllowed(body.hostname ?? "", list(env.TURNSTILE_HOSTNAMES)) ? "ok" : "fail";
+  return hostnameAllowed(body.hostname ?? "", hostnames) ? "ok" : "fail";
 }

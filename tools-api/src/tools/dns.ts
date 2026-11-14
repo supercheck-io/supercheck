@@ -30,7 +30,9 @@ export async function dns(ctx: CheckContext, domain: string) {
   const count = Object.values(records).reduce((sum, list) => sum + (list?.length ?? 0), 0);
   // An incomplete answer must not be served from cache after the resolver recovers.
   if (failed > 0) ctx.degraded = true;
-  return { domain, resolves: !nxdomain, count, records, dnssec, failedQueries: failed };
+  // Every query failing says nothing about the domain: report unknown, not "resolves".
+  const resolves = nxdomain ? false : failed === types.length ? null : true;
+  return { domain, resolves, count, records, dnssec, failedQueries: failed };
 }
 
 async function query(

@@ -7,7 +7,9 @@ describe("monitorPrefill", () => {
     expect(monitorPrefill(q("type=website&url=https%3A%2F%2Fex.com%2Fa%3Fb%3D1&name=ex.com"), "website")).toEqual({
       target: "https://ex.com/a?b=1",
       name: "ex.com",
+      websiteConfig_enableSslCheck: true,
     });
+    expect(monitorPrefill(q("url=http%3A%2F%2Fex.com"), "website")).toEqual({ target: "http://ex.com" });
   });
 
   it("fills GET or HEAD for an HTTP monitor only", () => {
@@ -15,7 +17,7 @@ describe("monitorPrefill", () => {
       target: "https://api.ex.com",
       httpConfig_method: "HEAD",
     });
-    expect(monitorPrefill(q("url=https%3A%2F%2Fex.com&method=HEAD"), "website")).toEqual({ target: "https://ex.com" });
+    expect(monitorPrefill(q("url=https%3A%2F%2Fex.com&method=HEAD"), "website")).toEqual({ target: "https://ex.com", websiteConfig_enableSslCheck: true });
     expect(monitorPrefill(q("method=POST"), "http_request")).toEqual({});
   });
 

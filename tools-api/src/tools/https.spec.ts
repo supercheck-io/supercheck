@@ -55,6 +55,20 @@ describe("https tool", () => {
     expect(calls.some((c) => c.url.endsWith("domain=blogspot.com"))).toBe(true);
   });
 
+  it("treats a Cloudflare 525/526 page as an invalid certificate", async () => {
+    mockFetch({ "https://site.com/": new Response("ssl", { status: 526 }), "http://site.com/": new Response("ok"), "https://hstspreload.org": Response.json({ status: "unknown" }) });
+    expect(await run()).toMatchObject({ certificateValid: false, certificateError: "tls_error", ok: false });
+  });
+
+  it("reports max-age=0 as HSTS off", async () => {
+    mockFetch({
+      "https://site.com/": new Response("ok", { headers: { "strict-transport-security": "max-age=0" } }),
+      "http://site.com/": redirect("https://site.com/"),
+      "https://hstspreload.org": Response.json({ status: "unknown" }),
+    });
+    expect(await run()).toMatchObject({ ok: false, hsts: null, hstsDisabled: true, problems: 1 });
+  });
+
   it("reads unknown preload states as unknown", async () => {
     mockFetch({ "https://site.com/": new Response("ok"), "http://site.com/": new Response("ok"), "https://hstspreload.org": Response.json({ status: "weird" }) });
     expect((await run()).preload).toBe("unknown");

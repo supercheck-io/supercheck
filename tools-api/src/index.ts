@@ -2,7 +2,7 @@ import { cacheGet, cacheKey, cachePut } from "./cache";
 import { CheckContext, CheckStop, readCapped } from "./context";
 import { list, TOOLS, type Env, type Tool } from "./env";
 import { ipBucket } from "./ip-ranges";
-import { describeTarget, hashIp, logCheck, type CheckLog } from "./log";
+import { hashIp, logCheck, type CheckLog } from "./log";
 import { verifyTurnstile } from "./turnstile";
 import { checkDomain, checkUrl, registrable } from "./url-policy";
 import { agents } from "./tools/agents";
@@ -32,6 +32,12 @@ function json(status: number, body: unknown, extra: HeadersInit = {}): Response 
 }
 
 /** Echoes the Origin only when it is allowed. Credentials are never allowed. */
+/** Preview hostnames are trusted only while preview origins are on, so a preview token can't be used in production. */
+export function turnstileHostnames(env: Env): string[] {
+  const hosts = list(env.TURNSTILE_HOSTNAMES);
+  return env.ALLOW_PREVIEW_ORIGINS === "true" ? hosts : hosts.filter((h) => !h.endsWith(".pages.dev"));
+}
+
 export function originAllowed(origin: string | null, env: Env): boolean {
   if (!origin) return false;
   if (list(env.ALLOWED_ORIGINS).includes(origin.toLowerCase())) return true;
@@ -164,26 +170,20 @@ export default {
       }
       target = policy.value;
       site = registrable(policy.value.hostname);
-      Object.assign(log, describeTarget(policy.value));
+      log.host = policy.value.hostname;
     }
 
     const deadline = AbortSignal.timeout(req.tool === "agents" ? 20_000 : 15_000);
     const ctx = new CheckContext(env, req.tool, deadline, req.tool === "agents" ? site : undefined);
 
     ctx.charge();
-    log.turnstile = await verifyTurnstile(env, req.token, req.tool, ip);
+    log.turnstile = await verifyTurnstile(env, req.token, req.tool, ip, turnstileHostnames(env));
     if (log.turnstile !== "ok") {
       log.outcome = "captcha_failed";
       return reply(403, { error: "captcha_failed" });
     }
 
-    if (!(await env.TARGET_MINUTE.limit({ key: site })).success) {
-      log.outcome = "rate_limited";
-      log.limit = "target";
-      return reply(429, { error: "rate_limited", retryAfter: 60 }, { "retry-after": "60" });
-    }
-    ctx.markCounted(site);
-
+    // A cache hit sends nothing to the target, so it is served before the per-site limit.
     const keyInput = typeof target === "string" ? target : target.toString();
     const key = await cacheKey(req.tool, req.method, keyInput);
     const hit = await cacheGet(ctx, key);
@@ -193,6 +193,13 @@ export default {
       log.subrequests = ctx.subrequests;
       return reply(200, { ok: true, tool: req.tool, result: hit.result, checkedAt: hit.checkedAt, colo: log.colo, cached: true });
     }
+
+    if (!(await env.TARGET_MINUTE.limit({ key: site })).success) {
+      log.outcome = "rate_limited";
+      log.limit = "target";
+      return reply(429, { error: "rate_limited", retryAfter: 60 }, { "retry-after": "60" });
+    }
+    ctx.markCounted(site);
 
     const checkedAt = new Date().toISOString();
     try {
