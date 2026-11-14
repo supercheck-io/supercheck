@@ -77,4 +77,27 @@ describe("validateMonitorSecretRefs", () => {
     isImpersonatedSession.mockResolvedValue(true);
     expect(await validateMonitorSecretRefs(ctx(), { method: "GET" })).toEqual({ success: true });
   });
+  it("gates a target change on a monitor that keeps a stored secret (no config sent)", async () => {
+    const stored = { aiEndpoint: { model: "m", secretKey: "OPENAI_KEY" } };
+    isImpersonatedSession.mockResolvedValue(true);
+    expect(
+      await validateMonitorSecretRefs(ctx(), undefined, "https://collector.example/v1", { effectiveConfig: stored, targetChanged: true }),
+    ).toMatchObject({ success: false, status: 403 });
+    isImpersonatedSession.mockResolvedValue(false);
+    checkPermissionWithContext.mockReturnValue(false);
+    expect(
+      await validateMonitorSecretRefs(ctx(), undefined, "https://collector.example/v1", { effectiveConfig: stored, targetChanged: true }),
+    ).toMatchObject({ success: false, status: 403 });
+    checkPermissionWithContext.mockReturnValue(true);
+    // Allowed: audited with the new host; a stored reference is not re-checked for existence.
+    expect(
+      await validateMonitorSecretRefs(ctx(), undefined, "https://collector.example/v1", { effectiveConfig: stored, targetChanged: true }),
+    ).toEqual({ success: true, audit: { referencedSecrets: ["OPENAI_KEY"], targetHost: "collector.example" } });
+    expect(where).not.toHaveBeenCalled();
+    // Unchanged target: a stored secret does not gate an unrelated edit.
+    isImpersonatedSession.mockResolvedValue(true);
+    expect(
+      await validateMonitorSecretRefs(ctx(), { name: "x" }, "https://api.openai.com", { effectiveConfig: stored, targetChanged: false }),
+    ).toEqual({ success: true });
+  });
 });

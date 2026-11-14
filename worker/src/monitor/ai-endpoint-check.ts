@@ -299,13 +299,18 @@ export async function executeAiEndpointCheck(
   deps: AiEndpointDeps,
 ): Promise<AiEndpointResult> {
   const ai = config.aiEndpoint!;
-  let startedAt = process.hrtime.bigint();
+  const checkStartedAt = process.hrtime.bigint();
+  // Start of the current attempt: the first token is timed per attempt; the total limit spans both.
+  let startedAt = checkStartedAt;
+  let budgetMs = 0;
   const totalLimitMs =
     (config.timeoutSeconds ?? AI_ENDPOINT_DEFAULT_TIMEOUT_SECONDS) * 1000;
   const firstTokenLimitMs = ai.firstTokenTimeoutMs ?? 15000;
   const secrets: string[] = [];
   const totalMs = () =>
-    Math.round(Number(process.hrtime.bigint() - startedAt) / 1e6);
+    Math.round(Number(process.hrtime.bigint() - checkStartedAt) / 1e6);
+  const attemptMs = () => Number(process.hrtime.bigint() - startedAt) / 1e6;
+  budgetMs = totalLimitMs;
   const finish = (
     status: MonitorResultStatus,
     message: string | undefined,
@@ -352,7 +357,7 @@ export async function executeAiEndpointCheck(
           stream: true,
           stream_options: { include_usage: true },
         },
-        timeout: totalLimitMs,
+        timeout: budgetMs,
         responseType: 'stream',
         decompress: true,
         validateStatus: () => true,
@@ -363,7 +368,7 @@ export async function executeAiEndpointCheck(
         const firstToken = new AbortController();
         const headerTimer = setTimeout(
           () => firstToken.abort(),
-          Math.max(0, firstTokenLimitMs - totalMs()),
+          Math.max(0, firstTokenLimitMs - attemptMs()),
         );
         let res: AxiosResponse<unknown>;
         try {
@@ -399,7 +404,7 @@ export async function executeAiEndpointCheck(
         }
         const outcome = await consume(res, startedAt, {
           firstTokenMs: firstTokenLimitMs,
-          totalMs: totalLimitMs,
+          totalMs: budgetMs,
         });
         return { ...res, data: outcome };
       },
@@ -410,7 +415,11 @@ export async function executeAiEndpointCheck(
     if (rejectsMaxTokens(out)) {
       // gpt-5 and o-series reject max_tokens; a 400 is not billed, so retry once with the newer name.
       startedAt = process.hrtime.bigint();
-      out = (await send('max_completion_tokens')).data as Outcome;
+      budgetMs = totalLimitMs - totalMs();
+      out =
+        budgetMs > 0
+          ? ((await send('max_completion_tokens')).data as Outcome)
+          : { ...out, timedOut: 'total' };
     }
     const verdict = judge(out, ai, firstTokenLimitMs, totalLimitMs);
     return finish(verdict.status, verdict.message, {

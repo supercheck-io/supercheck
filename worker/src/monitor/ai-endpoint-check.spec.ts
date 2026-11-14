@@ -374,6 +374,28 @@ describe('executeAiEndpointCheck', () => {
     expect(seen[1].body).not.toHaveProperty('max_tokens');
   });
 
+  it('keeps the retry inside the one total time limit', async () => {
+    handler = (res, req) => {
+      if ('max_tokens' in req.body) {
+        setTimeout(
+          () =>
+            json(400, {
+              error: { param: 'max_tokens', code: 'unsupported_parameter' },
+            })(res),
+          600,
+        );
+        return;
+      }
+      res.writeHead(200, { 'content-type': 'text/event-stream' });
+      res.write(chunk('O'));
+      setTimeout(() => res.end(chunk('K') + 'data: [DONE]\n\n'), 2000);
+    };
+    const r = await run({}, { timeoutSeconds: 1 });
+    expect(r.status).toBe('timeout');
+    expect(r.responseTimeMs).toBeGreaterThanOrEqual(900);
+    expect(r.responseTimeMs).toBeLessThan(1500);
+  });
+
   it('times the first token on streamed reasoning and explains a reply cut by the token limit', async () => {
     handler = sse(
       `data: ${JSON.stringify({ choices: [{ delta: { reasoning_content: 'thinking' } }] })}\n\n` +

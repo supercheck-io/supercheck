@@ -30,14 +30,20 @@ export function monitorSecretNames(config: unknown): string[] {
  * be allowed to use secrets: variable:view_secrets, and not an impersonated browser session (CLI tokens are exempt, as in
  * the decrypt route). Only the incoming config is checked, so a stored reference to a since-deleted secret never blocks an unrelated edit.
  * `target` is the effective monitor target, recorded as a host only.
+ * `update` covers edits that keep a stored secret but send it somewhere new: when the target changes, the secrets the
+ * effective config still names pass the same impersonation and permission gate (their existence is not re-checked).
  */
 export async function validateMonitorSecretRefs(
   ctx: AuthContext,
   incomingConfig: unknown,
   target?: unknown,
+  update?: { effectiveConfig: unknown; targetChanged: boolean },
 ): Promise<Result> {
   const projectId = ctx.project.id;
-  const names = [...new Set(monitorSecretNames(incomingConfig))];
+  const incoming = [...new Set(monitorSecretNames(incomingConfig))];
+  const names = update?.targetChanged
+    ? [...new Set([...incoming, ...monitorSecretNames(update.effectiveConfig)])]
+    : incoming;
   if (names.length === 0) return { success: true };
   if (!ctx.isCliAuth && (await isImpersonatedSession())) {
     await logAuditEvent({
@@ -53,18 +59,18 @@ export async function validateMonitorSecretRefs(
   if (!checkPermissionWithContext("variable", "view_secrets", ctx)) {
     return { success: false, error: "Forbidden", details: "Insufficient permissions to use project secrets", status: 403 };
   }
-  const rows = await db
+  const rows = incoming.length === 0 ? [] : await db
     .select({ key: projectVariables.key })
     .from(projectVariables)
     .where(
       and(
         eq(projectVariables.projectId, projectId),
-        inArray(projectVariables.key, names),
+        inArray(projectVariables.key, incoming),
         or(eq(projectVariables.isSecret, true), eq(projectVariables.type, "secret")),
       ),
     );
   const found = new Set(rows.map((r) => r.key));
-  const missing = names.find((n) => !found.has(n));
+  const missing = incoming.find((n) => !found.has(n));
   return missing
     ? { success: false, error: "Invalid monitor configuration", details: `Secret ${missing} was not found in this project` }
     : { success: true, audit: { referencedSecrets: names, targetHost: hostOf(target) } };

@@ -104,7 +104,22 @@ describe.each([[PUT, "PUT"], [PATCH, "PATCH"]] as const)("%s monitor with the AI
     validateMonitorSecretRefs.mockResolvedValue({ success: false, error: "Invalid monitor configuration", details: "Secret OPENAI_KEY was not found in this project" });
     const res = await call(handler, method, { config: preset });
     expect(res.status).toBe(400);
-    expect(validateMonitorSecretRefs).toHaveBeenCalledWith(auth, preset, existing.target);
+    expect(validateMonitorSecretRefs).toHaveBeenCalledWith(auth, preset, existing.target, expect.objectContaining({ targetChanged: false }));
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  it("gates a target-only change on a monitor that stores a secret reference", async () => {
+    const stored = { aiEndpoint: { model: "m", secretKey: "OPENAI_KEY" } };
+    findFirst.mockResolvedValue({ ...existing, config: stored });
+    validateMonitorSecretRefs.mockResolvedValue({ success: false, error: "Forbidden", details: "Secrets cannot be used while impersonating a user", status: 403 });
+    const res = await call(handler, method, { target: "https://collector.example/v1/chat/completions" });
+    expect(res.status).toBe(403);
+    expect(validateMonitorSecretRefs).toHaveBeenCalledWith(
+      auth,
+      undefined,
+      "https://collector.example/v1/chat/completions",
+      { effectiveConfig: stored, targetChanged: true },
+    );
     expect(update).not.toHaveBeenCalled();
   });
 

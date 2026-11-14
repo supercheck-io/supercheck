@@ -667,10 +667,11 @@ export function MonitorForm({
   function choosePreset(value: "none" | "ai_endpoint") {
     form.setValue("preset", value, { shouldDirty: true });
     if (value !== "ai_endpoint") {
-      // Undo what the preset set, but only while it still holds the preset's value, so the user's own edits stay.
-      if (form.getValues("target")?.trim() === AI_ENDPOINT_DEFAULT_URL) form.setValue("target", "", { shouldDirty: true });
-      form.setValue("aiConfig_timeoutSeconds", "");
+      // On create, undo what the preset set while it still holds the preset's value, so the user's own edits stay.
+      // On edit, the stored target and timeout are the user's, so switching back and forth keeps them.
       if (!editMode) {
+        if (form.getValues("target")?.trim() === AI_ENDPOINT_DEFAULT_URL) form.setValue("target", "", { shouldDirty: true });
+        form.setValue("aiConfig_timeoutSeconds", "");
         if (form.getValues("interval") === AI_PRESET_INTERVAL) form.setValue("interval", getDefaultValues().interval, { shouldDirty: true });
         setAlertConfig((current) =>
           current.failureThreshold === AI_PRESET_FAILURE_THRESHOLD ? { ...current, failureThreshold: initialAlertConfigValue.failureThreshold } : current,

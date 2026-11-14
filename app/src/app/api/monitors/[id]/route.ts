@@ -277,7 +277,10 @@ export async function PUT(
     if (!configurationValidation.success) {
       return NextResponse.json(configurationValidation, { status: 400 });
     }
-    const secretRefs = await validateMonitorSecretRefs(authCtx, updateData.config, updateData.target ?? currentMonitor.target);
+    const secretRefs = await validateMonitorSecretRefs(authCtx, updateData.config, updateData.target ?? currentMonitor.target, {
+      effectiveConfig: updateData.config ?? currentMonitor.config,
+      targetChanged: updateData.target !== undefined && updateData.target !== currentMonitor.target,
+    });
     if (!secretRefs.success) {
       const { status, ...body } = secretRefs;
       return NextResponse.json(body, { status: status ?? 400 });
@@ -697,7 +700,10 @@ export async function PATCH(
     if (!configurationValidation.success) {
       return NextResponse.json(configurationValidation, { status: 400 });
     }
-    const secretRefs = await validateMonitorSecretRefs(authCtx, rawData.config, updatePayload.target ?? currentMonitor.target);
+    const secretRefs = await validateMonitorSecretRefs(authCtx, rawData.config, updatePayload.target ?? currentMonitor.target, {
+      effectiveConfig: updatePayload.config ?? currentMonitor.config,
+      targetChanged: updatePayload.target !== undefined && updatePayload.target !== currentMonitor.target,
+    });
     if (!secretRefs.success) {
       const { status, ...body } = secretRefs;
       return NextResponse.json(body, { status: status ?? 400 });

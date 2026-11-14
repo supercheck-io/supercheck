@@ -785,7 +785,10 @@ export async function PUT(req: NextRequest) {
     if (!configurationValidation.success) {
       return NextResponse.json(configurationValidation, { status: 400 });
     }
-    const secretRefs = await validateMonitorSecretRefs(putCtx, updateData.config, updateData.target ?? monitorData[0].target);
+    const secretRefs = await validateMonitorSecretRefs(putCtx, updateData.config, updateData.target ?? monitorData[0].target, {
+      effectiveConfig: updateData.config ?? monitorData[0].config,
+      targetChanged: updateData.target !== undefined && updateData.target !== monitorData[0].target,
+    });
     if (!secretRefs.success) {
       const { status, ...body } = secretRefs;
       return NextResponse.json(body, { status: status ?? 400 });
