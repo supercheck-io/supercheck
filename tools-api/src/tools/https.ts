@@ -1,4 +1,4 @@
-import { CheckContext, keptHeaders, walk } from "../context";
+import { CheckContext, CheckStop, keptHeaders, walk } from "../context";
 import { parseHsts } from "../grade";
 import { getDomain } from "tldts";
 import { registrable } from "../url-policy";
@@ -28,7 +28,11 @@ export async function https(ctx: CheckContext, url: URL) {
     secure.ok && secure.url.protocol === "https:" ? keptHeaders(secure.res.headers)["strict-transport-security"] : undefined;
   if (secure.ok) await secure.res.body?.cancel();
 
-  const plain = await walk(ctx, new URL(`http://${host}/`), { maxHops: 3 });
+  // The http leg may run out of time; report it as not redirecting instead of losing the check.
+  const plain = await walk(ctx, new URL(`http://${host}/`), { maxHops: 3 }).catch((error) => {
+    if (error instanceof CheckStop && error.reason === "deadline") return { ok: false as const, error: "timeout", url: new URL(`http://${host}/`), hops: [], timeMs: 0 };
+    throw error;
+  });
   const redirectsToHttps = plain.ok && plain.url.protocol === "https:" && registrable(plain.url.hostname) === site;
   if (plain.ok) await plain.res.body?.cancel();
 

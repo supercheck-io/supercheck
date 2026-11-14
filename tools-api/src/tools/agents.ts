@@ -94,9 +94,12 @@ async function get(ctx: CheckContext, origin: URL, path: string, cap: number): P
       return { status: r.res.status, type, text: "", truncated: false };
     }
     const body = await readCapped(r.res, cap);
+    // A body cut short (stall or drop) may hide rules: show it, never cache it.
+    if (body.interrupted) ctx.degraded = true;
     return { status: 200, type, ...body };
   } catch (error) {
-    if (!(error instanceof CheckStop) || error.reason === "subrequest_budget" || error.reason === "deadline") throw error;
+    // Later paths running out of time give a partial report, not a lost check.
+    if (!(error instanceof CheckStop) || error.reason === "subrequest_budget") throw error;
     ctx.degraded = true;
     return { status: null, type: null, text: "", truncated: false, error: error.reason };
   }

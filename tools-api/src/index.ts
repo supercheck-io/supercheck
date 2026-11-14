@@ -173,8 +173,10 @@ export default {
       log.host = policy.value.hostname;
     }
 
-    const deadline = AbortSignal.timeout(req.tool === "agents" ? 20_000 : 15_000);
+    const deadlineMs = req.tool === "agents" ? 20_000 : 15_000;
+    const deadline = AbortSignal.timeout(deadlineMs);
     const ctx = new CheckContext(env, req.tool, deadline, req.tool === "agents" ? site : undefined);
+    ctx.deadlineAt = Date.now() + deadlineMs;
 
     ctx.charge();
     log.turnstile = await verifyTurnstile(env, req.token, req.tool, ip, turnstileHostnames(env));

@@ -52,7 +52,7 @@ describe("social tool", () => {
       "https://cdn.site.com/i.png": (req) =>
         req.method === "HEAD" ? new Response(null, { status: 405 }) : new Response("x", { status: 206, headers: { "content-type": "image/png" } }),
     });
-    expect((await run(ctxFor("social"), new URL("https://site.com/"))).image).toMatchObject({ reachable: true });
+    expect((await run(ctxFor("social"), new URL("https://site.com/"))).image).toMatchObject({ reachable: true, bytes: null });
     expect(calls.find((c) => c.method === "GET" && c.url.endsWith("i.png"))?.headers.get("range")).toBe("bytes=0-0");
     vi.restoreAllMocks();
     mockFetch({
@@ -60,6 +60,29 @@ describe("social tool", () => {
       "https://cdn.site.com/i.png": new Response(null, { status: 404 }),
     });
     expect((await run(ctxFor("social"), new URL("https://site.com/"))).image).toMatchObject({ reachable: false, reason: "http_404" });
+  });
+
+  it("reads the full image size from content-range after the ranged GET", async () => {
+    mockFetch({
+      "https://site.com/": page(`<meta property="og:image" content="https://cdn.site.com/i.png">`),
+      "https://cdn.site.com/i.png": (req) =>
+        req.method === "HEAD"
+          ? new Response(null, { status: 405 })
+          : new Response("x", { status: 206, headers: { "content-type": "image/png", "content-length": "1", "content-range": "bytes 0-0/48213" } }),
+    });
+    expect((await run(ctxFor("social"), new URL("https://site.com/"))).image).toMatchObject({ bytes: 48213 });
+  });
+
+  it("keeps the tags when the image check runs out of time", async () => {
+    const ctx = ctxFor("social");
+    ctx.deadlineAt = Date.now() + 5_000;
+    mockFetch({
+      // The page answers, then the clock runs out before the image check.
+      "https://site.com/": () => ((ctx.deadlineAt = 0), page(`<meta property="og:title" content="T"><meta property="og:image" content="https://cdn.site.com/i.png">`)),
+    });
+    const r = await run(ctx, new URL("https://site.com/"));
+    expect(r.tags?.["og:title"]).toBe("T");
+    expect(r.image).toMatchObject({ reachable: false, reason: "timeout" });
   });
 
   it("flags a non-image content type", async () => {

@@ -146,6 +146,25 @@ describe("agents tool", () => {
     expect(check(await run(), "ai_crawlers")?.status).toBe("pass");
   });
 
+  it("never caches a report built from an interrupted robots.txt", async () => {
+    let n = 0;
+    mockFetch({
+      [`${O}/`]: new Response("ok"),
+      [`${O}/robots.txt`]: () =>
+        new Response(
+          new ReadableStream({
+            pull(c) {
+              if (n++ === 0) c.enqueue(new TextEncoder().encode("User-agent: *\n"));
+              else c.error(new Error("reset"));
+            },
+          }),
+        ),
+    });
+    const ctx = ctxFor("agents", undefined, "site.com");
+    await agents(ctx, new URL(`${O}/`));
+    expect(ctx.degraded).toBe(true);
+  });
+
   it("marks truncated robots.txt and keeps hops on the same site", async () => {
     mockFetch({
       [`${O}/`]: new Response("ok"),

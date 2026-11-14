@@ -6,6 +6,7 @@ export const SUBREQUEST_BUDGET = 40;
 // DoH and service calls answer fast; targets get longer so a slow site reads as slow, not down.
 const FETCH_TIMEOUT_MS = 5_000;
 export const TARGET_TIMEOUT_MS = 10_000;
+const DEADLINE_MARGIN_MS = 500;
 const DOH = "https://cloudflare-dns.com/dns-query";
 
 /** Distinct hosts one check may touch (bounds the DoH column of the budget). */
@@ -36,6 +37,8 @@ export class CheckContext {
   subrequests = 0;
   /** Set when a stop was absorbed into a partial result or the deadline hit: never cache it. */
   degraded = false;
+  /** Wall-clock end of the check; each request's timeout is clamped so it fails before this. */
+  deadlineAt = Infinity;
   private readonly hosts = new Set<string>();
   private readonly dns = new Map<string, Promise<string | null>>();
   private readonly counted = new Set<string>();
@@ -63,8 +66,14 @@ export class CheckContext {
   }
 
   async fetch(url: string, init: RequestInit = {}, timeoutMs = FETCH_TIMEOUT_MS): Promise<Response> {
+    // Leave a margin so a slow request ends as its own timeout, not as the whole check's deadline.
+    const left = this.deadlineAt - Date.now() - DEADLINE_MARGIN_MS;
+    if (left <= 0) {
+      this.degraded = true;
+      throw new CheckStop("limited", "deadline");
+    }
     this.charge();
-    const signal = AbortSignal.any([this.signal, AbortSignal.timeout(timeoutMs)]);
+    const signal = AbortSignal.any([this.signal, AbortSignal.timeout(Math.min(timeoutMs, left))]);
     return fetch(url, { ...init, signal });
   }
 

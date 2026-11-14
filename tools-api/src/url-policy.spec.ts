@@ -77,6 +77,8 @@ describe("checkUrl (SSRF suite)", () => {
     expect(reason("localhost:3000")).toBe("port");
     expect(reason("javascript:alert(1)")).toBe("scheme");
     expect(reason("data:text/html,x")).toBe("scheme");
+    expect(reason("https:example.com")).toBeNull();
+    expect(reason("http:example.com")).toBeNull();
   });
 
   it("rejects empty labels", () => {

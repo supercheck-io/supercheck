@@ -7,7 +7,7 @@ const SPECIAL_SUFFIXES = ["localhost", "local", "internal", "home.arpa", "onion"
 const PLATFORM_SUFFIXES = ["workers.dev", "pages.dev"];
 const OWN_SUFFIXES = ["app.supercheck.io", "demo.supercheck.io"];
 // "host:port" has no "//"; only these are read as a scheme without one.
-const SCHEME_WITHOUT_SLASHES = /^(?:javascript|data|file|mailto|blob|about|vbscript|tel|ftp|gopher|ws|wss):/i;
+const SCHEME_WITHOUT_SLASHES = /^(?:https?|javascript|data|file|mailto|blob|about|vbscript|tel|ftp|gopher|ws|wss):/i;
 
 function hasSuffix(host: string, suffix: string): boolean {
   return host === suffix || host.endsWith(`.${suffix}`);

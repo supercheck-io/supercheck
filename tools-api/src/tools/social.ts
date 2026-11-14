@@ -163,7 +163,9 @@ async function checkImage(ctx: CheckContext, raw: string, base: URL) {
     if (!r.ok) return { url: shown, reachable: false, reason: r.error, loadable };
     await r.res.body?.cancel();
     const type = r.res.headers.get("content-type")?.slice(0, 100) ?? null;
-    const length = Number(r.res.headers.get("content-length")) || null;
+    // After the ranged GET fallback, content-length is 1: the full size is after the "/" in content-range.
+    const range = r.res.headers.get("content-range")?.match(/\/(\d+)$/);
+    const length = r.res.status === 206 ? (range ? Number(range[1]) : null) : Number(r.res.headers.get("content-length")) || null;
     const isImage = !!type && /^image\//i.test(type);
     const okStatus = r.res.status >= 200 && r.res.status < 300;
     if (!okStatus) ctx.degraded = true;
@@ -178,8 +180,10 @@ async function checkImage(ctx: CheckContext, raw: string, base: URL) {
   } catch (error) {
     if (!(error instanceof CheckStop)) throw error;
     // A blocked image hop never fails the whole check; it is reported unreachable.
-    if (error.reason === "subrequest_budget" || error.reason === "deadline") throw error;
+    if (error.reason === "subrequest_budget") throw error;
     ctx.degraded = true;
+    // Out of time: keep the parsed tags; the image just wasn't checked.
+    if (error.reason === "deadline") return { url: shown, reachable: false, reason: "timeout", loadable };
     return { url: shown, reachable: false, reason: error.reason, loadable: false };
   }
 }

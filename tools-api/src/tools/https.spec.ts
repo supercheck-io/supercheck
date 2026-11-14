@@ -69,6 +69,14 @@ describe("https tool", () => {
     expect(await run()).toMatchObject({ ok: false, hsts: null, hstsDisabled: true, problems: 1 });
   });
 
+  it("keeps the https result when the http leg runs out of time", async () => {
+    const { ctxFor: mk } = await import("../test-helpers");
+    const ctx = mk("https");
+    ctx.deadlineAt = Date.now() + 5_000;
+    mockFetch({ "https://site.com/": () => ((ctx.deadlineAt = 0), new Response("ok")) });
+    expect(await https(ctx, new URL("https://site.com/"))).toMatchObject({ certificateValid: true, redirectsToHttps: false, preload: "error" });
+  });
+
   it("reads unknown preload states as unknown", async () => {
     mockFetch({ "https://site.com/": new Response("ok"), "http://site.com/": new Response("ok"), "https://hstspreload.org": Response.json({ status: "weird" }) });
     expect((await run()).preload).toBe("unknown");
