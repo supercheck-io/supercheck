@@ -257,6 +257,8 @@ export type AlertDeliveryMetadata = {
     /** Each HTTP attempt (max 4): status, or a redacted error when no response arrived. */
     attemptLog?: AlertDeliveryAttempt[];
   };
+  /** Set on `monitor_warning` rows. */
+  warning?: { kind: string };
 };
 
 export type AlertDeliveryAttempt = {

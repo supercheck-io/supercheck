@@ -1,0 +1,131 @@
+---
+title: Heartbeat Monitors
+description: Alert when a cron job, backup or scheduled agent stops checking in
+icon: HeartPulse
+---
+
+A heartbeat monitor watches work that runs on its own schedule: cron jobs, backups, queue workers, scheduled AI agents. Supercheck does not call your service. Your job calls a secret **ping URL** when it finishes, and the monitor goes down when the ping does not arrive on time.
+
+## How it works
+
+```mermaid
+stateDiagram-v2
+    [*] --> Pending: monitor created
+    Pending --> Up: first ping
+    Up --> Late: no ping after the interval
+    Late --> Up: ping arrives
+    Late --> Down: no ping after interval + grace
+    Up --> Down: /fail ping
+    Down --> Up: ping arrives (recovery)
+```
+
+| State | Meaning | Alerts |
+|---|---|---|
+| **Pending** | No ping has arrived yet | None. A monitor that was never pinged never goes down |
+| **Up** | The last ping arrived on time | None |
+| **Late** | The interval has passed, but the grace period has not | Optional **Ping is late** warning (off by default, see [Warnings](/docs/app/communicate/alerts#warnings)) |
+| **Down** | No ping within interval + grace, or the job sent `/fail` | Failure alert and a sev2 incident. The next ping sends a recovery alert and resolves the incident, unless someone acknowledged it |
+| **Paused** | Monitoring is off | None. Pings are accepted and ignored |
+
+The clock starts at the newest of the last ping, the time the monitor was created and the time it was last resumed. One missed run counts as one failure: a monitor that stays silent records one **Missed** entry per interval.
+
+## Create a heartbeat monitor
+
+1. Go to **Monitor → Create** and select **Heartbeat Monitor**.
+2. Set **Expect a ping every**: how often the job runs, from 1 minute to 31 days.
+3. Set **Grace period**: how late a ping may be before the monitor goes down, from 1 minute to 1 day. The default is 20% of the interval, at least 5 minutes and at most 1 day (for example 12 minutes for an hourly job).
+4. Choose alert channels and save.
+5. Copy the ping URL shown after saving and add it to your job.
+
+From the CLI:
+
+```bash
+supercheck monitor create --name "Nightly backup" --type heartbeat --every 1d --grace 1h
+```
+
+The CLI prints the ping URL once (`heartbeat.pingUrl` with `--json`). Durations accept `m`, `h` and `d`.
+
+## The ping URL
+
+The ping URL looks like `https://<your-app>/api/heartbeat/hb_<32 characters>`. Anyone holding it can ping the monitor, so treat it as a secret: keep it in your job's secret store, not in a public repository.
+
+- **Reveal** and **Copy** on the monitor page show it again; editors and above can see it, viewers see a masked URL. From the CLI: `supercheck monitor heartbeat-url <id>`.
+- **Rotate URL** issues a new URL; the old one stops working at once. From the CLI: `supercheck monitor heartbeat-url <id> --rotate`.
+- The URL accepts `GET`, `POST` and `HEAD`. The request body is ignored and never stored.
+
+<Callout type="warn">
+The ping URL always answers `200 OK`, even when the token is unknown, rotated or belongs to a paused monitor, so that nobody can probe for valid URLs. A successful request therefore does not prove the URL is right: after you add it to a job, check that the monitor turns **Up**.
+</Callout>
+
+## Send pings
+
+Ping at the end of a successful run:
+
+```bash
+# crontab: run the backup every night at 02:00, ping only when it succeeds
+0 2 * * * /usr/local/bin/backup.sh && curl -fsS -m 10 --retry 5 -o /dev/null https://<your-app>/api/heartbeat/hb_...
+```
+
+Use `-m 10` so a slow network cannot hang the job, and `--retry 5` so one dropped connection does not cause a false alert.
+
+Two optional endpoints:
+
+| URL | Effect |
+|---|---|
+| `<ping URL>/start` | The job started. The next ping records the run duration (shown as **Run duration**). It does not change the state |
+| `<ping URL>/fail` | The job failed. The monitor goes down at once, without waiting for the grace period |
+
+```bash
+URL=https://<your-app>/api/heartbeat/hb_...
+curl -fsS -m 10 --retry 5 -o /dev/null "$URL/start"
+if /usr/local/bin/backup.sh; then
+  curl -fsS -m 10 --retry 5 -o /dev/null "$URL"
+else
+  curl -fsS -m 10 --retry 5 -o /dev/null "$URL/fail"
+fi
+```
+
+The CLI has the same in one command, with no login needed:
+
+```bash
+supercheck heartbeat ping "$URL"          # success
+supercheck heartbeat ping "$URL" --start  # job started
+supercheck heartbeat ping "$URL" --fail   # job failed
+```
+
+`heartbeat ping` sends one request and exits `0` when the server accepts it, `4` on an HTTP error (for example `429`), `5` after a 10-second timeout and `1` when it cannot connect. It never prints the token in its errors.
+
+## Late and down
+
+- **Late:** the interval has passed and the grace period has not. The monitor shows a **Late** badge and stays up; uptime is not affected. If **Ping is late** is turned on under **Warnings** in the alert settings, your channels get one warning per late period. Warnings never open an incident.
+- **Down:** the grace period has ended without a ping, or the job sent `/fail`. A failure alert is sent and a sev2 incident opens (you can change the severity or turn incidents off in the alert settings). The next successful ping recovers the monitor and resolves the incident, unless someone acknowledged it.
+
+Heartbeat failure, recovery and warning alerts are not sent while a scheduled maintenance window covers the monitor, as for other monitors.
+
+## Status pages
+
+Add a heartbeat monitor to a status page component like any other monitor. Uptime counts each on-time ping window as up and each missed interval as down. A daily heartbeat that pings on time is never shown as **No recent data**.
+
+## Self-hosted
+
+The ping URL uses your instance's public app URL; there is no extra setting. The job must be able to reach that URL over the network: a job inside a private network needs a route to your Supercheck app, and a firewall in between must allow it. If Supercheck itself was unreachable for a while, deadlines that fell inside that time are moved later, so the outage does not raise false alerts. This protection knows only that the app was running, not whether your job's network could reach it.
+
+## Limits
+
+| Limit | Value |
+|---|---|
+| Interval | 1 minute to 31 days |
+| Grace period | 1 minute to 1 day |
+| Ping history | At most one entry per 30 seconds; several pings inside 30 seconds become one entry |
+| Pings per URL | 10 per minute; more return `429` |
+| Pings per client IP | 120 per minute across all URLs (many jobs behind one NAT share it); more return `429` |
+| Request size | 10 kB; larger requests return `413` |
+| Schedules | A fixed interval only. Cron expressions and time zones are not supported yet |
+
+## Next steps
+
+<Cards>
+<Card title="Monitors" href="/docs/app/monitor" description="Other monitor types and the monitor details page" />
+<Card title="Notifications" href="/docs/app/communicate/alerts" description="Channels, thresholds and warnings" />
+<Card title="CLI commands" href="/docs/cli/commands" description="Create and manage heartbeat monitors from the terminal" />
+</Cards>

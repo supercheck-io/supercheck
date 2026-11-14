@@ -226,12 +226,12 @@ Validate with `supercheck config validate`, preview with `supercheck diff`, appl
 | `id` | `string` | Database UUID (present for existing resources, omit for new) |
 | `name` | `string` | Monitor display name |
 | `description` | `string` | Optional monitor description |
-| `type` | `string` | `http_request`, `website`, `ping_host`, `port_check`, `synthetic_test` |
-| `target` | `string` | URL or host to monitor |
-| `frequencyMinutes` | `number` | Check interval in minutes |
+| `type` | `string` | `http_request`, `website`, `ping_host`, `port_check`, `synthetic_test`, `heartbeat` |
+| `target` | `string` | URL or host to monitor. Omit for `heartbeat` |
+| `frequencyMinutes` | `number` | Check interval in minutes; for `heartbeat`, the expected ping interval (1 to 44640, 31 days) |
 | `enabled` | `boolean` | Whether the monitor is active |
-| `config` | `object` | Monitor-specific config (`method`, `timeoutSeconds`, `expectedStatusCodes`, `locationConfig`, `auth`, `aiEndpoint`) |
-| `alertConfig` | `object` | Alert config with `notificationProviders` (UUIDs), `alertOnFailure`, `alertOnRecovery`, `alertOnTimeout`, `alertOnSslExpiration`, `failureThreshold`, `recoveryThreshold` (positive integers), `customMessage`. Incident fields: `incidentEnabled`, `incidentSeverity`, `autoResolveIncident` (see below) |
+| `config` | `object` | Monitor-specific config (`method`, `timeoutSeconds`, `expectedStatusCodes`, `locationConfig`, `auth`, `aiEndpoint`; `heartbeat.graceMinutes` for heartbeat monitors) |
+| `alertConfig` | `object` | Alert config with `notificationProviders` (UUIDs), `alertOnFailure`, `alertOnRecovery`, `alertOnTimeout`, `alertOnSslExpiration`, `failureThreshold`, `recoveryThreshold` (positive integers), `customMessage`, `warnings`. Incident fields: `incidentEnabled`, `incidentSeverity`, `autoResolveIncident` (see below) |
 | `tags` | `string[]` | Tag names assigned to the monitor. Omit to leave remote tags unchanged; names compare case-insensitively and must exist in the project or under `tags[]` |
 
 Jobs have no `tags` field; a config containing one fails validation.
@@ -257,6 +257,25 @@ Monitors reference project secrets by name, so a pulled config holds no credenti
 |---|---|
 | `auth.secretKey` | Name of a project secret that supplies the bearer token (`auth.type: 'bearer'`) or the basic-auth password (`auth.type: 'basic'`). Use instead of an inline `token` or `password` |
 | `aiEndpoint` | AI endpoint preset (`http_request` only; `method`, `headers`, `body`, `auth`, `keywordInBody` and `expectedStatusCodes` must be absent). Fields: `model` (required), `secretKey`, `keyHeader`, `prompt`, `maxTokens`, `expectText`, `firstTokenTimeoutMs`. See [AI endpoint preset](/docs/app/monitor#ai-endpoint-preset) |
+
+### Heartbeat monitors
+
+```ts
+{
+  name: 'Nightly backup',
+  type: 'heartbeat',
+  frequencyMinutes: 1440,                 // expect a ping every day
+  config: { heartbeat: { graceMinutes: 60 } },
+  alertConfig: { enabled: true, warnings: { heartbeat_late: true } },
+}
+```
+
+| Field | Description |
+|---|---|
+| `config.heartbeat.graceMinutes` | How late a ping may be before the monitor goes down, 1 to 1440. Omit for the default: 20% of the interval, at least 5 minutes and at most 1 day |
+| `alertConfig.warnings` | Warning-only alerts by kind. `heartbeat_late: true` notifies your channels when a ping is late but inside the grace period; warnings never open an incident. Off unless `true`, so `pull` writes only the ones that are on |
+
+The ping URL is a secret and never part of the config. `deploy` prints it once when it creates a heartbeat monitor (`results[].pingUrl` with `--json`); `supercheck monitor heartbeat-url <id>` shows it again. `pull` never writes the URL or the heartbeat's runtime state (last ping, late or down), and `diff` ignores them. See [Heartbeat Monitors](/docs/app/heartbeat).
 
 ### Incident fields in `alertConfig`
 

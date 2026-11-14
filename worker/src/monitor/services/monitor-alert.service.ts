@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { and, eq, inArray, lte, gt, ne, sql } from 'drizzle-orm';
@@ -24,6 +25,11 @@ import {
 } from './sre-alert-triage-queue.service';
 import { getErrorMessage } from '../../common/validation';
 import { redactUrlsInText } from '../../common/validation/data-sanitizer';
+import {
+  isInformationalAlertType,
+  warningTitle,
+  type WarningKind,
+} from '../warning-kinds';
 
 type ProviderRow = {
   id: string;
@@ -38,6 +44,16 @@ export function redactAlertText(text: string | undefined | null) {
 }
 
 const SSL_ALERT_THROTTLE_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * `alert_history.outage_key` is a uuid column, so a warning's readable episode key (`heartbeat_late:<id>:<deadline>`)
+ * is claimed under a stable name-based uuid derived from it (SHA-256, version 5 layout).
+ */
+export function warningEpisodeUuid(episodeKey: string): string {
+  const h = createHash('sha256').update(episodeKey).digest('hex');
+  const variant = ((parseInt(h[16], 16) & 0x3) | 0x8).toString(16);
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-5${h.slice(13, 16)}-${variant}${h.slice(17, 20)}-${h.slice(20, 32)}`;
+}
 
 /** One alert of one outage: the failure alert's window number (0-2), or 0 for the recovery. */
 export type AlertClaim = { outageKey: string; ordinal: number };
@@ -103,6 +119,31 @@ export class MonitorAlertService {
       sourceId: monitorId,
       recoveredAt: recoveredAt.toISOString(),
     });
+  }
+
+  /** The monitor's enabled notification channels (still encrypted). */
+  private async monitorProviders(monitorId: string): Promise<ProviderRow[]> {
+    return this.dbService.db
+      .select({
+        id: schema.notificationProviders.id,
+        type: schema.notificationProviders.type,
+        config: schema.notificationProviders.config,
+        projectId: schema.notificationProviders.projectId,
+      })
+      .from(schema.notificationProviders)
+      .innerJoin(
+        schema.monitorNotificationSettings,
+        eq(
+          schema.monitorNotificationSettings.notificationProviderId,
+          schema.notificationProviders.id,
+        ),
+      )
+      .where(
+        and(
+          eq(schema.monitorNotificationSettings.monitorId, monitorId),
+          eq(schema.notificationProviders.isEnabled, true),
+        ),
+      );
   }
 
   /** An unresolved scheduled-maintenance incident covers the monitor right now. */
@@ -418,8 +459,8 @@ export class MonitorAlertService {
           });
         created.push(...rows);
       }
-      // Renewal notices are informational: they never open or resolve an incident.
-      if (historyType !== 'ssl_renewed') {
+      // Renewal notices and warnings are informational: they never open or resolve an incident.
+      if (!isInformationalAlertType(historyType)) {
         await this.sreAlertTriageQueueService.enqueueAlertHistoryRows(created);
         // The rows above are still 'pending' for the app, which skips them: open the incident from the
         // delivery we know happened. (A recovery resolves its incident through signalRecovery instead.)
@@ -554,27 +595,7 @@ export class MonitorAlertService {
     }
 
     // Get notification providers
-    const providers = (await db
-      .select({
-        id: schema.notificationProviders.id,
-        type: schema.notificationProviders.type,
-        config: schema.notificationProviders.config,
-        projectId: schema.notificationProviders.projectId,
-      })
-      .from(schema.notificationProviders)
-      .innerJoin(
-        schema.monitorNotificationSettings,
-        eq(
-          schema.monitorNotificationSettings.notificationProviderId,
-          schema.notificationProviders.id,
-        ),
-      )
-      .where(
-        and(
-          eq(schema.monitorNotificationSettings.monitorId, monitorId),
-          eq(schema.notificationProviders.isEnabled, true),
-        ),
-      )) as ProviderRow[];
+    const providers = await this.monitorProviders(monitorId);
 
     const decryptedProviders = this.decryptProviders(providers);
 
@@ -812,27 +833,7 @@ export class MonitorAlertService {
     }
 
     // Get notification providers
-    const providers = (await db
-      .select({
-        id: schema.notificationProviders.id,
-        type: schema.notificationProviders.type,
-        config: schema.notificationProviders.config,
-        projectId: schema.notificationProviders.projectId,
-      })
-      .from(schema.notificationProviders)
-      .innerJoin(
-        schema.monitorNotificationSettings,
-        eq(
-          schema.monitorNotificationSettings.notificationProviderId,
-          schema.notificationProviders.id,
-        ),
-      )
-      .where(
-        and(
-          eq(schema.monitorNotificationSettings.monitorId, monitorId),
-          eq(schema.notificationProviders.isEnabled, true),
-        ),
-      )) as ProviderRow[];
+    const providers = await this.monitorProviders(monitorId);
 
     const decryptedProviders = this.decryptProviders(providers);
 
@@ -914,6 +915,96 @@ export class MonitorAlertService {
       sentAt: new Date(), // one per alert: per-channel rows must share it
       claim,
       logTag: '[SSL-NOTIFY]',
+    });
+    return { delivered: result.delivered, gaveUp: result.gaveUp };
+  }
+
+  /**
+   * Warning-only alert (alert type `monitor_warning`): sent when alerts are on and `alertConfig.warnings[kind]`
+   * is on, held back in maintenance, to non-preset channels only, and never queued for incident triage.
+   * `episodeKey` (starting with the kind) claims it once per provider per episode.
+   */
+  async sendWarning(
+    monitor: Pick<
+      typeof schema.monitors.$inferSelect,
+      | 'id'
+      | 'name'
+      | 'type'
+      | 'target'
+      | 'projectId'
+      | 'alertConfig'
+      | 'deletingAt'
+    >,
+    kind: WarningKind,
+    reason: string,
+    episodeKey: string,
+  ): Promise<{ delivered: boolean; suppressed?: boolean; gaveUp?: boolean }> {
+    if (!episodeKey.startsWith(kind))
+      throw new Error(`Warning episode key must start with ${kind}`);
+    const alertConfig = monitor.alertConfig;
+    if (
+      monitor.deletingAt ||
+      !alertConfig?.enabled ||
+      alertConfig.warnings?.[kind] !== true
+    )
+      return { delivered: false, suppressed: true };
+    if (await this.isUnderScheduledMaintenance(monitor.id)) {
+      this.logger.log(
+        `[WARN-NOTIFY] Suppressing ${kind} for monitor ${monitor.id} during scheduled maintenance`,
+      );
+      return { delivered: false, suppressed: true };
+    }
+    // Preset channels (PagerDuty, Opsgenie, ...) page people: warnings never go there.
+    const providers = this.decryptProviders(
+      await this.monitorProviders(monitor.id),
+    ).filter(
+      (provider) =>
+        !provider.config.preset || provider.config.preset === 'custom',
+    );
+    if (providers.length === 0) return { delivered: false, suppressed: true };
+
+    let projectName: string | undefined;
+    if (monitor.projectId) {
+      const project = await this.dbService.db.query.projects.findFirst({
+        where: eq(schema.projects.id, monitor.projectId),
+        columns: { name: true },
+      });
+      projectName = project?.name;
+    }
+    const baseUrl =
+      this.configService.get<string>('NEXT_PUBLIC_APP_URL') ||
+      this.configService.get<string>('APP_URL') ||
+      'http://localhost:3000';
+    const now = new Date();
+    const result = await this.deliver({
+      monitorId: monitor.id,
+      monitorName: monitor.name,
+      historyType: 'monitor_warning',
+      payload: {
+        type: 'monitor_warning',
+        title: warningTitle(kind, monitor.name),
+        message: reason,
+        targetName: monitor.name,
+        targetId: monitor.id,
+        severity: 'warning',
+        timestamp: now,
+        projectId: monitor.projectId || undefined,
+        projectName,
+        metadata: {
+          ...(monitor.target ? { target: monitor.target } : {}),
+          type: monitor.type,
+          monitorType: monitor.type,
+          status: 'warning',
+          warningKind: kind,
+          dashboardUrl: `${baseUrl}/monitors/${monitor.id}`,
+          trigger: 'warning',
+          reason,
+        },
+      },
+      providers,
+      sentAt: now,
+      claim: { outageKey: warningEpisodeUuid(episodeKey), ordinal: 0 },
+      logTag: '[WARN-NOTIFY]',
     });
     return { delivered: result.delivered, gaveUp: result.gaveUp };
   }

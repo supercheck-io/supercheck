@@ -483,9 +483,11 @@ Extracting requirements from an uploaded document (PDF, DOCX, Markdown or TXT) w
 | `monitor status <monitor-id>` | Current status (quick view) | — |
 | `monitor results <monitor-id>` | Recent check results | `--page` (1), `--limit` (20) |
 | `monitor stats <monitor-id>` | Performance statistics | — |
-| `monitor create` | Create a monitor | `--name` (required), `--url`, `--type`, `--test-id`, `--port`, `--protocol`, `--interval-minutes`, `--timeout`, `--method`, `--preset`, `--model`, `--secret`, `--key-header`, `--prompt`, `--expect`, `--max-tokens`, `--first-token-timeout`, `--dry-run` |
-| `monitor update <monitor-id>` | Update a monitor | `--name`, `--url`, `--interval-minutes`, `--timeout`, `--method`, `--active`, `--dry-run` |
+| `monitor create` | Create a monitor | `--name` (required), `--url`, `--type`, `--test-id`, `--port`, `--protocol`, `--interval-minutes`, `--every`, `--grace`, `--timeout`, `--method`, `--preset`, `--model`, `--secret`, `--key-header`, `--prompt`, `--expect`, `--max-tokens`, `--first-token-timeout`, `--dry-run` |
+| `monitor update <monitor-id>` | Update a monitor | `--name`, `--url`, `--interval-minutes`, `--every`, `--grace`, `--timeout`, `--method`, `--active`, `--dry-run` |
 | `monitor delete <monitor-id>` | Delete with confirmation | `--force` |
+| `monitor heartbeat-url <monitor-id>` | Show a heartbeat monitor's ping URL, or replace it | `--rotate`, `--force` |
+| `heartbeat ping <url>` | Send one ping from a cron job or script; no login needed | `--start`, `--fail` |
 
 <Accordions>
 <Accordion title="Examples" id="monitors-examples">
@@ -499,6 +501,11 @@ supercheck monitor create --name "Website" --url https://example.com --dry-run
 supercheck monitor create --name "TLS port" --type port_check --url example.com --port 443
 supercheck monitor create --name "Browser journey" --type synthetic_test --test-id <test-uuid>
 supercheck monitor create --name "OpenAI chat" --url https://api.openai.com/v1/chat/completions --preset ai-endpoint --model gpt-4o-mini --secret OPENAI_API_KEY
+supercheck monitor create --name "Nightly backup" --type heartbeat --every 1d --grace 1h
+supercheck monitor heartbeat-url <monitor-id>
+supercheck monitor heartbeat-url <monitor-id> --rotate --force
+supercheck heartbeat ping "$PING_URL" --start
+supercheck heartbeat ping "$PING_URL"
 
 supercheck monitor update <monitor-id> --interval-minutes 1 --active false
 supercheck monitor update <monitor-id> --name "Updated" --method POST --dry-run
@@ -506,6 +513,10 @@ supercheck monitor delete <monitor-id> --force
 ```
 
 `--timeout` must not exceed `--interval-minutes` × 60.
+
+For heartbeat monitors, `monitor list` shows the heartbeat state (`pending`, `up`, `late`, `down`, `paused`), the interval with its grace period and the last ping; `monitor get` and `--json` include a `heartbeat` object with `state`, `lastPingAt`, `lastPingKind`, `lastStartAt`, `nextExpectedAt` and `graceMinutes`. The ping URL is never part of these outputs. `monitor create` prints it once (`heartbeat.pingUrl` with `--json`), and `monitor heartbeat-url` shows it again (`--quiet` prints only the URL). `--rotate` issues a new URL and the old one stops working at once; it asks for confirmation unless you pass `--force`.
+
+`heartbeat ping` validates that the URL looks like `/api/heartbeat/hb_…`, sends one request (`/start` with `--start`, `/fail` with `--fail`) with a 10-second timeout and exits `0` on a 2xx answer, `4` on another HTTP status, `5` on timeout and `1` when it cannot connect. The ping endpoint answers `200` even for an unknown or rotated URL, so check that the monitor turns **Up** after you wire it in. See [Heartbeat Monitors](/docs/app/heartbeat).
 
 </Accordion>
 </Accordions>
@@ -517,11 +528,13 @@ supercheck monitor delete <monitor-id> --force
 |---|---|---|---|
 | `--name` | Yes | — | Monitor name |
 | `--url` | Except synthetic tests | — | HTTP(S) URL, or hostname/IP for ping and port checks |
-| `--type` | No | `http_request` | `http_request`, `website`, `ping_host`, `port_check`, `synthetic_test` |
+| `--type` | No | `http_request` | `http_request`, `website`, `ping_host`, `port_check`, `synthetic_test`, `heartbeat` |
 | `--test-id` | Synthetic tests | — | UUID of an existing test |
 | `--port` | Port checks | — | Port number (1-65535) |
 | `--protocol` | No | `tcp` | Port check protocol: `tcp` or `udp` |
 | `--interval-minutes` | No | `5` | Check interval in minutes (1–1440) |
+| `--every` | Heartbeat | — | Expected ping interval: `5m`, `1h`, `1d` (1 minute to 31 days). Heartbeat only |
+| `--grace` | No | 20% of the interval, 5 min to 1 day | How late a ping may be before the monitor goes down (1 minute to 1 day). Heartbeat only |
 | `--timeout` | No | `30` (`60` with the preset) | Request timeout in seconds (1-3600; 5-120 with the preset) |
 | `--method` | No | `GET` | HTTP method (`GET`, `POST`, `PUT`, `DELETE`, `PATCH`, `HEAD`, `OPTIONS`). Not allowed with `--preset` (the preset always sends `POST`) |
 | `--preset` | No | — | `ai-endpoint`: check an OpenAI-compatible chat-completions endpoint (`http_request` only) |
@@ -534,7 +547,7 @@ supercheck monitor delete <monitor-id> --force
 | `--first-token-timeout` | No | `15000` | A slower first token fails the check, in milliseconds (500-60000) |
 | `--dry-run` | No | — | Preview what would be sent without creating |
 
-`monitor update` accepts `--name`, `--url`, `--interval-minutes` (1–1440), `--timeout` (1-3600), `--method`, `--active` (`true` or `false` to enable or disable) and `--dry-run`.
+`monitor update` accepts `--name`, `--url`, `--interval-minutes` (1–1440), `--every` and `--grace` (heartbeat), `--timeout` (1-3600), `--method`, `--active` (`true` or `false` to enable or disable) and `--dry-run`.
 
 </Accordion>
 </Accordions>

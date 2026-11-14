@@ -83,6 +83,8 @@ export const monitors = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }),
   },
   (table) => ({
+    // The worker sweep claims heartbeat monitors every 30 s; keep that scan off the full table.
+    heartbeatSweepIdx: index("monitors_heartbeat_sweep_idx").on(table.id).where(sql`type = 'heartbeat'`),
     heartbeatTokenHashUidx: uniqueIndex("monitors_heartbeat_token_hash_uidx")
       .on(table.heartbeatTokenHash)
       .where(sql`heartbeat_token_hash IS NOT NULL`),

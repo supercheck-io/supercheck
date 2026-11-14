@@ -1,11 +1,12 @@
 const credentialKey = /^(?:xauth|xsignature|xsig|signature|authorization|proxyauthorization|cookie|setcookie|webhookUrl|discordWebhookUrl|teamsWebhookUrl|encryptedValue|auth|webhook|pass|pwd|cookies|sessionid|jwt|routingkey|devicecode)$|(?:token|secret|pass(?:w(?:or)?d)?|apikey|appkey|accesskey|privatekey|credentials?)$/i
 // Monitor configs hold a public target URL and request headers the operator must be able to review. Any other `config`
 // (notification providers, untyped API error bodies) is treated as credential-bearing, so the default fails closed.
-const monitorTypes = new Set(['http_request', 'website', 'ping_host', 'port_check', 'synthetic_test'])
+const monitorTypes = new Set(['http_request', 'website', 'ping_host', 'port_check', 'synthetic_test', 'heartbeat'])
 let reveal = false
 export function canRevealSecrets(): boolean { return reveal }
 export function setRevealSecrets(value: boolean): void { reveal = value }
-const cliTokens = (text: string) => text.replace(/(?:sck_(?:live|test|trigger)_|job_)[a-zA-Z0-9]{12,}/g, '[REDACTED]')
+// Heartbeat ping tokens (hb_ + 32 hex) are masked everywhere except a `pingUrl` field the server returned on purpose.
+const cliTokens = (text: string) => text.replace(/(?:sck_(?:live|test|trigger)_|job_)[a-zA-Z0-9]{12,}/g, '[REDACTED]').replace(/\bhb_[0-9a-f]{32}\b/gi, 'hb_[REDACTED]')
 function maskUrl(raw: string): string {
   try {
     const url = new URL(raw)
@@ -35,7 +36,7 @@ export function redact<T>(value: T, inConfig = false, code = false): T {
   const secretRefAuth = (key: string, item: unknown) => key === 'auth' && !!item && typeof item === 'object'
     && Object.keys(item).every((k) => k === 'type' || k === 'secretKey' || k === 'username') && typeof (item as Record<string, unknown>).secretKey === 'string'
   return Object.fromEntries(Object.entries(record).map(([key, item]) => [key,
-    secretRefAuth(key, item) ? redact(item, false) : (credentialKey.test(key.replace(/[-_]/g, '')) || (inConfig && ['url', 'headers', 'username'].includes(key)) || (key === 'value' && (record.isSecret || record.type === 'secret'))) && item != null && typeof item !== 'boolean'
+    key === 'pingUrl' && typeof item === 'string' ? item : secretRefAuth(key, item) ? redact(item, false) : (credentialKey.test(key.replace(/[-_]/g, '')) || (inConfig && ['url', 'headers', 'username'].includes(key)) || (key === 'value' && (record.isSecret || record.type === 'secret'))) && item != null && typeof item !== 'boolean'
       ? (typeof item === 'string' && ['[local secret provided]', '[remote secret masked]'].includes(item) ? item : '[REDACTED]') : redact(item, key === 'config' && sensitiveConfig, codeKeys.has(key.toLowerCase())),
   ])) as T
 }

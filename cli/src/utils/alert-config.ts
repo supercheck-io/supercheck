@@ -20,6 +20,13 @@ export function normalizeAlertConfig(alert: Record<string, unknown>): Record<str
     delete normalized.notificationProviders
   }
 
+  // Warning kinds are off unless true, so only enabled ones round-trip.
+  if (normalized.warnings && typeof normalized.warnings === 'object') {
+    const on = Object.entries(normalized.warnings as Record<string, unknown>).filter(([, value]) => value === true)
+    if (on.length > 0) normalized.warnings = Object.fromEntries(on)
+    else delete normalized.warnings
+  }
+
   return Object.keys(normalized).length > 0 ? normalized : undefined
 }
 

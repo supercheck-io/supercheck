@@ -274,6 +274,12 @@ export class MonitorService {
 
     try {
       switch (jobData.type) {
+        case 'heartbeat':
+          // Heartbeats are judged by the sweep (heartbeat-sweep.service.ts), never run as a check.
+          this.logger.warn(
+            `Refusing to run heartbeat monitor ${jobData.monitorId} as a check job`,
+          );
+          return null;
         case 'http_request':
           ({ status, details, responseTimeMs, isUp } =
             await this.executeHttpRequest(
@@ -743,6 +749,43 @@ export class MonitorService {
         groupEvaluation.executionGroupId,
         groupEvaluation.receipt,
       );
+  }
+
+  /**
+   * Records a result observed outside a check (the heartbeat sweep) through the single-location path:
+   * result row with its counters and outage key, monitor status, then threshold evaluation and alerts.
+   * Holds no lock on the monitor row. Throws when the row cannot be saved, so the caller retries.
+   */
+  async recordExternalResult(
+    monitor: { id: string },
+    result: MonitorExecutionResult,
+  ): Promise<void> {
+    const current = await this.getMonitorById(monitor.id);
+    // Paused or disabled after the caller read it: nothing is recorded.
+    if (!current || current.status === 'paused' || !current.enabled) return;
+    if (!(await this.insertResultWithRetry(result))) return;
+    const currentStatus = result.isUp ? 'up' : 'down';
+    await this.updateMonitorStatus(current.id, currentStatus, result.checkedAt);
+    await this.evaluateAndSendAlert({
+      monitorId: current.id,
+      monitor: current,
+      previousStatus: current.status,
+      currentStatus,
+      reason: result.isUp
+        ? 'Monitor has recovered'
+        : (result.details?.errorMessage ?? 'Monitor is down'),
+      observedAt: result.checkedAt,
+      metadata: {
+        responseTime: result.responseTimeMs,
+        locationResults: [
+          {
+            location: result.location,
+            isUp: result.isUp,
+            responseTime: result.responseTimeMs,
+          },
+        ],
+      },
+    });
   }
 
   private isMultiLocationEvaluation(

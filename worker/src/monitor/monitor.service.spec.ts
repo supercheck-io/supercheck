@@ -20,6 +20,7 @@ import { throwError } from 'rxjs';
 import { PgDialect } from 'drizzle-orm/pg-core';
 import { Test, TestingModule } from '@nestjs/testing';
 import { HttpService } from '@nestjs/axios';
+import { Logger } from '@nestjs/common';
 import { of } from 'rxjs';
 
 // Mock problematic dependencies before import
@@ -3026,6 +3027,20 @@ describe('MonitorService', () => {
       };
 
       expect(heartbeatJob.type).toBe('heartbeat');
+    });
+
+    it('refuses to run a heartbeat monitor as a queued check', async () => {
+      const warn = jest.spyOn(Logger.prototype, 'warn');
+      await expect(
+        service.executeMonitor({
+          ...mockJobData,
+          type: 'heartbeat',
+          target: '',
+        }),
+      ).resolves.toBeNull();
+      expect(warn).toHaveBeenCalledWith(
+        expect.stringContaining('Refusing to run heartbeat monitor'),
+      );
     });
   });
 

@@ -1,5 +1,5 @@
 {
-  "id": "b5640e63-e53f-456d-83b4-2298156996c3",
+  "id": "b34ec108-d742-4ef6-85c6-b003aa5e3141",
   "prevId": "4a755f50-91b6-4277-add0-239a3459b4d2",
   "version": "7",
   "dialect": "postgresql",
@@ -7411,6 +7411,22 @@
         }
       },
       "indexes": {
+        "monitors_heartbeat_sweep_idx": {
+          "name": "monitors_heartbeat_sweep_idx",
+          "columns": [
+            {
+              "expression": "id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "type = 'heartbeat'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
         "monitors_heartbeat_token_hash_uidx": {
           "name": "monitors_heartbeat_token_hash_uidx",
           "columns": [

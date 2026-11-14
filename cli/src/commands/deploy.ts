@@ -229,7 +229,7 @@ async function applyChange(
     state: ReturnType<typeof managedState>
     deleteMissing?: boolean
   },
-): Promise<{ success: boolean; id?: string; error?: string }> {
+): Promise<{ success: boolean; id?: string; error?: string; pingUrl?: string }> {
   try {
     const endpoint = getApiEndpoint(change.type)
 
@@ -297,7 +297,9 @@ async function applyChange(
         throw new CLIError('Remote create succeeded but identity could not be saved. Inspect the returned ID and state file before retrying.', ExitCode.ConfigError, { id })
         }
         if (tagRefs) await applyTags(client, `${endpoint}/${encodeURIComponent(id)}`, tagRefs, id)
-        return { success: true, id }
+        // A new heartbeat monitor's ping URL is returned once, on create; deploy shows it once and never stores it.
+        const pingUrl = (entity.heartbeat as Record<string, unknown> | undefined)?.pingUrl
+        return { success: true, id, ...(typeof pingUrl === 'string' ? { pingUrl } : {}) }
       }
       case 'update': {
         const id = change.id ?? change.remote!.id
@@ -503,6 +505,7 @@ export const deployCommand = new Command('deploy')
 
         if (result.success) {
           logger.info(color(`  ${actionLabel} ${change.type}/${change.name} ✓`))
+          if (result.pingUrl && getOutputFormat() === 'table') logger.output(`    Ping URL (shown only now): ${result.pingUrl}`, { redact: false })
           succeeded++
         } else {
           logger.error(`  ${actionLabel} ${change.type}/${change.name} ✗ ${result.error}`)
