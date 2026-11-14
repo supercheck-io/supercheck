@@ -10,4 +10,8 @@ describe("runErrorMessage", () => {
     expect(runErrorMessage("Failed to run job: boom")).toBe("boom");
     expect(runErrorMessage("x".repeat(150))).toBe(`${"x".repeat(100)}...`);
   });
+
+  it("falls back to the raw body when the JSON has no usable error string", () => {
+    for (const body of ["{}", '{"error":42}', '{"error":""}']) expect(runErrorMessage(body)).toBe(body);
+  });
 });
