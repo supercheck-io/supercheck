@@ -50,7 +50,7 @@ Registered only when the connection holds the scope. Calls are recorded in the a
 
 | Tool | Scope | Needs permission | Arguments | Does |
 |---|---|---|---|---|
-| `create_incident` | `mcp:incidents:write` | create incidents (and update status pages when `statusPage` is set) | `title`, `severity`, `summary`, `primaryServiceId`, `affectedServiceIds`, `affectedMonitorIds`, `commanderUserId`, `statusPage` (`statusPageId`, `componentIds`, `impact`, `message`, `notifySubscribers`) | Declares an incident by hand and sends the project's incident notifications. Affected monitors' next alerts join it. Returns `warning: status_page_failed` if only the public post failed |
+| `create_incident` | `mcp:incidents:write` | create incidents | `title`, `severity`, `summary`, `primaryServiceId`, `affectedServiceIds`, `affectedMonitorIds`, `commanderUserId` | Declares an incident by hand and sends the project's incident notifications. Affected monitors' next alerts join it. Never posts to a status page (use the app, API or CLI) |
 | `assign_incident` | `mcp:incidents:write` | update incidents | `id`, `assigneeUserId` (or `null` to unassign), `role` (`assignee` or `commander`) | Assigns the incident or sets its commander |
 | `acknowledge_incident` | `mcp:incidents:write` | update incidents | `id` | Acknowledges it, claiming it for you if unassigned |
 | `resolve_incident` | `mcp:incidents:write` | update incidents | `id`, `resolutionSummary` (up to 2000 characters) | Resolves it with a summary |

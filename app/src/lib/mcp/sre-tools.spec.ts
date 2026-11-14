@@ -248,7 +248,7 @@ describe("create_incident", () => {
     await expect(tool.run({ title: "Checkout down", severity: "sev2", affectedServiceIds: [], affectedMonitorIds: [id] })).resolves.toEqual({ id, incidentNumber: 9, warning: "status_page_failed" });
     expect(createManualIncident).toHaveBeenCalledWith(
       { userId: "u", organizationId: "o", orgPendingDeletion: false, project: { id: "p", userRole: "project_editor" } },
-      { title: "Checkout down", severity: "sev2", affected: { serviceIds: [], monitorIds: [id] } },
+      { title: "Checkout down", severity: "sev2", affected: { serviceIds: [], monitorIds: [id] }, statusPage: null },
       "mcp",
     );
   });

@@ -19,7 +19,7 @@ interface Props {
   oauthQuery: string;
   userEmail: string;
   projects: McpConsentProject[];
-  /** The app also asked to assign, acknowledge and resolve incidents (mcp:incidents:write). */
+  /** The app also asked to declare, assign, acknowledge and resolve incidents (mcp:incidents:write). */
   canWriteIncidents?: boolean;
   /** The app also asked to start AI SRE work (mcp:sre). */
   canRunSre?: boolean;
@@ -124,7 +124,7 @@ export function McpConsent({ oauthQuery, userEmail, projects, canWriteIncidents 
               in the project you choose
             </li>
             <li>See variable names and types, never their values</li>
-            {canWriteIncidents ? <li>Assign, acknowledge and resolve incidents, as you</li> : null}
+            {canWriteIncidents ? <li>Declare, assign, acknowledge and resolve incidents, as you (declaring notifies your team)</li> : null}
             {canRunSre ? <li>Start AI SRE triage, investigations and evidence briefs, which use AI credits</li> : null}
           </ul>
           <p className="text-xs text-muted-foreground">

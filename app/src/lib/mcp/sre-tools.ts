@@ -109,7 +109,7 @@ export function registerSreTools(tool: ToolRegistrar, ctx: McpCallContext): void
     tool("assign_incident", "Assign an incident, or set its commander. Pass assigneeUserId null to unassign. The assignee must be someone who can act on the incident." + UNTRUSTED, write,
       { id: idArg, assigneeUserId: idArg.nullable(), role: z.enum(["assignee", "commander"]).default("assignee") },
       ({ id, assigneeUserId, role }) => lifecycle(id, () => assignIncident(actor, id, assigneeUserId, role)));
-    tool("create_incident", "Declare an incident by hand, for an outage no monitor caught (for example a user report). Sends the project's incident notifications. Optionally list affected services and monitors (their next alerts join this incident) and post it to a status page." + UNTRUSTED,
+    tool("create_incident", "Declare an incident by hand, for an outage no monitor caught (for example a user report). Sends the project's incident notifications. Optionally list affected services and monitors: their next alerts join this incident. It never posts to a public status page." + UNTRUSTED,
       { resource: "sre_incident", action: "create", scope: MCP_INCIDENTS_WRITE_SCOPE },
       {
         title: z.string().trim().min(1).max(500),
@@ -119,18 +119,12 @@ export function registerSreTools(tool: ToolRegistrar, ctx: McpCallContext): void
         affectedServiceIds: z.array(idArg).max(50).default([]),
         affectedMonitorIds: z.array(idArg).max(50).default([]),
         commanderUserId: idArg.nullish(),
-        statusPage: z.object({
-          statusPageId: idArg,
-          componentIds: z.array(idArg).min(1).max(100),
-          impact: z.enum(["none", "minor", "major", "critical"]).default("minor"),
-          message: z.string().trim().max(10000).optional(),
-          notifySubscribers: z.boolean().default(false),
-        }).nullish(),
       },
       async ({ affectedServiceIds, affectedMonitorIds, ...input }) => {
         const result = await createManualIncident(
           { userId: ctx.userId, organizationId: ctx.organizationId, orgPendingDeletion: ctx.orgPendingDeletion, project: { id: ctx.projectId, userRole: ctx.role } },
-          { ...input, affected: { serviceIds: affectedServiceIds, monitorIds: affectedMonitorIds } },
+          // No statusPage: public posts and subscriber emails stay out of reach of a model-driven client.
+          { ...input, affected: { serviceIds: affectedServiceIds, monitorIds: affectedMonitorIds }, statusPage: null },
           "mcp",
         );
         if (!result.ok) throw new McpToolFailure(result.code === "forbidden" ? "forbidden" : result.code, result.error);

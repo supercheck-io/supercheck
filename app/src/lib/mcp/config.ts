@@ -9,7 +9,7 @@ export const MCP_RESOURCE_PATH = "/api/mcp";
 
 /** The base scope: read-only access. Every connection needs it. */
 export const MCP_READ_SCOPE = "mcp:read";
-/** Optional: assign, acknowledge and resolve incidents. */
+/** Optional: declare, assign, acknowledge and resolve incidents. */
 export const MCP_INCIDENTS_WRITE_SCOPE = "mcp:incidents:write";
 /** Optional: start billable AI SRE work (triage, investigation, evidence brief). */
 export const MCP_SRE_SCOPE = "mcp:sre";
