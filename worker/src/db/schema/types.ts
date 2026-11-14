@@ -47,12 +47,82 @@ export type ReportType = 'test' | 'job' | 'monitor' | 'k6_test' | 'k6_job';
 
 // Monitor types
 export type MonitorType =
-  'http_request' | 'website' | 'ping_host' | 'port_check' | 'synthetic_test';
+  | 'http_request'
+  | 'website'
+  | 'ping_host'
+  | 'port_check'
+  | 'synthetic_test'
+  | 'mcp_server';
 
 export type MonitorStatus =
   'up' | 'down' | 'paused' | 'pending' | 'maintenance' | 'error';
 
 export type MonitorResultStatus = 'up' | 'down' | 'error' | 'timeout';
+
+/** Why an MCP check failed; `undefined` on success. */
+export type McpFailure =
+  | 'connect'
+  | 'auth'
+  | 'list'
+  | 'required_tool'
+  | 'call'
+  | 'assert'
+  | 'timeout'
+  | 'secret';
+export type McpProtocolMode = 'auto' | '2025' | '2026';
+export type McpToolFingerprint = { name: string; fingerprint: string };
+
+export type McpResultDetails = {
+  failure?: McpFailure;
+  /** Negotiated protocol version string, e.g. '2025-06-18' or '2026-07-28'. */
+  protocol?: string;
+  serverName?: string;
+  serverVersion?: string;
+  toolCount?: number;
+  toolsHash?: string;
+  /** At most 500 entries; names clipped to 128 chars. Descriptions and schemas are hashed, never stored. */
+  tools?: McpToolFingerprint[];
+  connectMs?: number;
+  listMs?: number;
+  callMs?: number;
+};
+
+/** User-editable MCP Monitor settings (`config.mcp`). */
+export type McpMonitorConfig = {
+  auth: {
+    type: 'none' | 'bearer' | 'header';
+    secretKey?: string;
+    headerName?: string;
+  };
+  protocol?: McpProtocolMode;
+  /** At most 50 names. */
+  requiredTools?: string[];
+  toolCall?: {
+    name: string;
+    arguments?: Record<string, unknown>;
+    expectText?: string;
+  };
+  /** Warn when a check takes longer than this for 3 cycles in a row (100-60000). */
+  slowMs?: number;
+};
+
+export type McpToolChange = {
+  at: string;
+  added: string[];
+  removed: string[];
+  changed: { name: string; reasons: Array<'description' | 'schema'> }[];
+};
+
+/** Worker-owned MCP state (`config.mcpState`); clients can never write it. */
+export type McpMonitorState = {
+  detectedProtocol?: '2025' | '2026';
+  lastCycleKey?: string;
+  baseline?: { hash: string; takenAt: string; tools: McpToolFingerprint[] };
+  /** Newest last; at most 10 kept. */
+  changes?: McpToolChange[];
+  slowStreak?: number;
+  slowEpisodeKey?: string | null;
+};
 
 export type MonitorResultDetails = {
   statusCode?: number;
@@ -128,9 +198,23 @@ export type MonitorConfig = {
     maxTokens?: number;
     expectText?: string;
     firstTokenTimeoutMs?: number;
+    /** Warn when the first token is slower than this for 3 cycles (warning only). */
+    warnFirstTokenMs?: number;
+    /** Warn when one call uses more tokens than this (warning only). */
+    warnTotalTokens?: number;
   };
   /** Worker-owned. */
-  aiEndpointState?: { lastServedModel?: string };
+  aiEndpointState?: {
+    lastServedModel?: string;
+    lastCycleKey?: string;
+    slowFirstTokenStreak?: number;
+    slowFirstTokenEpisodeKey?: string | null;
+    tokensHighEpisodeKey?: string | null;
+  };
+  /** MCP Monitor settings; mcp_server only. */
+  mcp?: McpMonitorConfig;
+  /** Worker-owned; clients cannot write it. */
+  mcpState?: McpMonitorState;
   port?: number;
   protocol?: 'tcp' | 'udp';
   expectClosed?: boolean; // When true, monitor passes if port is closed (connection refused)
