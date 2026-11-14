@@ -12,6 +12,7 @@ import { encryptValue } from "@/lib/encryption";
 import { getS3Client } from "@/lib/s3-proxy";
 import { PutObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3";
 import { z } from "zod";
+import { secretInUseMessage, breaksSecretRefs } from "@/lib/monitor-secret-usage";
 
 const FILE_VARIABLES_BUCKET = process.env.S3_PROJECT_DATA_FILES_BUCKET_NAME || "project-data-files";
 
@@ -187,6 +188,12 @@ export async function PUT(
       }
 
       const validatedData = updateVariableSchema.parse(body);
+
+      const breaking = breaksSecretRefs(existingVariable, validatedData);
+      if (breaking) {
+        const inUse = await secretInUseMessage(projectId, existingVariable.key, breaking);
+        if (inUse) return NextResponse.json({ error: inUse }, { status: 409 });
+      }
 
       // If key is being changed, check for conflicts
       if (validatedData.key && validatedData.key !== existingVariable.key) {
@@ -395,6 +402,11 @@ export async function DELETE(
         { error: "Variable not found" },
         { status: 404 }
       );
+    }
+
+    if (existingVariable.isSecret || existingVariable.type === "secret") {
+      const inUse = await secretInUseMessage(projectId, existingVariable.key, "delete");
+      if (inUse) return NextResponse.json({ error: inUse }, { status: 409 });
     }
 
     // Delete the database row first so the variable is no longer visible.

@@ -275,7 +275,7 @@ supercheck config print --offline
 | `job create` | Create a job | `--name` (required), `--tests` (required), `--description`, `--type`, `--schedule`, `--dry-run` |
 | `job update <job-id>` | Update job configuration | `--name`, `--description`, `--schedule`, `--tests` (replaces the test list), `--dry-run` |
 | `job delete <job-id>` | Delete a job with confirmation | `--force` |
-| `job run` | Run a job immediately, bypassing the cron schedule | `--id`, `--local`, `--cloud`, `--offline`, `--playwright-config` |
+| `job run` | Run a job immediately, bypassing the cron schedule; `--wait` exits 1 on a failed run and 5 on timeout | `--id`, `--local`, `--cloud`, `--offline`, `--playwright-config`, `--wait`, `--timeout` (300, cloud only) |
 | `job trigger <job-id>` | Trigger a job with a trigger key, optionally wait | `--wait`, `--timeout` (300) |
 | `job keys` | List, create and revoke trigger keys | `create --name --expires-in <seconds>` (min 60), `delete` |
 
@@ -292,6 +292,7 @@ supercheck job delete <job-id> --force
 supercheck job run --id <job-id>
 supercheck job run --id <job-id> --local     # Run locally
 supercheck job run --id <job-id> --cloud     # Run in the cloud
+supercheck job run --id <job-id> --wait --json  # Run and wait for the result
 supercheck job run --id "Nightly E2E" --local --offline
 
 supercheck job trigger <job-id>
@@ -482,7 +483,7 @@ Extracting requirements from an uploaded document (PDF, DOCX, Markdown or TXT) w
 | `monitor status <monitor-id>` | Current status (quick view) | — |
 | `monitor results <monitor-id>` | Recent check results | `--page` (1), `--limit` (20) |
 | `monitor stats <monitor-id>` | Performance statistics | — |
-| `monitor create` | Create a monitor | `--name` (required), `--url`, `--type`, `--test-id`, `--port`, `--protocol`, `--interval-minutes`, `--timeout`, `--method`, `--dry-run` |
+| `monitor create` | Create a monitor | `--name` (required), `--url`, `--type`, `--test-id`, `--port`, `--protocol`, `--interval-minutes`, `--timeout`, `--method`, `--preset`, `--model`, `--secret`, `--key-header`, `--prompt`, `--expect`, `--max-tokens`, `--first-token-timeout`, `--dry-run` |
 | `monitor update <monitor-id>` | Update a monitor | `--name`, `--url`, `--interval-minutes`, `--timeout`, `--method`, `--active`, `--dry-run` |
 | `monitor delete <monitor-id>` | Delete with confirmation | `--force` |
 
@@ -497,6 +498,7 @@ supercheck monitor create --name "API Health" --url https://api.example.com/heal
 supercheck monitor create --name "Website" --url https://example.com --dry-run
 supercheck monitor create --name "TLS port" --type port_check --url example.com --port 443
 supercheck monitor create --name "Browser journey" --type synthetic_test --test-id <test-uuid>
+supercheck monitor create --name "OpenAI chat" --url https://api.openai.com/v1/chat/completions --preset ai-endpoint --model gpt-4o-mini --secret OPENAI_API_KEY
 
 supercheck monitor update <monitor-id> --interval-minutes 1 --active false
 supercheck monitor update <monitor-id> --name "Updated" --method POST --dry-run
@@ -520,8 +522,16 @@ supercheck monitor delete <monitor-id> --force
 | `--port` | Port checks | — | Port number (1-65535) |
 | `--protocol` | No | `tcp` | Port check protocol: `tcp` or `udp` |
 | `--interval-minutes` | No | `5` | Check interval in minutes (1–1440) |
-| `--timeout` | No | `30` | Request timeout in seconds (1-3600) |
-| `--method` | No | `GET` | HTTP method (`GET`, `POST`, `PUT`, `DELETE`, `PATCH`, `HEAD`, `OPTIONS`) |
+| `--timeout` | No | `30` (`60` with the preset) | Request timeout in seconds (1-3600; 5-120 with the preset) |
+| `--method` | No | `GET` | HTTP method (`GET`, `POST`, `PUT`, `DELETE`, `PATCH`, `HEAD`, `OPTIONS`). Not allowed with `--preset` (the preset always sends `POST`) |
+| `--preset` | No | — | `ai-endpoint`: check an OpenAI-compatible chat-completions endpoint (`http_request` only) |
+| `--model` | With `--preset` | — | Model name to request |
+| `--secret` | No | — | Name of the project secret that holds the API key; omit to send no key |
+| `--key-header` | No | `Authorization` | Header for the key; `Authorization` sends `Bearer <key>`, any other header sends the raw key |
+| `--prompt` | No | `Reply with the single word OK.` | Prompt to send |
+| `--expect` | No | — | Text the reply must contain (case-insensitive) |
+| `--max-tokens` | No | `16` | Reply token limit (1-512). Reasoning models (gpt-5, o-series) need more, for example `256` |
+| `--first-token-timeout` | No | `15000` | A slower first token fails the check, in milliseconds (500-60000) |
 | `--dry-run` | No | — | Preview what would be sent without creating |
 
 `monitor update` accepts `--name`, `--url`, `--interval-minutes` (1–1440), `--timeout` (1-3600), `--method`, `--active` (`true` or `false` to enable or disable) and `--dry-run`.

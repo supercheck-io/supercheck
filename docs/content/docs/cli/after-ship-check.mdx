@@ -1,0 +1,71 @@
+---
+title: Check After Every Ship
+description: Have a coding agent run your Supercheck job after each deploy and stop when it fails
+icon: ShieldCheck
+---
+
+Coding agents ship fast. This recipe makes the agent run one of your Supercheck jobs after every deploy, then stop and tell you when a check fails instead of carrying on.
+
+## Copy-paste prompt
+
+```text
+After you deploy a change, check it with Supercheck.
+1. Run `npx @supercheck/cli job list --json` once and use the id of the job I named. Do not guess.
+2. After each deploy, run `npx @supercheck/cli job run --id <job-id> --wait --timeout 600 --json`.
+3. Exit 0: tell me the checks passed and give the run URL.
+   Exit 1: stop. Run `npx @supercheck/cli run get <runId> --json` and tell me which test failed. Do not retry and do not change tests to make them pass.
+   Exit 5: stop. Give me the run id; resume with `npx @supercheck/cli run wait <runId>`.
+   Exit 2, 3 or 4: stop and show me the error as printed.
+Never print or commit SUPERCHECK_TOKEN.
+```
+
+## The flow
+
+```text
+ deploy finished
+      |
+      v
+ supercheck job run --id <job-id> --wait --timeout 600 --json
+      |
+      +-- exit 0 -> report "checks passed", continue
+      +-- exit 1 -> STOP. supercheck run get <runId> --json, report the failed test
+      +-- exit 5 -> STOP. report the run id, resume with supercheck run wait <runId>
+      '-- exit 2/3/4 -> STOP. report the auth, config or API error
+```
+
+## Commands
+
+```bash
+supercheck job list --json
+supercheck job run --id <job-id> --wait --timeout 600 --json
+supercheck run get <runId> --json
+supercheck run wait <runId>
+```
+
+| Exit code | Meaning | What the agent does |
+|---|---|---|
+| `0` | Run passed | Reports the run URL and continues |
+| `1` | Run failed, errored or was cancelled | Stops and reports the failed test |
+| `2` | Authentication error | Stops and reports it |
+| `3` | Configuration error (for example `--wait` with `--local`) | Stops and reports it |
+| `4` | API or network error | Stops and reports it |
+| `5` | Still running when `--timeout` ran out | Stops, reports the run id |
+
+`--wait` and `--timeout` (default 300 seconds) apply to cloud runs only. A local run (`--local`) already waits, so `--wait` with `--local` exits 3.
+
+## Install the guide for your agent
+
+The same instructions ship inside the CLI as `supercheck skills ship`. Install the Supercheck skill so the agent finds them:
+
+| Agent | Command |
+|---|---|
+| Claude Code | `supercheck agent install --target claude` |
+| Cursor | `supercheck agent install --target cursor` |
+| Codex | `supercheck agent install --target codex` |
+| GitHub Copilot | `supercheck agent install --target generic --pointer AGENTS.md` (Copilot reads `AGENTS.md`) |
+
+## Token
+
+The agent needs `SUPERCHECK_TOKEN`: a project CLI token whose owner can trigger jobs (editor or above). Keep it in the agent's environment or secret store, never in the repository.
+
+`supercheck ci init` only writes a GitHub Actions workflow file. It runs nothing by itself; this recipe is what runs the checks after a ship.

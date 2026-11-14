@@ -4,6 +4,13 @@ Notable changes to `@supercheck/cli`. The format follows [Keep a Changelog](http
 
 ## [Unreleased]
 
+### Added
+
+- `job run --wait [--timeout <seconds>]` waits for a cloud run: exit 0 when it passes, 1 when it fails, 5 on timeout. `--wait` with `--local` exits 3.
+- `skills ship`: a guide for coding agents to run a job after every deploy and stop on failure.
+- `monitor create --preset ai-endpoint` with `--model`, `--secret`, `--key-header`, `--prompt`, `--expect`, `--max-tokens` and `--first-token-timeout`.
+- `pull` keeps monitor `auth` that only names a project secret, so it deploys back unchanged; pull and diff drop the worker-owned `aiEndpointState`.
+
 ### Changed
 
 - `ci init --github` caches `supercheck.state.json` in the workflow, and `SUPERCHECK_URL` is only needed for self-hosted instances.

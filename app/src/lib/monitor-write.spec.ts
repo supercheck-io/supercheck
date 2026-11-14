@@ -6,6 +6,8 @@ import {
   frequencyMinutesError,
   InvalidNotificationProvidersError,
   mergePatch,
+  preserveWorkerConfigKeys,
+  WORKER_OWNED_CONFIG_KEYS,
   mirrorProviderRowsToAlertConfig,
   monitorNameError,
   normalizeMonitorAlertConfig,
@@ -227,5 +229,19 @@ describe("review fixes in monitor-write", () => {
     const reads = [[], [{ alertConfig: { enabled: true, notificationProviders: ["x"], alertOnFailure: true, incidentEnabled: false } }]];
     const tx = { select: () => ({ from: () => ({ where: async () => reads.shift() }) }), update: jest.fn() } as never;
     await expect(mirrorProviderRowsToAlertConfig(tx, "m")).rejects.toBeInstanceOf(AlertConfigConflictError);
+  });
+});
+
+describe("aiEndpointState is worker-owned", () => {
+  it("lists the key and keeps the stored value over a client-sent one", () => {
+    expect(WORKER_OWNED_CONFIG_KEYS).toContain("aiEndpointState");
+    const merged = preserveWorkerConfigKeys(
+      { aiEndpointState: { lastServedModel: "stored" } },
+      { aiEndpoint: { model: "m" }, aiEndpointState: { lastServedModel: "forged" } },
+    );
+    expect(merged).toEqual({ aiEndpoint: { model: "m" }, aiEndpointState: { lastServedModel: "stored" } });
+  });
+  it("drops a client-sent value when nothing is stored", () => {
+    expect(preserveWorkerConfigKeys(null, { aiEndpointState: { lastServedModel: "forged" } })).toEqual({});
   });
 });

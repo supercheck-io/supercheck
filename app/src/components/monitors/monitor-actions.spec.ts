@@ -39,6 +39,15 @@ describe("mergeEditConfig", () => {
     expect(merged.timeoutSeconds).toBe(12);
   });
 
+  it("replaces the stored preset timeout with the plain default when the preset is switched off", () => {
+    const aiStored = { aiEndpoint: { model: "m" }, timeoutSeconds: 60 };
+    const built = { method: "GET", expectedStatusCodes: "200-299", timeoutSeconds: 30 };
+    const merged = mergeEditConfig("http_request", aiStored, built);
+    expect(merged).toEqual(built);
+    // A plain monitor keeps its own stored timeout.
+    expect(mergeEditConfig("http_request", { method: "GET", timeoutSeconds: 12 }, built).timeoutSeconds).toBe(12);
+  });
+
   it("does not force GET on website monitors", () => {
     const merged = mergeEditConfig("website", { method: "HEAD", timeoutSeconds: 9 }, { method: "GET", timeoutSeconds: 30, enableSslCheck: true });
     expect(merged).toMatchObject({ method: "HEAD", timeoutSeconds: 9, enableSslCheck: true });
@@ -131,5 +140,21 @@ describe("invalidateDeletedMonitorCaches", () => {
 
     expect(calls.filter((key) => key.includes("m1"))).toHaveLength(3);
     expect(calls.filter((key) => key.includes("m2"))).toHaveLength(3);
+  });
+});
+
+describe("mergeEditConfig with the AI endpoint preset", () => {
+  const ai = { model: "gpt-4o-mini", secretKey: "OPENAI_KEY" };
+
+  it("turning a plain HTTP monitor into the preset drops the request settings and takes the new time limit", () => {
+    const stored = { method: "POST", headers: { a: "b" }, body: "x", auth: { type: "bearer", token: "t" }, expectedStatusCodes: "200", keywordInBody: "ok", timeoutSeconds: 12, regions: ["eu"] };
+    const merged = mergeEditConfig("http_request", stored, { aiEndpoint: ai, timeoutSeconds: 60 });
+    expect(merged).toEqual({ aiEndpoint: ai, timeoutSeconds: 60, regions: ["eu"] });
+  });
+
+  it("turning the preset back off removes aiEndpoint and keeps worker state for the server to preserve", () => {
+    const merged = mergeEditConfig("http_request", { aiEndpoint: ai, aiEndpointState: { lastServedModel: "m" }, timeoutSeconds: 60 }, { method: "GET", expectedStatusCodes: "200-299", timeoutSeconds: 30 });
+    expect(merged).not.toHaveProperty("aiEndpoint");
+    expect(merged.timeoutSeconds).toBe(30); // the plain default replaces the preset's stored timeout
   });
 });

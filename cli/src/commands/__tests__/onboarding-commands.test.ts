@@ -130,6 +130,7 @@ describe('agent skill install', () => {
     const claude = installAgentSkill({ target: 'claude', cwd: dir })
     expect(String(claude.path)).toBe(join(dir, '.claude/skills/supercheck/SKILL.md'))
     expect(readFileSync(String(claude.path), 'utf8')).toContain('supercheck onboard --json')
+    expect(readFileSync(String(claude.path), 'utf8')).toContain('supercheck skills ship')
     expect(() => installAgentSkill({ target: 'claude', cwd: dir })).toThrow(/already exists/)
     const cursor = installAgentSkill({ target: 'cursor', cwd: dir })
     expect(readFileSync(String(cursor.path), 'utf8')).toContain('alwaysApply: false')

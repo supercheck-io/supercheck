@@ -72,6 +72,16 @@ export type MonitorResultDetails = {
     // Host the certificate was read from; set on the copy stored in monitor config
     host?: string;
   };
+  ai?: {
+    firstTokenMs?: number;
+    totalMs: number;
+    servedModel?: string;
+    systemFingerprint?: string;
+    promptTokens?: number;
+    completionTokens?: number;
+    totalTokens?: number;
+    cost?: number;
+  };
   [key: string]: unknown;
 };
 
@@ -106,7 +116,21 @@ export type MonitorConfig = {
     username?: string;
     password?: string;
     token?: string;
+    /** Project secret NAME supplying the bearer token or basic password. */
+    secretKey?: string;
   };
+  /** AI endpoint preset: a streamed chat-completions call judged by status, first token and reply. */
+  aiEndpoint?: {
+    secretKey?: string;
+    keyHeader?: string;
+    model: string;
+    prompt?: string;
+    maxTokens?: number;
+    expectText?: string;
+    firstTokenTimeoutMs?: number;
+  };
+  /** Worker-owned. */
+  aiEndpointState?: { lastServedModel?: string };
   port?: number;
   protocol?: 'tcp' | 'udp';
   expectClosed?: boolean; // When true, monitor passes if port is closed (connection refused)

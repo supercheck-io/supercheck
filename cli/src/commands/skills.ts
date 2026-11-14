@@ -20,7 +20,7 @@ const guides: Record<string, string> = {
 }
 export const skillsCommand = new Command('skills')
   .description('Read offline, versioned agent workflow guidance')
-  .argument('[topic]', 'onboarding, authoring, local, sync, configure, execute, ci, safety, investigate')
+  .argument('[topic]', 'onboarding, authoring, local, sync, configure, execute, ci, ship, safety, investigate')
   .action((topic?: string) => {
     if (topic && !guides[topic]) throw new CLIError(`Unknown skills topic: ${topic}. Use supercheck skills.`, ExitCode.ConfigError)
     const content = topic ? guides[topic] : `# Supercheck agent guide (${CLI_VERSION})\n\nStart with supercheck onboard --json (read-only next step) and supercheck skills onboarding. Use supercheck skills local for no-account execution, or supercheck skills sync for cloud setup.\n\n${Object.keys(guides).map((key) => `- supercheck skills ${key}`).join('\n')}\n\nUse --help on any command. Auth errors exit 2; invalid configuration/confirmation refusal exits 3; API errors exit 4; timeout exits 5. Do not publish or delete resources without authorization.`
