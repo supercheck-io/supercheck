@@ -48,6 +48,7 @@ describe('JobNotificationService', () => {
             : new Map<string, string>(),
       ),
       finishJobAlert: jest.fn().mockResolvedValue(undefined),
+      getOpenJobPages: jest.fn().mockResolvedValue(new Set<string>()),
     };
     const notificationService = {
       sendNotificationToMultipleProviders: jest.fn().mockResolvedValue({
@@ -97,6 +98,74 @@ describe('JobNotificationService', () => {
       sreAlertTriageQueueService,
     };
   }
+
+  describe('paging resolve on recovery', () => {
+    const passedRun = {
+      jobId: 'job-1',
+      organizationId: 'org-1',
+      projectId: 'project-1',
+      runId: 'run-2',
+      finalStatus: 'passed' as const,
+      durationSeconds: 5,
+      results: [{ success: true }],
+    };
+    const withPaging = (alertOnSuccess: boolean) => {
+      const ctx = createService();
+      ctx.dbService.getJobById.mockResolvedValue({
+        id: 'job-1',
+        name: 'Checkout smoke test',
+        projectId: 'project-1',
+        alertConfig: {
+          enabled: true,
+          notificationProviders: ['pd', 'slack'],
+          failureThreshold: 1,
+          recoveryThreshold: 1,
+          alertOnFailure: true,
+          alertOnSuccess,
+          alertOnTimeout: true,
+        },
+      });
+      ctx.dbService.getNotificationProviders.mockResolvedValue([
+        { id: 'pd', type: 'webhook', config: { preset: 'pagerduty' } },
+        { id: 'slack', type: 'slack', config: {} },
+      ]);
+      ctx.notificationService.sendNotificationToMultipleProviders.mockResolvedValue(
+        { success: 1, failed: 0, results: [] },
+      );
+      return ctx;
+    };
+    const sentTo = (ctx: ReturnType<typeof createService>) =>
+      ctx.notificationService.sendNotificationToMultipleProviders.mock.calls.map(
+        ([providers, payload]: [Array<{ id: string }>, { type: string }]) => ({
+          ids: providers.map((provider) => provider.id),
+          type: payload.type,
+        }),
+      );
+
+    it('resolves an open page with success alerts off, and only on the paging channel', async () => {
+      const ctx = withPaging(false);
+      ctx.dbService.getOpenJobPages.mockResolvedValue(new Set(['pd']));
+      await ctx.service.handleJobNotifications(passedRun);
+      expect(ctx.dbService.getOpenJobPages).toHaveBeenCalledWith('job-1', [
+        'pd',
+      ]);
+      expect(sentTo(ctx)).toEqual([{ ids: ['pd'], type: 'job_success' }]);
+    });
+
+    it('sends no resolve to a paging channel without an open page, even with success alerts on', async () => {
+      const ctx = withPaging(true);
+      await ctx.service.handleJobNotifications(passedRun);
+      expect(sentTo(ctx)).toEqual([{ ids: ['slack'], type: 'job_success' }]);
+    });
+
+    it('sends nothing on a passing run with success alerts off and no open page', async () => {
+      const ctx = withPaging(false);
+      await ctx.service.handleJobNotifications(passedRun);
+      expect(
+        ctx.notificationService.sendNotificationToMultipleProviders,
+      ).not.toHaveBeenCalled();
+    });
+  });
 
   it('enqueues created alert-history rows after job notifications', async () => {
     const { service, dbService, sreAlertTriageQueueService } = createService();

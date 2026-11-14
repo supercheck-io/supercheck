@@ -3,6 +3,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { RUN_CANCELLATION_MARKER } from '../../common/services/cancellation.service';
 import { AlertStatus, AlertType, TestRunStatus } from '../../db/schema';
 import { DbService } from './db.service';
+import { isPagingPreset } from '../../notification/preset-lifecycle';
 import {
   NotificationPayload,
   NotificationService,
@@ -310,10 +311,32 @@ export class JobNotificationService {
         finalStatus === 'timeout' &&
         shouldAlertOnStreak(alertState);
 
+      // A paging service gets exactly one resolve per page: on a passing run (past the recovery threshold) and
+      // only while its last job alert was a delivered failure or timeout, whether or not success alerts are on.
+      const pagingProviders = providers.filter((provider) =>
+        isPagingPreset(provider.config?.preset),
+      );
+      const recovered =
+        normalizedStatus === 'passed' &&
+        !shouldNotifyFailure &&
+        !shouldNotifyTimeout &&
+        consecutiveSuccesses >= alertConfig.recoveryThreshold;
+      const openPages =
+        recovered && pagingProviders.length > 0
+          ? await this.dbService.getOpenJobPages(
+              jobId,
+              pagingProviders.map((provider) => provider.id),
+            )
+          : new Set<string>();
+      const resolvePages = pagingProviders.filter((provider) =>
+        openPages.has(provider.id),
+      );
+
       if (
         !shouldNotifyFailure &&
         !shouldNotifySuccess &&
-        !shouldNotifyTimeout
+        !shouldNotifyTimeout &&
+        resolvePages.length === 0
       ) {
         this.logger.debug(
           `No notification conditions met for job ${jobId} - status: ${normalizedStatus}, consecutive failures: ${consecutiveFailures}, consecutive successes: ${consecutiveSuccesses}`,
@@ -395,7 +418,17 @@ export class JobNotificationService {
       // Failure alerts reserve their (run, provider) slot before sending, under a per-job lock that re-checks
       // the cap, so concurrent or retried runs cannot over-send. Other alerts, and failure alerts when the
       // reservation itself cannot be made, are recorded after sending.
-      let sendTo = providers;
+      // Success goes to every chosen channel when success alerts are on, but a paging service only gets it
+      // while it has a page to resolve (otherwise every passing run would send it a resolve).
+      let sendTo =
+        alertType === 'job_success'
+          ? providers.filter((provider) =>
+              isPagingPreset(provider.config?.preset)
+                ? openPages.has(provider.id)
+                : shouldNotifySuccess,
+            )
+          : providers;
+      if (sendTo.length === 0) return;
       const reservedRows = new Map<string, string>();
       if (alertType === 'job_failed' || alertType === 'job_timeout') {
         try {

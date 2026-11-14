@@ -1,7 +1,17 @@
 /** @jest-environment node */
 const select = jest.fn();
 const insert = jest.fn();
-jest.mock("@/utils/db", () => ({ db: { select: (...a: unknown[]) => select(...a), insert: (...a: unknown[]) => insert(...a) } }));
+// The stored-policy read (it selects renotifyMax) is answered from `storedPolicy`; other selects come from `select`.
+let storedPolicy: unknown[] = [];
+jest.mock("@/utils/db", () => ({
+  db: {
+    select: (...a: unknown[]) =>
+      a[0] && typeof a[0] === "object" && "renotifyMax" in (a[0] as object)
+        ? { from: () => ({ where: () => ({ limit: async () => storedPolicy }) }) }
+        : select(...a),
+    insert: (...a: unknown[]) => insert(...a),
+  },
+}));
 const logAuditEvent = jest.fn();
 jest.mock("@/lib/audit-logger", () => ({ logAuditEvent: (...a: unknown[]) => logAuditEvent(...a) }));
 jest.mock("@/lib/notification-providers/crypto", () => ({ decryptNotificationProviderConfig: (config: unknown) => config }));
@@ -25,6 +35,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   whereClauses.length = 0;
   upserted = undefined;
+  storedPolicy = [];
   isAssignableUser.mockResolvedValue(true);
   insert.mockReturnValue({ values: (values: Record<string, unknown>) => ({ onConflictDoUpdate: async ({ set }: { set: Record<string, unknown> }) => { upserted = { values, set }; } }) });
 });
@@ -35,6 +46,7 @@ describe("saveNotificationPolicy rejections (A19)", () => {
     [{ renotifyUnackedMinutes: 60, renotifyRepeatMinutes: 1440, renotifyMax: 3 }, "Reminders must finish within 2 days"],
     [{ escalateAfterMinutes: 30, escalateChannelId: channel, escalateUserId: member }, "Escalate to a channel or a member, not both"],
     [{ escalateAfterMinutes: 30 }, "Choose who to escalate to"],
+    [{ renotifyRepeatMinutes: 60, renotifyMax: 1 }, "Repeating needs at most 2 or more reminders"],
     [{ renotifyMax: 11 }, "Invalid notification policy"],
     [{ renotifyRepeatMinutes: 4 }, "Invalid notification policy"],
     [{ escalateAfterMinutes: 1441, escalateUserId: member }, "Invalid notification policy"],
@@ -89,20 +101,19 @@ it("upserts the full policy and writes the incident_policy_updated audit without
 
 it("an older client's save keeps the stored repeat and escalation settings", async () => {
   const stored = { ...base, renotifyRepeatMinutes: 60, renotifyMax: 4, escalateAfterMinutes: 30, escalateUserId: member, autoInvestigateEnabledAt: null };
-  select.mockReturnValueOnce({ from: () => ({ where: () => ({ limit: async () => [stored] }) }) });
+  storedPolicy = [stored];
   expect(await saveNotificationPolicy(scope, legacy)).toEqual({ success: true });
   expect(upserted?.set).toMatchObject({ renotifyRepeatMinutes: 60, renotifyMax: 4, escalateAfterMinutes: 30, escalateUserId: member, escalateChannelId: null });
 });
 
 it("validates the schedule that will be saved, including stored values an older client omits", async () => {
   const stored = { ...base, renotifyUnackedMinutes: 5, renotifyRepeatMinutes: 300, renotifyMax: 10, autoInvestigateEnabledAt: null };
-  select.mockReturnValueOnce({ from: () => ({ where: () => ({ limit: async () => [stored] }) }) });
+  storedPolicy = [stored];
   expect(await saveNotificationPolicy(scope, { ...legacy, renotifyUnackedMinutes: 1440 })).toEqual({ success: false, error: "Reminders must finish within 2 days" });
   expect(insert).not.toHaveBeenCalled();
 });
 
 it("an older client's first save uses the defaults", async () => {
-  select.mockReturnValueOnce({ from: () => ({ where: () => ({ limit: async () => [] }) }) });
   expect(await saveNotificationPolicy(scope, legacy)).toEqual({ success: true });
   expect(upserted?.values).toMatchObject({ renotifyRepeatMinutes: null, renotifyMax: 3, escalateAfterMinutes: null, escalateChannelId: null, escalateUserId: null });
 });
@@ -117,8 +128,17 @@ it("stamps the auto-investigate time only while it is on", async () => {
 });
 
 it("returns the defaults for a project without a policy", async () => {
-  select.mockReturnValue({ from: () => ({ where: () => ({ limit: async () => [] }) }) });
   expect(await getNotificationPolicy(scope.projectId)).toEqual(DEFAULT_NOTIFICATION_POLICY);
+});
+
+it("does not re-check an unchanged escalation target, so a stale one cannot block saving other settings", async () => {
+  storedPolicy = [{ ...base, escalateAfterMinutes: 30, escalateChannelId: channel, autoInvestigateEnabledAt: null }];
+  isAssignableUser.mockResolvedValue(false);
+  expect(await saveNotificationPolicy(scope, { ...base, escalateAfterMinutes: 30, escalateChannelId: channel, autoInvestigateOnOpen: true })).toEqual({ success: true });
+  expect(select).not.toHaveBeenCalled();
+  // A newly chosen target is still checked.
+  storedPolicy = [{ ...base, autoInvestigateEnabledAt: null }];
+  expect(await saveNotificationPolicy(scope, { ...base, escalateAfterMinutes: 30, escalateUserId: member })).toMatchObject({ error: "The escalation member is not a member of this project" });
 });
 
 it("treats presets and templated webhooks as paging, not plain webhooks or other types", () => {

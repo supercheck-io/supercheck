@@ -44,6 +44,8 @@ test.describe('Paging channels @alerts @channels', () => {
     await row.getByRole('button', { name: 'Open menu' }).click();
     await page.getByRole('menuitem', { name: 'Send test page' }).click();
     const testDialog = page.getByTestId('channel-test-dialog');
+    // Nothing is sent until the user confirms in the dialog.
+    await testDialog.getByTestId('channel-test-send').click();
     await expect(testDialog).toContainText('HTTP 202 Accepted');
     await expect(testDialog.getByTestId('channel-test-status')).toHaveText('Delivered');
     await testDialog.getByRole('button', { name: 'Resolve test page' }).click();
@@ -69,8 +71,11 @@ test.describe('Paging channels @alerts @channels', () => {
     await row.getByRole('button', { name: 'Open menu' }).click();
     await page.getByRole('menuitem', { name: 'Send test page' }).click();
     const testDialog = page.getByTestId('channel-test-dialog');
+    // Nothing is sent until the user confirms in the dialog.
+    await testDialog.getByTestId('channel-test-send').click();
     await expect(testDialog.getByTestId('channel-test-status')).toHaveText('Failed');
     await expect(testDialog.getByTestId('channel-test-error')).toContainText('Check the integration key');
-    await expect(testDialog.getByRole('button', { name: 'Resolve test page' })).toBeDisabled();
+    // Resolve stays available: the test page always uses the same dedup key.
+    await expect(testDialog.getByRole('button', { name: 'Resolve test page' })).toBeEnabled();
   });
 });

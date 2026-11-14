@@ -553,6 +553,53 @@ export class DbService implements OnModuleInit {
    * Failure alerts actually delivered since the job's current failing streak began (its last non-failing run).
    * One alert fans out to a row per provider, so the count is the busiest provider's, not the row total.
    */
+  /**
+   * Paging channels with an open page for this job: their newest job alert row is a delivered failure or
+   * timeout (a delivered success means it was already resolved).
+   */
+  async getOpenJobPages(
+    jobId: string,
+    providerIds: string[],
+  ): Promise<Set<string>> {
+    if (providerIds.length === 0) return new Set();
+    try {
+      const rows = await this.db
+        .selectDistinctOn([schema.alertHistory.provider], {
+          provider: schema.alertHistory.provider,
+          type: schema.alertHistory.type,
+          status: schema.alertHistory.status,
+        })
+        .from(schema.alertHistory)
+        .where(
+          and(
+            eq(schema.alertHistory.jobId, jobId),
+            inArray(schema.alertHistory.provider, providerIds),
+            inArray(schema.alertHistory.type, [
+              'job_failed',
+              'job_timeout',
+              'job_success',
+            ]),
+            eq(schema.alertHistory.status, 'sent'),
+          ),
+        )
+        .orderBy(
+          schema.alertHistory.provider,
+          desc(schema.alertHistory.sentAt),
+        );
+      return new Set(
+        rows
+          .filter((row) => row.type !== 'job_success')
+          .map((row) => row.provider),
+      );
+    } catch (error) {
+      // Unknown history: no resolve (a stray resolve is harmless, but a lookup failure must not throw here).
+      this.logger.error(
+        `Failed to read open pages for job ${jobId}: ${(error as Error).message}`,
+      );
+      return new Set();
+    }
+  }
+
   async getJobAlertStreakState(
     jobId: string,
   ): Promise<{ sent: number; lastSentAt: Date | null; unknown?: boolean }> {

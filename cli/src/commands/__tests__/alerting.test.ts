@@ -156,6 +156,13 @@ describe('incident policy', () => {
     expect(mockPut).not.toHaveBeenCalled()
   })
 
+  it('set --repeat over a stored "at most 1" raises it to 3 unless --max is given', async () => {
+    mockGet.mockResolvedValueOnce({ data: { policy: { ...policy, renotifyMax: 1 } } })
+    mockPut.mockResolvedValueOnce({ data: { policy } })
+    await incidentCommand.parseAsync(['node', 'incident', 'policy', 'set', '--repeat', '60'])
+    expect(mockPut.mock.calls[0][1]).toMatchObject({ renotifyRepeatMinutes: 60, renotifyMax: 3 })
+  })
+
   it('set with a channel target clears the member target', async () => {
     mockGet.mockResolvedValueOnce({ data: { policy: { ...policy, escalateAfterMinutes: 30, escalateUserId: MEMBER } } })
     mockPut.mockResolvedValueOnce({ data: { policy } })

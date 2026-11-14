@@ -51,7 +51,7 @@ it("saves the chosen channels and a re-notify time", async () => {
       emailServiceOwnersOnSev12: false,
       renotifyUnackedMinutes: 20,
       renotifyRepeatMinutes: null,
-      renotifyMax: 1,
+      renotifyMax: 3,
       escalateAfterMinutes: null,
       escalateChannelId: null,
       escalateUserId: null,
@@ -144,6 +144,17 @@ it("says when the escalation target was removed and blocks Save until a new one 
   render(<ProjectIncidentPolicyDialog open onOpenChange={jest.fn()} projectId="p1" projectName="Prod" />);
   expect(await screen.findByText(/Escalation target was removed/)).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
+});
+
+it("keeps a stored target that lost access, says so, and still lets other settings be saved", async () => {
+  getPolicy.mockResolvedValue({ ...loaded, data: { ...loaded.data, members: [], policy: { ...loaded.data.policy, escalateAfterMinutes: 30, escalateUserId: "gone" } } });
+  savePolicy.mockResolvedValue({ success: true });
+  render(<ProjectIncidentPolicyDialog open onOpenChange={jest.fn()} projectId="p1" projectName="Prod" />);
+  expect(await screen.findByText(/Escalation target was removed/)).toBeInTheDocument();
+  const save = screen.getByRole("button", { name: "Save" });
+  expect(save).toBeEnabled();
+  fireEvent.click(save);
+  await waitFor(() => expect(savePolicy).toHaveBeenCalledWith("p1", expect.objectContaining({ escalateUserId: "gone", escalateAfterMinutes: 30 })));
 });
 
 it("shows paging channels as not selectable for incident messages", async () => {

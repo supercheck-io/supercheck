@@ -444,6 +444,12 @@ export const sreIncidents = pgTable(
     renotifyStoppedAt: timestamp("renotify_stopped_at", { withTimezone: true }),
     /** Set once when the escalation step fires (or its target was gone). Reset on reopen. */
     escalatedAt: timestamp("escalated_at", { withTimezone: true }),
+    /** Failed reminder sends in a row, and when the next attempt may be claimed (backoff). Reset on success and reopen. */
+    renotifyFailures: smallint("renotify_failures").notNull().default(0),
+    renotifyRetryAt: timestamp("renotify_retry_at", { withTimezone: true }),
+    /** Same for the escalation step. */
+    escalateFailures: smallint("escalate_failures").notNull().default(0),
+    escalateRetryAt: timestamp("escalate_retry_at", { withTimezone: true }),
     /** Alerts folded into this incident: 1 at open, +1 for each repeat alert while it stays open. */
     alertCount: integer("alert_count").notNull().default(1),
     /** When the latest alert (the opening one or a repeat) fired. */

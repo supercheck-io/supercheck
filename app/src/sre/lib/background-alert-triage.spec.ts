@@ -378,6 +378,18 @@ describe("processSreBackgroundAlertTriageJob", () => {
       expect(notifyIncidentEvent).not.toHaveBeenCalled();
     });
 
+    it("records a failed page on reopen with the fallback the reopen message used", async () => {
+      (reopenRecentlyAutoResolved as jest.Mock).mockResolvedValue({ incidentId: "inc-old", assigneeUserId: "u1", alreadyTriaged: true });
+      (announceSystemTransition as jest.Mock).mockImplementationOnce(async (_o, _p, _i, _e, extra: { report?: { fallback?: string } }) => {
+        if (extra.report) extra.report.fallback = "policy_channels";
+      });
+      selectQueue.push([alertRow({ status: "failed", deliveryMetadata: { version: 1, provider: { id: "p1", type: "webhook", preset: "pagerduty" }, delivery: { status: "failed", sentAt: "x", responseStatus: 503 } } })]);
+      selectQueue.push([], [{ id: "ae-1" }], [], []);
+      await processSreBackgroundAlertTriageJob(JOB);
+      const pageFailed = inserts.find((v) => (v as { eventData?: { kind?: string } }).eventData?.kind === "page_failed") as { incidentId: string; eventData: { fallback: string } } | undefined;
+      expect(pageFailed).toMatchObject({ incidentId: "inc-old", eventData: { fallback: "policy_channels" } });
+    });
+
     it("does not reopen an auto-resolved incident for a non-recoverable alert type", async () => {
       (reopenRecentlyAutoResolved as jest.Mock).mockResolvedValue({ incidentId: "inc-old", assigneeUserId: "u1", alreadyTriaged: true });
       selectQueue.push([alertRow({ type: "ssl_expiring" })]);

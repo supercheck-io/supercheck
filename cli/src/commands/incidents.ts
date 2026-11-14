@@ -121,6 +121,8 @@ policyCommand.command('set')
     if (options.firstReminder !== undefined) next.renotifyUnackedMinutes = minutesOrOff('--first-reminder', options.firstReminder)
     if (options.repeat !== undefined) next.renotifyRepeatMinutes = minutesOrOff('--repeat', options.repeat)
     if (max !== undefined) next.renotifyMax = max
+    // Turning repeat on over a stored "at most 1" would still remind once.
+    if (max === undefined && next.renotifyRepeatMinutes !== null && next.renotifyMax < 2) next.renotifyMax = 3
     if (options.escalateAfter !== undefined) next.escalateAfterMinutes = minutesOrOff('--escalate-after', options.escalateAfter)
     if (options.escalateChannel) Object.assign(next, { escalateChannelId: options.escalateChannel, escalateUserId: null })
     if (options.escalateMember) Object.assign(next, { escalateUserId: options.escalateMember, escalateChannelId: null })

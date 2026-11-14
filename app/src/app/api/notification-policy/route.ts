@@ -33,7 +33,8 @@ export async function PUT(req: NextRequest) {
     const read = await readCappedJson(req, MAX_BODY_BYTES);
     if (read.tooLarge) return NextResponse.json({ error: "Request body too large" }, { status: 413 });
     if (read.data === null || typeof read.data !== "object") return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
-    const body = read.data;
+    // A read-modify-write sends back what GET returned; the stamp is server-owned, so drop it rather than reject.
+    const { autoInvestigateEnabledAt: _ignored, ...body } = read.data as Record<string, unknown>;
     const result = await saveNotificationPolicy(
       { organizationId: context.organizationId, projectId: context.project.id, userId: context.userId },
       body,

@@ -52,6 +52,7 @@ export function ProjectIncidentPolicyDialog({ open, onOpenChange, projectId, pro
   const [escalateMinutes, setEscalateMinutes] = React.useState("30");
   const [escalateTarget, setEscalateTarget] = React.useState("");
   const [targetRemoved, setTargetRemoved] = React.useState(false);
+  const [staleTarget, setStaleTarget] = React.useState("");
   const [members, setMembers] = React.useState<PolicyMember[]>([]);
   const [autoInvestigate, setAutoInvestigate] = React.useState(false);
   const [loaded, setLoaded] = React.useState(false);
@@ -86,9 +87,16 @@ export function ProjectIncidentPolicyDialog({ open, onOpenChange, projectId, pro
       setMaxReminders(String(policy.renotifyMax ?? 3));
       setEscalate(policy.escalateAfterMinutes != null);
       setEscalateMinutes(String(policy.escalateAfterMinutes ?? 30));
-      setEscalateTarget(policy.escalateChannelId ? `channel:${policy.escalateChannelId}` : policy.escalateUserId ? `member:${policy.escalateUserId}` : "");
-      // A deleted channel or member clears the target (on delete set null); say so instead of silently not escalating.
-      setTargetRemoved(policy.escalateAfterMinutes != null && !policy.escalateChannelId && !policy.escalateUserId);
+      const storedTarget = policy.escalateChannelId ? `channel:${policy.escalateChannelId}` : policy.escalateUserId ? `member:${policy.escalateUserId}` : "";
+      // A deleted target clears the id (on delete set null); a disabled channel, a paging channel or a member who
+      // lost access stays stored but is no longer listed. Either way, say so instead of silently not escalating.
+      // An unusable stored target is kept as is, so saving other settings still works.
+      const usable =
+        (policy.escalateChannelId && available.some((channel) => channel.id === policy.escalateChannelId && !channel.paging)) ||
+        (policy.escalateUserId && (people ?? []).some((person) => person.id === policy.escalateUserId));
+      setEscalateTarget(storedTarget);
+      setStaleTarget(storedTarget !== "" && !usable ? storedTarget : "");
+      setTargetRemoved(policy.escalateAfterMinutes != null && !usable);
       setAutoInvestigate(policy.autoInvestigateOnOpen);
       setLoaded(true);
     });
@@ -99,7 +107,8 @@ export function ProjectIncidentPolicyDialog({ open, onOpenChange, projectId, pro
   const repeatValue = Number(repeatMinutes);
   const maxValue = Number(maxReminders);
   const repeatOn = renotify && repeat;
-  const repeatValid = !repeatOn || (inRange(repeatValue, 5, 1440) && inRange(maxValue, 1, 10));
+  // Repeating needs at least two reminders; "at most 1" would remind once.
+  const repeatValid = !repeatOn || (inRange(repeatValue, 5, 1440) && inRange(maxValue, 2, 10));
   const scheduleValid = !repeatOn || !repeatValid || minutesValue + (maxValue - 1) * repeatValue <= MAX_SCHEDULE_MINUTES;
   const escalateValue = Number(escalateMinutes);
   const escalateValid = !escalate || (inRange(escalateValue, 5, 1440) && escalateTarget !== "");
@@ -113,7 +122,8 @@ export function ProjectIncidentPolicyDialog({ open, onOpenChange, projectId, pro
         emailServiceOwnersOnSev12: emailOwners,
         renotifyUnackedMinutes: renotify ? minutesValue : null,
         renotifyRepeatMinutes: repeatOn ? repeatValue : null,
-        renotifyMax: repeatOn ? maxValue : 1,
+        // Kept as chosen even while repeat is off, so turning repeat on later keeps a sensible count.
+        renotifyMax: inRange(maxValue, 2, 10) ? maxValue : 3,
         escalateAfterMinutes: escalate ? escalateValue : null,
         escalateChannelId: escalate && escalateTarget.startsWith("channel:") ? escalateTarget.slice("channel:".length) : null,
         escalateUserId: escalate && escalateTarget.startsWith("member:") ? escalateTarget.slice("member:".length) : null,
@@ -233,7 +243,7 @@ export function ProjectIncidentPolicyDialog({ open, onOpenChange, projectId, pro
                         <Input
                       id="policy-max"
                       type="number"
-                      min={1}
+                      min={2}
                       max={10}
                       value={maxReminders}
                       onChange={(event) => setMaxReminders(event.target.value)}
@@ -246,6 +256,9 @@ export function ProjectIncidentPolicyDialog({ open, onOpenChange, projectId, pro
                       <span className="text-muted-foreground">off (remind once)</span>
                     )}
                   </div>
+                  {repeatOn && !repeatValid && (
+                    <p role="alert" className="text-xs text-destructive">Repeat every 5 to 1,440 minutes, at most 2 to 10 reminders.</p>
+                  )}
                   {!scheduleValid && (
                     <p role="alert" className="text-xs text-destructive">Reminders must finish within 2 days. Use fewer reminders or a shorter interval.</p>
                   )}
@@ -279,6 +292,11 @@ export function ProjectIncidentPolicyDialog({ open, onOpenChange, projectId, pro
                       <SelectValue placeholder="Choose a channel or a member" />
                     </SelectTrigger>
                     <SelectContent>
+                      {staleTarget && (
+                        <SelectItem value={staleTarget} disabled>
+                          {staleTarget.startsWith("channel:") ? "Removed or disabled channel" : "Member without access"}
+                        </SelectItem>
+                      )}
                       <SelectGroup>
                         <SelectLabel>Channels</SelectLabel>
                         {channels.length === 0 && <SelectItem value="none-channels" disabled>No channels</SelectItem>}
@@ -297,7 +315,11 @@ export function ProjectIncidentPolicyDialog({ open, onOpenChange, projectId, pro
                       </SelectGroup>
                     </SelectContent>
                   </Select>
-                  {targetRemoved && <p role="alert" className="text-xs text-destructive">Escalation target was removed. Choose a new one.</p>}
+                  {targetRemoved && (
+                    <p role="alert" className="text-xs text-destructive">
+                      Escalation target was removed. Nothing is escalated until you choose a new one or turn escalation off.
+                    </p>
+                  )}
                 </div>
               )}
               <p className="text-xs text-muted-foreground">Reminders stop when someone acknowledges, resolves or lowers the severity.</p>

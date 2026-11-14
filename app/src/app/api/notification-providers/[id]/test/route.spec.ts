@@ -31,6 +31,8 @@ jest.mock("@/lib/notification-providers/connection-test", () => ({
   testEmailConnection: jest.fn(), testTeamsConnection: jest.fn(), testTelegramConnection: jest.fn(), testDiscordConnection: jest.fn(),
 }));
 jest.mock("@/lib/deletion/org-state");
+const recordProviderTest = jest.fn();
+jest.mock("@/lib/notification-providers/health", () => ({ recordProviderTest: (...a: unknown[]) => recordProviderTest(...a) }));
 let mockInternal = false;
 jest.mock("@/lib/url-validator", () => ({ ...jest.requireActual("@/lib/url-validator"), allowInternalWebhookTargets: () => mockInternal }));
 
@@ -62,6 +64,8 @@ describe("POST /api/notification-providers/[id]/test (A20)", () => {
     expect(url).toBe("https://events.pagerduty.com/v2/enqueue");
     expect(JSON.parse(init.body)).toEqual({ event_action: "trigger", dedup_key: `test:${PROVIDER}`, payload: { severity: "critical" } });
     expect(logAuditEvent).toHaveBeenCalledWith(expect.objectContaining({ action: "notification_provider_test_sent", resourceId: PROVIDER, success: true }));
+    // The outcome feeds channel health, so a fixed key clears the badge at once.
+    expect(recordProviderTest).toHaveBeenCalledWith(PROVIDER, expect.objectContaining({ ok: true, responseStatus: 202 }));
     // The integration key never comes back.
     expect(JSON.stringify(body)).not.toContain("secret-integration-key");
   });

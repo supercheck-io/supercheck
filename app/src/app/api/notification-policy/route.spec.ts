@@ -46,6 +46,12 @@ it("saves for a project admin, scoped to the token's project, then returns the s
   expect((await res.json()).policy).toEqual(stored);
 });
 
+it("accepts the policy exactly as GET returned it (the server-owned stamp is ignored)", async () => {
+  const res = await put(JSON.stringify({ renotifyUnackedMinutes: 15, autoInvestigateEnabledAt: "2026-11-14T00:00:00Z" }));
+  expect(res.status).toBe(200);
+  expect(saveNotificationPolicy).toHaveBeenCalledWith(expect.anything(), { renotifyUnackedMinutes: 15 });
+});
+
 it("returns the validation error as 400", async () => {
   saveNotificationPolicy.mockResolvedValue({ success: false, error: "Reminders must finish within 2 days" });
   const res = await put("{}");

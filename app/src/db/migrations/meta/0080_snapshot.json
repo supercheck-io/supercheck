@@ -1,5 +1,5 @@
 {
-  "id": "c1e97fe5-e7ac-41e6-8a59-c8c2f61a60e4",
+  "id": "4a755f50-91b6-4277-add0-239a3459b4d2",
   "prevId": "6b56f1f8-769b-4853-8a02-da5a7ec0d11d",
   "version": "7",
   "dialect": "postgresql",
@@ -18567,6 +18567,32 @@
         },
         "escalated_at": {
           "name": "escalated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "renotify_failures": {
+          "name": "renotify_failures",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "renotify_retry_at": {
+          "name": "renotify_retry_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "escalate_failures": {
+          "name": "escalate_failures",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "escalate_retry_at": {
+          "name": "escalate_retry_at",
           "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": false

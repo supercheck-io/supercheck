@@ -199,8 +199,9 @@ it("A6: a failed send gives the reminder back to its previous count and time", a
   const after = await row(id);
   expect(after.renotify_count).toBe(1);
   expect(new Date(after.renotified_at).getTime()).toBe(new Date(before.renotified_at).getTime());
-  // Retried on a later tick.
-  expect(await renotifyUnacknowledgedIncidents(at(76))).toBe(1);
+  // Not before its 2-minute backoff, then retried.
+  expect(await renotifyUnacknowledgedIncidents(at(76))).toBe(0);
+  expect(await renotifyUnacknowledgedIncidents(at(77))).toBe(1);
   expect((await row(id)).renotify_count).toBe(2);
 });
 
@@ -236,7 +237,7 @@ it("A7: a scheduled maintenance holds the send without using a reminder", async 
     VALUES (${randomUUID()}, ${id}, ${alertEvent}, 'trigger', 'down', 'sev2', ${T0.toISOString()})`;
   await client`INSERT INTO status_page_component_monitors (component_id, monitor_id) VALUES (${component}, ${monitor})`;
   await client`INSERT INTO incidents (id, status_page_id, name, status, impact, scheduled_for, scheduled_until)
-    VALUES (${maintenanceId}, ${statusPage}, 'm', 'scheduled', 'maintenance', ${at(0).toISOString()}, ${at(60).toISOString()})`;
+    VALUES (${maintenanceId}, ${statusPage}, 'm', 'scheduled', 'none', ${at(0).toISOString()}, ${at(60).toISOString()})`;
   await client`INSERT INTO incident_components (id, incident_id, component_id, old_status, new_status) VALUES (${randomUUID()}, ${maintenanceId}, ${component}, 'operational', 'under_maintenance')`;
 
   // Held: nothing sent, nothing counted, no reminder used.
@@ -310,7 +311,10 @@ describe("A9: escalation", () => {
     notifyIncidentEvent.mockResolvedValueOnce(false);
     await renotifyUnacknowledgedIncidents(at(30));
     expect((await row(id)).escalated_at).toBeNull();
+    // Waits out the 2-minute backoff.
     await renotifyUnacknowledgedIncidents(at(31));
+    expect((await row(id)).escalated_at).toBeNull();
+    await renotifyUnacknowledgedIncidents(at(32));
     expect((await row(id)).escalated_at).not.toBeNull();
     expect(sends("escalated")).toHaveLength(2);
   });

@@ -1,26 +1,34 @@
 import { normalizeWebhookHeaders } from "@/lib/notification-providers/validation";
 
 const AUTH_SCHEMES = /^(bearer|basic|token|geniekey)$/i;
+const SENSITIVE_NAME = /(auth|key|token|secret|password|signature|session|cookie)/i;
+/** `"routing_key": "abc"` style values in a body template; templated values (`{{...}}`) are not secrets. */
+const TEMPLATE_SECRET = /"([A-Za-z0-9_-]*(?:key|token|secret|password|signature)[A-Za-z0-9_-]*)"\s*:\s*"([^"{}]+)"/gi;
 
 /**
- * The channel's own secrets removed from vendor text that may echo the request: every header value (and each of its
- * words, so "GenieKey abc" also drops "abc"), plus URL path segments, query values and password, both encoded and
- * decoded. Header values are known credentials and are always redacted; URL parts are guesses, so short ones
- * ("v2", "alerts") are kept to leave the text readable.
+ * The channel's own secrets removed from vendor text that may echo the request:
+ * - values of sensitive-looking headers (and each word, so "GenieKey abc" drops "abc"), at any length;
+ * - other header values only when long, so harmless ones ("2", "true") do not garble the text;
+ * - literal key/token values in the body template (a PagerDuty routing key, for example);
+ * - URL path segments, query values and password, raw, decoded and encoded (guesses, so only longer ones).
  */
 export function redactChannelSecrets(text: string, config: Record<string, unknown>): string {
   const known = new Set<string>();
+  const guessed = new Set<string>();
   let headers: Record<string, string> = {};
   try {
     headers = normalizeWebhookHeaders(config.headers) ?? {};
   } catch {
     // Invalid stored headers were never sent, so there is nothing of theirs to echo.
   }
-  for (const value of Object.values(headers)) {
-    known.add(value);
-    for (const part of value.split(/\s+/)) if (part && !AUTH_SCHEMES.test(part)) known.add(part);
+  for (const [name, value] of Object.entries(headers)) {
+    const target = SENSITIVE_NAME.test(name) ? known : guessed;
+    target.add(value);
+    for (const part of value.split(/\s+/)) if (part && !AUTH_SCHEMES.test(part)) target.add(part);
   }
-  const guessed = new Set<string>();
+  if (typeof config.bodyTemplate === "string") {
+    for (const match of config.bodyTemplate.matchAll(TEMPLATE_SECRET)) known.add(match[2]);
+  }
   const both = (value: string) => {
     guessed.add(value);
     try {

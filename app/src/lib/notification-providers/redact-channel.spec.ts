@@ -17,3 +17,13 @@ it("survives a missing or malformed URL", () => {
   expect(redactChannelSecrets("plain", {})).toBe("plain");
   expect(redactChannelSecrets("plain", { headers: "not an object" })).toBe("plain");
 });
+
+it("redacts literal keys from the body template, not templated values", () => {
+  const config = { bodyTemplate: '{"routing_key":"R0uTiNg123","dedup_key":"{{dedupKey}}","payload":{"summary":"{{title}}"}}' };
+  expect(redactChannelSecrets("invalid routing_key R0uTiNg123 for {{dedupKey}}", config)).toBe("invalid routing_key [redacted] for {{dedupKey}}");
+});
+
+it("keeps short values of ordinary headers readable", () => {
+  const config = { headers: { "X-Retry": "2", "X-Debug": "true", "X-Api-Key": "k9" } };
+  expect(redactChannelSecrets("retry 2, debug true, key k9", config)).toBe("retry 2, debug true, key [redacted]");
+});

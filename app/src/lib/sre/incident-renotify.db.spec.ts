@@ -72,8 +72,10 @@ it("gives the reminder back when every send failed, so a later tick retries it",
   expect(await renotifyUnacknowledgedIncidents()).toBe(1);
   const [row] = await client`SELECT renotified_at FROM sre_incidents WHERE id = ${ids.due}`;
   expect(row.renotified_at).toBeNull();
-  expect(await renotifyUnacknowledgedIncidents()).toBe(1);
-  await client`UPDATE sre_incidents SET renotified_at = NULL WHERE id = ${ids.due}`;
+  // It waits out its 2-minute backoff, then goes again.
+  expect(await renotifyUnacknowledgedIncidents()).toBe(0);
+  expect(await renotifyUnacknowledgedIncidents(new Date(Date.now() + 3 * 60_000))).toBe(1);
+  await client`UPDATE sre_incidents SET renotified_at = NULL, renotify_failures = 0, renotify_retry_at = NULL WHERE id = ${ids.due}`;
   notifyIncidentEvent.mockClear();
 });
 

@@ -62,20 +62,33 @@ it("A8: sends when Redis is unavailable", async () => {
 describe("renotifyUnacknowledgedIncidents branching (SQL is covered by the .db specs)", () => {
   const { db } = jest.requireMock("@/utils/db") as { db: Record<string, unknown> };
   const { notifyIncidentEvent } = jest.requireMock("@/lib/sre/incident-notifier") as { notifyIncidentEvent: jest.Mock };
-  const executeQueue: unknown[][] = [];
+  const { PgDialect } = jest.requireActual("drizzle-orm/pg-core");
+  // Claims are told apart by their SQL, so the order of the two loops does not matter to the tests.
+  const reminderClaims: unknown[][] = [];
+  const escalationClaims: unknown[][] = [];
+  const claimSql: string[] = [];
+  const claimParams: unknown[][] = [];
   const updates: Array<Record<string, unknown>> = [];
   const inserts: Array<Record<string, unknown>> = [];
   let channelRows: unknown[] = [];
-  const reminder = (over: Record<string, unknown> = {}) => ({ id: "i1", organization_id: "org-a", project_id: "p1", created_at: new Date("2026-11-14T08:00:00Z"), reopened_at: null, renotify_count: 2, prev_count: 1, prev_at: new Date("2026-11-14T08:15:00Z"), max: 3, ...over });
-  const escalation = (over: Record<string, unknown> = {}) => ({ id: "e1", organization_id: "org-a", project_id: "p1", escalate_channel_id: "c1", escalate_user_id: null, ...over });
+  const reminder = (over: Record<string, unknown> = {}) => ({ id: "i1", organization_id: "org-a", project_id: "p1", created_at: new Date("2026-11-14T08:00:00Z"), reopened_at: null, renotify_count: 2, prev_count: 1, prev_at: new Date("2026-11-14T08:15:00Z"), failures: 0, max: 3, ...over });
+  const escalation = (over: Record<string, unknown> = {}) => ({ id: "e1", organization_id: "org-a", project_id: "p1", escalate_channel_id: "c1", escalate_user_id: null, failures: 0, ...over });
   const now = new Date("2026-11-14T10:00:00Z");
 
   beforeEach(() => {
-    executeQueue.length = 0;
+    reminderClaims.length = 0;
+    escalationClaims.length = 0;
+    claimSql.length = 0;
+    claimParams.length = 0;
     updates.length = 0;
     inserts.length = 0;
     channelRows = [{ type: "slack", config: {}, projectId: "p1" }];
-    db.execute = jest.fn(async () => executeQueue.shift() ?? []);
+    db.execute = jest.fn(async (query: unknown) => {
+      const { sql: text, params } = new PgDialect().sqlToQuery(query);
+      claimSql.push(text);
+      claimParams.push(params);
+      return (text.includes("SET escalated_at") ? escalationClaims : reminderClaims).shift() ?? [];
+    });
     db.update = jest.fn(() => ({ set: (values: Record<string, unknown>) => { updates.push(values); return { where: async () => undefined }; } }));
     db.insert = jest.fn(() => ({ values: (row: Record<string, unknown>) => { inserts.push(row); return Promise.resolve(); } }));
     db.select = jest.fn(() => ({ from: () => ({ where: () => ({ limit: async () => channelRows }) }) }));
@@ -84,65 +97,90 @@ describe("renotifyUnacknowledgedIncidents branching (SQL is covered by the .db s
     resetHeldIncidentsForTest();
   });
 
-  it("skips incidents found held for maintenance in later ticks for a few minutes, then rechecks them", async () => {
-    const { PgDialect } = jest.requireActual("drizzle-orm/pg-core");
-    const params = (call: number) => new PgDialect().sqlToQuery((db.execute as jest.Mock).mock.calls[call][0]).params as unknown[];
-    mockHeld.mockResolvedValueOnce(true);
-    executeQueue.push([reminder()], [], []);
+  it("claims escalations before reminders", async () => {
     await renotifyUnacknowledgedIncidents(now);
-    (db.execute as jest.Mock).mockClear();
-    await renotifyUnacknowledgedIncidents(new Date(now.getTime() + 60_000));
-    expect(params(0)).toContain("i1");
-    (db.execute as jest.Mock).mockClear();
-    await renotifyUnacknowledgedIncidents(new Date(now.getTime() + 6 * 60_000));
-    expect(params(0)).not.toContain("i1");
+    expect(claimSql[0]).toContain("SET escalated_at");
   });
 
-  it("sends a claimed reminder with its number and per-reminder dedupe key", async () => {
-    executeQueue.push([reminder()], [], []);
+  it("sends a claimed reminder with its number and per-reminder dedupe key, and counts it", async () => {
+    reminderClaims.push([reminder()]);
     expect(await renotifyUnacknowledgedIncidents(now)).toBe(1);
     expect(notifyIncidentEvent).toHaveBeenCalledWith(expect.objectContaining({ event: "unacknowledged", reminder: { n: 2, of: 3 }, dedupeDiscriminator: "renotify:0:2" }));
     expect(updates).toEqual([]);
-    expect(incr).toHaveBeenCalledTimes(1);
+    expect(incr).toHaveBeenCalledWith(expect.stringContaining("renotify:org:org-a"));
   });
 
-  it("releases to the previous count and time when the send fails, and counts the failure", async () => {
-    executeQueue.push([reminder()], [], []);
+  it("a failed reminder goes back with a 2-minute backoff and does not count against the cap", async () => {
+    reminderClaims.push([reminder()]);
     notifyIncidentEvent.mockResolvedValueOnce(false);
     const stats = { failed: 0 };
     await renotifyUnacknowledgedIncidents(now, stats);
     expect(stats.failed).toBe(1);
-    expect(updates).toEqual([{ renotifyCount: 1, renotifiedAt: new Date("2026-11-14T08:15:00Z") }]);
-    // A failed send does not count against the org's cap.
+    expect(updates).toEqual([{ renotifyCount: 1, renotifiedAt: new Date("2026-11-14T08:15:00Z"), renotifyFailures: 1, renotifyRetryAt: new Date(now.getTime() + 2 * 60_000) }]);
     expect(incr).not.toHaveBeenCalled();
   });
 
-  it("releases without sending while held for maintenance or over the org cap", async () => {
-    mockHeld.mockResolvedValueOnce(true);
-    executeQueue.push([reminder()], [], []);
+  it("backs off longer each time and gives up after 5 failures with a timeline note", async () => {
+    reminderClaims.push([reminder({ failures: 3 })]);
+    notifyIncidentEvent.mockResolvedValueOnce(false);
     await renotifyUnacknowledgedIncidents(now);
-    expect(notifyIncidentEvent).not.toHaveBeenCalled();
-    expect(updates).toHaveLength(1);
+    expect(updates[0]).toMatchObject({ renotifyFailures: 4, renotifyRetryAt: new Date(now.getTime() + 16 * 60_000) });
 
     updates.length = 0;
-    for (let i = 0; i < ORG_SENDS_PER_HOUR; i++) await recordOrgIncidentSend("org-a", now);
-    // A capped org is skipped for the rest of the tick (its id goes to the claim SQL), and holds are not counted as sends.
-    executeQueue.push([reminder()], [], [escalation()], []);
-    expect(await renotifyUnacknowledgedIncidents(now)).toBe(0);
-    expect(notifyIncidentEvent).not.toHaveBeenCalled();
-    expect(updates).toEqual([{ renotifyCount: 1, renotifiedAt: expect.any(Date) }, { escalatedAt: null }]);
-    expect(get).toHaveBeenCalledTimes(1);
+    reminderClaims.push([reminder({ failures: 4 })]);
+    notifyIncidentEvent.mockResolvedValueOnce(false);
+    await renotifyUnacknowledgedIncidents(now);
+    // Not released: the reminder stays used; failures are cleared for the next one.
+    expect(updates).toEqual([{ renotifyFailures: 0, renotifyRetryAt: null }]);
+    expect(inserts).toEqual([expect.objectContaining({ eventData: expect.objectContaining({ kind: "reminder", n: 2, failed: true, attempts: 5, reached: 0 }) })]);
   });
 
-  it("escalates to a usable channel", async () => {
-    executeQueue.push([], [escalation()], []);
+  it("clears the failure count after a successful retry", async () => {
+    reminderClaims.push([reminder({ failures: 2 })]);
+    await renotifyUnacknowledgedIncidents(now);
+    expect(updates).toEqual([{ renotifyFailures: 0, renotifyRetryAt: null }]);
+  });
+
+  it("releases without sending while held for maintenance or over the org cap, without touching failures", async () => {
+    mockHeld.mockResolvedValueOnce(true);
+    reminderClaims.push([reminder()]);
+    await renotifyUnacknowledgedIncidents(now);
+    expect(notifyIncidentEvent).not.toHaveBeenCalled();
+    expect(updates).toEqual([{ renotifyCount: 1, renotifiedAt: expect.any(Date) }]);
+
+    updates.length = 0;
+    for (let i = 0; i < ORG_SENDS_PER_HOUR; i++) await recordOrgIncidentSend("org-a", now, "reminder");
+    reminderClaims.push([reminder()]);
+    escalationClaims.push([escalation()]);
+    // Reminders are capped; escalations have their own budget and still go out.
+    expect(await renotifyUnacknowledgedIncidents(now)).toBe(1);
+    expect(notifyIncidentEvent).toHaveBeenCalledTimes(1);
+    expect(notifyIncidentEvent).toHaveBeenCalledWith(expect.objectContaining({ event: "escalated" }));
+    expect(updates).toEqual([{ renotifyCount: 1, renotifiedAt: expect.any(Date) }]);
+  });
+
+  it("skips incidents found held for maintenance in later ticks for a few minutes, then rechecks them", async () => {
+    mockHeld.mockResolvedValueOnce(true);
+    reminderClaims.push([reminder()]);
+    await renotifyUnacknowledgedIncidents(now);
+    claimParams.length = 0;
+    await renotifyUnacknowledgedIncidents(new Date(now.getTime() + 60_000));
+    expect(claimParams.every((params) => params.includes("i1"))).toBe(true);
+    claimParams.length = 0;
+    await renotifyUnacknowledgedIncidents(new Date(now.getTime() + 6 * 60_000));
+    expect(claimParams.some((params) => params.includes("i1"))).toBe(false);
+  });
+
+  it("escalates to a usable channel and counts it on the escalation cap", async () => {
+    escalationClaims.push([escalation()]);
     expect(await renotifyUnacknowledgedIncidents(now)).toBe(1);
     expect(notifyIncidentEvent).toHaveBeenCalledWith(expect.objectContaining({ event: "escalated", targets: { providerIds: ["c1"] } }));
+    expect(incr).toHaveBeenCalledWith(expect.stringContaining("escalate:org:org-a"));
   });
 
   it("escalates to a member who can act", async () => {
     mockAssignable.mockResolvedValueOnce(true);
-    executeQueue.push([], [escalation({ escalate_channel_id: null, escalate_user_id: "u1" })], []);
+    escalationClaims.push([escalation({ escalate_channel_id: null, escalate_user_id: "u1" })]);
     await renotifyUnacknowledgedIncidents(now);
     expect(notifyIncidentEvent).toHaveBeenCalledWith(expect.objectContaining({ targets: { userIds: ["u1"] } }));
   });
@@ -155,24 +193,32 @@ describe("renotifyUnacknowledgedIncidents branching (SQL is covered by the .db s
     ["no target at all", () => undefined, escalation({ escalate_channel_id: null })],
   ])("treats %s as terminal: noted once, not released", async (_name, arrange, row) => {
     arrange();
-    executeQueue.push([], [row], []);
+    escalationClaims.push([row]);
     await renotifyUnacknowledgedIncidents(now);
     expect(notifyIncidentEvent).not.toHaveBeenCalled();
     expect(updates).toEqual([]);
     expect(inserts).toEqual([expect.objectContaining({ eventType: "notification", eventData: expect.objectContaining({ kind: "escalation", reached: 0 }) })]);
   });
 
-  it("releases an escalation whose send failed or whose target lookup threw", async () => {
-    executeQueue.push([], [escalation()], []);
+  it("a failed escalation is retried with backoff and given up after 5 failures", async () => {
+    escalationClaims.push([escalation()]);
     notifyIncidentEvent.mockRejectedValueOnce(new Error("down"));
     const stats = { failed: 0 };
     await renotifyUnacknowledgedIncidents(now, stats);
     expect(stats.failed).toBe(1);
-    expect(updates).toEqual([{ escalatedAt: null }]);
+    expect(updates).toEqual([{ escalatedAt: null, escalateFailures: 1, escalateRetryAt: new Date(now.getTime() + 2 * 60_000) }]);
 
     updates.length = 0;
+    escalationClaims.push([escalation({ failures: 4 })]);
+    notifyIncidentEvent.mockResolvedValueOnce(false);
+    await renotifyUnacknowledgedIncidents(now);
+    expect(updates).toEqual([{ escalateFailures: 0, escalateRetryAt: null }]);
+    expect(inserts).toEqual([expect.objectContaining({ eventData: expect.objectContaining({ kind: "escalation", failed: true, attempts: 5 }) })]);
+  });
+
+  it("releases an escalation, without counting a failure, when the target lookup throws", async () => {
     db.select = jest.fn(() => { throw new Error("db down"); });
-    executeQueue.push([], [escalation()], []);
+    escalationClaims.push([escalation()]);
     await renotifyUnacknowledgedIncidents(now);
     expect(updates).toEqual([{ escalatedAt: null }]);
   });

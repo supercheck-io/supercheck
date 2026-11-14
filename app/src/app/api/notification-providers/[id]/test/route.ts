@@ -23,6 +23,7 @@ import { presetOverrides, presetResolveRequest } from "@/lib/notification-provid
 import { normalizeWebhookHeaders } from "@/lib/notification-providers/validation";
 import { WEBHOOK_SAMPLE_TEMPLATE_VARIABLES } from "@/lib/notification-providers/webhook-preview";
 import { normalizeWebhookMethod, renderWebhookJsonTemplate } from "@/lib/notification-providers/webhook-template";
+import { recordProviderTest } from "@/lib/notification-providers/health";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { fetchChannelWebhookEndpoint } from "@/lib/sre/connectors/pinned-fetch";
 import { isUuid } from "@/lib/uuid";
@@ -94,6 +95,7 @@ export async function POST(req: NextRequest, context: { params: Promise<{ id: st
     const preset = typeof config.preset === "string" ? config.preset : undefined;
     const result = provider.type === "webhook" ? await sendTestPage(provider.id, config, action) : await sendTestMessage(provider.type, config, auth);
 
+    await recordProviderTest(provider.id, result);
     await logAuditEvent({
       userId: auth.userId,
       organizationId: auth.organizationId,

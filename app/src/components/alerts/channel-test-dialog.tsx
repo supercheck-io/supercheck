@@ -80,7 +80,6 @@ export function ChannelTestDialog({
 type TestState = {
   result: ChannelTestResult | null;
   pending: "trigger" | "resolve" | null;
-  triggered: boolean;
 };
 
 async function sendSafely(
@@ -94,14 +93,9 @@ async function sendSafely(
   }
 }
 
-/** A failed resolve keeps the page resolvable; a trigger sets it from its own outcome; a resolved page is closed. */
-function settle(prev: TestState, next: ChannelTestResult): TestState {
-  return {
-    result: next,
-    pending: null,
-    triggered:
-      next.action === "trigger" ? next.ok : next.ok ? false : prev.triggered,
-  };
+/** The latest outcome replaces the previous one. */
+function settle(next: ChannelTestResult): TestState {
+  return { result: next, pending: null };
 }
 
 function ChannelTestBody({
@@ -111,13 +105,12 @@ function ChannelTestBody({
   channel: NotificationChannel;
   onClose: () => void;
 }) {
-  // `triggered`: an open page stays resolvable after a failed resolve; a successful trigger or resolve updates it.
+  // Nothing is sent until the user asks: a test page wakes whoever is on call.
   const [state, setState] = useState<TestState>({
     result: null,
-    pending: "trigger",
-    triggered: false,
+    pending: null,
   });
-  const { result, pending, triggered } = state;
+  const { result, pending } = state;
   const mounted = useRef(true);
 
   const preset =
@@ -131,21 +124,17 @@ function ChannelTestBody({
   const run = (action: "trigger" | "resolve") => {
     setState((prev) => ({ ...prev, pending: action }));
     void sendSafely(channel.id, action).then((next) => {
-      if (mounted.current) setState((prev) => settle(prev, next));
+      if (mounted.current) setState(settle(next));
     });
   };
 
-  // Opening sends the first test (state starts as pending "trigger"); the body is keyed by channel, so once.
-  const channelId = channel.id;
+  // Results that arrive after the dialog closed or moved to another channel are dropped.
   useEffect(() => {
     mounted.current = true;
-    void sendSafely(channelId, "trigger").then((next) => {
-      if (mounted.current) setState((prev) => settle(prev, next));
-    });
     return () => {
       mounted.current = false;
     };
-  }, [channelId]);
+  }, []);
 
   const authFailed =
     result?.responseStatus === 401 || result?.responseStatus === 403;
@@ -156,8 +145,10 @@ function ChannelTestBody({
         <DialogTitle>{`Test ${noun}: ${channel.name ?? ""}`}</DialogTitle>
         <DialogDescription>
           {isPreset
-            ? `Sent to ${PAGING_SERVICE_NAMES[preset] ?? "the paging service"} with the channel's saved settings.`
-            : "Sent with the channel's saved settings."}
+            ? `Sends a real page to ${PAGING_SERVICE_NAMES[preset] ?? "the paging service"} with the channel's saved settings, and may wake whoever is on call. Resolve it when you are done; the test page always uses the same dedup key, so it can be resolved later too.`
+            : isWebhook
+              ? "Sends a test page with the channel's saved settings."
+              : "Sends a test message with the channel's saved settings."}
         </DialogDescription>
       </DialogHeader>
       <div className="space-y-3 text-sm" aria-live="polite">
@@ -231,7 +222,7 @@ function ChannelTestBody({
           <Button
             variant="outline"
             onClick={() => run("resolve")}
-            disabled={pending !== null || !triggered}
+            disabled={pending !== null}
           >
             {pending === "resolve" && (
               <Loader2
@@ -246,8 +237,12 @@ function ChannelTestBody({
           variant="outline"
           onClick={() => run("trigger")}
           disabled={pending !== null}
+          data-testid="channel-test-send"
         >
-          Send again
+          {pending === "trigger" && (
+            <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" />
+          )}
+          {result ? "Send again" : `Send test ${noun}`}
         </Button>
         <Button onClick={onClose}>Close</Button>
       </DialogFooter>

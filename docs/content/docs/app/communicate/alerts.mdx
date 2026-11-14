@@ -463,7 +463,7 @@ Notifications hide credentials in a monitor's target URL: user name and password
 
 ### Test a page
 
-On **Communicate → Notifications → Channels**, open a channel's menu and select **Send test page** (webhooks and paging services) or **Send test message** (other channels). The test goes through the saved channel, so you do not re-enter its secrets. For a webhook, the dialog shows the receiver's HTTP status, the time it took, the first 1,024 characters of its response (credentials redacted) and the dedup key `test:<channel id>`; for a paging service, **Resolve test page** closes the test page again. Editors and above can send tests, within the same per-user limits as **Test Connection**. From the CLI: `supercheck notification test <id>` and `supercheck notification test <id> --resolve`.
+On **Communicate → Notifications → Channels**, open a channel's menu and select **Send test page** (webhooks and paging services) or **Send test message** (other channels). The test goes through the saved channel, so you do not re-enter its secrets. Nothing is sent until you select **Send test page** in the dialog: a test page is a real page and can wake whoever is on call. For a webhook, the dialog shows the receiver's HTTP status, the time it took, the first 1,024 characters of its response (credentials redacted) and the dedup key `test:<channel id>`; for a paging service, **Resolve test page** closes the test page again, also one left open from an earlier test. A successful test clears the channel's **Check the integration key** badge. Editors and above can send tests, within the same per-user limits as **Test Connection**. From the CLI: `supercheck notification test <id>` and `supercheck notification test <id> --resolve`.
 
 A channel whose latest delivery in the past 7 days was rejected with HTTP 401 or 403 shows **Check the integration key**; any other failed latest delivery shows **Last delivery failed**.
 
@@ -476,6 +476,8 @@ When a paging service still fails and the check opens an incident, the incident 
 ### One-way paging
 
 Supercheck sends trigger and resolve events only. Acknowledging or closing the page in PagerDuty, Opsgenie or another service does not change the Supercheck incident, and incident reminders and escalation are never sent to paging services, because the service already repeats and escalates its own page. Acknowledge or resolve the incident in Supercheck too.
+
+A job's page is resolved once, on the first passing run after the failure (past its recovery threshold), whether or not **Alert on success** is on; later passing runs send the paging service nothing.
 
 ## Delivery History
 

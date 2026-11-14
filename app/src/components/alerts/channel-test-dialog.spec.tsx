@@ -19,43 +19,58 @@ beforeEach(() => {
   global.fetch = jest.fn();
 });
 
-it("sends a test page on open and shows what the vendor answered", async () => {
+const open = (props: Partial<NotificationChannel> = {}) => render(<ChannelTestDialog channel={channel(props)} onOpenChange={jest.fn()} />);
+const send = () => fireEvent.click(screen.getByTestId("channel-test-send"));
+
+it("sends nothing when it opens, and warns that a real page goes out", () => {
+  open();
+  expect(global.fetch).not.toHaveBeenCalled();
+  expect(screen.getByText(/may wake whoever is on call/)).toBeInTheDocument();
+  expect(screen.getByTestId("channel-test-send")).toHaveTextContent("Send test page");
+});
+
+it("sends a test page on request and shows what the vendor answered", async () => {
   (global.fetch as jest.Mock).mockResolvedValueOnce(
     reply(200, { ok: true, action: "trigger", responseStatus: 202, responseStatusText: "Accepted", responseExcerpt: '{"status":"success"}', elapsedMs: 120, dedupKey: "test:ch-1" }),
   );
-  render(<ChannelTestDialog channel={channel()} onOpenChange={jest.fn()} />);
+  open();
+  send();
   expect(await screen.findByText("HTTP 202 Accepted")).toBeInTheDocument();
   expect(screen.getByTestId("channel-test-status")).toHaveTextContent("Delivered");
   expect(screen.getByText("test:ch-1")).toBeInTheDocument();
   expect(screen.getByText("120 ms")).toBeInTheDocument();
+  expect(screen.getByTestId("channel-test-send")).toHaveTextContent("Send again");
   expect(global.fetch).toHaveBeenCalledWith("/api/notification-providers/ch-1/test", expect.objectContaining({ method: "POST", body: JSON.stringify({ action: "trigger" }) }));
 });
 
-it("resolves the test page for a paging preset", async () => {
+it("resolves a test page, also one left open earlier, and allows a retry after a failed resolve", async () => {
   (global.fetch as jest.Mock)
-    .mockResolvedValueOnce(reply(200, { ok: true, action: "trigger", responseStatus: 202, dedupKey: "test:ch-1" }))
-    .mockResolvedValueOnce(reply(200, { ok: true, action: "resolve", responseStatus: 202, dedupKey: "test:ch-1" }));
-  render(<ChannelTestDialog channel={channel()} onOpenChange={jest.fn()} />);
-  const resolve = await screen.findByRole("button", { name: "Resolve test page" });
-  await waitFor(() => expect(resolve).toBeEnabled());
+    .mockResolvedValueOnce(reply(200, { ok: false, action: "resolve", responseStatus: 503 }))
+    .mockResolvedValueOnce(reply(200, { ok: true, action: "resolve", responseStatus: 202 }));
+  open();
+  const resolve = screen.getByRole("button", { name: "Resolve test page" });
+  expect(resolve).toBeEnabled();
+  fireEvent.click(resolve);
+  await waitFor(() => expect(screen.getByTestId("channel-test-status")).toHaveTextContent("Failed"));
+  expect(resolve).toBeEnabled();
   fireEvent.click(resolve);
   await waitFor(() => expect(screen.getByTestId("channel-test-status")).toHaveTextContent("Resolved"));
-  expect((global.fetch as jest.Mock).mock.calls[1][1].body).toBe(JSON.stringify({ action: "resolve" }));
+  expect((global.fetch as jest.Mock).mock.calls[0][1].body).toBe(JSON.stringify({ action: "resolve" }));
 });
 
-it("shows the integration key hint on 401 and no resolve button for chat channels", async () => {
+it("shows the integration key hint on 401, and no resolve button for chat channels", async () => {
   (global.fetch as jest.Mock).mockResolvedValueOnce(
     reply(200, { ok: false, action: "trigger", responseStatus: 401, error: "Authentication rejected (HTTP 401). Check the integration key." }),
   );
-  const { rerender } = render(<ChannelTestDialog channel={channel()} onOpenChange={jest.fn()} />);
+  const { rerender } = open();
+  send();
   expect(await screen.findByTestId("channel-test-error")).toHaveTextContent("Check the integration key");
   expect(screen.getByTestId("channel-test-status")).toHaveTextContent("Failed");
 
-  (global.fetch as jest.Mock).mockResolvedValueOnce(reply(200, { ok: true, action: "trigger", message: "Slack connection successful" }));
   rerender(<ChannelTestDialog channel={channel({ id: "ch-2", name: "Ops", type: "slack", config: {} })} onOpenChange={jest.fn()} />);
-  expect(await screen.findByText("Slack connection successful")).toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "Resolve test page" })).not.toBeInTheDocument();
   expect(screen.getByRole("heading")).toHaveTextContent("Test message: Ops");
+  expect(screen.getByTestId("channel-test-send")).toHaveTextContent("Send test message");
 });
 
 it("reports a denied or rate-limited request as a failure", async () => {
@@ -67,36 +82,19 @@ it("reports a denied or rate-limited request as a failure", async () => {
 
 it("shows a failure when the request throws", async () => {
   (global.fetch as jest.Mock).mockRejectedValueOnce(new Error("offline"));
-  render(<ChannelTestDialog channel={channel()} onOpenChange={jest.fn()} />);
+  open();
+  send();
   expect(await screen.findByText("The test could not be sent")).toBeInTheDocument();
-});
-
-it("keeps the page resolvable after a failed resolve, so it can be retried", async () => {
-  (global.fetch as jest.Mock)
-    .mockResolvedValueOnce(reply(200, { ok: true, action: "trigger", responseStatus: 202 }))
-    .mockResolvedValueOnce(reply(200, { ok: false, action: "resolve", responseStatus: 503 }))
-    .mockResolvedValueOnce(reply(200, { ok: true, action: "resolve", responseStatus: 202 }));
-  render(<ChannelTestDialog channel={channel()} onOpenChange={jest.fn()} />);
-  const resolve = await screen.findByRole("button", { name: "Resolve test page" });
-  await waitFor(() => expect(resolve).toBeEnabled());
-  fireEvent.click(resolve);
-  await waitFor(() => expect(screen.getByTestId("channel-test-status")).toHaveTextContent("Failed"));
-  expect(resolve).toBeEnabled();
-  fireEvent.click(resolve);
-  await waitFor(() => expect(screen.getByTestId("channel-test-status")).toHaveTextContent("Resolved"));
-  expect(resolve).toBeDisabled();
 });
 
 it("drops a result that arrives after the dialog moved to another channel", async () => {
   let finishFirst: (value: unknown) => void = () => undefined;
-  (global.fetch as jest.Mock)
-    .mockReturnValueOnce(new Promise((resolve) => { finishFirst = resolve; }))
-    .mockResolvedValueOnce(reply(200, { ok: true, action: "trigger", responseStatus: 202, responseStatusText: "From B" }));
-  const { rerender } = render(<ChannelTestDialog channel={channel({ id: "ch-a" })} onOpenChange={jest.fn()} />);
+  (global.fetch as jest.Mock).mockReturnValueOnce(new Promise((resolve) => { finishFirst = resolve; }));
+  const { rerender } = open({ id: "ch-a" });
+  send();
   rerender(<ChannelTestDialog channel={channel({ id: "ch-b" })} onOpenChange={jest.fn()} />);
-  expect(await screen.findByText("HTTP 202 From B")).toBeInTheDocument();
   finishFirst(reply(200, { ok: false, action: "trigger", responseStatus: 500, responseStatusText: "From A" }));
   await new Promise((resolve) => setTimeout(resolve, 0));
   expect(screen.queryByText(/From A/)).not.toBeInTheDocument();
-  expect(screen.getByText("HTTP 202 From B")).toBeInTheDocument();
+  expect(screen.getByTestId("channel-test-send")).not.toBeDisabled();
 });

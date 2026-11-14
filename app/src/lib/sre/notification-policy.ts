@@ -127,12 +127,19 @@ export async function saveNotificationPolicy(
   const omitted = (["renotifyRepeatMinutes", "renotifyMax", "escalateAfterMinutes", "escalateChannelId", "escalateUserId"] as const).filter(
     (key) => !(key in provided),
   );
-  const stored = omitted.length ? await getNotificationPolicy(projectId) : null;
+  const stored = await getNotificationPolicy(projectId);
   const data = { ...parsed.data };
-  if (stored) for (const key of omitted) Object.assign(data, { [key]: stored[key] });
+  for (const key of omitted) Object.assign(data, { [key]: stored[key] });
+  // An unchanged target is not re-checked: a target that has since been disabled or lost access must not block
+  // saving other settings (the reminder tick treats it as removed and notes that on the incident).
+  const channelChanged = data.escalateChannelId !== stored.escalateChannelId;
+  const userChanged = data.escalateUserId !== stored.escalateUserId;
 
   if (data.renotifyRepeatMinutes !== null && data.renotifyUnackedMinutes === null) {
     return { success: false, error: "Set the first reminder before repeating it" };
+  }
+  if (data.renotifyRepeatMinutes !== null && data.renotifyMax < 2) {
+    return { success: false, error: "Repeating needs at most 2 or more reminders" };
   }
   if (
     data.renotifyUnackedMinutes !== null &&
@@ -155,7 +162,7 @@ export async function saveNotificationPolicy(
       .where(and(inArray(notificationProviders.id, channelIds), eq(notificationProviders.organizationId, organizationId), eq(notificationProviders.projectId, projectId)));
     if (owned.length !== channelIds.length) return { success: false, error: "Some channels do not belong to this project" };
   }
-  if (data.escalateChannelId) {
+  if (data.escalateChannelId && channelChanged) {
     const [channel] = await db
       .select({ type: notificationProviders.type, config: notificationProviders.config, isEnabled: notificationProviders.isEnabled, projectId: notificationProviders.projectId })
       .from(notificationProviders)
@@ -172,7 +179,7 @@ export async function saveNotificationPolicy(
       return { success: false, error: "A paging service cannot be the escalation target" };
     }
   }
-  if (data.escalateUserId) {
+  if (data.escalateUserId && userChanged) {
     // Lazy import: incident-lifecycle imports the notifier, which imports this module.
     const { isAssignableUser } = await import("./incident-lifecycle");
     if (!(await isAssignableUser(organizationId, projectId, data.escalateUserId))) {
