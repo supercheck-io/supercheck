@@ -46,7 +46,7 @@ Without a terminal, `--force` is required or the CLI returns `CONFIRMATION_REQUI
 supercheck agent install --target claude   # or cursor, codex, opencode, generic
 ```
 
-Existing files are never overwritten without `--force`. See [Commands](/docs/cli/commands) for every flag.
+For GitHub Copilot use `--target generic --pointer AGENTS.md`. Existing files are never overwritten without `--force`. See [Commands](/docs/cli/commands) for every flag.
 
 ## Let the agent read your project over MCP
 
@@ -66,8 +66,9 @@ Browser sign-in needs `DEVICE_AUTH_ENABLED=true` on the server (default is off).
 
 ## Next steps
 
-<Cards className="grid-cols-1 sm:grid-cols-3">
+<Cards className="grid-cols-1 sm:grid-cols-2">
 <Card title="Commands" href="/docs/cli/commands">Every command and flag</Card>
 <Card title="CI/CD" href="/docs/cli/ci-cd">Run and deploy from pipelines</Card>
+<Card title="Check after every ship" href="/docs/cli/after-ship-check">Agent runs your job after each deploy</Card>
 <Card title="MCP" href="/docs/mcp/connect">Read project data from your agent</Card>
 </Cards>

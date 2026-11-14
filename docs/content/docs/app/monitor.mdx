@@ -70,11 +70,47 @@ Checks availability, status code, response time and body content of APIs and web
 | **HTTP Method** | GET, POST, PUT, DELETE, PATCH, HEAD, OPTIONS |
 | **Custom Headers** | Tokens, API keys, any header |
 | **Request Body** | JSON or form data for POST/PUT |
-| **Authentication** | Basic Auth or Bearer Token |
+| **Authentication** | Basic Auth or Bearer Token. Pick the token or password from a project secret (recommended), or type it inline |
 | **Expected Status** | Codes (`200`), ranges (`200-299`) or classes (`2xx`), comma-separated. Malformed entries are rejected when you save; a stored malformed entry never matches |
 | **Keyword Validation** | Text must be present or absent in the response |
 
 ![Create HTTP Monitor](/screenshots/create-http-monitor.png)
+
+### AI endpoint preset
+
+Choose **Preset: AI endpoint (OpenAI-compatible)** on an HTTP monitor to check a chat-completions API the way your app calls it. Each check sends one short streamed request and reads the reply to the end, so it catches failures a plain status check misses.
+
+| Field | Default | Notes |
+|---|---|---|
+| Endpoint URL | `https://api.openai.com/v1/chat/completions` | Any OpenAI-compatible chat-completions URL |
+| API key | — | Name of a project secret (**Variables**). The key is never stored on the monitor. Tick **No key** for an open endpoint |
+| Key header | `Authorization` | Sends `Bearer <key>`. Any other header name (for example Azure `api-key`) sends the raw key |
+| Model | — | Required |
+| Prompt | `Reply with the single word OK.` | Up to 2,000 characters |
+| Max tokens | `16` | 1-512. Reasoning models (gpt-5, o-series) spend tokens on thinking, so they need more, for example 256 |
+| Reply must contain | — | Optional, case-insensitive |
+| First token limit | 15 s | 0.5-60 s, and no more than the total time limit. Slower is a failed check |
+| Total time limit | 60 s | 5-120 s |
+
+| What happened | Result |
+|---|---|
+| Stream completes with a non-empty reply (and the expected text) | Up |
+| 401 or 403 | Down: key rejected |
+| 429 for quota, credit or spend limit | Down: out of credit or over the spend limit |
+| Any other 429 | Down: rate limited |
+| An error inside a 200 reply, or `finish_reason: "error"` | Down |
+| Stream ends early, or the reply is empty | Down |
+| No first token within the limit | Timeout |
+
+Every result records first-token time, total time, the model that served the reply, and token counts (plus cost when the provider reports it). The reply text is not stored. The detail page shows first token, tokens per call and served model next to the usual response time.
+
+A secret that a monitor uses cannot be deleted, renamed or made non-secret while that monitor exists. The error names up to five monitors; point them at another secret first. Rotating the secret's value is always allowed.
+
+Each check is a paid call on your key. The form shows about how many calls a month your interval and locations make; the default interval is 5 minutes and the failure threshold is 2, so one short rate limit does not alert.
+
+<Callout type="warn">
+Anyone who can edit a monitor can send a referenced secret to a URL they choose. That is the same trust level as writing a test that reads a secret, and viewers can do neither. Redirects are not followed and private addresses are refused, so the key only goes to the host you entered. Self-hosted: set `ALLOW_INTERNAL_TARGETS=true` to check an internal model server such as Ollama or vLLM.
+</Callout>
 
 ## Website Monitor
 

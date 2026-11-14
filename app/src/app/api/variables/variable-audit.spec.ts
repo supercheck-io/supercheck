@@ -4,6 +4,7 @@ jest.mock("@/lib/auth-context", () => ({ requireAuthContext: jest.fn(async () =>
 jest.mock("@/lib/rbac/middleware", () => ({ checkPermissionWithContext: jest.fn(() => true), resolveProjectPermissionContext: jest.fn(async () => ({ organizationId: "org", project: { id: "48926de9-3ee7-59f7-9383-481fc00e98ed" } })) }));
 jest.mock("@/lib/encryption", () => ({ encryptValue: jest.fn(() => "ciphertext"), decryptValue: jest.fn() }));
 jest.mock("@/lib/audit-logger", () => ({ logAuditEvent: jest.fn() }));
+jest.mock("@/lib/monitor-secret-usage", () => ({ ...jest.requireActual("@/lib/monitor-secret-usage"), secretInUseMessage: jest.fn(async () => null) }));
 jest.mock("@/lib/s3-proxy", () => ({ getS3Client: jest.fn() }));
 import { NextRequest } from "next/server";
 import { db } from "@/utils/db";

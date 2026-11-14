@@ -174,13 +174,15 @@ function MetricStat({
   icon,
   label,
   value,
+  testId,
 }: {
   icon: React.ReactNode;
   label: string;
   value: string | null;
+  testId?: string;
 }) {
   return (
-    <div className="min-w-0">
+    <div className="min-w-0" data-testid={testId} title={value ?? undefined}>
       <div className="flex items-center gap-1.5 text-[13px] font-medium text-muted-foreground">
         {icon}
         <span className="truncate">{label}</span>
@@ -191,6 +193,17 @@ function MetricStat({
     </div>
   );
 }
+
+type AiResultDetails = NonNullable<DBMonitorResultDetailsType["ai"]>;
+
+/** AI endpoint numbers of one check, or undefined for a result without them. */
+const aiDetails = (result?: { details?: DBMonitorResultDetailsType | null } | null): AiResultDetails | undefined => {
+  const ai = result?.details?.ai;
+  return ai && typeof ai === "object" ? ai : undefined;
+};
+
+const formatTokens = (ai?: AiResultDetails) =>
+  typeof ai?.totalTokens === "number" ? ai.totalTokens.toLocaleString("en-US") : "N/A";
 
 export function MonitorDetailClient({
   monitor: initialMonitor,
@@ -428,6 +441,7 @@ export function MonitorDetailClient({
         return {
           name: format(date, "HH:mm"), // Show only time (HH:MM) for cleaner x-axis
           time: r.responseTimeMs ?? null, // null leaves a gap for failed checks instead of plotting 0 ms
+          firstToken: typeof aiDetails(r)?.firstTokenMs === "number" ? Math.round(aiDetails(r)!.firstTokenMs as number) : null,
           fullDate: format(date, "MMM dd, HH:mm"), // Keep full date for tooltips
           isUp: r.isUp, // Keep status for conditional styling
           status: r.status,
@@ -510,6 +524,18 @@ export function MonitorDetailClient({
       latestResult.responseTimeMs !== null
       ? formatResponseTime(latestResult.responseTimeMs)
       : "N/A";
+
+  // AI endpoint preset: extra stats from the latest check; a plain HTTP monitor shows none of this
+  const aiEndpoint = monitor.config?.aiEndpoint as { model?: string } | undefined;
+  const latestAi = aiEndpoint ? aiDetails(latestResult) : undefined;
+  const servedModel = latestAi?.servedModel ?? null;
+  const aiHost = (() => {
+    try {
+      return new URL(monitor.target || monitor.url || "").hostname;
+    } catch {
+      return monitor.target || monitor.url || "";
+    }
+  })();
 
   // Prepare data for AvailabilityBarChart (single location or filtered)
   const availabilityTimelineData = useMemo(() => {
@@ -700,7 +726,12 @@ export function MonitorDetailClient({
                     className="text-sm text-muted-foreground truncate max-w-md"
                     title={maskUrlPassword(monitor.url) ?? undefined}
                   >
-                    {monitor.type === "synthetic_test" &&
+                    {aiEndpoint ? (
+                      <span data-testid="monitor-ai-subtitle">
+                        {aiHost}
+                        {aiEndpoint.model ? ` · ${aiEndpoint.model}` : ""}
+                      </span>
+                    ) : monitor.type === "synthetic_test" &&
                       monitor.config?.testId ? (
                       <>
                         <span className="font-medium">Test ID:</span>{" "}
@@ -992,6 +1023,29 @@ export function MonitorDetailClient({
               />
             </MetricGroup>
 
+            {aiEndpoint && (
+              <MetricGroup title="AI endpoint">
+                <MetricStat
+                  icon={<Zap className="h-4 w-4 text-muted-foreground" />}
+                  label="First token"
+                  testId="ai-stat-first-token"
+                  value={typeof latestAi?.firstTokenMs === "number" ? formatResponseTime(latestAi.firstTokenMs) : null}
+                />
+                <MetricStat
+                  icon={<Activity className="h-4 w-4 text-muted-foreground" />}
+                  label="Tokens per call"
+                  testId="ai-stat-tokens"
+                  value={naToNull(formatTokens(latestAi))}
+                />
+                <MetricStat
+                  icon={<ChartNoAxesCombined className="h-4 w-4 text-muted-foreground" />}
+                  label="Served model"
+                  testId="ai-stat-served-model"
+                  value={servedModel}
+                />
+              </MetricGroup>
+            )}
+
             <MetricGroup title="Last 24 hours">
               <MetricStat
                 icon={<TrendingUp className="h-4 w-4 text-success" />}
@@ -1051,7 +1105,7 @@ export function MonitorDetailClient({
 
             {/* Response Time Chart */}
             <div>
-              <ResponseTimeBarChart data={responseTimeData} />
+              <ResponseTimeBarChart data={responseTimeData} showFirstToken={Boolean(aiEndpoint)} />
             </div>
           </div>
 
@@ -1125,12 +1179,14 @@ export function MonitorDetailClient({
                   </div>
                 )}
                 <div className="w-full">
-                  <table className="w-full min-w-[640px] table-fixed divide-y divide-border">
+                  <table className={`w-full ${aiEndpoint ? "min-w-[850px]" : "min-w-[640px]"} table-fixed divide-y divide-border`}>
                     <colgroup>
                       <col className="w-[64px]" />
                       <col className="w-[192px]" />
                       <col className="w-[136px]" />
                       <col className="w-[124px]" />
+                      {aiEndpoint && <col className="w-[112px]" />}
+                      {aiEndpoint && <col className="w-[96px]" />}
                       <col />
                     </colgroup>
                     <thead className="bg-background sticky top-0 z-10 border-b">
@@ -1159,6 +1215,22 @@ export function MonitorDetailClient({
                         >
                           Response Time
                         </th>
+                        {aiEndpoint && (
+                          <th
+                            scope="col"
+                            className="px-4 py-3 text-left text-xs font-medium text-muted-foreground whitespace-nowrap"
+                          >
+                            First token
+                          </th>
+                        )}
+                        {aiEndpoint && (
+                          <th
+                            scope="col"
+                            className="px-4 py-3 text-left text-xs font-medium text-muted-foreground whitespace-nowrap"
+                          >
+                            Tokens
+                          </th>
+                        )}
                         <th
                           scope="col"
                           className="px-4 py-3 text-left text-xs font-medium text-muted-foreground whitespace-nowrap"
@@ -1173,7 +1245,7 @@ export function MonitorDetailClient({
                         // Initial loading state (no data yet)
                         <tr>
                           <td
-                            colSpan={monitor.type === "synthetic_test" ? 6 : 5}
+                            colSpan={(monitor.type === "synthetic_test" ? 6 : 5) + (aiEndpoint ? 2 : 0)}
                             className="text-center relative"
                             style={{ height: "320px" }}
                           >
@@ -1278,6 +1350,18 @@ export function MonitorDetailClient({
                                   ? formatResponseTime(result.responseTimeMs)
                                   : "N/A"}
                               </td>
+                              {aiEndpoint && (
+                                <td className="px-4 py-[11.5px] whitespace-nowrap overflow-hidden text-ellipsis text-sm text-muted-foreground" data-testid="ai-row-first-token">
+                                  {typeof aiDetails(result)?.firstTokenMs === "number"
+                                    ? formatResponseTime(aiDetails(result)!.firstTokenMs as number)
+                                    : "N/A"}
+                                </td>
+                              )}
+                              {aiEndpoint && (
+                                <td className="px-4 py-[11.5px] whitespace-nowrap overflow-hidden text-ellipsis text-sm text-muted-foreground" data-testid="ai-row-tokens">
+                                  {formatTokens(aiDetails(result))}
+                                </td>
+                              )}
                               <td className="px-4 py-[11.5px] overflow-hidden text-sm text-muted-foreground">
                                 {monitor.type === "synthetic_test" ? (
                                   // Synthetic test: show report on failure, N/A on success
@@ -1344,7 +1428,7 @@ export function MonitorDetailClient({
                         // Empty state
                         <tr>
                           <td
-                            colSpan={monitor.type === "synthetic_test" ? 6 : 5}
+                            colSpan={(monitor.type === "synthetic_test" ? 6 : 5) + (aiEndpoint ? 2 : 0)}
                             className="px-4 py-16 text-center"
                           >
                             <div className="text-center space-y-3">

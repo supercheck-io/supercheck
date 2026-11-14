@@ -119,7 +119,7 @@ const { runCommand, dashboardCommand } = await import('../runs.js')
 const { configCommand } = await import('../config.js')
 const { skillsCommand, schemaCommand, capabilitiesCommand } = await import('../skills.js')
 const { validateCommand } = await import('../validate.js')
-const { ExitCode, ApiRequestError } = await import('../../utils/errors.js')
+const { ExitCode, ApiRequestError, CLIError } = await import('../../utils/errors.js')
 
 function resetCommandState(command: import('commander').Command): void {
   for (const option of command.options) {
@@ -150,6 +150,46 @@ describe('read-only and operational commands', () => {
     ]) {
       resetCommandState(command)
     }
+  })
+
+  describe('job run --wait', () => {
+    const jobId = '019a0000-0000-7000-8000-0000000000aa'
+    const start = () => {
+      mockGet.mockResolvedValueOnce({ data: { tests: [{ id: 't1', name: 'Login' }] } })
+      mockPost.mockResolvedValueOnce({ data: { runId: 'run-1', message: 'queued' } })
+    }
+
+    it('waits and prints runId, status and durationMs on a passed run', async () => {
+      start()
+      mockWaitForRun.mockResolvedValueOnce({ status: 'passed', durationMs: 4200 })
+      await jobCommand.parseAsync(['node', 'job', 'run', '--id', jobId, '--wait', '--timeout', '30'])
+      expect(mockWaitForRun).toHaveBeenCalledWith(expect.anything(), 'run-1', 30_000)
+      expect(mockOutputDetail).toHaveBeenCalledWith({ runId: 'run-1', status: 'passed', durationMs: 4200 })
+    })
+
+    it('keeps the failure exit code (1) and the run id', async () => {
+      start()
+      mockWaitForRun.mockRejectedValueOnce(new CLIError('Run run-1 ended with status failed.', ExitCode.GeneralError, { runId: 'run-1', status: 'failed' }))
+      await expect(jobCommand.parseAsync(['node', 'job', 'run', '--id', jobId, '--wait'])).rejects.toMatchObject({ exitCode: ExitCode.GeneralError, details: { runId: 'run-1', status: 'failed' } })
+    })
+
+    it('keeps the timeout exit code (5)', async () => {
+      start()
+      mockWaitForRun.mockRejectedValueOnce(new CLIError('did not complete', ExitCode.Timeout))
+      await expect(jobCommand.parseAsync(['node', 'job', 'run', '--id', jobId, '--wait'])).rejects.toMatchObject({ exitCode: ExitCode.Timeout, details: { runId: 'run-1' } })
+    })
+
+    it('does not wait without --wait, and ignores --timeout then', async () => {
+      start()
+      await jobCommand.parseAsync(['node', 'job', 'run', '--id', jobId, '--timeout', 'abc'])
+      expect(mockWaitForRun).not.toHaveBeenCalled()
+      expect(mockOutputDetail).toHaveBeenCalledWith({ runId: 'run-1', message: 'queued' })
+    })
+
+    it('rejects --wait with --local (exit 3)', async () => {
+      await expect(jobCommand.parseAsync(['node', 'job', 'run', '--id', jobId, '--wait', '--local'])).rejects.toMatchObject({ exitCode: ExitCode.ConfigError })
+      expect(mockPost).not.toHaveBeenCalled()
+    })
   })
 
   describe('job update', () => {
@@ -488,6 +528,14 @@ describe('read-only and operational commands', () => {
       expect(content).toContain('# Supercheck agent guide')
       expect(content).toContain('supercheck skills local')
       expect(content).toContain('supercheck skills investigate')
+      expect(content).toContain('supercheck skills ship')
+    })
+
+    it('prints the ship guide with the wait-and-stop recipe', async () => {
+      await skillsCommand.parseAsync(['node', 'skills', 'ship'])
+      const [content] = mockOutput.mock.calls[0] as [string]
+      expect(content).toContain('# Check after every ship')
+      expect(content).toContain('job run --id <job-id> --wait')
     })
 
     it('rejects an unknown topic', async () => {

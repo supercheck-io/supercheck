@@ -230,11 +230,33 @@ Validate with `supercheck config validate`, preview with `supercheck diff`, appl
 | `target` | `string` | URL or host to monitor |
 | `frequencyMinutes` | `number` | Check interval in minutes |
 | `enabled` | `boolean` | Whether the monitor is active |
-| `config` | `object` | Monitor-specific config (`method`, `timeoutSeconds`, `expectedStatusCodes`, `locationConfig`) |
+| `config` | `object` | Monitor-specific config (`method`, `timeoutSeconds`, `expectedStatusCodes`, `locationConfig`, `auth`, `aiEndpoint`) |
 | `alertConfig` | `object` | Alert config with `notificationProviders` (UUIDs), `alertOnFailure`, `alertOnRecovery`, `alertOnTimeout`, `alertOnSslExpiration`, `failureThreshold`, `recoveryThreshold` (positive integers), `customMessage`. Incident fields: `incidentEnabled`, `incidentSeverity`, `autoResolveIncident` (see below) |
 | `tags` | `string[]` | Tag names assigned to the monitor. Omit to leave remote tags unchanged; names compare case-insensitively and must exist in the project or under `tags[]` |
 
 Jobs have no `tags` field; a config containing one fails validation.
+
+### Secrets and the AI endpoint preset in `config`
+
+Monitors reference project secrets by name, so a pulled config holds no credential and deploys back unchanged.
+
+```ts
+{
+  name: 'OpenAI chat',
+  type: 'http_request',
+  target: 'https://api.openai.com/v1/chat/completions',
+  frequencyMinutes: 5,
+  config: {
+    timeoutSeconds: 60,
+    aiEndpoint: { model: 'gpt-4o-mini', secretKey: 'OPENAI_API_KEY', expectText: 'ok' },
+  },
+}
+```
+
+| Field | Description |
+|---|---|
+| `auth.secretKey` | Name of a project secret that supplies the bearer token (`auth.type: 'bearer'`) or the basic-auth password (`auth.type: 'basic'`). Use instead of an inline `token` or `password` |
+| `aiEndpoint` | AI endpoint preset (`http_request` only; `method`, `headers`, `body`, `auth`, `keywordInBody` and `expectedStatusCodes` must be absent). Fields: `model` (required), `secretKey`, `keyHeader`, `prompt`, `maxTokens`, `expectText`, `firstTokenTimeoutMs`. See [AI endpoint preset](/docs/app/monitor#ai-endpoint-preset) |
 
 ### Incident fields in `alertConfig`
 
