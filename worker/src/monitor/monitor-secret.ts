@@ -38,14 +38,18 @@ export async function resolveMonitorSecret(
     )
     .limit(1);
 
+  // Generic text: results and alerts reach viewers, who must not learn secret names.
   const notFound = {
     ok: false,
-    message: `Secret ${key} was not found`,
+    message: 'The project secret for this monitor was not found',
   } as const;
   if (!row?.encryptedValue) return notFound;
   try {
     return { ok: true, value: decryptValue(row.encryptedValue, row.projectId) };
   } catch {
-    return { ok: false, message: `Secret ${key} could not be decrypted` };
+    return {
+      ok: false,
+      message: 'The project secret for this monitor could not be decrypted',
+    };
   }
 }

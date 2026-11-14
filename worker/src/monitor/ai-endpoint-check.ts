@@ -218,6 +218,12 @@ function judge(
       message: `Timed out after ${seconds(totalLimitMs)} s`,
     };
   }
+  if (out.firstTokenMs !== undefined && out.firstTokenMs > firstTokenLimitMs) {
+    return {
+      status: 'timeout',
+      message: `No first token within ${seconds(firstTokenLimitMs)} s`,
+    };
+  }
   const code = out.httpStatus;
   if (code === 401 || code === 403) return down(`Key rejected (${code})`);
   if (code === 429) {
@@ -264,7 +270,8 @@ export async function executeAiEndpointCheck(
     details: MonitorResultDetails = {},
   ): AiEndpointResult => {
     let text = message ?? '';
-    for (const secret of secrets) text = text.split(secret).join('***');
+    for (const secret of secrets)
+      if (secret) text = text.split(secret).join('***');
     if (text) details.errorMessage = text.slice(0, MAX_MESSAGE_CHARS);
     const ms = totalMs();
     details.ai = { ...details.ai, totalMs: ms };
@@ -307,7 +314,40 @@ export async function executeAiEndpointCheck(
       },
       { allowInternalTargets: allowInternalMonitorTargets(), maxRedirects: 0 },
       async (cfg) => {
-        const res = await deps.execute(cfg);
+        // The first-token limit also covers a gateway that holds the headers until the model starts.
+        const firstToken = new AbortController();
+        const headerTimer = setTimeout(
+          () => firstToken.abort(),
+          Math.max(0, firstTokenLimitMs - totalMs()),
+        );
+        let res: AxiosResponse<unknown>;
+        try {
+          res = await deps.execute({
+            ...cfg,
+            signal: cfg.signal
+              ? AbortSignal.any([cfg.signal as AbortSignal, firstToken.signal])
+              : firstToken.signal,
+          });
+        } catch (error) {
+          if (!firstToken.signal.aborted) throw error;
+          const outcome: Outcome = {
+            httpStatus: 0,
+            text: '',
+            done: false,
+            cutOff: false,
+            ai: {},
+            timedOut: 'first',
+          };
+          return {
+            status: 0,
+            statusText: '',
+            headers: {},
+            config: cfg,
+            data: outcome,
+          } as AxiosResponse<unknown>;
+        } finally {
+          clearTimeout(headerTimer);
+        }
         if (res.status >= 300 && res.status < 400 && res.headers?.location) {
           (res.data as Readable | undefined)?.destroy?.();
           return res;

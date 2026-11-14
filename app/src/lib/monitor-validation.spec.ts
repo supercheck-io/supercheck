@@ -132,6 +132,20 @@ describe("AI endpoint preset validation", () => {
   const run = (config: Record<string, unknown>, type = "http_request") =>
     validateMonitorConfiguration({ type, target: "https://api.openai.com/v1/chat/completions", config, incomingConfig: config });
 
+  it("requires https when a project secret is sent, unless internal targets are allowed", () => {
+    const http = (config: Record<string, unknown>) =>
+      validateMonitorConfiguration({ type: "http_request", target: "http://api.example.com/v1/chat/completions", config, incomingConfig: config });
+    expect(http({ aiEndpoint: { ...ok, secretKey: "KEY" } })).toMatchObject({ success: false, details: expect.stringContaining("https") });
+    expect(http({ auth: { type: "bearer", secretKey: "KEY" } })).toMatchObject({ success: false });
+    expect(http({ aiEndpoint: ok })).toEqual({ success: true });
+    process.env.ALLOW_INTERNAL_TARGETS = "true";
+    try {
+      expect(http({ aiEndpoint: { ...ok, secretKey: "KEY" } })).toEqual({ success: true });
+    } finally {
+      delete process.env.ALLOW_INTERNAL_TARGETS;
+    }
+  });
+
   it("accepts a minimal and a full preset", () => {
     expect(run({ aiEndpoint: ok })).toEqual({ success: true });
     expect(

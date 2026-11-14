@@ -27,6 +27,17 @@ describe('readSse', () => {
     expect(result).toEqual({ done: false, truncated: false });
   });
 
+  it('accepts a final [DONE] without a trailing newline', async () => {
+    const seen: string[] = [];
+    const result = await readSse(
+      stream('data: x\n', 'data: [DONE]'),
+      (d) => seen.push(d),
+      1024,
+    );
+    expect(seen).toEqual(['x']);
+    expect(result).toEqual({ done: true, truncated: false });
+  });
+
   it('stops at the byte cap', async () => {
     const result = await readSse(
       stream('data: aaaa\n', 'data: bbbb\n'),

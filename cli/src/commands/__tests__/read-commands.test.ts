@@ -169,14 +169,14 @@ describe('read-only and operational commands', () => {
 
     it('keeps the failure exit code (1) and the run id', async () => {
       start()
-      mockWaitForRun.mockRejectedValueOnce(new CLIError('Run run-1 ended with status failed.', ExitCode.GeneralError))
-      await expect(jobCommand.parseAsync(['node', 'job', 'run', '--id', jobId, '--wait'])).rejects.toMatchObject({ exitCode: ExitCode.GeneralError, details: { runId: 'run-1' } })
+      mockWaitForRun.mockRejectedValueOnce(new CLIError('Run run-1 ended with status failed.', ExitCode.GeneralError, { runId: 'run-1', status: 'failed' }))
+      await expect(jobCommand.parseAsync(['node', 'job', 'run', '--id', jobId, '--wait'])).rejects.toMatchObject({ exitCode: ExitCode.GeneralError, details: { runId: 'run-1', status: 'failed' } })
     })
 
     it('keeps the timeout exit code (5)', async () => {
       start()
       mockWaitForRun.mockRejectedValueOnce(new CLIError('did not complete', ExitCode.Timeout))
-      await expect(jobCommand.parseAsync(['node', 'job', 'run', '--id', jobId, '--wait'])).rejects.toMatchObject({ exitCode: ExitCode.Timeout })
+      await expect(jobCommand.parseAsync(['node', 'job', 'run', '--id', jobId, '--wait'])).rejects.toMatchObject({ exitCode: ExitCode.Timeout, details: { runId: 'run-1' } })
     })
 
     it('does not wait without --wait', async () => {

@@ -14,6 +14,15 @@ export async function readSse(
   const decoder = new StringDecoder('utf8');
   let buffer = '';
   let bytes = 0;
+  /** Returns true on `[DONE]`. */
+  const handleLine = (raw: string): boolean => {
+    const line = raw.replace(/\r$/, '');
+    if (!line.startsWith('data:')) return false;
+    const data = line.slice(5).replace(/^ /, '');
+    if (data === '[DONE]') return true;
+    onData(data);
+    return false;
+  };
   try {
     for await (const chunk of stream) {
       const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk));
@@ -21,16 +30,14 @@ export async function readSse(
       buffer += decoder.write(buf);
       let newline: number;
       while ((newline = buffer.indexOf('\n')) !== -1) {
-        const line = buffer.slice(0, newline).replace(/\r$/, '');
+        const line = buffer.slice(0, newline);
         buffer = buffer.slice(newline + 1);
-        if (!line.startsWith('data:')) continue;
-        const data = line.slice(5).replace(/^ /, '');
-        if (data === '[DONE]') return { done: true, truncated: false };
-        onData(data);
+        if (handleLine(line)) return { done: true, truncated: false };
       }
       if (bytes > maxBytes) return { done: false, truncated: true };
     }
-    return { done: false, truncated: false };
+    // A final line without a trailing newline still counts.
+    return { done: handleLine(buffer + decoder.end()), truncated: false };
   } finally {
     stream.destroy();
   }

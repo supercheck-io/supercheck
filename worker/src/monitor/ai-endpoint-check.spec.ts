@@ -72,7 +72,13 @@ describe('executeAiEndpointCheck', () => {
     await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
     base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
   });
-  afterAll(() => new Promise((r) => server.close(r)));
+  afterAll(
+    () =>
+      new Promise((r) => {
+        server.closeAllConnections();
+        server.close(r);
+      }),
+  );
   beforeEach(() => {
     process.env.ALLOW_INTERNAL_TARGETS = 'true';
     hits = 0;
@@ -260,6 +266,25 @@ describe('executeAiEndpointCheck', () => {
   it('times out when headers never arrive', async () => {
     handler = () => undefined;
     const r = await run({}, { timeoutSeconds: 0.2 });
+    expect(r.status).toBe('timeout');
+  });
+
+  it('reports a missing first token when headers are held past the limit', async () => {
+    handler = (res) => setTimeout(() => okStream(res), 400);
+    const r = await run({ firstTokenTimeoutMs: 100 }, { timeoutSeconds: 5 });
+    expect(r).toMatchObject({
+      status: 'timeout',
+      details: { errorMessage: 'No first token within 0.1 s' },
+    });
+    expect(r.responseTimeMs).toBeLessThan(1000);
+  });
+
+  it('fails a first token that arrives after the limit, even with the headers', async () => {
+    handler = (res) => {
+      res.writeHead(200, { 'content-type': 'text/event-stream' });
+      setTimeout(() => res.end(chunk('OK') + 'data: [DONE]\n\n'), 300);
+    };
+    const r = await run({ firstTokenTimeoutMs: 100 }, { timeoutSeconds: 5 });
     expect(r.status).toBe('timeout');
   });
 

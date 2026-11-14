@@ -7,6 +7,11 @@ describe('monitor secret references survive redaction', () => {
     expect(redact(def)).toEqual(def)
   })
 
+  it('keeps basic auth whose password comes from a secret', () => {
+    const def = { name: 'API', type: 'http_request', config: { auth: { type: 'basic', username: 'me', secretKey: 'API_PASSWORD' } } }
+    expect(redact(def)).toEqual(def)
+  })
+
   it('still masks auth that carries an inline credential', () => {
     const def = { name: 'API', type: 'http_request', config: { auth: { type: 'bearer', token: 'sk-live', secretKey: 'X' } } }
     expect(redact(def).config.auth).toBe('[REDACTED]')

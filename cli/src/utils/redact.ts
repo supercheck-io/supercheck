@@ -31,9 +31,9 @@ export function redact<T>(value: T, inConfig = false, code = false): T {
   if (!value || typeof value !== 'object' || value instanceof Date) return value
   const record = value as Record<string, unknown>
   const sensitiveConfig = !(typeof record.type === 'string' && monitorTypes.has(record.type))
-  // Monitor auth that only names a project secret carries no credential, so it round-trips through pull.
+  // Monitor auth that only names a project secret (plus a basic-auth username) carries no credential, so it round-trips through pull.
   const secretRefAuth = (key: string, item: unknown) => key === 'auth' && !!item && typeof item === 'object'
-    && Object.keys(item).every((k) => k === 'type' || k === 'secretKey') && typeof (item as Record<string, unknown>).secretKey === 'string'
+    && Object.keys(item).every((k) => k === 'type' || k === 'secretKey' || k === 'username') && typeof (item as Record<string, unknown>).secretKey === 'string'
   return Object.fromEntries(Object.entries(record).map(([key, item]) => [key,
     secretRefAuth(key, item) ? item : (credentialKey.test(key.replace(/[-_]/g, '')) || (inConfig && ['url', 'headers', 'username'].includes(key)) || (key === 'value' && (record.isSecret || record.type === 'secret'))) && item != null && typeof item !== 'boolean'
       ? (typeof item === 'string' && ['[local secret provided]', '[remote secret masked]'].includes(item) ? item : '[REDACTED]') : redact(item, key === 'config' && sensitiveConfig, codeKeys.has(key.toLowerCase())),

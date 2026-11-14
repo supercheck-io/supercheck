@@ -485,7 +485,11 @@ jobCommand
       return
     }
     try { outputDetail({ runId: data.runId, ...await waitForRun(client, data.runId, timeoutMs) }) }
-    catch (error) { throw new CLIError(error instanceof Error ? error.message : 'Waiting failed', error instanceof CLIError ? error.exitCode : ExitCode.ApiError, { runId: data.runId }) }
+    catch (error) {
+      // waitForRun's own errors already carry { runId, status }; keep them for the JSON output.
+      if (error instanceof CLIError && (error.details as { runId?: unknown } | undefined)?.runId) throw error
+      throw new CLIError(error instanceof Error ? error.message : 'Waiting failed', error instanceof CLIError ? error.exitCode : ExitCode.ApiError, { runId: data.runId })
+    }
   })
 
 jobCommand

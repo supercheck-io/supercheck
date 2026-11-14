@@ -263,6 +263,22 @@ export function validateMonitorConfiguration({
   const authSecretResult = validateAuthSecret(monitorConfig);
   if (!authSecretResult.success) return authSecretResult;
 
+  // A project secret goes only over TLS; self-hosted internal model servers (ALLOW_INTERNAL_TARGETS) are exempt.
+  const sendsSecret =
+    (isRecord(monitorConfig.aiEndpoint) && typeof monitorConfig.aiEndpoint.secretKey === "string") ||
+    (isRecord(monitorConfig.auth) && typeof monitorConfig.auth.secretKey === "string");
+  if (
+    sendsSecret &&
+    typeof target === "string" &&
+    /^http:\/\//i.test(target.trim()) &&
+    process.env.ALLOW_INTERNAL_TARGETS !== "true"
+  ) {
+    return invalid(
+      "Invalid monitor target",
+      "target must use https when a project secret is sent",
+    );
+  }
+
   if (monitorType === "http_request" || monitorType === "website") {
     // Only keys the client sent, so a stored legacy value never blocks an unrelated edit.
     const sent = isRecord(incomingConfig) ? incomingConfig : {};

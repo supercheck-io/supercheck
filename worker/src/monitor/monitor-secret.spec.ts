@@ -35,7 +35,7 @@ describe('resolveMonitorSecret', () => {
     const { db } = dbReturning([]);
     await expect(resolveMonitorSecret(db, 'm1', 'KEY')).resolves.toEqual({
       ok: false,
-      message: 'Secret KEY was not found',
+      message: 'The project secret for this monitor was not found',
     });
     expect(decryptValue).not.toHaveBeenCalled();
   });
@@ -56,7 +56,7 @@ describe('resolveMonitorSecret', () => {
     ]);
     expect(await resolveMonitorSecret(db, 'm1', 'KEY')).toEqual({
       ok: false,
-      message: 'Secret KEY could not be decrypted',
+      message: 'The project secret for this monitor could not be decrypted',
     });
   });
 });

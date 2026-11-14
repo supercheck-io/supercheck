@@ -1504,6 +1504,31 @@ describe('MonitorService', () => {
         });
       });
 
+      it('scrubs the secret from a body echoed back into the result', async () => {
+        jest
+          .mocked(resolveMonitorSecret)
+          .mockResolvedValueOnce({ ok: true, value: 'sekret-value' });
+        (service['httpService'].request as jest.Mock).mockImplementationOnce(
+          () =>
+            of({
+              status: 200,
+              statusText: 'OK',
+              headers: {},
+              data: 'echo: sekret-value',
+            }),
+        );
+        const result = await service['executeHttpRequest'](
+          'https://example.com',
+          {
+            auth: { type: 'bearer', secretKey: 'TOKEN' },
+            keywordInBody: 'missing-word',
+          } as never,
+          'mon-1',
+        );
+        expect(JSON.stringify(result.details)).not.toContain('sekret-value');
+        expect(result.details.errorMessage).toContain('***');
+      });
+
       it('returns an error result when the secret is missing', async () => {
         jest.mocked(resolveMonitorSecret).mockResolvedValueOnce({
           ok: false,

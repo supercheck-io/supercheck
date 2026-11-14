@@ -1274,9 +1274,11 @@ export class MonitorService {
                 monitorId,
               ),
         {
+          // The AI check enforces its own limits; the grace lets it report "timeout", not a system error.
           timeoutMs:
             (config?.timeoutSeconds ?? TIMEOUTS_SECONDS.HTTP_REQUEST_DEFAULT) *
-            1000,
+              1000 +
+            (config?.aiEndpoint ? 5000 : 0),
           maxMemoryMB: MEMORY_LIMITS.MAX_MEMORY_PER_REQUEST_MB,
         },
       );
@@ -1320,6 +1322,8 @@ export class MonitorService {
     let details: MonitorResultDetails = {};
     let status: MonitorResultStatus = 'error';
     let isUp = false;
+    // A target may echo the credential back; scrub the project secret from stored text.
+    let resolvedSecretValue: string | undefined;
 
     const timeout = config?.timeoutSeconds
       ? config.timeoutSeconds * 1000
@@ -1387,6 +1391,7 @@ export class MonitorService {
             isUp: false,
           };
         }
+        resolvedSecretValue = secret.value;
         auth =
           auth.type === 'basic'
             ? { ...auth, password: secret.value }
@@ -1430,9 +1435,7 @@ export class MonitorService {
             `Bearer ${auth.token}`;
 
           // Secure logging
-          this.logger.debug(
-            `Using Bearer authentication with token: ${String(this.credentialSecurityService.maskCredentials(auth.token))}`,
-          );
+          this.logger.debug('Using Bearer authentication');
         } else {
           this.logger.warn(
             `Invalid auth configuration: type=${auth.type}, has credentials=${!!(auth.username || auth.token)}`,
@@ -1680,6 +1683,12 @@ export class MonitorService {
     this.logger.debug(
       `HTTP Request completed: ${target}, Status: ${status}, Response Time: ${responseTimeMs}ms`,
     );
+    if (resolvedSecretValue) {
+      const scrub = (text?: string) =>
+        text?.split(resolvedSecretValue).join('***');
+      details.responseBodySnippet = scrub(details.responseBodySnippet);
+      details.errorMessage = scrub(details.errorMessage);
+    }
     return { status, details, responseTimeMs, isUp };
   }
 
