@@ -14,7 +14,7 @@ export const WARNING_KINDS = {
 export type WarningKind = keyof typeof WARNING_KINDS;
 
 export function isWarningKind(kind: string): kind is WarningKind {
-  return Object.prototype.hasOwnProperty.call(WARNING_KINDS, kind);
+  return Object.keys(WARNING_KINDS).includes(kind);
 }
 
 export function warningTitle(kind: WarningKind, monitorName: string): string {

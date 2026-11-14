@@ -8,14 +8,22 @@ const appSource = readFileSync(
   'utf8',
 );
 
-function appKinds(): Record<string, { monitorTypes: string[]; defaultOn: boolean }> {
-  const body = /WARNING_KINDS = \{([\s\S]*?)\n\} as const/.exec(appSource)?.[1] ?? '';
-  const out: Record<string, { monitorTypes: string[]; defaultOn: boolean }> = {};
+function appKinds(): Record<
+  string,
+  { monitorTypes: string[]; defaultOn: boolean }
+> {
+  const body =
+    /WARNING_KINDS = \{([\s\S]*?)\n\} as const/.exec(appSource)?.[1] ?? '';
+  const out: Record<string, { monitorTypes: string[]; defaultOn: boolean }> =
+    {};
   for (const m of body.matchAll(
     /\n {2}(\w+): \{[\s\S]*?monitorTypes: \[([^\]]*)\][\s\S]*?defaultOn: (true|false)/g,
   )) {
     out[m[1]] = {
-      monitorTypes: m[2].split(',').map((t) => t.trim().replace(/["']/g, '')).filter(Boolean),
+      monitorTypes: m[2]
+        .split(',')
+        .map((t) => t.trim().replace(/["']/g, ''))
+        .filter(Boolean),
       defaultOn: m[3] === 'true',
     };
   }
