@@ -4,6 +4,9 @@ import { HttpService } from '@nestjs/axios'; // Import HttpService
 import { AxiosError, AxiosRequestConfig, Method } from 'axios'; // Import Method from axios
 import * as tls from 'tls';
 import { randomUUID } from 'node:crypto';
+import { evaluateCycleWarnings } from './monitor-cycle-warnings';
+import { executeMcpCheck, MCP_DEFAULT_TIMEOUT_SECONDS } from './mcp-check';
+import { createMcpMonitorRequest } from './mcp-monitor-transport';
 import { firstValueFrom } from 'rxjs'; // To convert Observable to Promise
 import { MonitorJobDataDto } from './dto/monitor-job.dto';
 import { MonitorExecutionResult } from './types/monitor-result.type';
@@ -406,6 +409,14 @@ export class MonitorService {
           }
           break;
         }
+        case 'mcp_server':
+          ({ status, details, responseTimeMs, isUp } =
+            await this.executeMcpMonitor(
+              jobData.target,
+              jobData.config,
+              jobData.monitorId,
+            ));
+          break;
         case 'ping_host':
           ({ status, details, responseTimeMs, isUp } =
             await this.executePingHost(jobData.target, jobData.config));
@@ -556,6 +567,8 @@ export class MonitorService {
       expectedLocations?: MonitoringLocation[];
       /** Surface insert errors instead of logging them (the caller must not re-run the check). */
       rethrow?: boolean;
+      /** Single-location checks: the saved result's id, the cycle key when there is no group. */
+      cycleKey?: string;
     },
   ): Promise<void> {
     if (results.length === 0) {
@@ -579,6 +592,14 @@ export class MonitorService {
         ),
       );
     }
+
+    // MCP tool-list change and AI endpoint warnings, once per cycle; they log and swallow their own failures.
+    await evaluateCycleWarnings(
+      this.dbService.db,
+      monitor,
+      options?.executionGroupId ?? options?.cycleKey ?? randomUUID(),
+      results,
+    );
 
     // Calculate aggregated status
     const monitorConfig = monitor.config ?? null;
@@ -858,16 +879,16 @@ export class MonitorService {
         : result;
 
     // A monitor purged mid-check has nowhere to record the result: drop it without evaluating or alerting.
-    if (
-      !options.persisted &&
-      !(await this.insertResultWithRetry(persistedResult))
-    )
-      return;
+    const insertedId = options.persisted
+      ? null
+      : await this.insertResultWithRetry(persistedResult);
+    if (!options.persisted && !insertedId) return;
 
     if (!executionGroupId) {
       await this.saveMonitorResults([persistedResult], {
         persisted: true,
         expectedLocations,
+        ...(insertedId ? { cycleKey: insertedId } : {}),
       });
       return;
     }
@@ -1190,6 +1211,49 @@ export class MonitorService {
           ),
         );
     }
+  }
+
+  private async executeMcpMonitor(
+    target: string,
+    config: MonitorConfig | undefined,
+    monitorId: string,
+  ): Promise<{
+    status: MonitorResultStatus;
+    details: MonitorResultDetails;
+    responseTimeMs?: number;
+    isUp: boolean;
+  }> {
+    const urlValidation = this.enhancedValidationService.validateAndSanitizeUrl(
+      target,
+      {
+        allowInternalTargets: allowInternalMonitorTargets(),
+        maxStringLength: 2048,
+        allowedProtocols: ['http:', 'https:'],
+      },
+    );
+    if (!urlValidation.valid) {
+      return {
+        status: 'error',
+        details: { errorMessage: urlValidation.error || 'Invalid target URL' },
+        isUp: false,
+      };
+    }
+    const timeoutSeconds =
+      config?.timeoutSeconds ?? MCP_DEFAULT_TIMEOUT_SECONDS;
+    return this.resourceManager.executeWithResourceLimits(
+      `mcp_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
+      () =>
+        executeMcpCheck(urlValidation.sanitized || target, config ?? {}, {
+          request: createMcpMonitorRequest(),
+          resolveSecret: (key) =>
+            resolveMonitorSecret(this.dbService.db, monitorId, key),
+        }),
+      {
+        // The check enforces its own deadline; the grace lets it report "timeout", not a system error.
+        timeoutMs: timeoutSeconds * 1000 + 5000,
+        maxMemoryMB: MEMORY_LIMITS.MAX_MEMORY_PER_REQUEST_MB,
+      },
+    );
   }
 
   private async executeHttpRequest(
@@ -2620,21 +2684,21 @@ export class MonitorService {
   // A failed insert makes the BullMQ job retry, so a transient DB error is absorbed here first; re-running the
   // check would bill a synthetic one twice. The row id is fixed up front and the insert ignores a conflict on it,
   // so a retry after an insert that committed (response lost) cannot add a second row.
-  // Returns false when the monitor row is already purged (foreign key violation): terminal, never retried.
+  // Returns the row id, or null when the monitor row is already purged (foreign key violation): terminal, never retried.
   private async insertResultWithRetry(
     result: MonitorExecutionResult,
-  ): Promise<boolean> {
+  ): Promise<string | null> {
     const id = randomUUID();
     for (let attempt = 1; ; attempt++) {
       try {
         await this.saveMonitorResultToDb(result, true, id);
-        return true;
+        return id;
       } catch (error) {
         if (isForeignKeyViolation(error)) {
           this.logger.log(
             `Monitor ${result.monitorId} was purged; dropping its check result`,
           );
-          return false;
+          return null;
         }
         if (attempt >= RESULT_SAVE_ATTEMPTS) throw error;
         await new Promise((resolve) =>

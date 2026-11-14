@@ -140,6 +140,8 @@ export function MonitorCreationWizard() {
   );
   const [isCreating, setIsCreating] = useState(false);
   // Restored wizard state (sessionStorage) already carries the preset default, so it is not applied again.
+  // MCP monitors start with a 2-failure threshold and sev2 incidents; applied once, later edits are never overwritten.
+  const mcpDefaultsAppliedRef = useRef((monitorData as { type?: string } | undefined)?.type === "mcp_server");
   const presetThresholdAppliedRef = useRef((monitorData as { preset?: string } | undefined)?.preset === "ai_endpoint");
 
   // Cleanup on unmount - only if not creating
@@ -245,6 +247,7 @@ export function MonitorCreationWizard() {
     "ping_host",
     "port_check",
     "synthetic_test",
+    "mcp_server",
   ];
   const type = validTypes.includes(urlType as MonitorType)
     ? (urlType as MonitorType)
@@ -275,6 +278,16 @@ export function MonitorCreationWizard() {
     });
     presetThresholdAppliedRef.current = preset.applied;
     if (preset.threshold !== alertConfig.failureThreshold) setAlertConfig({ ...alertConfig, failureThreshold: preset.threshold });
+
+    if (formData.type === "mcp_server" && !mcpDefaultsAppliedRef.current) {
+      mcpDefaultsAppliedRef.current = true;
+      setAlertConfig((current) => ({
+        ...current,
+        failureThreshold: current.failureThreshold === 1 ? 2 : current.failureThreshold,
+        incidentEnabled: current.incidentEnabled ?? true,
+        incidentSeverity: current.incidentSeverity ?? "sev2",
+      }));
+    }
 
     // When skipping the location step (single location), auto-set the
     // locationConfig to the actual available location. DEFAULT_LOCATION_CONFIG
@@ -529,7 +542,7 @@ export function MonitorCreationWizard() {
               ) : (
                 <SaveIcon className="mr-2 h-4 w-4" />
               )}
-              {isCreating ? "Creating..." : "Create Monitor"}
+              {isCreating ? (type === "mcp_server" ? "Saving..." : "Creating...") : type === "mcp_server" ? "Save and test" : "Create Monitor"}
             </Button>
           </div>
         </CardContent>

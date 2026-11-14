@@ -29,6 +29,9 @@ describe("validateMonitorTargetAddress", () => {
     ["ping_host", "192.168.1.1"],
     ["port_check", "172.16.0.9"],
     ["port_check", "metadata.google.internal"],
+    ["mcp_server", "https://10.0.0.1/mcp"],
+    ["mcp_server", "https://localhost/mcp"],
+    ["mcp_server", "https://169.254.169.254/mcp"],
   ])("rejects %s target %s without a lookup", async (type, target) => {
     expect(await check(type, target)).toMatchObject({ success: false, error: "Invalid monitor target" });
     expect(mockLookup).not.toHaveBeenCalled();
@@ -39,6 +42,7 @@ describe("validateMonitorTargetAddress", () => {
     ["website", "https://internal.example.com"],
     ["ping_host", "internal.example.com"],
     ["port_check", "internal.example.com"],
+    ["mcp_server", "https://internal.example.com/mcp"],
   ])("rejects a %s name that resolves to a private address", async (type, target) => {
     mockLookup.mockResolvedValue([{ address: "93.184.216.34", family: 4 }, { address: "10.1.2.3", family: 4 }]);
     expect(await check(type, target)).toMatchObject({ success: false });
@@ -51,6 +55,11 @@ describe("validateMonitorTargetAddress", () => {
     expect(await check("website", "https://not-yet-created.example.com")).toEqual({ success: true });
     expect(await check("synthetic_test", "11111111-1111-4111-8111-111111111111")).toEqual({ success: true });
     expect(await check("heartbeat", "")).toEqual({ success: true });
+  });
+
+  it("accepts a public mcp_server URL and resolves its host name, not the whole URL", async () => {
+    expect(await check("mcp_server", "https://mcp.example.com/mcp")).toEqual({ success: true });
+    expect(mockLookup).toHaveBeenCalledWith("mcp.example.com", expect.anything());
   });
 
   it("allows internal targets only when ALLOW_INTERNAL_TARGETS is exactly true", async () => {

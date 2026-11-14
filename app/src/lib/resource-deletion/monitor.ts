@@ -3,6 +3,7 @@ import type { ProjectAuthContext } from "@/lib/project-context";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { logAuditEvent } from "@/lib/audit-logger";
 import { isUuid } from "@/lib/uuid";
+import { monitorAuditTarget } from "@/lib/monitor-write";
 import { requestMonitorDeletion } from "@/lib/deletion/request";
 
 import { permissionDeniedResult } from "@/lib/deletion/org-state";
@@ -26,7 +27,7 @@ export async function deleteMonitorWithContext(monitorId: string, context: Proje
     if (result.status === "requested") {
       await logAuditEvent({
         userId, action: "monitor_deleted", resource: "monitor", resourceId: monitorId,
-        metadata: { organizationId, monitorName: result.data.name, monitorType: result.data.type, target: result.data.target, projectId: project.id, projectName: project.name },
+        metadata: { organizationId, monitorName: result.data.name, monitorType: result.data.type, target: monitorAuditTarget(result.data.type, result.data.target), projectId: project.id, projectName: project.name },
         success: true as const,
       }).catch((error) => console.error("[DELETE_MONITOR] Error logging audit event (deletion still queued):", error));
     }

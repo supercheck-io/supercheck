@@ -22,6 +22,14 @@ interface MonitorTableMeta {
   // Include other potential properties from the base TableMeta if needed
 }
 
+function safeHost(target: string | undefined): string | null {
+  try {
+    return target ? new URL(target).host : null;
+  } catch {
+    return null;
+  }
+}
+
 export const columns: ColumnDef<Monitor>[] = [
   {
     accessorKey: "id",
@@ -79,7 +87,9 @@ export const columns: ColumnDef<Monitor>[] = [
       const target = row.getValue("target") as string;
       const legacyUrl = row.original.url as string; // Fallback for legacy data
 
-      const displayValue = maskUrlPassword(target || legacyUrl || "—");
+      // An MCP server URL often carries a long path; the host is what identifies the server.
+      const mcpHost = row.original.type === "mcp_server" ? safeHost(target) : null;
+      const displayValue = mcpHost ?? maskUrlPassword(target || legacyUrl || "—");
 
       return (
         <TruncatedTextWithTooltip

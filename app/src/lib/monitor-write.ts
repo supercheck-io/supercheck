@@ -10,7 +10,7 @@ import { sanitizeString } from "@/lib/input-sanitizer";
 import catalog from "@/lib/billing/plan-catalog.json";
 
 /** Config keys the worker writes. A client replacing `config` must not wipe or forge them. */
-export const WORKER_OWNED_CONFIG_KEYS = ["aggregatedAlertState", "sslLastCheckedAt", "sslCertificate", "sslProbeFailure", "sslAlertState", "aiEndpointState"] as const;
+export const WORKER_OWNED_CONFIG_KEYS = ["aggregatedAlertState", "sslLastCheckedAt", "sslCertificate", "sslProbeFailure", "sslAlertState", "aiEndpointState", "mcpState"] as const;
 
 export function preserveWorkerConfigKeys<T extends MonitorConfig | null | undefined>(
   existing: MonitorConfig | null | undefined,
@@ -93,6 +93,28 @@ export function normalizeMonitorAlertConfig(raw: Raw, existing?: Partial<AlertCo
       autoResolveIncident: optionalBool("autoResolveIncident"),
     },
   };
+}
+
+/** Create-time alert defaults for MCP monitors: page after 2 failures, open a sev2 incident, auto-resolve. */
+export function withMcpAlertDefaults(type: unknown, raw: Raw): Raw {
+  if (type !== "mcp_server") return raw;
+  return {
+    ...raw,
+    failureThreshold: raw.failureThreshold ?? 2,
+    incidentSeverity: raw.incidentSeverity || "sev2",
+    incidentEnabled: raw.incidentEnabled ?? true,
+    autoResolveIncident: raw.autoResolveIncident ?? true,
+  };
+}
+
+/** Audit trail records an MCP endpoint as its host only: the path can identify a tenant or carry a key. */
+export function monitorAuditTarget(type: unknown, target: string | null | undefined): string | null | undefined {
+  if (type !== "mcp_server" || !target) return target;
+  try {
+    return new URL(target.trim()).host;
+  } catch {
+    return null;
+  }
 }
 
 /** Rules for an enabled alertConfig: a channel (unless incidents are on), within the cap, and at least one alert type. */

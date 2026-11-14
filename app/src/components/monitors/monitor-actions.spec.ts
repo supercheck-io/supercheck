@@ -158,3 +158,11 @@ describe("mergeEditConfig with the AI endpoint preset", () => {
     expect(merged.timeoutSeconds).toBe(30); // the plain default replaces the preset's stored timeout
   });
 });
+
+describe("mergeEditConfig for MCP monitors", () => {
+  it("takes the form's mcp settings and timeout but keeps the worker-owned state", () => {
+    const stored = { mcp: { auth: { type: "none" }, requiredTools: ["old"] }, mcpState: { baseline: { hash: "h" } }, timeoutSeconds: 30 };
+    const built = { mcp: { auth: { type: "bearer", secretKey: "K" } }, timeoutSeconds: 10 };
+    expect(mergeEditConfig("mcp_server", stored, built)).toEqual({ mcp: built.mcp, mcpState: stored.mcpState, timeoutSeconds: 10 });
+  });
+});

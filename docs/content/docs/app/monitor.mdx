@@ -52,13 +52,17 @@ TCP reachability checks on ports 443/80 for server availability
 TCP/UDP port checks to verify that specific services are accepting connections
 </Card>
 
+<Card icon={<Plug className="text-fuchsia-600" />} title="MCP Monitor">
+Check a remote MCP server: login, required tools, an optional tool call, and changes to its tool list
+</Card>
+
 <Card icon={<Laptop className="text-purple-600" />} title="Synthetic Monitor">
 Run full Playwright browser tests on a schedule to validate complete user journeys
 </Card>
 </Cards>
 
 <Callout type="warn">
-Creating an HTTP, website, ping or port monitor returns `400` when the target is a private, loopback or reserved address, including a hostname that resolves to one. Changing the type or target of an existing monitor is checked the same way; updates that leave both unchanged are not. Instances can allow these with `ALLOW_INTERNAL_TARGETS=true` (see [Optional configuration](/docs/app/deployment/self-hosted#optional-configuration)); unlike webhook channels, monitors do not also need `SELF_HOSTED=true`. Cloud metadata and link-local addresses such as `169.254.169.254` stay blocked even then.
+Creating an HTTP, website, ping, port or MCP monitor returns `400` when the target is a private, loopback or reserved address, including a hostname that resolves to one. Changing the type or target of an existing monitor is checked the same way; updates that leave both unchanged are not. Instances can allow these with `ALLOW_INTERNAL_TARGETS=true` (see [Optional configuration](/docs/app/deployment/self-hosted#optional-configuration)); unlike webhook channels, monitors do not also need `SELF_HOSTED=true`. Cloud metadata and link-local addresses such as `169.254.169.254` stay blocked even then.
 </Callout>
 
 ## HTTP Monitor
@@ -101,6 +105,8 @@ Choose **Preset: AI endpoint (OpenAI-compatible)** on an HTTP monitor to check a
 | An error inside a 200 reply, or `finish_reason: "error"` | Down |
 | Stream ends early, or the reply is empty | Down |
 | No first token within the limit | Timeout |
+
+Two optional limits raise warnings without failing the check or opening an incident. **Warn first token (ms)** warns when the first token is slower than the limit for 3 checks in a row. **Warn total tokens** warns once when a reply uses more tokens than the limit. The preset also warns when the served model differs from the last check (for example a provider swaps `gpt-4o-mini` snapshots). See [Alerts](/docs/app/communicate/alerts#alert-types).
 
 Every result records first-token time, total time, the model that served the reply, and token counts (plus cost when the provider reports it). The reply text is not stored. The detail page shows first token, tokens per call and served model next to the usual response time.
 
@@ -189,6 +195,44 @@ Set the check interval (minimum 5 minutes). Supercheck runs the test and reports
 </Steps>
 
 ![Create Synthetic Monitor](/screenshots/create-synthetic-monitor.png)
+
+## MCP Monitor
+
+Checks a remote MCP server the way an AI client would use it: connect, log in, list the tools, and optionally call one. It catches a rejected token, a missing tool, a failing tool and a silently edited tool list.
+
+| Field | Notes |
+|---|---|
+| Server URL | The Streamable HTTP endpoint. `https` only, with no credentials or fragment in the URL |
+| Login | **None**, **Bearer token** or **Custom header**. The token comes from a project secret (**Variables**) and is never stored on the monitor. A custom header also takes the header name |
+| Protocol | **Auto** (default) probes `server/discover` (MCP 2026-07-28, stateless) and falls back to the 2025 `initialize` handshake for older servers. Pin `2025` or `2026` to skip the probe |
+| Tools that must exist | Optional list of tool names. A missing one fails the check |
+| Call a tool | Optional tool name, arguments (a JSON object, up to 8 KiB) and **Result must contain** text. Pick a read-only tool: it runs on every check, from every location |
+| Slow after (ms) | Optional. Warns when a check is slower for 3 checks in a row |
+
+Only remote Streamable HTTP servers are supported. There is no local `npx` or `uvx` server, no OAuth, and no legacy HTTP+SSE transport.
+
+### Tool list changes
+
+The first successful check stores the server's tools as a baseline. Later checks compare each tool's name, description and input schema with it. When any of them differ, Supercheck sends one **Tools changed** warning, lists what was added, removed or changed (and whether the description or the schema changed), and makes the new list the baseline. Tool descriptions are instructions to the calling model, so a silent edit is how a compromised server redirects agents.
+
+A change is a warning, not an incident. A tool list that goes back to an earlier state warns again. With several locations, a change is recorded only when every location that is up sees the same new list. A down check never changes the baseline.
+
+### Failure messages
+
+| Message | Cause |
+|---|---|
+| `Secret X was not found` | The login secret does not exist in this project |
+| `Login failed (401)` or `(403)` | The server rejected the token or header |
+| Connection error (refused, DNS, TLS) or a reply that is not MCP | The server is unreachable, or the URL is not an MCP endpoint |
+| Tool list error | The server returned an error for `tools/list` |
+| `Tool search_docs missing` | A required tool is not in the list |
+| Tool call failed | The tool returned an error, or a JSON-RPC error |
+| Expected text not found | The tool result does not contain **Result must contain** |
+| Timeout | The whole check took longer than the timeout (5-60 s, default 30) |
+
+Any of these counts as a failed check and opens an incident after the failure threshold (default 2), at `sev2` by default.
+
+Each check records the protocol, server name and version, tool count, and connect, list and call times. Tool arguments and replies are not stored. An MCP monitor uses one monitor slot and no Playwright minutes.
 
 ## Locations
 

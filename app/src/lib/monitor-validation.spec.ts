@@ -222,3 +222,100 @@ describe("AI endpoint preset validation", () => {
     expect(run({ aiEndpoint: { ...ok, firstTokenTimeoutMs: 10000 }, timeoutSeconds: 10 })).toEqual({ success: true });
   });
 });
+
+describe("MCP monitor validation (B12)", () => {
+  const url = "https://mcp.example.com/mcp";
+  const base = { auth: { type: "none" as const } };
+  const mcp = (config: Record<string, unknown>, target: string = url) =>
+    validateMonitorConfiguration({ type: "mcp_server", target, config, incomingConfig: config });
+  const restore = process.env.ALLOW_INTERNAL_TARGETS;
+  afterEach(() => {
+    if (restore === undefined) delete process.env.ALLOW_INTERNAL_TARGETS;
+    else process.env.ALLOW_INTERNAL_TARGETS = restore;
+  });
+
+  it("accepts a minimal and a full config", () => {
+    expect(mcp({ mcp: base })).toEqual({ success: true });
+    expect(
+      mcp({
+        mcp: {
+          auth: { type: "header", secretKey: "TOKEN", headerName: "X-Api-Key" },
+          protocol: "2026",
+          requiredTools: ["search_docs", "ns.tool:v1"],
+          toolCall: { name: "search_docs", arguments: { q: "x" }, expectText: "ok" },
+          slowMs: 2000,
+        },
+        timeoutSeconds: 45,
+      }),
+    ).toEqual({ success: true });
+    expect(mcp({ mcp: { auth: { type: "bearer", secretKey: "TOKEN" } } })).toEqual({ success: true });
+  });
+
+  it.each([
+    ["http scheme", "http://mcp.example.com/mcp"],
+    ["ftp scheme", "ftp://mcp.example.com/mcp"],
+    ["credentials", "https://user:pw@mcp.example.com/mcp"],
+    ["username only", "https://user@mcp.example.com/mcp"],
+    ["fragment", "https://mcp.example.com/mcp#access_token=x"],
+    ["not a URL", "mcp.example.com"],
+  ])("rejects a target with %s", (_name, target) => {
+    expect(mcp({ mcp: base }, target)).toMatchObject({ success: false, error: "Invalid monitor target" });
+  });
+
+  it("allows http only with ALLOW_INTERNAL_TARGETS=true", () => {
+    process.env.ALLOW_INTERNAL_TARGETS = "true";
+    expect(mcp({ mcp: base }, "http://mcp.internal/mcp")).toEqual({ success: true });
+    expect(mcp({ mcp: base }, "https://user:pw@mcp.internal/mcp")).toMatchObject({ success: false });
+  });
+
+  it.each([
+    ["missing mcp", {}],
+    ["unknown key", { mcp: { ...base, extra: 1 } }],
+    ["bad login type", { mcp: { auth: { type: "basic" } } }],
+    ["bearer without secret", { mcp: { auth: { type: "bearer" } } }],
+    ["header without secret", { mcp: { auth: { type: "header", headerName: "X-Key" } } }],
+    ["header without name", { mcp: { auth: { type: "header", secretKey: "T" } } }],
+    ["bearer with header name", { mcp: { auth: { type: "bearer", secretKey: "T", headerName: "X-Key" } } }],
+    ["none with secret", { mcp: { auth: { type: "none", secretKey: "T" } } }],
+    ["forbidden header", { mcp: { auth: { type: "header", secretKey: "T", headerName: "Host" } } }],
+    ["bad header name", { mcp: { auth: { type: "header", secretKey: "T", headerName: "X Key" } } }],
+    ["empty secret name", { mcp: { auth: { type: "bearer", secretKey: " " } } }],
+    ["unknown protocol", { mcp: { ...base, protocol: "2024" } }],
+    ["51 required tools", { mcp: { ...base, requiredTools: Array.from({ length: 51 }, (_, i) => `t${i}`) } }],
+    ["tool name with space", { mcp: { ...base, requiredTools: ["bad name"] } }],
+    ["tool name over 128 chars", { mcp: { ...base, requiredTools: ["a".repeat(129)] } }],
+    ["tool call without name", { mcp: { ...base, toolCall: {} } }],
+    ["arguments array", { mcp: { ...base, toolCall: { name: "t", arguments: [1] } } }],
+    ["arguments over 8 KiB", { mcp: { ...base, toolCall: { name: "t", arguments: { big: "x".repeat(8200) } } } }],
+    ["expectText over 500", { mcp: { ...base, toolCall: { name: "t", expectText: "x".repeat(501) } } }],
+    ["slowMs under 100", { mcp: { ...base, slowMs: 99 } }],
+    ["slowMs over 60000", { mcp: { ...base, slowMs: 60001 } }],
+    ["timeout under 5", { mcp: base, timeoutSeconds: 4 }],
+    ["timeout over 60", { mcp: base, timeoutSeconds: 61 }],
+  ])("rejects %s", (_name, config) => {
+    expect(mcp(config)).toMatchObject({ success: false, error: "Invalid monitor configuration" });
+  });
+
+  it("accepts the boundaries", () => {
+    expect(mcp({ mcp: { ...base, slowMs: 100, requiredTools: Array.from({ length: 50 }, (_, i) => `t${i}`), toolCall: { name: "a".repeat(128), expectText: "x".repeat(500) } }, timeoutSeconds: 5 })).toEqual({ success: true });
+    expect(mcp({ mcp: { ...base, slowMs: 60000 }, timeoutSeconds: 60 })).toEqual({ success: true });
+  });
+
+  it("allows config.mcp only on mcp_server monitors", () => {
+    expect(validateMonitorConfiguration({ type: "http_request", target: "https://example.com", config: { mcp: base } })).toMatchObject({
+      success: false,
+      details: "config.mcp is only supported on mcp_server monitors",
+    });
+    expect(validateMonitorConfiguration({ type: "http_request", target: "https://example.com", config: {} })).toEqual({ success: true });
+  });
+
+  it("limits the AI endpoint warning fields", () => {
+    const http = (aiEndpoint: Record<string, unknown>) =>
+      validateMonitorConfiguration({ type: "http_request", target: "https://api.example.com/v1", config: { aiEndpoint: { model: "m", ...aiEndpoint } } });
+    expect(http({ warnFirstTokenMs: 100, warnTotalTokens: 1_000_000 })).toEqual({ success: true });
+    expect(http({ warnFirstTokenMs: 99 })).toMatchObject({ success: false });
+    expect(http({ warnFirstTokenMs: 60001 })).toMatchObject({ success: false });
+    expect(http({ warnTotalTokens: 0 })).toMatchObject({ success: false });
+    expect(http({ warnTotalTokens: 1_000_001 })).toMatchObject({ success: false });
+  });
+});

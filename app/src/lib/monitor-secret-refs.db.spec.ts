@@ -55,6 +55,15 @@ describe("validateMonitorSecretRefs (project-scoped lookup)", () => {
     expect(await validateMonitorSecretRefs(ctx(projectB), { aiEndpoint: { model: "m", secretKey: "OPENAI_KEY" } })).toMatchObject({ success: false });
   });
 
+  it("scopes config.mcp.auth.secretKey to the monitor's own project", async () => {
+    const own = { mcp: { auth: { type: "bearer", secretKey: "OPENAI_KEY" } } };
+    expect(await validateMonitorSecretRefs(ctx(projectA), own)).toMatchObject({ success: true });
+    // Another project holds a secret of the same name, but this project does not: it must not be used.
+    expect(await validateMonitorSecretRefs(ctx(projectB), own)).toMatchObject({ success: false, details: "Secret OPENAI_KEY was not found in this project" });
+    expect(await validateMonitorSecretRefs(ctx(projectA), { mcp: { auth: { type: "header", headerName: "X-Key", secretKey: "OTHER_PROJECT_KEY" } } })).toMatchObject({ success: false });
+    expect(await validateMonitorSecretRefs(ctx(projectA), { mcp: { auth: { type: "header", headerName: "X-Key", secretKey: "PLAIN_VAR" } } })).toMatchObject({ success: false });
+  });
+
   it("refuses a plain variable and an unknown name", async () => {
     expect(await validateMonitorSecretRefs(ctx(projectA), { auth: { type: "bearer", secretKey: "PLAIN_VAR" } })).toMatchObject({ success: false });
     expect(await validateMonitorSecretRefs(ctx(projectA), { auth: { type: "bearer", secretKey: "NOPE" } })).toMatchObject({ success: false, details: "Secret NOPE was not found in this project" });

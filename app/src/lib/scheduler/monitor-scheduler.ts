@@ -41,7 +41,7 @@ const logger = queueLogger;
 export interface MonitorJobData {
   monitorId: string;
   projectId?: string;
-  type: 'http_request' | 'website' | 'ping_host' | 'port_check' | 'synthetic_test';
+  type: 'http_request' | 'website' | 'ping_host' | 'port_check' | 'synthetic_test' | 'mcp_server';
   target: string;
   config?: MonitorConfig;
   frequencyMinutes?: number;

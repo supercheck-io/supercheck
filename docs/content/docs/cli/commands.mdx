@@ -483,7 +483,7 @@ Extracting requirements from an uploaded document (PDF, DOCX, Markdown or TXT) w
 | `monitor status <monitor-id>` | Current status (quick view) | — |
 | `monitor results <monitor-id>` | Recent check results | `--page` (1), `--limit` (20) |
 | `monitor stats <monitor-id>` | Performance statistics | — |
-| `monitor create` | Create a monitor | `--name` (required), `--url`, `--type`, `--test-id`, `--port`, `--protocol`, `--interval-minutes`, `--timeout`, `--method`, `--preset`, `--model`, `--secret`, `--key-header`, `--prompt`, `--expect`, `--max-tokens`, `--first-token-timeout`, `--dry-run` |
+| `monitor create` | Create a monitor | `--name` (required), `--url`, `--type`, `--test-id`, `--port`, `--protocol`, `--interval-minutes`, `--timeout`, `--method`, `--preset`, `--model`, `--secret`, `--key-header`, `--prompt`, `--expect`, `--max-tokens`, `--first-token-timeout`, `--warn-first-token-ms`, `--warn-tokens`, `--header`, `--require-tool`, `--call-tool`, `--call-args`, `--slow-ms`, `--dry-run` |
 | `monitor update <monitor-id>` | Update a monitor | `--name`, `--url`, `--interval-minutes`, `--timeout`, `--method`, `--active`, `--dry-run` |
 | `monitor delete <monitor-id>` | Delete with confirmation | `--force` |
 
@@ -499,6 +499,8 @@ supercheck monitor create --name "Website" --url https://example.com --dry-run
 supercheck monitor create --name "TLS port" --type port_check --url example.com --port 443
 supercheck monitor create --name "Browser journey" --type synthetic_test --test-id <test-uuid>
 supercheck monitor create --name "OpenAI chat" --url https://api.openai.com/v1/chat/completions --preset ai-endpoint --model gpt-4o-mini --secret OPENAI_API_KEY
+supercheck monitor create --name "Docs MCP" --type mcp_server --url https://mcp.example.com/mcp --secret MCP_TOKEN --require-tool search_docs --require-tool get_page
+supercheck monitor create --name "Docs MCP call" --type mcp_server --url https://mcp.example.com/mcp --call-tool search_docs --call-args '{"query":"ping"}' --expect result
 
 supercheck monitor update <monitor-id> --interval-minutes 1 --active false
 supercheck monitor update <monitor-id> --name "Updated" --method POST --dry-run
@@ -516,22 +518,29 @@ supercheck monitor delete <monitor-id> --force
 | Flag | Required | Default | Description |
 |---|---|---|---|
 | `--name` | Yes | — | Monitor name |
-| `--url` | Except synthetic tests | — | HTTP(S) URL, or hostname/IP for ping and port checks |
-| `--type` | No | `http_request` | `http_request`, `website`, `ping_host`, `port_check`, `synthetic_test` |
+| `--url` | Except synthetic tests | — | HTTP(S) URL, or hostname/IP for ping and port checks. `mcp_server` needs an `https` URL with no credentials or fragment |
+| `--type` | No | `http_request` | `http_request`, `website`, `ping_host`, `port_check`, `synthetic_test`, `mcp_server` |
 | `--test-id` | Synthetic tests | — | UUID of an existing test |
 | `--port` | Port checks | — | Port number (1-65535) |
-| `--protocol` | No | `tcp` | Port check protocol: `tcp` or `udp` |
+| `--protocol` | No | `tcp` (`auto` for `mcp_server`) | Port check protocol (`tcp` or `udp`), or MCP protocol (`auto`, `2025`, `2026`) |
 | `--interval-minutes` | No | `5` | Check interval in minutes (1–1440) |
 | `--timeout` | No | `30` (`60` with the preset) | Request timeout in seconds (1-3600; 5-120 with the preset) |
 | `--method` | No | `GET` | HTTP method (`GET`, `POST`, `PUT`, `DELETE`, `PATCH`, `HEAD`, `OPTIONS`). Not allowed with `--preset` (the preset always sends `POST`) |
 | `--preset` | No | — | `ai-endpoint`: check an OpenAI-compatible chat-completions endpoint (`http_request` only) |
 | `--model` | With `--preset` | — | Model name to request |
-| `--secret` | No | — | Name of the project secret that holds the API key; omit to send no key |
+| `--secret` | No | — | Name of the project secret that holds the API key (preset) or the MCP login (`mcp_server`); omit to send none. Never pass the value |
 | `--key-header` | No | `Authorization` | Header for the key; `Authorization` sends `Bearer <key>`, any other header sends the raw key |
 | `--prompt` | No | `Reply with the single word OK.` | Prompt to send |
-| `--expect` | No | — | Text the reply must contain (case-insensitive) |
+| `--expect` | No | — | Text the reply must contain (case-insensitive). With `mcp_server`, text the tool call result must contain; needs `--call-tool` |
 | `--max-tokens` | No | `16` | Reply token limit (1-512). Reasoning models (gpt-5, o-series) need more, for example `256` |
 | `--first-token-timeout` | No | `15000` | A slower first token fails the check, in milliseconds (500-60000) |
+| `--warn-first-token-ms` | No | — | Warn when the first token is slower than this for 3 checks in a row (100-60000; preset only) |
+| `--warn-tokens` | No | — | Warn when a reply uses more total tokens than this (preset only) |
+| `--header` | No | — | `mcp_server`: send the `--secret` value in this header instead of as a bearer token. Needs `--secret` |
+| `--require-tool` | No | — | `mcp_server`: a tool the server must list. Repeat for several |
+| `--call-tool` | No | — | `mcp_server`: call this tool on every check. Pick a read-only tool |
+| `--call-args` | No | — | `mcp_server`: JSON object of arguments for `--call-tool` |
+| `--slow-ms` | No | — | `mcp_server`: warn when a check is slower than this for 3 checks in a row (100-60000) |
 | `--dry-run` | No | — | Preview what would be sent without creating |
 
 `monitor update` accepts `--name`, `--url`, `--interval-minutes` (1–1440), `--timeout` (1-3600), `--method`, `--active` (`true` or `false` to enable or disable) and `--dry-run`.

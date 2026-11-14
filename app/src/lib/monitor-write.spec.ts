@@ -8,6 +8,8 @@ import {
   mergePatch,
   preserveWorkerConfigKeys,
   WORKER_OWNED_CONFIG_KEYS,
+  monitorAuditTarget,
+  withMcpAlertDefaults,
   mirrorProviderRowsToAlertConfig,
   monitorNameError,
   normalizeMonitorAlertConfig,
@@ -243,5 +245,44 @@ describe("aiEndpointState is worker-owned", () => {
   });
   it("drops a client-sent value when nothing is stored", () => {
     expect(preserveWorkerConfigKeys(null, { aiEndpointState: { lastServedModel: "forged" } })).toEqual({});
+  });
+});
+
+describe("mcpState is worker-owned", () => {
+  it("is never accepted from a client and is preserved on update", () => {
+    expect(WORKER_OWNED_CONFIG_KEYS).toContain("mcpState");
+    const stored = { mcpState: { detectedProtocol: "2026" as const, lastCycleKey: "c1" } };
+    const merged = preserveWorkerConfigKeys(stored, { mcp: { auth: { type: "none" as const } }, mcpState: { detectedProtocol: "2025" as const } });
+    expect(merged).toEqual({ mcp: { auth: { type: "none" } }, mcpState: { detectedProtocol: "2026", lastCycleKey: "c1" } });
+    expect(preserveWorkerConfigKeys(null, { mcpState: { lastCycleKey: "forged" } })).toEqual({});
+    expect(preserveWorkerConfigKeys({}, { mcpState: { lastCycleKey: "forged" } })).toEqual({});
+  });
+});
+
+describe("withMcpAlertDefaults", () => {
+  it("fills failureThreshold 2, sev2 and incident flags for mcp_server only when unset", () => {
+    const value = (raw: Record<string, unknown>) => {
+      const r = normalizeMonitorAlertConfig(withMcpAlertDefaults("mcp_server", raw));
+      if (!r.ok) throw new Error(r.error);
+      return r.value;
+    };
+    expect(value({ enabled: true })).toMatchObject({ failureThreshold: 2, incidentSeverity: "sev2", incidentEnabled: true, autoResolveIncident: true });
+    expect(value({ failureThreshold: 4, incidentSeverity: "sev3", incidentEnabled: false, autoResolveIncident: false })).toMatchObject({
+      failureThreshold: 4, incidentSeverity: "sev3", incidentEnabled: false, autoResolveIncident: false,
+    });
+    expect(value({ failureThreshold: null, incidentSeverity: "" })).toMatchObject({ failureThreshold: 2, incidentSeverity: "sev2" });
+  });
+  it("leaves other monitor types untouched", () => {
+    const raw = { enabled: true };
+    expect(withMcpAlertDefaults("http_request", raw)).toBe(raw);
+  });
+});
+
+describe("monitorAuditTarget", () => {
+  it("logs an MCP endpoint as its host only", () => {
+    expect(monitorAuditTarget("mcp_server", "https://mcp.example.com:8443/t/abc123/mcp?x=1")).toBe("mcp.example.com:8443");
+    expect(monitorAuditTarget("mcp_server", "not a url")).toBeNull();
+    expect(monitorAuditTarget("mcp_server", undefined)).toBeUndefined();
+    expect(monitorAuditTarget("http_request", "https://a.example.com/p")).toBe("https://a.example.com/p");
   });
 });

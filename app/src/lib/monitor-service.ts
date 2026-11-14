@@ -159,15 +159,16 @@ export function executionConfig(config: MonitorConfig | null | undefined) {
 export type SecretStateSnapshot = { target: string; config: unknown };
 
 /**
- * True while the row's target and its secret references (aiEndpoint.secretKey, auth.secretKey) still match the
+ * True while the row's target and its secret references (aiEndpoint.secretKey, mcp.auth.secretKey, auth.secretKey) still match the
  * snapshot. Only those fields are compared, so the worker's own config writes never cause a conflict.
  */
 export function secretStateUnchanged(table: typeof monitorTable, snapshot: SecretStateSnapshot) {
-  const c = (snapshot.config ?? {}) as { aiEndpoint?: { secretKey?: unknown }; auth?: { secretKey?: unknown } };
+  const c = (snapshot.config ?? {}) as { aiEndpoint?: { secretKey?: unknown }; mcp?: { auth?: { secretKey?: unknown } }; auth?: { secretKey?: unknown } };
   const name = (v: unknown) => (typeof v === "string" ? v : null);
   return and(
     eq(table.target, snapshot.target),
     sql`(${table.config} -> 'aiEndpoint' ->> 'secretKey') IS NOT DISTINCT FROM ${name(c.aiEndpoint?.secretKey)}`,
+    sql`(${table.config} -> 'mcp' -> 'auth' ->> 'secretKey') IS NOT DISTINCT FROM ${name(c.mcp?.auth?.secretKey)}`,
     sql`(${table.config} -> 'auth' ->> 'secretKey') IS NOT DISTINCT FROM ${name(c.auth?.secretKey)}`,
   );
 }

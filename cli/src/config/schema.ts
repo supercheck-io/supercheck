@@ -69,7 +69,7 @@ export const monitorDefinitionSchema = z.object({
   id: z.string().uuid().optional(),
   name: z.string().min(1).max(255),
   description: z.string().optional(),
-  type: z.enum(['http_request', 'website', 'ping_host', 'port_check', 'synthetic_test']),
+  type: z.enum(['http_request', 'website', 'ping_host', 'port_check', 'synthetic_test', 'mcp_server']),
   target: z.string().optional(),
   frequencyMinutes: z.number().int().positive().optional(),
   enabled: z.boolean().optional(),

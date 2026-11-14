@@ -179,3 +179,34 @@ describe('AI endpoint config reads', () => {
     expect(monitorConfigForRead(ai, true)).toBe(ai);
   });
 });
+
+describe('MCP monitor config reads (B15)', () => {
+  const mcp: MonitorConfig = {
+    mcp: {
+      auth: { type: 'header', headerName: 'X-Private-Header', secretKey: 'MCP_SECRET_NAME' },
+      protocol: '2026',
+      requiredTools: ['search_docs'],
+      toolCall: { name: 'search_docs', arguments: { q: 'private-argument' }, expectText: 'ok' },
+      slowMs: 2000,
+    },
+    mcpState: { detectedProtocol: '2026', baseline: { hash: 'h', takenAt: '2026-01-01T00:00:00.000Z', tools: [{ name: 'search_docs', fingerprint: 'f' }] } },
+  };
+  it('hides tool arguments, header name and secret name from viewers, keeps the rest and mcpState', () => {
+    const read = monitorConfigForRead(mcp, false)!;
+    expect(read.mcp).toEqual({
+      auth: { type: 'header' },
+      protocol: '2026',
+      requiredTools: ['search_docs'],
+      toolCall: { name: 'search_docs', expectText: 'ok' },
+      slowMs: 2000,
+    });
+    expect(read.mcpState).toEqual(mcp.mcpState);
+    expect(JSON.stringify(read)).not.toMatch(/private-argument|X-Private-Header|MCP_SECRET_NAME/);
+  });
+  it('handles a config without a tool call, gives updaters everything, and ignores a non-object', () => {
+    expect(monitorConfigForRead({ mcp: { auth: { type: 'none' } } }, false)!.mcp).toEqual({ auth: { type: 'none' } });
+    expect(monitorConfigForRead({ mcp: { auth: { type: 'none' }, toolCall: { name: 't' } } }, false)!.mcp).toEqual({ auth: { type: 'none' }, toolCall: { name: 't' } });
+    expect(monitorConfigForRead(mcp, true)).toBe(mcp);
+    expect(monitorConfigForRead({ mcp: 'x' } as unknown as MonitorConfig, false)).toEqual({});
+  });
+});

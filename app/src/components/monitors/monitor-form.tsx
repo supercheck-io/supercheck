@@ -76,6 +76,7 @@ import { useTest } from "@/hooks/use-tests";
 import { CredentialField } from "./credential-field";
 import { monitorPrefill } from "./monitor-prefill";
 import { addAiEndpointIssues, AiEndpointFields, AI_ENDPOINT_DEFAULT_URL, buildAiEndpointConfig } from "./ai-endpoint-fields";
+import { addMcpIssues, buildMcpConfig, McpServerFields, MCP_DEFAULT_TIMEOUT } from "./mcp-server-fields";
 
 // Defaults the AI endpoint preset applies to a new monitor; switching back to Standard HTTP undoes them while unchanged.
 const AI_PRESET_INTERVAL = "300";
@@ -134,7 +135,7 @@ const formSchema = z
       .max(100, "Title must be 100 characters or less"),
     target: z.string().optional(),
     type: z.enum(
-      ["http_request", "website", "ping_host", "port_check", "synthetic_test"],
+      ["http_request", "website", "ping_host", "port_check", "synthetic_test", "mcp_server"],
       {
         error: "Please select a check type",
       }
@@ -185,6 +186,19 @@ const formSchema = z
     aiConfig_expectText: z.string().optional(),
     aiConfig_firstTokenTimeoutSeconds: z.string().optional(),
     aiConfig_timeoutSeconds: z.string().optional(),
+    aiConfig_warnFirstTokenMs: z.string().optional(),
+    aiConfig_warnTotalTokens: z.string().optional(),
+    // MCP Monitor (mcp_server only)
+    mcpConfig_authType: z.enum(["none", "bearer", "header"]).optional(),
+    mcpConfig_secretKey: z.string().optional(),
+    mcpConfig_headerName: z.string().optional(),
+    mcpConfig_protocol: z.enum(["auto", "2025", "2026"]).optional(),
+    mcpConfig_requiredTools: z.array(z.string()).optional(),
+    mcpConfig_toolName: z.string().optional(),
+    mcpConfig_toolArgs: z.string().optional(),
+    mcpConfig_toolExpect: z.string().optional(),
+    mcpConfig_slowMs: z.string().optional(),
+    mcpConfig_timeoutSeconds: z.string().optional(),
     // Port Check specific
     portConfig_port: z.coerce
       .number()
@@ -244,7 +258,7 @@ const formSchema = z
       if (data.target && data.target.trim()) {
         const target = data.target.trim();
 
-        if (data.type === "http_request" || data.type === "website") {
+        if (data.type === "http_request" || data.type === "website" || data.type === "mcp_server") {
           // URL validation
           try {
             const { protocol } = new URL(target);
@@ -294,6 +308,8 @@ const formSchema = z
         });
       }
     }
+
+    if (data.type === "mcp_server") addMcpIssues(data, ctx);
 
     // AI endpoint preset: its own fields replace the request settings, so authentication below does not apply
     const aiPreset = data.type === "http_request" && data.preset === "ai_endpoint";
@@ -388,6 +404,9 @@ const creationDefaultValues: FormValues = {
   websiteConfig_enableSslCheck: false, // Default to false instead of undefined
   websiteConfig_sslDaysUntilExpirationWarning: 30, // Default to 30 days instead of undefined
   syntheticConfig_testId: "", // Default for synthetic monitors
+  mcpConfig_authType: "none",
+  mcpConfig_protocol: "auto",
+  mcpConfig_timeoutSeconds: MCP_DEFAULT_TIMEOUT,
 };
 
 const mapApiTestToTest = (testData: Record<string, unknown>): Test => {
@@ -590,6 +609,9 @@ export function MonitorForm({
         websiteConfig_sslDaysUntilExpirationWarning:
           typeToUse === "website" ? 30 : 30, // Always provide default
         syntheticConfig_testId: fromTestId || "", // Pre-fill if coming from test page
+        mcpConfig_authType: "none",
+        mcpConfig_protocol: "auto",
+        mcpConfig_timeoutSeconds: MCP_DEFAULT_TIMEOUT,
         ...prefill,
       };
     }
@@ -620,7 +642,7 @@ export function MonitorForm({
       // The form has no timeout field, so a stored timeout is kept; an interval shorter than it is shown at the interval field.
       // The AI preset manages its own timeout (checked against the interval in the schema).
       // A stored preset timeout is not shown or kept once the user leaves the preset (the plain default replaces it), so it never errors at the interval.
-      const storedTimeout = aiPresetActive || initialConfig?.aiEndpoint ? undefined : initialConfig?.timeoutSeconds;
+      const storedTimeout = aiPresetActive || initialConfig?.aiEndpoint || values.type === "mcp_server" ? undefined : initialConfig?.timeoutSeconds;
       const intervalSeconds = parseInt(values.interval, 10);
       const priorSeconds = parseInt(initialData?.interval ?? "", 10);
       if (
@@ -811,6 +833,7 @@ export function MonitorForm({
     ping_host: "e.g., example.com or 8.8.8.8 (IP address or hostname)",
     port_check: "e.g., example.com or 192.168.1.1 (hostname or IP address)",
     synthetic_test: "Select a test to monitor",
+    mcp_server: "https://mcp.example.com/mcp",
   };
 
   async function onSubmit(data: FormValues) {
@@ -953,6 +976,8 @@ export function MonitorForm({
       config = {
         timeoutSeconds: 5, // Default timeout for ping
       };
+    } else if (sanitizedData.type === "mcp_server") {
+      config = buildMcpConfig(sanitizedData);
     } else if (sanitizedData.type === "synthetic_test") {
       // Synthetic monitor configuration
       if (!sanitizedData.syntheticConfig_testId) {
@@ -1499,7 +1524,7 @@ export function MonitorForm({
                     name="target"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Target</FormLabel>
+                        <FormLabel>{type === "mcp_server" ? "Server URL" : "Target"}</FormLabel>
                         <FormControl>
                           <Input
                             placeholder={
@@ -1577,6 +1602,7 @@ export function MonitorForm({
               )}
 
               {/* Conditional fields based on type (formerly method) */}
+              {type === "mcp_server" && <McpServerFields form={form} projectId={currentProject?.id} />}
               {aiPreset && (
                 <AiEndpointFields form={form} projectId={currentProject?.id} locationCount={aiLocationCount} />
               )}
@@ -2493,9 +2519,11 @@ export function MonitorForm({
                   )}
                   {hideAlerts
                     ? (nextStepLabel ?? "Next: Location Settings")
-                    : editMode
-                      ? "Update Monitor"
-                      : "Create"}
+                    : type === "mcp_server"
+                      ? "Save and test"
+                      : editMode
+                        ? "Update Monitor"
+                        : "Create"}
                 </Button>
               </div>
             </form>

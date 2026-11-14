@@ -9686,7 +9686,8 @@
               "website",
               "ping_host",
               "port_check",
-              "synthetic_test"
+              "synthetic_test",
+              "mcp_server"
             ]
           },
           "status": {
@@ -10742,7 +10743,9 @@
               "prompt": { "type": "string", "minLength": 1, "maxLength": 2000, "default": "Reply with the single word OK." },
               "maxTokens": { "type": "integer", "minimum": 1, "maximum": 512, "default": 16, "description": "Reasoning models (gpt-5, o-series) spend tokens on thinking and need more, for example 256." },
               "expectText": { "type": "string", "description": "The reply must contain this text (not case sensitive)." },
-              "firstTokenTimeoutMs": { "type": "integer", "minimum": 500, "maximum": 60000, "default": 15000, "description": "Must not exceed the total timeout (`timeoutSeconds` x 1000, default 60 s)." }
+              "firstTokenTimeoutMs": { "type": "integer", "minimum": 500, "maximum": 60000, "default": 15000, "description": "Must not exceed the total timeout (`timeoutSeconds` x 1000, default 60 s)." },
+              "warnFirstTokenMs": { "type": "integer", "minimum": 100, "maximum": 60000, "description": "Send a warning when the first token is slower than this for 3 cycles in a row. Off when unset." },
+              "warnTotalTokens": { "type": "integer", "minimum": 1, "maximum": 1000000, "description": "Send a warning when one call uses more tokens than this. Off when unset." }
             }
           },
           "aiEndpointState": {
@@ -10751,6 +10754,48 @@
             "description": "Written by the worker; ignored on create and update.",
             "properties": {
               "lastServedModel": { "type": "string" }
+            }
+          },
+          "mcp": {
+            "type": "object",
+            "required": ["auth"],
+            "additionalProperties": false,
+            "description": "MCP Monitor settings. Only on mcp_server monitors, whose `target` is the MCP endpoint URL (https; http only when the server runs with ALLOW_INTERNAL_TARGETS=true; no credentials or fragment). Viewers get this object without `toolCall.arguments`, `auth.headerName` and `auth.secretKey`.",
+            "properties": {
+              "auth": {
+                "type": "object",
+                "required": ["type"],
+                "additionalProperties": false,
+                "properties": {
+                  "type": { "type": "string", "enum": ["none", "bearer", "header"] },
+                  "secretKey": { "type": "string", "minLength": 1, "maxLength": 255, "description": "Name of a secret in the monitor's own project. Required for `bearer` and `header`; an unknown name is rejected." },
+                  "headerName": { "type": "string", "pattern": "^[A-Za-z0-9-]{1,64}$", "description": "Header that carries the secret. Required for `header`." }
+                }
+              },
+              "protocol": { "type": "string", "enum": ["auto", "2025", "2026"], "default": "auto" },
+              "requiredTools": { "type": "array", "maxItems": 50, "items": { "type": "string", "pattern": "^[A-Za-z0-9_.:-]{1,128}$" }, "description": "Tool names that must be listed by the server." },
+              "toolCall": {
+                "type": "object",
+                "required": ["name"],
+                "additionalProperties": false,
+                "description": "Optional tool called on every check. Pick a read-only tool.",
+                "properties": {
+                  "name": { "type": "string", "pattern": "^[A-Za-z0-9_.:-]{1,128}$" },
+                  "arguments": { "type": "object", "description": "Fixed arguments, at most 8 KiB when serialized." },
+                  "expectText": { "type": "string", "maxLength": 500, "description": "The tool result must contain this text." }
+                }
+              },
+              "slowMs": { "type": "integer", "minimum": 100, "maximum": 60000, "description": "Send a warning when a check takes longer than this for 3 cycles in a row. Off when unset." }
+            }
+          },
+          "mcpState": {
+            "type": "object",
+            "readOnly": true,
+            "description": "Written by the worker (detected protocol, tool-list baseline and recent changes); ignored on create and update.",
+            "properties": {
+              "detectedProtocol": { "type": "string", "enum": ["2025", "2026"] },
+              "baseline": { "type": "object", "properties": { "hash": { "type": "string" }, "takenAt": { "type": "string", "format": "date-time" }, "tools": { "type": "array", "items": { "type": "object", "properties": { "name": { "type": "string" }, "fingerprint": { "type": "string" } } } } } },
+              "changes": { "type": "array", "description": "Newest last, at most 10.", "items": { "type": "object", "properties": { "at": { "type": "string", "format": "date-time" }, "added": { "type": "array", "items": { "type": "string" } }, "removed": { "type": "array", "items": { "type": "string" } }, "changed": { "type": "array", "items": { "type": "object", "properties": { "name": { "type": "string" }, "reasons": { "type": "array", "items": { "type": "string", "enum": ["description", "schema"] } } } } } } } }
             }
           },
           "port": {
@@ -10808,7 +10853,7 @@
           "timeoutSeconds": {
             "type": "integer",
             "minimum": 1,
-            "description": "1-3600 (5-120 with `aiEndpoint`, where it is the total time limit and defaults to 60); must not exceed `frequencyMinutes` x 60. A save that raises the timeout above the interval, or shortens the interval below the timeout, returns 400; a monitor already in that state still saves other changes.",
+            "description": "1-3600 (5-120 with `aiEndpoint`, where it is the total time limit and defaults to 60; 5-60 on mcp_server monitors, default 30); must not exceed `frequencyMinutes` x 60. A save that raises the timeout above the interval, or shortens the interval below the timeout, returns 400; a monitor already in that state still saves other changes.",
             "maximum": 3600
           },
           "regions": {
@@ -10988,7 +11033,8 @@
               "website",
               "ping_host",
               "port_check",
-              "synthetic_test"
+              "synthetic_test",
+              "mcp_server"
             ],
             "default": "http_request"
           },
@@ -11036,7 +11082,8 @@
               "website",
               "ping_host",
               "port_check",
-              "synthetic_test"
+              "synthetic_test",
+              "mcp_server"
             ]
           },
           "target": {
@@ -11086,7 +11133,8 @@
               "website",
               "ping_host",
               "port_check",
-              "synthetic_test"
+              "synthetic_test",
+              "mcp_server"
             ]
           },
           "target": {

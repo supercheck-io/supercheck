@@ -183,6 +183,60 @@ describe("MCP tools", () => {
     expect(JSON.stringify(res)).not.toMatch(/PROMPTTEXT|OPENAI_SECRET_NAME|secretKey|"fp"/);
   });
 
+  const mcpRow = (config: Record<string, unknown>, over: Record<string, unknown> = {}) => ({
+    id: id(1), name: "m", description: null, type: "mcp_server", target: "https://u:pw@mcp.example.com/t/PATHSECRET/mcp?k=QUERYSECRET", status: "up", enabled: true, frequencyMinutes: 5, lastCheckAt: null, config, ...over,
+  });
+
+  it("get_monitor shows MCP protocol, required tools, tool call name, tool count and last change, nothing secret", async () => {
+    queue.push([mcpRow({
+      mcp: {
+        auth: { type: "header", secretKey: "MCP_SECRET_NAME", headerName: "X-Hidden-Header" },
+        protocol: "2026",
+        requiredTools: ["search_docs", "get_page"],
+        toolCall: { name: "search_docs", arguments: { q: "ARGSECRET" }, expectText: "EXPECTSECRET" },
+      },
+      mcpState: {
+        baseline: { hash: "BASEHASH", takenAt: "2026-11-01T00:00:00.000Z", tools: [{ name: "a", fingerprint: "FP1" }, { name: "b", fingerprint: "FP2" }, { name: "c", fingerprint: "FP3" }] },
+        changes: [{ at: "2026-11-02T00:00:00.000Z", added: ["a"], removed: [], changed: [] }, { at: "2026-11-03T00:00:00.000Z", added: [], removed: ["z"], changed: [] }],
+      },
+    })]);
+    const res = await handlers.get("get_monitor")!({ id: id(1) });
+    expect(res.structuredContent.monitor).toMatchObject({
+      type: "mcp_server",
+      target: "https://mcp.example.com",
+      settings: { mcp: { protocol: "2026", requiredTools: ["search_docs", "get_page"], toolCallName: "search_docs", toolCount: 3, lastChangeAt: "2026-11-03T00:00:00.000Z" } },
+    });
+    expect(JSON.stringify(res)).not.toMatch(/MCP_SECRET_NAME|X-Hidden-Header|ARGSECRET|EXPECTSECRET|PATHSECRET|QUERYSECRET|pw|BASEHASH|FP1|secretKey|headerName|arguments/);
+  });
+
+  it("get_monitor reports an MCP monitor that has no state yet and defaults the protocol to auto", async () => {
+    queue.push([mcpRow({ mcp: { auth: { type: "none" } } })]);
+    const res = await handlers.get("get_monitor")!({ id: id(1) });
+    expect(res.structuredContent.monitor).toMatchObject({ settings: { mcp: { protocol: "auto", requiredTools: [], toolCallName: null, toolCount: null, lastChangeAt: null } } });
+  });
+
+  it("get_monitor has no mcp block for other monitor types", async () => {
+    queue.push([mcpRow({}, { type: "http_request" })]);
+    const res = await handlers.get("get_monitor")!({ id: id(1) });
+    expect(res.structuredContent.monitor).toMatchObject({ settings: { mcp: null } });
+  });
+
+  it("list_monitors shows the MCP type and a host-only target", async () => {
+    queue.push([{ id: id(1), name: "m", type: "mcp_server", target: "https://mcp.example.com/t/PATHSECRET/mcp?k=1", status: "up", lastCheckAt: null }]);
+    const res = await handlers.get("list_monitors")!({ limit: 5 });
+    expect((res.structuredContent.monitors as { type: string }[])[0].type).toBe("mcp_server");
+    expect(JSON.stringify(res)).not.toMatch(/PATHSECRET|k=1/);
+  });
+
+  it("get_monitor and list_monitors only read the connection's own organization and project", async () => {
+    queue.push([]);
+    await handlers.get("get_monitor")!({ id: id(1) });
+    expect(lastWhere().params).toEqual(expect.arrayContaining([ctx.organizationId, ctx.projectId, id(1)]));
+    queue.push([]);
+    await handlers.get("list_monitors")!({ limit: 5 });
+    expect(lastWhere().params).toEqual(expect.arrayContaining([ctx.organizationId, ctx.projectId]));
+  });
+
   it("get_monitor reads locations from locationConfig", async () => {
     queue.push([{ id: id(1), name: "m", description: null, type: "http_request", target: "https://example.com", status: "up", enabled: true, frequencyMinutes: 5, lastCheckAt: null, config: { locationConfig: { enabled: true, locations: ["eu-central", "us-east"], threshold: 50, strategy: "majority" } } }]);
     const res = await handlers.get("get_monitor")!({ id: id(1) });

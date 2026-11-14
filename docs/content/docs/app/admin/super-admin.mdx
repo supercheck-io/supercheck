@@ -116,7 +116,7 @@ Fill in the fields described below and click **Create Location**
 <Accordions>
 <Accordion title="Workload capabilities" id="workload-capabilities">
 
-An enabled location always runs HTTP, SSL, ping, and port monitors. Browser (Playwright) and k6 workloads are opt-in per location:
+An enabled location always runs HTTP, SSL, ping, port, and MCP monitors. Browser (Playwright) and k6 workloads are opt-in per location:
 
 - **Synthetic monitors** need **Browser execution**. In the monitor form, locations without it stay visible but disabled ("Browser checks are not available in this region."). A monitor that still has such a location selected cannot be saved until you deselect it.
 - **k6 tests** need **Performance tests**. `global` runs on any eligible k6 worker.

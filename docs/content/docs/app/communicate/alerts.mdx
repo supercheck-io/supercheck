@@ -68,6 +68,13 @@ sequenceDiagram
 | **Recovery** | Consecutive successes reach threshold after the failure threshold was reached | Success |
 | **SSL Expiring** | Website monitor's certificate is within its warning window, has expired, or could not be read for 24 hours | Warning; at most once every 24 hours |
 | **SSL Renewed** | A certificate you were warned about is healthy again: valid with more days left than the warning window, or a later expiry date than the one warned about | Success; once per warning |
+| **Tools changed** (`mcp_tools_changed`) | MCP monitor: the server's tool list, a tool description or an input schema changed since the last check | Warning; once per change. On by default |
+| **MCP slow** (`mcp_slow`) | MCP monitor: checks slower than **Slow after (ms)** for 3 checks in a row | Warning; once per slow stretch. Off until you set the limit |
+| **Slow first token** (`ai_slow_first_token`) | AI endpoint preset: first token slower than **Warn first token (ms)** for 3 checks in a row | Warning; off until you set the limit |
+| **Model changed** (`ai_model_changed`) | AI endpoint preset: the reply came from a different model than the last check | Warning; once per new model. On by default |
+| **Tokens high** (`ai_tokens_high`) | AI endpoint preset: a reply used more tokens than **Warn total tokens** | Warning; once per stretch. Off until you set the limit |
+
+The last five rows are warnings only: they notify your channels but never open an incident. A down MCP monitor, including a rejected login, is a normal **Failure** and opens a `sev2` incident by default.
 
 </Tab>
 <Tab value="Jobs">

@@ -142,6 +142,8 @@ export type MonitorResultDetails = {
     // Host the certificate was read from; set on the copy stored in monitor config
     host?: string;
   };
+  /** MCP Monitor check result. Tool names come from the customer's server: render as text only. */
+  mcp?: McpResultDetails;
   ai?: {
     firstTokenMs?: number;
     totalMs: number;

@@ -159,7 +159,7 @@ export interface JobExecutionTask {
 export interface MonitorJobData {
   monitorId: string;
   projectId?: string;
-  type: "http_request" | "website" | "ping_host" | "port_check" | "synthetic_test";
+  type: "http_request" | "website" | "ping_host" | "port_check" | "synthetic_test" | "mcp_server";
   target: string;
   config?: unknown; // Using unknown for config for now, can be refined with shared MonitorConfig type
   frequencyMinutes?: number;

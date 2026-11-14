@@ -1,5 +1,7 @@
 import { AxiosError } from 'axios';
 import { resolveMonitorSecret } from './monitor-secret';
+import { executeMcpCheck } from './mcp-check';
+import { evaluateCycleWarnings } from './monitor-cycle-warnings';
 import { throwError } from 'rxjs';
 /**
  * Monitor Service Tests
@@ -31,6 +33,15 @@ jest.mock('../execution/services/execution.service', () => ({
   ExecutionService: jest.fn().mockImplementation(() => ({
     execute: jest.fn().mockResolvedValue({ success: true }),
   })),
+}));
+
+jest.mock('./monitor-cycle-warnings', () => ({
+  evaluateCycleWarnings: jest.fn().mockResolvedValue(undefined),
+}));
+
+jest.mock('./mcp-check', () => ({
+  ...jest.requireActual<typeof import('./mcp-check')>('./mcp-check'),
+  executeMcpCheck: jest.fn(),
 }));
 
 jest.mock('./monitor-secret', () => ({
@@ -4014,6 +4025,139 @@ describe('MonitorService', () => {
         'EX',
         AGGREGATION_COMPLETED_TTL_SECONDS,
       );
+    });
+  });
+  describe('MCP monitor type and per-cycle warnings', () => {
+    const mcpConfig = {
+      mcp: { auth: { type: 'bearer' as const, secretKey: 'TOKEN' } },
+    };
+    const mcpJob = {
+      monitorId: 'monitor-123',
+      type: 'mcp_server' as const,
+      target: 'https://mcp.example.com/mcp',
+      config: mcpConfig,
+    };
+
+    it('runs an mcp_server monitor through executeMcpCheck with the monitor secret lookup', async () => {
+      (executeMcpCheck as jest.Mock).mockResolvedValue({
+        status: 'up',
+        details: { mcp: { toolCount: 2 } },
+        responseTimeMs: 12,
+        isUp: true,
+      });
+      (resolveMonitorSecret as jest.Mock).mockResolvedValue({
+        ok: true,
+        value: 'v'.repeat(12),
+      });
+
+      const result = await service.executeMonitor(mcpJob);
+
+      expect(result).toMatchObject({
+        status: 'up',
+        isUp: true,
+        responseTimeMs: 12,
+        details: { mcp: { toolCount: 2 } },
+      });
+      const [target, config, deps] = (executeMcpCheck as jest.Mock).mock
+        .calls[0];
+      expect(target).toBe('https://mcp.example.com/mcp');
+      expect(config).toBe(mcpConfig);
+      expect(typeof deps.request).toBe('function');
+      await deps.resolveSecret('TOKEN');
+      expect(resolveMonitorSecret).toHaveBeenCalledWith(
+        mockDbService.db,
+        'monitor-123',
+        'TOKEN',
+      );
+    });
+
+    it('reports an invalid mcp_server target as a check error without running the check', async () => {
+      (executeMcpCheck as jest.Mock).mockClear();
+      const result = await service.executeMonitor({
+        ...mcpJob,
+        target: 'ftp://mcp.example.com/mcp',
+      });
+      expect(result?.status).toBe('error');
+      expect(result?.details?.errorMessage).toEqual(expect.any(String));
+      expect(executeMcpCheck).not.toHaveBeenCalled();
+    });
+
+    it('runs an mcp_server monitor with no config and the default deadline', async () => {
+      (executeMcpCheck as jest.Mock).mockResolvedValue({
+        status: 'error',
+        details: { mcp: {}, errorMessage: 'MCP settings are missing' },
+        responseTimeMs: 1,
+        isUp: false,
+      });
+      const result = await service.executeMonitor({
+        ...mcpJob,
+        config: undefined,
+      });
+      expect(result?.status).toBe('error');
+      expect((executeMcpCheck as jest.Mock).mock.calls.at(-1)[1]).toEqual({});
+    });
+
+    describe('evaluation paths', () => {
+      const row = {
+        monitorId: mockMonitor.id,
+        location: 'eu',
+        checkedAt: new Date(),
+        status: 'up' as const,
+        isUp: true,
+        responseTimeMs: 5,
+        details: { mcp: { toolsHash: 'h', tools: [] } },
+      } as MonitorExecutionResult;
+      const mcpMonitor = { ...mockMonitor, type: 'mcp_server' };
+
+      beforeEach(() => {
+        (evaluateCycleWarnings as jest.Mock).mockClear();
+        jest
+          .spyOn(service as any, 'getMonitorById')
+          .mockResolvedValue(mcpMonitor);
+      });
+
+      it('single-location path: the saved result id is the cycle key', async () => {
+        const values = jest.fn().mockReturnValue({
+          onConflictDoNothing: jest.fn().mockResolvedValue(undefined),
+        });
+        mockDbService.db.insert.mockReturnValue({ values });
+        await service.saveDistributedMonitorResult(row, {});
+        const insertedId = values.mock.calls[0][0].id as string;
+        expect(insertedId).toEqual(expect.any(String));
+        expect(evaluateCycleWarnings).toHaveBeenCalledTimes(1);
+        expect(evaluateCycleWarnings).toHaveBeenCalledWith(
+          mockDbService.db,
+          mcpMonitor,
+          insertedId,
+          [row],
+        );
+      });
+
+      it('legacy group path: the execution group id is the cycle key, even when the group was already evaluated', async () => {
+        jest
+          .spyOn(service as any, 'prepareGroupEvaluation')
+          .mockResolvedValue(null);
+        await service.saveMonitorResults([row], {
+          persisted: true,
+          executionGroupId: 'group-1',
+        });
+        expect(evaluateCycleWarnings).toHaveBeenCalledWith(
+          mockDbService.db,
+          mcpMonitor,
+          'group-1',
+          [row],
+        );
+      });
+
+      it('local multi-location path without a group or id still gets a unique key per evaluation', async () => {
+        await service.saveMonitorResults([row], { persisted: true });
+        await service.saveMonitorResults([row], { persisted: true });
+        const keys = (evaluateCycleWarnings as jest.Mock).mock.calls.map(
+          (c) => c[2],
+        );
+        expect(keys).toHaveLength(2);
+        expect(keys[0]).not.toBe(keys[1]);
+      });
     });
   });
 });

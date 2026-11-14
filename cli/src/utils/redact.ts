@@ -1,7 +1,7 @@
 const credentialKey = /^(?:xauth|xsignature|xsig|signature|authorization|proxyauthorization|cookie|setcookie|webhookUrl|discordWebhookUrl|teamsWebhookUrl|encryptedValue|auth|webhook|pass|pwd|cookies|sessionid|jwt|routingkey|devicecode)$|(?:token|secret|pass(?:w(?:or)?d)?|apikey|appkey|accesskey|privatekey|credentials?)$/i
 // Monitor configs hold a public target URL and request headers the operator must be able to review. Any other `config`
 // (notification providers, untyped API error bodies) is treated as credential-bearing, so the default fails closed.
-const monitorTypes = new Set(['http_request', 'website', 'ping_host', 'port_check', 'synthetic_test'])
+const monitorTypes = new Set(['http_request', 'website', 'ping_host', 'port_check', 'synthetic_test', 'mcp_server'])
 let reveal = false
 export function canRevealSecrets(): boolean { return reveal }
 export function setRevealSecrets(value: boolean): void { reveal = value }

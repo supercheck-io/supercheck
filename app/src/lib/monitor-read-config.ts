@@ -7,7 +7,7 @@ type DeclaredConfigKey = keyof {
 };
 
 /** Keys whose values are credentials or request payloads; handled separately below. */
-type ProtectedConfigKey = "headers" | "body" | "auth" | "aiEndpoint";
+type ProtectedConfigKey = "headers" | "body" | "auth" | "aiEndpoint" | "mcp";
 
 /**
  * Keys visible to read-only users. This is an allowlist: a field added to
@@ -37,6 +37,7 @@ const VIEWER_VISIBLE_KEYS: Record<Exclude<DeclaredConfigKey, ProtectedConfigKey>
   testTitle: true,
   playwrightOptions: true,
   aiEndpointState: true,
+  mcpState: true,
 };
 
 /** Request credentials and payloads are available only to monitor updaters. */
@@ -56,6 +57,15 @@ export function monitorConfigForRead(
   if (config.aiEndpoint && typeof config.aiEndpoint === "object") {
     const { prompt: _prompt, secretKey: _secretKey, ...rest } = config.aiEndpoint;
     visible.aiEndpoint = rest;
+  }
+  // Viewers see the MCP login type, protocol, required tool names and tool-call name, never the call arguments, header name or secret name.
+  if (config.mcp && typeof config.mcp === "object") {
+    const { auth, toolCall, ...rest } = config.mcp;
+    visible.mcp = {
+      ...rest,
+      auth: { type: auth?.type ?? "none" },
+      ...(toolCall ? { toolCall: { name: toolCall.name, ...(toolCall.expectText !== undefined ? { expectText: toolCall.expectText } : {}) } } : {}),
+    };
   }
   return visible;
 }

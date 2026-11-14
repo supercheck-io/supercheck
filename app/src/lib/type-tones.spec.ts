@@ -33,16 +33,17 @@ describe("type tones", () => {
       expect(dark).toContain(`--type-${tone}: oklch(${d});`);
     }
     expect(Object.values(TYPE_TONE.test)).toEqual(["sky", "teal", "cyan", "blue", "purple"]);
-    expect(Object.values(TYPE_TONE.monitor)).toEqual(["teal", "sky", "cyan", "blue", "purple"]);
+    expect(Object.values(TYPE_TONE.monitor)).toEqual(["teal", "sky", "cyan", "blue", "purple", "orchid"]);
     expect(TYPE_TONE.job).toEqual({ playwright: "sky", k6: "purple" });
   });
 
   it("gives every other type its own tone, apart from the five tests and monitors share", () => {
     const shared = new Set<string>(Object.values(TYPE_TONE.test));
-    const others = [TYPE_TONE.variable, TYPE_TONE.sre, TYPE_TONE.admin].flatMap((g) => Object.values(g));
+    // The MCP monitor has no test counterpart, so it owns `orchid`.
+    const others = [TYPE_TONE.variable, TYPE_TONE.sre, TYPE_TONE.admin, { mcp_server: TYPE_TONE.monitor.mcp_server }].flatMap((g) => Object.values(g));
     expect(new Set(others).size).toBe(others.length);
     for (const tone of others) expect(shared.has(tone)).toBe(false);
-    for (const tone of Object.values(TYPE_TONE.monitor)) expect(shared.has(tone)).toBe(true);
+    for (const [key, tone] of Object.entries(TYPE_TONE.monitor)) expect(shared.has(tone)).toBe(key !== "mcp_server");
     // No tone is defined without a user.
     const used = new Set<string>([...shared, ...others]);
     expect([...TYPE_TONES].filter((t) => !used.has(t))).toEqual([]);

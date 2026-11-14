@@ -19,7 +19,7 @@ export const SHARED_PRICING_FAQS = [
   {
     question: "Where do Cloud checks run?",
     answer:
-      "HTTP, SSL, ping, and port monitors can run from Europe, North America, and Asia Pacific. Browser synthetic monitors, Playwright tests, and k6 load tests run in Europe. Enterprise can use custom locations.",
+      "HTTP, SSL, ping, port, and MCP monitors can run from Europe, North America, and Asia Pacific. Browser synthetic monitors, Playwright tests, and k6 load tests run in Europe. Enterprise can use custom locations.",
   },
   {
     question: "Why do browser checks and k6 tests run only in Europe?",
@@ -29,7 +29,7 @@ export const SHARED_PRICING_FAQS = [
   {
     question: "How are browser execution minutes measured?",
     answer:
-      "Playwright tests and synthetic monitors share your minute allowance. Execution time is rounded to four decimal places in minutes per run, without a whole-minute minimum. A five-second run uses 0.0833 minutes. Browser checks currently run from one location (Europe). Each executed retry contributes usage, and if browser checks are enabled in more locations, each location counts separately. Failed or canceled executions can still consume compute usage. HTTP, SSL, ping, and port checks from any location do not consume Playwright minutes.",
+      "Playwright tests and synthetic monitors share your minute allowance. Execution time is rounded to four decimal places in minutes per run, without a whole-minute minimum. A five-second run uses 0.0833 minutes. Browser checks currently run from one location (Europe). Each executed retry contributes usage, and if browser checks are enabled in more locations, each location counts separately. Failed or canceled executions can still consume compute usage. HTTP, SSL, ping, port, and MCP checks from any location do not consume Playwright minutes.",
   },
   {
     question: "How are load tests measured?",
@@ -59,7 +59,7 @@ export const SHARED_PRICING_FAQS = [
   {
     question: "What pauses when I reach my overage cap?",
     answer:
-      "With the hard stop on, new browser (Playwright) checks, test and job runs, k6 load tests, and full AI SRE investigations pause until the owner raises the cap or your billing period resets. HTTP, website, ping, and port monitors keep running. With the hard stop off, usage keeps billing at the overage rates and alerts still go out.",
+      "With the hard stop on, new browser (Playwright) checks, test and job runs, k6 load tests, and full AI SRE investigations pause until the owner raises the cap or your billing period resets. HTTP, website, ping, port, and MCP monitors keep running. With the hard stop off, usage keeps billing at the overage rates and alerts still go out.",
   },
   {
     question: "Do unused allowances roll over?",
