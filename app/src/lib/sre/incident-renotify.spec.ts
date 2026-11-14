@@ -135,6 +135,17 @@ describe("renotifyUnacknowledgedIncidents branching (SQL is covered by the .db s
     expect(inserts).toEqual([expect.objectContaining({ eventData: expect.objectContaining({ kind: "reminder", n: 2, failed: true, attempts: 5, reached: 0 }) })]);
   });
 
+  it("a send skipped on purpose (acknowledged meanwhile) does not use the org cap", async () => {
+    reminderClaims.push([reminder()]);
+    notifyIncidentEvent.mockImplementationOnce(async (input: { report?: { skipped?: boolean } }) => {
+      if (input.report) input.report.skipped = true;
+      return true;
+    });
+    await renotifyUnacknowledgedIncidents(now);
+    expect(incr).not.toHaveBeenCalled();
+    expect(updates).toEqual([]);
+  });
+
   it("clears the failure count after a successful retry", async () => {
     reminderClaims.push([reminder({ failures: 2 })]);
     await renotifyUnacknowledgedIncidents(now);

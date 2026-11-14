@@ -81,8 +81,9 @@ type IncidentNotifyInput = {
   reminder?: { n: number; of: number };
   /** `created`, or an automatic `reopened`: the alert_history row behind it, so delivery is judged for this outage or run only. */
   triggerAlertHistoryId?: string;
-  /** Filled in for `created`: where the message went when the trigger alert was not delivered. */
-  report?: { fallback?: IncidentFallback };
+  /** Filled in: `fallback` for `created`/reopen (where the message went when the trigger alert was not delivered);
+   * `skipped` when nothing was sent on purpose (already announced, acknowledged, resolved or stopped). */
+  report?: { fallback?: IncidentFallback; skipped?: boolean };
 };
 
 const EVENT_LABEL: Record<IncidentNotifyEvent, string> = {
@@ -507,7 +508,10 @@ export async function notifyIncidentEvent(input: IncidentNotifyInput): Promise<b
   let claim: string | null = null;
   try {
     claim = await claimEvent(input);
-    if (claim === null) return true;
+    if (claim === null) {
+      if (input.report) input.report.skipped = true;
+      return true;
+    }
 
     const [incident] = await db
       .select({
@@ -533,10 +537,16 @@ export async function notifyIncidentEvent(input: IncidentNotifyInput): Promise<b
         ),
       )
       .limit(1);
-    if (!incident) return true;
+    if (!incident) {
+      if (input.report) input.report.skipped = true;
+      return true;
+    }
     // The reminder is claimed before it is sent; someone may have acknowledged or resolved since.
     // Also stopped when a person lowered the severity after the claim.
-    if ((input.event === "unacknowledged" || input.event === "escalated") && (incident.acknowledgedAt || incident.status === "resolved" || incident.renotifyStoppedAt)) return true;
+    if ((input.event === "unacknowledged" || input.event === "escalated") && (incident.acknowledgedAt || incident.status === "resolved" || incident.renotifyStoppedAt)) {
+      if (input.report) input.report.skipped = true;
+      return true;
+    }
 
     const url = buildIncidentUrl(incident.id);
     const detail = input.detail?.replace(/\s+/g, " ").trim().slice(0, MAX_DETAIL_LENGTH);
@@ -747,7 +757,18 @@ export async function notifyIncidentEvent(input: IncidentNotifyInput): Promise<b
       const hasEligibleOwner = await ownerCanAct(input, [ownerId, incident.commanderUserId]);
       if (!reachedChannel && !hasEligibleOwner) {
         const admins = await listProjectAdmins(input.organizationId, input.projectId).catch(() => []);
-        const emails = admins.filter((admin) => admin.id !== input.actorUserId).map((admin) => admin.email);
+        // A flapping monitor reopens again and again: admins get at most one fallback email per window, like participants.
+        const candidates = admins.filter((admin) => admin.id !== input.actorUserId);
+        const claimedAdmins: string[] = [];
+        const recipients: typeof candidates = [];
+        for (const admin of candidates) {
+          if (isThrottledEmail(input)) {
+            if (!(await claimRecipient(input, admin.id))) continue;
+            claimedAdmins.push(admin.id);
+          }
+          recipients.push(admin);
+        }
+        const emails = recipients.map((admin) => admin.email);
         if (emails.length > 0) {
           attempted += 1;
           await sendEmail(emails, message)
@@ -756,9 +777,10 @@ export async function notifyIncidentEvent(input: IncidentNotifyInput): Promise<b
               emailed += emails.length;
               if (addPolicyFallback && input.report && input.report.fallback !== "policy_channels") input.report.fallback = "admins";
             })
-            .catch((error: unknown) =>
-              logger.warn({ incidentId: incident.id, error: error instanceof Error ? error.message : "send failed" }, "Incident email to project admins failed"),
-            );
+            .catch(async (error: unknown) => {
+              await releaseRecipients(input, claimedAdmins);
+              logger.warn({ incidentId: incident.id, error: error instanceof Error ? error.message : "send failed" }, "Incident email to project admins failed");
+            });
         }
       }
     }

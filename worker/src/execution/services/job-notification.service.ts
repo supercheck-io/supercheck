@@ -428,6 +428,28 @@ export class JobNotificationService {
                 : shouldNotifySuccess,
             )
           : providers;
+      // A paging service shares one dedup key per job: if a newer run has failed since this one, its page is the
+      // open one now, and this run's resolve would close it. Re-read just before sending.
+      if (
+        alertType === 'job_success' &&
+        sendTo.some((provider) => isPagingPreset(provider.config?.preset))
+      ) {
+        const latest = await this.dbService.getRecentRunsForJob(jobId, 5);
+        const thisRunAt = currentRun?.createdAt ?? currentAt;
+        const newerFailure = latest.some(
+          (run) =>
+            run.id !== runId &&
+            !isCancelledRun(run) &&
+            (run.status === 'failed' || run.status === 'error') &&
+            run.createdAt !== null &&
+            run.createdAt > thisRunAt,
+        );
+        if (newerFailure) {
+          sendTo = sendTo.filter(
+            (provider) => !isPagingPreset(provider.config?.preset),
+          );
+        }
+      }
       if (sendTo.length === 0) return;
       const reservedRows = new Map<string, string>();
       if (alertType === 'job_failed' || alertType === 'job_timeout') {

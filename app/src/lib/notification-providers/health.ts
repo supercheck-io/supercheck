@@ -1,4 +1,5 @@
 import { getRedisConnection } from "@/lib/queue";
+import { withRedisDeadline } from "@/lib/security/redis-deadline";
 
 /** A channel's state from its newest delivery in the last 7 days (shown as a badge on the channel list). */
 export type ProviderHealth = { state: "ok" | "auth_failed" | "failing" | "unknown"; at: string | null };
@@ -17,7 +18,10 @@ const TEST_TTL_SECONDS = 7 * 24 * 60 * 60;
 export async function recordProviderTest(providerId: string, outcome: { ok: boolean; responseStatus?: number }, at = new Date()) {
   try {
     const redis = await getRedisConnection();
-    await redis.set(TEST_KEY(providerId), JSON.stringify({ ok: outcome.ok, responseStatus: outcome.responseStatus ?? null, at: at.toISOString() }), "EX", TEST_TTL_SECONDS);
+    // Bounded: the shared client queues commands while Redis is down, which would hang the request.
+    await withRedisDeadline(redis, () =>
+      redis.set(TEST_KEY(providerId), JSON.stringify({ ok: outcome.ok, responseStatus: outcome.responseStatus ?? null, at: at.toISOString() }), "EX", TEST_TTL_SECONDS),
+    );
   } catch {
     // Health simply falls back to real deliveries.
   }
@@ -29,7 +33,7 @@ export async function loadProviderTestHealth(providerIds: string[]): Promise<Map
   if (providerIds.length === 0) return result;
   try {
     const redis = await getRedisConnection();
-    const values = await redis.mget(...providerIds.map(TEST_KEY));
+    const values = await withRedisDeadline(redis, () => redis.mget(...providerIds.map(TEST_KEY)));
     values.forEach((value, index) => {
       if (!value) return;
       try {

@@ -5,6 +5,7 @@ import { notificationProviders, sreIncidents, sreIncidentTimelineEvents } from "
 import { notInPendingOrganization } from "@/lib/deletion/visibility";
 import { decryptNotificationProviderConfig } from "@/lib/notification-providers/crypto";
 import { getRedisConnection, queueLogger } from "@/lib/queue";
+import { withRedisDeadline } from "@/lib/security/redis-deadline";
 import { incidentHeldForMaintenance } from "@/lib/sre/incident-maintenance";
 import { notifyIncidentEvent } from "@/lib/sre/incident-notifier";
 import { isPagingWebhook } from "@/lib/sre/notification-policy";
@@ -69,7 +70,8 @@ const orgCapKey = (kind: SendKind, organizationId: string, now: Date) =>
 export async function allowOrgIncidentSend(organizationId: string, now = new Date(), kind: SendKind = "reminder"): Promise<boolean> {
   try {
     const redis = await getRedisConnection();
-    return Number((await redis.get(orgCapKey(kind, organizationId, now))) ?? 0) < ORG_SENDS_PER_HOUR;
+    // Bounded, so a Redis outage (the client queues commands) cannot stall the tick.
+    return Number((await withRedisDeadline(redis, () => redis.get(orgCapKey(kind, organizationId, now)))) ?? 0) < ORG_SENDS_PER_HOUR;
   } catch (error) {
     queueLogger.warn({ err: error }, "Incident reminder rate limit unavailable; sending anyway");
     return true;
@@ -81,7 +83,7 @@ export async function recordOrgIncidentSend(organizationId: string, now = new Da
   try {
     const redis = await getRedisConnection();
     const key = orgCapKey(kind, organizationId, now);
-    if ((await redis.incr(key)) === 1) await redis.expire(key, 7200);
+    if ((await withRedisDeadline(redis, () => redis.incr(key))) === 1) await withRedisDeadline(redis, () => redis.expire(key, 7200));
   } catch {
     // Fails open, like the check.
   }
@@ -313,6 +315,7 @@ export async function renotifyUnacknowledgedIncidents(now = new Date(), stats?: 
       }
       escalationSends++;
       let delivered = false;
+      const report: { skipped?: boolean } = {};
       try {
         delivered = await notifyIncidentEvent({
           organizationId: incident.organizationId,
@@ -321,12 +324,14 @@ export async function renotifyUnacknowledgedIncidents(now = new Date(), stats?: 
           event: "escalated",
           targets: incident.channelId ? { providerIds: [incident.channelId] } : { userIds: [incident.userId as string] },
           dedupeDiscriminator: `escalate:${now.getTime()}`,
+          report,
         });
       } catch (error) {
         queueLogger.error({ err: error, incidentId: incident.id }, "Incident escalation send failed");
       }
       if (delivered !== false) {
-        await recordOrgIncidentSend(incident.organizationId, now, "escalation");
+        // Suppressed on purpose (acknowledged or stopped meanwhile): nothing went out, so the cap is not used.
+        if (!report.skipped) await recordOrgIncidentSend(incident.organizationId, now, "escalation");
         if (incident.failures > 0) await clearFailures(incident.id, "escalation");
         continue;
       }
@@ -362,6 +367,7 @@ export async function renotifyUnacknowledgedIncidents(now = new Date(), stats?: 
       }
       reminderSends++;
       let delivered = false;
+      const report: { skipped?: boolean } = {};
       try {
         delivered = await notifyIncidentEvent({
           organizationId: incident.organizationId,
@@ -371,12 +377,14 @@ export async function renotifyUnacknowledgedIncidents(now = new Date(), stats?: 
           // Per reopen cycle and per reminder, so each reminder has its own dedupe window.
           dedupeDiscriminator: `renotify:${incident.reopenedAt?.getTime() ?? 0}:${incident.count}`,
           reminder: { n: incident.count, of: incident.max },
+          report,
         });
       } catch (error) {
         queueLogger.error({ err: error, incidentId: incident.id }, "Incident re-notify send failed");
       }
       if (delivered !== false) {
-        await recordOrgIncidentSend(incident.organizationId, now, "reminder");
+        // Suppressed on purpose (acknowledged or stopped meanwhile): nothing went out, so the cap is not used.
+        if (!report.skipped) await recordOrgIncidentSend(incident.organizationId, now, "reminder");
         if (incident.failures > 0) await clearFailures(incident.id, "reminder");
         continue;
       }

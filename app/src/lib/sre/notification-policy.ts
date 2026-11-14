@@ -155,7 +155,11 @@ export async function saveNotificationPolicy(
     return { success: false, error: "Reminders must finish within 2 days" };
   }
   if (data.escalateChannelId && data.escalateUserId) return { success: false, error: "Escalate to a channel or a member, not both" };
-  if (data.escalateAfterMinutes !== null && !data.escalateChannelId && !data.escalateUserId) {
+  // A target deleted since (its id was set to null) is accepted while the escalation is unchanged, so an older
+  // client's unrelated save still works; the tick notes on each incident that nobody was escalated to.
+  const deletedTargetUnchanged =
+    stored.escalateAfterMinutes !== null && !stored.escalateChannelId && !stored.escalateUserId && data.escalateAfterMinutes === stored.escalateAfterMinutes;
+  if (data.escalateAfterMinutes !== null && !data.escalateChannelId && !data.escalateUserId && !deletedTargetUnchanged) {
     return { success: false, error: "Choose who to escalate to" };
   }
 

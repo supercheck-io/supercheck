@@ -39,3 +39,13 @@ it("falls back to deliveries without Redis, and picks the newer health", async (
   expect(newerHealth(undefined, older)).toBe(older);
   expect(newerHealth(older, undefined)).toBe(older);
 });
+
+it("does not hang when Redis stops answering", async () => {
+  redisDown = false;
+  jest.useFakeTimers();
+  mget.mockReturnValueOnce(new Promise(() => undefined));
+  const pending = loadProviderTestHealth(["p1"]);
+  await jest.advanceTimersByTimeAsync(2_500);
+  expect((await pending).size).toBe(0);
+  jest.useRealTimers();
+});

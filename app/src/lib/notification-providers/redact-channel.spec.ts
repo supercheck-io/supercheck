@@ -27,3 +27,8 @@ it("keeps short values of ordinary headers readable", () => {
   const config = { headers: { "X-Retry": "2", "X-Debug": "true", "X-Api-Key": "k9" } };
   expect(redactChannelSecrets("retry 2, debug true, key k9", config)).toBe("retry 2, debug true, key [redacted]");
 });
+
+it("redacts the decoded form of an escaped template secret", () => {
+  const config = { bodyTemplate: '{"api_token":"ab\\/cd1234efgh"}' };
+  expect(redactChannelSecrets("echo ab/cd1234efgh", config)).toBe("echo [redacted]");
+});

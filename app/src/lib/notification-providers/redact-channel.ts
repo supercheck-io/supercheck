@@ -3,7 +3,7 @@ import { normalizeWebhookHeaders } from "@/lib/notification-providers/validation
 const AUTH_SCHEMES = /^(bearer|basic|token|geniekey)$/i;
 const SENSITIVE_NAME = /(auth|key|token|secret|password|signature|session|cookie)/i;
 /** `"routing_key": "abc"` style values in a body template; templated values (`{{...}}`) are not secrets. */
-const TEMPLATE_SECRET = /"([A-Za-z0-9_-]*(?:key|token|secret|password|signature)[A-Za-z0-9_-]*)"\s*:\s*"([^"{}]+)"/gi;
+const TEMPLATE_SECRET = /"([A-Za-z0-9_-]*(?:key|token|secret|password|signature)[A-Za-z0-9_-]*)"\s*:\s*"((?:[^"{}\\]|\\.)+)"/gi;
 
 /**
  * The channel's own secrets removed from vendor text that may echo the request:
@@ -27,7 +27,15 @@ export function redactChannelSecrets(text: string, config: Record<string, unknow
     for (const part of value.split(/\s+/)) if (part && !AUTH_SCHEMES.test(part)) target.add(part);
   }
   if (typeof config.bodyTemplate === "string") {
-    for (const match of config.bodyTemplate.matchAll(TEMPLATE_SECRET)) known.add(match[2]);
+    for (const match of config.bodyTemplate.matchAll(TEMPLATE_SECRET)) {
+      known.add(match[2]);
+      // The request carries the decoded JSON string (\/ becomes /), so redact that form too.
+      try {
+        known.add(JSON.parse(`"${match[2]}"`) as string);
+      } catch {
+        // Not a valid JSON string: the raw form is all there is.
+      }
+    }
   }
   const both = (value: string) => {
     guessed.add(value);

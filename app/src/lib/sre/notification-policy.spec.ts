@@ -151,6 +151,12 @@ it("does not re-check an unchanged escalation target, so a stale one cannot bloc
   expect(await saveNotificationPolicy(scope, { ...base, escalateAfterMinutes: 30, escalateUserId: member })).toMatchObject({ error: "The escalation member is not a member of this project" });
 });
 
+it("accepts an unchanged escalation whose target was deleted, but not a new one without a target", async () => {
+  storedPolicy = [{ ...base, escalateAfterMinutes: 30, autoInvestigateEnabledAt: null }];
+  expect(await saveNotificationPolicy(scope, { ...legacy, autoInvestigateOnOpen: true })).toEqual({ success: true });
+  expect(await saveNotificationPolicy(scope, { ...base, escalateAfterMinutes: 45 })).toEqual({ success: false, error: "Choose who to escalate to" });
+});
+
 it("treats presets and templated webhooks as paging, not plain webhooks or other types", () => {
   expect(isPagingWebhook("webhook", { preset: "opsgenie" })).toBe(true);
   expect(isPagingWebhook("webhook", { bodyTemplate: "{}" })).toBe(true);

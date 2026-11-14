@@ -700,6 +700,26 @@ describe("reminders, escalation and paging fallback", () => {
     expect(fetchPublicEndpoint).not.toHaveBeenCalled();
   });
 
+  it("reports a skipped send to the caller, and throttles admin fallback emails on automatic reopens", async () => {
+    const report: { skipped?: boolean } = {};
+    selectQueue.push([{ ...incident, acknowledgedAt: new Date() }]);
+    await notifyIncidentEvent({ ...base, event: "unacknowledged", actorUserId: null, report });
+    expect(report.skipped).toBe(true);
+
+    mockAdmins.mockResolvedValue([{ id: "admin", name: "Ops", email: "ops@example.com" }]);
+    const reopen = { ...base, event: "reopened" as const, automatic: true, actorUserId: null, assigneeUserId: null, triggerAlertHistoryId: "018f0000-0000-7000-8000-0000000000a3" };
+    const queueReopen = () => selectQueue.push([{ ...incident, assigneeUserId: null }], [{ sourceType: "monitor", sourceId: "mon-1", dedupKey: "monitor:mon-1:monitor_failure" }], [{ outageKey: "o-3", runId: null }], [], [pagerduty]);
+    queueReopen();
+    await notifyIncidentEvent(reopen);
+    expect(sendEmailToMultiple.mock.calls.flatMap((call) => call[0].recipients)).toEqual(["ops@example.com"]);
+    // Within the window the same admin is not emailed again for the next reopen.
+    sendEmailToMultiple.mockClear();
+    redisSet.mockImplementation(async (key: string) => (key.includes("incident-email") ? null : "OK"));
+    queueReopen();
+    await notifyIncidentEvent({ ...reopen, dedupeDiscriminator: "second" });
+    expect(sendEmailToMultiple).not.toHaveBeenCalled();
+  });
+
   it("escalation is skipped once the incident is acknowledged or resolved", async () => {
     selectQueue.push([{ ...incident, acknowledgedAt: new Date() }]);
     expect(await notifyIncidentEvent({ ...base, event: "escalated", targets: { providerIds: ["s1"] } })).toBe(true);

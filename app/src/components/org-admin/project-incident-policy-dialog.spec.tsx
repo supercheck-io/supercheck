@@ -139,11 +139,11 @@ it("loads a saved member escalation and keeps it on save", async () => {
   );
 });
 
-it("says when the escalation target was removed and blocks Save until a new one is chosen", async () => {
+it("says when the escalation target was deleted, and still lets other settings be saved", async () => {
   getPolicy.mockResolvedValue({ ...loaded, data: { ...loaded.data, policy: { ...loaded.data.policy, escalateAfterMinutes: 30 } } });
   render(<ProjectIncidentPolicyDialog open onOpenChange={jest.fn()} projectId="p1" projectName="Prod" />);
   expect(await screen.findByText(/Escalation target was removed/)).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "Save" })).toBeEnabled();
 });
 
 it("keeps a stored target that lost access, says so, and still lets other settings be saved", async () => {

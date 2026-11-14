@@ -158,6 +158,27 @@ describe('JobNotificationService', () => {
       expect(sentTo(ctx)).toEqual([{ ids: ['slack'], type: 'job_success' }]);
     });
 
+    it('does not resolve when a newer run has failed since (its page is the open one)', async () => {
+      const ctx = withPaging(false);
+      ctx.dbService.getOpenJobPages.mockResolvedValue(new Set(['pd']));
+      ctx.dbService.getRecentRunsForJob.mockResolvedValue([
+        {
+          id: 'run-3',
+          status: 'failed',
+          createdAt: new Date('2026-01-01T00:02:00Z'),
+        },
+        {
+          id: 'run-2',
+          status: 'passed',
+          createdAt: new Date('2026-01-01T00:01:00Z'),
+        },
+      ]);
+      await ctx.service.handleJobNotifications(passedRun);
+      expect(
+        ctx.notificationService.sendNotificationToMultipleProviders,
+      ).not.toHaveBeenCalled();
+    });
+
     it('sends nothing on a passing run with success alerts off and no open page', async () => {
       const ctx = withPaging(false);
       await ctx.service.handleJobNotifications(passedRun);

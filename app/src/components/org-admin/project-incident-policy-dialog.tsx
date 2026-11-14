@@ -111,7 +111,8 @@ export function ProjectIncidentPolicyDialog({ open, onOpenChange, projectId, pro
   const repeatValid = !repeatOn || (inRange(repeatValue, 5, 1440) && inRange(maxValue, 2, 10));
   const scheduleValid = !repeatOn || !repeatValid || minutesValue + (maxValue - 1) * repeatValue <= MAX_SCHEDULE_MINUTES;
   const escalateValue = Number(escalateMinutes);
-  const escalateValid = !escalate || (inRange(escalateValue, 5, 1440) && escalateTarget !== "");
+  // A removed target can stay while the escalation is unchanged (the server re-checks), so other settings can be saved.
+  const escalateValid = !escalate || (inRange(escalateValue, 5, 1440) && (escalateTarget !== "" || targetRemoved));
   const formValid = minutesValid && repeatValid && scheduleValid && escalateValid;
 
   const save = async () => {
