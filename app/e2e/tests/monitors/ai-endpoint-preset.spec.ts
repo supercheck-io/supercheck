@@ -28,6 +28,9 @@ test.describe('AI endpoint monitor preset @monitors', () => {
     await page.getByRole('option', { name: secretKey }).click();
     await page.getByTestId('ai-model').fill('gpt-4o-mini');
     await page.locator('form button[type="submit"]').click();
+    // The create wizard continues to the alert settings step before saving.
+    await expect(page).toHaveURL(/wizardStep=alerts/);
+    await page.getByRole('button', { name: 'Create Monitor', exact: true }).click();
 
     await expect(page).toHaveURL(/\/monitors\/[0-9a-f-]{36}$/);
     const monitorId = new URL(page.url()).pathname.split('/').pop() as string;
