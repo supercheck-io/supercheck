@@ -9,7 +9,6 @@ jest.mock("@/lib/s3-proxy", () => ({ getS3Client: jest.fn() }));
 import { NextRequest } from "next/server";
 import { db } from "@/utils/db";
 import { secretInUseMessage } from "@/lib/monitor-secret-usage";
-import { logAuditEvent } from "@/lib/audit-logger";
 import { PUT as cliUpdate, DELETE as cliDelete } from "./[id]/route";
 import { PUT as projectUpdate, DELETE as projectDelete } from "../projects/[id]/variables/[variableId]/route";
 
