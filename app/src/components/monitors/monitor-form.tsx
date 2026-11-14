@@ -73,6 +73,7 @@ import { useAvailableLocations } from "@/hooks/use-locations";
 import { useQueryClient } from "@tanstack/react-query";
 import { invalidateMonitorCaches, mergeEditConfig, withCurrentInterval } from "./monitor-actions";
 import { useTest } from "@/hooks/use-tests";
+import { monitorPrefill } from "./monitor-prefill";
 
 // Define presets for Expected Status Codes
 /** Parsed like the form's URL validation, so what validates as https shows the SSL section. */
@@ -485,6 +486,8 @@ export function MonitorForm({
   const urlType = searchParams.get("type") as FormValues["type"];
   const fromTestId = searchParams.get("fromTest");
   const currentMonitorType = monitorType || urlType || "http_request";
+  // "Monitor this" from the free tools; new monitors only.
+  const prefill = useMemo(() => monitorPrefill(searchParams, currentMonitorType), [searchParams, currentMonitorType]);
 
   // (moved below after form initialization)
 
@@ -528,10 +531,11 @@ export function MonitorForm({
         websiteConfig_sslDaysUntilExpirationWarning:
           typeToUse === "website" ? 30 : 30, // Always provide default
         syntheticConfig_testId: fromTestId || "", // Pre-fill if coming from test page
+        ...prefill,
       };
     }
     return creationDefaultValues;
-  }, [currentMonitorType, initialData, fromTestId]);
+  }, [currentMonitorType, initialData, fromTestId, prefill]);
 
   const form = useForm<FormValues>({
     resolver: (async (values, ctx, opts) => {
@@ -632,6 +636,7 @@ export function MonitorForm({
       const initialDefaults: FormValues = {
         ...creationDefaultValues,
         type: urlType,
+        ...prefill,
       };
       form.reset(initialDefaults);
     }

@@ -22,6 +22,7 @@ import {
   Target,
   Terminal,
   Users,
+  Wrench,
 } from "lucide-react";
 
 export const GITHUB_URL = "https://github.com/supercheck-io/supercheck";
@@ -109,6 +110,7 @@ export const developersMenu: NavMenu = {
         { title: "API reference", description: "REST endpoints for every resource", href: "/docs/api", icon: Braces },
         { title: "MCP server", description: "Let AI tools read your project", href: "/docs/mcp", icon: Sparkles },
         { title: "Self-hosting", description: "Run Supercheck on your own servers", href: "/docs/app/deployment/self-hosted", icon: Server },
+        { title: "Free tools", description: "Check uptime, headers, DNS and more", href: "/tools", icon: Wrench },
         { title: "Releases", description: "Release notes on GitHub", href: `${GITHUB_URL}/releases`, icon: History },
       ],
     },

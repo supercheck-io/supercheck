@@ -31,6 +31,19 @@
 - [QA engineers](https://supercheck.io/solutions/qa): Playwright and k6 tests, the Recorder, synthetic monitors and requirements.
 - [Engineering leaders](https://supercheck.io/solutions/engineering-leaders): Requirement coverage, roles and audit log.
 
+## Free tools
+
+No-signup checks that run once from Cloudflare's edge.
+
+- [Website uptime checker](https://supercheck.io/tools/website-uptime-checker): status, response time and redirects.
+- [API endpoint checker](https://supercheck.io/tools/api-endpoint-checker): status, JSON validity and CORS.
+- [HTTPS checker](https://supercheck.io/tools/https-checker): certificate validity, HTTP to HTTPS redirect and HSTS.
+- [Security headers checker](https://supercheck.io/tools/security-headers-checker): an A+ to F grade with the rules printed.
+- [Agent readiness checker](https://supercheck.io/tools/agent-readiness-checker): llms.txt, AI crawler rules, agent card and bot blocks.
+- [DNS lookup](https://supercheck.io/tools/dns-lookup): A, AAAA, CNAME, MX, TXT, NS, CAA and DNSSEC.
+- [Social preview checker](https://supercheck.io/tools/social-preview-checker): Open Graph and X/Twitter tags.
+- [Domain expiry checker](https://supercheck.io/tools/domain-expiry-checker): expiry date from RDAP.
+
 ## Full Reference
 
 - [Complete documentation text](https://supercheck.io/llms-full.txt): All documentation for tasks beyond installation.

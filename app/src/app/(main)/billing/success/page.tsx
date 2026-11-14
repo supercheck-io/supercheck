@@ -2,6 +2,7 @@
 
 import { Suspense, useEffect, useState, useCallback, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { sanitizeNextPath } from "@/lib/auth/safe-next-path";
 import {
   Card,
   CardContent,
@@ -27,6 +28,8 @@ function BillingSuccessContent() {
 
   const checkoutId = searchParams.get("checkout_id");
   const organizationId = searchParams.get("organization_id");
+  // Set by checkout (e.g. "Monitor this" from the free tools); re-sanitized here.
+  const nextPath = sanitizeNextPath(searchParams.get("next"));
   const [navigationError, setNavigationError] = useState<string | null>(null);
 
   const goToOrganization = useCallback(async () => {
@@ -44,7 +47,7 @@ function BillingSuccessContent() {
       if (!current.isActive || (current.plan !== "plus" && current.plan !== "pro")) {
         throw new Error("Your subscription is still being confirmed. Please retry verification.");
       }
-      router.push("/");
+      router.push(nextPath ?? "/");
       router.refresh();
     } catch (error) {
       setSubscriptionVerified(false);
@@ -52,7 +55,7 @@ function BillingSuccessContent() {
       setShowRetry(true);
       setNavigationError(error instanceof Error ? error.message : "Unable to open the organization");
     }
-  }, [organizationId, router]);
+  }, [nextPath, organizationId, router]);
 
   // Verify subscription is active before redirecting
   const verifySubscription = useCallback(async (): Promise<"active" | "pending" | "mismatch"> => {

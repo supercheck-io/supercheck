@@ -1,4 +1,6 @@
 import {
+  currentNextPath,
+  withNextPath,
   buildDeviceReturnPath,
   buildOAuthResumePath,
   isOAuthResumePath,
@@ -34,6 +36,83 @@ describe("sanitizeNextPath", () => {
     "%E0%A4%A",
   ])("rejects %p", (input) => {
     expect(sanitizeNextPath(input as string | null | undefined)).toBeNull();
+  });
+});
+
+describe("sanitizeNextPath: pre-filled monitor form from the free tools", () => {
+  // What the tools page builds: values encoded once, then the whole path encoded again.
+  const built = (url: string, extra = "") =>
+    `/monitors/create?type=website&url=${encodeURIComponent(url)}&name=${encodeURIComponent(new URL(url).hostname)}${extra}`;
+  // The browser decodes the outer layer; the app reads searchParams.get("next").
+  const afterBrowser = (path: string) =>
+    new URL(`https://app.example/sign-in?next=${encodeURIComponent(path)}`).searchParams.get("next");
+
+  it.each([
+    "https://ex.com/",
+    "https://ex.com/a?b=1&c=2",
+    "https://ex.com/a#frag",
+    "https://ex.com/a+b%20c",
+    "https://ex.com/100%",
+    "https://en.wikipedia.org/wiki/Foo_(bar)/",
+    "https://ex.com/a*b!c'd",
+  ])("round-trips %s with its values still encoded", (url) => {
+    const path = built(url);
+    const next = afterBrowser(path);
+    expect(sanitizeNextPath(next)).toBe(path);
+    const params = new URLSearchParams(path.split("?")[1]);
+    expect(params.get("url")).toBe(url);
+    expect([...params.keys()]).toEqual(["type", "url", "name"]);
+  });
+
+  it("accepts the form URLSearchParams re-serializes to (the wizard rewrites the query on mount)", () => {
+    const params = new URLSearchParams({ type: "website", url: "https://ex.com/a_(b)*", name: "ex.com" });
+    const path = `/monitors/create?${params.toString()}`;
+    expect(sanitizeNextPath(path)).toBe(path);
+  });
+
+  it("accepts http_request with a HEAD method", () => {
+    const path = `/monitors/create?type=http_request&url=${encodeURIComponent("https://api.ex.com/h")}&name=api.ex.com&method=HEAD`;
+    expect(sanitizeNextPath(path)).toBe(path);
+  });
+
+  it.each([
+    ["an unknown type", "/monitors/create?type=ping_host&url=x.com"],
+    ["an extra parameter", `/monitors/create?type=website&url=x.com&next=${encodeURIComponent("//evil.example")}`],
+    ["a decoded ampersand in a value", "/monitors/create?type=website&url=https://x.com/?a=1&b=2"],
+    ["a fragment", "/monitors/create?type=website&url=x.com#x"],
+    ["a protocol-relative prefix", "//monitors/create?type=website&url=x.com"],
+    ["a javascript: value", "/monitors/create?type=website&url=javascript:alert(1)"],
+    ["a POST method", "/monitors/create?type=http_request&url=x.com&method=POST"],
+    ["parameters out of order", "/monitors/create?url=x.com&type=website"],
+    ["a url over the cap", `/monitors/create?type=website&url=${"a".repeat(6201)}`],
+    ["a name over the cap", `/monitors/create?type=website&url=x.com&name=${"a".repeat(301)}`],
+    ["the whole path doubly encoded", encodeURIComponent("/monitors/create?type=website&url=x.com")],
+  ])("rejects %s", (_name, input) => {
+    expect(sanitizeNextPath(input)).toBeNull();
+  });
+
+  it("keeps the 128 cap for every other path", () => {
+    expect(sanitizeNextPath(`/device?code=${"A".repeat(130)}`)).toBeNull();
+  });
+});
+
+describe("withNextPath and currentNextPath", () => {
+  const monitor = "/monitors/create?type=website&url=https%3A%2F%2Fex.com%2F&name=ex.com";
+  it("appends only a valid continuation", () => {
+    expect(withNextPath("/subscribe", monitor)).toBe(`/subscribe?next=${encodeURIComponent(monitor)}`);
+    expect(withNextPath("https://app.example/billing/success?checkout_id={CHECKOUT_ID}", monitor)).toBe(
+      `https://app.example/billing/success?checkout_id={CHECKOUT_ID}&next=${encodeURIComponent(monitor)}`,
+    );
+    expect(withNextPath("/subscribe", "/dashboard")).toBe("/subscribe");
+    expect(withNextPath("/subscribe", "https://evil.example")).toBe("/subscribe");
+    expect(withNextPath("/subscribe", undefined)).toBe("/subscribe");
+  });
+  it("reads and sanitizes next from the current URL", () => {
+    window.history.pushState({}, "", `/subscribe?next=${encodeURIComponent(monitor)}`);
+    expect(currentNextPath()).toBe(monitor);
+    window.history.pushState({}, "", "/subscribe?next=%2F%2Fevil.example");
+    expect(currentNextPath()).toBeNull();
+    window.history.pushState({}, "", "/");
   });
 });
 

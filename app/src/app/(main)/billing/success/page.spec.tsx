@@ -2,9 +2,10 @@ import { act, fireEvent, render, screen } from "@testing-library/react";
 const mockPush = jest.fn();
 const mockRefresh = jest.fn();
 let mockOrganizationId: string | null = "org-oldest";
+let mockNext: string | null = null;
 jest.mock("next/navigation", () => ({
   useRouter: () => ({ push: mockPush, refresh: mockRefresh }),
-  useSearchParams: () => ({ get: (key: string) => key === "organization_id" ? mockOrganizationId : null }),
+  useSearchParams: () => ({ get: (key: string) => key === "organization_id" ? mockOrganizationId : key === "next" ? mockNext : null }),
 }));
 import BillingSuccessPage from "./page";
 
@@ -15,6 +16,7 @@ describe("single organization checkout return", () => {
     jest.useFakeTimers();
     jest.clearAllMocks();
     mockOrganizationId = "org-oldest";
+    mockNext = null;
     mockFetch.mockReset().mockResolvedValue({ ok: true, json: async () => ({ organizationId: "org-oldest", isActive: true, plan: "plus" }) });
     global.fetch = mockFetch;
   });
