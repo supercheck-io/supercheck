@@ -38,8 +38,14 @@ test.describe('AI endpoint monitor preset @monitors', () => {
 
     const persisted = await request.get(`/api/monitors/${monitorId}`);
     expect(persisted.status()).toBe(200);
-    const monitor = (await persisted.json()) as { frequencyMinutes: number; config: { aiEndpoint: Record<string, unknown>; method?: string } };
+    const monitor = (await persisted.json()) as {
+      frequencyMinutes: number;
+      config: { aiEndpoint: Record<string, unknown>; method?: string };
+      alertConfig?: { failureThreshold?: number };
+    };
     expect(monitor.frequencyMinutes).toBe(5);
+    // The preset alerts after 2 failures, carried through the wizard's alert step.
+    expect(monitor.alertConfig?.failureThreshold).toBe(2);
     expect(monitor.config.aiEndpoint).toMatchObject({ model: 'gpt-4o-mini', secretKey });
     expect(monitor.config.method).toBeUndefined();
 

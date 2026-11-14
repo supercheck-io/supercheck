@@ -134,6 +134,7 @@ export function MonitorCreationWizard() {
     getInitialAlertConfig
   );
   const [isCreating, setIsCreating] = useState(false);
+  const presetThresholdAppliedRef = useRef(false);
 
   // Cleanup on unmount - only if not creating
   useEffect(() => {
@@ -260,6 +261,17 @@ export function MonitorCreationWizard() {
     // Store the form data for state persistence and API data for creation
     setMonitorData(formData);
     setApiData(monitorApiData);
+
+    // The AI preset defaults to alerting after 2 failures (one short rate limit should not page). Apply it while the
+    // threshold is still the untouched default, and undo only our own change if the user goes back to Standard HTTP.
+    const aiPreset = (formData as { preset?: string }).preset === "ai_endpoint";
+    if (aiPreset && alertConfig.failureThreshold === 1) {
+      presetThresholdAppliedRef.current = true;
+      setAlertConfig({ ...alertConfig, failureThreshold: 2 });
+    } else if (!aiPreset && presetThresholdAppliedRef.current && alertConfig.failureThreshold === 2) {
+      presetThresholdAppliedRef.current = false;
+      setAlertConfig({ ...alertConfig, failureThreshold: 1 });
+    }
 
     // When skipping the location step (single location), auto-set the
     // locationConfig to the actual available location. DEFAULT_LOCATION_CONFIG

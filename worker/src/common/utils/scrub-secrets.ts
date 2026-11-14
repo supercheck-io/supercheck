@@ -24,16 +24,19 @@ export function scrubSecrets<T>(value: T, secrets: readonly string[]): T {
     .filter((s) => s.length >= MIN_SECRET_LENGTH)
     .sort((a, b) => b.length - a.length);
   if (live.length === 0) return value;
+  // Every whole form first, then tail masking: a tail mask must never cut a later form's match short.
+  const scrubText = (text: string) =>
+    live.reduce(
+      (t, s) => maskTail(t, s),
+      live.reduce((t, s) => t.split(s).join('***'), text),
+    );
   const walk = (v: unknown): unknown => {
-    if (typeof v === 'string')
-      return live.reduce(
-        (text, s) => maskTail(text.split(s).join('***'), s),
-        v,
-      );
+    if (typeof v === 'string') return scrubText(v);
     if (Array.isArray(v)) return v.map(walk);
     if (v && typeof v === 'object' && !(v instanceof Date))
       return Object.fromEntries(
-        Object.entries(v).map(([k, item]) => [k, walk(item)]),
+        // Keys too: an endpoint can echo a credential as a header or JSON property name.
+        Object.entries(v).map(([k, item]) => [scrubText(k), walk(item)]),
       );
     return v;
   };

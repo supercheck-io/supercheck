@@ -53,6 +53,19 @@ describe('scrubSecrets', () => {
     expect(out.e).toEqual(echoes.map(() => '***'));
   });
 
+  it('replaces a whole secret before any form can tail-mask it', () => {
+    const secret = 'sk-live-1234567890-c2st';
+    const out = scrubSecrets({ m: `echo ${secret}` }, secretEchoForms(secret));
+    expect(out.m).toBe('echo ***');
+  });
+
+  it('scrubs secrets used as object keys', () => {
+    const out = scrubSecrets({ headers: { 'sk-live-abcdef': 'x' } }, [
+      'sk-live-abcdef',
+    ]);
+    expect(Object.keys(out.headers)).toEqual(['***']);
+  });
+
   it('does not scrub secrets shorter than 4 characters', () => {
     expect(scrubSecrets({ m: 'a cat' }, ['a'])).toEqual({ m: 'a cat' });
   });

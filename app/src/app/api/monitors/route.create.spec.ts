@@ -37,7 +37,7 @@ jest.mock("@/lib/execution/trial-interval-response", () => ({
 const insertWithinPlanLimit = jest.fn();
 jest.mock("@/lib/middleware/plan-limit-lock", () => ({ insertWithinPlanLimit: (...a: unknown[]) => insertWithinPlanLimit(...a) }));
 jest.mock("@/lib/middleware/plan-enforcement", () => ({ checkMonitorLimit: jest.fn(), ResumeRefusedError: class extends Error {}, resumeRefusalResponse: jest.fn() }));
-jest.mock("@/lib/monitor-service", () => ({ insertMonitorRecord: jest.fn(), scheduleCreatedMonitor: jest.fn(), updateMonitorHandler: jest.fn() }));
+jest.mock("@/lib/monitor-service", () => ({ insertMonitorRecord: jest.fn(), scheduleCreatedMonitor: jest.fn(), updateMonitorHandler: jest.fn(), MonitorTargetChangedError: class MonitorTargetChangedError extends Error {} }));
 jest.mock("@/lib/location-registry", () => ({
   getProjectAvailableLocationCodes: jest.fn().mockResolvedValue([]),
   getWorkloadCapableLocationCodes: jest.fn().mockResolvedValue([]),

@@ -2,7 +2,7 @@ import { liveMonitor } from "@/lib/deletion/visibility";
 import { deleteMonitorWithContext } from "@/lib/resource-deletion/monitor";
 import { isInvalidUuidError, isUuid } from "@/lib/uuid";
 import { isDeepStrictEqual } from "node:util";
-import { executionConfig, updateMonitorHandler } from "@/lib/monitor-service";
+import { executionConfig, MonitorTargetChangedError, updateMonitorHandler } from "@/lib/monitor-service";
 import { reconcileMonitorSchedule } from "@/lib/monitor-schedule-reconcile";
 import { resumeRefusalResponse, withResumeWithinPlan, ResumeRefusedError } from "@/lib/middleware/plan-enforcement";
 import { monitorResumeBlockedResponse, trialIntervalErrorResponse } from "@/lib/execution/trial-interval-response";
@@ -32,7 +32,7 @@ import {
 } from "@/lib/s3-cleanup";
 import { createLogger } from "@/lib/logger/index";
 import { validateMonitorConfiguration } from "@/lib/monitor-validation";
-import { validateMonitorSecretRefs } from "@/lib/monitor-secret-refs";
+import { monitorSecretNames, validateMonitorSecretRefs } from "@/lib/monitor-secret-refs";
 import { validateMonitorTargetAddress } from "@/lib/monitor-target-policy";
 import {
   alertProvidersSent,
@@ -401,6 +401,7 @@ export async function PUT(
     // The JSON column is what the UI shows and the rows are what the worker delivers to: an alertConfig write that
     // carries notificationProviders (or null), enabled or not, validates the ids and replaces the rows in the same transaction.
     const shouldSyncNotificationProviders = rawData.hasOwnProperty("alertConfig") && alertProvidersSent(rawData.alertConfig);
+    const guardTarget = monitorSecretNames(updateData.config ?? currentMonitor.config).length > 0;
 
     let updatedMonitor;
     try {
@@ -414,11 +415,14 @@ export async function PUT(
               eq(monitors.projectId, authCtx.project.id),
               eq(monitors.organizationId, authCtx.organizationId),
               liveMonitor(),
+              // A monitor that sends a project secret is written only if its target is still the one checked above.
+              ...(guardTarget ? [eq(monitors.target, currentMonitor.target)] : []),
             ),
           )
           .returning();
 
         if (!updated) {
+          if (guardTarget) throw new MonitorTargetChangedError();
           return null;
         }
 
@@ -449,6 +453,7 @@ export async function PUT(
       if (error instanceof InvalidNotificationProvidersError || error instanceof AlertConfigConflictError) {
         return NextResponse.json({ error: error.message }, { status: 400 });
       }
+      if (error instanceof MonitorTargetChangedError) return NextResponse.json({ error: error.message }, { status: 409 });
       throw error;
     }
 
@@ -787,15 +792,20 @@ export async function PATCH(
       updatedMonitor = await updateMonitorHandler(
         id,
         updatePayload,
-        providerIdsToSync
-          ? { providerSync: { ids: providerIdsToSync, organizationId: authCtx.organizationId, projectId: authCtx.project.id, storedIds: currentMonitor.alertConfig?.notificationProviders } }
-          : {},
+        {
+          ...(providerIdsToSync
+            ? { providerSync: { ids: providerIdsToSync, organizationId: authCtx.organizationId, projectId: authCtx.project.id, storedIds: currentMonitor.alertConfig?.notificationProviders } }
+            : {}),
+          // A monitor that sends a project secret is written only if its target is still the one checked above.
+          ...(monitorSecretNames(updatePayload.config ?? currentMonitor.config).length > 0 ? { expectTarget: currentMonitor.target } : {}),
+        },
       );
     } catch (error) {
       if (error instanceof ResumeRefusedError) return resumeRefusalResponse(error.outcome)!;
       if (error instanceof InvalidNotificationProvidersError || error instanceof AlertConfigConflictError) {
         return NextResponse.json({ error: error.message }, { status: 400 });
       }
+      if (error instanceof MonitorTargetChangedError) return NextResponse.json({ error: error.message }, { status: 409 });
       if (error instanceof MonitorScheduleError && error.monitor) {
         // Saved but not rescheduled: audit the change, then answer 503.
         updatedMonitor = error.monitor;

@@ -18,7 +18,7 @@ import {
   deleteScheduledMonitor,
 } from "@/lib/monitor-scheduler";
 import { InvalidNotificationProvidersError, MonitorScheduleError } from "@/lib/monitor-write";
-import { updateMonitorHandler, scheduleCreatedMonitor, insertMonitorRecord } from "./monitor-service";
+import { updateMonitorHandler, scheduleCreatedMonitor, insertMonitorRecord, MonitorTargetChangedError } from "./monitor-service";
 
 describe("updateMonitorHandler schedule synchronization", () => {
   const existing = {
@@ -143,6 +143,16 @@ describe("updateMonitorHandler write safety", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     (db.query.monitors.findFirst as jest.Mock).mockResolvedValue(existing);
+  });
+
+  it("refuses the write when the target changed since the secret checks read it", async () => {
+    const c = { ...chain({}), returning: jest.fn().mockResolvedValue([]) };
+    (db.update as jest.Mock).mockReturnValue(c);
+    await expect(
+      updateMonitorHandler(existing.id, { name: "x" }, { expectTarget: "https://example.com" }),
+    ).rejects.toBeInstanceOf(MonitorTargetChangedError);
+    // Without the guard a missing row is the old 404 path.
+    await expect(updateMonitorHandler(existing.id, { name: "x" })).rejects.toMatchObject({ statusCode: 404 });
   });
 
   it("keeps worker-owned config keys when config is replaced (c2)", async () => {

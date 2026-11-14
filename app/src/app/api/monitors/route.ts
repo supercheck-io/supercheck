@@ -17,6 +17,7 @@ import {
   insertMonitorRecord,
   scheduleCreatedMonitor,
   updateMonitorHandler,
+  MonitorTargetChangedError,
 } from "@/lib/monitor-service";
 import { logAuditEvent } from "@/lib/audit-logger";
 import { checkMonitorLimit, countPlanMonitors, resumeRefusalResponse, ResumeRefusedError } from "@/lib/middleware/plan-enforcement";
@@ -35,7 +36,7 @@ import type { LocationConfig } from "@/db/schema";
 import { createLogger } from "@/lib/logger/index";
 import { channelsOptional } from "@/lib/incident-settings";
 import { validateMonitorConfiguration } from "@/lib/monitor-validation";
-import { validateMonitorSecretRefs } from "@/lib/monitor-secret-refs";
+import { monitorSecretNames, validateMonitorSecretRefs } from "@/lib/monitor-secret-refs";
 import { validateMonitorTargetAddress } from "@/lib/monitor-target-policy";
 import {
   AlertConfigConflictError,
@@ -983,15 +984,20 @@ export async function PUT(req: NextRequest) {
       updatedMonitor = await updateMonitorHandler(
         id,
         monitorUpdateData,
-        syncProviders
-          ? { providerSync: { ids: alertConfig?.notificationProviders ?? [], organizationId, projectId: project.id, storedIds: monitorData[0].alertConfig?.notificationProviders } }
-          : {},
+        {
+          ...(syncProviders
+            ? { providerSync: { ids: alertConfig?.notificationProviders ?? [], organizationId, projectId: project.id, storedIds: monitorData[0].alertConfig?.notificationProviders } }
+            : {}),
+          // A monitor that sends a project secret is written only if its target is still the one checked above.
+          ...(monitorSecretNames(monitorUpdateData.config ?? monitorData[0].config).length > 0 ? { expectTarget: monitorData[0].target } : {}),
+        },
       );
     } catch (error) {
       if (error instanceof ResumeRefusedError) return resumeRefusalResponse(error.outcome)!;
       if (error instanceof InvalidNotificationProvidersError || error instanceof AlertConfigConflictError) {
         return NextResponse.json({ error: error.message }, { status: 400 });
       }
+      if (error instanceof MonitorTargetChangedError) return NextResponse.json({ error: error.message }, { status: 409 });
       if (error instanceof MonitorScheduleError && error.monitor) {
         // Saved but not rescheduled: audit the change, then answer 503.
         updatedMonitor = error.monitor;
