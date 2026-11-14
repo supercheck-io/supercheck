@@ -8,6 +8,7 @@ The CLI is versioned separately; see [cli/CHANGELOG.md](cli/CHANGELOG.md). Prere
 
 ### Upgrade notes
 
+- **Migration `0080`.** Apply it before you update the app, then the worker. It adds the reminder schedule and escalation columns to `notification_policies` and reminder counters to `sre_incidents`, and counts incidents already reminded once so they are not reminded again. Existing policies keep reminding once until you set a repeat. No new environment variable.
 - **Database migrations.** Apply migrations `0077` to `0079` before you update the app and the worker, after `0075` and `0076` from the job and monitor deletion change. They add pending-deletion columns on organizations and soft-delete columns on projects (`0077`), and partial indexes for the purge sweep and the audit-log scrub (`0078`, `0079`). `0078` and `0079` build indexes concurrently and run outside a transaction.
 - **Organization deletion changed.** Deleting an organization no longer removes it immediately. The owner requests it (typing the organization name, after a recent sign-in), the organization is read-only for 14 days, and only then is it purged. `ORG_DELETION_GRACE_DAYS` changes the window (`0` purges at once and is honored on self-hosted installations only). Without SMTP no email is sent and the app confirms the date instead.
 - **New optional settings.** `ORG_DELETION_GRACE_DAYS`, `ORG_DELETION_REAUTH_MINUTES` (default 10), `AUDIT_EMAIL_SCRUB_DAYS` (default 30), and `DELETION_PURGE_CONCURRENCY`, `DELETION_BATCH_SIZE`, `DELETION_BATCH_PAUSE_MS` and `DELETION_MAX_ATTEMPTS` for the background purge are documented in `app/.env.example`.
@@ -20,6 +21,8 @@ The CLI is versioned separately; see [cli/CHANGELOG.md](cli/CHANGELOG.md). Prere
 
 ### Added
 
+- **Repeat until acknowledged and one escalation step.** The project's Default incident policy now reminds about an unacknowledged incident on a schedule (first after N minutes, then every M minutes, at most K reminders) and can escalate once, after E minutes, to a channel or a project member. Reminders stop on acknowledge, resolve or a lowered severity, wait during scheduled maintenance, and are capped at 30 sends per organization per hour. Each reminder, escalation and failed page is recorded on the incident timeline. The policy is readable and settable through `GET`/`PUT /api/notification-policy`, `supercheck incident policy get|set` and the MCP tool `get_incident_policy`.
+- **Paging services as channels.** PagerDuty, Opsgenie, Jira Service Management (new preset), Splunk On-Call, Better Stack and incident.io are listed as paging channels. **Send test page** (and `POST /api/notification-providers/{id}/test`, `supercheck notification test <id> [--resolve]`) sends a test page through a saved channel and shows the receiver's HTTP status. The channel list shows each channel's health from its latest delivery (`health` in `GET /api/notification-providers`).
 - **Safer job and monitor deletion.** Deleting a job or monitor now hides it at once and removes its runs, results and files in the background in bounded batches. Migrations `0075` and `0076` add the deletion queue, the `deleting_at` flags and their indexes; apply them before you update the app and the worker. A target being deleted reads as not found everywhere (lists, counts, dashboards, MCP, status pages, run views and notifications).
 - Organization deletion has a pending window: a banner with a countdown for every member, **Cancel deletion** for the owner, read-only access meanwhile, and emails to the owners on request, 7 days and 1 day before, and on completion. Super admins can **Purge now** with a recorded reason from the **Deletions** tab. New endpoint `POST /api/organizations/{id}/cancel-deletion`.
 - Projects are soft-deleted and can be restored by owners and admins for 7 days (**Recently deleted projects**), then purged in the background. New endpoints `POST /api/projects/{id}/restore` and `GET /api/projects/deleted`.
@@ -56,6 +59,8 @@ The CLI is versioned separately; see [cli/CHANGELOG.md](cli/CHANGELOG.md). Prere
 
 ### Fixed
 
+- Paging webhooks now close what they open: a passing job resolves its page instead of opening a new one, Opsgenie and Jira Service Management alerts are closed by alias, incident.io receives `firing`/`resolved`, Better Stack receives `alert`/`resolved`, and PagerDuty failures are sent as `critical`. These fixes apply to channels saved before this release too.
+- Webhook deliveries are retried on HTTP 429, 5xx and network errors (honouring `Retry-After` up to 10 seconds) and never on other 4xx. A rejected integration key (HTTP 401/403) is no longer retried on later checks and is shown on the channel. When a page fails and an incident opens, the incident message falls back to the project's policy channels, then to its owners and admins.
 - The worker image no longer ships JavaScript source map files.
 - SSL expiry alerts are suppressed during scheduled maintenance, like other monitor alerts.
 - The Playwright trace viewer works again: the retired root service worker no longer controls report pages (one reload clears the old worker in a tab opened before the update).

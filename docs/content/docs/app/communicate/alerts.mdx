@@ -16,6 +16,8 @@ Notifications tell your team when monitors fail, jobs break, or services recover
 
 Email uses your SMTP provider; the others use the service's webhook or bot token.
 
+Paging and on-call services are set up as webhook channels with a preset: PagerDuty, Opsgenie (Atlassian ends Opsgenie on April 5, 2027), Jira Service Management, Splunk On-Call, Better Stack and incident.io. Supercheck opens a page when a check fails and resolves it on recovery. See [Webhook Presets](#webhook-presets).
+
 <Steps>
 <Step>
 Open **Communicate → Notifications → Channels** and select **Create channel**.
@@ -265,10 +267,11 @@ The webhook channel includes presets that fill the method, headers, and JSON bod
 |--------|----------|------------|
 | Custom webhook | Default Supercheck payload or a custom JSON template | [Supercheck alerts](/docs/app/communicate/alerts) |
 | PagerDuty Events API v2 | Trigger and resolve incidents using `{{pagerDutyEventAction}}` and `{{dedupKey}}` | [PagerDuty Events API v2](https://developer.pagerduty.com/docs/events-api-v2/overview/) |
-| Opsgenie Alert API | Create alerts with an alias and API-key auth header | [Opsgenie Alert API](https://docs.opsgenie.com/docs/alert-api) |
+| Opsgenie Alert API | Create alerts with an alias and API-key auth header; recovery closes the alert by alias. Opsgenie ends on April 5, 2027 | [Opsgenie Alert API](https://docs.opsgenie.com/docs/alert-api) |
+| Jira Service Management | Same payload as Opsgenie, sent to `api.atlassian.com/jsm/ops/integration/v2/alerts` with `Authorization: GenieKey <integration key>`; recovery closes the alert by alias | [JSM integration events](https://developer.atlassian.com/cloud/jira/service-desk-ops/rest/v1/api-group-integration-events/) |
 | Splunk On-Call REST endpoint | Send VictorOps/Splunk On-Call `CRITICAL` and `RECOVERY` events | [Splunk On-Call REST Endpoint](https://help.victorops.com/knowledge-base/rest-endpoint-integration-guide/) |
-| Better Stack webhook | Forward alert context into Better Stack workflows | [Better Stack webhooks](https://betterstack.com/docs/uptime/integrations/webhooks/) |
-| incident.io alert source | Send alert-source events with deduplication context | [incident.io alert sources](https://incident.io/docs/alert-sources) |
+| Better Stack webhook | Sends `status: alert` on failure and `status: resolved` on recovery with `dedup_key`. In Better Stack, set the create rule to "status contains alert", the resolve rule to "status contains resolved" and the alert id to `dedup_key` | [Better Stack webhooks](https://betterstack.com/docs/uptime/integrations/webhooks/) |
+| incident.io alert source | Sends `status: firing` on failure and `status: resolved` on recovery with `deduplication_key` | [incident.io alert sources](https://incident.io/docs/alert-sources) |
 
 <Callout type="warn">
 Preset payloads include placeholders such as `REPLACE_WITH_PAGERDUTY_ROUTING_KEY` and `REPLACE_WITH_OPSGENIE_API_KEY`. Replace them before testing, and verify the endpoint URL in the vendor documentation because some providers generate tenant-specific webhook URLs.
@@ -458,6 +461,22 @@ The webhook UI supports custom JSON headers for provider API keys. Header values
 
 Notifications hide credentials in a monitor's target URL: user name and password, and values of parameters such as `token`, `key` or `password`, are replaced with `REDACTED`.
 
+### Test a page
+
+On **Communicate → Notifications → Channels**, open a channel's menu and select **Send test page** (webhooks and paging services) or **Send test message** (other channels). The test goes through the saved channel, so you do not re-enter its secrets. For a webhook, the dialog shows the receiver's HTTP status, the time it took, the first 1,024 characters of its response (credentials redacted) and the dedup key `test:<channel id>`; for a paging service, **Resolve test page** closes the test page again. Editors and above can send tests, within the same per-user limits as **Test Connection**. From the CLI: `supercheck notification test <id>` and `supercheck notification test <id> --resolve`.
+
+A channel whose latest delivery in the past 7 days was rejected with HTTP 401 or 403 shows **Check the integration key**; any other failed latest delivery shows **Last delivery failed**.
+
+### If a page fails
+
+Webhook deliveries, including paging services, are retried up to 3 times on HTTP 429, 5xx and network errors, honouring the receiver's `Retry-After` for up to 10 seconds. HTTP 400, 401, 403 and 404 are not retried. A 401 or 403 means the integration key was rejected: it is never retried on later checks either, and the channel shows **Check the integration key** until a delivery succeeds.
+
+When a paging service still fails and the check opens an incident, the incident timeline records the failed page and Supercheck sends the incident message to the project's Default policy channels; if nothing reaches anyone, the project's owners and admins are emailed. Monitors that alert only to a paging service and do not open incidents have no fallback, so add an email or chat channel to them too.
+
+### One-way paging
+
+Supercheck sends trigger and resolve events only. Acknowledging or closing the page in PagerDuty, Opsgenie or another service does not change the Supercheck incident, and incident reminders and escalation are never sent to paging services, because the service already repeats and escalates its own page. Acknowledge or resolve the incident in Supercheck too.
+
 ## Delivery History
 
 Review the latest 200 alert notifications in **Notifications → Delivery history**. Incident update notifications are not listed there. Each row shows:
@@ -471,7 +490,7 @@ Review the latest 200 alert notifications in **Notifications → Delivery histor
 | **Channels** | Notification channels used, and delivery status |
 | **Incident** | The incident the alert belongs to, linked. A sent failure alert with no incident (for example, incidents turned off for that check) shows **Open incident** to create one. See [How alerts become incidents](/docs/app/investigate/incidents#how-alerts-become-incidents) |
 | **Time** | When it was sent |
-| **Delivery metadata** | For AI SRE correlation: provider type or preset, dedup key, event action, response status, attempt count and response hash when available |
+| **Delivery metadata** | For AI SRE correlation: provider type or preset, dedup key, event action, response status, attempt count and response hash when available. Webhook deliveries also list each attempt with its HTTP status or error and duration |
 
 <Callout type="info">
 Use delivery status and HTTP diagnostics to troubleshoot failed notifications. Raw provider response bodies and credential values are not displayed.

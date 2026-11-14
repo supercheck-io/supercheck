@@ -139,13 +139,34 @@ describe("getSreIncidentDetails investigation summary", () => {
       id: incidentId, title: "Checkout down", severity: "sev2", status: "investigating", primaryServiceId: null,
     });
     expect(result).toMatchObject({ success: true });
-    expect(sets[0]).toMatchObject({ acknowledgedAt: null, acknowledgedByUserId: null, renotifiedAt: null, resolvedAt: null });
+    expect(sets[0]).toMatchObject({ acknowledgedAt: null, acknowledgedByUserId: null, renotifiedAt: null, renotifyCount: 0, renotifyStoppedAt: null, escalatedAt: null, resolvedAt: null });
     // The previous resolution stays on the incident.
     expect(sets[0]).not.toHaveProperty("resolutionSummary");
     expect(inserted.map((row) => (row.eventData as { state: string }).state)).toEqual(["incident_updated", "reopened"]);
     expect(jest.requireMock("@/lib/sre/incident-notifier").notifyIncidentEvent).toHaveBeenCalledWith(
       expect.objectContaining({ incidentId, event: "reopened" }),
     );
+  });
+
+  it.each([
+    ["sev1", "sev3", true],
+    ["sev2", "sev4", true],
+    ["sev3", "sev1", false],
+    ["sev2", "sev2", false],
+  ])("severity %s to %s stops reminders: %s", async (from, to, stops) => {
+    const incidentId = "00000000-0000-4000-8000-000000000001";
+    (db.query.sreIncidents.findFirst as jest.Mock).mockResolvedValue({ id: incidentId, status: "investigating", severity: from, title: "t", primaryServiceId: null });
+    const sets: Array<Record<string, unknown>> = [];
+    (db.transaction as jest.Mock).mockImplementation(async (callback) => callback({
+      update: () => ({ set: (values: Record<string, unknown>) => {
+        sets.push(values);
+        return { where: () => ({ returning: async () => [{ id: incidentId, incidentNumber: 4, title: "t" }] }) };
+      } }),
+      insert: () => ({ values: async () => undefined }),
+    }));
+    await updateSreIncident({ id: incidentId, title: "Checkout down", severity: to as "sev1", status: "investigating", primaryServiceId: null });
+    if (stops) expect(sets[0].renotifyStoppedAt).toBeInstanceOf(Date);
+    else expect(sets[0]).not.toHaveProperty("renotifyStoppedAt");
   });
 
   it("writes no timeline event or audit entry when the edit changes nothing", async () => {

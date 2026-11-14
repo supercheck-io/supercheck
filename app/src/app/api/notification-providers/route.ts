@@ -6,7 +6,7 @@ import {
   alertHistory,
   type PlainNotificationProviderConfig,
 } from "@/db/schema";
-import { desc, eq, and, sql, inArray } from "drizzle-orm";
+import { desc, eq, and, gte, sql, inArray } from "drizzle-orm";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { requireAuthContext, isAuthError, authErrorStatus } from "@/lib/auth-context";
 import { logAuditEvent } from "@/lib/audit-logger";
@@ -21,6 +21,7 @@ import {
 } from "@/lib/notification-providers/validation";
 import type { NotificationProviderType } from "@/db/schema";
 import { loadCreators } from "@/lib/creators";
+import { providerHealth } from "@/lib/notification-providers/health";
 
 import { permissionDeniedResponse } from "@/lib/deletion/org-state";
 const MAX_PROVIDER_NAME_LENGTH = 255;
@@ -71,6 +72,21 @@ export async function GET() {
       .where(inArray(alertHistory.provider, providerIds))
       .groupBy(alertHistory.provider);
 
+    // Channel health: the newest delivery per provider in the last 7 days. A 401/403 means the integration key
+    // was rejected (terminal, never retried); any other failure is "failing".
+    const latest = await db
+      .selectDistinctOn([alertHistory.provider], {
+        provider: alertHistory.provider,
+        status: alertHistory.status,
+        sentAt: alertHistory.sentAt,
+        responseStatus: sql<number | null>`(${alertHistory.deliveryMetadata}->'delivery'->>'responseStatus')::int`,
+        terminal: sql<boolean>`coalesce((${alertHistory.deliveryMetadata}->'delivery'->>'terminal')::boolean, false)`,
+      })
+      .from(alertHistory)
+      .where(and(inArray(alertHistory.provider, providerIds), gte(alertHistory.sentAt, new Date(Date.now() - 7 * 24 * 60 * 60 * 1000))))
+      .orderBy(alertHistory.provider, desc(alertHistory.sentAt));
+    const healthMap = new Map(latest.map((row) => [row.provider, providerHealth(row)]));
+
     // Build lookup map for O(1) access
     const lastAlertMap = new Map<string, Date>();
     lastAlerts.forEach((alert) => {
@@ -104,6 +120,7 @@ export async function GET() {
         maskedFields,
         configUnavailable,
         lastUsed: lastAlertMap.get(provider.id) || null,
+        health: healthMap.get(provider.id) ?? { state: "unknown" as const, at: null },
       };
     });
 

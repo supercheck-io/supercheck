@@ -5,7 +5,8 @@ import { DataTableColumnHeader } from "./data-table-column-header";
 import { NotificationChannel } from "./notification-channels-schema";
 import { UUIDField } from "@/components/ui/uuid-field";
 import { toast } from "sonner";
-import { Edit, Trash2, MoreHorizontal } from "lucide-react";
+import { Edit, Trash2, MoreHorizontal, Send } from "lucide-react";
+import { TableBadge } from "@/components/ui/table-badge";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -13,7 +14,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { getNotificationProviderConfig } from "./data";
+import { getNotificationProviderConfig, PAGING_SERVICE_NAMES } from "./data";
 import { TruncatedTextWithTooltip } from "@/components/ui/truncated-text-with-tooltip";
 import { DateCell } from "@/components/ui/table-cells";
 import { createdByColumn } from "@/components/ui/created-by-column";
@@ -23,6 +24,14 @@ interface TableMeta {
   onDelete?: (channel: NotificationChannel) => void;
   canEdit?: boolean;
   canDelete?: boolean;
+  onTest?: (channel: NotificationChannel) => void;
+}
+
+/** Badge for a channel whose newest delivery (last 7 days) failed; nothing while it is healthy or unused. */
+export function ChannelHealthBadge({ health }: { health?: NotificationChannel["health"] }) {
+  if (health?.state === "auth_failed") return <TableBadge tone="danger" compact data-testid="channel-health-badge">Check the integration key</TableBadge>;
+  if (health?.state === "failing") return <TableBadge tone="warning" compact data-testid="channel-health-badge">Last delivery failed</TableBadge>;
+  return null;
 }
 
 export const notificationChannelColumns: ColumnDef<NotificationChannel>[] = [
@@ -55,12 +64,12 @@ export const notificationChannelColumns: ColumnDef<NotificationChannel>[] = [
     ),
     cell: ({ row }) => {
       const name = row.getValue("name") as string;
-      return <TruncatedTextWithTooltip
-          text={name}
-          className="font-medium"
-          maxWidth="200px"
-          maxLength={30}
-        />;
+      return (
+        <div className="flex flex-wrap items-center gap-2">
+          <TruncatedTextWithTooltip text={name} className="font-medium" maxWidth="200px" maxLength={30} />
+          <ChannelHealthBadge health={row.original.health} />
+        </div>
+      );
     },
   },
   {
@@ -72,10 +81,11 @@ export const notificationChannelColumns: ColumnDef<NotificationChannel>[] = [
       const type = row.getValue("type") as string;
       const config = getNotificationProviderConfig(type);
       const IconComponent = config.icon;
+      const preset = type === "webhook" ? row.original.config?.preset : undefined;
       return (
         <div className="flex items-center space-x-2">
           <IconComponent className={`h-4 w-4 ${config.color}`} />
-          <span>{config.label}</span>
+          <span>{(typeof preset === "string" && PAGING_SERVICE_NAMES[preset]) || config.label}</span>
         </div>
       );
     },
@@ -125,6 +135,18 @@ export const notificationChannelColumns: ColumnDef<NotificationChannel>[] = [
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
+            {meta?.canEdit && meta.onTest && (
+              <DropdownMenuItem
+                onClick={(e) => {
+                  e.stopPropagation();
+                  meta.onTest?.(channel);
+                }}
+                data-testid="channel-send-test"
+              >
+                <Send className="mr-2 h-4 w-4" />
+                {channel.type === "webhook" ? "Send test page" : "Send test message"}
+              </DropdownMenuItem>
+            )}
             <DropdownMenuItem
               onClick={
                 meta?.canEdit

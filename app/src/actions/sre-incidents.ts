@@ -137,6 +137,13 @@ type SreInvestigationStatus =
   | "aborted"
   | "timed_out";
 
+
+/** sev1 is the most urgent; a higher number is lower urgency. */
+function severityLowered(from: string | null | undefined, to: string) {
+  const rank = (severity: string | null | undefined) => Number(String(severity).replace("sev", ""));
+  return rank(to) > rank(from);
+}
+
 export type CreateSreIncidentFromAlertResult =
   | {
       success: true;
@@ -1466,6 +1473,9 @@ export async function updateSreIncident(
                 acknowledgedByUserId: null,
                 // Lets the unacknowledged reminder fire again for the reopened incident.
                 renotifiedAt: null,
+                renotifyCount: 0,
+                renotifyStoppedAt: null,
+                escalatedAt: null,
                 reopenedAt: now,
               }
             : {}),
@@ -1473,6 +1483,9 @@ export async function updateSreIncident(
           ...(nextStatus === "verifying" && (reopening || !current.mitigatedAt)
             ? { mitigatedAt: now }
             : {}),
+          // A person lowering the severity (sev1 to sev3) has seen it: no more reminders or escalation this
+          // open period. Raising it never clears the stop.
+          ...(severityLowered(current.severity, parsed.data.severity) ? { renotifyStoppedAt: now } : {}),
           updatedAt: now,
         })
         .where(

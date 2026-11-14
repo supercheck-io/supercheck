@@ -19,7 +19,9 @@ import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
@@ -36,7 +38,8 @@ import {
   CHARACTER_LIMITS,
 } from "@/lib/error-utils";
 import { parseWebhookJsonTemplate } from "@/lib/notification-providers/webhook-template";
-import { notificationProviders } from "@/components/alerts/data";
+import { notificationProviders, PAGING_SERVICE_NAMES } from "@/components/alerts/data";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   WEBHOOK_PRESET_IDS,
   WEBHOOK_PRESETS,
@@ -503,6 +506,7 @@ export function NotificationProviderForm({
       ? buildWebhookPayloadPreview({
         method: selectedWebhookMethod,
         bodyTemplate: selectedWebhookBodyTemplate,
+        preset: selectedPresetId,
       })
       : null;
 
@@ -681,14 +685,21 @@ export function NotificationProviderForm({
                   <FormLabel>Channel Type</FormLabel>
                   <Select
                     onValueChange={(value) => {
-                      field.onChange(value);
                       setLastWebhookTestDetails(null);
+                      // Paging services are webhooks with a preset; storage does not change.
+                      if (value.startsWith("paging:")) {
+                        field.onChange("webhook");
+                        handleWebhookPresetChange(value.slice("paging:".length) as WebhookPresetId);
+                        return;
+                      }
+                      field.onChange(value);
+                      if (value === "webhook" && selectedPresetId !== "custom") handleWebhookPresetChange("custom");
                     }}
-                    value={field.value}
+                    value={field.value === "webhook" && selectedPresetId !== "custom" ? `paging:${selectedPresetId}` : field.value}
                     disabled={isSubmitting || isTesting}
                   >
                     <FormControl>
-                      <SelectTrigger>
+                      <SelectTrigger data-testid="channel-type-select">
                         <SelectValue placeholder="Select channel type">
                           {field.value && (
                             <div className="flex items-center gap-2">
@@ -696,10 +707,11 @@ export function NotificationProviderForm({
                                 const provider = notificationProviders.find(p => p.type === field.value);
                                 if (!provider) return null;
                                 const Icon = provider.icon;
+                                const pagingName = field.value === "webhook" ? PAGING_SERVICE_NAMES[selectedPresetId] : undefined;
                                 return (
                                   <>
                                     <Icon size={16} className={provider.color} />
-                                    <span>{provider.label}</span>
+                                    <span>{pagingName ?? (field.value === "webhook" ? "Custom webhook" : provider.label)}</span>
                                   </>
                                 );
                               })()}
@@ -709,17 +721,35 @@ export function NotificationProviderForm({
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
-                      {notificationProviders.map((provider) => {
-                        const Icon = provider.icon;
-                        return (
-                          <SelectItem key={provider.type} value={provider.type}>
+                      <SelectGroup>
+                        <SelectLabel>Chat and email</SelectLabel>
+                        {notificationProviders.filter((p) => p.type !== "webhook").map((provider) => {
+                          const Icon = provider.icon;
+                          return (
+                            <SelectItem key={provider.type} value={provider.type}>
+                              <div className="flex items-center gap-2">
+                                <Icon size={16} className={provider.color} />
+                                <span>{provider.label}</span>
+                              </div>
+                            </SelectItem>
+                          );
+                        })}
+                      </SelectGroup>
+                      <SelectGroup>
+                        <SelectLabel>Paging and on-call</SelectLabel>
+                        {WEBHOOK_PRESETS.filter((preset) => preset.id !== "custom").map((preset) => (
+                          <SelectItem key={preset.id} value={`paging:${preset.id}`}>
                             <div className="flex items-center gap-2">
-                              <Icon size={16} className={provider.color} />
-                              <span>{provider.label}</span>
+                              <span>{PAGING_SERVICE_NAMES[preset.id] ?? preset.label}</span>
+                              {preset.endsAt && <span className="text-xs text-muted-foreground">Ends {preset.endsAt}</span>}
                             </div>
                           </SelectItem>
-                        );
-                      })}
+                        ))}
+                      </SelectGroup>
+                      <SelectGroup>
+                        <SelectLabel>Other</SelectLabel>
+                        <SelectItem value="webhook">Custom webhook</SelectItem>
+                      </SelectGroup>
                     </SelectContent>
                   </Select>
                   <FormMessage />
@@ -847,6 +877,7 @@ export function NotificationProviderForm({
                             {WEBHOOK_PRESETS.map((preset) => (
                               <SelectItem key={preset.id} value={preset.id}>
                                 {preset.label}
+                                {preset.endsAt ? ` (ends ${preset.endsAt})` : ""}
                               </SelectItem>
                             ))}
                           </SelectContent>
@@ -855,6 +886,15 @@ export function NotificationProviderForm({
                       </FormItem>
                     )}
                   />
+
+                  {selectedPresetId !== "custom" && (
+                    <Alert variant="info" data-testid="one-way-paging-note">
+                      <AlertDescription>
+                        Supercheck opens and resolves the page. Acknowledging or closing it in{" "}
+                        {PAGING_SERVICE_NAMES[selectedPresetId] ?? "the paging service"} does not change the Supercheck incident.
+                      </AlertDescription>
+                    </Alert>
+                  )}
 
                   <div className="grid grid-cols-1 gap-4 sm:grid-cols-[minmax(0,1fr)_7rem]">
                     <FormField

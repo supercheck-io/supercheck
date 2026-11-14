@@ -58,4 +58,14 @@ describe("webhook-preview", () => {
     expect(preview.hasBody).toBe(true);
     expect(preview.error).toBe("Body template must be valid JSON");
   });
+
+  it("applies the paging preset fixes the worker applies when it sends", () => {
+    const template = JSON.stringify({ status: "{{status}}", severity: "{{normalizedSeverity}}" });
+    const render = (preset?: string) =>
+      JSON.parse(buildWebhookTestBody({ method: "POST", bodyTemplate: template, preset })!);
+    expect(render("incident_io").status).toBe("firing");
+    expect(render("better_stack").status).toBe("alert");
+    expect(render("pagerduty").severity).toBe("critical");
+    expect(render("custom")).toEqual({ status: "down", severity: "error" });
+  });
 });

@@ -679,7 +679,8 @@ export class DbService implements OnModuleInit {
             errorMessage: null,
             deliveryMetadata: null,
           },
-          setWhere: sql`${alertHistory.status} = 'failed'`,
+          // A 401/403 (terminal) failure is never reclaimed: the key is wrong until someone fixes it.
+          setWhere: sql`${alertHistory.status} = 'failed' AND coalesce((${alertHistory.deliveryMetadata} -> 'delivery' ->> 'terminal')::boolean, false) = false`,
         })
         .returning({ id: alertHistory.id, provider: alertHistory.provider });
       return new Map(claimed.map((row) => [row.provider, row.id]));

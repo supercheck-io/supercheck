@@ -159,6 +159,41 @@ suite('DbService.getJobAlertStreakState (PostgreSQL)', () => {
       expect(await rowStatus(runId, 'p1')).toBe('sent');
     });
 
+    it('never reclaims a terminal (401/403) failure', async () => {
+      const runId = randomUUID();
+      const first = await claim(runId);
+      const metadata = (terminal: boolean) =>
+        ({
+          version: 1,
+          provider: { id: 'x' },
+          source: {
+            alertType: 'job_failed',
+            targetType: 'job',
+            targetId: jobId,
+          },
+          delivery: {
+            status: 'failed',
+            sentAt: new Date().toISOString(),
+            terminal,
+          },
+        }) as never;
+      await service.finishJobAlert(
+        first.get('p1')!,
+        'failed',
+        'auth',
+        metadata(true),
+      );
+      await service.finishJobAlert(
+        first.get('p2')!,
+        'failed',
+        'boom',
+        metadata(false),
+      );
+      const retry = await claim(runId);
+      expect([...retry.keys()]).toEqual(['p2']);
+      expect(await rowStatus(runId, 'p1')).toBe('failed');
+    });
+
     it('lets concurrent runs claim at most the cap allows', async () => {
       const outcomes = await Promise.all(
         Array.from({ length: 5 }, () =>

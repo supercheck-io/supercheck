@@ -13,7 +13,8 @@ export type IncidentUpdateEvent =
   | "reopened"
   | "commented"
   | "severity_changed"
-  | "unacknowledged";
+  | "unacknowledged"
+  | "escalated";
 
 export type IncidentUpdateSeverity = "sev1" | "sev2" | "sev3" | "sev4";
 
@@ -57,6 +58,7 @@ export const INCIDENT_EVENT_COLOR: Record<IncidentUpdateEvent, string> = {
   commented: PALETTE.info,
   severity_changed: PALETTE.warning,
   unacknowledged: PALETTE.failure,
+  escalated: PALETTE.failure,
 };
 
 export function incidentSeverityLabel(severity: string): string {
@@ -92,6 +94,8 @@ export function incidentUpdateHeadline(
       return `Severity changed${by}`;
     case "unacknowledged":
       return "Incident still needs acknowledging";
+    case "escalated":
+      return "Incident escalated: still unacknowledged";
   }
 }
 
@@ -107,6 +111,7 @@ export const INCIDENT_EVENT_MESSAGE: Record<IncidentUpdateEvent, string> = {
   commented: "A note was added to this incident.",
   severity_changed: "The severity of this incident changed.",
   unacknowledged: "Nobody has acknowledged this incident yet. Acknowledge it so the team knows someone is on it.",
+  escalated: "Nobody acknowledged this incident in time, so it was escalated to you. Acknowledge it so the team knows someone is on it.",
 };
 
 export function incidentUpdateFields(

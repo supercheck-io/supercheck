@@ -15,6 +15,8 @@ export interface NotificationProvider {
   createdAt: string;
   updatedAt?: string;
   lastUsed?: string;
+  /** Newest delivery in the last 7 days. */
+  health?: { state: "ok" | "auth_failed" | "failing" | "unknown"; at: string | null };
   isInUse?: boolean;
   maskedFields?: string[];
   createdByName?: string | null;

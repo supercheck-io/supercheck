@@ -52,6 +52,7 @@ jest.mock("@/utils/db", () => ({
   db: {
     select: jest.fn(() => chain(selectQueue.shift() ?? [])),
     update: jest.fn(() => chain([])),
+    insert: jest.fn(() => chain([])),
     transaction: (cb: (t: typeof tx) => unknown) => cb(tx),
   },
 }));
@@ -320,6 +321,45 @@ describe("processSreBackgroundAlertTriageJob", () => {
       selectQueue.push([alertRow({ status: "pending" })]);
       expect(await processSreBackgroundAlertTriageJob(JOB)).toEqual({ success: true, skipped: true, reason: "non_sent_alert" });
       expect(insertedIncident()).toBeUndefined();
+    });
+
+    it("A11: notes a failed paging-preset delivery on the timeline once, with ids and status only", async () => {
+      const failedPage = alertRow({
+        status: "failed",
+        deliveryMetadata: { version: 1, provider: { id: "p1", type: "webhook", preset: "pagerduty" }, delivery: { status: "failed", sentAt: "x", responseStatus: 503 } },
+      });
+      selectQueue.push([failedPage]);
+      freshIncidentQueue();
+      selectQueue.push([]); // no page_failed event yet
+      await processSreBackgroundAlertTriageJob(JOB);
+      expect(notifyIncidentEvent).toHaveBeenCalledWith(expect.objectContaining({ event: "created", triggerAlertHistoryId: JOB.alertHistoryId, report: expect.any(Object) }));
+      const pageFailed = inserts.filter((v) => (v as { eventData?: { kind?: string } }).eventData?.kind === "page_failed");
+      expect(pageFailed).toEqual([expect.objectContaining({
+        eventType: "notification",
+        actorType: "system",
+        eventData: { kind: "page_failed", alertHistoryId: JOB.alertHistoryId, providerId: "p1", type: "webhook", preset: "pagerduty", status: 503, terminal: false, fallback: "none" },
+      })]);
+
+      // A retried row is triaged again: the event is not written twice.
+      inserts.length = 0;
+      selectQueue.push([failedPage]);
+      freshIncidentQueue();
+      selectQueue.push([{ id: "existing-event" }]);
+      await processSreBackgroundAlertTriageJob(JOB);
+      expect(inserts.filter((v) => (v as { eventData?: { kind?: string } }).eventData?.kind === "page_failed")).toEqual([]);
+    });
+
+    it("writes no page_failed event for a delivered row or a custom webhook", async () => {
+      for (const row of [
+        alertRow({ status: "sent", deliveryMetadata: { version: 1, provider: { id: "p1", preset: "pagerduty" }, delivery: { status: "sent" } } }),
+        alertRow({ status: "failed", deliveryMetadata: { version: 1, provider: { id: "p1", preset: "custom" }, delivery: { status: "failed" } } }),
+      ]) {
+        inserts.length = 0;
+        selectQueue.push([row]);
+        freshIncidentQueue();
+        await processSreBackgroundAlertTriageJob(JOB);
+        expect(inserts.filter((v) => (v as { eventData?: { kind?: string } }).eventData?.kind === "page_failed")).toEqual([]);
+      }
     });
 
     it("never opens or resolves an incident for the informational SSL renewed notice", async () => {

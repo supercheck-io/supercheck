@@ -55,9 +55,83 @@ incidentCommand.command('timeline <id>').description('Show the incident timeline
   const { data } = await withSpinner('Fetching incident timeline', () => createAuthenticatedClient().get<{ events: Record<string, unknown>[] }>(`/api/sre/incidents/${encodeURIComponent(id)}/timeline`))
   output(data.events, { columns: [
     { key: 'createdAt', header: 'Time' }, { key: 'eventType', header: 'Event' },
-    { key: 'actorType', header: 'Actor' }, { key: 'eventData', header: 'Details' },
+    { key: 'actorType', header: 'Actor' },
+    { key: 'eventData', header: 'Details', format: (value, row) => row.eventType === 'notification' ? describeNotificationEvent(value) : value == null ? '-' : JSON.stringify(value) },
   ] })
 })
+
+/** Reminder, escalation and failed-page events as one line (ids and types only; the API never returns addresses). */
+export function describeNotificationEvent(value: unknown): string {
+  const data = (value ?? {}) as { kind?: string; n?: number; of?: number; channels?: { type?: string; ok?: boolean }[]; emailed?: number; reached?: number; preset?: string; status?: number | null; fallback?: string }
+  const channels = data.channels ?? []
+  const where = [`${channels.filter((c) => c.ok).length}/${channels.length} channel(s)`, data.emailed ? `${data.emailed} email(s)` : ''].filter(Boolean).join(', ')
+  switch (data.kind) {
+    case 'reminder': return `Reminder ${data.n ?? '?'} of ${data.of ?? '?'} sent to ${where}`
+    case 'escalation': return data.reached === 0 ? 'Escalation target was removed; nobody was escalated to' : `Escalated to ${where}`
+    case 'page_failed': return `${data.preset ?? 'Paging'} page failed${data.status ? ` (HTTP ${data.status})` : ''}; fallback: ${data.fallback ?? 'none'}`
+    default: return JSON.stringify(value)
+  }
+}
+
+type IncidentPolicy = {
+  channelIds: string[]; emailServiceOwnersOnSev12: boolean; autoInvestigateOnOpen: boolean
+  renotifyUnackedMinutes: number | null; renotifyRepeatMinutes: number | null; renotifyMax: number
+  escalateAfterMinutes: number | null; escalateChannelId: string | null; escalateUserId: string | null
+  autoInvestigateEnabledAt?: string | null
+}
+
+/** "off" turns a timer off; otherwise whole minutes, 5-1440 (the server validates the schedule as a whole). */
+function minutesOrOff(flag: string, value: string): number | null {
+  if (value.trim().toLowerCase() === 'off') return null
+  const minutes = Number(value)
+  if (!Number.isInteger(minutes) || minutes < 5 || minutes > 1440) throw new CLIError(`${flag} must be off or whole minutes from 5 to 1440`, ExitCode.ConfigError)
+  return minutes
+}
+
+const policyCommand = incidentCommand.command('policy').description("Read or change the project's incident reminder and escalation policy")
+
+policyCommand.command('get').description("Show the current project's incident policy").action(async () => {
+  const { data } = await withSpinner('Fetching incident policy', () => withRouteCheck(() => createAuthenticatedClient().get<{ policy: IncidentPolicy }>('/api/notification-policy')))
+  outputDetail(data.policy)
+})
+
+policyCommand.command('set')
+  .description('Change reminders and escalation; fields you do not pass are kept')
+  .option('--first-reminder <minutes|off>', 'Minutes unacknowledged before the first reminder (off disables reminders)')
+  .option('--repeat <minutes|off>', 'Minutes between later reminders (off reminds once)')
+  .option('--max <count>', 'Total reminders, counting the first (1-10)')
+  .option('--escalate-after <minutes|off>', 'Minutes unacknowledged before the one escalation step (off disables it)')
+  .option('--escalate-channel <id>', 'Escalate to this channel (not a paging service)')
+  .option('--escalate-member <userId>', 'Escalate by email to this project member')
+  .action(async (options: { firstReminder?: string; repeat?: string; max?: string; escalateAfter?: string; escalateChannel?: string; escalateMember?: string }) => {
+    if (Object.values(options).every((value) => value === undefined)) {
+      throw new CLIError('No fields to update. Use --first-reminder, --repeat, --max, --escalate-after, --escalate-channel or --escalate-member.', ExitCode.ConfigError)
+    }
+    if (options.escalateChannel && options.escalateMember) throw new CLIError('Use --escalate-channel or --escalate-member, not both', ExitCode.ConfigError)
+    const max = options.max === undefined ? undefined : Number(options.max)
+    if (max !== undefined && (!Number.isInteger(max) || max < 1 || max > 10)) throw new CLIError('--max must be a whole number from 1 to 10', ExitCode.ConfigError)
+    const ids = [options.escalateChannel, options.escalateMember].filter((id): id is string => id !== undefined)
+    if (ids.some((id) => !z.string().uuid().safeParse(id).success)) throw new CLIError('Escalation targets must be UUIDs', ExitCode.ConfigError)
+
+    const client = createAuthenticatedClient()
+    const { data: current } = await withSpinner('Fetching incident policy', () => withRouteCheck(() => client.get<{ policy: IncidentPolicy }>('/api/notification-policy')))
+    // The server stamps autoInvestigateEnabledAt itself and rejects it as input.
+    const next: IncidentPolicy = { ...current.policy }
+    delete next.autoInvestigateEnabledAt
+    if (options.firstReminder !== undefined) next.renotifyUnackedMinutes = minutesOrOff('--first-reminder', options.firstReminder)
+    if (options.repeat !== undefined) next.renotifyRepeatMinutes = minutesOrOff('--repeat', options.repeat)
+    if (max !== undefined) next.renotifyMax = max
+    if (options.escalateAfter !== undefined) next.escalateAfterMinutes = minutesOrOff('--escalate-after', options.escalateAfter)
+    if (options.escalateChannel) Object.assign(next, { escalateChannelId: options.escalateChannel, escalateUserId: null })
+    if (options.escalateMember) Object.assign(next, { escalateUserId: options.escalateMember, escalateChannelId: null })
+    // Turning reminders off also clears the repeat, which the server rejects without a first reminder.
+    if (next.renotifyUnackedMinutes === null) next.renotifyRepeatMinutes = null
+    if (next.escalateAfterMinutes === null) Object.assign(next, { escalateChannelId: null, escalateUserId: null })
+
+    const { data } = await withSpinner('Saving incident policy', () => client.put<{ policy: IncidentPolicy }>('/api/notification-policy', next))
+    logger.success('Incident policy saved')
+    outputDetail(data.policy)
+  })
 
 incidentCommand.command('resolve <id>')
   .description('Resolve an incident by number or UUID with a resolution summary')

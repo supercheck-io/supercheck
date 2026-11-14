@@ -8,6 +8,7 @@ import {
   getProjectNotificationPolicy,
   saveProjectNotificationPolicy,
   type PolicyChannel,
+  type PolicyMember,
 } from "@/actions/notification-policy";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -21,9 +22,15 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 
 const MAX_POLICY_CHANNELS = 10;
+/** Reminders stop after 2 days (the server's limit), so the whole schedule must fit. */
+const MAX_SCHEDULE_MINUTES = 2880;
+const PAGING_HINT = "Paged by monitor and job alerts";
+
+const inRange = (value: number, min: number, max: number) => Number.isInteger(value) && value >= min && value <= max;
 
 interface ProjectIncidentPolicyDialogProps {
   open: boolean;
@@ -38,6 +45,14 @@ export function ProjectIncidentPolicyDialog({ open, onOpenChange, projectId, pro
   const [emailOwners, setEmailOwners] = React.useState(false);
   const [renotify, setRenotify] = React.useState(false);
   const [minutes, setMinutes] = React.useState("30");
+  const [repeat, setRepeat] = React.useState(false);
+  const [repeatMinutes, setRepeatMinutes] = React.useState("60");
+  const [maxReminders, setMaxReminders] = React.useState("3");
+  const [escalate, setEscalate] = React.useState(false);
+  const [escalateMinutes, setEscalateMinutes] = React.useState("30");
+  const [escalateTarget, setEscalateTarget] = React.useState("");
+  const [targetRemoved, setTargetRemoved] = React.useState(false);
+  const [members, setMembers] = React.useState<PolicyMember[]>([]);
   const [autoInvestigate, setAutoInvestigate] = React.useState(false);
   const [loaded, setLoaded] = React.useState(false);
   const [loadError, setLoadError] = React.useState(false);
@@ -57,21 +72,38 @@ export function ProjectIncidentPolicyDialog({ open, onOpenChange, projectId, pro
         toast.error(result?.error ?? "Failed to load the notification policy");
         return;
       }
-      const { policy, channels: available } = result.data;
+      const { policy, channels: available, members: people } = result.data;
       setChannels(available);
+      setMembers(people ?? []);
       // A deleted or disabled channel can linger in the saved policy; keep only those still listed.
       const listed = new Set(available.map((channel) => channel.id));
       setChannelIds(new Set(policy.channelIds.filter((id) => listed.has(id))));
       setEmailOwners(policy.emailServiceOwnersOnSev12);
       setRenotify(policy.renotifyUnackedMinutes !== null);
       setMinutes(String(policy.renotifyUnackedMinutes ?? 30));
+      setRepeat(policy.renotifyRepeatMinutes != null);
+      setRepeatMinutes(String(policy.renotifyRepeatMinutes ?? 60));
+      setMaxReminders(String(policy.renotifyMax ?? 3));
+      setEscalate(policy.escalateAfterMinutes != null);
+      setEscalateMinutes(String(policy.escalateAfterMinutes ?? 30));
+      setEscalateTarget(policy.escalateChannelId ? `channel:${policy.escalateChannelId}` : policy.escalateUserId ? `member:${policy.escalateUserId}` : "");
+      // A deleted channel or member clears the target (on delete set null); say so instead of silently not escalating.
+      setTargetRemoved(policy.escalateAfterMinutes != null && !policy.escalateChannelId && !policy.escalateUserId);
       setAutoInvestigate(policy.autoInvestigateOnOpen);
       setLoaded(true);
     });
   }, [open, projectId]);
 
   const minutesValue = Number(minutes);
-  const minutesValid = !renotify || (Number.isInteger(minutesValue) && minutesValue >= 5 && minutesValue <= 1440);
+  const minutesValid = !renotify || inRange(minutesValue, 5, 1440);
+  const repeatValue = Number(repeatMinutes);
+  const maxValue = Number(maxReminders);
+  const repeatOn = renotify && repeat;
+  const repeatValid = !repeatOn || (inRange(repeatValue, 5, 1440) && inRange(maxValue, 1, 10));
+  const scheduleValid = !repeatOn || !repeatValid || minutesValue + (maxValue - 1) * repeatValue <= MAX_SCHEDULE_MINUTES;
+  const escalateValue = Number(escalateMinutes);
+  const escalateValid = !escalate || (inRange(escalateValue, 5, 1440) && escalateTarget !== "");
+  const formValid = minutesValid && repeatValid && scheduleValid && escalateValid;
 
   const save = async () => {
     setSaving(true);
@@ -80,6 +112,11 @@ export function ProjectIncidentPolicyDialog({ open, onOpenChange, projectId, pro
         channelIds: [...channelIds],
         emailServiceOwnersOnSev12: emailOwners,
         renotifyUnackedMinutes: renotify ? minutesValue : null,
+        renotifyRepeatMinutes: repeatOn ? repeatValue : null,
+        renotifyMax: repeatOn ? maxValue : 1,
+        escalateAfterMinutes: escalate ? escalateValue : null,
+        escalateChannelId: escalate && escalateTarget.startsWith("channel:") ? escalateTarget.slice("channel:".length) : null,
+        escalateUserId: escalate && escalateTarget.startsWith("member:") ? escalateTarget.slice("member:".length) : null,
         autoInvestigateOnOpen: autoInvestigate,
       }).catch(() => null);
       if (result?.success) {
@@ -130,8 +167,9 @@ export function ProjectIncidentPolicyDialog({ open, onOpenChange, projectId, pro
                     <label key={channel.id} className="flex cursor-pointer items-center gap-3 rounded-md px-2 py-1.5 hover:bg-muted/50">
                       <Checkbox
                         checked={channelIds.has(channel.id)}
-                        // The server accepts at most MAX_POLICY_CHANNELS.
-                        disabled={!channelIds.has(channel.id) && channelIds.size >= MAX_POLICY_CHANNELS}
+                        // The server accepts at most MAX_POLICY_CHANNELS; paging services never get incident messages
+                        // (a saved one stays uncheckable).
+                        disabled={!channelIds.has(channel.id) && (channelIds.size >= MAX_POLICY_CHANNELS || channel.paging)}
                         onCheckedChange={(checked) =>
                           setChannelIds((previous) => {
                             const next = new Set(previous);
@@ -142,7 +180,7 @@ export function ProjectIncidentPolicyDialog({ open, onOpenChange, projectId, pro
                         }
                       />
                       <span className="text-sm">{channel.name}</span>
-                      <span className="ml-auto text-xs text-muted-foreground">{channel.type}</span>
+                      <span className="ml-auto text-xs text-muted-foreground">{channel.paging ? PAGING_HINT : channel.type}</span>
                     </label>
                   ))}
                 </div>
@@ -156,25 +194,113 @@ export function ProjectIncidentPolicyDialog({ open, onOpenChange, projectId, pro
 
             <div className="space-y-2">
               <div className="flex items-center justify-between gap-4">
-                <Label htmlFor="policy-renotify" className="font-normal">Remind once if nobody acknowledges</Label>
+                <Label htmlFor="policy-renotify" className="font-normal">Remind if nobody acknowledges</Label>
                 <Switch id="policy-renotify" checked={renotify} onCheckedChange={setRenotify} />
               </div>
               {renotify && (
-                <div className="flex items-center gap-2 text-sm">
-                  <Label htmlFor="policy-minutes" className="font-normal">After</Label>
-                  <Input
-                    id="policy-minutes"
-                    type="number"
-                    min={5}
-                    max={1440}
-                    value={minutes}
-                    onChange={(event) => setMinutes(event.target.value)}
-                    className="h-8 w-20"
-                    aria-invalid={!minutesValid}
-                  />
-                  <span className="text-muted-foreground">minutes (5 to 1440)</span>
+                <div className="space-y-2 text-sm">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Label htmlFor="policy-minutes" className="font-normal">First after</Label>
+                    <Input
+                      id="policy-minutes"
+                      type="number"
+                      min={5}
+                      max={1440}
+                      value={minutes}
+                      onChange={(event) => setMinutes(event.target.value)}
+                      className="h-8 w-20"
+                      aria-invalid={!minutesValid}
+                    />
+                    <span className="text-muted-foreground">minutes</span>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Switch id="policy-repeat" checked={repeat} onCheckedChange={setRepeat} aria-label="Repeat the reminder" />
+                    <Label htmlFor="policy-repeat-minutes" className="font-normal">Then every</Label>
+                    {repeat ? (
+                      <>
+                        <Input
+                      id="policy-repeat-minutes"
+                      type="number"
+                      min={5}
+                      max={1440}
+                      value={repeatMinutes}
+                      onChange={(event) => setRepeatMinutes(event.target.value)}
+                      className="h-8 w-20"
+                      aria-invalid={!repeatValid}
+                    />
+                        <span className="text-muted-foreground">minutes,</span>
+                        <Label htmlFor="policy-max" className="font-normal">at most</Label>
+                        <Input
+                      id="policy-max"
+                      type="number"
+                      min={1}
+                      max={10}
+                      value={maxReminders}
+                      onChange={(event) => setMaxReminders(event.target.value)}
+                      className="h-8 w-20"
+                      aria-invalid={!repeatValid}
+                    />
+                        <span className="text-muted-foreground">reminders</span>
+                      </>
+                    ) : (
+                      <span className="text-muted-foreground">off (remind once)</span>
+                    )}
+                  </div>
+                  {!scheduleValid && (
+                    <p role="alert" className="text-xs text-destructive">Reminders must finish within 2 days. Use fewer reminders or a shorter interval.</p>
+                  )}
                 </div>
               )}
+            </div>
+
+            <div className="space-y-2">
+              <div className="flex items-center justify-between gap-4">
+                <Label htmlFor="policy-escalate" className="font-normal">Escalate if still unacknowledged</Label>
+                <Switch id="policy-escalate" checked={escalate} onCheckedChange={setEscalate} />
+              </div>
+              {escalate && (
+                <div className="space-y-2 text-sm">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Label htmlFor="policy-escalate-minutes" className="font-normal">After</Label>
+                    <Input
+                      id="policy-escalate-minutes"
+                      type="number"
+                      min={5}
+                      max={1440}
+                      value={escalateMinutes}
+                      onChange={(event) => setEscalateMinutes(event.target.value)}
+                      className="h-8 w-20"
+                      aria-invalid={!inRange(escalateValue, 5, 1440)}
+                    />
+                    <span className="text-muted-foreground">minutes, to</span>
+                  </div>
+                  <Select value={escalateTarget} onValueChange={(value) => { setEscalateTarget(value); setTargetRemoved(false); }}>
+                    <SelectTrigger aria-label="Escalation target" data-testid="policy-escalate-target" aria-invalid={escalateTarget === ""}>
+                      <SelectValue placeholder="Choose a channel or a member" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectGroup>
+                        <SelectLabel>Channels</SelectLabel>
+                        {channels.length === 0 && <SelectItem value="none-channels" disabled>No channels</SelectItem>}
+                        {channels.map((channel) => (
+                          <SelectItem key={channel.id} value={`channel:${channel.id}`} disabled={channel.paging}>
+                            {channel.name}{channel.paging ? ` (${PAGING_HINT})` : ""}
+                          </SelectItem>
+                        ))}
+                      </SelectGroup>
+                      <SelectGroup>
+                        <SelectLabel>Members (by email)</SelectLabel>
+                        {members.length === 0 && <SelectItem value="none-members" disabled>No members can act on incidents</SelectItem>}
+                        {members.map((person) => (
+                          <SelectItem key={person.id} value={`member:${person.id}`}>{person.name}</SelectItem>
+                        ))}
+                      </SelectGroup>
+                    </SelectContent>
+                  </Select>
+                  {targetRemoved && <p role="alert" className="text-xs text-destructive">Escalation target was removed. Choose a new one.</p>}
+                </div>
+              )}
+              <p className="text-xs text-muted-foreground">Reminders stop when someone acknowledges, resolves or lowers the severity.</p>
             </div>
 
             <div className="flex items-start justify-between gap-4">
@@ -193,7 +319,7 @@ export function ProjectIncidentPolicyDialog({ open, onOpenChange, projectId, pro
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
             Cancel
           </Button>
-          <Button onClick={save} disabled={!loaded || saving || !minutesValid}>
+          <Button onClick={save} disabled={!loaded || saving || !formValid}>
             {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
             Save
           </Button>

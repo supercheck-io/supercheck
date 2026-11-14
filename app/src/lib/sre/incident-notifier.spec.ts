@@ -10,7 +10,13 @@ function chain(result: unknown[]) {
   node.catch = () => node;
   return node;
 }
-jest.mock("@/utils/db", () => ({ db: { select: jest.fn(() => chain(selectQueue.shift() ?? [])) } }));
+const inserted: Array<Record<string, unknown>> = [];
+jest.mock("@/utils/db", () => ({
+  db: {
+    select: jest.fn(() => chain(selectQueue.shift() ?? [])),
+    insert: jest.fn(() => ({ values: (row: Record<string, unknown>) => { inserted.push(row); return Promise.resolve(); } })),
+  },
+}));
 
 const redisSet = jest.fn();
 const redisEval = jest.fn();
@@ -38,6 +44,7 @@ jest.mock("./incident-lifecycle", () => ({ isAssignableUser: (...a: [string, str
 const mockPolicy = jest.fn();
 const mockPolicyProviders = jest.fn();
 jest.mock("./notification-policy", () => ({
+  isPagingWebhook: jest.requireActual("./notification-policy").isPagingWebhook,
   getNotificationPolicy: (...a: unknown[]) => mockPolicy(...a),
   listPolicyProviders: (...a: unknown[]) => mockPolicyProviders(...a),
 }));
@@ -49,7 +56,7 @@ jest.mock("./incident-watchers", () => ({
 }));
 
 import { decryptNotificationProviderConfig } from "@/lib/notification-providers/crypto";
-import { buildIncidentUrl, notifyIncidentEvent } from "./incident-notifier";
+import { buildIncidentUrl, notifyIncidentEvent, type IncidentFallback } from "./incident-notifier";
 
 const base = {
   organizationId: "org-1",
@@ -68,6 +75,7 @@ const incident = { id: "inc-1", number: 7, title: "Checkout down", severity: "se
 beforeEach(() => {
   jest.clearAllMocks();
   selectQueue.length = 0;
+  inserted.length = 0;
   mockAssignable = [{ id: "assignee" }, { id: "actor" }, { id: "commander" }, { id: "previous" }];
   redisSet.mockResolvedValue("OK");
   mockPolicy.mockResolvedValue({ channelIds: [], emailServiceOwnersOnSev12: false, renotifyUnackedMinutes: null, autoInvestigateOnOpen: false });
@@ -599,5 +607,113 @@ describe("delivery outcome and recipients", () => {
     const recipients = sendEmailToMultiple.mock.calls.map((call) => call[0].recipients);
     expect(recipients.map((batch: string[]) => batch.length)).toEqual([20, 20, 6]);
     expect(recipients.flat()).toContain("w44@example.com");
+  });
+});
+
+describe("reminders, escalation and paging fallback", () => {
+  const slack = { id: "s1", type: "slack", projectId: "project-1", config: { envelope: { webhookUrl: "https://hooks.slack.com/services/x" } } };
+  const pagerduty = { id: "pd1", type: "webhook", projectId: "project-1", config: { envelope: { url: "https://events.pagerduty.com/v2/enqueue", preset: "pagerduty" } } };
+  const opsPolicy = { channelIds: ["s1", "pd1"], emailServiceOwnersOnSev12: false, renotifyUnackedMinutes: 15, autoInvestigateOnOpen: false };
+
+  it("A10/A11: a reminder skips paging presets without counting them as failures and records the reminder, no addresses", async () => {
+    mockPolicy.mockResolvedValue(opsPolicy);
+    mockPolicyProviders.mockResolvedValue([slack, pagerduty]);
+    selectQueue.push([incident], people, []);
+    expect(await notifyIncidentEvent({ ...base, event: "unacknowledged", actorUserId: null, reminder: { n: 2, of: 3 } })).toBe(true);
+    expect(fetchPublicEndpoint).toHaveBeenCalledTimes(1);
+    expect(fetchPublicEndpoint.mock.calls[0][0]).toContain("hooks.slack.com");
+    expect(mockWarn).not.toHaveBeenCalledWith(expect.anything(), "Incident notification delivery failed");
+    expect(inserted).toEqual([expect.objectContaining({
+      incidentId: "inc-1", eventType: "notification", actorType: "system",
+      eventData: { kind: "reminder", n: 2, of: 3, channels: [{ providerId: "s1", type: "slack", ok: true }], emailed: 1, reached: 2 },
+    })]);
+    expect(JSON.stringify(inserted)).not.toMatch(/@example\.com|hooks\.slack\.com/);
+  });
+
+  it("A10: a reminder whose only channel is a preset is not a failed send", async () => {
+    mockPolicy.mockResolvedValue({ ...opsPolicy, channelIds: ["pd1"] });
+    mockPolicyProviders.mockResolvedValue([pagerduty]);
+    selectQueue.push([incident], people, []);
+    expect(await notifyIncidentEvent({ ...base, event: "unacknowledged", actorUserId: null, assigneeUserId: null })).toBe(true);
+    expect(fetchPublicEndpoint).not.toHaveBeenCalled();
+  });
+
+  it("does not record a reminder that failed everywhere (it is released and retried)", async () => {
+    mockAssignable = [];
+    mockPolicyProviders.mockResolvedValue([slack]);
+    fetchPublicEndpoint.mockRejectedValueOnce(new Error("down"));
+    selectQueue.push([incident], people, []);
+    expect(await notifyIncidentEvent({ ...base, event: "unacknowledged", actorUserId: null, assigneeUserId: null })).toBe(false);
+    expect(inserted).toEqual([]);
+  });
+
+  it("A9: escalation goes only to the target channel, never the owner, and is recorded", async () => {
+    mockPolicyProviders.mockResolvedValue([slack]);
+    selectQueue.push([incident], people, []);
+    expect(await notifyIncidentEvent({ ...base, event: "escalated", actorUserId: null, assigneeUserId: null, targets: { providerIds: ["s1"] } })).toBe(true);
+    expect(mockPolicyProviders).toHaveBeenCalledWith("org-1", "project-1", ["s1"]);
+    expect(sendEmailToMultiple).not.toHaveBeenCalled();
+    expect(JSON.parse(fetchPublicEndpoint.mock.calls[0][1].body).text).toContain("Incident escalated");
+    expect(inserted[0].eventData).toEqual({ kind: "escalation", channels: [{ providerId: "s1", type: "slack", ok: true }], emailed: 0, reached: 1 });
+  });
+
+  it("A9: escalation emails a member target who can act; a removed member gets nothing", async () => {
+    const escalatee = { id: "018f0000-0000-7000-8000-0000000000e1", name: "Priya", email: "priya@example.com" };
+    mockAssignable = [{ id: escalatee.id }];
+    selectQueue.push([incident], people, [escalatee]);
+    expect(await notifyIncidentEvent({ ...base, event: "escalated", actorUserId: null, assigneeUserId: null, targets: { userIds: [escalatee.id] } })).toBe(true);
+    expect(sendEmailToMultiple.mock.calls.flatMap((call) => call[0].recipients)).toEqual(["priya@example.com"]);
+    expect(inserted[0].eventData).toEqual({ kind: "escalation", channels: [], emailed: 1, reached: 1 });
+
+    sendEmailToMultiple.mockClear();
+    inserted.length = 0;
+    mockAssignable = [];
+    selectQueue.push([incident], people, [escalatee]);
+    expect(await notifyIncidentEvent({ ...base, incidentId: "inc-2", event: "escalated", actorUserId: null, assigneeUserId: null, targets: { userIds: [escalatee.id] } })).toBe(false);
+    expect(sendEmailToMultiple).not.toHaveBeenCalled();
+    expect(inserted).toEqual([]);
+  });
+
+  it("escalation is skipped once the incident is acknowledged or resolved", async () => {
+    selectQueue.push([{ ...incident, acknowledgedAt: new Date() }]);
+    expect(await notifyIncidentEvent({ ...base, event: "escalated", targets: { providerIds: ["s1"] } })).toBe(true);
+    selectQueue.push([{ ...incident, status: "resolved" }]);
+    expect(await notifyIncidentEvent({ ...base, incidentId: "inc-2", event: "escalated", targets: { providerIds: ["s1"] } })).toBe(true);
+    expect(fetchPublicEndpoint).not.toHaveBeenCalled();
+    expect(inserted).toEqual([]);
+  });
+
+  it("A18: when the monitor's page was not delivered, `created` also goes to the policy channels", async () => {
+    mockPolicy.mockResolvedValue({ ...opsPolicy, channelIds: ["s1"] });
+    mockPolicyProviders.mockResolvedValue([slack]);
+    const report: { fallback?: IncidentFallback } = {};
+    // incident, people, trigger source, trigger alert row (outage key), delivered rows for that outage (none sent), monitor channels (preset only)
+    selectQueue.push([incident], people, [{ sourceType: "monitor", sourceId: "mon-1", dedupKey: "monitor:mon-1:monitor_failure" }], [{ outageKey: "o-1", runId: null }], [{ status: "failed" }], [pagerduty]);
+    await notifyIncidentEvent({ ...base, event: "created", actorUserId: null, triggerAlertHistoryId: "018f0000-0000-7000-8000-0000000000a1", report });
+    expect(fetchPublicEndpoint).toHaveBeenCalledTimes(1);
+    expect(fetchPublicEndpoint.mock.calls[0][0]).toContain("hooks.slack.com");
+    expect(report.fallback).toBe("policy_channels");
+  });
+
+  it("A18: with no policy channel either, owners and admins are emailed and the fallback says so", async () => {
+    mockAdmins.mockResolvedValue([{ id: "admin", name: "Ops", email: "ops@example.com" }]);
+    const report: { fallback?: IncidentFallback } = {};
+    // Nobody is named, so there is no people lookup.
+    selectQueue.push([{ ...incident, assigneeUserId: null }], [{ sourceType: "monitor", sourceId: "mon-1", dedupKey: "monitor:mon-1:monitor_failure" }], [{ outageKey: "o-1", runId: null }], [], [pagerduty]);
+    await notifyIncidentEvent({ ...base, event: "created", actorUserId: null, assigneeUserId: null, triggerAlertHistoryId: "018f0000-0000-7000-8000-0000000000a1", report });
+    expect(sendEmailToMultiple.mock.calls.flatMap((call) => call[0].recipients)).toEqual(["ops@example.com"]);
+    expect(report.fallback).toBe("admins");
+  });
+
+  it("judges delivery by the trigger's own outage, so a delivery from an earlier outage does not hide a failed page", async () => {
+    const { PgDialect } = jest.requireActual("drizzle-orm/pg-core");
+    selectQueue.push([incident], people, [{ sourceType: "monitor", sourceId: "mon-1", dedupKey: "monitor:mon-1:monitor_failure" }], [{ outageKey: "o-1", runId: null }], [{ status: "sent" }]);
+    await notifyIncidentEvent({ ...base, event: "created", actorUserId: null, triggerAlertHistoryId: "018f0000-0000-7000-8000-0000000000a1" });
+    const deliveredWhere = chains
+      .flatMap((node) => node.where.mock.calls.map(([where]) => new PgDialect().sqlToQuery(where)))
+      .find((query: { sql: string }) => query.sql.includes('"alert_history"."type" in'));
+    expect(deliveredWhere.sql).toContain('"outage_key" = $');
+    expect(deliveredWhere.params).toContain("o-1");
+    expect(fetchPublicEndpoint).not.toHaveBeenCalled();
   });
 });

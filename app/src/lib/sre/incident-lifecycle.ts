@@ -934,6 +934,9 @@ export async function reopenRecentlyAutoResolved(
       acknowledgedAt: null,
       acknowledgedByUserId: null,
       renotifiedAt: null,
+      renotifyCount: 0,
+      renotifyStoppedAt: null,
+      escalatedAt: null,
       reopenedAt: now,
       updatedAt: now,
     })

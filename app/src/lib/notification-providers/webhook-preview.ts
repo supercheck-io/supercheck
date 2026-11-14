@@ -4,6 +4,7 @@ import {
   renderWebhookJsonTemplate,
   type WebhookMethod,
 } from "@/lib/notification-providers/webhook-template";
+import { presetOverrides } from "@/lib/notification-providers/preset-lifecycle";
 
 export const WEBHOOK_TEST_PAYLOAD = {
   test: true,
@@ -21,7 +22,7 @@ export const WEBHOOK_SAMPLE_TEMPLATE_VARIABLES: Record<string, string> = {
   targetUrl: "https://example.com/health",
   targetId: "test-target-id",
   timestamp: "2026-06-28T10:30:00.000Z",
-  type: "monitor_down",
+  type: "monitor_failure",
   projectName: "Test Project",
   projectId: "test-project-id",
   responseTime: "5200",
@@ -47,7 +48,7 @@ export type WebhookPayloadPreview = {
 type WebhookPreviewConfig = Pick<
   PlainNotificationProviderConfig,
   "method" | "bodyTemplate"
->;
+> & { preset?: unknown };
 
 export function buildWebhookTestBody(
   config: WebhookPreviewConfig,
@@ -62,10 +63,13 @@ export function buildWebhookTestBody(
     return JSON.stringify(WEBHOOK_TEST_PAYLOAD);
   }
 
-  return renderWebhookJsonTemplate(
-    template,
-    WEBHOOK_SAMPLE_TEMPLATE_VARIABLES,
-  );
+  // Same per-preset fixes the worker applies when it sends (see preset-lifecycle).
+  return renderWebhookJsonTemplate(template, {
+    ...WEBHOOK_SAMPLE_TEMPLATE_VARIABLES,
+    ...presetOverrides(config.preset, "trigger", {
+      alertType: WEBHOOK_SAMPLE_TEMPLATE_VARIABLES.type,
+    }),
+  });
 }
 
 export function buildWebhookPayloadPreview(

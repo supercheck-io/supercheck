@@ -8,6 +8,7 @@ import { NotificationChannel } from "./notification-channels-schema";
 import { useProjectContext } from "@/hooks/use-project-context";
 import { hasPermission } from "@/lib/rbac/client-permissions";
 import { normalizeRole } from "@/lib/rbac/role-normalizer";
+import { ChannelTestDialog } from "./channel-test-dialog";
 
 interface NotificationProvider {
   id: string;
@@ -18,6 +19,7 @@ interface NotificationProvider {
   createdAt: string;
   updatedAt: string;
   lastUsed?: string;
+  health?: NotificationChannel["health"];
   createdByName?: string | null;
   createdByImage?: string | null;
 }
@@ -38,6 +40,7 @@ export function NotificationChannelsComponent({
   const [channels, setChannels] = useState<NotificationChannel[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [mounted, setMounted] = useState(false);
+  const [testChannel, setTestChannel] = useState<NotificationChannel | null>(null);
 
   // Get user permissions
   const { currentProject } = useProjectContext();
@@ -89,6 +92,7 @@ export function NotificationChannelsComponent({
           createdAt: provider.createdAt,
           updatedAt: provider.updatedAt,
           lastUsed: provider.lastUsed,
+          health: provider.health,
           createdByName: provider.createdByName ?? null,
           createdByImage: provider.createdByImage ?? null,
         }));
@@ -129,8 +133,10 @@ export function NotificationChannelsComponent({
           onDelete: onDeleteChannel,
           canEdit,
           canDelete,
+          onTest: setTestChannel,
         }}
       />
+      <ChannelTestDialog channel={testChannel} onOpenChange={(open) => !open && setTestChannel(null)} />
     </div>
   );
 } 
