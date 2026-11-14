@@ -13,6 +13,7 @@ import { formatDurationMinutes } from "@/lib/date-utils";
 import { TruncatedTextWithTooltip } from "@/components/ui/truncated-text-with-tooltip";
 import { createdByColumn } from "@/components/ui/created-by-column";
 import { DateCell } from "@/components/ui/table-cells";
+import { TableBadge } from "@/components/ui/table-badge";
 
 // Type definition for the extended meta object used in this table
 interface MonitorTableMeta {
@@ -53,13 +54,18 @@ export const columns: ColumnDef<Monitor>[] = [
       const name = row.getValue("name") as string;
 
       return (
-        <div className="flex space-x-2">
+        <div className="flex items-center space-x-2">
           <TruncatedTextWithTooltip
             text={name}
             className="font-medium"
             maxWidth="160px"
             maxLength={20}
           />
+          {row.original.config?.aiEndpoint && (
+            <TableBadge tone="neutral" compact className="shrink-0" data-testid="monitor-ai-badge">
+              AI endpoint
+            </TableBadge>
+          )}
         </div>
       );
     },

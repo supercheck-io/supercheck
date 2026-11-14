@@ -7,7 +7,7 @@ type DeclaredConfigKey = keyof {
 };
 
 /** Keys whose values are credentials or request payloads; handled separately below. */
-type ProtectedConfigKey = "headers" | "body" | "auth";
+type ProtectedConfigKey = "headers" | "body" | "auth" | "aiEndpoint";
 
 /**
  * Keys visible to read-only users. This is an allowlist: a field added to
@@ -36,6 +36,7 @@ const VIEWER_VISIBLE_KEYS: Record<Exclude<DeclaredConfigKey, ProtectedConfigKey>
   testId: true,
   testTitle: true,
   playwrightOptions: true,
+  aiEndpointState: true,
 };
 
 /** Request credentials and payloads are available only to monitor updaters. */
@@ -50,6 +51,11 @@ export function monitorConfigForRead(
   }
   if (config.auth && typeof config.auth === "object") {
     visible.auth = { type: config.auth.type };
+  }
+  // Viewers see the model and limits, never the prompt or the secret name.
+  if (config.aiEndpoint && typeof config.aiEndpoint === "object") {
+    const { prompt: _prompt, secretKey: _secretKey, ...rest } = config.aiEndpoint;
+    visible.aiEndpoint = rest;
   }
   return visible;
 }

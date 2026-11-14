@@ -257,6 +257,7 @@ function normalizeMonitorConfig(config: Record<string, unknown>): Record<string,
   delete normalized.sslProbeFailure
   delete normalized.sslAlertState
   delete normalized.aggregatedAlertState
+  delete normalized.aiEndpointState
   for (const key of UNEVALUATED_MONITOR_CONFIG_KEYS) delete normalized[key]
 
   // Clean up default playwrightOptions

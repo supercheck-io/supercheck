@@ -26,7 +26,7 @@ jest.mock("@/lib/monitor-scheduler", () => ({
   deleteScheduledMonitor: jest.fn(async () => true),
 }));
 import { ResumeRefusedError } from "@/lib/middleware/plan-enforcement";
-import { updateMonitorHandler } from "./monitor-service";
+import { MonitorTargetChangedError, updateMonitorHandler } from "./monitor-service";
 
 const name = `monitor_svc_${randomUUID().replaceAll("-", "")}`;
 let maintenance: ReturnType<typeof postgres>;
@@ -94,4 +94,19 @@ it("does not take a slot for an edit that does not resume", async () => {
   const { organization } = await seed(2, 0);
   const [active] = await mockDatabase.select().from(schema.monitors).where(eq(schema.monitors.organizationId, organization.id));
   await expect(updateMonitorHandler(active.id, { name: "Renamed" })).resolves.toMatchObject({ name: "Renamed" });
+});
+
+it("writes a secret-bearing monitor only while its target is still the checked one", async () => {
+  const { organization } = await seed(1, 0);
+  const [monitor] = await mockDatabase.select().from(schema.monitors).where(eq(schema.monitors.organizationId, organization.id));
+  // A concurrent request moved the target after this one read it.
+  await mockDatabase.update(schema.monitors).set({ target: "https://collector.example" }).where(eq(schema.monitors.id, monitor.id));
+  await expect(
+    updateMonitorHandler(monitor.id, { config: { auth: { type: "bearer", secretKey: "K" } } }, { expectTarget: "https://example.com" }),
+  ).rejects.toBeInstanceOf(MonitorTargetChangedError);
+  const [after] = await mockDatabase.select().from(schema.monitors).where(eq(schema.monitors.id, monitor.id));
+  expect(after.config?.auth?.secretKey).toBeUndefined();
+  await expect(
+    updateMonitorHandler(monitor.id, { name: "Renamed" }, { expectTarget: "https://collector.example" }),
+  ).resolves.toMatchObject({ name: "Renamed" });
 });

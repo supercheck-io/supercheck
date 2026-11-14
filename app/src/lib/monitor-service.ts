@@ -155,11 +155,22 @@ export function executionConfig(config: MonitorConfig | null | undefined) {
   ));
 }
 
+/** The monitor's target changed after the request read it; the secret checks ran against a stale target. */
+export class MonitorTargetChangedError extends Error {
+  constructor() {
+    super("This monitor was changed by someone else. Reload it and try again.");
+  }
+}
+
 export async function updateMonitorHandler(
   monitorId: string,
   data: Partial<MonitorApiData>,
   /** Delivery rows to replace in the same transaction as the monitor row (alertConfig writes). */
-  options: { providerSync?: { ids: string[]; organizationId: string; projectId: string; storedIds?: string[] } } = {},
+  options: {
+    providerSync?: { ids: string[]; organizationId: string; projectId: string; storedIds?: string[] };
+    /** Write only if the target is still this value (the one the secret-reference checks saw). */
+    expectTarget?: string;
+  } = {},
 ) {
   // Fetch existing monitor to compare old frequency/enabled status
   const existingMonitor = await db.query.monitors.findFirst({
@@ -212,8 +223,13 @@ export async function updateMonitorHandler(
     const rows = await executor
       .update(monitorTable)
       .set(updateData) // Use the filtered updateData
-      .where(eq(monitorTable.id, monitorId))
+      .where(
+        options.expectTarget === undefined
+          ? eq(monitorTable.id, monitorId)
+          : and(eq(monitorTable.id, monitorId), eq(monitorTable.target, options.expectTarget)),
+      )
       .returning();
+    if (rows.length === 0 && options.expectTarget !== undefined) throw new MonitorTargetChangedError();
     if (rows.length > 0 && providerSync) {
       const kept = await syncMonitorProviderRows(
         executor, monitorId, providerSync.ids, providerSync.organizationId, providerSync.projectId, providerSync.storedIds,

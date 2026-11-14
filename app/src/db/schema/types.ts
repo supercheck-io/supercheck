@@ -78,6 +78,17 @@ export type MonitorResultDetails = {
     // Host the certificate was read from; set on the copy stored in monitor config
     host?: string;
   };
+  /** AI endpoint preset timings and usage. */
+  ai?: {
+    firstTokenMs?: number;
+    totalMs: number;
+    servedModel?: string;
+    systemFingerprint?: string;
+    promptTokens?: number;
+    completionTokens?: number;
+    totalTokens?: number;
+    cost?: number;
+  };
   [key: string]: unknown;
 };
 
@@ -111,7 +122,21 @@ export type MonitorConfig = {
     username?: string;
     password?: string;
     token?: string;
+    /** Project secret name supplying the bearer token or basic password; exclusive with inline token/password. */
+    secretKey?: string;
   };
+  /** AI endpoint preset (OpenAI-compatible streaming check); http_request only. */
+  aiEndpoint?: {
+    secretKey?: string;
+    keyHeader?: string;
+    model: string;
+    prompt?: string;
+    maxTokens?: number;
+    expectText?: string;
+    firstTokenTimeoutMs?: number;
+  };
+  /** Worker-owned; clients cannot write it. */
+  aiEndpointState?: { lastServedModel?: string };
   port?: number;
   protocol?: "tcp" | "udp";
   expectClosed?: boolean; // When true, monitor passes if port is closed (connection refused)

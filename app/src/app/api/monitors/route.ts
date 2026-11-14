@@ -17,6 +17,7 @@ import {
   insertMonitorRecord,
   scheduleCreatedMonitor,
   updateMonitorHandler,
+  MonitorTargetChangedError,
 } from "@/lib/monitor-service";
 import { logAuditEvent } from "@/lib/audit-logger";
 import { checkMonitorLimit, countPlanMonitors, resumeRefusalResponse, ResumeRefusedError } from "@/lib/middleware/plan-enforcement";
@@ -35,6 +36,7 @@ import type { LocationConfig } from "@/db/schema";
 import { createLogger } from "@/lib/logger/index";
 import { channelsOptional } from "@/lib/incident-settings";
 import { validateMonitorConfiguration } from "@/lib/monitor-validation";
+import { monitorSecretNames, validateMonitorSecretRefs } from "@/lib/monitor-secret-refs";
 import { validateMonitorTargetAddress } from "@/lib/monitor-target-policy";
 import {
   AlertConfigConflictError,
@@ -276,10 +278,7 @@ export async function POST(req: NextRequest) {
 
     // Special logging for heartbeat monitors
     if (rawData.type === "heartbeat") {
-      logger.debug(
-        { config: rawData.config },
-        "[MONITOR_CREATE] Processing heartbeat monitor",
-      );
+      logger.debug("[MONITOR_CREATE] Processing heartbeat monitor");
     }
 
     // Validate required fields
@@ -402,6 +401,11 @@ export async function POST(req: NextRequest) {
     if (!configurationValidation.success) {
       return NextResponse.json(configurationValidation, { status: 400 });
     }
+    const secretRefs = await validateMonitorSecretRefs(authCtx, rawData.config, rawData.target);
+    if (!secretRefs.success) {
+      const { status, ...body } = secretRefs;
+      return NextResponse.json(body, { status: status ?? 400 });
+    }
     const targetValidation = await validateMonitorTargetAddress({ type: rawData.type, target: rawData.target });
     if (!targetValidation.success) {
       return NextResponse.json(targetValidation, { status: 400 });
@@ -449,8 +453,6 @@ export async function POST(req: NextRequest) {
         { status: 400 },
       );
     }
-
-    logger.debug({ finalConfig }, "[MONITOR_CREATE] Final config");
 
     // Use current project context
     const targetProjectId = project.id;
@@ -637,6 +639,8 @@ export async function POST(req: NextRequest) {
         alertsEnabled: alertConfig?.enabled || false,
         notificationProvidersCount:
           alertConfig?.notificationProviders?.length || 0,
+        ...(finalConfig.aiEndpoint ? { preset: "ai_endpoint" } : {}),
+        ...secretRefs.audit,
       },
       success: true,
     });
@@ -781,6 +785,15 @@ export async function PUT(req: NextRequest) {
     });
     if (!configurationValidation.success) {
       return NextResponse.json(configurationValidation, { status: 400 });
+    }
+    const secretRefs = await validateMonitorSecretRefs(putCtx, updateData.config, updateData.target ?? monitorData[0].target, {
+      storedConfig: monitorData[0].config,
+      effectiveConfig: updateData.config ?? monitorData[0].config,
+      targetChanged: updateData.target !== undefined && updateData.target !== monitorData[0].target,
+    });
+    if (!secretRefs.success) {
+      const { status, ...body } = secretRefs;
+      return NextResponse.json(body, { status: status ?? 400 });
     }
     // Only a changed target or type is checked, so a monitor already pointing at an internal host stays editable.
     const effectiveU3 = { type: updateData.type ?? monitorData[0].type, target: updateData.target ?? monitorData[0].target };
@@ -971,15 +984,20 @@ export async function PUT(req: NextRequest) {
       updatedMonitor = await updateMonitorHandler(
         id,
         monitorUpdateData,
-        syncProviders
-          ? { providerSync: { ids: alertConfig?.notificationProviders ?? [], organizationId, projectId: project.id, storedIds: monitorData[0].alertConfig?.notificationProviders } }
-          : {},
+        {
+          ...(syncProviders
+            ? { providerSync: { ids: alertConfig?.notificationProviders ?? [], organizationId, projectId: project.id, storedIds: monitorData[0].alertConfig?.notificationProviders } }
+            : {}),
+          // A monitor that sends a project secret is written only if its target is still the one checked above.
+          ...(monitorSecretNames(monitorUpdateData.config ?? monitorData[0].config).length > 0 ? { expectTarget: monitorData[0].target } : {}),
+        },
       );
     } catch (error) {
       if (error instanceof ResumeRefusedError) return resumeRefusalResponse(error.outcome)!;
       if (error instanceof InvalidNotificationProvidersError || error instanceof AlertConfigConflictError) {
         return NextResponse.json({ error: error.message }, { status: 400 });
       }
+      if (error instanceof MonitorTargetChangedError) return NextResponse.json({ error: error.message }, { status: 409 });
       if (error instanceof MonitorScheduleError && error.monitor) {
         // Saved but not rescheduled: audit the change, then answer 503.
         updatedMonitor = error.monitor;
@@ -1001,6 +1019,8 @@ export async function PUT(req: NextRequest) {
       resource: "monitor",
       resourceId: id,
       metadata: {
+        ...(monitorUpdateData.config?.aiEndpoint ? { preset: "ai_endpoint" } : {}),
+        ...secretRefs.audit,
         monitorName: monitorUpdateData.name,
         monitorType: monitorUpdateData.type,
         target: monitorUpdateData.target,
