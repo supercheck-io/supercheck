@@ -374,7 +374,7 @@ describe("processSreBackgroundAlertTriageJob", () => {
       selectQueue.push([], [{ id: "ae-1" }], []);
       expect(await processSreBackgroundAlertTriageJob(JOB)).toEqual({ success: true, skipped: true, reason: "already_triaged" });
       expect(insertedIncident()).toBeUndefined();
-      expect(announceSystemTransition).toHaveBeenCalledWith("org-1", "proj-1", "inc-old", "reopened", expect.objectContaining({ assigneeUserId: "u1" }));
+      expect(announceSystemTransition).toHaveBeenCalledWith("org-1", "proj-1", "inc-old", "reopened", expect.objectContaining({ assigneeUserId: "u1", triggerAlertHistoryId: JOB.alertHistoryId, report: expect.any(Object) }));
       expect(notifyIncidentEvent).not.toHaveBeenCalled();
     });
 

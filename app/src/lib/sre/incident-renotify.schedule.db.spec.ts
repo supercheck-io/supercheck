@@ -273,7 +273,8 @@ describe("A9: escalation", () => {
     notifyIncidentEvent.mockClear();
     const late = await incident({ openedAt: at(10) });
     isAssignableUser.mockResolvedValue(false);
-    expect(await renotifyUnacknowledgedIncidents(at(41))).toBe(1);
+    // A removed target is terminal: noted, not sent, so no send attempt is counted.
+    expect(await renotifyUnacknowledgedIncidents(at(41))).toBe(0);
     expect(notifyIncidentEvent).not.toHaveBeenCalled();
     const events = await client`SELECT event_data FROM sre_incident_timeline_events WHERE incident_id = ${late}`;
     expect(events).toEqual([{ event_data: expect.objectContaining({ kind: "escalation", reached: 0 }) }]);
@@ -292,7 +293,7 @@ describe("A9: escalation", () => {
       await client`DELETE FROM sre_incidents`;
       await policy({ escalate: 30, channel: target });
       const id = await incident();
-      expect(await renotifyUnacknowledgedIncidents(at(30))).toBe(1);
+      expect(await renotifyUnacknowledgedIncidents(at(30))).toBe(0);
       expect(notifyIncidentEvent).not.toHaveBeenCalled();
       const events = await client`SELECT event_data FROM sre_incident_timeline_events WHERE incident_id = ${id}`;
       expect(events).toEqual([{ event_data: expect.objectContaining({ kind: "escalation", reached: 0 }) }]);

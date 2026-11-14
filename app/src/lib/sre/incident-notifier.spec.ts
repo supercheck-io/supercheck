@@ -674,6 +674,32 @@ describe("reminders, escalation and paging fallback", () => {
     expect(inserted).toEqual([]);
   });
 
+  it("a reminder or escalation claimed before a person lowered the severity is not sent", async () => {
+    selectQueue.push([{ ...incident, renotifyStoppedAt: new Date() }]);
+    expect(await notifyIncidentEvent({ ...base, event: "unacknowledged", actorUserId: null })).toBe(true);
+    selectQueue.push([{ ...incident, renotifyStoppedAt: new Date() }]);
+    expect(await notifyIncidentEvent({ ...base, incidentId: "inc-2", event: "escalated", targets: { providerIds: ["s1"] } })).toBe(true);
+    expect(fetchPublicEndpoint).not.toHaveBeenCalled();
+    expect(sendEmailToMultiple).not.toHaveBeenCalled();
+  });
+
+  it("an automatic reopen whose page reached nobody falls back to the policy channels", async () => {
+    mockPolicy.mockResolvedValue({ ...opsPolicy, channelIds: ["s1"] });
+    mockPolicyProviders.mockResolvedValue([slack]);
+    const report: { fallback?: IncidentFallback } = {};
+    selectQueue.push([incident], people, [{ sourceType: "monitor", sourceId: "mon-1", dedupKey: "monitor:mon-1:monitor_failure" }], [{ outageKey: "o-2", runId: null }], [{ status: "failed" }], [pagerduty]);
+    await notifyIncidentEvent({ ...base, event: "reopened", automatic: true, actorUserId: null, triggerAlertHistoryId: "018f0000-0000-7000-8000-0000000000a2", report });
+    expect(fetchPublicEndpoint.mock.calls.map(([url]) => url)).toEqual([expect.stringContaining("hooks.slack.com")]);
+    expect(report.fallback).toBe("policy_channels");
+  });
+
+  it("an automatic reopen whose page was delivered sends no channel message", async () => {
+    mockPolicyProviders.mockResolvedValue([slack]);
+    selectQueue.push([incident], people, [{ sourceType: "monitor", sourceId: "mon-1", dedupKey: "monitor:mon-1:monitor_failure" }], [{ outageKey: "o-2", runId: null }], [{ status: "sent" }]);
+    await notifyIncidentEvent({ ...base, event: "reopened", automatic: true, actorUserId: null, triggerAlertHistoryId: "018f0000-0000-7000-8000-0000000000a2" });
+    expect(fetchPublicEndpoint).not.toHaveBeenCalled();
+  });
+
   it("escalation is skipped once the incident is acknowledged or resolved", async () => {
     selectQueue.push([{ ...incident, acknowledgedAt: new Date() }]);
     expect(await notifyIncidentEvent({ ...base, event: "escalated", targets: { providerIds: ["s1"] } })).toBe(true);

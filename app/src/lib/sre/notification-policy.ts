@@ -120,8 +120,16 @@ export async function saveNotificationPolicy(
 ): Promise<SaveResult> {
   const parsed = notificationPolicyInputSchema.safeParse(input);
   if (!parsed.success) return { success: false, error: "Invalid notification policy" };
-  const data = parsed.data;
   const { organizationId, projectId } = scope;
+  // A client that predates repeat and escalation (an open tab during a deploy) omits these fields: keep the stored
+  // values, and validate the schedule that will actually be saved.
+  const provided = (input ?? {}) as Record<string, unknown>;
+  const omitted = (["renotifyRepeatMinutes", "renotifyMax", "escalateAfterMinutes", "escalateChannelId", "escalateUserId"] as const).filter(
+    (key) => !(key in provided),
+  );
+  const stored = omitted.length ? await getNotificationPolicy(projectId) : null;
+  const data = { ...parsed.data };
+  if (stored) for (const key of omitted) Object.assign(data, { [key]: stored[key] });
 
   if (data.renotifyRepeatMinutes !== null && data.renotifyUnackedMinutes === null) {
     return { success: false, error: "Set the first reminder before repeating it" };
@@ -173,13 +181,6 @@ export async function saveNotificationPolicy(
   }
 
   const values = { ...data, channelIds, updatedAt: new Date() };
-  // A client that predates repeat and escalation (an open tab during a deploy) omits these: keep what is stored.
-  const provided = input as Record<string, unknown>;
-  const keep = (["renotifyRepeatMinutes", "renotifyMax", "escalateAfterMinutes", "escalateChannelId", "escalateUserId"] as const).filter(
-    (key) => !(key in provided),
-  );
-  const updates: Partial<typeof values> = { ...values };
-  for (const key of keep) delete updates[key];
   // Stamped when auto-investigate turns on (kept while it stays on, cleared when off), so unrelated saves
   // never move the cut-off that keeps older incidents from being auto-run.
   await db
@@ -188,7 +189,7 @@ export async function saveNotificationPolicy(
     .onConflictDoUpdate({
       target: notificationPolicies.projectId,
       set: {
-        ...updates,
+        ...values,
         autoInvestigateEnabledAt: values.autoInvestigateOnOpen ? sql`coalesce(${notificationPolicies.autoInvestigateEnabledAt}, now())` : null,
       },
     });

@@ -844,9 +844,12 @@ async function createOrGetIncidentForAlertHistory(alertHistoryId: string, failur
   if (!result.skipped) await recordPageFailed(result.incidentId, alert, report.fallback ?? "none");
 
   if (!result.skipped && "reopenedAssigneeUserId" in result) {
+    // Carries the alert row, so a reopen whose page reached nobody still falls back to the policy channels.
     await announceSystemTransition(organizationId, projectId, result.incidentId, "reopened", {
       assigneeUserId: result.reopenedAssigneeUserId,
       discriminator: alertKey,
+      triggerAlertHistoryId: alert.id ?? undefined,
+      report,
     });
   }
 

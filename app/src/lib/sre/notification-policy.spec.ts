@@ -14,7 +14,9 @@ import { getNotificationPolicy, isPagingWebhook, saveNotificationPolicy, DEFAULT
 const scope = { organizationId: "org-1", projectId: "018f0000-0000-7000-8000-00000000000b", userId: "user-1" };
 const channel = "018f0000-0000-7000-8000-0000000000c1";
 const member = "018f0000-0000-7000-8000-0000000000d1";
-const base = { channelIds: [], emailServiceOwnersOnSev12: false, renotifyUnackedMinutes: 15, autoInvestigateOnOpen: false };
+// A current client sends every field; an older one omits the five repeat and escalation fields (tested below).
+const legacy = { channelIds: [], emailServiceOwnersOnSev12: false, renotifyUnackedMinutes: 15, autoInvestigateOnOpen: false };
+const base = { ...legacy, renotifyRepeatMinutes: null, renotifyMax: 3, escalateAfterMinutes: null, escalateChannelId: null, escalateUserId: null };
 const whereClauses: unknown[] = [];
 const rows = (r: unknown[]) => ({ from: () => ({ where: (w: unknown) => { whereClauses.push(w); const p = Promise.resolve(r); return Object.assign(p, { limit: async () => r }); } }) });
 let upserted: { values: Record<string, unknown>; set: Record<string, unknown> } | undefined;
@@ -85,14 +87,24 @@ it("upserts the full policy and writes the incident_policy_updated audit without
   expect(JSON.stringify(logAuditEvent.mock.calls[0][0].metadata)).not.toContain("hooks.slack.com");
 });
 
-it("defaults the new fields on insert, but an older client's save keeps the stored ones", async () => {
-  expect(await saveNotificationPolicy(scope, base)).toEqual({ success: true });
+it("an older client's save keeps the stored repeat and escalation settings", async () => {
+  const stored = { ...base, renotifyRepeatMinutes: 60, renotifyMax: 4, escalateAfterMinutes: 30, escalateUserId: member, autoInvestigateEnabledAt: null };
+  select.mockReturnValueOnce({ from: () => ({ where: () => ({ limit: async () => [stored] }) }) });
+  expect(await saveNotificationPolicy(scope, legacy)).toEqual({ success: true });
+  expect(upserted?.set).toMatchObject({ renotifyRepeatMinutes: 60, renotifyMax: 4, escalateAfterMinutes: 30, escalateUserId: member, escalateChannelId: null });
+});
+
+it("validates the schedule that will be saved, including stored values an older client omits", async () => {
+  const stored = { ...base, renotifyUnackedMinutes: 5, renotifyRepeatMinutes: 300, renotifyMax: 10, autoInvestigateEnabledAt: null };
+  select.mockReturnValueOnce({ from: () => ({ where: () => ({ limit: async () => [stored] }) }) });
+  expect(await saveNotificationPolicy(scope, { ...legacy, renotifyUnackedMinutes: 1440 })).toEqual({ success: false, error: "Reminders must finish within 2 days" });
+  expect(insert).not.toHaveBeenCalled();
+});
+
+it("an older client's first save uses the defaults", async () => {
+  select.mockReturnValueOnce({ from: () => ({ where: () => ({ limit: async () => [] }) }) });
+  expect(await saveNotificationPolicy(scope, legacy)).toEqual({ success: true });
   expect(upserted?.values).toMatchObject({ renotifyRepeatMinutes: null, renotifyMax: 3, escalateAfterMinutes: null, escalateChannelId: null, escalateUserId: null });
-  for (const key of ["renotifyRepeatMinutes", "renotifyMax", "escalateAfterMinutes", "escalateChannelId", "escalateUserId"]) {
-    expect(upserted?.set).not.toHaveProperty(key);
-  }
-  await saveNotificationPolicy(scope, { ...base, renotifyRepeatMinutes: null, renotifyMax: 1, escalateAfterMinutes: null, escalateChannelId: null, escalateUserId: null });
-  expect(upserted?.set).toMatchObject({ renotifyRepeatMinutes: null, renotifyMax: 1, escalateAfterMinutes: null, escalateChannelId: null, escalateUserId: null });
 });
 
 it("stamps the auto-investigate time only while it is on", async () => {

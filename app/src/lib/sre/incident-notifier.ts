@@ -79,7 +79,7 @@ type IncidentNotifyInput = {
   targets?: { providerIds?: string[]; userIds?: string[] };
   /** `unacknowledged`: which reminder this is, for the timeline. */
   reminder?: { n: number; of: number };
-  /** `created`: the alert_history row that opened the incident, so delivery is judged for this outage or run only. */
+  /** `created`, or an automatic `reopened`: the alert_history row behind it, so delivery is judged for this outage or run only. */
   triggerAlertHistoryId?: string;
   /** Filled in for `created`: where the message went when the trigger alert was not delivered. */
   report?: { fallback?: IncidentFallback };
@@ -517,6 +517,7 @@ export async function notifyIncidentEvent(input: IncidentNotifyInput): Promise<b
         severity: sreIncidents.severity,
         status: sreIncidents.status,
         acknowledgedAt: sreIncidents.acknowledgedAt,
+        renotifyStoppedAt: sreIncidents.renotifyStoppedAt,
         assigneeUserId: sreIncidents.assigneeUserId,
         commanderUserId: sreIncidents.commanderUserId,
         serviceId: sreIncidents.primaryServiceId,
@@ -534,7 +535,8 @@ export async function notifyIncidentEvent(input: IncidentNotifyInput): Promise<b
       .limit(1);
     if (!incident) return true;
     // The reminder is claimed before it is sent; someone may have acknowledged or resolved since.
-    if ((input.event === "unacknowledged" || input.event === "escalated") && (incident.acknowledgedAt || incident.status === "resolved")) return true;
+    // Also stopped when a person lowered the severity after the claim.
+    if ((input.event === "unacknowledged" || input.event === "escalated") && (incident.acknowledgedAt || incident.status === "resolved" || incident.renotifyStoppedAt)) return true;
 
     const url = buildIncidentUrl(incident.id);
     const detail = input.detail?.replace(/\s+/g, " ").trim().slice(0, MAX_DETAIL_LENGTH);
@@ -660,10 +662,14 @@ export async function notifyIncidentEvent(input: IncidentNotifyInput): Promise<b
     // recovery (automatic resolve, recovered) to these channels.
     // `created` is skipped only when the worker's alert was actually delivered; if every
     // delivery failed, the channels have not heard about it yet.
-    if (input.event === "recovered" || ((input.event === "reopened" || input.event === "resolved") && input.automatic)) return attempted === 0 || sent > 0;
+    // An automatic reopen from a new failure whose page reached nobody falls through to the fallback below.
+    const reopenedByAlert = input.event === "reopened" && input.automatic === true && Boolean(input.triggerAlertHistoryId);
+    if (input.event === "recovered" || (input.event === "reopened" && input.automatic && !reopenedByAlert) || (input.event === "resolved" && input.automatic)) {
+      return attempted === 0 || sent > 0;
+    }
     // `created` for a monitor or job whose own alert reached nobody: add the policy channels as a fallback.
     let addPolicyFallback = false;
-    if (fromMonitorOrJob && input.event === "created") {
+    if (fromMonitorOrJob && (input.event === "created" || reopenedByAlert)) {
       if (await triggerAlertDelivered(source.sourceType as "monitor" | "job", source.sourceId as string, source.dedupKey, input.triggerAlertHistoryId)) {
         return attempted === 0 || sent > 0;
       }
@@ -736,7 +742,7 @@ export async function notifyIncidentEvent(input: IncidentNotifyInput): Promise<b
 
     // Nobody owns it and nothing reached a channel: tell the project's owners and admins.
     // Also for the one re-notify, so it is never silently lost.
-    if (input.event === "created" || input.event === "unacknowledged") {
+    if (input.event === "created" || input.event === "unacknowledged" || addPolicyFallback) {
       const reachedChannel = delivered.some((result) => result === true);
       const hasEligibleOwner = await ownerCanAct(input, [ownerId, incident.commanderUserId]);
       if (!reachedChannel && !hasEligibleOwner) {
