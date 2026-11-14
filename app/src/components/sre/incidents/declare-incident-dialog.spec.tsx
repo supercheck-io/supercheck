@@ -76,4 +76,39 @@ describe("DeclareIncidentDialog", () => {
     render(<DeclareIncidentDialog open onOpenChange={jest.fn()} />);
     expect(screen.queryByRole("switch", { name: /post to a status page/i })).not.toBeInTheDocument();
   });
+
+  it("posts publicly with the picked page, component, impact, message and notify, then warns if the post failed", async () => {
+    jest.mocked(createManualSreIncident).mockResolvedValue({ success: true, incident: { id: "i-3", incidentNumber: 7, title: "Down" }, message: "Incident #7 created", warning: "status_page_failed" });
+    render(<DeclareIncidentDialog open onOpenChange={jest.fn()} />);
+    fireEvent.change(screen.getByLabelText("Title"), { target: { value: "Down" } });
+    fireEvent.change(screen.getByLabelText("Initial notes"), { target: { value: "Users report 500s" } });
+    fireEvent.click(screen.getByRole("switch", { name: /post to a status page/i }));
+    fireEvent.click(screen.getByRole("combobox", { name: /status page/i }));
+    fireEvent.click(await screen.findByRole("option", { name: "Public" }));
+    fireEvent.click(screen.getByRole("checkbox"));
+    fireEvent.change(screen.getByLabelText("Public message"), { target: { value: "Investigating" } });
+    fireEvent.click(screen.getByRole("switch", { name: /notify subscribers/i }));
+    fireEvent.click(screen.getByRole("button", { name: "Declare incident" }));
+    await waitFor(() => expect(mockPush).toHaveBeenCalledWith("/incidents/i-3"));
+    expect(createManualSreIncident).toHaveBeenCalledWith(expect.objectContaining({
+      summary: "Users report 500s",
+      statusPage: { statusPageId: "sp-1", componentIds: ["c-1"], impact: "minor", message: "Investigating", notifySubscribers: true },
+    }));
+    expect(mockToast.warning).toHaveBeenCalledWith(expect.stringContaining("status page post failed"), expect.objectContaining({ action: expect.objectContaining({ label: "Post to status page" }) }));
+  });
+
+  it("toggles monitors in the picker and sends the chosen service and commander", async () => {
+    jest.mocked(createManualSreIncident).mockResolvedValue({ success: true, incident: { id: "i-4", incidentNumber: 8, title: "Down" }, message: "Incident #8 created" });
+    render(<DeclareIncidentDialog open onOpenChange={jest.fn()} defaults={{ serviceId: "svc-1", monitorId: "m-1" }} />);
+    fireEvent.click(screen.getByRole("combobox", { name: /affected monitors/i }));
+    fireEvent.click(await screen.findByRole("option", { name: /Checkout monitor/ }));
+    expect(screen.getByRole("combobox", { name: /affected monitors/i })).toHaveTextContent("None");
+    fireEvent.click(screen.getByRole("combobox", { name: /commander/i }));
+    fireEvent.click(await screen.findByRole("option", { name: "Priya" }));
+    fireEvent.change(screen.getByLabelText("Title"), { target: { value: "Down" } });
+    fireEvent.click(screen.getByRole("button", { name: "Declare incident" }));
+    await waitFor(() => expect(createManualSreIncident).toHaveBeenCalled());
+    expect(createManualSreIncident).toHaveBeenCalledWith(expect.objectContaining({ primaryServiceId: "svc-1", commanderUserId: "u-2" }));
+    expect(jest.mocked(createManualSreIncident).mock.calls[0]![0]).not.toHaveProperty("affected.monitorIds");
+  });
 });
