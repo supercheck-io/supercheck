@@ -81,7 +81,7 @@ describe("generateSrePostmortem", () => {
     rate.mockResolvedValueOnce({ allowed: false, remaining: 0 });
     expect(await generateSrePostmortem({ incidentId })).toEqual({ success: false, error: expect.stringContaining("Too many drafts") });
 
-    queue.push([resolved], [], [], []);
+    queue.push([resolved], [], [], [{ count: 0 }], []);
     const result = await generateSrePostmortem({ incidentId });
     expect(result).toMatchObject({ success: true, source: "template" });
     expect(updates[0]).toEqual(expect.objectContaining({ postmortem: expect.objectContaining({ generatedAt: expect.any(String) }) }));
@@ -97,7 +97,7 @@ describe("generateSrePostmortem timeline", () => {
       { id: "e2", at: at(2), eventType: "ai_finding", data: { summary: "bad deploy" } },
     ];
     const head = [{ id: "e1", at: at(1), eventType: "created", data: null }, { id: "e2", at: at(2), eventType: "ai_finding", data: { summary: "bad deploy" } }];
-    queue.push([resolved], tail, head, [], []);
+    queue.push([resolved], tail, head, [{ count: 4 }], [], []);
     await generateSrePostmortem({ incidentId });
     const labels = (generate.mock.calls[0][0] as { timeline: { label: string }[] }).timeline.map((e) => e.label);
     // Deduplicated across the head and tail windows, oldest first, named as in the Activity feed.
@@ -108,13 +108,23 @@ describe("generateSrePostmortem timeline", () => {
 });
 
 describe("generateSrePostmortem root cause", () => {
+  it("marks the events between the oldest 50 and newest 150 with one gap row", async () => {
+    const at = (n: number) => new Date(Date.UTC(2026, 9, 1, 10, n));
+    const head = [{ id: "h1", at: at(1), eventType: "state_change", data: { state: "manual_incident_created", summary: "start" } }];
+    const tail = [{ id: "t1", at: at(50), eventType: "state_change", data: { state: "resolved", comment: "fixed" } }];
+    queue.push([resolved], tail, head, [{ count: 414 }], [], []);
+    await generateSrePostmortem({ incidentId });
+    const labels = (generate.mock.calls[0][0] as { timeline: Array<{ label: string }> }).timeline.map((e) => e.label);
+    expect(labels).toEqual(["Incident created: start", "… 214 events not shown …", "Resolved: fixed"]);
+  });
+
   it("rates the root cause only when an investigation completed, and reduces a stored report to its summary", async () => {
     const legacy = { ...resolved, rootCauseSummary: "# Incident Investigation Report\n\n## Report Details\n- **Severity**: sev2\n\n## Executive Summary\nThe job failed." };
-    queue.push([legacy], [], [], [], []);
+    queue.push([legacy], [], [], [{ count: 0 }], [], []);
     await generateSrePostmortem({ incidentId });
     expect(generate.mock.calls[0][0]).toMatchObject({ rootCauseSummary: "Unverified, from the evidence brief: The job failed.", confidenceLabel: null });
 
-    queue.push([resolved], [], [], [], [{ hypotheses: null, snapshot: null }]);
+    queue.push([resolved], [], [], [{ count: 0 }], [], [{ hypotheses: null, snapshot: null }]);
     await generateSrePostmortem({ incidentId });
     expect(generate.mock.calls[1][0]).toMatchObject({ rootCauseSummary: "cause", confidenceLabel: "High" });
   });
@@ -131,7 +141,7 @@ describe("generateSrePostmortem no-evidence notice", () => {
 
 describe("generateSrePostmortem usage gate", () => {
   it("skips the model call (template only) when the usage gate is closed", async () => {
-    queue.push([resolved], [], [], []);
+    queue.push([resolved], [], [], [{ count: 0 }], []);
     subscription.mockResolvedValue({ status: 402 });
     const result = await generateSrePostmortem({ incidentId });
     expect(result.success).toBe(true);
@@ -139,7 +149,7 @@ describe("generateSrePostmortem usage gate", () => {
     expect(subscription).toHaveBeenCalledWith(ctx.organizationId, { allowTrial: false });
   });
   it("uses the model when the gate is open", async () => {
-    queue.push([resolved], [], [], []);
+    queue.push([resolved], [], [], [{ count: 0 }], []);
     await generateSrePostmortem({ incidentId });
     expect(generate).toHaveBeenCalledWith(expect.anything(), { useAi: true, organizationId: ctx.organizationId });
   });
