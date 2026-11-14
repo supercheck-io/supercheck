@@ -33,6 +33,11 @@ describe("domain tool", () => {
     expect(calls.find((c) => c.url.includes("rdap.verisign"))?.headers.get("accept")).toBe("application/rdap+json");
   });
 
+  it("asks the registry for the ICANN domain of a private-suffix host", async () => {
+    mockFetch({ "https://data.iana.org": BOOT, "https://rdap.verisign.com/com/v1/domain/blogspot.com": new Response("", { status: 404 }) });
+    expect(await domain(ctxFor("domain"), "me.blogspot.com")).toMatchObject({ domain: "blogspot.com", reason: "not_found" });
+  });
+
   it("uses the public suffix list (a.b.example.co.uk -> example.co.uk) and https bases only", async () => {
     const { calls } = mockFetch({ "https://data.iana.org": BOOT, "https://rdap.nominet.uk/uk/domain/example.co.uk": new Response("", { status: 404 }) });
     const r = await domain(ctxFor("domain"), "a.b.example.co.uk");

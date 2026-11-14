@@ -12,6 +12,6 @@ npm run test:cov  # 80% lines and branches
 npm run size      # wrangler deploy --dry-run
 ```
 
-`wrangler.jsonc` has no `account_id`; deploys read `CLOUDFLARE_ACCOUNT_ID`. Secrets (`TURNSTILE_SECRET`, `IP_HASH_KEY`) are set with `wrangler secret put`. `keep_vars` is on, so dashboard edits to `BLOCKED_HOSTS`, `CHECKS_ENABLED` or `TOOLS` survive a deploy.
+`wrangler.jsonc` has no `account_id`; deploys read `CLOUDFLARE_ACCOUNT_ID`. Secrets (`TURNSTILE_SECRET`, `IP_HASH_KEY`) are set with `wrangler secret put`. `CHECKS_ENABLED`, `TOOLS` and `BLOCKED_HOSTS` are set only in the dashboard and are not in `wrangler.jsonc`, so `keep_vars` keeps them across deploys. Until `CHECKS_ENABLED=true` is set, every check returns 503 `disabled`.
 
 The docs site reads the Worker URL and the Turnstile site key from `NEXT_PUBLIC_CHECKS_API_URL` and `NEXT_PUBLIC_TOOLS_TURNSTILE_SITE_KEY` at build time. Without them the tool pages show the method and a link to Supercheck, with no form.

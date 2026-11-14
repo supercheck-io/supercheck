@@ -4,6 +4,9 @@ import worker from "./index";
 import { CheckContext } from "./context";
 import type { Env, Tool } from "./env";
 
+// The default siteverify mock answers for the tool of the last call().
+let currentTool = "uptime";
+
 type Handler = (req: Request) => Response | Promise<Response>;
 
 /** Routes outbound fetches by URL prefix. DoH answers public addresses unless overridden. */
@@ -27,7 +30,7 @@ export function mockFetch(routes: Record<string, Handler | Response> = {}, doh: 
     if (url.startsWith("https://challenges.cloudflare.com/turnstile")) {
       const route = routes["turnstile"];
       if (route) return typeof route === "function" ? route(req) : route.clone();
-      return Response.json({ success: true, action: "uptime", hostname: "supercheck.io" });
+      return Response.json({ success: true, action: currentTool, hostname: "supercheck.io" });
     }
     const key = Object.keys(routes)
       .filter((k) => url.startsWith(k))
@@ -58,6 +61,8 @@ let ipSeq = 0;
 
 export function call(body: unknown, opts: { env?: Partial<Env>; headers?: Record<string, string>; method?: string; path?: string } = {}) {
   ipSeq += 1;
+  const tool = (body as { tool?: unknown } | null)?.tool;
+  if (typeof tool === "string") currentTool = tool;
   const headers: Record<string, string> = {
     origin: ORIGIN,
     "content-type": "text/plain;charset=UTF-8",

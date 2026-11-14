@@ -27,13 +27,14 @@ test("invalidMessage has copy for known reasons and a fallback", () => {
 });
 
 test("monitorThisHref builds a double-encoded next that the app's monitor pattern accepts", () => {
-  const href = monitorThisHref("uptime", "https://ex.com/a?b=1&c=d e#frag");
+  const href = monitorThisHref("uptime", "https://ex.com/a b?api_key=SECRET#frag");
+  assert.ok(!href.includes("SECRET"));
   const url = new URL(href);
   assert.equal(url.origin + url.pathname, "https://app.supercheck.io/sign-in");
   const next = url.searchParams.get("next")!; // decoded once, as the app reads it
   assert.match(next, /^\/monitors\/create\?type=(website|http_request)&url=[A-Za-z0-9%._~-]{1,6200}(&name=[A-Za-z0-9%._~-]{1,300})?(&method=(GET|HEAD))?$/);
   const inner = new URLSearchParams(next.split("?")[1]);
-  assert.equal(inner.get("url"), "https://ex.com/a?b=1&c=d%20e");
+  assert.equal(inner.get("url"), "https://ex.com/a%20b");
   assert.equal(inner.get("name"), "ex.com");
   assert.equal(inner.get("type"), "website");
 });

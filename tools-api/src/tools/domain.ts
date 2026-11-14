@@ -1,6 +1,6 @@
-import { getPublicSuffix } from "tldts";
+import { getDomain, getPublicSuffix } from "tldts";
 import { CheckContext, CheckStop, readCapped } from "../context";
-import { checkUrl, registrable } from "../url-policy";
+import { checkUrl } from "../url-policy";
 
 const BOOTSTRAP = "https://data.iana.org/rdap/dns.json";
 const BOOTSTRAP_TTL_MS = 24 * 60 * 60 * 1000;
@@ -63,7 +63,8 @@ function registrar(body: Rdap): string | null {
 
 /** Tool 8: registration data from RDAP only; no data means "not available", never a guess. */
 export async function domain(ctx: CheckContext, host: string) {
-  const name = registrable(host);
+  // The registry knows example.github.io as github.io: ICANN suffixes only here.
+  const name = getDomain(host) ?? host;
   const tld = (getPublicSuffix(name) ?? "").split(".").pop() ?? "";
   const base = await rdapBase(ctx, tld);
   if (!base) return { domain: name, hasData: false, reason: "no_rdap_service", tld };

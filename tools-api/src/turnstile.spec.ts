@@ -5,7 +5,7 @@ import { call, mockFetch, testEnv } from "./test-helpers";
 afterEach(() => vi.restoreAllMocks());
 
 const body = { tool: "uptime", input: "https://site.com/", token: "tok" };
-const strict = { TURNSTILE_TEST_MODE: "false", TURNSTILE_SECRET: "s", TURNSTILE_HOSTNAMES: "supercheck.io,supercheck.pages.dev" };
+const strict = { TURNSTILE_SECRET: "s", TURNSTILE_HOSTNAMES: "supercheck.io,supercheck.pages.dev" };
 
 describe("hostname suffix match", () => {
   it("accepts the apex, www and preview hosts but not look-alikes", () => {

@@ -67,7 +67,9 @@ export function monitorTarget(tool: ToolId, input: string, method: "GET" | "HEAD
   }
   if (url.protocol !== "http:" && url.protocol !== "https:") return null;
   if (url.username || url.password) return null;
+  // Queries can hold tokens; they must not travel through sign-in, checkout and Polar. Add them in the form.
   url.hash = "";
+  url.search = "";
   const domainOnly = tool === "dns" || tool === "domain";
   const target = domainOnly ? `https://${url.hostname}/` : url.toString();
   return {

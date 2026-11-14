@@ -58,6 +58,7 @@ export function checkDomain(input: string, blocked: string[]): Policy<string> {
   return reason ? { ok: false, reason } : { ok: true, value: host };
 }
 
+/** Registrable domain, treating private suffixes (github.io, vercel.app) as public: one tenant, one bucket. */
 export function registrable(host: string): string {
-  return getDomain(host) ?? host;
+  return getDomain(host, { allowPrivateDomains: true }) ?? host;
 }

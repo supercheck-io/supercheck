@@ -10,7 +10,7 @@ export function hostnameAllowed(hostname: string, allowed: string[]): boolean {
 
 export type Verdict = "ok" | "fail";
 
-export async function verifyTurnstile(env: Env & { TURNSTILE_TEST_MODE?: string }, token: string, tool: Tool, ip: string): Promise<Verdict> {
+export async function verifyTurnstile(env: Env, token: string, tool: Tool, ip: string): Promise<Verdict> {
   const form = new FormData();
   form.set("secret", env.TURNSTILE_SECRET ?? "");
   form.set("response", token);
@@ -23,8 +23,6 @@ export async function verifyTurnstile(env: Env & { TURNSTILE_TEST_MODE?: string 
     return "fail";
   }
   if (body.success !== true) return "fail";
-  // Cloudflare's test keys return neither action nor hostname.
-  if (env.TURNSTILE_TEST_MODE === "true") return "ok";
   if (body.action !== tool) return "fail";
   return hostnameAllowed(body.hostname ?? "", list(env.TURNSTILE_HOSTNAMES)) ? "ok" : "fail";
 }

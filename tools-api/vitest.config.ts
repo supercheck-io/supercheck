@@ -7,8 +7,14 @@ export default defineConfig({
       remoteBindings: false,
       wrangler: { configPath: "./wrangler.jsonc" },
       miniflare: {
-        // Tests run with Cloudflare's always-pass Turnstile test secret.
-        bindings: { TURNSTILE_SECRET: "1x0000000000000000000000000000000AA", IP_HASH_KEY: "test-key", TURNSTILE_TEST_MODE: "true" },
+        // Dashboard-only vars and secrets; siteverify itself is mocked in every test.
+        bindings: {
+          TURNSTILE_SECRET: "test-secret",
+          IP_HASH_KEY: "test-key",
+          CHECKS_ENABLED: "true",
+          TOOLS: "uptime,api,https,headers,agents,dns,social,domain",
+          BLOCKED_HOSTS: "",
+        },
       },
     }),
   ],

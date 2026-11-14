@@ -115,5 +115,7 @@ describe("helpers", () => {
   it("registrable uses the public suffix list", () => {
     expect(registrable("a.b.example.co.uk")).toBe("example.co.uk");
     expect(registrable("a1.victim.com")).toBe("victim.com");
+    expect(registrable("foo.github.io")).toBe("foo.github.io");
+    expect(registrable("www.bar.vercel.app")).toBe("bar.vercel.app");
   });
 });

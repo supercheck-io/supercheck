@@ -8,16 +8,15 @@
   "compatibility_date": "2026-11-01",
   "workers_dev": true,
   "preview_urls": false,
-  // Dashboard edits (BLOCKED_HOSTS opt-outs, kill switch) survive later deploys.
+  // CHECKS_ENABLED, TOOLS and BLOCKED_HOSTS are set only in the dashboard: keep_vars keeps
+  // them across deploys, and defining them here would overwrite them. Unset = checks off.
   "keep_vars": true,
-  "observability": { "enabled": true },
+  // Our own structured log line only; invocation logs would record request headers (client IP).
+  "observability": { "enabled": true, "invocation_logs": false },
   "vars": {
-    "CHECKS_ENABLED": "true",
-    "TOOLS": "uptime,api,https,headers,agents,dns,social,domain",
     "ALLOWED_ORIGINS": "https://supercheck.io,https://www.supercheck.io",
     "ALLOW_PREVIEW_ORIGINS": "false",
-    "TURNSTILE_HOSTNAMES": "supercheck.io,supercheck.pages.dev",
-    "BLOCKED_HOSTS": ""
+    "TURNSTILE_HOSTNAMES": "supercheck.io,supercheck.pages.dev"
   },
   // Counts are per Cloudflare location and eventually consistent: best effort.
   "ratelimits": [

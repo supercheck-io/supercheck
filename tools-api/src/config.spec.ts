@@ -17,9 +17,14 @@ describe("wrangler config", () => {
     expect((config.ratelimits as unknown[]).length).toBe(3);
   });
 
-  it("keeps dashboard vars across deploys and ships with every tool on", () => {
+  it("keeps dashboard vars across deploys and never defines the dashboard-only ones", () => {
     expect(config.keep_vars).toBe(true);
-    expect((config.vars as Record<string, string>).TOOLS.split(",")).toHaveLength(8);
-    expect(JSON.stringify(config.vars)).not.toMatch(/SECRET|KEY/);
+    const vars = config.vars as Record<string, string>;
+    for (const name of ["CHECKS_ENABLED", "TOOLS", "BLOCKED_HOSTS", "TURNSTILE_TEST_MODE"]) expect(vars).not.toHaveProperty(name);
+    expect(JSON.stringify(vars)).not.toMatch(/SECRET|KEY/);
+  });
+
+  it("keeps invocation logs (request headers, client IP) off", () => {
+    expect(config.observability).toEqual({ enabled: true, invocation_logs: false });
   });
 });
