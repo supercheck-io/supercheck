@@ -1,5 +1,6 @@
 /** @jest-environment node */
 const incr = jest.fn();
+const get = jest.fn();
 const expire = jest.fn();
 const getRedisConnection = jest.fn();
 jest.mock("@/lib/queue", () => ({ getRedisConnection: () => getRedisConnection(), queueLogger: { error: jest.fn(), warn: jest.fn() } }));
@@ -17,7 +18,7 @@ jest.mock("@/lib/notification-providers/crypto", () => ({
 }));
 jest.mock("@/sre/lib/incident-sweep", () => ({ sweepSreIncidents: jest.fn() }));
 
-import { ORG_SENDS_PER_HOUR, allowOrgIncidentSend, renotifyUnacknowledgedIncidents } from "./incident-renotify";
+import { ORG_SENDS_PER_HOUR, allowOrgIncidentSend, recordOrgIncidentSend, renotifyUnacknowledgedIncidents } from "./incident-renotify";
 
 const counts = new Map<string, number>();
 beforeEach(() => {
@@ -26,25 +27,36 @@ beforeEach(() => {
     counts.set(key, (counts.get(key) ?? 0) + 1);
     return counts.get(key);
   });
+  get.mockReset().mockImplementation(async (key: string) => (counts.has(key) ? String(counts.get(key)) : null));
   expire.mockReset().mockResolvedValue(1);
-  getRedisConnection.mockReset().mockResolvedValue({ incr, expire });
+  getRedisConnection.mockReset().mockResolvedValue({ incr, expire, get });
 });
 
-it("A8: allows 30 sends per organization per hour, then skips; another org is unaffected", async () => {
+it("A8: allows 30 delivered sends per organization per hour, then holds; another org is unaffected", async () => {
   const now = new Date("2026-11-14T10:15:00Z");
-  for (let i = 0; i < ORG_SENDS_PER_HOUR; i++) expect(await allowOrgIncidentSend("org-a", now)).toBe(true);
+  for (let i = 0; i < ORG_SENDS_PER_HOUR; i++) {
+    expect(await allowOrgIncidentSend("org-a", now)).toBe(true);
+    await recordOrgIncidentSend("org-a", now);
+  }
   expect(await allowOrgIncidentSend("org-a", now)).toBe(false);
   expect(await allowOrgIncidentSend("org-b", now)).toBe(true);
   // The key expires after two hours; it is set once, on the first send of the hour.
-  expect(expire).toHaveBeenCalledWith(expect.stringContaining("org-a"), 7200);
-  expect(expire.mock.calls.filter(([key]) => String(key).includes("org-a"))).toHaveLength(1);
+  expect(expire.mock.calls.filter(([key]) => String(key).includes("org-a"))).toEqual([[expect.any(String), 7200]]);
   // A new hour starts a new count.
   expect(await allowOrgIncidentSend("org-a", new Date("2026-11-14T11:00:00Z"))).toBe(true);
+});
+
+it("A8: checking the cap does not use it up (only delivered sends count)", async () => {
+  const now = new Date("2026-11-14T10:15:00Z");
+  for (let i = 0; i < 100; i++) await allowOrgIncidentSend("org-a", now);
+  expect(await allowOrgIncidentSend("org-a", now)).toBe(true);
+  expect(incr).not.toHaveBeenCalled();
 });
 
 it("A8: sends when Redis is unavailable", async () => {
   getRedisConnection.mockRejectedValue(new Error("down"));
   expect(await allowOrgIncidentSend("org-a")).toBe(true);
+  await expect(recordOrgIncidentSend("org-a")).resolves.toBeUndefined();
 });
 
 describe("renotifyUnacknowledgedIncidents branching (SQL is covered by the .db specs)", () => {
@@ -54,7 +66,7 @@ describe("renotifyUnacknowledgedIncidents branching (SQL is covered by the .db s
   const updates: Array<Record<string, unknown>> = [];
   const inserts: Array<Record<string, unknown>> = [];
   let channelRows: unknown[] = [];
-  const reminder = (over: Record<string, unknown> = {}) => ({ id: "i1", organization_id: "org-a", project_id: "p1", created_at: new Date("2026-11-14T08:00:00Z"), reopened_at: null, renotify_count: 2, prev_at: new Date("2026-11-14T08:15:00Z"), max: 3, ...over });
+  const reminder = (over: Record<string, unknown> = {}) => ({ id: "i1", organization_id: "org-a", project_id: "p1", created_at: new Date("2026-11-14T08:00:00Z"), reopened_at: null, renotify_count: 2, prev_count: 1, prev_at: new Date("2026-11-14T08:15:00Z"), max: 3, ...over });
   const escalation = (over: Record<string, unknown> = {}) => ({ id: "e1", organization_id: "org-a", project_id: "p1", escalate_channel_id: "c1", escalate_user_id: null, ...over });
   const now = new Date("2026-11-14T10:00:00Z");
 
@@ -76,6 +88,7 @@ describe("renotifyUnacknowledgedIncidents branching (SQL is covered by the .db s
     expect(await renotifyUnacknowledgedIncidents(now)).toBe(1);
     expect(notifyIncidentEvent).toHaveBeenCalledWith(expect.objectContaining({ event: "unacknowledged", reminder: { n: 2, of: 3 }, dedupeDiscriminator: "renotify:0:2" }));
     expect(updates).toEqual([]);
+    expect(incr).toHaveBeenCalledTimes(1);
   });
 
   it("releases to the previous count and time when the send fails, and counts the failure", async () => {
@@ -85,6 +98,8 @@ describe("renotifyUnacknowledgedIncidents branching (SQL is covered by the .db s
     await renotifyUnacknowledgedIncidents(now, stats);
     expect(stats.failed).toBe(1);
     expect(updates).toEqual([{ renotifyCount: 1, renotifiedAt: new Date("2026-11-14T08:15:00Z") }]);
+    // A failed send does not count against the org's cap.
+    expect(incr).not.toHaveBeenCalled();
   });
 
   it("releases without sending while held for maintenance or over the org cap", async () => {
@@ -95,11 +110,13 @@ describe("renotifyUnacknowledgedIncidents branching (SQL is covered by the .db s
     expect(updates).toHaveLength(1);
 
     updates.length = 0;
-    for (let i = 0; i < ORG_SENDS_PER_HOUR; i++) await allowOrgIncidentSend("org-a", now);
+    for (let i = 0; i < ORG_SENDS_PER_HOUR; i++) await recordOrgIncidentSend("org-a", now);
+    // A capped org is skipped for the rest of the tick (its id goes to the claim SQL), and holds are not counted as sends.
     executeQueue.push([reminder()], [], [escalation()], []);
-    await renotifyUnacknowledgedIncidents(now);
+    expect(await renotifyUnacknowledgedIncidents(now)).toBe(0);
     expect(notifyIncidentEvent).not.toHaveBeenCalled();
     expect(updates).toEqual([{ renotifyCount: 1, renotifiedAt: expect.any(Date) }, { escalatedAt: null }]);
+    expect(get).toHaveBeenCalledTimes(1);
   });
 
   it("escalates to a usable channel", async () => {

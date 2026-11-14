@@ -15,6 +15,12 @@ const notifyIncidentEvent = jest.fn();
 jest.mock("@/lib/sre/incident-notifier", () => ({ notifyIncidentEvent: (...a: unknown[]) => notifyIncidentEvent(...a) }));
 // Stored configs here are plain JSON; the real envelope decryption is covered in crypto.spec.ts.
 jest.mock("@/lib/notification-providers/crypto", () => ({ decryptNotificationProviderConfig: (config: unknown) => config }));
+// Lets a test hold chosen incidents; everything else uses the real maintenance query.
+const mockHeldIds = new Set<string>();
+jest.mock("./incident-maintenance", () => {
+  const actual = jest.requireActual("./incident-maintenance");
+  return { incidentHeldForMaintenance: (id: string, at: Date) => (mockHeldIds.has(id) ? Promise.resolve(true) : actual.incidentHeldForMaintenance(id, at)) };
+});
 const isAssignableUser = jest.fn();
 jest.mock("./incident-lifecycle", () => ({ isAssignableUser: (...a: unknown[]) => isAssignableUser(...a) }));
 
@@ -74,6 +80,7 @@ beforeEach(async () => {
   await client`DELETE FROM sre_incidents`;
   await client`DELETE FROM notification_providers`;
   await client`UPDATE organization SET deletion_requested_at = NULL`;
+  mockHeldIds.clear();
   notifyIncidentEvent.mockReset().mockResolvedValue(true);
   isAssignableUser.mockReset().mockResolvedValue(true);
 });
@@ -122,6 +129,36 @@ it("A2: without a repeat interval it reminds exactly once", async () => {
   expect(await renotifyUnacknowledgedIncidents(at(15))).toBe(1);
   expect(await renotifyUnacknowledgedIncidents(at(300))).toBe(0);
   expect((await row(id)).renotify_count).toBe(1);
+  // Labelled "1 of 1", not the stored default max.
+  expect(sends("unacknowledged")[0][0]).toEqual(expect.objectContaining({ reminder: { n: 1, of: 1 } }));
+});
+
+it("rollout: an incident reopened by an older replica (count kept, renotified_at cleared) is reminded again from 1", async () => {
+  await policy({ first: 15, repeat: 60, max: 3 });
+  const id = await incident({ reminded: { count: 3, at: null } });
+  expect(await renotifyUnacknowledgedIncidents(at(15))).toBe(1);
+  expect((await row(id)).renotify_count).toBe(1);
+  expect(await renotifyUnacknowledgedIncidents(at(75))).toBe(1);
+  expect((await row(id)).renotify_count).toBe(2);
+});
+
+it("rollout: a first reminder sent by an older replica (no count) still gets its repeats", async () => {
+  await policy({ first: 15, repeat: 60, max: 3 });
+  const id = await incident({ reminded: { count: 0, at: at(15) } });
+  expect(await renotifyUnacknowledgedIncidents(at(75))).toBe(1);
+  expect((await row(id)).renotify_count).toBe(2);
+});
+
+it("held claims do not use the tick's budget: 60 held incidents cannot starve another org's reminder or an escalation", async () => {
+  const otherChannel = randomUUID();
+  await client`INSERT INTO notification_providers (id, organization_id, project_id, name, type, config, is_enabled) VALUES (${otherChannel}, ${otherOrg}, ${otherProject}, 'ops', 'slack', ${client.json({ webhookUrl: "https://hooks.slack.com/x" })}, true)`;
+  await policy({ first: 15 });
+  await policy({ first: 15, escalate: 15, channel: otherChannel }, otherProject, otherOrg);
+  for (let i = 0; i < 60; i++) mockHeldIds.add(await incident({ openedAt: at(-60) }));
+  const other = await incident({ org: otherOrg, project: otherProject });
+  expect(await renotifyUnacknowledgedIncidents(at(30))).toBe(2);
+  expect(sends("unacknowledged").map(([input]) => (input as { incidentId: string }).incidentId)).toEqual([other]);
+  expect(sends("escalated")).toEqual([[expect.objectContaining({ incidentId: other })]]);
 });
 
 it("A3: acknowledge, resolve and a lowered severity stop further reminders", async () => {
@@ -200,7 +237,8 @@ it("A7: a scheduled maintenance holds the send without using a reminder", async 
     VALUES (${maintenanceId}, ${statusPage}, 'm', 'scheduled', 'maintenance', ${at(0).toISOString()}, ${at(60).toISOString()})`;
   await client`INSERT INTO incident_components (incident_id, component_id, old_status, new_status) VALUES (${maintenanceId}, ${component}, 'operational', 'under_maintenance')`;
 
-  expect(await renotifyUnacknowledgedIncidents(at(20))).toBe(1);
+  // Held: nothing sent, nothing counted, no reminder used.
+  expect(await renotifyUnacknowledgedIncidents(at(20))).toBe(0);
   expect(notifyIncidentEvent).not.toHaveBeenCalled();
   expect((await row(id)).renotify_count).toBe(0);
   // After the window the reminder goes out.

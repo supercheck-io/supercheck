@@ -126,7 +126,13 @@ policyCommand.command('set')
     if (options.escalateMember) Object.assign(next, { escalateUserId: options.escalateMember, escalateChannelId: null })
     // Turning reminders off also clears the repeat, which the server rejects without a first reminder.
     if (next.renotifyUnackedMinutes === null) next.renotifyRepeatMinutes = null
-    if (next.escalateAfterMinutes === null) Object.assign(next, { escalateChannelId: null, escalateUserId: null })
+    if (next.escalateAfterMinutes === null) {
+      // A target without a delay would be dropped silently; say so instead.
+      if (options.escalateChannel || options.escalateMember) {
+        throw new CLIError('Set --escalate-after as well: escalation has no delay configured', ExitCode.ConfigError)
+      }
+      Object.assign(next, { escalateChannelId: null, escalateUserId: null })
+    }
 
     const { data } = await withSpinner('Saving incident policy', () => client.put<{ policy: IncidentPolicy }>('/api/notification-policy', next))
     logger.success('Incident policy saved')

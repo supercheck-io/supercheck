@@ -162,6 +162,8 @@ describe('incident policy', () => {
     [['--max', '11'], '--max must be a whole number from 1 to 10'],
     [['--escalate-channel', CHANNEL, '--escalate-member', MEMBER], 'not both'],
     [['--escalate-member', 'bob'], 'Escalation targets must be UUIDs'],
+    // Stored policy has no escalation delay: the target would be dropped silently.
+    [['--escalate-channel', CHANNEL], 'Set --escalate-after as well'],
   ])('set rejects %j before saving', async (args, message) => {
     mockGet.mockResolvedValue({ data: { policy } })
     await expect(incidentCommand.parseAsync(['node', 'incident', 'policy', 'set', ...args])).rejects.toMatchObject({

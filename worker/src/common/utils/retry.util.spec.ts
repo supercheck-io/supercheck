@@ -170,6 +170,20 @@ describe('retry.util', () => {
       expect(createRetryConfig()).toEqual(WEBHOOK_RETRY_CONFIG);
     });
 
+    it('never lets one attempt outlast the total budget', () => {
+      expect(createRetryConfig({ timeoutMs: 200_000 }).timeoutMs).toBe(
+        WEBHOOK_RETRY_CONFIG.maxTotalMs,
+      );
+      const previous = process.env.NOTIFICATION_TIMEOUT_MS;
+      process.env.NOTIFICATION_TIMEOUT_MS = '150000';
+      try {
+        expect(createRetryConfig().timeoutMs).toBe(90_000);
+      } finally {
+        if (previous === undefined) delete process.env.NOTIFICATION_TIMEOUT_MS;
+        else process.env.NOTIFICATION_TIMEOUT_MS = previous;
+      }
+    });
+
     it('applies explicit overrides', () => {
       const config = createRetryConfig({ maxRetries: 9, initialDelayMs: 5 });
 

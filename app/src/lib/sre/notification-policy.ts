@@ -173,6 +173,13 @@ export async function saveNotificationPolicy(
   }
 
   const values = { ...data, channelIds, updatedAt: new Date() };
+  // A client that predates repeat and escalation (an open tab during a deploy) omits these: keep what is stored.
+  const provided = input as Record<string, unknown>;
+  const keep = (["renotifyRepeatMinutes", "renotifyMax", "escalateAfterMinutes", "escalateChannelId", "escalateUserId"] as const).filter(
+    (key) => !(key in provided),
+  );
+  const updates: Partial<typeof values> = { ...values };
+  for (const key of keep) delete updates[key];
   // Stamped when auto-investigate turns on (kept while it stays on, cleared when off), so unrelated saves
   // never move the cut-off that keeps older incidents from being auto-run.
   await db
@@ -181,7 +188,7 @@ export async function saveNotificationPolicy(
     .onConflictDoUpdate({
       target: notificationPolicies.projectId,
       set: {
-        ...values,
+        ...updates,
         autoInvestigateEnabledAt: values.autoInvestigateOnOpen ? sql`coalesce(${notificationPolicies.autoInvestigateEnabledAt}, now())` : null,
       },
     });

@@ -85,9 +85,14 @@ it("upserts the full policy and writes the incident_policy_updated audit without
   expect(JSON.stringify(logAuditEvent.mock.calls[0][0].metadata)).not.toContain("hooks.slack.com");
 });
 
-it("defaults the new fields for clients that predate them", async () => {
+it("defaults the new fields on insert, but an older client's save keeps the stored ones", async () => {
   expect(await saveNotificationPolicy(scope, base)).toEqual({ success: true });
   expect(upserted?.values).toMatchObject({ renotifyRepeatMinutes: null, renotifyMax: 3, escalateAfterMinutes: null, escalateChannelId: null, escalateUserId: null });
+  for (const key of ["renotifyRepeatMinutes", "renotifyMax", "escalateAfterMinutes", "escalateChannelId", "escalateUserId"]) {
+    expect(upserted?.set).not.toHaveProperty(key);
+  }
+  await saveNotificationPolicy(scope, { ...base, renotifyRepeatMinutes: null, renotifyMax: 1, escalateAfterMinutes: null, escalateChannelId: null, escalateUserId: null });
+  expect(upserted?.set).toMatchObject({ renotifyRepeatMinutes: null, renotifyMax: 1, escalateAfterMinutes: null, escalateChannelId: null, escalateUserId: null });
 });
 
 it("stamps the auto-investigate time only while it is on", async () => {

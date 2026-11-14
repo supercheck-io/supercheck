@@ -335,9 +335,14 @@ export function createRetryConfig(
     maxDelayMs: overrides?.maxDelayMs ?? WEBHOOK_RETRY_CONFIG.maxDelayMs,
     backoffMultiplier:
       overrides?.backoffMultiplier ?? WEBHOOK_RETRY_CONFIG.backoffMultiplier,
-    timeoutMs:
+    // A single attempt must also fit the total budget (kept under the 120 s alert claim window).
+    timeoutMs: Math.min(
       overrides?.timeoutMs ??
-      (envTimeout ? parseInt(envTimeout, 10) : WEBHOOK_RETRY_CONFIG.timeoutMs),
+        (envTimeout
+          ? parseInt(envTimeout, 10)
+          : WEBHOOK_RETRY_CONFIG.timeoutMs),
+      overrides?.maxTotalMs ?? WEBHOOK_RETRY_CONFIG.maxTotalMs ?? Infinity,
+    ),
     jitterFactor: overrides?.jitterFactor ?? WEBHOOK_RETRY_CONFIG.jitterFactor,
     maxTotalMs: overrides?.maxTotalMs ?? WEBHOOK_RETRY_CONFIG.maxTotalMs,
   };

@@ -21,11 +21,18 @@ jest.mock("@/lib/notification-providers/crypto", () => ({
 
 import { GET } from "./route";
 
+it("health ignores deliveries older than 7 days, but last used still shows them", async () => {
+  const old = new Date(Date.now() - 8 * 24 * 60 * 60 * 1000);
+  queue.push([{ id: PROVIDER, type: "webhook", config: {}, projectId: "proj-1" }], [{ provider: PROVIDER, status: "failed", sentAt: old, responseStatus: 500, terminal: false }]);
+  const [row] = await (await GET()).json();
+  expect(row.health).toEqual({ state: "unknown", at: null });
+  expect(row.lastUsed).toBe(old.toISOString());
+});
+
 it("A21: each channel carries its health from the newest delivery; channels without one are unknown", async () => {
-  const sentAt = new Date("2026-11-14T10:00:00Z");
+  const sentAt = new Date(Date.now() - 60_000);
   queue.push(
     [{ id: PROVIDER, type: "webhook", config: {}, projectId: "proj-1" }, { id: OTHER, type: "slack", config: {}, projectId: "proj-1" }],
-    [],
     [{ provider: PROVIDER, status: "failed", sentAt, responseStatus: 401, terminal: true }],
   );
   const rows = await (await GET()).json();
