@@ -175,9 +175,22 @@ describe("AI endpoint monitor", () => {
     }
   });
 
-  it("falls back to the last served model the worker stored and shows dashes before the first check", () => {
+  it("rounds a fractional first token value for the stat, the table and the chart", async () => {
+    const fractional = result({ ai: { ...ai, firstTokenMs: 823.418292 } });
+    mockResults = [fractional];
+    try {
+      render(<MonitorDetailClient monitor={aiMonitor({ recentResults: [fractional] })} />);
+      expect(screen.getByTestId("ai-stat-first-token")).toHaveTextContent("823 ms");
+      expect(screen.getByTestId("ai-stat-first-token")).not.toHaveTextContent("823.4");
+      expect(chartProps?.data[0].firstToken).toBe(823);
+    } finally {
+      mockResults = [];
+    }
+  });
+
+  it("shows dashes before the first check and ignores any stored aiEndpointState", () => {
     render(<MonitorDetailClient monitor={aiMonitor({ recentResults: [], config: { aiEndpoint: { model: "m" }, aiEndpointState: { lastServedModel: "stored-model" } } })} />);
-    expect(screen.getByTestId("ai-stat-served-model")).toHaveTextContent("stored-model");
+    expect(screen.getByTestId("ai-stat-served-model")).toHaveTextContent("—");
     expect(screen.getByTestId("ai-stat-first-token")).toHaveTextContent("—");
   });
 

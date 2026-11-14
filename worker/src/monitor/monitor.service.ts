@@ -74,8 +74,12 @@ import {
   AI_ENDPOINT_DEFAULT_TIMEOUT_SECONDS,
   executeAiEndpointCheck,
 } from './ai-endpoint-check';
-import { resolveMonitorSecret } from './monitor-secret';
-import { scrubSecrets } from '../common/utils/scrub-secrets';
+import {
+  resolveMonitorSecret,
+  SECRET_OVER_HTTP_MESSAGE,
+  secretTransportAllowed,
+} from './monitor-secret';
+import { scrubSecrets, secretEchoForms } from '../common/utils/scrub-secrets';
 import {
   MonitorRedirectError,
   isDnsError,
@@ -1329,7 +1333,7 @@ export class MonitorService {
     let status: MonitorResultStatus = 'error';
     let isUp = false;
     // A target may echo the credential back; scrub the project secret from stored text.
-    let resolvedSecretValue: string | undefined;
+    let resolvedSecretForms: string[] = [];
 
     const timeout = config?.timeoutSeconds
       ? config.timeoutSeconds * 1000
@@ -1385,6 +1389,13 @@ export class MonitorService {
       // A project secret supplies the bearer token or basic password; never logged.
       let auth = config?.auth;
       if (auth?.secretKey && auth.type !== 'none') {
+        if (!secretTransportAllowed(target)) {
+          return {
+            status: 'error',
+            details: { errorMessage: SECRET_OVER_HTTP_MESSAGE },
+            isUp: false,
+          };
+        }
         const secret = await resolveMonitorSecret(
           this.dbService.db,
           monitorId ?? '',
@@ -1397,7 +1408,10 @@ export class MonitorService {
             isUp: false,
           };
         }
-        resolvedSecretValue = secret.value;
+        resolvedSecretForms = secretEchoForms(
+          secret.value,
+          auth.type === 'basic' ? (auth.username ?? '') : undefined,
+        );
         auth =
           auth.type === 'basic'
             ? { ...auth, password: secret.value }
@@ -1689,8 +1703,8 @@ export class MonitorService {
     this.logger.debug(
       `HTTP Request completed: ${target}, Status: ${status}, Response Time: ${responseTimeMs}ms`,
     );
-    if (resolvedSecretValue)
-      details = scrubSecrets(details, [resolvedSecretValue]);
+    if (resolvedSecretForms.length)
+      details = scrubSecrets(details, resolvedSecretForms);
     return { status, details, responseTimeMs, isUp };
   }
 

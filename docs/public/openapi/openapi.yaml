@@ -2645,6 +2645,9 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
+        "409":
+          description: "Rename or secret-to-plain change refused: a live monitor
+            references the secret. The error names up to five monitors."
     delete:
       operationId: deleteVariable
       summary: Delete a variable
@@ -2658,6 +2661,9 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
+        "409":
+          description: "Delete refused: a live monitor references the secret. The error
+            names up to five monitors."
   /api/tags:
     get:
       operationId: listTags
@@ -7290,8 +7296,11 @@ components:
               minLength: 1
               maxLength: 255
               description: Name of a secret in the monitor's own project that supplies the
-                bearer token or basic password. Exclusive with an inline token
-                or password; an unknown name is rejected.
+                bearer token or basic password. Needs auth type `bearer` or
+                `basic` (basic also needs a `username`). Exclusive with an
+                inline token or password; an unknown name is rejected. Using a
+                secret needs the variable secret-view permission and is refused
+                in an impersonated session.
         aiEndpoint:
           type: object
           required:
@@ -7327,6 +7336,8 @@ components:
               minimum: 1
               maximum: 512
               default: 16
+              description: Reasoning models (gpt-5, o-series) spend tokens on thinking and
+                need more, for example 256.
             expectText:
               type: string
               description: The reply must contain this text (not case sensitive).
@@ -7335,6 +7346,8 @@ components:
               minimum: 500
               maximum: 60000
               default: 15000
+              description: Must not exceed the total timeout (`timeoutSeconds` x 1000, default
+                60 s).
         aiEndpointState:
           type: object
           readOnly: true

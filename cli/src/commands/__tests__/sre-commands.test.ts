@@ -462,11 +462,22 @@ describe('AI SRE CLI Commands', () => {
       }))
     })
 
+    it('passes max tokens and the first-token limit for the preset', async () => {
+      mockPost.mockResolvedValueOnce({ data: { id: 'monitor-1' } })
+      await monitorCommand.parseAsync(['node', 'monitor', 'create', '--name', 'LLM', '--url', 'https://api.openai.com/v1/chat/completions', '--preset', 'ai-endpoint', '--model', 'gpt-5', '--max-tokens', '256', '--first-token-timeout', '20000'])
+      expect(mockPost).toHaveBeenCalledWith('/api/monitors', expect.objectContaining({
+        config: { timeoutSeconds: 60, aiEndpoint: { model: 'gpt-5', maxTokens: 256, firstTokenTimeoutMs: 20000 } },
+      }))
+    })
+
     it.each([
       [['--preset', 'ai-endpoint'], /--model is required/],
       [['--preset', 'nope', '--model', 'm'], /Unknown preset/],
       [['--model', 'm'], /--model requires --preset ai-endpoint/],
       [['--type', 'website', '--preset', 'ai-endpoint', '--model', 'm'], /requires --type http_request/],
+      [['--preset', 'ai-endpoint', '--model', 'm', '--method', 'GET'], /--method cannot be used/],
+      [['--max-tokens', '64'], /--max-tokens requires --preset/],
+      [['--preset', 'ai-endpoint', '--model', 'm', '--max-tokens', '0'], /--max-tokens/],
     ])('rejects an invalid preset invocation %j', async (args, message) => {
       await expect(monitorCommand.parseAsync(['node', 'monitor', 'create', '--name', 'LLM', '--url', 'https://api.example.com/v1/chat/completions', ...args])).rejects.toMatchObject({ exitCode: 3, message: expect.stringMatching(message) })
       expect(mockPost).not.toHaveBeenCalled()

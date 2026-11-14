@@ -400,9 +400,10 @@ export async function POST(req: NextRequest) {
     if (!configurationValidation.success) {
       return NextResponse.json(configurationValidation, { status: 400 });
     }
-    const secretRefs = await validateMonitorSecretRefs(project.id, rawData.config);
+    const secretRefs = await validateMonitorSecretRefs(authCtx, rawData.config, rawData.target);
     if (!secretRefs.success) {
-      return NextResponse.json(secretRefs, { status: 400 });
+      const { status, ...body } = secretRefs;
+      return NextResponse.json(body, { status: status ?? 400 });
     }
     const targetValidation = await validateMonitorTargetAddress({ type: rawData.type, target: rawData.target });
     if (!targetValidation.success) {
@@ -638,6 +639,7 @@ export async function POST(req: NextRequest) {
         notificationProvidersCount:
           alertConfig?.notificationProviders?.length || 0,
         ...(finalConfig.aiEndpoint ? { preset: "ai_endpoint" } : {}),
+        ...secretRefs.audit,
       },
       success: true,
     });
@@ -783,9 +785,10 @@ export async function PUT(req: NextRequest) {
     if (!configurationValidation.success) {
       return NextResponse.json(configurationValidation, { status: 400 });
     }
-    const secretRefs = await validateMonitorSecretRefs(project.id, updateData.config);
+    const secretRefs = await validateMonitorSecretRefs(putCtx, updateData.config, updateData.target ?? monitorData[0].target);
     if (!secretRefs.success) {
-      return NextResponse.json(secretRefs, { status: 400 });
+      const { status, ...body } = secretRefs;
+      return NextResponse.json(body, { status: status ?? 400 });
     }
     // Only a changed target or type is checked, so a monitor already pointing at an internal host stays editable.
     const effectiveU3 = { type: updateData.type ?? monitorData[0].type, target: updateData.target ?? monitorData[0].target };
@@ -1007,6 +1010,7 @@ export async function PUT(req: NextRequest) {
       resourceId: id,
       metadata: {
         ...(monitorUpdateData.config?.aiEndpoint ? { preset: "ai_endpoint" } : {}),
+        ...secretRefs.audit,
         monitorName: monitorUpdateData.name,
         monitorType: monitorUpdateData.type,
         target: monitorUpdateData.target,

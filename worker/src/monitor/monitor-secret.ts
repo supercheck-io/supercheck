@@ -3,6 +3,7 @@ import type { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import * as schema from '../db/schema';
 import { decryptValue } from '../common/services/variable-resolver.service';
 import { liveMonitor } from '../db/deletion-visibility';
+import { allowInternalMonitorTargets } from '../common/utils/url-validator';
 
 export type MonitorSecretResult =
   { ok: true; value: string } | { ok: false; message: string };
@@ -48,11 +49,36 @@ export async function resolveMonitorSecret(
   } as const;
   if (!row?.encryptedValue) return notFound;
   try {
-    return { ok: true, value: decryptValue(row.encryptedValue, row.projectId) };
+    // A pasted value often ends with a newline; any other line break would break the header.
+    const value = decryptValue(row.encryptedValue, row.projectId).replace(
+      /[\r\n]+$/,
+      '',
+    );
+    if (/[\r\n\0]/.test(value)) {
+      return {
+        ok: false,
+        message: 'The project secret for this monitor contains a line break',
+      };
+    }
+    return { ok: true, value };
   } catch {
     return {
       ok: false,
       message: 'The project secret for this monitor could not be decrypted',
     };
+  }
+}
+
+export const SECRET_OVER_HTTP_MESSAGE =
+  'A project secret is only sent over https';
+
+/** A secret goes only over TLS unless internal targets are allowed (self-hosted model servers). */
+export function secretTransportAllowed(target: string): boolean {
+  try {
+    return (
+      new URL(target).protocol === 'https:' || allowInternalMonitorTargets()
+    );
+  } catch {
+    return false;
   }
 }

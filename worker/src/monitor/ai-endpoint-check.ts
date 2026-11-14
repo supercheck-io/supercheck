@@ -14,13 +14,18 @@ import {
 } from '../common/utils/network-error';
 import { allowInternalMonitorTargets } from '../common/utils/url-validator';
 import { readSse } from '../common/utils/sse';
-import { scrubSecrets } from '../common/utils/scrub-secrets';
+import { scrubSecrets, secretEchoForms } from '../common/utils/scrub-secrets';
+import {
+  SECRET_OVER_HTTP_MESSAGE,
+  secretTransportAllowed,
+} from './monitor-secret';
 import type { MonitorSecretResult } from './monitor-secret';
 
 const MAX_STREAM_BYTES = 1024 * 1024;
 const MAX_ERROR_BODY_BYTES = 64 * 1024;
 export const AI_ENDPOINT_DEFAULT_TIMEOUT_SECONDS = 60;
 const MAX_META_CHARS = 200;
+const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
 const MAX_MESSAGE_CHARS = 300;
 const DEFAULT_PROMPT = 'Reply with the single word OK.';
 
@@ -42,6 +47,10 @@ interface Outcome {
   httpStatus: number;
   errType?: string;
   errCode?: string;
+  /** Used only to detect a rejected token-limit parameter; never stored. */
+  errParam?: string;
+  errMessage?: string;
+  finishReason?: string;
   /** Error carried inside a 2xx reply (body, chunk or finish_reason). */
   innerError?: string;
   text: string;
@@ -69,6 +78,7 @@ function isBillingError(type?: string, code?: string): boolean {
   return [type, code].some(
     (v) =>
       v === 'insufficient_quota' ||
+      v === 'insufficient_credits' ||
       v === 'credit_balance_exhausted' ||
       /_spend_limit_exceeded$|_usage_limit_exceeded$/.test(v ?? ''),
   );
@@ -120,11 +130,17 @@ function applyPayload(payload: Json, out: Outcome, startedAt: bigint): void {
   if (!choice) return;
   if (choice.finish_reason === 'error')
     out.innerError ??= 'finish_reason_error';
-  const content =
-    str(obj(choice.delta)?.content) ?? str(obj(choice.message)?.content);
-  if (content) {
-    out.text += content;
-    out.firstTokenMs ??= Number(process.hrtime.bigint() - startedAt) / 1e6;
+  if (typeof choice.finish_reason === 'string')
+    out.finishReason = choice.finish_reason;
+  const part = obj(choice.delta) ?? obj(choice.message);
+  const content = str(part?.content);
+  // Reasoning models (DeepSeek, OpenRouter, vLLM) stream their thinking first; it is the first token.
+  const reasoning = str(part?.reasoning_content) ?? str(part?.reasoning);
+  if (content) out.text += content;
+  if (content || reasoning) {
+    out.firstTokenMs ??= Math.round(
+      Number(process.hrtime.bigint() - startedAt) / 1e6,
+    );
   }
 }
 
@@ -148,6 +164,8 @@ async function consume(
     );
     out.errType = str(err?.type);
     out.errCode = str(err?.code);
+    out.errParam = str(err?.param);
+    out.errMessage = str(err?.message)?.slice(0, 500);
     return out;
   }
 
@@ -205,6 +223,14 @@ async function consume(
   return out;
 }
 
+function rejectsMaxTokens(out: Outcome): boolean {
+  return (
+    out.httpStatus === 400 &&
+    (out.errParam === 'max_tokens' ||
+      /max_completion_tokens/.test(out.errMessage ?? ''))
+  );
+}
+
 function judge(
   out: Outcome,
   config: NonNullable<MonitorConfig['aiEndpoint']>,
@@ -232,18 +258,27 @@ function judge(
   }
   const code = out.httpStatus;
   if (code === 401 || code === 403) return down(`Key rejected (${code})`);
-  if (code === 429) {
-    return down(
-      isBillingError(out.errType, out.errCode)
-        ? 'Out of credit or over the spend limit'
-        : 'Rate limited (429)',
-    );
+  if (
+    code === 402 ||
+    (code === 429 && isBillingError(out.errType, out.errCode))
+  )
+    return down('Out of credit or over the spend limit');
+  if (code === 429) return down('Rate limited (429)');
+  if (code < 200 || code >= 300) {
+    // The provider's error code (e.g. model_not_found) says what to fix; never its free text.
+    const reason = out.errCode ?? out.errType;
+    return down(reason ? `HTTP ${code}: ${reason}` : `HTTP ${code}`);
   }
-  if (code < 200 || code >= 300) return down(`HTTP ${code}`);
   if (out.innerError)
     return down(`Error inside a 200 reply: ${out.innerError}`);
   if (!out.done || out.cutOff) return down('Reply was cut off');
-  if (!out.text.trim()) return down('Empty reply');
+  if (!out.text.trim()) {
+    return down(
+      out.finishReason === 'length'
+        ? 'Token limit reached before any reply text; raise Max tokens (reasoning models need more)'
+        : 'Empty reply',
+    );
+  }
   if (
     config.expectText &&
     !out.text.toLowerCase().includes(config.expectText.toLowerCase())
@@ -264,7 +299,7 @@ export async function executeAiEndpointCheck(
   deps: AiEndpointDeps,
 ): Promise<AiEndpointResult> {
   const ai = config.aiEndpoint!;
-  const startedAt = process.hrtime.bigint();
+  let startedAt = process.hrtime.bigint();
   const totalLimitMs =
     (config.timeoutSeconds ?? AI_ENDPOINT_DEFAULT_TIMEOUT_SECONDS) * 1000;
   const firstTokenLimitMs = ai.firstTokenTimeoutMs ?? 15000;
@@ -292,9 +327,11 @@ export async function executeAiEndpointCheck(
     Accept: 'text/event-stream, application/json',
   };
   if (ai.secretKey) {
+    if (!secretTransportAllowed(target))
+      return finish('error', SECRET_OVER_HTTP_MESSAGE);
     const secret = await deps.resolveSecret(ai.secretKey);
     if (!secret.ok) return finish('error', secret.message);
-    secrets.push(secret.value);
+    secrets.push(...secretEchoForms(secret.value));
     const header = ai.keyHeader || 'Authorization';
     headers[header] =
       header.toLowerCase() === 'authorization'
@@ -302,8 +339,8 @@ export async function executeAiEndpointCheck(
         : secret.value;
   }
 
-  try {
-    const response = await requestPinnedMonitorTarget(
+  const send = (tokenParam: 'max_tokens' | 'max_completion_tokens') =>
+    requestPinnedMonitorTarget(
       {
         method: 'POST',
         url: target,
@@ -311,7 +348,7 @@ export async function executeAiEndpointCheck(
         data: {
           model: ai.model,
           messages: [{ role: 'user', content: ai.prompt || DEFAULT_PROMPT }],
-          max_tokens: ai.maxTokens ?? 16,
+          [tokenParam]: ai.maxTokens ?? 16,
           stream: true,
           stream_options: { include_usage: true },
         },
@@ -356,7 +393,7 @@ export async function executeAiEndpointCheck(
         } finally {
           clearTimeout(headerTimer);
         }
-        if (res.status >= 300 && res.status < 400 && res.headers?.location) {
+        if (REDIRECT_STATUSES.has(res.status) && res.headers?.location) {
           (res.data as Readable | undefined)?.destroy?.();
           return res;
         }
@@ -367,10 +404,17 @@ export async function executeAiEndpointCheck(
         return { ...res, data: outcome };
       },
     );
-    const out = response.data as Outcome;
+
+  try {
+    let out = (await send('max_tokens')).data as Outcome;
+    if (rejectsMaxTokens(out)) {
+      // gpt-5 and o-series reject max_tokens; a 400 is not billed, so retry once with the newer name.
+      startedAt = process.hrtime.bigint();
+      out = (await send('max_completion_tokens')).data as Outcome;
+    }
     const verdict = judge(out, ai, firstTokenLimitMs, totalLimitMs);
     return finish(verdict.status, verdict.message, {
-      statusCode: out.httpStatus,
+      ...(out.httpStatus ? { statusCode: out.httpStatus } : {}),
       ai: { ...out.ai, totalMs: 0 },
     });
   } catch (error) {

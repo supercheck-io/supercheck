@@ -277,9 +277,10 @@ export async function PUT(
     if (!configurationValidation.success) {
       return NextResponse.json(configurationValidation, { status: 400 });
     }
-    const secretRefs = await validateMonitorSecretRefs(authCtx.project.id, updateData.config);
+    const secretRefs = await validateMonitorSecretRefs(authCtx, updateData.config, updateData.target ?? currentMonitor.target);
     if (!secretRefs.success) {
-      return NextResponse.json(secretRefs, { status: 400 });
+      const { status, ...body } = secretRefs;
+      return NextResponse.json(body, { status: status ?? 400 });
     }
     // Only a changed target or type is checked, so a monitor already pointing at an internal host stays editable.
     const effectiveU1 = { type: updateData.type ?? currentMonitor.type, target: updateData.target ?? currentMonitor.target };
@@ -509,6 +510,7 @@ export async function PUT(
       resourceId: id,
       metadata: {
         ...(updatedMonitor.config?.aiEndpoint ? { preset: "ai_endpoint" } : {}),
+        ...secretRefs.audit,
         monitorName: updatedMonitor.name,
         monitorType: updatedMonitor.type,
         target: updatedMonitor.target,
@@ -695,9 +697,10 @@ export async function PATCH(
     if (!configurationValidation.success) {
       return NextResponse.json(configurationValidation, { status: 400 });
     }
-    const secretRefs = await validateMonitorSecretRefs(authCtx.project.id, rawData.config);
+    const secretRefs = await validateMonitorSecretRefs(authCtx, rawData.config, updatePayload.target ?? currentMonitor.target);
     if (!secretRefs.success) {
-      return NextResponse.json(secretRefs, { status: 400 });
+      const { status, ...body } = secretRefs;
+      return NextResponse.json(body, { status: status ?? 400 });
     }
     // Only a changed target or type is checked, so a monitor already pointing at an internal host stays editable.
     const effectiveU2 = { type: updatePayload.type ?? currentMonitor.type, target: updatePayload.target ?? currentMonitor.target };
@@ -807,6 +810,7 @@ export async function PATCH(
       resourceId: id,
       metadata: {
         ...(updatedMonitor.config?.aiEndpoint ? { preset: "ai_endpoint" } : {}),
+        ...secretRefs.audit,
         monitorName: updatedMonitor.name,
         updateType: "partial",
         statusChanged:

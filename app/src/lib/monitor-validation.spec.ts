@@ -208,4 +208,17 @@ describe("AI endpoint preset validation", () => {
     expect(run({ auth: { type: "none", secretKey: "PW" } })).toMatchObject({ success: false });
     expect(run({ auth: { type: "bearer", secretKey: "" } })).toMatchObject({ success: false });
   });
+
+  it("needs an explicit bearer or basic type, and a username for basic, with auth.secretKey", () => {
+    expect(run({ auth: { secretKey: "API_TOKEN" } })).toMatchObject({ success: false, details: expect.stringContaining("bearer or basic") });
+    expect(run({ auth: { type: "digest", secretKey: "API_TOKEN" } })).toMatchObject({ success: false });
+    expect(run({ auth: { type: "basic", secretKey: "PW" } })).toMatchObject({ success: false, details: expect.stringContaining("username") });
+    expect(run({ auth: { type: "basic", username: "  ", secretKey: "PW" } })).toMatchObject({ success: false });
+  });
+
+  it("keeps the first token limit within the total timeout (default 60 s)", () => {
+    expect(run({ aiEndpoint: { ...ok, firstTokenTimeoutMs: 60000 } })).toEqual({ success: true });
+    expect(run({ aiEndpoint: { ...ok, firstTokenTimeoutMs: 10001 }, timeoutSeconds: 10 })).toMatchObject({ success: false, details: expect.stringContaining("firstTokenTimeoutMs") });
+    expect(run({ aiEndpoint: { ...ok, firstTokenTimeoutMs: 10000 }, timeoutSeconds: 10 })).toEqual({ success: true });
+  });
 });

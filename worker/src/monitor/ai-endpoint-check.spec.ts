@@ -337,10 +337,76 @@ describe('executeAiEndpointCheck', () => {
 
   it('refuses a private target unless internal targets are allowed', async () => {
     delete process.env.ALLOW_INTERNAL_TARGETS;
-    const r = await run({ secretKey: 'KEY' });
+    const r = await run();
     expect(r.status).toBe('error');
     expect(r.details.errorMessage).toContain('private or reserved');
     expect(hits).toBe(0);
+  });
+
+  it('never sends a secret over plain http unless internal targets are allowed', async () => {
+    delete process.env.ALLOW_INTERNAL_TARGETS;
+    const r = await run({ secretKey: 'KEY' });
+    expect(r).toMatchObject({
+      status: 'error',
+      details: { errorMessage: 'A project secret is only sent over https' },
+    });
+    expect(resolveSecret).not.toHaveBeenCalled();
+    expect(hits).toBe(0);
+  });
+
+  it('retries once with max_completion_tokens when max_tokens is rejected', async () => {
+    handler = (res, req) => {
+      if ('max_tokens' in req.body)
+        return json(400, {
+          error: {
+            type: 'invalid_request_error',
+            param: 'max_tokens',
+            code: 'unsupported_parameter',
+            message: "Use 'max_completion_tokens' instead.",
+          },
+        })(res);
+      okStream(res);
+    };
+    const r = await run({ maxTokens: 64 });
+    expect(r.status).toBe('up');
+    expect(seen).toHaveLength(2);
+    expect(seen[1].body).toMatchObject({ max_completion_tokens: 64 });
+    expect(seen[1].body).not.toHaveProperty('max_tokens');
+  });
+
+  it('times the first token on streamed reasoning and explains a reply cut by the token limit', async () => {
+    handler = sse(
+      `data: ${JSON.stringify({ choices: [{ delta: { reasoning_content: 'thinking' } }] })}\n\n` +
+        `data: ${JSON.stringify({ choices: [{ delta: {}, finish_reason: 'length' }] })}\n\ndata: [DONE]\n\n`,
+    );
+    const r = await run();
+    expect(r.status).toBe('down');
+    expect(r.details.errorMessage).toContain('Token limit reached');
+    expect(Number.isInteger(r.details.ai?.firstTokenMs)).toBe(true);
+  });
+
+  it('names the provider error code and treats 402 as out of credit', async () => {
+    handler = json(404, {
+      error: { code: 'model_not_found', message: 'no such model sk-x' },
+    });
+    expect((await run()).details.errorMessage).toBe(
+      'HTTP 404: model_not_found',
+    );
+    handler = json(402, { error: { message: 'Insufficient credits' } });
+    expect((await run()).details.errorMessage).toBe(
+      'Out of credit or over the spend limit',
+    );
+  });
+
+  it('judges a 300 with a location as an HTTP status, not a cut-off reply', async () => {
+    handler = (res) => {
+      res.writeHead(300, { location: '/elsewhere' });
+      res.end();
+    };
+    expect((await run()).details).toMatchObject({
+      statusCode: 300,
+      errorMessage: 'HTTP 300',
+    });
   });
 
   it('redacts the secret from messages and caps their length', async () => {

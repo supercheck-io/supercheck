@@ -39,6 +39,15 @@ describe("mergeEditConfig", () => {
     expect(merged.timeoutSeconds).toBe(12);
   });
 
+  it("replaces the stored preset timeout with the plain default when the preset is switched off", () => {
+    const aiStored = { aiEndpoint: { model: "m" }, timeoutSeconds: 60 };
+    const built = { method: "GET", expectedStatusCodes: "200-299", timeoutSeconds: 30 };
+    const merged = mergeEditConfig("http_request", aiStored, built);
+    expect(merged).toEqual(built);
+    // A plain monitor keeps its own stored timeout.
+    expect(mergeEditConfig("http_request", { method: "GET", timeoutSeconds: 12 }, built).timeoutSeconds).toBe(12);
+  });
+
   it("does not force GET on website monitors", () => {
     const merged = mergeEditConfig("website", { method: "HEAD", timeoutSeconds: 9 }, { method: "GET", timeoutSeconds: 30, enableSslCheck: true });
     expect(merged).toMatchObject({ method: "HEAD", timeoutSeconds: 9, enableSslCheck: true });
@@ -146,6 +155,6 @@ describe("mergeEditConfig with the AI endpoint preset", () => {
   it("turning the preset back off removes aiEndpoint and keeps worker state for the server to preserve", () => {
     const merged = mergeEditConfig("http_request", { aiEndpoint: ai, aiEndpointState: { lastServedModel: "m" }, timeoutSeconds: 60 }, { method: "GET", expectedStatusCodes: "200-299", timeoutSeconds: 30 });
     expect(merged).not.toHaveProperty("aiEndpoint");
-    expect(merged.timeoutSeconds).toBe(60);
+    expect(merged.timeoutSeconds).toBe(30); // the plain default replaces the preset's stored timeout
   });
 });

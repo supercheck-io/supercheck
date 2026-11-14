@@ -87,9 +87,9 @@ Choose **Preset: AI endpoint (OpenAI-compatible)** on an HTTP monitor to check a
 | Key header | `Authorization` | Sends `Bearer <key>`. Any other header name (for example Azure `api-key`) sends the raw key |
 | Model | — | Required |
 | Prompt | `Reply with the single word OK.` | Up to 2,000 characters |
-| Max tokens | `16` | 1-512 |
+| Max tokens | `16` | 1-512. Reasoning models (gpt-5, o-series) spend tokens on thinking, so they need more, for example 256 |
 | Reply must contain | — | Optional, case-insensitive |
-| First token limit | 15 s | 0.5-60 s. Slower is a failed check |
+| First token limit | 15 s | 0.5-60 s, and no more than the total time limit. Slower is a failed check |
 | Total time limit | 60 s | 5-120 s |
 
 | What happened | Result |
@@ -103,6 +103,8 @@ Choose **Preset: AI endpoint (OpenAI-compatible)** on an HTTP monitor to check a
 | No first token within the limit | Timeout |
 
 Every result records first-token time, total time, the model that served the reply, and token counts (plus cost when the provider reports it). The reply text is not stored. The detail page shows first token, tokens per call and served model next to the usual response time.
+
+A secret that a monitor uses cannot be deleted, renamed or made non-secret while that monitor exists. The error names up to five monitors; point them at another secret first. Rotating the secret's value is always allowed.
 
 Each check is a paid call on your key. The form shows about how many calls a month your interval and locations make; the default interval is 5 minutes and the failure threshold is 2, so one short rate limit does not alert.
 

@@ -39,9 +39,10 @@ export function SecretPicker({ projectId, value, onChange, testId, label, disabl
     return (
       <p className="text-sm text-muted-foreground" data-testid={`${testId}-empty`}>
         No secrets in this project yet.{" "}
-        <Link href="/variables" className="underline underline-offset-4">
+        <Link href="/variables" target="_blank" rel="noopener noreferrer" className="underline underline-offset-4">
           Add a secret
-        </Link>
+        </Link>{" "}
+        <span className="text-xs">(opens in a new tab; this list refreshes when you return)</span>
       </p>
     );
   }

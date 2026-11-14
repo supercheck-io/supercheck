@@ -5,6 +5,7 @@
  */
 // Stored text is often truncated before scrubbing, so a secret cut at the end leaves a prefix behind.
 const MIN_TAIL = 4;
+const MIN_SECRET_LENGTH = 4;
 function maskTail(text: string, secret: string): string {
   for (
     let n = Math.min(secret.length - 1, text.length);
@@ -17,7 +18,8 @@ function maskTail(text: string, secret: string): string {
 }
 
 export function scrubSecrets<T>(value: T, secrets: readonly string[]): T {
-  const live = secrets.filter((s) => s.length > 0);
+  // Shorter values would mask ordinary text everywhere; such secrets carry no real protection anyway.
+  const live = secrets.filter((s) => s.length >= MIN_SECRET_LENGTH);
   if (live.length === 0) return value;
   const walk = (v: unknown): unknown => {
     if (typeof v === 'string')
@@ -33,4 +35,19 @@ export function scrubSecrets<T>(value: T, secrets: readonly string[]): T {
     return v;
   };
   return walk(value) as T;
+}
+
+/**
+ * The forms an endpoint can echo a secret back in: as sent, URL-encoded, JSON-escaped and, for
+ * basic auth, the base64 `user:secret` credential.
+ */
+export function secretEchoForms(secret: string, basicUser?: string): string[] {
+  const forms = [
+    secret,
+    encodeURIComponent(secret),
+    JSON.stringify(secret).slice(1, -1),
+  ];
+  if (basicUser !== undefined)
+    forms.push(Buffer.from(`${basicUser}:${secret}`).toString('base64'));
+  return [...new Set(forms)];
 }

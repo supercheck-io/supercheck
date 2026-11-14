@@ -27,7 +27,7 @@ jest.mock("@/lib/services/subscription-service", () => ({
   subscriptionService: { blockUntilSubscribed: jest.fn(), requireValidPolarCustomer: jest.fn() },
   SubscriptionAccessDeniedError: class extends Error {},
 }));
-jest.mock("@/lib/rbac/middleware", () => ({ checkPermissionWithContext: jest.fn(() => true) }));
+jest.mock("@/lib/rbac/middleware", () => ({ checkPermissionWithContext: jest.fn(() => true), isImpersonatedSession: jest.fn(async () => false) }));
 jest.mock("@/lib/audit-logger", () => ({ logAuditEvent: jest.fn() }));
 const monitorResumeBlockedResponse = jest.fn();
 jest.mock("@/lib/execution/trial-interval-response", () => ({

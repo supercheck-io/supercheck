@@ -92,7 +92,8 @@ function validateLocationPolicy(config: Record<string, unknown>): MonitorValidat
 
 // Same header-name rule as the MCP connector's buildAuthHeaders.
 const HEADER_NAME = /^[A-Za-z0-9-]{1,64}$/;
-const FORBIDDEN_KEY_HEADERS = new Set(["host", "content-length", "content-type", "accept", "transfer-encoding", "connection", "cookie"]);
+/** Shared with the monitor form, so it rejects exactly what the API rejects. */
+export const FORBIDDEN_KEY_HEADERS = new Set(["host", "content-length", "content-type", "accept", "transfer-encoding", "connection", "cookie"]);
 const secretName = z.string().trim().min(1).max(255);
 
 const aiEndpointSchema = z
@@ -123,6 +124,9 @@ function parsedProtocol(target: string): string | null {
   }
 }
 
+/** Total time limit the worker applies to an AI endpoint check when none is set. */
+export const AI_DEFAULT_TIMEOUT_SECONDS = 60;
+
 function validateAiEndpoint(monitorType: string, config: Record<string, unknown>): MonitorValidationResult {
   if (config.aiEndpoint == null) return { success: true };
   if (monitorType !== "http_request") {
@@ -142,6 +146,10 @@ function validateAiEndpoint(monitorType: string, config: Record<string, unknown>
   if (timeout !== undefined && (typeof timeout !== "number" || timeout < 5 || timeout > 120)) {
     return invalid("Invalid monitor configuration", "config.timeoutSeconds must be between 5 and 120 for the AI endpoint preset");
   }
+  const firstToken = parsed.data.firstTokenTimeoutMs;
+  if (firstToken !== undefined && firstToken > (timeout ?? AI_DEFAULT_TIMEOUT_SECONDS) * 1000) {
+    return invalid("Invalid monitor configuration", "config.aiEndpoint.firstTokenTimeoutMs cannot exceed the total timeout (config.timeoutSeconds)");
+  }
   return { success: true };
 }
 
@@ -151,8 +159,11 @@ function validateAuthSecret(config: Record<string, unknown>): MonitorValidationR
   if (!secretName.safeParse(auth.secretKey).success) {
     return invalid("Invalid monitor configuration", "config.auth.secretKey must be a secret name of 1-255 characters");
   }
-  if (auth.type === "none") {
+  if (auth.type !== "bearer" && auth.type !== "basic") {
     return invalid("Invalid monitor configuration", "config.auth.secretKey needs auth type bearer or basic");
+  }
+  if (auth.type === "basic" && (typeof auth.username !== "string" || auth.username.trim() === "")) {
+    return invalid("Invalid monitor configuration", "config.auth.username is required for basic auth with a secret");
   }
   if (auth.token || auth.password) {
     return invalid("Invalid monitor configuration", "config.auth.secretKey cannot be combined with an inline token or password");

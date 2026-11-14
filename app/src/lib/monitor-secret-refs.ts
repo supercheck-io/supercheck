@@ -1,8 +1,22 @@
 import { and, eq, inArray, or } from "drizzle-orm";
 import { db } from "@/utils/db";
 import { projectVariables } from "@/db/schema";
+import { checkPermissionWithContext, isImpersonatedSession } from "@/lib/rbac/middleware";
+import { logAuditEvent } from "@/lib/audit-logger";
+import type { AuthContext } from "@/lib/auth-context";
 
-type Result = { success: true } | { success: false; error: string; details: string };
+/** `audit` is merged into the monitor_created/monitor_updated metadata: secret names and the target host, never values or the full URL. */
+type Result =
+  | { success: true; audit?: { referencedSecrets: string[]; targetHost: string | null } }
+  | { success: false; error: string; details: string; status?: number };
+
+function hostOf(target: unknown): string | null {
+  try {
+    return typeof target === "string" ? new URL(target.trim()).host : null;
+  } catch {
+    return null;
+  }
+}
 
 /** Secret names a monitor config refers to (AI endpoint key, bearer token or basic password). */
 export function monitorSecretNames(config: unknown): string[] {
@@ -12,12 +26,33 @@ export function monitorSecretNames(config: unknown): string[] {
 }
 
 /**
- * Every secret a client-sent config names must be a secret variable of the monitor's own project.
- * Only the incoming config is checked, so a stored reference to a since-deleted secret never blocks an unrelated edit.
+ * Every secret a client-sent config names must be a secret variable of the monitor's own project, and the caller must
+ * be allowed to use secrets: variable:view_secrets, and not an impersonated browser session (CLI tokens are exempt, as in
+ * the decrypt route). Only the incoming config is checked, so a stored reference to a since-deleted secret never blocks an unrelated edit.
+ * `target` is the effective monitor target, recorded as a host only.
  */
-export async function validateMonitorSecretRefs(projectId: string, incomingConfig: unknown): Promise<Result> {
+export async function validateMonitorSecretRefs(
+  ctx: AuthContext,
+  incomingConfig: unknown,
+  target?: unknown,
+): Promise<Result> {
+  const projectId = ctx.project.id;
   const names = [...new Set(monitorSecretNames(incomingConfig))];
   if (names.length === 0) return { success: true };
+  if (!ctx.isCliAuth && (await isImpersonatedSession())) {
+    await logAuditEvent({
+      userId: ctx.userId,
+      organizationId: ctx.organizationId,
+      action: "monitor_secret_ref_impersonation_blocked",
+      resource: "monitor",
+      metadata: { projectId, referencedSecrets: names },
+      success: false,
+    });
+    return { success: false, error: "Forbidden", details: "Secrets cannot be used while impersonating a user", status: 403 };
+  }
+  if (!checkPermissionWithContext("variable", "view_secrets", ctx)) {
+    return { success: false, error: "Forbidden", details: "Insufficient permissions to use project secrets", status: 403 };
+  }
   const rows = await db
     .select({ key: projectVariables.key })
     .from(projectVariables)
@@ -32,5 +67,5 @@ export async function validateMonitorSecretRefs(projectId: string, incomingConfi
   const missing = names.find((n) => !found.has(n));
   return missing
     ? { success: false, error: "Invalid monitor configuration", details: `Secret ${missing} was not found in this project` }
-    : { success: true };
+    : { success: true, audit: { referencedSecrets: names, targetHost: hostOf(target) } };
 }

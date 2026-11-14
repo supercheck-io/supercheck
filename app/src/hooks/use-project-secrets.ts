@@ -21,5 +21,7 @@ export function useProjectSecretNames(projectId: string | null | undefined) {
     queryFn: () => fetchSecretNames(projectId as string),
     enabled: Boolean(projectId),
     staleTime: 30_000,
+    // The picker links to the variables page in a new tab; refetch when the user comes back, even within staleTime.
+    refetchOnWindowFocus: "always",
   });
 }

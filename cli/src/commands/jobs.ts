@@ -411,7 +411,7 @@ jobCommand
       throw new CLIError('--local and --cloud are mutually exclusive.', ExitCode.ConfigError)
     }
     if (options.wait && options.local) throw new CLIError('--wait applies to cloud runs only; a local run already waits.', ExitCode.ConfigError)
-    const timeoutMs = parseIntStrict(options.timeout, '--timeout', { min: 1 }) * 1000
+    const timeoutMs = options.wait ? parseIntStrict(options.timeout, '--timeout', { min: 1 }) * 1000 : 0
 
     if (options.offline && !options.local) throw new CLIError('--offline requires --local.', ExitCode.ConfigError)
     const useLocal = options.local === true

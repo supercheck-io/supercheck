@@ -104,7 +104,17 @@ describe.each([[PUT, "PUT"], [PATCH, "PATCH"]] as const)("%s monitor with the AI
     validateMonitorSecretRefs.mockResolvedValue({ success: false, error: "Invalid monitor configuration", details: "Secret OPENAI_KEY was not found in this project" });
     const res = await call(handler, method, { config: preset });
     expect(res.status).toBe(400);
-    expect(validateMonitorSecretRefs).toHaveBeenCalledWith("project-1", preset);
+    expect(validateMonitorSecretRefs).toHaveBeenCalledWith(auth, preset, existing.target);
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  it("passes a secret-use denial (no view_secrets, or impersonating) through as 403 without the internal status field", async () => {
+    validateMonitorSecretRefs.mockResolvedValue({ success: false, error: "Forbidden", details: "Insufficient permissions to use project secrets", status: 403 });
+    const res = await call(handler, method, { config: preset });
+    expect(res.status).toBe(403);
+    const body = await res.json();
+    expect(body).toMatchObject({ error: "Forbidden", details: "Insufficient permissions to use project secrets" });
+    expect(body).not.toHaveProperty("status");
     expect(update).not.toHaveBeenCalled();
   });
 

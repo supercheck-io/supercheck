@@ -1,4 +1,4 @@
-import { scrubSecrets } from './scrub-secrets';
+import { scrubSecrets, secretEchoForms } from './scrub-secrets';
 
 describe('scrubSecrets', () => {
   it('replaces the secret in every nested string, including header values and metadata', () => {
@@ -23,6 +23,25 @@ describe('scrubSecrets', () => {
     expect(scrubSecrets({ m: 'model-sk' }, ['sk-echoed-key'])).toEqual({
       m: 'model-sk',
     });
+  });
+
+  it('covers URL-encoded, JSON-escaped and basic-auth base64 echoes', () => {
+    const forms = secretEchoForms('p@ss"/w', 'me');
+    const b64 = Buffer.from('me:p@ss"/w').toString('base64');
+    const out = scrubSecrets(
+      {
+        a: `q=${encodeURIComponent('p@ss"/w')}`,
+        b: '{"k":"p@ss\\"/w"}',
+        c: `Basic ${b64}`,
+      },
+      forms,
+    );
+    expect(JSON.stringify(out)).not.toMatch(/p@ss|p%40ss/);
+    expect(out.c).toBe('Basic ***');
+  });
+
+  it('does not scrub secrets shorter than 4 characters', () => {
+    expect(scrubSecrets({ m: 'a cat' }, ['a'])).toEqual({ m: 'a cat' });
   });
 
   it('ignores empty secrets and leaves values without secrets unchanged', () => {

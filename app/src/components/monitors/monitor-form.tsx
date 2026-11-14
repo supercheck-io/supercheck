@@ -76,6 +76,10 @@ import { useTest } from "@/hooks/use-tests";
 import { CredentialField } from "./credential-field";
 import { addAiEndpointIssues, AiEndpointFields, AI_ENDPOINT_DEFAULT_URL, buildAiEndpointConfig } from "./ai-endpoint-fields";
 
+// Defaults the AI endpoint preset applies to a new monitor; switching back to Standard HTTP undoes them while unchanged.
+const AI_PRESET_INTERVAL = "300";
+const AI_PRESET_FAILURE_THRESHOLD = 2;
+
 // Define presets for Expected Status Codes
 /** Parsed like the form's URL validation, so what validates as https shows the SSL section. */
 function isHttpsTarget(target: unknown): boolean {
@@ -609,7 +613,8 @@ export function MonitorForm({
       }
       // The form has no timeout field, so a stored timeout is kept; an interval shorter than it is shown at the interval field.
       // The AI preset manages its own timeout (checked against the interval in the schema).
-      const storedTimeout = aiPresetActive ? undefined : initialConfig?.timeoutSeconds;
+      // A stored preset timeout is not shown or kept once the user leaves the preset (the plain default replaces it), so it never errors at the interval.
+      const storedTimeout = aiPresetActive || initialConfig?.aiEndpoint ? undefined : initialConfig?.timeoutSeconds;
       const intervalSeconds = parseInt(values.interval, 10);
       const priorSeconds = parseInt(initialData?.interval ?? "", 10);
       if (
@@ -661,13 +666,24 @@ export function MonitorForm({
   // Choosing the preset swaps the request fields; a new monitor also takes the preset's interval and alert threshold.
   function choosePreset(value: "none" | "ai_endpoint") {
     form.setValue("preset", value, { shouldDirty: true });
-    if (value !== "ai_endpoint") return;
+    if (value !== "ai_endpoint") {
+      // Undo what the preset set, but only while it still holds the preset's value, so the user's own edits stay.
+      if (form.getValues("target")?.trim() === AI_ENDPOINT_DEFAULT_URL) form.setValue("target", "", { shouldDirty: true });
+      form.setValue("aiConfig_timeoutSeconds", "");
+      if (!editMode) {
+        if (form.getValues("interval") === AI_PRESET_INTERVAL) form.setValue("interval", getDefaultValues().interval, { shouldDirty: true });
+        setAlertConfig((current) =>
+          current.failureThreshold === AI_PRESET_FAILURE_THRESHOLD ? { ...current, failureThreshold: initialAlertConfigValue.failureThreshold } : current,
+        );
+      }
+      return;
+    }
     const target = form.getValues("target");
     if (!target || !target.trim()) form.setValue("target", AI_ENDPOINT_DEFAULT_URL, { shouldDirty: true });
     if (!form.getValues("aiConfig_timeoutSeconds")) form.setValue("aiConfig_timeoutSeconds", "60");
     if (!editMode) {
-      form.setValue("interval", "300", { shouldDirty: true });
-      setAlertConfig((current) => ({ ...current, failureThreshold: 2 }));
+      form.setValue("interval", AI_PRESET_INTERVAL, { shouldDirty: true });
+      setAlertConfig((current) => ({ ...current, failureThreshold: AI_PRESET_FAILURE_THRESHOLD }));
     }
   }
 
@@ -1287,8 +1303,8 @@ export function MonitorForm({
         <CardContent className="space-y-4">
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-              {/* Monitor Name and Check Interval - aligned on same line */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Monitor Name, Check Interval and (HTTP request only) Preset - aligned on same line */}
+              <div className={type === "http_request" ? "grid grid-cols-1 md:grid-cols-3 gap-4" : "grid grid-cols-1 md:grid-cols-2 gap-4"}>
                 {/* Left column - Monitor Name */}
                 <FormField
                   control={form.control}
@@ -1399,6 +1415,34 @@ export function MonitorForm({
                     );
                   }}
                 />
+
+                {type === "http_request" && (
+                  <FormField
+                    control={form.control}
+                    name="preset"
+                    render={({ field }) => (
+                      <FormItem className="space-y-2">
+                        <FormLabel>Preset</FormLabel>
+                        <Select
+                          value={field.value ?? "none"}
+                          onValueChange={(value) => choosePreset(value as "none" | "ai_endpoint")}
+                        >
+                          <FormControl>
+                            <SelectTrigger className="w-full" data-testid="monitor-preset">
+                              <SelectValue />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value="none">Standard HTTP</SelectItem>
+                            <SelectItem value="ai_endpoint">AI endpoint (OpenAI-compatible)</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <FormDescription>AI endpoint checks an OpenAI-compatible chat API</FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                )}
               </div>
 
               {/* Test Selector for synthetic monitors - full width */}
@@ -1436,32 +1480,6 @@ export function MonitorForm({
                   dialogTitle="Select Test"
                   dialogDescription="Choose a test to monitor"
                   maxSelectionLabel="Select 1 playwright test"
-                />
-              )}
-
-              {type === "http_request" && (
-                <FormField
-                  control={form.control}
-                  name="preset"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Preset</FormLabel>
-                      <Select
-                        value={field.value ?? "none"}
-                        onValueChange={(value) => choosePreset(value as "none" | "ai_endpoint")}
-                      >
-                        <FormControl>
-                          <SelectTrigger className="w-full" data-testid="monitor-preset">
-                            <SelectValue />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          <SelectItem value="none">None</SelectItem>
-                          <SelectItem value="ai_endpoint">AI endpoint (OpenAI-compatible)</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </FormItem>
-                  )}
                 />
               )}
 

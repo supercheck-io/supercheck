@@ -483,7 +483,7 @@ Extracting requirements from an uploaded document (PDF, DOCX, Markdown or TXT) w
 | `monitor status <monitor-id>` | Current status (quick view) | — |
 | `monitor results <monitor-id>` | Recent check results | `--page` (1), `--limit` (20) |
 | `monitor stats <monitor-id>` | Performance statistics | — |
-| `monitor create` | Create a monitor | `--name` (required), `--url`, `--type`, `--test-id`, `--port`, `--protocol`, `--interval-minutes`, `--timeout`, `--method`, `--preset`, `--model`, `--secret`, `--key-header`, `--prompt`, `--expect`, `--dry-run` |
+| `monitor create` | Create a monitor | `--name` (required), `--url`, `--type`, `--test-id`, `--port`, `--protocol`, `--interval-minutes`, `--timeout`, `--method`, `--preset`, `--model`, `--secret`, `--key-header`, `--prompt`, `--expect`, `--max-tokens`, `--first-token-timeout`, `--dry-run` |
 | `monitor update <monitor-id>` | Update a monitor | `--name`, `--url`, `--interval-minutes`, `--timeout`, `--method`, `--active`, `--dry-run` |
 | `monitor delete <monitor-id>` | Delete with confirmation | `--force` |
 
@@ -523,13 +523,15 @@ supercheck monitor delete <monitor-id> --force
 | `--protocol` | No | `tcp` | Port check protocol: `tcp` or `udp` |
 | `--interval-minutes` | No | `5` | Check interval in minutes (1–1440) |
 | `--timeout` | No | `30` (`60` with the preset) | Request timeout in seconds (1-3600; 5-120 with the preset) |
-| `--method` | No | `GET` | HTTP method (`GET`, `POST`, `PUT`, `DELETE`, `PATCH`, `HEAD`, `OPTIONS`) |
+| `--method` | No | `GET` | HTTP method (`GET`, `POST`, `PUT`, `DELETE`, `PATCH`, `HEAD`, `OPTIONS`). Not allowed with `--preset` (the preset always sends `POST`) |
 | `--preset` | No | — | `ai-endpoint`: check an OpenAI-compatible chat-completions endpoint (`http_request` only) |
 | `--model` | With `--preset` | — | Model name to request |
 | `--secret` | No | — | Name of the project secret that holds the API key; omit to send no key |
 | `--key-header` | No | `Authorization` | Header for the key; `Authorization` sends `Bearer <key>`, any other header sends the raw key |
 | `--prompt` | No | `Reply with the single word OK.` | Prompt to send |
 | `--expect` | No | — | Text the reply must contain (case-insensitive) |
+| `--max-tokens` | No | `16` | Reply token limit (1-512). Reasoning models (gpt-5, o-series) need more, for example `256` |
+| `--first-token-timeout` | No | `15000` | A slower first token fails the check, in milliseconds (500-60000) |
 | `--dry-run` | No | — | Preview what would be sent without creating |
 
 `monitor update` accepts `--name`, `--url`, `--interval-minutes` (1–1440), `--timeout` (1-3600), `--method`, `--active` (`true` or `false` to enable or disable) and `--dry-run`.

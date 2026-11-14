@@ -20,6 +20,7 @@ import { encryptValue } from "@/lib/encryption";
 import { getS3Client } from "@/lib/s3-proxy";
 import { DeleteObjectCommand } from "@aws-sdk/client-s3";
 import { updateVariableSchema } from "@/lib/validations/variable";
+import { secretInUseMessage, breaksSecretRefs } from "@/lib/monitor-secret-usage";
 
 import { permissionDeniedResponse } from "@/lib/deletion/org-state";
 const FILE_VARIABLES_BUCKET = process.env.S3_PROJECT_DATA_FILES_BUCKET_NAME || "project-data-files";
@@ -147,6 +148,12 @@ export async function PUT(
     }
 
     const effectiveIsSecret = isSecret ?? existing.isSecret;
+
+    const breaking = breaksSecretRefs(existing, { key, isSecret });
+    if (breaking) {
+      const inUse = await secretInUseMessage(context.project.id, existing.key, breaking);
+      if (inUse) return NextResponse.json({ error: inUse }, { status: 409 });
+    }
 
     // Check for duplicate key if renaming
     if (key !== undefined && key !== existing.key) {
@@ -303,6 +310,11 @@ export async function DELETE(
         { error: "Variable not found" },
         { status: 404 }
       );
+    }
+
+    if (existing.isSecret || existing.type === "secret") {
+      const inUse = await secretInUseMessage(context.project.id, existing.key, "delete");
+      if (inUse) return NextResponse.json({ error: inUse }, { status: 409 });
     }
 
     // Delete DB row first, then best-effort S3 cleanup

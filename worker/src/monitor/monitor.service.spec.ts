@@ -33,7 +33,10 @@ jest.mock('../execution/services/execution.service', () => ({
   })),
 }));
 
-jest.mock('./monitor-secret', () => ({ resolveMonitorSecret: jest.fn() }));
+jest.mock('./monitor-secret', () => ({
+  ...jest.requireActual<typeof import('./monitor-secret')>('./monitor-secret'),
+  resolveMonitorSecret: jest.fn(),
+}));
 
 jest.mock('../common/utils/pinned-monitor-request', () => ({
   requestPinnedMonitorTarget: jest.fn(
@@ -1527,6 +1530,44 @@ describe('MonitorService', () => {
         );
         expect(JSON.stringify(result.details)).not.toContain('sekret-value');
         expect(result.details.errorMessage).toContain('***');
+      });
+
+      it('refuses to send a secret over plain http', async () => {
+        const result = await service['executeHttpRequest'](
+          'http://example.com',
+          { auth: { type: 'bearer', secretKey: 'TOKEN' } } as never,
+          'mon-1',
+        );
+        expect(result).toMatchObject({
+          status: 'error',
+          details: { errorMessage: 'A project secret is only sent over https' },
+        });
+        expect(resolveMonitorSecret).not.toHaveBeenCalled();
+      });
+
+      it('scrubs an echoed basic-auth Authorization header (base64 user:secret)', async () => {
+        const b64 = Buffer.from('me:sekret-value').toString('base64');
+        jest
+          .mocked(resolveMonitorSecret)
+          .mockResolvedValueOnce({ ok: true, value: 'sekret-value' });
+        (service['httpService'].request as jest.Mock).mockImplementationOnce(
+          () =>
+            of({
+              status: 200,
+              statusText: 'OK',
+              headers: { 'x-echo': `Basic ${b64}` },
+              data: `auth=Basic ${b64}`,
+            }),
+        );
+        const result = await service['executeHttpRequest'](
+          'https://example.com',
+          {
+            auth: { type: 'basic', username: 'me', secretKey: 'PW' },
+            keywordInBody: 'missing-word',
+          } as never,
+          'mon-1',
+        );
+        expect(JSON.stringify(result.details)).not.toContain(b64);
       });
 
       it('returns an error result when the secret is missing', async () => {

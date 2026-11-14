@@ -179,9 +179,9 @@ describe('read-only and operational commands', () => {
       await expect(jobCommand.parseAsync(['node', 'job', 'run', '--id', jobId, '--wait'])).rejects.toMatchObject({ exitCode: ExitCode.Timeout, details: { runId: 'run-1' } })
     })
 
-    it('does not wait without --wait', async () => {
+    it('does not wait without --wait, and ignores --timeout then', async () => {
       start()
-      await jobCommand.parseAsync(['node', 'job', 'run', '--id', jobId])
+      await jobCommand.parseAsync(['node', 'job', 'run', '--id', jobId, '--timeout', 'abc'])
       expect(mockWaitForRun).not.toHaveBeenCalled()
       expect(mockOutputDetail).toHaveBeenCalledWith({ runId: 'run-1', message: 'queued' })
     })

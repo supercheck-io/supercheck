@@ -4,7 +4,7 @@ import { SecretPicker } from "./secret-picker";
 
 let hookState: { data?: string[]; isLoading: boolean; isError: boolean; error?: Error; isFetching: boolean; refetch: jest.Mock };
 jest.mock("@/hooks/use-project-secrets", () => ({ useProjectSecretNames: () => hookState }));
-jest.mock("next/link", () => ({ __esModule: true, default: ({ children, href }: { children: React.ReactNode; href: string }) => <a href={href}>{children}</a> }));
+jest.mock("next/link", () => ({ __esModule: true, default: ({ children, ...rest }: { children: React.ReactNode } & React.AnchorHTMLAttributes<HTMLAnchorElement>) => <a {...rest}>{children}</a> }));
 
 const base = { name: "n", type: "http_request", interval: "300" };
 
@@ -46,7 +46,10 @@ describe("SecretPicker", () => {
     state({ data: [] });
     rerender(<SecretPicker {...props} />);
     expect(screen.getByTestId("pick-empty")).toHaveTextContent("No secrets in this project yet.");
-    expect(screen.getByRole("link", { name: "Add a secret" })).toHaveAttribute("href", "/variables");
+    const link = screen.getByRole("link", { name: "Add a secret" });
+    expect(link).toHaveAttribute("href", "/variables");
+    expect(link).toHaveAttribute("target", "_blank");
+    expect(link).toHaveAttribute("rel", "noopener noreferrer");
   });
 
   it("renders a labelled picker, keeping a stored name that no longer exists visible", () => {
@@ -106,5 +109,15 @@ describe("addAiEndpointIssues", () => {
   it("rejects an invalid key header only while a key is sent", () => {
     expect(issues({ aiConfig_keyHeader: "bad header" })).toEqual(["aiConfig_keyHeader"]);
     expect(issues({ aiConfig_keyHeader: "bad header", aiConfig_noKey: true, aiConfig_secretKey: "" })).toEqual([]);
+  });
+
+  it.each(["Host", "content-length", "Content-Type", "ACCEPT", "Transfer-Encoding", "connection", "Cookie"])("rejects the header name the API forbids: %s", (name) => {
+    expect(issues({ aiConfig_keyHeader: name })).toEqual(["aiConfig_keyHeader"]);
+  });
+
+  it("keeps the first token limit within the total time limit (default 60 s)", () => {
+    expect(issues({ aiConfig_firstTokenTimeoutMs: "60000" })).toEqual([]);
+    expect(issues({ aiConfig_firstTokenTimeoutMs: "10001", aiConfig_timeoutSeconds: "10" })).toEqual(["aiConfig_firstTokenTimeoutMs"]);
+    expect(issues({ aiConfig_firstTokenTimeoutMs: "10000", aiConfig_timeoutSeconds: "10" })).toEqual([]);
   });
 });

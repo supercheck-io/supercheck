@@ -1,4 +1,4 @@
-import { resolveMonitorSecret } from './monitor-secret';
+import { resolveMonitorSecret, secretTransportAllowed } from './monitor-secret';
 import { decryptValue } from '../common/services/variable-resolver.service';
 
 jest.mock('../common/services/variable-resolver.service', () => ({
@@ -58,5 +58,33 @@ describe('resolveMonitorSecret', () => {
       ok: false,
       message: 'The project secret for this monitor could not be decrypted',
     });
+  });
+
+  it('drops a trailing newline and refuses a line break inside the value', async () => {
+    const { db } = dbReturning([
+      { projectId: 'p1', encryptedValue: 'enc:v1:x' },
+    ]);
+    (decryptValue as jest.Mock).mockReturnValueOnce('sk-abc\r\n');
+    await expect(resolveMonitorSecret(db, 'm1', 'KEY')).resolves.toEqual({
+      ok: true,
+      value: 'sk-abc',
+    });
+    (decryptValue as jest.Mock).mockReturnValueOnce('sk\nInjected: 1');
+    await expect(resolveMonitorSecret(db, 'm1', 'KEY')).resolves.toMatchObject({
+      ok: false,
+      message: expect.stringContaining('line break'),
+    });
+  });
+});
+
+describe('secretTransportAllowed', () => {
+  afterEach(() => delete process.env.ALLOW_INTERNAL_TARGETS);
+  it('allows https only, unless internal targets are allowed', () => {
+    expect(secretTransportAllowed('https://api.example.com')).toBe(true);
+    expect(secretTransportAllowed('http://api.example.com')).toBe(false);
+    expect(secretTransportAllowed('http:api.example.com')).toBe(false);
+    expect(secretTransportAllowed('not a url')).toBe(false);
+    process.env.ALLOW_INTERNAL_TARGETS = 'true';
+    expect(secretTransportAllowed('http://ollama.internal:11434')).toBe(true);
   });
 });

@@ -9,6 +9,7 @@ import { SecretPicker } from "./secret-picker";
 import type { FormValues } from "./monitor-form";
 import type { MonitorFormData } from "@/lib/input-sanitizer";
 import { z } from "zod";
+import { FORBIDDEN_KEY_HEADERS } from "@/lib/monitor-validation";
 
 const intInRange = (value: string | undefined, min: number, max: number) =>
   value === undefined || value.trim() === "" || (/^\d+$/.test(value.trim()) && Number(value) >= min && Number(value) <= max);
@@ -35,12 +36,17 @@ export function addAiEndpointIssues(data: AiFormFields, ctx: z.RefinementCtx) {
   }
   const header = data.aiConfig_noKey ? "" : data.aiConfig_keyHeader?.trim();
   if (header && !/^[A-Za-z0-9-]{1,64}$/.test(header)) issue("aiConfig_keyHeader", "Use letters, digits and hyphens only");
+  else if (header && FORBIDDEN_KEY_HEADERS.has(header.toLowerCase())) issue("aiConfig_keyHeader", "This header name is not allowed");
   if ((data.aiConfig_prompt ?? "").length > 2000) issue("aiConfig_prompt", "Prompt must be 2000 characters or less");
   if (!intInRange(data.aiConfig_maxTokens, 1, 512)) issue("aiConfig_maxTokens", "Enter a whole number from 1 to 512");
   if (!intInRange(data.aiConfig_firstTokenTimeoutMs, 500, 60000)) issue("aiConfig_firstTokenTimeoutMs", "Enter a whole number from 500 to 60000");
   if (!intInRange(data.aiConfig_timeoutSeconds, 5, 120)) issue("aiConfig_timeoutSeconds", "Enter a whole number from 5 to 120");
   const total = Number(data.aiConfig_timeoutSeconds || 60);
   if (total > parseInt(data.interval, 10)) issue("aiConfig_timeoutSeconds", "The total time limit cannot exceed the check interval");
+  const firstToken = data.aiConfig_firstTokenTimeoutMs?.trim();
+  if (firstToken && /^\d+$/.test(firstToken) && Number(firstToken) > total * 1000) {
+    issue("aiConfig_firstTokenTimeoutMs", "The first token limit cannot exceed the total time limit");
+  }
 }
 
 export const AI_ENDPOINT_DEFAULT_URL = "https://api.openai.com/v1/chat/completions";
@@ -82,21 +88,42 @@ export function AiEndpointFields({ form, projectId, locationCount }: AiEndpointF
   return (
     <div className="space-y-4" data-testid="ai-endpoint-fields">
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <FormField
-          control={form.control}
-          name="aiConfig_secretKey"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>API key secret</FormLabel>
-              {noKey ? (
-                <p className="text-sm text-muted-foreground">No key is sent.</p>
-              ) : (
-                <SecretPicker projectId={projectId} value={field.value} onChange={field.onChange} testId="ai-secret" label="API key secret" />
-              )}
-              <FormMessage />
-            </FormItem>
-          )}
-        />
+        <div className="space-y-2">
+          <FormField
+            control={form.control}
+            name="aiConfig_secretKey"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>API key secret</FormLabel>
+                {noKey ? (
+                  <p className="text-sm text-muted-foreground">No key is sent.</p>
+                ) : (
+                  <SecretPicker projectId={projectId} value={field.value} onChange={field.onChange} testId="ai-secret" label="API key secret" />
+                )}
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          <FormField
+            control={form.control}
+            name="aiConfig_noKey"
+            render={({ field }) => (
+              <FormItem className="flex items-center gap-2 space-y-0">
+                <FormControl>
+                  <Checkbox
+                    id="ai-no-key"
+                    checked={field.value === true}
+                    onCheckedChange={(checked) => field.onChange(checked === true)}
+                    data-testid="ai-no-key"
+                  />
+                </FormControl>
+                <FormLabel htmlFor="ai-no-key" className="font-normal">
+                  No key (endpoint needs none)
+                </FormLabel>
+              </FormItem>
+            )}
+          />
+        </div>
         <FormField
           control={form.control}
           name="aiConfig_keyHeader"
@@ -113,63 +140,15 @@ export function AiEndpointFields({ form, projectId, locationCount }: AiEndpointF
         />
       </div>
 
-      <FormField
-        control={form.control}
-        name="aiConfig_noKey"
-        render={({ field }) => (
-          <FormItem className="flex items-center gap-2 space-y-0">
-            <FormControl>
-              <Checkbox
-                id="ai-no-key"
-                checked={field.value === true}
-                onCheckedChange={(checked) => field.onChange(checked === true)}
-                data-testid="ai-no-key"
-              />
-            </FormControl>
-            <FormLabel htmlFor="ai-no-key" className="font-normal">
-              No key (endpoint needs none)
-            </FormLabel>
-          </FormItem>
-        )}
-      />
-
-      <FormField
-        control={form.control}
-        name="aiConfig_model"
-        render={({ field }) => (
-          <FormItem>
-            <FormLabel>Model</FormLabel>
-            <FormControl>
-              <Input placeholder="gpt-4o-mini" data-testid="ai-model" {...field} value={field.value ?? ""} />
-            </FormControl>
-            <FormMessage />
-          </FormItem>
-        )}
-      />
-
-      <FormField
-        control={form.control}
-        name="aiConfig_prompt"
-        render={({ field }) => (
-          <FormItem>
-            <FormLabel>Prompt</FormLabel>
-            <FormControl>
-              <Textarea rows={2} placeholder="Reply with the single word OK." data-testid="ai-prompt" {...field} value={field.value ?? ""} />
-            </FormControl>
-            <FormMessage />
-          </FormItem>
-        )}
-      />
-
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <FormField
           control={form.control}
-          name="aiConfig_maxTokens"
+          name="aiConfig_model"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Max tokens</FormLabel>
+              <FormLabel>Model</FormLabel>
               <FormControl>
-                <Input inputMode="numeric" placeholder="16" data-testid="ai-max-tokens" {...field} value={field.value ?? ""} />
+                <Input placeholder="gpt-4o-mini" data-testid="ai-model" {...field} value={field.value ?? ""} />
               </FormControl>
               <FormMessage />
             </FormItem>
@@ -184,6 +163,37 @@ export function AiEndpointFields({ form, projectId, locationCount }: AiEndpointF
               <FormControl>
                 <Input placeholder="Optional, not case sensitive" data-testid="ai-expect-text" {...field} value={field.value ?? ""} />
               </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+      </div>
+
+      <FormField
+        control={form.control}
+        name="aiConfig_prompt"
+        render={({ field }) => (
+          <FormItem>
+            <FormLabel>Prompt</FormLabel>
+            <FormControl>
+              <Textarea rows={3} placeholder="Reply with the single word OK." data-testid="ai-prompt" {...field} value={field.value ?? ""} />
+            </FormControl>
+            <FormMessage />
+          </FormItem>
+        )}
+      />
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <FormField
+          control={form.control}
+          name="aiConfig_maxTokens"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Max tokens</FormLabel>
+              <FormControl>
+                <Input inputMode="numeric" placeholder="16" data-testid="ai-max-tokens" {...field} value={field.value ?? ""} />
+              </FormControl>
+              <p className="text-xs text-muted-foreground">Reasoning models need more, e.g. 256</p>
               <FormMessage />
             </FormItem>
           )}

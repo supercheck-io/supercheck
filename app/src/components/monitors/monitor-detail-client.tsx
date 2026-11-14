@@ -441,7 +441,7 @@ export function MonitorDetailClient({
         return {
           name: format(date, "HH:mm"), // Show only time (HH:MM) for cleaner x-axis
           time: r.responseTimeMs ?? null, // null leaves a gap for failed checks instead of plotting 0 ms
-          firstToken: aiDetails(r)?.firstTokenMs ?? null,
+          firstToken: typeof aiDetails(r)?.firstTokenMs === "number" ? Math.round(aiDetails(r)!.firstTokenMs as number) : null,
           fullDate: format(date, "MMM dd, HH:mm"), // Keep full date for tooltips
           isUp: r.isUp, // Keep status for conditional styling
           status: r.status,
@@ -528,10 +528,7 @@ export function MonitorDetailClient({
   // AI endpoint preset: extra stats from the latest check; a plain HTTP monitor shows none of this
   const aiEndpoint = monitor.config?.aiEndpoint as { model?: string } | undefined;
   const latestAi = aiEndpoint ? aiDetails(latestResult) : undefined;
-  const servedModel =
-    latestAi?.servedModel ??
-    (monitor.config?.aiEndpointState as { lastServedModel?: string } | undefined)?.lastServedModel ??
-    null;
+  const servedModel = latestAi?.servedModel ?? null;
   const aiHost = (() => {
     try {
       return new URL(monitor.target || monitor.url || "").hostname;

@@ -103,7 +103,7 @@ const CustomTooltip = ({ active, payload, label }: TooltipProps) => {
           {typeof data.firstToken === "number" && (
             <div className="flex items-center justify-between">
               <span className="text-muted-foreground">First token:</span>
-              <span className="font-medium">{data.firstToken} ms</span>
+              <span className="font-medium">{Math.round(data.firstToken)} ms</span>
             </div>
           )}
         </div>
