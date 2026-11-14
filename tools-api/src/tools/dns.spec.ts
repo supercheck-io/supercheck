@@ -50,6 +50,13 @@ describe("dns tool", () => {
     expect(await dns(ctxFor("dns"), "down.com")).toMatchObject({ resolves: null, failedQueries: 7 });
   });
 
+  it("counts a malformed resolver answer as failed", async () => {
+    mockFetch({ "doh:odd.com": Response.json({}) });
+    const ctx = ctxFor("dns");
+    expect(await dns(ctx, "odd.com")).toMatchObject({ resolves: null, failedQueries: 7 });
+    expect(ctx.degraded).toBe(true);
+  });
+
   it("caps answers at 50 and data at 512 characters", async () => {
     const many = Array.from({ length: 80 }, (_, i) => ({ name: "x.com.", type: 16, TTL: 1, data: `"${i}${"a".repeat(600)}"` }));
     mockFetch({ "doh:x.com:TXT": Response.json({ Status: 0, Answer: many }) });

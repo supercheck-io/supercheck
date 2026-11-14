@@ -45,12 +45,15 @@ async function query(
       headers: { accept: "application/dns-json" },
     });
     if (!res.ok) return { status: "error", ad: false, records: [] };
-    const body = (await res.json()) as {
-      Status: number;
-      AD?: boolean;
-      Answer?: { name: string; type: number; TTL: number; data: string }[];
-    };
-    const records = (body.Answer ?? [])
+    const body = (await res.json()) as { Status?: unknown; AD?: unknown; Answer?: unknown };
+    // Untrusted shape: a numeric Status and an Answer array (or none), else it counts as failed.
+    if (!body || typeof body.Status !== "number" || (body.Answer !== undefined && !Array.isArray(body.Answer))) {
+      return { status: "error", ad: false, records: [] };
+    }
+    const answers = ((body.Answer as unknown[] | undefined) ?? []).filter(
+      (a): a is { name: unknown; type: number; TTL: unknown; data: unknown } => !!a && typeof a === "object" && typeof (a as { type?: unknown }).type === "number",
+    );
+    const records = answers
       .filter((a) => a.type === RECORD_TYPES[type])
       .slice(0, MAX_ANSWERS)
       .map((a) => ({ name: String(a.name).slice(0, 255), ttl: Number(a.TTL) || 0, data: String(a.data).slice(0, MAX_DATA) }));

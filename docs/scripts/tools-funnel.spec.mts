@@ -56,6 +56,9 @@ test("monitorTarget picks the monitor type and target per tool", () => {
   assert.equal(monitorThisHref("uptime", ""), "https://app.supercheck.io/monitors/create");
   // Too long for the continuation: the form opens without the pre-fill instead of losing it silently later.
   assert.equal(monitorThisHref("uptime", `https://ex.com/${"a".repeat(2000)}`), "https://app.supercheck.io/monitors/create?type=website");
+  // Measured after encoding: 140 non-ASCII characters are short raw but long encoded.
+  assert.equal(monitorThisHref("uptime", `https://ex.com/${"é".repeat(140)}`), "https://app.supercheck.io/monitors/create?type=website");
+  assert.equal(monitorTarget("https", "http://ex.com/")?.url, "https://ex.com/");
 });
 
 test("shareHref only for inputs without a query or userinfo", () => {

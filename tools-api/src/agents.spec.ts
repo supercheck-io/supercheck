@@ -23,6 +23,23 @@ describe("robots.txt matching (RFC 9309)", () => {
     expect(isAllowed(tie, "x", "/a")).toBe(true);
   });
 
+  it("bounds memory: many agents share one rule list, and rules are capped", () => {
+    const agents = Array.from({ length: 2500 }, () => "User-agent: *").join("\n");
+    const rules = Array.from({ length: 6000 }, (_, i) => `Disallow: /p${i}`).join("\n");
+    const g = parseRobots(`${agents}\n${rules}`);
+    expect(g.get("*")).toHaveLength(1);
+    expect(g.get("*")![0]).toHaveLength(5000);
+    expect(g.capped).toBe(true);
+    expect(isAllowed(g, "x", "/p1")).toBe(false);
+  });
+
+  it("combines repeated groups for one agent", () => {
+    const g = parseRobots("User-agent: A\nDisallow: /a\n\nUser-agent: A\nDisallow: /b\n");
+    expect(isAllowed(g, "A", "/a")).toBe(false);
+    expect(isAllowed(g, "A", "/b")).toBe(false);
+    expect(isAllowed(g, "A", "/c")).toBe(true);
+  });
+
   it("supports wildcards, $ anchors, comments, shared groups and empty Disallow", () => {
     const g = parseRobots("# c\nUser-agent: A\nUser-agent: B\nDisallow: /*.pdf$ # pdfs\nDisallow:\n");
     expect(isAllowed(g, "a", "/x.pdf")).toBe(false);
@@ -161,8 +178,9 @@ describe("agents tool", () => {
         ),
     });
     const ctx = ctxFor("agents", undefined, "site.com");
-    await agents(ctx, new URL(`${O}/`));
+    const r = await agents(ctx, new URL(`${O}/`));
     expect(ctx.degraded).toBe(true);
+    expect(check(r, "ai_crawlers")).toMatchObject({ status: "warn", detail: "robots.txt was cut off while reading" });
   });
 
   it("marks truncated robots.txt and keeps hops on the same site", async () => {

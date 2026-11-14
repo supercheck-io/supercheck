@@ -93,6 +93,20 @@ describe("grade rules", () => {
     expect(row({ "content-security-policy": "frame-ancestors https:" }, "framing")?.modifier).toBe(-20);
   });
 
+  it("script-src-elem and script-src-attr override an unsafe script-src fallback", () => {
+    const h = { "content-security-policy": "script-src 'unsafe-inline'; script-src-elem 'self'; script-src-attr 'none'; object-src 'none'" };
+    expect(row(h, "csp")?.modifier).toBe(5);
+  });
+
+  it("a permissive frame-ancestors overrides X-Frame-Options", () => {
+    expect(row({ "content-security-policy": "frame-ancestors *", "x-frame-options": "DENY" }, "framing")?.modifier).toBe(-20);
+  });
+
+  it("HSTS max-age must be decimal digits", () => {
+    for (const v of ["max-age=1e9", "max-age=0x10", "max-age=1.5", "max-age="]) expect(row({ "strict-transport-security": v }, "hsts")?.modifier).toBe(-20);
+    expect(row({ "strict-transport-security": 'max-age="31536000"' }, "hsts")?.modifier).toBe(0);
+  });
+
   it("HSTS max-age=0 counts as off", () => {
     expect(row({ "strict-transport-security": "max-age=0" }, "hsts")).toMatchObject({ modifier: -20, note: "max-age=0 turns HSTS off" });
   });

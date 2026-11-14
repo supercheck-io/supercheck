@@ -26,11 +26,20 @@ interface Rule {
   path: string;
 }
 
-/** Parses robots.txt into groups keyed by lowercase user agent (RFC 9309). */
-export function parseRobots(text: string): Map<string, Rule[]> {
-  const groups = new Map<string, Rule[]>();
+const MAX_RULES = 5_000;
+const MAX_GROUP_AGENTS = 100;
+
+/**
+ * Parses robots.txt into groups keyed by lowercase user agent (RFC 9309). Agents in one group
+ * share one rule list, and repeated groups for an agent are kept as separate lists, so memory
+ * grows with the file, not with agents x rules.
+ */
+export function parseRobots(text: string): Map<string, Rule[][]> & { capped?: boolean } {
+  const groups: Map<string, Rule[][]> & { capped?: boolean } = new Map();
   let agents: string[] = [];
+  let rules: Rule[] = [];
   let inRules = false;
+  let total = 0;
   for (const rawLine of text.split(/\r?\n/)) {
     const line = rawLine.replace(/#.*/, "").trim();
     const colon = line.indexOf(":");
@@ -42,12 +51,23 @@ export function parseRobots(text: string): Map<string, Rule[]> {
         agents = [];
         inRules = false;
       }
+      if (agents.length === 0) rules = [];
+      if (agents.length >= MAX_GROUP_AGENTS) continue;
       const agent = value.toLowerCase();
+      if (agents.includes(agent)) continue;
       agents.push(agent);
-      if (!groups.has(agent)) groups.set(agent, []);
+      const lists = groups.get(agent) ?? [];
+      lists.push(rules);
+      groups.set(agent, lists);
     } else if (key === "allow" || key === "disallow") {
       inRules = true;
-      for (const agent of agents) groups.get(agent)!.push({ allow: key === "allow", path: value });
+      if (agents.length === 0) continue;
+      if (total >= MAX_RULES) {
+        groups.capped = true;
+        continue;
+      }
+      total += 1;
+      rules.push({ allow: key === "allow", path: value });
     }
   }
   return groups;
@@ -64,8 +84,8 @@ function matches(pattern: string, path: string): boolean {
 }
 
 /** RFC 9309: the agent's own group (else `*`), longest match wins, allow wins ties. */
-export function isAllowed(groups: Map<string, Rule[]>, agent: string, path = "/"): boolean {
-  const rules = groups.get(agent.toLowerCase()) ?? groups.get("*") ?? [];
+export function isAllowed(groups: Map<string, Rule[][]>, agent: string, path = "/"): boolean {
+  const rules = (groups.get(agent.toLowerCase()) ?? groups.get("*") ?? []).flat();
   let best: Rule | null = null;
   for (const rule of rules) {
     if (!matches(rule.path, path)) continue;
@@ -81,6 +101,7 @@ interface Fetched {
   type: string | null;
   text: string;
   truncated: boolean;
+  interrupted?: boolean;
   error?: string;
 }
 
@@ -166,12 +187,17 @@ export async function agents(ctx: CheckContext, url: URL) {
   }
 
   // RFC 9309: 4xx means no rules; an unreachable robots.txt (5xx, network error) is unknown, not allow-all.
-  const robotsUnknown = robots.status === null || robots.status >= 500;
-  const groups = robots.status === 200 ? parseRobots(robots.text) : new Map<string, Rule[]>();
+  // A body cut short may have lost a Disallow: don't judge from it.
+  const robotsUnknown = robots.status === null || robots.status >= 500 || robots.interrupted === true;
+  const groups = robots.status === 200 ? parseRobots(robots.text) : new Map<string, Rule[][]>();
   const searchBlocked = AI_SEARCH_AGENTS.filter((agent) => !isAllowed(groups, agent));
   checks.push(
     robotsUnknown
-      ? { id: "ai_crawlers", status: "warn", detail: `robots.txt unreachable (${robots.status ?? robots.error ?? "error"})` }
+      ? {
+          id: "ai_crawlers",
+          status: "warn",
+          detail: robots.interrupted ? "robots.txt was cut off while reading" : `robots.txt unreachable (${robots.status ?? robots.error ?? "error"})`,
+        }
       : {
           id: "ai_crawlers",
           status: searchBlocked.length === 0 ? "pass" : "warn",

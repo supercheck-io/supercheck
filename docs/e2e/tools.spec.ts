@@ -111,6 +111,11 @@ test("a blocked Turnstile script shows the busy state, not a failed human check"
   await form.getByRole("button").click();
   await expect(page.getByTestId("tool-status")).toContainText("busy right now");
   expect(requests).toHaveLength(0);
+  // Connectivity returns: the next submit downloads the script again and the check runs.
+  await page.unroute("https://challenges.cloudflare.com/**");
+  await page.route("https://challenges.cloudflare.com/**", (route) => route.fulfill({ contentType: "text/javascript", body: FAKE_TURNSTILE }));
+  await form.getByRole("button").click();
+  await expect.poll(() => requests.length).toBe(1);
 });
 
 test("target-controlled strings render as text, and og:image loads only on click without a referrer", async ({ page }) => {

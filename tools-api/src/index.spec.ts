@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { originAllowed, parseBody } from "./index";
+import type { Env } from "./env";
 import { call, mockFetch, ORIGIN, testEnv } from "./test-helpers";
 
 afterEach(() => vi.restoreAllMocks());
@@ -74,6 +75,32 @@ describe("body and input", () => {
     expect(await res.json()).toEqual({ error: "invalid_input", reason: "ip_literal" });
     expect(calls.some((c) => c.url.includes("siteverify"))).toBe(false);
     expect((await call(ok("dns", "localhost"))).status).toBe(400);
+  });
+});
+
+describe("body read", () => {
+  it("rejects a foreign origin before reading the body", async () => {
+    const res = await call("x".repeat(5000), { headers: { origin: "https://evil.com" } });
+    expect(res.status).toBe(403);
+  });
+
+  it("times out a body that never finishes", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const { default: worker } = await import("./index");
+    const { env } = await import("cloudflare:workers");
+    const body = new ReadableStream({ start(c) { c.enqueue(new TextEncoder().encode("{")); } });
+    const req = new Request("https://supercheck-tools.x.workers.dev/v1/check", {
+      method: "POST",
+      headers: { origin: "https://supercheck.io", "cf-connecting-ip": "203.0.113.250" },
+      body,
+      // @ts-expect-error workerd needs duplex for a streamed request body
+      duplex: "half",
+    });
+    const pending = worker.fetch(req, { ...(env as unknown as Env), ...testEnv() } as Env);
+    await vi.advanceTimersByTimeAsync(5_100);
+    const res = await pending;
+    vi.useRealTimers();
+    expect(res.status).toBe(408);
   });
 });
 

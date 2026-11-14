@@ -44,20 +44,41 @@ async function getRdap(ctx: CheckContext, url: string): Promise<{ status: number
   const { text, truncated } = await readCapped(res, RDAP_CAP);
   if (truncated) return { status: 200, body: null };
   try {
-    return { status: 200, body: JSON.parse(text) as Rdap };
+    return { status: 200, body: validRdap(JSON.parse(text)) };
   } catch {
     return { status: 200, body: null };
   }
 }
 
+/** Untrusted registry JSON: keep only the shapes we read, or reject it. */
+function validRdap(value: unknown): Rdap | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const v = value as Record<string, unknown>;
+  const list = (x: unknown) => (x === undefined ? [] : Array.isArray(x) ? x.filter((i) => i && typeof i === "object") : null);
+  const events = list(v.events);
+  const entities = list(v.entities);
+  const links = list(v.links);
+  const status = v.status === undefined ? [] : Array.isArray(v.status) ? v.status.filter((s) => typeof s === "string") : null;
+  if (!events || !entities || !links || !status) return null;
+  return {
+    events: events as Rdap["events"],
+    entities: (entities as NonNullable<Rdap["entities"]>).map((e) => ({
+      roles: Array.isArray(e.roles) ? e.roles.filter((r) => typeof r === "string") : [],
+      vcardArray: Array.isArray(e.vcardArray) && Array.isArray(e.vcardArray[1]) ? e.vcardArray : undefined,
+    })),
+    links: links as Rdap["links"],
+    status,
+  };
+}
+
 function expiry(body: Rdap): string | null {
   const date = body.events?.find((e) => e.eventAction === "expiration")?.eventDate;
-  return date && !Number.isNaN(Date.parse(date)) ? new Date(date).toISOString() : null;
+  return typeof date === "string" && !Number.isNaN(Date.parse(date)) ? new Date(date).toISOString() : null;
 }
 
 function registrar(body: Rdap): string | null {
   const entity = body.entities?.find((e) => e.roles?.includes("registrar"));
-  const fn = entity?.vcardArray?.[1]?.find((field) => field[0] === "fn")?.[3];
+  const fn = entity?.vcardArray?.[1]?.find((field) => Array.isArray(field) && field[0] === "fn")?.[3];
   return typeof fn === "string" ? fn.slice(0, 200) : null;
 }
 
@@ -88,6 +109,8 @@ export async function domain(ctx: CheckContext, host: string) {
       try {
         await ctx.vetHost(policy.value.hostname, "blocked");
         const second = await getRdap(ctx, policy.value.toString());
+        // A failed referral is not "no expiry published": retry later, never cache it.
+        if (!second.body) ctx.degraded = true;
         if (second.body) {
           expires = expiry(second.body);
           registrarName ??= registrar(second.body);

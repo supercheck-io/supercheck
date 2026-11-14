@@ -11,8 +11,9 @@ const DEVICE_PATH = /^\/(?:device(?:\?code=[A-Za-z0-9-]{1,16})?|org-admin|switch
  * percent-encoded: only what encodeURIComponent leaves as-is (unreserved plus !*'()) and `%`,
  * so the path can't gain a parameter, a fragment or another route.
  */
+// `+` is a space as URLSearchParams writes it (the create wizard rewrites its own query).
 const MONITOR_CREATE_PATH =
-  /^\/monitors\/create\?type=(?:website|http_request)&url=[A-Za-z0-9%._~!*'()-]{1,6200}(?:&name=[A-Za-z0-9%._~!*'()-]{1,300})?(?:&method=(?:GET|HEAD))?$/;
+  /^\/monitors\/create\?type=(?:website|http_request)(?:&url=[A-Za-z0-9%._~!*'()+-]{1,6200}(?:&name=[A-Za-z0-9%._~!*'()+-]{1,300})?(?:&method=(?:GET|HEAD))?)?$/;
 const MAX_MONITOR_CREATE_PATH = 6600;
 
 export function sanitizeNextPath(raw: string | null | undefined): string | null {

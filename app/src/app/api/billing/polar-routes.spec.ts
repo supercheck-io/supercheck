@@ -152,6 +152,9 @@ describe("Polar billing routes", () => {
     expect(mockCheckoutCreate.mock.calls.at(-1)?.[0].success_url).toBe(
       `https://app.supercheck.io/billing/success?checkout_id={CHECKOUT_ID}&organization_id=org_1&next=${encodeURIComponent(next)}`,
     );
+    expect(mockCheckoutCreate.mock.calls.at(-1)?.[0].return_url).toBe(
+      `https://app.supercheck.io/subscribe?next=${encodeURIComponent(next)}`,
+    );
     for (const bad of ["https://evil.example/", "//evil.example", "/dashboard"]) {
       expect((await checkoutPost(request("/api/billing/checkout", { plan: "plus", next: bad }))).status).toBe(200);
       expect(mockCheckoutCreate.mock.calls.at(-1)?.[0].success_url).toBe(

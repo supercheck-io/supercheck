@@ -77,6 +77,25 @@ describe("https tool", () => {
     expect(await https(ctx, new URL("https://site.com/"))).toMatchObject({ certificateValid: true, redirectsToHttps: false, preload: "error" });
   });
 
+  it("judges the checked host's certificate and HSTS, not a redirect target's", async () => {
+    mockFetch({
+      "https://site.com/": new Response(null, { status: 301, headers: { location: "https://www.site.com/" } }),
+      "https://www.site.com/": () => Promise.reject(new TypeError("TLS handshake failed")),
+      "http://site.com/": redirect("https://site.com/"),
+      "https://hstspreload.org": Response.json({ status: "unknown" }),
+    });
+    expect(await run()).toMatchObject({ certificateValid: true, certificateError: null, hsts: null });
+    vi.restoreAllMocks();
+    mockFetch({
+      "https://site.com/": new Response(null, { status: 301, headers: { location: "https://www.site.com/" } }),
+      "https://www.site.com/": new Response("ok", { headers: HSTS }),
+      "http://site.com/": redirect("https://site.com/"),
+      "https://hstspreload.org": Response.json({ status: "unknown" }),
+    });
+    // www's HSTS does not cover site.com
+    expect(await run()).toMatchObject({ hsts: null, ok: false });
+  });
+
   it("reads unknown preload states as unknown", async () => {
     mockFetch({ "https://site.com/": new Response("ok"), "http://site.com/": new Response("ok"), "https://hstspreload.org": Response.json({ status: "weird" }) });
     expect((await run()).preload).toBe("unknown");

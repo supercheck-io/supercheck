@@ -62,7 +62,8 @@ function scriptSources(policy: Policy): string[] | null {
 /** script-src-elem and script-src-attr override script-src for elements and inline handlers. */
 function unsafeScripts(policy: Policy): boolean {
   const base = scriptSources(policy);
-  return [base, policy.get("script-src-elem") ?? base, policy.get("script-src-attr") ?? base].some(unsafeScript);
+  // Elements and inline handlers use their own directive when set; script-src is only the fallback.
+  return [policy.get("script-src-elem") ?? base, policy.get("script-src-attr") ?? base].some(unsafeScript);
 }
 
 function unsafeScript(sources: string[] | null): boolean {
@@ -126,11 +127,11 @@ export function grade(headers: Record<string, string | undefined>, finalUrlIsHtt
 
   const xfo = headers["x-frame-options"]?.trim().toLowerCase();
   // frame-ancestors * (or a bare scheme) allows any site to frame the page, so it protects nothing.
-  const frameAncestors = policies.some((p) => {
-    const sources = p.get("frame-ancestors");
-    return sources !== undefined && !sources.some((s) => s === "*" || /^[a-z][a-z0-9+.-]*:$/.test(s));
-  });
+  // An enforced frame-ancestors makes browsers ignore X-Frame-Options, even when it is permissive.
+  const withAncestors = policies.filter((p) => p.has("frame-ancestors"));
+  const frameAncestors = withAncestors.some((p) => !p.get("frame-ancestors")!.some((s) => s === "*" || /^[a-z][a-z0-9+.-]*:$/.test(s)));
   if (frameAncestors) add("framing", "pass", 5, headers["x-frame-options"], "CSP frame-ancestors is set");
+  else if (withAncestors.length > 0) add("framing", "fail", -20, headers["content-security-policy"], "CSP frame-ancestors allows any site (X-Frame-Options is then ignored)");
   else if (xfo === "deny" || xfo === "sameorigin") add("framing", "pass", 0, headers["x-frame-options"], "X-Frame-Options is set");
   else add("framing", "fail", -20, headers["x-frame-options"], "No X-Frame-Options or CSP frame-ancestors");
 
@@ -172,9 +173,10 @@ export function parseHsts(value: string | undefined): Hsts | null {
   if (!value) return null;
   // Repeated headers are joined with ", "; the first one is the one browsers use.
   const directives = value.split(",")[0].split(";").map((d) => d.trim().toLowerCase());
-  const maxAge = directives.find((d) => d.startsWith("max-age="));
-  const seconds = maxAge ? Number(maxAge.slice(8).replace(/"/g, "")) : NaN;
-  if (!Number.isInteger(seconds) || seconds < 0) return null;
+  // RFC 6797: max-age is decimal digits, optionally quoted (rejects 1e9, 0x10, -1).
+  const maxAge = directives.find((d) => d.startsWith("max-age="))?.slice(8).match(/^"?(\d{1,12})"?$/);
+  if (!maxAge) return null;
+  const seconds = Number(maxAge[1]);
   return {
     maxAge: seconds,
     includeSubDomains: directives.includes("includesubdomains"),

@@ -132,8 +132,8 @@ export interface Hop {
 }
 
 export type Walk =
-  | { ok: true; res: Response; url: URL; hops: Hop[]; timeMs: number }
-  | { ok: false; error: string; url: URL; hops: Hop[]; timeMs: number };
+  | { ok: true; res: Response; url: URL; hops: Hop[]; timeMs: number; first: Headers }
+  | { ok: false; error: string; url: URL; hops: Hop[]; timeMs: number; first?: Headers };
 
 /** Rule 8: follow redirects by hand, re-vetting every hop. */
 export async function walk(
@@ -143,6 +143,8 @@ export async function walk(
 ): Promise<Walk> {
   let url = start;
   const hops: Hop[] = [];
+  // Headers of the checked host's own response, before any redirect.
+  let first: Headers | undefined;
   for (;;) {
     await ctx.vetHost(url.hostname, hops.length === 0 ? "blocked" : "blocked_redirect");
     let res: Response;
@@ -162,18 +164,19 @@ export async function walk(
       }
       // A failure is never cached: a fixed site must show as fixed on the next check.
       ctx.degraded = true;
-      return { ok: false, error: fetchErrorClass(error), url, hops, timeMs: Date.now() - t0 };
+      return { ok: false, error: fetchErrorClass(error), url, hops, timeMs: Date.now() - t0, first };
     }
     const timeMs = Date.now() - t0;
+    first ??= res.headers;
     const location = res.headers.get("location");
     if (res.status < 300 || res.status >= 400 || !location) {
-      return { ok: true, res, url, hops, timeMs };
+      return { ok: true, res, url, hops, timeMs, first };
     }
     await res.body?.cancel();
     hops.push({ host: url.hostname, status: res.status });
     if (hops.length > opts.maxHops) {
       ctx.degraded = true;
-      return { ok: false, error: "too_many_redirects", url, hops, timeMs };
+      return { ok: false, error: "too_many_redirects", url, hops, timeMs, first };
     }
     let next: string;
     try {
@@ -204,9 +207,16 @@ export function fetchErrorClass(error: unknown): string {
 export async function readCapped(
   res: { body: ReadableStream<Uint8Array> | null },
   cap: number,
+  timeoutMs?: number,
 ): Promise<{ text: string; truncated: boolean; interrupted?: boolean }> {
   if (!res.body) return { text: "", truncated: false };
   const reader = res.body.getReader();
+  // Cancelling the reader makes a pending read() settle, which ends the loop below.
+  let timedOut = false;
+  const timer = timeoutMs === undefined ? undefined : setTimeout(() => {
+    timedOut = true;
+    void reader.cancel().catch(() => undefined);
+  }, timeoutMs);
   const chunks: Uint8Array[] = [];
   let size = 0;
   let truncated = false;
@@ -226,6 +236,12 @@ export async function readCapped(
       size += value.byteLength;
     }
   } catch {
+    interrupted = true;
+    truncated = true;
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
+  if (timedOut) {
     interrupted = true;
     truncated = true;
   }

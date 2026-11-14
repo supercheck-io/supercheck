@@ -70,6 +70,12 @@ describe("sanitizeNextPath: pre-filled monitor form from the free tools", () => 
     expect(sanitizeNextPath(path)).toBe(path);
   });
 
+  it("accepts + (a space as URLSearchParams writes it) and the type-only form", () => {
+    expect(sanitizeNextPath("/monitors/create?type=website&url=https%3A%2F%2Fex.com%2F&name=My+site")).not.toBeNull();
+    expect(sanitizeNextPath("/monitors/create?type=website")).toBe("/monitors/create?type=website");
+    expect(sanitizeNextPath("/monitors/create?type=website&name=x")).toBeNull();
+  });
+
   it("accepts http_request with a HEAD method", () => {
     const path = `/monitors/create?type=http_request&url=${encodeURIComponent("https://api.ex.com/h")}&name=api.ex.com&method=HEAD`;
     expect(sanitizeNextPath(path)).toBe(path);

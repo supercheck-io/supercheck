@@ -23,10 +23,13 @@ import { withNextPath } from "@/lib/auth/safe-next-path";
 // Fail soft: a continuation too long for a provider URL is dropped rather than failing checkout.
 const MAX_SUCCESS_URL = 2000;
 
+function withinBudget(withNext: string, base: string): string {
+  return withNext.length <= MAX_SUCCESS_URL ? withNext : base;
+}
+
 function successUrl(appUrl: string, organizationId: string, next: string | undefined): string {
   const base = `${appUrl}/billing/success?checkout_id={CHECKOUT_ID}&organization_id=${encodeURIComponent(organizationId)}`;
-  const withNext = withNextPath(base, next);
-  return withNext.length <= MAX_SUCCESS_URL ? withNext : base;
+  return withinBudget(withNextPath(base, next), base);
 }
 
 const checkoutSchema = z.object({
@@ -188,7 +191,8 @@ export async function POST(request: NextRequest) {
       customer_id: org.polarCustomerId,
       products: [productId],
       success_url: successUrl(appUrl, organizationId, parsed.data.next),
-      return_url: `${appUrl}/subscribe`,
+      // Going back from checkout keeps the continuation too, under the same length budget.
+      return_url: withinBudget(withNextPath(`${appUrl}/subscribe`, parsed.data.next), `${appUrl}/subscribe`),
       metadata: { referenceId: organizationId },
       allow_discount_codes: true,
       // Pro bills seats as total members (the included ones are free); start at no less than in use.

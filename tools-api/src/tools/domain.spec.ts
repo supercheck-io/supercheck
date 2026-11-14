@@ -88,6 +88,29 @@ describe("domain tool", () => {
     expect(calls.some((c) => c.url === href)).toBe(false);
   });
 
+  it("treats malformed RDAP structures as an RDAP error, not a crash", async () => {
+    mockFetch({ "https://data.iana.org": BOOT, "https://rdap.verisign.com/com/v1/domain/example.com": Response.json({ events: {} }) });
+    expect(await domain(ctxFor("domain"), "example.com")).toMatchObject({ reason: "rdap_error" });
+    vi.restoreAllMocks();
+    resetBootstrap();
+    mockFetch({
+      "https://data.iana.org": BOOT,
+      "https://rdap.verisign.com/com/v1/domain/example.com": Response.json({ events: [{ eventAction: "expiration", eventDate: 5 }], entities: [{ roles: "registrar" }], status: ["ok", 3] }),
+    });
+    expect(await domain(ctxFor("domain"), "example.com")).toMatchObject({ hasData: false, statuses: ["ok"], registrar: null });
+  });
+
+  it("marks a failed registrar referral as degraded", async () => {
+    mockFetch({
+      "https://data.iana.org": BOOT,
+      "https://rdap.verisign.com/com/v1/domain/example.com": Response.json({ links: [{ rel: "related", href: "https://rdap.registrar.com/x" }] }),
+      "https://rdap.registrar.com/x": new Response("", { status: 503 }),
+    });
+    const ctx = ctxFor("domain");
+    expect(await domain(ctx, "example.com")).toMatchObject({ reason: "no_expiry_published" });
+    expect(ctx.degraded).toBe(true);
+  });
+
   it("reports rdap_error on a bad body and throws when the bootstrap is down", async () => {
     mockFetch({ "https://data.iana.org": BOOT, "https://rdap.verisign.com/com/v1/domain/example.com": new Response("{nope") });
     expect(await domain(ctxFor("domain"), "example.com")).toMatchObject({ reason: "rdap_error" });

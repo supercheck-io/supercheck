@@ -371,6 +371,8 @@ function hostOf(url: string): string | null {
 function Domain({ r }: { r: R }) {
   if (r.hasData !== true) {
     const reason = str(r.reason);
+    if (reason === "rdap_error")
+      return <Verdict tone="warn" title="Lookup failed" sub={`${str(r.domain)} · the registry didn't answer. Try again in a minute.`} />;
     const title = reason === "no_rdap_service" ? `Not available for .${str(r.tld)}` : reason === "not_found" ? "Domain not found" : "Expiry date not available";
     const sub =
       reason === "no_rdap_service"

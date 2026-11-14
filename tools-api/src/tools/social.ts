@@ -24,6 +24,17 @@ export interface SocialTags {
   interrupted?: boolean;
 }
 
+const NAMED: Record<string, string> = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: "\u00a0" };
+
+/** HTMLRewriter hands attribute values over as written; decode character references once. */
+export function decodeEntities(value: string): string {
+  return value.replace(/&(#x[0-9a-f]{1,6}|#\d{1,7}|[a-z]{2,8});/gi, (m, ref: string) => {
+    if (ref[0] !== "#") return NAMED[ref.toLowerCase()] ?? m;
+    const code = ref[1] === "x" || ref[1] === "X" ? parseInt(ref.slice(2), 16) : parseInt(ref.slice(1), 10);
+    return code > 0 && code <= 0x10ffff && (code < 0xd800 || code > 0xdfff) ? String.fromCodePoint(code) : m;
+  });
+}
+
 /** Extracts head metadata, stopping at </head> or after 64 KB of HTML. */
 export async function extractHead(res: Response): Promise<SocialTags> {
   const tags: Record<string, string> = {};
@@ -37,8 +48,9 @@ export async function extractHead(res: Response): Promise<SocialTags> {
       element(el) {
         if (done) return;
         const key = (el.getAttribute("property") ?? el.getAttribute("name") ?? "").toLowerCase();
-        const content = el.getAttribute("content");
-        if (content === null) return;
+        const raw = el.getAttribute("content");
+        if (raw === null) return;
+        const content = decodeEntities(raw);
         // Image URLs keep their full length (signed CDN URLs); display text is capped.
         const cap = key === "og:image" || key === "twitter:image" ? URL_CAP : TEXT_CAP;
         if ((SOCIAL_TAGS as readonly string[]).includes(key) && !(key in tags)) tags[key] = content.slice(0, cap);
@@ -162,6 +174,8 @@ async function checkImage(ctx: CheckContext, raw: string, base: URL) {
     }
     if (!r.ok) return { url: shown, reachable: false, reason: r.error, loadable };
     await r.res.body?.cancel();
+    // A browser blocks an https page's image that ends on http, redirects included.
+    const loadableAfterRedirects = loadable && r.url.protocol === "https:";
     const type = r.res.headers.get("content-type")?.slice(0, 100) ?? null;
     // After the ranged GET fallback, content-length is 1: the full size is after the "/" in content-range.
     const range = r.res.headers.get("content-range")?.match(/\/(\d+)$/);
@@ -175,7 +189,7 @@ async function checkImage(ctx: CheckContext, raw: string, base: URL) {
       reason: !okStatus ? `http_${r.res.status}` : isImage ? null : "not_an_image",
       contentType: type,
       bytes: length,
-      loadable,
+      loadable: loadableAfterRedirects,
     };
   } catch (error) {
     if (!(error instanceof CheckStop)) throw error;

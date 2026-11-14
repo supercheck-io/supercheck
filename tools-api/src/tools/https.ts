@@ -11,21 +11,19 @@ export async function https(ctx: CheckContext, url: URL) {
   const site = registrable(host);
 
   const secure = await walk(ctx, new URL(`https://${host}/`), { maxHops: 3 });
-  let certificateValid = secure.ok;
-  let certificateError: string | null = secure.ok ? null : secure.error;
-  // Cloudflare answers a failed origin handshake with a 525/526 page instead of throwing.
-  if (secure.ok && (secure.res.status === 525 || secure.res.status === 526)) {
+  // Judge the checked host only: any response from it proves its handshake, whatever a
+  // later redirect target does. Cloudflare answers a failed origin handshake with 525/526.
+  const first = secure.first;
+  const firstStatus = secure.ok && secure.hops.length === 0 ? secure.res.status : secure.hops[0]?.status;
+  let certificateValid = first !== undefined;
+  let certificateError: string | null = certificateValid ? null : secure.ok ? null : secure.error;
+  if (firstStatus === 525 || firstStatus === 526) {
     certificateValid = false;
     certificateError = "tls_error";
     ctx.degraded = true;
   }
-  // A redirect loop still proved the handshake worked.
-  if (!secure.ok && secure.error === "too_many_redirects") {
-    certificateValid = true;
-    certificateError = null;
-  }
-  const hstsHeader =
-    secure.ok && secure.url.protocol === "https:" ? keptHeaders(secure.res.headers)["strict-transport-security"] : undefined;
+  // HSTS applies to the host that sent it; a redirect target's policy doesn't cover this one.
+  const hstsHeader = first ? keptHeaders(first)["strict-transport-security"] : undefined;
   if (secure.ok) await secure.res.body?.cancel();
 
   // The http leg may run out of time; report it as not redirecting instead of losing the check.

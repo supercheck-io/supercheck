@@ -13,6 +13,8 @@ import { https } from "./tools/https";
 import { social } from "./tools/social";
 
 const BODY_CAP = 4096;
+// The page sends a few hundred bytes at once; anything slower is not our page.
+const BODY_TIMEOUT_MS = 5_000;
 const FIELD_CAP = 2048;
 const DOMAIN_TOOLS: Tool[] = ["dns", "domain"];
 
@@ -111,23 +113,15 @@ export default {
     }
     if (request.method !== "POST") return json(405, { error: "method_not_allowed" }, { ...cors, allow: "POST, OPTIONS" });
 
-    const declared = Number(request.headers.get("content-length") ?? "0");
-    if (declared > BODY_CAP) return json(413, { error: "too_large" }, cors);
-    const raw = await readCapped(request, BODY_CAP);
-    if (raw.truncated) return json(413, { error: "too_large" }, cors);
-    const parsed = parseBody(raw.text, enabled);
-    if (!parsed.ok) {
-      if (parsed.reason === "tool_disabled") return json(503, { error: "disabled" }, cors);
-      return json(400, { error: "invalid_input", reason: parsed.reason }, cors);
-    }
-    const req = parsed.value;
-    const log: CheckLog = { tool: req.tool, method: req.method, outcome: "pending", colo: colo(request) };
+    const log: CheckLog = { tool: "unknown", outcome: "pending", colo: colo(request) };
     const reply = (status: number, body: unknown, extra: HeadersInit = {}) => {
       log.durationMs = Date.now() - started;
       logCheck(log);
       return json(status, body, { ...cors, ...extra });
     };
 
+    // Header-only gates first, so a slow or never-ending body can't hold an invocation
+    // before the abuse controls run.
     if (!originAllowed(origin, env)) {
       log.outcome = "origin_not_allowed";
       return reply(403, { error: "origin_not_allowed" });
@@ -150,6 +144,30 @@ export default {
         return reply(429, { error: "rate_limited", retryAfter }, { "retry-after": String(retryAfter) });
       }
     }
+
+    const declared = Number(request.headers.get("content-length") ?? "0");
+    if (declared > BODY_CAP) {
+      log.outcome = "too_large";
+      return reply(413, { error: "too_large" });
+    }
+    const raw = await readCapped(request, BODY_CAP, BODY_TIMEOUT_MS);
+    if (raw.interrupted) {
+      log.outcome = "body_timeout";
+      return reply(408, { error: "request_timeout" });
+    }
+    if (raw.truncated) {
+      log.outcome = "too_large";
+      return reply(413, { error: "too_large" });
+    }
+    const parsed = parseBody(raw.text, enabled);
+    if (!parsed.ok) {
+      log.outcome = parsed.reason;
+      if (parsed.reason === "tool_disabled") return reply(503, { error: "disabled" });
+      return reply(400, { error: "invalid_input", reason: parsed.reason });
+    }
+    const req = parsed.value;
+    log.tool = req.tool;
+    log.method = req.method;
 
     let target: URL | string;
     let site: string;

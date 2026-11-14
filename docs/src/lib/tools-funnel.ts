@@ -73,6 +73,8 @@ export function monitorTarget(tool: ToolId, input: string, method: "GET" | "HEAD
   url.hash = "";
   url.search = "";
   const domainOnly = tool === "dns" || tool === "domain";
+  // The HTTPS tool sells certificate expiry alerts: always monitor the https endpoint.
+  if (tool === "https") url.protocol = "https:";
   const target = domainOnly ? `https://${url.hostname}/` : url.toString();
   return {
     type: tool === "api" ? "http_request" : "website",
@@ -82,8 +84,11 @@ export function monitorTarget(tool: ToolId, input: string, method: "GET" | "HEAD
   };
 }
 
-/** Above this the app drops the continuation (its success_url budget), so link the form without it. */
-const MAX_FORM_PATH = 1500;
+/**
+ * Budget for the form path once encoded as `next` (the app keeps the checkout URL under 2000
+ * characters). Over it, link the type-only form, which the app also accepts as a continuation.
+ */
+const MAX_ENCODED_NEXT = 1800;
 
 /**
  * Link to the pre-filled create form in the app. Signed-in users land on it directly; others are
@@ -96,7 +101,7 @@ export function monitorThisHref(tool: ToolId, input: string, method: "GET" | "HE
   const path =
     `/monitors/create?type=${t.type}&url=${encodeURIComponent(t.url)}&name=${encodeURIComponent(t.name)}` +
     (t.method ? `&method=${t.method}` : "");
-  return `${CLOUD_APP_URL}${path.length <= MAX_FORM_PATH ? path : `/monitors/create?type=${t.type}`}`;
+  return `${CLOUD_APP_URL}${encodeURIComponent(path).length <= MAX_ENCODED_NEXT ? path : `/monitors/create?type=${t.type}`}`;
 }
 
 /** Share links only for inputs without a query string (queries can hold tokens) or userinfo. */

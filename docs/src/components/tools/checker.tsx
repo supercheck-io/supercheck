@@ -41,7 +41,11 @@ function loadTurnstile(): Promise<Turnstile> {
       document.head.appendChild(script);
     }
     script.addEventListener("load", () => (window.turnstile ? resolve(window.turnstile) : reject(new Error("turnstile"))));
-    script.addEventListener("error", () => reject(new Error("turnstile")));
+    script.addEventListener("error", () => {
+      // Drop the failed element so a later attempt downloads the script again.
+      script?.remove();
+      reject(new Error("turnstile"));
+    });
   });
 }
 
@@ -77,12 +81,13 @@ export function Checker({ tool, slug, input, placeholder, submitLabel, ctaTitle,
     if (shared && inputEl.current) inputEl.current.value = shared.slice(0, 2048);
   }, [input]);
 
-  useEffect(() => {
-    if (!configured) return;
-    let cancelled = false;
-    loadTurnstile()
-      .then((ts) => {
-        if (cancelled || !widgetEl.current || widgetId.current) return;
+  // Loads the script and renders the widget once; safe to call again after a failed download.
+  const ensureWidget = useCallback(async (): Promise<boolean> => {
+    if (widgetId.current) return true;
+    try {
+      const ts = await loadTurnstile();
+      if (!widgetEl.current) return false;
+      if (!widgetId.current) {
         widgetId.current = ts.render(widgetEl.current, {
           sitekey: TOOLS_SITE_KEY,
           action: tool,
@@ -94,19 +99,28 @@ export function Checker({ tool, slug, input, placeholder, submitLabel, ctaTitle,
           "timeout-callback": () => pending.current?.(null),
           "unsupported-callback": () => pending.current?.(null),
         });
-      })
-      .catch(() => undefined);
+      }
+      return true;
+    } catch {
+      return false;
+    }
+  }, [tool]);
+
+  useEffect(() => {
+    if (!configured) return;
+    void ensureWidget();
     return () => {
-      cancelled = true;
       if (widgetId.current) window.turnstile?.remove(widgetId.current);
       widgetId.current = null;
     };
-  }, [configured, tool]);
+  }, [configured, ensureWidget]);
 
   // "unavailable": the Turnstile script never loaded (blocked or offline), shown as busy, not as a failed human check.
   const getToken = useCallback(
-    () =>
-      new Promise<string | null | "unavailable">((resolve) => {
+    async () => {
+      // Retry the download here, so checks recover when the connection comes back.
+      if (!(await ensureWidget())) return "unavailable" as const;
+      return new Promise<string | null | "unavailable">((resolve) => {
         const ts = window.turnstile;
         if (!ts || !widgetId.current) return resolve("unavailable");
         // Never leave the button stuck on "Checking…" if no callback fires.
@@ -117,8 +131,9 @@ export function Checker({ tool, slug, input, placeholder, submitLabel, ctaTitle,
           resolve(token);
         };
         ts.execute(widgetId.current);
-      }),
-    [],
+      });
+    },
+    [ensureWidget],
   );
 
   const run = useCallback(

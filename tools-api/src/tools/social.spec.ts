@@ -85,6 +85,25 @@ describe("social tool", () => {
     expect(r.image).toMatchObject({ reachable: false, reason: "timeout" });
   });
 
+  it("decodes character references in tag values", async () => {
+    const { calls } = mockFetch({
+      "https://site.com/": page(`<meta property="og:title" content="A &amp; B &#8212; C"><meta property="og:image" content="/i.png?w=1&amp;sig=abc">`),
+      "https://site.com/i.png": new Response(null, { headers: { "content-type": "image/png" } }),
+    });
+    const r = await run(ctxFor("social"), new URL("https://site.com/"));
+    expect(r.tags?.["og:title"]).toBe("A & B \u2014 C");
+    expect(calls.some((c) => c.url === "https://site.com/i.png?w=1&sig=abc")).toBe(true);
+  });
+
+  it("marks an image that redirects from https to http as not loadable", async () => {
+    mockFetch({
+      "https://site.com/": page(`<meta property="og:image" content="https://cdn.site.com/i.png">`),
+      "https://cdn.site.com/i.png": redirect("http://cdn.site.com/i.png"),
+      "http://cdn.site.com/i.png": new Response(null, { headers: { "content-type": "image/png" } }),
+    });
+    expect((await run(ctxFor("social"), new URL("https://site.com/"))).image).toMatchObject({ reachable: true, loadable: false });
+  });
+
   it("flags a non-image content type", async () => {
     mockFetch({
       "https://site.com/": page(`<meta property="og:image" content="https://site.com/i">`),
