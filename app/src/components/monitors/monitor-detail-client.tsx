@@ -1029,19 +1029,19 @@ export function MonitorDetailClient({
             {aiEndpoint && (
               <MetricGroup title="AI endpoint">
                 <MetricStat
-                  icon={<Zap className="h-4 w-4 text-sky-500" />}
+                  icon={<Zap className="h-4 w-4 text-muted-foreground" />}
                   label="First token"
                   testId="ai-stat-first-token"
                   value={typeof latestAi?.firstTokenMs === "number" ? formatResponseTime(latestAi.firstTokenMs) : null}
                 />
                 <MetricStat
-                  icon={<Activity className="h-4 w-4 text-blue-500" />}
+                  icon={<Activity className="h-4 w-4 text-muted-foreground" />}
                   label="Tokens per call"
                   testId="ai-stat-tokens"
                   value={naToNull(formatTokens(latestAi))}
                 />
                 <MetricStat
-                  icon={<ChartNoAxesCombined className="h-4 w-4 text-orange-500" />}
+                  icon={<ChartNoAxesCombined className="h-4 w-4 text-muted-foreground" />}
                   label="Served model"
                   testId="ai-stat-served-model"
                   value={servedModel}

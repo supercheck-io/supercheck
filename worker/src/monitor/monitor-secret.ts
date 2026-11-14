@@ -2,6 +2,7 @@ import { and, eq, or } from 'drizzle-orm';
 import type { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import * as schema from '../db/schema';
 import { decryptValue } from '../common/services/variable-resolver.service';
+import { liveMonitor } from '../db/deletion-visibility';
 
 export type MonitorSecretResult =
   { ok: true; value: string } | { ok: false; message: string };
@@ -28,6 +29,8 @@ export async function resolveMonitorSecret(
     .where(
       and(
         eq(schema.monitors.id, monitorId),
+        // A monitor being deleted never gets its secret.
+        liveMonitor(),
         eq(schema.projectVariables.key, key),
         // Same rule as the variable resolver
         or(
