@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState, useMemo, useCallback } from "react";
 import { Spinner } from "@/components/ui/spinner";
+import { NewIncidentAction } from "@/components/sre/incidents/new-incident-action";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { deleteMonitor } from "@/actions/delete-monitor";
 import {
@@ -952,6 +953,8 @@ export function MonitorDetailClient({
                     )}
                     {monitor.status === "paused" ? "Resume" : "Pause"}
                   </Button>
+
+                  <NewIncidentAction variant="detail" defaults={{ monitorId: monitor.id }} />
 
                   <Button
                     variant="outline"

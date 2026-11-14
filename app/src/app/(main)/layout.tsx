@@ -91,6 +91,7 @@ export default async function MainLayout({
     canCreateCliTokens: false,
     canCreateSreServices: false,
     canConfigureSreConnectors: false,
+    canDeclareIncidents: false,
   };
   const initialIsSelfHosted = isSelfHosted();
   let showSpendingCap = false;
@@ -161,6 +162,7 @@ export default async function MainLayout({
           canCreateCliTokens: checkPermissionWithContext("apiKey", "create", permissionContext),
           canCreateSreServices: checkPermissionWithContext("sre_service", "create", permissionContext),
           canConfigureSreConnectors: checkPermissionWithContext("sre_connector", "configure", permissionContext),
+          canDeclareIncidents: checkPermissionWithContext("sre_incident", "create", permissionContext),
         };
       }
 
