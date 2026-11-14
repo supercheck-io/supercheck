@@ -52,27 +52,45 @@ describe('evaluateMcpCycle', () => {
     }),
   } as unknown as PostgresJsDatabase<typeof schema>;
   const state = () => config?.mcpState as McpMonitorState;
+  const times = new Map<string, number>();
+  /** Each new cycle key is one second later than the previous new one; a repeated key keeps its time. */
+  const at = (key: string, override?: number) =>
+    new Date(
+      1_800_000_000_000 +
+        (override ??
+          times.get(key) ??
+          times.set(key, (times.size + 1) * 1000).get(key)!),
+    );
   const evaluate = (
     cycleKey: string,
-    ups: Parameters<typeof evaluateMcpCycle>[3],
-  ) => evaluateMcpCycle(db, 'm1', cycleKey, ups);
+    ups: Parameters<typeof evaluateMcpCycle>[4],
+    overrideMs?: number,
+  ) => evaluateMcpCycle(db, 'm1', cycleKey, at(cycleKey, overrideMs), ups);
   const kinds = () => dispatch.mock.calls.map((c) => [c[1], c[3]]);
 
   beforeEach(() => {
     config = { mcp: { auth: { type: 'none' }, slowMs: 1000 } };
     writes = 0;
+    times.clear();
     dispatch.mockClear();
     // Same compare-and-set rule as the SQL guard: still the key that was read, and not this cycle.
     persist
       .mockReset()
-      .mockImplementation((_db, _id, _key, readKey, cycleKey, next) => {
-        const stored = config?.mcpState?.lastCycleKey ?? '';
-        if (stored !== (readKey ?? '') || stored === cycleKey)
-          return Promise.resolve(false);
-        config = { ...config, mcpState: next as McpMonitorState };
-        writes += 1;
-        return Promise.resolve(true);
-      });
+      .mockImplementation(
+        (_db, _id, _key, readKey, cycleKey, cycleAt, next) => {
+          const stored = config?.mcpState?.lastCycleKey ?? '';
+          const lastAt = config?.mcpState?.lastCycleAt;
+          if (
+            stored !== (readKey ?? '') ||
+            stored === cycleKey ||
+            (lastAt && Date.parse(lastAt) >= (cycleAt as Date).getTime())
+          )
+            return Promise.resolve(false);
+          config = { ...config, mcpState: next as McpMonitorState };
+          writes += 1;
+          return Promise.resolve(true);
+        },
+      );
   });
 
   const A = [tool('a'), tool('b')];
@@ -120,6 +138,37 @@ describe('evaluateMcpCycle', () => {
     });
     await evaluate('c3', [result(B)]);
     expect(dispatch).toHaveBeenCalledTimes(1);
+  });
+
+  it('an older cycle redelivered after a newer one changes nothing: no false diff, no early slow warning', async () => {
+    const B = [tool('x')];
+    await evaluate('c1', [result(A)]);
+    await evaluate('c2', [result(B)]);
+    expect(dispatch).toHaveBeenCalledTimes(1);
+    const before = JSON.stringify(state());
+    // cycle c1.5 (older than c2) arrives late with the old list
+    expect(await evaluate('late', [result(A, 5000)], 1500)).toBe(false);
+    expect(JSON.stringify(state())).toBe(before);
+    expect(dispatch).toHaveBeenCalledTimes(1);
+    expect(persist).toHaveBeenCalledTimes(2);
+  });
+
+  it('an older slow cycle redelivered cannot complete a streak', async () => {
+    await evaluate('c1', [result(A, 2000)]);
+    await evaluate('c2', [result(A, 2000)]);
+    await evaluate('old', [result(A, 2000)], 500);
+    expect(state().slowStreak).toBe(2);
+    expect(dispatch).not.toHaveBeenCalled();
+  });
+
+  it('a cycle at exactly the same time as the last one is ignored', async () => {
+    await evaluate('c1', [result(A)], 1000);
+    expect(await evaluate('twin', [result(A)], 1000)).toBe(false);
+  });
+
+  it('records lastCycleAt as an ISO time', async () => {
+    await evaluate('c1', [result(A)]);
+    expect(state().lastCycleAt).toBe(at('c1').toISOString());
   });
 
   it('a list that goes back to an earlier state is a new change and warns again', async () => {
@@ -312,6 +361,7 @@ describe('evaluateMcpCycle', () => {
       'mcpState',
       'old',
       'new',
+      at('new'),
       expect.any(Object),
     );
   });

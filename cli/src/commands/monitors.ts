@@ -37,8 +37,9 @@ function validateMonitorTarget(target: string, type?: string): void {
   if (type === 'mcp_server') {
     try {
       const url = new URL(target)
-      if (url.protocol !== 'https:' || url.username || url.password || url.hash) throw new Error('url')
-    } catch { throw new CLIError('--url must be an https URL with no credentials or fragment for mcp_server.', ExitCode.ConfigError) }
+      // http is allowed through: the server accepts it only on self-hosted installs with internal targets on.
+      if (!['https:', 'http:'].includes(url.protocol) || url.username || url.password || url.hash) throw new Error('url')
+    } catch { throw new CLIError('--url must be an http(s) URL with no credentials or fragment for mcp_server.', ExitCode.ConfigError) }
     return
   }
   if (!type || ['http_request', 'website'].includes(type)) {

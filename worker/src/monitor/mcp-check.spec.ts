@@ -255,7 +255,10 @@ describe('executeMcpCheck', () => {
       ]);
       seen = [];
       await run({}, { mcpState: { detectedProtocol: '2026' } });
-      expect(seen.map((s) => s.method)).toEqual(['tools/list']);
+      expect(seen.map((s) => s.method)).toEqual([
+        'server/discover',
+        'tools/list',
+      ]);
       seen = [];
       b.protocol = '2025';
       await run({ protocol: '2025' });

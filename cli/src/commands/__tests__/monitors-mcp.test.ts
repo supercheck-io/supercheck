@@ -62,7 +62,7 @@ describe('monitor create --type mcp_server', () => {
   })
 
   it.each([
-    [['--url', 'http://mcp.example.com/mcp'], /https URL/],
+    [['--url', 'ftp://mcp.example.com/mcp'], /http\(s\) URL/],
     [['--url', 'https://user:pw@mcp.example.com/mcp'], /no credentials/],
     [['--url', 'https://mcp.example.com/mcp', '--header', 'X-Key'], /--header requires --secret/],
     [['--url', 'https://mcp.example.com/mcp', '--protocol', '2024'], /--protocol must be/],

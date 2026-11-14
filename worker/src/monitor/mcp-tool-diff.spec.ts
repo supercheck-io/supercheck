@@ -25,6 +25,12 @@ describe('canonicalJson', () => {
 });
 
 describe('fingerprintTool', () => {
+  it('stores only printable ASCII in the name but fingerprints the raw name', () => {
+    const fp = tool('a\u202eb\nc');
+    expect(fp.name).toBe('a?b?c');
+    expect(fp.fingerprint).not.toEqual(tool('a?b?c').fingerprint);
+  });
+
   it('is a SHA-256 of the canonical {name, description, inputSchema} plus the part hashes', () => {
     const fp = tool('a');
     expect(fp.name).toBe('a');

@@ -37,7 +37,8 @@ export function fingerprintTool(raw: unknown): McpToolFingerprint | null {
     canonicalJson({ name: tool.name, description, inputSchema }),
   );
   return {
-    name: tool.name.slice(0, MCP_NAME_MAX_CHARS),
+    // Stored names reach alerts and logs: keep printable ASCII only (the fingerprint uses the raw name).
+    name: tool.name.replace(/[^\x21-\x7e]/g, '?').slice(0, MCP_NAME_MAX_CHARS),
     fingerprint: [
       whole,
       sha256(description).slice(0, PART_CHARS),

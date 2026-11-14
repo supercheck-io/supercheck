@@ -102,6 +102,8 @@ export type McpToolChange = {
 export type McpMonitorState = {
   detectedProtocol?: "2025" | "2026";
   lastCycleKey?: string;
+  /** ISO time of the newest evaluated cycle; an older cycle is never evaluated after it. */
+  lastCycleAt?: string;
   baseline?: { hash: string; takenAt: string; tools: McpToolFingerprint[] };
   /** Newest last; at most 10 kept. */
   changes?: McpToolChange[];
@@ -194,6 +196,7 @@ export type MonitorConfig = {
   aiEndpointState?: {
     lastServedModel?: string;
     lastCycleKey?: string;
+    lastCycleAt?: string;
     slowFirstTokenStreak?: number;
     slowFirstTokenEpisodeKey?: string | null;
     tokensHighEpisodeKey?: string | null;

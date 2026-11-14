@@ -41,10 +41,27 @@ describe('evaluateAiEndpointWarnings', () => {
   } as unknown as PostgresJsDatabase<typeof schema>;
   const state = () =>
     config?.aiEndpointState as NonNullable<MonitorConfig['aiEndpointState']>;
+  const times = new Map<string, number>();
+  /** Each new cycle key is one second later than the previous new one; a repeated key keeps its time. */
+  const at = (key: string, override?: number) =>
+    new Date(
+      1_800_000_000_000 +
+        (override ??
+          times.get(key) ??
+          times.set(key, (times.size + 1) * 1000).get(key)!),
+    );
   const evaluate = (
     cycleKey: string,
-    results: Parameters<typeof evaluateAiEndpointWarnings>[3],
-  ) => evaluateAiEndpointWarnings(db, 'm1', cycleKey, results);
+    results: Parameters<typeof evaluateAiEndpointWarnings>[4],
+    overrideMs?: number,
+  ) =>
+    evaluateAiEndpointWarnings(
+      db,
+      'm1',
+      cycleKey,
+      at(cycleKey, overrideMs),
+      results,
+    );
   const kinds = () => dispatch.mock.calls.map((c) => [c[1], c[3]]);
   const set = (
     settings: Partial<NonNullable<MonitorConfig['aiEndpoint']>> = {},
@@ -58,16 +75,24 @@ describe('evaluateAiEndpointWarnings', () => {
 
   beforeEach(() => {
     set();
+    times.clear();
     dispatch.mockClear();
     persist
       .mockReset()
-      .mockImplementation((_db, _id, _key, readKey, cycleKey, next) => {
-        const stored = config?.aiEndpointState?.lastCycleKey ?? '';
-        if (stored !== (readKey ?? '') || stored === cycleKey)
-          return Promise.resolve(false);
-        config = { ...config, aiEndpointState: next };
-        return Promise.resolve(true);
-      });
+      .mockImplementation(
+        (_db, _id, _key, readKey, cycleKey, cycleAt, next) => {
+          const stored = config?.aiEndpointState?.lastCycleKey ?? '';
+          const lastAt = config?.aiEndpointState?.lastCycleAt;
+          if (
+            stored !== (readKey ?? '') ||
+            stored === cycleKey ||
+            (lastAt && Date.parse(lastAt) >= (cycleAt as Date).getTime())
+          )
+            return Promise.resolve(false);
+          config = { ...config, aiEndpointState: next };
+          return Promise.resolve(true);
+        },
+      );
   });
 
   describe('model changed', () => {
@@ -224,6 +249,24 @@ describe('evaluateAiEndpointWarnings', () => {
     expect(dispatch).toHaveBeenCalledTimes(1);
   });
 
+  it('an older cycle redelivered after a newer one cannot rewind the model, streaks or episodes', async () => {
+    set({ warnFirstTokenMs: 500, warnTotalTokens: 100 });
+    await evaluate('c1', [ai({ firstTokenMs: 900 })]);
+    await evaluate('c2', [ai({ firstTokenMs: 900, servedModel: 'gpt-y' })]);
+    expect(kinds()).toEqual([['ai_model_changed', 'ai_model_changed:c2']]);
+    const before = JSON.stringify(state());
+    expect(
+      await evaluate(
+        'late',
+        [ai({ servedModel: 'gpt-x', totalTokens: 999 })],
+        1500,
+      ),
+    ).toBe(false);
+    expect(JSON.stringify(state())).toBe(before);
+    expect(dispatch).toHaveBeenCalledTimes(1);
+    expect(state().lastCycleAt).toBe(at('c2').toISOString());
+  });
+
   it('sends nothing when its UPDATE changed no row, and swallows failures', async () => {
     await evaluate('c1', [ai()]);
     persist.mockResolvedValueOnce(false);
@@ -248,6 +291,7 @@ describe('evaluateAiEndpointWarnings', () => {
       'aiEndpointState',
       'old',
       'new',
+      at('new'),
       expect.any(Object),
     );
   });

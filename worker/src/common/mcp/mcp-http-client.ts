@@ -139,12 +139,13 @@ async function readSse(
   throw new McpError('mcp_protocol_error');
 }
 
-export function isVersionError(error: unknown): boolean {
+/** A server that does not speak the mode we remembered; `http400` also counts a bare 400 (handshake only). */
+export function isVersionError(error: unknown, http400 = false): boolean {
   return (
     error instanceof McpError &&
     (error.rpcCode === UNSUPPORTED_VERSION ||
       error.rpcCode === METHOD_NOT_FOUND ||
-      error.httpStatus === 400)
+      (http400 && error.httpStatus === 400))
   );
 }
 
@@ -190,9 +191,9 @@ export class McpHttpClient {
     if (!remembered) return this.detect();
     try {
       if (remembered === '2025') await this.handshake();
-      else this.setModern(MCP_MODERN_VERSION);
+      else await this.discover();
     } catch (error) {
-      if (!this.canRedetect || !isVersionError(error)) throw error;
+      if (!this.canRedetect || !isVersionError(error, true)) throw error;
       this.canRedetect = false;
       await this.detect();
     }
@@ -262,6 +263,7 @@ export class McpHttpClient {
   }
 
   private async handshake(): Promise<void> {
+    this.sessionId = undefined;
     this.protocol = '2025';
     this.protocolVersion = MCP_LEGACY_VERSION;
     const init = await this.call(false, 'initialize', {
@@ -319,7 +321,13 @@ export class McpHttpClient {
     try {
       return await this.call(this.protocol === '2026', method, params);
     } catch (error) {
-      if (!this.canRedetect || !isVersionError(error)) throw error;
+      // A tools/call is never resent: it may have side effects.
+      if (
+        method === 'tools/call' ||
+        !this.canRedetect ||
+        !isVersionError(error)
+      )
+        throw error;
       this.canRedetect = false;
       await this.close();
       this.sessionId = undefined;
@@ -419,13 +427,14 @@ export class McpHttpClient {
     const status = response.status;
     if (status === 401 || status === 403)
       throw new McpError('mcp_credentials_rejected', { httpStatus: status });
-    const session = response.headers.get('mcp-session-id');
-    if (session && !this.sessionId && /^[\x21-\x7e]{1,256}$/.test(session))
-      this.sessionId = session;
     const type = (response.headers.get('content-type') ?? '').toLowerCase();
     if (!response.ok) {
       // A 400 may carry the JSON-RPC error (-32022 with the versions the server supports).
-      if (expectId !== undefined && type.includes('application/json')) {
+      if (
+        this.o.mode !== '2025' &&
+        expectId !== undefined &&
+        type.includes('application/json')
+      ) {
         try {
           const parsed = JSON.parse(
             await readCapped(response, this.o.maxResponseBytes),
@@ -437,6 +446,9 @@ export class McpHttpClient {
       }
       throw new McpError(`mcp_http_${status}`, { httpStatus: status });
     }
+    const session = response.headers.get('mcp-session-id');
+    if (session && !this.sessionId && /^[\x21-\x7e]{1,256}$/.test(session))
+      this.sessionId = session;
     if (expectId === undefined) {
       await response.body?.cancel().catch(() => undefined);
       return null;

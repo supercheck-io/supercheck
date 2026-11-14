@@ -47,6 +47,7 @@ export async function evaluateMcpCycle(
   db: PostgresJsDatabase<typeof schema>,
   monitorId: string,
   cycleKey: string,
+  cycleAt: Date,
   upResults: McpCycleResult[],
 ): Promise<boolean> {
   try {
@@ -65,8 +66,15 @@ export async function evaluateMcpCycle(
     if (!settings) return false;
     const state: McpMonitorState = row.config?.mcpState ?? {};
     if ((state.lastCycleKey ?? '') === cycleKey) return false;
+    // An older cycle redelivered after a newer one was evaluated must not rewind streaks or baselines.
+    if (state.lastCycleAt && Date.parse(state.lastCycleAt) >= cycleAt.getTime())
+      return false;
 
-    const next: McpMonitorState = { ...state, lastCycleKey: cycleKey };
+    const next: McpMonitorState = {
+      ...state,
+      lastCycleKey: cycleKey,
+      lastCycleAt: cycleAt.toISOString(),
+    };
     const warnings: Array<[MonitorWarningKind, string, string]> = [];
     const protocol = ups[0].mcp.protocol;
     if (protocol)
@@ -123,6 +131,7 @@ export async function evaluateMcpCycle(
       'mcpState',
       state.lastCycleKey,
       cycleKey,
+      cycleAt,
       next,
     );
     if (!changed) return false;

@@ -7,6 +7,8 @@ import {
   persistGuardedState,
 } from './monitor-warning-state';
 
+const CYCLE_AT = new Date('2026-01-01T00:00:00.000Z');
+
 describe('persistGuardedState', () => {
   const dialect = new PgDialect();
   function fakeDb(rows: unknown[]) {
@@ -30,7 +32,7 @@ describe('persistGuardedState', () => {
   it('writes only the one key with jsonb_set and guards on the cycle key', async () => {
     const { db, captured } = fakeDb([{ id: 'm1' }]);
     expect(
-      await persistGuardedState(db, 'm1', 'mcpState', 'prev', 'cur', {
+      await persistGuardedState(db, 'm1', 'mcpState', 'prev', 'cur', CYCLE_AT, {
         lastCycleKey: 'cur',
       }),
     ).toBe(true);
@@ -46,7 +48,12 @@ describe('persistGuardedState', () => {
     expect(where.sql).toContain(
       `coalesce(config->'mcpState'->>'lastCycleKey','') = $`,
     );
-    expect(where.params).toEqual(expect.arrayContaining(['m1', 'cur', 'prev']));
+    expect(where.sql).toContain(
+      `(config->'mcpState'->>'lastCycleAt') is null or (config->'mcpState'->>'lastCycleAt')::timestamptz < $`,
+    );
+    expect(where.params).toEqual(
+      expect.arrayContaining(['m1', 'cur', 'prev', CYCLE_AT.toISOString()]),
+    );
   });
 
   it('uses the other worker-owned key and an empty previous key', async () => {
@@ -58,6 +65,7 @@ describe('persistGuardedState', () => {
         'aiEndpointState',
         undefined,
         'cur',
+        CYCLE_AT,
         {},
       ),
     ).toBe(false);

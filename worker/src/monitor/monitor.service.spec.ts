@@ -4129,6 +4129,7 @@ describe('MonitorService', () => {
           mockDbService.db,
           mcpMonitor,
           insertedId,
+          row.checkedAt,
           [row],
         );
       });
@@ -4145,6 +4146,7 @@ describe('MonitorService', () => {
           mockDbService.db,
           mcpMonitor,
           'group-1',
+          row.checkedAt,
           [row],
         );
       });

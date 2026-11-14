@@ -94,7 +94,7 @@ function validateLocationPolicy(config: Record<string, unknown>): MonitorValidat
 // Same header-name rule as the MCP connector's buildAuthHeaders.
 const HEADER_NAME = /^[A-Za-z0-9-]{1,64}$/;
 /** Shared with the monitor form, so it rejects exactly what the API rejects. */
-export const FORBIDDEN_KEY_HEADERS = new Set(["host", "content-length", "content-type", "accept", "transfer-encoding", "connection", "cookie"]);
+export const FORBIDDEN_KEY_HEADERS = new Set(["host", "content-length", "content-type", "accept", "transfer-encoding", "connection", "cookie", "mcp-session-id", "mcp-protocol-version", "mcp-method", "mcp-name"]);
 const secretName = z.string().trim().min(1).max(255);
 
 const aiEndpointSchema = z

@@ -278,6 +278,7 @@ describe("MCP monitor validation (B12)", () => {
     ["bearer with header name", { mcp: { auth: { type: "bearer", secretKey: "T", headerName: "X-Key" } } }],
     ["none with secret", { mcp: { auth: { type: "none", secretKey: "T" } } }],
     ["forbidden header", { mcp: { auth: { type: "header", secretKey: "T", headerName: "Host" } } }],
+    ["MCP protocol header", { mcp: { auth: { type: "header", secretKey: "T", headerName: "Mcp-Method" } } }],
     ["bad header name", { mcp: { auth: { type: "header", secretKey: "T", headerName: "X Key" } } }],
     ["empty secret name", { mcp: { auth: { type: "bearer", secretKey: " " } } }],
     ["unknown protocol", { mcp: { ...base, protocol: "2024" } }],

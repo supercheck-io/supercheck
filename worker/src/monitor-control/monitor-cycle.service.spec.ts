@@ -35,6 +35,7 @@ describe('MonitorCycleService.notifyCycle runs the MCP and AI warning evaluation
   };
   const cycle = {
     id: 'cycle-1',
+    scheduledFor: new Date('2026-01-01T00:01:00Z'),
     monitorId: 'm1',
     status: 'closed',
     notifiedAt: null,
@@ -84,7 +85,13 @@ describe('MonitorCycleService.notifyCycle runs the MCP and AI warning evaluation
     expect(await service.notifyCycle('cycle-1')).toBe(true);
 
     expect(evaluate).toHaveBeenCalledTimes(1);
-    expect(evaluate).toHaveBeenCalledWith(db, monitor, 'cycle-1', [eu]);
+    expect(evaluate).toHaveBeenCalledWith(
+      db,
+      monitor,
+      'cycle-1',
+      cycle.scheduledFor,
+      [eu],
+    );
   });
 
   it('still evaluates when alert delivery failed, so a redelivery cannot skip it', async () => {
@@ -97,6 +104,7 @@ describe('MonitorCycleService.notifyCycle runs the MCP and AI warning evaluation
       expect.anything(),
       monitor,
       'cycle-1',
+      cycle.scheduledFor,
       [expect.objectContaining({ location: 'eu' })],
     );
   });
@@ -111,6 +119,31 @@ describe('MonitorCycleService.notifyCycle runs the MCP and AI warning evaluation
       'cycle-1',
       'cycle-1',
     ]);
+  });
+
+  it('passes each cycle its own scheduled time, so an older cycle redelivered later is recognisably older', async () => {
+    const older = {
+      ...cycle,
+      id: 'cycle-N',
+      scheduledFor: new Date('2026-01-01T00:00:00Z'),
+    };
+    const newer = {
+      ...cycle,
+      id: 'cycle-N1',
+      scheduledFor: new Date('2026-01-01T00:01:00Z'),
+    };
+    await build([[newer], [monitor], [row('eu')]]).service.notifyCycle(
+      'cycle-N1',
+    );
+    await build([[older], [monitor], [row('eu')]]).service.notifyCycle(
+      'cycle-N',
+    );
+    const [first, second] = evaluate.mock.calls;
+    expect(first[2]).toBe('cycle-N1');
+    expect(second[2]).toBe('cycle-N');
+    expect((second[3] as Date).getTime()).toBeLessThan(
+      (first[3] as Date).getTime(),
+    );
   });
 
   it.each([

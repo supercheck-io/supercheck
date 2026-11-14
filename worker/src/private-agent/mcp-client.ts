@@ -39,6 +39,8 @@ const FORBIDDEN_HEADER_NAMES = new Set([
   'connection',
   'mcp-session-id',
   'mcp-protocol-version',
+  'mcp-method',
+  'mcp-name',
   'cookie',
 ]);
 

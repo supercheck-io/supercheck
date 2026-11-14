@@ -12,6 +12,7 @@ import { dispatchMonitorWarning } from './monitor-warning-dispatch';
 
 const db = {} as PostgresJsDatabase<typeof schema>;
 const up = { isUp: true, responseTimeMs: 1, details: {} };
+const cycleAt = new Date('2026-01-01T00:00:00Z');
 const down = { isUp: false, details: {} };
 
 describe('evaluateCycleWarnings', () => {
@@ -22,9 +23,10 @@ describe('evaluateCycleWarnings', () => {
       db,
       { id: 'm', type: 'mcp_server', config: null },
       'c1',
+      cycleAt,
       [up, down],
     );
-    expect(evaluateMcpCycle).toHaveBeenCalledWith(db, 'm', 'c1', [up]);
+    expect(evaluateMcpCycle).toHaveBeenCalledWith(db, 'm', 'c1', cycleAt, [up]);
     expect(evaluateAiEndpointWarnings).not.toHaveBeenCalled();
   });
 
@@ -33,12 +35,16 @@ describe('evaluateCycleWarnings', () => {
       db,
       { id: 'm', type: 'http_request', config: { aiEndpoint: { model: 'x' } } },
       'c1',
+      cycleAt,
       [up, down],
     );
-    expect(evaluateAiEndpointWarnings).toHaveBeenCalledWith(db, 'm', 'c1', [
-      up,
-      down,
-    ]);
+    expect(evaluateAiEndpointWarnings).toHaveBeenCalledWith(
+      db,
+      'm',
+      'c1',
+      cycleAt,
+      [up, down],
+    );
     expect(evaluateMcpCycle).not.toHaveBeenCalled();
   });
 
@@ -50,7 +56,9 @@ describe('evaluateCycleWarnings', () => {
     ],
     ['a monitor with no config', { type: 'http_request', config: null }],
   ])('does nothing for %s', async (_n, monitor) => {
-    await evaluateCycleWarnings(db, { id: 'm', ...monitor }, 'c1', [up]);
+    await evaluateCycleWarnings(db, { id: 'm', ...monitor }, 'c1', cycleAt, [
+      up,
+    ]);
     expect(evaluateMcpCycle).not.toHaveBeenCalled();
     expect(evaluateAiEndpointWarnings).not.toHaveBeenCalled();
   });

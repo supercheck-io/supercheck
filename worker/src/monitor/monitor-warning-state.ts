@@ -10,7 +10,7 @@ export type WorkerStateKey = 'mcpState' | 'aiEndpointState';
 
 /**
  * Writes ONLY `config.<key>` (jsonb_set on that one key, never the whole config), and only if the
- * stored `lastCycleKey` is still the one the caller read and is not this cycle. A second worker
+ * stored `lastCycleKey` is still the one the caller read is not this cycle, and is strictly later than `lastCycleAt`. A second worker
  * evaluating the same cycle, or a redelivered `notifyCycle`, therefore changes no row and the caller
  * sends nothing. Returns true when this call's UPDATE changed the row.
  */
@@ -20,10 +20,12 @@ export async function persistGuardedState(
   key: WorkerStateKey,
   readCycleKey: string | undefined,
   cycleKey: string,
+  cycleAt: Date,
   next: object,
 ): Promise<boolean> {
   // `key` is a closed union of literals, so interpolating it into the path is safe.
   const lastKey = sql.raw(`coalesce(config->'${key}'->>'lastCycleKey','')`);
+  const lastAt = sql.raw(`(config->'${key}'->>'lastCycleAt')`);
   const rows = await db
     .update(schema.monitors)
     .set({
@@ -35,6 +37,8 @@ export async function persistGuardedState(
         liveMonitor(),
         sql`${lastKey} <> ${cycleKey}`,
         sql`${lastKey} = ${readCycleKey ?? ''}`,
+        // Strictly later than the newest evaluated cycle: a redelivered older cycle changes nothing.
+        sql`(${lastAt} is null or ${lastAt}::timestamptz < ${cycleAt.toISOString()}::timestamptz)`,
       ),
     )
     .returning({ id: schema.monitors.id });

@@ -389,11 +389,11 @@ describe('McpHttpClient 2025 handshake path and auto fallback', () => {
 });
 
 describe('McpHttpClient remembered mode', () => {
-  it('reuses a remembered 2026 mode without a probe', async () => {
+  it('reuses a remembered 2026 mode with a single discover (no detection probe)', async () => {
     const { request, seen } = script(modernServer);
     const client = await connect(request, { remembered: '2026' });
     await client.listTools();
-    expect(methods(seen)).toEqual(['tools/list']);
+    expect(methods(seen)).toEqual(['server/discover', 'tools/list']);
     expect(client.protocol).toBe('2026');
   });
 
@@ -419,8 +419,25 @@ describe('McpHttpClient remembered mode', () => {
     const { tools } = await client.listTools();
     expect(tools).toEqual([{ name: 'b' }]);
     expect(client.protocol).toBe('2025');
-    expect(methods(seen).filter((m) => m === 'tools/list')).toHaveLength(2);
+    expect(methods(seen).filter((m) => m === 'tools/list')).toHaveLength(1);
     expect(methods(seen)).toContain('initialize');
+  });
+
+  it('re-detects once when a remembered 2025 server rejects tools/list with method-not-found', async () => {
+    const { request, seen } = script((req, n) =>
+      req.body?.method === 'tools/list' && n <= 4
+        ? rpcError(req.body.id, -32601, undefined, 400)
+        : req.body?.method === 'initialize' && n > 4
+          ? rpcError(req.body.id, -32601, undefined, 400)
+          : n > 4
+            ? modernServer(req, n)
+            : legacyServer()(req, n),
+    );
+    const client = await connect(request, { remembered: '2025' });
+    const { tools } = await client.listTools();
+    expect(client.protocol).toBe('2026');
+    expect(tools).toEqual([{ name: 'a' }]);
+    expect(methods(seen).filter((m) => m === 'tools/list')).toHaveLength(2);
   });
 
   it('re-detects once when a remembered 2025 handshake fails with a version error', async () => {
@@ -437,19 +454,21 @@ describe('McpHttpClient remembered mode', () => {
     const { request, seen } = script((req) =>
       rpcError(req.body!.id, -32601, undefined, 400),
     );
-    const client = await connect(request, { remembered: '2026' });
-    const err = await failure(client.listTools());
+    const err = await failure(connect(request, { remembered: '2026' }));
     expect(isVersionError(err)).toBe(true);
-    // first tools/list, probe, handshake attempt (which fails the whole re-detect)
-    expect(seen.length).toBeLessThanOrEqual(4);
-    const again = await failure(client.listTools());
-    expect(again).toBeInstanceOf(McpError);
+    // remembered discover, one detection probe, the handshake that fails the whole detection
+    expect(methods(seen)).toEqual([
+      'server/discover',
+      'server/discover',
+      'initialize',
+    ]);
   });
 
   it('does not re-detect for errors that are not version errors', async () => {
     const { request, seen } = script(() => new Response('no', { status: 500 }));
-    const client = await connect(request, { remembered: '2026' });
-    expect((await failure(client.listTools())).code).toBe('mcp_http_500');
+    expect((await failure(connect(request, { remembered: '2026' }))).code).toBe(
+      'mcp_http_500',
+    );
     expect(seen).toHaveLength(1);
   });
 
@@ -469,6 +488,102 @@ describe('McpHttpClient remembered mode', () => {
     );
     expect(err.code).toBe('mcp_http_400');
     expect(seen).toHaveLength(1);
+  });
+});
+
+describe('McpHttpClient review fixes', () => {
+  it('a remembered 2026 mode still discovers once, so server info is always present', async () => {
+    const { request, seen } = script(modernServer);
+    const client = await connect(request, { remembered: '2026' });
+    expect(methods(seen)).toEqual(['server/discover']);
+    expect(client.serverName).toBe('Modern');
+    expect(client.serverVersion).toBe('9');
+  });
+
+  it('does not keep a session id from a non-2xx reply', async () => {
+    const { request, seen } = script((req, n) =>
+      n === 1
+        ? new Response('no', {
+            status: 500,
+            headers: { 'mcp-session-id': 'from-error' },
+          })
+        : legacyServer()(req, n),
+    );
+    const client = await connect(request, { mode: '2025' }).catch(() => null);
+    expect(client).toBeNull();
+    expect(
+      seen.some((s) => s.headers.get('mcp-session-id') === 'from-error'),
+    ).toBe(false);
+    expect(seen.some((s) => s.method === 'DELETE')).toBe(false);
+  });
+
+  it('clears the session id before the handshake that follows a failed probe', async () => {
+    const { request, seen } = script((req, n) =>
+      n === 1
+        ? new Response('<html>', {
+            status: 200,
+            headers: {
+              'content-type': 'text/html',
+              'mcp-session-id': 'probe-session',
+            },
+          })
+        : legacyServer()(req, n),
+    );
+    const client = await connect(request);
+    expect(client.protocol).toBe('2025');
+    const init = seen.find((s) => s.body?.method === 'initialize')!;
+    expect(init.headers.get('mcp-session-id')).toBeNull();
+    await client.listTools();
+    expect(
+      seen
+        .find((s) => s.body?.method === 'tools/list')!
+        .headers.get('mcp-session-id'),
+    ).toBe('sess-1');
+  });
+
+  it('never resends tools/call: a 400 on a remembered 2025 call fails once', async () => {
+    const { request, seen } = script((req, n) =>
+      req.body?.method === 'tools/call'
+        ? new Response('bad args', { status: 400 })
+        : legacyServer()(req, n),
+    );
+    const client = await connect(request, { remembered: '2025' });
+    const err = await failure(client.callTool('t', {}));
+    expect(err.code).toBe('mcp_http_400');
+    expect(seen.filter((s) => s.body?.method === 'tools/call')).toHaveLength(1);
+  });
+
+  it('never resends tools/call even on -32601 or -32022', async () => {
+    for (const code of [-32601, -32022]) {
+      const { request, seen } = script((req, n) =>
+        req.body?.method === 'tools/call'
+          ? rpcError(req.body.id, code, { supported: ['2026-07-28'] }, 400)
+          : modernServer(req, n),
+      );
+      const client = await connect(request, { remembered: '2026' });
+      await failure(client.callTool('t', {}));
+      expect(seen.filter((s) => s.body?.method === 'tools/call')).toHaveLength(
+        1,
+      );
+    }
+  });
+
+  it('a bare 400 on tools/list does not trigger re-detection', async () => {
+    const { request, seen } = script((req, n) =>
+      req.body?.method === 'tools/list'
+        ? new Response('bad', { status: 400 })
+        : legacyServer()(req, n),
+    );
+    const client = await connect(request, { remembered: '2025' });
+    expect((await failure(client.listTools())).code).toBe('mcp_http_400');
+    expect(seen.filter((s) => s.body?.method === 'tools/list')).toHaveLength(1);
+  });
+
+  it('forced 2025 keeps plain HTTP status codes even when the body is a JSON-RPC error', async () => {
+    const { request } = script(() => rpcError(1, -32000, undefined, 500));
+    expect((await failure(connect(request, { mode: '2025' }))).code).toBe(
+      'mcp_http_500',
+    );
   });
 });
 

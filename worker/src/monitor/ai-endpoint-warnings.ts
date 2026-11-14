@@ -34,6 +34,7 @@ export async function evaluateAiEndpointWarnings(
   db: PostgresJsDatabase<typeof schema>,
   monitorId: string,
   cycleKey: string,
+  cycleAt: Date,
   results: AiCycleResult[],
 ): Promise<boolean> {
   try {
@@ -52,8 +53,15 @@ export async function evaluateAiEndpointWarnings(
     if (!settings) return false;
     const state: AiState = row.config?.aiEndpointState ?? {};
     if ((state.lastCycleKey ?? '') === cycleKey) return false;
+    // An older cycle redelivered after a newer one was evaluated must not rewind streaks or baselines.
+    if (state.lastCycleAt && Date.parse(state.lastCycleAt) >= cycleAt.getTime())
+      return false;
 
-    const next: AiState = { ...state, lastCycleKey: cycleKey };
+    const next: AiState = {
+      ...state,
+      lastCycleKey: cycleKey,
+      lastCycleAt: cycleAt.toISOString(),
+    };
     const warnings: Array<[MonitorWarningKind, string, string]> = [];
 
     // Served model: silent on the first value, once per new value, always remembered.
@@ -116,6 +124,7 @@ export async function evaluateAiEndpointWarnings(
       'aiEndpointState',
       state.lastCycleKey,
       cycleKey,
+      cycleAt,
       next,
     );
     if (!changed) return false;

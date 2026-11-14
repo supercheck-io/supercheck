@@ -598,6 +598,7 @@ export class MonitorService {
       this.dbService.db,
       monitor,
       options?.executionGroupId ?? options?.cycleKey ?? randomUUID(),
+      new Date(Math.max(...results.map((r) => r.checkedAt.getTime()))),
       results,
     );
 

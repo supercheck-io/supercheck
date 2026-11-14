@@ -424,6 +424,7 @@ export class MonitorCycleService {
       this.dbService.db,
       monitor,
       cycle.id,
+      cycle.scheduledFor,
       [...new Set(cycle.expectedLocations)].flatMap((location) => {
         const row = this.frozenRow(cycle, location, rows);
         return row &&

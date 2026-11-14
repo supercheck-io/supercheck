@@ -20,6 +20,7 @@ export async function evaluateCycleWarnings(
   db: PostgresJsDatabase<typeof schema>,
   monitor: { id: string; type: string; config: MonitorConfig | null },
   cycleKey: string,
+  cycleAt: Date,
   results: CycleResult[],
 ): Promise<void> {
   if (monitor.type === 'mcp_server')
@@ -27,8 +28,15 @@ export async function evaluateCycleWarnings(
       db,
       monitor.id,
       cycleKey,
+      cycleAt,
       results.filter((result) => result.isUp),
     );
   else if (monitor.type === 'http_request' && monitor.config?.aiEndpoint)
-    await evaluateAiEndpointWarnings(db, monitor.id, cycleKey, results);
+    await evaluateAiEndpointWarnings(
+      db,
+      monitor.id,
+      cycleKey,
+      cycleAt,
+      results,
+    );
 }
