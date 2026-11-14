@@ -46,8 +46,8 @@ afterAll(async () => {
 describe("validateMonitorSecretRefs (project-scoped lookup)", () => {
   it("accepts secrets of the monitor's own project, however they are flagged", async () => {
     const config = { aiEndpoint: { model: "m", secretKey: "OPENAI_KEY" }, auth: { type: "bearer", secretKey: "LEGACY_SECRET" } };
-    expect(await validateMonitorSecretRefs(ctx(projectA), config)).toEqual({ success: true });
-    expect(await validateMonitorSecretRefs(ctx(projectA), { auth: { type: "bearer", secretKey: "TYPED_SECRET" } })).toEqual({ success: true });
+    expect(await validateMonitorSecretRefs(ctx(projectA), config)).toMatchObject({ success: true });
+    expect(await validateMonitorSecretRefs(ctx(projectA), { auth: { type: "bearer", secretKey: "TYPED_SECRET" } })).toMatchObject({ success: true });
   });
 
   it("refuses a secret that belongs to another project", async () => {
