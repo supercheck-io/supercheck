@@ -29,6 +29,12 @@ async function setup(page: Page, reply: (body: Record<string, unknown>) => { sta
   return requests;
 }
 
+/** Waits until React has hydrated and rendered the (fake) Turnstile widget, so submits are handled. */
+async function open(page: Page, path: string) {
+  await page.goto(path);
+  await page.waitForFunction(() => Boolean((window as unknown as { __ts?: unknown }).__ts));
+}
+
 const ok = (tool: string, result: unknown) => ({ status: 200, json: { ok: true, tool, result, checkedAt: "2026-11-14T14:02:00Z", colo: "FRA", cached: false } });
 
 const CASES: { slug: string; tool: string; input: string; result: unknown; verdict: RegExp; limit: RegExp }[] = [
@@ -46,7 +52,7 @@ for (const c of CASES) {
   test.describe(c.slug, () => {
     test("valid input renders the result and a Monitor this hand-off", async ({ page }) => {
       const requests = await setup(page, () => ok(c.tool, c.result));
-      await page.goto(`/tools/${c.slug}`);
+      await open(page, `/tools/${c.slug}`);
       await expect(page.getByTestId("tool-limits")).toContainText(c.limit);
       await page.getByTestId("tool-form").getByRole("textbox").fill(c.input);
       await page.getByTestId("tool-form").getByRole("button").click();
@@ -67,7 +73,7 @@ for (const c of CASES) {
         if (n === 2) return { status: 429, json: { error: "rate_limited", retryAfter: 40 } };
         return { status: 500, text: "<html>error code: 1027</html>" };
       });
-      await page.goto(`/tools/${c.slug}`);
+      await open(page, `/tools/${c.slug}`);
       const form = page.getByTestId("tool-form");
       await form.getByRole("textbox").fill(c.input);
       await form.getByRole("button").click();
@@ -82,7 +88,7 @@ for (const c of CASES) {
 
 test("captcha failure resets and never calls the API; disabled shows paused", async ({ page }) => {
   const requests = await setup(page, () => ({ status: 503, json: { error: "disabled" } }));
-  await page.goto("/tools/dns-lookup");
+  await open(page, "/tools/dns-lookup");
   await page.evaluate(() => ((window as unknown as { __tsFail: boolean }).__tsFail = true));
   const form = page.getByTestId("tool-form");
   await form.getByRole("textbox").fill("example.com");
@@ -99,6 +105,7 @@ test("a blocked Turnstile script shows the busy state, not a failed human check"
   await page.unroute("https://challenges.cloudflare.com/**");
   await page.route("https://challenges.cloudflare.com/**", (route) => route.abort());
   await page.goto("/tools/dns-lookup");
+  await page.waitForLoadState("networkidle");
   const form = page.getByTestId("tool-form");
   await form.getByRole("textbox").fill("example.com");
   await form.getByRole("button").click();
@@ -125,7 +132,7 @@ test("target-controlled strings render as text, and og:image loads only on click
     imageLoaded = true;
     return route.fulfill({ contentType: "image/png", body: Buffer.from([]) });
   });
-  await page.goto("/tools/social-preview-checker");
+  await open(page, "/tools/social-preview-checker");
   await page.getByTestId("tool-form").getByRole("textbox").fill("example.com");
   await page.getByTestId("tool-form").getByRole("button").click();
   await expect(page.getByTestId("social-card")).toContainText(evil);
@@ -138,7 +145,7 @@ test("target-controlled strings render as text, and og:image loads only on click
 
 test("share link is offered only for inputs without a query string and pre-fills without running", async ({ page }) => {
   const requests = await setup(page, () => ok("uptime", { up: true, status: 200, timeMs: 1, finalUrl: "https://example.com/", hops: [] }));
-  await page.goto("/tools/website-uptime-checker?url=example.com");
+  await open(page, "/tools/website-uptime-checker?url=example.com");
   await expect(page.getByTestId("tool-form").getByRole("textbox")).toHaveValue("example.com");
   expect(requests).toHaveLength(0);
   await page.getByTestId("tool-form").getByRole("button").click();
@@ -151,7 +158,7 @@ test("share link is offered only for inputs without a query string and pre-fills
 
 test("result region is aria-live and the form works by keyboard", async ({ page }) => {
   await setup(page, () => ok("dns", { domain: "example.com", resolves: false, count: 0, records: {}, dnssec: false, failedQueries: 0 }));
-  await page.goto("/tools/dns-lookup");
+  await open(page, "/tools/dns-lookup");
   await expect(page.getByTestId("tool-status")).toHaveAttribute("aria-live", "polite");
   await page.getByLabel("Domain").focus();
   await page.keyboard.type("nx.example");
