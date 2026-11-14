@@ -27,6 +27,11 @@ describe("resolveIncidentResources", () => {
     for (const where of ex.wheres) expect(new PgDialect().sqlToQuery(where as never).params).toEqual(expect.arrayContaining(["org-1", "project-1"]));
   });
 
+  it("treats upper- and lower-case forms of one UUID as the same id", async () => {
+    const ex = executor([[{ id: uuid(1), name: "Checkout API" }]]);
+    expect(await resolveIncidentResources(ex as never, scope, { serviceIds: [uuid(1), uuid(1).toUpperCase()], monitorIds: [] })).toHaveLength(1);
+  });
+
   it("returns null when any id is unknown or elsewhere, and skips empty lookups", async () => {
     const ex = executor([[]]);
     expect(await resolveIncidentResources(ex as never, scope, { serviceIds: [], monitorIds: [uuid(2)] })).toBeNull();

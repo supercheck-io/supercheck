@@ -241,3 +241,22 @@ describe("toStoredPostmortem / postmortemToMarkdown", () => {
     });
   });
 });
+
+describe("long timelines keep a visible gap", () => {
+  const at = (n: number) => new Date(Date.UTC(2026, 9, 6, 10, 0, n));
+  const ctx = (count: number) => ({
+    incidentNumber: 1, title: "t", severity: "sev2", serviceName: null, createdAt: at(0), resolvedAt: at(59),
+    resolutionSummary: null, rootCauseSummary: null, confidenceLabel: null, hypotheses: [], nextChecks: [], evidence: [],
+    timeline: Array.from({ length: count }, (_, i) => ({ at: at(i % 60), label: `Event ${i} ${"x".repeat(60)}` })),
+  });
+  it("marks the events the prompt leaves out", () => {
+    expect(buildPostmortemPrompt(ctx(45))).toContain("… 5 more events not shown …");
+    expect(buildPostmortemPrompt(ctx(40))).not.toContain("not shown");
+  });
+  it("marks the lines the 4000-character template leaves out", () => {
+    const timeline = buildDeterministicPostmortem(ctx(120)).timeline;
+    expect(timeline.length).toBeLessThanOrEqual(4000);
+    expect(timeline).toMatch(/… \d+ more not shown …/);
+    expect(buildDeterministicPostmortem(ctx(3)).timeline).not.toContain("not shown");
+  });
+});

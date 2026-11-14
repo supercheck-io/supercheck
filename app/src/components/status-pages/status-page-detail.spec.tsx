@@ -12,6 +12,7 @@ jest.mock("@/actions/publish-status-page", () => ({
 
 jest.mock("next/navigation", () => ({
   useRouter: () => ({ refresh: jest.fn(), push: jest.fn() }),
+  useSearchParams: () => new URLSearchParams(window.location.search),
 }));
 
 const statusPage = {
@@ -187,5 +188,18 @@ describe("StatusPageDetail cache refresh", () => {
     fireEvent.click(screen.getByRole("button", { name: "Unpublish page" }));
 
     await waitFor(() => expect(onDataChange).toHaveBeenCalled());
+  });
+});
+
+describe("StatusPageDetail tab from the URL", () => {
+  afterEach(() => window.history.replaceState(null, "", "/"));
+  it("opens the tab named by ?tab= and falls back to Overview for unknown names", () => {
+    window.history.replaceState(null, "", "/status-pages/sp?tab=incidents");
+    const { unmount } = renderDetail();
+    expect(screen.getByRole("tab", { name: "Status updates" })).toHaveAttribute("aria-selected", "true");
+    unmount();
+    window.history.replaceState(null, "", "/status-pages/sp?tab=nope");
+    renderDetail();
+    expect(screen.getByRole("tab", { name: "Overview" })).toHaveAttribute("aria-selected", "true");
   });
 });

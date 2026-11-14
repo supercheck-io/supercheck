@@ -111,8 +111,9 @@ export async function generateSrePostmortem(
     const [tail, head, [total], evidence, [run]] = await Promise.all([
       // Newest 150 plus the first 50, so a long incident keeps both its start and its resolution.
       // Generous because postmortemTimeline drops briefs, edits and repeat investigations afterwards.
-      timelineQuery().orderBy(desc(sreIncidentTimelineEvents.createdAt)).limit(TAIL_EVENTS),
-      timelineQuery().orderBy(asc(sreIncidentTimelineEvents.createdAt)).limit(HEAD_EVENTS),
+      timelineQuery().orderBy(desc(sreIncidentTimelineEvents.createdAt), desc(sreIncidentTimelineEvents.id)).limit(TAIL_EVENTS),
+      // Same keys both ways, so the windows never overlap when events share a timestamp.
+      timelineQuery().orderBy(asc(sreIncidentTimelineEvents.createdAt), asc(sreIncidentTimelineEvents.id)).limit(HEAD_EVENTS),
       db.select({ count: count() }).from(sreIncidentTimelineEvents).where(eq(sreIncidentTimelineEvents.incidentId, incident.id)),
       db
         .select({ id: sreEvidenceItems.id, title: sreEvidenceItems.title })

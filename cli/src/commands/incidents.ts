@@ -158,9 +158,11 @@ const isUuid = (value: string) => z.string().uuid().safeParse(value).success
 async function resolveServiceId(value: string): Promise<string> {
   if (isUuid(value)) return value
   const { data } = await createAuthenticatedClient().get<{ services: Array<{ id: string; name: string }>; truncated?: boolean }>('/api/sre/services')
+  // A cut list could hide a second service with the same name, so a name only resolves against the full list.
+  if (data.truncated) throw new CLIError(`This project has too many services to match "${value}" by name. Pass the service UUID (supercheck service list --json).`, ExitCode.ConfigError)
   const matches = data.services.filter((service) => service.name.toLowerCase() === value.toLowerCase())
   if (matches.length !== 1) {
-    const reason = matches.length ? `More than one service is named "${value}".` : `No service named "${value}"${data.truncated ? ' among the services listed (the list was cut)' : ''}.`
+    const reason = matches.length ? `More than one service is named "${value}".` : `No service named "${value}".`
     throw new CLIError(`${reason} Pass the service UUID (supercheck service list --json).`, ExitCode.ConfigError)
   }
   return matches[0]!.id

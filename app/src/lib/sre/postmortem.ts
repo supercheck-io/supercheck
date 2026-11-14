@@ -48,8 +48,13 @@ export function formatPostmortemDuration(from: Date, to: Date | null) {
 /** A saved section is capped at 4000 characters; drop middle events so the start and resolution survive. */
 function boundedBullets(lines: string[]) {
   const kept = [...lines];
-  while (bullet(kept).length > 4000 && kept.length > 2) kept.splice(Math.floor(kept.length / 2), 1);
-  return bullet(kept).slice(0, 4000);
+  let dropped = 0;
+  const withGap = () => (dropped ? [...kept.slice(0, Math.floor(kept.length / 2)), `… ${dropped} more not shown …`, ...kept.slice(Math.floor(kept.length / 2))] : kept);
+  while (bullet(withGap()).length > 4000 && kept.length > 2) {
+    kept.splice(Math.floor(kept.length / 2), 1);
+    dropped += 1;
+  }
+  return bullet(withGap()).slice(0, 4000);
 }
 
 // Activity rows that are noise in a post-mortem: briefs are restated by investigations, and edits or reassignment are bookkeeping.
@@ -146,7 +151,13 @@ export function buildPostmortemPrompt(ctx: PostmortemContext): string {
     fenceUntrustedBlock("evidence", ctx.evidence.slice(0, 15).map((item) => item.title), 160),
     "Timeline:",
     fenceUntrustedBlock("timeline", // The start and the resolution matter most; drop the middle of a long incident.
-      (ctx.timeline.length > 40 ? [...ctx.timeline.slice(0, 10), ...ctx.timeline.slice(-30)] : ctx.timeline).map((event) => `${formatPostmortemDate(event.at)}: ${event.label}`), 220),
+      (ctx.timeline.length > 40
+        ? [
+            ...ctx.timeline.slice(0, 10).map((event) => `${formatPostmortemDate(event.at)}: ${event.label}`),
+            `… ${ctx.timeline.length - 40} more events not shown …`,
+            ...ctx.timeline.slice(-30).map((event) => `${formatPostmortemDate(event.at)}: ${event.label}`),
+          ]
+        : ctx.timeline.map((event) => `${formatPostmortemDate(event.at)}: ${event.label}`)), 220),
   ].join("\n");
 }
 

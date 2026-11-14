@@ -20,8 +20,8 @@ export async function resolveIncidentResources(
   scope: { organizationId: string; projectId: string },
   ids: { serviceIds: string[]; monitorIds: string[] },
 ): Promise<IncidentResourceRef[] | null> {
-  const serviceIds = [...new Set(ids.serviceIds)];
-  const monitorIds = [...new Set(ids.monitorIds)];
+  const serviceIds = [...new Set(ids.serviceIds.map((id) => id.toLowerCase()))];
+  const monitorIds = [...new Set(ids.monitorIds.map((id) => id.toLowerCase()))];
   const [services, found] = await Promise.all([
     serviceIds.length
       ? executor

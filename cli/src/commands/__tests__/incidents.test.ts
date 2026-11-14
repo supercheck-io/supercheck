@@ -79,6 +79,9 @@ describe('incident create', () => {
     await expect(run('--title', 'x', '--service', 'Nope')).rejects.toThrow('No service named "Nope"')
     mockGet.mockResolvedValueOnce({ data: { services: [{ id: id(4), name: 'API' }, { id: id(5), name: 'api' }] } })
     await expect(run('--title', 'x', '--service', 'API')).rejects.toThrow('More than one service')
+    // A cut list could hide another service with the same name.
+    mockGet.mockResolvedValueOnce({ data: { services: [{ id: id(4), name: 'API' }], truncated: true } })
+    await expect(run('--title', 'x', '--service', 'API')).rejects.toThrow('Pass the service UUID')
     expect(mockPost).not.toHaveBeenCalled()
   })
 

@@ -19,7 +19,8 @@ const logger = createLogger({ module: "sre-manual-incident" }) as {
   error: (data: unknown, message?: string) => void;
 };
 
-const uuid = z.string().uuid();
+// Lowercase, as Postgres returns them, so keys built from input match stored ids.
+const uuid = z.string().uuid().transform((value) => value.toLowerCase());
 
 /** Impact picked for the public post sets how affected components show. */
 const COMPONENT_STATUS_FOR_IMPACT = {

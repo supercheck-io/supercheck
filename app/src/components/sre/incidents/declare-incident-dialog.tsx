@@ -6,7 +6,7 @@ import { Check, ChevronsUpDown, Loader2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 
-import { createManualSreIncident, type SreIncidentListItem } from "@/actions/sre-incidents";
+import { createManualSreIncident, type CreateManualSreIncidentResult, type SreIncidentListItem } from "@/actions/sre-incidents";
 import { getSreServices } from "@/actions/sre-services";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -18,7 +18,6 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
-import { useMonitors } from "@/hooks/use-monitors";
 import { useProjectContext } from "@/hooks/use-project-context";
 import { useSreIncidentAssignees } from "@/hooks/use-sre";
 import { useStatusPageDetail, useStatusPages } from "@/hooks/use-status-pages";
@@ -27,6 +26,19 @@ import { getSreIncidentAnalyticsQueryKey, getSreIncidentsQueryKey } from "@/lib/
 
 const NONE = "none";
 type Impact = "none" | "minor" | "major" | "critical";
+
+/** All monitors in the project, page by page (at most 2,000). */
+async function fetchAllMonitors(): Promise<Array<{ id: string; name: string }>> {
+  const all: Array<{ id: string; name: string }> = [];
+  for (let page = 1; page <= 20; page += 1) {
+    const response = await fetch(`/api/monitors?page=${page}&limit=100`);
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const body = (await response.json()) as { data: Array<{ id: string; name: string }>; pagination?: { hasNextPage?: boolean } };
+    all.push(...body.data.map(({ id, name }) => ({ id, name })));
+    if (!body.pagination?.hasNextPage) break;
+  }
+  return all;
+}
 
 export type DeclareIncidentDefaults = { serviceId?: string; monitorId?: string };
 
@@ -69,12 +81,20 @@ export function DeclareIncidentDialog({
     enabled: open && Boolean(projectId),
     staleTime: 60_000,
   });
-  const monitors = useMonitors({ pageSize: 200, queryEnabled: open });
+  // Every monitor, not one page: the API caps a page at 100.
+  const monitors = useQuery({
+    queryKey: ["monitors", "picker", projectId],
+    queryFn: fetchAllMonitors,
+    enabled: open && Boolean(projectId),
+    staleTime: 60_000,
+  });
   const assignees = useSreIncidentAssignees(open);
   const statusPages = useStatusPages({ enabled: open && postPublicly });
   const pageDetail = useStatusPageDetail(open && postPublicly ? statusPageId : null);
 
-  const monitorItems = (monitors.items ?? []) as Array<{ id: string; name: string }>;
+  const monitorItems = monitors.data ?? [];
+  // The server caps services and monitors together at 50 (lib/sre/incident-resources.ts); the service counts as one.
+  const monitorLimit = 50 - (serviceId === NONE ? 0 : 1);
   const monitorName = (id: string) => monitorItems.find((item) => item.id === id)?.name ?? "Monitor";
 
   const reset = () => {
@@ -118,7 +138,7 @@ export function DeclareIncidentDialog({
           postPublicly && statusPageId
             ? { statusPageId, componentIds, impact, message: message.trim() || undefined, notifySubscribers }
             : null,
-      });
+      }).catch((): CreateManualSreIncidentResult => ({ success: false, error: "Could not reach the server. Your draft is kept; try again." }));
       if (!result.success) {
         toast.error(result.fieldErrors?.title?.[0] ?? result.error);
         return;
@@ -141,7 +161,8 @@ export function DeclareIncidentDialog({
   };
 
   return (
-    <Dialog open={open} onOpenChange={(next) => (next ? onOpenChange(true) : close())}>
+    // While declaring, the dialog stays open: a stale success must not close a newer draft.
+    <Dialog open={open} onOpenChange={(next) => (next ? onOpenChange(true) : !isPending && close())}>
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>Declare incident</DialogTitle>
@@ -169,7 +190,7 @@ export function DeclareIncidentDialog({
             </div>
             <div className="space-y-2">
               <Label htmlFor="manual-incident-service">Service</Label>
-              <Select value={serviceId} onValueChange={setServiceId}>
+              <Select value={serviceId} onValueChange={(value) => { setServiceId(value); if (value !== NONE) setMonitorIds((ids) => ids.slice(0, 49)); }}>
                 <SelectTrigger id="manual-incident-service"><SelectValue placeholder="No service" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value={NONE}>No service</SelectItem>
@@ -203,7 +224,7 @@ export function DeclareIncidentDialog({
                           <CommandItem
                             key={monitor.id}
                             value={`${monitor.name} ${monitor.id}`}
-                            onSelect={() => setMonitorIds((ids) => (selected ? ids.filter((id) => id !== monitor.id) : ids.length < 50 ? [...ids, monitor.id] : ids))}
+                            onSelect={() => setMonitorIds((ids) => (selected ? ids.filter((id) => id !== monitor.id) : ids.length < monitorLimit ? [...ids, monitor.id] : ids))}
                           >
                             <Check className={`mr-2 h-4 w-4 ${selected ? "opacity-100" : "opacity-0"}`} aria-hidden />
                             <span className="truncate">{monitor.name}</span>
@@ -300,7 +321,7 @@ export function DeclareIncidentDialog({
           )}
         </div>
         <DialogFooter className="gap-2">
-          <Button type="button" variant="outline" onClick={close}>Cancel</Button>
+          <Button type="button" variant="outline" onClick={close} disabled={isPending}>Cancel</Button>
           <Button type="button" onClick={submit} disabled={isPending || !title.trim()}>
             {isPending ? (<><Loader2 className="h-4 w-4 animate-spin" />Declaring...</>) : "Declare incident"}
           </Button>
