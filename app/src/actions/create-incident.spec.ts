@@ -2,7 +2,7 @@ jest.mock("@/utils/db", () => ({ db: { query: { statusPages: { findFirst: jest.f
 jest.mock("@/lib/project-context", () => ({
   requireProjectContext: jest.fn(async () => ({ userId: "u", organizationId: "o", project: { id: "p", name: "P" } })),
 }));
-jest.mock("@/lib/rbac/middleware", () => ({ requirePermissions: jest.fn() }));
+jest.mock("@/lib/rbac/middleware", () => ({ requirePermissions: jest.fn(), checkPermissionWithContext: jest.fn(() => true) }));
 jest.mock("next/cache", () => ({ revalidatePath: jest.fn() }));
 jest.mock("@/lib/audit-logger", () => ({ logAuditEvent: jest.fn() }));
 import { db } from "@/utils/db";

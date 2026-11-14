@@ -22,6 +22,7 @@ jest.mock("@/lib/sre/incident-lifecycle", () => ({
   announceSystemTransition: jest.fn().mockResolvedValue(undefined),
   getDefaultAssigneeId: jest.fn().mockResolvedValue(null),
 }));
+jest.mock("@/lib/sre/incident-resources", () => ({ findOpenIncidentListingMonitor: jest.fn().mockResolvedValue(null) }));
 jest.mock("@/lib/status-page-reconciliation", () => ({ linkStatusPageIncidentsToSreIncident: jest.fn().mockResolvedValue([]) }));
 jest.mock("@/sre/lib/triage-runner", () => ({ startSreIncidentTriage: jest.fn(), completeSreIncidentTriage: jest.fn() }));
 jest.mock("@/sre/lib/auto-investigate", () => ({ maybeAutoInvestigateOnOpen: jest.fn().mockResolvedValue({ handled: false }) }));
@@ -154,6 +155,17 @@ describe("processSreBackgroundAlertTriageJob", () => {
       },
     };
     const monitorRow = (alertConfig: unknown) => ({ name: "Checkout", organizationId: "org-1", projectId: "proj-1", alertConfig, status: "up", enabled: true });
+
+    it("attaches a monitor alert to an open declared incident that lists the monitor (I4)", async () => {
+      const { findOpenIncidentListingMonitor } = jest.requireMock("@/lib/sre/incident-resources");
+      findOpenIncidentListingMonitor.mockResolvedValueOnce({ id: "declared-1", triageInvestigationRunId: null });
+      selectQueue.push([monitorRow({ enabled: false, incidentEnabled: true })], [], [{ id: "ae-1" }], []);
+      const result = await processSreBackgroundAlertTriageJob(FAILURE_JOB);
+      expect(findOpenIncidentListingMonitor).toHaveBeenCalledWith(expect.anything(), { organizationId: "org-1", projectId: "proj-1", monitorId: FAILURE_JOB.sourceFailure.sourceId });
+      expect(insertedIncident()).toBeUndefined();
+      expect(inserts).toContainEqual(expect.objectContaining({ incidentId: "declared-1", role: "related" }));
+      expect(result).toMatchObject({ success: true });
+    });
 
     it("opens an incident for a monitor with alerts off and incidents opted in, with one alert counted", async () => {
       selectQueue.push([monitorRow({ enabled: false, incidentEnabled: true })]);

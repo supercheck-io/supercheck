@@ -264,6 +264,21 @@ export async function checkSreIncidentUpdateRateLimit(
 }
 
 /**
+ * Rate limit declaring incidents by hand: each one sends real notifications.
+ * Max 10 per minute per user and 60 per hour per org. Fails OPEN like the update
+ * limiter: declaring an incident must work during an outage that includes Redis.
+ */
+export async function checkSreIncidentCreateRateLimit(
+  organizationId: string,
+  userId: string,
+): Promise<SreRateLimitResult> {
+  const perUser = await checkSreRateLimit(`incident-create:user:${userId}`, 10, 60 * 1000);
+  if (!perUser.allowed) return perUser.unavailable ? { allowed: true, remaining: 1 } : perUser;
+  const perOrg = await checkSreRateLimit(`incident-create:org:${organizationId}`, 60, 60 * 60 * 1000);
+  return perOrg.unavailable ? { allowed: true, remaining: 1 } : perOrg;
+}
+
+/**
  * Rate limit investigation feedback submissions.
  * Per-user, per-investigation run: max 20 per 10 minutes.
  */

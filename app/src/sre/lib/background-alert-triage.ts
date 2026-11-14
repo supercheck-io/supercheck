@@ -45,6 +45,7 @@ import { alertIncidentTitle } from "@/lib/sre/alert-labels";
 import { linkStatusPageIncidentsToSreIncident } from "@/lib/status-page-reconciliation";
 import { notifyIncidentEvent, type IncidentFallback } from "@/lib/sre/incident-notifier";
 import { watchIncident } from "@/lib/sre/incident-watchers";
+import { findOpenIncidentListingMonitor } from "@/lib/sre/incident-resources";
 import { maybeAutoInvestigateOnOpen } from "@/sre/lib/auto-investigate";
 import { completeSreIncidentTriage, startSreIncidentTriage } from "@/sre/lib/triage-runner";
 import { db } from "@/utils/db";
@@ -593,6 +594,36 @@ async function createOrGetIncidentForAlertHistory(alertHistoryId: string, failur
           alertEventId: alertEvent.id,
           incidentId: openForSource.id,
           alreadyTriaged: Boolean(openForSource.triageInvestigationRunId),
+        };
+      }
+    }
+
+    // A person declared an incident listing this monitor (or its service): the alert joins it as related,
+    // so a monitor recovery never auto-resolves what a person declared (applySourceRecovery reads triggers only).
+    if (sourceType === "monitor") {
+      const declared = await findOpenIncidentListingMonitor(tx, { organizationId, projectId, monitorId: sourceId });
+      if (declared) {
+        await tx
+          .insert(sreIncidentAlerts)
+          .values({
+            incidentId: declared.id,
+            alertEventId: alertEvent.id,
+            role: "related",
+            alertTitle: title,
+            alertDescription: alert.message,
+            alertSeverity: severity,
+            alertFiredAt: firedAt,
+            createdAt: new Date(),
+          })
+          .onConflictDoNothing();
+        await recordRepeatAlert(tx, declared.id, firedAt);
+        return {
+          skipped: false as const,
+          organizationId,
+          projectId,
+          alertEventId: alertEvent.id,
+          incidentId: declared.id,
+          alreadyTriaged: Boolean(declared.triageInvestigationRunId),
         };
       }
     }

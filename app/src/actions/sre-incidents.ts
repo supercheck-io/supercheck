@@ -76,6 +76,7 @@ import { notifyIncidentEvent } from "@/lib/sre/incident-notifier";
 import { checkSreIncidentUpdateRateLimit } from "@/lib/sre/sre-rate-limiter";
 import { isWatchingIncident, watchIncident } from "@/lib/sre/incident-watchers";
 import { maybeAutoInvestigateOnOpen } from "@/sre/lib/auto-investigate";
+import { createManualIncident, type ManualIncidentInput } from "@/lib/sre/manual-incident";
 import { listMyFeedbackForRun, type MyFeedback } from "@/lib/sre/investigation-feedback";
 import { readStoredHypotheses, type SreInvestigationHypothesis } from "@/sre/lib/investigation-output";
 import { readStoredSteps, type SreInvestigationStep } from "@/sre/lib/investigation-trace";
@@ -92,20 +93,6 @@ const createIncidentFromAlertSchema = z.object({
   alertHistoryId: z.string().uuid(),
 });
 
-const createManualIncidentSchema = z.object({
-  title: z
-    .string()
-    .trim()
-    .min(1, "Incident title is required")
-    .max(500, "Incident title is too long"),
-  severity: z.enum(["sev1", "sev2", "sev3", "sev4"]).default("sev3"),
-  summary: z
-    .string()
-    .trim()
-    .max(2000, "Summary is too long")
-    .optional()
-    .nullable(),
-});
 
 const updateIncidentSchema = z.object({
   id: z.string().uuid(),
@@ -166,6 +153,7 @@ export type CreateManualSreIncidentResult =
         incidentNumber: number;
         title: string;
       };
+      warning?: "status_page_failed";
       message: string;
     }
   | { success: false; error: string; fieldErrors?: Record<string, string[]> };
@@ -1243,120 +1231,26 @@ export async function getSreIncidentDetails(
 }
 
 export async function createManualSreIncident(
-  input: z.infer<typeof createManualIncidentSchema>,
+  input: ManualIncidentInput,
 ): Promise<CreateManualSreIncidentResult> {
   try {
-    const parsed = createManualIncidentSchema.safeParse(input);
-    if (!parsed.success) {
+    const context = await requireProjectContext();
+    const result = await createManualIncident(context, input, "ui");
+    if (!result.ok) {
+      if (result.code === "forbidden") {
+        return await permissionDeniedResult(context.organizationId, "Insufficient permissions to create incidents");
+      }
       return {
         success: false,
-        error: "Invalid incident details",
-        fieldErrors: formatValidationErrors(parsed.error),
+        error: result.code === "invalid" ? "Invalid incident details" : result.error,
+        ...(result.code === "invalid" && result.fieldErrors ? { fieldErrors: result.fieldErrors } : {}),
       };
     }
-
-    const { userId, organizationId, orgPendingDeletion, project } = await requireProjectContext();
-    const canCreate = checkPermissionWithContext("sre_incident", "create", {
-      userId,
-      organizationId,
-      orgPendingDeletion,
-      project,
-    });
-
-    if (!canCreate) {
-      return await permissionDeniedResult(organizationId, "Insufficient permissions to create incidents");
-    }
-
-    const title = truncate(parsed.data.title, 500);
-    const summary = parsed.data.summary?.trim() || null;
-    const now = new Date();
-
-    const incident = await db.transaction(async (tx) => {
-      await tx.execute(
-        sql`select pg_advisory_xact_lock(hashtext(${organizationId}))`,
-      );
-
-      const [numberRow] = await tx
-        .select({
-          nextIncidentNumber: sql<number>`coalesce(max(${sreIncidents.incidentNumber}), 0) + 1`,
-        })
-        .from(sreIncidents)
-        .where(eq(sreIncidents.organizationId, organizationId));
-
-      const incidentNumber = Number(numberRow?.nextIncidentNumber ?? 1);
-
-      const [created] = await tx
-        .insert(sreIncidents)
-        .values({
-          organizationId,
-          projectId: project.id,
-          incidentNumber,
-          title,
-          severity: parsed.data.severity,
-          status: "triggered",
-          alertCount: 0, // no alert yet: a hand-created incident counts only alerts that join it
-          createdByUserId: userId,
-          // A hand-created incident belongs to its creator until someone reassigns it.
-          assigneeUserId: userId,
-          createdAt: now,
-          updatedAt: now,
-        })
-        .returning({
-          id: sreIncidents.id,
-          incidentNumber: sreIncidents.incidentNumber,
-          title: sreIncidents.title,
-        });
-
-      await watchIncident(tx, created.id, userId);
-
-      await tx.insert(sreIncidentTimelineEvents).values({
-        incidentId: created.id,
-        eventType: "state_change",
-        eventData: {
-          state: "manual_incident_created",
-          summary,
-        },
-        actorType: "user",
-        actorUserId: userId,
-        createdAt: now,
-      });
-
-      return created;
-    });
-
-    await logAuditEvent({
-      userId,
-      organizationId,
-      action: "sre_incident_created_manual",
-      resource: "sre_incident",
-      resourceId: incident.id,
-      metadata: {
-        projectId: project.id,
-        incidentNumber: incident.incidentNumber,
-        severity: parsed.data.severity,
-      },
-      success: true,
-    });
-
-    // Channels come from the project's Default policy; the creator owns it, so no direct email to them.
-    void notifyIncidentEvent({
-      organizationId,
-      projectId: project.id,
-      incidentId: incident.id,
-      event: "created",
-      actorUserId: userId,
-      assigneeUserId: userId,
-    }).catch(() => undefined);
-    // Project opt-in only; runs in the background and never blocks creating the incident.
-    void maybeAutoInvestigateOnOpen({ organizationId, projectId: project.id, incidentId: incident.id, userId }).catch(() => undefined);
-
-    revalidatePath("/incidents");
-    revalidatePath(`/incidents/${incident.id}`);
-
     return {
       success: true,
-      incident,
-      message: `Incident #${incident.incidentNumber} created`,
+      incident: result.incident,
+      ...(result.warning ? { warning: result.warning } : {}),
+      message: `Incident #${result.incident.incidentNumber} created`,
     };
   } catch (error) {
     logger.error({ error }, "Error creating manual SRE incident");
