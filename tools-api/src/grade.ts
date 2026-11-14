@@ -59,23 +59,43 @@ function scriptSources(policy: Policy): string[] | null {
   return policy.get("script-src") ?? policy.get("default-src") ?? null;
 }
 
-/** script-src-elem and script-src-attr override script-src for elements and inline handlers. */
-function unsafeScripts(policy: Policy): boolean {
-  const base = scriptSources(policy);
-  // Elements and inline handlers use their own directive when set; script-src is only the fallback.
-  return [policy.get("script-src-elem") ?? base, policy.get("script-src-attr") ?? base].some(unsafeScript);
-}
+type ScriptCap = "inline" | "data" | "any" | "http";
+const ALL_CAPS: ScriptCap[] = ["inline", "data", "any", "http"];
+// A complete nonce or hash source: non-empty value and closing quote.
+const NONCE_OR_HASH = /^'(?:nonce-[A-Za-z0-9+/_=-]+|sha(?:256|384|512)-[A-Za-z0-9+/_=-]+)'$/;
 
-function unsafeScript(sources: string[] | null): boolean {
-  if (sources === null) return true;
-  const hasNonceOrHash = sources.some((s) => /^'(nonce-|sha256-|sha384-|sha512-)/.test(s));
+/** What one source list lets scripts do. A missing list allows everything. */
+function scriptCaps(sources: string[] | null): Set<ScriptCap> {
+  if (sources === null) return new Set(ALL_CAPS);
+  const hasNonceOrHash = sources.some((s) => NONCE_OR_HASH.test(s));
   // CSP3: with 'strict-dynamic' and a nonce or hash, browsers ignore host, scheme and 'unsafe-inline' sources
   // (Google's recommended strict CSP lists them only as fallbacks for old browsers).
-  if (hasNonceOrHash && sources.includes("'strict-dynamic'")) return false;
-  return (
-    (sources.includes("'unsafe-inline'") && !hasNonceOrHash) ||
-    sources.some((s) => s === "data:" || s === "*" || s === "http:")
-  );
+  if (hasNonceOrHash && sources.includes("'strict-dynamic'")) return new Set();
+  const caps = new Set<ScriptCap>();
+  if (sources.includes("'unsafe-inline'") && !hasNonceOrHash) caps.add("inline");
+  if (sources.includes("data:")) caps.add("data");
+  if (sources.includes("*")) caps.add("any");
+  if (sources.includes("http:")) caps.add("http");
+  return caps;
+}
+
+/**
+ * Unsafe script capabilities a policy allows. Elements and inline handlers use their own
+ * directive when set; script-src is only the fallback.
+ */
+function policyCaps(policy: Policy): Set<ScriptCap> {
+  const base = scriptSources(policy);
+  const caps = new Set<ScriptCap>();
+  for (const list of [policy.get("script-src-elem") ?? base, policy.get("script-src-attr") ?? base]) {
+    for (const cap of scriptCaps(list)) caps.add(cap);
+  }
+  return caps;
+}
+
+/** With several enforced policies, an operation is allowed only if every policy allows it. */
+function unsafeAcross(policies: Policy[]): boolean {
+  const each = policies.map(policyCaps);
+  return ALL_CAPS.some((cap) => each.every((caps) => caps.has(cap)));
 }
 
 function objectNone(policy: Policy): boolean {
@@ -98,7 +118,7 @@ export function grade(headers: Record<string, string | undefined>, finalUrlIsHtt
   if (policies.length === 0) {
     add("csp", "fail", -25, cspHeader, "Content-Security-Policy is missing");
   } else {
-    const unsafe = policies.every(unsafeScripts);
+    const unsafe = unsafeAcross(policies);
     const unsafeEval = policies.every((p) => (scriptSources(p) ?? ["'unsafe-eval'"]).includes("'unsafe-eval'"));
     if (unsafe) add("csp", "fail", -20, cspHeader, "script-src allows unsafe-inline, data:, * or http:");
     if (unsafeEval) add("csp-eval", "warn", -10, cspHeader, "script-src allows unsafe-eval");
@@ -174,7 +194,8 @@ export function parseHsts(value: string | undefined): Hsts | null {
   // Repeated headers are joined with ", "; the first one is the one browsers use.
   const directives = value.split(",")[0].split(";").map((d) => d.trim().toLowerCase());
   // RFC 6797: max-age is decimal digits, optionally quoted (rejects 1e9, 0x10, -1).
-  const maxAge = directives.find((d) => d.startsWith("max-age="))?.slice(8).match(/^"?(\d{1,12})"?$/);
+  // Optional whitespace around "=" is allowed (RFC 6797 implied LWS).
+  const maxAge = directives.map((d) => d.match(/^max-age\s*=\s*"?(\d{1,12})"?$/)).find(Boolean);
   if (!maxAge) return null;
   const seconds = Number(maxAge[1]);
   return {

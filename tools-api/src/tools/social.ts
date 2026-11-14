@@ -143,8 +143,10 @@ export async function social(ctx: CheckContext, url: URL) {
   if (!r.ok) return { error: r.error, hops: r.hops };
   const head = await extractHead(r.res);
   if (head.interrupted) ctx.degraded = true;
-  const missing = SOCIAL_TAGS.filter((tag) => !(tag in head.tags));
-  const image = head.tags["og:image"] ? await checkImage(ctx, head.tags["og:image"], r.url) : null;
+  // An empty or whitespace-only value is as good as missing.
+  const missing = SOCIAL_TAGS.filter((tag) => !head.tags[tag]?.trim());
+  const ogImage = head.tags["og:image"]?.trim();
+  const image = ogImage ? await checkImage(ctx, ogImage, r.url) : null;
   return {
     status: r.res.status,
     finalUrl: r.url.toString(),

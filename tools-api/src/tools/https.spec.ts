@@ -96,6 +96,14 @@ describe("https tool", () => {
     expect(await run()).toMatchObject({ hsts: null, ok: false });
   });
 
+  it("does not cache a failed or non-OK preload lookup", async () => {
+    const { ctxFor: mk } = await import("../test-helpers");
+    mockFetch({ "https://site.com/": new Response("ok"), "http://site.com/": new Response("ok"), "https://hstspreload.org": new Response("down", { status: 503 }) });
+    const ctx = mk("https");
+    expect((await https(ctx, new URL("https://site.com/"))).preload).toBe("error");
+    expect(ctx.degraded).toBe(true);
+  });
+
   it("reads unknown preload states as unknown", async () => {
     mockFetch({ "https://site.com/": new Response("ok"), "http://site.com/": new Response("ok"), "https://hstspreload.org": Response.json({ status: "weird" }) });
     expect((await run()).preload).toBe("unknown");

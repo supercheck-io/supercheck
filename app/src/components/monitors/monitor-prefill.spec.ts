@@ -1,4 +1,4 @@
-import { monitorPrefill } from "./monitor-prefill";
+import { draftForHandoff, monitorPrefill } from "./monitor-prefill";
 
 const q = (s: string) => new URLSearchParams(s);
 
@@ -27,5 +27,17 @@ describe("monitorPrefill", () => {
     expect(monitorPrefill(q("url=https%3A%2F%2Fex.com"), "ping_host")).toEqual({});
     expect(monitorPrefill(null, "website")).toEqual({});
     expect(monitorPrefill(q(`name=${"n".repeat(150)}`), "website").name).toHaveLength(100);
+  });
+});
+
+describe("draftForHandoff", () => {
+  const draft = { target: "https://old.example/", name: "old" };
+  it("drops a draft for another target when a hand-off is present", () => {
+    expect(draftForHandoff(draft, "https://new.example/")).toBeUndefined();
+  });
+  it("keeps the draft without a hand-off, or when it is for the same target", () => {
+    expect(draftForHandoff(draft, null)).toBe(draft);
+    expect(draftForHandoff(draft, "https://old.example/")).toBe(draft);
+    expect(draftForHandoff(undefined, "https://new.example/")).toBeUndefined();
   });
 });

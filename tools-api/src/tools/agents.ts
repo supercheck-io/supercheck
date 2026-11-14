@@ -112,6 +112,8 @@ async function get(ctx: CheckContext, origin: URL, path: string, cap: number): P
     const type = r.res.headers.get("content-type");
     if (r.res.status !== 200) {
       await r.res.body?.cancel();
+      // 404 is a stable answer; 429 and 5xx are transient, so the report must not be cached.
+      if (r.res.status === 429 || r.res.status >= 500) ctx.degraded = true;
       return { status: r.res.status, type, text: "", truncated: false };
     }
     const body = await readCapped(r.res, cap);
@@ -188,15 +190,22 @@ export async function agents(ctx: CheckContext, url: URL) {
 
   // RFC 9309: 4xx means no rules; an unreachable robots.txt (5xx, network error) is unknown, not allow-all.
   // A body cut short may have lost a Disallow: don't judge from it.
-  const robotsUnknown = robots.status === null || robots.status >= 500 || robots.interrupted === true;
   const groups = robots.status === 200 ? parseRobots(robots.text) : new Map<string, Rule[][]>();
+  // Rules past the cap were not read: a Disallow among them would be missed.
+  const robotsCapped = (groups as { capped?: boolean }).capped === true;
+  if (robotsCapped) ctx.degraded = true;
+  const robotsUnknown = robots.status === null || robots.status >= 500 || robots.interrupted === true || robotsCapped;
   const searchBlocked = AI_SEARCH_AGENTS.filter((agent) => !isAllowed(groups, agent));
   checks.push(
     robotsUnknown
       ? {
           id: "ai_crawlers",
           status: "warn",
-          detail: robots.interrupted ? "robots.txt was cut off while reading" : `robots.txt unreachable (${robots.status ?? robots.error ?? "error"})`,
+          detail: robots.interrupted
+            ? "robots.txt was cut off while reading"
+            : robotsCapped
+              ? "robots.txt has more rules than we read"
+              : `robots.txt unreachable (${robots.status ?? robots.error ?? "error"})`,
         }
       : {
           id: "ai_crawlers",

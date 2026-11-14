@@ -26,3 +26,12 @@ export function monitorPrefill(params: Pick<URLSearchParams, "get"> | null | und
   if (type === "http_request" && (method === "GET" || method === "HEAD")) out.httpConfig_method = method;
   return out;
 }
+
+/**
+ * A saved wizard draft yields to an explicit hand-off for another target, so "Monitor this"
+ * never opens an older, unrelated draft. Returns the draft to restore, or undefined.
+ */
+export function draftForHandoff<T extends { target?: unknown }>(draft: T | undefined, handoffUrl: string | null | undefined): T | undefined {
+  if (!draft) return undefined;
+  return handoffUrl && draft.target !== handoffUrl ? undefined : draft;
+}

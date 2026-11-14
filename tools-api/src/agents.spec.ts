@@ -33,6 +33,15 @@ describe("robots.txt matching (RFC 9309)", () => {
     expect(isAllowed(g, "x", "/p1")).toBe(false);
   });
 
+  it("reports unknown, not a pass, when rules past the cap were skipped", async () => {
+    const robots = "User-agent: *\n" + Array.from({ length: 5000 }, (_, i) => `Disallow: /p${i}`).join("\n") + "\nDisallow: /\n";
+    mockFetch({ [`${O}/`]: new Response("ok"), [`${O}/robots.txt`]: new Response(robots) });
+    const ctx = ctxFor("agents", undefined, "site.com");
+    const r = await agents(ctx, new URL(`${O}/`));
+    expect(check(r, "ai_crawlers")).toMatchObject({ status: "warn", detail: "robots.txt has more rules than we read" });
+    expect(ctx.degraded).toBe(true);
+  });
+
   it("combines repeated groups for one agent", () => {
     const g = parseRobots("User-agent: A\nDisallow: /a\n\nUser-agent: A\nDisallow: /b\n");
     expect(isAllowed(g, "A", "/a")).toBe(false);
@@ -155,6 +164,9 @@ describe("agents tool", () => {
 
   it("treats an unreachable robots.txt as unknown, not allow-all", async () => {
     mockFetch({ [`${O}/`]: new Response("ok"), [`${O}/robots.txt`]: new Response("", { status: 503 }) });
+    const ctx503 = ctxFor("agents", undefined, "site.com");
+    await agents(ctx503, new URL(`${O}/`));
+    expect(ctx503.degraded).toBe(true);
     const r = await run();
     expect(check(r, "ai_crawlers")).toMatchObject({ status: "warn", detail: "robots.txt unreachable (503)" });
     expect(r.training).toEqual([]);

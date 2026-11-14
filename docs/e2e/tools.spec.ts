@@ -100,6 +100,17 @@ test("captcha failure resets and never calls the API; disabled shows paused", as
   await expect(page.getByTestId("tool-status")).toContainText("This tool is paused");
 });
 
+test("busy-state hand-off links the target that was just submitted", async ({ page }) => {
+  await setup(page, () => ({ status: 500, text: "error code: 1027" }));
+  await open(page, "/tools/website-uptime-checker");
+  const form = page.getByTestId("tool-form");
+  await form.getByRole("textbox").fill("first.example");
+  await form.getByRole("button").click();
+  await expect(page.getByTestId("tool-status")).toContainText("busy right now");
+  const href = await page.getByTestId("tool-status").getByRole("link").getAttribute("href");
+  expect(href).toContain(encodeURIComponent("https://first.example/"));
+});
+
 test("a blocked Turnstile script shows the busy state, not a failed human check", async ({ page }) => {
   const requests = await setup(page, () => ({ status: 200, json: {} }));
   await page.unroute("https://challenges.cloudflare.com/**");

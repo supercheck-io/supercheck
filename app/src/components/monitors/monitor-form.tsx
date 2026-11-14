@@ -545,6 +545,8 @@ export function MonitorForm({
   const currentMonitorType = monitorType || urlType || "http_request";
   // "Monitor this" from the free tools; new monitors only.
   const prefill = useMemo(() => monitorPrefill(searchParams, currentMonitorType), [searchParams, currentMonitorType]);
+  // Changes only when the hand-off content changes, not on unrelated query updates.
+  const prefillKey = JSON.stringify(prefill);
 
   // (moved below after form initialization)
 
@@ -740,7 +742,7 @@ export function MonitorForm({
       form.reset(initialDefaults);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [editMode, initialData, urlType]); // Run when these values change
+  }, [editMode, initialData, urlType, prefillKey]); // Run when these values change
 
   // Initialize form with initialData in edit mode
   useEffect(() => {

@@ -29,6 +29,20 @@ declare global {
 }
 
 const SCRIPT = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
+// A script download that hangs must not leave the form on "Checking…".
+const SCRIPT_TIMEOUT_MS = 15_000;
+// The Worker answers within 20 s; past this, show "busy" so the visitor can retry.
+const API_TIMEOUT_MS = 30_000;
+
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error("timeout")), ms);
+    promise.then(
+      (value) => (clearTimeout(timer), resolve(value)),
+      (error) => (clearTimeout(timer), reject(error)),
+    );
+  });
+}
 
 function loadTurnstile(): Promise<Turnstile> {
   if (window.turnstile) return Promise.resolve(window.turnstile);
@@ -85,7 +99,7 @@ export function Checker({ tool, slug, input, placeholder, submitLabel, ctaTitle,
   const ensureWidget = useCallback(async (): Promise<boolean> => {
     if (widgetId.current) return true;
     try {
-      const ts = await loadTurnstile();
+      const ts = await withTimeout(loadTurnstile(), SCRIPT_TIMEOUT_MS);
       if (!widgetEl.current) return false;
       if (!widgetId.current) {
         widgetId.current = ts.render(widgetEl.current, {
@@ -145,6 +159,8 @@ export function Checker({ tool, slug, input, placeholder, submitLabel, ctaTitle,
         return;
       }
       setCopied(false);
+      // Busy and rate-limit links offer "monitor the site" for what was just submitted.
+      setChecked({ value: trimmed, method });
       setPhase({ kind: "verifying" });
       const token = await getToken();
       if (token === "unavailable") {
@@ -165,13 +181,14 @@ export function Checker({ tool, slug, input, placeholder, submitLabel, ctaTitle,
           credentials: "omit",
           headers: { "content-type": "text/plain" },
           body: JSON.stringify({ tool, input: trimmed, token, ...(tool === "api" ? { method } : {}) }),
+          // Covers the connection and the body read below.
+          signal: AbortSignal.timeout(API_TIMEOUT_MS),
         });
         const body = await res.json().catch(() => null);
         next = toState(res.status, body);
       } catch {
         next = { kind: "busy" };
       }
-      setChecked({ value: trimmed, method });
       setPhase(next);
       // Tokens are single use.
       if (widgetId.current) window.turnstile?.reset(widgetId.current);

@@ -37,10 +37,13 @@ export async function https(ctx: CheckContext, url: URL) {
   let preload: Preload;
   try {
     const res = await ctx.fetch(`https://hstspreload.org/api/v2/status?domain=${encodeURIComponent(getDomain(host) ?? host)}`);
+    if (!res.ok) throw new Error("preload_http");
     const body = (await res.json()) as { status?: string };
     preload = body.status === "preloaded" || body.status === "pending" ? body.status : "unknown";
   } catch {
+    // A failed lookup is retried on the next check, not cached as an answer.
     preload = "error";
+    ctx.degraded = true;
   }
 
   const parsed = parseHsts(hstsHeader);

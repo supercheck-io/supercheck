@@ -104,6 +104,14 @@ describe("social tool", () => {
     expect((await run(ctxFor("social"), new URL("https://site.com/"))).image).toMatchObject({ reachable: true, loadable: false });
   });
 
+  it("treats empty and whitespace-only tags as missing", async () => {
+    const { calls } = mockFetch({ "https://site.com/": page(`<meta property="og:image" content=""><meta property="og:title" content="   ">`) });
+    const r = await run(ctxFor("social"), new URL("https://site.com/"));
+    expect(r.missing).toEqual(expect.arrayContaining(["og:image", "og:title"]));
+    expect(r.image).toBeNull();
+    expect(calls.filter((c) => c.method === "HEAD")).toHaveLength(0);
+  });
+
   it("flags a non-image content type", async () => {
     mockFetch({
       "https://site.com/": page(`<meta property="og:image" content="https://site.com/i">`),

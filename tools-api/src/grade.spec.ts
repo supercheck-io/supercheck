@@ -107,6 +107,21 @@ describe("grade rules", () => {
     expect(row({ "strict-transport-security": 'max-age="31536000"' }, "hsts")?.modifier).toBe(0);
   });
 
+  it("an empty nonce does not excuse unsafe-inline", () => {
+    expect(row({ "content-security-policy": "script-src 'unsafe-inline' 'nonce-'; object-src 'none'" }, "csp")?.modifier).toBe(-20);
+    expect(row({ "content-security-policy": "script-src 'unsafe-inline' 'nonce-abc'; object-src 'none'" }, "csp")?.modifier).toBe(5);
+  });
+
+  it("several enforced policies must all allow the same unsafe operation", () => {
+    expect(row({ "content-security-policy": "script-src 'unsafe-inline', script-src data:" }, "csp")?.modifier).toBe(0);
+    expect(row({ "content-security-policy": "script-src 'unsafe-inline' data:, script-src data:" }, "csp")?.modifier).toBe(-20);
+  });
+
+  it("HSTS allows whitespace around =", () => {
+    expect(row({ "strict-transport-security": "max-age=31536000" }, "hsts")?.modifier).toBe(0);
+    expect(row({ "strict-transport-security": "max-age = 31536000" }, "hsts")?.modifier).toBe(0);
+  });
+
   it("HSTS max-age=0 counts as off", () => {
     expect(row({ "strict-transport-security": "max-age=0" }, "hsts")).toMatchObject({ modifier: -20, note: "max-age=0 turns HSTS off" });
   });
