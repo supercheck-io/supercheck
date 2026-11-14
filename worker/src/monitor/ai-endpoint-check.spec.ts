@@ -141,6 +141,16 @@ describe('executeAiEndpointCheck', () => {
     );
   });
 
+  it('leaves no key prefix when the key crosses the 200-character cap', async () => {
+    resolveSecret.mockResolvedValue({ ok: true, value: 'sk-echoed-key' });
+    handler = sse(
+      `data: ${JSON.stringify({ model: 'm'.repeat(190) + 'sk-echoed-key', choices: [{ delta: { content: 'OK' } }] })}\n\ndata: [DONE]\n\n`,
+    );
+    const r = await run({ secretKey: 'KEY' });
+    expect(r.details.ai?.servedModel).not.toContain('sk-echoed');
+    expect(r.details.ai?.servedModel?.endsWith('***')).toBe(true);
+  });
+
   it('errors with the resolver message when the key is missing', async () => {
     resolveSecret.mockResolvedValue({
       ok: false,

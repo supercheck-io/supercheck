@@ -16,6 +16,15 @@ describe('scrubSecrets', () => {
     });
   });
 
+  it('masks a secret cut off by an earlier truncation', () => {
+    expect(
+      scrubSecrets({ m: 'x'.repeat(5) + 'sk-echoed-' }, ['sk-echoed-key']),
+    ).toEqual({ m: 'xxxxx***' });
+    expect(scrubSecrets({ m: 'model-sk' }, ['sk-echoed-key'])).toEqual({
+      m: 'model-sk',
+    });
+  });
+
   it('ignores empty secrets and leaves values without secrets unchanged', () => {
     const details = { errorMessage: 'abc' };
     expect(scrubSecrets(details, [''])).toBe(details);
