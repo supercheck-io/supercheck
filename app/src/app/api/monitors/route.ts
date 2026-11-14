@@ -786,6 +786,7 @@ export async function PUT(req: NextRequest) {
       return NextResponse.json(configurationValidation, { status: 400 });
     }
     const secretRefs = await validateMonitorSecretRefs(putCtx, updateData.config, updateData.target ?? monitorData[0].target, {
+      storedConfig: monitorData[0].config,
       effectiveConfig: updateData.config ?? monitorData[0].config,
       targetChanged: updateData.target !== undefined && updateData.target !== monitorData[0].target,
     });

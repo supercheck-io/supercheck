@@ -60,6 +60,17 @@ describe('resolveMonitorSecret', () => {
     });
   });
 
+  it('refuses a secret too short to scrub from stored results', async () => {
+    const { db } = dbReturning([
+      { projectId: 'p1', encryptedValue: 'enc:v1:x' },
+    ]);
+    (decryptValue as jest.Mock).mockReturnValueOnce('abc');
+    await expect(resolveMonitorSecret(db, 'm1', 'KEY')).resolves.toMatchObject({
+      ok: false,
+      message: expect.stringContaining('shorter than 4'),
+    });
+  });
+
   it('drops a trailing newline and refuses a line break inside the value', async () => {
     const { db } = dbReturning([
       { projectId: 'p1', encryptedValue: 'enc:v1:x' },

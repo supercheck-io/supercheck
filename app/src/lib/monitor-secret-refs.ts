@@ -5,7 +5,7 @@ import { checkPermissionWithContext, isImpersonatedSession } from "@/lib/rbac/mi
 import { logAuditEvent } from "@/lib/audit-logger";
 import type { AuthContext } from "@/lib/auth-context";
 
-/** `audit` is merged into the monitor_created/monitor_updated metadata: secret names and the target host, never values or the full URL. */
+/** `audit` is merged into the monitor_created/monitor_updated metadata: secret names and the target host, never secret values. */
 type Result =
   | { success: true; audit?: { referencedSecrets: string[]; targetHost: string | null } }
   | { success: false; error: string; details: string; status?: number };
@@ -30,17 +30,19 @@ export function monitorSecretNames(config: unknown): string[] {
  * be allowed to use secrets: variable:view_secrets, and not an impersonated browser session (CLI tokens are exempt, as in
  * the decrypt route). Only the incoming config is checked, so a stored reference to a since-deleted secret never blocks an unrelated edit.
  * `target` is the effective monitor target, recorded as a host only.
- * `update` covers edits that keep a stored secret but send it somewhere new: when the target changes, the secrets the
- * effective config still names pass the same impersonation and permission gate (their existence is not re-checked).
+ * `update` makes edits judge only what changes: a name already stored on the monitor is neither gated nor re-checked
+ * (a full-replace PUT resends it), unless the target changes. Then every secret the effective config still names passes
+ * the impersonation and permission gate, because the edit sends it somewhere new.
  */
 export async function validateMonitorSecretRefs(
   ctx: AuthContext,
   incomingConfig: unknown,
   target?: unknown,
-  update?: { effectiveConfig: unknown; targetChanged: boolean },
+  update?: { storedConfig: unknown; effectiveConfig: unknown; targetChanged: boolean },
 ): Promise<Result> {
   const projectId = ctx.project.id;
-  const incoming = [...new Set(monitorSecretNames(incomingConfig))];
+  const stored = new Set(monitorSecretNames(update?.storedConfig));
+  const incoming = [...new Set(monitorSecretNames(incomingConfig))].filter((n) => !stored.has(n));
   const names = update?.targetChanged
     ? [...new Set([...incoming, ...monitorSecretNames(update.effectiveConfig)])]
     : incoming;

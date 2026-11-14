@@ -267,10 +267,18 @@ function judge(
   if (code < 200 || code >= 300) {
     // The provider's error code (e.g. model_not_found) says what to fix; never its free text.
     const reason = out.errCode ?? out.errType;
-    return down(reason ? `HTTP ${code}: ${reason}` : `HTTP ${code}`);
+    return down(
+      reason && /^[A-Za-z0-9_.-]{1,64}$/.test(reason)
+        ? `HTTP ${code}: ${reason}`
+        : `HTTP ${code}`,
+    );
   }
-  if (out.innerError)
-    return down(`Error inside a 200 reply: ${out.innerError}`);
+  if (out.innerError) {
+    const reason = /^[A-Za-z0-9_.-]{1,64}$/.test(out.innerError)
+      ? out.innerError
+      : 'unknown';
+    return down(`Error inside a 200 reply: ${reason}`);
+  }
   if (!out.done || out.cutOff) return down('Reply was cut off');
   if (!out.text.trim()) {
     return down(

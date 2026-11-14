@@ -40,6 +40,19 @@ describe('scrubSecrets', () => {
     expect(out.c).toBe('Basic ***');
   });
 
+  it('covers lowercase percent, form, HTML-entity, slash-escaped JSON and base64 echoes', () => {
+    const secret = 'a/b c&"d';
+    const echoes = [
+      'a%2fb%20c%26%22d',
+      'a%2Fb+c%26%22d',
+      'a/b c&amp;&quot;d',
+      'a\\/b c&\\"d',
+      Buffer.from(secret).toString('base64'),
+    ];
+    const out = scrubSecrets({ e: echoes }, secretEchoForms(secret));
+    expect(out.e).toEqual(echoes.map(() => '***'));
+  });
+
   it('does not scrub secrets shorter than 4 characters', () => {
     expect(scrubSecrets({ m: 'a cat' }, ['a'])).toEqual({ m: 'a cat' });
   });

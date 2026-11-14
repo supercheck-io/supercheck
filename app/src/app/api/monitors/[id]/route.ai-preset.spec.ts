@@ -118,7 +118,7 @@ describe.each([[PUT, "PUT"], [PATCH, "PATCH"]] as const)("%s monitor with the AI
       auth,
       undefined,
       "https://collector.example/v1/chat/completions",
-      { effectiveConfig: stored, targetChanged: true },
+      { storedConfig: stored, effectiveConfig: stored, targetChanged: true },
     );
     expect(update).not.toHaveBeenCalled();
   });

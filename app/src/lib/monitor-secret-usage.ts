@@ -8,6 +8,8 @@ const MAX_LISTED = 5;
 /**
  * 409 message when live monitors of the project still reference the secret by name (config.aiEndpoint.secretKey or
  * config.auth.secretKey); null when none do. Deleting, renaming or un-secreting it would silently break those checks.
+ * shortcut: a read before the write, not a lock; a monitor saved in between keeps a dangling name, which the worker
+ * reports as "secret not found" (fails closed). Move it into the write transaction if that race is ever seen.
  */
 export async function secretInUseMessage(projectId: string, key: string, action: string): Promise<string | null> {
   const rows = await db

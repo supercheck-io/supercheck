@@ -3,6 +3,7 @@ import type { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import * as schema from '../db/schema';
 import { decryptValue } from '../common/services/variable-resolver.service';
 import { liveMonitor } from '../db/deletion-visibility';
+import { MIN_SECRET_LENGTH } from '../common/utils/scrub-secrets';
 import { allowInternalMonitorTargets } from '../common/utils/url-validator';
 
 export type MonitorSecretResult =
@@ -54,6 +55,13 @@ export async function resolveMonitorSecret(
       /[\r\n]+$/,
       '',
     );
+    // A value this short could not be scrubbed from stored results, so it is never sent.
+    if (value.length < MIN_SECRET_LENGTH) {
+      return {
+        ok: false,
+        message: `The project secret for this monitor is shorter than ${MIN_SECRET_LENGTH} characters`,
+      };
+    }
     if (/[\r\n\0]/.test(value)) {
       return {
         ok: false,

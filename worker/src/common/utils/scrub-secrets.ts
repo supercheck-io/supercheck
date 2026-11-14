@@ -5,7 +5,7 @@
  */
 // Stored text is often truncated before scrubbing, so a secret cut at the end leaves a prefix behind.
 const MIN_TAIL = 4;
-const MIN_SECRET_LENGTH = 4;
+export const MIN_SECRET_LENGTH = 4;
 function maskTail(text: string, secret: string): string {
   for (
     let n = Math.min(secret.length - 1, text.length);
@@ -19,7 +19,10 @@ function maskTail(text: string, secret: string): string {
 
 export function scrubSecrets<T>(value: T, secrets: readonly string[]): T {
   // Shorter values would mask ordinary text everywhere; such secrets carry no real protection anyway.
-  const live = secrets.filter((s) => s.length >= MIN_SECRET_LENGTH);
+  // Longest first, so a form that contains another (base64 of user:secret) is replaced whole.
+  const live = secrets
+    .filter((s) => s.length >= MIN_SECRET_LENGTH)
+    .sort((a, b) => b.length - a.length);
   if (live.length === 0) return value;
   const walk = (v: unknown): unknown => {
     if (typeof v === 'string')
@@ -42,10 +45,23 @@ export function scrubSecrets<T>(value: T, secrets: readonly string[]): T {
  * basic auth, the base64 `user:secret` credential.
  */
 export function secretEchoForms(secret: string, basicUser?: string): string[] {
+  const url = encodeURIComponent(secret);
+  const json = JSON.stringify(secret).slice(1, -1);
+  const html = secret
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+  // shortcut: common echo encodings only (not \uXXXX escapes); a key of letters, digits and -_ is covered fully.
   const forms = [
     secret,
-    encodeURIComponent(secret),
-    JSON.stringify(secret).slice(1, -1),
+    url,
+    url.replace(/%[0-9A-F]{2}/g, (m) => m.toLowerCase()),
+    url.replace(/%20/g, '+'),
+    json,
+    json.replace(/\//g, '\\/'),
+    html,
+    Buffer.from(secret).toString('base64'),
   ];
   if (basicUser !== undefined)
     forms.push(Buffer.from(`${basicUser}:${secret}`).toString('base64'));

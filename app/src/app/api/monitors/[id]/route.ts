@@ -278,6 +278,7 @@ export async function PUT(
       return NextResponse.json(configurationValidation, { status: 400 });
     }
     const secretRefs = await validateMonitorSecretRefs(authCtx, updateData.config, updateData.target ?? currentMonitor.target, {
+      storedConfig: currentMonitor.config,
       effectiveConfig: updateData.config ?? currentMonitor.config,
       targetChanged: updateData.target !== undefined && updateData.target !== currentMonitor.target,
     });
@@ -701,6 +702,7 @@ export async function PATCH(
       return NextResponse.json(configurationValidation, { status: 400 });
     }
     const secretRefs = await validateMonitorSecretRefs(authCtx, rawData.config, updatePayload.target ?? currentMonitor.target, {
+      storedConfig: currentMonitor.config,
       effectiveConfig: updatePayload.config ?? currentMonitor.config,
       targetChanged: updatePayload.target !== undefined && updatePayload.target !== currentMonitor.target,
     });

@@ -414,6 +414,8 @@ describe('executeAiEndpointCheck', () => {
     expect((await run()).details.errorMessage).toBe(
       'HTTP 404: model_not_found',
     );
+    handler = json(400, { error: { code: 'click https://evil.example now' } });
+    expect((await run()).details.errorMessage).toBe('HTTP 400');
     handler = json(402, { error: { message: 'Insufficient credits' } });
     expect((await run()).details.errorMessage).toBe(
       'Out of credit or over the spend limit',
