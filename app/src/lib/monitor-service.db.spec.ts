@@ -105,7 +105,7 @@ it("writes a secret-bearing monitor only while its target is still the checked o
     updateMonitorHandler(monitor.id, { config: { auth: { type: "bearer", secretKey: "K" } } }, { expectTarget: "https://example.com" }),
   ).rejects.toBeInstanceOf(MonitorTargetChangedError);
   const [after] = await mockDatabase.select().from(schema.monitors).where(eq(schema.monitors.id, monitor.id));
-  expect(after.config).not.toMatchObject({ auth: { secretKey: "K" } });
+  expect(after.config?.auth?.secretKey).toBeUndefined();
   await expect(
     updateMonitorHandler(monitor.id, { name: "Renamed" }, { expectTarget: "https://collector.example" }),
   ).resolves.toMatchObject({ name: "Renamed" });
