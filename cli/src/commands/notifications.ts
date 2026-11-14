@@ -46,6 +46,8 @@ notificationCommand
         { key: 'type', header: 'Type' },
         { key: 'isEnabled', header: 'Enabled' },
         { key: 'lastUsed', header: 'Last Used' },
+        // ok | auth_failed (integration key rejected) | failing | unknown, from the last 7 days of deliveries.
+        { key: 'health', header: 'Health', format: (value) => (value as { state?: string } | undefined)?.state ?? '-' },
       ],
     })
   })
@@ -184,13 +186,37 @@ notificationCommand
   })
 
 notificationCommand
-  .command('test')
-  .description('Send a test notification to verify provider configuration')
-  .requiredOption('--type <type>', 'Provider type (email, slack, webhook, telegram, discord, teams)')
-  .option('--payload <json>', 'Provider configuration as a JSON object')
+  .command('test [id]')
+  .description('Send a test through a saved channel (by id), or test an unsaved configuration with --type and --payload')
+  .option('--resolve', 'Saved webhook channels: resolve the test page instead of opening it')
+  .option('--type <type>', 'Unsaved test: provider type (email, slack, webhook, telegram, discord, teams)')
+  .option('--payload <json>', 'Unsaved test: provider configuration as a JSON object')
   .option('--data <json>', 'Alias for --payload')
   .option('--config <json>', 'Legacy alias for --payload')
-  .action(async (options: { type: string } & PayloadOptions) => {
+  .action(async (id: string | undefined, options: { type?: string; resolve?: boolean } & PayloadOptions) => {
+    const client = createAuthenticatedClient()
+    if (id) {
+      if (options.type || parsePayload(options)) {
+        throw new CLIError('Pass either a channel id or --type with --payload, not both', ExitCode.ConfigError)
+      }
+      const action = options.resolve ? 'resolve' : 'trigger'
+      const { data } = await withSpinner(
+        options.resolve ? 'Resolving test page' : 'Sending test',
+        () => client.post<Record<string, unknown>>(
+          `/api/notification-providers/${encodeURIComponent(id)}/test`,
+          { action },
+          { retries: 0 },
+        ),
+      )
+      outputDetail(data)
+      if (data.ok !== true) {
+        const status = typeof data.responseStatus === 'number' ? ` (HTTP ${data.responseStatus})` : ''
+        throw new CLIError(String(data.error ?? `Test failed${status}`), ExitCode.GeneralError)
+      }
+      return
+    }
+    if (options.resolve) throw new CLIError('--resolve needs a saved channel id', ExitCode.ConfigError)
+    if (!options.type) throw new CLIError('Pass a saved channel id, or --type with --payload for an unsaved configuration', ExitCode.ConfigError)
     const validTypes = ['email', 'slack', 'webhook', 'telegram', 'discord', 'teams']
     if (!validTypes.includes(options.type)) {
       throw new CLIError(
@@ -201,7 +227,6 @@ notificationCommand
 
     const config = parsePayload(options, true)!
 
-    const client = createAuthenticatedClient()
     const { data } = await withSpinner(
       'Sending test notification',
       () => client.post<{ success: boolean; message?: string; error?: string }>(

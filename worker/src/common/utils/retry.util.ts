@@ -26,6 +26,16 @@ export interface RetryOptions {
   timeoutMs: number;
   /** Jitter factor (0-1) to randomize delays (default: 0.1) */
   jitterFactor?: number;
+  /** No retry starts unless it can finish (wait + timeout) within this many ms of the first attempt. */
+  maxTotalMs?: number;
+}
+
+/** One attempt of fetchWithRetry: HTTP status, or the error when no response arrived. */
+export interface RetryAttempt {
+  n: number;
+  status?: number;
+  error?: string;
+  ms: number;
 }
 
 /**
@@ -37,6 +47,9 @@ export interface RetryResult<T> {
   error?: string;
   attempts: number;
   lastStatusCode?: number;
+  /** Body of the last response, read while the timeout is still armed. */
+  lastResponseBody?: string;
+  attemptLog?: RetryAttempt[];
 }
 
 /**
@@ -49,7 +62,26 @@ export const WEBHOOK_RETRY_CONFIG: RetryOptions = {
   backoffMultiplier: 2,
   timeoutMs: 10000,
   jitterFactor: 0.1,
+  // Below the monitor alert stale-claim window (120 s), so no other evaluator takes over a send in flight.
+  maxTotalMs: 90000,
 };
+
+/** Longest wait a Retry-After header may ask for. */
+export const MAX_RETRY_AFTER_MS = 10000;
+
+/** Retry-After (seconds or HTTP date) in ms, capped at MAX_RETRY_AFTER_MS; undefined when absent or invalid. */
+export function retryAfterDelayMs(
+  header: string | null | undefined,
+  now = Date.now(),
+): number | undefined {
+  if (!header) return undefined;
+  const value = header.trim();
+  const ms = /^\d+$/.test(value)
+    ? Number(value) * 1000
+    : Date.parse(value) - now;
+  if (!Number.isFinite(ms)) return undefined;
+  return Math.min(Math.max(ms, 0), MAX_RETRY_AFTER_MS);
+}
 
 /**
  * Check if an HTTP status code is retryable
@@ -69,6 +101,9 @@ export function isRetryableError(error: unknown): boolean {
   if (error instanceof Error) {
     const message = error.message.toLowerCase();
     const name = error.name.toLowerCase();
+
+    // The SSRF guard's refusal contains "network" but is a policy decision, not a transient failure.
+    if (message.includes('private or internal network')) return false;
 
     // Retryable network errors
     const retryablePatterns = [
@@ -140,8 +175,13 @@ export async function fetchWithRetry(
 ): Promise<RetryResult<Response>> {
   let lastError: string | undefined;
   let lastStatusCode: number | undefined;
+  let lastResponseBody: string | undefined;
+  const attemptLog: RetryAttempt[] = [];
+  const startedAt = Date.now();
 
   for (let attempt = 0; attempt <= retryConfig.maxRetries; attempt++) {
+    const attemptStartedAt = Date.now();
+    let retryAfterMs: number | undefined;
     // Create abort controller for timeout
     const controller = new AbortController();
     const timeoutId = setTimeout(
@@ -164,23 +204,30 @@ export async function fetchWithRetry(
       // trickles the body must not hang the caller. It is cleared on every exit below.
 
       lastStatusCode = response.status;
+      lastResponseBody = await response.text().catch(() => '');
+      clearTimeout(timeoutId);
+      attemptLog.push({
+        n: attempt + 1,
+        status: response.status,
+        ms: Date.now() - attemptStartedAt,
+      });
 
       // Success - return immediately
       if (response.ok) {
-        clearTimeout(timeoutId);
         return {
           success: true,
           data: response,
           attempts: attempt + 1,
           lastStatusCode,
+          lastResponseBody,
+          attemptLog,
         };
       }
 
       // Check if this status code is retryable
       if (!isRetryableStatusCode(response.status)) {
-        const responseText = await response.text().catch(() => '');
-        clearTimeout(timeoutId);
-        lastError = `HTTP ${response.status}: ${response.statusText}. ${responseText}`;
+        // Callers redact this before showing or storing it; the helper's own logs never include it.
+        lastError = `HTTP ${response.status}: ${response.statusText}. ${lastResponseBody}`;
 
         // Non-retryable error - return immediately
         logger?.warn(
@@ -192,37 +239,63 @@ export async function fetchWithRetry(
           error: lastError,
           attempts: attempt + 1,
           lastStatusCode,
+          lastResponseBody,
+          attemptLog,
         };
       }
 
       // Retryable status code
-      const responseText = await response.text().catch(() => '');
-      clearTimeout(timeoutId);
-      lastError = `HTTP ${response.status}: ${responseText}`;
+      lastError = `HTTP ${response.status}: ${lastResponseBody}`;
+      if (response.status === 429 || response.status === 503) {
+        retryAfterMs = retryAfterDelayMs(response.headers?.get('retry-after'));
+      }
     } catch (error) {
       clearTimeout(timeoutId);
       const errorMessage =
         error instanceof Error ? error.message : String(error);
       lastError = errorMessage;
+      lastStatusCode = undefined;
+      lastResponseBody = undefined;
+      attemptLog.push({
+        n: attempt + 1,
+        error: errorMessage,
+        ms: Date.now() - attemptStartedAt,
+      });
 
       // Check if error is retryable
       if (!isRetryableError(error)) {
-        logger?.warn(`Non-retryable error: ${errorMessage}, not retrying`);
+        // No error text in logs: a network error can carry a credential-bearing URL.
+        logger?.warn('Non-retryable network error, not retrying');
 
         return {
           success: false,
           error: lastError,
           attempts: attempt + 1,
+          attemptLog,
         };
       }
     }
 
     // If not the last attempt, wait before retrying
     if (attempt < retryConfig.maxRetries) {
-      const delay = calculateDelay(attempt, retryConfig);
+      const delay = retryAfterMs ?? calculateDelay(attempt, retryConfig);
+      if (
+        retryConfig.maxTotalMs !== undefined &&
+        Date.now() - startedAt + delay + retryConfig.timeoutMs >
+          retryConfig.maxTotalMs
+      ) {
+        return {
+          success: false,
+          error: `Failed after ${attempt + 1} attempts (retry budget spent). Last error: ${lastError}`,
+          attempts: attempt + 1,
+          lastStatusCode,
+          lastResponseBody,
+          attemptLog,
+        };
+      }
 
       logger?.debug(
-        `Retry attempt ${attempt + 1}/${retryConfig.maxRetries} in ${delay}ms. Error: ${lastError}`,
+        `Retry attempt ${attempt + 1}/${retryConfig.maxRetries} in ${delay}ms${lastStatusCode !== undefined ? ` after HTTP ${lastStatusCode}` : ' after a network error'}`,
       );
 
       await sleep(delay);
@@ -235,6 +308,8 @@ export async function fetchWithRetry(
     error: `Failed after ${retryConfig.maxRetries + 1} attempts. Last error: ${lastError}`,
     attempts: retryConfig.maxRetries + 1,
     lastStatusCode,
+    lastResponseBody,
+    attemptLog,
   };
 }
 
@@ -262,10 +337,16 @@ export function createRetryConfig(
     maxDelayMs: overrides?.maxDelayMs ?? WEBHOOK_RETRY_CONFIG.maxDelayMs,
     backoffMultiplier:
       overrides?.backoffMultiplier ?? WEBHOOK_RETRY_CONFIG.backoffMultiplier,
-    timeoutMs:
+    // A single attempt must also fit the total budget (kept under the 120 s alert claim window).
+    timeoutMs: Math.min(
       overrides?.timeoutMs ??
-      (envTimeout ? parseInt(envTimeout, 10) : WEBHOOK_RETRY_CONFIG.timeoutMs),
+        (envTimeout
+          ? parseInt(envTimeout, 10)
+          : WEBHOOK_RETRY_CONFIG.timeoutMs),
+      overrides?.maxTotalMs ?? WEBHOOK_RETRY_CONFIG.maxTotalMs ?? Infinity,
+    ),
     jitterFactor: overrides?.jitterFactor ?? WEBHOOK_RETRY_CONFIG.jitterFactor,
+    maxTotalMs: overrides?.maxTotalMs ?? WEBHOOK_RETRY_CONFIG.maxTotalMs,
   };
 }
 

@@ -62,7 +62,8 @@ type SreTimelineEventType =
   | 'evidence_added'
   | 'recommendation_added'
   | 'verification_result'
-  | 'user_action';
+  | 'user_action'
+  | 'notification';
 type SreActorType = 'user' | 'agent' | 'system';
 type SreVerificationResourceType = 'monitor' | 'test' | 'k6';
 type SreVerificationStatus = 'pending' | 'running' | 'passed' | 'failed';
@@ -159,6 +160,7 @@ type SreEvidenceGraphFocusedViewVisibility = 'project';
 type SreIntegrationKey =
   | 'pagerduty'
   | 'opsgenie'
+  | 'jsm_ops'
   | 'splunk_on_call'
   | 'better_stack'
   | 'incident_io'

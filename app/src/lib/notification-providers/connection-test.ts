@@ -1,0 +1,588 @@
+import { NextResponse } from "next/server";
+import { createHash } from "crypto";
+import { type NotificationProviderConfig } from "@/db/schema";
+import { EmailService } from "@/lib/email-service";
+import { renderTestEmail } from "@/lib/email-renderer";
+import { normalizeWebhookMethod } from "@/lib/notification-providers/webhook-template";
+import { buildWebhookTestBody } from "@/lib/notification-providers/webhook-preview";
+import { emailsAsString, normalizeWebhookHeaders } from "@/lib/notification-providers/validation";
+import { db } from "@/utils/db";
+import { user, member } from "@/db/schema";
+import { and, eq, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
+import { apiKeyRateLimiter, createRateLimitHeaders } from "@/lib/api-key-rate-limiter";
+import { fetchChannelWebhookEndpoint, fetchPublicEndpoint } from "@/lib/sre/connectors/pinned-fetch";
+
+/** Connection tests shared by the unsaved-config test route and the saved-channel test route. */
+export const MAX_TEST_RECIPIENTS = 5;
+// 5 test sends per 10 minutes per user
+export const TEST_OTHER_RATE_LIMIT = { enabled: true, timeWindow: 600, maxRequests: 20 };
+export const TEST_EMAIL_RATE_LIMIT = { enabled: true, timeWindow: 600, maxRequests: 5 };
+
+export async function testEmailConnection(
+  config: NotificationProviderConfig,
+  context: { userId: string; organizationId: string },
+) {
+  try {
+    // Validate emails field (new format)
+    const typedConfig = config as Record<string, unknown>;
+    const emails = emailsAsString(typedConfig.emails);
+    if (!emails?.trim()) {
+      throw new Error("At least one email address is required");
+    }
+
+    // Validate email format with length limit to prevent ReDoS
+    // Deduplicated so a repeated address cannot multiply deliveries.
+    const emailList = [...new Set(
+      emails
+        .split(",")
+        .map((email) => email.trim().toLowerCase())
+        .filter((email) => email),
+    )];
+    if (emailList.length === 0) {
+      throw new Error("At least one email address is required");
+    }
+    // Safer email regex without nested quantifiers - uses explicit character classes
+    const emailRegex = /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/;
+
+    for (const email of emailList) {
+      // RFC 5321 max email length is 254 characters
+      if (email.length > 254) {
+        throw new Error(`Email address too long: ${email.substring(0, 20)}...`);
+      }
+      if (!emailRegex.test(email)) {
+        throw new Error(`Invalid email format: ${email}`);
+      }
+    }
+
+    if (emailList.length > MAX_TEST_RECIPIENTS) {
+      throw new Error(`At most ${MAX_TEST_RECIPIENTS} recipients can be tested at once`);
+    }
+
+    // Platform mail may only go to the caller or members of their organization.
+    const lowered = emailList;
+    const permitted = await db
+      .select({ email: user.email })
+      .from(user)
+      .leftJoin(member, and(eq(member.userId, user.id), eq(member.organizationId, context.organizationId)))
+      .where(and(
+        inArray(sql`lower(${user.email})`, lowered),
+        or(eq(user.id, context.userId), isNotNull(member.id)),
+        or(isNull(user.banned), eq(user.banned, false)),
+      ));
+    const permittedSet = new Set(permitted.map((row) => row.email.toLowerCase()));
+    if (lowered.some((email) => !permittedSet.has(email))) {
+      throw new Error("Test emails can only be sent to your own address or members of your organization");
+    }
+
+    const limit = await apiKeyRateLimiter.checkAndIncrement(`notification-test:${context.userId}`, TEST_EMAIL_RATE_LIMIT);
+    if (!limit.allowed) {
+      return NextResponse.json(
+        { success: false, error: "Too many test emails. Try again later." },
+        { status: limit.unavailable ? 503 : 429, headers: createRateLimitHeaders(limit) },
+      );
+    }
+
+    // Test SMTP connection — send to ALL configured addresses so users can verify
+    const smtpResult = await testSMTPConnection(emailList);
+
+    if (smtpResult.success) {
+      return NextResponse.json({
+        success: true,
+        message: smtpResult.message || `Email connection successful via SMTP. Test email sent to ${emailList.length} recipient(s).`,
+        details: smtpResult,
+      });
+    } else {
+      return NextResponse.json(
+        {
+          success: false,
+          error: `SMTP email connection failed: ${smtpResult.error}`,
+          details: smtpResult,
+        },
+        { status: 400 }
+      );
+    }
+  } catch (error) {
+    return NextResponse.json(
+      {
+        success: false,
+        error: `Email connection failed: ${error instanceof Error ? error.message : String(error)}`,
+      },
+      { status: 400 }
+    );
+  }
+}
+
+async function testSMTPConnection(
+  testEmails: string[]
+): Promise<{ success: boolean; message: string; error: string }> {
+  try {
+    const emailService = EmailService.getInstance();
+
+    // Render email using react-email template
+    const emailContent = await renderTestEmail({
+      testMessage:
+        "This is a test email to verify your SMTP configuration is working correctly.",
+    });
+
+    // Send sequentially via a single SMTP connection so all recipients are
+    // reached even on servers that rate-limit concurrent connections
+    const result = await emailService.sendEmailToMultiple({
+      recipients: testEmails,
+      subject: emailContent.subject,
+      text: emailContent.text,
+      html: emailContent.html,
+    });
+
+    // All failed — SMTP config is likely wrong
+    if (result.sentCount === 0) {
+      const firstError = Object.values(result.errors)[0] ?? "Send failed";
+      return {
+        success: false,
+        message: "",
+        error: `Failed to send to all ${testEmails.length} recipient(s): ${firstError}`,
+      };
+    }
+
+    // Some succeeded, some failed — SMTP works but individual addresses may be bad
+    if (result.failedAddresses.length > 0) {
+      return {
+        success: true,
+        message: `SMTP connection verified. Sent to ${result.sentCount}/${testEmails.length} recipient(s). Failed for: ${result.failedAddresses.join(", ")}`,
+        error: "",
+      };
+    }
+
+    return {
+      success: true,
+      message: `Test email sent to ${testEmails.length} recipient(s)`,
+      error: "",
+    };
+  } catch (error) {
+    return {
+      success: false,
+      message: "",
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+export async function testSlackConnection(config: NotificationProviderConfig) {
+  try {
+    const typedConfig = config as Record<string, unknown>;
+    if (!typedConfig.webhookUrl) {
+      throw new Error("Webhook URL is required");
+    }
+
+    // Validate URL to prevent SSRF attacks
+    const { validateWebhookUrlString } = await import("@/lib/url-validator");
+    const webhookUrl = typedConfig.webhookUrl as string;
+    
+    // Validate URL format and ensure it's not targeting internal networks
+    const urlValidation = validateWebhookUrlString(webhookUrl);
+    if (!urlValidation.valid) {
+      throw new Error(urlValidation.error || "Invalid webhook URL");
+    }
+
+    // Validate that the URL is a Slack webhook URL
+    try {
+      const parsedUrl = new URL(webhookUrl);
+      const allowedSlackHosts = new Set(["hooks.slack.com"]);
+      const normalizedHost = parsedUrl.hostname.toLowerCase();
+      // Strict hostname allowlist to prevent SSRF via attacker-controlled destinations.
+      if (!allowedSlackHosts.has(normalizedHost)) {
+        throw new Error("URL must be a valid Slack webhook URL (hooks.slack.com)");
+      }
+    } catch (parseError) {
+      if (parseError instanceof Error && parseError.message.includes("Slack")) {
+        throw parseError;
+      }
+      throw new Error("Invalid URL format");
+    }
+
+    const response = await fetchPublicEndpoint(webhookUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        text: "Test message from Supercheck - Connection test successful!",
+        channel: typedConfig.channel,
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    }
+
+    return NextResponse.json({
+      success: true,
+      message: "Slack connection successful",
+    });
+  } catch (error) {
+    return NextResponse.json(
+      {
+        success: false,
+        error: `Slack connection failed: ${error instanceof Error ? error.message : String(error)}`,
+      },
+      { status: 400 }
+    );
+  }
+}
+
+export async function testWebhookConnection(config: NotificationProviderConfig) {
+  try {
+    const typedConfig = config as Record<string, unknown>;
+    if (!typedConfig.url) {
+      throw new Error("URL is required");
+    }
+
+    const { allowInternalWebhookTargets, validateWebhookUrlString } = await import("@/lib/url-validator");
+    const urlValidation = validateWebhookUrlString(typedConfig.url as string, {
+      allowInternal: allowInternalWebhookTargets(),
+    });
+    if (!urlValidation.valid) {
+      throw new Error(urlValidation.error || "Invalid webhook URL");
+    }
+
+    const method = normalizeWebhookMethod(typedConfig.method);
+    const targetUrl = typedConfig.url as string;
+    const targetHost = new URL(targetUrl).hostname;
+    const headers = {
+      "Content-Type": "application/json",
+      ...normalizeWebhookHeaders(typedConfig.headers),
+    };
+    const headerNames = Object.keys(headers).sort((a, b) => a.localeCompare(b));
+    const body = buildWebhookTestBody({
+      method,
+      preset: typedConfig.preset,
+      bodyTemplate:
+        typeof typedConfig.bodyTemplate === "string"
+          ? typedConfig.bodyTemplate
+          : undefined,
+    });
+    const requestBodyHash = body ? sha256(body) : undefined;
+    const startedAt = Date.now();
+
+    // Add timeout to prevent hanging connections
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10000);
+
+    try {
+      const response = await fetchChannelWebhookEndpoint(targetUrl, {
+        method,
+        headers,
+        body,
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeout);
+      const responseText = await response.text().catch(() => "");
+      const details = {
+        method,
+        targetHost,
+        headerNames,
+        requestBodyHash,
+        responseStatus: response.status,
+        responseStatusText: response.statusText,
+        responseHash: sha256(responseText),
+        elapsedMs: Date.now() - startedAt,
+      };
+
+      if (!response.ok) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: `Webhook connection failed: HTTP ${response.status}: ${response.statusText}`,
+            details,
+          },
+          { status: 400 }
+        );
+      }
+
+      return NextResponse.json({
+        success: true,
+        message: "Webhook connection successful",
+        details,
+      });
+    } catch (fetchError) {
+      clearTimeout(timeout);
+      if (fetchError instanceof Error && fetchError.name === 'AbortError') {
+        return NextResponse.json(
+          {
+            success: false,
+            error: "Webhook connection failed: Request timed out after 10 seconds",
+            details: {
+              method,
+              targetHost,
+              headerNames,
+              requestBodyHash,
+              elapsedMs: Date.now() - startedAt,
+            },
+          },
+          { status: 400 }
+        );
+      }
+      throw fetchError;
+    }
+  } catch (error) {
+    return NextResponse.json(
+      {
+        success: false,
+        error: `Webhook connection failed: ${error instanceof Error ? error.message : String(error)}`,
+      },
+      { status: 400 }
+    );
+  }
+}
+
+function sha256(value: string): string {
+  return createHash("sha256").update(value).digest("hex");
+}
+
+export async function testTelegramConnection(config: NotificationProviderConfig) {
+  try {
+    const typedConfig = config as Record<string, unknown>;
+    if (!typedConfig.botToken || !typedConfig.chatId) {
+      throw new Error("Bot token and chat ID are required");
+    }
+
+    // Sanitize bot token to prevent path traversal and SSRF
+    const botToken = String(typedConfig.botToken).trim();
+    
+    // Validate bot token format (should be like 123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11)
+    const botTokenRegex = /^[0-9]+:[A-Za-z0-9_-]+$/;
+    if (!botTokenRegex.test(botToken)) {
+      throw new Error("Invalid bot token format");
+    }
+
+    // Construct URL with validated token - only allow official Telegram API
+    const url = `https://api.telegram.org/bot${botToken}/sendMessage`;
+    const response = await fetchPublicEndpoint(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        chat_id: typedConfig.chatId,
+        text: "Test message from Supercheck - Connection test successful!",
+      }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.description || `HTTP ${response.status}`);
+    }
+
+    return NextResponse.json({
+      success: true,
+      message: "Telegram connection successful",
+    });
+  } catch (error) {
+    return NextResponse.json(
+      {
+        success: false,
+        error: `Telegram connection failed: ${error instanceof Error ? error.message : String(error)}`,
+      },
+      { status: 400 }
+    );
+  }
+}
+
+export async function testDiscordConnection(config: NotificationProviderConfig) {
+  try {
+    const typedConfig = config as Record<string, unknown>;
+    if (!typedConfig.discordWebhookUrl) {
+      throw new Error("Discord webhook URL is required");
+    }
+
+    // Validate URL to prevent SSRF attacks
+    const { validateWebhookUrlString } = await import("@/lib/url-validator");
+    const webhookUrl = typedConfig.discordWebhookUrl as string;
+    
+    // Validate URL format and ensure it's not targeting internal networks
+    const urlValidation = validateWebhookUrlString(webhookUrl);
+    if (!urlValidation.valid) {
+      throw new Error(urlValidation.error || "Invalid webhook URL");
+    }
+
+    // Validate that the URL is a Discord webhook URL
+    try {
+      const parsedUrl = new URL(webhookUrl);
+      const hostname = parsedUrl.hostname.toLowerCase();
+      // Allowed Discord webhook hosts - exact match or legitimate subdomains
+      const allowedDiscordHosts = [
+        'discord.com',
+        'discordapp.com',
+        'canary.discord.com',
+        'ptb.discord.com',
+      ];
+      if (!allowedDiscordHosts.includes(hostname)) {
+        throw new Error("URL must be a valid Discord webhook URL (discord.com or discordapp.com)");
+      }
+      // Ensure it's specifically a webhook endpoint
+      if (!parsedUrl.pathname.startsWith('/api/webhooks/')) {
+        throw new Error("URL must be a Discord webhook endpoint (/api/webhooks/...)");
+      }
+    } catch (parseError) {
+      if (parseError instanceof Error && parseError.message.includes('Discord')) {
+        throw parseError;
+      }
+      throw new Error("Invalid URL format");
+    }
+
+    const response = await fetchPublicEndpoint(webhookUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        content: "Test message from Supercheck - Connection test successful!",
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    }
+
+    return NextResponse.json({
+      success: true,
+      message: "Discord connection successful",
+    });
+  } catch (error) {
+    return NextResponse.json(
+      {
+        success: false,
+        error: `Discord connection failed: ${error instanceof Error ? error.message : String(error)}`,
+      },
+      { status: 400 }
+    );
+  }
+}
+
+export async function testTeamsConnection(config: NotificationProviderConfig) {
+  try {
+    const typedConfig = config as Record<string, unknown>;
+    if (!typedConfig.teamsWebhookUrl) {
+      throw new Error("Teams webhook URL is required");
+    }
+
+    // Validate URL to prevent SSRF attacks
+    const { validateWebhookUrlString } = await import("@/lib/url-validator");
+    const webhookUrl = typedConfig.teamsWebhookUrl as string;
+    
+    // Validate URL format and ensure it's not targeting internal networks
+    const urlValidation = validateWebhookUrlString(webhookUrl);
+    if (!urlValidation.valid) {
+      throw new Error(urlValidation.error || "Invalid webhook URL");
+    }
+
+    // Validate that the URL is a valid Microsoft Teams webhook URL
+    // Supported formats (per Microsoft documentation):
+    // - Power Automate: *.powerplatform.com
+    // - Azure Logic Apps: *.logic.azure.com
+    // - Legacy Connectors: *.webhook.office.com
+    try {
+      const parsedUrl = new URL(webhookUrl);
+      const hostname = parsedUrl.hostname.toLowerCase();
+      
+      // Enforce HTTPS protocol
+      if (parsedUrl.protocol !== 'https:') {
+        throw new Error("Teams webhook URL must use HTTPS");
+      }
+      
+      // Check against allowed Microsoft domains (shared constant)
+      const { isValidTeamsWebhookDomain, getTeamsWebhookDomainError } = await import(
+        "@/lib/notification-providers/constants"
+      );
+      
+      if (!isValidTeamsWebhookDomain(hostname)) {
+        throw new Error(getTeamsWebhookDomainError());
+      }
+    } catch (parseError) {
+      if (parseError instanceof Error && parseError.message.includes('webhook')) {
+        throw parseError;
+      }
+      throw new Error("Invalid URL format");
+    }
+
+    // Build Adaptive Card test payload
+    const adaptiveCardPayload = {
+      type: "message",
+      attachments: [
+        {
+          contentType: "application/vnd.microsoft.card.adaptive",
+          content: {
+            $schema: "http://adaptivecards.io/schemas/adaptive-card.json",
+            type: "AdaptiveCard",
+            version: "1.4",
+            body: [
+              {
+                type: "TextBlock",
+                text: "✅ Supercheck Connection Test",
+                weight: "bolder",
+                size: "large",
+                color: "good",
+                wrap: true,
+              },
+              {
+                type: "TextBlock",
+                text: "This is a test message from Supercheck to verify your Microsoft Teams webhook is configured correctly.",
+                wrap: true,
+                spacing: "medium",
+              },
+              {
+                type: "FactSet",
+                facts: [
+                  { title: "Status", value: "Connected Successfully" },
+                  { title: "Provider", value: "Teams" },
+                ],
+                spacing: "medium",
+              },
+            ],
+          },
+        },
+      ],
+    };
+
+    // Add timeout to prevent hanging connections
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10000);
+
+    try {
+      const response = await fetchPublicEndpoint(webhookUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "User-Agent": "Supercheck-Monitor/1.0",
+        },
+        body: JSON.stringify(adaptiveCardPayload),
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeout);
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      return NextResponse.json({
+        success: true,
+        message: "Microsoft Teams connection successful",
+      });
+    } catch (fetchError) {
+      clearTimeout(timeout);
+      if (fetchError instanceof Error && fetchError.name === "AbortError") {
+        throw new Error("Request timed out after 10 seconds");
+      }
+      throw fetchError;
+    }
+  } catch (error) {
+    return NextResponse.json(
+      {
+        success: false,
+        error: `Microsoft Teams connection failed: ${error instanceof Error ? error.message : String(error)}`,
+      },
+      { status: 400 }
+    );
+  }
+}

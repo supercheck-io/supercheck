@@ -119,3 +119,25 @@ describe("AlertSettings incidents block (extended)", () => {
     expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ ...value, autoResolveIncident: false }));
   });
 });
+
+describe("AlertSettings paging-only hint", () => {
+  const providers = (rows: unknown[]) => {
+    global.fetch = jest.fn().mockResolvedValue({ ok: true, json: async () => rows }) as never;
+  };
+
+  it("warns when every chosen channel is a paging service", async () => {
+    providers([{ id: "p1", name: "PD", type: "webhook", config: { preset: "pagerduty" } }]);
+    render(<AlertSettings value={base} />);
+    expect(await screen.findByTestId("paging-only-hint")).toHaveTextContent("Add an email or chat channel");
+  });
+
+  it("stays quiet when a chat channel is also chosen", async () => {
+    providers([
+      { id: "p1", name: "PD", type: "webhook", config: { preset: "pagerduty" } },
+      { id: "p2", name: "Ops", type: "slack", config: {} },
+    ]);
+    render(<AlertSettings value={{ ...base, notificationProviders: ["p1", "p2"] }} />);
+    await screen.findByText("slack");
+    expect(screen.queryByTestId("paging-only-hint")).toBeNull();
+  });
+});

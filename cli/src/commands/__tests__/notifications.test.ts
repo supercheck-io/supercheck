@@ -83,6 +83,7 @@ describe('notification provider command', () => {
       'type',
       'isEnabled',
       'lastUsed',
+      'health',
     ])
   })
 

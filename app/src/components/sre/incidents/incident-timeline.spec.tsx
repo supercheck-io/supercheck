@@ -294,3 +294,18 @@ describe("timelineEventVisual", () => {
     expect(timelineEventVisual(event as never).tone).toBe(tone);
   });
 });
+
+describe("notification events", () => {
+  it("renders reminders and failed pages on the timeline, with a warning visual for failures", async () => {
+    ready([
+      ev("n1", "notification", { kind: "reminder", n: 2, of: 3, channels: [{ providerId: "p1", type: "slack", ok: true }], emailed: 0 }, { actorType: "system" }),
+      ev("n2", "notification", { kind: "page_failed", preset: "pagerduty", status: 503, fallback: "none" }, { actorType: "system" }),
+    ]);
+    render(<IncidentTimeline incidentId="inc-1" canUpdate={false} />);
+    expect(await screen.findByText("Reminder 2 of 3 sent")).toBeInTheDocument();
+    expect(screen.getByText("Sent to 1 channel")).toBeInTheDocument();
+    expect(screen.getByText("PagerDuty page failed (HTTP 503)")).toBeInTheDocument();
+    expect(timelineEventVisual({ eventType: "notification", eventData: { kind: "page_failed" } }).tone).toBe("amber");
+    expect(timelineEventVisual({ eventType: "notification", eventData: { kind: "reminder", channels: [{ ok: true }], emailed: 0 } }).tone).toBe("slate");
+  });
+});

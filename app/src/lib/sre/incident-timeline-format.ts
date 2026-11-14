@@ -1,6 +1,7 @@
 import type { SreIncidentTimelineItem, SreIncidentTimelineRefs } from "@/actions/sre-incident-lifecycle";
 import { describeEvidenceBrief, reportHeadline } from "@/lib/sre/evidence-brief-summary";
 import { getDisplayStatus } from "@/lib/sre/incident-status-display";
+import { describeNotificationEvent } from "@/lib/sre/incident-notification-event";
 
 /** Client-safe: shared by the Activity feed and the post-mortem draft so both name events the same way. */
 export const STATE_LABELS: Record<string, string> = {
@@ -152,6 +153,10 @@ export function describeTimelineEvent(
   body: string | null;
 } {
   const data = event.eventData ?? {};
+  if (event.eventType === "notification") {
+    const { title, body } = describeNotificationEvent(data);
+    return { title, body };
+  }
   if (event.eventType === "comment") return { title: "Note", body: str(data.text) };
   if (event.eventType === "ai_finding") {
     return {

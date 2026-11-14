@@ -55,11 +55,38 @@ describe("MCP tools", () => {
   it("registers the read-only tool set", () => {
     expect([...handlers.keys()].sort()).toEqual(
       [
-        "get_context", "get_incident", "get_investigation", "get_job", "get_monitor", "get_requirement", "get_run", "get_service", "get_status_page", "get_test",
+        "get_context", "get_incident", "get_incident_policy", "get_investigation", "get_job", "get_monitor", "get_requirement", "get_run", "get_service", "get_status_page", "get_test",
         "list_incidents", "list_investigations", "list_jobs", "list_monitors", "list_requirements", "list_runs", "list_services", "list_status_pages", "list_tests", "list_variables",
         "prepare_local_authoring",
       ].sort(),
     );
+  });
+
+  it("get_incident_policy reads the connection's own project, with project view permission", async () => {
+    queue.push([{ channelIds: [id(9)], emailServiceOwnersOnSev12: false, renotifyUnackedMinutes: 15, renotifyRepeatMinutes: 60, renotifyMax: 3, escalateAfterMinutes: 30, escalateChannelId: null, escalateUserId: id(8), autoInvestigateOnOpen: true, autoInvestigateEnabledAt: new Date("2026-11-14T00:00:00Z") }]);
+    const res = await handlers.get("get_incident_policy")!({});
+    expect(assertCanView).toHaveBeenCalledWith(ctx, "project");
+    expect(res.structuredContent).toEqual({ policy: expect.objectContaining({ renotifyRepeatMinutes: 60, escalateUserId: id(8), autoInvestigateEnabledAt: "2026-11-14T00:00:00.000Z" }) });
+    const where = lastWhere();
+    expect(where.sql).toContain('"project_id" = $');
+    expect(where.params).toEqual([ctx.projectId]);
+  });
+
+  it("get_incident_policy returns the defaults for a project without a saved policy", async () => {
+    queue.push([]);
+    const res = await handlers.get("get_incident_policy")!({});
+    expect(res.structuredContent).toEqual({ policy: expect.objectContaining({ renotifyUnackedMinutes: null, renotifyMax: 3, escalateAfterMinutes: null, autoInvestigateEnabledAt: null }) });
+  });
+
+  it("get_incident_policy is denied without project view permission and reads nothing", async () => {
+    const { McpAccessDeniedError } = jest.requireActual("./context");
+    assertCanView.mockImplementation(() => {
+      throw new McpAccessDeniedError("forbidden");
+    });
+    const before = calls.length;
+    const res = await handlers.get("get_incident_policy")!({});
+    expect(res).toMatchObject({ isError: true, structuredContent: { code: "forbidden" } });
+    expect(calls.length).toBe(before);
   });
 
   it("paginates with nextCursor and strips the extra row", async () => {

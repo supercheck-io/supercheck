@@ -7,22 +7,31 @@ import {
   fetchWithRetry,
   isRetryableError,
   isRetryableStatusCode,
+  MAX_RETRY_AFTER_MS,
+  retryAfterDelayMs,
   type RetryOptions,
 } from './retry.util';
+import { STALE_PENDING_CLAIM_SECONDS } from '../../monitor/services/monitor-alert.service';
 
 function makeResponse(
   status: number,
   body = 'body',
+  retryAfter?: string,
 ): {
   ok: boolean;
   status: number;
   statusText: string;
+  headers: { get: (name: string) => string | null };
   text: () => Promise<string>;
 } {
   return {
     ok: status >= 200 && status < 300,
     status,
     statusText: status === 200 ? 'OK' : 'Error',
+    headers: {
+      get: (name: string) =>
+        name.toLowerCase() === 'retry-after' ? (retryAfter ?? null) : null,
+    },
     text: async () => body,
   };
 }
@@ -161,6 +170,20 @@ describe('retry.util', () => {
       expect(createRetryConfig()).toEqual(WEBHOOK_RETRY_CONFIG);
     });
 
+    it('never lets one attempt outlast the total budget', () => {
+      expect(createRetryConfig({ timeoutMs: 200_000 }).timeoutMs).toBe(
+        WEBHOOK_RETRY_CONFIG.maxTotalMs,
+      );
+      const previous = process.env.NOTIFICATION_TIMEOUT_MS;
+      process.env.NOTIFICATION_TIMEOUT_MS = '150000';
+      try {
+        expect(createRetryConfig().timeoutMs).toBe(90_000);
+      } finally {
+        if (previous === undefined) delete process.env.NOTIFICATION_TIMEOUT_MS;
+        else process.env.NOTIFICATION_TIMEOUT_MS = previous;
+      }
+    });
+
     it('applies explicit overrides', () => {
       const config = createRetryConfig({ maxRetries: 9, initialDelayMs: 5 });
 
@@ -285,6 +308,41 @@ describe('retry.util', () => {
   });
 
   describe('fetchWithRetry', () => {
+    it('never logs response bodies or error text, which can echo credentials', async () => {
+      const logger = {
+        warn: jest.fn(),
+        debug: jest.fn(),
+        error: jest.fn(),
+        log: jest.fn(),
+      };
+      global.fetch = jest
+        .fn()
+        .mockResolvedValueOnce(
+          makeResponse(503, 'echo Authorization: Bearer sk_live_SECRET'),
+        )
+        .mockResolvedValueOnce(makeResponse(401, 'echo sk_live_SECRET'))
+        .mockRejectedValueOnce(
+          new Error('connect to https://user:sk_live_SECRET@x failed'),
+        );
+      await fetchWithRetry(
+        'https://example.com',
+        {},
+        FAST_RETRY,
+        logger as never,
+      );
+      await fetchWithRetry(
+        'https://example.com',
+        {},
+        { ...FAST_RETRY, maxRetries: 0 },
+        logger as never,
+      );
+      const logged = JSON.stringify([
+        ...logger.warn.mock.calls,
+        ...logger.debug.mock.calls,
+      ]);
+      expect(logged).not.toContain('sk_live_SECRET');
+    });
+
     it('returns immediately on a successful response', async () => {
       const response = makeResponse(200);
       global.fetch = jest.fn().mockResolvedValue(response);
@@ -300,6 +358,8 @@ describe('retry.util', () => {
         data: response,
         attempts: 1,
         lastStatusCode: 200,
+        lastResponseBody: 'body',
+        attemptLog: [{ n: 1, status: 200, ms: expect.any(Number) }],
       });
       expect(global.fetch).toHaveBeenCalledTimes(1);
     });
@@ -415,6 +475,103 @@ describe('retry.util', () => {
       const [, options] = (global.fetch as jest.Mock).mock.calls[0];
       expect(options.method).toBe('POST');
       expect(options.signal).toBeInstanceOf(AbortSignal);
+    });
+  });
+
+  describe('paging retry rules', () => {
+    afterEach(() => jest.useRealTimers());
+
+    it('parses Retry-After seconds and HTTP dates, capped at 10 s', () => {
+      expect(retryAfterDelayMs('3')).toBe(3000);
+      expect(retryAfterDelayMs('120')).toBe(MAX_RETRY_AFTER_MS);
+      const now = Date.parse('2026-11-14T10:00:00Z');
+      expect(retryAfterDelayMs('Sat, 14 Nov 2026 10:00:04 GMT', now)).toBe(
+        4000,
+      );
+      expect(retryAfterDelayMs('Sat, 14 Nov 2026 09:00:00 GMT', now)).toBe(0);
+      expect(retryAfterDelayMs('soon')).toBeUndefined();
+      expect(retryAfterDelayMs(null)).toBeUndefined();
+    });
+
+    it('waits for Retry-After on 429 and 503 instead of the backoff', async () => {
+      jest.useFakeTimers();
+      global.fetch = jest
+        .fn()
+        .mockResolvedValueOnce(makeResponse(429, 'slow down', '5'))
+        .mockResolvedValueOnce(makeResponse(503, 'busy', '120'))
+        .mockResolvedValueOnce(makeResponse(200));
+      const pending = fetchWithRetry(
+        'https://example.com',
+        {},
+        {
+          ...FAST_RETRY,
+          maxTotalMs: 60_000,
+        },
+      );
+      await jest.advanceTimersByTimeAsync(4_999);
+      expect(global.fetch).toHaveBeenCalledTimes(1);
+      await jest.advanceTimersByTimeAsync(1);
+      expect(global.fetch).toHaveBeenCalledTimes(2);
+      // 120 s asked, 10 s honoured.
+      await jest.advanceTimersByTimeAsync(MAX_RETRY_AFTER_MS);
+      const result = await pending;
+      expect(result.success).toBe(true);
+      expect(result.attemptLog?.map((a) => a.status)).toEqual([429, 503, 200]);
+    });
+
+    it.each([400, 401, 403, 404])('never retries HTTP %s', async (status) => {
+      global.fetch = jest.fn().mockResolvedValue(makeResponse(status, 'no'));
+      const result = await fetchWithRetry(
+        'https://example.com',
+        {},
+        FAST_RETRY,
+      );
+      expect(global.fetch).toHaveBeenCalledTimes(1);
+      expect(result).toMatchObject({
+        success: false,
+        lastStatusCode: status,
+        lastResponseBody: 'no',
+      });
+    });
+
+    it('stops retrying once the total budget would be exceeded', async () => {
+      global.fetch = jest.fn().mockResolvedValue(makeResponse(500, 'down'));
+      const result = await fetchWithRetry(
+        'https://example.com',
+        {},
+        {
+          ...FAST_RETRY,
+          maxRetries: 5,
+          timeoutMs: 1000,
+          maxTotalMs: 500,
+        },
+      );
+      expect(global.fetch).toHaveBeenCalledTimes(1);
+      expect(result.error).toContain('retry budget spent');
+      expect(result.attemptLog).toHaveLength(1);
+    });
+
+    it('logs network errors per attempt', async () => {
+      global.fetch = jest
+        .fn()
+        .mockRejectedValueOnce(new Error('ECONNRESET'))
+        .mockResolvedValueOnce(makeResponse(200));
+      const result = await fetchWithRetry(
+        'https://example.com',
+        {},
+        FAST_RETRY,
+      );
+      expect(result.attemptLog).toEqual([
+        { n: 1, error: 'ECONNRESET', ms: expect.any(Number) },
+        { n: 2, status: 200, ms: expect.any(Number) },
+      ]);
+    });
+
+    it('keeps the worst-case webhook send under the stale-claim window', () => {
+      const budget = WEBHOOK_RETRY_CONFIG.maxTotalMs ?? Infinity;
+      // No retry starts unless wait + timeout fits the budget, so the budget bounds the whole send.
+      expect(budget).toBeLessThan(STALE_PENDING_CLAIM_SECONDS * 1000);
+      expect(WEBHOOK_RETRY_CONFIG.timeoutMs).toBeLessThanOrEqual(10_000);
     });
   });
 });

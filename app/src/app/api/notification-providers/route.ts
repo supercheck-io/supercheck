@@ -21,6 +21,7 @@ import {
 } from "@/lib/notification-providers/validation";
 import type { NotificationProviderType } from "@/db/schema";
 import { loadCreators } from "@/lib/creators";
+import { loadProviderTestHealth, newerHealth, providerHealth, type ProviderHealth } from "@/lib/notification-providers/health";
 
 import { permissionDeniedResponse } from "@/lib/deletion/org-state";
 const MAX_PROVIDER_NAME_LENGTH = 255;
@@ -60,24 +61,32 @@ export async function GET() {
 
     const creatorOf = await loadCreators(providers.map((p) => p.createdByUserId));
 
-    // OPTIMIZED: Batch fetch last used dates for all providers in one query
+    // One pass over alert_history for both "last used" and channel health: the newest row per provider.
+    // shortcut: alert_history has no index leading with provider, so this scans the provider rows by sent_at; add
+    // (provider, sent_at DESC) in a no-transaction migration if the channel list gets slow.
     const providerIds = providers.map((p) => p.id);
-    const lastAlerts = await db
-      .select({
+    const latest = await db
+      .selectDistinctOn([alertHistory.provider], {
         provider: alertHistory.provider,
-        sentAt: sql<Date>`MAX(${alertHistory.sentAt})`.mapWith(alertHistory.sentAt).as("sentAt"),
+        status: alertHistory.status,
+        sentAt: alertHistory.sentAt,
+        responseStatus: sql<number | null>`(${alertHistory.deliveryMetadata}->'delivery'->>'responseStatus')::int`,
+        terminal: sql<boolean>`coalesce((${alertHistory.deliveryMetadata}->'delivery'->>'terminal')::boolean, false)`,
       })
       .from(alertHistory)
       .where(inArray(alertHistory.provider, providerIds))
-      .groupBy(alertHistory.provider);
-
-    // Build lookup map for O(1) access
+      .orderBy(alertHistory.provider, desc(alertHistory.sentAt));
     const lastAlertMap = new Map<string, Date>();
-    lastAlerts.forEach((alert) => {
-      if (alert.provider) {
-        lastAlertMap.set(alert.provider, alert.sentAt);
-      }
-    });
+    const healthMap = new Map<string, ProviderHealth>();
+    const healthSince = Date.now() - 7 * 24 * 60 * 60 * 1000;
+    for (const row of latest) {
+      if (row.sentAt) lastAlertMap.set(row.provider, row.sentAt);
+      // Health reflects the last 7 days only.
+      if (row.sentAt && new Date(row.sentAt).getTime() >= healthSince) healthMap.set(row.provider, providerHealth(row));
+    }
+
+    // A test sent after fixing a key counts too, so the badge clears without waiting for the next alert.
+    const testHealth = await loadProviderTestHealth(providerIds);
 
     // Enhance providers with last used information (no N+1 queries)
     const enhancedProviders = providers.map((provider) => {
@@ -104,6 +113,7 @@ export async function GET() {
         maskedFields,
         configUnavailable,
         lastUsed: lastAlertMap.get(provider.id) || null,
+        health: newerHealth(healthMap.get(provider.id), testHealth.get(provider.id)) ?? { state: "unknown" as const, at: null },
       };
     });
 

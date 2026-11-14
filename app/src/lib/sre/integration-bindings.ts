@@ -7,6 +7,7 @@ import { getWebhookPreset } from "@/lib/notification-providers/webhook-presets";
 export const SRE_INTEGRATION_KEYS = [
   "pagerduty",
   "opsgenie",
+  "jsm_ops",
   "splunk_on_call",
   "better_stack",
   "incident_io",
@@ -38,6 +39,7 @@ const compatibleConnectorTypes: Record<
 > = {
   pagerduty: ["pagerduty"],
   opsgenie: ["opsgenie"],
+  jsm_ops: [],
   splunk_on_call: ["splunk"],
   better_stack: [],
   incident_io: [],
@@ -52,6 +54,7 @@ const defaultCorrelationStrategy: Record<
 > = {
   pagerduty: "dedup_key",
   opsgenie: "alias",
+  jsm_ops: "alias",
   splunk_on_call: "entity_id",
   better_stack: "dedup_key",
   incident_io: "dedup_key",
