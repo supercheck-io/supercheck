@@ -13,7 +13,7 @@ Returned text (test titles, error excerpts, incident summaries, investigation fi
 | Scope | Granted | Tools | Your role must also allow |
 |---|---|---|---|
 | `mcp:read` | Always | The 21 read tools below | Viewing that resource type |
-| `mcp:incidents:write` | Optional | `assign_incident`, `acknowledge_incident`, `resolve_incident` | Updating incidents |
+| `mcp:incidents:write` | Optional | `create_incident`, `assign_incident`, `acknowledge_incident`, `resolve_incident` | Creating or updating incidents |
 | `mcp:sre` | Optional | `triage_incident`, `investigate_incident`, `generate_incident_brief` | Investigating incidents (completed full investigations count toward the AI SRE investigation allowance) |
 
 ## Read tools
@@ -50,6 +50,7 @@ Registered only when the connection holds the scope. Calls are recorded in the a
 
 | Tool | Scope | Needs permission | Arguments | Does |
 |---|---|---|---|---|
+| `create_incident` | `mcp:incidents:write` | create incidents (and update status pages when `statusPage` is set) | `title`, `severity`, `summary`, `primaryServiceId`, `affectedServiceIds`, `affectedMonitorIds`, `commanderUserId`, `statusPage` (`statusPageId`, `componentIds`, `impact`, `message`, `notifySubscribers`) | Declares an incident by hand and sends the project's incident notifications. Affected monitors' next alerts join it. Returns `warning: status_page_failed` if only the public post failed |
 | `assign_incident` | `mcp:incidents:write` | update incidents | `id`, `assigneeUserId` (or `null` to unassign), `role` (`assignee` or `commander`) | Assigns the incident or sets its commander |
 | `acknowledge_incident` | `mcp:incidents:write` | update incidents | `id` | Acknowledges it, claiming it for you if unassigned |
 | `resolve_incident` | `mcp:incidents:write` | update incidents | `id`, `resolutionSummary` (up to 2000 characters) | Resolves it with a summary |

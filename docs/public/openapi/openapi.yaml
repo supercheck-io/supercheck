@@ -120,6 +120,139 @@ paths:
           description: Authentication required
         "403":
           description: Insufficient permission
+    post:
+      operationId: declareSreIncident
+      summary: Declare an incident
+      description: Opens an incident by hand, with the same numbering, timeline,
+        notifications and re-notify as alert-opened incidents. Only title and
+        severity are needed. Affected monitors (or monitors mapped to affected
+        services) attach their next alerts to this incident instead of opening a
+        new one. With statusPage, a linked public incident is posted after the
+        incident is saved; if that post fails the incident is kept and the
+        response carries warning status_page_failed. Limited to 10 per minute
+        per user and 60 per hour per organization.
+      tags:
+        - AI SRE
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - title
+              properties:
+                title:
+                  type: string
+                  minLength: 1
+                  maxLength: 500
+                severity:
+                  type: string
+                  enum:
+                    - sev1
+                    - sev2
+                    - sev3
+                    - sev4
+                  default: sev3
+                summary:
+                  type: string
+                  maxLength: 4000
+                  nullable: true
+                primaryServiceId:
+                  type: string
+                  format: uuid
+                  nullable: true
+                  description: The service's owner becomes the assignee; otherwise the caller
+                affected:
+                  type: object
+                  properties:
+                    serviceIds:
+                      type: array
+                      items:
+                        type: string
+                        format: uuid
+                      maxItems: 50
+                    monitorIds:
+                      type: array
+                      items:
+                        type: string
+                        format: uuid
+                      maxItems: 50
+                  description: At most 50 services and monitors in all, including primaryServiceId
+                commanderUserId:
+                  type: string
+                  format: uuid
+                  nullable: true
+                  description: A project editor or admin
+                statusPage:
+                  type: object
+                  nullable: true
+                  description: Needs status page update permission
+                  required:
+                    - statusPageId
+                    - componentIds
+                  properties:
+                    statusPageId:
+                      type: string
+                      format: uuid
+                    componentIds:
+                      type: array
+                      items:
+                        type: string
+                        format: uuid
+                      minItems: 1
+                      maxItems: 100
+                    impact:
+                      type: string
+                      enum:
+                        - none
+                        - minor
+                        - major
+                        - critical
+                      default: minor
+                    message:
+                      type: string
+                      maxLength: 10000
+                    notifySubscribers:
+                      type: boolean
+                      default: false
+      responses:
+        "201":
+          description: Incident declared
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  incident:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                        format: uuid
+                      incidentNumber:
+                        type: integer
+                      title:
+                        type: string
+                  statusPageIncidentId:
+                    type: string
+                    format: uuid
+                  warning:
+                    type: string
+                    enum:
+                      - status_page_failed
+        "400":
+          description: Invalid body, or a commander who cannot act on incidents
+        "401":
+          description: Not authenticated
+        "403":
+          description: Insufficient permission, or the organization is pending deletion
+        "404":
+          description: A service or monitor is not in the active project
+        "429":
+          description: Too many incidents declared; see Retry-After
   /api/sre/incidents/{id}:
     get:
       operationId: getSreIncident
@@ -216,6 +349,80 @@ paths:
           description: Insufficient permission
         "404":
           description: Incident not found in the active project
+  /api/sre/incidents/{id}/resources:
+    patch:
+      operationId: updateSreIncidentResources
+      summary: Change an incident's affected services and monitors
+      description: Adds or removes affected services and monitors (at most 50 in all)
+        and records one timeline event.
+      tags:
+        - AI SRE
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                add:
+                  type: object
+                  properties:
+                    serviceIds:
+                      type: array
+                      items:
+                        type: string
+                        format: uuid
+                      maxItems: 50
+                    monitorIds:
+                      type: array
+                      items:
+                        type: string
+                        format: uuid
+                      maxItems: 50
+                remove:
+                  type: object
+                  properties:
+                    serviceIds:
+                      type: array
+                      items:
+                        type: string
+                        format: uuid
+                      maxItems: 50
+                    monitorIds:
+                      type: array
+                      items:
+                        type: string
+                        format: uuid
+                      maxItems: 50
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  added:
+                    type: integer
+                  removed:
+                    type: integer
+        "400":
+          description: Invalid ID or body, or more than 50 resources
+        "403":
+          description: Insufficient permission
+        "404":
+          description: Incident, service or monitor not found in the active project
+        "429":
+          description: Too many incident updates
   /api/sre/triage:
     post:
       operationId: triageSreIncident

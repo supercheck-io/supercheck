@@ -1,0 +1,93 @@
+import { jest, describe, it, expect, beforeEach } from '@jest/globals'
+
+const mockGet = jest.fn<(...args: unknown[]) => Promise<{ data: unknown }>>()
+const mockPost = jest.fn<(...args: unknown[]) => Promise<{ data: unknown }>>()
+const mockOutputDetail = jest.fn<(...args: unknown[]) => void>()
+const mockSuccess = jest.fn<(...args: unknown[]) => void>()
+const mockWarn = jest.fn<(...args: unknown[]) => void>()
+
+jest.unstable_mockModule('../../api/authenticated-client.js', () => ({
+  createAuthenticatedClient: () => ({ get: mockGet, post: mockPost, getBaseUrl: () => 'https://app.example.com' }),
+}))
+jest.unstable_mockModule('../../output/formatter.js', () => ({
+  output: jest.fn(),
+  outputDetail: mockOutputDetail,
+  getOutputFormat: () => 'json',
+}))
+jest.unstable_mockModule('../../utils/logger.js', () => ({
+  logger: { info: jest.fn(), success: mockSuccess, warn: mockWarn, error: jest.fn(), newline: jest.fn(), header: jest.fn() },
+}))
+jest.unstable_mockModule('../../utils/spinner.js', () => ({
+  withSpinner: async (_text: string, fn: () => Promise<unknown>) => fn(),
+}))
+
+const { incidentCommand } = await import('../incidents.js')
+const { ApiRequestError } = await import('../../utils/errors.js')
+
+const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`
+const run = (...args: string[]) => incidentCommand.parseAsync(['node', 'incident', 'create', ...args])
+
+describe('incident create', () => {
+  beforeEach(() => {
+    jest.resetAllMocks()
+    // Commander keeps option values between parses; start each test from the defaults.
+    const create = incidentCommand.commands.find((command) => command.name() === 'create')!
+    for (const option of create.options) create.setOptionValue(option.attributeName(), option.defaultValue)
+  })
+
+  it('posts the minimal body once, without retries, and prints the incident', async () => {
+    mockPost.mockResolvedValueOnce({ data: { success: true, incident: { id: id(9), incidentNumber: 12, title: 'Checkout down' } } })
+    await run('--title', 'Checkout down')
+    expect(mockPost).toHaveBeenCalledWith('/api/sre/incidents', { title: 'Checkout down', severity: 'sev3', affected: { serviceIds: [], monitorIds: [] } }, { retries: 0 })
+    expect(mockSuccess).toHaveBeenCalledWith('Incident #12 declared')
+    expect(mockOutputDetail).toHaveBeenCalledWith({ id: id(9), incidentNumber: 12, title: 'Checkout down' })
+  })
+
+  it('resolves a service by name, takes repeatable monitors, a commander and a status page', async () => {
+    mockGet.mockResolvedValueOnce({ data: { services: [{ id: id(4), name: 'Checkout API' }, { id: id(5), name: 'Search' }] } })
+    mockPost.mockResolvedValueOnce({ data: { success: true, incident: { id: id(9), incidentNumber: 3 }, statusPageIncidentId: id(30) } })
+    await run('--title', 'Down', '--severity', 'sev1', '--summary', 'Users report 500s', '--service', 'checkout api',
+      '--monitor', id(6), '--monitor', id(7), '--commander', id(8), '--status-page', id(20), '--component', id(21),
+      '--impact', 'major', '--message', 'Investigating', '--notify')
+    expect(mockPost).toHaveBeenCalledWith('/api/sre/incidents', {
+      title: 'Down', severity: 'sev1', summary: 'Users report 500s', primaryServiceId: id(4),
+      affected: { serviceIds: [], monitorIds: [id(6), id(7)] }, commanderUserId: id(8),
+      statusPage: { statusPageId: id(20), componentIds: [id(21)], impact: 'major', message: 'Investigating', notifySubscribers: true },
+    }, { retries: 0 })
+    expect(mockOutputDetail).toHaveBeenCalledWith(expect.objectContaining({ statusPageIncidentId: id(30) }))
+  })
+
+  it('warns when the incident was created but the status page post failed', async () => {
+    mockPost.mockResolvedValueOnce({ data: { success: true, incident: { id: id(9), incidentNumber: 3 }, warning: 'status_page_failed' } })
+    await run('--title', 'Down', '--status-page', id(20), '--component', id(21))
+    expect(mockWarn).toHaveBeenCalledWith(expect.stringContaining('status page failed'))
+    expect(mockOutputDetail).toHaveBeenCalledWith(expect.objectContaining({ warning: 'status_page_failed' }))
+  })
+
+  it.each([
+    [['--title', 'x', '--monitor', 'nope'], 'is not a UUID'],
+    [['--title', 'x', '--component', id(21)], '--component needs --status-page'],
+    [['--title', 'x', '--status-page', id(20)], 'needs at least one --component'],
+    [['--title', 'x', '--commander', 'priya@example.com'], '--commander must be "me" or a user UUID'],
+  ])('rejects bad flags before calling the API: %j', async (args, message) => {
+    await expect(run(...args)).rejects.toThrow(message)
+    expect(mockPost).not.toHaveBeenCalled()
+  })
+
+  it('fails on an unknown or ambiguous service name', async () => {
+    mockGet.mockResolvedValueOnce({ data: { services: [] } })
+    await expect(run('--title', 'x', '--service', 'Nope')).rejects.toThrow('No service named "Nope"')
+    mockGet.mockResolvedValueOnce({ data: { services: [{ id: id(4), name: 'API' }, { id: id(5), name: 'api' }] } })
+    await expect(run('--title', 'x', '--service', 'API')).rejects.toThrow('More than one service')
+    expect(mockPost).not.toHaveBeenCalled()
+  })
+
+  it('surfaces API errors (403, 429) as failures', async () => {
+    const denied = new ApiRequestError('Insufficient permissions to create incidents', 403, { error: 'Insufficient permissions to create incidents' })
+    mockPost.mockRejectedValueOnce(denied)
+    await expect(run('--title', 'x')).rejects.toBe(denied)
+    const limited = new ApiRequestError('Too many incidents declared. Try again shortly.', 429, { error: 'Too many incidents declared. Try again shortly.' })
+    mockPost.mockRejectedValueOnce(limited)
+    await expect(run('--title', 'x')).rejects.toBe(limited)
+  })
+})
