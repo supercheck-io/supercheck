@@ -1,6 +1,15 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { invalidMessage, loadableImage, monitorTarget, monitorThisHref, shareHref, toState } from "../src/lib/tools-funnel.ts";
+// The app's own allow-list for `next`, so a change on either side fails here, not in production.
+import { sanitizeNextPath } from "../../app/src/lib/auth/safe-next-path.ts";
+
+/** What AuthGuard sends for a signed-out visitor, then what sign-in reads back and resumes. */
+function resumedNext(href: string): string | null {
+  const url = new URL(href);
+  const signIn = new URL(`https://app.test/sign-in?next=${encodeURIComponent(url.pathname + url.search)}`);
+  return sanitizeNextPath(signIn.searchParams.get("next"));
+}
 
 test("toState maps every Worker response, and anything else is busy", () => {
   assert.deepEqual(toState(200, { ok: true, result: { up: true }, checkedAt: "t", colo: "FRA", cached: true }), {
@@ -32,7 +41,7 @@ test("monitorThisHref links the app's form in the shape its monitor pattern acce
   const url = new URL(href);
   assert.equal(url.origin + url.pathname, "https://app.supercheck.io/monitors/create");
   const next = url.pathname + url.search; // what the app's AuthGuard forwards as next
-  assert.match(next, /^\/monitors\/create\?type=(website|http_request)&url=[A-Za-z0-9%._~-]{1,6200}(&name=[A-Za-z0-9%._~-]{1,300})?(&method=(GET|HEAD))?$/);
+  assert.equal(resumedNext(href), next);
   const inner = new URLSearchParams(next.split("?")[1]);
   assert.equal(inner.get("url"), "https://ex.com/a%20b");
   assert.equal(inner.get("name"), "ex.com");
@@ -41,8 +50,19 @@ test("monitorThisHref links the app's form in the shape its monitor pattern acce
 
 test("URLs with ( ) * ! ' still match the app's monitor pattern", () => {
   const u = new URL(monitorThisHref("uptime", "https://en.wikipedia.org/wiki/Foo_(bar)*!'"));
-  const next = u.pathname + u.search;
-  assert.match(next, /^\/monitors\/create\?type=website&url=[A-Za-z0-9%._~!*'()-]{1,6200}&name=[A-Za-z0-9%._~!*'()-]{1,300}$/);
+  assert.equal(resumedNext(u.toString()), u.pathname + u.search);
+});
+
+test("every Monitor-this link the pages build survives sign-in unchanged", () => {
+  for (const href of [
+    monitorThisHref("api", "api.ex.com/health?probe=1", "HEAD"),
+    monitorThisHref("https", "ex.com"),
+    monitorThisHref("uptime", "https://ex.com/a+b%20c/100%"),
+    monitorThisHref("uptime", `https://ex.com/${"a".repeat(2000)}`), // falls back to the type-only form
+  ]) {
+    const u = new URL(href);
+    assert.equal(resumedNext(href), u.pathname + u.search, href);
+  }
 });
 
 test("monitorTarget picks the monitor type and target per tool", () => {
