@@ -124,7 +124,7 @@ Deletion is never immediate. The organization enters a **pending deletion** wind
 - **Cancel.** The owner can select **Cancel deletion** in the banner at any time before the date. Schedules and monitors resume. Other members see who can cancel but cannot.
 - **Early purge.** A Super Admin can end the window early with **Purge now**, for example to honor a legal erasure request (see [Super Admin](/docs/app/admin/super-admin)). The organization can no longer be cancelled after that.
 - **Billing.** A subscription stops renewing and ends at the end of the paid period. Cancelling the deletion turns renewal back on while the period is still running; if the period already ended, subscribe again.
-- **Emails.** The owners are emailed when the deletion is requested, 7 days and 1 day before it happens, and when it is complete. Without a mail server (some self-hosted installations) no email is sent and the dialog confirms the date in the app instead.
+- **Emails.** The owners are emailed when the deletion is requested, 7 days and 1 day before it happens, when it is cancelled, and when it is complete. Without a mail server (some self-hosted installations) no email is sent and the dialog confirms the date in the app instead.
 - **After the window.** Every project, test, job, run, monitor, status page and stored report is deleted permanently, and every member loses access. This cannot be undone.
 
 Audit log entries are kept for 12 months, with email addresses replaced by a hash after 30 days, and then removed. Invoices and payment records stay with the payment provider.
@@ -134,7 +134,7 @@ Deletion is postponed, not refused, while the organization has usage that was no
 </Accordion>
 <Accordion title="Delete and restore a project" id="delete-project">
 
-Organization owners and admins can delete a project from the **Projects** tab: open the row menu, choose **Delete project**, and type the project name. The default project cannot be deleted. The project disappears at once and its jobs and monitors stop. For 7 days it appears under **Recently deleted projects**, where an owner or admin can **Restore** it. After that its tests, runs, monitors, status pages and reports are deleted permanently.
+Organization owners and admins can delete a project from the **Projects** tab: open the row menu, choose **Delete project**, and type the project name. The default project cannot be deleted. Its jobs and monitors stop at once. For 7 days it stays in the projects list marked **Deleted**, where an owner or admin can **Restore** it (hover the button for the exact deadline), and the organization's owners and admins are emailed. After that its tests, runs, monitors, status pages and reports are deleted permanently.
 
 </Accordion>
 </Accordions>

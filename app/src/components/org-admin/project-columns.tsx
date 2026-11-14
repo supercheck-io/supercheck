@@ -13,7 +13,8 @@ import {
 import { DateCell } from "@/components/ui/table-cells";
 import { TruncatedTextWithTooltip } from "@/components/ui/truncated-text-with-tooltip";
 
-import { BellRing, Edit3, FolderOpen, MapPin, MoreHorizontal, Trash2, Users } from "lucide-react";
+import { BellRing, Edit3, FolderOpen, MapPin, MoreHorizontal, RotateCcw, Trash2, Users } from "lucide-react";
+import { formatRestoreDeadline } from "./deleted-projects";
 import { toast } from "sonner";
 import { DataTableColumnHeader } from "@/components/tests/data-table-column-header";
 import { UUIDField } from "@/components/ui/uuid-field";
@@ -37,6 +38,8 @@ export interface Project {
   members?: ProjectMember[];
   createdAt: string;
   isDefault: boolean;
+  /** Soft-deleted and still restorable until `until` (null: no deadline recorded). */
+  deleted?: { until: string | null };
 }
 
 export function createProjectColumns(
@@ -44,7 +47,9 @@ export function createProjectColumns(
   canManageProject?: boolean,
   onManageLocations?: (project: Project) => void,
   onManageIncidentPolicy?: (project: Project) => void,
-  onDeleteProject?: (project: Project) => void
+  onDeleteProject?: (project: Project) => void,
+  onRestoreProject?: (project: Project) => void,
+  restoringIds?: ReadonlySet<string>
 ): ColumnDef<Project>[] {
   return [
     {
@@ -84,10 +89,15 @@ export function createProjectColumns(
             <div className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg ${TYPE_CHIP[typeTone("admin", "project")]}`}>
               <FolderOpen className="h-4 w-4" />
             </div>
-            <span className="truncate text-sm font-medium text-foreground">
+            <span className={`truncate text-sm font-medium ${project.deleted ? "text-muted-foreground" : "text-foreground"}`}>
               {project.name}
             </span>
             {project.isDefault && <TableBadge tone="info" compact>Default</TableBadge>}
+            {project.deleted && (
+              <span title={project.deleted.until ? `Restorable until ${formatRestoreDeadline(project.deleted.until)}, then deleted permanently` : undefined}>
+                <TableBadge tone="warning" compact>Deleted</TableBadge>
+              </span>
+            )}
           </div>
         );
       },
@@ -122,6 +132,7 @@ export function createProjectColumns(
       ),
       cell: ({ row }) => {
         const project = row.original;
+        if (project.deleted) return <span className="text-sm text-muted-foreground">—</span>;
         const count = project.membersCount;
         const members = project.members || [];
 
@@ -182,6 +193,24 @@ export function createProjectColumns(
       header: "Actions",
       cell: ({ row }) => {
         const project = row.original;
+
+        if (project.deleted) {
+          if (!onRestoreProject) return null;
+          return (
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-8"
+              aria-label={`Restore ${project.name}`}
+              title={project.deleted.until ? `Restorable until ${formatRestoreDeadline(project.deleted.until)}` : undefined}
+              disabled={restoringIds?.has(project.id)}
+              onClick={() => onRestoreProject(project)}
+            >
+              <RotateCcw className="mr-1.5 h-3.5 w-3.5" />
+              Restore
+            </Button>
+          );
+        }
 
         if (!canManageProject) {
           return (

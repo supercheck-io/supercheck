@@ -280,10 +280,11 @@ export async function renderOrganizationDeletionEmail(params: {
   purgeDate?: string;
   daysRemaining?: number;
   settingsUrl?: string;
+  projectName?: string;
 }): Promise<RenderedEmail> {
   const component = OrganizationDeletionEmail(params);
   return {
-    subject: organizationDeletionSubject(params.kind, params.organizationName, params.daysRemaining),
+    subject: organizationDeletionSubject(params.kind, params.organizationName, params.daysRemaining, params.projectName),
     html: await render(component, { pretty: false }),
     text: await render(component, PLAIN_TEXT_RENDER_OPTIONS),
   };

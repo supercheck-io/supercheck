@@ -45,7 +45,7 @@ import { ProjectLocationsDialog } from "@/components/org-admin/project-locations
 import { ProjectIncidentPolicyDialog } from "@/components/org-admin/project-incident-policy-dialog";
 import { SubscriptionTab } from "@/components/org-admin/subscription-tab";
 import { DeleteProjectDialog } from "@/components/org-admin/delete-project-dialog";
-import { DeletedProjects } from "@/components/org-admin/deleted-projects";
+import { useDeletedProjects } from "@/components/org-admin/deleted-projects";
 import { DeleteOrganizationButton } from "@/components/org-admin/delete-organization-button";
 import { MemberAccessDialog } from "@/components/members/MemberAccessDialog";
 import { PrivateAgentsAdminView } from "@/components/sre/private-agents/private-agents-admin-view";
@@ -733,6 +733,17 @@ function OrgAdminDashboardContent() {
   const [policyProject, setPolicyProject] = useState<Project | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Project | null>(null);
   const [deletedRefresh, setDeletedRefresh] = useState(0);
+  // Restorable deleted projects are rows of the projects table (owners and admins), marked Deleted with a Restore action.
+  const deletedProjects = useDeletedProjects({
+    enabled: canDeleteProject(normalizeRole(currentUserRole)),
+    refreshKey: deletedRefresh,
+    onRestored: () => {
+      invalidateProjects();
+      invalidateStats();
+      clearProjectsCache();
+      void refreshProjects();
+    },
+  });
 
   const handleUpdateProject = async () => {
     if (!editingProject) return;
@@ -867,7 +878,9 @@ function OrgAdminDashboardContent() {
             <TabLoadingSpinner message="Loading projects..." />
           ) : (
             <ProjectsTable
-              projects={projects}
+              projects={[...projects, ...deletedProjects.rows]}
+              onRestoreProject={(project) => void deletedProjects.restore(project)}
+              restoringIds={deletedProjects.restoring}
               onCreateProject={() => setShowCreateProjectDialog(true)}
               onEditProject={handleEditProject}
               onManageLocations={handleManageLocations}
@@ -886,17 +899,15 @@ function OrgAdminDashboardContent() {
             />
           )}
 
+          {deletedProjects.isError && (
+            <p role="alert" className="text-sm text-destructive">
+              Could not load recently deleted projects.{" "}
+              <button type="button" className="underline" onClick={() => void deletedProjects.refetch()}>Retry</button>
+            </p>
+          )}
+
           {canDeleteProject(normalizeRole(currentUserRole)) && (
             <>
-              <DeletedProjects
-                refreshKey={deletedRefresh}
-                onRestored={() => {
-                  invalidateProjects();
-                  invalidateStats();
-                  clearProjectsCache();
-                  void refreshProjects();
-                }}
-              />
               <DeleteProjectDialog
                 project={deleteTarget}
                 onOpenChange={(open) => !open && setDeleteTarget(null)}

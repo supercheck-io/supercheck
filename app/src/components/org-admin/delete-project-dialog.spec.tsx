@@ -3,7 +3,6 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { toast } from "sonner";
 import { DeleteProjectDialog } from "./delete-project-dialog";
-import { DeletedProjects } from "./deleted-projects";
 
 jest.mock("sonner", () => ({ toast: { success: jest.fn(), error: jest.fn() } }));
 const fetchMock = jest.fn();
@@ -34,22 +33,4 @@ it("shows the server error and keeps the dialog open", async () => {
   fireEvent.click(screen.getByRole("button", { name: "Delete project" }));
   await waitFor(() => expect(toast.error).toHaveBeenCalledWith("Cannot delete the default project"));
   expect(onDeleted).not.toHaveBeenCalled();
-});
-
-it("lists deleted projects and restores one", async () => {
-  const onRestored = jest.fn();
-  fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({ projects: [{ id: "p1", name: "Old", deletedAt: null, purgeAfter: "2030-01-01T00:00:00Z" }] }) });
-  fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({ success: true }) });
-  fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({ projects: [] }) });
-  render(<QueryClientProvider client={new QueryClient()}><DeletedProjects onRestored={onRestored} /></QueryClientProvider>);
-  fireEvent.click(await screen.findByRole("button", { name: /Restore/ }));
-  await waitFor(() => expect(onRestored).toHaveBeenCalled());
-  expect(fetchMock).toHaveBeenCalledWith("/api/projects/p1/restore", { method: "POST" });
-});
-
-it("renders nothing when the list is empty or forbidden", async () => {
-  fetchMock.mockResolvedValueOnce({ ok: false, json: async () => ({ error: "Insufficient permissions" }) });
-  const { container } = render(<QueryClientProvider client={new QueryClient()}><DeletedProjects onRestored={jest.fn()} /></QueryClientProvider>);
-  await waitFor(() => expect(fetchMock).toHaveBeenCalled());
-  expect(container).toBeEmptyDOMElement();
 });

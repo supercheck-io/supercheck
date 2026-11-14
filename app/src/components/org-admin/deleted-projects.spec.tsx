@@ -2,7 +2,9 @@ import React from "react";
 import { fireEvent, render, screen, waitFor, act } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { DeletedProjects } from "./deleted-projects";
+import { useDeletedProjects } from "./deleted-projects";
+import { ProjectsTable } from "./projects-table";
+import type { Project } from "./project-columns";
 
 jest.mock("sonner", () => ({ toast: { success: jest.fn(), error: jest.fn() } }));
 const fetchMock = jest.fn();
@@ -11,10 +13,25 @@ const day = 86_400_000;
 const project = (id: string, name: string, offsetMs: number | null) => ({ id, name, deletedAt: new Date().toISOString(), purgeAfter: offsetMs === null ? null : new Date(Date.now() + offsetMs).toISOString() });
 const list = (projects: unknown[], status = 200) => ({ ok: status < 400, status, json: async () => ({ projects }) });
 
+const active: Project = { id: "live", name: "Live", membersCount: 2, createdAt: "2026-01-01T00:00:00Z", isDefault: true };
+
+/** The org-admin wiring: deleted rows appended to the projects table, the page showing the load error. */
+function Harness({ onRestored }: { onRestored: () => void }) {
+  const deleted = useDeletedProjects({ enabled: true, onRestored });
+  return (
+    <>
+      <ProjectsTable projects={[active, ...deleted.rows]} onCreateProject={jest.fn()} onRestoreProject={(p) => void deleted.restore(p)} restoringIds={deleted.restoring} canManageProject />
+      {deleted.isError && (
+        <p role="alert">Could not load recently deleted projects. <button type="button" onClick={() => void deleted.refetch()}>Retry</button></p>
+      )}
+    </>
+  );
+}
+
 function renderList(onRestored = jest.fn()) {
   render(
     <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
-      <DeletedProjects onRestored={onRestored} />
+      <Harness onRestored={onRestored} />
     </QueryClientProvider>,
   );
   return onRestored;
@@ -25,18 +42,22 @@ beforeEach(() => {
   global.fetch = fetchMock as unknown as typeof fetch;
 });
 
-it("renders nothing when there are no deleted projects", async () => {
+it("adds no rows when there are no deleted projects, or for a 403", async () => {
   fetchMock.mockResolvedValueOnce(list([]));
   renderList();
   await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/projects/deleted"));
-  expect(screen.queryByLabelText("Recently deleted projects")).toBeNull();
+  expect(await screen.findByText("Live")).toBeTruthy();
+  expect(screen.queryByText("Deleted")).toBeNull();
 });
 
-it("renders nothing for a 403", async () => {
-  fetchMock.mockResolvedValueOnce(list([], 403));
+it("shows a deleted project as a row with a Deleted badge and Restore in place of the actions menu", async () => {
+  fetchMock.mockResolvedValueOnce(list([project("a", "Alpha", 3 * day)]));
   renderList();
-  await waitFor(() => expect(fetchMock).toHaveBeenCalled());
-  expect(screen.queryByLabelText("Recently deleted projects")).toBeNull();
+  expect(await screen.findByText("Alpha")).toBeTruthy();
+  expect(screen.getByText("Deleted")).toBeTruthy();
+  expect(screen.getByRole("button", { name: "Restore Alpha" })).toBeTruthy();
+  expect(screen.queryByRole("button", { name: "Open actions for Alpha" })).toBeNull();
+  expect(screen.getByRole("button", { name: "Open actions for Live" })).toBeTruthy();
 });
 
 it("lists restorable projects and hides ones whose window has ended", async () => {
@@ -104,11 +125,11 @@ it("keeps every restore in flight disabled until its own request finishes", asyn
   fetchMock.mockReturnValueOnce(new Promise((resolve) => { finishA = resolve; }));
   fetchMock.mockReturnValueOnce(new Promise(() => undefined)); // Beta never answers
   renderList();
-  const alpha = await screen.findByRole("button", { name: "Restore Alpha" });
-  fireEvent.click(alpha);
+  const alpha = () => screen.getByRole("button", { name: "Restore Alpha" }); // cells re-render, so always re-query
+  fireEvent.click(await screen.findByRole("button", { name: "Restore Alpha" }));
   fireEvent.click(screen.getByRole("button", { name: "Restore Beta" }));
-  fireEvent.click(alpha); // a second click on a pending restore sends nothing
-  expect(alpha).toBeDisabled();
+  fireEvent.click(alpha()); // a second click on a pending restore sends nothing
+  expect(alpha()).toBeDisabled();
   expect(screen.getByRole("button", { name: "Restore Beta" })).toBeDisabled();
   fetchMock.mockResolvedValue(list([project("a", "Alpha", 3 * day), project("b", "Beta", 3 * day)]));
   await act(async () => finishA({ ok: true, json: async () => ({ success: true }) }));
@@ -120,5 +141,5 @@ it("keeps every restore in flight disabled until its own request finishes", asyn
 it("shows the restore deadline with its time", async () => {
   fetchMock.mockResolvedValueOnce(list([project("a", "Alpha", 3 * day)]));
   renderList();
-  expect((await screen.findByText(/Restorable until/)).textContent).toMatch(/\d{1,2}:\d{2}/);
+  expect((await screen.findByRole("button", { name: "Restore Alpha" })).getAttribute("title")).toMatch(/^Restorable until .*\d{1,2}:\d{2}/);
 });

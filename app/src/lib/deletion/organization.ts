@@ -13,7 +13,7 @@ import {
   BillingCancellationError, BillingPreWriteError, cancelSubscriptionAtPeriodEnd, flushFinalUsage, hasCancellableSubscription, reinstateSubscription,
 } from "./billing";
 import { closeDeletionJobs, expediteDeletionJob, insertDeletionJob } from "./jobs";
-import { sendOrganizationNotice } from "./notices";
+import { sendDeletionChangeNotice, sendOrganizationNotice } from "./notices";
 import { triggerDeletion } from "./queue";
 import { invalidateOrgState, metaPatch, organizationGraceDays, type DeletionMeta } from "./org-state";
 
@@ -270,6 +270,7 @@ export async function cancelOrganizationDeletion(input: { organizationId: string
     resourceId: input.organizationId, metadata: { billing }, success: true,
   }).catch((error) => console.error("[ORG_DELETION] audit write failed:", error));
   await rescheduleOrganization(input.organizationId).catch((error) => console.error("[ORG_DELETION] reschedule after cancel failed; the schedule repair sweeps restore it:", error));
+  await sendDeletionChangeNotice({ organizationId: input.organizationId, kind: "cancelled" });
   return { billing };
 }
 
