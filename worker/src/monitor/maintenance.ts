@@ -1,6 +1,8 @@
 import { sql } from 'drizzle-orm';
 
-type Executor = { execute: (query: ReturnType<typeof sql>) => Promise<unknown> };
+type Executor = {
+  execute: (query: ReturnType<typeof sql>) => Promise<unknown>;
+};
 
 /**
  * True while a maintenance window or a status-page scheduled maintenance covers the monitor at `at`.
@@ -41,6 +43,11 @@ export async function isMonitorInMaintenance(
       )
     ) AS in_maintenance
   `);
-  const rows = (Array.isArray(result) ? result : (result as { rows?: unknown[] }).rows) ?? [];
-  return (rows[0] as { in_maintenance?: boolean } | undefined)?.in_maintenance === true;
+  const rows =
+    (Array.isArray(result) ? result : (result as { rows?: unknown[] }).rows) ??
+    [];
+  return (
+    (rows[0] as { in_maintenance?: boolean } | undefined)?.in_maintenance ===
+    true
+  );
 }

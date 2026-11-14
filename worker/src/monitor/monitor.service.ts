@@ -98,7 +98,11 @@ import {
   type GroupReceipt,
   GROUP_NOTIFICATION_BUSY,
 } from './monitor-evaluator';
-import { nextOutageKey } from '../monitor-control/sequence-counters';
+import {
+  frozenFailureCounters,
+  nextOutageKey,
+} from '../monitor-control/sequence-counters';
+import { isMonitorInMaintenance } from './maintenance';
 import { countMetric } from '../common/sentry-reporter';
 
 // Use the Monitor type from schema
@@ -2858,7 +2862,31 @@ export class MonitorService {
         alertsSentForFailure = 0;
       }
 
-      const outageKey = nextOutageKey(lastResult, resultData.isUp);
+      // Once per stored check: a failure inside a maintenance window keeps the sequence where it was.
+      const inMaintenance = await isMonitorInMaintenance(
+        this.dbService.db,
+        resultData.monitorId,
+        resultData.checkedAt,
+      ).catch((error: unknown) => {
+        this.logger.warn(
+          `Maintenance check failed for monitor ${resultData.monitorId}: ${String(error)}`,
+        );
+        return false;
+      });
+      if (!resultData.isUp && inMaintenance) {
+        ({
+          consecutiveFailureCount,
+          consecutiveSuccessCount,
+          alertsSentForFailure,
+          alertsSentForRecovery,
+        } = frozenFailureCounters(lastResult));
+      }
+
+      const outageKey = nextOutageKey(
+        lastResult,
+        resultData.isUp,
+        inMaintenance,
+      );
 
       // Determine if this is a status change
       const isStatusChange = lastResult
@@ -2913,6 +2941,7 @@ export class MonitorService {
         executionGroupId:
           (resultData.details as { executionGroupId?: string })
             ?.executionGroupId || null,
+        inMaintenance,
       });
       await (id ? insertRow.onConflictDoNothing() : insertRow);
       // Counted once per stored check (cycle and legacy paths), never on aggregation replays.

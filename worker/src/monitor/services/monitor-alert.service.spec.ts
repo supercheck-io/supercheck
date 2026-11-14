@@ -64,6 +64,7 @@ describe('MonitorAlertService', () => {
       insert: jest.fn(() => ({
         values: valuesMock,
       })),
+      execute: jest.fn().mockResolvedValue([{ in_maintenance: maintenance }]),
     };
     const maintenanceQuery = {
       from: jest.fn().mockReturnThis(),

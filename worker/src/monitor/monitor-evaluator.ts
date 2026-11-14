@@ -1,3 +1,4 @@
+import { isMonitorInMaintenance } from './maintenance';
 import { Logger } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import { and, desc, eq, isNull, sql } from 'drizzle-orm';
@@ -211,7 +212,26 @@ export class MonitorEvaluator {
     previousState: AggregatedAlertState,
     previousStatus: string,
     currentStatus: 'up' | 'down',
+    inMaintenance = false,
   ): AggregatedAlertState {
+    if (currentStatus === 'down' && inMaintenance) {
+      // A failing cycle inside a maintenance window keeps the sequence where it was (or at zero, with no outage
+      // key), so the first failure after the window counts from there and alerts on the usual threshold.
+      return previousStatus === 'down'
+        ? {
+            ...previousState,
+            consecutiveSuccessCount: 0,
+            alertsSentForRecovery: 0,
+            recoverySequence: false,
+          }
+        : {
+            consecutiveFailureCount: 0,
+            consecutiveSuccessCount: 0,
+            alertsSentForFailure: 0,
+            alertsSentForRecovery: 0,
+            recoverySequence: false,
+          };
+    }
     if (currentStatus === 'down') {
       const continuingFailureSequence = previousStatus === 'down';
 
@@ -289,6 +309,7 @@ export class MonitorEvaluator {
     monitorConfig: MonitorConfig | null | undefined,
     previousStatus: string,
     currentStatus: 'up' | 'down',
+    inMaintenance = false,
   ): AggregatedAlertState {
     const previousState = this.readAggregatedAlertState(monitorConfig);
     // 'pending' must count: its first real observation is cycle 1 (as for single-location).
@@ -297,6 +318,7 @@ export class MonitorEvaluator {
           previousState,
           previousStatus,
           currentStatus,
+          inMaintenance,
         )
       : // Uncounted cycles leave the outage length unknown, so a later recovery is not gated on it. The key
         // goes too: counting may resume in a later outage, which must not reuse this one's claims.
@@ -430,6 +452,12 @@ export class MonitorEvaluator {
           this.readAggregatedAlertState(monitorConfig),
           previousStatus,
           currentStatus,
+          currentStatus === 'down' &&
+            (await isMonitorInMaintenance(
+              this.dbService.db,
+              monitorId,
+              new Date(),
+            )),
         );
     } else {
       // Keep existing row-based logic for single-location evaluations
@@ -895,6 +923,8 @@ export class MonitorEvaluator {
             monitor.config,
             previousStatus,
             currentStatus,
+            currentStatus === 'down' &&
+              (await isMonitorInMaintenance(tx, monitorId, checkedAt)),
           ),
           executionGroupId,
         };

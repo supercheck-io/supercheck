@@ -139,6 +139,8 @@ export const monitorResults = pgTable(
     // Used by distributed workers to group results from the same execution cycle
     // Replaces JSONB query: (details->>'executionGroupId') = $1
     executionGroupId: text('execution_group_id'),
+    // Checked inside a maintenance window: left out of uptime, never advances the failure sequence.
+    inMaintenance: boolean('in_maintenance').notNull().default(false),
   },
   (table) => ({
     // PERFORMANCE: Indexes for dashboard monitor queries
