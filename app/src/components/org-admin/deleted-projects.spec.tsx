@@ -55,6 +55,7 @@ it("shows a deleted project as a row with a Deleted badge and Restore in place o
   renderList();
   expect(await screen.findByText("Alpha")).toBeTruthy();
   expect(screen.getByText("Deleted")).toBeTruthy();
+  expect(screen.getByText(/^until /)).toBeTruthy(); // the deadline is visible, not only on hover
   expect(screen.getByRole("button", { name: "Restore Alpha" })).toBeTruthy();
   expect(screen.queryByRole("button", { name: "Open actions for Alpha" })).toBeNull();
   expect(screen.getByRole("button", { name: "Open actions for Live" })).toBeTruthy();

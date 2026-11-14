@@ -94,8 +94,13 @@ export function createProjectColumns(
             </span>
             {project.isDefault && <TableBadge tone="info" compact>Default</TableBadge>}
             {project.deleted && (
-              <span title={project.deleted.until ? `Restorable until ${formatRestoreDeadline(project.deleted.until)}, then deleted permanently` : undefined}>
+              <span className="flex items-center gap-1.5" title={project.deleted.until ? `Restorable until ${formatRestoreDeadline(project.deleted.until)}, then deleted permanently` : undefined}>
                 <TableBadge tone="warning" compact>Deleted</TableBadge>
+                {project.deleted.until && (
+                  <span className="whitespace-nowrap text-xs text-muted-foreground">
+                    until {new Date(project.deleted.until).toLocaleDateString(undefined, { month: "short", day: "numeric" })}
+                  </span>
+                )}
               </span>
             )}
           </div>

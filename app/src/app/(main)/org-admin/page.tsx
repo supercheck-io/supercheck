@@ -878,7 +878,7 @@ function OrgAdminDashboardContent() {
             <TabLoadingSpinner message="Loading projects..." />
           ) : (
             <ProjectsTable
-              projects={[...projects, ...deletedProjects.rows]}
+              projects={[...projects, ...deletedProjects.rows.filter((row) => !projects.some((p) => p.id === row.id))]} // a just-restored project may be in both lists for a moment
               onRestoreProject={(project) => void deletedProjects.restore(project)}
               restoringIds={deletedProjects.restoring}
               onCreateProject={() => setShowCreateProjectDialog(true)}

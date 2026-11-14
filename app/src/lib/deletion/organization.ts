@@ -270,7 +270,7 @@ export async function cancelOrganizationDeletion(input: { organizationId: string
     resourceId: input.organizationId, metadata: { billing }, success: true,
   }).catch((error) => console.error("[ORG_DELETION] audit write failed:", error));
   await rescheduleOrganization(input.organizationId).catch((error) => console.error("[ORG_DELETION] reschedule after cancel failed; the schedule repair sweeps restore it:", error));
-  await sendDeletionChangeNotice({ organizationId: input.organizationId, kind: "cancelled" });
+  void sendDeletionChangeNotice({ organizationId: input.organizationId, kind: "cancelled" }); // after the response: a slow mail server must not stall the cancel
   return { billing };
 }
 

@@ -20,10 +20,6 @@ export function useDeletedProjects({ enabled, onRestored, refreshKey = 0 }: { en
   const [restoring, setRestoring] = useState<ReadonlySet<string>>(new Set());
   const inFlight = useRef(new Set<string>());
   const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    const timer = setInterval(() => setNow(Date.now()), 30_000);
-    return () => clearInterval(timer);
-  }, []);
   const { data: items = [], isError, refetch } = useQuery({
     queryKey: ["deleted-projects", refreshKey],
     queryFn: async (): Promise<DeletedProject[]> => {
@@ -37,6 +33,14 @@ export function useDeletedProjects({ enabled, onRestored, refreshKey = 0 }: { en
     staleTime: 0,
     refetchOnMount: "always", // a deletion made elsewhere must show up when the owner returns, not the cached empty list
   });
+
+  // Re-render once, when the earliest restore window ends (not on a timer: every page re-render would reset the table's page).
+  const nextExpiry = Math.min(...items.map((p) => (p.purgeAfter ? new Date(p.purgeAfter).getTime() : Infinity)).filter((t) => t > now));
+  useEffect(() => {
+    if (!enabled || !Number.isFinite(nextExpiry)) return;
+    const timer = setTimeout(() => setNow(Date.now()), Math.min(nextExpiry - Date.now() + 1_000, 2_147_000_000));
+    return () => clearTimeout(timer);
+  }, [enabled, nextExpiry]);
 
   const restore = async (project: Pick<Project, "id" | "name">) => {
     if (inFlight.current.has(project.id)) return;
@@ -53,9 +57,9 @@ export function useDeletedProjects({ enabled, onRestored, refreshKey = 0 }: { en
     } catch {
       toast.error("Failed to restore project");
     }
+    await refetch(); // keep the button disabled until the restored row has left the list
     inFlight.current.delete(project.id);
     setRestoring(new Set(inFlight.current));
-    void refetch();
   };
 
   // The purge may be a little late; an expired row can no longer be restored.

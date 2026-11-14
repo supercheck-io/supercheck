@@ -57,7 +57,7 @@ export async function softDeleteProject(input: { projectId: string; actorUserId:
     success: true,
   });
   await stopProjectActivity(input.projectId, outcome.pausedMonitors);
-  await sendDeletionChangeNotice({ organizationId: outcome.deleted.organizationId, kind: "projectDeleted", projectName: outcome.deleted.name, restoreUntil: purgeAfter });
+  void sendDeletionChangeNotice({ organizationId: outcome.deleted.organizationId, kind: "projectDeleted", projectName: outcome.deleted.name, restoreUntil: purgeAfter });
   return { ...outcome.deleted, purgeAfter };
 }
 

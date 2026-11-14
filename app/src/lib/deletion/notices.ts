@@ -123,7 +123,8 @@ export async function sendDeletionChangeNotice(input:
       ...(input.kind === "projectDeleted" ? { projectName: input.projectName, purgeDate: input.restoreUntil.toUTCString() } : {}),
       settingsUrl: `${appUrl()}/org-admin`,
     });
-    await EmailService.getInstance().sendEmailToMultiple({ recipients, subject: rendered.subject, text: rendered.text, html: rendered.html });
+    const result = await EmailService.getInstance().sendEmailToMultiple({ recipients, subject: rendered.subject, text: rendered.text, html: rendered.html });
+    if (result.failedAddresses.length > 0) console.error(`[DELETION] The ${input.kind} notice for organization ${input.organizationId} failed for ${result.failedAddresses.length} recipient(s)`);
   } catch (error) {
     console.error(`[DELETION] Could not send the ${input.kind} notice for organization ${input.organizationId}:`, error);
   }
