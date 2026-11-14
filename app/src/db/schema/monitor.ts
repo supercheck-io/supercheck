@@ -145,6 +145,8 @@ export const monitorResults = pgTable(
     // PERFORMANCE: First-class column for multi-location aggregation
     // Used by distributed workers to group results from the same execution cycle
     executionGroupId: text("execution_group_id"),
+    /** Checked inside a maintenance window: left out of uptime, never advances the failure sequence. */
+    inMaintenance: boolean("in_maintenance").notNull().default(false),
   },
   (table) => ({
     // Composite index for efficient location-based queries
