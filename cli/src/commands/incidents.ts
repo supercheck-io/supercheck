@@ -62,7 +62,12 @@ incidentCommand.command('timeline <id>').description('Show the incident timeline
 
 /** Reminder, escalation and failed-page events as one line (ids and types only; the API never returns addresses). */
 export function describeNotificationEvent(value: unknown): string {
-  const data = (value ?? {}) as { kind?: string; n?: number; of?: number; channels?: { type?: string; ok?: boolean }[]; emailed?: number; reached?: number; preset?: string; status?: number | null; fallback?: string }
+  const data = (value ?? {}) as { kind?: string; n?: number; of?: number; channels?: { type?: string; ok?: boolean }[]; emailed?: number; reached?: number; preset?: string; status?: number | null; fallback?: string; failed?: boolean; attempts?: number }
+  // Given up after repeated failed sends.
+  if (data.failed === true && (data.kind === 'reminder' || data.kind === 'escalation')) {
+    const what = data.kind === 'reminder' ? `Reminder ${data.n ?? '?'}` : 'Escalation'
+    return `${what} could not be delivered${data.attempts ? ` after ${data.attempts} attempts` : ''}; given up`
+  }
   const channels = data.channels ?? []
   const where = [`${channels.filter((c) => c.ok).length}/${channels.length} channel(s)`, data.emailed ? `${data.emailed} email(s)` : ''].filter(Boolean).join(', ')
   switch (data.kind) {

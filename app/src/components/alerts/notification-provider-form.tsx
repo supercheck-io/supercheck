@@ -378,6 +378,27 @@ const MASKED_PLACEHOLDER = "Unchanged — leave blank to keep";
 const SAVE_ERROR_TOAST_ID = "notification-provider-save-error";
 
 /** The API's 400 messages are specific and safe to show; only network failures need the generic text. */
+/**
+ * The endpoint after choosing a webhook preset, or undefined to keep the current one. Moving from one paging service to
+ * another drops the old endpoint: keeping it would send the new service's key (now in the headers) to the old service.
+ * An empty endpoint gets the new preset's fixed URL when it has one.
+ */
+export function nextPresetUrl(
+  previousPresetId: string,
+  presetId: string,
+  currentUrl: string | undefined,
+  preset: { id: string; endpointPlaceholder: string } | undefined,
+): string | undefined {
+  const switchedService = previousPresetId !== "custom" && previousPresetId !== presetId;
+  const url = switchedService ? "" : (currentUrl ?? "");
+  const fixed =
+    preset && preset.id !== "custom" && preset.endpointPlaceholder.startsWith("https://") && !preset.endpointPlaceholder.includes("<") && !preset.endpointPlaceholder.includes("...")
+      ? preset.endpointPlaceholder
+      : undefined;
+  if (!url && fixed) return fixed;
+  return switchedService ? "" : undefined;
+}
+
 export function getSaveErrorMessage(error: unknown, type: string): string {
   return error instanceof Error && !(error instanceof TypeError || error instanceof SyntaxError) && error.message
     ? error.message
@@ -537,6 +558,7 @@ export function NotificationProviderForm({
 
   const handleWebhookPresetChange = (presetId: WebhookPresetId) => {
     const currentConfig = form.getValues("config") as NotificationProviderConfig;
+    const previousPresetId = form.getValues("config.preset") || "custom";
     const nextConfig = applyWebhookPresetConfig(presetId, currentConfig);
     const preset = getWebhookPreset(presetId);
     setLastWebhookTestDetails(null);
@@ -559,20 +581,8 @@ export function NotificationProviderForm({
     setHeadersText(nextHeadersText);
     setHeadersError(getHeadersError(nextHeadersText));
 
-    const currentUrl = form.getValues("config.url");
-    if (
-      !currentUrl &&
-      preset &&
-      preset.id !== "custom" &&
-      preset.endpointPlaceholder.startsWith("https://") &&
-      !preset.endpointPlaceholder.includes("<") &&
-      !preset.endpointPlaceholder.includes("...")
-    ) {
-      form.setValue("config.url", preset.endpointPlaceholder, {
-        shouldDirty: true,
-        shouldValidate: true,
-      });
-    }
+    const nextUrl = nextPresetUrl(previousPresetId, presetId, form.getValues("config.url"), preset);
+    if (nextUrl !== undefined) form.setValue("config.url", nextUrl, { shouldDirty: true, shouldValidate: true });
   };
 
   const testConnection = async () => {

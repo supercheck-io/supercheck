@@ -99,6 +99,8 @@ describe('notification test <id>', () => {
 describe('incident timeline notification events', () => {
   it('describes reminders, escalations and failed pages', () => {
     expect(describeNotificationEvent({ kind: 'reminder', n: 2, of: 3, channels: [{ type: 'slack', ok: true }, { type: 'email', ok: false }], emailed: 1 })).toBe('Reminder 2 of 3 sent to 1/2 channel(s), 1 email(s)')
+    expect(describeNotificationEvent({ kind: 'reminder', n: 2, of: 3, failed: true, attempts: 5, reached: 0 })).toBe('Reminder 2 could not be delivered after 5 attempts; given up')
+    expect(describeNotificationEvent({ kind: 'escalation', failed: true, reached: 0 })).toBe('Escalation could not be delivered; given up')
     expect(describeNotificationEvent({ kind: 'escalation', reached: 0, channels: [] })).toBe('Escalation target was removed; nobody was escalated to')
     expect(describeNotificationEvent({ kind: 'escalation', reached: 1, channels: [], emailed: 1 })).toBe('Escalated to 0/0 channel(s), 1 email(s)')
     expect(describeNotificationEvent({ kind: 'page_failed', preset: 'pagerduty', status: 503, fallback: 'policy_channels' })).toBe('pagerduty page failed (HTTP 503); fallback: policy_channels')

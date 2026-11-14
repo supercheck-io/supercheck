@@ -29,3 +29,12 @@ describe("describeNotificationEvent", () => {
     expect(describeNotificationEvent({ kind: "other" })).toEqual({ title: "Notification", body: null, warning: false });
   });
 });
+
+it("reports a given-up reminder or escalation as undelivered, not sent or removed", () => {
+  expect(describeNotificationEvent({ kind: "reminder", n: 2, of: 3, failed: true, attempts: 5, reached: 0 })).toEqual({
+    title: "Reminder 2 could not be delivered",
+    body: "Every channel failed on 5 attempts; it was given up. Check the channels on the Notifications page.",
+    warning: true,
+  });
+  expect(describeNotificationEvent({ kind: "escalation", failed: true, reached: 0 }).title).toBe("Escalation could not be delivered");
+});

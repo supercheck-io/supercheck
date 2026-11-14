@@ -14,6 +14,16 @@ function reachedText(data: Record<string, unknown>) {
 
 /** Title and body for an incident timeline `notification` event (reminder, escalation, failed page). */
 export function describeNotificationEvent(data: Record<string, unknown>): { title: string; body: string | null; warning: boolean } {
+  // Given up after repeated failed sends: say so, rather than "sent" or "target removed".
+  if (data.failed === true && (data.kind === "reminder" || data.kind === "escalation")) {
+    const attempts = typeof data.attempts === "number" ? data.attempts : undefined;
+    const what = data.kind === "reminder" ? `Reminder ${typeof data.n === "number" ? data.n : 1}` : "Escalation";
+    return {
+      title: `${what} could not be delivered`,
+      body: `Every channel failed${attempts ? ` on ${attempts} attempts` : ""}; it was given up. Check the channels on the Notifications page.`,
+      warning: true,
+    };
+  }
   if (data.kind === "reminder") {
     const n = typeof data.n === "number" ? data.n : 1;
     const of = typeof data.of === "number" ? data.of : n;
