@@ -138,6 +138,25 @@ describe("withResumeWithinPlan", () => {
     expect(await countPlanMonitors(mockDatabase, organization.id)).toBe(2);
   });
 
+  it("re-anchors a resumed heartbeat to now, keeping its ping state, and leaves other monitors alone", async () => {
+    const { organization, project } = await seedOrg();
+    const old = "2026-01-01T00:00:00.000Z";
+    const [heartbeat, http] = await mockDatabase.insert(schema.monitors).values([
+      { ...monitor(organization.id, project.id, "paused"), type: "heartbeat" as const, target: "", heartbeatState: { anchorAt: old, lastPingAt: old, pingSeq: 5 } },
+      { ...monitor(organization.id, project.id, "paused"), heartbeatState: { anchorAt: old } },
+    ]).returning();
+    for (const row of [heartbeat, http]) {
+      const result = await withResumeWithinPlan(organization.id, "monitor", row.id, (tx) =>
+        tx.update(schema.monitors).set({ status: "pending", enabled: true }).where(eq(schema.monitors.id, row.id)).returning());
+      expect(result.ok).toBe(true);
+    }
+    const read = async (id: string) => (await mockDatabase.select({ state: schema.monitors.heartbeatState }).from(schema.monitors).where(eq(schema.monitors.id, id)))[0].state;
+    const resumed = await read(heartbeat.id);
+    expect(resumed).toMatchObject({ lastPingAt: old, pingSeq: 5 });
+    expect(Date.now() - new Date(resumed!.anchorAt!).getTime()).toBeLessThan(60_000);
+    expect(await read(http.id)).toEqual({ anchorAt: old });
+  });
+
   it("lets only one of several simultaneous publishes take the last status page slot", async () => {
     const { organization, project } = await seedOrg();
     const rows = await mockDatabase.insert(schema.statusPages).values([

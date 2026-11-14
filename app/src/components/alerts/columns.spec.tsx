@@ -66,3 +66,29 @@ describe("alert history Status column", () => {
     expect(deliveryAttempts({ metadata: { delivery: { attemptLog: "x" } } } as unknown as AlertHistory)).toEqual([]);
   });
 });
+
+describe("alert history Type column for warnings", () => {
+  const typeColumn = columns.find((column) => (column as { accessorKey?: string }).accessorKey === "type")!;
+  const renderType = (alert: Partial<AlertHistory>) => {
+    const original = { id: "a1", type: "monitor_warning", status: "sent", message: "Late", targetName: "backup", ...alert } as AlertHistory;
+    const cell = typeColumn.cell as (ctx: CellContext<AlertHistory, unknown>) => React.ReactNode;
+    render(<>{cell({ row: { original, getValue: () => original.type } } as unknown as CellContext<AlertHistory, unknown>)}</>);
+  };
+
+  it("labels a warning and names its kind from the registry", () => {
+    renderType({ metadata: { warning: { kind: "heartbeat_late" } } });
+    expect(screen.getByText("Warning")).toBeInTheDocument();
+    expect(screen.getByTestId("alert-warning-kind")).toHaveTextContent("Ping is late");
+  });
+
+  it("shows no kind for an unknown or missing kind", () => {
+    renderType({ metadata: { warning: { kind: "nope" } } });
+    expect(screen.getByText("Warning")).toBeInTheDocument();
+    expect(screen.queryByTestId("alert-warning-kind")).toBeNull();
+  });
+
+  it("offers no Open incident for a warning", () => {
+    renderIncidentCell({ type: "monitor_warning" });
+    expect(screen.queryByRole("button")).toBeNull();
+  });
+});

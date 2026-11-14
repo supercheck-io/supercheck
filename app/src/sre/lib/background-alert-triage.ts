@@ -48,6 +48,7 @@ import { watchIncident } from "@/lib/sre/incident-watchers";
 import { maybeAutoInvestigateOnOpen } from "@/sre/lib/auto-investigate";
 import { completeSreIncidentTriage, startSreIncidentTriage } from "@/sre/lib/triage-runner";
 import { db } from "@/utils/db";
+import { isInformationalAlertType } from "@/lib/alerts/warning-kinds";
 
 const logger = createLogger({ module: "sre-background-alert-triage" }) as {
   warn: (data: unknown, message?: string) => void;
@@ -343,8 +344,8 @@ async function createOrGetIncidentForAlertHistory(alertHistoryId: string, failur
     return { skipped: true as const, reason: "non_sent_alert" as const };
   }
 
-  // Informational notices (SSL renewed) never open or resolve an incident.
-  if (alert.type === "ssl_renewed") {
+  // Informational notices (SSL renewed, warnings) never open or resolve an incident.
+  if (isInformationalAlertType(alert.type)) {
     return { skipped: true as const, reason: "informational_alert" as const };
   }
 

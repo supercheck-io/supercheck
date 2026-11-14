@@ -514,3 +514,100 @@ describe("POST with the AI endpoint preset", () => {
     expect(insertWithinPlanLimit).not.toHaveBeenCalled();
   });
 });
+
+describe("heartbeat monitors (B6, B7)", () => {
+  const MONITOR = "00000000-0000-4000-8000-000000000003";
+  const TOKEN = `hb_${"d".repeat(32)}`;
+  const { insertMonitorRecord, scheduleCreatedMonitor, updateMonitorHandler } = jest.requireMock("@/lib/monitor-service") as {
+    insertMonitorRecord: jest.Mock; scheduleCreatedMonitor: jest.Mock; updateMonitorHandler: jest.Mock;
+  };
+  const row = {
+    id: MONITOR, type: "heartbeat", target: "", status: "pending", enabled: true, frequencyMinutes: 60, config: {}, createdAt: "2026-01-01T00:00:00.000Z",
+    heartbeatTokenHash: "stored-hash", heartbeatTokenEncrypted: "stored-cipher", heartbeatState: { anchorAt: "2026-01-01T00:00:00.000Z" },
+  };
+  const create = (body: object) =>
+    POST(new NextRequest("http://localhost/api/monitors", { method: "POST", body: JSON.stringify({ name: "Nightly", type: "heartbeat", ...body }), headers: { "content-type": "application/json" } }));
+  const executor = { select: () => ({ from: () => ({ where: () => ({ for: async () => [{ id: "project-1" }] }) }) }) };
+
+  beforeEach(() => {
+    (jest.requireMock("@/lib/rbac/middleware") as { checkPermissionWithContext: jest.Mock }).checkPermissionWithContext.mockReturnValue(true);
+    (jest.requireMock("@/lib/execution/trial-interval-response") as { trialIntervalErrorResponse: jest.Mock }).trialIntervalErrorResponse.mockResolvedValue(null);
+    insertWithinPlanLimit.mockImplementation(async (opts: { insert: (e: unknown) => Promise<unknown> }) => ({ ok: true, row: await opts.insert(executor) }));
+    insertMonitorRecord.mockResolvedValue({ newMonitor: row, enabled: true, heartbeatToken: TOKEN });
+    scheduleCreatedMonitor.mockImplementation(async (m: unknown) => m);
+    dbSelect.mockReturnValue({ from: () => ({ innerJoin: () => ({ where: () => ({ limit: async () => [{ id: MONITOR }] }) }), where: async () => [] }) });
+  });
+
+  it("creates a heartbeat with an empty target and the contract alert defaults, and returns the ping URL once", async () => {
+    const res = await create({ frequencyMinutes: 1440, config: { heartbeat: { graceMinutes: 30 } } });
+    expect(res.status).toBe(201);
+    expect(res.headers.get("Cache-Control")).toBe("no-store");
+    const body = await res.json();
+    expect(body.heartbeat.pingUrl).toBe(`http://localhost/api/heartbeat/${TOKEN}`);
+    expect(body.heartbeat.state).toBe("pending");
+    const text = JSON.stringify(body);
+    for (const leaked of ["heartbeatTokenHash", "heartbeatTokenEncrypted", "stored-hash", "stored-cipher", "heartbeatState"]) expect(text).not.toContain(leaked);
+    const data = insertMonitorRecord.mock.calls[0][0];
+    expect(data).toMatchObject({ type: "heartbeat", target: "", frequencyMinutes: 1440, config: { heartbeat: { graceMinutes: 30 } } });
+    expect(data.alertConfig).toMatchObject({ failureThreshold: 1, recoveryThreshold: 1, incidentEnabled: true, incidentSeverity: "sev2", autoResolveIncident: true, warnings: { heartbeat_late: false } });
+  });
+
+  it("keeps a valid warning toggle and drops kinds from other monitor types", async () => {
+    await create({ alertConfig: { enabled: false, notificationProviders: [], warnings: { heartbeat_late: true, made_up: true } } });
+    expect(insertMonitorRecord.mock.calls[0][0].alertConfig.warnings).toEqual({ heartbeat_late: true });
+  });
+
+  it.each([[0], [44641]])("rejects interval %i", async (frequencyMinutes) => {
+    expect((await create({ frequencyMinutes })).status).toBe(400);
+    expect(insertMonitorRecord).not.toHaveBeenCalled();
+  });
+
+  it.each([[0], [1441]])("rejects grace %i", async (graceMinutes) => {
+    expect((await create({ config: { heartbeat: { graceMinutes } } })).status).toBe(400);
+  });
+
+  it("rejects a non-empty target", async () => {
+    const res = await create({ target: "https://example.com" });
+    expect(res.status).toBe(400);
+    expect(insertMonitorRecord).not.toHaveBeenCalled();
+  });
+
+  it("applies the plan's minimum interval and the monitor limit like any monitor", async () => {
+    const { trialIntervalErrorResponse } = jest.requireMock("@/lib/execution/trial-interval-response") as { trialIntervalErrorResponse: jest.Mock };
+    trialIntervalErrorResponse.mockResolvedValueOnce(Response.json({ error: "interval" }, { status: 403 }));
+    expect((await create({ frequencyMinutes: 1 })).status).toBe(403);
+    expect(trialIntervalErrorResponse).toHaveBeenCalledWith("org-1", 1);
+    insertWithinPlanLimit.mockResolvedValueOnce({ ok: false, check: { error: "Monitor limit reached", limit: 1 } });
+    const limited = await create({});
+    expect(limited.status).toBe(403);
+    const { checkMonitorLimit } = jest.requireMock("@/lib/middleware/plan-enforcement") as { checkMonitorLimit: jest.Mock };
+    expect(insertWithinPlanLimit).toHaveBeenLastCalledWith(expect.objectContaining({ resource: "monitors", check: checkMonitorLimit }));
+  });
+
+  it("collection PUT refuses a type change to heartbeat and never returns the token columns", async () => {
+    dbSelect.mockReturnValue({ from: () => ({ where: () => ({ limit: async () => [{ ...row, organizationId: "org-1", projectId: "project-1", alertConfig: null }] }) }) });
+    monitorResumeBlockedResponse.mockResolvedValue(null);
+    const changed = await PUT(new NextRequest("http://localhost/api/monitors", { method: "PUT", body: JSON.stringify({ id: MONITOR, type: "http_request" }) }));
+    expect(changed.status).toBe(400);
+    expect(updateMonitorHandler).not.toHaveBeenCalled();
+    updateMonitorHandler.mockResolvedValue(row);
+    const ok = await PUT(new NextRequest("http://localhost/api/monitors", { method: "PUT", body: JSON.stringify({ id: MONITOR, frequencyMinutes: 10080 }) }));
+    expect(ok.status).toBe(200);
+    expect(JSON.stringify(await ok.json())).not.toMatch(/heartbeatToken|stored-hash|stored-cipher/);
+  });
+
+  it("GET lists heartbeat monitors with their summary and without the token columns", async () => {
+    const { loadCreators } = jest.requireMock("@/lib/creators") as { loadCreators: jest.Mock };
+    loadCreators.mockResolvedValue(() => ({}));
+    let tagQuery = false;
+    const builder: Record<string, unknown> = {
+      from: () => builder, innerJoin: () => { tagQuery = true; return builder; }, where: () => builder, orderBy: () => builder, limit: () => builder,
+      then: (resolve: (rows: unknown[]) => unknown) => Promise.resolve(resolve(tagQuery ? [] : [row])),
+    };
+    dbSelect.mockReturnValue(builder);
+    const res = await GET(new Request("http://localhost/api/monitors"));
+    const body = await res.json();
+    expect(body.data[0].heartbeat).toMatchObject({ state: "pending", graceMinutes: 12 });
+    expect(JSON.stringify(body)).not.toMatch(/heartbeatToken|stored-hash|stored-cipher|heartbeatState/);
+  });
+});

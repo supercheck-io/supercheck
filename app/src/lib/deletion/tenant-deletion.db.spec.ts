@@ -219,6 +219,20 @@ describe("organization deletion", () => {
     expect(await count("deletion_jobs", "target_id", seeded.orgId)).toBe(2);
   });
 
+  it("cancel re-anchors heartbeats so pings ignored while pending do not become a missed run", async () => {
+    const seeded = await seedOrg();
+    const old = "2026-01-01T00:00:00.000Z";
+    const [heartbeat] = await mockDatabase.insert(schema.monitors).values({
+      organizationId: seeded.orgId, projectId: seeded.projectId, name: "hb", type: "heartbeat", target: "", frequencyMinutes: 60, status: "up",
+      heartbeatState: { anchorAt: old, lastPingAt: old, pingSeq: 2 },
+    }).returning();
+    await requestOrganizationDeletion({ organizationId: seeded.orgId, actorUserId: seeded.ownerId, guard: { ownerUserId: seeded.ownerId } });
+    await cancelOrganizationDeletion({ organizationId: seeded.orgId, actorUserId: seeded.ownerId });
+    const [row] = await client<{ state: { anchorAt: string; pingSeq: number } }[]>`SELECT heartbeat_state AS state FROM monitors WHERE id = ${heartbeat.id}`;
+    expect(row.state.pingSeq).toBe(2);
+    expect(Date.now() - new Date(row.state.anchorAt).getTime()).toBeLessThan(60_000);
+  });
+
   it("cancel is refused once the window is over or the purge has started", async () => {
     const seeded = await seedOrg();
     await requestOrganizationDeletion({ organizationId: seeded.orgId, actorUserId: seeded.ownerId, guard: { ownerUserId: seeded.ownerId } });

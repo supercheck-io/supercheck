@@ -368,6 +368,12 @@ describe("processSreBackgroundAlertTriageJob", () => {
       expect(insertedIncident()).toBeUndefined();
     });
 
+    it("never opens or resolves an incident for a warning-only alert (B16)", async () => {
+      selectQueue.push([alertRow({ type: "monitor_warning" })]);
+      expect(await processSreBackgroundAlertTriageJob(JOB)).toEqual({ success: true, skipped: true, reason: "informational_alert" });
+      expect(insertedIncident()).toBeUndefined();
+    });
+
     it("reopens a recently auto-resolved incident instead of creating one", async () => {
       (reopenRecentlyAutoResolved as jest.Mock).mockResolvedValue({ incidentId: "inc-old", assigneeUserId: "u1", alreadyTriaged: true });
       selectQueue.push([alertRow()]);

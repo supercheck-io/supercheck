@@ -141,3 +141,55 @@ describe("AlertSettings paging-only hint", () => {
     expect(screen.queryByTestId("paging-only-hint")).toBeNull();
   });
 });
+
+describe("AlertSettings warnings group (B24)", () => {
+  it("lists the heartbeat warning kinds with the caption and help text", () => {
+    render(<AlertSettings value={base} monitorType="heartbeat" />);
+    const group = screen.getByTestId("alert-warnings-group");
+    expect(group).toHaveTextContent("Warnings notify your channels. They never open an incident.");
+    expect(screen.getByLabelText("Ping is late")).not.toBeChecked();
+    expect(screen.getByRole("link", { name: "About warnings" })).toHaveAttribute(
+      "href",
+      "https://supercheck.io/docs/app/communicate/alerts#warnings",
+    );
+    expect(screen.getByLabelText("Ping is late")).toHaveAccessibleDescription(
+      "Notify when a ping has not arrived on time but the grace period has not ended.",
+    );
+  });
+
+  it("is hidden for monitor types without warning kinds and for jobs", () => {
+    const { rerender } = render(<AlertSettings value={base} monitorType="http_request" />);
+    expect(screen.queryByTestId("alert-warnings-group")).toBeNull();
+    rerender(<AlertSettings value={base} context="job" monitorType="heartbeat" />);
+    expect(screen.queryByTestId("alert-warnings-group")).toBeNull();
+  });
+
+  it("emits the toggled warning and keeps the other alert settings", () => {
+    const onChange = jest.fn();
+    render(<AlertSettings value={base} monitorType="heartbeat" onChange={onChange} />);
+    fireEvent.click(screen.getByLabelText("Ping is late"));
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({ warnings: { heartbeat_late: true }, notificationProviders: ["p1"] }),
+    );
+  });
+
+  it("shows a stored warning as checked and turns it off again", () => {
+    const onChange = jest.fn();
+    render(<AlertSettings value={{ ...base, warnings: { heartbeat_late: true } }} monitorType="heartbeat" onChange={onChange} />);
+    expect(screen.getByLabelText("Ping is late")).toBeChecked();
+    fireEvent.click(screen.getByLabelText("Ping is late"));
+    expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ warnings: { heartbeat_late: false } }));
+  });
+
+  it("hides thresholds for heartbeat (one missed run is one failure) and names the failure alert", () => {
+    render(<AlertSettings value={base} monitorType="heartbeat" />);
+    expect(screen.queryByText("Failure Threshold")).toBeNull();
+    expect(screen.getByLabelText("Alert when a run is missed or fails")).toBeChecked();
+  });
+
+  it("keeps thresholds for other monitors", () => {
+    render(<AlertSettings value={base} monitorType="website" />);
+    expect(screen.getByText("Failure Threshold")).toBeInTheDocument();
+    expect(screen.getByLabelText("Alert on failure")).toBeInTheDocument();
+  });
+});

@@ -4,7 +4,9 @@ import {
   assertKeptProvidersValid,
   scheduleOutOfSync,
   frequencyMinutesError,
+  heartbeatCreateAlertConfig,
   InvalidNotificationProvidersError,
+  monitorTypeChangeError,
   mergePatch,
   preserveWorkerConfigKeys,
   WORKER_OWNED_CONFIG_KEYS,
@@ -243,5 +245,80 @@ describe("aiEndpointState is worker-owned", () => {
   });
   it("drops a client-sent value when nothing is stored", () => {
     expect(preserveWorkerConfigKeys(null, { aiEndpointState: { lastServedModel: "forged" } })).toEqual({});
+  });
+});
+
+describe("heartbeat write rules (B6, B15)", () => {
+  const PROVIDER = "0195f1f1-0000-7000-8000-0000000000cc";
+
+  it("allows a heartbeat interval up to 31 days; other types keep 1-1440", () => {
+    for (const ok of [1, 1440, 1441, 44640]) expect(frequencyMinutesError(ok, "heartbeat")).toBeNull();
+    for (const bad of [0, 44641, 1.5]) expect(frequencyMinutesError(bad, "heartbeat")).toContain("between 1 and 44640");
+    expect(frequencyMinutesError(1441, "http_request")).toContain("between 1 and 1440");
+  });
+
+  it("refuses a type change to or from heartbeat only", () => {
+    expect(monitorTypeChangeError("heartbeat", undefined)).toBeNull();
+    expect(monitorTypeChangeError("heartbeat", "heartbeat")).toBeNull();
+    expect(monitorTypeChangeError("http_request", "website")).toBeNull();
+    expect(monitorTypeChangeError("heartbeat", "http_request")).toContain("to or from heartbeat");
+    expect(monitorTypeChangeError("website", "heartbeat")).toContain("to or from heartbeat");
+  });
+
+  it("keeps only warning kinds valid for the monitor type, and keeps stored toggles on an unrelated edit", () => {
+    const raw = { warnings: { heartbeat_late: true, unknown_kind: true, mcp_tools_changed: true } };
+    expect(normalizeMonitorAlertConfig(raw, null, "heartbeat")).toMatchObject({ ok: true, value: { warnings: { heartbeat_late: true } } });
+    const forHttp = normalizeMonitorAlertConfig(raw, null, "http_request");
+    expect(forHttp.ok && forHttp.value).not.toHaveProperty("warnings");
+    const kept = normalizeMonitorAlertConfig({ failureThreshold: 1 }, { warnings: { heartbeat_late: true } }, "heartbeat");
+    expect(kept).toMatchObject({ ok: true, value: { warnings: { heartbeat_late: true } } });
+    const noType = normalizeMonitorAlertConfig(raw);
+    expect(noType.ok && noType.value).not.toHaveProperty("warnings");
+  });
+
+  it("gives a new heartbeat the contract defaults: one miss is a failure, sev2 incident, auto-resolve, late warning off", () => {
+    expect(heartbeatCreateAlertConfig(null)).toEqual({
+      enabled: false,
+      notificationProviders: [],
+      alertOnFailure: true,
+      alertOnRecovery: true,
+      alertOnSslExpiration: false,
+      failureThreshold: 1,
+      recoveryThreshold: 1,
+      customMessage: "",
+      incidentEnabled: true,
+      incidentSeverity: "sev2",
+      autoResolveIncident: true,
+      warnings: { heartbeat_late: false },
+    });
+  });
+
+  it("keeps client choices but forces the heartbeat thresholds and drops SSL alerts", () => {
+    const config = heartbeatCreateAlertConfig({
+      enabled: true, notificationProviders: [PROVIDER], alertOnFailure: true, alertOnRecovery: false, alertOnSslExpiration: true,
+      failureThreshold: 3, recoveryThreshold: 2, customMessage: "x", incidentEnabled: false, incidentSeverity: "sev1", autoResolveIncident: false,
+      warnings: { heartbeat_late: true },
+    });
+    expect(config).toMatchObject({
+      alertOnRecovery: false, alertOnSslExpiration: false, failureThreshold: 1, recoveryThreshold: 1,
+      incidentEnabled: false, incidentSeverity: "sev1", autoResolveIncident: false, warnings: { heartbeat_late: true },
+    });
+  });
+
+  it("never schedules a heartbeat, so a heartbeat without a job id is in sync", () => {
+    const row = { type: "heartbeat", enabled: true, status: "up", frequencyMinutes: 60, scheduledJobId: null };
+    expect(scheduleOutOfSync(row)).toBe(false);
+    expect(scheduleOutOfSync({ ...row, scheduledJobId: "stray" })).toBe(true);
+  });
+
+  it("mirrorProviderRowsToAlertConfig keeps a heartbeat's warning toggles", async () => {
+    const set = jest.fn().mockReturnValue({ where: jest.fn() });
+    const reads = [[{ id: PROVIDER }], [{ type: "heartbeat", alertConfig: { enabled: true, notificationProviders: [], warnings: { heartbeat_late: true } } }]];
+    const tx = {
+      select: () => ({ from: () => ({ where: async () => reads.shift() }) }),
+      update: () => ({ set }),
+    } as never;
+    await mirrorProviderRowsToAlertConfig(tx, "m1");
+    expect(set).toHaveBeenCalledWith({ alertConfig: expect.objectContaining({ notificationProviders: [PROVIDER], warnings: { heartbeat_late: true } }) });
   });
 });

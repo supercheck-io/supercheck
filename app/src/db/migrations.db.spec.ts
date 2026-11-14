@@ -233,6 +233,43 @@ describe("database migrations and seeds", () => {
   );
 
   it(
+    "accepts heartbeat monitors and warning alerts, and keeps heartbeat token hashes unique (B18)",
+    async () => {
+      const db = postgres(databaseUrl, { max: 1, onnotice: () => {} });
+      try {
+        const [{ id: organizationId }] = await db<{ id: string }[]>`
+          INSERT INTO organization (id, name, slug, created_at)
+          VALUES (${randomUUID()}, 'Heartbeat Org', ${`hb-${randomUUID()}`}, now()) RETURNING id
+        `;
+        const [{ id: projectId }] = await db<{ id: string }[]>`
+          INSERT INTO projects (id, organization_id, name) VALUES (${randomUUID()}, ${organizationId}, 'HB') RETURNING id
+        `;
+        const insertMonitor = (type: string, hash: string | null) => db<{ id: string }[]>`
+          INSERT INTO monitors (id, organization_id, project_id, name, type, target, heartbeat_token_hash)
+          VALUES (${randomUUID()}, ${organizationId}, ${projectId}, 'm', ${type}, '', ${hash}) RETURNING id
+        `;
+        const [{ id: monitorId }] = await insertMonitor("heartbeat", "a".repeat(64));
+        // Rows without a token (every other monitor) are outside the unique index.
+        await insertMonitor("http_request", null);
+        await insertMonitor("http_request", null);
+        await expect(insertMonitor("heartbeat", "a".repeat(64))).rejects.toMatchObject({ code: "23505" });
+        await expect(insertMonitor("made_up", null)).rejects.toMatchObject({ code: "23514" });
+
+        const [{ type }] = await db<{ type: string }[]>`
+          INSERT INTO alert_history (id, monitor_id, type, message, target, target_type, provider, status)
+          VALUES (${randomUUID()}, ${monitorId}, 'monitor_warning', 'Late ping', '', 'monitor', 'email', 'sent') RETURNING type
+        `;
+        expect(type).toBe("monitor_warning");
+        const [{ state }] = await db<{ state: unknown }[]>`SELECT heartbeat_state AS state FROM monitors WHERE id = ${monitorId}`;
+        expect(state).toBeNull();
+      } finally {
+        await db.end({ timeout: 5 });
+      }
+    },
+    120_000,
+  );
+
+  it(
     "is idempotent when the same deploy runs again",
     async () => {
       const db = postgres(databaseUrl, { max: 1, onnotice: () => {} });

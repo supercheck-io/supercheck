@@ -17,6 +17,7 @@ import {
 import { db } from "@/utils/db";
 import { monitorConfigForRead, monitorResultForRead, monitorTargetForRead } from "@/lib/monitor-read-config";
 import { linkedAlertFields } from "@/lib/sre/incident-alert-snapshot";
+import { MONITOR_READ_COLUMNS } from "@/lib/monitor-response";
 
 const DEFAULT_LOOKBACK_MINUTES = 120;
 const DEFAULT_FORWARD_BUFFER_MINUTES = 10;
@@ -282,7 +283,7 @@ export async function collectNativeEvidence(input: {
   ] = await Promise.all([
     monitorIds.length > 0
       ? db
-          .select()
+          .select(MONITOR_READ_COLUMNS)
           .from(monitors)
           .where(
             and(
@@ -396,7 +397,9 @@ export async function collectNativeEvidence(input: {
         addEvidence(evidence, {
           sourceUri: `/monitors/${monitor.id}`,
           title: `Monitor configuration: ${monitor.name}`,
-          summary: `${monitor.type} monitor targeting ${monitorTargetForRead(monitor.target, false)} is currently ${monitor.status}.`,
+          summary: monitor.type === "heartbeat"
+            ? `heartbeat monitor expecting a ping every ${monitor.frequencyMinutes} minutes is currently ${monitor.status}.`
+            : `${monitor.type} monitor targeting ${monitorTargetForRead(monitor.target, false)} is currently ${monitor.status}.`,
           rawContentExcerpt: excerpt({
             name: monitor.name,
             type: monitor.type,

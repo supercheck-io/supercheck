@@ -14,6 +14,7 @@ import { toast } from "sonner";
 import { getAlertTypeLabel, getNotificationProviderConfig } from "./data";
 import { TruncatedTextWithTooltip } from "@/components/ui/truncated-text-with-tooltip";
 import { OpenIncidentCell, isEscalatableAlert } from "./open-incident-cell";
+import { WARNING_KINDS, isWarningKind } from "@/lib/alerts/warning-kinds";
 
 const statusTones: Record<string, TableBadgeTone> = {
   sent: "success",
@@ -29,7 +30,14 @@ const typeTones: Record<string, TableBadgeTone> = {
   monitor_recovery: "success",
   ssl_expiring: "warning",
   ssl_renewed: "success",
+  monitor_warning: "warning",
 };
+
+/** Registry label of a warning's kind ("Ping is late"), from delivery_metadata.warning.kind. */
+export function warningKindLabel(alert: AlertHistory): string | null {
+  const kind = (alert.metadata?.warning as { kind?: unknown } | undefined)?.kind;
+  return typeof kind === "string" && isWarningKind(kind) ? WARNING_KINDS[kind].label : null;
+}
 
 // Separate component for notification provider cell to fix React hooks issue
 // Displays provider as plain text with icon (consistent with Notification Channels tab)
@@ -131,9 +139,16 @@ export const columns: ColumnDef<AlertHistory>[] = [
     cell: ({ row }) => {
       const type = row.getValue("type") as string;
       return (
-        <TableBadge tone={typeTones[type] ?? "neutral"} compact>
-          {getAlertTypeLabel(type)}
-        </TableBadge>
+        <div className="flex items-center gap-2">
+          <TableBadge tone={typeTones[type] ?? "neutral"} compact>
+            {getAlertTypeLabel(type)}
+          </TableBadge>
+          {type === "monitor_warning" && warningKindLabel(row.original) && (
+            <span className="truncate text-xs text-muted-foreground" data-testid="alert-warning-kind">
+              {warningKindLabel(row.original)}
+            </span>
+          )}
+        </div>
       );
     },
     filterFn: (row, id, value) => {

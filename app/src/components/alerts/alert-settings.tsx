@@ -10,7 +10,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Plus, Bell, ChevronLeft, ChevronRight } from "lucide-react";
+import { Plus, Bell, ChevronLeft, ChevronRight, TriangleAlert } from "lucide-react";
 import {
   Select,
   SelectContent,
@@ -44,6 +44,7 @@ import { useProjectContext } from "@/hooks/use-project-context";
 import { canCreateNotifications } from "@/lib/rbac/client-permissions";
 import { normalizeRole } from "@/lib/rbac/role-normalizer";
 import { useAppConfig } from "@/hooks/use-app-config";
+import { WARNING_KINDS, warningKindsForMonitorType } from "@/lib/alerts/warning-kinds";
 
 interface AlertSettingsProps {
   value?: AlertConfig;
@@ -279,6 +280,9 @@ export function AlertSettings({
       : config.incidentEnabled !== false;
   // With alerts off the incident resolves from the check itself; with alerts on it follows the recovery alert.
   const autoResolveNeedsRecoveryAlert = context !== "monitor" || config.enabled;
+  const warningKinds = context === "monitor" && monitorType ? warningKindsForMonitorType(monitorType) : [];
+  // A heartbeat counts one missed run as one failure, so thresholds do not apply.
+  const showThresholds = monitorType !== "heartbeat";
 
   return (
     <Card>
@@ -326,7 +330,11 @@ export function AlertSettings({
                     className="data-[state=checked]:bg-blue-500 data-[state=checked]:border-blue-500  :border-blue-500 data-[state=checked]:text-white"
                   />
                   <Label htmlFor="alert-failure" className="text-sm">
-                    {context === "job" ? "Job failures" : "Alert on failure"}
+                    {context === "job"
+                      ? "Job failures"
+                      : monitorType === "heartbeat"
+                        ? "Alert when a run is missed or fails"
+                        : "Alert on failure"}
                   </Label>
                 </div>
 
@@ -407,7 +415,52 @@ export function AlertSettings({
               )}
             </div>
 
+            {warningKinds.length > 0 && (
+              <fieldset className="space-y-3 rounded-lg border p-4" data-testid="alert-warnings-group">
+                <legend className="flex items-center gap-2 px-1 text-sm font-medium">
+                  <TriangleAlert className="h-4 w-4 shrink-0 text-warning" aria-hidden="true" />
+                  Warnings
+                </legend>
+                <p className="text-xs text-muted-foreground">
+                  Warnings notify your channels. They never open an incident.
+                </p>
+                {warningKinds.map((kind) => (
+                  <div key={kind} className="flex items-start gap-2">
+                    <Checkbox
+                      id={`alert-warning-${kind}`}
+                      checked={config.warnings?.[kind] ?? WARNING_KINDS[kind].defaultOn}
+                      onCheckedChange={(checked) =>
+                        updateConfig({ warnings: { ...config.warnings, [kind]: checked === true } })
+                      }
+                      aria-describedby={`alert-warning-${kind}-help`}
+                      data-testid={`alert-warning-${kind}`}
+                    />
+                    <div className="space-y-0.5">
+                      <Label htmlFor={`alert-warning-${kind}`} className="text-sm">
+                        {WARNING_KINDS[kind].label}
+                      </Label>
+                      <p id={`alert-warning-${kind}-help`} className="text-xs text-muted-foreground">
+                        {WARNING_KINDS[kind].help}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+                <p className="text-xs text-muted-foreground">
+                  Warnings are not sent to paging services (PagerDuty, Opsgenie and similar).{" "}
+                  <a
+                    href="https://supercheck.io/docs/app/communicate/alerts#warnings"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="underline underline-offset-2 hover:text-foreground"
+                  >
+                    About warnings
+                  </a>
+                </p>
+              </fieldset>
+            )}
+
             {/* Thresholds */}
+            {showThresholds && (
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label
@@ -466,6 +519,7 @@ export function AlertSettings({
                 </Select>
               </div>
             </div>
+            )}
 
             {/* Notification Providers */}
             <div className="space-y-4">

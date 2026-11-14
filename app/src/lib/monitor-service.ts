@@ -16,8 +16,10 @@ import {
 } from "@/lib/monitor-scheduler";
 import { eq, and, sql } from "drizzle-orm";
 import { ResumeRefusedError, withResumeWithinPlan } from "@/lib/middleware/plan-enforcement";
-import { assertKeptProvidersValid, MonitorScheduleError, dropStaleSslAlertState, preserveWorkerConfigKeys, scheduleOutOfSync, syncMonitorProviderRows, WORKER_OWNED_CONFIG_KEYS } from "@/lib/monitor-write";
+import { assertKeptProvidersValid, MonitorScheduleError, dropStaleSslAlertState, monitorTypeChangeError, preserveWorkerConfigKeys, scheduleOutOfSync, syncMonitorProviderRows, WORKER_OWNED_CONFIG_KEYS } from "@/lib/monitor-write";
+import { createHeartbeatTokenColumns } from "@/lib/heartbeat/token";
 import { reconcileMonitorSchedule } from "@/lib/monitor-schedule-reconcile";
+import { WITHOUT_HEARTBEAT_TOKEN } from "@/lib/monitor-response";
 
 // This is a conceptual service layer, actual Next.js API routes would call these functions.
 // Updated to support dual scoping (organization + project) for multi-tenant architecture.
@@ -58,6 +60,10 @@ export async function insertMonitorRecord(
   }
 
   const validatedData = validation.data;
+  // Server-owned: the client never supplies these. The plaintext token is returned once, for the create response.
+  const heartbeat = validatedData.type === "heartbeat" && validatedData.projectId
+    ? createHeartbeatTokenColumns(validatedData.projectId)
+    : null;
 
   // Explicitly map fields to ensure only valid columns are passed
   const newMonitorData = {
@@ -76,6 +82,14 @@ export async function insertMonitorRecord(
       ? "paused"
       : "pending") as DBMonitorStatus,
     // id, createdAt, updatedAt are typically auto-generated or set by DB/Drizzle
+    ...(heartbeat
+      ? {
+          heartbeatTokenHash: heartbeat.heartbeatTokenHash,
+          heartbeatTokenEncrypted: heartbeat.heartbeatTokenEncrypted,
+          // The deadline counts from creation (DB clock) until the first ping.
+          heartbeatState: sql`jsonb_build_object('anchorAt', to_jsonb(now()))`,
+        }
+      : {}),
   };
 
   const [newMonitor] = await executor
@@ -83,7 +97,7 @@ export async function insertMonitorRecord(
     .values(newMonitorData) // Use the explicitly mapped data
     .returning();
 
-  return { newMonitor, enabled: validatedData.enabled !== false };
+  return { newMonitor, enabled: validatedData.enabled !== false, heartbeatToken: heartbeat?.token ?? null };
 }
 
 /** Schedule a freshly committed monitor. Must run after the insert commits. */
@@ -94,6 +108,7 @@ export async function scheduleCreatedMonitor(
   if (
     newMonitor &&
     enabled &&
+    newMonitor.type !== "heartbeat" &&
     newMonitor.frequencyMinutes > 0
   ) {
     // Use validatedData.enabled here
@@ -192,11 +207,15 @@ export async function updateMonitorHandler(
   // Fetch existing monitor to compare old frequency/enabled status
   const existingMonitor = await db.query.monitors.findFirst({
     where: and(eq(monitorTable.id, monitorId), liveMonitor(monitorTable)),
+    columns: WITHOUT_HEARTBEAT_TOKEN,
   });
 
   if (!existingMonitor) {
     throw { statusCode: 404, message: "Monitor not found" };
   }
+
+  const typeChangeError = monitorTypeChangeError(existingMonitor.type, data.type);
+  if (typeChangeError) throw { statusCode: 400, message: typeChangeError };
 
   // Create a payload with only the fields present in 'data' that are valid for update
   const updateData: Partial<typeof monitorTable.$inferInsert> = {};
@@ -301,7 +320,7 @@ export async function updateMonitorHandler(
       console.error(`Failed to re-schedule monitor ${updatedMonitor.id} after update:`, error);
       throw new MonitorScheduleError(error, updatedMonitor);
     }
-    if (updatedMonitor.enabled && updatedMonitor.status !== "paused" && updatedMonitor.frequencyMinutes > 0) {
+    if (updatedMonitor.enabled && updatedMonitor.status !== "paused" && updatedMonitor.type !== "heartbeat" && updatedMonitor.frequencyMinutes > 0) {
       // Trigger immediate execution for validation (non-blocking)
       triggerImmediateMonitorExecution(updatedMonitor.id).catch((error) => {
         console.error(`Failed to trigger immediate execution for updated monitor ${updatedMonitor.id}:`, error);
@@ -323,6 +342,7 @@ export async function triggerImmediateMonitorExecution(monitorId: string) {
     // Get monitor details
     const monitor = await db.query.monitors.findFirst({
       where: and(eq(monitorTable.id, monitorId), liveMonitor(monitorTable)),
+      columns: WITHOUT_HEARTBEAT_TOKEN,
     });
 
     if (!monitor) {
@@ -334,8 +354,8 @@ export async function triggerImmediateMonitorExecution(monitorId: string) {
       `[IMMEDIATE_EXECUTION] Found monitor ${monitorId}: type=${monitor.type}, enabled=${monitor.enabled}, status=${monitor.status}`
     );
 
-    // Skip disabled monitors
-    if (!monitor.enabled || monitor.status === "paused") {
+    // Skip disabled monitors; a heartbeat has nothing to run.
+    if (!monitor.enabled || monitor.status === "paused" || monitor.type === "heartbeat") {
       console.log(
         `[IMMEDIATE_EXECUTION] Skipping disabled monitor ${monitorId} (enabled=${monitor.enabled}, status=${monitor.status})`
       );

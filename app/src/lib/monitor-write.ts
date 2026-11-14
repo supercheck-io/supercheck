@@ -8,6 +8,8 @@ import { channelsOptional } from "@/lib/incident-settings";
 import { alertThresholdError } from "@/lib/alert-thresholds";
 import { sanitizeString } from "@/lib/input-sanitizer";
 import catalog from "@/lib/billing/plan-catalog.json";
+import { normalizeWarningToggles } from "@/lib/alerts/warning-kinds";
+import { HEARTBEAT_MAX_INTERVAL_MINUTES } from "@/lib/heartbeat/state";
 
 /** Config keys the worker writes. A client replacing `config` must not wipe or forge them. */
 export const WORKER_OWNED_CONFIG_KEYS = ["aggregatedAlertState", "sslLastCheckedAt", "sslCertificate", "sslProbeFailure", "sslAlertState", "aiEndpointState"] as const;
@@ -51,8 +53,13 @@ type Result<T> = { ok: true; value: T } | { ok: false; error: string };
 /**
  * One alertConfig shape for every monitor write path (create, both PUTs, PATCH). An omitted field takes the
  * stored value on update (`existing`), and the create default otherwise, so a round trip never flips a flag.
+ * `monitorType` scopes `warnings` to the kinds valid for that type; without it no warnings are kept.
  */
-export function normalizeMonitorAlertConfig(raw: Raw, existing?: Partial<AlertConfig> | null): NormalizedAlertConfig {
+export function normalizeMonitorAlertConfig(
+  raw: Raw,
+  existing?: Partial<AlertConfig> | null,
+  monitorType?: string,
+): NormalizedAlertConfig {
   const thresholdError = alertThresholdError(raw);
   if (thresholdError) return { ok: false, error: thresholdError };
   const prior = (existing ?? {}) as Record<string, unknown>;
@@ -73,6 +80,9 @@ export function normalizeMonitorAlertConfig(raw: Raw, existing?: Partial<AlertCo
   }
   // Canonical (lowercase, de-duplicated) so validation, storage and the delivery rows agree on one spelling.
   const canonicalProviders = Array.from(new Set((providers as string[]).map((id) => id.toLowerCase())));
+  const warnings = monitorType === undefined
+    ? undefined
+    : normalizeWarningToggles(monitorType, raw.warnings !== undefined ? raw.warnings : prior.warnings);
   return {
     ok: true,
     value: {
@@ -91,8 +101,44 @@ export function normalizeMonitorAlertConfig(raw: Raw, existing?: Partial<AlertCo
           ? (prior.incidentSeverity as AlertConfig["incidentSeverity"])
           : undefined,
       autoResolveIncident: optionalBool("autoResolveIncident"),
+      ...(warnings ? { warnings } : {}),
     },
   };
+}
+
+/**
+ * Create defaults for a heartbeat (spec 4.5): a missed run is one failure, one ping recovers, it opens a sev2
+ * incident that auto-resolves, and the late-ping warning is off. Fields the client set are kept.
+ */
+export function heartbeatCreateAlertConfig(config: AlertConfig | null): AlertConfig {
+  const base: AlertConfig = config ?? {
+    enabled: false,
+    notificationProviders: [],
+    alertOnFailure: true,
+    alertOnRecovery: true,
+    alertOnSslExpiration: false,
+    failureThreshold: 1,
+    recoveryThreshold: 1,
+    customMessage: "",
+  };
+  return {
+    ...base,
+    alertOnSslExpiration: false,
+    failureThreshold: 1,
+    recoveryThreshold: 1,
+    incidentEnabled: base.incidentEnabled ?? true,
+    incidentSeverity: base.incidentSeverity ?? "sev2",
+    autoResolveIncident: base.autoResolveIncident ?? true,
+    warnings: { heartbeat_late: false, ...base.warnings },
+  };
+}
+
+/** A heartbeat stores a ping token and runtime state instead of a target, so the type is fixed on either side. */
+export function monitorTypeChangeError(storedType: string, nextType: unknown): string | null {
+  if (nextType === undefined || nextType === storedType) return null;
+  return storedType === "heartbeat" || nextType === "heartbeat"
+    ? "type cannot be changed to or from heartbeat; create a new monitor instead"
+    : null;
 }
 
 /** Rules for an enabled alertConfig: a channel (unless incidents are on), within the cap, and at least one alert type. */
@@ -196,9 +242,9 @@ export async function mirrorProviderRowsToAlertConfig(tx: Pick<typeof db, "selec
     .select({ id: monitorNotificationSettings.notificationProviderId })
     .from(monitorNotificationSettings)
     .where(eq(monitorNotificationSettings.monitorId, monitorId));
-  const [monitor] = await tx.select({ alertConfig: monitors.alertConfig }).from(monitors).where(eq(monitors.id, monitorId));
+  const [monitor] = await tx.select({ alertConfig: monitors.alertConfig, type: monitors.type }).from(monitors).where(eq(monitors.id, monitorId));
   if (!monitor) return;
-  const normalized = normalizeMonitorAlertConfig({ notificationProviders: rows.map((row) => row.id) }, monitor.alertConfig);
+  const normalized = normalizeMonitorAlertConfig({ notificationProviders: rows.map((row) => row.id) }, monitor.alertConfig, monitor.type);
   if (!normalized.ok) return;
   // Unlinking the last channel of an enabled alert that cannot open incidents would leave an alert that never delivers.
   const invalid = enabledAlertConfigError(normalized.value);
@@ -255,11 +301,12 @@ export function syntheticFrequencyError(type: unknown, frequencyMinutes: unknown
 export const MIN_FREQUENCY_MINUTES = 1;
 export const MAX_FREQUENCY_MINUTES = 1440;
 
-/** One frequency rule for every write path: a whole number of minutes, 1 to 1440. */
-export function frequencyMinutesError(value: unknown): string | null {
-  return typeof value === "number" && Number.isInteger(value) && value >= MIN_FREQUENCY_MINUTES && value <= MAX_FREQUENCY_MINUTES
+/** One frequency rule for every write path: a whole number of minutes, 1 to 1440 (a heartbeat interval up to 31 days). */
+export function frequencyMinutesError(value: unknown, monitorType?: unknown): string | null {
+  const max = monitorType === "heartbeat" ? HEARTBEAT_MAX_INTERVAL_MINUTES : MAX_FREQUENCY_MINUTES;
+  return typeof value === "number" && Number.isInteger(value) && value >= MIN_FREQUENCY_MINUTES && value <= max
     ? null
-    : `frequencyMinutes must be a whole number between ${MIN_FREQUENCY_MINUTES} and ${MAX_FREQUENCY_MINUTES} minutes`;
+    : `frequencyMinutes must be a whole number between ${MIN_FREQUENCY_MINUTES} and ${max} minutes`;
 }
 
 /**
@@ -314,8 +361,9 @@ export function alertProvidersSent(alertConfig: unknown): boolean {
 }
 
 /** True when the stored job state disagrees with the row: an active monitor with no job id, or an inactive one that still has one. */
-export function scheduleOutOfSync(row: { enabled: boolean; status: string; frequencyMinutes: number; scheduledJobId: string | null }): boolean {
-  const shouldRun = row.enabled && row.status !== "paused" && row.frequencyMinutes > 0;
+export function scheduleOutOfSync(row: { type?: string; enabled: boolean; status: string; frequencyMinutes: number; scheduledJobId: string | null }): boolean {
+  // A heartbeat is never scheduled: the job pings in and the worker sweep evaluates it.
+  const shouldRun = row.type !== "heartbeat" && row.enabled && row.status !== "paused" && row.frequencyMinutes > 0;
   return shouldRun !== Boolean(row.scheduledJobId);
 }
 

@@ -222,3 +222,38 @@ describe("AI endpoint preset validation", () => {
     expect(run({ aiEndpoint: { ...ok, firstTokenTimeoutMs: 10000 }, timeoutSeconds: 10 })).toEqual({ success: true });
   });
 });
+
+describe("validateMonitorConfiguration heartbeat (B6)", () => {
+  it("accepts an empty target and an optional grace of 1-1440 minutes", () => {
+    expect(validateMonitorConfiguration({ type: "heartbeat", target: "", config: {} })).toEqual({ success: true });
+    expect(validateMonitorConfiguration({ type: "heartbeat", target: undefined, config: null })).toEqual({ success: true });
+    for (const graceMinutes of [1, 30, 1440]) {
+      expect(validateMonitorConfiguration({ type: "heartbeat", target: "", config: { heartbeat: { graceMinutes } } })).toEqual({ success: true });
+    }
+    expect(validateMonitorConfiguration({ type: "heartbeat", target: "", config: { heartbeat: {} } })).toEqual({ success: true });
+  });
+
+  it("rejects a non-empty target", () => {
+    expect(validateMonitorConfiguration({ type: "heartbeat", target: "https://example.com", config: {} })).toMatchObject({
+      success: false,
+      details: "target must be empty for heartbeat monitors",
+    });
+  });
+
+  it.each([0, 1441, 1.5, "10", null])("rejects grace %p", (graceMinutes) => {
+    expect(validateMonitorConfiguration({ type: "heartbeat", target: "", config: { heartbeat: { graceMinutes } } })).toMatchObject({
+      success: false,
+      details: expect.stringContaining("config.heartbeat.graceMinutes"),
+    });
+  });
+
+  it("rejects a heartbeat setting that is not an object", () => {
+    expect(validateMonitorConfiguration({ type: "heartbeat", target: "", config: { heartbeat: 5 } })).toMatchObject({ success: false });
+  });
+
+  it("rejects config.heartbeat sent for another monitor type", () => {
+    expect(validateMonitorConfiguration({
+      type: "http_request", target: "https://example.com", config: { heartbeat: { graceMinutes: 5 } }, incomingConfig: { heartbeat: { graceMinutes: 5 } },
+    })).toMatchObject({ success: false, details: "config.heartbeat is only supported on heartbeat monitors" });
+  });
+});

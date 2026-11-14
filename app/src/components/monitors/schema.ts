@@ -15,6 +15,7 @@ export const monitorSchema = z.object({
     "ping_host",
     "port_check",
     "synthetic_test",
+    "heartbeat",
   ]).default("http_request"),
   target: z.string(), // URL, IP, domain, etc.
   frequencyMinutes: z.number().default(5),
@@ -35,6 +36,16 @@ export const monitorSchema = z.object({
     incidentEnabled: z.boolean().optional(),
     incidentSeverity: z.enum(["sev1", "sev2", "sev3", "sev4"]).optional(),
     autoResolveIncident: z.boolean().optional(),
+    warnings: z.record(z.string(), z.boolean()).optional(),
+  }).optional(),
+  /** Read-only heartbeat summary from the API (heartbeat monitors only). Never contains the ping URL. */
+  heartbeat: z.object({
+    state: z.enum(["pending", "up", "late", "down", "paused"]),
+    lastPingAt: z.string().nullable(),
+    lastPingKind: z.enum(["ping", "fail"]).nullable(),
+    lastStartAt: z.string().nullable(),
+    nextExpectedAt: z.string().nullable(),
+    graceMinutes: z.number(),
   }).optional(),
   lastCheckAt: z.string().nullable().optional(),
   lastStatusChangeAt: z.string().nullable().optional(),

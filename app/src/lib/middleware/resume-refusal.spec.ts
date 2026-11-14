@@ -2,6 +2,7 @@
 jest.mock("@/utils/db", () => ({ db: {} }));
 const mockStatus = jest.fn();
 const mockCount = jest.fn();
+const mockAnchor = jest.fn();
 let lockBusy = false;
 jest.mock("@/lib/middleware/plan-limit-lock", () => {
   class PlanLimitBusyError extends Error {}
@@ -12,7 +13,10 @@ jest.mock("@/lib/middleware/plan-limit-lock", () => {
     withPlanLimitLock: async (_o: string, _r: string, fn: (tx: unknown) => Promise<unknown>) => {
       if (lockBusy) throw new PlanLimitBusyError();
       let first = true;
-      const tx = { select: () => ({ from: () => ({ where: async () => { if (first) { first = false; return mockStatus(); } return mockCount(); } }) }) };
+      const tx = {
+        select: () => ({ from: () => ({ where: async () => { if (first) { first = false; return mockStatus(); } return mockCount(); } }) }),
+        update: () => ({ set: (values: unknown) => ({ where: async () => mockAnchor(values) }) }),
+      };
       return fn(tx);
     },
   };
@@ -39,12 +43,20 @@ it("answers 503 with Retry-After when the lock was busy", () => {
 });
 
 describe("withResumeWithinPlan", () => {
-  beforeEach(() => { lockBusy = false; mockStatus.mockReset(); mockCount.mockReset(); });
+  beforeEach(() => { lockBusy = false; mockStatus.mockReset(); mockCount.mockReset(); mockAnchor.mockReset(); });
 
   it("writes when the plan has a free slot", async () => {
     mockStatus.mockResolvedValue([{ status: "paused" }]);
     mockCount.mockResolvedValue([{ count: 1 }]);
     await expect(withResumeWithinPlan("org", "monitor", "m1", async () => "done")).resolves.toEqual({ ok: true, value: "done" });
+    // A resumed heartbeat re-anchors its deadline (the UPDATE is scoped to heartbeat rows that are no longer paused).
+    expect(mockAnchor).toHaveBeenCalledWith({ heartbeatState: expect.anything() });
+  });
+
+  it("does not re-anchor a monitor that was not paused", async () => {
+    mockStatus.mockResolvedValue([{ status: "up" }]);
+    await expect(withResumeWithinPlan("org", "monitor", "m1", async () => "done")).resolves.toMatchObject({ ok: true });
+    expect(mockAnchor).not.toHaveBeenCalled();
   });
 
   it("refuses without writing at the limit", async () => {

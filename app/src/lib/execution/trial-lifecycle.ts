@@ -13,6 +13,7 @@ import type { TrialNotificationKind } from "@/emails";
 import { db } from "@/utils/db";
 import { hasPaidAccess, TRIAL_DURATION_DAYS } from "@/lib/execution/trial-limits";
 import { notInDeletedProject } from "@/lib/middleware/plan-limit-lock";
+import { HEARTBEAT_ANCHOR_ON_RESUME } from "@/lib/monitor-response";
 
 /** How many expired trials one run processes; the rest are picked up on the next run. */
 const BATCH_SIZE = 50;
@@ -64,7 +65,7 @@ async function rescheduleMonitors(
     .from(monitors)
     .where(inArray(monitors.id, monitorIds));
   for (const monitor of rows) {
-    if (!monitor.frequencyMinutes || monitor.frequencyMinutes <= 0) continue;
+    if (monitor.type === "heartbeat" || !monitor.frequencyMinutes || monitor.frequencyMinutes <= 0) continue;
     try {
       const schedulerId = await scheduleMonitor({
         monitorId: monitor.id,
@@ -377,7 +378,7 @@ export async function restoreTrialSuspensions(
     const resumed = monitorIds.length
       ? await tx
           .update(monitors)
-          .set({ status: "pending", updatedAt: now })
+          .set({ status: "pending", updatedAt: now, heartbeatState: HEARTBEAT_ANCHOR_ON_RESUME })
           .where(
             and(
               inArray(monitors.id, monitorIds),

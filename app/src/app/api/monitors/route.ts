@@ -42,9 +42,11 @@ import {
   AlertConfigConflictError,
   alertProvidersSent,
   frequencyMinutesError,
+  heartbeatCreateAlertConfig,
   InvalidNotificationProvidersError,
   MonitorScheduleError,
   monitorNameError,
+  monitorTypeChangeError,
   normalizeMonitorAlertConfig,
   preserveWorkerConfigKeys,
   providerIdsOutsideProject,
@@ -58,6 +60,8 @@ import {
 } from "@/lib/monitor-write";
 import type { AlertConfig } from "@/db/schema";
 import { loadCreators } from "@/lib/creators";
+import { MONITOR_READ_COLUMNS, monitorForResponse } from "@/lib/monitor-response";
+import { buildHeartbeatPingUrl } from "@/lib/heartbeat/token";
 
 import { permissionDeniedResponse } from "@/lib/deletion/org-state";
 const logger = createLogger({ module: "monitors-api" }) as {
@@ -145,7 +149,7 @@ export async function GET(request: Request) {
           .from(monitors)
           .where(whereCondition),
         db
-          .select()
+          .select(MONITOR_READ_COLUMNS)
           .from(monitors)
           .where(whereCondition)
           .orderBy(desc(monitors.id))
@@ -161,7 +165,7 @@ export async function GET(request: Request) {
 
       return NextResponse.json({
         data: monitorsList.map((monitor) => ({
-          ...monitor,
+          ...monitorForResponse(monitor),
           config: monitorConfigForRead(monitor.config, canUpdateMonitors),
           target: monitorTargetForRead(monitor.target, canUpdateMonitors),
           tags: tagsByMonitor.get(monitor.id) ?? [],
@@ -181,7 +185,7 @@ export async function GET(request: Request) {
       // OPTIMIZED: Added default limit to prevent fetching unlimited records
       const DEFAULT_LIMIT = 200;
       const monitorsList = await db
-        .select()
+        .select(MONITOR_READ_COLUMNS)
         .from(monitors)
         .where(whereCondition)
         .orderBy(desc(monitors.id))
@@ -192,7 +196,7 @@ export async function GET(request: Request) {
       // Return standardized response format for React Query hooks
       return NextResponse.json({
         data: monitorsList.map((monitor) => ({
-          ...monitor,
+          ...monitorForResponse(monitor),
           config: monitorConfigForRead(monitor.config, canUpdateMonitors),
           target: monitorTargetForRead(monitor.target, canUpdateMonitors),
           tags: tagsByMonitor.get(monitor.id) ?? [],
@@ -274,11 +278,9 @@ export async function POST(req: NextRequest) {
 
     // Same name and target handling as the update paths; credentials in config are never rewritten.
     sanitizeMonitorFields(rawData);
-
-
-    // Special logging for heartbeat monitors
-    if (rawData.type === "heartbeat") {
-      logger.debug("[MONITOR_CREATE] Processing heartbeat monitor");
+    // A heartbeat has nothing to probe: its target column is stored empty (validation rejects any other value).
+    if (rawData.type === "heartbeat" && (rawData.target === undefined || rawData.target === null)) {
+      rawData.target = "";
     }
 
     // Validate required fields
@@ -301,7 +303,7 @@ export async function POST(req: NextRequest) {
     }
 
     if (rawData.frequencyMinutes !== undefined) {
-      const frequencyError = frequencyMinutesError(rawData.frequencyMinutes);
+      const frequencyError = frequencyMinutesError(rawData.frequencyMinutes, rawData.type);
       if (frequencyError) {
         return NextResponse.json({ error: "Invalid frequency", details: frequencyError }, { status: 400 });
       }
@@ -319,7 +321,7 @@ export async function POST(req: NextRequest) {
     const trialIntervalError = await trialFrequencyError(organizationId, rawData.frequencyMinutes ?? 5);
     if (trialIntervalError) return trialIntervalError;
 
-    // Validate target - all monitor types require a target except heartbeat and synthetic_test
+    // Validate target - all monitor types require a target except heartbeat (empty) and synthetic_test (the test id)
     if (rawData.type === "synthetic_test") {
       // For synthetic monitors, validate testId in config
       if (!rawData.config?.testId) {
@@ -412,9 +414,9 @@ export async function POST(req: NextRequest) {
     }
 
     // Prepare alert configuration - ensure it's properly structured and saved to alertConfig column
-    let alertConfig = null;
+    let alertConfig: AlertConfig | null = null;
     if (rawData.alertConfig) {
-      const normalized = normalizeMonitorAlertConfig(rawData.alertConfig);
+      const normalized = normalizeMonitorAlertConfig(rawData.alertConfig, null, rawData.type);
       if (!normalized.ok) {
         return NextResponse.json({ error: normalized.error }, { status: 400 });
       }
@@ -424,6 +426,7 @@ export async function POST(req: NextRequest) {
         "[MONITOR_CREATE] Processed alert config",
       );
     }
+    if (rawData.type === "heartbeat") alertConfig = heartbeatCreateAlertConfig(alertConfig);
 
     // Construct the config object (for monitor-specific settings, not alerts)
     // A new monitor has no worker state; a client must not forge it (e.g. a stored certificate).
@@ -649,7 +652,14 @@ export async function POST(req: NextRequest) {
       { monitorId: newMonitor.id },
       "[MONITOR_CREATE] Successfully created monitor",
     );
-    return NextResponse.json(newMonitor, { status: 201 });
+    const created = monitorForResponse(newMonitor);
+    const heartbeatToken = inserted.row.heartbeatToken;
+    if (!heartbeatToken) return NextResponse.json(created, { status: 201 });
+    // The ping URL is returned once, here; later it is only available through the audited reveal route.
+    return NextResponse.json(
+      { ...created, heartbeat: { ...created.heartbeat, pingUrl: buildHeartbeatPingUrl(heartbeatToken, req.nextUrl.origin) } },
+      { status: 201, headers: { "Cache-Control": "no-store" } },
+    );
   } catch (error) {
     if (isAuthError(error)) {
       return NextResponse.json(
@@ -742,8 +752,11 @@ export async function PUT(req: NextRequest) {
     const nameError = monitorNameError(updateData.name);
     if (nameError) return NextResponse.json({ error: nameError }, { status: 400 });
 
+    const typeChangeError = monitorTypeChangeError(monitorData[0].type, rawData.type);
+    if (typeChangeError) return NextResponse.json({ error: typeChangeError }, { status: 400 });
+
     if (rawData.frequencyMinutes !== undefined) {
-      const frequencyError = frequencyMinutesError(rawData.frequencyMinutes);
+      const frequencyError = frequencyMinutesError(rawData.frequencyMinutes, monitorData[0].type);
       if (frequencyError) {
         return NextResponse.json({ error: "Invalid frequency", details: frequencyError }, { status: 400 });
       }
@@ -858,7 +871,7 @@ export async function PUT(req: NextRequest) {
       } else if (typeof rawData.alertConfig !== "object" || Array.isArray(rawData.alertConfig)) {
         return NextResponse.json({ error: "alertConfig must be an object or null" }, { status: 400 });
       } else {
-        const normalized = normalizeMonitorAlertConfig(rawData.alertConfig, monitorData[0].alertConfig);
+        const normalized = normalizeMonitorAlertConfig(rawData.alertConfig, monitorData[0].alertConfig, monitorData[0].type);
         if (!normalized.ok) {
           return NextResponse.json({ error: normalized.error }, { status: 400 });
         }
@@ -1040,7 +1053,7 @@ export async function PUT(req: NextRequest) {
     });
 
     if (scheduleFailed) return NextResponse.json({ error: SCHEDULE_FAILURE_MESSAGE }, { status: 503 });
-    return NextResponse.json(updatedMonitor);
+    return NextResponse.json(monitorForResponse(updatedMonitor));
   } catch (error) {
     if (isAuthError(error)) {
       return NextResponse.json(

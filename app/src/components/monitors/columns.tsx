@@ -9,6 +9,8 @@ import { toast } from "sonner";
 import { MonitorStatusIndicator } from "./monitor-status-indicator";
 import { monitorTypes } from "./data";
 import { maskUrlPassword } from "@/lib/mask-url-password";
+import { heartbeatGraceMinutes } from "@/lib/heartbeat/state";
+import { heartbeatScheduleLabel } from "./heartbeat-format";
 import { formatDurationMinutes } from "@/lib/date-utils";
 import { TruncatedTextWithTooltip } from "@/components/ui/truncated-text-with-tooltip";
 import { createdByColumn } from "@/components/ui/created-by-column";
@@ -79,7 +81,12 @@ export const columns: ColumnDef<Monitor>[] = [
       const target = row.getValue("target") as string;
       const legacyUrl = row.original.url as string; // Fallback for legacy data
 
-      const displayValue = maskUrlPassword(target || legacyUrl || "—");
+      // A heartbeat has no target; show its schedule instead ("Every 1 h, grace 10 min").
+      const { type, frequencyMinutes, config } = row.original;
+      const displayValue =
+        type === "heartbeat"
+          ? heartbeatScheduleLabel(frequencyMinutes, heartbeatGraceMinutes({ frequencyMinutes, config }))
+          : maskUrlPassword(target || legacyUrl || "—");
 
       return (
         <TruncatedTextWithTooltip

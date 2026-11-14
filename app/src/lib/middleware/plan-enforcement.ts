@@ -13,6 +13,7 @@ import { monitors, organization, statusPages } from "@/db/schema";
 import { and, eq, ne, sql } from "drizzle-orm";
 import { EXTRA_MEMBER_PRICE_CENTS, MAX_MEMBER_SEATS, effectiveMemberLimit } from "@/lib/billing/member-seats";
 import { notInDeletedProject, withPlanLimitLock, PlanLimitBusyError, type PlanLimitTransaction } from "@/lib/middleware/plan-limit-lock";
+import { HEARTBEAT_ANCHOR_ON_RESUME } from "@/lib/monitor-response";
 
 /** The messages `getOrganizationPlan` throws for an organization's own subscription state; safe to show to it. */
 const SUBSCRIPTION_STATE_ERRORS = [
@@ -214,7 +215,15 @@ export async function withResumeWithinPlan<T>(
         const cap = await checkResumeWithinPlan(organizationId, resource, { executor: tx, plan });
         if (!cap.allowed) return { ok: false as const, denied: cap };
       }
-      return { ok: true as const, value: await write(tx) };
+      const value = await write(tx);
+      // A heartbeat resumed here counts its deadline from now, not from its last ping before the pause.
+      if (resource === "monitor" && current?.status === "paused") {
+        await tx
+          .update(monitors)
+          .set({ heartbeatState: HEARTBEAT_ANCHOR_ON_RESUME })
+          .where(and(eq(monitors.id, targetId), eq(monitors.type, "heartbeat"), ne(monitors.status, "paused")));
+      }
+      return { ok: true as const, value };
     });
   } catch (error) {
     if (error instanceof PlanLimitBusyError) return { ok: false, busy: true };

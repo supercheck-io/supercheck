@@ -39,3 +39,10 @@ describe("staleComponentIds", () => {
     ], now)).toEqual(new Set(["stuck"]));
   });
 });
+
+describe("heartbeat monitors (B19)", () => {
+  it("does not flag a healthy daily heartbeat, and flags one silent for three intervals", () => {
+    expect(staleComponentIds([link("daily", { frequencyMinutes: 1440, lastCheckAt: ago(23 * 60) })], now).size).toBe(0);
+    expect(staleComponentIds([link("daily", { frequencyMinutes: 1440, lastCheckAt: ago(3 * 1440 + 1) })], now)).toEqual(new Set(["daily"]));
+  });
+});
