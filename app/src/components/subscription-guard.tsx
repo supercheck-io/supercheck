@@ -4,6 +4,7 @@ import { useEffect, useSyncExternalStore } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { SupercheckLoading } from "@/components/shared/supercheck-loading";
 import { useAppConfig } from "@/hooks/use-app-config";
+import { withNextPath } from "@/lib/auth/safe-next-path";
 import { useQuery } from "@tanstack/react-query";
 
 // Hydration-safe mounted check using useSyncExternalStore
@@ -145,15 +146,17 @@ export function SubscriptionGuard({
     if (isSelfHosted) return;
     if (!isFetched) return;
 
+    // Carry the page the user asked for (path plus query, e.g. a pre-filled monitor form) through subscribe.
+    const subscribePath = withNextPath('/subscribe', `${pathname}${window.location.search}`);
     if (isError) {
-      router.push('/subscribe');
+      router.push(subscribePath);
       return;
     }
 
     if (subscriptionStatus && !canBrowseProduct(subscriptionStatus)) {
-      router.push('/subscribe');
+      router.push(subscribePath);
     }
-  }, [hasSelfHostedInfo, isSelfHosted, isAllowedRoute, isFetched, isError, subscriptionStatus, router]);
+  }, [hasSelfHostedInfo, isSelfHosted, isAllowedRoute, isFetched, isError, subscriptionStatus, router, pathname]);
 
   // Determine if we need to show a loading overlay (only after hydration)
   const needsOverlay = hydrated && !isAllowedRoute && !isSelfHosted && (

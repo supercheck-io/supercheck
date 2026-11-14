@@ -1,6 +1,7 @@
 "use client";
 
 import { useOrganizations } from "@/hooks/use-organizations";
+import { currentNextPath } from "@/lib/auth/safe-next-path";
 import Link from "next/link";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
@@ -254,6 +255,8 @@ export default function SubscribePage() {
         body: JSON.stringify({
           plan: planSlug,
           organizationId: activeOrganization?.id,
+          // Where to go once the subscription is active; the server re-validates it.
+          next: currentNextPath() ?? undefined,
         }),
       });
       if (!checkoutRes.ok) {
@@ -472,7 +475,16 @@ export default function SubscribePage() {
         {trialActive && (
           <div className="border-t pt-4">
             <Button asChild variant="outline" size="sm">
-              <Link href="/">
+              <Link
+                href="/"
+                onClick={(event) => {
+                  const next = currentNextPath();
+                  if (next) {
+                    event.preventDefault();
+                    window.location.assign(next);
+                  }
+                }}
+              >
                 Continue with your trial
                 <ArrowRight aria-hidden="true" className="h-4 w-4" />
               </Link>

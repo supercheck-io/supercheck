@@ -1,6 +1,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import { DEMO_URL, GITHUB_URL, developersMenu, solutionsMenu } from "../lib/site-nav";
+import { tools } from "../lib/tools";
 
 function GithubIcon({ className }: { className?: string }) {
     return (
@@ -52,9 +53,18 @@ const sections = [
     {
         title: "Developers",
         links: [
-            ...developersMenu.groups[0].items.map((item) => ({ name: item.title, href: item.href })),
+            ...developersMenu.groups[0].items
+                .filter((item) => item.href !== "/tools")
+                .map((item) => ({ name: item.title, href: item.href })),
             { name: "Chrome extension", href: "https://chromewebstore.google.com/detail/supercheck-recorder/gfmbcelfhhfmifdkccnbgdadibdfhioe" },
             { name: "Edge extension", href: "https://microsoftedge.microsoft.com/addons/detail/supercheck-recorder/ngmlkgfgmdnfpddohcbfdgihennolnem" },
+        ],
+    },
+    {
+        title: "Free tools",
+        links: [
+            ...tools.slice(0, 5).map((tool) => ({ name: tool.name, href: `/tools/${tool.slug}` })),
+            { name: "All free tools", href: "/tools" },
         ],
     },
     {
@@ -116,7 +126,7 @@ export function SiteFooter({
 
                     </div>
 
-                    <div className="grid w-full grid-cols-2 gap-8 md:grid-cols-4 lg:gap-12">
+                    <div className="grid w-full grid-cols-2 gap-8 md:grid-cols-3 lg:grid-cols-5 lg:gap-12">
                         {sections.map((section, sectionIdx) => (
                             <div key={sectionIdx}>
                                 <h3 className="mb-4 text-sm font-semibold text-fd-foreground">

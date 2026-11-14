@@ -118,6 +118,17 @@ updates:
       - dependency-name: "@types/node"
         update-types: ["version-update:semver-major"]
 
+  - package-ecosystem: npm
+    directory: /tools-api
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 0
+    cooldown:
+      default-days: 7
+    groups:
+      tools-api-minor-patch:
+        update-types: ["minor", "patch"]
+
   # The recorder vendors upstream Playwright under recorder/playwright/**, which
   # is reviewed through the upstream security process. Only the recorder
   # workspace's own dependencies are maintained here.

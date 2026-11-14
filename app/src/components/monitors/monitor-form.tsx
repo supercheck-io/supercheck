@@ -74,6 +74,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { invalidateMonitorCaches, mergeEditConfig, withCurrentInterval } from "./monitor-actions";
 import { useTest } from "@/hooks/use-tests";
 import { CredentialField } from "./credential-field";
+import { monitorPrefill } from "./monitor-prefill";
 import { addAiEndpointIssues, AiEndpointFields, AI_ENDPOINT_DEFAULT_URL, buildAiEndpointConfig } from "./ai-endpoint-fields";
 
 // Defaults the AI endpoint preset applies to a new monitor; switching back to Standard HTTP undoes them while unchanged.
@@ -542,6 +543,10 @@ export function MonitorForm({
   const urlType = searchParams.get("type") as FormValues["type"];
   const fromTestId = searchParams.get("fromTest");
   const currentMonitorType = monitorType || urlType || "http_request";
+  // "Monitor this" from the free tools; new monitors only.
+  const prefill = useMemo(() => monitorPrefill(searchParams, currentMonitorType), [searchParams, currentMonitorType]);
+  // Changes only when the hand-off content changes, not on unrelated query updates.
+  const prefillKey = JSON.stringify(prefill);
 
   // (moved below after form initialization)
 
@@ -585,10 +590,11 @@ export function MonitorForm({
         websiteConfig_sslDaysUntilExpirationWarning:
           typeToUse === "website" ? 30 : 30, // Always provide default
         syntheticConfig_testId: fromTestId || "", // Pre-fill if coming from test page
+        ...prefill,
       };
     }
     return creationDefaultValues;
-  }, [currentMonitorType, initialData, fromTestId]);
+  }, [currentMonitorType, initialData, fromTestId, prefill]);
 
   const form = useForm<FormValues>({
     resolver: (async (values, ctx, opts) => {
@@ -731,11 +737,12 @@ export function MonitorForm({
       const initialDefaults: FormValues = {
         ...creationDefaultValues,
         type: urlType,
+        ...prefill,
       };
       form.reset(initialDefaults);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [editMode, initialData, urlType]); // Run when these values change
+  }, [editMode, initialData, urlType, prefillKey]); // Run when these values change
 
   // Initialize form with initialData in edit mode
   useEffect(() => {

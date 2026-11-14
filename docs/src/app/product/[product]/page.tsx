@@ -7,6 +7,13 @@ import { SiteHeader } from "../../../components/site-header";
 import { SiteFooter } from "../../../components/site-footer";
 import { StepVisual, CheckList, primaryButton, secondaryButton, textLink } from "../../../components/landing/ui";
 import { getProduct, products } from "../../../lib/products";
+import { tools } from "../../../lib/tools";
+
+// Free tools that check what each product monitors.
+const RELATED_TOOLS: Record<string, string[]> = {
+  "uptime-monitoring": ["website-uptime-checker", "https-checker", "security-headers-checker", "domain-expiry-checker"],
+  "ai-sre": ["agent-readiness-checker"],
+};
 import { DEMO_URL } from "../../../lib/site-nav";
 
 export const dynamicParams = false;
@@ -106,6 +113,28 @@ export default async function ProductPage({ params }: { params: Promise<{ produc
             ))}
           </div>
         </section>
+
+        {RELATED_TOOLS[product.slug] && (
+          <section aria-labelledby="free-tools-heading" className="border-t border-fd-border">
+            <div className="mx-auto max-w-6xl px-4 py-12 sm:px-6">
+              <h2 id="free-tools-heading" className="text-xl font-semibold tracking-tight">
+                Try a free check first
+              </h2>
+              <ul className="mt-4 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:gap-6">
+                {tools
+                  .filter((tool) => RELATED_TOOLS[product.slug].includes(tool.slug))
+                  .map((tool) => (
+                    <li key={tool.slug}>
+                      <Link href={`/tools/${tool.slug}`} className={textLink}>
+                        {tool.name}
+                        <ArrowRight className="size-3.5" aria-hidden="true" />
+                      </Link>
+                    </li>
+                  ))}
+              </ul>
+            </div>
+          </section>
+        )}
 
         <section aria-labelledby="faq-heading" className="border-t border-fd-border bg-fd-card/40">
           <div className="mx-auto max-w-6xl px-4 py-16 sm:px-6 md:py-20">

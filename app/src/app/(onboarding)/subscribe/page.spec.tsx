@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup } from "@testing-library/react";
 import { useOrganizations } from "@/hooks/use-organizations";
 import { toast } from "sonner";
 import SubscribePage from "./page";
@@ -285,6 +286,29 @@ describe("signup plan selection", () => {
       await new Promise((resolve) => setTimeout(resolve, 50));
       expect(setupCalls()).toHaveLength(1);
     });
+  });
+
+  it("sends a valid next to checkout and drops an invalid one", async () => {
+    jest.spyOn(console, "error").mockImplementation(() => {}); // jsdom does not implement navigation
+    const monitor = "/monitors/create?type=website&url=https%3A%2F%2Fex.com%2F&name=ex.com";
+    mockFetch.mockImplementation(async (url: string) =>
+      url === "/api/billing/checkout"
+        ? { ok: true, json: async () => ({ url: "https://checkout.example.test/session" }) }
+        : { ok: true, json: async () => pricing },
+    );
+    window.history.pushState({}, "", `/subscribe?next=${encodeURIComponent(monitor)}`);
+    fireEvent.click(await openPage());
+    await waitFor(() => expect(mockFetch).toHaveBeenCalledWith("/api/billing/checkout", expect.anything()));
+    const body = JSON.parse(mockFetch.mock.calls.find(([url]) => url === "/api/billing/checkout")![1].body);
+    expect(body.next).toBe(monitor);
+    window.history.pushState({}, "", "/subscribe?next=https%3A%2F%2Fevil.example");
+    cleanup();
+    mockFetch.mockClear();
+    fireEvent.click(await openPage());
+    await waitFor(() => expect(mockFetch).toHaveBeenCalledWith("/api/billing/checkout", expect.anything()));
+    const second = JSON.parse(mockFetch.mock.calls.find(([url]) => url === "/api/billing/checkout")![1].body);
+    expect(second).not.toHaveProperty("next");
+    window.history.pushState({}, "", "/");
   });
 
   it("re-enables checkout when the page is restored from the back/forward cache", async () => {

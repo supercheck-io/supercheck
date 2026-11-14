@@ -232,6 +232,24 @@ describe("SubscriptionGuard", () => {
       });
       await waitFor(() => expect(pushMock).toHaveBeenCalledWith("/subscribe"));
     });
+
+    it("forwards a pre-filled monitor form (path plus query) as next", async () => {
+      const prev = pathname;
+      pathname = "/monitors/create";
+      const query = `?type=website&url=${encodeURIComponent("https://ex.com/a?b=1")}&name=ex.com`;
+      window.history.pushState({}, "", `/monitors/create${query}`);
+      (global.fetch as unknown as jest.Mock).mockResolvedValue({ ok: true, json: async () => ({ isActive: false, plan: null, trial: null }) });
+      renderGuard({
+        children: <div>Protected content</div>,
+        initialSubscriptionStatus: { isActive: false, plan: null, trial: null },
+        initialIsSelfHosted: false,
+      });
+      await waitFor(() =>
+        expect(pushMock).toHaveBeenCalledWith(`/subscribe?next=${encodeURIComponent(`/monitors/create${query}`)}`),
+      );
+      window.history.pushState({}, "", "/");
+      pathname = prev;
+    });
   });
 });
 

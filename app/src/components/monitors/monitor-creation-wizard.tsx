@@ -3,6 +3,7 @@
 import { monitorTypes } from "@/components/monitors/data";
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { MonitorForm } from "./monitor-form";
+import { draftForHandoff } from "./monitor-prefill";
 import { channelsOptional } from "@/lib/incident-settings";
 import { AlertSettings } from "@/components/alerts/alert-settings";
 import { LocationConfigSection } from "./location-config-section";
@@ -60,14 +61,17 @@ export function MonitorCreationWizard() {
       const saved = sessionStorage.getItem(STORAGE_KEYS.MONITOR_DATA);
       if (saved) {
         try {
-          return JSON.parse(saved);
+          // An explicit hand-off ("Monitor this") wins over an older draft for another target.
+          const draft = draftForHandoff(JSON.parse(saved), searchParams?.get("url"));
+          if (!draft) sessionStorage.removeItem(STORAGE_KEYS.MONITOR_DATA);
+          return draft;
         } catch {
           return undefined;
         }
       }
     }
     return undefined;
-  }, []);
+  }, [searchParams]);
 
   const getInitialApiData = useCallback(() => {
     if (typeof window !== "undefined") {
