@@ -41,7 +41,7 @@ test.describe('AI endpoint monitor preset @monitors', () => {
     await page.getByTestId('ai-secret').click();
     await page.getByRole('option', { name: secretKey }).click();
     await page.getByTestId('ai-model').fill('gpt-4o-mini');
-    await page.getByRole('button', { name: 'Create', exact: true }).click();
+    await page.locator('form button[type="submit"]').click();
 
     await expect(page).toHaveURL(/\/monitors\/[0-9a-f-]{36}$/);
     const monitorId = new URL(page.url()).pathname.split('/').pop() as string;
@@ -74,7 +74,7 @@ test.describe('AI endpoint monitor preset @monitors', () => {
     await page.getByTestId('monitor-preset').click();
     await page.getByRole('option', { name: 'AI endpoint (OpenAI-compatible)' }).click();
     await page.getByTestId('ai-no-key').click();
-    await page.getByRole('button', { name: 'Create', exact: true }).click();
+    await page.locator('form button[type="submit"]').click();
 
     await expect(page.getByText('Model is required')).toBeVisible();
     await expect(page).toHaveURL(/\/monitors\/create/);
