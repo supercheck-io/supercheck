@@ -66,7 +66,7 @@ describe("domain tool", () => {
     });
     const r = await domain(ctxFor("domain"), "example.com");
     expect(r).toMatchObject({ hasData: true, expired: true, server: "https://rdap.registrar.com/" });
-    expect(calls.some((c) => c.url.includes("third.com"))).toBe(false);
+    expect(calls.some((c) => new URL(c.url).hostname === "third.com")).toBe(false);
   });
 
   it.each([

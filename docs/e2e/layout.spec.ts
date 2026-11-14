@@ -22,7 +22,7 @@ for (const path of PAGES) {
       await page.goto(`${path}?url=example.com`);
       await expect(page.locator("h1")).toHaveCount(1);
       const canonical = await page.locator('link[rel="canonical"]').getAttribute("href");
-      expect(canonical).toMatch(new RegExp(`${path.replace(/\//g, "\\/")}$`));
+      expect(canonical?.endsWith(path)).toBe(true);
       const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
       expect(overflow).toBeLessThanOrEqual(0);
     }
