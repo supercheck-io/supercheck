@@ -20,6 +20,7 @@ jest.mock("@/lib/sre/incident-lifecycle", () => ({
   findOpenIncidentForSource: jest.fn().mockResolvedValue(null),
  recordRepeatAlert: jest.fn().mockResolvedValue(true),
   announceSystemTransition: jest.fn().mockResolvedValue(undefined),
+  noteFailureReturned: jest.fn().mockResolvedValue(undefined),
   getDefaultAssigneeId: jest.fn().mockResolvedValue(null),
 }));
 jest.mock("@/lib/sre/incident-resources", () => ({ findOpenIncidentListingMonitor: jest.fn().mockResolvedValue(null) }));
@@ -164,7 +165,24 @@ describe("processSreBackgroundAlertTriageJob", () => {
       expect(findOpenIncidentListingMonitor).toHaveBeenCalledWith(expect.anything(), { organizationId: "org-1", projectId: "proj-1", monitorId: FAILURE_JOB.sourceFailure.sourceId });
       expect(insertedIncident()).toBeUndefined();
       expect(inserts).toContainEqual(expect.objectContaining({ incidentId: "declared-1", role: "related" }));
+      expect(inserts).toContainEqual(expect.objectContaining({ incidentId: "declared-1", eventData: expect.objectContaining({ state: "alert_correlated" }) }));
+      // Checked before the reopen, so a recently auto-resolved incident never comes back beside the declared one.
+      expect(reopenRecentlyAutoResolved).not.toHaveBeenCalled();
       expect(result).toMatchObject({ success: true });
+    });
+
+    it("lets an incident already open for the monitor win over a declared one", async () => {
+      const { findOpenIncidentListingMonitor } = jest.requireMock("@/lib/sre/incident-resources");
+      const { findOpenIncidentForSource } = jest.requireMock("@/lib/sre/incident-lifecycle");
+      findOpenIncidentForSource.mockResolvedValue({ id: "auto-1", triageInvestigationRunId: null });
+      try {
+        selectQueue.push([monitorRow({ enabled: false, incidentEnabled: true })], [], [{ id: "ae-1" }], []);
+        await processSreBackgroundAlertTriageJob(FAILURE_JOB);
+        expect(findOpenIncidentListingMonitor).not.toHaveBeenCalled();
+        expect(inserts).toContainEqual(expect.objectContaining({ incidentId: "auto-1", role: "related" }));
+      } finally {
+        findOpenIncidentForSource.mockResolvedValue(null);
+      }
     });
 
     it("opens an incident for a monitor with alerts off and incidents opted in, with one alert counted", async () => {

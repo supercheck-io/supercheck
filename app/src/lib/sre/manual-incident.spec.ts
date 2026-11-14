@@ -5,7 +5,7 @@ jest.mock("@/lib/sre/incident-lifecycle", () => ({ getDefaultAssigneeId: jest.fn
 jest.mock("@/lib/sre/incident-notifier", () => ({ notifyIncidentEvent: jest.fn().mockResolvedValue(true) }));
 jest.mock("@/lib/sre/incident-watchers", () => ({ watchIncident: jest.fn() }));
 jest.mock("@/lib/sre/sre-rate-limiter", () => ({ checkSreIncidentCreateRateLimit: jest.fn() }));
-jest.mock("@/lib/status-page-incident-core", () => ({ createStatusPageIncident: jest.fn() }));
+jest.mock("@/lib/status-page-incident-core", () => ({ createStatusPageIncident: jest.fn(), findStatusPageTargetError: jest.fn() }));
 jest.mock("@/sre/lib/auto-investigate", () => ({ maybeAutoInvestigateOnOpen: jest.fn().mockResolvedValue({ handled: false }) }));
 jest.mock("@/lib/sre/incident-resources", () => ({
   MAX_INCIDENT_RESOURCES: 50,
@@ -23,7 +23,7 @@ import { getDefaultAssigneeId, isAssignableUser } from "@/lib/sre/incident-lifec
 import { notifyIncidentEvent } from "@/lib/sre/incident-notifier";
 import { resolveIncidentResources } from "@/lib/sre/incident-resources";
 import { checkSreIncidentCreateRateLimit } from "@/lib/sre/sre-rate-limiter";
-import { createStatusPageIncident } from "@/lib/status-page-incident-core";
+import { createStatusPageIncident, findStatusPageTargetError } from "@/lib/status-page-incident-core";
 import { maybeAutoInvestigateOnOpen } from "@/sre/lib/auto-investigate";
 import { db } from "@/utils/db";
 import { createManualIncident, updateIncidentResources } from "./manual-incident";
@@ -58,6 +58,7 @@ beforeEach(() => {
   jest.mocked(resolveIncidentResources).mockResolvedValue([]);
   jest.mocked(getDefaultAssigneeId).mockResolvedValue(null);
   jest.mocked(isAssignableUser).mockResolvedValue(true);
+  jest.mocked(findStatusPageTargetError).mockResolvedValue(null);
 });
 
 describe("createManualIncident", () => {
@@ -124,6 +125,15 @@ describe("createManualIncident", () => {
     expect(db.transaction).not.toHaveBeenCalled();
   });
 
+  it("rejects a status page or component outside the project before declaring anything", async () => {
+    jest.mocked(findStatusPageTargetError).mockResolvedValueOnce("Status page not found or access denied");
+    const result = await createManualIncident(actor(), { title: "t", statusPage: { statusPageId: id(20), componentIds: [id(21)] } }, "cli");
+    expect(result).toEqual({ ok: false, code: "not_found", error: "Status page not found or access denied" });
+    expect(findStatusPageTargetError).toHaveBeenCalledWith({ organizationId: id(2), projectId: id(3) }, id(20), [id(21)]);
+    expect(db.transaction).not.toHaveBeenCalled();
+    expect(notifyIncidentEvent).not.toHaveBeenCalled();
+  });
+
   it("posts the linked status page incident after commit (AC5)", async () => {
     jest.mocked(createStatusPageIncident).mockResolvedValue({ success: true, message: "ok", incident: { id: id(30) } as never });
     const result = await createManualIncident(actor(), { title: "t", statusPage: { statusPageId: id(20), componentIds: [id(21)], impact: "major", message: "Looking into it" } }, "ui");
@@ -163,7 +173,7 @@ describe("updateIncidentResources", () => {
   });
 
   it("adds and removes, writes one timeline row and an audit event", async () => {
-    jest.mocked(resolveIncidentResources).mockResolvedValueOnce([{ type: "monitor", id: id(6), name: "Checkout" }]).mockResolvedValueOnce([]);
+    jest.mocked(resolveIncidentResources).mockResolvedValueOnce([{ type: "monitor", id: id(6), name: "Checkout" }]);
     const rows: Array<Record<string, unknown>> = [];
     const deleted = jest.fn();
     (db.transaction as jest.Mock).mockImplementationOnce(async (callback) => {
@@ -178,7 +188,26 @@ describe("updateIncidentResources", () => {
     const result = await updateIncidentResources(actor(), id(9), { add: { monitorIds: [id(6)] }, remove: { monitorIds: [id(7)] } });
     expect(result).toEqual({ ok: true, added: 1, removed: 1 });
     expect(deleted).toHaveBeenCalled();
-    expect(rows[0]).toMatchObject({ eventData: { state: "resources_affected", added: [expect.objectContaining({ id: id(6) })], removed: [expect.objectContaining({ id: id(7), type: "monitor" })] } });
+    expect(rows[0]).toMatchObject({ eventData: { state: "resources_affected", added: [expect.objectContaining({ id: id(6) })], removed: [{ type: "monitor", id: id(7), name: null }] } });
     expect(logAuditEvent).toHaveBeenCalledWith(expect.objectContaining({ action: "sre_incident_resources_updated" }));
+  });
+
+  it("caps the list at 50, counting only resources not already listed", async () => {
+    const listed = Array.from({ length: 50 }, (_, n) => ({ id: id(500 + n), type: "monitor", resourceId: id(600 + n) }));
+    const tx = (current: unknown[]) => async (callback: (tx: unknown) => unknown) => {
+      let call = 0;
+      return callback({
+        select: () => ({ from: () => ({ where: () => (call++ === 0 ? { for: async () => [{ id: id(9) }] } : Promise.resolve(current)) }) }),
+        delete: () => ({ where: jest.fn() }),
+        insert: () => ({ values: () => Promise.resolve() }),
+        update: () => ({ set: () => ({ where: jest.fn() }) }),
+      });
+    };
+    jest.mocked(resolveIncidentResources).mockResolvedValueOnce([{ type: "monitor", id: id(600), name: "Already listed" }]);
+    (db.transaction as jest.Mock).mockImplementationOnce(tx(listed));
+    expect(await updateIncidentResources(actor(), id(9), { add: { monitorIds: [id(600)] } })).toMatchObject({ ok: true });
+    jest.mocked(resolveIncidentResources).mockResolvedValueOnce([{ type: "monitor", id: id(700), name: "New" }]);
+    (db.transaction as jest.Mock).mockImplementationOnce(tx(listed));
+    expect(await updateIncidentResources(actor(), id(9), { add: { monitorIds: [id(700)] } })).toMatchObject({ ok: false, code: "invalid" });
   });
 });

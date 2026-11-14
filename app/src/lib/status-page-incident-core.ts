@@ -73,6 +73,27 @@ export type CreateStatusPageIncidentResult =
   | { success: false; message: string; forbidden?: boolean };
 
 /**
+ * Checks a status page and its components belong to this project before anything is written, so a typo
+ * fails the whole request instead of after an incident was declared and its team paged.
+ */
+export async function findStatusPageTargetError(
+  scope: { organizationId: string; projectId: string },
+  statusPageId: string,
+  componentIds: string[],
+): Promise<string | null> {
+  const page = await db.query.statusPages.findFirst({
+    columns: { id: true },
+    where: and(eq(statusPages.id, statusPageId), eq(statusPages.organizationId, scope.organizationId), eq(statusPages.projectId, scope.projectId)),
+  });
+  if (!page) return "Status page not found or access denied";
+  const found = await db
+    .select({ id: statusPageComponents.id })
+    .from(statusPageComponents)
+    .where(and(eq(statusPageComponents.statusPageId, statusPageId), inArray(statusPageComponents.id, componentIds)));
+  return found.length === new Set(componentIds).size ? null : "A selected component is not on this status page.";
+}
+
+/**
  * The one path that posts a public status-page incident. Server action, manual incident declare and
  * maintenance publishing all call it, so the row lock, link checks and subscriber fan-out stay in one place.
  */

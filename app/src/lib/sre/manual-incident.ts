@@ -2,7 +2,7 @@ import { revalidatePath } from "next/cache";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { z } from "zod";
 
-import { sreIncidentResources, sreIncidents, sreIncidentTimelineEvents } from "@/db/schema";
+import { sreIncidentResources, sreIncidents, sreIncidentTimelineEvents, sreServices } from "@/db/schema";
 import { logAuditEvent } from "@/lib/audit-logger";
 import { createLogger } from "@/lib/logger/index";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
@@ -11,7 +11,7 @@ import { notifyIncidentEvent } from "@/lib/sre/incident-notifier";
 import { addIncidentResources, MAX_INCIDENT_RESOURCES, resolveIncidentResources } from "@/lib/sre/incident-resources";
 import { watchIncident } from "@/lib/sre/incident-watchers";
 import { checkSreIncidentCreateRateLimit } from "@/lib/sre/sre-rate-limiter";
-import { createStatusPageIncident, type StatusPageIncidentActor } from "@/lib/status-page-incident-core";
+import { createStatusPageIncident, findStatusPageTargetError, type StatusPageIncidentActor } from "@/lib/status-page-incident-core";
 import { maybeAutoInvestigateOnOpen } from "@/sre/lib/auto-investigate";
 import { db } from "@/utils/db";
 
@@ -107,6 +107,10 @@ export async function createManualIncident(
     monitorIds: data.affected?.monitorIds ?? [],
   });
   if (!resources) return { ok: false, code: "not_found", error: "A selected service or monitor was not found in this project" };
+  if (data.statusPage) {
+    const targetError = await findStatusPageTargetError(scope, data.statusPage.statusPageId, data.statusPage.componentIds);
+    if (targetError) return { ok: false, code: "not_found", error: targetError };
+  }
   if (data.commanderUserId && !(await isAssignableUser(organizationId, projectId, data.commanderUserId))) {
     return { ok: false, code: "invalid", error: "Commander must be an editor or admin of this project" };
   }
@@ -272,15 +276,20 @@ export async function updateIncidentResources(
       .from(sreIncidentResources)
       .where(eq(sreIncidentResources.incidentId, incident.id));
     const removing = current.filter((row) => removeKeys.has(`${row.type}:${row.resourceId}`));
-    if (current.length - removing.length + toAdd.length > MAX_INCIDENT_RESOURCES) return "too_many" as const;
+    const existing = new Set(current.map((row) => `${row.type}:${row.resourceId}`));
+    const adding = toAdd.filter((ref) => !existing.has(`${ref.type}:${ref.id}`) || removeKeys.has(`${ref.type}:${ref.id}`));
+    if (current.length - removing.length + adding.length > MAX_INCIDENT_RESOURCES) return "too_many" as const;
     if (removing.length > 0) await tx.delete(sreIncidentResources).where(inArray(sreIncidentResources.id, removing.map((row) => row.id)));
     const added = await addIncidentResources(tx, incident.id, toAdd);
-    // Names of removed rows may be gone (deleted monitor); the type still reads "2 monitors".
-    const removedNamed = (await resolveIncidentResources(tx, scope, {
-      serviceIds: removing.filter((row) => row.type === "service").map((row) => row.resourceId),
-      monitorIds: [],
-    })) ?? [];
-    const removed = removing.map((row) => removedNamed.find((ref) => ref.id === row.resourceId) ?? { type: row.type, id: row.resourceId, name: null });
+    // Names of removed services, scoped to the project; a monitor removal reads as "N monitors" by type alone.
+    const removedServiceIds = removing.filter((row) => row.type === "service").map((row) => row.resourceId);
+    const serviceNames = removedServiceIds.length
+      ? await tx
+          .select({ id: sreServices.id, name: sreServices.name })
+          .from(sreServices)
+          .where(and(inArray(sreServices.id, removedServiceIds), eq(sreServices.organizationId, scope.organizationId), eq(sreServices.projectId, scope.projectId)))
+      : [];
+    const removed = removing.map((row) => ({ type: row.type, id: row.resourceId, name: serviceNames.find((service) => service.id === row.resourceId)?.name ?? null }));
     if (added.length > 0 || removed.length > 0) {
       await tx.insert(sreIncidentTimelineEvents).values({
         incidentId: incident.id,

@@ -521,6 +521,47 @@ async function createOrGetIncidentForAlertHistory(alertHistoryId: string, failur
       };
     }
 
+    // A person declared an incident listing this monitor (or its service): the alert joins it as related, so a
+    // monitor recovery never auto-resolves what a person declared (applySourceRecovery reads triggers only).
+    // Checked before the reopen below, so a recently auto-resolved incident does not come back beside the declared
+    // one; an incident already open for this source still wins.
+    const declared =
+      sourceType === "monitor" &&
+      !(RECOVERABLE_FAILURE_TYPES.has(alert.type) && (await findOpenIncidentForSource(tx, { organizationId, projectId, sourceType, sourceId })))
+        ? await findOpenIncidentListingMonitor(tx, { organizationId, projectId, monitorId: sourceId })
+        : null;
+    if (declared) {
+      await tx
+        .insert(sreIncidentAlerts)
+        .values({
+          incidentId: declared.id,
+          alertEventId: alertEvent.id,
+          role: "related",
+          alertTitle: title,
+          alertDescription: alert.message,
+          alertSeverity: severity,
+          alertFiredAt: firedAt,
+          createdAt: new Date(),
+        })
+        .onConflictDoNothing();
+      await tx.insert(sreIncidentTimelineEvents).values({
+        incidentId: declared.id,
+        eventType: "state_change",
+        eventData: { state: "alert_correlated", alertEventId: alertEvent.id, alertTitle: title },
+        actorType: "system",
+        createdAt: new Date(),
+      });
+      await recordRepeatAlert(tx, declared.id, firedAt);
+      return {
+        skipped: false as const,
+        organizationId,
+        projectId,
+        alertEventId: alertEvent.id,
+        incidentId: declared.id,
+        alreadyTriaged: Boolean(declared.triageInvestigationRunId),
+      };
+    }
+
     // A failure shortly after an automatic recovery is the same incident coming back.
     const reopened = RECOVERABLE_FAILURE_TYPES.has(alert.type)
       ? await reopenRecentlyAutoResolved(tx, {
@@ -594,36 +635,6 @@ async function createOrGetIncidentForAlertHistory(alertHistoryId: string, failur
           alertEventId: alertEvent.id,
           incidentId: openForSource.id,
           alreadyTriaged: Boolean(openForSource.triageInvestigationRunId),
-        };
-      }
-    }
-
-    // A person declared an incident listing this monitor (or its service): the alert joins it as related,
-    // so a monitor recovery never auto-resolves what a person declared (applySourceRecovery reads triggers only).
-    if (sourceType === "monitor") {
-      const declared = await findOpenIncidentListingMonitor(tx, { organizationId, projectId, monitorId: sourceId });
-      if (declared) {
-        await tx
-          .insert(sreIncidentAlerts)
-          .values({
-            incidentId: declared.id,
-            alertEventId: alertEvent.id,
-            role: "related",
-            alertTitle: title,
-            alertDescription: alert.message,
-            alertSeverity: severity,
-            alertFiredAt: firedAt,
-            createdAt: new Date(),
-          })
-          .onConflictDoNothing();
-        await recordRepeatAlert(tx, declared.id, firedAt);
-        return {
-          skipped: false as const,
-          organizationId,
-          projectId,
-          alertEventId: alertEvent.id,
-          incidentId: declared.id,
-          alreadyTriaged: Boolean(declared.triageInvestigationRunId),
         };
       }
     }

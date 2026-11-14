@@ -69,3 +69,15 @@ it("tells the user when the SRE incident already has a public incident on the pa
   } as never);
   expect(result).toEqual({ success: false, message: "This incident already has a public incident on this status page." });
 });
+
+it("checks a status page and its components belong to the project before a declare writes anything", async () => {
+  const { findStatusPageTargetError } = await import("@/lib/status-page-incident-core");
+  const scope = { organizationId: "o", projectId: "p" };
+  (db.query.statusPages.findFirst as jest.Mock).mockResolvedValueOnce(undefined);
+  expect(await findStatusPageTargetError(scope, uuid(1), [uuid(2)])).toBe("Status page not found or access denied");
+  (db.query.statusPages.findFirst as jest.Mock).mockResolvedValue({ id: uuid(1) });
+  (db as unknown as { select: jest.Mock }).select = jest.fn(() => ({ from: () => ({ where: async () => [] }) }));
+  expect(await findStatusPageTargetError(scope, uuid(1), [uuid(2)])).toBe("A selected component is not on this status page.");
+  (db as unknown as { select: jest.Mock }).select = jest.fn(() => ({ from: () => ({ where: async () => [{ id: uuid(2) }] }) }));
+  expect(await findStatusPageTargetError(scope, uuid(1), [uuid(2), uuid(2)])).toBeNull();
+});
