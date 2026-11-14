@@ -13,6 +13,7 @@ import {
   integer,
   jsonb,
   numeric,
+  smallint,
   pgTable,
   text,
   timestamp,
@@ -61,7 +62,9 @@ type SreTimelineEventType =
   | "evidence_added"
   | "recommendation_added"
   | "verification_result"
-  | "user_action";
+  | "user_action"
+  /** Reminder, escalation or failed page (eventData.kind). */
+  | "notification";
 export type SrePostmortemSection = "summary" | "impact" | "timeline" | "root_cause" | "contributing_factors" | "follow_ups";
 export type SrePostmortem = {
   sections: Partial<Record<SrePostmortemSection, string>>;
@@ -129,6 +132,7 @@ type SreEvidenceGraphFocusedViewVisibility = "project";
 type SreIntegrationKey =
   | "pagerduty"
   | "opsgenie"
+  | "jsm_ops"
   | "splunk_on_call"
   | "better_stack"
   | "incident_io"
@@ -432,8 +436,20 @@ export const sreIncidents = pgTable(
     mitigatedAt: timestamp("mitigated_at", { withTimezone: true }),
     resolutionSummary: text("resolution_summary"),
     postmortem: jsonb("postmortem").$type<SrePostmortem>(),
-    /** Set once when the unacknowledged re-notify step fires, so it never repeats. */
+    /** When the latest unacknowledged reminder was sent (claimed). Cleared on reopen. */
     renotifiedAt: timestamp("renotified_at", { withTimezone: true }),
+    /** Reminders sent in this open period (the claim counts them). Reset on reopen. */
+    renotifyCount: smallint("renotify_count").notNull().default(0),
+    /** Set when a person lowers the severity: no more reminders this open period. */
+    renotifyStoppedAt: timestamp("renotify_stopped_at", { withTimezone: true }),
+    /** Set once when the escalation step fires (or its target was gone). Reset on reopen. */
+    escalatedAt: timestamp("escalated_at", { withTimezone: true }),
+    /** Failed reminder sends in a row, and when the next attempt may be claimed (backoff). Reset on success and reopen. */
+    renotifyFailures: smallint("renotify_failures").notNull().default(0),
+    renotifyRetryAt: timestamp("renotify_retry_at", { withTimezone: true }),
+    /** Same for the escalation step. */
+    escalateFailures: smallint("escalate_failures").notNull().default(0),
+    escalateRetryAt: timestamp("escalate_retry_at", { withTimezone: true }),
     /** Alerts folded into this incident: 1 at open, +1 for each repeat alert while it stays open. */
     alertCount: integer("alert_count").notNull().default(1),
     /** When the latest alert (the opening one or a repeat) fired. */
@@ -509,8 +525,16 @@ export const notificationPolicies = pgTable(
     projectId: uuid("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
     channelIds: jsonb("channel_ids").$type<string[]>().notNull().default([]),
     emailServiceOwnersOnSev12: boolean("email_service_owners_on_sev12").notNull().default(false),
-    /** Minutes an incident may stay unacknowledged before one re-notify. Null turns it off. */
+    /** Minutes an incident may stay unacknowledged before the first reminder. Null turns reminders off. */
     renotifyUnackedMinutes: integer("renotify_unacked_minutes"),
+    /** Minutes between later reminders. Null = remind once. */
+    renotifyRepeatMinutes: integer("renotify_repeat_minutes"),
+    /** Total reminders per open period, counting the first. */
+    renotifyMax: smallint("renotify_max").notNull().default(3),
+    /** Minutes unacknowledged before the one escalation step. Null = no escalation. */
+    escalateAfterMinutes: integer("escalate_after_minutes"),
+    escalateChannelId: uuid("escalate_channel_id").references(() => notificationProviders.id, { onDelete: "set null" }),
+    escalateUserId: uuid("escalate_user_id").references(() => user.id, { onDelete: "set null" }),
     /** Run AI investigation (SEV1-2) or triage (SEV3-4) when an incident opens. Spends AI credits. */
     autoInvestigateOnOpen: boolean("auto_investigate_on_open").notNull().default(false),
     /** When auto-investigate was last switched on; incidents opened before it are never auto-run. */
@@ -521,7 +545,13 @@ export const notificationPolicies = pgTable(
   (table) => ({
     projectUniqueIdx: uniqueIndex("notification_policies_project_unique_idx").on(table.projectId),
     organizationIdIdx: index("notification_policies_organization_id_idx").on(table.organizationId),
+    // Channel and user deletes set these to null.
+    escalateChannelIdIdx: index("notification_policies_escalate_channel_id_idx").on(table.escalateChannelId),
+    escalateUserIdIdx: index("notification_policies_escalate_user_id_idx").on(table.escalateUserId),
     renotifyRangeCheck: check("notification_policies_renotify_range_check", sql`${table.renotifyUnackedMinutes} IS NULL OR (${table.renotifyUnackedMinutes} BETWEEN 5 AND 1440)`),
+    renotifyRepeatRangeCheck: check("notification_policies_renotify_repeat_range_check", sql`${table.renotifyRepeatMinutes} IS NULL OR (${table.renotifyRepeatMinutes} BETWEEN 5 AND 1440)`),
+    renotifyMaxRangeCheck: check("notification_policies_renotify_max_range_check", sql`${table.renotifyMax} BETWEEN 1 AND 10`),
+    escalateRangeCheck: check("notification_policies_escalate_range_check", sql`${table.escalateAfterMinutes} IS NULL OR (${table.escalateAfterMinutes} BETWEEN 5 AND 1440)`),
   })
 );
 

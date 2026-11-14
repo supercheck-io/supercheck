@@ -1250,7 +1250,7 @@ describe('NotificationService', () => {
       expect(body.dedup_key).toBe('ssl:monitor-123');
     });
 
-    it('should send job success as trigger unless explicitly overridden', async () => {
+    it('resolves on job success with the key its failure used, unless explicitly overridden', async () => {
       const templateProvider: NotificationProvider = {
         ...webhookProvider,
         config: {
@@ -1262,31 +1262,70 @@ describe('NotificationService', () => {
         },
       };
 
+      for (const type of ['job_failed', 'job_success', 'job_timeout'])
+        await service.sendNotification(templateProvider, {
+          ...basePayload,
+          type: type as NotificationPayload['type'],
+          targetId: 'job-123',
+          severity: type === 'job_success' ? 'success' : 'error',
+        });
       await service.sendNotification(templateProvider, {
         ...basePayload,
         type: 'job_success',
         targetId: 'job-123',
         severity: 'success',
+        metadata: { ...basePayload.metadata, pagerDutyEventAction: 'trigger' },
       });
 
-      await service.sendNotification(templateProvider, {
-        ...basePayload,
-        type: 'job_success',
-        targetId: 'job-123',
-        severity: 'success',
-        metadata: {
-          ...basePayload.metadata,
-          pagerDutyEventAction: 'resolve',
+      const bodies = mockFetch.mock.calls.map((call) =>
+        JSON.parse(call[1].body),
+      );
+      expect(bodies.map((b) => b.event_action)).toEqual([
+        'trigger',
+        'resolve',
+        'trigger',
+        'trigger',
+      ]);
+      expect(new Set(bodies.map((b) => b.dedup_key))).toEqual(
+        new Set(['job:job-123']),
+      );
+    });
+
+    it('shares one dedup key between trigger and resolve for monitors and SSL', async () => {
+      const templateProvider: NotificationProvider = {
+        ...webhookProvider,
+        config: {
+          url: 'https://events.pagerduty.com/v2/enqueue',
+          bodyTemplate: JSON.stringify({
+            event_action: '{{pagerDutyEventAction}}',
+            dedup_key: '{{dedupKey}}',
+          }),
         },
-      });
-
-      const successBody = JSON.parse(mockFetch.mock.calls[0][1].body);
-      const recoveryBody = JSON.parse(mockFetch.mock.calls[1][1].body);
-
-      expect(successBody.event_action).toBe('trigger');
-      expect(successBody.dedup_key).toBe('job:job-123');
-      expect(recoveryBody.event_action).toBe('resolve');
-      expect(recoveryBody.dedup_key).toBe('job:job-123');
+      };
+      const pairs: Array<[string, string, string]> = [
+        ['monitor_failure', 'monitor_recovery', 'monitor:monitor-123'],
+        ['ssl_expiring', 'ssl_renewed', 'ssl:monitor-123'],
+      ];
+      for (const [open, close, key] of pairs) {
+        mockFetch.mockClear();
+        await service.sendNotification(templateProvider, {
+          ...basePayload,
+          type: open as NotificationPayload['type'],
+        });
+        await service.sendNotification(templateProvider, {
+          ...basePayload,
+          type: close as NotificationPayload['type'],
+          severity: 'success',
+        });
+        const [first, second] = mockFetch.mock.calls.map((call) =>
+          JSON.parse(call[1].body),
+        );
+        expect([first.event_action, second.event_action]).toEqual([
+          'trigger',
+          'resolve',
+        ]);
+        expect([first.dedup_key, second.dedup_key]).toEqual([key, key]);
+      }
     });
 
     it('should not send body for GET requests', async () => {
@@ -1333,6 +1372,348 @@ describe('NotificationService', () => {
 
       expect(result).toBe(false);
       expect(mockFetch).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('Paging webhook lifecycle', () => {
+    type Delivery = {
+      success: boolean;
+      error?: string;
+      deliveryMetadata?: {
+        correlation?: { dedupKey?: string; eventAction?: string };
+        delivery: {
+          attempts?: number;
+          responseStatus?: number;
+          terminal?: boolean;
+          attemptLog?: Array<{
+            n: number;
+            status?: number;
+            error?: string;
+            ms: number;
+          }>;
+        };
+      };
+    };
+    const send = (p: NotificationProvider, pl: NotificationPayload) =>
+      (
+        service as unknown as {
+          sendNotificationDetailed: (
+            p: NotificationProvider,
+            pl: NotificationPayload,
+          ) => Promise<Delivery>;
+        }
+      ).sendNotificationDetailed(p, pl);
+    const respond = (status: number, body = 'resp', retryAfter?: string) => ({
+      ok: status >= 200 && status < 300,
+      status,
+      statusText: `S${status}`,
+      headers: {
+        get: (h: string) => (h === 'retry-after' ? (retryAfter ?? null) : null),
+      },
+      text: jest.fn().mockResolvedValue(body),
+    });
+    const failure: NotificationPayload = {
+      ...basePayload,
+      type: 'monitor_failure',
+    };
+    const recovery: NotificationPayload = {
+      ...basePayload,
+      type: 'monitor_recovery',
+      severity: 'success',
+      metadata: { ...basePayload.metadata, status: 'up' },
+    };
+    const savedEnv = process.env.NOTIFICATION_INITIAL_DELAY_MS;
+    beforeEach(() => {
+      process.env.NOTIFICATION_INITIAL_DELAY_MS = '1';
+    });
+    afterEach(() => {
+      if (savedEnv === undefined)
+        delete process.env.NOTIFICATION_INITIAL_DELAY_MS;
+      else process.env.NOTIFICATION_INITIAL_DELAY_MS = savedEnv;
+    });
+
+    it.each([429, 500, 503])(
+      'retries HTTP %s and records every attempt',
+      async (status) => {
+        mockFetch
+          .mockResolvedValueOnce(respond(status))
+          .mockResolvedValueOnce(respond(202));
+        const result = await send(webhookProvider, failure);
+        expect(result.success).toBe(true);
+        expect(mockFetch).toHaveBeenCalledTimes(2);
+        expect(
+          result.deliveryMetadata?.delivery.attemptLog?.map((a) => a.status),
+        ).toEqual([status, 202]);
+        // Every attempt goes through the SSRF-pinned fetch.
+        expect(mockPublicFetchOptions).toHaveBeenCalledTimes(2);
+        expect(mockPublicFetchOptions).toHaveBeenLastCalledWith({
+          allowInternal: false,
+        });
+      },
+    );
+
+    it('retries a network error', async () => {
+      mockFetch
+        .mockRejectedValueOnce(new Error('fetch failed: ECONNRESET'))
+        .mockResolvedValueOnce(respond(200));
+      const result = await send(webhookProvider, failure);
+      expect(result.success).toBe(true);
+      expect(result.deliveryMetadata?.delivery.attemptLog?.[0]).toEqual(
+        expect.objectContaining({
+          n: 1,
+          error: expect.stringContaining('ECONNRESET'),
+        }),
+      );
+    });
+
+    it.each([400, 404])(
+      'does not retry HTTP %s and leaves it retryable on later checks',
+      async (status) => {
+        mockFetch.mockResolvedValueOnce(
+          respond(status, 'bad routing_key R0UTINGKEY123456 echoed'),
+        );
+        const result = await send(webhookProvider, failure);
+        expect(mockFetch).toHaveBeenCalledTimes(1);
+        expect(result.success).toBe(false);
+        // The receiver's body can echo template credentials that are not in the redaction list.
+        expect(result.error).toContain(`Webhook returned ${status}`);
+        expect(result.error).not.toContain('R0UTINGKEY123456');
+        expect(result.deliveryMetadata?.delivery.terminal).toBeUndefined();
+        expect(result.deliveryMetadata?.delivery.responseStatus).toBe(status);
+      },
+    );
+
+    it.each([401, 403])(
+      'treats HTTP %s as terminal and names the integration key',
+      async (status) => {
+        mockFetch.mockResolvedValueOnce(respond(status, 'invalid key'));
+        const result = await send(webhookProvider, failure);
+        expect(mockFetch).toHaveBeenCalledTimes(1);
+        expect(result.error).toContain(
+          `Authentication rejected (HTTP ${status}). Check the integration key.`,
+        );
+        expect(result.deliveryMetadata?.delivery).toEqual(
+          expect.objectContaining({
+            terminal: true,
+            responseStatus: status,
+            attempts: 1,
+          }),
+        );
+      },
+    );
+
+    it('keeps at most 4 attempts and redacts secrets from attempt errors', async () => {
+      const provider: NotificationProvider = {
+        ...webhookProvider,
+        config: {
+          url: 'https://api.example.com/hook/SECRETPATHSEGMENT',
+          headers: { Authorization: 'Bearer topsecrettoken' },
+        },
+      };
+      mockFetch.mockRejectedValue(
+        new Error(
+          'fetch failed https://api.example.com/hook/SECRETPATHSEGMENT Bearer topsecrettoken',
+        ),
+      );
+      const result = await send(provider, failure);
+      const log = result.deliveryMetadata?.delivery.attemptLog ?? [];
+      expect(log).toHaveLength(4);
+      for (const entry of log) {
+        expect(entry.error).not.toContain('SECRETPATHSEGMENT');
+        expect(entry.error).not.toContain('topsecrettoken');
+      }
+      expect(result.error).not.toContain('topsecrettoken');
+      mockFetch.mockReset();
+    });
+
+    it('waits for Retry-After, capped at 10 s', async () => {
+      jest.useFakeTimers();
+      try {
+        mockFetch
+          .mockResolvedValueOnce(respond(429, 'slow', '60'))
+          .mockResolvedValueOnce(respond(202));
+        const pending = send(webhookProvider, failure);
+        await jest.advanceTimersByTimeAsync(9_999);
+        expect(mockFetch).toHaveBeenCalledTimes(1);
+        await jest.advanceTimersByTimeAsync(1);
+        await expect(pending).resolves.toEqual(
+          expect.objectContaining({ success: true }),
+        );
+        expect(mockFetch).toHaveBeenCalledTimes(2);
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
+    // Templates exactly as they were saved into channels before the preset fixes (D9).
+    const OLD_TEMPLATES: Record<string, Record<string, unknown>> = {
+      pagerduty: {
+        routing_key: 'RK',
+        event_action: '{{pagerDutyEventAction}}',
+        dedup_key: '{{dedupKey}}',
+        payload: {
+          summary: '{{title}}',
+          severity: '{{normalizedSeverity}}',
+          source: 'supercheck',
+        },
+      },
+      opsgenie: {
+        message: '{{title}}',
+        alias: '{{dedupKey}}',
+        description: '{{message}}',
+      },
+      jsm_ops: {
+        message: '{{title}}',
+        alias: '{{dedupKey}}',
+        description: '{{message}}',
+      },
+      splunk_on_call: {
+        message_type: '{{victorOpsMessageType}}',
+        entity_id: '{{dedupKey}}',
+      },
+      better_stack: {
+        name: '{{title}}',
+        status: '{{status}}',
+        dedup_key: '{{dedupKey}}',
+      },
+      incident_io: {
+        title: '{{title}}',
+        status: '{{status}}',
+        deduplication_key: '{{dedupKey}}',
+      },
+    };
+    const URLS: Record<string, string> = {
+      pagerduty: 'https://events.pagerduty.com/v2/enqueue',
+      opsgenie: 'https://api.eu.opsgenie.com/v2/alerts',
+      jsm_ops: 'https://api.atlassian.com/jsm/ops/integration/v2/alerts/',
+      splunk_on_call:
+        'https://alert.victorops.com/integrations/generic/20131114/alert/KEY/ROUTE',
+      better_stack:
+        'https://uptime.betterstack.com/api/v1/incoming-webhook/abc',
+      incident_io: 'https://api.incident.io/v2/alert_events/http/abc',
+    };
+    const presetProvider = (preset: string): NotificationProvider => ({
+      ...webhookProvider,
+      config: {
+        url: URLS[preset],
+        preset: preset as never,
+        headers:
+          preset.startsWith('jsm') || preset === 'opsgenie'
+            ? { Authorization: 'GenieKey abcd1234' }
+            : {},
+        bodyTemplate: JSON.stringify(OLD_TEMPLATES[preset]),
+      },
+    });
+    const lastCall = () => {
+      const call = mockFetch.mock.calls[mockFetch.mock.calls.length - 1];
+      return {
+        url: call[0] as string,
+        init: call[1],
+        body: JSON.parse(call[1].body),
+      };
+    };
+
+    it('renders each preset trigger and resolve for a channel saved with the old template', async () => {
+      const expected: Record<
+        string,
+        [Record<string, unknown>, Record<string, unknown>]
+      > = {
+        pagerduty: [
+          {
+            event_action: 'trigger',
+            dedup_key: 'monitor:monitor-123',
+            payload: expect.objectContaining({ severity: 'critical' }),
+          },
+          { event_action: 'resolve', dedup_key: 'monitor:monitor-123' },
+        ],
+        splunk_on_call: [
+          { message_type: 'CRITICAL', entity_id: 'monitor:monitor-123' },
+          { message_type: 'RECOVERY', entity_id: 'monitor:monitor-123' },
+        ],
+        better_stack: [
+          { status: 'alert', dedup_key: 'monitor:monitor-123' },
+          { status: 'resolved', dedup_key: 'monitor:monitor-123' },
+        ],
+        incident_io: [
+          { status: 'firing', deduplication_key: 'monitor:monitor-123' },
+          { status: 'resolved', deduplication_key: 'monitor:monitor-123' },
+        ],
+      };
+      for (const [preset, [trigger, resolve]] of Object.entries(expected)) {
+        await send(presetProvider(preset), failure);
+        expect(lastCall().url).toBe(URLS[preset]);
+        expect(lastCall().body).toEqual(expect.objectContaining(trigger));
+        await send(presetProvider(preset), recovery);
+        expect(lastCall().url).toBe(URLS[preset]);
+        expect(lastCall().body).toEqual(expect.objectContaining(resolve));
+      }
+    });
+
+    it('sends PagerDuty warning severity for an expiring certificate', async () => {
+      await send(presetProvider('pagerduty'), {
+        ...basePayload,
+        type: 'ssl_expiring',
+        severity: 'warning',
+      });
+      expect(lastCall().body.payload.severity).toBe('warning');
+    });
+
+    it.each(['opsgenie', 'jsm_ops'])(
+      '%s creates on trigger and closes by alias on resolve',
+      async (preset) => {
+        await send(presetProvider(preset), failure);
+        expect(lastCall().url).toBe(URLS[preset]);
+        expect(lastCall().body.alias).toBe('monitor:monitor-123');
+
+        const result = await send(presetProvider(preset), recovery);
+        expect(result.success).toBe(true);
+        const { url, init, body } = lastCall();
+        const configured = new URL(URLS[preset]);
+        const sent = new URL(url);
+        expect(sent.origin).toBe(configured.origin);
+        expect(sent.pathname).toBe(
+          `${configured.pathname.replace(/\/+$/, '')}/monitor%3Amonitor-123/close`,
+        );
+        expect(sent.search).toBe('?identifierType=alias');
+        expect(init.method).toBe('POST');
+        expect(init.headers.Authorization).toBe('GenieKey abcd1234');
+        expect(body).toEqual({
+          source: 'Supercheck',
+          note: expect.any(String),
+        });
+        expect(mockPublicFetchOptions).toHaveBeenLastCalledWith({
+          allowInternal: false,
+        });
+      },
+    );
+
+    it('encodes an Opsgenie alias carrying / or ? so the close stays on the configured path', async () => {
+      await send(presetProvider('opsgenie'), {
+        ...recovery,
+        metadata: { ...recovery.metadata, dedupKey: '../x?y=1/z' },
+      });
+      const sent = new URL(lastCall().url);
+      expect(sent.host).toBe('api.eu.opsgenie.com');
+      expect(sent.pathname).toBe(
+        `/v2/alerts/${encodeURIComponent('../x?y=1/z')}/close`,
+      );
+    });
+
+    it('leaves custom webhooks untouched by preset overrides', async () => {
+      const custom: NotificationProvider = {
+        ...webhookProvider,
+        config: {
+          url: 'https://api.example.com/hook',
+          preset: 'custom',
+          bodyTemplate: JSON.stringify({
+            status: '{{status}}',
+            sev: '{{normalizedSeverity}}',
+          }),
+        },
+      };
+      await send(custom, recovery);
+      expect(lastCall().url).toBe('https://api.example.com/hook');
+      expect(lastCall().body).toEqual({ status: 'up', sev: 'info' });
     });
   });
 

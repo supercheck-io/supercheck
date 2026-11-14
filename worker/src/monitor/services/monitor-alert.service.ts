@@ -54,6 +54,8 @@ type ClaimOutcome = {
   errorMessage: string | null;
   deliveryMetadata: AlertDeliveryMetadata | null;
   sentAt: Date;
+  /** Set to MAX_CLAIM_ATTEMPTS for a terminal (401/403) failure, so later checks never reclaim it. */
+  claimAttempts?: number;
 };
 
 @Injectable()
@@ -350,12 +352,18 @@ export class MonitorAlertService {
       if (!row || finished.has(result.provider.id)) return;
       finished.add(result.provider.id);
       const status: AlertStatus = isDelivered(result) ? 'sent' : 'failed';
-      if (status === 'failed' && row.attempts < MAX_CLAIM_ATTEMPTS) stillOwed++;
-      const values = {
+      // A rejected integration key will be rejected again: give up on this provider now.
+      const terminal =
+        status === 'failed' &&
+        result.deliveryMetadata?.delivery.terminal === true;
+      if (status === 'failed' && !terminal && row.attempts < MAX_CLAIM_ATTEMPTS)
+        stillOwed++;
+      const values: ClaimOutcome = {
         status,
         errorMessage: redactAlertText(result.error) ?? null,
         deliveryMetadata: result.deliveryMetadata ?? null,
         sentAt: input.sentAt,
+        ...(terminal ? { claimAttempts: MAX_CLAIM_ATTEMPTS } : {}),
       };
       try {
         await this.finishClaimedRow(row.id, values);

@@ -45,3 +45,13 @@ export function getTeamsWebhookDomainError(): string {
     'Supported domains: *.powerplatform.com, *.logic.azure.com, *.webhook.office.com'
   );
 }
+
+/** Short vendor names for paging presets (channel picker, list, incident timeline). */
+export const PAGING_SERVICE_NAMES: Record<string, string> = {
+  pagerduty: "PagerDuty",
+  opsgenie: "Opsgenie",
+  jsm_ops: "Jira Service Management",
+  splunk_on_call: "Splunk On-Call",
+  better_stack: "Better Stack",
+  incident_io: "incident.io",
+};

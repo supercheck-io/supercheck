@@ -35,6 +35,7 @@ import { useSreIncidentTimeline } from "@/hooks/use-sre";
 import { useProjectContext } from "@/hooks/use-project-context";
 import { getSreIncidentDetailQueryKey, getSreIncidentTimelineQueryKey } from "@/lib/sre/query-keys";
 import { describeTimelineEvent } from "@/lib/sre/incident-timeline-format";
+import { describeNotificationEvent } from "@/lib/sre/incident-notification-event";
 
 export { aiFindingHeadline, describeTimelineEvent } from "@/lib/sre/incident-timeline-format";
 
@@ -62,6 +63,9 @@ export function timelineEventVisual(event: Pick<SreIncidentTimelineItem, "eventT
     return typeof data.type === "string" && data.type.endsWith("_failed")
       ? { icon: TriangleAlert, tone: "rose" }
       : { icon: Sparkles, tone: "violet" };
+  }
+  if (event.eventType === "notification") {
+    return describeNotificationEvent(data).warning ? { icon: TriangleAlert, tone: "amber" } : { icon: Bell, tone: "slate" };
   }
   if (event.eventType === "state_change" && typeof data.state === "string" && STATE_VISUAL[data.state]) {
     return STATE_VISUAL[data.state]!;

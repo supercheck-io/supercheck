@@ -36,6 +36,7 @@ interface TableMeta {
   onDelete?: (channel: NotificationChannel) => void;
   canEdit?: boolean;
   canDelete?: boolean;
+  onTest?: (channel: NotificationChannel) => void;
 }
 
 interface DataTableProps<TData, TValue> {

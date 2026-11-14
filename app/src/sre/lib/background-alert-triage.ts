@@ -16,6 +16,7 @@ import {
   sreServiceDependencies,
   sreServiceResources,
   sreServices,
+  type AlertDeliveryMetadata,
 } from "@/db/schema";
 import { logAuditEvent } from "@/lib/audit-logger";
 import { createLogger } from "@/lib/logger/index";
@@ -42,7 +43,7 @@ import { incidentsEnabled } from "@/lib/incident-settings";
 import { isAttemptedAlertStatus } from "@/lib/alert-escalation";
 import { alertIncidentTitle } from "@/lib/sre/alert-labels";
 import { linkStatusPageIncidentsToSreIncident } from "@/lib/status-page-reconciliation";
-import { notifyIncidentEvent } from "@/lib/sre/incident-notifier";
+import { notifyIncidentEvent, type IncidentFallback } from "@/lib/sre/incident-notifier";
 import { watchIncident } from "@/lib/sre/incident-watchers";
 import { maybeAutoInvestigateOnOpen } from "@/sre/lib/auto-investigate";
 import { completeSreIncidentTriage, startSreIncidentTriage } from "@/sre/lib/triage-runner";
@@ -289,6 +290,7 @@ async function syntheticFailureAlert(failure: SourceFailureInput) {
     status: "sent" as string,
     provider: null as string | null,
     sentAt: new Date(failure.firedAt) as Date | null,
+    deliveryMetadata: null as AlertDeliveryMetadata | null,
     monitorName: monitor.name as string | null,
     monitorOrganizationId: monitor.organizationId as string | null,
     monitorProjectId: monitor.projectId as string | null,
@@ -315,6 +317,7 @@ async function createOrGetIncidentForAlertHistory(alertHistoryId: string, failur
       status: alertHistory.status,
       provider: alertHistory.provider,
       sentAt: alertHistory.sentAt,
+      deliveryMetadata: alertHistory.deliveryMetadata,
       monitorName: monitors.name,
       monitorOrganizationId: monitors.organizationId,
       monitorProjectId: monitors.projectId,
@@ -826,6 +829,7 @@ async function createOrGetIncidentForAlertHistory(alertHistoryId: string, failur
     };
   });
 
+  const report: { fallback?: IncidentFallback } = {};
   if (!result.skipped && "createdAssigneeUserId" in result) {
     await notifyIncidentEvent({
       organizationId,
@@ -833,15 +837,21 @@ async function createOrGetIncidentForAlertHistory(alertHistoryId: string, failur
       incidentId: result.incidentId,
       event: "created",
       assigneeUserId: result.createdAssigneeUserId,
+      triggerAlertHistoryId: alert.id ?? undefined,
+      report,
     });
   }
-
   if (!result.skipped && "reopenedAssigneeUserId" in result) {
+    // Carries the alert row, so a reopen whose page reached nobody still falls back to the policy channels.
     await announceSystemTransition(organizationId, projectId, result.incidentId, "reopened", {
       assigneeUserId: result.reopenedAssigneeUserId,
       discriminator: alertKey,
+      triggerAlertHistoryId: alert.id ?? undefined,
+      report,
     });
   }
+  // After the opening or reopening message, so the entry records where that message went instead.
+  if (!result.skipped) await recordPageFailed(result.incidentId, alert, report.fallback ?? "none");
 
   if ("correlation" in result && result.correlation) {
     await logAuditEvent({
@@ -1031,4 +1041,49 @@ export async function processSreBackgroundAlertTriageJob(
     alertEventId: incident.alertEventId,
     investigationRunId: triage.investigationRunId,
   };
+}
+
+/**
+ * A paging preset's delivery failed (after retries, or 401/403): note it on the incident timeline once per alert row
+ * (a failed monitor row is retried and re-triaged up to 5 times). Ids, types and the status only; no bodies.
+ */
+async function recordPageFailed(
+  incidentId: string,
+  alert: { id: string | null; status: string; deliveryMetadata: AlertDeliveryMetadata | null },
+  fallback: IncidentFallback,
+) {
+  const metadata = alert.deliveryMetadata;
+  const preset = metadata?.provider?.preset;
+  if (!alert.id || alert.status !== "failed" || !preset || preset === "custom") return;
+  try {
+    const [existing] = await db
+      .select({ id: sreIncidentTimelineEvents.id })
+      .from(sreIncidentTimelineEvents)
+      .where(
+        and(
+          eq(sreIncidentTimelineEvents.incidentId, incidentId),
+          eq(sreIncidentTimelineEvents.eventType, "notification"),
+          sql`${sreIncidentTimelineEvents.eventData}->>'alertHistoryId' = ${alert.id}`,
+        ),
+      )
+      .limit(1);
+    if (existing) return;
+    await db.insert(sreIncidentTimelineEvents).values({
+      incidentId,
+      eventType: "notification",
+      actorType: "system",
+      eventData: {
+        kind: "page_failed",
+        alertHistoryId: alert.id,
+        providerId: metadata.provider.id,
+        type: metadata.provider.type ?? "webhook",
+        preset,
+        status: metadata.delivery?.responseStatus ?? null,
+        terminal: metadata.delivery?.terminal === true,
+        fallback,
+      },
+    });
+  } catch (error) {
+    logger.warn({ error, incidentId }, "Page-failed timeline write failed");
+  }
 }

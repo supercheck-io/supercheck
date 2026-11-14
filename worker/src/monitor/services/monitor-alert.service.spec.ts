@@ -1,5 +1,9 @@
 import { ConfigService } from '@nestjs/config';
-import { MonitorAlertService, redactAlertText } from './monitor-alert.service';
+import {
+  MAX_CLAIM_ATTEMPTS,
+  MonitorAlertService,
+  redactAlertText,
+} from './monitor-alert.service';
 import { SreAlertTriageQueueService } from './sre-alert-triage-queue.service';
 
 jest.mock('../../common/notification-provider-crypto', () => ({
@@ -592,6 +596,41 @@ describe('MonitorAlertService', () => {
         { id: 'row-1', status: 'sent' },
         { id: 'row-2', status: 'failed' },
       ]);
+    });
+
+    it('finishes a 401/403 (terminal) failure with attempts used up, so no later check retries it', async () => {
+      const ctx = createService();
+      twoProviders(ctx);
+      const { set } = withClaims(ctx, { claimed: both });
+      const results = (
+        await ctx.notificationService.sendNotificationToMultipleProviders()
+      ).results;
+      results[1].deliveryMetadata.delivery = {
+        ...results[1].deliveryMetadata.delivery,
+        terminal: true,
+        responseStatus: 401,
+      };
+      ctx.notificationService.sendNotificationToMultipleProviders.mockResolvedValueOnce(
+        { success: 1, failed: 1, results },
+      );
+      const result = await ctx.service.sendNotification(
+        'monitor-1',
+        'failure',
+        'Down',
+        {},
+        claim,
+      );
+      // provider-2 is not owed any more: the delivered provider-1 makes the alert done.
+      expect(result).toEqual({ delivered: true });
+      expect(set).toHaveBeenCalledWith(
+        expect.objectContaining({
+          status: 'failed',
+          claimAttempts: MAX_CLAIM_ATTEMPTS,
+        }),
+      );
+      expect(set).toHaveBeenCalledWith(
+        expect.not.objectContaining({ claimAttempts: expect.anything() }),
+      );
     });
 
     it('counts a failed provider whose attempts are used up as given up', async () => {
