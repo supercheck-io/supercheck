@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 import type { Project } from "./project-columns";
@@ -63,11 +63,12 @@ export function useDeletedProjects({ enabled, onRestored, refreshKey = 0 }: { en
   };
 
   // The purge may be a little late; an expired row can no longer be restored.
-  const rows: Project[] = items
+  // Memoized: a new array each render would make the projects table reset to its first page.
+  const rows = useMemo<Project[]>(() => (enabled ? items : [])
     .filter((p) => !p.purgeAfter || new Date(p.purgeAfter).getTime() > now)
     .map((p) => ({
       id: p.id, name: p.name, description: p.description ?? undefined, createdAt: p.createdAt ?? p.deletedAt ?? "",
       membersCount: 0, isDefault: false, deleted: { until: p.purgeAfter },
-    }));
-  return { rows: enabled ? rows : [], isError: enabled && isError, refetch, restore, restoring };
+    })), [enabled, items, now]);
+  return { rows, isError: enabled && isError, refetch, restore, restoring };
 }

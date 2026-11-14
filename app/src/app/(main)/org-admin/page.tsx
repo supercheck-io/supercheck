@@ -365,7 +365,8 @@ function OrgAdminDashboardContent() {
   const hasData = orgDetails !== null;
   const isInitialLoading = !isMounted || (!hasData && detailsLoading);
 
-  const projects: Project[] = orgProjects.map((p) => ({
+  // Memoized: the projects table resets to its first page whenever its rows array changes identity.
+  const projects: Project[] = useMemo(() => orgProjects.map((p) => ({
     id: p.id,
     name: p.name,
     slug: p.slug,
@@ -373,7 +374,7 @@ function OrgAdminDashboardContent() {
     isDefault: p.isDefault,
     createdAt: p.createdAt,
     membersCount: p.membersCount ?? 0,
-  }));
+  })), [orgProjects]);
 
   const [showInviteDialog, setShowInviteDialog] = useState(false);
   const [inviting, setInviting] = useState(false);
@@ -744,6 +745,11 @@ function OrgAdminDashboardContent() {
       void refreshProjects();
     },
   });
+  // A just-restored project may be in both lists for a moment: show it once.
+  const tableProjects = useMemo(
+    () => [...projects, ...deletedProjects.rows.filter((row) => !projects.some((p) => p.id === row.id))],
+    [projects, deletedProjects.rows],
+  );
 
   const handleUpdateProject = async () => {
     if (!editingProject) return;
@@ -878,7 +884,7 @@ function OrgAdminDashboardContent() {
             <TabLoadingSpinner message="Loading projects..." />
           ) : (
             <ProjectsTable
-              projects={[...projects, ...deletedProjects.rows.filter((row) => !projects.some((p) => p.id === row.id))]} // a just-restored project may be in both lists for a moment
+              projects={tableProjects}
               onRestoreProject={(project) => void deletedProjects.restore(project)}
               restoringIds={deletedProjects.restoring}
               onCreateProject={() => setShowCreateProjectDialog(true)}

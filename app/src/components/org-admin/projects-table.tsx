@@ -36,7 +36,6 @@ export function ProjectsTable({ projects, onCreateProject, onEditProject, onMana
       data={projects}
       toolbar={CustomToolbar}
       itemName="projects"
-      keepPageOnDataChange // the page re-renders with a fresh rows array (restores, refetches); stay on the current page
       meta={{
         globalFilterColumns: ["name", "description"],
       }}
