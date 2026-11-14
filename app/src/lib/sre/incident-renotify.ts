@@ -403,6 +403,10 @@ export async function renotifyUnacknowledgedIncidents(now = new Date(), stats?: 
   return reminderSends + escalationSends;
 }
 
+/** Read by worker/src/monitor/heartbeat/heartbeat-sweep.service.ts. */
+export const HEARTBEAT_INGEST_KEY = "supercheck:heartbeat:ingest";
+const HEARTBEAT_INGEST_TTL_SECONDS = 150;
+
 let worker: Worker | undefined;
 let queue: Queue | undefined;
 
@@ -414,6 +418,11 @@ export async function initializeIncidentRenotifyScheduler() {
   worker = new Worker(
     QUEUE_NAME,
     async () => {
+      // Heartbeat ingest guard: proves the app (and so the public ping route) is alive; the worker
+      // sweep skips miss detection while this key is missing (spec 4.4).
+      await redis
+        .set(HEARTBEAT_INGEST_KEY, String(Date.now()), "EX", HEARTBEAT_INGEST_TTL_SECONDS)
+        .catch((error) => queueLogger.warn({ err: error }, "Heartbeat ingest stamp failed"));
       try {
         const stats = { failed: 0 };
         // Every reminder failing to send is a failed tick (claims are released and retried).

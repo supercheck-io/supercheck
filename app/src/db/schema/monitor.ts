@@ -11,6 +11,7 @@ import {
   varchar,
   timestamp,
   jsonb,
+  uniqueIndex,
   uuid,
   boolean,
   index,
@@ -33,6 +34,7 @@ import type {
   MonitorResultDetails,
   MonitoringLocation,
   AlertConfig,
+  HeartbeatState,
 } from "./types";
 import { inValues, MONITOR_TYPE_VALUES, MONITOR_STATUS_VALUES } from "./types";
 
@@ -71,10 +73,19 @@ export const monitors = pgTable(
     // Set when deletion is requested: hidden, unscheduled, never checked again; the purge worker removes it.
     deletingAt: timestamp("deleting_at", { withTimezone: true }),
     scheduledJobId: varchar("scheduled_job_id", { length: 255 }),
+    /** SHA-256 hex of the heartbeat ping token (lookup only). Never returned by any API. */
+    heartbeatTokenHash: varchar("heartbeat_token_hash", { length: 64 }),
+    /** Ping token encrypted with encryptValue(token, projectId), for reveal. Never returned by any API. */
+    heartbeatTokenEncrypted: text("heartbeat_token_encrypted"),
+    /** Heartbeat runtime state written only by the ping route and the worker sweep (never by edit paths). */
+    heartbeatState: jsonb("heartbeat_state").$type<HeartbeatState>(),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }),
   },
   (table) => ({
+    heartbeatTokenHashUidx: uniqueIndex("monitors_heartbeat_token_hash_uidx")
+      .on(table.heartbeatTokenHash)
+      .where(sql`heartbeat_token_hash IS NOT NULL`),
     deletingIdx: index("monitors_deleting_idx").on(table.id).where(sql`deleting_at IS NOT NULL`),
     projectOrgStatusIdx: index("monitors_project_org_status_idx").on(
       table.projectId,

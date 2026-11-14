@@ -568,6 +568,13 @@
       "when": 1794663595182,
       "tag": "0080_incident_repeat_escalation",
       "breakpoints": true
+    },
+    {
+      "idx": 81,
+      "version": "7",
+      "when": 1794678838908,
+      "tag": "0081_heartbeat_monitor",
+      "breakpoints": true
     }
   ]
 }

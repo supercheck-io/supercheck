@@ -1,0 +1,49 @@
+import { createHash, randomUUID } from "node:crypto";
+import { getRedisConnection } from "@/lib/queue";
+
+export const HEARTBEAT_TOKEN_LIMIT_PER_MINUTE = 10;
+export const HEARTBEAT_IP_LIMIT_PER_MINUTE = 120;
+
+export type HeartbeatRateLimitResult = { allowed: true } | { allowed: false; retryAfterSeconds: number };
+
+/**
+ * Sliding one-minute windows per token hash and per client IP hash. Fails OPEN when Redis is
+ * unavailable: dropping a real ping would raise a false "missed run" alert (spec 4.3).
+ */
+export async function checkHeartbeatRateLimit(tokenHash: string, clientIp: string): Promise<HeartbeatRateLimitResult> {
+  try {
+    const redis = await getRedisConnection();
+    const ipHash = createHash("sha256").update(clientIp).digest("hex");
+    const now = Date.now();
+    const result = await redis.eval(
+      `
+      local limits = {tonumber(ARGV[3]), tonumber(ARGV[4])}
+      for i, key in ipairs(KEYS) do
+        redis.call('ZREMRANGEBYSCORE', key, 0, ARGV[1] - 60000)
+        if redis.call('ZCARD', key) >= limits[i] then
+          local oldest = redis.call('ZRANGE', key, 0, 0, 'WITHSCORES')
+          return {0, oldest[2] or ARGV[1]}
+        end
+      end
+      for _, key in ipairs(KEYS) do
+        redis.call('ZADD', key, ARGV[1], ARGV[2])
+        redis.call('PEXPIRE', key, 60000)
+      end
+      return {1, 0}
+    `,
+      2,
+      `supercheck:heartbeat:rl:token:${tokenHash}`,
+      `supercheck:heartbeat:rl:ip:${ipHash}`,
+      now,
+      randomUUID(),
+      HEARTBEAT_TOKEN_LIMIT_PER_MINUTE,
+      HEARTBEAT_IP_LIMIT_PER_MINUTE,
+    );
+    const [allowed, oldest] = (result as [number, number | string]) ?? [1, 0];
+    if (Number(allowed) === 1) return { allowed: true };
+    const retryAfterMs = Number(oldest) + 60_000 - now;
+    return { allowed: false, retryAfterSeconds: Math.max(1, Math.ceil(retryAfterMs / 1000)) };
+  } catch {
+    return { allowed: true };
+  }
+}
