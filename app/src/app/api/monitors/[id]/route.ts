@@ -2,7 +2,7 @@ import { liveMonitor } from "@/lib/deletion/visibility";
 import { deleteMonitorWithContext } from "@/lib/resource-deletion/monitor";
 import { isInvalidUuidError, isUuid } from "@/lib/uuid";
 import { isDeepStrictEqual } from "node:util";
-import { executionConfig, MonitorTargetChangedError, updateMonitorHandler } from "@/lib/monitor-service";
+import { executionConfig, MonitorTargetChangedError, secretStateUnchanged, updateMonitorHandler } from "@/lib/monitor-service";
 import { reconcileMonitorSchedule } from "@/lib/monitor-schedule-reconcile";
 import { resumeRefusalResponse, withResumeWithinPlan, ResumeRefusedError } from "@/lib/middleware/plan-enforcement";
 import { monitorResumeBlockedResponse, trialIntervalErrorResponse } from "@/lib/execution/trial-interval-response";
@@ -401,7 +401,11 @@ export async function PUT(
     // The JSON column is what the UI shows and the rows are what the worker delivers to: an alertConfig write that
     // carries notificationProviders (or null), enabled or not, validates the ids and replaces the rows in the same transaction.
     const shouldSyncNotificationProviders = rawData.hasOwnProperty("alertConfig") && alertProvidersSent(rawData.alertConfig);
-    const guardTarget = monitorSecretNames(updateData.config ?? currentMonitor.config).length > 0;
+    // Secrets involved, or the target moves: write only while the target and secret names are what the checks saw.
+    const guardTarget =
+      (updateData.target !== undefined && updateData.target !== currentMonitor.target) ||
+      monitorSecretNames(currentMonitor.config).length > 0 ||
+      monitorSecretNames(updateData.config ?? currentMonitor.config).length > 0;
 
     let updatedMonitor;
     try {
@@ -415,8 +419,7 @@ export async function PUT(
               eq(monitors.projectId, authCtx.project.id),
               eq(monitors.organizationId, authCtx.organizationId),
               liveMonitor(),
-              // A monitor that sends a project secret is written only if its target is still the one checked above.
-              ...(guardTarget ? [eq(monitors.target, currentMonitor.target)] : []),
+              ...(guardTarget ? [secretStateUnchanged(monitors, { target: currentMonitor.target, config: currentMonitor.config })] : []),
             ),
           )
           .returning();
@@ -796,8 +799,12 @@ export async function PATCH(
           ...(providerIdsToSync
             ? { providerSync: { ids: providerIdsToSync, organizationId: authCtx.organizationId, projectId: authCtx.project.id, storedIds: currentMonitor.alertConfig?.notificationProviders } }
             : {}),
-          // A monitor that sends a project secret is written only if its target is still the one checked above.
-          ...(monitorSecretNames(updatePayload.config ?? currentMonitor.config).length > 0 ? { expectTarget: currentMonitor.target } : {}),
+          // Secrets involved, or the target moves: write only while the target and secret names are what the checks saw.
+          ...((updatePayload.target !== undefined && updatePayload.target !== currentMonitor.target) ||
+          monitorSecretNames(currentMonitor.config).length > 0 ||
+          monitorSecretNames(updatePayload.config ?? currentMonitor.config).length > 0
+            ? { expectSecretState: { target: currentMonitor.target, config: currentMonitor.config } }
+            : {}),
         },
       );
     } catch (error) {

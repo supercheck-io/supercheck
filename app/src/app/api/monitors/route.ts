@@ -988,8 +988,12 @@ export async function PUT(req: NextRequest) {
           ...(syncProviders
             ? { providerSync: { ids: alertConfig?.notificationProviders ?? [], organizationId, projectId: project.id, storedIds: monitorData[0].alertConfig?.notificationProviders } }
             : {}),
-          // A monitor that sends a project secret is written only if its target is still the one checked above.
-          ...(monitorSecretNames(monitorUpdateData.config ?? monitorData[0].config).length > 0 ? { expectTarget: monitorData[0].target } : {}),
+          // Secrets involved, or the target moves: write only while the target and secret names are what the checks saw.
+          ...((monitorUpdateData.target !== undefined && monitorUpdateData.target !== monitorData[0].target) ||
+          monitorSecretNames(monitorData[0].config).length > 0 ||
+          monitorSecretNames(monitorUpdateData.config ?? monitorData[0].config).length > 0
+            ? { expectSecretState: { target: monitorData[0].target, config: monitorData[0].config } }
+            : {}),
         },
       );
     } catch (error) {

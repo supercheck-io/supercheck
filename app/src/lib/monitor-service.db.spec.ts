@@ -96,17 +96,34 @@ it("does not take a slot for an edit that does not resume", async () => {
   await expect(updateMonitorHandler(active.id, { name: "Renamed" })).resolves.toMatchObject({ name: "Renamed" });
 });
 
-it("writes a secret-bearing monitor only while its target is still the checked one", async () => {
+it("writes a secret-bearing monitor only while its target and secret names are the checked ones", async () => {
   const { organization } = await seed(1, 0);
   const [monitor] = await mockDatabase.select().from(schema.monitors).where(eq(schema.monitors.organizationId, organization.id));
-  // A concurrent request moved the target after this one read it.
+  const snapshot = { target: monitor.target, config: monitor.config };
+
+  // A concurrent request moved the target after this one read it: a config write is refused.
   await mockDatabase.update(schema.monitors).set({ target: "https://collector.example" }).where(eq(schema.monitors.id, monitor.id));
   await expect(
-    updateMonitorHandler(monitor.id, { config: { auth: { type: "bearer", secretKey: "K" } } }, { expectTarget: "https://example.com" }),
+    updateMonitorHandler(monitor.id, { config: { auth: { type: "bearer", secretKey: "K" } } }, { expectSecretState: snapshot }),
   ).rejects.toBeInstanceOf(MonitorTargetChangedError);
   const [after] = await mockDatabase.select().from(schema.monitors).where(eq(schema.monitors.id, monitor.id));
   expect(after.config?.auth?.secretKey).toBeUndefined();
+
+  // A concurrent request added a secret on the same target: a target-only write is refused.
+  await mockDatabase.update(schema.monitors)
+    .set({ target: monitor.target, config: { auth: { type: "bearer", secretKey: "K" } } })
+    .where(eq(schema.monitors.id, monitor.id));
   await expect(
-    updateMonitorHandler(monitor.id, { name: "Renamed" }, { expectTarget: "https://collector.example" }),
+    updateMonitorHandler(monitor.id, { target: "https://collector.example" }, { expectSecretState: snapshot }),
+  ).rejects.toBeInstanceOf(MonitorTargetChangedError);
+
+  // Worker-owned config writes do not conflict, and a fresh snapshot writes.
+  await mockDatabase.update(schema.monitors)
+    .set({ config: { auth: { type: "bearer", secretKey: "K" }, sslLastCheckedAt: "t" } })
+    .where(eq(schema.monitors.id, monitor.id));
+  await expect(
+    updateMonitorHandler(monitor.id, { name: "Renamed" }, {
+      expectSecretState: { target: monitor.target, config: { auth: { type: "bearer", secretKey: "K" } } },
+    }),
   ).resolves.toMatchObject({ name: "Renamed" });
 });

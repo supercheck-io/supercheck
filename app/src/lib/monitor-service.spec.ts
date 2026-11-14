@@ -149,7 +149,7 @@ describe("updateMonitorHandler write safety", () => {
     const c = { ...chain({}), returning: jest.fn().mockResolvedValue([]) };
     (db.update as jest.Mock).mockReturnValue(c);
     await expect(
-      updateMonitorHandler(existing.id, { name: "x" }, { expectTarget: "https://example.com" }),
+      updateMonitorHandler(existing.id, { name: "x" }, { expectSecretState: { target: "https://example.com", config: {} } }),
     ).rejects.toBeInstanceOf(MonitorTargetChangedError);
     // Without the guard a missing row is the old 404 path.
     await expect(updateMonitorHandler(existing.id, { name: "x" })).rejects.toMatchObject({ statusCode: 404 });

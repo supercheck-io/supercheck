@@ -1,5 +1,5 @@
 import { render, screen, fireEvent } from "@testing-library/react";
-import { addAiEndpointIssues, buildAiEndpointConfig, monthlyCalls } from "./ai-endpoint-fields";
+import { addAiEndpointIssues, buildAiEndpointConfig, monthlyCalls, presetFailureThreshold } from "./ai-endpoint-fields";
 import { SecretPicker } from "./secret-picker";
 
 let hookState: { data?: string[]; isLoading: boolean; isError: boolean; error?: Error; isFetching: boolean; refetch: jest.Mock };
@@ -121,5 +121,20 @@ describe("addAiEndpointIssues", () => {
     expect(issues({ aiConfig_firstTokenTimeoutSeconds: "10", aiConfig_timeoutSeconds: "10" })).toEqual([]);
     expect(issues({ aiConfig_firstTokenTimeoutSeconds: "0.5" })).toEqual([]);
     expect(issues({ aiConfig_firstTokenTimeoutSeconds: "0.4" })).toEqual(["aiConfig_firstTokenTimeoutSeconds"]);
+  });
+});
+
+describe("presetFailureThreshold", () => {
+  it("applies 2 once when the preset is first chosen", () => {
+    expect(presetFailureThreshold({ aiPreset: true, applied: false, threshold: 1 })).toEqual({ applied: true, threshold: 2 });
+    expect(presetFailureThreshold({ aiPreset: true, applied: false, threshold: 3 })).toEqual({ applied: true, threshold: 3 });
+  });
+  it("keeps a threshold the user picked after the preset applied (back, then next again)", () => {
+    expect(presetFailureThreshold({ aiPreset: true, applied: true, threshold: 1 })).toEqual({ applied: true, threshold: 1 });
+  });
+  it("undoes only its own value when leaving the preset", () => {
+    expect(presetFailureThreshold({ aiPreset: false, applied: true, threshold: 2 })).toEqual({ applied: false, threshold: 1 });
+    expect(presetFailureThreshold({ aiPreset: false, applied: true, threshold: 4 })).toEqual({ applied: false, threshold: 4 });
+    expect(presetFailureThreshold({ aiPreset: false, applied: false, threshold: 2 })).toEqual({ applied: false, threshold: 2 });
   });
 });

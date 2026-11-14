@@ -25,6 +25,7 @@ import { useAvailableLocations } from "@/hooks/use-locations";
 import { useQueryClient } from "@tanstack/react-query";
 import { invalidateMonitorCaches } from "./monitor-actions";
 import { Loader2, SaveIcon } from "lucide-react";
+import { presetFailureThreshold } from "./ai-endpoint-fields";
 
 type WizardStep = "monitor" | "location" | "alerts";
 
@@ -134,7 +135,8 @@ export function MonitorCreationWizard() {
     getInitialAlertConfig
   );
   const [isCreating, setIsCreating] = useState(false);
-  const presetThresholdAppliedRef = useRef(false);
+  // Restored wizard state (sessionStorage) already carries the preset default, so it is not applied again.
+  const presetThresholdAppliedRef = useRef((monitorData as { preset?: string } | undefined)?.preset === "ai_endpoint");
 
   // Cleanup on unmount - only if not creating
   useEffect(() => {
@@ -262,16 +264,13 @@ export function MonitorCreationWizard() {
     setMonitorData(formData);
     setApiData(monitorApiData);
 
-    // The AI preset defaults to alerting after 2 failures (one short rate limit should not page). Apply it while the
-    // threshold is still the untouched default, and undo only our own change if the user goes back to Standard HTTP.
-    const aiPreset = (formData as { preset?: string }).preset === "ai_endpoint";
-    if (aiPreset && alertConfig.failureThreshold === 1) {
-      presetThresholdAppliedRef.current = true;
-      setAlertConfig({ ...alertConfig, failureThreshold: 2 });
-    } else if (!aiPreset && presetThresholdAppliedRef.current && alertConfig.failureThreshold === 2) {
-      presetThresholdAppliedRef.current = false;
-      setAlertConfig({ ...alertConfig, failureThreshold: 1 });
-    }
+    const preset = presetFailureThreshold({
+      aiPreset: (formData as { preset?: string }).preset === "ai_endpoint",
+      applied: presetThresholdAppliedRef.current,
+      threshold: alertConfig.failureThreshold,
+    });
+    presetThresholdAppliedRef.current = preset.applied;
+    if (preset.threshold !== alertConfig.failureThreshold) setAlertConfig({ ...alertConfig, failureThreshold: preset.threshold });
 
     // When skipping the location step (single location), auto-set the
     // locationConfig to the actual available location. DEFAULT_LOCATION_CONFIG

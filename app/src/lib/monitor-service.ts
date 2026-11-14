@@ -14,7 +14,7 @@ import {
   scheduleMonitor,
   deleteScheduledMonitor,
 } from "@/lib/monitor-scheduler";
-import { eq, and } from "drizzle-orm";
+import { eq, and, sql } from "drizzle-orm";
 import { ResumeRefusedError, withResumeWithinPlan } from "@/lib/middleware/plan-enforcement";
 import { assertKeptProvidersValid, MonitorScheduleError, dropStaleSslAlertState, preserveWorkerConfigKeys, scheduleOutOfSync, syncMonitorProviderRows, WORKER_OWNED_CONFIG_KEYS } from "@/lib/monitor-write";
 import { reconcileMonitorSchedule } from "@/lib/monitor-schedule-reconcile";
@@ -155,7 +155,24 @@ export function executionConfig(config: MonitorConfig | null | undefined) {
   ));
 }
 
-/** The monitor's target changed after the request read it; the secret checks ran against a stale target. */
+/** What the secret-reference checks saw: the target and the secret names in the stored config. */
+export type SecretStateSnapshot = { target: string; config: unknown };
+
+/**
+ * True while the row's target and its secret references (aiEndpoint.secretKey, auth.secretKey) still match the
+ * snapshot. Only those fields are compared, so the worker's own config writes never cause a conflict.
+ */
+export function secretStateUnchanged(table: typeof monitorTable, snapshot: SecretStateSnapshot) {
+  const c = (snapshot.config ?? {}) as { aiEndpoint?: { secretKey?: unknown }; auth?: { secretKey?: unknown } };
+  const name = (v: unknown) => (typeof v === "string" ? v : null);
+  return and(
+    eq(table.target, snapshot.target),
+    sql`(${table.config} -> 'aiEndpoint' ->> 'secretKey') IS NOT DISTINCT FROM ${name(c.aiEndpoint?.secretKey)}`,
+    sql`(${table.config} -> 'auth' ->> 'secretKey') IS NOT DISTINCT FROM ${name(c.auth?.secretKey)}`,
+  );
+}
+
+/** The monitor's target or secret references changed after the request read it; the secret checks ran on stale data. */
 export class MonitorTargetChangedError extends Error {
   constructor() {
     super("This monitor was changed by someone else. Reload it and try again.");
@@ -168,8 +185,8 @@ export async function updateMonitorHandler(
   /** Delivery rows to replace in the same transaction as the monitor row (alertConfig writes). */
   options: {
     providerSync?: { ids: string[]; organizationId: string; projectId: string; storedIds?: string[] };
-    /** Write only if the target is still this value (the one the secret-reference checks saw). */
-    expectTarget?: string;
+    /** Write only while the target and secret references still match what the secret-reference checks saw. */
+    expectSecretState?: SecretStateSnapshot;
   } = {},
 ) {
   // Fetch existing monitor to compare old frequency/enabled status
@@ -224,12 +241,12 @@ export async function updateMonitorHandler(
       .update(monitorTable)
       .set(updateData) // Use the filtered updateData
       .where(
-        options.expectTarget === undefined
+        options.expectSecretState === undefined
           ? eq(monitorTable.id, monitorId)
-          : and(eq(monitorTable.id, monitorId), eq(monitorTable.target, options.expectTarget)),
+          : and(eq(monitorTable.id, monitorId), secretStateUnchanged(monitorTable, options.expectSecretState)),
       )
       .returning();
-    if (rows.length === 0 && options.expectTarget !== undefined) throw new MonitorTargetChangedError();
+    if (rows.length === 0 && options.expectSecretState !== undefined) throw new MonitorTargetChangedError();
     if (rows.length > 0 && providerSync) {
       const kept = await syncMonitorProviderRows(
         executor, monitorId, providerSync.ids, providerSync.organizationId, providerSync.projectId, providerSync.storedIds,

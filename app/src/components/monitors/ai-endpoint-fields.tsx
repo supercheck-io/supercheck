@@ -51,6 +51,17 @@ export function addAiEndpointIssues(data: AiFormFields, ctx: z.RefinementCtx) {
   }
 }
 
+/**
+ * The AI preset alerts after 2 failures (one short rate limit should not page). The default is applied once, when the
+ * preset is first chosen; a threshold the user then picks is never overwritten. Leaving the preset undoes it only while
+ * the value is still the one the preset set.
+ */
+export function presetFailureThreshold(state: { aiPreset: boolean; applied: boolean; threshold: number }): { applied: boolean; threshold: number } {
+  if (state.aiPreset && !state.applied) return { applied: true, threshold: state.threshold === 1 ? 2 : state.threshold };
+  if (!state.aiPreset && state.applied) return { applied: false, threshold: state.threshold === 2 ? 1 : state.threshold };
+  return { applied: state.applied, threshold: state.threshold };
+}
+
 export const AI_ENDPOINT_DEFAULT_URL = "https://api.openai.com/v1/chat/completions";
 const MONTH_MINUTES = 30 * 24 * 60;
 
