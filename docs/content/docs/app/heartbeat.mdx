@@ -57,6 +57,10 @@ The ping URL looks like `https://<your-app>/api/heartbeat/hb_<32 characters>`. A
 The ping URL always answers `200 OK`, even when the token is unknown, rotated or belongs to a paused monitor, so that nobody can probe for valid URLs. A successful request therefore does not prove the URL is right: after you add it to a job, check that the monitor turns **Up**.
 </Callout>
 
+<Callout type="warn">
+Do not paste the ping URL into chat or email: link previews and mail scanners open URLs and would record a ping. If the URL leaks, rotate it.
+</Callout>
+
 ## Send pings
 
 Ping at the end of a successful run:

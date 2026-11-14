@@ -8,6 +8,15 @@ const logger = createLogger({ module: "heartbeat-ping" }) as {
   warn: (data: unknown, msg?: string) => void;
 };
 
+/** Error name and Postgres code only; safe to log for queries that carry secrets as params. */
+export function dbErrorSummary(error: unknown): { errorName: string; causeCode?: string } {
+  const cause = (error as { cause?: { code?: unknown } } | null)?.cause;
+  return {
+    errorName: error instanceof Error ? error.name : typeof error,
+    ...(typeof cause?.code === "string" ? { causeCode: cause.code } : {}),
+  };
+}
+
 export const HEARTBEAT_MAX_BODY_BYTES = 10_000;
 
 const OK_HEADERS = { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" };
@@ -38,7 +47,8 @@ export async function handleHeartbeatPing(request: Request, token: string, kind:
   } catch (error) {
     // A DB error must not reveal anything either; the hash prefix is enough to correlate.
     logger.warn(
-      { tokenHashPrefix: tokenHash.slice(0, 8), error: error instanceof Error ? error.message : String(error) },
+      // Never the message: drizzle query errors embed the params (full token hash, user agent).
+      { tokenHashPrefix: tokenHash.slice(0, 8), ...dbErrorSummary(error) },
       "Heartbeat ping not recorded",
     );
     return respond(request, 503, "Service Unavailable", { "Retry-After": "5" });

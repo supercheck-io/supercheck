@@ -1,3 +1,4 @@
+import { dbErrorSummary } from "@/lib/heartbeat/ping-handler";
 import { liveMonitor } from "@/lib/deletion/visibility";
 import { monitorConfigForRead, monitorTargetForRead } from "@/lib/monitor-read-config";
 import { NextRequest, NextResponse } from "next/server";
@@ -681,7 +682,8 @@ export async function POST(req: NextRequest) {
     }
     const thrown = thrownStatusResponse(error);
     if (thrown) return thrown;
-    logger.error({ err: error }, "Error creating monitor");
+    // Not `err: error`: a failed INSERT's params include the heartbeat token hash and ciphertext.
+    logger.error(dbErrorSummary(error), "Error creating monitor");
     return NextResponse.json(
       { error: "Failed to create monitor" },
       { status: 500 },

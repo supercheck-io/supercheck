@@ -81,7 +81,8 @@ describe("public heartbeat ping (B2-B5)", () => {
   });
 
   it("a database failure answers 503 and logs only the token hash prefix", async () => {
-    mockRecord.mockRejectedValue(new Error("connection reset"));
+    // Drizzle query errors embed the params (full hash) in the message; it must not be logged.
+    mockRecord.mockRejectedValue(new Error(`Failed query: UPDATE monitors\nparams: ${hashHeartbeatToken(TOKEN)},curl/8`));
     const res = await GET(new Request(url()), ctx());
     expect(res.status).toBe(503);
     const logged = JSON.stringify(mockWarn.mock.calls);
