@@ -159,7 +159,8 @@ async function checkImage(ctx: CheckContext, raw: string, base: URL) {
   } catch (error) {
     if (!(error instanceof CheckStop)) throw error;
     // A blocked image hop never fails the whole check; it is reported unreachable.
-    if (error.reason === "subrequest_budget") throw error;
+    if (error.reason === "subrequest_budget" || error.reason === "deadline") throw error;
+    ctx.degraded = true;
     return { url: shown, reachable: false, reason: error.reason, loadable: false };
   }
 }

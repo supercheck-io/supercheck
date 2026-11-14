@@ -123,6 +123,21 @@ describe("agents tool", () => {
     expect(targets().some((c) => c.url.endsWith("server-card.json"))).toBe(true);
   });
 
+  it("ends blocked when the input host resolves privately, instead of reporting passes", async () => {
+    mockFetch({}, { "site.com": ["10.0.0.1"] });
+    await expect(run()).rejects.toMatchObject({ kind: "blocked", reason: "private_address" });
+  });
+
+  it("treats an unreachable robots.txt as unknown, not allow-all", async () => {
+    mockFetch({ [`${O}/`]: new Response("ok"), [`${O}/robots.txt`]: new Response("", { status: 503 }) });
+    const r = await run();
+    expect(check(r, "ai_crawlers")).toMatchObject({ status: "warn", detail: "robots.txt unreachable (503)" });
+    expect(r.training).toEqual([]);
+    vi.restoreAllMocks();
+    mockFetch({ [`${O}/`]: new Response("ok"), [`${O}/robots.txt`]: new Response("", { status: 404 }) });
+    expect(check(await run(), "ai_crawlers")?.status).toBe("pass");
+  });
+
   it("marks truncated robots.txt and keeps hops on the same site", async () => {
     mockFetch({
       [`${O}/`]: new Response("ok"),

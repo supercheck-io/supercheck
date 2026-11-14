@@ -90,7 +90,8 @@ export async function domain(ctx: CheckContext, host: string) {
           server = policy.value.origin + "/";
         }
       } catch (error) {
-        if (!(error instanceof CheckStop) || error.reason === "subrequest_budget") throw error;
+        if (!(error instanceof CheckStop) || error.reason === "subrequest_budget" || error.reason === "deadline") throw error;
+        ctx.degraded = true;
       }
     }
   }

@@ -94,6 +94,18 @@ test("captcha failure resets and never calls the API; disabled shows paused", as
   await expect(page.getByTestId("tool-status")).toContainText("This tool is paused");
 });
 
+test("a blocked Turnstile script shows the busy state, not a failed human check", async ({ page }) => {
+  const requests = await setup(page, () => ({ status: 200, json: {} }));
+  await page.unroute("https://challenges.cloudflare.com/**");
+  await page.route("https://challenges.cloudflare.com/**", (route) => route.abort());
+  await page.goto("/tools/dns-lookup");
+  const form = page.getByTestId("tool-form");
+  await form.getByRole("textbox").fill("example.com");
+  await form.getByRole("button").click();
+  await expect(page.getByTestId("tool-status")).toContainText("busy right now");
+  expect(requests).toHaveLength(0);
+});
+
 test("target-controlled strings render as text, and og:image loads only on click without a referrer", async ({ page }) => {
   const evil = '<img src=x onerror="window.__xss=1">';
   await setup(page, () =>

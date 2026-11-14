@@ -197,7 +197,7 @@ export default {
     const checkedAt = new Date().toISOString();
     try {
       const result = await runTool(ctx, req, target);
-      await cachePut(ctx, key, { result, checkedAt });
+      if (!ctx.degraded) await cachePut(ctx, key, { result, checkedAt });
       log.outcome = "ok";
       log.cached = false;
       log.subrequests = ctx.subrequests;

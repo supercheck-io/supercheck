@@ -96,7 +96,8 @@ async function get(ctx: CheckContext, origin: URL, path: string, cap: number): P
     const body = await readCapped(r.res, cap);
     return { status: 200, type, ...body };
   } catch (error) {
-    if (!(error instanceof CheckStop) || error.reason === "subrequest_budget") throw error;
+    if (!(error instanceof CheckStop) || error.reason === "subrequest_budget" || error.reason === "deadline") throw error;
+    ctx.degraded = true;
     return { status: null, type: null, text: "", truncated: false, error: error.reason };
   }
 }
@@ -113,9 +114,14 @@ function parseJson(text: string): Record<string, unknown> | null {
 /** Tool 5: four counted checks, plus discovery (agent card, MCP) shown but not counted. */
 export async function agents(ctx: CheckContext, url: URL) {
   const origin = new URL(url.origin);
+  // A blocked input host ends the check like every other URL tool; only later paths may be partial.
+  await ctx.vetHost(origin.hostname, "blocked");
   // Two sequential groups of at most three requests keep us well under six connections.
   const home = await walk(ctx, origin, { maxHops: 2 }).catch((error) => {
-    if (error instanceof CheckStop && error.reason !== "subrequest_budget") return null;
+    if (error instanceof CheckStop && error.reason !== "subrequest_budget" && error.reason !== "deadline") {
+      ctx.degraded = true;
+      return null;
+    }
     throw error;
   });
   const [llms, robots] = await Promise.all([get(ctx, origin, "/llms.txt", 16 * 1024), get(ctx, origin, "/robots.txt", 128 * 1024)]);
@@ -147,13 +153,19 @@ export async function agents(ctx: CheckContext, url: URL) {
     checks.push({ id: "llms_txt", status: "fail", detail: llms.status ? String(llms.status) : (llms.error ?? null) });
   }
 
+  // RFC 9309: 4xx means no rules; an unreachable robots.txt (5xx, network error) is unknown, not allow-all.
+  const robotsUnknown = robots.status === null || robots.status >= 500;
   const groups = robots.status === 200 ? parseRobots(robots.text) : new Map<string, Rule[]>();
   const searchBlocked = AI_SEARCH_AGENTS.filter((agent) => !isAllowed(groups, agent));
-  checks.push({
-    id: "ai_crawlers",
-    status: searchBlocked.length === 0 ? "pass" : "warn",
-    detail: searchBlocked.length ? searchBlocked.join(", ") : null,
-  });
+  checks.push(
+    robotsUnknown
+      ? { id: "ai_crawlers", status: "warn", detail: `robots.txt unreachable (${robots.status ?? robots.error ?? "error"})` }
+      : {
+          id: "ai_crawlers",
+          status: searchBlocked.length === 0 ? "pass" : "warn",
+          detail: searchBlocked.length ? searchBlocked.join(", ") : null,
+        },
+  );
 
   let challenged = false;
   if (home && home.ok) {
@@ -189,7 +201,7 @@ export async function agents(ctx: CheckContext, url: URL) {
     passed: checks.filter((c) => c.status === "pass").length,
     total: checks.length,
     checks,
-    training: AI_TRAINING_AGENTS.map((agent) => ({ agent, allowed: isAllowed(groups, agent) })),
+    training: robotsUnknown ? [] : AI_TRAINING_AGENTS.map((agent) => ({ agent, allowed: isAllowed(groups, agent) })),
     robotsTruncated: robots.truncated,
     discovery: { agentCard, mcp },
   };

@@ -53,6 +53,8 @@ describe("sanitizeNextPath: pre-filled monitor form from the free tools", () => 
     "https://ex.com/a#frag",
     "https://ex.com/a+b%20c",
     "https://ex.com/100%",
+    "https://en.wikipedia.org/wiki/Foo_(bar)/",
+    "https://ex.com/a*b!c'd",
   ])("round-trips %s with its values still encoded", (url) => {
     const path = built(url);
     const next = afterBrowser(path);
@@ -60,6 +62,12 @@ describe("sanitizeNextPath: pre-filled monitor form from the free tools", () => 
     const params = new URLSearchParams(path.split("?")[1]);
     expect(params.get("url")).toBe(url);
     expect([...params.keys()]).toEqual(["type", "url", "name"]);
+  });
+
+  it("accepts the form URLSearchParams re-serializes to (the wizard rewrites the query on mount)", () => {
+    const params = new URLSearchParams({ type: "website", url: "https://ex.com/a_(b)*", name: "ex.com" });
+    const path = `/monitors/create?${params.toString()}`;
+    expect(sanitizeNextPath(path)).toBe(path);
   });
 
   it("accepts http_request with a HEAD method", () => {

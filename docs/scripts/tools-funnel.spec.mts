@@ -39,6 +39,11 @@ test("monitorThisHref builds a double-encoded next that the app's monitor patter
   assert.equal(inner.get("type"), "website");
 });
 
+test("URLs with ( ) * ! ' still match the app's monitor pattern", () => {
+  const next = new URL(monitorThisHref("uptime", "https://en.wikipedia.org/wiki/Foo_(bar)*!'")).searchParams.get("next")!;
+  assert.match(next, /^\/monitors\/create\?type=website&url=[A-Za-z0-9%._~!*'()-]{1,6200}&name=[A-Za-z0-9%._~!*'()-]{1,300}$/);
+});
+
 test("monitorTarget picks the monitor type and target per tool", () => {
   assert.deepEqual(monitorTarget("api", "api.ex.com/health", "HEAD"), { type: "http_request", url: "https://api.ex.com/health", name: "api.ex.com", method: "HEAD" });
   assert.deepEqual(monitorTarget("api", "api.ex.com", "GET"), { type: "http_request", url: "https://api.ex.com/", name: "api.ex.com" });

@@ -8,11 +8,11 @@ const DEVICE_PATH = /^\/(?:device(?:\?code=[A-Za-z0-9-]{1,16})?|org-admin|switch
 
 /**
  * "Monitor this" from the free tools on supercheck.io: a pre-filled monitor form. Values stay
- * percent-encoded (only unreserved characters and `%` are allowed), so the path can't gain a
- * parameter, a fragment or another route.
+ * percent-encoded: only what encodeURIComponent leaves as-is (unreserved plus !*'()) and `%`,
+ * so the path can't gain a parameter, a fragment or another route.
  */
 const MONITOR_CREATE_PATH =
-  /^\/monitors\/create\?type=(?:website|http_request)&url=[A-Za-z0-9%._~-]{1,6200}(?:&name=[A-Za-z0-9%._~-]{1,300})?(?:&method=(?:GET|HEAD))?$/;
+  /^\/monitors\/create\?type=(?:website|http_request)&url=[A-Za-z0-9%._~!*'()-]{1,6200}(?:&name=[A-Za-z0-9%._~!*'()-]{1,300})?(?:&method=(?:GET|HEAD))?$/;
 const MAX_MONITOR_CREATE_PATH = 6600;
 
 export function sanitizeNextPath(raw: string | null | undefined): string | null {

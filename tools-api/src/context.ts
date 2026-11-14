@@ -32,6 +32,8 @@ export class CheckStop extends Error {
 
 export class CheckContext {
   subrequests = 0;
+  /** Set when a stop was absorbed into a partial result or the deadline hit: never cache it. */
+  degraded = false;
   private readonly hosts = new Set<string>();
   private readonly dns = new Map<string, Promise<string | null>>();
   private readonly counted = new Set<string>();
@@ -95,6 +97,7 @@ export class CheckContext {
       return addresses.some(isReservedIp) ? "private_address" : null;
     } catch (error) {
       if (error instanceof CheckStop) throw error;
+      if (this.signal.aborted) throw new CheckStop("limited", "deadline");
       return "dns_error";
     }
   }
@@ -141,6 +144,10 @@ export async function walk(
       });
     } catch (error) {
       if (error instanceof CheckStop) throw error;
+      if (ctx.signal.aborted) {
+        ctx.degraded = true;
+        throw new CheckStop("limited", "deadline");
+      }
       return { ok: false, error: fetchErrorClass(error), url, hops, timeMs: Date.now() - t0 };
     }
     const location = res.headers.get("location");

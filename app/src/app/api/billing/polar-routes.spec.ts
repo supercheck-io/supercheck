@@ -159,6 +159,12 @@ describe("Polar billing routes", () => {
       );
     }
     expect((await checkoutPost(request("/api/billing/checkout", { plan: "plus", next: "x".repeat(7001) }))).status).toBe(400);
+    // Valid but too long for a provider URL: checkout still works, without the continuation.
+    const long = `/monitors/create?type=website&url=${"a".repeat(3000)}`;
+    expect((await checkoutPost(request("/api/billing/checkout", { plan: "plus", next: long }))).status).toBe(200);
+    expect(mockCheckoutCreate.mock.calls.at(-1)?.[0].success_url).toBe(
+      "https://app.supercheck.io/billing/success?checkout_id={CHECKOUT_ID}&organization_id=org_1",
+    );
   });
 
   it("starts Pro checkout at the members already in use when above the included seats, and Plus without seats", async () => {

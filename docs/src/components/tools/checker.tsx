@@ -91,6 +91,8 @@ export function Checker({ tool, slug, input, placeholder, submitLabel, ctaTitle,
           callback: (token: string) => pending.current?.(token),
           "error-callback": () => pending.current?.(null),
           "expired-callback": () => pending.current?.(null),
+          "timeout-callback": () => pending.current?.(null),
+          "unsupported-callback": () => pending.current?.(null),
         });
       })
       .catch(() => undefined);
@@ -101,12 +103,16 @@ export function Checker({ tool, slug, input, placeholder, submitLabel, ctaTitle,
     };
   }, [configured, tool]);
 
+  // "unavailable": the Turnstile script never loaded (blocked or offline), shown as busy, not as a failed human check.
   const getToken = useCallback(
     () =>
-      new Promise<string | null>((resolve) => {
+      new Promise<string | null | "unavailable">((resolve) => {
         const ts = window.turnstile;
-        if (!ts || !widgetId.current) return resolve(null);
+        if (!ts || !widgetId.current) return resolve("unavailable");
+        // Never leave the button stuck on "Checking…" if no callback fires.
+        const timer = setTimeout(() => pending.current?.(null), 60_000);
         pending.current = (token) => {
+          clearTimeout(timer);
           pending.current = null;
           resolve(token);
         };
@@ -126,6 +132,10 @@ export function Checker({ tool, slug, input, placeholder, submitLabel, ctaTitle,
       setCopied(false);
       setPhase({ kind: "verifying" });
       const token = await getToken();
+      if (token === "unavailable") {
+        setPhase({ kind: "busy" });
+        return;
+      }
       if (!token) {
         setPhase({ kind: "captcha" });
         if (widgetId.current) window.turnstile?.reset(widgetId.current);
