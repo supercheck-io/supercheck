@@ -146,6 +146,21 @@ describe("Polar billing routes", () => {
     );
   });
 
+  it("carries a valid next to the success URL and drops an invalid one", async () => {
+    const next = "/monitors/create?type=website&url=https%3A%2F%2Fex.com%2F&name=ex.com";
+    expect((await checkoutPost(request("/api/billing/checkout", { plan: "plus", next }))).status).toBe(200);
+    expect(mockCheckoutCreate.mock.calls.at(-1)?.[0].success_url).toBe(
+      `https://app.supercheck.io/billing/success?checkout_id={CHECKOUT_ID}&organization_id=org_1&next=${encodeURIComponent(next)}`,
+    );
+    for (const bad of ["https://evil.example/", "//evil.example", "/dashboard"]) {
+      expect((await checkoutPost(request("/api/billing/checkout", { plan: "plus", next: bad }))).status).toBe(200);
+      expect(mockCheckoutCreate.mock.calls.at(-1)?.[0].success_url).toBe(
+        "https://app.supercheck.io/billing/success?checkout_id={CHECKOUT_ID}&organization_id=org_1",
+      );
+    }
+    expect((await checkoutPost(request("/api/billing/checkout", { plan: "plus", next: "x".repeat(7001) }))).status).toBe(400);
+  });
+
   it("starts Pro checkout at the members already in use when above the included seats, and Plus without seats", async () => {
     mockCountSeatsInUse.mockResolvedValueOnce(31);
     expect((await checkoutPost(request("/api/billing/checkout", { plan: "pro" }))).status).toBe(200);
