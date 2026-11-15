@@ -357,6 +357,63 @@ suite('heartbeat sweep (PostgreSQL)', () => {
     expect(sent).toContain(`monitor_failure:${customProvider}`);
   });
 
+  it('drops a miss computed before a pause and resume', async () => {
+    const id = await seedHeartbeat({ pingAgoMin: 80 });
+    const sweep = newSweep();
+    const realClaim = sweep.claim.bind(sweep);
+    jest.spyOn(sweep, 'claim').mockImplementationOnce(async (detect) => {
+      const claimed = await realClaim(detect);
+      // The app resumes: status pending and a fresh anchor (spec write path).
+      await client`UPDATE monitors SET status = 'pending', heartbeat_state = heartbeat_state || jsonb_build_object('anchorAt', to_jsonb(now())) WHERE id = ${id}`;
+      return claimed;
+    });
+    await sweep.sweep();
+    expect(await results(id)).toHaveLength(0);
+    expect(sent).toEqual([]);
+    expect((await monitorRow(id)).heartbeatState?.leaseUntil).toBeUndefined();
+  });
+
+  it('the first miss after a resume alerts even with counters used up before the pause', async () => {
+    const id = await seedHeartbeat({ pingAgoMin: 80, status: 'pending' });
+    // Down before the pause, with the 3-alert cap reached in an old outage.
+    await db.insert(schema.monitorResults).values({
+      monitorId: id,
+      location: 'local',
+      status: 'down',
+      isUp: false,
+      checkedAt: new Date(Date.now() - 2 * 24 * 60 * 60_000),
+      consecutiveFailureCount: 40,
+      alertsSentForFailure: 3,
+      details: { outageKey: '00000000-0000-4000-8000-000000000001' },
+    });
+    await newSweep().sweep();
+    const rows = await results(id);
+    expect(rows[1]).toMatchObject({ isUp: false, consecutiveFailureCount: 1 });
+    expect((rows[1].details as { outageKey?: string }).outageKey).not.toBe(
+      '00000000-0000-4000-8000-000000000001',
+    );
+    expect(sent).toContain(`monitor_failure:${customProvider}`);
+  });
+
+  it('a retry after a partial /fail-then-ping evaluation stores the failure once', async () => {
+    const id = await seedHeartbeat({ pingAgoMin: 5 });
+    await ping(id, 'fail');
+    await ping(id);
+    const { lastFailAt } = (await monitorRow(id)).heartbeatState ?? {};
+    // The earlier attempt stored the failure, then died before finishing.
+    await db.insert(schema.monitorResults).values({
+      monitorId: id,
+      location: 'local',
+      status: 'down',
+      isUp: false,
+      checkedAt: new Date(lastFailAt!),
+      consecutiveFailureCount: 1,
+      details: { heartbeat: { kind: 'fail' } },
+    });
+    await newSweep().sweep();
+    expect((await results(id)).map((r) => r.isUp)).toEqual([false, true]);
+  });
+
   it('a /fail then a ping in one sweep window: down + failure alert, then up + recovery', async () => {
     const id = await seedHeartbeat({ pingAgoMin: 5 });
     await ping(id, 'fail');

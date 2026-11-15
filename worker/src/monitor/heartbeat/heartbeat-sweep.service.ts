@@ -4,7 +4,7 @@ import {
   OnModuleDestroy,
   OnModuleInit,
 } from '@nestjs/common';
-import { eq, getTableColumns, sql } from 'drizzle-orm';
+import { and, eq, getTableColumns, sql } from 'drizzle-orm';
 import { DbService } from '../../db/db.service';
 import * as schema from '../../db/schema';
 import { RedisService } from '../../execution/services/redis.service';
@@ -409,18 +409,26 @@ export class HeartbeatSweepService implements OnModuleInit, OnModuleDestroy {
             leaseUntil: renewed.leaseUntil,
           },
         };
-        // A ping landed after the snapshot: the miss (or late warning) is stale; the next sweep judges the ping.
+        // A miss or late warning is stale if a ping landed after the snapshot, or the monitor was paused or
+        // resumed (new anchor) meanwhile; the next sweep judges the current state.
         if (
           !decision.result?.isUp &&
           decision.result?.kind !== 'fail' &&
-          renewed.pingSeq > (monitor.heartbeatState?.pingSeq ?? 0)
+          (renewed.pingSeq > (monitor.heartbeatState?.pingSeq ?? 0) ||
+            renewed.status === 'paused' ||
+            (renewed.anchorAt ?? null) !==
+              (monitor.heartbeatState?.anchorAt ?? null))
         ) {
           await this.finish(monitor, {});
           return;
         }
       }
       const state = monitor.heartbeatState ?? {};
-      if (decision.priorFailAt) {
+      // A retry after a partial evaluation must not store that failure twice.
+      if (
+        decision.priorFailAt &&
+        !(await this.hasResultAt(monitor.id, decision.priorFailAt))
+      ) {
         await this.monitorService.recordExternalResult(monitor, {
           monitorId: monitor.id,
           location: 'local',
@@ -472,10 +480,27 @@ export class HeartbeatSweepService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
+  private async hasResultAt(monitorId: string, checkedAt: Date) {
+    const [row] = await this.dbService.db
+      .select({ id: schema.monitorResults.id })
+      .from(schema.monitorResults)
+      .where(
+        and(
+          eq(schema.monitorResults.monitorId, monitorId),
+          eq(schema.monitorResults.checkedAt, checkedAt),
+        ),
+      )
+      .limit(1);
+    return Boolean(row);
+  }
+
   /** Extends this sweep's lease by 3 minutes if it still holds it; null when another worker owns the row now. */
-  private async renewLease(
-    monitor: HeartbeatMonitor,
-  ): Promise<{ leaseUntil: string; pingSeq: number } | null> {
+  private async renewLease(monitor: HeartbeatMonitor): Promise<{
+    leaseUntil: string;
+    pingSeq: number;
+    anchorAt: string | null;
+    status: string;
+  } | null> {
     const monitors = schema.monitors;
     const [row] = await this.dbService.db
       .update(monitors)
@@ -488,6 +513,8 @@ export class HeartbeatSweepService implements OnModuleInit, OnModuleDestroy {
       .returning({
         leaseUntil: sql<string>`${monitors.heartbeatState}->>'leaseUntil'`,
         pingSeq: sql<string>`coalesce(${monitors.heartbeatState}->>'pingSeq', '0')`,
+        anchorAt: sql<string | null>`${monitors.heartbeatState}->>'anchorAt'`,
+        status: monitors.status,
       });
     if (!row) {
       this.logger.warn(
@@ -495,7 +522,12 @@ export class HeartbeatSweepService implements OnModuleInit, OnModuleDestroy {
       );
       return null;
     }
-    return { leaseUntil: row.leaseUntil, pingSeq: Number(row.pingSeq) };
+    return {
+      leaseUntil: row.leaseUntil,
+      pingSeq: Number(row.pingSeq),
+      anchorAt: row.anchorAt,
+      status: row.status,
+    };
   }
 
   /** Writes the sweep's keys on top of the row's current state and releases this sweep's lease. */

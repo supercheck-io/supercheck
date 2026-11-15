@@ -99,7 +99,13 @@ function service(redis = fakeRedis()) {
         (finishWhere(...args) as Promise<unknown>).then(resolve, reject),
     }),
   }));
-  const db = { update: jest.fn(() => ({ set })) };
+  const existingAt = jest.fn().mockResolvedValue([]);
+  const db = {
+    update: jest.fn(() => ({ set })),
+    select: jest.fn(() => ({
+      from: () => ({ where: () => ({ limit: existingAt }) }),
+    })),
+  };
   const usage = {
     shouldBlockExecution: jest.fn().mockResolvedValue({ blocked: false }),
   };
@@ -123,6 +129,7 @@ function service(redis = fakeRedis()) {
     set,
     finishWhere,
     renewed,
+    existingAt,
     usage,
     monitors,
     alerts,
@@ -556,6 +563,22 @@ describe('HeartbeatSweepService.sweep', () => {
     expect(ctx.finishWhere).toHaveBeenCalledTimes(1);
   });
 
+  it.each([
+    ['paused', { status: 'paused' }],
+    ['resumed (new anchor)', { anchorAt: '2026-11-14T11:59:00.000Z' }],
+  ])(
+    'drops a miss when the monitor was %s after the claim',
+    async (_l, row) => {
+      const ctx = withClaim([claimed(pinged(80))]);
+      ctx.renewed.mockResolvedValueOnce([
+        { leaseUntil: 'L2', pingSeq: '3', status: 'up', ...row },
+      ]);
+      await ctx.sweep.sweep();
+      expect(ctx.monitors.recordExternalResult).not.toHaveBeenCalled();
+      expect(ctx.finishWhere).toHaveBeenCalledTimes(1);
+    },
+  );
+
   it('records with the renewed lease so finishing releases it', async () => {
     const ctx = withClaim([claimed(pinged(80))]);
     await ctx.sweep.sweep();
@@ -587,6 +610,25 @@ describe('HeartbeatSweepService.sweep', () => {
       },
       { isUp: true, details: { heartbeat: { kind: 'ping' } } },
     ]);
+  });
+
+  it('does not store the overtaken /fail twice on a retry', async () => {
+    const m = monitor({
+      heartbeatState: {
+        lastPingAt: new Date(T0 - MIN).toISOString(),
+        lastPingKind: 'ping',
+        pingSeq: 2,
+        evaluatedSeq: 0,
+        failSeq: 1,
+        lastFailAt: new Date(T0 - 2 * MIN).toISOString(),
+      },
+    });
+    const ctx = withClaim([claimed(m)]);
+    ctx.existingAt.mockResolvedValueOnce([{ id: 'r1' }]);
+    await ctx.sweep.sweep();
+    expect(
+      ctx.monitors.recordExternalResult.mock.calls.map((c) => c[1].isUp),
+    ).toEqual([true]);
   });
 
   it('records a ping with its start time and client', async () => {

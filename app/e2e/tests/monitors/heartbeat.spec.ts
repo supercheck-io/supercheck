@@ -2,6 +2,7 @@ import { expect, type Page } from "@playwright/test";
 import { test } from "../../fixtures";
 import { createMonitor, deleteMonitor } from "../../utils/test-data";
 import { waitForHydration } from "../../utils/hydration";
+import { NO_WORKER, NO_WORKER_REASON } from "../../fixtures/checkpoint.fixture";
 
 // Only rendered matches: strict mode fails when a second, hidden copy is in the DOM.
 const byTestId = (page: Page, id: string) => page.getByTestId(id).filter({ visible: true });
@@ -29,6 +30,8 @@ test.describe("Heartbeat monitor @monitors @heartbeat", () => {
     projectAdminPage: page,
     cleanup,
   }) => {
+    // Up/Down need the worker's heartbeat sweep.
+    test.skip(NO_WORKER, NO_WORKER_REASON);
     test.setTimeout(6 * 60_000);
     const request = page.request;
     const name = `E2E heartbeat ${Date.now()}`;
