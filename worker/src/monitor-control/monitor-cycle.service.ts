@@ -280,6 +280,12 @@ export class MonitorCycleService {
         return 'superseded';
       }
 
+      // The shared alert state freezes on the same instant delivery is muted at (the observed time), so a cycle
+      // scheduled just before a window whose results land inside it never advances the failure count.
+      const evaluatedInMaintenance =
+        checkedAt.getTime() === cycle.scheduledFor.getTime()
+          ? inMaintenance
+          : await isMonitorInMaintenance(tx, cycle.monitorId, checkedAt);
       const previousStatus = monitor.status;
       const observedRows = decision.observed.map((location) =>
         latest.get(location)!,
@@ -307,7 +313,7 @@ export class MonitorCycleService {
             monitor.config,
             previousStatus,
             decision.status,
-            inMaintenance,
+            evaluatedInMaintenance,
           ),
           executionGroupId: cycle.id,
         };

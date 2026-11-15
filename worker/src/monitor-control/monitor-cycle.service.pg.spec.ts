@@ -309,6 +309,37 @@ suite('MonitorCycleService (PostgreSQL)', () => {
     expect(await results('c4')).toHaveLength(2);
   });
 
+  it('freezes the shared failure count when results land inside a window that began after the cycle was scheduled', async () => {
+    await db
+      .update(schema.monitors)
+      .set({
+        config: {
+          locationConfig: {
+            enabled: true,
+            locations: ['eu', 'us', 'ap'],
+            strategy: 'majority',
+          },
+        } as never,
+      })
+      .where(eq(schema.monitors.id, monitorId));
+    // The window starts 30 s after the cycle was scheduled; both reports arrive a minute in.
+    await client`INSERT INTO maintenance_windows (id, organization_id, project_id, title, scope, recurrence, timezone, local_start_time, duration_minutes, starts_on, occurrence_starts_at, occurrence_ends_at)
+      SELECT uuidv7(), organization_id, project_id, 'Deploy', 'project', 'once', 'UTC', '10:00', 60, '2026-10-21',
+        ${new Date(t0.getTime() + 30_000).toISOString()}::timestamptz, ${new Date(t0.getTime() + 3_600_000).toISOString()}::timestamptz
+      FROM monitors WHERE id = ${monitorId}`;
+    await openCycle('mw');
+    await report('mw', 'eu', false, new Date(t0.getTime() + 60_000));
+    await report('mw', 'us', false, new Date(t0.getTime() + 60_000));
+    expect(
+      await service.closeCycle('mw', new Date(t0.getTime() + 65_000)),
+    ).toBe('closed');
+    expect((await cycleRow('mw')).evaluation).toMatchObject({
+      currentStatus: 'down',
+      alertState: { consecutiveFailureCount: 0, maintenanceOnly: true },
+    });
+    await client`DELETE FROM maintenance_windows`;
+  });
+
   it('closes a cycle once under concurrent closers and writes failed rows once', async () => {
     await openCycle('c5');
     const outcomes = await Promise.all(
