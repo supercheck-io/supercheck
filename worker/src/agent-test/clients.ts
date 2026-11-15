@@ -62,6 +62,8 @@ async function post(
   options: AgentCommonOptions,
   body: unknown,
   extraHeaders: Record<string, string> = {},
+  /** JSON-RPC id to wait for: an SSE reply is read only until that response arrives (servers may keep the stream open). */
+  rpcId?: number,
 ): Promise<Post> {
   const timeoutMs = Math.min(
     Math.max(options.timeoutMs ?? DEFAULT_TIMEOUT_MS, 1),
@@ -84,7 +86,13 @@ async function post(
       body: JSON.stringify(body),
       signal: AbortSignal.timeout(timeoutMs),
     });
-    text = await res.text();
+    text =
+      rpcId !== undefined &&
+      res.ok &&
+      res.body &&
+      (res.headers.get('content-type') ?? '').includes('text/event-stream')
+        ? await readSseUntil(res.body, rpcId)
+        : await res.text();
   } catch (error) {
     const e = error as Error & { cause?: { code?: string } };
     const why =
@@ -98,6 +106,40 @@ async function post(
       `${kind} agent replied HTTP ${res.status}: ${redact(text, secrets).slice(0, 200)}`,
     );
   return { status: res.status, headers: res.headers, text };
+}
+
+/** Reads SSE until a complete event carries the given JSON-RPC id, then stops reading. */
+async function readSseUntil(
+  body: ReadableStream<Uint8Array>,
+  id: number,
+): Promise<string> {
+  const reader = body.getReader();
+  const decoder = new TextDecoder();
+  let text = '';
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) return text + decoder.decode();
+      text += decoder.decode(value, { stream: true });
+      const complete = text.split(/\r?\n\r?\n/).slice(0, -1);
+      if (complete.some((block) => sseEventId(block) === id)) return text;
+    }
+  } finally {
+    void reader.cancel().catch(() => undefined);
+  }
+}
+
+function sseEventId(block: string): unknown {
+  const data = block
+    .split(/\r?\n/)
+    .filter((l) => l.startsWith('data:'))
+    .map((l) => l.slice(5).trim())
+    .join('');
+  try {
+    return asRecord(JSON.parse(data)).id;
+  } catch {
+    return undefined;
+  }
 }
 
 function parseJson(kind: string, text: string, secrets: string[]): unknown {
@@ -338,6 +380,7 @@ async function mcpSend(
       clientInfo: { name: 'supercheck-agent-test', version: '1.0.0' },
     }),
     accept,
+    1,
   );
   const initResult = asRecord(
     rpcResult('mcp', rpcMessage('mcp', init.text, 1, secrets), secrets),
@@ -348,21 +391,39 @@ async function mcpSend(
     'mcp-protocol-version': asString(initResult.protocolVersion, '2025-06-18'),
     ...(session ? { 'mcp-session-id': session } : {}),
   };
-  await post(
-    'mcp',
-    options.url,
-    options,
-    rpc(undefined, 'notifications/initialized', {}),
-    next,
-  );
   const args = { [options.argument ?? 'message']: message };
-  const call = await post(
-    'mcp',
-    options.url,
-    options,
-    rpc(2, 'tools/call', { name: options.tool, arguments: args }),
-    next,
-  );
+  let call: Post;
+  try {
+    await post(
+      'mcp',
+      options.url,
+      options,
+      rpc(undefined, 'notifications/initialized', {}),
+      next,
+    );
+    call = await post(
+      'mcp',
+      options.url,
+      options,
+      rpc(2, 'tools/call', { name: options.tool, arguments: args }),
+      next,
+      2,
+    );
+  } finally {
+    // Best effort, like the worker MCP client: free the server's per-session state.
+    if (session)
+      await fetch(options.url, {
+        method: 'DELETE',
+        headers: {
+          ...(options.apiKey
+            ? { authorization: `Bearer ${options.apiKey}` }
+            : {}),
+          ...options.headers,
+          'mcp-session-id': session,
+        },
+        signal: AbortSignal.timeout(5_000),
+      }).catch(() => undefined);
+  }
   const result = asRecord(
     rpcResult('mcp', rpcMessage('mcp', call.text, 2, secrets), secrets),
   );

@@ -3209,13 +3209,16 @@ export class MonitorService {
           );
       }
 
-      const agentRun = testResult.agent?.[0];
-      const agentDetails = agentRun
+      // A script can hold several agent tests: report their combined attempts.
+      const agentRuns = testResult.agent ?? [];
+      const attempts = agentRuns.reduce((n, t) => n + t.attempts, 0);
+      const passed = agentRuns.reduce((n, t) => n + t.passed, 0);
+      const agentDetails = agentRuns.length
         ? {
             agent: {
-              passRate: agentRun.passRate,
-              attempts: agentRun.attempts,
-              totalTokens: agentRun.totalTokens,
+              passRate: attempts > 0 ? passed / attempts : 0,
+              attempts,
+              totalTokens: agentRuns.reduce((n, t) => n + t.totalTokens, 0),
             },
           }
         : {};

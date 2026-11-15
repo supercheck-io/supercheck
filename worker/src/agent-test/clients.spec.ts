@@ -21,6 +21,11 @@ beforeAll(async () => {
     req.on('end', () => {
       const body = raw ? JSON.parse(raw) : undefined;
       seen.push({ headers: req.headers, body });
+      // MCP session close: answered here so per-test handlers only see POSTs.
+      if (req.method === 'DELETE') {
+        res.writeHead(204);
+        return res.end();
+      }
       handler(req, body, res);
     });
   });
@@ -281,6 +286,37 @@ describe('a2a client', () => {
 });
 
 describe('mcp client', () => {
+  it('stops reading an SSE reply at its response even if the stream stays open, then closes the session', async () => {
+    handler = (_req, body, res) => {
+      if (body.method === 'initialize') {
+        res.setHeader('mcp-session-id', 'sess-sse');
+        return json(res, { jsonrpc: '2.0', id: 1, result: {} });
+      }
+      if (body.method === 'notifications/initialized') {
+        res.writeHead(202);
+        return res.end();
+      }
+      res.writeHead(200, { 'content-type': 'text/event-stream' });
+      res.write(
+        `data: ${JSON.stringify({ jsonrpc: '2.0', id: 2, result: { content: [{ type: 'text', text: 'ok' }] } })}\n\n`,
+      ); // never ended
+    };
+    const r = await connect({
+      kind: 'mcp',
+      url,
+      tool: 'ask',
+      timeoutMs: 3000,
+    }).send('m');
+    expect(r.text).toBe('ok');
+    expect(seen.at(-1)?.headers['mcp-session-id']).toBe('sess-sse');
+    expect(seen.map((s) => s.body?.method ?? 'DELETE')).toEqual([
+      'initialize',
+      'notifications/initialized',
+      'tools/call',
+      'DELETE',
+    ]);
+  });
+
   const rpcReply = (
     res: http.ServerResponse,
     id: number,
@@ -318,10 +354,11 @@ describe('mcp client', () => {
       argument: 'q',
       apiKey: 'k',
     }).send('ping');
-    expect(seen.map((s) => s.body.method)).toEqual([
+    expect(seen.map((s) => s.body?.method ?? 'DELETE')).toEqual([
       'initialize',
       'notifications/initialized',
       'tools/call',
+      'DELETE',
     ]);
     expect(seen[2].headers['mcp-session-id']).toBe('sess-1');
     expect(seen[2].headers['mcp-protocol-version']).toBe('2025-06-18');

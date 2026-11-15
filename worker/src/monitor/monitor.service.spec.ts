@@ -3141,7 +3141,10 @@ describe('MonitorService', () => {
           billableMs: 0,
           testId: 'test-1-unique',
           reportUrl: null,
-          agent: [{ passRate: 0.6, attempts: 10, totalTokens: 900 }],
+          agent: [
+            { passRate: 1, attempts: 5, passed: 5, totalTokens: 400 },
+            { passRate: 0.2, attempts: 5, passed: 1, totalTokens: 500 },
+          ],
         });
         const result = await (
           service as unknown as {
