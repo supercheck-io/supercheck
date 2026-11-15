@@ -485,6 +485,70 @@
       }
     },
     "/api/sre/incidents/{id}/resources": {
+      "get": {
+        "operationId": "listSreIncidentResources",
+        "summary": "List an incident's affected services and monitors",
+        "description": "Deleted monitors and merged services are left out.",
+        "tags": [
+          "AI SRE"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Resources",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "resources": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "type": {
+                            "type": "string",
+                            "enum": [
+                              "service",
+                              "monitor"
+                            ]
+                          },
+                          "id": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "name": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid ID"
+          },
+          "404": {
+            "description": "Incident not found in the active project"
+          }
+        }
+      },
       "patch": {
         "operationId": "updateSreIncidentResources",
         "summary": "Change an incident's affected services and monitors",

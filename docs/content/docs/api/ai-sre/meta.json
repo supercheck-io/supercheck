@@ -9,6 +9,7 @@
     "acknowledgeSreIncident",
     "assignSreIncident",
     "resolveSreIncident",
+    "listSreIncidentResources",
     "updateSreIncidentResources",
     "getIncidentPolicy",
     "updateIncidentPolicy",
