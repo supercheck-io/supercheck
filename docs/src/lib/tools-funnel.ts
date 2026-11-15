@@ -97,7 +97,8 @@ const MAX_ENCODED_NEXT = 1800;
  */
 export function monitorThisHref(tool: ToolId, input: string, method: "GET" | "HEAD" = "GET"): string {
   const t = monitorTarget(tool, input, method);
-  if (!t) return `${CLOUD_APP_URL}/monitors/create`;
+  // Unparseable input still links a form the app resumes after sign-in (it needs ?type=).
+  if (!t) return `${CLOUD_APP_URL}/monitors/create?type=${tool === "api" ? "http_request" : "website"}`;
   const path =
     `/monitors/create?type=${t.type}&url=${encodeURIComponent(t.url)}&name=${encodeURIComponent(t.name)}` +
     (t.method ? `&method=${t.method}` : "");

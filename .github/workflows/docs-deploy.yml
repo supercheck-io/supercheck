@@ -9,6 +9,7 @@ on:
       - "app/src/lib/billing/plan-catalog.json"
       - "app/src/lib/billing/pricing-copy.ts"
       - "app/src/lib/billing/trial-copy.ts"
+      - "app/src/lib/auth/safe-next-path.ts"
       - ".github/workflows/docs-deploy.yml"
   pull_request:
     # Any base: a PR stacked on another branch needs the docs build too. Deploy still runs only on main.
@@ -19,6 +20,7 @@ on:
       - "app/src/lib/billing/plan-catalog.json"
       - "app/src/lib/billing/pricing-copy.ts"
       - "app/src/lib/billing/trial-copy.ts"
+      - "app/src/lib/auth/safe-next-path.ts"
       - ".github/workflows/docs-deploy.yml"
   workflow_dispatch:
 
