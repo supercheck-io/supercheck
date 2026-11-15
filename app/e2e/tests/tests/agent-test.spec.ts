@@ -40,7 +40,8 @@ test.describe('Agent test @tests', () => {
   test('Quick Create offers the Agent test and opens the Playground on it @high @positive', async ({ projectAdminPage: page }) => {
     await page.goto('/create');
     await waitForHydration(page);
-    await page.getByRole('button', { name: /Agent/ }).click();
+    // Anchored: the SRE "Private Agent" card also contains "Agent".
+    await page.getByRole('button', { name: /^Agent\b/ }).click();
     await expect(page).toHaveURL(/\/playground\?scriptType=agent/);
     await expect(page.getByRole('button', { name: 'Run', exact: true })).toBeVisible({ timeout: 30_000 });
   });
