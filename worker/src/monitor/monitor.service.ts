@@ -766,10 +766,18 @@ export class MonitorService {
     if (!(await this.insertResultWithRetry(result))) return;
     const currentStatus = result.isUp ? 'up' : 'down';
     await this.updateMonitorStatus(current.id, currentStatus, result.checkedAt);
+    // A heartbeat goes back to pending on resume or restore, and a new one may first report /fail. Its first
+    // missed run or /fail is a real outage, so it alerts as from up; a first ping (pending -> up) still does not.
+    const previousStatus =
+      current.type === 'heartbeat' &&
+      current.status === 'pending' &&
+      currentStatus === 'down'
+        ? 'up'
+        : current.status;
     await this.evaluateAndSendAlert({
       monitorId: current.id,
       monitor: current,
-      previousStatus: current.status,
+      previousStatus,
       currentStatus,
       reason: result.isUp
         ? 'Monitor has recovered'

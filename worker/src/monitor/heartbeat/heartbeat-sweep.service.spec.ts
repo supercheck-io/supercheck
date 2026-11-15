@@ -76,7 +76,17 @@ function fakeRedis() {
 
 function service(redis = fakeRedis()) {
   const finishWhere = jest.fn().mockResolvedValue(undefined);
-  const set = jest.fn(() => ({ where: finishWhere }));
+  const renewed = jest
+    .fn()
+    .mockResolvedValue([{ leaseUntil: 'L2', pingSeq: '3' }]);
+  // Renewing the lease ends in .returning(); finishing awaits .where() itself.
+  const set = jest.fn(() => ({
+    where: (...args: unknown[]) => ({
+      returning: renewed,
+      then: (resolve: (v: unknown) => void, reject: (e: unknown) => void) =>
+        (finishWhere(...args) as Promise<unknown>).then(resolve, reject),
+    }),
+  }));
   const db = { update: jest.fn(() => ({ set })) };
   const usage = {
     shouldBlockExecution: jest.fn().mockResolvedValue({ blocked: false }),
@@ -94,7 +104,17 @@ function service(redis = fakeRedis()) {
     monitors as never,
     alerts as never,
   );
-  return { sweep, redis, db, set, finishWhere, usage, monitors, alerts };
+  return {
+    sweep,
+    redis,
+    db,
+    set,
+    finishWhere,
+    renewed,
+    usage,
+    monitors,
+    alerts,
+  };
 }
 
 describe('heartbeatGraceMinutes', () => {
@@ -260,25 +280,67 @@ describe('ingest guard', () => {
     // Another worker (or the next sweep) reads the same outage.
     expect(await sweep.readIngest(end + 30_000)).toEqual({ up: true, outage });
 
-    const length = end - outage.startMs;
-    // Deadline (ping 72 min before T0 + 5 min) fell inside the outage: moved by its length, no miss.
+    // Ping due T0 - 7 min (inside the outage), deadline T0 + 5 min: one full interval + grace after the outage end.
+    const lastMs = T0 - 67 * MIN;
     const inside = pinged(67, { lateEpisodeKey: 'late-already' });
     const shifted = decideHeartbeat(inside, end + MIN, back);
     expect(shifted.result).toBeUndefined();
     expect(shifted.finish).toEqual({
       deadlineShiftedFor: outage.id,
-      deadlineShiftMs: length,
+      deadlineShiftMs: end - lastMs,
     });
     // Once per outage: with the shift stored it is not applied again.
     const stored = pinged(67, {
       lateEpisodeKey: 'late-already',
       deadlineShiftedFor: outage.id,
-      deadlineShiftMs: length,
+      deadlineShiftMs: end - lastMs,
     });
     expect(decideHeartbeat(stored, end + MIN, back).finish).toEqual({});
     expect(
-      decideHeartbeat(stored, end + length + 10 * MIN, back).result?.kind,
-    ).toBe('missed');
+      decideHeartbeat(stored, end + 72 * MIN, back).result,
+    ).toBeUndefined();
+    expect(decideHeartbeat(stored, end + 72 * MIN + 1, back).result?.kind).toBe(
+      'missed',
+    );
+  });
+
+  it('gives a full interval after an outage that swallowed the due ping (60 min, grace 12)', () => {
+    const at = (hhmm: string) => Date.parse(`2026-11-14T${hhmm}:00Z`);
+    const outage = { id: 'o', startMs: at('10:00'), endMs: at('10:30') };
+    const m = monitor({
+      heartbeatState: {
+        lastPingAt: new Date(at('09:00')).toISOString(),
+        pingSeq: 1,
+        evaluatedSeq: 1,
+      },
+    });
+    const ingest = { up: true, outage };
+    // The old shift-by-length rule would have gone down at 10:42, before the real 11:00 ping.
+    const d = decideHeartbeat(m, at('10:43'), ingest);
+    expect(d.result).toBeUndefined();
+    expect(d.finish).toEqual({
+      deadlineShiftedFor: 'o',
+      deadlineShiftMs: at('10:30') - at('09:00'),
+    });
+    // Late from 11:30, down after 11:42.
+    expect(
+      decideHeartbeat(m, at('11:29'), ingest).lateEpisodeKey,
+    ).toBeUndefined();
+    expect(decideHeartbeat(m, at('11:31'), ingest).lateEpisodeKey).toBe(
+      `heartbeat_late:m1:${new Date(at('11:42')).toISOString()}`,
+    );
+    expect(decideHeartbeat(m, at('11:43'), ingest).result?.kind).toBe('missed');
+    // A deadline that passed before the outage began is not moved.
+    const old = monitor({
+      heartbeatState: {
+        lastPingAt: new Date(at('08:00')).toISOString(),
+        pingSeq: 1,
+        evaluatedSeq: 1,
+      },
+    });
+    expect(decideHeartbeat(old, at('10:31'), ingest).finish).not.toHaveProperty(
+      'deadlineShiftedFor',
+    );
   });
 
   it('does not shift a deadline counted from a ping after the outage ended', () => {
@@ -380,6 +442,31 @@ describe('HeartbeatSweepService.sweep', () => {
       }),
     );
     expect(ctx.finishWhere).toHaveBeenCalledTimes(1);
+  });
+
+  it('skips the result and does not finish when the lease was lost mid-batch', async () => {
+    const ctx = withClaim([claimed(pinged(80))]);
+    ctx.renewed.mockResolvedValueOnce([]);
+    await ctx.sweep.sweep();
+    expect(ctx.monitors.recordExternalResult).not.toHaveBeenCalled();
+    expect(ctx.finishWhere).not.toHaveBeenCalled();
+  });
+
+  it('drops a stale miss when a ping landed after the claim, and releases the lease', async () => {
+    const ctx = withClaim([claimed(pinged(80))]);
+    ctx.renewed.mockResolvedValueOnce([{ leaseUntil: 'L2', pingSeq: '4' }]);
+    await ctx.sweep.sweep();
+    expect(ctx.monitors.recordExternalResult).not.toHaveBeenCalled();
+    expect(ctx.finishWhere).toHaveBeenCalledTimes(1);
+  });
+
+  it('records with the renewed lease so finishing releases it', async () => {
+    const ctx = withClaim([claimed(pinged(80))]);
+    await ctx.sweep.sweep();
+    expect(
+      ctx.monitors.recordExternalResult.mock.calls[0][0].heartbeatState
+        .leaseUntil,
+    ).toBe('L2');
   });
 
   it('records a ping with its start time and client', async () => {

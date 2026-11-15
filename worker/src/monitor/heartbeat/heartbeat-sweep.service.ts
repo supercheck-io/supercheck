@@ -146,13 +146,14 @@ export function decideHeartbeat(
   const finish: HeartbeatFinish = {};
   let shift = state.deadlineShiftMs ?? 0;
   const outage = ingest.outage;
-  // A ping, create or resume after the outage ended means the outage cannot have cost this deadline a ping.
-  if (outage && state.deadlineShiftedFor !== outage.id && last < outage.endMs) {
-    // A deadline that fell inside the outage, or within one outage length after it, moves once by its length.
-    const length = outage.endMs - outage.startMs;
-    const deadline = last + intervalMs + graceMinutes * MINUTE_MS + shift;
-    if (deadline >= outage.startMs && deadline <= outage.endMs + length) {
-      shift += length;
+  if (outage && state.deadlineShiftedFor !== outage.id) {
+    // The ping was due by the end of the app outage (it may have been swallowed) and the deadline had not passed
+    // before the outage began: give one full interval after the outage, once per outage. A ping, create or resume
+    // after the outage, or a heartbeat not yet due (a 31-day one), is not affected.
+    const dueAt = last + intervalMs + shift;
+    const deadline = dueAt + graceMinutes * MINUTE_MS;
+    if (dueAt <= outage.endMs && deadline >= outage.startMs) {
+      shift = Math.max(shift, outage.endMs - last);
       finish.deadlineShiftedFor = outage.id;
       finish.deadlineShiftMs = shift;
     }
@@ -176,6 +177,7 @@ export function decideHeartbeat(
       finish,
     };
   }
+  // Best effort: the episode is marked even when no channel accepted the warning, so it is not retried within it.
   if (now > lateAt && monitor.status === 'up' && !state.lateEpisodeKey) {
     const lateEpisodeKey = `heartbeat_late:${monitor.id}:${new Date(deadline).toISOString()}`;
     finish.lateEpisodeKey = lateEpisodeKey;
@@ -375,6 +377,27 @@ export class HeartbeatSweepService implements OnModuleInit, OnModuleDestroy {
           return;
         }
       }
+      if (decision.result || decision.lateEpisodeKey) {
+        // The lease may have run out during a slow batch and another worker taken over: re-assert it first.
+        const renewed = await this.renewLease(monitor);
+        if (!renewed) return;
+        monitor = {
+          ...monitor,
+          heartbeatState: {
+            ...monitor.heartbeatState,
+            leaseUntil: renewed.leaseUntil,
+          },
+        };
+        // A ping landed after the snapshot: the miss (or late warning) is stale; the next sweep judges the ping.
+        if (
+          !decision.result?.isUp &&
+          decision.result?.kind !== 'fail' &&
+          renewed.pingSeq > (monitor.heartbeatState?.pingSeq ?? 0)
+        ) {
+          await this.finish(monitor, {});
+          return;
+        }
+      }
       const state = monitor.heartbeatState ?? {};
       if (decision.result) {
         const { kind, isUp, checkedAt, responseTimeMs, reason } =
@@ -416,6 +439,32 @@ export class HeartbeatSweepService implements OnModuleInit, OnModuleDestroy {
         `Heartbeat evaluation failed for monitor ${monitor.id}: ${getErrorMessage(error)}`,
       );
     }
+  }
+
+  /** Extends this sweep's lease by 3 minutes if it still holds it; null when another worker owns the row now. */
+  private async renewLease(
+    monitor: HeartbeatMonitor,
+  ): Promise<{ leaseUntil: string; pingSeq: number } | null> {
+    const monitors = schema.monitors;
+    const [row] = await this.dbService.db
+      .update(monitors)
+      .set({
+        heartbeatState: sql`coalesce(${monitors.heartbeatState}, '{}'::jsonb) || jsonb_build_object('leaseUntil', to_jsonb(now() + interval '3 minutes'))`,
+      })
+      .where(
+        sql`${monitors.id} = ${monitor.id} AND ${monitors.heartbeatState}->>'leaseUntil' = ${monitor.heartbeatState?.leaseUntil ?? null}::text`,
+      )
+      .returning({
+        leaseUntil: sql<string>`${monitors.heartbeatState}->>'leaseUntil'`,
+        pingSeq: sql<string>`coalesce(${monitors.heartbeatState}->>'pingSeq', '0')`,
+      });
+    if (!row) {
+      this.logger.warn(
+        `Heartbeat monitor ${monitor.id} lease lost during evaluation; another worker owns it`,
+      );
+      return null;
+    }
+    return { leaseUntil: row.leaseUntil, pingSeq: Number(row.pingSeq) };
   }
 
   /** Writes the sweep's keys on top of the row's current state and releases this sweep's lease. */

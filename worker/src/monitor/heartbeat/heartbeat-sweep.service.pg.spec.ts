@@ -504,6 +504,57 @@ suite('heartbeat sweep (PostgreSQL)', () => {
     expect((await monitorRow(id)).status).toBe('paused');
   });
 
+  it('alerts the first missed run of a heartbeat put back to pending (resume or restore)', async () => {
+    const id = await seedHeartbeat({ pingAgoMin: 80, status: 'pending' });
+    await newSweep().sweep();
+    expect((await results(id))[0]).toMatchObject({ isUp: false });
+    expect((await monitorRow(id)).status).toBe('down');
+    expect(sent).toContain(`monitor_failure:${customProvider}`);
+  });
+
+  it('alerts a /fail that is the first signal of a pending heartbeat', async () => {
+    const id = await seedHeartbeat();
+    await ping(id, 'fail');
+    await newSweep().sweep();
+    expect((await monitorRow(id)).status).toBe('down');
+    expect(sent).toContain(`monitor_failure:${customProvider}`);
+  });
+
+  it('a worker whose lease expired mid-batch and was retaken records nothing', async () => {
+    const id = await seedHeartbeat({ pingAgoMin: 80 });
+    const stale = newSweep();
+    const realClaim = stale.claim.bind(stale);
+    const retaken = new Date(Date.now() + 120_000).toISOString();
+    jest.spyOn(stale, 'claim').mockImplementationOnce(async (detect) => {
+      const claimed = await realClaim(detect);
+      // Another worker took the row over after this lease ran out.
+      await setState(id, { leaseUntil: retaken });
+      return claimed;
+    });
+    await stale.sweep();
+    expect(await results(id)).toHaveLength(0);
+    expect(sent).toEqual([]);
+    expect((await monitorRow(id)).heartbeatState?.leaseUntil).toBe(retaken);
+  });
+
+  it('drops a miss when a ping lands between claim and evaluation', async () => {
+    const id = await seedHeartbeat({ pingAgoMin: 80 });
+    const sweep = newSweep();
+    const realClaim = sweep.claim.bind(sweep);
+    jest.spyOn(sweep, 'claim').mockImplementationOnce(async (detect) => {
+      const claimed = await realClaim(detect);
+      await ping(id);
+      return claimed;
+    });
+    await sweep.sweep();
+    expect(await results(id)).toHaveLength(0);
+    const monitor = await monitorRow(id);
+    expect(monitor.status).toBe('up');
+    expect(monitor.heartbeatState?.leaseUntil).toBeUndefined();
+    await newSweep().sweep();
+    expect((await results(id))[0]).toMatchObject({ isUp: true });
+  });
+
   it('skips a usage-blocked monitor and keeps its lease so it is retried later', async () => {
     const id = await seedHeartbeat({ pingAgoMin: 80 });
     usage.shouldBlockExecution.mockResolvedValue({
