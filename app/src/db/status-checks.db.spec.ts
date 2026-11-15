@@ -161,6 +161,7 @@ describe("status value checks on a fresh database", () => {
       VALUES (${randomUUID()}, 't', ${type}, ${tenant.org}, ${tenant.project})`;
     expect(await codeOf(test("bogus"))).toBe("23514");
     expect(await codeOf(test("api"))).toBe("accepted");
+    expect(await codeOf(test("agent"))).toBe("accepted");
     // Better Auth writes the US spelling and the application the UK one; both stay valid.
     const org = tenant.org;
     const user = randomUUID();

@@ -7,7 +7,7 @@
 // Test types
 export type TestPriority = 'low' | 'medium' | 'high';
 export type TestType =
-  'browser' | 'api' | 'database' | 'custom' | 'performance';
+  'browser' | 'api' | 'database' | 'custom' | 'performance' | 'agent';
 
 // Requirement types - using same priority as tests for consistency
 export type RequirementPriority = 'low' | 'medium' | 'high';

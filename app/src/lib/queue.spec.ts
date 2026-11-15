@@ -15,6 +15,7 @@ describe("queue location refresh", () => {
   const invalidateQueueEventHub = jest.fn().mockResolvedValue(undefined);
   const invalidateBullBoard = jest.fn();
   const getActiveWorkerQueueNames = jest.fn();
+  const queuesMissingCapability = jest.fn().mockResolvedValue([]);
   const reserveSlot = jest.fn();
   const enqueue = jest.fn();
   const getExecutionPolicy = jest.fn();
@@ -159,7 +160,7 @@ describe("queue location refresh", () => {
       assertExecutionWorkload,
       ExecutionWorkloadError: MockExecutionWorkloadError,
     }));
-    jest.doMock("./worker-registry", () => ({ getActiveWorkerQueueNames }));
+    jest.doMock("./worker-registry", () => ({ getActiveWorkerQueueNames, queuesMissingCapability }));
     queueModule = await import("./queue");
   });
 
@@ -191,6 +192,25 @@ describe("queue location refresh", () => {
     await result;
     expect(reserveSlot).not.toHaveBeenCalled();
     expect(enqueue).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["addTestToQueue", { testType: "agent" }],
+    ["addJobToQueue", { testScripts: [{ id: "a", script: "code" }, { id: "b", script: "code", type: "agent" }] }],
+  ] as const)("%s refuses an agent test until every Playwright worker reports agent-test", async (producer, extra) => {
+    getExecutionPolicy.mockResolvedValue({ tier: "plus", priority: 1, runningCapacity: 1, queuedCapacity: 5 });
+    queuesMissingCapability.mockResolvedValueOnce(["playwright-global"]);
+    const task = { runId: "run", testId: "test", jobId: "job", organizationId: "org", projectId: "project", code: "code", testScripts: [{ id: "test", script: "code" }], ...extra };
+    await expect(queueModule[producer](task as never)).rejects.toMatchObject({ name: "ExecutionQueueError", code: "queue_unavailable", message: expect.stringContaining("updated workers") });
+    expect(queuesMissingCapability).toHaveBeenCalledWith(["playwright-global"], "agent-test");
+    expect(reserveSlot).not.toHaveBeenCalled();
+  });
+
+  it("does not check capabilities for non-agent runs", async () => {
+    getExecutionPolicy.mockResolvedValue({ tier: "plus", priority: 1, runningCapacity: 1, queuedCapacity: 5 });
+    reserveSlot.mockResolvedValue(2);
+    await queueModule.addTestToQueue({ runId: "run", testId: "test", organizationId: "org", projectId: "project", code: "code" });
+    expect(queuesMissingCapability).not.toHaveBeenCalled();
   });
 
   it("assertExecutionQueueReady rides out a short reconnect (failover) instead of failing", async () => {

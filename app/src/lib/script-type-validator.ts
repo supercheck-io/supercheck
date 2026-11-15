@@ -56,7 +56,7 @@ export function validateScriptTypeMatch(
     return {
       valid: false,
       error:
-        'Test type is "performance" but the script does not contain k6 imports. Performance tests require k6 scripts. Use a Playwright-based test type (browser, api, database, or custom) for non-k6 scripts.',
+        'Test type is "performance" but the script does not contain k6 imports. Performance tests require k6 scripts. Use a Playwright-based test type (browser, api, database, custom, or agent) for non-k6 scripts.',
       suggestedType: "browser",
     };
   }
@@ -84,7 +84,8 @@ export function normalizeTestType(value: unknown): TestType {
     normalized === "performance" ||
     normalized === "api" ||
     normalized === "database" ||
-    normalized === "custom"
+    normalized === "custom" ||
+    normalized === "agent"
   ) {
     return normalized;
   }

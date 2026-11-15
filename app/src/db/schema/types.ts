@@ -13,7 +13,7 @@ export const inValues = (column: unknown, values: readonly string[]): SQL =>
 
 export const TEST_PRIORITY_VALUES = ["low", "medium", "high"] as const;
 export type TestPriority = (typeof TEST_PRIORITY_VALUES)[number];
-export const TEST_TYPE_VALUES = ["browser", "api", "database", "custom", "performance"] as const;
+export const TEST_TYPE_VALUES = ["browser", "api", "database", "custom", "performance", "agent"] as const;
 export type TestType = (typeof TEST_TYPE_VALUES)[number];
 
 // Requirement types - using same priority as tests for consistency

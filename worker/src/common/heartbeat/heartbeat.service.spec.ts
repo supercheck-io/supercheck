@@ -1,4 +1,4 @@
-import { HeartbeatService } from './heartbeat.service';
+import { HeartbeatService, workerCapabilities } from './heartbeat.service';
 import { ConfigService } from '@nestjs/config';
 it('immediately publishes queue registration and removal instead of waiting for the next heartbeat', () => {
   const service = new HeartbeatService({
@@ -12,4 +12,13 @@ it('immediately publishes queue registration and removal instead of waiting for 
   expect(JSON.parse(redis.set.mock.calls[1][1]).queues).not.toContain(
     'monitor-eu',
   );
+});
+
+it('reports agent-test only when the fixture package resolves', () => {
+  expect(workerCapabilities(() => '/x')).toEqual(['agent-test']);
+  expect(
+    workerCapabilities(() => {
+      throw new Error('Cannot find module');
+    }),
+  ).toEqual([]);
 });

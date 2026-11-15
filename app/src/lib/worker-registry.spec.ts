@@ -103,4 +103,25 @@ describe("worker-registry helpers", () => {
       expect(scan).toHaveBeenCalledTimes(2);
     });
   });
+
+  describe("queuesMissingCapability", () => {
+    it("needs a live consumer and every consumer to report the capability", async () => {
+      const beats = [
+        { location: "eu", queues: ["playwright-global", "monitor-eu"], capabilities: ["agent-test"] },
+        { location: "us", queues: ["monitor-us"], capabilities: ["agent-test"] },
+        { location: "us", queues: ["monitor-us"] }, // old worker: no capabilities field
+      ].map((b) => [null, JSON.stringify(b)]);
+      jest.doMock("@/lib/queue", () => ({
+        getRedisConnection: jest.fn().mockResolvedValue({
+          scan: jest.fn().mockResolvedValue(["0", ["k1", "k2", "k3"].map((k) => `supercheck:worker-heartbeat:${k}`)]),
+          pipeline: () => ({ get: jest.fn(), exec: jest.fn().mockResolvedValue(beats) }),
+        }),
+      }));
+      jest.doMock("@/lib/location-registry", () => ({ LOCAL_LOCATION_CODE: "local", shouldExcludeLocal: () => false }));
+      const { queuesMissingCapability } = await import("./worker-registry");
+      await expect(
+        queuesMissingCapability(["playwright-global", "monitor-eu", "monitor-us", "monitor-ap"], "agent-test")
+      ).resolves.toEqual(["monitor-us", "monitor-ap"]);
+    });
+  });
 });

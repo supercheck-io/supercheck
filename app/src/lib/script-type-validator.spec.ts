@@ -122,6 +122,8 @@ describe("normalizeTestType", () => {
     expect(normalizeTestType("api")).toBe("api");
     expect(normalizeTestType("database")).toBe("database");
     expect(normalizeTestType("custom")).toBe("custom");
+    expect(normalizeTestType("agent")).toBe("agent");
+    expect(normalizeTestType(" Agent ")).toBe("agent");
   });
 
   it("should default to 'browser' for unknown values", () => {

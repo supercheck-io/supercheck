@@ -15,6 +15,21 @@ const HEARTBEAT_PREFIX = 'supercheck:worker-heartbeat:';
 const HEARTBEAT_INTERVAL_MS = 30_000;
 const HEARTBEAT_TTL_SECONDS = 60;
 
+/**
+ * Features this image can run. `agent-test` is reported only when the fixture package resolves, so an
+ * image without it reports nothing and the app refuses to queue agent tests (app rolls before worker).
+ */
+export function workerCapabilities(
+  resolve: (id: string) => string = require.resolve,
+): string[] {
+  try {
+    resolve('@supercheck/agent-test');
+    return ['agent-test'];
+  } catch {
+    return [];
+  }
+}
+
 interface WorkerHeartbeat {
   location: string;
   hostname: string;
@@ -22,6 +37,7 @@ interface WorkerHeartbeat {
   lastHeartbeat: string;
   queues: string[];
   pid: number;
+  capabilities: string[];
 }
 
 @Injectable()
@@ -32,6 +48,7 @@ export class HeartbeatService implements OnModuleInit, OnModuleDestroy {
   private readonly heartbeatKey: string;
   private readonly location: string;
   private readonly startedAt = new Date().toISOString();
+  private readonly capabilities = workerCapabilities();
   // Advertise only queues this worker actually consumes (WORKER_QUEUES).
   private queues = new Set<string>(
     consumesWorkerQueue('global-playwright') ? [PLAYWRIGHT_QUEUE] : [],
@@ -128,6 +145,7 @@ export class HeartbeatService implements OnModuleInit, OnModuleDestroy {
       lastHeartbeat: new Date().toISOString(),
       queues: this.getQueues(),
       pid: process.pid,
+      capabilities: this.capabilities,
     };
 
     try {
