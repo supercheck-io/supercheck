@@ -41,10 +41,8 @@ export const maintenanceWindows = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (table) => ({
-    // The predicate's cheap EXISTS: live windows of a project by occurrence start.
-    projectOccurrenceIdx: index("maintenance_windows_project_occurrence_idx")
-      .on(table.projectId, table.occurrenceStartsAt)
-      .where(sql`${table.cancelledAt} IS NULL AND ${table.completedAt} IS NULL`),
+    // The predicate's EXISTS (windows of a project by occurrence start); also covers the project_id foreign key.
+    projectOccurrenceIdx: index("maintenance_windows_project_occurrence_idx").on(table.projectId, table.occurrenceStartsAt),
     organizationIdx: index("maintenance_windows_organization_id_idx").on(table.organizationId),
     createdByIdx: index("maintenance_windows_created_by_user_id_idx").on(table.createdByUserId),
     scopeCheck: check("maintenance_windows_scope_check", sql`${table.scope} IN ('project', 'services', 'monitors')`),

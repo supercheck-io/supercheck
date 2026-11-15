@@ -44,7 +44,7 @@ ALTER TABLE "maintenance_windows" ADD CONSTRAINT "maintenance_windows_project_id
 ALTER TABLE "maintenance_windows" ADD CONSTRAINT "maintenance_windows_created_by_user_id_user_id_fk" FOREIGN KEY ("created_by_user_id") REFERENCES "public"."user"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 CREATE UNIQUE INDEX "maintenance_window_targets_window_target_unique_idx" ON "maintenance_window_targets" USING btree ("window_id","target_type","target_id");--> statement-breakpoint
 CREATE INDEX "maintenance_window_targets_target_idx" ON "maintenance_window_targets" USING btree ("target_type","target_id");--> statement-breakpoint
-CREATE INDEX "maintenance_windows_project_occurrence_idx" ON "maintenance_windows" USING btree ("project_id","occurrence_starts_at") WHERE "maintenance_windows"."cancelled_at" IS NULL AND "maintenance_windows"."completed_at" IS NULL;--> statement-breakpoint
+CREATE INDEX "maintenance_windows_project_occurrence_idx" ON "maintenance_windows" USING btree ("project_id","occurrence_starts_at");--> statement-breakpoint
 CREATE INDEX "maintenance_windows_organization_id_idx" ON "maintenance_windows" USING btree ("organization_id");--> statement-breakpoint
 CREATE INDEX "maintenance_windows_created_by_user_id_idx" ON "maintenance_windows" USING btree ("created_by_user_id");--> statement-breakpoint
 ALTER TABLE "incidents" ADD CONSTRAINT "incidents_maintenance_window_id_maintenance_windows_id_fk" FOREIGN KEY ("maintenance_window_id") REFERENCES "public"."maintenance_windows"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint

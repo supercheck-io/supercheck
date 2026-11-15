@@ -12654,7 +12654,6 @@
             }
           ],
           "isUnique": false,
-          "where": "\"maintenance_windows\".\"cancelled_at\" IS NULL AND \"maintenance_windows\".\"completed_at\" IS NULL",
           "concurrently": false,
           "method": "btree",
           "with": {}

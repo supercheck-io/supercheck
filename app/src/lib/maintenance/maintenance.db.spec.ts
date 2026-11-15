@@ -13,6 +13,8 @@ jest.mock("@/utils/db", () => ({ get db() { return mockDatabase; } }));
 jest.mock("@/lib/audit-logger", () => ({ logAuditEvent: jest.fn() }));
 jest.mock("@/lib/sre/sre-rate-limiter", () => ({ checkMaintenanceWriteRateLimit: jest.fn(async () => ({ allowed: true, remaining: 10 })) }));
 jest.mock("next/cache", () => ({ revalidatePath: jest.fn() }));
+// Permission checks stay real; only the auth module, which reads the database at import, is stubbed.
+jest.mock("@/utils/auth", () => ({ auth: {} }));
 
 import { isIncidentPagingSuppressed, isMonitorInMaintenance } from "./predicate";
 import {
@@ -40,6 +42,7 @@ const user = uuidv7();
 const [monA, monB, monLate, monOther] = [uuidv7(), uuidv7(), uuidv7(), uuidv7()];
 const service = uuidv7();
 const actor = { userId: user, organizationId: org, orgPendingDeletion: false, project: { id: project, userRole: "project_editor" } };
+const admin = { ...actor, project: { id: project, userRole: "project_admin" } };
 const otherActor = { userId: user, organizationId: otherOrg, orgPendingDeletion: false, project: { id: otherProject, userRole: "org_owner" } };
 
 const MIN = 60_000;
@@ -192,10 +195,10 @@ describe("window lifecycle (M10, AC12)", () => {
     const [linked] = await client`INSERT INTO incidents (id, status_page_id, name, status, impact, scheduled_for, scheduled_until, maintenance_window_id, deliver_notifications)
       VALUES (uuidv7(), ${page!.id}, 'm', 'scheduled', 'minor', now() + interval '2 hours', now() + interval '3 hours', ${created.window.id}, false) RETURNING id`;
     // While it is on a status page: no delete, no MCP change, and a role without status_page:update is refused.
-    expect(await deleteMaintenanceWindow(actor, created.window.id)).toMatchObject({ ok: false, code: "conflict" });
+    expect(await deleteMaintenanceWindow(admin, created.window.id)).toMatchObject({ ok: false, code: "conflict" });
     expect(await cancelMaintenanceWindow(actor, created.window.id, "mcp")).toMatchObject({ ok: false, code: "conflict" });
     expect(await cancelMaintenanceWindow(actor, created.window.id)).toMatchObject({ ok: true, window: { state: "cancelled" } });
-    expect(await deleteMaintenanceWindow(actor, created.window.id)).toMatchObject({ ok: true });
+    expect(await deleteMaintenanceWindow(admin, created.window.id)).toMatchObject({ ok: true });
     const [row] = await client`SELECT status FROM incidents WHERE id = ${linked!.id}`;
     expect(row!.status).toBe("resolved");
     const updates = await client`SELECT body, deliver_notifications FROM incident_updates WHERE incident_id = ${linked!.id}`;
@@ -212,7 +215,8 @@ describe("window lifecycle (M10, AC12)", () => {
     expect(await advanceMaintenanceWindows()).toBe(2);
     const seriesNow = await getMaintenanceWindow(actor, series.window.id);
     const onceNow = await getMaintenanceWindow(actor, once.window.id);
-    expect(seriesNow.ok && seriesNow.window.occurrenceStartsAt!.getTime()).toBeGreaterThan(Date.now());
+    // Today's occurrence (started 5 minutes ago) is current again; the stale one an hour back is gone.
+    expect(seriesNow.ok && seriesNow.window.occurrenceEndsAt!.getTime()).toBeGreaterThan(Date.now());
     expect(onceNow).toMatchObject({ ok: true, window: { state: "completed" } });
   });
 });
