@@ -36,7 +36,7 @@ import {
 } from "@/db/schema";
 import { sql, and, eq, gte, lt, lte, or, inArray, desc, type SQL } from "drizzle-orm";
 import type { MonitoringLocation } from "@/db/schema/types";
-import { excludeSupersededSyntheticResults } from "@/lib/monitor-result-filters";
+import { uptimeResults } from "@/lib/monitor-result-filters";
 import { monitorCyclePolicy } from "@/lib/monitor-cycles";
 
 // ============================================================================
@@ -643,7 +643,7 @@ async function fetchCheckRows(
             ),
           ),
         ),
-        excludeSupersededSyntheticResults,
+        uptimeResults,
         location ? eq(monitorResults.location, location as MonitoringLocation) : undefined,
       ),
     );
@@ -1183,7 +1183,7 @@ export class MonitorAggregationService {
         );
       const base = and(
         eq(monitorResults.monitorId, monitorId),
-        excludeSupersededSyntheticResults,
+        uptimeResults,
         location ? eq(monitorResults.location, location) : undefined,
       );
 
@@ -1340,7 +1340,7 @@ export class MonitorAggregationService {
     const toIso = new Date(now.getTime() + 1).toISOString();
     const shapes = await cycleShapes({
       monitorIds,
-      base: and(inArray(monitorResults.monitorId, monitorIds), excludeSupersededSyntheticResults)!,
+      base: and(inArray(monitorResults.monitorId, monitorIds), uptimeResults)!,
       margin: [[from.getTime() - CYCLE_MARGIN_MS, now.getTime() + 1]],
       firstAtFilter: sql`min(first_at) >= ${fromIso}::timestamptz AND min(first_at) < ${toIso}::timestamptz AND ${notCovered(sql`mid`, sql`min(first_at)`)}`,
       nowIso: now.toISOString(),
@@ -1364,7 +1364,7 @@ export class MonitorAggregationService {
       .where(
         and(
           inArray(monitorResults.monitorId, monitorIds),
-          excludeSupersededSyntheticResults,
+          uptimeResults,
           sql`${monitorResults.executionGroupId} IS NULL`,
           gte(monitorResults.checkedAt, from),
           lt(monitorResults.checkedAt, new Date(now.getTime() + 1)),

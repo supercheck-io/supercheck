@@ -30,3 +30,12 @@ export const excludeSupersededSyntheticResults = sql`NOT (
 
 /** For latency and execution-time figures: a synthetic row has no measurement at all. */
 export const excludeSyntheticResults = sql`NOT ${isSynthetic}`;
+
+/**
+ * For uptime: checks inside a maintenance window are left out of both the numerator and the denominator. The
+ * rows stay for the results table and charts, which show them as maintenance.
+ */
+export const excludeMaintenanceResults = sql`${monitorResults.inMaintenance} IS NOT TRUE`;
+
+/** Uptime counts: one row per check (superseded synthetic rows dropped) and nothing checked during maintenance. */
+export const uptimeResults = sql`(${excludeSupersededSyntheticResults} AND ${excludeMaintenanceResults})`;
