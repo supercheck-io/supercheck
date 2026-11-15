@@ -184,17 +184,18 @@ incidentCommand.command('create')
   .option('--commander <user>', 'Incident commander: a user UUID, or "me"')
   .option('--status-page <id>', 'Also post a public incident to this status page')
   .option('--component <id>', 'Affected status page component UUID (repeatable, needs --status-page)', collect, [])
-  .addOption(new Option('--impact <impact>', 'Public impact').choices(['none', 'minor', 'major', 'critical']).default('minor'))
-  .option('--message <message>', 'First public status page message')
-  .option('--notify', 'Notify status page subscribers (off by default)')
+  .addOption(new Option('--impact <impact>', 'Public impact (default: minor, needs --status-page)').choices(['none', 'minor', 'major', 'critical']))
+  .option('--message <message>', 'First public status page message (needs --status-page)')
+  .option('--notify', 'Notify status page subscribers (off by default, needs --status-page)')
   .action(async (options: {
     title: string; severity: string; summary?: string; service?: string; affectedService: string[]; monitor: string[]
-    commander?: string; statusPage?: string; component: string[]; impact: string; message?: string; notify?: boolean
+    commander?: string; statusPage?: string; component: string[]; impact?: string; message?: string; notify?: boolean
   }) => {
     const bad = [...options.monitor, ...options.component, ...(options.statusPage ? [options.statusPage] : [])].find((value) => !isUuid(value))
     if (bad) throw new CLIError(`"${bad}" is not a UUID. --monitor, --status-page and --component take UUIDs.`, ExitCode.ConfigError)
     if (options.component.length && !options.statusPage) throw new CLIError('--component needs --status-page.', ExitCode.ConfigError)
     if (options.statusPage && !options.component.length) throw new CLIError('--status-page needs at least one --component.', ExitCode.ConfigError)
+    if (!options.statusPage && (options.message || options.notify || options.impact)) throw new CLIError('--message, --notify and --impact need --status-page.', ExitCode.ConfigError)
     let commanderUserId: string | undefined
     if (options.commander === 'me') {
       const { data } = await createAuthenticatedClient().get<{ user?: { id?: string } }>('/api/context')
@@ -213,7 +214,7 @@ incidentCommand.command('create')
       affected: { serviceIds: await Promise.all(options.affectedService.map(resolveServiceId)), monitorIds: options.monitor },
       ...(commanderUserId ? { commanderUserId } : {}),
       ...(options.statusPage ? {
-        statusPage: { statusPageId: options.statusPage, componentIds: options.component, impact: options.impact, ...(options.message ? { message: options.message } : {}), notifySubscribers: options.notify === true },
+        statusPage: { statusPageId: options.statusPage, componentIds: options.component, impact: options.impact ?? 'minor', ...(options.message ? { message: options.message } : {}), notifySubscribers: options.notify === true },
       } : {}),
     }
     // No retries: a retried POST could declare the incident twice.

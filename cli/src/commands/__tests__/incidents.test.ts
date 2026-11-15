@@ -68,6 +68,9 @@ describe('incident create', () => {
     [['--title', 'x', '--monitor', 'nope'], 'is not a UUID'],
     [['--title', 'x', '--component', id(21)], '--component needs --status-page'],
     [['--title', 'x', '--status-page', id(20)], 'needs at least one --component'],
+    [['--title', 'x', '--notify'], '--message, --notify and --impact need --status-page'],
+    [['--title', 'x', '--message', 'Investigating'], '--message, --notify and --impact need --status-page'],
+    [['--title', 'x', '--impact', 'major'], '--message, --notify and --impact need --status-page'],
     [['--title', 'x', '--commander', 'priya@example.com'], '--commander must be "me" or a user UUID'],
   ])('rejects bad flags before calling the API: %j', async (args, message) => {
     await expect(run(...args)).rejects.toThrow(message)

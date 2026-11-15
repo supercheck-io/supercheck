@@ -201,6 +201,22 @@ describe("processSreBackgroundAlertTriageJob", () => {
       }
     });
 
+    it("with incidents off, still lets an incident open for the monitor take the alert when a declared one lists it", async () => {
+      const { findOpenIncidentListingMonitor } = jest.requireMock("@/lib/sre/incident-resources");
+      const { findOpenIncidentForSource } = jest.requireMock("@/lib/sre/incident-lifecycle");
+      findOpenIncidentForSource.mockResolvedValue({ id: "auto-1", triageInvestigationRunId: null });
+      findOpenIncidentListingMonitor.mockResolvedValue({ id: "declared-1", triageInvestigationRunId: null });
+      try {
+        selectQueue.push([alertRow({ monitorAlertConfig: { enabled: true, incidentEnabled: false } })], [], [{ id: "ae-1" }], []);
+        await processSreBackgroundAlertTriageJob(JOB);
+        expect(inserts).toContainEqual(expect.objectContaining({ incidentId: "auto-1", role: "related" }));
+        expect(insertedIncident()).toBeUndefined();
+      } finally {
+        findOpenIncidentForSource.mockResolvedValue(null);
+        findOpenIncidentListingMonitor.mockResolvedValue(null);
+      }
+    });
+
     it("opens an incident for a monitor with alerts off and incidents opted in, with one alert counted", async () => {
       selectQueue.push([monitorRow({ enabled: false, incidentEnabled: true })]);
       freshIncidentQueue();

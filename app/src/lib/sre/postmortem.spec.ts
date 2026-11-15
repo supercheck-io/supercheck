@@ -259,4 +259,14 @@ describe("long timelines keep a visible gap", () => {
     expect(timeline).toMatch(/… \d+ more not shown …/);
     expect(buildDeterministicPostmortem(ctx(3)).timeline).not.toContain("not shown");
   });
+  it("counts a dropped gap row as the events it stands for", () => {
+    // 50 events with a gap row for 214 unloaded ones in the middle (index 20): the prompt drops indexes 10-19 and the gap.
+    const withGap = ctx(51);
+    withGap.timeline[20] = { at: at(20), label: "… 214 events not shown …", omitted: 214 } as never;
+    expect(buildPostmortemPrompt(withGap)).toContain("… 224 more events not shown …");
+    const long = ctx(121);
+    long.timeline[60] = { at: at(0), label: "… 1000 events not shown …", omitted: 1000 } as never;
+    const dropped = Number(/… (\d+) more not shown …/.exec(buildDeterministicPostmortem(long).timeline)?.[1]);
+    expect(dropped).toBeGreaterThan(1000);
+  });
 });

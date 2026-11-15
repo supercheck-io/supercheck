@@ -652,6 +652,9 @@
           "404": {
             "description": "Incident, service or monitor not found in the active project"
           },
+          "409": {
+            "description": "The incident is resolved. Reopen it before changing its affected resources."
+          },
           "429": {
             "description": "Too many incident updates"
           }

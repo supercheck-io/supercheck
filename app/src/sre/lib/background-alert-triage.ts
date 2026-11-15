@@ -530,9 +530,11 @@ async function createOrGetIncidentForAlertHistory(alertHistoryId: string, failur
     // monitor recovery never auto-resolves what a person declared (applySourceRecovery reads triggers only).
     // Checked before the reopen below, so a recently auto-resolved incident does not come back beside the declared
     // one; an incident already open for this source still wins.
+    const sourceOpen = RECOVERABLE_FAILURE_TYPES.has(alert.type)
+      ? await findOpenIncidentForSource(tx, { organizationId, projectId, sourceType, sourceId })
+      : null;
     const declared =
-      sourceType === "monitor" &&
-      !(RECOVERABLE_FAILURE_TYPES.has(alert.type) && (await findOpenIncidentForSource(tx, { organizationId, projectId, sourceType, sourceId })))
+      sourceType === "monitor" && !sourceOpen
         ? await findOpenIncidentListingMonitor(tx, { organizationId, projectId, monitorId: sourceId })
         : null;
     if (declared) {
@@ -567,8 +569,40 @@ async function createOrGetIncidentForAlertHistory(alertHistoryId: string, failur
       };
     }
 
-    // Incidents off: only a declared incident may take the alert (above); never reopen or open one.
-    if (alertConfig?.incidentEnabled === false) return { skipped: true as const, reason: "incident_disabled" as const };
+    // A recoverable failure joins the source's open incident even under a different identity.
+    type Joined = { skipped: false; organizationId: string; projectId: string; alertEventId: string; incidentId: string; alreadyTriaged: boolean; correlation?: undefined };
+    const joinSourceOpen = async (openForSource: NonNullable<typeof sourceOpen>): Promise<Joined> => {
+      await tx
+        .insert(sreIncidentAlerts)
+        .values({
+          incidentId: openForSource.id,
+          alertEventId: alertEvent.id,
+          role: "related",
+          alertTitle: title,
+          alertDescription: alert.message,
+          alertSeverity: severity,
+          alertFiredAt: firedAt,
+          createdAt: new Date(),
+        })
+        .onConflictDoNothing();
+      await recordRepeatAlert(tx, openForSource.id, firedAt);
+      await noteFailureReturned(tx, openForSource.id, firedAt);
+      return {
+        skipped: false as const,
+        organizationId,
+        projectId,
+        alertEventId: alertEvent.id,
+        incidentId: openForSource.id,
+        alreadyTriaged: Boolean(openForSource.triageInvestigationRunId),
+      };
+    };
+
+    // Incidents off: only a declared incident (above) or one already open for the source may take the alert;
+    // never reopen or open one.
+    if (alertConfig?.incidentEnabled === false) {
+      if (!sourceOpen) return { skipped: true as const, reason: "incident_disabled" as const };
+      return await joinSourceOpen(sourceOpen);
+    }
 
     // A failure shortly after an automatic recovery is the same incident coming back.
     const reopened = RECOVERABLE_FAILURE_TYPES.has(alert.type)
@@ -617,35 +651,7 @@ async function createOrGetIncidentForAlertHistory(alertHistoryId: string, failur
       };
     }
 
-    // A recoverable failure joins the source's open incident even under a different identity.
-    if (RECOVERABLE_FAILURE_TYPES.has(alert.type)) {
-      const openForSource = await findOpenIncidentForSource(tx, { organizationId, projectId, sourceType, sourceId });
-      if (openForSource) {
-        await tx
-          .insert(sreIncidentAlerts)
-          .values({
-            incidentId: openForSource.id,
-            alertEventId: alertEvent.id,
-            role: "related",
-            alertTitle: title,
-            alertDescription: alert.message,
-            alertSeverity: severity,
-            alertFiredAt: firedAt,
-            createdAt: new Date(),
-          })
-          .onConflictDoNothing();
-        await recordRepeatAlert(tx, openForSource.id, firedAt);
-        await noteFailureReturned(tx, openForSource.id, firedAt);
-        return {
-          skipped: false as const,
-          organizationId,
-          projectId,
-          alertEventId: alertEvent.id,
-          incidentId: openForSource.id,
-          alreadyTriaged: Boolean(openForSource.triageInvestigationRunId),
-        };
-      }
-    }
+    if (sourceOpen) return await joinSourceOpen(sourceOpen);
 
     if (isSreAlertCorrelationEnabled()) {
       const correlatedIncident = await tx
