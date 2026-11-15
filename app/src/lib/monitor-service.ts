@@ -16,7 +16,7 @@ import {
 } from "@/lib/monitor-scheduler";
 import { eq, and, sql } from "drizzle-orm";
 import { ResumeRefusedError, withResumeWithinPlan } from "@/lib/middleware/plan-enforcement";
-import { assertKeptProvidersValid, MonitorScheduleError, dropStaleSslAlertState, monitorTypeChangeError, preserveWorkerConfigKeys, scheduleOutOfSync, syncMonitorProviderRows, WORKER_OWNED_CONFIG_KEYS } from "@/lib/monitor-write";
+import { assertKeptProvidersValid, MonitorScheduleError, configKeepingWorkerKeys, configWithoutKeys, dropStaleSslAlertState, monitorTypeChangeError, preserveWorkerConfigKeys, scheduleOutOfSync, workerKeysDroppedByWrite, syncMonitorProviderRows, WORKER_OWNED_CONFIG_KEYS } from "@/lib/monitor-write";
 import { createHeartbeatTokenColumns } from "@/lib/heartbeat/token";
 import { reconcileMonitorSchedule } from "@/lib/monitor-schedule-reconcile";
 import { WITHOUT_HEARTBEAT_TOKEN } from "@/lib/monitor-response";
@@ -174,15 +174,16 @@ export function executionConfig(config: MonitorConfig | null | undefined) {
 export type SecretStateSnapshot = { target: string; config: unknown };
 
 /**
- * True while the row's target and its secret references (aiEndpoint.secretKey, auth.secretKey) still match the
+ * True while the row's target and its secret references (aiEndpoint.secretKey, mcp.auth.secretKey, auth.secretKey) still match the
  * snapshot. Only those fields are compared, so the worker's own config writes never cause a conflict.
  */
 export function secretStateUnchanged(table: typeof monitorTable, snapshot: SecretStateSnapshot) {
-  const c = (snapshot.config ?? {}) as { aiEndpoint?: { secretKey?: unknown }; auth?: { secretKey?: unknown } };
+  const c = (snapshot.config ?? {}) as { aiEndpoint?: { secretKey?: unknown }; mcp?: { auth?: { secretKey?: unknown } }; auth?: { secretKey?: unknown } };
   const name = (v: unknown) => (typeof v === "string" ? v : null);
   return and(
     eq(table.target, snapshot.target),
     sql`(${table.config} -> 'aiEndpoint' ->> 'secretKey') IS NOT DISTINCT FROM ${name(c.aiEndpoint?.secretKey)}`,
+    sql`(${table.config} -> 'mcp' -> 'auth' ->> 'secretKey') IS NOT DISTINCT FROM ${name(c.mcp?.auth?.secretKey)}`,
     sql`(${table.config} -> 'auth' ->> 'secretKey') IS NOT DISTINCT FROM ${name(c.auth?.secretKey)}`,
   );
 }
@@ -255,10 +256,15 @@ export async function updateMonitorHandler(
   if (data.status !== undefined) updateData.status = data.status;
 
   const { providerSync } = options;
+  // Worker-owned keys come from the row at write time, not from the earlier read.
+  const deletedWorkerKeys = workerKeysDroppedByWrite(existingMonitor, { target: updateData.target, config: updateData.config, alertConfig: updateData.alertConfig });
+  const setData = updateData.config === undefined
+    ? (deletedWorkerKeys.length ? { ...updateData, config: configWithoutKeys(monitorTable.config, deletedWorkerKeys) } : updateData)
+    : { ...updateData, config: configKeepingWorkerKeys(updateData.config, monitorTable.config, deletedWorkerKeys) };
   const writeUpdate = async (executor: Pick<typeof db, "update" | "select" | "delete" | "insert">) => {
     const rows = await executor
       .update(monitorTable)
-      .set(updateData) // Use the filtered updateData
+      .set(setData)
       .where(
         options.expectSecretState === undefined
           ? eq(monitorTable.id, monitorId)

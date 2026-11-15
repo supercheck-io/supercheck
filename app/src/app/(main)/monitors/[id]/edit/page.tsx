@@ -10,6 +10,7 @@ import { MonitorFormSkeleton } from "@/components/monitors/monitor-form-skeleton
 import { Monitor } from "@/components/monitors/schema";
 import { PageBreadcrumbs } from "@/components/page-breadcrumbs";
 import { monitorTypes } from "@/components/monitors/data";
+import { mcpFormValues } from "@/components/monitors/mcp-server-fields";
 import { heartbeatFormValues } from "@/components/monitors/heartbeat-format";
 import { heartbeatGraceMinutes } from "@/lib/heartbeat/state";
 import { toast } from "sonner";
@@ -156,6 +157,7 @@ export default function EditMonitorPage({
     "ping_host",
     "port_check",
     "synthetic_test",
+    "mcp_server",
     "heartbeat",
   ] as const;
 
@@ -265,6 +267,11 @@ export default function EditMonitorPage({
     aiConfig_firstTokenTimeoutSeconds:
       typeof monitor.config?.aiEndpoint?.firstTokenTimeoutMs === "number" ? String(monitor.config.aiEndpoint.firstTokenTimeoutMs / 1000) : "",
     aiConfig_timeoutSeconds: monitor.config?.aiEndpoint ? String(monitor.config?.timeoutSeconds ?? 60) : "",
+    aiConfig_warnFirstTokenMs: monitor.config?.aiEndpoint?.warnFirstTokenMs?.toString() || "",
+    aiConfig_warnTotalTokens: monitor.config?.aiEndpoint?.warnTotalTokens?.toString() || "",
+
+    // MCP Monitor
+    ...(formType === "mcp_server" ? mcpFormValues(monitor.config) : {}),
 
     // Port Check specific
     portConfig_port:

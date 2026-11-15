@@ -164,6 +164,18 @@ describe("AlertSettings warnings group (B24)", () => {
     expect(screen.queryByTestId("alert-warnings-group")).toBeNull();
   });
 
+  it("lists the MCP warnings on by default, and the AI endpoint warnings only for the preset", () => {
+    const { rerender } = render(<AlertSettings value={base} monitorType="mcp_server" />);
+    expect(screen.getByLabelText("Tools changed")).toBeChecked();
+    expect(screen.getByLabelText("MCP slow")).toBeChecked();
+    expect(screen.queryByLabelText("Model changed")).toBeNull();
+    rerender(<AlertSettings value={{ ...base, warnings: { mcp_tools_changed: false } }} monitorType="mcp_server" />);
+    expect(screen.getByLabelText("Tools changed")).not.toBeChecked();
+    rerender(<AlertSettings value={base} monitorType="http_request" aiEndpoint />);
+    for (const label of ["Slow first token", "Model changed", "Tokens high"]) expect(screen.getByLabelText(label)).toBeChecked();
+    expect(screen.queryByLabelText("Tools changed")).toBeNull();
+  });
+
   it("emits the toggled warning and keeps the other alert settings", () => {
     const onChange = jest.fn();
     render(<AlertSettings value={base} monitorType="heartbeat" onChange={onChange} />);

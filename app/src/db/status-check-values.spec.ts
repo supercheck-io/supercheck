@@ -45,3 +45,12 @@ describe("check() value lists match the TypeScript constants", () => {
     expect(allowedValues(table, name)).toEqual([...values]);
   });
 });
+
+describe("monitors_type_check lists mcp_server (B1)", () => {
+  it("contains mcp_server and every earlier monitor type", () => {
+    expect(allowedValues(monitors, "monitors_type_check")).toEqual(
+      expect.arrayContaining(["http_request", "website", "ping_host", "port_check", "synthetic_test", "mcp_server"]),
+    );
+    expect(MONITOR_TYPE_VALUES).toContain("mcp_server");
+  });
+});

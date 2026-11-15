@@ -1,3 +1,10 @@
+/** Warning kinds that are on when unset (app/src/lib/alerts/warning-kinds.ts `defaultOn`); every other kind is off. */
+const WARNINGS_ON_BY_DEFAULT = new Set(['mcp_tools_changed', 'mcp_slow', 'ai_slow_first_token', 'ai_model_changed', 'ai_tokens_high'])
+
+export function warningDefault(kind: string): boolean {
+  return WARNINGS_ON_BY_DEFAULT.has(kind)
+}
+
 /**
  * Normalize an alertConfig object by removing server defaults.
  * Mirrors the stripping logic in pull.ts buildMonitorDefinitions/buildJobDefinitions.
@@ -20,9 +27,9 @@ export function normalizeAlertConfig(alert: Record<string, unknown>): Record<str
     delete normalized.notificationProviders
   }
 
-  // Warning kinds are off unless true, so only enabled ones round-trip.
+  // An unset warning takes its kind's default, so only toggles that differ from it round-trip.
   if (normalized.warnings && typeof normalized.warnings === 'object') {
-    const on = Object.entries(normalized.warnings as Record<string, unknown>).filter(([, value]) => value === true)
+    const on = Object.entries(normalized.warnings as Record<string, unknown>).filter(([kind, value]) => typeof value === 'boolean' && value !== warningDefault(kind))
     if (on.length > 0) normalized.warnings = Object.fromEntries(on)
     else delete normalized.warnings
   }

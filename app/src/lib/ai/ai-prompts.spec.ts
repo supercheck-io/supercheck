@@ -184,6 +184,17 @@ describe('AIPromptBuilder', () => {
       expect(prompt).toContain('Current Status: UP');
     });
 
+    it('labels MCP monitors and includes the failure stage of recent results', () => {
+      const prompt = AIPromptBuilder.buildMonitorAnalyzePrompt({
+        monitor: { ...mockMonitor, type: 'mcp_server', url: 'https://mcp.example.com' },
+        stats24h: mockStats24h,
+        stats7d: mockStats7d,
+        recentResults: [{ status: 'down' as const, checkedAt: '2023-01-01T10:00:00Z', mcpFailure: 'required_tool<x>' }],
+      });
+      expect(prompt).toContain('Type: MCP Monitor');
+      expect(prompt).toContain('[MCP failure: required_tool&lt;x&gt;]');
+    });
+
     it('should include 24h and 7d statistics', () => {
       const prompt = AIPromptBuilder.buildMonitorAnalyzePrompt({
         monitor: mockMonitor,

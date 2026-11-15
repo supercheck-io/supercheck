@@ -223,6 +223,7 @@ describe('notification provider resources', () => {
                     sslAlertState: { id: 'w', host: 'example.com', warnedAt: 't' },
                     aggregatedAlertState: { consecutiveFailureCount: 1 },
                     aiEndpointState: { lastServedModel: 'gpt-4o-mini-2024-07-18' },
+                    mcpState: { lastCycleKey: 'c1', baseline: { hash: 'h', tools: [] } },
                   },
                 },
               ],

@@ -24,6 +24,7 @@ jest.mock("@/lib/queue", () => ({ addMonitorExecutionJobToQueue: jest.fn(async (
 jest.mock("@/lib/monitor-scheduler", () => ({
   scheduleMonitor: jest.fn(async () => "schedule-1"),
   deleteScheduledMonitor: jest.fn(async () => true),
+  removeScheduledMonitor: jest.fn(async () => true),
 }));
 import { ResumeRefusedError } from "@/lib/middleware/plan-enforcement";
 import { MonitorTargetChangedError, updateMonitorHandler } from "./monitor-service";
@@ -126,4 +127,33 @@ it("writes a secret-bearing monitor only while its target and secret names are t
       expectSecretState: { target: monitor.target, config: { auth: { type: "bearer", secretKey: "K" } } },
     }),
   ).resolves.toMatchObject({ name: "Renamed" });
+});
+
+it("a config save keeps worker-owned keys written after the app read the row, and drops forged ones", async () => {
+  const { pausedRows } = await seed(0, 1);
+  const id = pausedRows[0].id;
+  // The worker writes a new baseline after the service's read; simulated by a write racing in via the DB.
+  const state = { lastCycleKey: "worker-new", slowEpisodeKey: null, baseline: { hash: "h2", takenAt: "2026-11-15T00:00:00.000Z", tools: [] } };
+  await client`UPDATE monitors SET config = ${JSON.stringify({ method: "GET", mcpState: state })}::jsonb WHERE id = ${id}`;
+  await updateMonitorHandler(id, { config: { method: "POST", mcpState: { lastCycleKey: "forged" }, aggregatedAlertState: { forged: true } } as never });
+  const [row] = await mockDatabase.select().from(schema.monitors).where(eq(schema.monitors.id, id));
+  expect(row.config).toEqual({ method: "POST", mcpState: state });
+});
+
+it("changing an MCP monitor's target or login drops its tool baseline; other edits keep it", async () => {
+  const { pausedRows } = await seed(0, 1);
+  const id = pausedRows[0].id;
+  const state = { lastCycleKey: "c1", baseline: { hash: "h", takenAt: "2026-11-15T00:00:00.000Z", tools: [] } };
+  const mcp = { auth: { type: "bearer", secretKey: "T" } };
+  const reset = () => client`UPDATE monitors SET target = 'https://a.example.com/mcp', config = ${JSON.stringify({ mcp, mcpState: state })}::jsonb WHERE id = ${id}`;
+  const read = async () => (await mockDatabase.select().from(schema.monitors).where(eq(schema.monitors.id, id)))[0];
+  await reset();
+  await updateMonitorHandler(id, { name: "renamed", config: { mcp, timeoutSeconds: 20 } as never });
+  expect((await read()).config).toMatchObject({ mcpState: state });
+  await updateMonitorHandler(id, { target: "https://b.example.com/mcp" });
+  expect(await read()).toMatchObject({ target: "https://b.example.com/mcp", config: { mcp } });
+  expect((await read()).config).not.toHaveProperty("mcpState");
+  await reset();
+  await updateMonitorHandler(id, { config: { mcp: { auth: { type: "bearer", secretKey: "OTHER" } } } as never });
+  expect((await read()).config).not.toHaveProperty("mcpState");
 });

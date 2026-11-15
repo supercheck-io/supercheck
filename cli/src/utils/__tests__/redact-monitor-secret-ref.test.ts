@@ -22,4 +22,16 @@ describe('monitor secret references survive redaction', () => {
     const def = { name: 'API', type: 'http_request', config: { auth: { type: 'bearer', token: 'sk-live', secretKey: 'X' } } }
     expect(redact(def).config.auth).toBe('[REDACTED]')
   })
+
+  it('keeps MCP custom-header and no-login auth', () => {
+    const header = { name: 'MCP', type: 'mcp_server', config: { mcp: { auth: { type: 'header', secretKey: 'MCP_TOKEN', headerName: 'X-Api-Key' } } } }
+    const none = { name: 'MCP', type: 'mcp_server', config: { mcp: { auth: { type: 'none' } } } }
+    expect(redact(header)).toEqual(header)
+    expect(redact(none)).toEqual(none)
+  })
+
+  it('still masks an MCP header auth with an inline value', () => {
+    const out = redact({ name: 'MCP', type: 'mcp_server', config: { mcp: { auth: { type: 'header', headerName: 'X', token: 'v' } } } })
+    expect(out.config.mcp.auth).toBe('[REDACTED]')
+  })
 })

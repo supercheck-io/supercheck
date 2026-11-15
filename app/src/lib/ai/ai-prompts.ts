@@ -88,6 +88,8 @@ export interface MonitorAnalyzePromptContext {
     status: "up" | "down";
     responseTimeMs?: number | null;
     errorMessage?: string;
+    /** MCP Monitor failure stage (details.mcp.failure): connect, auth, list, required_tool, call, assert, timeout, secret. */
+    mcpFailure?: string;
     checkedAt: string;
     location?: string;
   }>;
@@ -796,6 +798,7 @@ EXPLANATION:
         website: "Website Monitor",
         ping_host: "Ping Host Monitor",
         port_check: "Port Check Monitor",
+        mcp_server: "MCP Monitor",
         heartbeat: "Heartbeat Monitor (a scheduled job pings Supercheck; down means a missed or failed run, response time is the run duration)",
       };
       return typeMap[type] || type;
@@ -817,7 +820,7 @@ EXPLANATION:
 
     // Format recent results for context (escape error messages to prevent injection)
     const recentResultsSummary = recentResults.slice(0, 5).map((r) => 
-      `- ${r.checkedAt}: ${r.status.toUpperCase()}${r.responseTimeMs ? ` (${r.responseTimeMs}ms)` : ""}${r.errorMessage ? ` - ${AISecurityService.escapeForPrompt(r.errorMessage.substring(0, 100))}` : ""}${r.location ? ` [${r.location}]` : ""}`
+      `- ${r.checkedAt}: ${r.status.toUpperCase()}${r.responseTimeMs ? ` (${r.responseTimeMs}ms)` : ""}${r.errorMessage ? ` - ${AISecurityService.escapeForPrompt(r.errorMessage.substring(0, 100))}` : ""}${r.mcpFailure ? ` [MCP failure: ${AISecurityService.escapeForPrompt(r.mcpFailure.substring(0, 30))}]` : ""}${r.location ? ` [${r.location}]` : ""}`
     ).join("\n");
 
     // Include HTML report context for synthetic monitors (truncated and escaped)

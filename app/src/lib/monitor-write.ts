@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, sql, type SQL } from "drizzle-orm";
 import { db } from "@/utils/db";
 import { monitorNotificationSettings, monitors, notificationProviders, tests } from "@/db/schema";
 import type { AlertConfig, MonitorConfig } from "@/db/schema";
@@ -12,7 +12,7 @@ import { normalizeWarningToggles } from "@/lib/alerts/warning-kinds";
 import { HEARTBEAT_MAX_INTERVAL_MINUTES } from "@/lib/heartbeat/state";
 
 /** Config keys the worker writes. A client replacing `config` must not wipe or forge them. */
-export const WORKER_OWNED_CONFIG_KEYS = ["aggregatedAlertState", "sslLastCheckedAt", "sslCertificate", "sslProbeFailure", "sslAlertState", "aiEndpointState"] as const;
+export const WORKER_OWNED_CONFIG_KEYS = ["aggregatedAlertState", "sslLastCheckedAt", "sslCertificate", "sslProbeFailure", "sslAlertState", "aiEndpointState", "mcpState"] as const;
 
 export function preserveWorkerConfigKeys<T extends MonitorConfig | null | undefined>(
   existing: MonitorConfig | null | undefined,
@@ -26,6 +26,55 @@ export function preserveWorkerConfigKeys<T extends MonitorConfig | null | undefi
     else merged[key] = stored;
   }
   return merged as T;
+}
+
+/**
+ * SQL value for `monitors.config` on update: the client's config, with every worker-owned key taken from the row's
+ * CURRENT value inside the UPDATE itself (a client-sent copy is removed first; a key absent in the row stays absent).
+ * preserveWorkerConfigKeys works from an earlier read, so a worker write in between would otherwise be undone.
+ * `except` names keys deliberately deleted by this write (the stale SSL notice), which must not be restored.
+ * Keys are a closed literal list, so interpolating them is safe.
+ */
+export function configKeepingWorkerKeys(config: unknown, configColumn: unknown, except: readonly string[] = []): SQL {
+  const keys = WORKER_OWNED_CONFIG_KEYS.filter((k) => !except.includes(k));
+  const list = sql.raw(keys.map((k) => `'${k}'`).join(", "));
+  const all = sql.raw(WORKER_OWNED_CONFIG_KEYS.map((k) => `'${k}'`).join(", "));
+  const col = configColumn as SQL;
+  return sql`((${JSON.stringify(config ?? {})}::jsonb) - ARRAY[${all}]::text[]) || coalesce((select jsonb_object_agg(e.key, e.value) from jsonb_each(coalesce(${col}, '{}'::jsonb)) e where e.key in (${list})), '{}'::jsonb)`;
+}
+
+/** The `config` SET value for a write that does not replace config but must still drop worker keys (a target-only change). */
+export function configWithoutKeys(configColumn: unknown, keys: readonly string[]): SQL {
+  return sql`${configColumn as SQL} - ARRAY[${sql.raw(keys.map((k) => `'${k}'`).join(", "))}]::text[]`;
+}
+
+/**
+ * Worker-owned keys this write deliberately deletes instead of keeping from the row: the stale SSL notice, and the
+ * MCP tool baseline when the server (target) or its login changes, so the first check on the new server is a fresh
+ * baseline and history does not mix servers. `config` is the config being written (undefined: not replaced).
+ */
+export function workerKeysDroppedByWrite(
+  stored: { target?: string | null; config?: unknown; alertConfig?: unknown } | null | undefined,
+  next: { target?: string | null; config?: unknown; alertConfig?: unknown },
+): string[] {
+  // Decided from the saved settings, never from whether the earlier read had the key: the worker may write it
+  // between that read and this update.
+  const dropped: string[] = [];
+  const storedConfig = (stored?.config ?? {}) as Record<string, unknown>;
+  const nextConfig = next.config as Record<string, unknown> | undefined;
+  if (nextConfig) {
+    const alerts = (next.alertConfig === undefined ? stored?.alertConfig : next.alertConfig) as { enabled?: boolean; alertOnSslExpiration?: boolean } | null | undefined;
+    const sslAlertsOn = nextConfig.enableSslCheck === true && alerts?.enabled === true && alerts.alertOnSslExpiration === true;
+    if (!sslAlertsOn) dropped.push("sslAlertState");
+  }
+  const auth = (c: unknown) => {
+    const a = (c as { mcp?: { auth?: Record<string, unknown> } } | undefined)?.mcp?.auth;
+    return JSON.stringify([a?.type, a?.secretKey, a?.headerName]);
+  };
+  const targetChanged = next.target != null && next.target !== stored?.target;
+  const authChanged = nextConfig !== undefined && auth(nextConfig) !== auth(storedConfig);
+  if (targetChanged || authChanged) dropped.push("mcpState");
+  return dropped;
 }
 
 /**
@@ -105,6 +154,28 @@ export function normalizeMonitorAlertConfig(
       ...(warnings ? { warnings } : {}),
     },
   };
+}
+
+/** Create-time alert defaults for MCP monitors: page after 2 failures, open a sev2 incident, auto-resolve. */
+export function withMcpAlertDefaults(type: unknown, raw: Raw): Raw {
+  if (type !== "mcp_server") return raw;
+  return {
+    ...raw,
+    failureThreshold: raw.failureThreshold ?? 2,
+    incidentSeverity: raw.incidentSeverity || "sev2",
+    incidentEnabled: raw.incidentEnabled ?? true,
+    autoResolveIncident: raw.autoResolveIncident ?? true,
+  };
+}
+
+/** Audit trail records an MCP endpoint as its host only: the path can identify a tenant or carry a key. */
+export function monitorAuditTarget(type: unknown, target: string | null | undefined): string | null | undefined {
+  if (type !== "mcp_server" || !target) return target;
+  try {
+    return new URL(target.trim()).host;
+  } catch {
+    return null;
+  }
 }
 
 /**

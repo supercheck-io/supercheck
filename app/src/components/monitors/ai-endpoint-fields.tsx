@@ -24,6 +24,8 @@ type AiFormFields = {
   aiConfig_maxTokens?: string;
   aiConfig_firstTokenTimeoutSeconds?: string;
   aiConfig_timeoutSeconds?: string;
+  aiConfig_warnFirstTokenMs?: string;
+  aiConfig_warnTotalTokens?: string;
 };
 
 /** Field errors for the AI endpoint preset; mirrors the limits the API enforces. */
@@ -44,6 +46,8 @@ export function addAiEndpointIssues(data: AiFormFields, ctx: z.RefinementCtx) {
     issue("aiConfig_firstTokenTimeoutSeconds", "Enter a number of seconds from 0.5 to 60");
   }
   if (!intInRange(data.aiConfig_timeoutSeconds, 5, 120)) issue("aiConfig_timeoutSeconds", "Enter a whole number from 5 to 120");
+  if (!intInRange(data.aiConfig_warnFirstTokenMs, 100, 60000)) issue("aiConfig_warnFirstTokenMs", "Enter a whole number from 100 to 60000");
+  if (!intInRange(data.aiConfig_warnTotalTokens, 1, 1_000_000)) issue("aiConfig_warnTotalTokens", "Enter a whole number from 1 to 1000000");
   const total = Number(data.aiConfig_timeoutSeconds || 60);
   if (total > parseInt(data.interval, 10)) issue("aiConfig_timeoutSeconds", "The total time limit cannot exceed the check interval");
   if (firstTokenText && Number(firstTokenText) > total) {
@@ -86,6 +90,8 @@ export function buildAiEndpointConfig(data: MonitorFormData): Record<string, unk
   // The form takes seconds; the API stores milliseconds.
   const firstTokenSeconds = num(data.aiConfig_firstTokenTimeoutSeconds);
   aiEndpoint.firstTokenTimeoutMs = firstTokenSeconds === undefined ? undefined : Math.round(firstTokenSeconds * 1000);
+  aiEndpoint.warnFirstTokenMs = num(data.aiConfig_warnFirstTokenMs as string | undefined);
+  aiEndpoint.warnTotalTokens = num(data.aiConfig_warnTotalTokens as string | undefined);
   for (const key of Object.keys(aiEndpoint)) if (aiEndpoint[key] === undefined) delete aiEndpoint[key];
   return { aiEndpoint, timeoutSeconds: num(data.aiConfig_timeoutSeconds) ?? 60 };
 }
@@ -234,6 +240,35 @@ export function AiEndpointFields({ form, projectId, locationCount }: AiEndpointF
               <FormLabel>Total time limit (seconds)</FormLabel>
               <FormControl>
                 <Input inputMode="numeric" placeholder="60" data-testid="ai-total-limit" {...field} value={field.value ?? ""} />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <FormField
+          control={form.control}
+          name="aiConfig_warnFirstTokenMs"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Warn when first token is slower than (ms)</FormLabel>
+              <FormControl>
+                <Input inputMode="numeric" placeholder="Optional, e.g. 3000" data-testid="ai-warn-first-token" {...field} value={field.value ?? ""} />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+        <FormField
+          control={form.control}
+          name="aiConfig_warnTotalTokens"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Warn when a call uses more tokens than</FormLabel>
+              <FormControl>
+                <Input inputMode="numeric" placeholder="Optional, e.g. 500" data-testid="ai-warn-total-tokens" {...field} value={field.value ?? ""} />
               </FormControl>
               <FormMessage />
             </FormItem>

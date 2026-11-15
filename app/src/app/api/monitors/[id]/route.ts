@@ -47,7 +47,11 @@ import {
   monitorTypeChangeError,
   monitorNameError,
   normalizeMonitorAlertConfig,
+  monitorAuditTarget,
   preserveWorkerConfigKeys,
+  configKeepingWorkerKeys,
+  configWithoutKeys,
+  workerKeysDroppedByWrite,
   SCHEDULE_FAILURE_MESSAGE,
   sanitizeMonitorFields,
   scheduleOutOfSync,
@@ -416,10 +420,24 @@ export async function PUT(
 
     let updatedMonitor;
     try {
+      const mcpDropped = updatePayload.config ? [] : workerKeysDroppedByWrite(currentMonitor, { target: updatePayload.target });
       const writeMonitor = async (tx: Parameters<Parameters<typeof db.transaction>[0]>[0]) => {
         const [updated] = await tx
           .update(monitors)
-          .set(updatePayload)
+          .set(
+            updatePayload.config
+              ? {
+                  ...updatePayload,
+                  config: configKeepingWorkerKeys(
+                    updatePayload.config,
+                    monitors.config,
+                    workerKeysDroppedByWrite(currentMonitor, { target: updatePayload.target, config: updatePayload.config, alertConfig: updatePayload.alertConfig }),
+                  ),
+                }
+              : mcpDropped.length
+                ? { ...updatePayload, config: configWithoutKeys(monitors.config, mcpDropped) }
+                : updatePayload,
+          )
           .where(
             and(
               eq(monitors.id, id),
@@ -532,7 +550,7 @@ export async function PUT(
         ...secretRefs.audit,
         monitorName: updatedMonitor.name,
         monitorType: updatedMonitor.type,
-        target: updatedMonitor.target,
+        target: monitorAuditTarget(updatedMonitor.type, updatedMonitor.target),
         frequencyMinutes: updatedMonitor.frequencyMinutes,
         enabled: updatedMonitor.enabled,
         projectId: updatedMonitor.projectId,

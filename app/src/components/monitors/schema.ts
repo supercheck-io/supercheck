@@ -15,6 +15,7 @@ export const monitorSchema = z.object({
     "ping_host",
     "port_check",
     "synthetic_test",
+    "mcp_server",
     "heartbeat",
   ]).default("http_request"),
   target: z.string(), // URL, IP, domain, etc.

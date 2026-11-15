@@ -18,11 +18,11 @@ function hostOf(target: unknown): string | null {
   }
 }
 
-/** Secret names a monitor config refers to (AI endpoint key, bearer token or basic password). */
+/** Secret names a monitor config refers to (AI endpoint key, MCP login, bearer token or basic password). */
 export function monitorSecretNames(config: unknown): string[] {
   if (!config || typeof config !== "object") return [];
-  const c = config as { aiEndpoint?: { secretKey?: unknown }; auth?: { secretKey?: unknown } };
-  return [c.aiEndpoint?.secretKey, c.auth?.secretKey].filter((n): n is string => typeof n === "string" && n !== "");
+  const c = config as { aiEndpoint?: { secretKey?: unknown }; mcp?: { auth?: { secretKey?: unknown } }; auth?: { secretKey?: unknown } };
+  return [c.aiEndpoint?.secretKey, c.mcp?.auth?.secretKey, c.auth?.secretKey].filter((n): n is string => typeof n === "string" && n !== "");
 }
 
 /**

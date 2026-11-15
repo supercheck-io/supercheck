@@ -142,7 +142,7 @@ const comparisonFeatures: { category: string; description: string; icon: LucideI
             { name: 'Queued runs', plus: `${Number(catalog.plus.limits.queuedCapacity).toLocaleString("en-US")}`, pro: `${Number(catalog.pro.limits.queuedCapacity).toLocaleString("en-US")}`, enterprise: CUSTOM },
             { name: 'Minimum check interval', plus: '1 minute', pro: '1 minute', enterprise: CUSTOM },
             { name: 'Minimum synthetic check interval', plus: `${catalog.syntheticMinIntervalMinutes} minutes`, pro: `${catalog.syntheticMinIntervalMinutes} minutes`, enterprise: CUSTOM },
-            { name: 'HTTP, SSL, ping and port monitoring locations', plus: 'Europe, North America, Asia Pacific', pro: 'Europe, North America, Asia Pacific', enterprise: CUSTOM },
+            { name: 'HTTP, SSL, ping, port and MCP monitoring locations', plus: 'Europe, North America, Asia Pacific', pro: 'Europe, North America, Asia Pacific', enterprise: CUSTOM },
             { name: 'Browser checks, Playwright tests and k6 execution', plus: 'Europe', pro: 'Europe', enterprise: CUSTOM },
         ]
     },

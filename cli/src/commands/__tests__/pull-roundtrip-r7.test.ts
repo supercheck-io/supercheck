@@ -17,6 +17,15 @@ describe('pull round trip', () => {
     expect(def.config).toEqual({ timeoutSeconds: 10 })
   })
 
+  it('pulls an MCP monitor with config.mcp intact and mcpState dropped', () => {
+    const mcp = { auth: { type: 'bearer', secretKey: 'MCP_TOKEN' }, requiredTools: ['search_docs'], slowMs: 3000 }
+    const [def] = buildMonitorDefinitions([{
+      id: 'm', name: 'MCP', type: 'mcp_server', target: 'https://mcp.example.com/mcp',
+      config: { timeoutSeconds: 30, mcp, mcpState: { lastCycleKey: 'c1', baseline: { hash: 'h', tools: [] } } },
+    } as never])
+    expect(def.config).toEqual({ timeoutSeconds: 30, mcp })
+  })
+
   it('warns when a pulled job cron is not 5 fields', () => {
     mockWarn.mockClear()
     buildJobDefinitions([{ id: 'j', name: 'Every second', cronSchedule: '* * * * * *', tests: [] } as never], new Map())

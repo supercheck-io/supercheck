@@ -24,6 +24,14 @@ interface MonitorTableMeta {
   // Include other potential properties from the base TableMeta if needed
 }
 
+function safeHost(target: string | undefined): string | null {
+  try {
+    return target ? new URL(target).host : null;
+  } catch {
+    return null;
+  }
+}
+
 export const columns: ColumnDef<Monitor>[] = [
   {
     accessorKey: "id",
@@ -82,11 +90,13 @@ export const columns: ColumnDef<Monitor>[] = [
       const legacyUrl = row.original.url as string; // Fallback for legacy data
 
       // A heartbeat has no target; show its schedule instead ("Every 1 h, grace 10 min").
+      // An MCP server URL often carries a long path; the host is what identifies the server.
       const { type, frequencyMinutes, config } = row.original;
+      const mcpHost = type === "mcp_server" ? safeHost(target) : null;
       const displayValue =
         type === "heartbeat"
           ? heartbeatScheduleLabel(frequencyMinutes, heartbeatGraceMinutes({ frequencyMinutes, config }))
-          : maskUrlPassword(target || legacyUrl || "—");
+          : mcpHost ?? maskUrlPassword(target || legacyUrl || "—");
 
       return (
         <TruncatedTextWithTooltip

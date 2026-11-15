@@ -30,6 +30,23 @@ describe("buildAiEndpointConfig", () => {
   });
 });
 
+describe("AI warning limits", () => {
+  const issuesFor = (extra: Record<string, string>) => {
+    const found: string[] = [];
+    addAiEndpointIssues({ interval: "300", aiConfig_model: "m", aiConfig_noKey: true, ...extra }, { addIssue: (i: { path: (string | number)[] }) => found.push(String(i.path[0])) } as never);
+    return found;
+  };
+  it("builds and validates the optional warning fields", () => {
+    expect(buildAiEndpointConfig({ ...base, aiConfig_model: "m", aiConfig_noKey: true, aiConfig_warnFirstTokenMs: "3000", aiConfig_warnTotalTokens: "500" })).toEqual({
+      aiEndpoint: { model: "m", warnFirstTokenMs: 3000, warnTotalTokens: 500 },
+      timeoutSeconds: 60,
+    });
+    expect(issuesFor({})).toEqual([]);
+    expect(issuesFor({ aiConfig_warnFirstTokenMs: "99" })).toEqual(["aiConfig_warnFirstTokenMs"]);
+    expect(issuesFor({ aiConfig_warnTotalTokens: "0" })).toEqual(["aiConfig_warnTotalTokens"]);
+  });
+});
+
 describe("SecretPicker", () => {
   const props = { projectId: "p1", value: undefined, onChange: jest.fn(), testId: "pick", label: "Key secret" };
   const state = (over: Partial<typeof hookState>) => (hookState = { isLoading: false, isError: false, isFetching: false, refetch: jest.fn(), ...over });

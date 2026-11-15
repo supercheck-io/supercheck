@@ -6,6 +6,8 @@ jest.mock("@/utils/db", () => ({
   },
 }));
 jest.mock("@/lib/monitor-schedule-reconcile", () => ({ reconcileMonitorSchedule: jest.fn().mockResolvedValue(undefined) }));
+// The SQL merge of worker keys is covered in monitor-write.spec.ts and monitor-service.db.spec.ts; here the written config is inspected as an object.
+jest.mock("@/lib/monitor-write", () => ({ ...jest.requireActual("@/lib/monitor-write"), configKeepingWorkerKeys: (config: unknown) => config }));
 jest.mock("@/lib/queue", () => ({ addMonitorExecutionJobToQueue: jest.fn() }));
 jest.mock("@/lib/monitor-scheduler", () => ({
   scheduleMonitor: jest.fn(),

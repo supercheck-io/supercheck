@@ -11,7 +11,7 @@ import { z } from 'zod'
 const HEARTBEAT_MAX_INTERVAL_MINUTES = 44640
 const HEARTBEAT_MAX_GRACE_MINUTES = 1440
 
-const VALID_MONITOR_TYPES = ['http_request', 'website', 'ping_host', 'port_check', 'synthetic_test', 'heartbeat'] as const
+const VALID_MONITOR_TYPES = ['http_request', 'website', 'ping_host', 'port_check', 'synthetic_test', 'heartbeat', 'mcp_server'] as const
 const DURATION_UNITS: Record<string, number> = { m: 1, h: 60, d: 1440 }
 
 /** `5m`, `1h`, `1d` (or bare minutes) to whole minutes, within the server's limits. */
@@ -67,6 +67,14 @@ function normalizeHttpMethod(value: string): string {
 }
 
 function validateMonitorTarget(target: string, type?: string): void {
+  if (type === 'mcp_server') {
+    try {
+      const url = new URL(target)
+      // http is allowed through: the server accepts it only on self-hosted installs with internal targets on.
+      if (!['https:', 'http:'].includes(url.protocol) || url.username || url.password || url.hash) throw new Error('url')
+    } catch { throw new CLIError('--url must be an http(s) URL with no credentials or fragment for mcp_server.', ExitCode.ConfigError) }
+    return
+  }
   if (!type || ['http_request', 'website'].includes(type)) {
     try {
       if (!['http:', 'https:'].includes(new URL(target).protocol)) throw new Error('protocol')
@@ -221,11 +229,11 @@ monitorCommand
     outputDetail(statusInfo)
   })
 
-const AI_PRESET_ONLY = ['model', 'secret', 'keyHeader', 'prompt', 'expect', 'maxTokens', 'firstTokenTimeout'] as const
+const AI_PRESET_ONLY = ['model', 'secret', 'keyHeader', 'prompt', 'expect', 'maxTokens', 'firstTokenTimeout', 'warnFirstTokenMs', 'warnTokens'] as const
 const flagName = (key: string) => `--${key.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`)}`
 
 /** `--preset ai-endpoint`: the request is built by the worker from these fields, so method/headers/body are not sent. */
-export function buildAiEndpointPreset(options: { preset?: string; model?: string; secret?: string; keyHeader?: string; prompt?: string; expect?: string; maxTokens?: string; firstTokenTimeout?: string; method?: string }, monitorType: string): Record<string, unknown> | undefined {
+export function buildAiEndpointPreset(options: { preset?: string; model?: string; secret?: string; keyHeader?: string; prompt?: string; expect?: string; maxTokens?: string; firstTokenTimeout?: string; warnFirstTokenMs?: string; warnTokens?: string; method?: string }, monitorType: string): Record<string, unknown> | undefined {
   if (options.preset === undefined) {
     const stray = AI_PRESET_ONLY.find((key) => options[key] !== undefined)
     if (stray) throw new CLIError(`${flagName(stray)} requires --preset ai-endpoint.`, ExitCode.ConfigError)
@@ -244,6 +252,43 @@ export function buildAiEndpointPreset(options: { preset?: string; model?: string
     ...(options.expect ? { expectText: options.expect } : {}),
     ...(options.maxTokens !== undefined ? { maxTokens: parseIntStrict(options.maxTokens, '--max-tokens', { min: 1, max: 512 }) } : {}),
     ...(options.firstTokenTimeout !== undefined ? { firstTokenTimeoutMs: parseIntStrict(options.firstTokenTimeout, '--first-token-timeout', { min: 500, max: 60000 }) } : {}),
+    ...(options.warnFirstTokenMs !== undefined ? { warnFirstTokenMs: parseIntStrict(options.warnFirstTokenMs, '--warn-first-token-ms', { min: 100, max: 60000 }) } : {}),
+    ...(options.warnTokens !== undefined ? { warnTotalTokens: parseIntStrict(options.warnTokens, '--warn-tokens', { min: 1, max: 1000000 }) } : {}),
+  }
+}
+
+const MCP_ONLY = ['header', 'requireTool', 'callTool', 'callArgs', 'slowMs'] as const
+const collect = (value: string, previous: string[] = []) => [...previous, value]
+
+interface McpOptions { secret?: string; header?: string; protocol?: string; requireTool?: string[]; callTool?: string; callArgs?: string; expect?: string; slowMs?: string }
+
+/** `--type mcp_server`: login comes from a project secret (name only); `--header` switches bearer to a custom header. */
+export function buildMcpConfig(options: McpOptions & { protocol?: string }, monitorType: string): Record<string, unknown> | undefined {
+  if (monitorType !== 'mcp_server') {
+    const stray = MCP_ONLY.find((key) => options[key] !== undefined)
+    if (stray) throw new CLIError(`${flagName(stray)} requires --type mcp_server.`, ExitCode.ConfigError)
+    return undefined
+  }
+  if (options.header !== undefined && !options.secret) throw new CLIError('--header requires --secret.', ExitCode.ConfigError)
+  if (options.protocol !== undefined && !['auto', '2025', '2026'].includes(options.protocol)) throw new CLIError('--protocol must be auto, 2025 or 2026 for mcp_server.', ExitCode.ConfigError)
+  if ((options.callArgs !== undefined || options.expect !== undefined) && !options.callTool) throw new CLIError('--call-args and --expect require --call-tool.', ExitCode.ConfigError)
+  let args: Record<string, unknown> | undefined
+  if (options.callArgs !== undefined) {
+    try {
+      const parsed: unknown = JSON.parse(options.callArgs)
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('object')
+      args = parsed as Record<string, unknown>
+    } catch { throw new CLIError('--call-args must be a JSON object.', ExitCode.ConfigError) }
+  }
+  const auth = !options.secret ? { type: 'none' }
+    : options.header ? { type: 'header', secretKey: options.secret, headerName: options.header }
+    : { type: 'bearer', secretKey: options.secret }
+  return {
+    auth,
+    ...(options.protocol ? { protocol: options.protocol } : {}),
+    ...(options.requireTool?.length ? { requiredTools: options.requireTool } : {}),
+    ...(options.callTool ? { toolCall: { name: options.callTool, ...(args ? { arguments: args } : {}), ...(options.expect ? { expectText: options.expect } : {}) } } : {}),
+    ...(options.slowMs !== undefined ? { slowMs: parseIntStrict(options.slowMs, '--slow-ms', { min: 100, max: 60000 }) } : {}),
   }
 }
 
@@ -252,7 +297,7 @@ monitorCommand
   .description('Create a new monitor')
   .requiredOption('--name <name>', 'Monitor name')
   .option('--url <url>', 'URL or hostname to monitor (required except for synthetic tests)')
-  .option('--type <type>', 'Monitor type (http_request, website, ping_host, port_check, synthetic_test, heartbeat)', 'http_request')
+  .option('--type <type>', 'Monitor type (http_request, website, ping_host, port_check, synthetic_test, heartbeat, mcp_server)', 'http_request')
   .option('--interval-minutes <minutes>', 'Check interval in minutes (1-1440)', '5')
   .option('--every <duration>', 'Heartbeat: expected ping interval, e.g. 5m, 1h, 1d (up to 31d)')
   .option('--grace <duration>', 'Heartbeat: how late a ping may be before the monitor goes down, e.g. 10m (up to 1d)')
@@ -261,7 +306,7 @@ monitorCommand
   .option('--method <method>', 'HTTP method (GET, POST, PUT, DELETE, PATCH, HEAD, OPTIONS; default GET)')
   .option('--test-id <id>', 'Test UUID (required for synthetic_test)')
   .option('--port <port>', 'Port number (required for port_check)')
-  .option('--protocol <protocol>', 'Port check protocol (tcp or udp)', 'tcp')
+  .option('--protocol <protocol>', 'Port check protocol (tcp or udp, default tcp) or MCP protocol (auto, 2025, 2026; default auto)')
   .option('--preset <preset>', 'Request preset for http_request: ai-endpoint (OpenAI-compatible chat completions)')
   .option('--model <model>', 'Model name (ai-endpoint preset)')
   .option('--secret <name>', 'Project secret that holds the API key (ai-endpoint preset); omit to send no key')
@@ -270,14 +315,22 @@ monitorCommand
   .option('--expect <text>', 'Text the reply must contain (ai-endpoint preset)')
   .option('--max-tokens <n>', 'Token limit for the reply, 1-512 (ai-endpoint preset; reasoning models need more, e.g. 256)')
   .option('--first-token-timeout <ms>', 'Slower first token fails the check, 500-60000 ms (ai-endpoint preset)')
+  .option('--warn-first-token-ms <ms>', 'Warn when the first token is slower than this for 3 checks in a row, 100-60000 ms (ai-endpoint preset)')
+  .option('--warn-tokens <n>', 'Warn when a reply uses more than this many tokens (ai-endpoint preset)')
+  .option('--header <name>', 'Send the secret in this header instead of as a bearer token (mcp_server; needs --secret)')
+  .option('--require-tool <name>', 'Tool the server must list; repeat for several (mcp_server)', collect)
+  .option('--call-tool <name>', 'Call this tool on every check; pick a read-only one (mcp_server)')
+  .option('--call-args <json>', 'JSON object of arguments for --call-tool (mcp_server)')
+  .option('--slow-ms <ms>', 'Warn when a check is slower than this for 3 checks in a row, 100-60000 ms (mcp_server)')
   .option('--dry-run', 'Show what would be sent without creating')
-  .action(async (options: { name: string; url?: string; type: string; intervalMinutes: string; interval?: string; timeout?: string; method?: string; testId?: string; port?: string; protocol: string; dryRun?: boolean; preset?: string; model?: string; secret?: string; keyHeader?: string; prompt?: string; expect?: string; maxTokens?: string; firstTokenTimeout?: string; every?: string; grace?: string }) => {
+  .action(async (options: { name: string; url?: string; type: string; intervalMinutes: string; interval?: string; timeout?: string; method?: string; testId?: string; port?: string; protocol?: string; dryRun?: boolean; preset?: string; model?: string; secret?: string; keyHeader?: string; prompt?: string; expect?: string; maxTokens?: string; firstTokenTimeout?: string; warnFirstTokenMs?: string; warnTokens?: string; header?: string; requireTool?: string[]; callTool?: string; callArgs?: string; slowMs?: string; every?: string; grace?: string }) => {
     const client = createAuthenticatedClient()
     const monitorType = normalizeMonitorType(options.type)
     if (monitorType === 'heartbeat') {
       if (options.url !== undefined) throw new CLIError('--url is not used by heartbeat monitors; your job calls the ping URL instead.', ExitCode.ConfigError)
       if (!options.every) throw new CLIError('--every is required for heartbeat monitors (e.g. --every 1h).', ExitCode.ConfigError)
       buildAiEndpointPreset(options, monitorType)
+      buildMcpConfig(options, monitorType)
       const graceMinutes = options.grace !== undefined ? parseDurationMinutes(options.grace, '--grace', HEARTBEAT_MAX_GRACE_MINUTES) : undefined
       const body: Record<string, unknown> = {
         name: options.name,
@@ -297,7 +350,9 @@ monitorCommand
       return
     }
     if (options.every !== undefined || options.grace !== undefined) throw new CLIError('--every and --grace apply only to --type heartbeat.', ExitCode.ConfigError)
-    const aiEndpoint = buildAiEndpointPreset(options, monitorType)
+    // --secret and --expect are shared with the MCP flags, so they are not AI-preset strays for mcp_server.
+    const aiEndpoint = buildAiEndpointPreset(monitorType === 'mcp_server' ? { ...options, secret: undefined, expect: undefined } : options, monitorType)
+    const mcp = buildMcpConfig(options, monitorType)
     const method = normalizeHttpMethod(options.method ?? 'GET')
     if (monitorType !== 'synthetic_test' && !options.url) {
       throw new CLIError('--url is required for this monitor type.', ExitCode.ConfigError)
@@ -309,7 +364,8 @@ monitorCommand
     if (monitorType === 'port_check' && !options.port) {
       throw new CLIError('--port is required for port_check.', ExitCode.ConfigError)
     }
-    if (monitorType === 'port_check' && !['tcp', 'udp'].includes(options.protocol)) {
+    const portProtocol = options.protocol ?? 'tcp'
+    if (monitorType === 'port_check' && !['tcp', 'udp'].includes(portProtocol)) {
       throw new CLIError('--protocol must be tcp or udp.', ExitCode.ConfigError)
     }
 
@@ -333,14 +389,17 @@ monitorCommand
       target: options.url ?? '',
       type: monitorType,
       frequencyMinutes,
-      config: aiEndpoint ? {
+      config: mcp ? {
+        timeoutSeconds: parseIntStrict(options.timeout ?? '30', '--timeout', { min: 5, max: 60 }),
+        mcp,
+      } : aiEndpoint ? {
         timeoutSeconds: parseIntStrict(options.timeout ?? '60', '--timeout', { min: 5, max: 120 }),
         aiEndpoint,
       } : {
         timeoutSeconds: parseIntStrict(options.timeout ?? '30', '--timeout', { min: 1, max: 3600 }),
         method,
         ...(monitorType === 'synthetic_test' ? { testId: options.testId } : {}),
-        ...(monitorType === 'port_check' ? { port: parseIntStrict(options.port!, '--port', { min: 1, max: 65535 }), protocol: options.protocol } : {}),
+        ...(monitorType === 'port_check' ? { port: parseIntStrict(options.port!, '--port', { min: 1, max: 65535 }), protocol: portProtocol } : {}),
       },
     }
 

@@ -23,7 +23,7 @@ export interface Monitor {
   id: string;
   name: string;
   description?: string | null;
-  type: "http_request" | "website" | "ping_host" | "port_check" | "synthetic_test" | "heartbeat";
+  type: "http_request" | "website" | "ping_host" | "port_check" | "synthetic_test" | "heartbeat" | "mcp_server";
   target: string;
   frequencyMinutes: number;
   enabled: boolean;

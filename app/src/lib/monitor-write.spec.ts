@@ -1,4 +1,6 @@
 jest.mock("@/utils/db", () => ({ db: {} }));
+import { PgDialect } from "drizzle-orm/pg-core";
+import { monitors } from "@/db/schema";
 import {
   AlertConfigConflictError,
   enabledAlertConfigError,
@@ -11,6 +13,11 @@ import {
   mergePatch,
   preserveWorkerConfigKeys,
   WORKER_OWNED_CONFIG_KEYS,
+  configKeepingWorkerKeys,
+  configWithoutKeys,
+  workerKeysDroppedByWrite,
+  monitorAuditTarget,
+  withMcpAlertDefaults,
   mirrorProviderRowsToAlertConfig,
   monitorNameError,
   normalizeMonitorAlertConfig,
@@ -249,6 +256,96 @@ describe("aiEndpointState is worker-owned", () => {
   });
 });
 
+describe("mcpState is worker-owned", () => {
+  it("is never accepted from a client and is preserved on update", () => {
+    expect(WORKER_OWNED_CONFIG_KEYS).toContain("mcpState");
+    const stored = { mcpState: { detectedProtocol: "2026" as const, lastCycleKey: "c1" } };
+    const merged = preserveWorkerConfigKeys(stored, { mcp: { auth: { type: "none" as const } }, mcpState: { detectedProtocol: "2025" as const } });
+    expect(merged).toEqual({ mcp: { auth: { type: "none" } }, mcpState: { detectedProtocol: "2026", lastCycleKey: "c1" } });
+    expect(preserveWorkerConfigKeys(null, { mcpState: { lastCycleKey: "forged" } })).toEqual({});
+    expect(preserveWorkerConfigKeys({}, { mcpState: { lastCycleKey: "forged" } })).toEqual({});
+  });
+});
+
+describe("withMcpAlertDefaults", () => {
+  it("fills failureThreshold 2, sev2 and incident flags for mcp_server only when unset", () => {
+    const value = (raw: Record<string, unknown>) => {
+      const r = normalizeMonitorAlertConfig(withMcpAlertDefaults("mcp_server", raw));
+      if (!r.ok) throw new Error(r.error);
+      return r.value;
+    };
+    expect(value({ enabled: true })).toMatchObject({ failureThreshold: 2, incidentSeverity: "sev2", incidentEnabled: true, autoResolveIncident: true });
+    expect(value({ failureThreshold: 4, incidentSeverity: "sev3", incidentEnabled: false, autoResolveIncident: false })).toMatchObject({
+      failureThreshold: 4, incidentSeverity: "sev3", incidentEnabled: false, autoResolveIncident: false,
+    });
+    expect(value({ failureThreshold: null, incidentSeverity: "" })).toMatchObject({ failureThreshold: 2, incidentSeverity: "sev2" });
+  });
+  it("leaves other monitor types untouched", () => {
+    const raw = { enabled: true };
+    expect(withMcpAlertDefaults("http_request", raw)).toBe(raw);
+  });
+});
+
+describe("monitorAuditTarget", () => {
+  it("logs an MCP endpoint as its host only", () => {
+    expect(monitorAuditTarget("mcp_server", "https://mcp.example.com:8443/t/abc123/mcp?x=1")).toBe("mcp.example.com:8443");
+    expect(monitorAuditTarget("mcp_server", "not a url")).toBeNull();
+    expect(monitorAuditTarget("mcp_server", undefined)).toBeUndefined();
+    expect(monitorAuditTarget("http_request", "https://a.example.com/p")).toBe("https://a.example.com/p");
+  });
+});
+
+describe("configKeepingWorkerKeys", () => {
+  const render = (config: unknown, except: string[] = []) => new PgDialect().sqlToQuery(configKeepingWorkerKeys(config, monitors.config, except));
+  it("strips every client-sent worker key and re-adds each one from the row's current config", () => {
+    const { sql, params } = render({ method: "GET", mcpState: { lastCycleKey: "forged" } });
+    expect(params).toEqual([JSON.stringify({ method: "GET", mcpState: { lastCycleKey: "forged" } })]);
+    for (const key of WORKER_OWNED_CONFIG_KEYS) {
+      expect(sql.match(new RegExp(`'${key}'`, "g"))).toHaveLength(2); // once in the strip list, once in the keep list
+    }
+    expect(sql).toContain('jsonb_each(coalesce("monitors"."config"');
+    expect(sql).not.toContain("jsonb_strip_nulls");
+  });
+  it("does not restore a key this write deliberately deletes", () => {
+    const { sql } = render({}, ["sslAlertState"]);
+    expect(sql.match(/'sslAlertState'/g)).toHaveLength(1); // stripped only
+  });
+});
+
+describe("workerKeysDroppedByWrite", () => {
+  const stored = { target: "https://a.example.com/mcp", config: { mcpState: { lastCycleKey: "c" }, mcp: { auth: { type: "bearer", secretKey: "T" } } } };
+  const mcpDropped = (s: Parameters<typeof workerKeysDroppedByWrite>[0], n: Parameters<typeof workerKeysDroppedByWrite>[1]) =>
+    workerKeysDroppedByWrite(s, n).includes("mcpState");
+  it("drops mcpState when the target changes, with or without a config", () => {
+    expect(workerKeysDroppedByWrite(stored, { target: "https://b.example.com/mcp" })).toEqual(["mcpState"]);
+    expect(mcpDropped(stored, { target: "https://b.example.com/mcp", config: stored.config })).toBe(true);
+  });
+  it.each([
+    [{ type: "bearer", secretKey: "OTHER" }],
+    [{ type: "header", secretKey: "T", headerName: "X-Key" }],
+    [{ type: "none" }],
+  ])("drops mcpState when the login changes to %j", (auth) => {
+    expect(mcpDropped(stored, { config: { mcp: { auth } } })).toBe(true);
+  });
+  it("drops mcpState on a target change even when the earlier read had none (the worker may write it meanwhile)", () => {
+    expect(mcpDropped({ target: "a", config: {} }, { target: "b" })).toBe(true);
+  });
+  it("keeps mcpState for other edits", () => {
+    expect(mcpDropped(stored, { target: stored.target, config: { mcp: { auth: stored.config.mcp.auth, slowMs: 500 }, timeoutSeconds: 10 } })).toBe(false);
+    expect(workerKeysDroppedByWrite(stored, {})).toEqual([]);
+  });
+  it("drops sslAlertState whenever the saved settings send no SSL alerts, even if the earlier read had none", () => {
+    expect(workerKeysDroppedByWrite({ config: {} }, { config: { enableSslCheck: false } })).toEqual(["sslAlertState"]);
+    expect(workerKeysDroppedByWrite({ config: {}, alertConfig: { enabled: true, alertOnSslExpiration: true } }, { config: { enableSslCheck: true } })).toEqual([]);
+    expect(workerKeysDroppedByWrite({ config: {} }, { config: { enableSslCheck: true }, alertConfig: { enabled: true, alertOnSslExpiration: false } })).toEqual(["sslAlertState"]);
+    // An explicit null clears alerts; only an omitted alertConfig falls back to the stored one.
+    expect(workerKeysDroppedByWrite({ config: {}, alertConfig: { enabled: true, alertOnSslExpiration: true } }, { config: { enableSslCheck: true }, alertConfig: null })).toEqual(["sslAlertState"]);
+  });
+  it("renders a config write that removes the key", () => {
+    expect(new PgDialect().sqlToQuery(configWithoutKeys(monitors.config, ["mcpState"])).sql).toContain("- ARRAY['mcpState']");
+  });
+});
+
 describe("heartbeat write rules (B6, B15)", () => {
   const PROVIDER = "0195f1f1-0000-7000-8000-0000000000cc";
 
@@ -264,6 +361,13 @@ describe("heartbeat write rules (B6, B15)", () => {
     expect(monitorTypeChangeError("http_request", "website")).toBeNull();
     expect(monitorTypeChangeError("heartbeat", "http_request")).toContain("to or from heartbeat");
     expect(monitorTypeChangeError("website", "heartbeat")).toContain("to or from heartbeat");
+  });
+
+  it("keeps a turned-off AI endpoint or MCP warning, so a default-on kind can be switched off", () => {
+    expect(normalizeMonitorAlertConfig({ warnings: { ai_model_changed: false, ai_tokens_high: false } }, null, "http_request"))
+      .toMatchObject({ ok: true, value: { warnings: { ai_model_changed: false, ai_tokens_high: false } } });
+    expect(normalizeMonitorAlertConfig({ warnings: { mcp_tools_changed: false, ai_model_changed: false } }, null, "mcp_server"))
+      .toMatchObject({ ok: true, value: { warnings: { mcp_tools_changed: false } } });
   });
 
   it("keeps only warning kinds valid for the monitor type, and keeps stored toggles on an unrelated edit", () => {

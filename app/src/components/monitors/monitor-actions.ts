@@ -77,7 +77,7 @@ export function mergeEditConfig(
   const preset = type === "http_request" && built.aiEndpoint !== undefined;
   // Leaving the preset: the stored preset timeout must not outlive it, so the plain default the form builds replaces it.
   const leavingPreset = type === "http_request" && built.aiEndpoint === undefined && stored.aiEndpoint !== undefined;
-  for (const key of UNMANAGED) if (!((preset || leavingPreset) && key === "timeoutSeconds")) delete managed[key];
+  for (const key of UNMANAGED) if (!((preset || leavingPreset || type === "mcp_server") && key === "timeoutSeconds")) delete managed[key];
   if (type === "website") delete managed.method; // the form forces GET here; keep the stored method
   const merged = { ...stored, ...managed };
   if (preset) for (const key of AI_REPLACED) delete merged[key];

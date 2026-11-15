@@ -19,6 +19,7 @@ function formatMonitorType(type: string) {
     website: "Website",
     ping_host: "Ping Host",
     port_check: "Port Check",
+    mcp_server: "MCP Server",
   };
   return typeMap[type] ?? type;
 }

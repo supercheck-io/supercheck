@@ -49,6 +49,8 @@ import {
   monitorNameError,
   monitorTypeChangeError,
   normalizeMonitorAlertConfig,
+  monitorAuditTarget,
+  withMcpAlertDefaults,
   preserveWorkerConfigKeys,
   providerIdsOutsideProject,
   SCHEDULE_FAILURE_MESSAGE,
@@ -417,7 +419,7 @@ export async function POST(req: NextRequest) {
     // Prepare alert configuration - ensure it's properly structured and saved to alertConfig column
     let alertConfig: AlertConfig | null = null;
     if (rawData.alertConfig) {
-      const normalized = normalizeMonitorAlertConfig(rawData.alertConfig, null, rawData.type);
+      const normalized = normalizeMonitorAlertConfig(withMcpAlertDefaults(rawData.type, rawData.alertConfig), null, rawData.type);
       if (!normalized.ok) {
         return NextResponse.json({ error: normalized.error }, { status: 400 });
       }
@@ -638,7 +640,7 @@ export async function POST(req: NextRequest) {
       metadata: {
         monitorName: monitorData.name,
         monitorType: monitorData.type,
-        target: monitorData.target,
+        target: monitorAuditTarget(monitorData.type, monitorData.target),
         frequencyMinutes: monitorData.frequencyMinutes,
         projectId: project.id,
         projectName: project.name,
@@ -1046,7 +1048,7 @@ export async function PUT(req: NextRequest) {
         ...secretRefs.audit,
         monitorName: monitorUpdateData.name,
         monitorType: monitorUpdateData.type,
-        target: monitorUpdateData.target,
+        target: monitorAuditTarget(monitorUpdateData.type, monitorUpdateData.target),
         frequencyMinutes: monitorUpdateData.frequencyMinutes,
         enabled: monitorUpdateData.enabled,
         projectId: project.id,

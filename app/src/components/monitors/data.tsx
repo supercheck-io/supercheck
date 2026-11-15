@@ -8,6 +8,7 @@ import {
   EthernetPort,
   ChevronsLeftRightEllipsis,
   ArrowLeftRight,
+  Plug,
   HeartPulse,
 } from "lucide-react";
 import { typeText } from "@/lib/type-tones";
@@ -88,6 +89,13 @@ export const monitorTypes = [
     icon: PlaywrightLogo,
     color: typeText("monitor", "synthetic_test"),
     description: "Run Playwright tests on schedule to monitor critical user flows",
+  },
+  {
+    label: "MCP Monitor",
+    value: "mcp_server",
+    icon: Plug,
+    color: typeText("monitor", "mcp_server"),
+    description: "Check an MCP server and its tools",
   },
   {
     label: "Heartbeat Monitor",

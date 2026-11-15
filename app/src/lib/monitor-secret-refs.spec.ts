@@ -31,6 +31,8 @@ describe("monitorSecretNames", () => {
     expect(monitorSecretNames({ aiEndpoint: { secretKey: "A" }, auth: { secretKey: "B" } })).toEqual(["A", "B"]);
     expect(monitorSecretNames({ aiEndpoint: { model: "m" }, auth: { type: "bearer", token: "t" } })).toEqual([]);
     expect(monitorSecretNames({ auth: { secretKey: "" } })).toEqual([]);
+    expect(monitorSecretNames({ mcp: { auth: { type: "bearer", secretKey: "MCP_TOKEN" } } })).toEqual(["MCP_TOKEN"]);
+    expect(monitorSecretNames({ mcp: { auth: { type: "none" } } })).toEqual([]);
     expect(monitorSecretNames(null)).toEqual([]);
     expect(monitorSecretNames("x")).toEqual([]);
   });
@@ -103,6 +105,32 @@ describe("validateMonitorSecretRefs", () => {
     const added = { auth: { type: "bearer", secretKey: "OTHER" }, ...stored };
     expect(
       await validateMonitorSecretRefs(ctx(), added, "https://api.openai.com", { storedConfig: stored, effectiveConfig: added, targetChanged: false }),
+    ).toMatchObject({ success: false, status: 403 });
+  });
+});
+
+describe("validateMonitorSecretRefs for config.mcp.auth.secretKey", () => {
+  const mcp = { mcp: { auth: { type: "bearer", secretKey: "MCP_TOKEN" } } };
+  it("looks the name up, reports a missing one, and audits only the host", async () => {
+    expect(await validateMonitorSecretRefs(ctx(), mcp, "https://mcp.example.com/secret-path")).toMatchObject({ success: false, details: "Secret MCP_TOKEN was not found in this project" });
+    rows.push({ key: "MCP_TOKEN" });
+    expect(await validateMonitorSecretRefs(ctx(), mcp, "https://mcp.example.com/secret-path")).toEqual({
+      success: true,
+      audit: { referencedSecrets: ["MCP_TOKEN"], targetHost: "mcp.example.com" },
+    });
+  });
+  it("is denied without view_secrets and while impersonating", async () => {
+    checkPermissionWithContext.mockReturnValue(false);
+    expect(await validateMonitorSecretRefs(ctx(), mcp)).toMatchObject({ success: false, status: 403 });
+    checkPermissionWithContext.mockReturnValue(true);
+    isImpersonatedSession.mockResolvedValue(true);
+    expect(await validateMonitorSecretRefs(ctx(), mcp)).toMatchObject({ success: false, status: 403 });
+    expect(logAuditEvent).toHaveBeenCalledWith(expect.objectContaining({ metadata: expect.objectContaining({ referencedSecrets: ["MCP_TOKEN"] }) }));
+  });
+  it("gates a target change of an MCP monitor that keeps its stored secret", async () => {
+    checkPermissionWithContext.mockReturnValue(false);
+    expect(
+      await validateMonitorSecretRefs(ctx(), undefined, "https://other.example.com/mcp", { storedConfig: mcp, effectiveConfig: mcp, targetChanged: true }),
     ).toMatchObject({ success: false, status: 403 });
   });
 });

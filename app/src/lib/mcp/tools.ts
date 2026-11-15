@@ -428,6 +428,18 @@ export function registerMcpTools(server: McpServer, ctx: McpCallContext): void {
             expectTextSet: typeof c.aiEndpoint.expectText === "string" && c.aiEndpoint.expectText !== "",
           }
         : null,
+      // Tool names come from the customer's server (untrusted). Never the call arguments, header name or secret name.
+      mcp: c?.mcp
+        ? {
+            protocol: c.mcp.protocol === "2025" || c.mcp.protocol === "2026" ? c.mcp.protocol : "auto",
+            requiredTools: Array.isArray(c.mcp.requiredTools)
+              ? c.mcp.requiredTools.filter((t): t is string => typeof t === "string").slice(0, 50).map((t) => safeText(t, 128))
+              : [],
+            toolCallName: safeText(typeof c.mcp.toolCall?.name === "string" ? c.mcp.toolCall.name : null, 128),
+            toolCount: Array.isArray(c.mcpState?.baseline?.tools) ? c.mcpState.baseline.tools.length : null,
+            lastChangeAt: Array.isArray(c.mcpState?.changes) ? safeText(c.mcpState.changes.at(-1)?.at ?? null, 40) : null,
+          }
+        : null,
     };
     let latestAi: Record<string, unknown> | null = null;
     if (c?.aiEndpoint) {

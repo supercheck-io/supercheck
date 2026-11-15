@@ -29,6 +29,7 @@ import {
 import { PlaywrightLogo } from "@/components/logo/playwright-logo";
 import { ReportViewer } from "@/components/shared/report-viewer";
 import { AIMonitorAnalyzeButton } from "@/components/monitors/ai-monitor-analyze-button";
+import { McpToolsPanel } from "@/components/monitors/mcp-tools-panel";
 
 import {
   Card,
@@ -549,6 +550,14 @@ export function MonitorDetailClient({
       return monitor.target || monitor.url || "";
     }
   })();
+
+  // MCP Monitor: tool count, protocol and server identity come from the latest check; the tool list from the stored baseline
+  const isMcp = monitor.type === "mcp_server";
+  const latestMcp = isMcp ? latestResult?.details?.mcp : undefined;
+  const mcpServer = latestMcp?.serverName
+    ? `${latestMcp.serverName}${latestMcp.serverVersion ? ` ${latestMcp.serverVersion}` : ""}`
+    : null;
+  const mcpFailure = isMcp && latestResult && !latestResult.isUp ? latestResult.details?.errorMessage || "Check failed" : null;
 
   // Prepare data for AvailabilityBarChart (single location or filtered)
   const availabilityTimelineData = useMemo(() => {
@@ -1087,6 +1096,29 @@ export function MonitorDetailClient({
               </MetricGroup>
             )}
 
+            {isMcp && (
+              <MetricGroup title="MCP server">
+                <MetricStat
+                  icon={<Activity className="h-4 w-4 text-muted-foreground" />}
+                  label="Tools"
+                  testId="mcp-stat-tools"
+                  value={typeof latestMcp?.toolCount === "number" ? String(latestMcp.toolCount) : null}
+                />
+                <MetricStat
+                  icon={<Zap className="h-4 w-4 text-muted-foreground" />}
+                  label="Protocol"
+                  testId="mcp-stat-protocol"
+                  value={latestMcp?.protocol ?? null}
+                />
+                <MetricStat
+                  icon={<ChartNoAxesCombined className="h-4 w-4 text-muted-foreground" />}
+                  label="Server"
+                  testId="mcp-stat-server"
+                  value={mcpServer}
+                />
+              </MetricGroup>
+            )}
+
             <MetricGroup title="Last 24 hours">
               <MetricStat
                 icon={<TrendingUp className="h-4 w-4 text-success" />}
@@ -1163,6 +1195,15 @@ export function MonitorDetailClient({
                   title={isHeartbeat ? "Run duration" : undefined}
                 />
               </div>
+            )}
+
+            {isMcp && (
+              <McpToolsPanel
+                baseline={monitor.config?.mcpState?.baseline}
+                changes={monitor.config?.mcpState?.changes}
+                pending={!latestResult}
+                failure={mcpFailure}
+              />
             )}
           </div>
 
@@ -1248,7 +1289,7 @@ export function MonitorDetailClient({
                   </div>
                 )}
                 <div className="w-full">
-                  <table className={`w-full ${aiEndpoint ? "min-w-[850px]" : "min-w-[640px]"} table-fixed divide-y divide-border`}>
+                  <table className={`w-full ${aiEndpoint ? "min-w-[850px]" : isMcp ? "min-w-[740px]" : "min-w-[640px]"} table-fixed divide-y divide-border`}>
                     <colgroup>
                       <col className="w-[64px]" />
                       <col className="w-[192px]" />
@@ -1256,6 +1297,7 @@ export function MonitorDetailClient({
                       <col className="w-[124px]" />
                       {aiEndpoint && <col className="w-[112px]" />}
                       {aiEndpoint && <col className="w-[96px]" />}
+                      {isMcp && <col className="w-[84px]" />}
                       <col />
                     </colgroup>
                     <thead className="bg-background sticky top-0 z-10 border-b">
@@ -1300,6 +1342,14 @@ export function MonitorDetailClient({
                             Tokens
                           </th>
                         )}
+                        {isMcp && (
+                          <th
+                            scope="col"
+                            className="px-4 py-3 text-left text-xs font-medium text-muted-foreground whitespace-nowrap"
+                          >
+                            Tools
+                          </th>
+                        )}
                         <th
                           scope="col"
                           className="px-4 py-3 text-left text-xs font-medium text-muted-foreground whitespace-nowrap"
@@ -1314,7 +1364,7 @@ export function MonitorDetailClient({
                         // Initial loading state (no data yet)
                         <tr>
                           <td
-                            colSpan={(monitor.type === "synthetic_test" ? 6 : 5) + (aiEndpoint ? 2 : 0)}
+                            colSpan={(monitor.type === "synthetic_test" ? 6 : 5) + (aiEndpoint ? 2 : 0) + (isMcp ? 1 : 0)}
                             className="text-center relative"
                             style={{ height: "320px" }}
                           >
@@ -1431,6 +1481,11 @@ export function MonitorDetailClient({
                                   {formatTokens(aiDetails(result))}
                                 </td>
                               )}
+                              {isMcp && (
+                                <td className="px-4 py-[11.5px] whitespace-nowrap overflow-hidden text-ellipsis text-sm text-muted-foreground" data-testid="mcp-row-tools">
+                                  {typeof result.details?.mcp?.toolCount === "number" ? result.details.mcp.toolCount : "N/A"}
+                                </td>
+                              )}
                               <td className="px-4 py-[11.5px] overflow-hidden text-sm text-muted-foreground">
                                 {monitor.type === "synthetic_test" ? (
                                   // Synthetic test: show report on failure, N/A on success
@@ -1497,7 +1552,7 @@ export function MonitorDetailClient({
                         // Empty state
                         <tr>
                           <td
-                            colSpan={(monitor.type === "synthetic_test" ? 6 : 5) + (aiEndpoint ? 2 : 0)}
+                            colSpan={(monitor.type === "synthetic_test" ? 6 : 5) + (aiEndpoint ? 2 : 0) + (isMcp ? 1 : 0)}
                             className="px-4 py-16 text-center"
                           >
                             <div className="text-center space-y-3">

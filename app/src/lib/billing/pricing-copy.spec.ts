@@ -29,7 +29,7 @@ describe("PRICING_FAQS", () => {
       (item) => item.question === "Where do Cloud checks run?",
     );
     expect(faq?.answer).toContain(
-      "HTTP, SSL, ping, and port monitors can run from Europe, North America, and Asia Pacific",
+      "HTTP, SSL, ping, port, and MCP monitors can run from Europe, North America, and Asia Pacific",
     );
     expect(faq?.answer).toContain(
       "Browser synthetic monitors, Playwright tests, and k6 load tests run in Europe",
@@ -60,6 +60,6 @@ describe("PRICING_FAQS", () => {
     expect(control).toContain("turning off the hard stop allows more overage");
     const paused = PRICING_FAQS.find((item) => item.question === "What pauses when I reach my overage cap?")?.answer;
     expect(paused).toContain("k6 load tests");
-    expect(paused).toContain("HTTP, website, ping, and port monitors keep running");
+    expect(paused).toContain("HTTP, website, ping, port, and MCP monitors keep running");
   });
 });

@@ -535,6 +535,118 @@ describe("POST with the AI endpoint preset", () => {
   });
 });
 
+describe("POST an MCP monitor", () => {
+  const mcp = { auth: { type: "bearer", secretKey: "MCP_TOKEN" } };
+  const create = (body: Record<string, unknown> = {}) =>
+    POST(
+      new NextRequest("http://localhost/api/monitors", {
+        method: "POST",
+        body: JSON.stringify({ name: "m", type: "mcp_server", target: "https://mcp.example.com/t/secret-path/mcp", config: { mcp }, ...body }),
+        headers: { "content-type": "application/json" },
+      }),
+    );
+  const { checkPermissionWithContext } = jest.requireMock("@/lib/rbac/middleware") as { checkPermissionWithContext: jest.Mock };
+  const { requireAuthContext, isAuthError } = jest.requireMock("@/lib/auth-context") as { requireAuthContext: jest.Mock; isAuthError: jest.Mock };
+  const { logAuditEvent } = jest.requireMock("@/lib/audit-logger") as { logAuditEvent: jest.Mock };
+  const { insertMonitorRecord, scheduleCreatedMonitor } = jest.requireMock("@/lib/monitor-service") as { insertMonitorRecord: jest.Mock; scheduleCreatedMonitor: jest.Mock };
+
+  beforeEach(() => {
+    checkPermissionWithContext.mockReturnValue(true);
+    dbSelect.mockReturnValue({ from: () => ({ where: async () => [{ key: "MCP_TOKEN" }], innerJoin: () => ({ where: () => ({ limit: async () => [{ id: "new" }] }) }) }) });
+    insertWithinPlanLimit.mockImplementation(async (opts: { insert: (tx: unknown) => Promise<unknown> }) => {
+      const tx = { select: () => ({ from: () => ({ where: () => ({ for: async () => [{ id: "project-1" }] }) }) }) };
+      await opts.insert(tx);
+      return { ok: true, row: { newMonitor: { id: "new" }, enabled: true } };
+    });
+    insertMonitorRecord.mockResolvedValue({ newMonitor: { id: "new" }, enabled: true });
+    scheduleCreatedMonitor.mockResolvedValue({ id: "new" });
+  });
+
+  it("lets an editor create it, with MCP alert defaults, no forged worker state, and a host-only audit target", async () => {
+    const res = await create({
+      config: { mcp, mcpState: { lastCycleKey: "forged", baseline: { hash: "x", takenAt: "t", tools: [] } } },
+      alertConfig: { enabled: true, notificationProviders: [], alertOnFailure: true },
+    });
+    expect(res.status).toBe(201);
+    const input = insertMonitorRecord.mock.calls[0][0];
+    expect(input.config).toEqual({ mcp });
+    expect(input.alertConfig).toMatchObject({ failureThreshold: 2, incidentSeverity: "sev2", incidentEnabled: true, autoResolveIncident: true });
+    const audit = logAuditEvent.mock.calls.find(([e]) => e.action === "monitor_created")![0];
+    expect(audit.metadata).toMatchObject({ monitorType: "mcp_server", target: "mcp.example.com", referencedSecrets: ["MCP_TOKEN"], targetHost: "mcp.example.com" });
+    expect(JSON.stringify(audit)).not.toContain("secret-path");
+  });
+
+  it("keeps explicit alert settings over the MCP defaults", async () => {
+    await create({ alertConfig: { enabled: true, notificationProviders: [], failureThreshold: 5, incidentSeverity: "sev3", autoResolveIncident: false } });
+    expect(insertMonitorRecord.mock.calls[0][0].alertConfig).toMatchObject({ failureThreshold: 5, incidentSeverity: "sev3", incidentEnabled: true, autoResolveIncident: false });
+  });
+
+  it.each([
+    ["a private IP", "https://10.0.0.1/mcp"],
+    ["loopback", "https://127.0.0.1/mcp"],
+    ["cloud metadata", "https://169.254.169.254/mcp"],
+    ["plain http", "http://mcp.example.com/mcp"],
+    ["credentials", "https://u:p@mcp.example.com/mcp"],
+  ])("rejects %s before inserting", async (_name, target) => {
+    expect((await create({ target })).status).toBe(400);
+    expect(insertWithinPlanLimit).not.toHaveBeenCalled();
+  });
+
+  it("rejects a host that resolves to a private address", async () => {
+    const { lookupBounded } = jest.requireMock("@/lib/sre/connectors/endpoint-policy") as { lookupBounded: jest.Mock };
+    lookupBounded.mockResolvedValueOnce([{ address: "10.1.2.3", family: 4 }]);
+    const res = await create({ target: "https://rebind.example.com/mcp" });
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toBe("Invalid monitor target");
+    expect(insertWithinPlanLimit).not.toHaveBeenCalled();
+  });
+
+  it("refuses a secret name that is not a secret of the caller's project", async () => {
+    dbSelect.mockReturnValue({ from: () => ({ where: async () => [] }) });
+    const res = await create();
+    expect(res.status).toBe(400);
+    expect(await res.json()).toMatchObject({ details: "Secret MCP_TOKEN was not found in this project" });
+    expect(insertWithinPlanLimit).not.toHaveBeenCalled();
+  });
+
+  it("refuses a secret login without monitor secret permission (403)", async () => {
+    checkPermissionWithContext.mockImplementation((resource: string, action: string) => !(resource === "variable" && action === "view_secrets"));
+    expect((await create()).status).toBe(403);
+    expect(insertWithinPlanLimit).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["a viewer", {}],
+    ["a viewer's CLI token", { isCliAuth: true }],
+    ["a member of an organization pending deletion", { orgPendingDeletion: true }],
+  ])("denies %s with 403 before any lookup", async (_name, extra) => {
+    checkPermissionWithContext.mockReturnValue(false);
+    requireAuthContext.mockResolvedValueOnce({ userId: "u", organizationId: "org-1", project: { id: "project-1", name: "P" }, isCliAuth: false, ...extra });
+    expect((await create()).status).toBe(403);
+    expect(dbSelect).not.toHaveBeenCalled();
+    expect(insertWithinPlanLimit).not.toHaveBeenCalled();
+  });
+
+  it("answers 401 without a session", async () => {
+    requireAuthContext.mockRejectedValueOnce(Object.assign(new Error("Authentication required"), { status: 401 }));
+    isAuthError.mockReturnValueOnce(true);
+    expect((await create()).status).toBe(401);
+    expect(insertWithinPlanLimit).not.toHaveBeenCalled();
+  });
+
+  it("creates in the caller's own organization and project, whatever ids the body names", async () => {
+    await create({ projectId: "other-project", organizationId: "other-org" });
+    expect(insertMonitorRecord.mock.calls[0][0]).toMatchObject({ projectId: "project-1", organizationId: "org-1" });
+  });
+
+  it("answers 403 when the plan's monitor cap is reached", async () => {
+    insertWithinPlanLimit.mockResolvedValue({ ok: false, busy: false, check: { error: "Monitor limit reached", upgrade: true } });
+    const res = await create();
+    expect(res.status).toBe(403);
+    expect(insertMonitorRecord).not.toHaveBeenCalled();
+  });
+});
+
 describe("heartbeat monitors (B6, B7)", () => {
   const MONITOR = "00000000-0000-4000-8000-000000000003";
   const TOKEN = `hb_${"d".repeat(32)}`;

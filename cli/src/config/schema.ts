@@ -44,7 +44,7 @@ export const alertConfigSchema = z.object({
   incidentEnabled: z.boolean().optional(),
   incidentSeverity: z.enum(['sev1', 'sev2', 'sev3', 'sev4']).optional(),
   autoResolveIncident: z.boolean().optional(),
-  // Warning-only alerts by kind (e.g. heartbeat_late): notify channels, never open an incident. Off unless true.
+  // Warning-only alerts by kind (e.g. heartbeat_late): notify channels, never open an incident. Unset takes the kind's default.
   warnings: z.record(z.string(), z.boolean()).optional(),
 }).passthrough()
 
@@ -71,7 +71,7 @@ export const monitorDefinitionSchema = z.object({
   id: z.string().uuid().optional(),
   name: z.string().min(1).max(255),
   description: z.string().optional(),
-  type: z.enum(['http_request', 'website', 'ping_host', 'port_check', 'synthetic_test', 'heartbeat']),
+  type: z.enum(['http_request', 'website', 'ping_host', 'port_check', 'synthetic_test', 'heartbeat', 'mcp_server']),
   /** Not used by `heartbeat` monitors (the job calls their ping URL). */
   target: z.string().optional(),
   /** Check interval; for `heartbeat` the expected ping interval (up to 44640 = 31 days). Grace: config.heartbeat.graceMinutes. */

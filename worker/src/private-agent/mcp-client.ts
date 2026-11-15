@@ -1,6 +1,14 @@
 import * as crypto from 'node:crypto';
 import { z } from 'zod';
+import {
+  McpError,
+  McpHttpClient,
+  isRecord,
+  type McpRequest,
+} from '../common/mcp/mcp-http-client';
 import { requestPrivateAgentEndpoint } from './private-agent-endpoint';
+
+export { McpError };
 
 // Minimal MCP Streamable HTTP client for read-only evidence collection. It only
 // speaks initialize, tools/list and tools/call, and every request goes through
@@ -8,7 +16,6 @@ import { requestPrivateAgentEndpoint } from './private-agent-endpoint';
 // targets, no redirects). It never answers server-initiated requests, so
 // sampling, elicitation and roots are unavailable to the remote server.
 
-const CLIENT_PROTOCOL_VERSION = '2025-06-18';
 const MAX_DISCOVERED_TOOLS = 50;
 const MAX_LIST_PAGES = 5;
 const MAX_ARGUMENT_BYTES = 8 * 1024;
@@ -32,6 +39,8 @@ const FORBIDDEN_HEADER_NAMES = new Set([
   'connection',
   'mcp-session-id',
   'mcp-protocol-version',
+  'mcp-method',
+  'mcp-name',
   'cookie',
 ]);
 
@@ -46,13 +55,6 @@ export const mcpOperationSchema = z.discriminatedUnion('kind', [
 ]);
 
 export type McpOperation = z.infer<typeof mcpOperationSchema>;
-
-export class McpError extends Error {
-  constructor(public readonly code: string) {
-    super(code);
-    this.name = 'McpError';
-  }
-}
 
 export type McpEvidence = {
   id: string;
@@ -187,10 +189,6 @@ const SCHEMA_ANNOTATION_KEYS = new Set([
 const PROP_NAME = /^[A-Za-z0-9_.-]{1,64}$/;
 
 type Schema = Record<string, unknown>;
-
-function isRecord(value: unknown): value is Schema {
-  return !!value && typeof value === 'object' && !Array.isArray(value);
-}
 
 /** Returns an error string, or null when the schema only uses supported keywords. */
 export function unsupportedSchemaReason(
@@ -390,15 +388,6 @@ export function validateMcpArguments(
 
 // ---- Transport -------------------------------------------------------------
 
-type Ctx = {
-  endpoint: string;
-  headers: Record<string, string>;
-  deadline: number;
-  maxResponseBytes: number;
-  sessionId?: string;
-  protocolVersion?: string;
-};
-
 export function buildAuthHeaders(
   credential: McpJobInput['credential'],
 ): Record<string, string> {
@@ -419,208 +408,18 @@ export function buildAuthHeaders(
   return { [name]: secret };
 }
 
-async function readCapped(
-  response: Response,
-  maxBytes: number,
-): Promise<string> {
-  const reader = response.body?.getReader();
-  if (!reader) return '';
-  const chunks: Uint8Array[] = [];
-  let total = 0;
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    total += value.byteLength;
-    if (total > maxBytes) {
-      await reader.cancel().catch(() => undefined);
-      throw new McpError('mcp_response_too_large');
-    }
-    chunks.push(value);
+const request: McpRequest = requestPrivateAgentEndpoint;
+
+/** Endpoint-policy messages are fixed strings that never contain secrets. */
+function safePolicyMessage(error: Error): string | undefined {
+  if (
+    error.message.startsWith('Private Agent connector endpoints') ||
+    error.message.startsWith('Connector endpoint')
+  ) {
+    // The endpoint query may carry the MCP key, so no URL query leaves this function.
+    return error.message.replace(/\?\S*/g, '?…').slice(0, 100);
   }
-  return Buffer.concat(chunks).toString('utf8');
-}
-
-function isResponseFor(message: unknown, id: number) {
-  return (
-    isRecord(message) &&
-    message.id === id &&
-    ('result' in message || 'error' in message)
-  );
-}
-
-async function readSse(
-  response: Response,
-  id: number,
-  maxBytes: number,
-): Promise<unknown> {
-  const reader = response.body?.getReader();
-  if (!reader) throw new McpError('mcp_protocol_error');
-  const decoder = new TextDecoder();
-  let buffer = '';
-  let total = 0;
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    total += value.byteLength;
-    if (total > maxBytes) {
-      await reader.cancel().catch(() => undefined);
-      throw new McpError('mcp_response_too_large');
-    }
-    buffer += decoder.decode(value, { stream: true });
-    const events = buffer.split(/\r?\n\r?\n/);
-    buffer = events.pop() ?? '';
-    for (const event of events) {
-      const data = event
-        .split(/\r?\n/)
-        .filter((line) => line.startsWith('data:'))
-        .map((line) => line.slice(5).replace(/^ /, ''))
-        .join('\n');
-      if (!data) continue;
-      let parsed: unknown;
-      try {
-        parsed = JSON.parse(data);
-      } catch {
-        continue;
-      }
-      if (isResponseFor(parsed, id)) {
-        await reader.cancel().catch(() => undefined);
-        return parsed;
-      }
-    }
-  }
-  throw new McpError('mcp_protocol_error');
-}
-
-async function post(
-  ctx: Ctx,
-  body: Record<string, unknown>,
-  expectId?: number,
-): Promise<unknown> {
-  const remaining = ctx.deadline - Date.now();
-  if (remaining <= 0) throw new McpError('mcp_timeout');
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-    Accept: 'application/json, text/event-stream',
-    ...ctx.headers,
-  };
-  if (ctx.sessionId) headers['Mcp-Session-Id'] = ctx.sessionId;
-  if (ctx.protocolVersion)
-    headers['MCP-Protocol-Version'] = ctx.protocolVersion;
-
-  try {
-    return await requestPrivateAgentEndpoint(
-      ctx.endpoint,
-      {
-        method: 'POST',
-        headers,
-        body: JSON.stringify(body),
-        signal: AbortSignal.timeout(remaining),
-      },
-      async (response) => {
-        if (response.status === 401 || response.status === 403) {
-          throw new McpError('mcp_credentials_rejected');
-        }
-        if (!response.ok) throw new McpError(`mcp_http_${response.status}`);
-        const session = response.headers.get('mcp-session-id');
-        if (session && !ctx.sessionId && /^[\x21-\x7e]{1,256}$/.test(session)) {
-          ctx.sessionId = session;
-        }
-        if (expectId === undefined) {
-          await response.body?.cancel().catch(() => undefined);
-          return null;
-        }
-        const type = (response.headers.get('content-type') ?? '').toLowerCase();
-        if (type.includes('text/event-stream')) {
-          return readSse(response, expectId, ctx.maxResponseBytes);
-        }
-        if (!type.includes('application/json'))
-          throw new McpError('mcp_protocol_error');
-        const text = await readCapped(response, ctx.maxResponseBytes);
-        try {
-          return JSON.parse(text) as unknown;
-        } catch {
-          throw new McpError('mcp_protocol_error');
-        }
-      },
-    );
-  } catch (error) {
-    throw toMcpError(error);
-  }
-}
-
-function toMcpError(error: unknown): McpError {
-  if (error instanceof McpError) return error;
-  if (error instanceof Error) {
-    if (error.name === 'TimeoutError' || error.name === 'AbortError') {
-      return new McpError('mcp_timeout');
-    }
-    // Endpoint-policy messages are fixed strings that never contain secrets.
-    if (
-      error.message.startsWith('Private Agent connector endpoints') ||
-      error.message.startsWith('Connector endpoint')
-    ) {
-      // The endpoint query may carry the MCP key, so no URL query leaves this function.
-      return new McpError(error.message.replace(/\?\S*/g, '?…').slice(0, 100));
-    }
-  }
-  return new McpError('mcp_request_failed');
-}
-
-async function rpc(
-  ctx: Ctx,
-  id: number,
-  method: string,
-  params?: Record<string, unknown>,
-) {
-  const message = await post(
-    ctx,
-    { jsonrpc: '2.0', id, method, ...(params ? { params } : {}) },
-    id,
-  );
-  if (!isResponseFor(message, id)) throw new McpError('mcp_protocol_error');
-  const record = message as Schema;
-  if (isRecord(record.error)) {
-    const code = typeof record.error.code === 'number' ? record.error.code : 0;
-    throw new McpError(`mcp_rpc_error_${code}`);
-  }
-  if (!isRecord(record.result)) throw new McpError('mcp_protocol_error');
-  return record.result;
-}
-
-async function openSession(ctx: Ctx) {
-  const init = await rpc(ctx, 1, 'initialize', {
-    protocolVersion: CLIENT_PROTOCOL_VERSION,
-    capabilities: {},
-    clientInfo: { name: 'supercheck-private-agent', version: '1' },
-  });
-  ctx.protocolVersion =
-    typeof init.protocolVersion === 'string' &&
-    /^[0-9-]{8,12}$/.test(init.protocolVersion)
-      ? init.protocolVersion
-      : CLIENT_PROTOCOL_VERSION;
-  await post(ctx, { jsonrpc: '2.0', method: 'notifications/initialized' });
-}
-
-async function closeSession(ctx: Ctx) {
-  if (!ctx.sessionId) return;
-  // Best effort: servers expire idle sessions on their own.
-  await requestPrivateAgentEndpoint(
-    ctx.endpoint,
-    {
-      method: 'DELETE',
-      headers: {
-        ...ctx.headers,
-        'Mcp-Session-Id': ctx.sessionId,
-        ...(ctx.protocolVersion
-          ? { 'MCP-Protocol-Version': ctx.protocolVersion }
-          : {}),
-      },
-      signal: AbortSignal.timeout(2_000),
-    },
-    async (response) => {
-      await response.body?.cancel().catch(() => undefined);
-    },
-  ).catch(() => undefined);
+  return undefined;
 }
 
 // ---- Operations ------------------------------------------------------------
@@ -644,21 +443,12 @@ function truncateUtf8(text: string, maxBytes: number) {
   };
 }
 
-async function discoverTools(ctx: Ctx, input: McpJobInput, endpoint: string) {
-  const tools: unknown[] = [];
-  let cursor: string | undefined;
-  for (let page = 0; page < MAX_LIST_PAGES; page += 1) {
-    const result = await rpc(
-      ctx,
-      2 + page,
-      'tools/list',
-      cursor ? { cursor } : undefined,
-    );
-    if (Array.isArray(result.tools)) tools.push(...(result.tools as unknown[]));
-    cursor =
-      typeof result.nextCursor === 'string' ? result.nextCursor : undefined;
-    if (!cursor || tools.length >= MAX_DISCOVERED_TOOLS) break;
-  }
+async function discoverTools(
+  client: McpHttpClient,
+  input: McpJobInput,
+  endpoint: string,
+) {
+  const { tools } = await client.listTools(MAX_DISCOVERED_TOOLS);
 
   const observedAt = new Date().toISOString();
   const evidence: McpEvidence[] = [];
@@ -705,15 +495,12 @@ async function discoverTools(ctx: Ctx, input: McpJobInput, endpoint: string) {
 }
 
 async function callTool(
-  ctx: Ctx,
+  client: McpHttpClient,
   input: McpJobInput,
   endpoint: string,
   operation: Extract<McpOperation, { kind: 'call_tool' }>,
 ) {
-  const result = await rpc(ctx, 2, 'tools/call', {
-    name: operation.tool,
-    arguments: operation.arguments,
-  });
+  const result = await client.callTool(operation.tool, operation.arguments);
   if (result.isError === true) throw new McpError('mcp_tool_error');
 
   const blocks = Array.isArray(result.content) ? result.content : [];
@@ -787,22 +574,25 @@ export async function executeMcpJob(
     }
   }
 
-  const ctx: Ctx = {
+  const client = await McpHttpClient.connect({
     endpoint,
+    request,
     headers: buildAuthHeaders(input.credential),
     deadline: Date.now() + Math.min(Math.max(input.maxSeconds, 1), 30) * 1000,
     maxResponseBytes: Math.min(
       Math.max(input.maxBytes * 4, 64 * 1024),
       MAX_RAW_RESPONSE_BYTES,
     ),
-  };
-
+    maxListPages: MAX_LIST_PAGES,
+    clientName: 'supercheck-private-agent',
+    mode: '2025',
+    safeMessage: safePolicyMessage,
+  });
   try {
-    await openSession(ctx);
     return operation.kind === 'discover'
-      ? await discoverTools(ctx, input, endpoint)
-      : await callTool(ctx, input, endpoint, operation);
+      ? await discoverTools(client, input, endpoint)
+      : await callTool(client, input, endpoint, operation);
   } finally {
-    await closeSession(ctx);
+    await client.close();
   }
 }

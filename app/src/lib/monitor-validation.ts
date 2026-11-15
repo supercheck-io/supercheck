@@ -7,6 +7,7 @@ const monitorTypeSchema = z.enum([
   "ping_host",
   "port_check",
   "synthetic_test",
+  "mcp_server",
   "heartbeat",
 ]);
 
@@ -95,7 +96,7 @@ function validateLocationPolicy(config: Record<string, unknown>): MonitorValidat
 // Same header-name rule as the MCP connector's buildAuthHeaders.
 const HEADER_NAME = /^[A-Za-z0-9-]{1,64}$/;
 /** Shared with the monitor form, so it rejects exactly what the API rejects. */
-export const FORBIDDEN_KEY_HEADERS = new Set(["host", "content-length", "content-type", "accept", "transfer-encoding", "connection", "cookie"]);
+export const FORBIDDEN_KEY_HEADERS = new Set(["host", "content-length", "content-type", "accept", "transfer-encoding", "connection", "cookie", "mcp-session-id", "mcp-protocol-version", "mcp-method", "mcp-name"]);
 const secretName = z.string().trim().min(1).max(255);
 
 const aiEndpointSchema = z
@@ -111,8 +112,91 @@ const aiEndpointSchema = z
     maxTokens: z.number().int().min(1).max(512).optional(),
     expectText: z.string().max(500).optional(),
     firstTokenTimeoutMs: z.number().int().min(500).max(60000).optional(),
+    warnFirstTokenMs: z.number().int().min(100).max(60000).optional(),
+    warnTotalTokens: z.number().int().min(1).max(1_000_000).optional(),
   })
   .strict();
+
+const headerName = z
+  .string()
+  .regex(HEADER_NAME, "must be a valid header name")
+  .refine((name) => !FORBIDDEN_KEY_HEADERS.has(name.toLowerCase()), "header name is not allowed");
+
+export const MCP_TOOL_NAME = /^[A-Za-z0-9_.:-]{1,128}$/;
+const MCP_MAX_ARGUMENT_BYTES = 8 * 1024;
+
+const mcpSchema = z
+  .object({
+    auth: z
+      .object({
+        type: z.enum(["none", "bearer", "header"]),
+        secretKey: secretName.optional(),
+        headerName: headerName.optional(),
+      })
+      .strict()
+      .superRefine((auth, ctx) => {
+        if (auth.type === "none") {
+          if (auth.secretKey !== undefined || auth.headerName !== undefined) {
+            ctx.addIssue({ code: "custom", path: ["type"], message: "secretKey and headerName need a login type" });
+          }
+          return;
+        }
+        if (auth.secretKey === undefined) ctx.addIssue({ code: "custom", path: ["secretKey"], message: "is required" });
+        if (auth.type === "header" && auth.headerName === undefined) {
+          ctx.addIssue({ code: "custom", path: ["headerName"], message: "is required for a custom header" });
+        }
+        if (auth.type === "bearer" && auth.headerName !== undefined) {
+          ctx.addIssue({ code: "custom", path: ["headerName"], message: "is only used with a custom header" });
+        }
+      }),
+    protocol: z.enum(["auto", "2025", "2026"]).optional(),
+    requiredTools: z.array(z.string().regex(MCP_TOOL_NAME, "must be a tool name of 1-128 characters")).max(50).optional(),
+    toolCall: z
+      .object({
+        name: z.string().regex(MCP_TOOL_NAME, "must be a tool name of 1-128 characters"),
+        arguments: z
+          .record(z.string(), z.unknown())
+          .refine((args) => Buffer.byteLength(JSON.stringify(args)) <= MCP_MAX_ARGUMENT_BYTES, "must be at most 8 KiB")
+          .optional(),
+        expectText: z.string().max(500).optional(),
+      })
+      .strict()
+      .optional(),
+    slowMs: z.number().int().min(100).max(60000).optional(),
+  })
+  .strict();
+
+/** Default whole-check deadline the worker applies to an MCP check when none is set. */
+export const MCP_DEFAULT_TIMEOUT_SECONDS = 30;
+
+function validateMcp(monitorType: string, config: Record<string, unknown>, target: string): MonitorValidationResult {
+  if (monitorType !== "mcp_server") {
+    return config.mcp == null ? { success: true } : invalid("Invalid monitor configuration", "config.mcp is only supported on mcp_server monitors");
+  }
+  const parsed = mcpSchema.safeParse(config.mcp);
+  if (!parsed.success) {
+    const issue = parsed.error.issues[0];
+    return invalid("Invalid monitor configuration", `config.mcp.${issue.path.join(".") || "value"}: ${issue.message}`);
+  }
+  let url: URL;
+  try {
+    url = new URL(target.trim());
+  } catch {
+    return invalid("Invalid monitor target", "target must be a valid HTTPS URL");
+  }
+  const internal = process.env.ALLOW_INTERNAL_TARGETS === "true";
+  if (url.protocol !== "https:" && !(internal && url.protocol === "http:")) {
+    return invalid("Invalid monitor target", "target must be a valid HTTPS URL");
+  }
+  if (url.username || url.password || url.hash) {
+    return invalid("Invalid monitor target", "target must not contain credentials or a fragment");
+  }
+  const timeout = config.timeoutSeconds;
+  if (timeout !== undefined && (typeof timeout !== "number" || timeout < 5 || timeout > 60)) {
+    return invalid("Invalid monitor configuration", "config.timeoutSeconds must be between 5 and 60 for MCP monitors");
+  }
+  return { success: true };
+}
 
 /** Request fields the AI endpoint preset replaces; none may be set beside it. */
 const AI_CONFLICTING_KEYS = ["method", "headers", "body", "keywordInBody", "expectedStatusCodes"] as const;
@@ -306,6 +390,8 @@ export function validateMonitorConfiguration({
 
   const aiResult = validateAiEndpoint(monitorType, monitorConfig);
   if (!aiResult.success) return aiResult;
+  const mcpResult = validateMcp(monitorType, monitorConfig, target);
+  if (!mcpResult.success) return mcpResult;
   const authSecretResult = validateAuthSecret(monitorConfig);
   if (!authSecretResult.success) return authSecretResult;
 

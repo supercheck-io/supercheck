@@ -38,6 +38,8 @@ jest.mock("@/lib/execution/trial-interval-response", () => ({
   monitorResumeBlockedResponse: jest.fn().mockResolvedValue(null),
 }));
 jest.mock("@/lib/s3-cleanup", () => ({ createS3CleanupService: jest.fn() }));
+// The SQL merge of worker keys is covered in monitor-write.spec.ts and monitor-service.db.spec.ts; here the written config is inspected as an object.
+jest.mock("@/lib/monitor-write", () => ({ ...jest.requireActual("@/lib/monitor-write"), configKeepingWorkerKeys: (config: unknown) => config }));
 jest.mock("@/lib/queue", () => ({ addMonitorExecutionJobToQueue: jest.fn() }));
 jest.mock("@/lib/location-registry", () => ({
   getWorkloadCapableLocationCodes: jest.fn().mockResolvedValue(["eu-central"]),

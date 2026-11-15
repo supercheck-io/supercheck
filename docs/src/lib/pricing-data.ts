@@ -129,7 +129,7 @@ export const VENDORS = [
 export const CAPABILITY_ROWS: readonly CapabilityRow[] = [
   {
     name: 'Scheduled production monitoring',
-    supercheck: 'HTTP, SSL, ping, port, browser',
+    supercheck: 'HTTP, SSL, ping, port, MCP, browser',
     checkly: 'Included',
     datadog: 'Included',
     betterstack: 'Included',

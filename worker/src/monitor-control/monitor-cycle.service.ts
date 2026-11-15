@@ -3,6 +3,8 @@ import { and, desc, eq, gt, isNotNull, isNull, sql } from 'drizzle-orm';
 import { DbService } from '../db/db.service';
 import * as schema from '../db/schema';
 import type { MonitorCycleEvaluation } from '../db/schema';
+import { evaluateCycleWarnings } from '../monitor/monitor-cycle-warnings';
+import { toolsInputOf } from '../monitor/mcp-cycle-evaluation';
 import { MonitorAlertService } from '../monitor/services/monitor-alert.service';
 import {
   MonitorEvaluator,
@@ -32,7 +34,7 @@ export class MonitorCycleService {
 
   constructor(
     private readonly dbService: DbService,
-    alertService: MonitorAlertService,
+    private readonly alertService: MonitorAlertService,
     private readonly billing: BillingHoldService,
   ) {
     this.evaluator = new MonitorEvaluator(dbService, alertService);
@@ -417,6 +419,24 @@ export class MonitorCycleService {
         monitor,
       );
     }
+    // MCP tool-list and AI endpoint warnings: this path never reaches saveMonitorResults. The cycle key
+    // makes a redelivery harmless, so it runs before the delivery verdict below.
+    await evaluateCycleWarnings(
+      this.dbService.db,
+      this.alertService,
+      monitor,
+      cycle.id,
+      cycle.scheduledFor,
+      [...new Set(cycle.expectedLocations)].flatMap((location) => {
+        const row = this.frozenRow(cycle, location, rows);
+        return row &&
+          !(row.details as { synthetic?: boolean } | null)?.synthetic
+          ? [row]
+          : [];
+      }),
+      // The closure's frozen view drives the slow streak; the tool-list part needs every expected region in.
+      toolsInputOf(cycle.expectedLocations, rows),
+    );
     if (outcome.deliveryFailed) {
       // The caller gave up waiting and already counted this attempt; counting it again would
       // exhaust the bounded retries early and silently drop the alert.

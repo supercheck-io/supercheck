@@ -59,6 +59,12 @@ async function getTestReportContent(testReportS3Url: string): Promise<string | n
   }
 }
 
+/** details.mcp.failure of an MCP Monitor result; undefined for every other result. */
+function mcpFailureOf(details: unknown): string | undefined {
+  const mcp = (details as { mcp?: { failure?: unknown } } | null | undefined)?.mcp;
+  return typeof mcp?.failure === "string" ? mcp.failure : undefined;
+}
+
 export async function POST(request: NextRequest) {
   let refundCredit: (() => Promise<void>) | undefined;
   try {
@@ -263,6 +269,7 @@ export async function POST(request: NextRequest) {
         errorMessage: r.details && typeof r.details === "object" && "error" in r.details
           ? String(r.details.error)
           : undefined,
+        mcpFailure: mcpFailureOf(r.details),
         checkedAt: r.checkedAt instanceof Date ? r.checkedAt.toISOString() : String(r.checkedAt),
         location: r.location || undefined,
       })),

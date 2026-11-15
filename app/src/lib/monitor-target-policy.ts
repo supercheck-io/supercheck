@@ -4,11 +4,11 @@ import { isPrivateOrReservedAddress } from "@/lib/outbound-address-policy";
 import { isMetadataOrLinkLocalAddress, lookupBounded } from "@/lib/sre/connectors/endpoint-policy";
 import type { MonitorValidationResult } from "@/lib/monitor-validation";
 
-const HOST_TYPES = new Set(["http_request", "website", "ping_host", "port_check"]);
+const HOST_TYPES = new Set(["http_request", "website", "ping_host", "port_check", "mcp_server"]);
 const DNS_TIMEOUT_MS = 3_000;
 
 function targetHostname(type: string, target: string): string | null {
-  if (type === "http_request" || type === "website") {
+  if (type === "http_request" || type === "website" || type === "mcp_server") {
     try {
       return new URL(target).hostname;
     } catch {

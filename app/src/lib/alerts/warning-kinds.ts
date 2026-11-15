@@ -12,9 +12,43 @@ export const WARNING_KINDS = {
     help: "Notify when a ping has not arrived on time but the grace period has not ended.",
     defaultOn: false,
   },
+  mcp_tools_changed: {
+    monitorTypes: ["mcp_server"],
+    label: "Tools changed",
+    help: "Notify when the server's tool list, a tool description or an input schema changes.",
+    defaultOn: true,
+  },
+  mcp_slow: {
+    monitorTypes: ["mcp_server"],
+    label: "MCP slow",
+    help: "Notify when checks are slower than Slow after (ms) for 3 checks in a row. Sends nothing until that limit is set.",
+    defaultOn: true,
+  },
+  ai_slow_first_token: {
+    monitorTypes: ["http_request"],
+    aiEndpointOnly: true,
+    label: "Slow first token",
+    help: "Notify when the first token is slower than Warn first token (ms) for 3 checks in a row. Sends nothing until that limit is set.",
+    defaultOn: true,
+  },
+  ai_model_changed: {
+    monitorTypes: ["http_request"],
+    aiEndpointOnly: true,
+    label: "Model changed",
+    help: "Notify when the reply comes from a different model than the last check.",
+    defaultOn: true,
+  },
+  ai_tokens_high: {
+    monitorTypes: ["http_request"],
+    aiEndpointOnly: true,
+    label: "Tokens high",
+    help: "Notify when a reply uses more tokens than Warn total tokens. Sends nothing until that limit is set.",
+    defaultOn: true,
+  },
 } as const satisfies Record<
   string,
-  { monitorTypes: readonly MonitorType[]; label: string; help: string; defaultOn: boolean }
+  // aiEndpointOnly: listed only for HTTP monitors that use the AI endpoint preset.
+  { monitorTypes: readonly MonitorType[]; aiEndpointOnly?: true; label: string; help: string; defaultOn: boolean }
 >;
 
 export type WarningKind = keyof typeof WARNING_KINDS;
@@ -23,10 +57,12 @@ export function isWarningKind(kind: string): kind is WarningKind {
   return Object.prototype.hasOwnProperty.call(WARNING_KINDS, kind);
 }
 
-export function warningKindsForMonitorType(type: string): WarningKind[] {
-  return (Object.keys(WARNING_KINDS) as WarningKind[]).filter((kind) =>
-    (WARNING_KINDS[kind].monitorTypes as readonly string[]).includes(type),
-  );
+/** Kinds offered for this monitor; `aiEndpoint` adds the AI endpoint preset's kinds. Normalization keeps all type kinds. */
+export function warningKindsForMonitorType(type: string, aiEndpoint = false): WarningKind[] {
+  return (Object.keys(WARNING_KINDS) as WarningKind[]).filter((kind) => {
+    const def: { monitorTypes: readonly string[]; aiEndpointOnly?: true } = WARNING_KINDS[kind];
+    return def.monitorTypes.includes(type) && (aiEndpoint || !def.aiEndpointOnly);
+  });
 }
 
 /** Keep only boolean toggles for kinds valid for this monitor type; undefined when none remain. */
@@ -35,7 +71,8 @@ export function normalizeWarningToggles(
   warnings: unknown,
 ): Record<string, boolean> | undefined {
   if (!warnings || typeof warnings !== "object" || Array.isArray(warnings)) return undefined;
-  const allowed = new Set<string>(warningKindsForMonitorType(type));
+  // Every kind of the type, preset-only ones included: an AI endpoint toggle must persist to be turned off.
+  const allowed = new Set<string>(warningKindsForMonitorType(type, true));
   const out: Record<string, boolean> = {};
   for (const [kind, value] of Object.entries(warnings as Record<string, unknown>)) {
     if (allowed.has(kind) && typeof value === "boolean") out[kind] = value;

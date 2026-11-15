@@ -33,17 +33,18 @@ describe("type tones", () => {
       expect(dark).toContain(`--type-${tone}: oklch(${d});`);
     }
     expect(Object.values(TYPE_TONE.test)).toEqual(["sky", "teal", "cyan", "blue", "purple"]);
-    expect(Object.values(TYPE_TONE.monitor)).toEqual(["teal", "sky", "cyan", "blue", "purple", "magenta"]);
+    expect(Object.values(TYPE_TONE.monitor)).toEqual(["teal", "sky", "cyan", "blue", "purple", "magenta", "orchid"]);
     expect(TYPE_TONE.job).toEqual({ playwright: "sky", k6: "purple" });
   });
 
   it("gives every other type its own tone, apart from the five tests and monitors share", () => {
     const shared = new Set<string>(Object.values(TYPE_TONE.test));
-    const others = [TYPE_TONE.variable, TYPE_TONE.sre, TYPE_TONE.admin].flatMap((g) => Object.values(g));
+    // The MCP monitor has no test counterpart, so it owns `orchid`.
+    const others = [TYPE_TONE.variable, TYPE_TONE.sre, TYPE_TONE.admin, { mcp_server: TYPE_TONE.monitor.mcp_server }].flatMap((g) => Object.values(g));
     expect(new Set(others).size).toBe(others.length);
     for (const tone of others) expect(shared.has(tone)).toBe(false);
-    // Monitors share the test tones, except Heartbeat which has no test counterpart.
-    const { heartbeat, ...testLike } = TYPE_TONE.monitor;
+    // Monitors share the test tones, except Heartbeat and MCP which have no test counterpart.
+    const { heartbeat, mcp_server: _mcp, ...testLike } = TYPE_TONE.monitor;
     for (const tone of Object.values(testLike)) expect(shared.has(tone)).toBe(true);
     expect(shared.has(heartbeat)).toBe(false);
     expect(others).not.toContain(heartbeat);

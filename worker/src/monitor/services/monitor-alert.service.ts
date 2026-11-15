@@ -27,6 +27,7 @@ import { getErrorMessage } from '../../common/validation';
 import { redactUrlsInText } from '../../common/validation/data-sanitizer';
 import {
   isInformationalAlertType,
+  WARNING_KINDS,
   warningTitle,
   type WarningKind,
 } from '../warning-kinds';
@@ -73,6 +74,19 @@ type ClaimOutcome = {
   /** Set to MAX_CLAIM_ATTEMPTS for a terminal (401/403) failure, so later checks never reclaim it. */
   claimAttempts?: number;
 };
+
+/** An MCP endpoint's path can carry an API key, so notifications name its host only (as the audit log does). */
+export function notifiedTarget(monitor: {
+  type: string;
+  target: string;
+}): string {
+  if (monitor.type !== 'mcp_server') return monitor.target;
+  try {
+    return new URL(monitor.target).host;
+  } catch {
+    return '';
+  }
+}
 
 @Injectable()
 export class MonitorAlertService {
@@ -692,11 +706,11 @@ export class MonitorAlertService {
       projectId: monitor.projectId || undefined,
       projectName: projectName,
       metadata: {
-        target: monitor.target,
+        target: notifiedTarget(monitor),
         type: monitor.type,
         status: type === 'recovery' ? 'up' : 'down',
         dashboardUrl,
-        targetUrl: monitor.target,
+        targetUrl: notifiedTarget(monitor),
         trigger: 'runner',
         reason: reason || 'Automated status change detection',
         monitorType: monitor.type,
@@ -945,7 +959,8 @@ export class MonitorAlertService {
     if (
       monitor.deletingAt ||
       !alertConfig?.enabled ||
-      alertConfig.warnings?.[kind] !== true
+      // An unset toggle means the kind's default, as the alert settings show it.
+      (alertConfig.warnings?.[kind] ?? WARNING_KINDS[kind].defaultOn) !== true
     )
       return { delivered: false, suppressed: true };
     if (await this.isUnderScheduledMaintenance(monitor.id)) {
@@ -991,7 +1006,7 @@ export class MonitorAlertService {
         projectId: monitor.projectId || undefined,
         projectName,
         metadata: {
-          ...(monitor.target ? { target: monitor.target } : {}),
+          ...(monitor.target ? { target: notifiedTarget(monitor) } : {}),
           type: monitor.type,
           monitorType: monitor.type,
           status: 'warning',

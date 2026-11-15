@@ -1,7 +1,7 @@
 const credentialKey = /^(?:xauth|xsignature|xsig|signature|authorization|proxyauthorization|cookie|setcookie|webhookUrl|discordWebhookUrl|teamsWebhookUrl|encryptedValue|auth|webhook|pass|pwd|cookies|sessionid|jwt|routingkey|devicecode)$|(?:token|secret|pass(?:w(?:or)?d)?|apikey|appkey|accesskey|privatekey|credentials?)$/i
 // Monitor configs hold a public target URL and request headers the operator must be able to review. Any other `config`
 // (notification providers, untyped API error bodies) is treated as credential-bearing, so the default fails closed.
-const monitorTypes = new Set(['http_request', 'website', 'ping_host', 'port_check', 'synthetic_test', 'heartbeat'])
+const monitorTypes = new Set(['http_request', 'website', 'ping_host', 'port_check', 'synthetic_test', 'heartbeat', 'mcp_server'])
 let reveal = false
 export function canRevealSecrets(): boolean { return reveal }
 export function setRevealSecrets(value: boolean): void { reveal = value }
@@ -32,9 +32,11 @@ export function redact<T>(value: T, inConfig = false, code = false): T {
   if (!value || typeof value !== 'object' || value instanceof Date) return value
   const record = value as Record<string, unknown>
   const sensitiveConfig = !(typeof record.type === 'string' && monitorTypes.has(record.type))
-  // Monitor auth that only names a project secret (plus a basic-auth username) carries no credential, so it round-trips through pull.
+  // Monitor auth that only names a project secret (plus a basic-auth username or an MCP header name), or is `none`,
+  // carries no credential, so it round-trips through pull.
   const secretRefAuth = (key: string, item: unknown) => key === 'auth' && !!item && typeof item === 'object'
-    && Object.keys(item).every((k) => k === 'type' || k === 'secretKey' || k === 'username') && typeof (item as Record<string, unknown>).secretKey === 'string'
+    && Object.keys(item).every((k) => k === 'type' || k === 'secretKey' || k === 'username' || k === 'headerName')
+    && (typeof (item as Record<string, unknown>).secretKey === 'string' || (Object.keys(item).length === 1 && (item as Record<string, unknown>).type === 'none'))
   return Object.fromEntries(Object.entries(record).map(([key, item]) => [key,
     key === 'pingUrl' && typeof item === 'string' ? item : secretRefAuth(key, item) ? redact(item, false) : (credentialKey.test(key.replace(/[-_]/g, '')) || (inConfig && ['url', 'headers', 'username'].includes(key)) || (key === 'value' && (record.isSecret || record.type === 'secret'))) && item != null && typeof item !== 'boolean'
       ? (typeof item === 'string' && ['[local secret provided]', '[remote secret masked]'].includes(item) ? item : '[REDACTED]') : redact(item, key === 'config' && sensitiveConfig, codeKeys.has(key.toLowerCase())),

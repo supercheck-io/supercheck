@@ -52,12 +52,87 @@ export type MonitorType =
   | 'ping_host'
   | 'port_check'
   | 'synthetic_test'
-  | 'heartbeat';
+  | 'heartbeat'
+  | 'mcp_server';
 
 export type MonitorStatus =
   'up' | 'down' | 'paused' | 'pending' | 'maintenance' | 'error';
 
 export type MonitorResultStatus = 'up' | 'down' | 'error' | 'timeout';
+
+/** Why an MCP check failed; `undefined` on success. */
+export type McpFailure =
+  | 'connect'
+  | 'auth'
+  | 'list'
+  | 'required_tool'
+  | 'call'
+  | 'assert'
+  | 'timeout'
+  | 'secret';
+export type McpProtocolMode = 'auto' | '2025' | '2026';
+export type McpToolFingerprint = { name: string; fingerprint: string };
+
+export type McpResultDetails = {
+  failure?: McpFailure;
+  /** Negotiated protocol version string, e.g. '2025-06-18' or '2026-07-28'. */
+  protocol?: string;
+  serverName?: string;
+  serverVersion?: string;
+  toolCount?: number;
+  toolsHash?: string;
+  /** Hash of the target and login the check ran with; a result from before a settings change is ignored. */
+  endpointKey?: string;
+  /** At most 500 entries; names clipped to 128 chars. Descriptions and schemas are hashed, never stored. */
+  tools?: McpToolFingerprint[];
+  connectMs?: number;
+  listMs?: number;
+  callMs?: number;
+};
+
+/** User-editable MCP Monitor settings (`config.mcp`). */
+export type McpMonitorConfig = {
+  auth: {
+    type: 'none' | 'bearer' | 'header';
+    secretKey?: string;
+    headerName?: string;
+  };
+  protocol?: McpProtocolMode;
+  /** At most 50 names. */
+  requiredTools?: string[];
+  toolCall?: {
+    name: string;
+    arguments?: Record<string, unknown>;
+    expectText?: string;
+  };
+  /** Warn when a check takes longer than this for 3 cycles in a row (100-60000). */
+  slowMs?: number;
+};
+
+export type McpToolChange = {
+  at: string;
+  added: string[];
+  removed: string[];
+  changed: { name: string; reasons: Array<'description' | 'schema'> }[];
+  /** The list hash changed but the stored (first 500) names did not: the change is past the stored subset. */
+  beyondStored?: boolean;
+};
+
+/** Worker-owned MCP state (`config.mcpState`); clients can never write it. */
+export type McpMonitorState = {
+  detectedProtocol?: '2025' | '2026';
+  lastCycleKey?: string;
+  /** ISO time of the newest evaluated cycle; an older cycle redelivered later is ignored. */
+  lastCycleAt?: string;
+  /** Tool-list part of the evaluation, tracked apart: it needs every expected location to have reported. */
+  toolsCycleKey?: string;
+  toolsCycleAt?: string;
+  baseline?: { hash: string; takenAt: string; tools: McpToolFingerprint[] };
+  /** Newest last; at most 10 kept. */
+  changes?: McpToolChange[];
+  slowStreak?: number;
+  slowEpisodeKey?: string | null;
+};
 
 export type MonitorResultDetails = {
   statusCode?: number;
@@ -77,6 +152,8 @@ export type MonitorResultDetails = {
     // Host the certificate was read from; set on the copy stored in monitor config
     host?: string;
   };
+  /** MCP Monitor check result. Tool names come from the customer's server: render as text only. */
+  mcp?: McpResultDetails;
   ai?: {
     firstTokenMs?: number;
     totalMs: number;
@@ -133,9 +210,28 @@ export type MonitorConfig = {
     maxTokens?: number;
     expectText?: string;
     firstTokenTimeoutMs?: number;
+    /** Warn when the first token is slower than this for 3 cycles (warning only). */
+    warnFirstTokenMs?: number;
+    /** Warn when one call uses more tokens than this (warning only). */
+    warnTotalTokens?: number;
   };
   /** Worker-owned. */
-  aiEndpointState?: { lastServedModel?: string };
+  aiEndpointState?: {
+    lastServedModel?: string;
+    lastCycleKey?: string;
+    /** ISO time of the newest evaluated cycle; an older cycle redelivered later is ignored. */
+    lastCycleAt?: string;
+    slowFirstTokenStreak?: number;
+    slowFirstTokenEpisodeKey?: string | null;
+    tokensHighEpisodeKey?: string | null;
+    /** The served-model part has its own guard: a cycle closed early finishes it when the last region reports. */
+    modelCycleKey?: string;
+    modelCycleAt?: string;
+  };
+  /** MCP Monitor settings; mcp_server only. */
+  mcp?: McpMonitorConfig;
+  /** Worker-owned; clients cannot write it. */
+  mcpState?: McpMonitorState;
   /** Heartbeat monitors only: how late a ping may be before the monitor goes down. */
   heartbeat?: { graceMinutes?: number };
   port?: number;
