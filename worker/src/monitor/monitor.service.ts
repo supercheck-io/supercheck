@@ -759,6 +759,8 @@ export class MonitorService {
   async recordExternalResult(
     monitor: { id: string },
     result: MonitorExecutionResult,
+    /** The row is already stored (a retry after a failed status write): only update status and alert from it. */
+    options: { alreadyStored?: boolean } = {},
   ): Promise<void> {
     const current = await this.getMonitorById(monitor.id);
     // Paused or disabled after the caller read it: nothing is recorded.
@@ -770,7 +772,11 @@ export class MonitorService {
       current.type === 'heartbeat' &&
       current.status === 'pending' &&
       !result.isUp;
-    if (!(await this.insertResultWithRetry(result, freshOutage))) return;
+    if (
+      !options.alreadyStored &&
+      !(await this.insertResultWithRetry(result, freshOutage))
+    )
+      return;
     const currentStatus = result.isUp ? 'up' : 'down';
     // A failed status write must fail the observation, so the sweep does not consume it (the retry after the
     // lease may store a second result row for it: rare, same class as the stale-claim duplicate).

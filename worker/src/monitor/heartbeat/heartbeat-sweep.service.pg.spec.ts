@@ -395,12 +395,13 @@ suite('heartbeat sweep (PostgreSQL)', () => {
     expect(sent).toContain(`monitor_failure:${customProvider}`);
   });
 
-  it('a retry after a partial /fail-then-ping evaluation stores the failure once', async () => {
+  /** /fail then ping, and an earlier attempt that stored the fail row and died before its status write. */
+  async function partialFailThenPing() {
     const id = await seedHeartbeat({ pingAgoMin: 5 });
     await ping(id, 'fail');
     await ping(id);
     const { lastFailAt } = (await monitorRow(id)).heartbeatState ?? {};
-    // The earlier attempt stored the failure, then died before finishing.
+    const outageKey = '00000000-0000-4000-8000-0000000000aa';
     await db.insert(schema.monitorResults).values({
       monitorId: id,
       location: 'local',
@@ -408,9 +409,47 @@ suite('heartbeat sweep (PostgreSQL)', () => {
       isUp: false,
       checkedAt: new Date(lastFailAt!),
       consecutiveFailureCount: 1,
-      details: { heartbeat: { kind: 'fail' } },
+      isStatusChange: true,
+      details: { heartbeat: { kind: 'fail' }, outageKey },
     });
+    return { id, outageKey };
+  }
+
+  it('a retry after a partial /fail-then-ping stores the failure once and still alerts it once', async () => {
+    const { id } = await partialFailThenPing();
     await newSweep().sweep();
+    expect((await results(id)).map((r) => r.isUp)).toEqual([false, true]);
+    // Exactly once per channel.
+    expect(sent.filter((x) => x.startsWith('monitor_failure:')).sort()).toEqual(
+      [
+        `monitor_failure:${customProvider}`,
+        `monitor_failure:${presetProvider}`,
+      ].sort(),
+    );
+    expect(sent).toContain(`monitor_recovery:${customProvider}`);
+    expect((await monitorRow(id)).status).toBe('up');
+  });
+
+  it('a retry after a partial /fail-then-ping whose failure alert already went out does not send it again', async () => {
+    const { id, outageKey } = await partialFailThenPing();
+    await db.insert(schema.alertHistory).values(
+      [customProvider, presetProvider].map((provider) => ({
+        type: 'monitor_failure' as const,
+        message: 'down',
+        target: 'Nightly backup',
+        targetType: 'monitor',
+        monitorId: id,
+        provider,
+        status: 'sent' as const,
+        sentAt: new Date(),
+        outageKey,
+        alertOrdinal: 0,
+        claimAttempts: 1,
+      })),
+    );
+    await newSweep().sweep();
+    expect(sent.some((x) => x.startsWith('monitor_failure:'))).toBe(false);
+    expect(sent).toContain(`monitor_recovery:${customProvider}`);
     expect((await results(id)).map((r) => r.isUp)).toEqual([false, true]);
   });
 

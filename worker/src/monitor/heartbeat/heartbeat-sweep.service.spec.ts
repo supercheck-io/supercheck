@@ -626,9 +626,11 @@ describe('HeartbeatSweepService.sweep', () => {
     const ctx = withClaim([claimed(m)]);
     ctx.existingAt.mockResolvedValueOnce([{ id: 'r1' }]);
     await ctx.sweep.sweep();
-    expect(
-      ctx.monitors.recordExternalResult.mock.calls.map((c) => c[1].isUp),
-    ).toEqual([true]);
+    const calls = ctx.monitors.recordExternalResult.mock.calls;
+    expect(calls.map((c) => [c[1].isUp, c[2]])).toEqual([
+      [false, { alreadyStored: true }],
+      [true, undefined],
+    ]);
   });
 
   it('records a ping with its start time and client', async () => {

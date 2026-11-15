@@ -424,19 +424,26 @@ export class HeartbeatSweepService implements OnModuleInit, OnModuleDestroy {
         }
       }
       const state = monitor.heartbeatState ?? {};
-      // A retry after a partial evaluation must not store that failure twice.
-      if (
-        decision.priorFailAt &&
-        !(await this.hasResultAt(monitor.id, decision.priorFailAt))
-      ) {
-        await this.monitorService.recordExternalResult(monitor, {
-          monitorId: monitor.id,
-          location: 'local',
-          status: 'down',
-          checkedAt: decision.priorFailAt,
-          isUp: false,
-          details: { heartbeat: { kind: 'fail' }, errorMessage: FAIL_REASON },
-        });
+      if (decision.priorFailAt) {
+        // A retry after a partial evaluation stores the failure once but still updates status and alerts from it
+        // (alert claims keep an alert that already went out from being sent again).
+        await this.monitorService.recordExternalResult(
+          monitor,
+          {
+            monitorId: monitor.id,
+            location: 'local',
+            status: 'down',
+            checkedAt: decision.priorFailAt,
+            isUp: false,
+            details: { heartbeat: { kind: 'fail' }, errorMessage: FAIL_REASON },
+          },
+          {
+            alreadyStored: await this.hasResultAt(
+              monitor.id,
+              decision.priorFailAt,
+            ),
+          },
+        );
       }
       if (decision.result) {
         const { kind, isUp, checkedAt, responseTimeMs, reason } =
