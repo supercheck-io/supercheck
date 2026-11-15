@@ -445,7 +445,7 @@ export class McpHttpClient {
           ) as unknown;
           if (
             isResponseFor(parsed, expectId) &&
-            (parsed as { error?: unknown }).error !== undefined
+            isRecord((parsed as { error?: unknown }).error)
           )
             return parsed;
         } catch {

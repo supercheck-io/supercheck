@@ -412,7 +412,15 @@ describe('McpHttpClient 2025 handshake path and auto fallback', () => {
   it('fails an HTTP error whose body is a success-shaped JSON-RPC reply', async () => {
     const { request } = script((req, n) =>
       req.body?.method === 'tools/list'
-        ? json({ jsonrpc: '2.0', id: req.body.id, result: { tools: [] } }, 500)
+        ? json(
+            {
+              jsonrpc: '2.0',
+              id: req.body.id,
+              error: null,
+              result: { tools: [] },
+            },
+            500,
+          )
         : modernServer(req, n),
     );
     const client = await connect(request);
