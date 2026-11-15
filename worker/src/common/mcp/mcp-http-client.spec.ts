@@ -409,6 +409,17 @@ describe('McpHttpClient 2025 handshake path and auto fallback', () => {
     expect(seen).toHaveLength(2);
   });
 
+  it('fails an HTTP error whose body is a success-shaped JSON-RPC reply', async () => {
+    const { request } = script((req, n) =>
+      req.body?.method === 'tools/list'
+        ? json({ jsonrpc: '2.0', id: req.body.id, result: { tools: [] } }, 500)
+        : modernServer(req, n),
+    );
+    const client = await connect(request);
+    const err = await failure(client.listTools());
+    expect(err.code).toBe('mcp_http_500');
+  });
+
   it('closes the session when the handshake fails after it was created', async () => {
     const { request, seen } = script((req, n) =>
       req.body?.method === 'notifications/initialized'

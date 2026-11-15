@@ -17,7 +17,7 @@ import { isDnsError } from '../common/utils/network-error';
 import { scrubSecrets, secretEchoForms } from '../common/utils/scrub-secrets';
 import { buildAuthHeaders } from '../private-agent/mcp-client';
 import { McpPolicyError } from './mcp-monitor-transport';
-import { fingerprintTool, hashToolList } from './mcp-tool-diff';
+import { fingerprintTool, hashToolList, mcpEndpointKey } from './mcp-tool-diff';
 import {
   SECRET_OVER_HTTP_MESSAGE,
   secretTransportAllowed,
@@ -77,7 +77,9 @@ export async function executeMcpCheck(
   deps: McpCheckDeps,
 ): Promise<McpCheckResult> {
   const started = Date.now();
-  const mcp: McpResultDetails = {};
+  const mcp: McpResultDetails = {
+    endpointKey: mcpEndpointKey(target, config.mcp?.auth),
+  };
   const secrets: string[] = [];
   const totalLimitMs =
     Math.min(

@@ -4,6 +4,7 @@ import {
   fingerprintTool,
   hasToolChanges,
   hashToolList,
+  mcpEndpointKey,
 } from './mcp-tool-diff';
 
 const tool = (
@@ -149,5 +150,32 @@ describe('diffTools', () => {
       removed: [],
       changed: [],
     });
+  });
+});
+
+describe('mcpEndpointKey', () => {
+  const auth = {
+    type: 'header' as const,
+    secretKey: 'TOKEN',
+    headerName: 'X-Key',
+  };
+  it('is a short stable hash that changes with the target or any login field', () => {
+    const key = mcpEndpointKey('https://a.example.com/mcp', auth);
+    expect(key).toMatch(/^[0-9a-f]{16}$/);
+    expect(mcpEndpointKey('https://a.example.com/mcp', { ...auth })).toBe(key);
+    for (const other of [
+      mcpEndpointKey('https://b.example.com/mcp', auth),
+      mcpEndpointKey('https://a.example.com/mcp', {
+        ...auth,
+        secretKey: 'OTHER',
+      }),
+      mcpEndpointKey('https://a.example.com/mcp', {
+        ...auth,
+        headerName: 'X-Other',
+      }),
+      mcpEndpointKey('https://a.example.com/mcp', { type: 'none' }),
+    ])
+      expect(other).not.toBe(key);
+    expect(key).not.toContain('TOKEN');
   });
 });

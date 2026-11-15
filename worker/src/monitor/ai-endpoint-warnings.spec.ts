@@ -132,6 +132,33 @@ describe('evaluateAiEndpointWarnings', () => {
       expect(state().lastServedModel).toBe('gpt-x');
     });
 
+    it('on a control-plane cycle compares every region once all reported, and nothing while one is pending', async () => {
+      const full = (
+        key: string,
+        complete: boolean,
+        ...rows: ReturnType<typeof ai>[]
+      ) =>
+        evaluateAiEndpointWarnings(db, alerts, 'm1', key, at(key), [rows[0]], {
+          complete,
+          upResults: rows,
+        });
+      await evaluate('c1', [ai()]);
+      // Frozen view saw only the region now serving gpt-y; the other region has not reported.
+      await full('c2', false, ai({ servedModel: 'gpt-y' }), ai());
+      expect(dispatch).not.toHaveBeenCalled();
+      expect(state().lastServedModel).toBe('gpt-x');
+      await full(
+        'c3',
+        true,
+        ai({ servedModel: 'gpt-y' }),
+        ai({ servedModel: 'gpt-y' }),
+        ai({ servedModel: 'gpt-y' }),
+      );
+      expect(kinds()).toEqual([
+        ['ai_model_changed', expect.stringMatching(/^ai_model_changed:/)],
+      ]);
+    });
+
     it('keeps the remembered model when a result carries none', async () => {
       await evaluate('c1', [ai()]);
       await evaluate('c2', [ai({ servedModel: undefined })]);

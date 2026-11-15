@@ -432,7 +432,8 @@ export class McpHttpClient {
       throw new McpError('mcp_credentials_rejected', { httpStatus: status });
     const type = (response.headers.get('content-type') ?? '').toLowerCase();
     if (!response.ok) {
-      // A 400 may carry the JSON-RPC error (-32022 with the versions the server supports).
+      // A 400 may carry the JSON-RPC error (-32022 with the versions the server supports). Only an
+      // error reply is taken: a success-shaped body must never turn a failed HTTP status healthy.
       if (
         this.o.mode !== '2025' &&
         expectId !== undefined &&
@@ -442,7 +443,11 @@ export class McpHttpClient {
           const parsed = JSON.parse(
             await readCapped(response, this.o.maxResponseBytes),
           ) as unknown;
-          if (isResponseFor(parsed, expectId)) return parsed;
+          if (
+            isResponseFor(parsed, expectId) &&
+            (parsed as { error?: unknown }).error !== undefined
+          )
+            return parsed;
         } catch {
           // fall through to the plain HTTP error
         }

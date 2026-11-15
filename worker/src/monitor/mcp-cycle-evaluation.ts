@@ -8,7 +8,7 @@ import type {
   McpResultDetails,
   McpToolChange,
 } from '../db/schema/types';
-import { diffTools, hasToolChanges } from './mcp-tool-diff';
+import { diffTools, hasToolChanges, mcpEndpointKey } from './mcp-tool-diff';
 import {
   dispatchMonitorWarning,
   type WarningSender,
@@ -39,10 +39,17 @@ const mcpOf = (result: McpCycleResult): McpResultDetails | undefined => {
 
 type Up = { mcp: McpResultDetails; ms: number };
 
-const upsOf = (results: McpCycleResult[]): Up[] =>
+/**
+ * Up results with MCP details. With `endpointKey`, a result stamped for other settings is dropped: a check
+ * that started before a URL or login change must not seed the new baseline. Unstamped (older worker) results count.
+ */
+const upsOf = (results: McpCycleResult[], endpointKey?: string): Up[] =>
   results.flatMap((result) => {
     const mcp = mcpOf(result);
-    return mcp ? [{ mcp, ms: result.responseTimeMs ?? 0 }] : [];
+    if (!mcp) return [];
+    if (endpointKey && mcp.endpointKey && mcp.endpointKey !== endpointKey)
+      return [];
+    return [{ mcp, ms: result.responseTimeMs ?? 0 }];
   });
 
 /** What the tool-list part of a cycle sees: whether every expected location has reported, and the up ones. */
@@ -99,13 +106,14 @@ async function readState(
   monitorId: string,
 ) {
   const [row] = await db
-    .select({ config: schema.monitors.config })
+    .select({ config: schema.monitors.config, target: schema.monitors.target })
     .from(schema.monitors)
     .where(and(eq(schema.monitors.id, monitorId), liveMonitor()))
     .limit(1);
   return row?.config?.mcp
     ? {
         settings: row.config.mcp,
+        endpointKey: mcpEndpointKey(row.target, row.config.mcp.auth),
         state: row.config.mcpState ?? {},
       }
     : undefined;
@@ -132,11 +140,12 @@ export async function evaluateMcpCycle(
   retry = true,
 ): Promise<boolean> {
   try {
-    const ups = upsOf(upResults);
-    if (ups.length === 0) return false;
+    if (upsOf(upResults).length === 0) return false;
     const current = await readState(db, monitorId);
     if (!current) return false;
-    const { settings, state } = current;
+    const { settings, state, endpointKey } = current;
+    const ups = upsOf(upResults, endpointKey);
+    if (ups.length === 0) return false;
     if ((state.lastCycleKey ?? '') === cycleKey) return false;
     // An older cycle redelivered after a newer one was evaluated must not rewind streaks or baselines.
     if (state.lastCycleAt && Date.parse(state.lastCycleAt) >= cycleAt.getTime())
@@ -154,7 +163,12 @@ export async function evaluateMcpCycle(
     const warnings: Array<[MonitorWarningKind, string, string]> = [];
     if (tools.complete && toolsDue(state, cycleAt)) {
       warnings.push(
-        ...evaluateTools(state, next, upsOf(tools.upResults), cycleKey),
+        ...evaluateTools(
+          state,
+          next,
+          upsOf(tools.upResults, endpointKey),
+          cycleKey,
+        ),
       );
       next.toolsCycleKey = cycleKey;
       next.toolsCycleAt = cycleAt.toISOString();
@@ -273,7 +287,7 @@ export async function completeMcpTools(
     const warnings = evaluateTools(
       state,
       next,
-      upsOf(input.upResults),
+      upsOf(input.upResults, current.endpointKey),
       cycleId,
     );
     const changed = await persistGuardedState(

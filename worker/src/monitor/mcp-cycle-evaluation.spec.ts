@@ -18,7 +18,7 @@ import {
   evaluateMcpCycle,
   toolsInputOf,
 } from './mcp-cycle-evaluation';
-import { fingerprintTool, hashToolList } from './mcp-tool-diff';
+import { fingerprintTool, hashToolList, mcpEndpointKey } from './mcp-tool-diff';
 import { dispatchMonitorWarning } from './monitor-warning-dispatch';
 import { persistGuardedState } from './monitor-warning-state';
 
@@ -124,6 +124,23 @@ describe('evaluateMcpCycle', () => {
       slowStreak: 0,
     });
     expect(dispatch).not.toHaveBeenCalled();
+  });
+
+  it('ignores results stamped for other settings (a check from before a URL or login change)', async () => {
+    await evaluate('c1', [result(A)]);
+    const stamped = (tools: McpToolFingerprint[], endpointKey: string) => {
+      const r = result(tools);
+      return { ...r, details: { mcp: { ...r.details.mcp, endpointKey } } };
+    };
+    // The mocked row has no target, so this is the key of the current settings.
+    const currentKey = mcpEndpointKey(undefined as never, { type: 'none' });
+    expect(
+      await evaluate('c2', [stamped([tool('old')], 'stale-settings')]),
+    ).toBe(false);
+    expect(dispatch).not.toHaveBeenCalled();
+    expect(state().baseline).toMatchObject({ hash: hashToolList(A) });
+    await evaluate('c3', [stamped([tool('new')], currentKey)]);
+    expect(kinds()).toEqual([['mcp_tools_changed', 'mcp_tools_changed:c3']]);
   });
 
   it('records the 2025 protocol as detected', async () => {

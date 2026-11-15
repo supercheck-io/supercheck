@@ -69,6 +69,7 @@ describe('evaluateCycleWarnings', () => {
       'c1',
       cycleAt,
       [up, down],
+      { complete: true, upResults: [up] },
     );
     expect(evaluateAiEndpointWarnings).toHaveBeenCalledWith(
       db,
@@ -77,6 +78,7 @@ describe('evaluateCycleWarnings', () => {
       'c1',
       cycleAt,
       [up, down],
+      { complete: true, upResults: [up] },
     );
     expect(evaluateMcpCycle).not.toHaveBeenCalled();
   });

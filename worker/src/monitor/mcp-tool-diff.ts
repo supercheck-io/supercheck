@@ -1,5 +1,9 @@
 import * as crypto from 'node:crypto';
-import type { McpToolChange, McpToolFingerprint } from '../db/schema/types';
+import type {
+  McpMonitorConfig,
+  McpToolChange,
+  McpToolFingerprint,
+} from '../db/schema/types';
 
 export const MCP_NAME_MAX_CHARS = 128;
 const PART_CHARS = 10;
@@ -108,3 +112,25 @@ export function diffTools(
 
 export const hasToolChanges = (diff: McpToolDiff) =>
   diff.added.length + diff.removed.length + diff.changed.length > 0;
+
+/**
+ * Which settings a check ran with: the target and the login, the same fields whose change resets the
+ * baseline in the app. Short and one-way, so a stored result reveals neither the URL nor the secret name.
+ */
+export function mcpEndpointKey(
+  target: string,
+  auth: McpMonitorConfig['auth'] | undefined,
+): string {
+  return crypto
+    .createHash('sha256')
+    .update(
+      JSON.stringify([
+        target,
+        auth?.type ?? 'none',
+        auth?.secretKey ?? '',
+        auth?.headerName ?? '',
+      ]),
+    )
+    .digest('hex')
+    .slice(0, 16);
+}

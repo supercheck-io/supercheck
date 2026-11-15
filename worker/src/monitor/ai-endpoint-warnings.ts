@@ -38,12 +38,17 @@ export async function evaluateAiEndpointWarnings(
   cycleKey: string,
   cycleAt: Date,
   results: AiCycleResult[],
+  /** Control-plane cycles: every location's reply once all have reported (the frozen view may lack some). */
+  full?: { complete: boolean; upResults: AiCycleResult[] },
 ): Promise<boolean> {
   try {
-    const ai = results.flatMap((r) => {
-      const value = (r.details as MonitorResultDetails | null | undefined)?.ai;
-      return value ? [value] : [];
-    });
+    const aiOf = (rows: AiCycleResult[]) =>
+      rows.flatMap((r) => {
+        const value = (r.details as MonitorResultDetails | null | undefined)
+          ?.ai;
+        return value ? [value] : [];
+      });
+    const ai = aiOf(results);
     if (ai.length === 0) return false;
 
     const [row] = await db
@@ -68,8 +73,10 @@ export async function evaluateAiEndpointWarnings(
 
     // Served model: silent on the first value, once per new value, always remembered. Locations that
     // disagree (regional deployments, routers) compare nothing, so the order of rows cannot flip it.
+    // A cycle closed before every region reported compares nothing, so the first region to answer cannot flip it.
+    const modelSource = full ? (full.complete ? aiOf(full.upResults) : []) : ai;
     const models = new Set(
-      ai.flatMap((a) => (a.servedModel ? [a.servedModel] : [])),
+      modelSource.flatMap((a) => (a.servedModel ? [a.servedModel] : [])),
     );
     const model = models.size === 1 ? [...models][0] : undefined;
     if (model) {

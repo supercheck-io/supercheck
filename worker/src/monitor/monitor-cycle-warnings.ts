@@ -24,7 +24,7 @@ export async function evaluateCycleWarnings(
   cycleKey: string,
   cycleAt: Date,
   results: CycleResult[],
-  /** MCP only: the cycle's full row set when it closed before every location reported. */
+  /** The cycle's up rows once every location reported (control-plane path): MCP tools and the AI served model. */
   tools?: McpToolsInput,
 ): Promise<void> {
   if (monitor.type === 'mcp_server')
@@ -45,5 +45,6 @@ export async function evaluateCycleWarnings(
       cycleKey,
       cycleAt,
       results,
+      tools,
     );
 }

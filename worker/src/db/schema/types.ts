@@ -81,6 +81,8 @@ export type McpResultDetails = {
   serverVersion?: string;
   toolCount?: number;
   toolsHash?: string;
+  /** Hash of the target and login the check ran with; a result from before a settings change is ignored. */
+  endpointKey?: string;
   /** At most 500 entries; names clipped to 128 chars. Descriptions and schemas are hashed, never stored. */
   tools?: McpToolFingerprint[];
   connectMs?: number;
