@@ -20,8 +20,10 @@ jest.mock("@/lib/sre/incident-lifecycle", () => ({
   findOpenIncidentForSource: jest.fn().mockResolvedValue(null),
  recordRepeatAlert: jest.fn().mockResolvedValue(true),
   announceSystemTransition: jest.fn().mockResolvedValue(undefined),
+  noteFailureReturned: jest.fn().mockResolvedValue(undefined),
   getDefaultAssigneeId: jest.fn().mockResolvedValue(null),
 }));
+jest.mock("@/lib/sre/incident-resources", () => ({ findOpenIncidentListingMonitor: jest.fn().mockResolvedValue(null) }));
 jest.mock("@/lib/status-page-reconciliation", () => ({ linkStatusPageIncidentsToSreIncident: jest.fn().mockResolvedValue([]) }));
 jest.mock("@/sre/lib/triage-runner", () => ({ startSreIncidentTriage: jest.fn(), completeSreIncidentTriage: jest.fn() }));
 jest.mock("@/sre/lib/auto-investigate", () => ({ maybeAutoInvestigateOnOpen: jest.fn().mockResolvedValue({ handled: false }) }));
@@ -154,6 +156,66 @@ describe("processSreBackgroundAlertTriageJob", () => {
       },
     };
     const monitorRow = (alertConfig: unknown) => ({ name: "Checkout", organizationId: "org-1", projectId: "proj-1", alertConfig, status: "up", enabled: true });
+
+    it("attaches a monitor alert to an open declared incident that lists the monitor (I4)", async () => {
+      const { findOpenIncidentListingMonitor } = jest.requireMock("@/lib/sre/incident-resources");
+      findOpenIncidentListingMonitor.mockResolvedValueOnce({ id: "declared-1", triageInvestigationRunId: null });
+      selectQueue.push([monitorRow({ enabled: false, incidentEnabled: true })], [], [{ id: "ae-1" }], []);
+      const result = await processSreBackgroundAlertTriageJob(FAILURE_JOB);
+      expect(findOpenIncidentListingMonitor).toHaveBeenCalledWith(expect.anything(), { organizationId: "org-1", projectId: "proj-1", monitorId: FAILURE_JOB.sourceFailure.sourceId });
+      expect(insertedIncident()).toBeUndefined();
+      expect(inserts).toContainEqual(expect.objectContaining({ incidentId: "declared-1", role: "related" }));
+      expect(inserts).toContainEqual(expect.objectContaining({ incidentId: "declared-1", eventData: expect.objectContaining({ state: "alert_correlated" }) }));
+      // Checked before the reopen, so a recently auto-resolved incident never comes back beside the declared one.
+      expect(reopenRecentlyAutoResolved).not.toHaveBeenCalled();
+      expect(result).toMatchObject({ success: true });
+    });
+
+    it("joins a declared incident even when the monitor has incidents turned off, and opens nothing otherwise (I2)", async () => {
+      const { findOpenIncidentListingMonitor } = jest.requireMock("@/lib/sre/incident-resources");
+      findOpenIncidentListingMonitor.mockResolvedValue({ id: "declared-1", triageInvestigationRunId: null });
+      try {
+        selectQueue.push([alertRow({ monitorAlertConfig: { enabled: true, incidentEnabled: false } })], [], [{ id: "ae-1" }], []);
+        await processSreBackgroundAlertTriageJob(JOB);
+        expect(inserts).toContainEqual(expect.objectContaining({ incidentId: "declared-1", role: "related" }));
+      } finally {
+        findOpenIncidentListingMonitor.mockResolvedValue(null);
+      }
+      inserts.length = 0;
+      selectQueue.push([alertRow({ monitorAlertConfig: { enabled: true, incidentEnabled: false } })]);
+      expect(await processSreBackgroundAlertTriageJob(JOB)).toEqual({ success: true, skipped: true, reason: "incident_disabled" });
+      expect(insertedIncident()).toBeUndefined();
+    });
+
+    it("lets an incident already open for the monitor win over a declared one", async () => {
+      const { findOpenIncidentListingMonitor } = jest.requireMock("@/lib/sre/incident-resources");
+      const { findOpenIncidentForSource } = jest.requireMock("@/lib/sre/incident-lifecycle");
+      findOpenIncidentForSource.mockResolvedValue({ id: "auto-1", triageInvestigationRunId: null });
+      try {
+        selectQueue.push([monitorRow({ enabled: false, incidentEnabled: true })], [], [{ id: "ae-1" }], []);
+        await processSreBackgroundAlertTriageJob(FAILURE_JOB);
+        expect(findOpenIncidentListingMonitor).not.toHaveBeenCalled();
+        expect(inserts).toContainEqual(expect.objectContaining({ incidentId: "auto-1", role: "related" }));
+      } finally {
+        findOpenIncidentForSource.mockResolvedValue(null);
+      }
+    });
+
+    it("with incidents off, still lets an incident open for the monitor take the alert when a declared one lists it", async () => {
+      const { findOpenIncidentListingMonitor } = jest.requireMock("@/lib/sre/incident-resources");
+      const { findOpenIncidentForSource } = jest.requireMock("@/lib/sre/incident-lifecycle");
+      findOpenIncidentForSource.mockResolvedValue({ id: "auto-1", triageInvestigationRunId: null });
+      findOpenIncidentListingMonitor.mockResolvedValue({ id: "declared-1", triageInvestigationRunId: null });
+      try {
+        selectQueue.push([alertRow({ monitorAlertConfig: { enabled: true, incidentEnabled: false } })], [], [{ id: "ae-1" }], []);
+        await processSreBackgroundAlertTriageJob(JOB);
+        expect(inserts).toContainEqual(expect.objectContaining({ incidentId: "auto-1", role: "related" }));
+        expect(insertedIncident()).toBeUndefined();
+      } finally {
+        findOpenIncidentForSource.mockResolvedValue(null);
+        findOpenIncidentListingMonitor.mockResolvedValue(null);
+      }
+    });
 
     it("opens an incident for a monitor with alerts off and incidents opted in, with one alert counted", async () => {
       selectQueue.push([monitorRow({ enabled: false, incidentEnabled: true })]);

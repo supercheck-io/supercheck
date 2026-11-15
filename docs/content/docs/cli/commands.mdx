@@ -720,7 +720,13 @@ supercheck incident list --assignee me
 supercheck incident assign <incident-number-or-uuid> --user me
 supercheck incident ack <incident-number-or-uuid>
 supercheck incident resolve <incident-number-or-uuid> --summary "Traffic restored after rollback"
+supercheck incident create --title "Checkout errors reported by customers" --severity sev2 \
+  --service "Checkout API" --monitor <monitor-uuid> --summary "Support reports 500s at payment"
+supercheck incident create --title "Login outage" --severity sev1 \
+  --status-page <status-page-uuid> --component <component-uuid> --impact major --message "We are investigating." --notify
 ```
+
+`incident create` (alias `declare`) opens an incident by hand, with the same notifications and reminders as one opened by an alert. Only `--title` is required; `--severity` defaults to `sev3`. `--service` takes a UUID or the exact service name, and that service's owner becomes the assignee. Each `--monitor` (and `--affected-service`) is listed as affected: its next alert joins this incident instead of opening a new one. `--commander` takes `me` or a user UUID. `--status-page` with at least one `--component` also posts a public incident; subscribers are emailed only with `--notify`. If the public post fails, the incident is still created and the command warns. Declaring is limited to 10 per minute per user and 60 per hour per organization, and needs incident create permission (editor or above).
 
 The **Status** column shows the display label (Triggered, Acknowledged, Investigating, Fixing, Monitoring, Resolved), also returned as `statusLabel` with `--json`. `--status` filters on the stored values: `open`, `triggered`, `investigating`, `identified`, `recommendations_ready`, `user_applying_fix`, `verifying`, `resolved`.
 

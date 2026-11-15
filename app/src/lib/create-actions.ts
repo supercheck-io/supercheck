@@ -17,8 +17,9 @@ import { ADMIN_TYPES, TYPE_TEXT, TYPE_TEXT_FORCE, VARIABLE_TYPES, typeTone, type
  */
 type Icon = LucideIcon | ComponentType<{ className?: string }>;
 
-export type CreateCapability = "sreServices" | "sreConnectors" | "projects" | "members" | "cliTokens";
+export type CreateCapability = "incidents" | "sreServices" | "sreConnectors" | "projects" | "members" | "cliTokens";
 export type CreateCapabilities = {
+  canDeclareIncidents: boolean;
   canCreateProjects: boolean;
   canInviteMembers: boolean;
   canCreateCliTokens: boolean;
@@ -26,6 +27,7 @@ export type CreateCapabilities = {
   canConfigureSreConnectors: boolean;
 };
 export const CAPABILITY_FLAG: Record<CreateCapability, keyof CreateCapabilities> = {
+  incidents: "canDeclareIncidents",
   sreServices: "canCreateSreServices",
   sreConnectors: "canConfigureSreConnectors",
   projects: "canCreateProjects",
@@ -34,7 +36,7 @@ export const CAPABILITY_FLAG: Record<CreateCapability, keyof CreateCapabilities>
 };
 
 export type CreateGroupId =
-  | "tests" | "jobs" | "sre" | "admin" | "monitors" | "statusPages" | "variables" | "notifications";
+  | "respond" | "tests" | "jobs" | "sre" | "admin" | "monitors" | "statusPages" | "variables" | "notifications";
 
 export type CreateAction = {
   id: string;
@@ -51,6 +53,7 @@ export type CreateAction = {
 
 /** Group headings, in Quick Create order. */
 export const CREATE_GROUPS: Array<{ id: CreateGroupId; heading: string }> = [
+  { id: "respond", heading: "Respond to an incident" },
   { id: "tests", heading: "Create test" },
   { id: "jobs", heading: "Create job" },
   { id: "sre", heading: "Configure AI SRE" },
@@ -73,6 +76,11 @@ const monitor = (
 });
 
 export const CREATE_ACTIONS: CreateAction[] = [
+  {
+    id: "respond-incident", group: "respond", title: "Declare incident", url: "/incidents?new=1", icon: NAV.incidents.icon,
+    text: AREA_TEXT[NAV.incidents.tone], force: "", gate: "incidents",
+  },
+
   test("browser", "Browser Test", Chrome),
   test("api", "API Test", ArrowLeftRight),
   test("database", "Database Test", Database),

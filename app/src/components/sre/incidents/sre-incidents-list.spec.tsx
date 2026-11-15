@@ -19,8 +19,16 @@ const mockPush = jest.fn();
 jest.mock("next/navigation", () => ({
   useRouter: () => ({
     push: mockPush,
+    replace: mockReplace,
     refresh: jest.fn(),
   }),
+  usePathname: () => "/incidents",
+  useSearchParams: () => new URLSearchParams(window.location.search),
+}));
+const mockReplace = jest.fn();
+jest.mock("@/components/sre/incidents/declare-incident-dialog", () => ({
+  DeclareIncidentDialog: ({ open, onOpenChange, defaults }: { open: boolean; onOpenChange: (open: boolean) => void; defaults?: { monitorId?: string } }) =>
+    open ? <div role="dialog" data-monitor={defaults?.monitorId ?? ""}><button data-testid="close-dialog" onClick={() => onOpenChange(false)} /></div> : null,
 }));
 
 jest.mock("@/actions/sre-incidents", () => ({
@@ -159,6 +167,25 @@ describe("SreIncidentsList", () => {
       screen.queryByRole("button", { name: /new incident/i }),
     ).not.toBeInTheDocument();
   });
+  it("opens the dialog from ?new=1 and removes the parameter when it closes", () => {
+    window.history.replaceState(null, "", "/incidents?new=1&scope=all");
+    render(<NewIncidentAction />);
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId("close-dialog"));
+    expect(mockReplace).toHaveBeenCalledWith("/incidents?scope=all", { scroll: false });
+    window.history.replaceState(null, "", "/");
+  });
+
+  it("renders a prefilled Declare incident action on detail pages, and nothing for viewers", () => {
+    const { unmount } = render(<NewIncidentAction variant="detail" defaults={{ monitorId: "m-1" }} />);
+    fireEvent.click(screen.getByRole("button", { name: /declare incident/i }));
+    expect(screen.getByRole("dialog")).toHaveAttribute("data-monitor", "m-1");
+    unmount();
+    mockRole = "project_viewer";
+    const { container } = render(<NewIncidentAction variant="detail" />);
+    expect(container).toBeEmptyDOMElement();
+  });
+
 
   it("defaults to Active and switches between quick filters", () => {
     render(

@@ -151,6 +151,79 @@ policyCommand.command('set')
     outputDetail(data.policy)
   })
 
+const collect = (value: string, previous: string[] = []) => [...previous, value]
+const isUuid = (value: string) => z.string().uuid().safeParse(value).success
+
+/** Resolves service UUIDs or names; the service list is fetched at most once per command. */
+function serviceResolver() {
+  let services: Promise<{ services: Array<{ id: string; name: string }>; truncated?: boolean }> | undefined
+  return async (value: string): Promise<string> => {
+    if (isUuid(value)) return value
+    services ??= createAuthenticatedClient().get<{ services: Array<{ id: string; name: string }>; truncated?: boolean }>('/api/sre/services').then((r) => r.data)
+    const data = await services
+    // A cut list could hide a second service with the same name, so a name only resolves against the full list.
+    if (data.truncated) throw new CLIError(`This project has too many services to match "${value}" by name. Pass the service UUID (supercheck service list --json).`, ExitCode.ConfigError)
+    const matches = data.services.filter((service) => service.name.toLowerCase() === value.toLowerCase())
+    if (matches.length !== 1) {
+      const reason = matches.length ? `More than one service is named "${value}".` : `No service named "${value}".`
+      throw new CLIError(`${reason} Pass the service UUID (supercheck service list --json).`, ExitCode.ConfigError)
+    }
+    return matches[0]!.id
+  }
+}
+
+incidentCommand.command('create')
+  .alias('declare')
+  .description('Declare an incident by hand, for example after a user report. Sends the project\'s incident notifications.')
+  .requiredOption('--title <title>', 'Incident title (max 500 characters)')
+  .addOption(new Option('--severity <severity>', 'Severity').choices(['sev1', 'sev2', 'sev3', 'sev4']).default('sev3'))
+  .option('--summary <summary>', 'What is known so far')
+  .option('--service <service>', 'Primary service, by UUID or exact name; its owner becomes the assignee')
+  .option('--affected-service <service>', 'Another affected service, by UUID or exact name (repeatable)', collect, [])
+  .option('--monitor <id>', 'Affected monitor UUID; its next alerts join this incident (repeatable)', collect, [])
+  .option('--commander <user>', 'Incident commander: a user UUID, or "me"')
+  .option('--status-page <id>', 'Also post a public incident to this status page')
+  .option('--component <id>', 'Affected status page component UUID (repeatable, needs --status-page)', collect, [])
+  .addOption(new Option('--impact <impact>', 'Public impact (default: minor, needs --status-page)').choices(['none', 'minor', 'major', 'critical']))
+  .option('--message <message>', 'First public status page message (needs --status-page)')
+  .option('--notify', 'Notify status page subscribers (off by default, needs --status-page)')
+  .action(async (options: {
+    title: string; severity: string; summary?: string; service?: string; affectedService: string[]; monitor: string[]
+    commander?: string; statusPage?: string; component: string[]; impact?: string; message?: string; notify?: boolean
+  }) => {
+    const bad = [...options.monitor, ...options.component, ...(options.statusPage ? [options.statusPage] : [])].find((value) => !isUuid(value))
+    if (bad) throw new CLIError(`"${bad}" is not a UUID. --monitor, --status-page and --component take UUIDs.`, ExitCode.ConfigError)
+    if (options.component.length && !options.statusPage) throw new CLIError('--component needs --status-page.', ExitCode.ConfigError)
+    if (options.statusPage && !options.component.length) throw new CLIError('--status-page needs at least one --component.', ExitCode.ConfigError)
+    if (!options.statusPage && (options.message || options.notify || options.impact)) throw new CLIError('--message, --notify and --impact need --status-page.', ExitCode.ConfigError)
+    let commanderUserId: string | undefined
+    if (options.commander === 'me') {
+      const { data } = await createAuthenticatedClient().get<{ user?: { id?: string } }>('/api/context')
+      if (!data.user?.id) throw new CLIError('Could not resolve the current user. Pass a user UUID instead.', ExitCode.ApiError)
+      commanderUserId = data.user.id
+    } else if (options.commander) {
+      if (!isUuid(options.commander)) throw new CLIError('--commander must be "me" or a user UUID.', ExitCode.ConfigError)
+      commanderUserId = options.commander
+    }
+    const resolveServiceId = serviceResolver()
+    const body = {
+      title: options.title,
+      severity: options.severity,
+      ...(options.summary ? { summary: options.summary } : {}),
+      ...(options.service ? { primaryServiceId: await resolveServiceId(options.service) } : {}),
+      affected: { serviceIds: await Promise.all(options.affectedService.map(resolveServiceId)), monitorIds: options.monitor },
+      ...(commanderUserId ? { commanderUserId } : {}),
+      ...(options.statusPage ? {
+        statusPage: { statusPageId: options.statusPage, componentIds: options.component, impact: options.impact ?? 'minor', ...(options.message ? { message: options.message } : {}), notifySubscribers: options.notify === true },
+      } : {}),
+    }
+    // No retries: a retried POST could declare the incident twice.
+    const { data } = await withSpinner('Declaring incident', () => withRouteCheck(() => createAuthenticatedClient().post<{ incident: Record<string, unknown>; warning?: string; statusPageIncidentId?: string }>('/api/sre/incidents', body, { retries: 0 })))
+    logger.success(`Incident #${String(data.incident.incidentNumber)} declared`)
+    if (data.warning === 'status_page_failed') logger.warn('The incident was created, but posting it to the status page failed. Post it from the status page in the app.')
+    outputDetail({ ...data.incident, ...(data.statusPageIncidentId ? { statusPageIncidentId: data.statusPageIncidentId } : {}), ...(data.warning ? { warning: data.warning } : {}) })
+  })
+
 incidentCommand.command('resolve <id>')
   .description('Resolve an incident by number or UUID with a resolution summary')
   .option('--summary <summary>', 'Resolution summary')

@@ -50,6 +50,8 @@ const STATE_VISUAL: Record<string, { icon: LucideIcon; tone: IconTone }> = {
   alert_correlated: { icon: Bell, tone: "amber" },
   incident_updated: { icon: Pencil, tone: "slate" },
   manual_incident_created: { icon: Siren, tone: "rose" },
+  resources_affected: { icon: Activity, tone: "slate" },
+  status_page_post_failed: { icon: TriangleAlert, tone: "rose" },
   created_from_alert_history: { icon: Siren, tone: "rose" },
   created_from_background_alert_triage: { icon: Siren, tone: "rose" },
   triage_failed: { icon: TriangleAlert, tone: "rose" },

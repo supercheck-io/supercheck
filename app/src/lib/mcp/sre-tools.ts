@@ -6,6 +6,7 @@ import { assertCanStartSreInvestigation, SreInvestigationBillingError, withSreTr
 import { sreBillingErrorMessage } from "@/lib/sre/billing-error-messages";
 import { checkSreDailyTokenLimit } from "@/lib/sre/sre-daily-token-limit";
 import { checkSreEvidenceBriefRateLimit, checkSreIncidentUpdateRateLimit, checkSreInvestigationRateLimit, checkSreTriageRateLimit } from "@/lib/sre/sre-rate-limiter";
+import { createManualIncident } from "@/lib/sre/manual-incident";
 import { acknowledgeIncident, assignIncident, MAX_RESOLUTION_SUMMARY_LENGTH, resolveIncident } from "@/lib/sre/incident-lifecycle";
 import { investigationGuidanceSchema } from "@/lib/sre/feedback-note";
 import { generateEvidenceBrief } from "@/lib/sre/evidence-brief-generator";
@@ -108,6 +109,27 @@ export function registerSreTools(tool: ToolRegistrar, ctx: McpCallContext): void
     tool("assign_incident", "Assign an incident, or set its commander. Pass assigneeUserId null to unassign. The assignee must be someone who can act on the incident." + UNTRUSTED, write,
       { id: idArg, assigneeUserId: idArg.nullable(), role: z.enum(["assignee", "commander"]).default("assignee") },
       ({ id, assigneeUserId, role }) => lifecycle(id, () => assignIncident(actor, id, assigneeUserId, role)));
+    tool("create_incident", "Declare an incident by hand, for an outage no monitor caught (for example a user report). Sends the project's incident notifications. Optionally list affected services and monitors: their next alerts join this incident. It never posts to a public status page." + UNTRUSTED,
+      { resource: "sre_incident", action: "create", scope: MCP_INCIDENTS_WRITE_SCOPE },
+      {
+        title: z.string().trim().min(1).max(500),
+        severity: z.enum(["sev1", "sev2", "sev3", "sev4"]).default("sev3"),
+        summary: z.string().trim().max(4000).nullish(),
+        primaryServiceId: idArg.nullish(),
+        affectedServiceIds: z.array(idArg).max(50).default([]),
+        affectedMonitorIds: z.array(idArg).max(50).default([]),
+        commanderUserId: idArg.nullish(),
+      },
+      async ({ affectedServiceIds, affectedMonitorIds, ...input }) => {
+        const result = await createManualIncident(
+          { userId: ctx.userId, organizationId: ctx.organizationId, orgPendingDeletion: ctx.orgPendingDeletion, project: { id: ctx.projectId, userRole: ctx.role } },
+          // No statusPage: public posts and subscriber emails stay out of reach of a model-driven client.
+          { ...input, affected: { serviceIds: affectedServiceIds, monitorIds: affectedMonitorIds }, statusPage: null },
+          "mcp",
+        );
+        if (!result.ok) throw new McpToolFailure(result.code === "forbidden" ? "forbidden" : result.code, result.error);
+        return { id: result.incident.id, incidentNumber: result.incident.incidentNumber, ...(result.warning ? { warning: result.warning } : {}) };
+      });
     tool("acknowledge_incident", "Acknowledge an incident. Claims it for you if it is unassigned." + UNTRUSTED, write, { id: idArg },
       ({ id }) => lifecycle(id, () => acknowledgeIncident(actor, id)));
     tool("resolve_incident", "Resolve an incident with a resolution summary." + UNTRUSTED, write,

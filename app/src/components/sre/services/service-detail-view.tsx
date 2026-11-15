@@ -57,6 +57,7 @@ import {
 } from "@/components/sre/incidents/incident-ui";
 import { PANEL_LINK, SEVERITY_TONES } from "@/components/sre/incidents/incident-sidebar";
 import { Button } from "@/components/ui/button";
+import { NewIncidentAction } from "@/components/sre/incidents/new-incident-action";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import {
   Dialog,
@@ -416,10 +417,12 @@ export function ServiceDetailView({ initialDetail }: ServiceDetailViewProps) {
             )}
           </div>
         </div>
+        <div className="flex shrink-0 flex-wrap items-center gap-2 self-start">
+          <NewIncidentAction variant="detail" defaults={{ serviceId: detail.service.id }} />
         <Button
           variant="outline"
           size="sm"
-          className="shrink-0 self-start"
+          className="shrink-0"
           onClick={() =>
             startRefresh(async () => {
               await refresh();
@@ -431,6 +434,7 @@ export function ServiceDetailView({ initialDetail }: ServiceDetailViewProps) {
           <RefreshCw className={cn("h-4 w-4", refreshing && "animate-spin")} />
           Refresh
         </Button>
+        </div>
       </header>
 
       {/* Tabs sit above both columns so the first card on each side starts on the same line. */}

@@ -1,5 +1,6 @@
 /** @jest-environment node */
 
+jest.mock("@/lib/sre/manual-incident", () => ({ createManualIncident: jest.fn() }));
 jest.mock("next/cache", () => ({ revalidatePath: jest.fn() }));
 jest.mock("@/utils/db", () => ({
   db: { select: jest.fn(), transaction: jest.fn(), query: {
@@ -492,33 +493,29 @@ describe("createSreIncidentFromAlert join/reopen rules", () => {
   });
 });
 
-describe("createManualSreIncident default assignee", () => {
-  it("assigns a hand-created incident to its creator", async () => {
-    jest.mocked(requireProjectContext).mockResolvedValue({
-      userId: "creator-1", organizationId: "org-1", orgPendingDeletion: false,
-      project: { id: "project-1", name: "Prod", organizationId: "org-1", isDefault: true, userRole: "project_editor" },
-    });
-    jest.mocked(checkPermissionWithContext).mockReturnValue(true);
-    const incidentValues: Record<string, unknown>[] = [];
-    (db.transaction as jest.Mock).mockImplementation(async (callback) => callback({
-      execute: jest.fn(),
-      select: () => selectRows([{ nextIncidentNumber: 4 }]),
-      insert: () => ({
-        values: (values: Record<string, unknown>) => {
-          incidentValues.push(values);
-          return { returning: async () => [{ id: "incident-1", incidentNumber: 4, title: "t" }] };
-        },
-      }),
-    }));
-    const result = await createManualSreIncident({ title: "Checkout down", severity: "sev2" } as never);
-    expect(result.success).toBe(true);
-    expect(incidentValues[0]).toMatchObject({ createdByUserId: "creator-1", assigneeUserId: "creator-1" });
-    expect(jest.requireMock("@/sre/lib/auto-investigate").maybeAutoInvestigateOnOpen).toHaveBeenCalledWith(
-      expect.objectContaining({ incidentId: "incident-1", userId: "creator-1" }),
-    );
-    expect(jest.requireMock("@/lib/sre/incident-watchers").watchIncident).toHaveBeenCalledWith(expect.anything(), "incident-1", "creator-1");
-    expect(jest.requireMock("@/lib/sre/incident-notifier").notifyIncidentEvent).toHaveBeenCalledWith(
-      expect.objectContaining({ incidentId: "incident-1", event: "created", actorUserId: "creator-1" }),
-    );
+describe("createManualSreIncident", () => {
+  const context = {
+    userId: "creator-1", organizationId: "org-1", orgPendingDeletion: false,
+    project: { id: "project-1", name: "Prod", organizationId: "org-1", isDefault: true, userRole: "project_editor" },
+  };
+  it("delegates to the shared core with source ui and keeps the action result shape", async () => {
+    jest.mocked(requireProjectContext).mockResolvedValue(context);
+    const core = jest.requireMock("@/lib/sre/manual-incident").createManualIncident as jest.Mock;
+    core.mockResolvedValueOnce({ ok: true, incident: { id: "incident-1", incidentNumber: 4, title: "t" }, warning: "status_page_failed" });
+    const result = await createManualSreIncident({ title: "Checkout down", severity: "sev2" });
+    expect(core).toHaveBeenCalledWith(context, { title: "Checkout down", severity: "sev2" }, "ui");
+    expect(result).toEqual({ success: true, incident: { id: "incident-1", incidentNumber: 4, title: "t" }, warning: "status_page_failed", message: "Incident #4 created" });
+  });
+  it("maps core failures to the action's error shape", async () => {
+    jest.mocked(requireProjectContext).mockResolvedValue(context);
+    const core = jest.requireMock("@/lib/sre/manual-incident").createManualIncident as jest.Mock;
+    core.mockResolvedValueOnce({ ok: false, code: "invalid", error: "Incident title is required", fieldErrors: { title: ["Incident title is required"] } });
+    expect(await createManualSreIncident({ title: "" })).toEqual({ success: false, error: "Invalid incident details", fieldErrors: { title: ["Incident title is required"] } });
+    core.mockResolvedValueOnce({ ok: false, code: "rate_limited", error: "Too many incidents declared. Try again shortly.", retryAfterSeconds: 9 });
+    expect(await createManualSreIncident({ title: "x" })).toEqual({ success: false, error: "Too many incidents declared. Try again shortly." });
+    core.mockResolvedValueOnce({ ok: false, code: "forbidden", error: "no" });
+    expect(await createManualSreIncident({ title: "x" })).toMatchObject({ success: false });
+    core.mockRejectedValueOnce(new Error("db down"));
+    expect(await createManualSreIncident({ title: "x" })).toEqual({ success: false, error: "Failed to create incident" });
   });
 });

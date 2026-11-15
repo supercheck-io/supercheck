@@ -26,6 +26,7 @@ const allCapabilities: QuickCreateCapabilities = {
   canInvestigateSre: true,
   canCreateSreServices: true,
   canConfigureSreConnectors: true,
+  canDeclareIncidents: true,
 };
 
 describe("CreatePageContent", () => {
@@ -49,6 +50,13 @@ describe("CreatePageContent", () => {
     expect(push).toHaveBeenCalledWith("/org-admin?tab=private-agents");
   });
 
+  it("opens the declare dialog from the Respond section", () => {
+    render(<CreatePageContent capabilities={allCapabilities} />);
+    expect(screen.getByText("Respond to an incident")).toBeInTheDocument();
+    fireEvent.click(screen.getByText("Declare incident"));
+    expect(push).toHaveBeenCalledWith("/incidents?new=1");
+  });
+
   it("hides privileged setup shortcuts when capabilities are missing", () => {
     render(
       <CreatePageContent
@@ -59,6 +67,7 @@ describe("CreatePageContent", () => {
           canCreateCliTokens: false,
           canCreateSreServices: false,
           canConfigureSreConnectors: false,
+          canDeclareIncidents: false,
         }}
       />,
     );
@@ -67,6 +76,7 @@ describe("CreatePageContent", () => {
     expect(screen.queryByText("Configure AI SRE")).not.toBeInTheDocument();
     expect(screen.queryByText("Admin Setup")).not.toBeInTheDocument();
     expect(screen.queryByText("Private Agent")).not.toBeInTheDocument();
+    expect(screen.queryByText("Respond to an incident")).not.toBeInTheDocument();
     expect(screen.queryByText("CLI Token")).not.toBeInTheDocument();
   });
 });

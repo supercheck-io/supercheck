@@ -4,7 +4,7 @@ import {
   postmortemSectionsSchema,
   type PostmortemSections,
 } from "@/lib/sre/postmortem-format";
-import type { SreIncidentTimelineItem } from "@/actions/sre-incident-lifecycle";
+import type { SreIncidentTimelineItem, SreIncidentTimelineRefs } from "@/actions/sre-incident-lifecycle";
 import { withoutNoEvidenceNotice } from "@/lib/sre/evidence-brief-summary";
 import { aiFindingHeadline, describeTimelineEvent } from "@/lib/sre/incident-timeline-format";
 import { runSreAgent } from "@/sre/lib/agent-runner";
@@ -23,7 +23,8 @@ export type PostmortemContext = {
   hypotheses: Array<{ title: string; state: string; rationale: string }>;
   nextChecks: string[];
   evidence: Array<{ id: string; title: string }>;
-  timeline: Array<{ at: Date; label: string }>;
+  /** `omitted` is set on a gap row: how many events it stands for. */
+  timeline: Array<{ at: Date; label: string; omitted?: number }>;
 };
 
 // The server has no viewer locale or time zone: dates read as "6 Oct 2026, 14:58 UTC".
@@ -45,11 +46,21 @@ export function formatPostmortemDuration(from: Date, to: Date | null) {
   return hours < 24 ? `${hours} h ${minutes % 60} min` : `${Math.floor(hours / 24)} d ${hours % 24} h`;
 }
 
+/** Events a run of timeline rows stands for: a gap row counts the events it replaced. */
+const eventCount = (rows: Array<{ omitted?: number }>) => rows.reduce((n, row) => n + (row.omitted ?? 1), 0);
+
 /** A saved section is capped at 4000 characters; drop middle events so the start and resolution survive. */
-function boundedBullets(lines: string[]) {
+function boundedBullets(lines: Array<{ text: string; omitted?: number }>) {
   const kept = [...lines];
-  while (bullet(kept).length > 4000 && kept.length > 2) kept.splice(Math.floor(kept.length / 2), 1);
-  return bullet(kept).slice(0, 4000);
+  let dropped = 0;
+  const withGap = () => {
+    const texts = kept.map((line) => line.text);
+    return dropped ? [...texts.slice(0, Math.floor(texts.length / 2)), `… ${dropped} more not shown …`, ...texts.slice(Math.floor(texts.length / 2))] : texts;
+  };
+  while (bullet(withGap()).length > 4000 && kept.length > 2) {
+    dropped += eventCount(kept.splice(Math.floor(kept.length / 2), 1));
+  }
+  return bullet(withGap()).slice(0, 4000);
 }
 
 // Activity rows that are noise in a post-mortem: briefs are restated by investigations, and edits or reassignment are bookkeeping.
@@ -59,17 +70,27 @@ const DETAIL_LENGTH = 160;
 
 type TimelineRow = Pick<SreIncidentTimelineItem, "eventType" | "eventData"> & { at: Date };
 
+/** Synthetic row the draft inserts where a long incident's middle events were not loaded. */
+export const TIMELINE_GAP_EVENT = "timeline_gap";
+
 /**
  * The key moments of an incident, oldest first, named as in the Activity feed.
- * A run of back-to-back AI investigations keeps only the last one, which is what responders acted on.
+ * A run of back-to-back AI investigations keeps one: the latest that identified a cause, else the latest.
+ * Skipped rows do not break a run; a gap row does, so runs on either side of unloaded events stay apart.
  */
-export function postmortemTimeline(rows: TimelineRow[]): PostmortemContext["timeline"] {
-  const kept: Array<{ at: Date; label: string; investigation: boolean }> = [];
+export function postmortemTimeline(rows: TimelineRow[], refs?: SreIncidentTimelineRefs): PostmortemContext["timeline"] {
+  const kept: Array<{ at: Date; label: string; omitted?: number; investigation: boolean; identified: boolean }> = [];
+  // Stable sort: a gap row keeps its place among rows with the same timestamp.
   for (const row of [...rows].sort((a, b) => a.at.getTime() - b.at.getTime())) {
     const data = row.eventData ?? {};
+    if (row.eventType === TIMELINE_GAP_EVENT) {
+      const count = Number(data.count) || 0;
+      kept.push({ at: row.at, label: `… ${count} event${count === 1 ? "" : "s"} not shown …`, omitted: count, investigation: false, identified: false });
+      continue;
+    }
     if (row.eventType === "ai_finding" && SKIPPED_AI_FINDINGS.has(String(data.type))) continue;
     if (row.eventType === "state_change" && SKIPPED_STATES.has(String(data.state))) continue;
-    const { title, body } = describeTimelineEvent(row);
+    const { title, body } = describeTimelineEvent(row, refs);
     const detail =
       row.eventType === "ai_finding"
         ? aiFindingHeadline(data.summary, DETAIL_LENGTH) ?? body
@@ -77,10 +98,16 @@ export function postmortemTimeline(rows: TimelineRow[]): PostmortemContext["time
     const oneLine = withoutNoEvidenceNotice(detail)?.replace(/\s+/g, " ").trim();
     const label = oneLine ? `${title}: ${oneLine.length > DETAIL_LENGTH ? `${oneLine.slice(0, DETAIL_LENGTH - 1).trimEnd()}…` : oneLine}` : title;
     const investigation = row.eventType === "ai_finding" && data.type === "sre_investigation";
-    if (investigation && kept.at(-1)?.investigation) kept.pop();
-    kept.push({ at: row.at, label, investigation });
+    const identified = investigation && data.outcome === "identified";
+    const previous = kept.at(-1);
+    if (investigation && previous?.investigation) {
+      // A later inconclusive re-run must not erase the run that found the cause.
+      if (previous.identified && !identified) continue;
+      kept.pop();
+    }
+    kept.push({ at: row.at, label, investigation, identified });
   }
-  return kept.map(({ at, label }) => ({ at, label }));
+  return kept.map(({ at, label, omitted }) => (omitted === undefined ? { at, label } : { at, label, omitted }));
 }
 
 /** Template used when the model is unavailable or returns something unusable. Facts only; unknown sections stay empty. */
@@ -95,7 +122,7 @@ export function buildDeterministicPostmortem(ctx: PostmortemContext): Postmortem
       ctx.resolutionSummary ? `Resolution: ${ctx.resolutionSummary}` : "",
     ].filter(Boolean).join("\n\n"),
     impact: ctx.serviceName ? `Service affected: ${ctx.serviceName}.` : "",
-    timeline: boundedBullets(ctx.timeline.map((event) => `${formatPostmortemDate(event.at)}: ${event.label}`)),
+    timeline: boundedBullets(ctx.timeline.map((event) => ({ text: `${formatPostmortemDate(event.at)}: ${event.label}`, omitted: event.omitted }))),
     root_cause: ctx.rootCauseSummary
       ? `${ctx.rootCauseSummary}${ctx.confidenceLabel ? `\n\nAI confidence: ${ctx.confidenceLabel}.` : ""}${
           validated.length > 0 ? `\n\nValidated hypotheses:\n${bullet(validated.map((h) => `${h.title}${h.rationale ? ` - ${h.rationale}` : ""}`))}` : ""
@@ -130,7 +157,13 @@ export function buildPostmortemPrompt(ctx: PostmortemContext): string {
     fenceUntrustedBlock("evidence", ctx.evidence.slice(0, 15).map((item) => item.title), 160),
     "Timeline:",
     fenceUntrustedBlock("timeline", // The start and the resolution matter most; drop the middle of a long incident.
-      (ctx.timeline.length > 40 ? [...ctx.timeline.slice(0, 10), ...ctx.timeline.slice(-30)] : ctx.timeline).map((event) => `${formatPostmortemDate(event.at)}: ${event.label}`), 220),
+      (ctx.timeline.length > 40
+        ? [
+            ...ctx.timeline.slice(0, 10).map((event) => `${formatPostmortemDate(event.at)}: ${event.label}`),
+            `… ${eventCount(ctx.timeline.slice(10, -30))} more events not shown …`,
+            ...ctx.timeline.slice(-30).map((event) => `${formatPostmortemDate(event.at)}: ${event.label}`),
+          ]
+        : ctx.timeline.map((event) => `${formatPostmortemDate(event.at)}: ${event.label}`)), 220),
   ].join("\n");
 }
 

@@ -65,11 +65,11 @@ test.describe("AI SRE incident, brief, and investigation lifecycle @aisre @criti
       await page
         .getByRole("button", { name: "New incident", exact: true })
         .click();
-      const dialog = page.getByRole("dialog", { name: "Create incident" });
+      const dialog = page.getByRole("dialog", { name: "Declare incident" });
       await dialog.getByLabel("Title").fill(incidentTitle);
       await dialog.getByLabel("Initial notes").fill(initialNotes);
       await dialog
-        .getByRole("button", { name: "Create incident", exact: true })
+        .getByRole("button", { name: "Declare incident", exact: true })
         .click();
       await expect(page).toHaveURL(/\/incidents\/[0-9a-f-]{36}$/i);
       const incidentId = page.url().split("/").pop();

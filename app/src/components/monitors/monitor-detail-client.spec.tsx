@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MonitorDetailClient } from "./monitor-detail-client";
 
 const invalidateQueries = jest.fn();
+jest.mock("@/components/sre/incidents/new-incident-action", () => ({ NewIncidentAction: () => null }));
 jest.mock("@tanstack/react-query", () => ({
   useQueryClient: () => ({ invalidateQueries }),
   useIsRestoring: () => false,

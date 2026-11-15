@@ -1,10 +1,12 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { z } from "zod";
 
-import { member, sreAlertEvents, sreIncidents, sreIncidentTimelineEvents, incidents as statusPageIncidents, statusPages, user } from "@/db/schema";
+import { loadTimelineRefs } from "@/lib/sre/timeline-refs";
+
+import { sreIncidents, sreIncidentTimelineEvents, incidents as statusPageIncidents, statusPages, user } from "@/db/schema";
 import { updateIncidentStatus } from "@/actions/update-incident-status";
 import { createLogger } from "@/lib/logger/index";
 import { requireProjectContext } from "@/lib/project-context";
@@ -318,35 +320,7 @@ export async function getSreIncidentTimeline(
       .orderBy(desc(sreIncidentTimelineEvents.createdAt))
       .limit(500);
 
-    const userIds = new Set<string>();
-    const alertIds = new Set<string>();
-    for (const { eventData: data } of events) {
-      for (const key of ["previousAssigneeUserId", "assigneeUserId"]) {
-        const value = data?.[key];
-        if (typeof value === "string" && z.string().uuid().safeParse(value).success) userIds.add(value);
-      }
-      const alertId = data?.alertEventId;
-      if (typeof alertId === "string" && z.string().uuid().safeParse(alertId).success) alertIds.add(alertId);
-    }
-    const [users, alerts] = await Promise.all([
-      userIds.size
-        ? db
-            .select({ id: user.id, name: user.name })
-            .from(user)
-            .innerJoin(member, and(eq(member.userId, user.id), eq(member.organizationId, auth.actor.organizationId)))
-            .where(inArray(user.id, [...userIds]))
-        : [],
-      alertIds.size
-        ? db
-            .select({ id: sreAlertEvents.id, title: sreAlertEvents.title })
-            .from(sreAlertEvents)
-            .where(and(inArray(sreAlertEvents.id, [...alertIds]), eq(sreAlertEvents.organizationId, auth.actor.organizationId), eq(sreAlertEvents.projectId, auth.actor.projectId)))
-        : [],
-    ]);
-    const refs: SreIncidentTimelineRefs = {
-      users: Object.fromEntries(users.map((row) => [row.id, row.name])),
-      alerts: Object.fromEntries(alerts.map((row) => [row.id, row.title])),
-    };
+    const refs = await loadTimelineRefs(db, { organizationId: auth.actor.organizationId, projectId: auth.actor.projectId, rows: events });
     return { success: true, events, refs };
   } catch (error) {
     logger.error({ error }, "Error loading SRE incident timeline");
