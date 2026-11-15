@@ -720,7 +720,13 @@ supercheck incident list --assignee me
 supercheck incident assign <incident-number-or-uuid> --user me
 supercheck incident ack <incident-number-or-uuid>
 supercheck incident resolve <incident-number-or-uuid> --summary "Traffic restored after rollback"
+supercheck incident create --title "Checkout errors reported by customers" --severity sev2 \
+  --service "Checkout API" --monitor <monitor-uuid> --summary "Support reports 500s at payment"
+supercheck incident create --title "Login outage" --severity sev1 \
+  --status-page <status-page-uuid> --component <component-uuid> --impact major --message "We are investigating." --notify
 ```
+
+`incident create` (alias `declare`) opens an incident by hand, with the same notifications and reminders as one opened by an alert. Only `--title` is required; `--severity` defaults to `sev3`. `--service` takes a UUID or the exact service name, and that service's owner becomes the assignee. Each `--monitor` (and `--affected-service`) is listed as affected: its next alert joins this incident instead of opening a new one. `--commander` takes `me` or a user UUID. `--status-page` with at least one `--component` also posts a public incident; subscribers are emailed only with `--notify`. If the public post fails, the incident is still created and the command warns. Declaring is limited to 10 per minute per user and 60 per hour per organization, and needs incident create permission (editor or above).
 
 The **Status** column shows the display label (Triggered, Acknowledged, Investigating, Fixing, Monitoring, Resolved), also returned as `statusLabel` with `--json`. `--status` filters on the stored values: `open`, `triggered`, `investigating`, `identified`, `recommendations_ready`, `user_applying_fix`, `verifying`, `resolved`.
 
@@ -734,6 +740,22 @@ supercheck incident policy set --first-reminder off --escalate-after off
 ```
 
 `incident policy set` needs project update permission. Minutes are 5 to 1,440, and the reminder schedule must finish within two days. Turning reminders off also clears the repeat; turning escalation off clears its target. The escalation channel cannot be a paging service. See [Default policy](/docs/app/investigate/incidents).
+
+### Maintenance windows
+
+```bash
+supercheck maintenance list --state active
+supercheck maintenance create --title "DB upgrade" --monitor <monitor-uuid> \
+  --start "2026-11-20 02:00" --duration 90m --timezone Europe/Berlin
+supercheck maintenance create --title "Nightly batch" --service <service-uuid> \
+  --start "2026-11-20 01:00" --duration 30m --timezone UTC --repeat weekly --days mon,thu --until 2027-03-01
+supercheck maintenance end <window-uuid>
+supercheck maintenance extend <window-uuid> --by 30m
+supercheck maintenance cancel <window-uuid>
+supercheck maintenance delete <window-uuid> --force
+```
+
+Pick one scope: `--project`, `--service` or `--monitor` (repeatable). `--start` is the local start in `--timezone` (default: your machine's zone). `--repeat monthly` takes `--day 1-28` or `--day last`. A one-off window can be shown on a status page with `--status-page <id> --component <id>`; `--notify` tells subscribers at creation, start and end. During a window monitors keep running, but alerts, incidents and reminders are muted and uptime leaves it out. See [Maintenance windows](/docs/app/monitor#maintenance-windows).
 
 ### Triage and investigation
 

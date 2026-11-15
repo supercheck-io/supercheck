@@ -15,6 +15,9 @@ export const STATE_LABELS: Record<string, string> = {
   alert_correlated: "Alert linked",
   incident_updated: "Incident updated",
   manual_incident_created: "Incident created",
+  resources_affected: "Affected resources changed",
+  status_page_post_failed: "Status page post failed",
+  paging_suppressed_maintenance: "Reminders paused for maintenance",
   created_from_alert_history: "Incident created from alert",
   created_from_background_alert_triage: "Incident created from alert",
   triage_failed: "AI triage failed",
@@ -58,6 +61,19 @@ function describeEdit(data: Record<string, unknown>) {
     lines.push("Service changed");
   }
   return lines.join("\n") || null;
+}
+
+/** "Affected: Checkout API, 2 monitors" from the names stored on the event when it was written. */
+export function describeResources(data: Record<string, unknown>) {
+  const part = (value: unknown) => {
+    const list = Array.isArray(value) ? (value as Array<{ type?: unknown; name?: unknown }>) : [];
+    const services = list.filter((item) => item?.type === "service").map((item) => str(item.name, 120) ?? "a service");
+    const monitors = list.filter((item) => item?.type === "monitor").length;
+    return [...services, ...(monitors ? [`${monitors} monitor${monitors === 1 ? "" : "s"}`] : [])].join(", ");
+  };
+  const added = part(data.added);
+  const removed = part(data.removed);
+  return [added && `Affected: ${added}`, removed && `No longer affected: ${removed}`].filter(Boolean).join("\n") || null;
 }
 
 type TimelineEventKind = Pick<SreIncidentTimelineItem, "eventType" | "eventData">;
@@ -179,6 +195,12 @@ export function describeTimelineEvent(
       const to = name(data.assigneeUserId) ?? "Unassigned";
       return { title: STATE_LABELS[state], body: `${from} → ${to}` };
     }
+    if (state === "manual_incident_created") {
+      const by = typeof data.createdByUserId === "string" ? refs?.users[data.createdByUserId] : undefined;
+      const line = by ? `Declared by ${by}` : null;
+      return { title: STATE_LABELS[state], body: [line, str(data.summary)].filter(Boolean).join("\n") || null };
+    }
+    if (state === "resources_affected") return { title: STATE_LABELS[state], body: describeResources(data) };
     if (state === "alert_correlated") {
       const alert = str(data.alertTitle, 200) ?? (typeof data.alertEventId === "string" ? refs?.alerts[data.alertEventId] : undefined);
       return { title: STATE_LABELS[state], body: alert ? `Linked: ${alert.slice(0, 200)}` : null };

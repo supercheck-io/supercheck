@@ -5,6 +5,9 @@ import {
   isIncidentOnly,
   tracksAlertState,
 } from './monitor-evaluator';
+jest.mock('./maintenance', () => ({
+  isMonitorInMaintenance: jest.fn().mockResolvedValue(false),
+}));
 
 /** Drives evaluateAndSendAlert through consecutive failures and returns the counts that alerted. */
 async function alertCounts(
@@ -219,6 +222,62 @@ describe('MonitorEvaluator recovery alert after a short blip', () => {
       expect(await recoverySent(multi, undefined)).toBe(true);
     },
   );
+
+  it('freezes the aggregated failure sequence inside a maintenance window', () => {
+    const evaluator = new MonitorEvaluator({} as never, {} as never);
+    const open = {
+      consecutiveFailureCount: 4,
+      consecutiveSuccessCount: 0,
+      alertsSentForFailure: 1,
+      alertsSentForRecovery: 0,
+      outageKey: 'k-1',
+    };
+    // Down before the window: counts and key stay.
+    expect(
+      evaluator.getNextAggregatedAlertState(open, 'down', 'down', true),
+    ).toMatchObject({
+      consecutiveFailureCount: 4,
+      alertsSentForFailure: 1,
+      outageKey: 'k-1',
+    });
+    // Up before the window: nothing starts, and there is no key.
+    const fresh = evaluator.getNextAggregatedAlertState(
+      { ...open, consecutiveFailureCount: 0, alertsSentForFailure: 0 },
+      'up',
+      'down',
+      true,
+    );
+    expect(fresh).toMatchObject({
+      consecutiveFailureCount: 0,
+      alertsSentForFailure: 0,
+    });
+    expect(fresh.outageKey).toBeUndefined();
+    // First failure after the window: a fresh sequence with a new key.
+    const after = evaluator.getNextAggregatedAlertState(fresh, 'down', 'down');
+    expect(after.consecutiveFailureCount).toBe(1);
+    expect(after.outageKey).toEqual(expect.any(String));
+    // A recovery inside the window is processed normally.
+    const recovered = evaluator.getNextAggregatedAlertState(
+      open,
+      'down',
+      'up',
+      true,
+    );
+    expect(recovered).toMatchObject({
+      consecutiveSuccessCount: 1,
+      consecutiveFailureCount: 0,
+    });
+    expect(recovered.maintenanceOnly).toBeUndefined();
+    // Recovering from failures seen only inside the window: no outage, so no recovery alert, through the streak.
+    const quiet = evaluator.getNextAggregatedAlertState(fresh, 'down', 'up');
+    expect(quiet).toMatchObject({
+      maintenanceOnly: true,
+      recoverySequence: true,
+    });
+    expect(
+      evaluator.getNextAggregatedAlertState(quiet, 'up', 'up'),
+    ).toMatchObject({ maintenanceOnly: true });
+  });
 
   it('carries the outage length through the up streak', () => {
     const evaluator = new MonitorEvaluator({} as never, {} as never);

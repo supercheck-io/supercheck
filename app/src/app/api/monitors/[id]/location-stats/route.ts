@@ -14,7 +14,7 @@ import type {
   MonitorResultStatus,
   MonitoringLocation,
 } from "@/db/schema";
-import { excludeSupersededSyntheticResults } from "@/lib/monitor-result-filters";
+import { excludeSupersededSyntheticResults, uptimeResults } from "@/lib/monitor-result-filters";
 
 const logger = createLogger({ module: "monitor-location-stats-api" }) as {
   debug: (data: unknown, msg?: string) => void;
@@ -121,7 +121,7 @@ export async function GET(
           and(
             eq(monitorResults.monitorId, id),
             gte(monitorResults.checkedAt, startDate),
-            excludeSupersededSyntheticResults
+            uptimeResults
           )
         )
         .groupBy(monitorResults.location),

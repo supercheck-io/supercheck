@@ -42,7 +42,9 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
+
+const STATUS_PAGE_TABS = ["overview", "components", "incidents", "subscribers", "settings"];
 import { getPublicStatusPageUrl } from "@/lib/domain-utils";
 import { DataTable } from "@/components/monitors/data-table";
 import { statusPageColumns } from "@/components/monitors/status-page-columns";
@@ -125,6 +127,8 @@ export function StatusPageDetail({
   stats,
   onDataChange,
 }: StatusPageDetailProps) {
+  // ?tab=incidents opens a tab directly, for example to post an incident again.
+  const requestedTab = useSearchParams().get("tab");
   const router = useRouter();
   const [isPublishing, setIsPublishing] = useState(false);
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
@@ -272,7 +276,7 @@ export function StatusPageDetail({
 
   return (
     <div className="space-y-6 p-4">
-      <Tabs defaultValue="overview" className="space-y-4">
+      <Tabs defaultValue={STATUS_PAGE_TABS.includes(requestedTab ?? "") ? requestedTab! : "overview"} className="space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-6">
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-3 mb-2 flex-wrap">

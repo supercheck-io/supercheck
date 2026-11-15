@@ -48,6 +48,7 @@ export * from "./report";
 
 // Status page tables
 export * from "./statusPage";
+export * from "./maintenance";
 
 // Audit log tables
 export * from "./audit";

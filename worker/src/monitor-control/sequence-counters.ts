@@ -17,7 +17,9 @@ export type LastResult = {
 export function nextSequenceCounters(
   last: LastResult | undefined,
   isUp: boolean,
+  inMaintenance = false,
 ) {
+  if (!isUp && inMaintenance) return frozenFailureCounters(last);
   let consecutiveFailureCount = 0;
   let consecutiveSuccessCount = 0;
   let alertsSentForFailure = 0;
@@ -58,10 +60,14 @@ export function nextSequenceCounters(
 export function nextOutageKey(
   last: LastResult | undefined,
   isUp: boolean,
+  inMaintenance = false,
 ): string | undefined {
   const stored = (last?.details as { outageKey?: unknown } | null | undefined)
     ?.outageKey;
   const carried = typeof stored === 'string' ? stored : undefined;
+  // A failure inside a window never starts an outage: it keeps one already open before the window, and
+  // otherwise has no key, so the first failure after the window opens a fresh one.
+  if (!isUp && inMaintenance) return last && !last.isUp ? carried : undefined;
   if (!isUp)
     return last && !last.isUp ? (carried ?? randomUUID()) : randomUUID();
   const recovering =
@@ -70,4 +76,23 @@ export function nextOutageKey(
       (last.details as { recoverySequence?: boolean } | null | undefined)
         ?.recoverySequence === true);
   return recovering ? carried : undefined;
+}
+
+/**
+ * A failing check inside a maintenance window does not advance the failure sequence: it keeps the counts of a
+ * sequence already open before the window (or zero), so after the window the monitor alerts on its usual
+ * threshold however long the window was. Successes are never frozen.
+ */
+export function frozenFailureCounters(last: LastResult | undefined) {
+  const continuing = Boolean(last && !last.isUp);
+  return {
+    consecutiveFailureCount: continuing
+      ? last!.consecutiveFailureCount || 0
+      : 0,
+    consecutiveSuccessCount: 0,
+    alertsSentForFailure: continuing ? last!.alertsSentForFailure || 0 : 0,
+    alertsSentForRecovery: 0,
+    isStatusChange: last ? last.isUp : true,
+    recoverySequence: false,
+  };
 }

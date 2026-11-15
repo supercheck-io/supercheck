@@ -179,6 +179,182 @@
             "description": "Insufficient permission"
           }
         }
+      },
+      "post": {
+        "operationId": "declareSreIncident",
+        "summary": "Declare an incident",
+        "description": "Opens an incident by hand, with the same numbering, timeline, notifications and re-notify as alert-opened incidents. Only title and severity are needed. Affected monitors (or monitors mapped to affected services) attach their next alerts to this incident instead of opening a new one. With statusPage, a linked public incident is posted after the incident is saved; if that post fails the incident is kept and the response carries warning status_page_failed. Limited to 10 per minute per user and 60 per hour per organization.",
+        "tags": [
+          "AI SRE"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "title"
+                ],
+                "properties": {
+                  "title": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 500
+                  },
+                  "severity": {
+                    "type": "string",
+                    "enum": [
+                      "sev1",
+                      "sev2",
+                      "sev3",
+                      "sev4"
+                    ],
+                    "default": "sev3"
+                  },
+                  "summary": {
+                    "type": "string",
+                    "maxLength": 4000,
+                    "nullable": true
+                  },
+                  "primaryServiceId": {
+                    "type": "string",
+                    "format": "uuid",
+                    "nullable": true,
+                    "description": "The service's owner becomes the assignee; otherwise the caller"
+                  },
+                  "affected": {
+                    "type": "object",
+                    "properties": {
+                      "serviceIds": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "maxItems": 50
+                      },
+                      "monitorIds": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "maxItems": 50
+                      }
+                    },
+                    "description": "At most 50 services and monitors in all, including primaryServiceId"
+                  },
+                  "commanderUserId": {
+                    "type": "string",
+                    "format": "uuid",
+                    "nullable": true,
+                    "description": "A project editor or admin"
+                  },
+                  "statusPage": {
+                    "type": "object",
+                    "nullable": true,
+                    "description": "Needs status page update permission",
+                    "required": [
+                      "statusPageId",
+                      "componentIds"
+                    ],
+                    "properties": {
+                      "statusPageId": {
+                        "type": "string",
+                        "format": "uuid"
+                      },
+                      "componentIds": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "minItems": 1,
+                        "maxItems": 100
+                      },
+                      "impact": {
+                        "type": "string",
+                        "enum": [
+                          "none",
+                          "minor",
+                          "major",
+                          "critical"
+                        ],
+                        "default": "minor"
+                      },
+                      "message": {
+                        "type": "string",
+                        "maxLength": 10000
+                      },
+                      "notifySubscribers": {
+                        "type": "boolean",
+                        "default": false
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Incident declared",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "incident": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "incidentNumber": {
+                          "type": "integer"
+                        },
+                        "title": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "statusPageIncidentId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "warning": {
+                      "type": "string",
+                      "enum": [
+                        "status_page_failed"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid body, or a commander who cannot act on incidents"
+          },
+          "401": {
+            "description": "Not authenticated"
+          },
+          "403": {
+            "description": "Insufficient permission, or the organization is pending deletion"
+          },
+          "404": {
+            "description": "A service or monitor is not in the active project"
+          },
+          "429": {
+            "description": "Too many incidents declared; see Retry-After"
+          }
+        }
       }
     },
     "/api/sre/incidents/{id}": {
@@ -304,6 +480,183 @@
           },
           "404": {
             "description": "Incident not found in the active project"
+          }
+        }
+      }
+    },
+    "/api/sre/incidents/{id}/resources": {
+      "get": {
+        "operationId": "listSreIncidentResources",
+        "summary": "List an incident's affected services and monitors",
+        "description": "Deleted monitors and merged services are left out.",
+        "tags": [
+          "AI SRE"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Resources",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "resources": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "type": {
+                            "type": "string",
+                            "enum": [
+                              "service",
+                              "monitor"
+                            ]
+                          },
+                          "id": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "name": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid ID"
+          },
+          "404": {
+            "description": "Incident not found in the active project"
+          }
+        }
+      },
+      "patch": {
+        "operationId": "updateSreIncidentResources",
+        "summary": "Change an incident's affected services and monitors",
+        "description": "Adds or removes affected services and monitors (at most 50 in all) and records one timeline event.",
+        "tags": [
+          "AI SRE"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "add": {
+                    "type": "object",
+                    "properties": {
+                      "serviceIds": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "maxItems": 50
+                      },
+                      "monitorIds": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "maxItems": 50
+                      }
+                    }
+                  },
+                  "remove": {
+                    "type": "object",
+                    "properties": {
+                      "serviceIds": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "maxItems": 50
+                      },
+                      "monitorIds": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "maxItems": 50
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "added": {
+                      "type": "integer"
+                    },
+                    "removed": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid ID or body, or more than 50 resources"
+          },
+          "403": {
+            "description": "Insufficient permission"
+          },
+          "404": {
+            "description": "Incident, service or monitor not found in the active project"
+          },
+          "409": {
+            "description": "The incident is resolved. Reopen it before changing its affected resources."
+          },
+          "429": {
+            "description": "Too many incident updates"
           }
         }
       }
@@ -9245,6 +9598,1408 @@
           },
           "404": {
             "description": "Unknown action."
+          }
+        }
+      }
+    },
+    "/api/maintenance-windows": {
+      "get": {
+        "operationId": "listMaintenanceWindows",
+        "summary": "List maintenance windows",
+        "description": "Windows of the active project. Needs monitor view permission.",
+        "tags": [
+          "Monitors"
+        ],
+        "parameters": [
+          {
+            "name": "state",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "active",
+                "scheduled",
+                "past"
+              ]
+            }
+          },
+          {
+            "name": "monitorId",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Only windows covering this monitor"
+          },
+          {
+            "name": "serviceId",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Windows",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "windows": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "title": {
+                            "type": "string"
+                          },
+                          "description": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "state": {
+                            "type": "string",
+                            "enum": [
+                              "scheduled",
+                              "active",
+                              "completed",
+                              "cancelled"
+                            ]
+                          },
+                          "scope": {
+                            "type": "string",
+                            "enum": [
+                              "project",
+                              "services",
+                              "monitors"
+                            ]
+                          },
+                          "recurrence": {
+                            "type": "string",
+                            "enum": [
+                              "once",
+                              "daily",
+                              "weekly",
+                              "monthly"
+                            ]
+                          },
+                          "timezone": {
+                            "type": "string"
+                          },
+                          "localStartTime": {
+                            "type": "string"
+                          },
+                          "durationMinutes": {
+                            "type": "integer"
+                          },
+                          "startsOn": {
+                            "type": "string",
+                            "format": "date"
+                          },
+                          "endsOn": {
+                            "type": "string",
+                            "format": "date",
+                            "nullable": true
+                          },
+                          "weekdays": {
+                            "type": "array",
+                            "items": {
+                              "type": "integer"
+                            },
+                            "nullable": true
+                          },
+                          "monthDay": {
+                            "type": "integer",
+                            "nullable": true
+                          },
+                          "occurrenceStartsAt": {
+                            "type": "string",
+                            "format": "date-time",
+                            "nullable": true
+                          },
+                          "occurrenceEndsAt": {
+                            "type": "string",
+                            "format": "date-time",
+                            "nullable": true
+                          },
+                          "targets": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "type": {
+                                  "type": "string",
+                                  "enum": [
+                                    "service",
+                                    "monitor"
+                                  ]
+                                },
+                                "id": {
+                                  "type": "string",
+                                  "format": "uuid"
+                                }
+                              }
+                            }
+                          },
+                          "statusPageIncidentIds": {
+                            "type": "array",
+                            "items": {
+                              "type": "string",
+                              "format": "uuid"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid body or schedule; fieldErrors name the fields"
+          },
+          "401": {
+            "description": "Not authenticated"
+          },
+          "403": {
+            "description": "Insufficient permission, or the organization is pending deletion"
+          }
+        }
+      },
+      "post": {
+        "operationId": "createMaintenanceWindow",
+        "summary": "Schedule a maintenance window",
+        "description": "During a window, covered monitors keep running; alerts, new incidents and reminders for alert-opened incidents are muted, failures do not count toward the alert threshold, and uptime leaves the checks out. Needs monitor update permission (and status page update to publish). 30 changes per minute per user.",
+        "tags": [
+          "Monitors"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "title",
+                  "scope",
+                  "recurrence",
+                  "timezone",
+                  "localStartTime",
+                  "durationMinutes",
+                  "startsOn"
+                ],
+                "properties": {
+                  "title": {
+                    "type": "string",
+                    "maxLength": 200
+                  },
+                  "description": {
+                    "type": "string",
+                    "maxLength": 2000
+                  },
+                  "scope": {
+                    "type": "string",
+                    "enum": [
+                      "project",
+                      "services",
+                      "monitors"
+                    ]
+                  },
+                  "targets": {
+                    "type": "object",
+                    "properties": {
+                      "serviceIds": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "maxItems": 500
+                      },
+                      "monitorIds": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "maxItems": 500
+                      }
+                    }
+                  },
+                  "recurrence": {
+                    "type": "string",
+                    "enum": [
+                      "once",
+                      "daily",
+                      "weekly",
+                      "monthly"
+                    ]
+                  },
+                  "timezone": {
+                    "type": "string",
+                    "description": "IANA time zone"
+                  },
+                  "localStartTime": {
+                    "type": "string",
+                    "pattern": "^\\d{2}:\\d{2}$"
+                  },
+                  "durationMinutes": {
+                    "type": "integer",
+                    "minimum": 5,
+                    "maximum": 10080,
+                    "description": "Shorter than the time between occurrences"
+                  },
+                  "startsOn": {
+                    "type": "string",
+                    "format": "date"
+                  },
+                  "endsOn": {
+                    "type": "string",
+                    "format": "date",
+                    "nullable": true
+                  },
+                  "weekdays": {
+                    "type": "array",
+                    "items": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 6
+                    },
+                    "description": "Weekly: 0 = Sunday"
+                  },
+                  "monthDay": {
+                    "type": "integer",
+                    "description": "Monthly: 1-28, or -1 for the last day"
+                  },
+                  "statusPages": {
+                    "type": "array",
+                    "description": "One-off windows only",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "statusPageId": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "componentIds": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "format": "uuid"
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "notifySubscribers": {
+                    "type": "boolean",
+                    "default": false
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Scheduled; warning status_page_failed if only the status page post failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "window": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "title": {
+                          "type": "string"
+                        },
+                        "description": {
+                          "type": "string",
+                          "nullable": true
+                        },
+                        "state": {
+                          "type": "string",
+                          "enum": [
+                            "scheduled",
+                            "active",
+                            "completed",
+                            "cancelled"
+                          ]
+                        },
+                        "scope": {
+                          "type": "string",
+                          "enum": [
+                            "project",
+                            "services",
+                            "monitors"
+                          ]
+                        },
+                        "recurrence": {
+                          "type": "string",
+                          "enum": [
+                            "once",
+                            "daily",
+                            "weekly",
+                            "monthly"
+                          ]
+                        },
+                        "timezone": {
+                          "type": "string"
+                        },
+                        "localStartTime": {
+                          "type": "string"
+                        },
+                        "durationMinutes": {
+                          "type": "integer"
+                        },
+                        "startsOn": {
+                          "type": "string",
+                          "format": "date"
+                        },
+                        "endsOn": {
+                          "type": "string",
+                          "format": "date",
+                          "nullable": true
+                        },
+                        "weekdays": {
+                          "type": "array",
+                          "items": {
+                            "type": "integer"
+                          },
+                          "nullable": true
+                        },
+                        "monthDay": {
+                          "type": "integer",
+                          "nullable": true
+                        },
+                        "occurrenceStartsAt": {
+                          "type": "string",
+                          "format": "date-time",
+                          "nullable": true
+                        },
+                        "occurrenceEndsAt": {
+                          "type": "string",
+                          "format": "date-time",
+                          "nullable": true
+                        },
+                        "targets": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "type": {
+                                "type": "string",
+                                "enum": [
+                                  "service",
+                                  "monitor"
+                                ]
+                              },
+                              "id": {
+                                "type": "string",
+                                "format": "uuid"
+                              }
+                            }
+                          }
+                        },
+                        "statusPageIncidentIds": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "format": "uuid"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid body or schedule; fieldErrors name the fields"
+          },
+          "401": {
+            "description": "Not authenticated"
+          },
+          "403": {
+            "description": "Insufficient permission, or the organization is pending deletion"
+          },
+          "404": {
+            "description": "Window, service, monitor or status page not found in the active project"
+          },
+          "409": {
+            "description": "Not allowed in the window's current state, or 100 live windows already"
+          },
+          "429": {
+            "description": "Too many maintenance changes; see Retry-After"
+          }
+        }
+      }
+    },
+    "/api/maintenance-windows/{id}": {
+      "get": {
+        "operationId": "getMaintenanceWindow",
+        "summary": "Get a maintenance window",
+        "tags": [
+          "Monitors"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Window",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "window": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "title": {
+                          "type": "string"
+                        },
+                        "description": {
+                          "type": "string",
+                          "nullable": true
+                        },
+                        "state": {
+                          "type": "string",
+                          "enum": [
+                            "scheduled",
+                            "active",
+                            "completed",
+                            "cancelled"
+                          ]
+                        },
+                        "scope": {
+                          "type": "string",
+                          "enum": [
+                            "project",
+                            "services",
+                            "monitors"
+                          ]
+                        },
+                        "recurrence": {
+                          "type": "string",
+                          "enum": [
+                            "once",
+                            "daily",
+                            "weekly",
+                            "monthly"
+                          ]
+                        },
+                        "timezone": {
+                          "type": "string"
+                        },
+                        "localStartTime": {
+                          "type": "string"
+                        },
+                        "durationMinutes": {
+                          "type": "integer"
+                        },
+                        "startsOn": {
+                          "type": "string",
+                          "format": "date"
+                        },
+                        "endsOn": {
+                          "type": "string",
+                          "format": "date",
+                          "nullable": true
+                        },
+                        "weekdays": {
+                          "type": "array",
+                          "items": {
+                            "type": "integer"
+                          },
+                          "nullable": true
+                        },
+                        "monthDay": {
+                          "type": "integer",
+                          "nullable": true
+                        },
+                        "occurrenceStartsAt": {
+                          "type": "string",
+                          "format": "date-time",
+                          "nullable": true
+                        },
+                        "occurrenceEndsAt": {
+                          "type": "string",
+                          "format": "date-time",
+                          "nullable": true
+                        },
+                        "targets": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "type": {
+                                "type": "string",
+                                "enum": [
+                                  "service",
+                                  "monitor"
+                                ]
+                              },
+                              "id": {
+                                "type": "string",
+                                "format": "uuid"
+                              }
+                            }
+                          }
+                        },
+                        "statusPageIncidentIds": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "format": "uuid"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Window, service, monitor or status page not found in the active project"
+          }
+        }
+      },
+      "patch": {
+        "operationId": "updateMaintenanceWindow",
+        "summary": "Edit a maintenance window",
+        "description": "Edits apply to future occurrences; an active occurrence keeps its times.",
+        "tags": [
+          "Monitors"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "title": {
+                    "type": "string"
+                  },
+                  "description": {
+                    "type": "string"
+                  },
+                  "scope": {
+                    "type": "string",
+                    "enum": [
+                      "project",
+                      "services",
+                      "monitors"
+                    ]
+                  },
+                  "targets": {
+                    "type": "object",
+                    "properties": {
+                      "serviceIds": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "maxItems": 500
+                      },
+                      "monitorIds": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "maxItems": 500
+                      }
+                    }
+                  },
+                  "recurrence": {
+                    "type": "string",
+                    "enum": [
+                      "once",
+                      "daily",
+                      "weekly",
+                      "monthly"
+                    ]
+                  },
+                  "timezone": {
+                    "type": "string",
+                    "description": "IANA time zone"
+                  },
+                  "localStartTime": {
+                    "type": "string",
+                    "pattern": "^\\d{2}:\\d{2}$"
+                  },
+                  "durationMinutes": {
+                    "type": "integer",
+                    "minimum": 5,
+                    "maximum": 10080,
+                    "description": "Shorter than the time between occurrences"
+                  },
+                  "startsOn": {
+                    "type": "string",
+                    "format": "date"
+                  },
+                  "endsOn": {
+                    "type": "string",
+                    "format": "date",
+                    "nullable": true
+                  },
+                  "weekdays": {
+                    "type": "array",
+                    "items": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 6
+                    },
+                    "description": "Weekly: 0 = Sunday"
+                  },
+                  "monthDay": {
+                    "type": "integer",
+                    "description": "Monthly: 1-28, or -1 for the last day"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "window": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "title": {
+                          "type": "string"
+                        },
+                        "description": {
+                          "type": "string",
+                          "nullable": true
+                        },
+                        "state": {
+                          "type": "string",
+                          "enum": [
+                            "scheduled",
+                            "active",
+                            "completed",
+                            "cancelled"
+                          ]
+                        },
+                        "scope": {
+                          "type": "string",
+                          "enum": [
+                            "project",
+                            "services",
+                            "monitors"
+                          ]
+                        },
+                        "recurrence": {
+                          "type": "string",
+                          "enum": [
+                            "once",
+                            "daily",
+                            "weekly",
+                            "monthly"
+                          ]
+                        },
+                        "timezone": {
+                          "type": "string"
+                        },
+                        "localStartTime": {
+                          "type": "string"
+                        },
+                        "durationMinutes": {
+                          "type": "integer"
+                        },
+                        "startsOn": {
+                          "type": "string",
+                          "format": "date"
+                        },
+                        "endsOn": {
+                          "type": "string",
+                          "format": "date",
+                          "nullable": true
+                        },
+                        "weekdays": {
+                          "type": "array",
+                          "items": {
+                            "type": "integer"
+                          },
+                          "nullable": true
+                        },
+                        "monthDay": {
+                          "type": "integer",
+                          "nullable": true
+                        },
+                        "occurrenceStartsAt": {
+                          "type": "string",
+                          "format": "date-time",
+                          "nullable": true
+                        },
+                        "occurrenceEndsAt": {
+                          "type": "string",
+                          "format": "date-time",
+                          "nullable": true
+                        },
+                        "targets": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "type": {
+                                "type": "string",
+                                "enum": [
+                                  "service",
+                                  "monitor"
+                                ]
+                              },
+                              "id": {
+                                "type": "string",
+                                "format": "uuid"
+                              }
+                            }
+                          }
+                        },
+                        "statusPageIncidentIds": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "format": "uuid"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid body or schedule; fieldErrors name the fields"
+          },
+          "401": {
+            "description": "Not authenticated"
+          },
+          "403": {
+            "description": "Insufficient permission, or the organization is pending deletion"
+          },
+          "404": {
+            "description": "Window, service, monitor or status page not found in the active project"
+          },
+          "409": {
+            "description": "Not allowed in the window's current state, or 100 live windows already"
+          },
+          "429": {
+            "description": "Too many maintenance changes; see Retry-After"
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteMaintenanceWindow",
+        "summary": "Delete a maintenance window",
+        "description": "Only when not active. Needs monitor delete permission.",
+        "tags": [
+          "Monitors"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted"
+          },
+          "400": {
+            "description": "Invalid body or schedule; fieldErrors name the fields"
+          },
+          "401": {
+            "description": "Not authenticated"
+          },
+          "403": {
+            "description": "Insufficient permission, or the organization is pending deletion"
+          },
+          "404": {
+            "description": "Window, service, monitor or status page not found in the active project"
+          },
+          "409": {
+            "description": "Not allowed in the window's current state, or 100 live windows already"
+          },
+          "429": {
+            "description": "Too many maintenance changes; see Retry-After"
+          }
+        }
+      }
+    },
+    "/api/maintenance-windows/{id}/end": {
+      "post": {
+        "operationId": "endMaintenanceWindow",
+        "summary": "End an active maintenance window now",
+        "tags": [
+          "Monitors"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Done",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "window": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "title": {
+                          "type": "string"
+                        },
+                        "description": {
+                          "type": "string",
+                          "nullable": true
+                        },
+                        "state": {
+                          "type": "string",
+                          "enum": [
+                            "scheduled",
+                            "active",
+                            "completed",
+                            "cancelled"
+                          ]
+                        },
+                        "scope": {
+                          "type": "string",
+                          "enum": [
+                            "project",
+                            "services",
+                            "monitors"
+                          ]
+                        },
+                        "recurrence": {
+                          "type": "string",
+                          "enum": [
+                            "once",
+                            "daily",
+                            "weekly",
+                            "monthly"
+                          ]
+                        },
+                        "timezone": {
+                          "type": "string"
+                        },
+                        "localStartTime": {
+                          "type": "string"
+                        },
+                        "durationMinutes": {
+                          "type": "integer"
+                        },
+                        "startsOn": {
+                          "type": "string",
+                          "format": "date"
+                        },
+                        "endsOn": {
+                          "type": "string",
+                          "format": "date",
+                          "nullable": true
+                        },
+                        "weekdays": {
+                          "type": "array",
+                          "items": {
+                            "type": "integer"
+                          },
+                          "nullable": true
+                        },
+                        "monthDay": {
+                          "type": "integer",
+                          "nullable": true
+                        },
+                        "occurrenceStartsAt": {
+                          "type": "string",
+                          "format": "date-time",
+                          "nullable": true
+                        },
+                        "occurrenceEndsAt": {
+                          "type": "string",
+                          "format": "date-time",
+                          "nullable": true
+                        },
+                        "targets": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "type": {
+                                "type": "string",
+                                "enum": [
+                                  "service",
+                                  "monitor"
+                                ]
+                              },
+                              "id": {
+                                "type": "string",
+                                "format": "uuid"
+                              }
+                            }
+                          }
+                        },
+                        "statusPageIncidentIds": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "format": "uuid"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid body or schedule; fieldErrors name the fields"
+          },
+          "401": {
+            "description": "Not authenticated"
+          },
+          "403": {
+            "description": "Insufficient permission, or the organization is pending deletion"
+          },
+          "404": {
+            "description": "Window, service, monitor or status page not found in the active project"
+          },
+          "409": {
+            "description": "Not allowed in the window's current state, or 100 live windows already"
+          },
+          "429": {
+            "description": "Too many maintenance changes; see Retry-After"
+          }
+        }
+      }
+    },
+    "/api/maintenance-windows/{id}/extend": {
+      "post": {
+        "operationId": "extendMaintenanceWindow",
+        "summary": "Extend an active maintenance window",
+        "tags": [
+          "Monitors"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Done",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "window": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "title": {
+                          "type": "string"
+                        },
+                        "description": {
+                          "type": "string",
+                          "nullable": true
+                        },
+                        "state": {
+                          "type": "string",
+                          "enum": [
+                            "scheduled",
+                            "active",
+                            "completed",
+                            "cancelled"
+                          ]
+                        },
+                        "scope": {
+                          "type": "string",
+                          "enum": [
+                            "project",
+                            "services",
+                            "monitors"
+                          ]
+                        },
+                        "recurrence": {
+                          "type": "string",
+                          "enum": [
+                            "once",
+                            "daily",
+                            "weekly",
+                            "monthly"
+                          ]
+                        },
+                        "timezone": {
+                          "type": "string"
+                        },
+                        "localStartTime": {
+                          "type": "string"
+                        },
+                        "durationMinutes": {
+                          "type": "integer"
+                        },
+                        "startsOn": {
+                          "type": "string",
+                          "format": "date"
+                        },
+                        "endsOn": {
+                          "type": "string",
+                          "format": "date",
+                          "nullable": true
+                        },
+                        "weekdays": {
+                          "type": "array",
+                          "items": {
+                            "type": "integer"
+                          },
+                          "nullable": true
+                        },
+                        "monthDay": {
+                          "type": "integer",
+                          "nullable": true
+                        },
+                        "occurrenceStartsAt": {
+                          "type": "string",
+                          "format": "date-time",
+                          "nullable": true
+                        },
+                        "occurrenceEndsAt": {
+                          "type": "string",
+                          "format": "date-time",
+                          "nullable": true
+                        },
+                        "targets": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "type": {
+                                "type": "string",
+                                "enum": [
+                                  "service",
+                                  "monitor"
+                                ]
+                              },
+                              "id": {
+                                "type": "string",
+                                "format": "uuid"
+                              }
+                            }
+                          }
+                        },
+                        "statusPageIncidentIds": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "format": "uuid"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid body or schedule; fieldErrors name the fields"
+          },
+          "401": {
+            "description": "Not authenticated"
+          },
+          "403": {
+            "description": "Insufficient permission, or the organization is pending deletion"
+          },
+          "404": {
+            "description": "Window, service, monitor or status page not found in the active project"
+          },
+          "409": {
+            "description": "Not allowed in the window's current state, or 100 live windows already"
+          },
+          "429": {
+            "description": "Too many maintenance changes; see Retry-After"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "byMinutes": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "until": {
+                    "type": "string",
+                    "format": "date-time"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/maintenance-windows/{id}/cancel": {
+      "post": {
+        "operationId": "cancelMaintenanceWindow",
+        "summary": "Cancel a scheduled window or the rest of a series",
+        "tags": [
+          "Monitors"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Done",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "window": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "title": {
+                          "type": "string"
+                        },
+                        "description": {
+                          "type": "string",
+                          "nullable": true
+                        },
+                        "state": {
+                          "type": "string",
+                          "enum": [
+                            "scheduled",
+                            "active",
+                            "completed",
+                            "cancelled"
+                          ]
+                        },
+                        "scope": {
+                          "type": "string",
+                          "enum": [
+                            "project",
+                            "services",
+                            "monitors"
+                          ]
+                        },
+                        "recurrence": {
+                          "type": "string",
+                          "enum": [
+                            "once",
+                            "daily",
+                            "weekly",
+                            "monthly"
+                          ]
+                        },
+                        "timezone": {
+                          "type": "string"
+                        },
+                        "localStartTime": {
+                          "type": "string"
+                        },
+                        "durationMinutes": {
+                          "type": "integer"
+                        },
+                        "startsOn": {
+                          "type": "string",
+                          "format": "date"
+                        },
+                        "endsOn": {
+                          "type": "string",
+                          "format": "date",
+                          "nullable": true
+                        },
+                        "weekdays": {
+                          "type": "array",
+                          "items": {
+                            "type": "integer"
+                          },
+                          "nullable": true
+                        },
+                        "monthDay": {
+                          "type": "integer",
+                          "nullable": true
+                        },
+                        "occurrenceStartsAt": {
+                          "type": "string",
+                          "format": "date-time",
+                          "nullable": true
+                        },
+                        "occurrenceEndsAt": {
+                          "type": "string",
+                          "format": "date-time",
+                          "nullable": true
+                        },
+                        "targets": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "type": {
+                                "type": "string",
+                                "enum": [
+                                  "service",
+                                  "monitor"
+                                ]
+                              },
+                              "id": {
+                                "type": "string",
+                                "format": "uuid"
+                              }
+                            }
+                          }
+                        },
+                        "statusPageIncidentIds": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "format": "uuid"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid body or schedule; fieldErrors name the fields"
+          },
+          "401": {
+            "description": "Not authenticated"
+          },
+          "403": {
+            "description": "Insufficient permission, or the organization is pending deletion"
+          },
+          "404": {
+            "description": "Window, service, monitor or status page not found in the active project"
+          },
+          "409": {
+            "description": "Not allowed in the window's current state, or 100 live windows already"
+          },
+          "429": {
+            "description": "Too many maintenance changes; see Retry-After"
           }
         }
       }

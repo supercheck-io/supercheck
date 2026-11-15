@@ -3,7 +3,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 
 import { sreIncidents, sreServices } from "@/db/schema";
-import { requireSreApiPermissions } from "../_auth";
+import { requireSreApiPermissions, requireSreSameOriginRequest } from "../_auth";
+import { permissionDeniedResponse } from "@/lib/deletion/org-state";
+import { createLogger } from "@/lib/logger/index";
+import { createManualIncident } from "@/lib/sre/manual-incident";
 import { db } from "@/utils/db";
 import { getDisplayStatus } from "@/lib/sre/incident-status-display";
 import { storedRootCause } from "@/lib/sre/evidence-brief-summary";
@@ -78,4 +81,42 @@ export async function GET(request: NextRequest) {
       statusLabel: getDisplayStatus(incident.status, incident.acknowledgedAt).label,
     })),
   });
+}
+
+const logger = createLogger({ module: "sre-incident-create-api" }) as { error: (data: unknown, message?: string) => void };
+
+/** POST /api/sre/incidents: declare an incident (UI-equivalent core; the CLI calls this route). */
+export async function POST(request: NextRequest) {
+  const originError = requireSreSameOriginRequest(request);
+  if (originError) return originError;
+  const auth = await requireSreApiPermissions([{ resource: "sre_incident", action: "create" }]);
+  if (!auth.success) return auth.response;
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
+  try {
+    // Audit detail only: the CLI identifies itself in its User-Agent.
+    const source = request.headers.get("user-agent")?.startsWith("supercheck-cli/") ? "cli" : "api";
+    const result = await createManualIncident(auth.context, body as never, source);
+    if (!result.ok) {
+      if (result.code === "forbidden") return permissionDeniedResponse(auth.context.organizationId, "Insufficient permissions to create incidents");
+      if (result.code === "rate_limited") {
+        return NextResponse.json({ error: result.error }, { status: 429, headers: { "Retry-After": String(result.retryAfterSeconds) } });
+      }
+      return NextResponse.json(
+        { error: result.error, ...(result.code === "invalid" && result.fieldErrors ? { fieldErrors: result.fieldErrors } : {}) },
+        { status: result.code === "not_found" ? 404 : 400 },
+      );
+    }
+    return NextResponse.json(
+      { success: true, incident: result.incident, ...(result.statusPageIncidentId ? { statusPageIncidentId: result.statusPageIncidentId } : {}), ...(result.warning ? { warning: result.warning } : {}) },
+      { status: 201 },
+    );
+  } catch (error) {
+    logger.error({ error }, "Error declaring SRE incident");
+    return NextResponse.json({ error: "Failed to create incident" }, { status: 500 });
+  }
 }

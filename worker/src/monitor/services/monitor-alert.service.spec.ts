@@ -64,6 +64,7 @@ describe('MonitorAlertService', () => {
       insert: jest.fn(() => ({
         values: valuesMock,
       })),
+      execute: jest.fn().mockResolvedValue([{ in_maintenance: maintenance }]),
     };
     const maintenanceQuery = {
       from: jest.fn().mockReturnThis(),
@@ -1283,7 +1284,7 @@ describe('MonitorAlertService', () => {
         }),
       }));
       jest
-        .spyOn(ctx.service as never, 'isUnderScheduledMaintenance' as never)
+        .spyOn(ctx.service as never, 'isMonitorInMaintenance' as never)
         .mockResolvedValue(false as never);
       await expect(
         ctx.service.sendWarning(heartbeat, 'heartbeat_late', 'r', episode),

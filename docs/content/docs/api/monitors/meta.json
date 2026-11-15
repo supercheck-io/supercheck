@@ -20,6 +20,14 @@
     "getMonitorTags",
     "replaceMonitorTags",
     "patchMonitorTags",
-    "deleteMonitorTag"
+    "deleteMonitorTag",
+    "listMaintenanceWindows",
+    "createMaintenanceWindow",
+    "getMaintenanceWindow",
+    "updateMaintenanceWindow",
+    "deleteMaintenanceWindow",
+    "endMaintenanceWindow",
+    "extendMaintenanceWindow",
+    "cancelMaintenanceWindow"
   ]
 }

@@ -1,8 +1,9 @@
 "use client";
+
 import React, { useState, useCallback } from "react";
 import { CreateCard } from "./create-card";
 import { useRouter } from "next/navigation";
-import { Video, Chrome } from "lucide-react";
+import { CalendarClock, Video, Chrome } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -30,6 +31,8 @@ type ScriptType =
   | "record";
 
 export type QuickCreateCapabilities = {
+  canDeclareIncidents: boolean;
+  canScheduleMaintenance: boolean;
   canCreateProjects: boolean;
   canInviteMembers: boolean;
   canCreateCliTokens: boolean;
@@ -169,6 +172,25 @@ export function CreatePageContent({
       onClick: () => router.push(`/notifications?create=true&type=${provider.type}`),
     };
   });
+  const respondTypes = [
+    capabilities.canDeclareIncidents
+      ? {
+          icon: <NAV.incidents.icon size={20} className={AREA_TEXT[NAV.incidents.tone]} />,
+          title: "Declare incident",
+          description: "Open an incident by hand",
+          onClick: () => router.push("/incidents?new=1"),
+        }
+      : null,
+    capabilities.canScheduleMaintenance
+      ? {
+          icon: <CalendarClock size={20} className={AREA_TEXT[NAV.monitors.tone]} />,
+          title: "Schedule maintenance",
+          description: "Mute alerts for planned work",
+          onClick: () => router.push("/monitors?tab=maintenance&new=1"),
+        }
+      : null,
+  ].filter((item): item is NonNullable<typeof item> => Boolean(item));
+
   const investigationTypes = capabilities.canInvestigateSre
     ? [
         {
@@ -240,6 +262,27 @@ export function CreatePageContent({
 
   return (
     <div className="mx-auto mt-3 p-4">
+      {respondTypes.length > 0 && (
+        <>
+          <div className="mb-3 pl-1">
+            <h2 className="text-md font-semibold">Respond to an incident</h2>
+            <p className="text-muted-foreground mt-0.5 text-sm">
+              Declare an incident for a problem no alert caught
+            </p>
+          </div>
+          <div className={`${cardGridClass} mb-6`}>
+            {respondTypes.map((respondType) => (
+              <CreateCard
+                key={respondType.title}
+                icon={respondType.icon}
+                title={respondType.title}
+                description={respondType.description}
+                onClick={respondType.onClick}
+              />
+            ))}
+          </div>
+        </>
+      )}
       <div className="mb-3 pl-1">
         <h2 className="text-md font-semibold">Create New Test</h2>
         <p className="text-muted-foreground text-sm mt-0.5">

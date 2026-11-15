@@ -14,6 +14,8 @@ export default async function CreatePage() {
   ];
   const context = await requireProjectContext();
   const capabilities: QuickCreateCapabilities = {
+    canDeclareIncidents: checkPermissionWithContext("sre_incident", "create", context),
+    canScheduleMaintenance: checkPermissionWithContext("monitor", "update", context),
     canCreateProjects: checkPermissionWithContext("project", "create", context),
     canInviteMembers: checkPermissionWithContext("member", "create", context),
     canCreateCliTokens: checkPermissionWithContext("apiKey", "create", context),

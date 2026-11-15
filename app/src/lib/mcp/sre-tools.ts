@@ -6,6 +6,8 @@ import { assertCanStartSreInvestigation, SreInvestigationBillingError, withSreTr
 import { sreBillingErrorMessage } from "@/lib/sre/billing-error-messages";
 import { checkSreDailyTokenLimit } from "@/lib/sre/sre-daily-token-limit";
 import { checkSreEvidenceBriefRateLimit, checkSreIncidentUpdateRateLimit, checkSreInvestigationRateLimit, checkSreTriageRateLimit } from "@/lib/sre/sre-rate-limiter";
+import { createManualIncident } from "@/lib/sre/manual-incident";
+import { cancelMaintenanceWindow, createMaintenanceWindow, endMaintenanceWindow, extendMaintenanceWindow } from "@/lib/maintenance/windows";
 import { acknowledgeIncident, assignIncident, MAX_RESOLUTION_SUMMARY_LENGTH, resolveIncident } from "@/lib/sre/incident-lifecycle";
 import { investigationGuidanceSchema } from "@/lib/sre/feedback-note";
 import { generateEvidenceBrief } from "@/lib/sre/evidence-brief-generator";
@@ -108,6 +110,56 @@ export function registerSreTools(tool: ToolRegistrar, ctx: McpCallContext): void
     tool("assign_incident", "Assign an incident, or set its commander. Pass assigneeUserId null to unassign. The assignee must be someone who can act on the incident." + UNTRUSTED, write,
       { id: idArg, assigneeUserId: idArg.nullable(), role: z.enum(["assignee", "commander"]).default("assignee") },
       ({ id, assigneeUserId, role }) => lifecycle(id, () => assignIncident(actor, id, assigneeUserId, role)));
+    tool("create_incident", "Declare an incident by hand, for an outage no monitor caught (for example a user report). Sends the project's incident notifications. Optionally list affected services and monitors: their next alerts join this incident. It never posts to a public status page." + UNTRUSTED,
+      { resource: "sre_incident", action: "create", scope: MCP_INCIDENTS_WRITE_SCOPE },
+      {
+        title: z.string().trim().min(1).max(500),
+        severity: z.enum(["sev1", "sev2", "sev3", "sev4"]).default("sev3"),
+        summary: z.string().trim().max(4000).nullish(),
+        primaryServiceId: idArg.nullish(),
+        affectedServiceIds: z.array(idArg).max(50).default([]),
+        affectedMonitorIds: z.array(idArg).max(50).default([]),
+        commanderUserId: idArg.nullish(),
+      },
+      async ({ affectedServiceIds, affectedMonitorIds, ...input }) => {
+        const result = await createManualIncident(
+          { userId: ctx.userId, organizationId: ctx.organizationId, orgPendingDeletion: ctx.orgPendingDeletion, project: { id: ctx.projectId, userRole: ctx.role } },
+          // No statusPage: public posts and subscriber emails stay out of reach of a model-driven client.
+          { ...input, affected: { serviceIds: affectedServiceIds, monitorIds: affectedMonitorIds }, statusPage: null },
+          "mcp",
+        );
+        if (!result.ok) throw new McpToolFailure(result.code === "forbidden" ? "forbidden" : result.code, result.error);
+        return { id: result.incident.id, incidentNumber: result.incident.incidentNumber, ...(result.warning ? { warning: result.warning } : {}) };
+      });
+    const windowWrite = { resource: "monitor", action: "update", scope: MCP_INCIDENTS_WRITE_SCOPE } as const;
+    const windowActor = () => ({ userId: ctx.userId, organizationId: ctx.organizationId, orgPendingDeletion: ctx.orgPendingDeletion, project: { id: ctx.projectId, userRole: ctx.role } });
+    const windowOut = (result: Awaited<ReturnType<typeof endMaintenanceWindow>>) => {
+      if (!result.ok) throw new McpToolFailure(result.code, result.error);
+      return { id: result.window.id, state: result.window.state, occurrenceStartsAt: result.window.occurrenceStartsAt?.toISOString() ?? null, occurrenceEndsAt: result.window.occurrenceEndsAt?.toISOString() ?? null };
+    };
+    tool("create_maintenance_window", "Schedule maintenance, for example before a planned deploy. Covered monitors keep running but send no alerts, open no incidents and are left out of uptime. Scope: the whole project, services or monitors. Times are wall-clock in an IANA time zone. Never posts to a status page." + UNTRUSTED, windowWrite,
+      {
+        title: z.string().trim().min(1).max(200),
+        description: z.string().trim().max(2000).nullish(),
+        scope: z.enum(["project", "services", "monitors"]),
+        serviceIds: z.array(idArg).max(500).default([]),
+        monitorIds: z.array(idArg).max(500).default([]),
+        recurrence: z.enum(["once", "daily", "weekly", "monthly"]).default("once"),
+        timezone: z.string().trim().min(1).max(64),
+        startsOn: z.string().describe("YYYY-MM-DD, local date of the first occurrence"),
+        localStartTime: z.string().describe("HH:MM, local start time"),
+        durationMinutes: z.number().int().min(5).max(10080),
+        endsOn: z.string().nullish(),
+        weekdays: z.array(z.number().int().min(0).max(6)).nullish().describe("Weekly: 0 = Sunday"),
+        monthDay: z.number().int().nullish().describe("Monthly: 1-28, or -1 for the last day"),
+      },
+      async ({ serviceIds, monitorIds, ...input }) => windowOut(await createMaintenanceWindow(windowActor(), { ...input, targets: { serviceIds, monitorIds }, statusPages: [] }, "mcp") as never));
+    tool("end_maintenance_window", "End an active maintenance window now. Alerts resume at once." + UNTRUSTED, windowWrite, { id: idArg },
+      async ({ id }) => windowOut(await endMaintenanceWindow(windowActor(), id, "mcp")));
+    tool("extend_maintenance_window", "Extend an active maintenance window by some minutes." + UNTRUSTED, windowWrite, { id: idArg, byMinutes: z.number().int().min(1).max(10080) },
+      async ({ id, byMinutes }) => windowOut(await extendMaintenanceWindow(windowActor(), id, { byMinutes }, "mcp")));
+    tool("cancel_maintenance_window", "Cancel a scheduled maintenance window, or the rest of a recurring one." + UNTRUSTED, windowWrite, { id: idArg },
+      async ({ id }) => windowOut(await cancelMaintenanceWindow(windowActor(), id, "mcp")));
     tool("acknowledge_incident", "Acknowledge an incident. Claims it for you if it is unassigned." + UNTRUSTED, write, { id: idArg },
       ({ id }) => lifecycle(id, () => acknowledgeIncident(actor, id)));
     tool("resolve_incident", "Resolve an incident with a resolution summary." + UNTRUSTED, write,

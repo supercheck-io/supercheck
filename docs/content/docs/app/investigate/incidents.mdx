@@ -11,11 +11,24 @@ Incidents are the responder queue for issues that need investigation, evidence r
 | From | How |
 |---|---|
 | **An alert** | Incidents open automatically when a monitor or job alert fires, with no setup beyond enabling alerts. Repeated alerts for the same target join the same incident. You can also select **Open incident** next to a failure in **Communicate → Notifications → Delivery history**. Neither path starts a full AI investigation unless the project turned on **Investigate new incidents automatically** (see [Default policy](#default-policy)) |
-| **Scratch** | In **Respond → Incidents**, select **New incident** for issues that did not come from a Supercheck alert. You become the assignee |
+| **By hand** | Declare an incident for a problem no alert caught, such as a customer report: **New incident** on **Respond → Incidents**, **Declare incident** in Quick Create or the command menu (Cmd+K), or **Declare incident** on a service or monitor page (prefilled). Also `supercheck incident create`, `POST /api/sre/incidents` and the MCP tool `create_incident`. See [Declare an incident](#declare-an-incident) |
 
 Both paths open the incident workspace. If AI triage fails, the **Activity** feed records a *triage failed* event with the error code, so the failure is visible on the incident.
 
 ![Create Incident Dialog](/screenshots/create-incident-dialog.png)
+
+## Declare an incident
+
+Only the title and severity are needed; everything else is optional and can change later.
+
+| Field | Effect |
+|---|---|
+| **Service** | Sets the incident's service. Its owner becomes the assignee, as for alert-opened incidents; without a service, you are the assignee |
+| **Affected monitors** | The next alert from a listed monitor, or from a monitor mapped to a listed service, joins this incident instead of opening a new one. This works even for a monitor with **Open incidents** turned off. It joins as a related alert, so the monitor recovering does not resolve the incident: a person declared it, so a person resolves it. The incident's sidebar lists them under **Affected**; they can be changed until the incident is resolved |
+| **Commander** | A project editor or admin; gets the incident emails |
+| **Post to a status page** | Also posts a public incident on the chosen components with an impact and a first message (needs status page permission). Subscribers are emailed only if **Notify subscribers** is on. If the public post fails, the incident is still created, the Activity feed records it, and you can post again from the status page's **Status updates** tab |
+
+A declared incident gets the same number sequence, Activity entries, notifications through the project's Default policy, reminders and automatic investigation as one opened by an alert. Declaring is limited to 10 per minute per person and 60 per hour per organization.
 
 ## Incident Queue
 

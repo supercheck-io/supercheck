@@ -228,6 +228,45 @@ it("counts raw rows of a period no aggregate covers in the window", async () => 
   expect(window).toMatchObject({ totalChecks: 2, successfulChecks: 1, uptimePercentage: 50, avgResponseMs: 50 });
 });
 
+it("leaves maintenance checks out of uptime but keeps their response times, raw and aggregated", async () => {
+  await mockDatabase.insert(schema.monitorResults).values([
+    { monitorId, checkedAt: at(10), location: "local", status: "up", isUp: true, responseTimeMs: 50 },
+    { monitorId, checkedAt: at(20), location: "local", status: "down", isUp: false, inMaintenance: true },
+    { monitorId, checkedAt: at(30), location: "local", status: "up", isUp: true, responseTimeMs: 150, inMaintenance: true },
+  ]);
+  const raw = await monitorAggregationService.getWindowMetrics(monitorId, "daily", day, new Date(day.getTime() + 86_400_000), null);
+  expect(raw).toMatchObject({ totalChecks: 1, successfulChecks: 1, uptimePercentage: 100, avgResponseMs: 100 });
+  expect((await monitorAggregationService.runDailyAggregation()).errors).toEqual([]);
+  const aggregates = await mockDatabase.select().from(schema.monitorAggregates).where(eq(schema.monitorAggregates.monitorId, monitorId));
+  expect(aggregates.find((r) => r.location === null)).toMatchObject({ totalChecks: 1, successfulChecks: 1, responseSampleCount: 2 });
+  expect(aggregates.find((r) => r.location === "local")).toMatchObject({ totalChecks: 1, successfulChecks: 1, responseSampleCount: 2 });
+});
+
+it("leaves a whole cycle out of uptime when only some of its regions ran inside a window", async () => {
+  await mockDatabase.insert(schema.monitorResults).values([
+    { monitorId, checkedAt: at(10), location: "a", status: "up", isUp: true, responseTimeMs: 40, executionGroupId: "g-mixed" },
+    { monitorId, checkedAt: at(10), location: "b", status: "up", isUp: true, responseTimeMs: 60, executionGroupId: "g-mixed", inMaintenance: true },
+  ]);
+  const raw = await monitorAggregationService.getWindowMetrics(monitorId, "daily", day, new Date(day.getTime() + 86_400_000), null);
+  expect(raw).toMatchObject({ totalChecks: 0, successfulChecks: 0 });
+  expect((await monitorAggregationService.runDailyAggregation()).errors).toEqual([]);
+  const aggregates = await mockDatabase.select().from(schema.monitorAggregates).where(eq(schema.monitorAggregates.monitorId, monitorId));
+  expect(aggregates.find((r) => r.location === null)).toMatchObject({ totalChecks: 0, responseSampleCount: 2 });
+  expect(aggregates.find((r) => r.location === "a")).toMatchObject({ totalChecks: 0 });
+});
+
+it("counts a real failure saved after a window although the cycle's replaced placeholder was inside it", async () => {
+  await mockDatabase.insert(schema.monitorResults).values([
+    { monitorId, checkedAt: at(10), location: "local", status: "down", isUp: false, executionGroupId: "g-late", inMaintenance: true, details: { synthetic: true } },
+    { monitorId, checkedAt: at(12), location: "local", status: "down", isUp: false, responseTimeMs: 30, executionGroupId: "g-late" },
+  ]);
+  const raw = await monitorAggregationService.getWindowMetrics(monitorId, "daily", day, new Date(day.getTime() + 86_400_000), null);
+  expect(raw).toMatchObject({ totalChecks: 1, successfulChecks: 0 });
+  expect((await monitorAggregationService.runDailyAggregation()).errors).toEqual([]);
+  const aggregates = await mockDatabase.select().from(schema.monitorAggregates).where(eq(schema.monitorAggregates.monitorId, monitorId));
+  expect(aggregates.find((r) => r.location === null)).toMatchObject({ totalChecks: 1, successfulChecks: 0 });
+});
+
 it("summarises a window with no aggregates in SQL: cycle rule, missing region, in-flight cycle, snapshot, location filter, p95", async () => {
   await mockDatabase
     .update(schema.monitors)

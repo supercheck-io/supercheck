@@ -19,6 +19,8 @@ const all = {
   canCreateCliTokens: true,
   canCreateSreServices: true,
   canConfigureSreConnectors: true,
+  canDeclareIncidents: true,
+  canScheduleMaintenance: true,
 };
 
 function openPalette(props: Parameters<typeof CommandSearch>[0]) {

@@ -6,6 +6,9 @@ import {
   type GroupReceipt,
 } from './monitor-evaluator';
 import * as schema from '../db/schema';
+jest.mock('./maintenance', () => ({
+  isMonitorInMaintenance: jest.fn().mockResolvedValue(false),
+}));
 
 type ResultRow = {
   id: string;

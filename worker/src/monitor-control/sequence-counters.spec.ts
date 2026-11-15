@@ -92,3 +92,48 @@ describe('nextOutageKey', () => {
     expect(nextOutageKey(last(false), true)).toBeUndefined();
   });
 });
+
+describe('maintenance windows freeze the failure sequence', () => {
+  it('a failure inside a window after an up check starts nothing: count 0, no outage key', () => {
+    expect(nextSequenceCounters(last(true), false, true)).toMatchObject({
+      consecutiveFailureCount: 0,
+      alertsSentForFailure: 0,
+      consecutiveSuccessCount: 0,
+      isStatusChange: true,
+    });
+    expect(nextOutageKey(last(true), false, true)).toBeUndefined();
+    expect(nextOutageKey(undefined, false, true)).toBeUndefined();
+  });
+
+  it('a sequence open before the window keeps its counts and key', () => {
+    const before = last(false, {
+      consecutiveFailureCount: 4,
+      alertsSentForFailure: 1,
+      details: { outageKey: 'k-1' },
+    });
+    expect(nextSequenceCounters(before, false, true)).toMatchObject({
+      consecutiveFailureCount: 4,
+      alertsSentForFailure: 1,
+      isStatusChange: false,
+    });
+    expect(nextOutageKey(before, false, true)).toBe('k-1');
+  });
+
+  it('after a window the first failure opens a fresh sequence with a new key', () => {
+    const frozen = last(false, { consecutiveFailureCount: 0 });
+    expect(nextSequenceCounters(frozen, false)).toMatchObject({
+      consecutiveFailureCount: 1,
+    });
+    expect(nextOutageKey(frozen, false)).toEqual(expect.any(String));
+  });
+
+  it('never freezes a success', () => {
+    expect(
+      nextSequenceCounters(
+        last(false, { consecutiveFailureCount: 3 }),
+        true,
+        true,
+      ),
+    ).toMatchObject({ consecutiveSuccessCount: 1, consecutiveFailureCount: 0 });
+  });
+});

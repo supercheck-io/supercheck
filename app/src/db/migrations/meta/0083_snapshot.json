@@ -1,5 +1,5 @@
 {
-  "id": "a07f9bcd-caa8-44fe-9534-4c35cfe5d7a2",
+  "id": "53b6c6db-393e-492d-95a6-dd1314f86ed7",
   "prevId": "4694c475-0c0a-4eed-8f50-d1a902275251",
   "version": "7",
   "dialect": "postgresql",
@@ -5250,7 +5250,7 @@
         },
         "tests_type_check": {
           "name": "tests_type_check",
-          "value": "\"tests\".\"type\" IN ('browser', 'api', 'database', 'custom', 'performance', 'agent')"
+          "value": "\"tests\".\"type\" IN ('browser', 'api', 'database', 'custom', 'performance')"
         },
         "tests_priority_check": {
           "name": "tests_priority_check",
@@ -17810,6 +17810,118 @@
         "sre_incident_alerts_role_check": {
           "name": "sre_incident_alerts_role_check",
           "value": "\"sre_incident_alerts\".\"role\" IN ('trigger', 'related', 'red_herring')"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.sre_incident_resources": {
+      "name": "sre_incident_resources",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "incident_id": {
+          "name": "incident_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "resource_type": {
+          "name": "resource_type",
+          "type": "varchar(10)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "resource_id": {
+          "name": "resource_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "sre_incident_resources_incident_resource_unique_idx": {
+          "name": "sre_incident_resources_incident_resource_unique_idx",
+          "columns": [
+            {
+              "expression": "incident_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "resource_type",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "resource_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "sre_incident_resources_resource_idx": {
+          "name": "sre_incident_resources_resource_idx",
+          "columns": [
+            {
+              "expression": "resource_type",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "resource_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "sre_incident_resources_incident_id_sre_incidents_id_fk": {
+          "name": "sre_incident_resources_incident_id_sre_incidents_id_fk",
+          "tableFrom": "sre_incident_resources",
+          "tableTo": "sre_incidents",
+          "columnsFrom": [
+            "incident_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "sre_incident_resources_resource_type_check": {
+          "name": "sre_incident_resources_resource_type_check",
+          "value": "\"sre_incident_resources\".\"resource_type\" IN ('service', 'monitor')"
         }
       },
       "isRLSEnabled": false

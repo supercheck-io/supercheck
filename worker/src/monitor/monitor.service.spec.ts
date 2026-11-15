@@ -304,6 +304,9 @@ import { LocationService } from '../common/location/location.service';
 import { RedisService } from '../execution/services/redis.service';
 import { VariableResolverService } from '../common/services/variable-resolver.service';
 import * as schema from '../db/schema';
+jest.mock('./maintenance', () => ({
+  isMonitorInMaintenance: jest.fn().mockResolvedValue(false),
+}));
 
 describe('MonitorService', () => {
   /** The aggregatedAlertState JSON of the first monitors.config write (a jsonb_set statement). */
@@ -2223,6 +2226,103 @@ describe('MonitorService', () => {
         });
         expect(lastResult.details).toMatchObject({ recoverySequence: isUp });
       }
+      mockDbService.db.query.monitorResults.findFirst.mockReset();
+    });
+
+    it('flags rows inside a maintenance window and freezes failures there (M7)', async () => {
+      const { isMonitorInMaintenance } = jest.requireMock('./maintenance');
+      let lastResult: Record<string, unknown> | undefined;
+      const rows: Record<string, unknown>[] = [];
+      const values = jest
+        .fn()
+        .mockImplementation(async (value: Record<string, unknown>) => {
+          lastResult = value;
+          rows.push(value);
+        });
+      mockDbService.db.insert.mockReturnValue({ values });
+      mockDbService.db.query.monitorResults.findFirst.mockImplementation(
+        async () => lastResult,
+      );
+      // up, then down x3 inside the window, then down x2 after it.
+      const plan: Array<[boolean, boolean]> = [
+        [true, false],
+        [false, true],
+        [false, true],
+        [false, true],
+        [false, false],
+        [false, false],
+      ];
+      for (const [isUp, inWindow] of plan) {
+        isMonitorInMaintenance.mockResolvedValueOnce(inWindow);
+        await service['saveMonitorResultToDb']({
+          monitorId: mockMonitor.id,
+          location: 'eu',
+          checkedAt: new Date(),
+          status: isUp ? 'up' : 'down',
+          isUp,
+        });
+      }
+      expect(rows.map((row) => row.inMaintenance)).toEqual([
+        false,
+        true,
+        true,
+        true,
+        false,
+        false,
+      ]);
+      expect(rows.map((row) => row.consecutiveFailureCount)).toEqual([
+        0, 0, 0, 0, 1, 2,
+      ]);
+      const keys = rows.map(
+        (row) => (row.details as { outageKey?: string }).outageKey,
+      );
+      expect(keys.slice(1, 4)).toEqual([undefined, undefined, undefined]);
+      expect(keys[4]).toEqual(expect.any(String));
+      expect(keys[5]).toBe(keys[4]);
+      mockDbService.db.query.monitorResults.findFirst.mockReset();
+    });
+
+    it('marks the recovery from failures seen only inside a window, so it sends no recovery alert', async () => {
+      const { isMonitorInMaintenance } = jest.requireMock('./maintenance');
+      let lastResult: Record<string, unknown> | undefined;
+      const rows: Record<string, unknown>[] = [];
+      mockDbService.db.insert.mockReturnValue({
+        values: jest
+          .fn()
+          .mockImplementation(async (value: Record<string, unknown>) => {
+            lastResult = value;
+            rows.push(value);
+          }),
+      });
+      mockDbService.db.query.monitorResults.findFirst.mockImplementation(
+        async () => lastResult,
+      );
+      // up, down inside the window, up x2 after it, then a real outage and its recovery.
+      const plan: Array<[boolean, boolean]> = [
+        [true, false],
+        [false, true],
+        [true, false],
+        [true, false],
+        [false, false],
+        [true, false],
+      ];
+      for (const [isUp, inWindow] of plan) {
+        isMonitorInMaintenance.mockResolvedValueOnce(inWindow);
+        await service['saveMonitorResultToDb']({
+          monitorId: mockMonitor.id,
+          location: 'eu',
+          checkedAt: new Date(),
+          status: isUp ? 'up' : 'down',
+          isUp,
+        });
+      }
+      expect(
+        rows.map(
+          (row) =>
+            (row.details as { maintenanceOnly?: boolean }).maintenanceOnly ===
+            true,
+        ),
+      ).toEqual([false, true, true, true, false, false]);
       mockDbService.db.query.monitorResults.findFirst.mockReset();
     });
 

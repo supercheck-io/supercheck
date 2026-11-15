@@ -10,6 +10,7 @@ import {
   processDelivery,
 } from "./incident-notifications/delivery-worker";
 import { checkedTick } from "@/lib/sentry-lazy";
+import { advanceMaintenanceWindows } from "@/lib/maintenance/windows";
 
 let worker: Worker | undefined;
 let queue: Queue | undefined;
@@ -25,6 +26,10 @@ export async function initializeStatusPageScheduler() {
       if (job.name === "tick") {
         // Ticks every 10 s; the check-in is throttled to about one a minute.
         await checkedTick("status-page-reconcile", { type: "interval", value: 1, unit: "minute" }, reconcileStatusPages, (ran) => ran, 50_000);
+        // Maintenance windows move to their next occurrence here (idempotent across replicas). A failure must not stop
+        // status-page work; the worker never mutes past a window's end, so a missed tick fails open.
+        await checkedTick("maintenance-window-advance", { type: "interval", value: 1, unit: "minute" }, () => advanceMaintenanceWindows(), () => true, 50_000)
+          .catch((error: unknown) => console.error("Maintenance window advance failed:", error));
         await enqueuePendingDeliveries(queue!);
         const due = await db
           .select({
