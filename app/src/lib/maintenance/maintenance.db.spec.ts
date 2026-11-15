@@ -212,6 +212,16 @@ describe("window lifecycle (M10, AC12)", () => {
     expect(await cancelMaintenanceWindow(admin, created.window.id, "mcp")).toMatchObject({ ok: false, code: "conflict" });
   });
 
+  it("always moves the version forward, even when the stored one is not older than the clock", async () => {
+    const created = await createMaintenanceWindow(actor, oneOff(120), "api");
+    if (!created.ok) throw new Error(created.error);
+    // A version at or past the clock (same millisecond, or skew): the next write must still change it.
+    const [{ v }] = await client`UPDATE maintenance_windows SET updated_at = date_trunc('milliseconds', now() + interval '1 hour') WHERE id = ${created.window.id} RETURNING updated_at AS v`;
+    expect(await updateMaintenanceWindow(actor, created.window.id, { title: "Renamed" })).toMatchObject({ ok: true });
+    const [after] = await client`SELECT updated_at FROM maintenance_windows WHERE id = ${created.window.id}`;
+    expect(new Date(after!.updated_at).getTime()).toBeGreaterThan(new Date(v).getTime());
+  });
+
   it("refuses to delete once a status-page post is linked, even after the window was read", async () => {
     const created = await createMaintenanceWindow(actor, oneOff(120), "api");
     if (!created.ok) throw new Error(created.error);

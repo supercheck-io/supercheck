@@ -304,7 +304,7 @@ export async function createMaintenanceWindow(
         .where(eq(statusPageIncidents.id, posted.incident.id));
       // Linking is a change to the window: a request that read it before (and checked it was not on a status
       // page, as MCP does) now fails its updated_at guard instead of touching the public post.
-      if (live) await tx.update(maintenanceWindows).set({ updatedAt: now }).where(eq(maintenanceWindows.id, created.id));
+      if (live) await tx.update(maintenanceWindows).set({ updatedAt: nextVersion }).where(eq(maintenanceWindows.id, created.id));
       return Boolean(live);
     });
     if (!linked) warning = "status_page_failed";
@@ -356,6 +356,12 @@ function unchanged(row: WindowRow) {
   );
 }
 
+/**
+ * The new version for any write to a window: strictly later than the stored one even within the same
+ * millisecond, so the updated_at guard in unchanged() always rejects a read taken before the write.
+ */
+const nextVersion = sql`greatest(now(), date_trunc('milliseconds', ${maintenanceWindows.updatedAt}) + interval '1 millisecond')`;
+
 const CHANGED = { ok: false as const, code: "conflict" as const, error: "The window changed meanwhile. Reload and try again." };
 
 /** Moves linked scheduled status-page incidents to a new end; the status-page reconciler completes them with their notices. */
@@ -398,7 +404,7 @@ export async function updateMaintenanceWindow(
     : nextOccurrence(merged, now, row.occurrenceStartsAt && row.occurrenceStartsAt <= now ? row.occurrenceStartsAt : null);
   if (!occurrence) return { ok: false, code: "invalid", error: "This schedule has no occurrence in the future" };
   const [updated] = await db.transaction(async (tx) => {
-    const [claimed] = await tx.update(maintenanceWindows).set({ updatedAt: now }).where(unchanged(row)).returning({ id: maintenanceWindows.id });
+    const [claimed] = await tx.update(maintenanceWindows).set({ updatedAt: nextVersion }).where(unchanged(row)).returning({ id: maintenanceWindows.id });
     if (!claimed) return [];
     if (targets !== undefined) {
       await tx.delete(maintenanceWindowTargets).where(eq(maintenanceWindowTargets.windowId, row.id));
@@ -422,7 +428,7 @@ export async function updateMaintenanceWindow(
       monthDay: merged.monthDay ?? null,
       occurrenceStartsAt: occurrence.startsAt,
       occurrenceEndsAt: occurrence.endsAt,
-      updatedAt: now,
+      updatedAt: nextVersion,
     }).where(eq(maintenanceWindows.id, row.id)).returning();
   });
   if (!updated) return CHANGED;
@@ -445,8 +451,8 @@ export async function endMaintenanceWindow(actor: StatusPageIncidentActor, id: s
   const [updated] = await db.transaction(async (tx) => {
     const done = await tx.update(maintenanceWindows).set(
       next
-        ? { occurrenceStartsAt: next.startsAt, occurrenceEndsAt: next.endsAt, updatedAt: now }
-        : { occurrenceEndsAt: now, completedAt: now, updatedAt: now },
+        ? { occurrenceStartsAt: next.startsAt, occurrenceEndsAt: next.endsAt, updatedAt: nextVersion }
+        : { occurrenceEndsAt: now, completedAt: now, updatedAt: nextVersion },
     ).where(unchanged(row)).returning();
     if (done.length) await moveLinkedEnd(tx, row.id, now);
     return done;
@@ -480,7 +486,7 @@ export async function extendMaintenanceWindow(
     }
   }
   const [updated] = await db.transaction(async (tx) => {
-    const done = await tx.update(maintenanceWindows).set({ occurrenceEndsAt: until, updatedAt: now }).where(unchanged(row)).returning();
+    const done = await tx.update(maintenanceWindows).set({ occurrenceEndsAt: until, updatedAt: nextVersion }).where(unchanged(row)).returning();
     if (done.length) await moveLinkedEnd(tx, row.id, until);
     return done;
   });
@@ -502,7 +508,7 @@ export async function cancelMaintenanceWindow(actor: StatusPageIncidentActor, id
   if (state === "completed" || state === "cancelled") return { ok: false, code: "conflict", error: "This window is already over" };
   if (state === "active" && row.recurrence === "once") return { ok: false, code: "conflict", error: "End an active window instead of cancelling it" };
   const [updated] = await db.transaction(async (tx) => {
-    const [claimed] = await tx.update(maintenanceWindows).set({ updatedAt: now }).where(unchanged(row)).returning({ id: maintenanceWindows.id });
+    const [claimed] = await tx.update(maintenanceWindows).set({ updatedAt: nextVersion }).where(unchanged(row)).returning({ id: maintenanceWindows.id });
     if (!claimed) return [];
     const linked = await tx.select({ id: statusPageIncidents.id, deliver: statusPageIncidents.deliverNotifications })
       .from(statusPageIncidents)
@@ -523,7 +529,7 @@ export async function cancelMaintenanceWindow(actor: StatusPageIncidentActor, id
       cancelledAt: now,
       // An active occurrence of a series stops now, so nothing stays muted.
       ...(state === "active" ? { occurrenceEndsAt: now } : {}),
-      updatedAt: now,
+      updatedAt: nextVersion,
     }).where(eq(maintenanceWindows.id, row.id)).returning();
   });
   if (!updated) return CHANGED;
@@ -571,7 +577,7 @@ export async function advanceMaintenanceWindows(now = new Date()): Promise<numbe
   for (const row of due) {
     const next = row.recurrence === "once" ? null : nextOccurrence(scheduleOf(row), row.occurrenceEndsAt && row.occurrenceEndsAt > now ? row.occurrenceEndsAt : now, row.occurrenceStartsAt);
     await db.update(maintenanceWindows).set(
-      next ? { occurrenceStartsAt: next.startsAt, occurrenceEndsAt: next.endsAt, updatedAt: now } : { completedAt: now, updatedAt: now },
+      next ? { occurrenceStartsAt: next.startsAt, occurrenceEndsAt: next.endsAt, updatedAt: nextVersion } : { completedAt: now, updatedAt: nextVersion },
     ).where(unchanged(row));
   }
   return due.length;
