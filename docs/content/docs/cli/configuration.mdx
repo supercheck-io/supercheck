@@ -161,6 +161,13 @@ Test files pulled from the cloud use `slug.{uuid}.pw.ts` and `slug.{uuid}.k6.ts`
 // @tags smoke, web
 ```
 
+`supercheck pull` also writes `// @type <type>` for `agent`, `api`, `database` and `custom` tests; browser tests have no line and performance tests are told apart by their `.k6.ts` file. `deploy` and `diff` read it, send it as the test type and strip it from the script. Without it a file is a browser test, so keep the line in files you edit. An agent test is a normal `*.pw.ts` file with `// @type agent` as its first line:
+
+```ts
+// @type agent
+import { test, expect } from '@supercheck/agent-test';
+```
+
 ## Validate and Deploy
 
 Validate with `supercheck config validate`, preview with `supercheck diff`, apply with `supercheck deploy` (see [Monitoring-as-Code](/docs/cli/commands#monitoring-as-code) for every flag).
@@ -289,7 +296,7 @@ Monitors reference project secrets by name, so a pulled config holds no credenti
 | Field | Description |
 |---|---|
 | `config.heartbeat.graceMinutes` | How late a ping may be before the monitor goes down, 1 to 1440. Omit for the default: 20% of the interval, at least 5 minutes and at most 1 day |
-| `alertConfig.warnings` | Warning-only alerts by kind. `heartbeat_late: true` notifies your channels when a ping is late but inside the grace period; warnings never open an incident. An unset kind takes its default: `heartbeat_late` is off; the MCP kinds (`mcp_tools_changed`, `mcp_slow`) and AI endpoint kinds (`ai_slow_first_token`, `ai_model_changed`, `ai_tokens_high`) are on, so set them to `false` to turn them off. `pull` writes only toggles that differ from the default |
+| `alertConfig.warnings` | Warning-only alerts by kind. `heartbeat_late: true` notifies your channels when a ping is late but inside the grace period; warnings never open an incident. An unset kind takes its default: `heartbeat_late` is off; the MCP kinds (`mcp_tools_changed`, `mcp_slow`), AI endpoint kinds (`ai_slow_first_token`, `ai_model_changed`, `ai_tokens_high`) and the synthetic agent kind (`agent_run_failed`) are on, so set them to `false` to turn them off. `pull` writes only toggles that differ from the default |
 
 The ping URL is a secret and never part of the config. `deploy` prints it once when it creates a heartbeat monitor (`results[].pingUrl` with `--json`); `supercheck monitor heartbeat-url <id>` shows it again. `pull` never writes the URL or the heartbeat's runtime state (last ping, late or down), and `diff` ignores them. See [Heartbeat Monitors](/docs/app/heartbeat).
 

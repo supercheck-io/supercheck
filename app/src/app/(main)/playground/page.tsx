@@ -22,6 +22,9 @@ const getBreadcrumbs = (scriptType: string | null) => {
     case "database":
       testTypeLabel = "Database Test";
       break;
+    case "agent":
+      testTypeLabel = "Agent Test";
+      break;
     case "performance":
       testTypeLabel = "Performance Test";
       break;

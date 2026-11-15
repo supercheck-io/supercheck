@@ -52,6 +52,9 @@ console.log(`JSON Output File: ${jsonOutputFile}`);
 console.log(`HTML Report Directory: ${htmlReportDir}`);
 console.log(`Worker Count: ${getOptimalWorkerCount()}`);
 
+// Agent tests run in their own project: no retries (a retry would re-bill the customer's agent), no browser.
+const AGENT_SPEC = /\.agent\.spec\.ts$/;
+
 /**
  * @see https://playwright.dev/docs/test-configuration
  */
@@ -144,7 +147,15 @@ module.exports = defineConfig({
   /* Optimized browser projects for Supercheck execution */
   projects: [
     {
+      name: 'agent',
+      testMatch: AGENT_SPEC,
+      retries: 0,
+      timeout: 240000,
+    },
+
+    {
       name: 'chromium',
+      testIgnore: AGENT_SPEC,
       grepInvert: /@(mobile|iphone|firefox|webkit|safari)\b/i,
       use: {
         ...devices['Desktop Chrome'],
@@ -163,6 +174,7 @@ module.exports = defineConfig({
     // Firefox browser project
     {
       name: 'firefox',
+      testIgnore: AGENT_SPEC,
       grep: /@firefox\b/i,
       use: {
         ...devices['Desktop Firefox'],
@@ -187,6 +199,7 @@ module.exports = defineConfig({
     // WebKit (Safari) browser project
     {
       name: 'safari',
+      testIgnore: AGENT_SPEC,
       grep: /@(webkit|safari)\b/i,
       use: {
         ...devices['Desktop Safari'],
@@ -205,6 +218,7 @@ module.exports = defineConfig({
     // Mobile testing projects (opt-in via @mobile tag)
     {
       name: 'mobile-safari',
+      testIgnore: AGENT_SPEC,
       // Only run tests tagged with @mobile or @iPhone
       grep: /@(mobile|iphone)\b/i,
       use: {

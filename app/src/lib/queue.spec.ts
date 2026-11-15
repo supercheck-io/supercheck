@@ -201,7 +201,7 @@ describe("queue location refresh", () => {
     getExecutionPolicy.mockResolvedValue({ tier: "plus", priority: 1, runningCapacity: 1, queuedCapacity: 5 });
     queuesMissingCapability.mockResolvedValueOnce(["playwright-global"]);
     const task = { runId: "run", testId: "test", jobId: "job", organizationId: "org", projectId: "project", code: "code", testScripts: [{ id: "test", script: "code" }], ...extra };
-    await expect(queueModule[producer](task as never)).rejects.toMatchObject({ name: "ExecutionQueueError", code: "queue_unavailable", message: expect.stringContaining("updated workers") });
+    await expect(queueModule[producer](task as never)).rejects.toMatchObject({ name: "ExecutionQueueError", code: "agent_workers_pending", message: expect.stringContaining("updated workers") });
     expect(queuesMissingCapability).toHaveBeenCalledWith(["playwright-global"], "agent-test");
     expect(reserveSlot).not.toHaveBeenCalled();
   });

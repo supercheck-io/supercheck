@@ -1,7 +1,11 @@
+export const AGENT_WORKERS_PENDING_MESSAGE =
+  "Agent tests need updated workers, which are not running yet. Try again after the worker update finishes.";
+
 export type ExecutionQueueErrorCode =
   | "capacity_exceeded"
   | "capacity_unavailable"
-  | "queue_unavailable";
+  | "queue_unavailable"
+  | "agent_workers_pending";
 
 /**
  * Typed execution admission failure. Internal causes stay server-side while
@@ -32,5 +36,7 @@ export function getExecutionQueueRunError(error: ExecutionQueueError): string {
       return "Execution capacity service temporarily unavailable";
     case "queue_unavailable":
       return "Execution queue temporarily unavailable";
+    case "agent_workers_pending":
+      return AGENT_WORKERS_PENDING_MESSAGE;
   }
 }

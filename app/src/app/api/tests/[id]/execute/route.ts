@@ -226,6 +226,7 @@ export async function POST(request: NextRequest, context: ExecuteContext) {
         runId: run.id,
         organizationId: test.organizationId ?? "",
         projectId: test.projectId ?? "",
+        ...(test.type === "agent" ? { testType: "agent" as const } : {}),
       };
 
       const queueResult = await addTestToQueue(playwrightTask);

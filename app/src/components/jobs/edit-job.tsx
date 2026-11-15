@@ -206,7 +206,7 @@ export default function EditJob({ jobId, initialJobData }: EditJobProps) {
       id: test.id,
       name: test.name || test.title || "",
       description: test.description || null,
-      type: (test.type as "browser" | "api" | "custom" | "database" | "performance") || "browser",
+      type: (test.type as "browser" | "api" | "custom" | "database" | "agent" | "performance") || "browser",
       status: "running" as const,
       lastRunAt: null,
       duration: null,

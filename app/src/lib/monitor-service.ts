@@ -16,7 +16,7 @@ import {
 } from "@/lib/monitor-scheduler";
 import { eq, and, sql } from "drizzle-orm";
 import { ResumeRefusedError, withResumeWithinPlan } from "@/lib/middleware/plan-enforcement";
-import { assertKeptProvidersValid, MonitorScheduleError, configKeepingWorkerKeys, configWithoutKeys, dropStaleSslAlertState, monitorTypeChangeError, preserveWorkerConfigKeys, scheduleOutOfSync, workerKeysDroppedByWrite, syncMonitorProviderRows, WORKER_OWNED_CONFIG_KEYS } from "@/lib/monitor-write";
+import { assertAgentMonitorRunnable, assertKeptProvidersValid, MonitorScheduleError, configKeepingWorkerKeys, configWithoutKeys, dropStaleSslAlertState, monitorTypeChangeError, preserveWorkerConfigKeys, scheduleOutOfSync, workerKeysDroppedByWrite, syncMonitorProviderRows, WORKER_OWNED_CONFIG_KEYS } from "@/lib/monitor-write";
 import { createHeartbeatTokenColumns } from "@/lib/heartbeat/token";
 import { reconcileMonitorSchedule } from "@/lib/monitor-schedule-reconcile";
 import { WITHOUT_HEARTBEAT_TOKEN } from "@/lib/monitor-response";
@@ -60,6 +60,7 @@ export async function insertMonitorRecord(
   }
 
   const validatedData = validation.data;
+  if (validatedData.enabled !== false) await assertAgentMonitorRunnable(validatedData);
   // Server-owned: the client never supplies these. The plaintext token is returned once, for the create response.
   const heartbeat = validatedData.type === "heartbeat" && validatedData.projectId
     ? createHeartbeatTokenColumns(validatedData.projectId)
@@ -254,6 +255,20 @@ export async function updateMonitorHandler(
   }
 
   if (data.status !== undefined) updateData.status = data.status;
+
+  // Saving or resuming a running monitor: its test may have become (or been switched to) an agent test.
+  const effectiveEnabled = data.enabled ?? existingMonitor.enabled;
+  if (
+    effectiveEnabled && (updateData.status ?? existingMonitor.status) !== "paused" &&
+    (data.config !== undefined || data.type !== undefined || data.enabled !== undefined || data.status !== undefined)
+  ) {
+    await assertAgentMonitorRunnable({
+      type: updateData.type ?? existingMonitor.type,
+      config: (updateData.config ?? existingMonitor.config) as MonitorConfig | null,
+      projectId: existingMonitor.projectId,
+      organizationId: existingMonitor.organizationId,
+    });
+  }
 
   const { providerSync } = options;
   // Worker-owned keys come from the row at write time, not from the earlier read.

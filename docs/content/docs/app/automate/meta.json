@@ -11,6 +11,7 @@
     "api-test",
     "database-test",
     "custom-test",
+    "agent-test",
     "performance-test",
     "---Execution---",
     "jobs",

@@ -308,7 +308,7 @@ export function AICreateButton({
 
           <div className="min-h-0 space-y-5 overflow-y-auto px-6 py-5">
             <div className="space-y-2 text-sm leading-relaxed text-muted-foreground">
-              <p>Choose the right template in Playground first: Browser, API, Database, Custom, or Performance. Then describe the actions, checks, and expected results.</p>
+              <p>Choose the right template in Playground first: Browser, API, Database, Custom, Agent, or Performance. Then describe the actions, checks, and expected results.</p>
               {testType === "browser" && (
                 <p>
                   <span className="font-medium text-foreground">Recommendation:</span> For browser tests, use the{" "}

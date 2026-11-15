@@ -37,7 +37,7 @@ function TestNotFound() {
 }
 
 // Valid test types for type checking
-const VALID_TEST_TYPES = ["browser", "api", "custom", "database", "performance"] as const;
+const VALID_TEST_TYPES = ["browser", "api", "custom", "database", "agent", "performance"] as const;
 type ValidTestType = (typeof VALID_TEST_TYPES)[number];
 
 function isValidTestType(type: unknown): type is ValidTestType {

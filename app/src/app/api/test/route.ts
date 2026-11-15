@@ -8,6 +8,7 @@ import {
   K6ExecutionTask,
   TestExecutionTask,
 } from "@/lib/queue";
+import { normalizeTestType } from "@/lib/script-type-validator";
 import { playwrightValidationService } from "@/lib/playwright-validator";
 import { requireAuthContext, isAuthError, authErrorStatus } from "@/lib/auth-context";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
@@ -137,7 +138,8 @@ export async function POST(request: NextRequest) {
 
     // Detect if this is a k6 performance test
     const isPerformanceTest = isK6Script(code);
-    const testType = isPerformanceTest ? "performance" : "browser";
+    const isAgentTest = !isPerformanceTest && normalizeTestType(data.testType) === "agent";
+    const testType = isPerformanceTest ? "performance" : isAgentTest ? "agent" : "browser";
 
     let executionLocation: K6Location | undefined;
     if (isPerformanceTest) {
@@ -319,6 +321,7 @@ export async function POST(request: NextRequest) {
           runId: runIdForQueue || testId,
           organizationId,
           projectId: project.id,
+          ...(isAgentTest ? { testType: "agent" as const } : {}),
         };
 
         const queueResult = await addTestToQueue(task);

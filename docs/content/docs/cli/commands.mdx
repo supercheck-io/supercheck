@@ -311,7 +311,7 @@ supercheck job keys delete <job-id> <key-id>
 <Accordions>
 <Accordion title="Job types, status and local runs" id="supercheck-job-run">
 
-- `job create --type` selects the runner (`playwright` or `k6`). `--tests` takes test IDs (space or comma separated). Test `--type` uses API types: `browser`, `performance`, `api`, `database`, `custom`.
+- `job create --type` selects the runner (`playwright` or `k6`). `--tests` takes test IDs (space or comma separated). Test `--type` uses API types: `browser`, `performance`, `api`, `database`, `custom`, `agent`.
 - Job status is runtime state, not configuration. Use `job run`, `job trigger`, or the dashboard/scheduler to affect execution state.
 - `job run --local --offline` runs tests referenced by a job in the local configuration without credentials or server-side validation. Browser jobs use the configured Playwright browser. Pass `--playwright-config <path>` to use an existing Playwright configuration.
 
@@ -384,7 +384,7 @@ supercheck analytics k6 --left-run <run-id> --right-run <run-id>
 | `test execute <test-id>` | Execute one deployed test in the cloud; returns the run ID, or waits with `--wait` | `--location <code>`, `--wait`, `--timeout` (300) |
 | `test status <test-id>` | Stream live status events | `--idle-timeout` (60, min 10) |
 
-Test types: `browser`, `performance`, `api`, `database`, `custom`. Priorities: `low`, `medium`, `high`.
+Test types: `browser`, `performance`, `api`, `database`, `custom`, `agent` (`test create --type agent`; agent tests run only in the cloud, so `test run` refuses them). Priorities: `low`, `medium`, `high`.
 
 <Accordions>
 <Accordion title="Examples" id="tests-examples">
@@ -814,7 +814,7 @@ supercheck destroy --force        # Confirm and delete resources
 <Accordions>
 <Accordion title="supercheck pull: files, backups and overwrites" id="supercheck-pull">
 
-Config pulls include monitors (with tags), jobs, requirements, notification providers, variables, tags, and status pages (settings, branding, notifications and components); test pulls also write test scripts under `_supercheck_/` with `@title`, `@priority` and `@tags` annotations. Pull preserves managed test paths and existing browser and `testMatch` settings. Runner-type changes migrate files with backups; new tests must match configured custom globs or pull stops before writing.
+Config pulls include monitors (with tags), jobs, requirements, notification providers, variables, tags, and status pages (settings, branding, notifications and components); test pulls also write test scripts under `_supercheck_/` with `@title`, `@priority` and `@tags` annotations, plus `@type` for agent, API, database and custom tests. Pull preserves managed test paths and existing browser and `testMatch` settings. Runner-type changes migrate files with backups; new tests must match configured custom globs or pull stops before writing.
 
 When overwriting changed files, pull saves a mode-`0600` backup at `<path>.supercheck-backup.<uuid>`. This includes matching test scripts and config files; if a test file is renamed during pull, the old file is backed up before removal. Backups are retained and must be removed manually when no longer needed. When a pull creates backups it also adds the backup pattern to an existing `.gitignore` (it never creates one) and prints a one-line note.
 

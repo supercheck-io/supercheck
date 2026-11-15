@@ -1,5 +1,5 @@
 import {
-  ArrowLeftRight, Chrome, ChevronsLeftRightEllipsis, Database, EthernetPort, HeartPulse, LaptopMinimal, Plug, SquareFunction,
+  ArrowLeftRight, Chrome, ChevronsLeftRightEllipsis, Database, EthernetPort, HeartPulse, LaptopMinimal, Plug, SquareFunction, Bot,
   type LucideIcon,
 } from "lucide-react";
 import type { ComponentType } from "react";
@@ -77,6 +77,7 @@ export const CREATE_ACTIONS: CreateAction[] = [
   test("api", "API Test", ArrowLeftRight),
   test("database", "Database Test", Database),
   test("custom", "Custom Test", SquareFunction),
+  test("agent", "Agent Test", Bot),
   // The k6 mark keeps its brand purple.
   { ...test("performance", "Performance Test", K6Logo), text: "", force: "" },
 

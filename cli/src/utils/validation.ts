@@ -8,6 +8,7 @@ export type ApiTestType =
   | 'api'
   | 'database'
   | 'custom'
+  | 'agent'
 
 // Detection depends on Babel hooks running for every call, including identical scripts.
 const scriptParser = createJiti(import.meta.url, { fsCache: false })
@@ -151,7 +152,8 @@ export function normalizeTestTypeForApi(
     normalized === 'performance' ||
     normalized === 'api' ||
     normalized === 'database' ||
-    normalized === 'custom'
+    normalized === 'custom' ||
+    normalized === 'agent'
   ) {
     return normalized
   }

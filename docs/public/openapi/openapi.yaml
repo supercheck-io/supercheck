@@ -1160,6 +1160,7 @@ paths:
                           - performance
                           - database
                           - custom
+                          - agent
                     required:
                       - id
                   minItems: 1
@@ -1455,7 +1456,8 @@ paths:
       operationId: getRun
       summary: Get run details
       description: Retrieve full details for a specific run including logs, report
-        URL, and execution metadata.
+        URL, and execution metadata. Runs of agent tests also return `agent`
+        (pass rate, attempts, tokens, tool names and failure messages per test).
       tags:
         - Runs
       responses:
@@ -1648,6 +1650,7 @@ paths:
               - performance
               - database
               - custom
+              - agent
           description: "Filter by test type. Aliases: `playwright` → `browser`, `k6` →
             `performance`"
         - name: priority
@@ -1709,6 +1712,7 @@ paths:
                     - performance
                     - database
                     - custom
+                    - agent
                   default: browser
                   description: "Test type. Aliases accepted: `playwright` → `browser`, `k6` →
                     `performance`"
@@ -1805,6 +1809,7 @@ paths:
                     - performance
                     - database
                     - custom
+                    - agent
                 priority:
                   type: string
                   enum:
@@ -1890,6 +1895,7 @@ paths:
                     - performance
                     - database
                     - custom
+                    - agent
                 priority:
                   type: string
                   enum:
@@ -2123,6 +2129,7 @@ paths:
                       - performance
                       - database
                       - custom
+                      - agent
                   location:
                     type: string
                     description: Resolved execution location for performance tests; omitted for
@@ -6675,6 +6682,57 @@ components:
           type: string
           nullable: true
           description: URL to the run report
+        agent:
+          type: object
+          description: Agent test results, present only for runs of agent tests. Numbers,
+            tool names and clipped failure messages; prompts and replies are not
+            included.
+          properties:
+            tests:
+              type: array
+              maxItems: 20
+              items:
+                type: object
+                properties:
+                  testId:
+                    type: string
+                  title:
+                    type: string
+                  attempts:
+                    type: integer
+                  passed:
+                    type: integer
+                  passRate:
+                    type: number
+                    description: Passed attempts divided by attempts (0 to 1)
+                  totalTokens:
+                    type: integer
+                  judgeTokens:
+                    type: integer
+                  cost:
+                    type: number
+                    description: Only when the agent reports it
+                  toolNames:
+                    type: array
+                    maxItems: 50
+                    items:
+                      type: string
+                  durationMs:
+                    type: integer
+                  slowestMs:
+                    type: integer
+                    description: Slowest attempt
+                  failures:
+                    type: array
+                    maxItems: 5
+                    items:
+                      type: object
+                      properties:
+                        attempt:
+                          type: integer
+                        message:
+                          type: string
+                          maxLength: 200
         testCount:
           type: integer
           nullable: true
@@ -6976,6 +7034,7 @@ components:
             - performance
             - database
             - custom
+            - agent
           description: Test type. `browser` = Playwright, `performance` = k6
         script:
           type: string
@@ -8349,6 +8408,7 @@ components:
             - performance
             - database
             - custom
+            - agent
           description: Optional expected test type used for script/type compatibility checks
       required:
         - script

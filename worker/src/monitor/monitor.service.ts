@@ -3151,6 +3151,7 @@ export class MonitorService {
           variables: resolvedVariables,
           secrets: resolvedSecrets,
           files: resolvedFiles,
+          ...(test.type === 'agent' ? { testType: 'agent' } : {}),
         },
         true,
         true,
@@ -3208,6 +3209,17 @@ export class MonitorService {
           );
       }
 
+      const agentRun = testResult.agent?.[0];
+      const agentDetails = agentRun
+        ? {
+            agent: {
+              passRate: agentRun.passRate,
+              attempts: agentRun.attempts,
+              totalTokens: agentRun.totalTokens,
+            },
+          }
+        : {};
+
       // 6. Convert test result to monitor result format
       if (testResult.success) {
         this.logger.log(
@@ -3224,6 +3236,7 @@ export class MonitorService {
             testType: test.type,
             reportUrl: testResult.reportUrl || undefined,
             message: 'Test execution successful',
+            ...agentDetails,
             // Truncate logs for storage efficiency
             executionSummary: testResult.stdout?.substring(0, 500),
           },
@@ -3244,6 +3257,7 @@ export class MonitorService {
             testTitle: test.title,
             testType: test.type,
             errorMessage: testResult.error || 'Test execution failed',
+            ...agentDetails,
             reportUrl: testResult.reportUrl || undefined,
             // Truncate logs for storage efficiency
             executionSummary: testResult.stdout?.substring(0, 500),

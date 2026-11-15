@@ -69,8 +69,8 @@ export function extractUuidFromFilename(filename: string): string | undefined {
 }
 
 /** Local-only annotations injected by `supercheck pull`; stripped before diff and deploy. */
-const METADATA_KEYS = 'title|priority|tags'
-type MetadataKey = 'title' | 'priority' | 'tags'
+const METADATA_KEYS = 'title|priority|tags|type'
+type MetadataKey = 'title' | 'priority' | 'tags' | 'type'
 
 const LINE_ENTRY = new RegExp(`^\\s*\\/\\/\\s*@(${METADATA_KEYS})\\s+(\\S.*?)\\s*$`)
 const DOC_ENTRY = new RegExp(`^(\\s*\\*\\s*)@(${METADATA_KEYS})\\s+(.*?)\\s*(\\*\\/)?\\s*$`)
@@ -109,7 +109,7 @@ function entryAt(header: Header, line: string, index: number): { key: string; va
 }
 
 /**
- * Strip `@title`, `@priority` and `@tags` annotations from the script header (see `findHeader`).
+ * Strip `@title`, `@priority`, `@tags` and `@type` annotations from the script header (see `findHeader`).
  * They are a local-only convenience injected by `supercheck pull`, not part of the test.
  */
 export function stripTitleMetadata(script: string): string {

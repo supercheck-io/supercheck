@@ -276,6 +276,12 @@ describe("AISecurityService", () => {
       ).toThrow("Script too large");
     });
 
+    it("accepts the agent test type", () => {
+      expect(
+        AISecurityService.validateInputs({ failedScript: "code", testType: "agent", testId: "123" }).testType,
+      ).toBe("agent");
+    });
+
     it("should reject invalid test types", () => {
       expect(() =>
         AISecurityService.validateInputs({

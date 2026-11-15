@@ -145,6 +145,7 @@ Turn them on or off per monitor under **Warnings** in the alert settings. Only t
 | **MCP slow** (`mcp_slow`) | MCP | Checks were slower than **Slow after (ms)** for 3 checks in a row. Sent once per slow stretch |
 | **Slow first token** (`ai_slow_first_token`) | HTTP, AI endpoint preset | The first token was slower than **Warn first token (ms)** for 3 checks in a row. Sent once per slow stretch |
 | **Model changed** (`ai_model_changed`) | HTTP, AI endpoint preset | The reply came from a different model than the last check. Sent once per new model |
+| **Single failed agent run** (`agent_run_failed`) | Synthetic, agent test | A run of an agent test failed but the failure threshold is not reached yet. On by default. Sent once per failed streak; the incident follows when the threshold is reached |
 | **Tokens high** (`ai_tokens_high`) | HTTP, AI endpoint preset | A reply used more tokens than **Warn total tokens**. Sent once per stretch |
 
 A warning shows as **Warning** in delivery history. Email subjects start with "Warning:", and every message says "This is a warning. No incident was opened." Custom webhooks receive `type: "monitor_warning"`, `severity: "warning"`, `warningKind` (for example `heartbeat_late`), action `trigger` and the dedup key `warning:<monitor id>:<kind>`.

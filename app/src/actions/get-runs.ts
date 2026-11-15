@@ -11,6 +11,7 @@ import {
   hasPermissionForUser,
 } from "@/lib/rbac/middleware";
 import { Role } from "@/lib/rbac/permissions";
+import { sanitizeAgentSummary, type AgentRunSummary } from "@/lib/agent-test/run-summary";
 
 // Type based on the actual API response from /api/runs/[runId]
 type RunResponse = {
@@ -30,6 +31,7 @@ type RunResponse = {
   testCount?: number;
   trigger?: string;
   location?: string | null;
+  agent?: AgentRunSummary;
 };
 
 export async function getRun(
@@ -59,6 +61,7 @@ export async function getRun(
         reportUrl: reports.s3Url,
         trigger: runs.trigger,
         location: runs.location,
+        metadata: runs.metadata,
         jobType: jobs.jobType,
         projectId: projects.id,
         organizationId: projects.organizationId,
@@ -80,7 +83,7 @@ export async function getRun(
       return null;
     }
 
-    const run = result[0];
+    const { metadata, ...run } = result[0];
 
     // Check if user has access to this run's organization
     const userRole = await getUserRole(userId);
@@ -154,6 +157,7 @@ export async function getRun(
       completedAt: run.completedAt?.toISOString() || null,
       location: run.location || null,
       testCount,
+      agent: sanitizeAgentSummary(metadata),
     };
 
     return response;

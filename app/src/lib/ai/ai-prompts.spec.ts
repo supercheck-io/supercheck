@@ -40,6 +40,15 @@ describe('AIPromptBuilder', () => {
     for (const p of prompts) expect(p).toContain('output raw, unescaped code');
   });
 
+  it('gives agent tests the fixture API, the secret rule and the 5-minute limit', () => {
+    const p = AIPromptBuilder.buildCreatePrompt({ testType: 'agent', userRequest: 'check refunds' });
+    expect(p).toContain("@supercheck/agent-test");
+    expect(p).toContain('agent.repeat');
+    expect(p).toContain('passRate');
+    expect(p).toContain("apiKey: getSecret('BOT_KEY')");
+    expect(p).toContain('5 minutes');
+  });
+
   describe('buildK6AnalyzePrompt', () => {
     const mockBaselineRun: K6RunData = {
       runId: 'baseline-123',

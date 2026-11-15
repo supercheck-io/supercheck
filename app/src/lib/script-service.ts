@@ -12,6 +12,7 @@ export enum ScriptType {
   API = "api",
   Database = "database",
   Custom = "custom",
+  Agent = "agent",
   Performance = "performance",
 }
 
@@ -22,6 +23,7 @@ const scriptTypeToTemplateId: Record<ScriptType, string> = {
   [ScriptType.API]: "pw-api-health",
   [ScriptType.Database]: "pw-db-discovery",
   [ScriptType.Custom]: "pw-custom-e2e",
+  [ScriptType.Agent]: "pw-agent-chat",
   [ScriptType.Performance]: "k6-smoke-check",
 };
 

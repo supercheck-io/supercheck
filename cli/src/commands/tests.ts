@@ -19,7 +19,7 @@ import { createTempPlaywrightConfig } from '../utils/playwright.js'
 import { ensureDependenciesForTestType, DependencyError } from '../utils/deps.js'
 import { getSse } from '../utils/sse.js'
 import { decodeStoredTestScript, encodeStoredTestScript } from '../utils/script.js'
-import { stripTitleMetadata } from '../utils/slug.js'
+import { readScriptMetadata, stripTitleMetadata } from '../utils/slug.js'
 import type { ApiTestType } from '../utils/validation.js'
 import { addAssignedTags, getAssignedTags, removeAssignedTags } from '../utils/tag-assignment.js'
 
@@ -33,11 +33,17 @@ function requireApiTestType(input: string, optionName: string): ApiTestType {
   const normalized = normalizeTestTypeForApi(input)
   if (!normalized) {
     throw new CLIError(
-      `Invalid value for ${optionName}: "${input}". Expected one of: browser, performance, api, database, custom.`,
+      `Invalid value for ${optionName}: "${input}". Expected one of: browser, performance, api, database, custom, agent.`,
       ExitCode.ConfigError,
     )
   }
   return normalized
+}
+
+function refuseLocalAgent(script: string, name: string): void {
+  if (readScriptMetadata(script, 'type')?.toLowerCase() === 'agent') {
+    throw new CLIError(`${name}: local test execution only supports "browser" and "performance" tests. "agent" tests are executed remotely.`, ExitCode.ConfigError)
+  }
 }
 
 function inferTestType(filename: string): string | undefined {
@@ -60,14 +66,14 @@ function toDisplayName(cwd: string, filePath: string): string {
   return normalized.startsWith('_supercheck_/') ? normalized.replace(/^_supercheck_\//, '') : normalized
 }
 
-function collectLocalTests(
+export function collectLocalTests(
   cwd: string,
   patterns: { playwright?: string; k6?: string },
   options: { file?: string; all?: boolean; type?: string },
 ): LocalTestFile[] {
   if (options.type) {
     const raw = options.type.trim().toLowerCase()
-    if (raw === 'api' || raw === 'database' || raw === 'custom') {
+    if (raw === 'api' || raw === 'database' || raw === 'custom' || raw === 'agent') {
       throw new CLIError(
         `Local test execution only supports "browser" and "performance" tests. "${raw}" tests are executed remotely.`,
         ExitCode.ConfigError,
@@ -84,6 +90,7 @@ function collectLocalTests(
       : normalizeTestTypeForApi(type)
     let script: string
     try { script = readFileSync(filePath, 'utf-8') } catch { throw new CLIError(`Cannot read local test: ${filePath}`, ExitCode.ConfigError) }
+    refuseLocalAgent(script, toDisplayName(cwd, filePath))
     return [{
       path: filePath,
       type: type as 'playwright' | 'k6',
@@ -103,6 +110,7 @@ function collectLocalTests(
 
   return files.map((file) => {
     const script = readFileSync(file.absolutePath, 'utf-8')
+    refuseLocalAgent(script, toDisplayName(cwd, file.absolutePath))
     const validationType = requestedType ?? normalizeTestTypeForApi(file.type)
     return {
       path: file.absolutePath,
@@ -175,7 +183,7 @@ testCommand
   .option('--page <page>', 'Page number', '1')
   .option('--limit <limit>', 'Items per page', '50')
   .option('--search <query>', 'Search by title')
-  .option('--type <type>', 'Filter by type (browser, performance, api, database, custom)')
+  .option('--type <type>', 'Filter by type (browser, performance, api, database, custom, agent)')
   .option('--priority <priority>', 'Filter by priority (low, medium, high)')
   .action(async (options: { page: string; limit: string; search?: string; type?: string; priority?: string }) => {
     const client = createAuthenticatedClient()
@@ -237,7 +245,7 @@ testCommand
   .description('Create a new test')
   .requiredOption('--title <title>', 'Test title')
   .requiredOption('--file <path>', 'Path to the test script file')
-  .option('--type <type>', 'Test type (browser, performance, api, database, custom)')
+  .option('--type <type>', 'Test type (browser, performance, api, database, custom, agent)')
   .option('--description <description>', 'Test description')
   .option('--priority <priority>', 'Test priority (low, medium, high)')
   .option('--dry-run', 'Show what would be sent without creating')
@@ -297,7 +305,7 @@ testCommand
   .description('Update a test')
   .option('--title <title>', 'Test title')
   .option('--file <path>', 'Path to updated test script')
-  .option('--type <type>', 'Test type (browser, performance, api, database, custom)')
+  .option('--type <type>', 'Test type (browser, performance, api, database, custom, agent)')
   .option('--description <description>', 'Test description')
   .option('--priority <priority>', 'Test priority (low, medium, high)')
   .option('--dry-run', 'Show what would be sent without updating')
@@ -501,7 +509,7 @@ testCommand
   .command('validate')
   .description('Validate a test script')
   .requiredOption('--file <path>', 'Path to the test script file')
-  .option('--type <type>', 'Test type (browser, performance, api, database, custom)')
+  .option('--type <type>', 'Test type (browser, performance, api, database, custom, agent)')
   .action(async (options: { file: string; type?: string }) => {
     const cwd = process.cwd()
     const filePath = resolve(cwd, options.file)

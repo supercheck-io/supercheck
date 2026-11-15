@@ -32,7 +32,7 @@ jest.unstable_mockModule('../../utils/resources.js', () => ({
   getApiEndpoint: (type: string) => ({ requirement: '/api/requirements', statusPage: '/api/status-pages', monitor: '/api/monitors', test: '/api/tests' })[type],
 }))
 jest.unstable_mockModule('../../utils/validation.js', () => ({
-  normalizeTestTypeForApi: () => 'browser', validateScripts: async () => [], validateScriptTypeMatch: () => null, rejectGlobTestRefs: () => {},
+  normalizeTestTypeForApi: (t: string) => (t === 'agent' ? 'agent' : 'browser'), validateScripts: async () => [], validateScriptTypeMatch: () => null, rejectGlobTestRefs: () => {},
 }))
 jest.unstable_mockModule('../../utils/spinner.js', () => ({ withSpinner: async (_text: string, fn: () => Promise<unknown>) => fn() }))
 jest.unstable_mockModule('../../utils/logger.js', () => ({ logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn(), success: jest.fn(), debug: jest.fn(), newline: jest.fn(), header: jest.fn(), output: jest.fn() } }))
@@ -92,6 +92,12 @@ describe('deploy requirements and status pages', () => {
     expect(writes[4].body).toEqual({ name: 'Web', monitorIds: [M1], position: 0 })
     expect(writes[5].body).toEqual({ status: 'published' })
     expect(JSON.stringify(calls)).not.toContain('subdomain')
+  })
+
+  it('sends the agent type for an agent test instead of browser', async () => {
+    local = [{ type: 'test', name: 'playwright/home.pw.ts', definition: { title: 'Bot', testType: 'agent', script: "test('x')" } }]
+    await deployCommand.parseAsync(['node', 'deploy', '--force'])
+    expect(calls.find((c) => c.path === '/api/tests')?.body).toMatchObject({ type: 'agent' })
   })
 
   it('sends a requirement priority of "" as null so the server clears it', async () => {

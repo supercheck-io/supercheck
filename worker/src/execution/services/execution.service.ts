@@ -30,6 +30,11 @@ import {
   ExecutionCapacityError,
 } from './execution-admission.service';
 import { UnrecoverableError } from 'bullmq';
+import {
+  agentMetadata,
+  readAgentSummaries,
+  type AgentTestSummary,
+} from './agent-summary';
 import { attachBillableMs } from '../../common/billable-ms';
 import { VariableResolverService } from '../../common/services/variable-resolver.service';
 import {
@@ -542,6 +547,7 @@ export class ExecutionService implements OnModuleDestroy {
         testScript = this.prepareSingleTest(
           testId,
           this.prependVariableRuntimeHelpers(code),
+          task.testType,
         );
       } catch (error) {
         throw new Error(`Failed to prepare test: ${(error as Error).message}`);
@@ -608,6 +614,11 @@ export class ExecutionService implements OnModuleDestroy {
         await this.evaluatePlaywrightReport(extractedReportsDir);
       const finalStatus: 'passed' | 'failed' =
         execResult.success && !reportOutcome.hasFailures ? 'passed' : 'failed';
+      // Agent numbers go to the run (and, for a monitor, to the check result); never a reason to fail it.
+      const agentTests =
+        task.testType === 'agent'
+          ? await this.readAgentTests(extractedReportsDir, task.runId)
+          : undefined;
 
       if (finalStatus === 'passed') {
         // Removed success log - only log errors and completion summary
@@ -734,6 +745,7 @@ export class ExecutionService implements OnModuleDestroy {
         // <<< REMOVED: Do not throw error here; return the result object >>>
         // throw new Error(specificError); // OLD WAY
       }
+      if (agentTests?.length) finalResult.agent = agentTests;
     } catch (error: any) {
       if (error instanceof ExecutionCapacityError) throw error;
       // Check if this is a cancellation error. After the container ran, only the explicit
@@ -978,7 +990,7 @@ export class ExecutionService implements OnModuleDestroy {
           // Prepare script for inline container execution
           // Prefix with zero-padded order number for correct sorting in Playwright report
           const orderPrefix = String(i + 1).padStart(3, '0');
-          const fileName = `${orderPrefix}-${testId}.spec.ts`;
+          const fileName = `${orderPrefix}-${testId}${testScripts[i].type === 'agent' ? '.agent' : ''}.spec.ts`;
           preparedScripts[fileName] = script;
 
           // Use the first script as the main test file
@@ -1161,6 +1173,9 @@ export class ExecutionService implements OnModuleDestroy {
             `[${runId}] Failed to store per-test statuses: ${err instanceof Error ? err.message : String(err)}`,
           ),
         );
+
+      if (testScripts.some((ts) => ts.type === 'agent'))
+        await this.readAgentTests(extractedReportsDir, runId, report);
 
       // Update the finalResult to include duration
       finalResult = {
@@ -1572,6 +1587,31 @@ export class ExecutionService implements OnModuleDestroy {
     }
   }
 
+  /**
+   * Stores runs.metadata.agent from the agent-summary attachments of results.json and returns the tests.
+   * Best effort: a missing, oversized or malformed summary leaves the run as the script's assertions made it.
+   */
+  private async readAgentTests(
+    extractedReportsDir: string,
+    runId: string | null | undefined,
+    report: Promise<PlaywrightReport> = this.loadPlaywrightReport(
+      extractedReportsDir,
+    ),
+  ): Promise<AgentTestSummary[] | undefined> {
+    try {
+      const tests = await readAgentSummaries(await report, extractedReportsDir);
+      const agent = agentMetadata(tests);
+      if (agent && runId)
+        await this.dbService.mergeRunMetadata(runId, { agent });
+      return agent?.tests;
+    } catch (err) {
+      this.logger.warn(
+        `[${runId ?? 'test'}] Failed to read agent summary: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      return undefined;
+    }
+  }
+
   /** Maps each `NNN-<testId>.spec.ts` in results.json to passed/failed/skipped; {} when the report is unusable. */
   private async readJobTestStatuses(
     extractedReportsDir: string,
@@ -1591,7 +1631,7 @@ export class ExecutionService implements OnModuleDestroy {
         const testId = currentFile
           ?.split(/[\\/]/)
           .pop()
-          ?.match(/^\d+-(.+)\.spec\.ts$/)?.[1];
+          ?.match(/^\d+-(.+?)(?:\.agent)?\.spec\.ts$/)?.[1];
         if (testId && known.has(testId) && Array.isArray(obj.tests)) {
           for (const test of obj.tests as PlaywrightTestEntry[]) {
             if (!test) continue;
@@ -2008,6 +2048,7 @@ export class ExecutionService implements OnModuleDestroy {
   private prepareSingleTest(
     testId: string,
     testScript: string,
+    testType?: string,
   ): { scriptContent: string; fileName: string } {
     try {
       // Ensure proper trace configuration to avoid path issues
@@ -2019,7 +2060,8 @@ export class ExecutionService implements OnModuleDestroy {
       // Return script content for inline container execution
       return {
         scriptContent: enhancedScript,
-        fileName: `${testId}.spec.ts`, // TypeScript extension for Playwright
+        // `.agent.spec.ts` selects the agent project (no retries, no browser)
+        fileName: `${testId}${testType === 'agent' ? '.agent' : ''}.spec.ts`,
       };
     } catch (error) {
       this.logger.error(

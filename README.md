@@ -16,7 +16,7 @@ Supercheck brings Playwright test automation, k6 performance testing, uptime and
 
 ## What Supercheck includes
 
-- **Test automation:** browser, API, database, custom, and k6 performance tests, with AI-assisted creation and failure analysis.
+- **Test automation:** browser, API, database, custom, agent (test your own AI agent), and k6 performance tests, with AI-assisted creation and failure analysis.
 - **Monitoring:** HTTP, website and SSL, ping, port, and scheduled synthetic browser checks.
 - **Investigation:** run logs, screenshots, traces, linked artifacts, and read-only AI SRE investigation over Supercheck evidence and configured connectors.
 - **Communication:** alerts through email, Slack, Discord, Telegram, Microsoft Teams, and webhooks, plus public status pages and subscriber notifications.

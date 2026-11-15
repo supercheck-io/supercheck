@@ -16,7 +16,7 @@ import {
   invalidateLocationCache,
 } from "./location-registry";
 import { omitExecutionSecrets } from "./execution-payload";
-import { ExecutionQueueError } from "./execution-errors";
+import { AGENT_WORKERS_PENDING_MESSAGE, ExecutionQueueError } from "./execution-errors";
 
 /**
  * Admission check at enqueue. A shortfall caused only by in-flight runs is not a rejection:
@@ -255,10 +255,7 @@ export async function assertAgentTestRunnable(queueNames: readonly string[]): Pr
     throw new ExecutionQueueError("queue_unavailable", "Unable to verify workers for agent tests", error);
   }
   if (missing.length > 0) {
-    throw new ExecutionQueueError(
-      "queue_unavailable",
-      "Agent tests need updated workers, which are not running yet. Try again after the worker update finishes.",
-    );
+    throw new ExecutionQueueError("agent_workers_pending", AGENT_WORKERS_PENDING_MESSAGE);
   }
 }
 

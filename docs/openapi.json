@@ -1679,7 +1679,8 @@
                             "api",
                             "performance",
                             "database",
-                            "custom"
+                            "custom",
+                            "agent"
                           ]
                         }
                       },
@@ -2125,7 +2126,7 @@
       "get": {
         "operationId": "getRun",
         "summary": "Get run details",
-        "description": "Retrieve full details for a specific run including logs, report URL, and execution metadata.",
+        "description": "Retrieve full details for a specific run including logs, report URL, and execution metadata. Runs of agent tests also return `agent` (pass rate, attempts, tokens, tool names and failure messages per test).",
         "tags": [
           "Runs"
         ],
@@ -2408,7 +2409,8 @@
                 "api",
                 "performance",
                 "database",
-                "custom"
+                "custom",
+                "agent"
               ]
             },
             "description": "Filter by test type. Aliases: `playwright` → `browser`, `k6` → `performance`"
@@ -2497,7 +2499,8 @@
                       "api",
                       "performance",
                       "database",
-                      "custom"
+                      "custom",
+                      "agent"
                     ],
                     "default": "browser",
                     "description": "Test type. Aliases accepted: `playwright` → `browser`, `k6` → `performance`"
@@ -2637,7 +2640,8 @@
                       "api",
                       "performance",
                       "database",
-                      "custom"
+                      "custom",
+                      "agent"
                     ]
                   },
                   "priority": {
@@ -2757,7 +2761,8 @@
                       "api",
                       "performance",
                       "database",
-                      "custom"
+                      "custom",
+                      "agent"
                     ]
                   },
                   "priority": {
@@ -3092,7 +3097,8 @@
                         "api",
                         "performance",
                         "database",
-                        "custom"
+                        "custom",
+                        "agent"
                       ]
                     },
                     "location": {
@@ -9602,7 +9608,44 @@
             "nullable": true,
             "description": "URL to the run report"
           },
-          "testCount": {
+          "agent": {
+          "type": "object",
+          "description": "Agent test results, present only for runs of agent tests. Numbers, tool names and clipped failure messages; prompts and replies are not included.",
+          "properties": {
+            "tests": {
+              "type": "array",
+              "maxItems": 20,
+              "items": {
+                "type": "object",
+                "properties": {
+                  "testId": { "type": "string" },
+                  "title": { "type": "string" },
+                  "attempts": { "type": "integer" },
+                  "passed": { "type": "integer" },
+                  "passRate": { "type": "number", "description": "Passed attempts divided by attempts (0 to 1)" },
+                  "totalTokens": { "type": "integer" },
+                  "judgeTokens": { "type": "integer" },
+                  "cost": { "type": "number", "description": "Only when the agent reports it" },
+                  "toolNames": { "type": "array", "maxItems": 50, "items": { "type": "string" } },
+                  "durationMs": { "type": "integer" },
+                  "slowestMs": { "type": "integer", "description": "Slowest attempt" },
+                  "failures": {
+                    "type": "array",
+                    "maxItems": 5,
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "attempt": { "type": "integer" },
+                        "message": { "type": "string", "maxLength": 200 }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "testCount": {
             "type": "integer",
             "nullable": true
           },
@@ -10025,7 +10068,8 @@
               "api",
               "performance",
               "database",
-              "custom"
+              "custom",
+              "agent"
             ],
             "description": "Test type. `browser` = Playwright, `performance` = k6"
           },
@@ -11649,7 +11693,8 @@
               "api",
               "performance",
               "database",
-              "custom"
+              "custom",
+              "agent"
             ],
             "description": "Optional expected test type used for script/type compatibility checks"
           }

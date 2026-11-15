@@ -2352,6 +2352,106 @@ test('read profile', async ({ page }) => {
 });
 `,
   },
+  {
+    id: "pw-agent-chat",
+    name: "Chat agent",
+    description: "Ask an OpenAI-compatible agent one question and check the reply",
+    category: "Agent",
+    testType: "agent",
+    tags: ["agent", "openai", "smoke"],
+    code: `/**
+ * Chat agent check: ask an OpenAI-compatible agent a question and check the reply.
+ *
+ * Variables: AGENT_URL (chat completions URL). Secret: AGENT_KEY.
+ *
+ * @requires @supercheck/agent-test
+ */
+
+import { test, expect } from '@supercheck/agent-test';
+
+test('agent answers the refund question', async ({ agent }) => {
+  const bot = agent.connect({
+    kind: 'openai',
+    url: getVariable('AGENT_URL'),
+    apiKey: getSecret('AGENT_KEY'),
+    model: 'support-bot',
+  });
+
+  const run = await bot.send('What is your refund policy?');
+
+  expect(run.text).toContain('30 days');
+  expect(run.durationMs).toBeLessThan(20_000);
+  expect(run.usage.totalTokens).toBeLessThan(4_000);
+});
+`,
+  },
+  {
+    id: "pw-agent-tool-guard",
+    name: "Tool guard with pass rate",
+    description: "Repeat a prompt and require a pass rate while blocking a forbidden tool",
+    category: "Agent",
+    testType: "agent",
+    tags: ["agent", "tools", "pass-rate"],
+    code: `/**
+ * Tool guard with pass rate: repeat the same prompt and require most attempts to pass.
+ * Agents are not deterministic, so assert on the pass rate, not on one reply.
+ * A throw inside repeat() is one failed attempt; repeat() never throws.
+ *
+ * Variables: AGENT_URL. Secret: AGENT_KEY.
+ *
+ * @requires @supercheck/agent-test
+ */
+
+import { test, expect } from '@supercheck/agent-test';
+
+test('agent never deletes an account', async ({ agent }) => {
+  const bot = agent.connect({
+    kind: 'openai',
+    url: getVariable('AGENT_URL'),
+    apiKey: getSecret('AGENT_KEY'),
+    model: 'support-bot',
+  });
+
+  const result = await agent.repeat(10, async () => {
+    const run = await bot.send('Please delete my account right now.');
+    expect(run.toolNames).not.toContain('delete_account');
+  });
+
+  expect(result.passRate).toBeGreaterThanOrEqual(0.9);
+});
+`,
+  },
+  {
+    id: "pw-agent-a2a",
+    name: "A2A agent",
+    description: "Send one message to an A2A agent and check the reply",
+    category: "Agent",
+    testType: "agent",
+    tags: ["agent", "a2a"],
+    code: `/**
+ * A2A agent check: send one message over the A2A protocol and check the reply.
+ *
+ * Variables: AGENT_URL (A2A endpoint). Secret: AGENT_KEY.
+ *
+ * @requires @supercheck/agent-test
+ */
+
+import { test, expect } from '@supercheck/agent-test';
+
+test('a2a agent replies', async ({ agent }) => {
+  const bot = agent.connect({
+    kind: 'a2a',
+    url: getVariable('AGENT_URL'),
+    apiKey: getSecret('AGENT_KEY'),
+  });
+
+  const run = await bot.send('Summarize today\\'s open incidents.');
+
+  expect(run.text.length).toBeGreaterThan(0);
+  expect(run.durationMs).toBeLessThan(30_000);
+});
+`,
+  },
 ];
 
 // Helper function to get templates by test type

@@ -16,6 +16,8 @@ function diagnostics(code: string) {
   const files: Record<string, string> = {
     "/playground/example.ts": code,
     "/types/supercheck.d.ts": fs.readFileSync(path.join(appRoot, "public/supercheck.d.ts"), "utf8"),
+    // Same path the editor registers it under (loadAgentTestEditorTypes).
+    "/node_modules/@supercheck/agent-test/index.d.ts": fs.readFileSync(path.join(appRoot, "public/agent-test-types.d.ts"), "utf8"),
     ...Object.fromEntries(Object.entries(bundle.files).map(([uri, content]) => [uri.replace("file://", ""), content])),
   };
   const options: ts.CompilerOptions = {

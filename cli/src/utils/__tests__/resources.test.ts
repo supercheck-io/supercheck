@@ -261,7 +261,7 @@ describe('fetchRemoteResources', () => {
     const apiTest = testResources.find((resource) => resource.id === 't-1')
     const perfTest = testResources.find((resource) => resource.id === 't-2')
 
-    expect(apiTest?.raw.testType).toBe('playwright')
+    expect(apiTest?.raw.testType).toBe('api')
     expect(apiTest?.raw.type).toBeUndefined()
     expect(perfTest?.raw.testType).toBe('k6')
     expect(perfTest?.raw.type).toBeUndefined()

@@ -8,6 +8,7 @@ import { eq, and, count, sql, inArray } from "drizzle-orm";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { requireAuthContext, isAuthError, authErrorStatus } from "@/lib/auth-context";
 import { runReportPath } from "@/lib/run-report-url";
+import { sanitizeAgentSummary } from "@/lib/agent-test/run-summary";
 
 import { permissionDeniedResponse } from "@/lib/deletion/org-state";
 // Get run handler - scoped to current project
@@ -49,6 +50,8 @@ export async function GET(
         reportUrl: reports.s3Url,
         trigger: runs.trigger,
         testId: sql<string | null>`${runs.metadata}->>'testId'`,
+        // Only the agent summary leaves the row, through the sanitizer.
+        agentMetadata: sql<unknown>`${runs.metadata}->'agent'`,
         projectId: runs.projectId,
         organizationId: projects.organizationId,
       })
@@ -92,8 +95,10 @@ export async function GET(
       testCount = 1; // a single-test run has no job to count tests through
     }
 
+    const { agentMetadata, ...rest } = run;
     const response = {
-      ...run,
+      ...rest,
+      agent: sanitizeAgentSummary({ agent: agentMetadata }),
       reportUrl: runReportPath(run.id, run.reportUrl),
       testCount,
     };

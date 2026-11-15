@@ -455,6 +455,7 @@ const mapApiTestToTest = (testData: Record<string, unknown>): Test => {
     "api",
     "custom",
     "database",
+    "agent",
     "performance",
   ];
   const validTestType: Test["type"] = validTypes.includes(
@@ -868,6 +869,19 @@ export function MonitorForm({
       }
     }
   }, [type, fetchedTestData, syntheticTestIdToFetch]);
+
+  // An agent test replies slowly and unevenly, so a new monitor starts at 3 failures and sev3 (once, only over untouched values).
+  const agentTest = type === "synthetic_test" && selectedTests[0]?.type === "agent";
+  const agentDefaultsApplied = React.useRef(false);
+  useEffect(() => {
+    if (!agentTest || editMode || agentDefaultsApplied.current) return;
+    agentDefaultsApplied.current = true;
+    setAlertConfig((current) => ({
+      ...current,
+      failureThreshold: current.failureThreshold === initialAlertConfigValue.failureThreshold ? 3 : current.failureThreshold,
+      incidentSeverity: current.incidentSeverity ?? "sev3",
+    }));
+  }, [agentTest, editMode, initialAlertConfigValue.failureThreshold]);
 
   const targetPlaceholders: Record<FormValues["type"], string> = {
     http_request: "e.g., https://example.com or https://api.example.com/health",
@@ -1311,6 +1325,7 @@ export function MonitorForm({
               context="monitor"
               monitorType={type}
               aiEndpoint={type === "http_request" && form.watch("preset") === "ai_endpoint"}
+              agentTest={agentTest}
               sslCheckEnabled={
                 type === "website" && form.watch("websiteConfig_enableSslCheck")
               }

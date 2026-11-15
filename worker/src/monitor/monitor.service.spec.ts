@@ -3119,6 +3119,77 @@ describe('MonitorService', () => {
   // ==========================================================================
 
   describe('Synthetic Test Monitoring', () => {
+    it.each([
+      ['agent', true],
+      ['browser', false],
+    ])(
+      'queues a %s test with testType only for agent tests, and puts agent numbers in details',
+      async (type, isAgent) => {
+        mockDbService.getTestById.mockResolvedValue({
+          id: 'test-1',
+          title: 'Bot',
+          type,
+          script: 'test("bot", async () => {});',
+        });
+        mockDbService.db.query.monitors.findFirst.mockResolvedValue({
+          organizationId: 'org-1',
+        });
+        mockExecutionService.runSingleTest.mockClear();
+        mockExecutionService.runSingleTest.mockResolvedValue({
+          success: false,
+          error: 'pass rate too low',
+          billableMs: 0,
+          testId: 'test-1-unique',
+          reportUrl: null,
+          agent: [{ passRate: 0.6, attempts: 10, totalTokens: 900 }],
+        });
+        const result = await (
+          service as unknown as {
+            executeSyntheticTest: (
+              id: string,
+              config: { testId: string },
+            ) => Promise<{
+              status: string;
+              details: { testType?: string; agent?: unknown };
+            }>;
+          }
+        ).executeSyntheticTest('monitor-1', { testId: 'test-1' });
+        const task = mockExecutionService.runSingleTest.mock.calls[0][0];
+        expect(task.testType).toBe(isAgent ? 'agent' : undefined);
+        expect(result.status).toBe('down');
+        expect(result.details.testType).toBe(type);
+        expect(result.details.agent).toEqual({
+          passRate: 0.6,
+          attempts: 10,
+          totalTokens: 900,
+        });
+      },
+    );
+
+    it('has no agent details for a passing test without a summary', async () => {
+      mockDbService.getTestById.mockResolvedValue({
+        id: 'test-1',
+        title: 'Health',
+        script: 'test("health", async () => {});',
+      });
+      mockExecutionService.runSingleTest.mockResolvedValue({
+        success: true,
+        billableMs: 0,
+        testId: 'test-1-unique',
+        reportUrl: null,
+      });
+      const result = await (
+        service as unknown as {
+          executeSyntheticTest: (
+            id: string,
+            config: { testId: string },
+          ) => Promise<{ status: string; details: Record<string, unknown> }>;
+        }
+      ).executeSyntheticTest('monitor-1', { testId: 'test-1' });
+      expect(result.status).toBe('up');
+      expect(result.details).not.toHaveProperty('agent');
+    });
+
     it('does not bill a synthetic check whose container never started', async () => {
       mockDbService.getTestById.mockResolvedValue({
         id: 'test-1',

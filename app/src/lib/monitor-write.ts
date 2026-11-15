@@ -326,6 +326,37 @@ export async function mirrorProviderRowsToAlertConfig(tx: Pick<typeof db, "selec
   await tx.update(monitors).set({ alertConfig: normalized.value }).where(eq(monitors.id, monitorId));
 }
 
+/**
+ * An enabled synthetic monitor on an agent test needs workers with the agent fixture in every location it runs in
+ * (the app rolls before the worker). Throws a retryable 503 `{ statusCode, message }`, which routes map to a response.
+ */
+export async function assertAgentMonitorRunnable(monitor: {
+  type?: string | null;
+  config?: MonitorConfig | null;
+  projectId?: string | null;
+  organizationId?: string | null;
+}): Promise<void> {
+  const testId = monitor.config?.testId;
+  if (monitor.type !== "synthetic_test" || typeof testId !== "string" || !isUuid(testId) || !monitor.projectId || !monitor.organizationId) return;
+  const test = await db.query.tests.findFirst({
+    where: and(eq(tests.id, testId), eq(tests.projectId, monitor.projectId), eq(tests.organizationId, monitor.organizationId)),
+    columns: { type: true },
+  });
+  if (test?.type !== "agent") return;
+  const [{ resolveMonitorLocations }, { assertAgentTestRunnable, monitorQueueName }, { isExecutionQueueError }] = await Promise.all([
+    import("@/lib/monitor-location-routing"),
+    import("@/lib/queue"),
+    import("@/lib/execution-errors"),
+  ]);
+  try {
+    const locations = await resolveMonitorLocations(monitor.config?.locationConfig ?? null, monitor.projectId, { monitorType: monitor.type });
+    await assertAgentTestRunnable(locations.map(monitorQueueName));
+  } catch (error) {
+    if (isExecutionQueueError(error)) throw { statusCode: 503, message: error.message };
+    throw error;
+  }
+}
+
 /** True when the test belongs to this project and organization. */
 export async function testInProject(testId: unknown, organizationId: string, projectId: string): Promise<boolean> {
   if (typeof testId !== "string") return false;

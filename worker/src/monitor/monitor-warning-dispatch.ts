@@ -10,7 +10,8 @@ export type MonitorWarningKind =
   | 'mcp_slow'
   | 'ai_slow_first_token'
   | 'ai_model_changed'
-  | 'ai_tokens_high';
+  | 'ai_tokens_high'
+  | 'agent_run_failed';
 
 export type WarningSender = Pick<MonitorAlertService, 'sendWarning'>;
 
