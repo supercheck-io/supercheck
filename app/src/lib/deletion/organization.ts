@@ -16,6 +16,8 @@ import { closeDeletionJobs, expediteDeletionJob, insertDeletionJob } from "./job
 import { sendDeletionChangeNotice, sendOrganizationNotice } from "./notices";
 import { triggerDeletion } from "./queue";
 import { invalidateOrgState, metaPatch, organizationGraceDays, type DeletionMeta } from "./org-state";
+import { HEARTBEAT_ANCHOR_ON_RESUME } from "@/lib/monitor-response";
+import { liveMonitor } from "./visibility";
 
 export class OrganizationDeletionError extends Error {
   constructor(message: string, readonly status: 403 | 404 | 409 | 502, readonly code?: string) { super(message); }
@@ -242,6 +244,9 @@ export async function cancelOrganizationDeletion(input: { organizationId: string
     if ((org.meta as DeletionMeta).purgeStartedAt || org.expired) throw tooLate();
     await tx.update(organization).set({ deletionRequestedAt: null, deletionPurgeAfter: null, deletionRequestedByUserId: null, deletionMeta: {} })
       .where(eq(organization.id, input.organizationId));
+    // Pings were ignored while pending: heartbeats count their next deadline from the cancel, not from the last ping.
+    await tx.update(monitors).set({ heartbeatState: HEARTBEAT_ANCHOR_ON_RESUME })
+      .where(and(eq(monitors.organizationId, input.organizationId), eq(monitors.type, "heartbeat"), liveMonitor()));
     await closeDeletionJobs(tx, "organization", input.organizationId);
     return { org: { id: org.id, subscriptionId: org.subscriptionId, polarCustomerId: org.polarCustomerId }, billingCancelRequested: !!((org.meta as DeletionMeta).billingCancelRequested || (org.meta as DeletionMeta).billingCancelAttempted) };
   });

@@ -274,6 +274,12 @@ export class MonitorService {
 
     try {
       switch (jobData.type) {
+        case 'heartbeat':
+          // Heartbeats are judged by the sweep (heartbeat-sweep.service.ts), never run as a check.
+          this.logger.warn(
+            `Refusing to run heartbeat monitor ${jobData.monitorId} as a check job`,
+          );
+          return null;
         case 'http_request':
           ({ status, details, responseTimeMs, isUp } =
             await this.executeHttpRequest(
@@ -743,6 +749,64 @@ export class MonitorService {
         groupEvaluation.executionGroupId,
         groupEvaluation.receipt,
       );
+  }
+
+  /**
+   * Records a result observed outside a check (the heartbeat sweep) through the single-location path:
+   * result row with its counters and outage key, monitor status, then threshold evaluation and alerts.
+   * Holds no lock on the monitor row. Throws when the row cannot be saved, so the caller retries.
+   */
+  async recordExternalResult(
+    monitor: { id: string },
+    result: MonitorExecutionResult,
+    /** The row is already stored (a retry after a failed status write): only update status and alert from it. */
+    options: { alreadyStored?: boolean } = {},
+  ): Promise<void> {
+    const current = await this.getMonitorById(monitor.id);
+    // Paused or disabled after the caller read it: nothing is recorded.
+    if (!current || current.status === 'paused' || !current.enabled) return;
+    // A heartbeat goes back to pending on resume or restore, and a new one may first report /fail. Its first
+    // missed run or /fail is a real outage: a new failure sequence (counters and outage key not carried over from
+    // before a pause), alerted as from up. A first ping (pending -> up) still does not alert.
+    const freshOutage =
+      current.type === 'heartbeat' &&
+      current.status === 'pending' &&
+      !result.isUp;
+    if (
+      !options.alreadyStored &&
+      !(await this.insertResultWithRetry(result, freshOutage))
+    )
+      return;
+    const currentStatus = result.isUp ? 'up' : 'down';
+    // A failed status write must fail the observation, so the sweep does not consume it (the retry after the
+    // lease may store a second result row for it: rare, same class as the stale-claim duplicate).
+    await this.updateMonitorStatus(
+      current.id,
+      currentStatus,
+      result.checkedAt,
+      true,
+    );
+    const previousStatus = freshOutage ? 'up' : current.status;
+    await this.evaluateAndSendAlert({
+      monitorId: current.id,
+      monitor: current,
+      previousStatus,
+      currentStatus,
+      reason: result.isUp
+        ? 'Monitor has recovered'
+        : (result.details?.errorMessage ?? 'Monitor is down'),
+      observedAt: result.checkedAt,
+      metadata: {
+        responseTime: result.responseTimeMs,
+        locationResults: [
+          {
+            location: result.location,
+            isUp: result.isUp,
+            responseTime: result.responseTimeMs,
+          },
+        ],
+      },
+    });
   }
 
   private isMultiLocationEvaluation(
@@ -2623,11 +2687,12 @@ export class MonitorService {
   // Returns false when the monitor row is already purged (foreign key violation): terminal, never retried.
   private async insertResultWithRetry(
     result: MonitorExecutionResult,
+    freshSequence = false,
   ): Promise<boolean> {
     const id = randomUUID();
     for (let attempt = 1; ; attempt++) {
       try {
-        await this.saveMonitorResultToDb(result, true, id);
+        await this.saveMonitorResultToDb(result, true, id, freshSequence);
         return true;
       } catch (error) {
         if (isForeignKeyViolation(error)) {
@@ -2648,20 +2713,22 @@ export class MonitorService {
     resultData: MonitorExecutionResult,
     rethrow = false,
     id?: string,
+    /** Start a new sequence: ignore the previous row's counters and outage key. */
+    freshSequence = false,
   ): Promise<void> {
     try {
       // Get the last monitor result to track consecutive failures and successes
       // Counters are tracked per location: another region's latest result must
       // not reset or advance this location's failure/recovery sequence.
-      const lastResult = await this.dbService.db.query.monitorResults.findFirst(
-        {
-          where: and(
-            eq(schema.monitorResults.monitorId, resultData.monitorId),
-            eq(schema.monitorResults.location, resultData.location),
-          ),
-          orderBy: [desc(schema.monitorResults.checkedAt)],
-        },
-      );
+      const lastResult = freshSequence
+        ? undefined
+        : await this.dbService.db.query.monitorResults.findFirst({
+            where: and(
+              eq(schema.monitorResults.monitorId, resultData.monitorId),
+              eq(schema.monitorResults.location, resultData.location),
+            ),
+            orderBy: [desc(schema.monitorResults.checkedAt)],
+          });
 
       let consecutiveFailureCount = 0;
       let consecutiveSuccessCount = 0;

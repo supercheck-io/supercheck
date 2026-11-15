@@ -429,7 +429,9 @@ export function CreatePageContent({
                       ? "Ping a host"
                       : monitorType.value === "port_check"
                         ? "Check a network port"
-                        : "Run scheduled flows"
+                        : monitorType.value === "heartbeat"
+                          ? "Alert when a job stops pinging"
+                          : "Run scheduled flows"
               }
               onClick={() =>
                 router.push(`/monitors/create?type=${monitorType.value}`)

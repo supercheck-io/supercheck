@@ -1,3 +1,5 @@
+import { isInformationalAlertType } from "@/lib/alerts/warning-kinds";
+
 const FAILURE_TYPES = new Set(["monitor_failure", "job_failed", "job_timeout", "ssl_expiring"]);
 
 /** An alert that was attempted (sent or failed delivery) may open an incident; only undelivered (pending) rows wait. */
@@ -11,6 +13,8 @@ export function isActionableAlertForIncident(
 ) {
   if (!isAttemptedAlertStatus(status)) return false;
   const normalizedType = type.toLowerCase();
+  // Notices and warnings only notify; they never open an incident.
+  if (isInformationalAlertType(normalizedType)) return false;
   // Known failure types are classified by type alone; a failure message may quote an earlier successful run.
   if (FAILURE_TYPES.has(normalizedType)) return true;
   return !(

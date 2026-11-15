@@ -37,6 +37,8 @@ export async function scheduleMonitor(
     // Init passes `prefetched` and has already filtered deleting monitors, so it skips the lookup.
     const [deleting] = prefetched ? [] : await db.select({ id: monitorSchemaDb.id }).from(monitorSchemaDb).where(and(eq(monitorSchemaDb.id, options.monitorId), isNotNull(monitorSchemaDb.deletingAt))).limit(1);
     if (deleting) throw new Error(`Monitor ${options.monitorId} is being deleted`);
+    // Backstop: a heartbeat is evaluated by the worker sweep from its pings and must never get a repeatable.
+    if ((options.jobData.type as string) === "heartbeat") throw new Error(`Monitor ${options.monitorId} is a heartbeat and is not scheduled`);
     // Backstop for the write-path check: concurrent edits (or rows saved before it) must not schedule faster checks.
     const frequencyMinutes = effectiveFrequencyMinutes(options.jobData.type, options.frequencyMinutes);
 
@@ -179,7 +181,7 @@ export async function repairMonitorSchedules(): Promise<{ repaired: number; fail
     const active = await db
       .select({ id: monitorSchemaDb.id, scheduledJobId: monitorSchemaDb.scheduledJobId })
       .from(monitorSchemaDb)
-      .where(and(gt(monitorSchemaDb.frequencyMinutes, 0), eq(monitorSchemaDb.enabled, true), ne(monitorSchemaDb.status, 'paused'), liveMonitor(monitorSchemaDb), notInPendingOrganization(monitorSchemaDb.organizationId)))
+      .where(and(gt(monitorSchemaDb.frequencyMinutes, 0), eq(monitorSchemaDb.enabled, true), ne(monitorSchemaDb.status, 'paused'), ne(monitorSchemaDb.type, 'heartbeat'), liveMonitor(monitorSchemaDb), notInPendingOrganization(monitorSchemaDb.organizationId)))
       .orderBy(monitorSchemaDb.id);
     // Never-scheduled monitors first; within each group continue after the last id of the previous sweep,
     // so rows that keep failing cannot starve the rest of the batch.
@@ -203,7 +205,7 @@ export async function repairMonitorSchedules(): Promise<{ repaired: number; fail
       try {
         // Re-read: an edit or pause since the list must win.
         const [monitor] = await db.select().from(monitorSchemaDb).where(eq(monitorSchemaDb.id, id));
-        if (!monitor || !monitor.enabled || monitor.status === 'paused' || !monitor.frequencyMinutes) continue;
+        if (!monitor || !monitor.enabled || monitor.status === 'paused' || monitor.type === 'heartbeat' || !monitor.frequencyMinutes) continue;
         await scheduleFromRow(monitor, repeatables);
         repaired++;
       } catch (error) {
@@ -278,6 +280,7 @@ export async function initializeMonitorSchedulers(): Promise<{ success: boolean;
             isNotNull(monitorSchemaDb.frequencyMinutes),
             eq(monitorSchemaDb.enabled, true),
             ne(monitorSchemaDb.status, 'paused'),
+            ne(monitorSchemaDb.type, 'heartbeat'),
             liveMonitor(monitorSchemaDb),
             notInPendingOrganization(monitorSchemaDb.organizationId)
           ));
@@ -312,7 +315,7 @@ export async function initializeMonitorSchedulers(): Promise<{ success: boolean;
           // The list was read before the loop: a frequency/pause/delete edit since then must win,
           // so schedule from the current row, never the listed one.
           const [monitor] = await db.select().from(monitorSchemaDb).where(eq(monitorSchemaDb.id, listed.id));
-          if (!monitor || !monitor.enabled || monitor.status === 'paused' || !monitor.frequencyMinutes) continue;
+          if (!monitor || !monitor.enabled || monitor.status === 'paused' || monitor.type === 'heartbeat' || !monitor.frequencyMinutes) continue;
           if (monitor.frequencyMinutes > 0) {
             try {
             
@@ -390,7 +393,7 @@ async function removeOrphanedMonitorRepeatables(queue: Queue): Promise<Repeatabl
     const monitorId = monitorIdOf(job);
     if (!monitorId) return false;
     const monitor = monitorsById.get(monitorId);
-    if (!monitor || !monitor.enabled || monitor.status === "paused" || (monitor.scheduledJobId != null && monitor.scheduledJobId !== monitorId)) return true;
+    if (!monitor || !monitor.enabled || monitor.status === "paused" || monitor.type === "heartbeat" || (monitor.scheduledJobId != null && monitor.scheduledJobId !== monitorId)) return true;
     return keeper.has(monitorId) && keeper.get(monitorId) !== job;
   });
   await Promise.all(orphanedJobs.map((job) => queue.removeRepeatableByKey(job.key)));

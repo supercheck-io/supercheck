@@ -327,3 +327,28 @@ describe("periodic repair sweep", () => {
     }
   });
 });
+
+describe("heartbeat monitors are never scheduled (B9)", () => {
+  const heartbeatRow = (id: string) => ({ ...activeRow(id, 60), type: "heartbeat", target: "" });
+
+  it("init cleanup removes a stray heartbeat repeatable", async () => {
+    queue.getRepeatableJobs.mockResolvedValue([repeatable(A, 60)]);
+    selects.push([{ id: A, enabled: true, status: "up", scheduledJobId: null, type: "heartbeat", frequencyMinutes: 60 }]);
+    await initializeMonitorSchedulers();
+    expect(queue.removeRepeatableByKey).toHaveBeenCalledWith(`key:${A}`);
+    expect(queue.add).not.toHaveBeenCalled();
+  });
+
+  it("init does not schedule a heartbeat row", async () => {
+    selects.push([heartbeatRow(A)], [heartbeatRow(A)]);
+    await initializeMonitorSchedulers();
+    expect(queue.add).not.toHaveBeenCalled();
+  });
+
+  it("the repair sweep does not schedule a heartbeat row", async () => {
+    queue.getRepeatableJobs.mockResolvedValue([]);
+    selects.push([{ id: A, scheduledJobId: null }], [heartbeatRow(A)]);
+    await expect(repairMonitorSchedules()).resolves.toEqual({ repaired: 0, failed: 0 });
+    expect(queue.add).not.toHaveBeenCalled();
+  });
+});

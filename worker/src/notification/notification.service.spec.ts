@@ -2598,4 +2598,116 @@ describe('NotificationService', () => {
       );
     });
   });
+
+  describe('warning-only alerts (monitor_warning)', () => {
+    const warning: NotificationPayload = {
+      type: 'monitor_warning',
+      title: 'Late ping - Nightly backup',
+      message: 'No ping yet',
+      targetName: 'Nightly backup',
+      targetId: 'monitor-123',
+      severity: 'warning',
+      timestamp: new Date('2026-11-14T12:00:00Z'),
+      projectId: 'project-456',
+      metadata: {
+        type: 'heartbeat',
+        status: 'warning',
+        warningKind: 'heartbeat_late',
+      },
+    };
+    const line = 'This is a warning. No incident was opened.';
+
+    it('email: "Warning:" subject title, warning tone and the no-incident line', async () => {
+      // Rendering is what this checks; SMTP delivery is covered above.
+      await service.sendNotification(emailProvider, warning);
+      expect(
+        mockEmailTemplateService.renderMonitorAlertEmail,
+      ).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: 'Warning: Late ping - Nightly backup',
+          message: `No ping yet\n\n${line}`,
+          type: 'warning',
+        }),
+      );
+    });
+
+    it.each([
+      ['slack', slackProvider],
+      ['discord', discordProvider],
+      ['teams', teamsProvider],
+      ['telegram', telegramProvider],
+    ])('%s: carries the no-incident line', async (_name, provider) => {
+      await expect(service.sendNotification(provider, warning)).resolves.toBe(
+        true,
+      );
+      const body = String(mockFetch.mock.calls[0][1].body);
+      expect(body).toContain('No incident was opened');
+      expect(body).toContain('Late ping');
+    });
+
+    it('slack: warning colour', async () => {
+      await service.sendNotification(slackProvider, warning);
+      const body = JSON.parse(mockFetch.mock.calls[0][1].body);
+      expect(body.attachments[0].color).toBe('#f59e0b');
+    });
+
+    it('custom webhook: type, severity, kind, trigger action and per-kind dedup key', async () => {
+      const templated: NotificationProvider = {
+        ...webhookProvider,
+        config: {
+          ...webhookProvider.config,
+          bodyTemplate: JSON.stringify({
+            type: '{{type}}',
+            severity: '{{severity}}',
+            kind: '{{warningKind}}',
+            action: '{{alertAction}}',
+            dedup: '{{dedupKey}}',
+          }),
+        },
+      };
+      const { results } = await service.sendNotificationToMultipleProviders(
+        [templated, webhookProvider],
+        warning,
+      );
+      const [custom, plain] = mockFetch.mock.calls.map((call) =>
+        JSON.parse(call[1].body),
+      );
+      expect(custom).toEqual({
+        type: 'monitor_warning',
+        severity: 'warning',
+        kind: 'heartbeat_late',
+        action: 'trigger',
+        dedup: 'warning:monitor-123:heartbeat_late',
+      });
+      expect(plain.originalPayload).toMatchObject({
+        type: 'monitor_warning',
+        severity: 'warning',
+        metadata: { warningKind: 'heartbeat_late' },
+      });
+      expect(results[0].deliveryMetadata).toMatchObject({
+        warning: { kind: 'heartbeat_late' },
+        correlation: {
+          dedupKey: 'warning:monitor-123:heartbeat_late',
+          eventAction: 'trigger',
+        },
+      });
+    });
+
+    it('other alert types get no warning line or warning metadata', async () => {
+      const { results } = await service.sendNotificationToMultipleProviders(
+        [webhookProvider],
+        {
+          ...basePayload,
+          type: 'monitor_failure',
+          metadata: { warningKind: 'x' },
+        },
+      );
+      const body = JSON.parse(mockFetch.mock.calls[0][1].body);
+      expect(body.message).not.toContain('No incident was opened');
+      expect(results[0].deliveryMetadata).not.toHaveProperty('warning');
+      expect(results[0].deliveryMetadata?.correlation?.dedupKey).toBe(
+        'monitor:monitor-123',
+      );
+    });
+  });
 });

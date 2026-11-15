@@ -38,6 +38,7 @@ const stored = {
   createdAt: null, updatedAt: null, description: null, createdByUserId: null,
   frequencyMinutes: 5, enabled: true, alertConfig: null, lastCheckAt: null,
   lastStatusChangeAt: null, scheduledJobId: null, deletingAt: null,
+  heartbeatTokenHash: 'private-hb-hash', heartbeatTokenEncrypted: 'private-hb-ciphertext', heartbeatState: null,
   config: { method: 'POST', auth: { type: 'bearer', token: 'private-token' }, headers: { 'X-Key': 'private-key' }, body: 'private-body' },
 } satisfies typeof monitors.$inferSelect;
 const storedResult = {
@@ -112,4 +113,15 @@ it.each(['detail', 'mainPage', 'notificationPage'] as const)('%s redacts session
   const output = await readers[name]();
   expect(output).toContain('result-1');
   expect(output).not.toContain('private-session');
+});
+
+// B7: the heartbeat token columns never leave the server, for viewers and editors alike.
+it.each(Object.entries(readers))('%s never returns the heartbeat token columns', async (_name, read) => {
+  for (const canEdit of [false, true]) {
+    editable = canEdit;
+    const output = await read();
+    for (const leaked of ['heartbeatTokenHash', 'heartbeatTokenEncrypted', 'private-hb-hash', 'private-hb-ciphertext']) {
+      expect(output).not.toContain(leaked);
+    }
+  }
 });

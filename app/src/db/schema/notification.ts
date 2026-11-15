@@ -118,7 +118,7 @@ export const alertHistory = pgTable(
       .where(sql`${table.outageKey} IS NOT NULL AND ${table.alertOrdinal} IS NOT NULL`),
     alertHistoryMonitorSentIdx: index("alert_history_monitor_sent_idx").on(table.monitorId, table.sentAt.desc().nullsFirst()),
     alertHistoryTargetRequired: check("alert_history_target_required_check", sql`monitor_id IS NOT NULL OR job_id IS NOT NULL`),
-    alertHistoryTypeCheck: check("alert_history_type_check", sql`${table.type} IN ('monitor_failure', 'monitor_recovery', 'job_failed', 'job_success', 'job_timeout', 'ssl_expiring', 'ssl_renewed')`),
+    alertHistoryTypeCheck: check("alert_history_type_check", sql`${table.type} IN ('monitor_failure', 'monitor_recovery', 'job_failed', 'job_success', 'job_timeout', 'ssl_expiring', 'ssl_renewed', 'monitor_warning')`),
     alertHistoryStatusCheck: check("alert_history_status_check", sql`${table.status} IN ('sent', 'failed', 'pending')`),
   })
 );

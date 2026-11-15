@@ -309,6 +309,8 @@ function normalizeRemoteRaw(type: string, raw: Record<string, unknown>): Record<
   }
 
   if (type === 'monitor') {
+    // Heartbeat runtime summary (state, last ping): never part of config.
+    delete normalized.heartbeat
     if (normalized.config && typeof normalized.config === 'object') {
       normalized.config = normalizeMonitorConfig(normalized.config as Record<string, unknown>)
       if (!normalized.config) delete normalized.config

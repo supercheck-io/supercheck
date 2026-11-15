@@ -1,5 +1,6 @@
 const mockQueueClose = jest.fn();
 const mockWorkerClose = jest.fn();
+const mockSet = jest.fn(async () => "OK");
 
 jest.mock("bullmq", () => ({
   Queue: jest.fn().mockImplementation(() => ({
@@ -13,7 +14,7 @@ jest.mock("bullmq", () => ({
   })),
 }));
 jest.mock("@/lib/queue", () => ({
-  getRedisConnection: jest.fn(async () => ({ duplicate: jest.fn() })),
+  getRedisConnection: jest.fn(async () => ({ duplicate: jest.fn(), set: mockSet })),
   queueLogger: { error: jest.fn(), info: jest.fn(), warn: jest.fn() },
 }));
 jest.mock("@/utils/db", () => ({ db: {} }));
@@ -43,6 +44,23 @@ describe("incident-renotify lifecycle", () => {
 
     await shutdownIncidentRenotifyScheduler();
     expect(mockWorkerClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("stamps the heartbeat ingest key on its own timer, independent of the reminder job, and stops on shutdown", async () => {
+    jest.useFakeTimers();
+    try {
+      await initializeIncidentRenotifyScheduler();
+      expect(mockSet).toHaveBeenCalledWith("supercheck:heartbeat:ingest", expect.any(String), "EX", 150);
+      mockSet.mockClear();
+      jest.advanceTimersByTime(30_000);
+      expect(mockSet).toHaveBeenCalledTimes(1);
+      await shutdownIncidentRenotifyScheduler();
+      mockSet.mockClear();
+      jest.advanceTimersByTime(60_000);
+      expect(mockSet).not.toHaveBeenCalled();
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   it("still closes the queue when closing the worker fails, and can start again", async () => {

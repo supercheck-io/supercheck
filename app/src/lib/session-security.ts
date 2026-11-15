@@ -182,7 +182,7 @@ export async function checkAdminRateLimit(
 export async function checkMonitorApiRateLimit(
   userId: string,
   organizationId: string,
-  operation: "create" | "update" | "delete",
+  operation: "create" | "update" | "delete" | "heartbeat_url_reveal" | "heartbeat_url_rotate",
   maxOperations = 20,
   windowMs = 60 * 1000 // 1 minute
 ): Promise<{ allowed: boolean; resetTime?: number; retryAfter?: number }> {
@@ -364,7 +364,7 @@ export async function cleanupRateLimitEntries(): Promise<void> {
 }
 
 const DEFAULT_TRUSTED_PROXY_HOPS = 0;
-const UNKNOWN_CLIENT_IP = "unknown";
+export const UNKNOWN_CLIENT_IP = "unknown";
 
 /**
  * Number of right-hand X-Forwarded-For entries appended by our own edge.

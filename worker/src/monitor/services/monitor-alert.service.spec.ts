@@ -3,6 +3,7 @@ import {
   MAX_CLAIM_ATTEMPTS,
   MonitorAlertService,
   redactAlertText,
+  warningEpisodeUuid,
 } from './monitor-alert.service';
 import { SreAlertTriageQueueService } from './sre-alert-triage-queue.service';
 
@@ -1050,6 +1051,239 @@ describe('MonitorAlertService', () => {
           { outageKey: 'warning-1', ordinal: 0 },
         ),
       ).resolves.toEqual({ delivered: false, gaveUp: undefined });
+    });
+  });
+
+  describe('sendWarning', () => {
+    const heartbeat = {
+      id: 'monitor-1',
+      name: 'Nightly backup',
+      type: 'heartbeat' as const,
+      target: '',
+      projectId: 'project-1',
+      deletingAt: null,
+      alertConfig: {
+        enabled: true,
+        notificationProviders: [],
+        alertOnFailure: true,
+        failureThreshold: 1,
+        recoveryThreshold: 1,
+        warnings: { heartbeat_late: true },
+      },
+    };
+    const episode = 'heartbeat_late:monitor-1:2026-11-14T13:12:00.000Z';
+
+    /** Three channels: a plain webhook, a custom-preset webhook and a PagerDuty preset. */
+    function setup(maintenance = false) {
+      const ctx = createService(maintenance);
+      const providers = [
+        { id: 'plain', type: 'slack', config: { webhookUrl: 'x' } },
+        {
+          id: 'custom',
+          type: 'webhook',
+          config: { url: 'x', preset: 'custom' },
+        },
+        {
+          id: 'pager',
+          type: 'webhook',
+          config: { url: 'x', preset: 'pagerduty' },
+        },
+      ];
+      const baseSelect = (ctx.db.select as jest.Mock).getMockImplementation()!;
+      (ctx.db.select as jest.Mock).mockImplementation((fields) =>
+        Object.keys(fields).length === 1
+          ? baseSelect(fields)
+          : {
+              from: () => ({
+                innerJoin: () => ({ where: async () => providers }),
+              }),
+            },
+      );
+      const conflict = jest.fn(() => ({
+        returning: jest.fn().mockResolvedValue([
+          { id: 'h-plain', provider: 'plain', attempts: 1 },
+          { id: 'h-custom', provider: 'custom', attempts: 1 },
+        ]),
+      }));
+      const claimRows = jest.fn((_rows: unknown) => ({
+        onConflictDoUpdate: conflict,
+      }));
+      ctx.valuesMock.mockImplementation(claimRows as never);
+      const where = jest.fn().mockResolvedValue(undefined);
+      (ctx.db as unknown as { update: jest.Mock }).update = jest.fn(() => ({
+        set: () => ({ where }),
+      }));
+      ctx.notificationService.sendNotificationToMultipleProviders.mockImplementation(
+        async (sendTo: Array<{ id: string }>) => ({
+          success: sendTo.length,
+          failed: 0,
+          results: sendTo.map((provider) => ({ provider, success: true })),
+        }),
+      );
+      return { ...ctx, claimRows };
+    }
+
+    it('sends to non-preset channels only, claimed per episode, and never queues triage', async () => {
+      const ctx = setup();
+      await expect(
+        ctx.service.sendWarning(
+          heartbeat,
+          'heartbeat_late',
+          'No ping yet',
+          episode,
+        ),
+      ).resolves.toEqual({ delivered: true, gaveUp: undefined });
+
+      const [sendTo, payload] =
+        ctx.notificationService.sendNotificationToMultipleProviders.mock
+          .calls[0];
+      expect(sendTo.map((p: { id: string }) => p.id)).toEqual([
+        'plain',
+        'custom',
+      ]);
+      expect(payload).toMatchObject({
+        type: 'monitor_warning',
+        severity: 'warning',
+        title: 'Late ping - Nightly backup',
+        message: 'No ping yet',
+        projectName: 'Prod',
+        metadata: {
+          warningKind: 'heartbeat_late',
+          dashboardUrl: 'https://app.example.com/monitors/monitor-1',
+        },
+      });
+      expect(payload.metadata).not.toHaveProperty('target');
+      const claimed = ctx.claimRows.mock.calls[0][0] as Array<
+        Record<string, unknown>
+      >;
+      expect(claimed).toHaveLength(2);
+      expect(claimed[0]).toMatchObject({
+        type: 'monitor_warning',
+        outageKey: warningEpisodeUuid(episode),
+        alertOrdinal: 0,
+      });
+      expect(
+        ctx.sreAlertTriageQueueService.enqueueAlertHistoryRows,
+      ).not.toHaveBeenCalled();
+      expect(
+        ctx.sreAlertTriageQueueService.enqueueSourceFailure,
+      ).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      [
+        'the warning is off',
+        { ...heartbeat.alertConfig, warnings: { heartbeat_late: false } },
+      ],
+      [
+        'no warnings are set',
+        { ...heartbeat.alertConfig, warnings: undefined },
+      ],
+      ['alerts are off', { ...heartbeat.alertConfig, enabled: false }],
+    ])('sends nothing when %s', async (_label, alertConfig) => {
+      const ctx = setup();
+      await expect(
+        ctx.service.sendWarning(
+          { ...heartbeat, alertConfig },
+          'heartbeat_late',
+          'r',
+          episode,
+        ),
+      ).resolves.toEqual({ delivered: false, suppressed: true });
+      expect(
+        ctx.notificationService.sendNotificationToMultipleProviders,
+      ).not.toHaveBeenCalled();
+    });
+
+    it('sends nothing for a monitor being deleted', async () => {
+      const ctx = setup();
+      await expect(
+        ctx.service.sendWarning(
+          { ...heartbeat, deletingAt: new Date() },
+          'heartbeat_late',
+          'r',
+          episode,
+        ),
+      ).resolves.toMatchObject({ delivered: false });
+      expect(
+        ctx.notificationService.sendNotificationToMultipleProviders,
+      ).not.toHaveBeenCalled();
+    });
+
+    it('is held back during scheduled maintenance', async () => {
+      const ctx = setup(true);
+      await expect(
+        ctx.service.sendWarning(heartbeat, 'heartbeat_late', 'r', episode),
+      ).resolves.toEqual({ delivered: false, suppressed: true });
+      expect(
+        ctx.notificationService.sendNotificationToMultipleProviders,
+      ).not.toHaveBeenCalled();
+    });
+
+    it('sends nothing when every channel is a preset', async () => {
+      const ctx = setup();
+      (ctx.db.select as jest.Mock).mockImplementation(() => ({
+        from: () => ({
+          innerJoin: () => ({
+            where: async () => [
+              {
+                id: 'pager',
+                type: 'webhook',
+                config: { url: 'x', preset: 'opsgenie' },
+              },
+            ],
+          }),
+        }),
+      }));
+      jest
+        .spyOn(ctx.service as never, 'isUnderScheduledMaintenance' as never)
+        .mockResolvedValue(false as never);
+      await expect(
+        ctx.service.sendWarning(heartbeat, 'heartbeat_late', 'r', episode),
+      ).resolves.toEqual({ delivered: false, suppressed: true });
+      expect(
+        ctx.notificationService.sendNotificationToMultipleProviders,
+      ).not.toHaveBeenCalled();
+    });
+
+    it('rejects an episode key that does not start with the kind', async () => {
+      const ctx = setup();
+      await expect(
+        ctx.service.sendWarning(
+          heartbeat,
+          'heartbeat_late',
+          'r',
+          'monitor-1:x',
+        ),
+      ).rejects.toThrow('must start with heartbeat_late');
+    });
+
+    it('derives a stable uuid per episode', () => {
+      expect(warningEpisodeUuid(episode)).toBe(warningEpisodeUuid(episode));
+      expect(warningEpisodeUuid(episode)).not.toBe(
+        warningEpisodeUuid(`${episode}x`),
+      );
+      expect(warningEpisodeUuid(episode)).toMatch(
+        /^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+      );
+    });
+
+    it('holds back a heartbeat failure alert during maintenance like any other (B14)', async () => {
+      const ctx = createService(true);
+      ctx.db.query.monitors.findFirst.mockResolvedValueOnce({
+        ...monitor,
+        ...heartbeat,
+      });
+      await expect(
+        ctx.service.sendNotification(
+          'monitor-1',
+          'failure',
+          'No ping received',
+        ),
+      ).resolves.toMatchObject({ suppressed: true, reason: 'maintenance' });
+      expect(
+        ctx.notificationService.sendNotificationToMultipleProviders,
+      ).not.toHaveBeenCalled();
     });
   });
 });

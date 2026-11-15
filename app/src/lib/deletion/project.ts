@@ -12,6 +12,7 @@ import { reconcileMonitorSchedule } from "@/lib/monitor-schedule-reconcile";
 import { closeDeletionJobs, insertDeletionJob } from "./jobs";
 import { sendDeletionChangeNotice } from "./notices";
 import { invalidateProjectState, PROJECT_RESTORE_DAYS } from "./org-state";
+import { HEARTBEAT_ANCHOR_ON_RESUME } from "@/lib/monitor-response";
 
 export class ProjectDeletionError extends Error {
   constructor(message: string, readonly status: 403 | 404 | 409, readonly code: string) { super(message); }
@@ -122,7 +123,7 @@ export async function restoreProjectRows(input: RestoreInput, executor: Pick<typ
     if (purge?.state === "running") throw new ProjectDeletionError("The project is being purged", 409, "PURGE_STARTED");
     const at = new Date();
     await tx.update(projects).set({ status: "active", deletedAt: null, purgeAfter: null, updatedAt: at }).where(eq(projects.id, input.projectId));
-    const resumed = await tx.update(monitors).set({ status: "pending", updatedAt: at })
+    const resumed = await tx.update(monitors).set({ status: "pending", updatedAt: at, heartbeatState: HEARTBEAT_ANCHOR_ON_RESUME })
       .where(and(eq(monitors.projectId, input.projectId), eq(monitors.status, "paused"), gte(monitors.updatedAt, project.deletedAt), sql`${monitors.deletingAt} IS NULL`))
       .returning({ id: monitors.id });
     const pages = ((purge?.cursor as { archivedPages?: ArchivedPage[] } | undefined)?.archivedPages ?? []);

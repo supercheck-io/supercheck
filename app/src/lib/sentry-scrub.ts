@@ -204,6 +204,7 @@ const SECRET_PARENTS = new Set([
   "reset-password",
   "token",
   "tokens",
+  "heartbeat",
 ]);
 // Hosts we own or pay for; any other host is a customer target and becomes [target].
 const VENDOR_HOSTS = [

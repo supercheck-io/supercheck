@@ -153,6 +153,16 @@ describe("monitor-scheduler", () => {
     expect(removeRepeatableByKey).not.toHaveBeenCalled();
   });
 
+  it("never runs a heartbeat and drops its stray repeatable (B9)", async () => {
+    mockMonitorsFindFirst.mockResolvedValue({ ...currentMonitor, type: "heartbeat", target: "" });
+    const removeRepeatableByKey = jest.fn().mockResolvedValue(true);
+    (getQueues as jest.Mock).mockResolvedValue({ monitorSchedulerQueue: { removeRepeatableByKey } });
+    const job = { data: { monitorId: "monitor-1", type: "website", target: "" }, repeatJobKey: "repeat-key" };
+    await expect(processScheduledMonitor(job as never)).resolves.toEqual({ success: false });
+    expect(removeRepeatableByKey).toHaveBeenCalledWith("repeat-key");
+    expect(jest.requireMock("@/lib/queue").enqueueMonitorLocationJobs).not.toHaveBeenCalled();
+  });
+
   it("does nothing and drops its schedule for a monitor being deleted", async () => {
     mockMonitorsFindFirst.mockResolvedValue({ status: "up", enabled: true, deletingAt: new Date() });
     const removeRepeatableByKey = jest.fn().mockResolvedValue(true);

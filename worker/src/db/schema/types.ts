@@ -47,7 +47,12 @@ export type ReportType = 'test' | 'job' | 'monitor' | 'k6_test' | 'k6_job';
 
 // Monitor types
 export type MonitorType =
-  'http_request' | 'website' | 'ping_host' | 'port_check' | 'synthetic_test';
+  | 'http_request'
+  | 'website'
+  | 'ping_host'
+  | 'port_check'
+  | 'synthetic_test'
+  | 'heartbeat';
 
 export type MonitorStatus =
   'up' | 'down' | 'paused' | 'pending' | 'maintenance' | 'error';
@@ -131,6 +136,8 @@ export type MonitorConfig = {
   };
   /** Worker-owned. */
   aiEndpointState?: { lastServedModel?: string };
+  /** Heartbeat monitors only: how late a ping may be before the monitor goes down. */
+  heartbeat?: { graceMinutes?: number };
   port?: number;
   protocol?: 'tcp' | 'udp';
   expectClosed?: boolean; // When true, monitor passes if port is closed (connection refused)
@@ -174,6 +181,30 @@ export type MonitorConfig = {
   [key: string]: unknown;
 };
 
+/**
+ * Heartbeat runtime state (monitors.heartbeat_state). The ping route writes the ping keys and the
+ * worker sweep writes the bookkeeping keys, each as a jsonb expression on the current row value.
+ */
+export type HeartbeatState = {
+  /** Set on create and on resume: the deadline counts from max(lastPingAt, anchorAt). */
+  anchorAt?: string;
+  lastPingAt?: string;
+  lastPingKind?: 'ping' | 'fail';
+  lastStartAt?: string;
+  pingSeq?: number;
+  /** +1 per /fail, with its time: a /fail overtaken by a ping in one sweep window is still recorded. */
+  failSeq?: number;
+  lastFailAt?: string;
+  lastUserAgent?: string;
+  evaluatedSeq?: number;
+  evaluatedFailSeq?: number;
+  leaseUntil?: string;
+  lateEpisodeKey?: string;
+  lastMissedAt?: string;
+  deadlineShiftedFor?: string;
+  deadlineShiftMs?: number;
+};
+
 // Alert types
 export type AlertConfig = {
   enabled: boolean;
@@ -192,6 +223,8 @@ export type AlertConfig = {
   incidentSeverity?: 'sev1' | 'sev2' | 'sev3' | 'sev4';
   /** Resolve the incident on recovery if unacknowledged. Undefined = true. */
   autoResolveIncident?: boolean;
+  /** Warning-only notifications by kind (see monitor/warning-kinds.ts). Never open an incident. */
+  warnings?: Record<string, boolean>;
 };
 
 export type AlertType =
@@ -201,7 +234,8 @@ export type AlertType =
   | 'job_success'
   | 'job_timeout'
   | 'ssl_expiring'
-  | 'ssl_renewed';
+  | 'ssl_renewed'
+  | 'monitor_warning';
 
 export type AlertStatus = 'sent' | 'failed' | 'pending';
 
@@ -239,6 +273,8 @@ export type AlertDeliveryMetadata = {
     /** Each HTTP attempt (max 4): status, or a redacted error when no response arrived. */
     attemptLog?: AlertDeliveryAttempt[];
   };
+  /** Set on `monitor_warning` rows. */
+  warning?: { kind: string };
 };
 
 export type AlertDeliveryAttempt = {

@@ -1801,6 +1801,8 @@ export async function addMonitorExecutionJobToQueue(
 ): Promise<string> {
   // Adding monitor execution job
 
+  // A heartbeat has no check to run: the worker sweep evaluates its pings.
+  if ((task.type as string) === "heartbeat") throw new Error(`Monitor ${task.monitorId} is a heartbeat and has no check to run`);
   try {
     const { monitorExecutionQueue } = await getQueues();
 

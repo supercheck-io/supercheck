@@ -24,3 +24,12 @@ describe("safeText", () => {
     expect(safeText("x".repeat(5000))!.endsWith("[truncated]")).toBe(true);
   });
 });
+
+describe("heartbeat ping URLs (B26)", () => {
+  it("strips the token from a ping URL and from bare tokens in text", () => {
+    const token = `hb_${"7f".repeat(16)}`;
+    const out = safeText(`curl -fsS https://app.example/api/heartbeat/${token}/fail and ${token}`)!;
+    expect(out).not.toContain(token);
+    expect(out).toContain("https://app.example/api/heartbeat/[REDACTED]");
+  });
+});

@@ -8,6 +8,7 @@ import {
   EthernetPort,
   ChevronsLeftRightEllipsis,
   ArrowLeftRight,
+  HeartPulse,
 } from "lucide-react";
 import { typeText } from "@/lib/type-tones";
 import { PlaywrightLogo } from "@/components/logo/playwright-logo";
@@ -87,5 +88,12 @@ export const monitorTypes = [
     icon: PlaywrightLogo,
     color: typeText("monitor", "synthetic_test"),
     description: "Run Playwright tests on schedule to monitor critical user flows",
+  },
+  {
+    label: "Heartbeat Monitor",
+    value: "heartbeat",
+    icon: HeartPulse,
+    color: typeText("monitor", "heartbeat"),
+    description: "Get alerted when a cron job, backup or scheduled agent stops checking in",
   },
 ];

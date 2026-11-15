@@ -403,12 +403,34 @@ export async function renotifyUnacknowledgedIncidents(now = new Date(), stats?: 
   return reminderSends + escalationSends;
 }
 
+/** Read by worker/src/monitor/heartbeat/heartbeat-sweep.service.ts. */
+export const HEARTBEAT_INGEST_KEY = "supercheck:heartbeat:ingest";
+const HEARTBEAT_INGEST_TTL_SECONDS = 150;
+const HEARTBEAT_INGEST_EVERY_MS = 30_000;
+let ingestTimer: ReturnType<typeof setInterval> | undefined;
+
 let worker: Worker | undefined;
 let queue: Queue | undefined;
+
+/**
+ * Heartbeat ingest guard: proves the app (and so the public ping route) is alive; the worker sweep skips miss
+ * detection while the key is missing (spec 4.4). Its own timer, so a slow or stuck reminder job cannot stop it.
+ */
+function startHeartbeatIngestStamp(redis: Awaited<ReturnType<typeof getRedisConnection>>) {
+  if (ingestTimer) return;
+  const stamp = () =>
+    redis
+      .set(HEARTBEAT_INGEST_KEY, String(Date.now()), "EX", HEARTBEAT_INGEST_TTL_SECONDS)
+      .catch((error) => queueLogger.warn({ err: error }, "Heartbeat ingest stamp failed"));
+  void stamp();
+  ingestTimer = setInterval(stamp, HEARTBEAT_INGEST_EVERY_MS);
+  ingestTimer.unref?.();
+}
 
 export async function initializeIncidentRenotifyScheduler() {
   if (worker) return;
   const redis = await getRedisConnection();
+  startHeartbeatIngestStamp(redis);
   queue = new Queue(QUEUE_NAME, { connection: redis });
   queue.on("error", (error) => queueLogger.error({ err: error }, "Incident re-notify queue error"));
   worker = new Worker(
@@ -440,6 +462,8 @@ export function getIncidentRenotifyQueue() {
 export async function shutdownIncidentRenotifyScheduler() {
   const w = worker;
   const q = queue;
+  if (ingestTimer) clearInterval(ingestTimer);
+  ingestTimer = undefined;
   worker = undefined;
   queue = undefined;
   await Promise.allSettled([w?.close(), q?.close()]);

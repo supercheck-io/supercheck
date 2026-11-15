@@ -65,3 +65,11 @@ it("refuses to schedule a monitor that is being deleted", async () => {
   mockDeleting.mockResolvedValue([{ id: "m" }]);
   await expect(scheduleMonitor(opts)).rejects.toThrow("being deleted");
 });
+
+describe("heartbeat backstop (B9)", () => {
+  it("scheduleMonitor refuses a heartbeat without touching the queue", async () => {
+    queue.getRepeatableJobs.mockResolvedValue([]);
+    await expect(scheduleMonitor({ ...opts, jobData: { type: "heartbeat" } as never })).rejects.toThrow("heartbeat");
+    expect(queue.add).not.toHaveBeenCalled();
+  });
+});

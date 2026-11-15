@@ -68,6 +68,7 @@ sequenceDiagram
 | **Recovery** | Consecutive successes reach threshold after the failure threshold was reached | Success |
 | **SSL Expiring** | Website monitor's certificate is within its warning window, has expired, or could not be read for 24 hours | Warning; at most once every 24 hours |
 | **SSL Renewed** | A certificate you were warned about is healthy again: valid with more days left than the warning window, or a later expiry date than the one warned about | Success; once per warning |
+| **Warning** | A warning you turned on for the monitor, such as **Ping is late** on a [heartbeat monitor](/docs/app/heartbeat) | Warning; once per episode, never opens an incident |
 
 </Tab>
 <Tab value="Jobs">
@@ -128,6 +129,20 @@ At most **3 failure alerts** go out per failure streak, for monitors and jobs. T
 
 </Tab>
 </Tabs>
+
+## Warnings
+
+Warnings tell your channels about a problem that is not an outage yet. They never open or resolve an incident, are never sent to paging services (PagerDuty, Opsgenie, Jira Service Management, Splunk On-Call, Better Stack, incident.io) and are not counted toward failure or recovery thresholds. Like failure and recovery alerts, they are not sent while a scheduled maintenance window covers the monitor.
+
+Turn them on per monitor under **Warnings** in the alert settings. Only the warnings that apply to the monitor's type are listed; each is off until you turn it on.
+
+| Warning | Monitor type | Sent when |
+|---|---|---|
+| **Ping is late** | Heartbeat | A ping has not arrived on time, but the grace period has not ended. Sent once per late period. If the grace period ends without a ping, the monitor goes down and the normal failure alert follows |
+
+A warning shows as **Warning** in delivery history. Email subjects start with "Warning:", and every message says "This is a warning. No incident was opened." Custom webhooks receive `type: "monitor_warning"`, `severity: "warning"`, `warningKind` (for example `heartbeat_late`), action `trigger` and the dedup key `warning:<monitor id>:<kind>`.
+
+In monitors-as-code, warnings are `alertConfig.warnings`, for example `warnings: { heartbeat_late: true }`.
 
 ## Provider Configuration
 

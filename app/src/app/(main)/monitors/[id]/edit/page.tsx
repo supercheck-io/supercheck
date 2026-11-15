@@ -10,6 +10,8 @@ import { MonitorFormSkeleton } from "@/components/monitors/monitor-form-skeleton
 import { Monitor } from "@/components/monitors/schema";
 import { PageBreadcrumbs } from "@/components/page-breadcrumbs";
 import { monitorTypes } from "@/components/monitors/data";
+import { heartbeatFormValues } from "@/components/monitors/heartbeat-format";
+import { heartbeatGraceMinutes } from "@/lib/heartbeat/state";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { useMonitorPermissions } from "@/hooks/use-monitor-details";
@@ -154,6 +156,7 @@ export default function EditMonitorPage({
     "ping_host",
     "port_check",
     "synthetic_test",
+    "heartbeat",
   ] as const;
 
   if ((formValueTypes as readonly string[]).includes(currentType)) {
@@ -284,6 +287,12 @@ export default function EditMonitorPage({
     // Synthetic test specific
     syntheticConfig_testId:
       formType === "synthetic_test" ? monitor.config?.testId || "" : "",
+
+    // Heartbeat: interval and grace as number + unit
+    ...heartbeatFormValues(monitor.frequencyMinutes || 60, heartbeatGraceMinutes({
+      frequencyMinutes: monitor.frequencyMinutes || 60,
+      config: monitor.config,
+    })),
   };
 
   return (
