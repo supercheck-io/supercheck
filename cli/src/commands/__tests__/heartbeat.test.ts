@@ -129,12 +129,17 @@ describe('heartbeat ping', () => {
     expect(error.message).not.toContain(TOKEN)
   })
 
-  it('retries 429 and 503 up to 3 times with 1 s, 2 s, 4 s backoff', async () => {
-    mockFetch.mockImplementation(async () => new Response('busy', { status: 503 }))
-    const error = await failure(ping(BASE))
-    expect(error.exitCode).toBe(ExitCode.ApiError)
-    expect(mockFetch).toHaveBeenCalledTimes(4)
-    expect(sleeps).toEqual([1000, 2000, 4000])
+  it('retries 429 and 503 up to 3 times with jittered 1 s, 2 s, 4 s backoff', async () => {
+    const random = jest.spyOn(Math, 'random').mockReturnValue(1)
+    try {
+      mockFetch.mockImplementation(async () => new Response('busy', { status: 503 }))
+      const error = await failure(ping(BASE))
+      expect(error.exitCode).toBe(ExitCode.ApiError)
+      expect(mockFetch).toHaveBeenCalledTimes(4)
+      expect(sleeps).toEqual([1000, 2000, 4000])
+    } finally {
+      random.mockRestore()
+    }
   })
 
   it('succeeds after a retried 429, honouring Retry-After', async () => {
@@ -176,7 +181,8 @@ describe('retryDelayMs', () => {
     expect(retryDelayMs('3', 0)).toBe(3000)
     expect(retryDelayMs('600', 0)).toBe(30000)
     expect(retryDelayMs(new Date(clock + 5000).toUTCString(), 0)).toBe(5000)
-    expect(retryDelayMs(null, 2)).toBe(4000)
-    expect(retryDelayMs('soon', 1)).toBe(2000)
+    expect(retryDelayMs(null, 2, () => 1)).toBe(4000)
+    expect(retryDelayMs(null, 2, () => 0)).toBe(2000)
+    expect(retryDelayMs('soon', 1, () => 1)).toBe(2000)
   })
 })

@@ -41,7 +41,9 @@ function respond(request: Request, status: number, body: string, extra: Record<s
 export async function handleHeartbeatPing(request: Request, token: string, kind: HeartbeatPingKind): Promise<Response> {
   const length = Number(request.headers.get("content-length") ?? 0);
   if (Number.isFinite(length) && length > HEARTBEAT_MAX_BODY_BYTES) return respond(request, 413, "Payload Too Large");
-  if (!isHeartbeatTokenFormat(token) || isLinkPreviewAgent(request.headers.get("user-agent"))) {
+  // Link previewers only GET/HEAD; a POST from the same sender (e.g. a Slack workflow) is a real ping.
+  const preview = request.method !== "POST" && isLinkPreviewAgent(request.headers.get("user-agent"));
+  if (!isHeartbeatTokenFormat(token) || preview) {
     return respond(request, 200, "OK");
   }
 
@@ -61,7 +63,9 @@ export async function handleHeartbeatPing(request: Request, token: string, kind:
       { tokenHashPrefix: tokenHash.slice(0, 8), ...dbErrorSummary(error) },
       "Heartbeat ping not recorded",
     );
-    return respond(request, 503, "Service Unavailable", { "Retry-After": "5" });
+    await limit.release();
+    // Spread retries so cron jobs that fired together do not retry in step against a failing database.
+    return respond(request, 503, "Service Unavailable", { "Retry-After": String(3 + Math.floor(Math.random() * 8)) });
   }
   return respond(request, 200, "OK");
 }

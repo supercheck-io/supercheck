@@ -6,7 +6,12 @@ export const HEARTBEAT_TOKEN_LIMIT_PER_MINUTE = 10;
 // The 128-bit token stops guessing; this only bounds load from one address.
 export const HEARTBEAT_IP_LIMIT_PER_MINUTE = 1200;
 
-export type HeartbeatRateLimitResult = { allowed: true } | { allowed: false; retryAfterSeconds: number };
+export type HeartbeatRateLimitResult =
+  /** `release` gives the slot back, for a ping that was not recorded (so a client retry does not cost twice). */
+  | { allowed: true; release: () => Promise<void> }
+  | { allowed: false; retryAfterSeconds: number };
+
+const NOOP_RELEASE = async () => {};
 
 /**
  * Sliding one-minute windows per token hash and per client IP hash. Fails OPEN when Redis is
@@ -21,6 +26,8 @@ export async function checkHeartbeatRateLimit(tokenHash: string, clientIp: strin
       ? `supercheck:heartbeat:rl:ip:${createHash("sha256").update(clientIp).digest("hex")}`
       : `supercheck:heartbeat:rl:ip:none:${tokenHash}`;
     const now = Date.now();
+    const member = randomUUID();
+    const tokenKey = `supercheck:heartbeat:rl:token:${tokenHash}`;
     const result = await redis.eval(
       `
       local limits = {tonumber(ARGV[3]), tonumber(ARGV[4])}
@@ -38,18 +45,25 @@ export async function checkHeartbeatRateLimit(tokenHash: string, clientIp: strin
       return {1, 0}
     `,
       2,
-      `supercheck:heartbeat:rl:token:${tokenHash}`,
+      tokenKey,
       ipKey,
       now,
-      randomUUID(),
+      member,
       HEARTBEAT_TOKEN_LIMIT_PER_MINUTE,
       HEARTBEAT_IP_LIMIT_PER_MINUTE,
     );
     const [allowed, oldest] = (result as [number, number | string]) ?? [1, 0];
-    if (Number(allowed) === 1) return { allowed: true };
+    if (Number(allowed) === 1) {
+      return {
+        allowed: true,
+        release: async () => {
+          await Promise.all([redis.zrem(tokenKey, member), redis.zrem(ipKey, member)]).catch(() => undefined);
+        },
+      };
+    }
     const retryAfterMs = Number(oldest) + 60_000 - now;
     return { allowed: false, retryAfterSeconds: Math.max(1, Math.ceil(retryAfterMs / 1000)) };
   } catch {
-    return { allowed: true };
+    return { allowed: true, release: NOOP_RELEASE };
   }
 }

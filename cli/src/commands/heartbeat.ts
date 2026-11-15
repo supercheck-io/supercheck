@@ -20,8 +20,9 @@ export const pingTiming = {
 }
 
 /** Retry-After in seconds or as an HTTP date, capped; otherwise 1 s, 2 s, 4 s. */
-export function retryDelayMs(retryAfter: string | null, attempt: number): number {
-  const backoff = 1000 * 2 ** attempt
+export function retryDelayMs(retryAfter: string | null, attempt: number, random: () => number = Math.random): number {
+  // Jitter (50-100% of the step) so cron jobs that fired together do not retry in step.
+  const backoff = Math.round(1000 * 2 ** attempt * (0.5 + random() / 2))
   if (!retryAfter) return backoff
   const seconds = Number(retryAfter)
   const ms = Number.isFinite(seconds) ? seconds * 1000 : Date.parse(retryAfter) - pingTiming.now()

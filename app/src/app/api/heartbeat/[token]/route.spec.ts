@@ -1,5 +1,6 @@
 /** @jest-environment node */
 const mockRecord = jest.fn();
+const mockRelease = jest.fn(async () => {});
 const mockLimit = jest.fn();
 const mockWarn = jest.fn();
 jest.mock("@/lib/heartbeat/ping", () => ({ recordHeartbeatPing: (...args: unknown[]) => mockRecord(...args) }));
@@ -17,7 +18,7 @@ const actionCtx = (action: string, token = TOKEN) => ({ params: Promise.resolve(
 
 beforeEach(() => {
   jest.clearAllMocks();
-  mockLimit.mockResolvedValue({ allowed: true });
+  mockLimit.mockResolvedValue({ allowed: true, release: mockRelease });
   mockRecord.mockResolvedValue(true);
 });
 
@@ -63,6 +64,10 @@ describe("public heartbeat ping (B2-B5)", () => {
       expect([res.status, await res.text()]).toEqual([200, "OK"]);
     }
     expect(mockRecord).not.toHaveBeenCalled();
+    // A POST from the same sender (Slack workflow) is a real ping.
+    await POST(new Request(url(), { method: "POST", headers: { "user-agent": "Slackbot 1.0 (+https://api.slack.com/robots)" } }), ctx());
+    expect(mockRecord).toHaveBeenCalledTimes(1);
+    mockRecord.mockClear();
     const real = await GET(new Request(url(), { headers: { "user-agent": "curl/8.5.0" } }), ctx());
     expect(real.status).toBe(200);
     expect(mockRecord).toHaveBeenCalledTimes(1);
@@ -96,6 +101,8 @@ describe("public heartbeat ping (B2-B5)", () => {
     mockRecord.mockRejectedValue(new Error(`Failed query: UPDATE monitors\nparams: ${hashHeartbeatToken(TOKEN)},curl/8`));
     const res = await GET(new Request(url()), ctx());
     expect(res.status).toBe(503);
+    expect(mockRelease).toHaveBeenCalledTimes(1);
+    expect(Number(res.headers.get("Retry-After"))).toBeGreaterThanOrEqual(3);
     const logged = JSON.stringify(mockWarn.mock.calls);
     expect(logged).toContain(hashHeartbeatToken(TOKEN).slice(0, 8));
     expect(logged).not.toContain(TOKEN);

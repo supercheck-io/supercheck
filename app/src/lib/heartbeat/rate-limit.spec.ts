@@ -13,7 +13,7 @@ beforeEach(() => {
 describe("checkHeartbeatRateLimit (B4)", () => {
   it("uses 10 per token and 1200 per IP hash, never the raw IP", async () => {
     mockEval.mockResolvedValue([1, 0]);
-    await expect(checkHeartbeatRateLimit("h".repeat(64), "203.0.113.9")).resolves.toEqual({ allowed: true });
+    await expect(checkHeartbeatRateLimit("h".repeat(64), "203.0.113.9")).resolves.toMatchObject({ allowed: true });
     const [, keyCount, tokenKey, ipKey, , , tokenLimit, ipLimit] = mockEval.mock.calls[0];
     expect(keyCount).toBe(2);
     expect(tokenKey).toBe(`supercheck:heartbeat:rl:token:${"h".repeat(64)}`);
@@ -45,8 +45,19 @@ describe("checkHeartbeatRateLimit (B4)", () => {
 
   it("allows when Redis is down (a dropped ping would raise a false alert)", async () => {
     mockConnection.mockRejectedValue(new Error("ECONNREFUSED"));
-    await expect(checkHeartbeatRateLimit("abc", "203.0.113.9")).resolves.toEqual({ allowed: true });
+    await expect(checkHeartbeatRateLimit("abc", "203.0.113.9")).resolves.toMatchObject({ allowed: true });
     mockConnection.mockResolvedValue({ eval: jest.fn().mockRejectedValue(new Error("timeout")) });
-    await expect(checkHeartbeatRateLimit("abc", "203.0.113.9")).resolves.toEqual({ allowed: true });
+    await expect(checkHeartbeatRateLimit("abc", "203.0.113.9")).resolves.toMatchObject({ allowed: true });
+  });
+
+  it("release gives both slots back", async () => {
+    const zrem = jest.fn(async () => 1);
+    mockConnection.mockResolvedValue({ eval: jest.fn(async () => [1, 0]), zrem });
+    const out = await checkHeartbeatRateLimit("h".repeat(64), "203.0.113.9");
+    if (!out.allowed) throw new Error("expected allowed");
+    await out.release();
+    expect(zrem).toHaveBeenCalledTimes(2);
+    const member = (zrem.mock.calls[0] as unknown[])[1];
+    expect(zrem.mock.calls.map((c) => (c as unknown[])[1])).toEqual([member, member]);
   });
 });
