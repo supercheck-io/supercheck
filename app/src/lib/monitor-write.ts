@@ -61,7 +61,7 @@ export function workerKeysDroppedByWrite(
   const storedConfig = (stored?.config ?? {}) as Record<string, unknown>;
   const nextConfig = next.config as Record<string, unknown> | undefined;
   if (nextConfig) {
-    const alerts = (next.alertConfig ?? stored?.alertConfig) as { enabled?: boolean; alertOnSslExpiration?: boolean } | null | undefined;
+    const alerts = (next.alertConfig === undefined ? stored?.alertConfig : next.alertConfig) as { enabled?: boolean; alertOnSslExpiration?: boolean } | null | undefined;
     const sslAlertsOn = nextConfig.enableSslCheck === true && alerts?.enabled === true && alerts.alertOnSslExpiration === true;
     if (!sslAlertsOn) dropped.push("sslAlertState");
   }

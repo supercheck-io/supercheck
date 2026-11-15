@@ -335,6 +335,8 @@ describe("workerKeysDroppedByWrite", () => {
     expect(workerKeysDroppedByWrite({ config: {} }, { config: { enableSslCheck: false } })).toEqual(["sslAlertState"]);
     expect(workerKeysDroppedByWrite({ config: {}, alertConfig: { enabled: true, alertOnSslExpiration: true } }, { config: { enableSslCheck: true } })).toEqual([]);
     expect(workerKeysDroppedByWrite({ config: {} }, { config: { enableSslCheck: true }, alertConfig: { enabled: true, alertOnSslExpiration: false } })).toEqual(["sslAlertState"]);
+    // An explicit null clears alerts; only an omitted alertConfig falls back to the stored one.
+    expect(workerKeysDroppedByWrite({ config: {}, alertConfig: { enabled: true, alertOnSslExpiration: true } }, { config: { enableSslCheck: true }, alertConfig: null })).toEqual(["sslAlertState"]);
   });
   it("renders a config write that removes the key", () => {
     expect(new PgDialect().sqlToQuery(configWithoutKeys(monitors.config, ["mcpState"])).sql).toContain("- ARRAY['mcpState']");
