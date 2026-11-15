@@ -48,4 +48,5 @@ CREATE INDEX "maintenance_windows_project_occurrence_idx" ON "maintenance_window
 CREATE INDEX "maintenance_windows_organization_id_idx" ON "maintenance_windows" USING btree ("organization_id");--> statement-breakpoint
 CREATE INDEX "maintenance_windows_created_by_user_id_idx" ON "maintenance_windows" USING btree ("created_by_user_id");--> statement-breakpoint
 ALTER TABLE "incidents" ADD CONSTRAINT "incidents_maintenance_window_id_maintenance_windows_id_fk" FOREIGN KEY ("maintenance_window_id") REFERENCES "public"."maintenance_windows"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
-CREATE INDEX "incidents_maintenance_window_id_idx" ON "incidents" USING btree ("maintenance_window_id");
+CREATE INDEX "incidents_maintenance_window_id_idx" ON "incidents" USING btree ("maintenance_window_id");--> statement-breakpoint
+RESET lock_timeout;
