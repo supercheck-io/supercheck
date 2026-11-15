@@ -42,6 +42,19 @@ export const excludeMaintenanceResults = sql`(${monitorResults.inMaintenance} IS
     WHERE muted.monitor_id = ${monitorResults.monitorId}
       AND muted.execution_group_id = ${monitorResults.executionGroupId}
       AND muted.in_maintenance
+      -- A synthetic row a real result replaced does not count, as in excludeSupersededSyntheticResults.
+      AND NOT (
+        muted.is_up IS NOT TRUE AND muted.response_time_ms IS NULL
+        AND COALESCE(muted.details->>'synthetic', '') = 'true'
+        AND EXISTS (
+          SELECT 1 FROM monitor_results replacement
+          WHERE replacement.monitor_id = muted.monitor_id
+            AND replacement.execution_group_id = muted.execution_group_id
+            AND replacement.location = muted.location
+            AND replacement.id <> muted.id
+            AND COALESCE(replacement.details->>'synthetic', '') <> 'true'
+        )
+      )
   )
 ))`;
 
