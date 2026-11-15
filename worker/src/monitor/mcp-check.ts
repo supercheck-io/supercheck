@@ -217,7 +217,14 @@ export async function executeMcpCheck(
     if (client.serverVersion) mcp.serverVersion = client.serverVersion;
 
     phase = 'list';
-    const { tools: raw } = await client.listTools();
+    const { tools: raw, hasMore } = await client.listTools();
+    // A partial list must never become a baseline or fail a required tool that sits on a later page.
+    if (hasMore)
+      return finish(
+        'down',
+        'list',
+        `The server lists more tools than Supercheck reads (${MCP_MAX_LIST_PAGES} pages)`,
+      );
     const byName = new Map<string, string>();
     for (const tool of raw) {
       const fingerprint = fingerprintTool(tool);

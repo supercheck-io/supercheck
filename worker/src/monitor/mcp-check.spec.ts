@@ -330,12 +330,16 @@ describe('executeMcpCheck', () => {
       expect(r.details.errorMessage).toBe('Could not list tools');
     });
 
-    it('stops listing after 10 pages', async () => {
+    it('fails when pages remain after 10: no partial list or baseline', async () => {
       b.pages = true;
-      const r = await run();
-      expect(r.status).toBe('up');
+      const r = await run({ requiredTools: ['t1'] });
+      expect(r.status).toBe('down');
+      expect(r.details.mcp.failure).toBe('list');
+      expect(r.details.errorMessage).toBe(
+        'The server lists more tools than Supercheck reads (10 pages)',
+      );
+      expect(r.details.mcp.toolsHash).toBeUndefined();
       expect(seen.filter((s) => s.method === 'tools/list')).toHaveLength(10);
-      expect(r.details.mcp.toolCount).toBe(10);
     });
 
     it('an assertion on the reply text is case-insensitive and can read structured content', async () => {

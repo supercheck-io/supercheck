@@ -16,7 +16,7 @@ import {
 } from "@/lib/monitor-scheduler";
 import { eq, and, sql } from "drizzle-orm";
 import { ResumeRefusedError, withResumeWithinPlan } from "@/lib/middleware/plan-enforcement";
-import { assertKeptProvidersValid, MonitorScheduleError, dropStaleSslAlertState, preserveWorkerConfigKeys, scheduleOutOfSync, syncMonitorProviderRows, WORKER_OWNED_CONFIG_KEYS } from "@/lib/monitor-write";
+import { assertKeptProvidersValid, MonitorScheduleError, configKeepingWorkerKeys, dropStaleSslAlertState, preserveWorkerConfigKeys, scheduleOutOfSync, syncMonitorProviderRows, WORKER_OWNED_CONFIG_KEYS } from "@/lib/monitor-write";
 import { reconcileMonitorSchedule } from "@/lib/monitor-schedule-reconcile";
 
 // This is a conceptual service layer, actual Next.js API routes would call these functions.
@@ -237,10 +237,13 @@ export async function updateMonitorHandler(
   if (data.status !== undefined) updateData.status = data.status;
 
   const { providerSync } = options;
+  // Worker-owned keys come from the row at write time, not from the earlier read.
+  const deletedWorkerKeys = (updateData.config as Record<string, unknown> | undefined) && (existingMonitor.config as Record<string, unknown> | null)?.sslAlertState !== undefined && (updateData.config as Record<string, unknown>).sslAlertState === undefined ? ["sslAlertState"] : [];
+  const setData = updateData.config === undefined ? updateData : { ...updateData, config: configKeepingWorkerKeys(updateData.config, monitorTable.config, deletedWorkerKeys) };
   const writeUpdate = async (executor: Pick<typeof db, "update" | "select" | "delete" | "insert">) => {
     const rows = await executor
       .update(monitorTable)
-      .set(updateData) // Use the filtered updateData
+      .set(setData)
       .where(
         options.expectSecretState === undefined
           ? eq(monitorTable.id, monitorId)

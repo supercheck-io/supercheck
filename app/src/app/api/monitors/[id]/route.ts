@@ -47,6 +47,7 @@ import {
   normalizeMonitorAlertConfig,
   monitorAuditTarget,
   preserveWorkerConfigKeys,
+  configKeepingWorkerKeys,
   SCHEDULE_FAILURE_MESSAGE,
   sanitizeMonitorFields,
   scheduleOutOfSync,
@@ -413,7 +414,21 @@ export async function PUT(
       const writeMonitor = async (tx: Parameters<Parameters<typeof db.transaction>[0]>[0]) => {
         const [updated] = await tx
           .update(monitors)
-          .set(updatePayload)
+          .set(
+            updatePayload.config
+              ? {
+                  ...updatePayload,
+                  config: configKeepingWorkerKeys(
+                    updatePayload.config,
+                    monitors.config,
+                    (currentMonitor.config as Record<string, unknown> | null)?.sslAlertState !== undefined &&
+                      (updatePayload.config as Record<string, unknown>).sslAlertState === undefined
+                      ? ["sslAlertState"]
+                      : [],
+                  ),
+                }
+              : updatePayload,
+          )
           .where(
             and(
               eq(monitors.id, id),

@@ -127,3 +127,14 @@ it("writes a secret-bearing monitor only while its target and secret names are t
     }),
   ).resolves.toMatchObject({ name: "Renamed" });
 });
+
+it("a config save keeps worker-owned keys written after the app read the row, and drops forged ones", async () => {
+  const { pausedRows } = await seed(0, 1);
+  const id = pausedRows[0].id;
+  // The worker writes a new baseline after the service's read; simulated by a write racing in via the DB.
+  const state = { lastCycleKey: "worker-new", slowEpisodeKey: null, baseline: { hash: "h2", takenAt: "2026-11-15T00:00:00.000Z", tools: [] } };
+  await client`UPDATE monitors SET config = ${client.json({ method: "GET", mcpState: state })} WHERE id = ${id}`;
+  await updateMonitorHandler(id, { config: { method: "POST", mcpState: { lastCycleKey: "forged" }, aggregatedAlertState: { forged: true } } as never });
+  const [row] = await mockDatabase.select().from(schema.monitors).where(eq(schema.monitors.id, id));
+  expect(row.config).toEqual({ method: "POST", mcpState: state });
+});

@@ -262,9 +262,9 @@ describe('evaluateMcpCycle', () => {
           from: () => ({
             where: () => {
               n += 1;
-              if (n === 1)
+              if (n % 3 === 1)
                 return { limit: () => Promise.resolve(cycle ? [cycle] : []) };
-              return n === 2
+              return n % 3 === 2
                 ? Promise.resolve(rows)
                 : { limit: () => Promise.resolve(config ? [{ config }] : []) };
             },
@@ -377,6 +377,19 @@ describe('evaluateMcpCycle', () => {
         },
       } as unknown as PostgresJsDatabase<typeof schema>;
       await expect(completeMcpTools(bad, 'm1', 'cyc')).resolves.toBe(false);
+    });
+
+    it('retries when another writer moved the state, and records the change once', async () => {
+      persist.mockResolvedValueOnce(false);
+      expect(await complete()).toBe(true);
+      expect(persist).toHaveBeenCalledTimes(2);
+      expect(kinds()).toHaveLength(1);
+    });
+
+    it('gives up after 3 attempts', async () => {
+      persist.mockResolvedValue(false);
+      expect(await complete()).toBe(false);
+      expect(persist).toHaveBeenCalledTimes(3);
     });
 
     it('does nothing for a monitor that is gone or has no MCP settings', async () => {

@@ -1,4 +1,6 @@
 jest.mock("@/utils/db", () => ({ db: {} }));
+import { PgDialect } from "drizzle-orm/pg-core";
+import { monitors } from "@/db/schema";
 import {
   AlertConfigConflictError,
   assertKeptProvidersValid,
@@ -8,6 +10,7 @@ import {
   mergePatch,
   preserveWorkerConfigKeys,
   WORKER_OWNED_CONFIG_KEYS,
+  configKeepingWorkerKeys,
   monitorAuditTarget,
   withMcpAlertDefaults,
   mirrorProviderRowsToAlertConfig,
@@ -284,5 +287,22 @@ describe("monitorAuditTarget", () => {
     expect(monitorAuditTarget("mcp_server", "not a url")).toBeNull();
     expect(monitorAuditTarget("mcp_server", undefined)).toBeUndefined();
     expect(monitorAuditTarget("http_request", "https://a.example.com/p")).toBe("https://a.example.com/p");
+  });
+});
+
+describe("configKeepingWorkerKeys", () => {
+  const render = (config: unknown, except: string[] = []) => new PgDialect().sqlToQuery(configKeepingWorkerKeys(config, monitors.config, except));
+  it("strips every client-sent worker key and re-adds each one from the row's current config", () => {
+    const { sql, params } = render({ method: "GET", mcpState: { lastCycleKey: "forged" } });
+    expect(params).toEqual([JSON.stringify({ method: "GET", mcpState: { lastCycleKey: "forged" } })]);
+    for (const key of WORKER_OWNED_CONFIG_KEYS) {
+      expect(sql.match(new RegExp(`'${key}'`, "g"))).toHaveLength(2); // once in the strip list, once in the keep list
+    }
+    expect(sql).toContain('jsonb_each(coalesce("monitors"."config"');
+    expect(sql).not.toContain("jsonb_strip_nulls");
+  });
+  it("does not restore a key this write deliberately deletes", () => {
+    const { sql } = render({}, ["sslAlertState"]);
+    expect(sql.match(/'sslAlertState'/g)).toHaveLength(1); // stripped only
   });
 });

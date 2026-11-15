@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, sql, type SQL } from "drizzle-orm";
 import { db } from "@/utils/db";
 import { monitorNotificationSettings, monitors, notificationProviders, tests } from "@/db/schema";
 import type { AlertConfig, MonitorConfig } from "@/db/schema";
@@ -24,6 +24,21 @@ export function preserveWorkerConfigKeys<T extends MonitorConfig | null | undefi
     else merged[key] = stored;
   }
   return merged as T;
+}
+
+/**
+ * SQL value for `monitors.config` on update: the client's config, with every worker-owned key taken from the row's
+ * CURRENT value inside the UPDATE itself (a client-sent copy is removed first; a key absent in the row stays absent).
+ * preserveWorkerConfigKeys works from an earlier read, so a worker write in between would otherwise be undone.
+ * `except` names keys deliberately deleted by this write (the stale SSL notice), which must not be restored.
+ * Keys are a closed literal list, so interpolating them is safe.
+ */
+export function configKeepingWorkerKeys(config: unknown, configColumn: unknown, except: readonly string[] = []): SQL {
+  const keys = WORKER_OWNED_CONFIG_KEYS.filter((k) => !except.includes(k));
+  const list = sql.raw(keys.map((k) => `'${k}'`).join(", "));
+  const all = sql.raw(WORKER_OWNED_CONFIG_KEYS.map((k) => `'${k}'`).join(", "));
+  const col = configColumn as SQL;
+  return sql`((${JSON.stringify(config ?? {})}::jsonb) - ARRAY[${all}]::text[]) || coalesce((select jsonb_object_agg(e.key, e.value) from jsonb_each(coalesce(${col}, '{}'::jsonb)) e where e.key in (${list})), '{}'::jsonb)`;
 }
 
 /**

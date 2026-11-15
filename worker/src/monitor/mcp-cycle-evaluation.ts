@@ -222,6 +222,7 @@ export async function completeMcpTools(
   db: PostgresJsDatabase<typeof schema>,
   monitorId: string,
   cycleId: string,
+  attempt = 1,
 ): Promise<boolean> {
   try {
     const [cycle] = await db
@@ -285,7 +286,13 @@ export async function completeMcpTools(
         also: { lastCycleKey: state.lastCycleKey },
       },
     );
-    if (!changed) return false;
+    if (!changed) {
+      // Another writer (the closure's evaluation) moved the state between our read and write: re-read, bounded.
+      // The retry returns false at once if this cycle's tool part was already recorded.
+      return attempt < 3
+        ? completeMcpTools(db, monitorId, cycleId, attempt + 1)
+        : false;
+    }
     for (const [kind, reason, key] of warnings)
       await dispatchMonitorWarning(monitorId, kind, reason, key);
     return true;
