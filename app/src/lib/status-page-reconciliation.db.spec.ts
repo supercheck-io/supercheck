@@ -505,6 +505,19 @@ it("does not recreate a manually resolved automatic incident until the component
   expect(await mockDatabase.query.incidents.findMany()).toHaveLength(2);
 });
 
+it("opens no public incident for a monitor failing inside a maintenance window", async () => {
+  await mockDatabase.update(schema.statusPageComponents).set({ autoCreateIncidents: true, updatedAt: new Date() }).where(eq(schema.statusPageComponents.id, componentId));
+  await client`INSERT INTO maintenance_windows (id, organization_id, project_id, title, scope, recurrence, timezone, local_start_time, duration_minutes, starts_on, occurrence_starts_at, occurrence_ends_at)
+    SELECT uuidv7(), organization_id, project_id, 'Deploy', 'project', 'once', 'UTC', '00:00', 60, CURRENT_DATE, now() - interval '5 minutes', now() + interval '55 minutes' FROM monitors WHERE id = ${monitorId}`;
+  await mockDatabase.update(schema.monitors).set({ status: "down", lastCheckAt: new Date() }).where(eq(schema.monitors.id, monitorId));
+  await reconcileStatusPages();
+  expect(await mockDatabase.query.incidents.findMany()).toHaveLength(0);
+
+  await client`UPDATE maintenance_windows SET cancelled_at = now()`;
+  await reconcileStatusPages();
+  expect(await mockDatabase.query.incidents.findMany()).toHaveLength(1);
+});
+
 it("writes automatic incident text in the configured page language", async () => {
   await mockDatabase.update(schema.statusPages).set({ language: "es" }).where(eq(schema.statusPages.id, pageId));
   await mockDatabase.update(schema.statusPageComponents).set({ autoCreateIncidents: true, updatedAt: new Date() }).where(eq(schema.statusPageComponents.id, componentId));

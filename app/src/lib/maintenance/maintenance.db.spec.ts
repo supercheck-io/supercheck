@@ -24,6 +24,7 @@ import {
   extendMaintenanceWindow,
   getMaintenanceWindow,
   listMaintenanceWindows,
+  updateMaintenanceWindow,
 } from "./windows";
 
 const APP_ROOT = path.resolve(__dirname, "../../..");
@@ -192,6 +193,40 @@ describe("window lifecycle (M10, AC12)", () => {
     const onceNow = await getMaintenanceWindow(actor, once.window.id);
     expect(seriesNow.ok && seriesNow.window.occurrenceStartsAt!.getTime()).toBeGreaterThan(Date.now());
     expect(onceNow).toMatchObject({ ok: true, window: { state: "completed" } });
+  });
+});
+
+describe("updates", () => {
+  it("refuses schedule edits on an active one-off and keeps a status-page window one-off", async () => {
+    const active = await createMaintenanceWindow(actor, oneOff(-5), "api");
+    if (!active.ok) throw new Error(active.error);
+    expect(await updateMaintenanceWindow(actor, active.window.id, { durationMinutes: 120 })).toMatchObject({ ok: false, code: "conflict" });
+    expect(await updateMaintenanceWindow(actor, active.window.id, { title: "Renamed" })).toMatchObject({ ok: true, window: { title: "Renamed" } });
+
+    const later = await createMaintenanceWindow(actor, oneOff(120), "api");
+    if (!later.ok) throw new Error(later.error);
+    const [page] = await client`INSERT INTO status_pages (id, organization_id, project_id, name, subdomain) VALUES (uuidv7(), ${org}, ${project}, 'S3', ${`s${randomUUID().slice(0, 8)}`}) RETURNING id`;
+    await client`INSERT INTO incidents (id, status_page_id, name, status, impact, scheduled_for, scheduled_until, maintenance_window_id)
+      VALUES (uuidv7(), ${page!.id}, 'm', 'scheduled', 'minor', now() + interval '2 hours', now() + interval '3 hours', ${later.window.id})`;
+    expect(await updateMaintenanceWindow(actor, later.window.id, { recurrence: "daily" })).toMatchObject({ ok: false, code: "invalid" });
+    const moved = await updateMaintenanceWindow(actor, later.window.id, { durationMinutes: 90 });
+    expect(moved.ok && moved.window.occurrenceEndsAt!.getTime() - moved.window.occurrenceStartsAt!.getTime()).toBe(90 * MIN);
+    const [linked] = await client`SELECT scheduled_until FROM incidents WHERE maintenance_window_id = ${later.window.id}`;
+    expect(new Date(linked!.scheduled_until).getTime()).toBe(moved.ok && moved.window.occurrenceEndsAt!.getTime());
+  });
+
+  it("ends a series' active occurrence by moving to the next one, and lists live windows before history", async () => {
+    const series = await createMaintenanceWindow(actor, { ...oneOff(-5), recurrence: "daily" }, "api");
+    if (!series.ok) throw new Error(series.error);
+    const ended = await endMaintenanceWindow(actor, series.window.id);
+    expect(ended).toMatchObject({ ok: true, window: { state: "scheduled" } });
+    expect(ended.ok && ended.window.occurrenceStartsAt!.getTime()).toBeGreaterThan(Date.now());
+    // The ended occurrence is over, so it can no longer be extended.
+    expect(await extendMaintenanceWindow(actor, series.window.id, { byMinutes: 30 })).toMatchObject({ ok: false, code: "conflict" });
+    await client`INSERT INTO maintenance_windows (id, organization_id, project_id, title, scope, recurrence, timezone, local_start_time, duration_minutes, starts_on, occurrence_starts_at, occurrence_ends_at, completed_at)
+      SELECT uuidv7(), ${org}, ${project}, 'old', 'project', 'once', 'UTC', '01:00', 60, '2026-01-01', now() - interval '3 days', now() - interval '3 days' + interval '1 hour', now() FROM generate_series(1, 205)`;
+    const listed = await listMaintenanceWindows(actor);
+    expect(listed.ok && listed.windows[0]!.id).toBe(series.window.id);
   });
 });
 

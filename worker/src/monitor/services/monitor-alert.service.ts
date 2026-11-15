@@ -161,10 +161,16 @@ export class MonitorAlertService {
       );
   }
 
-  /** An unresolved scheduled-maintenance incident covers the monitor right now. */
-  /** A maintenance window or a status-page scheduled maintenance covers the monitor now: alerts are muted. */
-  private isMonitorInMaintenance(monitorId: string): Promise<boolean> {
-    return isMonitorInMaintenance(this.dbService.db, monitorId, new Date());
+  /** A maintenance window or a status-page scheduled maintenance covered the monitor when the result was observed (else now): alerts are muted. */
+  private isMonitorInMaintenance(
+    monitorId: string,
+    observedAt?: Date,
+  ): Promise<boolean> {
+    return isMonitorInMaintenance(
+      this.dbService.db,
+      monitorId,
+      observedAt ?? new Date(),
+    );
   }
 
   /**
@@ -172,7 +178,7 @@ export class MonitorAlertService {
    * alerts off. Held back during scheduled maintenance like an alert, so the next failing check retries.
    */
   async signalFailure(monitorId: string, reason: string, observedAt?: Date) {
-    if (await this.isMonitorInMaintenance(monitorId)) {
+    if (await this.isMonitorInMaintenance(monitorId, observedAt)) {
       return {
         delivered: false,
         suppressed: true,
@@ -573,7 +579,7 @@ export class MonitorAlertService {
       return { delivered: false };
     }
 
-    if (await this.isMonitorInMaintenance(monitorId)) {
+    if (await this.isMonitorInMaintenance(monitorId, observedAt)) {
       this.logger.log(
         `[NOTIFY] Suppressing monitor ${monitorId} alert during scheduled maintenance`,
       );

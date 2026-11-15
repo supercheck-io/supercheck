@@ -1,6 +1,7 @@
 import { notFoundIfDeleting } from "@/lib/deletion/visibility";
 import { and, desc, eq, inArray, isNull, lte, ne, or, sql } from "drizzle-orm";
 import { db } from "@/utils/db";
+import { isMonitorInMaintenance } from "@/lib/maintenance/predicate";
 import {
   statusPageComponents,
   statusPageComponentMonitors,
@@ -324,7 +325,9 @@ export async function reconcileStatusPages(): Promise<boolean> {
         !suppressed &&
         component.autoCreateIncidents &&
         component.showcase &&
-        page?.status === "published"
+        page?.status === "published" &&
+        // A failure inside a maintenance window opens no public incident.
+        (await anyOutsideMaintenance(tx, liveLinks.filter((association) => ["down", "error", "timeout"].includes(association.monitor.status)).map((association) => association.monitor.id)))
       ) {
         const [incident] = await tx
           .insert(incidents)
@@ -400,4 +403,10 @@ export async function reconcileStatusPages(): Promise<boolean> {
     }
     return true;
   });
+}
+
+async function anyOutsideMaintenance(executor: Parameters<typeof isMonitorInMaintenance>[2], monitorIds: string[]) {
+  const now = new Date();
+  for (const id of monitorIds) if (!(await isMonitorInMaintenance(id, now, executor))) return true;
+  return false;
 }
