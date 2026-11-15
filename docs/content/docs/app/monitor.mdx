@@ -209,13 +209,19 @@ Checks a remote MCP server the way an AI client would use it: connect, log in, l
 | Call a tool | Optional tool name, arguments (a JSON object, up to 8 KiB) and **Result must contain** text. Pick a read-only tool: it runs on every check, from every location |
 | Slow after (ms) | Optional. Warns when a check is slower for 3 checks in a row |
 
+<Callout type="warn">
+The tool call is real: it runs on every check from every location, so a 1-minute monitor in three locations calls the tool about 130,000 times a month. Pick a tool with no side effects. Arguments are stored on the monitor as plain settings, not as a secret, and are hidden only from viewers, so never put a token or personal data in them. Use the login field for credentials.
+</Callout>
+
+Changing the server URL or the login starts a fresh tool baseline and history.
+
 Only remote Streamable HTTP servers are supported. There is no local `npx` or `uvx` server, no OAuth, and no legacy HTTP+SSE transport.
 
 ### Tool list changes
 
 The first successful check stores the server's tools as a baseline. Later checks compare each tool's name, description and input schema with it. When any of them differ, Supercheck sends one **Tools changed** warning, lists what was added, removed or changed (and whether the description or the schema changed), and makes the new list the baseline. Tool descriptions are instructions to the calling model, so a silent edit is how a compromised server redirects agents.
 
-A change is a warning, not an incident. A tool list that goes back to an earlier state warns again. With several locations, a change is recorded only when every location that is up sees the same new list. A down check never changes the baseline.
+A change is a warning, not an incident. A tool list that goes back to an earlier state warns again. With several locations, a change is recorded only after every location has reported and every location that is up sees the same new list. A server that lists more than 10 pages of tools fails the check. A down check never changes the baseline.
 
 ### Failure messages
 

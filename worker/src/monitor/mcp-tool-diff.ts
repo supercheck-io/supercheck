@@ -43,6 +43,8 @@ export function fingerprintTool(raw: unknown): McpToolFingerprint | null {
       whole,
       sha256(description).slice(0, PART_CHARS),
       sha256(canonicalJson(inputSchema)).slice(0, PART_CHARS),
+      // Identity of the RAW name: two names that sanitise to the same display stay distinct.
+      sha256(tool.name).slice(0, PART_CHARS),
     ].join('.'),
   };
 }
@@ -63,11 +65,27 @@ export function diffTools(
   previous: McpToolFingerprint[],
   next: McpToolFingerprint[],
 ): McpToolDiff {
-  const before = new Map(previous.map((tool) => [tool.name, tool.fingerprint]));
-  const after = new Map(next.map((tool) => [tool.name, tool.fingerprint]));
+  const keyOf = (tool: McpToolFingerprint) =>
+    tool.fingerprint.split('.')[3] ?? tool.name;
+  const before = new Map(
+    previous.map((tool) => [
+      keyOf(tool),
+      { name: tool.name, fp: tool.fingerprint },
+    ]),
+  );
+  const after = new Map(
+    next.map((tool) => [
+      keyOf(tool),
+      { name: tool.name, fp: tool.fingerprint },
+    ]),
+  );
   const diff: McpToolDiff = { added: [], removed: [], changed: [] };
-  for (const [name, fingerprint] of after) {
-    const old = before.get(name);
+  const matched = new Set<string>();
+  for (const [key, { name, fp: fingerprint }] of after) {
+    // A baseline written before name hashes existed is keyed by display name.
+    const matchKey = before.has(key) ? key : before.has(name) ? name : key;
+    matched.add(matchKey);
+    const old = before.get(matchKey)?.fp;
     if (old === undefined) diff.added.push(name);
     else if (old !== fingerprint) {
       const [, oldDescription, oldSchema] = old.split('.');
@@ -83,8 +101,8 @@ export function diffTools(
       });
     }
   }
-  for (const name of before.keys())
-    if (!after.has(name)) diff.removed.push(name);
+  for (const [key, { name }] of before)
+    if (!matched.has(key)) diff.removed.push(name);
   return diff;
 }
 

@@ -1,4 +1,5 @@
 import type {
+  McpToolFingerprint,
   McpFailure,
   McpResultDetails,
   MonitorConfig,
@@ -16,11 +17,7 @@ import { isDnsError } from '../common/utils/network-error';
 import { scrubSecrets, secretEchoForms } from '../common/utils/scrub-secrets';
 import { buildAuthHeaders } from '../private-agent/mcp-client';
 import { McpPolicyError } from './mcp-monitor-transport';
-import {
-  MCP_NAME_MAX_CHARS,
-  fingerprintTool,
-  hashToolList,
-} from './mcp-tool-diff';
+import { fingerprintTool, hashToolList } from './mcp-tool-diff';
 import {
   SECRET_OVER_HTTP_MESSAGE,
   secretTransportAllowed,
@@ -225,15 +222,22 @@ export async function executeMcpCheck(
         'list',
         `The server lists more tools than Supercheck reads (${MCP_MAX_LIST_PAGES} pages)`,
       );
-    const byName = new Map<string, string>();
+    // Keyed by the RAW name; a duplicate keeps its smallest fingerprint, so the list never depends on server order.
+    const byName = new Map<string, McpToolFingerprint>();
     for (const tool of raw) {
       const fingerprint = fingerprintTool(tool);
-      if (fingerprint) byName.set(fingerprint.name, fingerprint.fingerprint);
+      if (!fingerprint) continue;
+      const rawName = (tool as { name: string }).name;
+      const seen = byName.get(rawName);
+      if (!seen || fingerprint.fingerprint < seen.fingerprint)
+        byName.set(rawName, fingerprint);
     }
     // Sorted before the cap, so a server listing more than the cap in a shifting order stays stable.
-    const all = [...byName]
-      .map(([name, fingerprint]) => ({ name, fingerprint }))
-      .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+    const all = [...byName.values()].sort((a, b) => {
+      const x = `${a.name}\u0000${a.fingerprint}`;
+      const y = `${b.name}\u0000${b.fingerprint}`;
+      return x < y ? -1 : x > y ? 1 : 0;
+    });
     mcp.toolCount = byName.size;
     // The hash covers every tool, so a change past the stored 500 is still seen.
     mcp.toolsHash = hashToolList(all);
@@ -245,7 +249,7 @@ export async function executeMcpCheck(
     if (client.serverVersion) mcp.serverVersion = client.serverVersion;
 
     const missing = (settings.requiredTools ?? []).filter(
-      (name) => !byName.has(name.slice(0, MCP_NAME_MAX_CHARS)),
+      (name) => !byName.has(name),
     );
     if (missing.length > 0) {
       return finish(

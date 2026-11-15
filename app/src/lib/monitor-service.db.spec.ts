@@ -138,3 +138,21 @@ it("a config save keeps worker-owned keys written after the app read the row, an
   const [row] = await mockDatabase.select().from(schema.monitors).where(eq(schema.monitors.id, id));
   expect(row.config).toEqual({ method: "POST", mcpState: state });
 });
+
+it("changing an MCP monitor's target or login drops its tool baseline; other edits keep it", async () => {
+  const { pausedRows } = await seed(0, 1);
+  const id = pausedRows[0].id;
+  const state = { lastCycleKey: "c1", baseline: { hash: "h", takenAt: "2026-11-15T00:00:00.000Z", tools: [] } };
+  const mcp = { auth: { type: "bearer", secretKey: "T" } };
+  const reset = () => client`UPDATE monitors SET target = 'https://a.example.com/mcp', config = ${client.json({ mcp, mcpState: state })} WHERE id = ${id}`;
+  const read = async () => (await mockDatabase.select().from(schema.monitors).where(eq(schema.monitors.id, id)))[0];
+  await reset();
+  await updateMonitorHandler(id, { name: "renamed", config: { mcp, timeoutSeconds: 20 } as never });
+  expect((await read()).config).toMatchObject({ mcpState: state });
+  await updateMonitorHandler(id, { target: "https://b.example.com/mcp" });
+  expect(await read()).toMatchObject({ target: "https://b.example.com/mcp", config: { mcp } });
+  expect((await read()).config).not.toHaveProperty("mcpState");
+  await reset();
+  await updateMonitorHandler(id, { config: { mcp: { auth: { type: "bearer", secretKey: "OTHER" } } } as never });
+  expect((await read()).config).not.toHaveProperty("mcpState");
+});

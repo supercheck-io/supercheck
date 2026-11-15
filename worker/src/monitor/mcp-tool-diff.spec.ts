@@ -34,9 +34,7 @@ describe('fingerprintTool', () => {
   it('is a SHA-256 of the canonical {name, description, inputSchema} plus the part hashes', () => {
     const fp = tool('a');
     expect(fp.name).toBe('a');
-    expect(fp.fingerprint).toMatch(
-      /^[0-9a-f]{64}\.[0-9a-f]{10}\.[0-9a-f]{10}$/,
-    );
+    expect(fp.fingerprint).toMatch(/^[0-9a-f]{64}(\.[0-9a-f]{10}){3}$/);
   });
 
   it('is stable across schema key order and changes with any of the three parts', () => {
@@ -137,5 +135,19 @@ describe('diffTools', () => {
       'description',
       'schema',
     ]);
+  });
+
+  it('keeps two raw names that sanitise to the same display distinct', () => {
+    const a = tool('résumé');
+    const b = tool('r?sum?');
+    expect(a.name).toBe(b.name);
+    const diff = diffTools([a], [a, b]);
+    expect(diff.added).toEqual(['r?sum?']);
+    expect(diffTools([a, b], [a]).removed).toEqual(['r?sum?']);
+    expect(diffTools([a, b], [a, b])).toEqual({
+      added: [],
+      removed: [],
+      changed: [],
+    });
   });
 });

@@ -41,6 +41,36 @@ export function configKeepingWorkerKeys(config: unknown, configColumn: unknown, 
   return sql`((${JSON.stringify(config ?? {})}::jsonb) - ARRAY[${all}]::text[]) || coalesce((select jsonb_object_agg(e.key, e.value) from jsonb_each(coalesce(${col}, '{}'::jsonb)) e where e.key in (${list})), '{}'::jsonb)`;
 }
 
+/** The `config` SET value for a write that does not replace config but must still drop worker keys (a target-only change). */
+export function configWithoutKeys(configColumn: unknown, keys: readonly string[]): SQL {
+  return sql`${configColumn as SQL} - ARRAY[${sql.raw(keys.map((k) => `'${k}'`).join(", "))}]::text[]`;
+}
+
+/**
+ * Worker-owned keys this write deliberately deletes instead of keeping from the row: the stale SSL notice, and the
+ * MCP tool baseline when the server (target) or its login changes, so the first check on the new server is a fresh
+ * baseline and history does not mix servers. `config` is the config being written (undefined: not replaced).
+ */
+export function workerKeysDroppedByWrite(
+  stored: { target?: string | null; config?: unknown } | null | undefined,
+  next: { target?: string | null; config?: unknown },
+): string[] {
+  const dropped: string[] = [];
+  const storedConfig = (stored?.config ?? {}) as Record<string, unknown>;
+  const nextConfig = next.config as Record<string, unknown> | undefined;
+  if (nextConfig && storedConfig.sslAlertState !== undefined && nextConfig.sslAlertState === undefined) dropped.push("sslAlertState");
+  if (storedConfig.mcpState !== undefined) {
+    const auth = (c: unknown) => {
+      const a = (c as { mcp?: { auth?: Record<string, unknown> } } | undefined)?.mcp?.auth;
+      return JSON.stringify([a?.type, a?.secretKey, a?.headerName]);
+    };
+    const targetChanged = next.target != null && next.target !== stored?.target;
+    const authChanged = nextConfig !== undefined && auth(nextConfig) !== auth(storedConfig);
+    if (targetChanged || authChanged) dropped.push("mcpState");
+  }
+  return dropped;
+}
+
 /**
  * Drops the worker's pending "SSL certificate renewed" state when the saved settings no longer send SSL
  * alerts (SSL Check or SSL alerts off, or alerts off). Deletion is the only client-side change to a worker-owned

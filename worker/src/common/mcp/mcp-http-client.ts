@@ -235,9 +235,10 @@ export class McpHttpClient {
             (v): v is string => typeof v === 'string',
           )
         : [];
-      if (listed.length === 0 || listed.includes(MCP_MODERN_VERSION))
+      // Modern only when the server names a version we speak; `{}` from a gateway is not a discover answer.
+      if (listed.includes(MCP_MODERN_VERSION))
         return this.setModern(MCP_MODERN_VERSION, result);
-      versions = listed;
+      if (listed.length > 0) versions = listed;
     } catch (error) {
       if (!(error instanceof McpError)) throw error;
       if (
@@ -481,6 +482,8 @@ export class McpHttpClient {
   /** Best effort; servers expire idle sessions on their own. Only the 2025 path has a session. */
   async close(): Promise<void> {
     if (!this.sessionId || this.protocol === '2026') return;
+    const remaining = this.o.deadline - Date.now();
+    if (remaining <= 0) return;
     await this.o
       .request(
         this.o.endpoint,
@@ -491,7 +494,7 @@ export class McpHttpClient {
             'Mcp-Session-Id': this.sessionId,
             'MCP-Protocol-Version': this.protocolVersion,
           },
-          signal: AbortSignal.timeout(2_000),
+          signal: AbortSignal.timeout(Math.min(2_000, remaining)),
         },
         async (response) => {
           await response.body?.cancel().catch(() => undefined);

@@ -48,6 +48,8 @@ import {
   monitorAuditTarget,
   preserveWorkerConfigKeys,
   configKeepingWorkerKeys,
+  configWithoutKeys,
+  workerKeysDroppedByWrite,
   SCHEDULE_FAILURE_MESSAGE,
   sanitizeMonitorFields,
   scheduleOutOfSync,
@@ -411,6 +413,7 @@ export async function PUT(
 
     let updatedMonitor;
     try {
+      const mcpDropped = updatePayload.config ? [] : workerKeysDroppedByWrite(currentMonitor, { target: updatePayload.target });
       const writeMonitor = async (tx: Parameters<Parameters<typeof db.transaction>[0]>[0]) => {
         const [updated] = await tx
           .update(monitors)
@@ -421,13 +424,12 @@ export async function PUT(
                   config: configKeepingWorkerKeys(
                     updatePayload.config,
                     monitors.config,
-                    (currentMonitor.config as Record<string, unknown> | null)?.sslAlertState !== undefined &&
-                      (updatePayload.config as Record<string, unknown>).sslAlertState === undefined
-                      ? ["sslAlertState"]
-                      : [],
+                    workerKeysDroppedByWrite(currentMonitor, { target: updatePayload.target, config: updatePayload.config }),
                   ),
                 }
-              : updatePayload,
+              : mcpDropped.length
+                ? { ...updatePayload, config: configWithoutKeys(monitors.config, mcpDropped) }
+                : updatePayload,
           )
           .where(
             and(

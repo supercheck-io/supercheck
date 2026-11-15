@@ -11,6 +11,8 @@ import {
   preserveWorkerConfigKeys,
   WORKER_OWNED_CONFIG_KEYS,
   configKeepingWorkerKeys,
+  configWithoutKeys,
+  workerKeysDroppedByWrite,
   monitorAuditTarget,
   withMcpAlertDefaults,
   mirrorProviderRowsToAlertConfig,
@@ -304,5 +306,31 @@ describe("configKeepingWorkerKeys", () => {
   it("does not restore a key this write deliberately deletes", () => {
     const { sql } = render({}, ["sslAlertState"]);
     expect(sql.match(/'sslAlertState'/g)).toHaveLength(1); // stripped only
+  });
+});
+
+describe("workerKeysDroppedByWrite (MCP baseline)", () => {
+  const stored = { target: "https://a.example.com/mcp", config: { mcpState: { lastCycleKey: "c" }, mcp: { auth: { type: "bearer", secretKey: "T" } } } };
+  it("drops mcpState when the target changes, with or without a config", () => {
+    expect(workerKeysDroppedByWrite(stored, { target: "https://b.example.com/mcp" })).toEqual(["mcpState"]);
+    expect(workerKeysDroppedByWrite(stored, { target: "https://b.example.com/mcp", config: stored.config })).toEqual(["mcpState"]);
+  });
+  it.each([
+    [{ type: "bearer", secretKey: "OTHER" }],
+    [{ type: "header", secretKey: "T", headerName: "X-Key" }],
+    [{ type: "none" }],
+  ])("drops mcpState when the login changes to %j", (auth) => {
+    expect(workerKeysDroppedByWrite(stored, { config: { mcp: { auth } } })).toEqual(["mcpState"]);
+  });
+  it("keeps mcpState for other edits and when there is none", () => {
+    expect(workerKeysDroppedByWrite(stored, { target: stored.target, config: { mcp: { auth: stored.config.mcp.auth, slowMs: 500 }, timeoutSeconds: 10 } })).toEqual([]);
+    expect(workerKeysDroppedByWrite(stored, {})).toEqual([]);
+    expect(workerKeysDroppedByWrite({ target: "a", config: {} }, { target: "b" })).toEqual([]);
+  });
+  it("still reports a deliberately deleted SSL notice", () => {
+    expect(workerKeysDroppedByWrite({ config: { sslAlertState: {} } }, { config: {} })).toEqual(["sslAlertState"]);
+  });
+  it("renders a config write that removes the key", () => {
+    expect(new PgDialect().sqlToQuery(configWithoutKeys(monitors.config, ["mcpState"])).sql).toContain("- ARRAY['mcpState']");
   });
 });

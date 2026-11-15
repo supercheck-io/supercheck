@@ -354,9 +354,42 @@ describe('McpHttpClient 2025 handshake path and auto fallback', () => {
     expect((await connect(request)).protocol).toBe('2025');
   });
 
-  it('accepts a discover result that lists no versions as modern', async () => {
-    const { request } = script((req) => ok(req.body!.id, {}));
-    expect((await connect(request)).protocol).toBe('2026');
+  it.each([[{}], [{ supportedVersions: [] }], [{ supportedVersions: 'x' }]])(
+    'a gateway that answers discover with %j is a 2025 server',
+    async (reply) => {
+      const { request } = script((req, n) =>
+        n === 1 ? ok(1, reply) : legacyServer()(req, n),
+      );
+      expect((await connect(request)).protocol).toBe('2025');
+    },
+  );
+
+  it('close() skips the DELETE once the deadline has passed and bounds it by the time left', async () => {
+    const { request, seen } = script(legacyServer());
+    const client = await connect(request, {
+      mode: '2025',
+      deadline: Date.now() + 5_000,
+    });
+    (client as unknown as { o: { deadline: number } }).o.deadline =
+      Date.now() - 1;
+    await client.close();
+    expect(seen.some((s) => s.method === 'DELETE')).toBe(false);
+  });
+
+  it('close() bounds the DELETE signal by the remaining deadline', async () => {
+    let signal: AbortSignal | undefined;
+    const base = script(legacyServer());
+    const request: McpRequest = (u, init, read) => {
+      if (init.method === 'DELETE') signal = init.signal as AbortSignal;
+      return base.request(u, init, read);
+    };
+    const client = await connect(request, {
+      mode: '2025',
+      deadline: Date.now() + 200,
+    });
+    await client.close();
+    await new Promise((r) => setTimeout(r, 300));
+    expect(signal!.aborted).toBe(true); // 2 s would not have fired yet
   });
 
   it('forced 2025 never probes, and falls back to the default version for a bad protocolVersion', async () => {

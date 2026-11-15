@@ -290,6 +290,30 @@ describe('executeMcpCheck', () => {
       );
     });
 
+    it('duplicate tool names in a varying order give the same hash every check', async () => {
+      const one = { name: 'dup', description: 'one' };
+      const two = { name: 'dup', description: 'two' };
+      b.tools = [one, two];
+      const first = await run();
+      b.tools = [two, one];
+      const second = await run();
+      expect(second.details.mcp.toolsHash).toBe(first.details.mcp.toolsHash);
+      expect(first.details.mcp.toolCount).toBe(1);
+    });
+
+    it('non-ASCII names are keyed by their raw name: count stays right and required tools match', async () => {
+      b.tools = [
+        { name: 'résumé' },
+        { name: 'r?sum?' },
+        { name: 'café' },
+        { name: 'caf?' },
+      ];
+      const r = await run({ requiredTools: ['résumé'] });
+      expect(r.status).toBe('up');
+      expect(r.details.mcp.toolCount).toBe(4);
+      expect(r.details.mcp.tools).toHaveLength(4);
+    });
+
     it('hashes the whole list: a change on tool 550 of 600 changes the hash though only 500 are stored', async () => {
       const list = (desc: string) =>
         Array.from({ length: 600 }, (_, i) => ({
