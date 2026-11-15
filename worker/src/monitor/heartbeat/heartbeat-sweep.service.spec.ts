@@ -1,5 +1,6 @@
 import {
   CLAIM_LIMIT,
+  CLOSE_OUTAGE_SCRIPT,
   HEARTBEAT_INGEST_KEY,
   HEARTBEAT_SWEEP_INTERVAL_MS,
   INGEST_DOWN_SINCE_KEY,
@@ -19,6 +20,7 @@ jest.mock('../../execution/services/redis.service', () => ({
 }));
 
 const MIN = 60_000;
+const DAY = 24 * 60 * MIN;
 const T0 = Date.parse('2026-11-14T12:00:00Z');
 const UP: IngestStatus = { up: true };
 
@@ -46,30 +48,40 @@ const pinged = (agoMin: number, extra: Record<string, unknown> = {}) =>
 /** In-memory Redis with just what the ingest guard uses. */
 function fakeRedis() {
   const store = new Map<string, string>();
+  const ttls = new Map<string, number>();
   const redis = {
     status: 'ready',
     store,
+    ttls,
     get: jest.fn(async (key: string) => store.get(key) ?? null),
     set: jest.fn(async (key: string, value: string, mode?: string) => {
       if (mode === 'NX' && store.has(key)) return null;
       store.set(key, value);
       return 'OK';
     }),
-    multi: () => {
-      const ops: Array<() => [null, unknown]> = [];
-      const chain = {
-        get: (key: string) => {
-          ops.push(() => [null, store.get(key) ?? null]);
-          return chain;
-        },
-        del: (key: string) => {
-          ops.push(() => [null, store.delete(key) ? 1 : 0]);
-          return chain;
-        },
-        exec: async () => ops.map((op) => op()),
-      };
-      return chain;
-    },
+    /** CLOSE_OUTAGE_SCRIPT, run atomically like Redis does (no await inside). */
+    eval: jest.fn(
+      async (
+        _script: string,
+        _n: number,
+        sinceKey: string,
+        outageKey: string,
+        now: string,
+      ) => {
+        const since = store.get(sinceKey);
+        if (since) {
+          const window = `{"id":"${since}","startMs":${since},"endMs":${now}}`;
+          store.set(outageKey, window);
+          ttls.set(
+            outageKey,
+            Math.ceil((3 * (Number(now) - Number(since))) / 1000) + 3600,
+          );
+          store.delete(sinceKey);
+          return [1, window];
+        }
+        return [0, store.get(outageKey) ?? ''];
+      },
+    ),
   };
   return redis;
 }
@@ -164,6 +176,34 @@ describe('decideHeartbeat', () => {
       },
       finish: { evaluatedSeq: 1, newPing: true },
     });
+  });
+
+  it('records a /fail overtaken by a ping in one window as down first, and tracks failSeq', () => {
+    const failAt = new Date(T0 - 2 * MIN).toISOString();
+    const m = monitor({
+      heartbeatState: {
+        lastPingAt: new Date(T0 - MIN).toISOString(),
+        lastPingKind: 'ping',
+        pingSeq: 5,
+        evaluatedSeq: 3,
+        failSeq: 2,
+        evaluatedFailSeq: 1,
+        lastFailAt: failAt,
+      },
+    });
+    const d = decideHeartbeat(m, T0, UP);
+    expect(d.priorFailAt).toEqual(new Date(failAt));
+    expect(d.result?.kind).toBe('ping');
+    expect(d.finish).toMatchObject({ evaluatedSeq: 5, evaluatedFailSeq: 2 });
+    // Already judged: no prior fail.
+    const judged = monitor({
+      heartbeatState: { ...m.heartbeatState, evaluatedFailSeq: 2 },
+    });
+    expect(decideHeartbeat(judged, T0, UP).priorFailAt).toBeUndefined();
+    // Old ping route (no failSeq): nothing new written.
+    expect(
+      decideHeartbeat(pinged(1, { pingSeq: 4 }), T0, UP).finish,
+    ).not.toHaveProperty('evaluatedFailSeq');
   });
 
   it('shows no duration for a stale or later /start', () => {
@@ -343,6 +383,62 @@ describe('ingest guard', () => {
     );
   });
 
+  it('closes and publishes the outage in one script, so a concurrent reader always sees it', async () => {
+    const redis = fakeRedis();
+    const a = service(redis).sweep;
+    const b = service(redis).sweep;
+    await a.readIngest(); // down since T0 - 150 s
+    redis.store.set(HEARTBEAT_INGEST_KEY, '1');
+    const end = T0 + 10 * MIN;
+    const [ra, rb] = await Promise.all([a.readIngest(end), b.readIngest(end)]);
+    const outage = {
+      id: String(T0 - 150_000),
+      startMs: T0 - 150_000,
+      endMs: end,
+    };
+    expect(ra).toEqual({ up: true, outage });
+    expect(rb).toEqual({ up: true, outage });
+    // Exactly one closed it (and the other read the published window), never neither key.
+    const closes = await Promise.all(
+      redis.eval.mock.results.map((r) => r.value as Promise<[number, string]>),
+    );
+    expect(closes.map(([closed]) => closed).sort()).toEqual([0, 1]);
+    expect(redis.store.has(INGEST_DOWN_SINCE_KEY)).toBe(false);
+    expect(redis.ttls.get(INGEST_OUTAGE_KEY)).toBe(
+      Math.ceil((3 * (end - outage.startMs)) / 1000) + 3600,
+    );
+    expect(redis.eval).toHaveBeenCalledWith(
+      CLOSE_OUTAGE_SCRIPT,
+      2,
+      INGEST_DOWN_SINCE_KEY,
+      INGEST_OUTAGE_KEY,
+      String(end),
+    );
+  });
+
+  it('caps the extra wait after an outage at 24 h for long intervals', () => {
+    const outage = { id: 'o', startMs: T0 - 15 * MIN, endMs: T0 };
+    // Monthly job due 5 min into a 15-min outage (grace 1 d): 24 h + grace after the outage, not 31 days.
+    const monthly = {
+      ...pinged(44640 + 10),
+      frequencyMinutes: 44640,
+      createdAt: new Date(T0 - 90 * DAY),
+    };
+    const ingest = { up: true, outage };
+    const d = decideHeartbeat(monthly, T0 + MIN, ingest);
+    expect(d.finish.deadlineShiftedFor).toBe('o');
+    expect(d.finish.deadlineShiftMs).toBe(
+      T0 + DAY - (T0 - (44640 + 10) * MIN) - 44640 * MIN,
+    );
+    const late = decideHeartbeat(monthly, T0 + DAY + MIN, ingest);
+    expect(late.lateEpisodeKey).toBe(
+      `heartbeat_late:m1:${new Date(T0 + 2 * DAY).toISOString()}`,
+    );
+    expect(
+      decideHeartbeat(monthly, T0 + 2 * DAY + 1, ingest).result?.kind,
+    ).toBe('missed');
+  });
+
   it('does not shift a deadline counted from a ping after the outage ended', () => {
     const outage = { id: 'o1', startMs: T0 - 30 * MIN, endMs: T0 - 20 * MIN };
     // Interval 1 min, grace 5: pinged 10 min ago (after the outage), deadline inside the window, yet not shifted.
@@ -467,6 +563,30 @@ describe('HeartbeatSweepService.sweep', () => {
       ctx.monitors.recordExternalResult.mock.calls[0][0].heartbeatState
         .leaseUntil,
     ).toBe('L2');
+  });
+
+  it('records the overtaken /fail as down before the ping', async () => {
+    const m = monitor({
+      heartbeatState: {
+        lastPingAt: new Date(T0 - MIN).toISOString(),
+        lastPingKind: 'ping',
+        pingSeq: 2,
+        evaluatedSeq: 0,
+        failSeq: 1,
+        lastFailAt: new Date(T0 - 2 * MIN).toISOString(),
+      },
+    });
+    const ctx = withClaim([claimed(m)]);
+    await ctx.sweep.sweep();
+    const calls = ctx.monitors.recordExternalResult.mock.calls.map((c) => c[1]);
+    expect(calls).toMatchObject([
+      {
+        isUp: false,
+        checkedAt: new Date(T0 - 2 * MIN),
+        details: { heartbeat: { kind: 'fail' } },
+      },
+      { isUp: true, details: { heartbeat: { kind: 'ping' } } },
+    ]);
   });
 
   it('records a ping with its start time and client', async () => {

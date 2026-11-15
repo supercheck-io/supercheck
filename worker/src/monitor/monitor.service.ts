@@ -765,7 +765,14 @@ export class MonitorService {
     if (!current || current.status === 'paused' || !current.enabled) return;
     if (!(await this.insertResultWithRetry(result))) return;
     const currentStatus = result.isUp ? 'up' : 'down';
-    await this.updateMonitorStatus(current.id, currentStatus, result.checkedAt);
+    // A failed status write must fail the observation, so the sweep does not consume it (the retry after the
+    // lease may store a second result row for it: rare, same class as the stale-claim duplicate).
+    await this.updateMonitorStatus(
+      current.id,
+      currentStatus,
+      result.checkedAt,
+      true,
+    );
     // A heartbeat goes back to pending on resume or restore, and a new one may first report /fail. Its first
     // missed run or /fail is a real outage, so it alerts as from up; a first ping (pending -> up) still does not.
     const previousStatus =

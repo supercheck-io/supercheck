@@ -67,9 +67,7 @@ suite('heartbeat sweep (PostgreSQL)', () => {
       key === HEARTBEAT_INGEST_KEY ? String(Date.now()) : null,
     ),
     set: jest.fn(),
-    multi: () => ({
-      get: () => ({ del: () => ({ exec: async () => [[null, null]] }) }),
-    }),
+    eval: jest.fn(async () => [0, '']),
   };
 
   /** Each call is a separate worker process with its own services, on the same database. */
@@ -228,6 +226,8 @@ suite('heartbeat sweep (PostgreSQL)', () => {
             'lastPingAt', to_jsonb(now()),
             'lastPingKind', ${kind}::text,
             'pingSeq', coalesce((m.heartbeat_state->>'pingSeq')::bigint, 0) + 1,
+            'failSeq', CASE WHEN ${kind} = 'fail' THEN coalesce((m.heartbeat_state->>'failSeq')::bigint, 0) + 1 END,
+            'lastFailAt', CASE WHEN ${kind} = 'fail' THEN to_jsonb(now()) END,
             'lastUserAgent', 'curl/8'::text))`;
     await sqlClient`
       UPDATE monitors AS m
@@ -355,6 +355,43 @@ suite('heartbeat sweep (PostgreSQL)', () => {
     });
     expect((await monitorRow(id)).status).toBe('down');
     expect(sent).toContain(`monitor_failure:${customProvider}`);
+  });
+
+  it('a /fail then a ping in one sweep window: down + failure alert, then up + recovery', async () => {
+    const id = await seedHeartbeat({ pingAgoMin: 5 });
+    await ping(id, 'fail');
+    await ping(id);
+    await newSweep().sweep();
+
+    const rows = await results(id);
+    expect(
+      rows.map((r) => [
+        r.isUp,
+        (r.details as { heartbeat?: { kind?: string } }).heartbeat?.kind,
+      ]),
+    ).toEqual([
+      [false, 'fail'],
+      [true, 'ping'],
+    ]);
+    expect(sent).toEqual(
+      expect.arrayContaining([
+        `monitor_failure:${customProvider}`,
+        `monitor_recovery:${customProvider}`,
+      ]),
+    );
+    const monitor = await monitorRow(id);
+    expect(monitor.status).toBe('up');
+    expect(monitor.heartbeatState).toMatchObject({
+      pingSeq: 3,
+      evaluatedSeq: 3,
+      failSeq: 1,
+      evaluatedFailSeq: 1,
+    });
+
+    // Judged once: the next ping records only an up row.
+    await ping(id);
+    await newSweep().sweep();
+    expect((await results(id)).map((r) => r.isUp)).toEqual([false, true, true]);
   });
 
   it('late inside grace sends heartbeat_late once to non-preset channels only, with no incident', async () => {

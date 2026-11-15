@@ -192,8 +192,12 @@ export type HeartbeatState = {
   lastPingKind?: 'ping' | 'fail';
   lastStartAt?: string;
   pingSeq?: number;
+  /** +1 per /fail, with its time: a /fail overtaken by a ping in one sweep window is still recorded. */
+  failSeq?: number;
+  lastFailAt?: string;
   lastUserAgent?: string;
   evaluatedSeq?: number;
+  evaluatedFailSeq?: number;
   leaseUntil?: string;
   lateEpisodeKey?: string;
   lastMissedAt?: string;

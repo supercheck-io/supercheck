@@ -22,6 +22,20 @@ export const INGEST_OUTAGE_KEY = 'supercheck:heartbeat:ingest-outage';
 const INGEST_STAMP_TTL_MS = 150_000;
 const REDIS_TIMEOUT_MS = 2_000;
 export const HEARTBEAT_SWEEP_INTERVAL_MS = 30_000;
+/**
+ * Atomically turns a recorded ingest outage start (KEYS[1]) into the outage window (KEYS[2]) ending at ARGV[1], and
+ * returns {1 if this call closed it else 0, the current window or ''}. The window lives until every deadline it
+ * can move has passed (3 x its length + 1 h).
+ */
+export const CLOSE_OUTAGE_SCRIPT = `
+local since = redis.call('GET', KEYS[1])
+if since then
+  local window = '{"id":"' .. since .. '","startMs":' .. since .. ',"endMs":' .. ARGV[1] .. '}'
+  redis.call('SET', KEYS[2], window, 'EX', math.ceil(3 * (tonumber(ARGV[1]) - tonumber(since)) / 1000) + 3600)
+  redis.call('DEL', KEYS[1])
+  return {1, window}
+end
+return {0, redis.call('GET', KEYS[2]) or ''}`;
 export const CLAIM_LIMIT = 100;
 const SWEEP_BUDGET_MS = 20_000;
 const EVALUATION_CONCURRENCY = 10;
@@ -34,6 +48,7 @@ export type IngestStatus = { up: boolean; outage?: IngestOutage };
 
 export type HeartbeatFinish = {
   evaluatedSeq?: number;
+  evaluatedFailSeq?: number;
   lastMissedAt?: string;
   lateEpisodeKey?: string;
   deadlineShiftedFor?: string;
@@ -50,10 +65,15 @@ export type HeartbeatDecision = {
     responseTimeMs?: number;
     reason: string;
   };
+  /** A /fail followed by a success ping in one sweep window: recorded as down (at this time) before the ping. */
+  priorFailAt?: Date;
   /** Episode key of a late warning to send. */
   lateEpisodeKey?: string;
   finish: HeartbeatFinish;
 };
+
+const DAY_MS = 24 * 60 * 60_000;
+const FAIL_REASON = 'Job reported failure';
 
 const MINUTE_MS = 60_000;
 
@@ -104,18 +124,29 @@ export function decideHeartbeat(
 
   // A ping or /fail not judged yet. Pings land even while the app ingest guard is unsure.
   if (lastPingAt !== null && pingSeq > (state.evaluatedSeq ?? 0)) {
-    const finish = { evaluatedSeq: pingSeq, newPing: true };
+    const failSeq = state.failSeq ?? 0;
+    const finish: HeartbeatFinish = {
+      evaluatedSeq: pingSeq,
+      newPing: true,
+      ...(state.failSeq !== undefined ? { evaluatedFailSeq: failSeq } : {}),
+    };
     if (state.lastPingKind === 'fail') {
       return {
         result: {
           kind: 'fail',
           isUp: false,
           checkedAt: new Date(lastPingAt),
-          reason: 'Job reported failure',
+          reason: FAIL_REASON,
         },
         finish,
       };
     }
+    // A /fail the newest ping overtook within one sweep window still counts as a failure.
+    const lastFailAt = toMs(state.lastFailAt);
+    const priorFailAt =
+      failSeq > (state.evaluatedFailSeq ?? 0) && lastFailAt !== null
+        ? new Date(lastFailAt)
+        : undefined;
     // shortcut: the state keeps only the newest /start, so it counts only within one interval before the
     // ping; a run longer than its interval (or a stale /start) shows no duration. Track per-run starts to lift it.
     const startedAt = toMs(state.lastStartAt);
@@ -133,6 +164,7 @@ export function decideHeartbeat(
         responseTimeMs: duration,
         reason: 'Ping received',
       },
+      ...(priorFailAt ? { priorFailAt } : {}),
       finish,
     };
   }
@@ -148,12 +180,16 @@ export function decideHeartbeat(
   const outage = ingest.outage;
   if (outage && state.deadlineShiftedFor !== outage.id) {
     // The ping was due by the end of the app outage (it may have been swallowed) and the deadline had not passed
-    // before the outage began: give one full interval after the outage, once per outage. A ping, create or resume
-    // after the outage, or a heartbeat not yet due (a 31-day one), is not affected.
+    // before the outage began: wait one more interval after the outage, at most 24 h, then grace; once per outage.
+    // A ping, create or resume after the outage, or a heartbeat not yet due (a 31-day one), is not affected.
     const dueAt = last + intervalMs + shift;
     const deadline = dueAt + graceMinutes * MINUTE_MS;
     if (dueAt <= outage.endMs && deadline >= outage.startMs) {
-      shift = Math.max(shift, outage.endMs - last);
+      // lateAt = last + interval + shift = outageEnd + min(interval, 24 h)
+      shift = Math.max(
+        shift,
+        outage.endMs + Math.min(intervalMs, DAY_MS) - last - intervalMs,
+      );
       finish.deadlineShiftedFor = outage.id;
       finish.deadlineShiftMs = shift;
     }
@@ -268,35 +304,20 @@ export class HeartbeatSweepService implements OnModuleInit, OnModuleDestroy {
               );
             return { up: false };
           }
-          // GET + DEL in one transaction: exactly one worker closes the outage.
-          const closed = await redis
-            .multi()
-            .get(INGEST_DOWN_SINCE_KEY)
-            .del(INGEST_DOWN_SINCE_KEY)
-            .exec();
-          const downSince = Number(closed?.[0]?.[1]);
-          if (Number.isFinite(downSince) && downSince > 0) {
-            const outage: IngestOutage = {
-              id: String(downSince),
-              startMs: downSince,
-              endMs: nowMs,
-            };
-            // Needed until every deadline it can move (up to one length after it, plus the shift) has passed.
-            const ttlSeconds =
-              Math.ceil((3 * (nowMs - downSince)) / 1000) + 3600;
-            await redis.set(
-              INGEST_OUTAGE_KEY,
-              JSON.stringify(outage),
-              'EX',
-              ttlSeconds,
-            );
+          // One script: no reader can see the down-since marker gone before the outage window exists.
+          const [closed, raw] = (await redis.eval(
+            CLOSE_OUTAGE_SCRIPT,
+            2,
+            INGEST_DOWN_SINCE_KEY,
+            INGEST_OUTAGE_KEY,
+            String(nowMs),
+          )) as [number, string];
+          const outage = raw ? parseOutage(raw) : undefined;
+          if (closed === 1 && outage)
             this.logger.warn(
-              `Heartbeat ingest was down for ${Math.round((nowMs - downSince) / 1000)} s; late deadlines are moved`,
+              `Heartbeat ingest was down for ${Math.round((outage.endMs - outage.startMs) / 1000)} s; late deadlines are moved`,
             );
-            return { up: true, outage };
-          }
-          const raw = await redis.get(INGEST_OUTAGE_KEY);
-          return { up: true, outage: raw ? parseOutage(raw) : undefined };
+          return { up: true, outage };
         })(),
         new Promise<never>((_, reject) =>
           setTimeout(
@@ -399,6 +420,16 @@ export class HeartbeatSweepService implements OnModuleInit, OnModuleDestroy {
         }
       }
       const state = monitor.heartbeatState ?? {};
+      if (decision.priorFailAt) {
+        await this.monitorService.recordExternalResult(monitor, {
+          monitorId: monitor.id,
+          location: 'local',
+          status: 'down',
+          checkedAt: decision.priorFailAt,
+          isUp: false,
+          details: { heartbeat: { kind: 'fail' }, errorMessage: FAIL_REASON },
+        });
+      }
       if (decision.result) {
         const { kind, isUp, checkedAt, responseTimeMs, reason } =
           decision.result;
@@ -485,6 +516,8 @@ export class HeartbeatSweepService implements OnModuleInit, OnModuleDestroy {
         heartbeatState: sql`${base} || jsonb_strip_nulls(jsonb_build_object(
           'evaluatedSeq', CASE WHEN ${finish.evaluatedSeq ?? null}::bigint IS NULL THEN NULL
             ELSE greatest(coalesce((${current}->>'evaluatedSeq')::bigint, 0), ${finish.evaluatedSeq ?? null}::bigint) END,
+          'evaluatedFailSeq', CASE WHEN ${finish.evaluatedFailSeq ?? null}::bigint IS NULL THEN NULL
+            ELSE greatest(coalesce((${current}->>'evaluatedFailSeq')::bigint, 0), ${finish.evaluatedFailSeq ?? null}::bigint) END,
           'lastMissedAt', ${finish.lastMissedAt ?? null}::text,
           'lateEpisodeKey', ${finish.lateEpisodeKey ?? null}::text,
           'deadlineShiftedFor', ${finish.deadlineShiftedFor ?? null}::text,

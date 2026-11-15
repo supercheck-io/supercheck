@@ -123,6 +123,8 @@ export class MonitorEvaluator {
     monitorId: string,
     status: 'up' | 'down',
     checkedAt: Date,
+    /** Surface a failed write instead of logging it (the heartbeat sweep then retries the observation). */
+    rethrow = false,
   ): Promise<void> {
     try {
       // Get current monitor status before update to detect status changes
@@ -155,6 +157,7 @@ export class MonitorEvaluator {
         `Failed to update monitor status for ${monitorId}: ${getErrorMessage(error)}`,
         error instanceof Error ? error.stack : undefined,
       );
+      if (rethrow) throw error;
     }
   }
 
