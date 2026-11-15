@@ -19,7 +19,8 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   if (originError) return originError;
   const auth = await requireSreApiPermissions([{ resource: "sre_incident", action: "update" }]);
   if (!auth.success) return auth.response;
-  const parsedId = z.string().uuid().safeParse((await params).id);
+  // Lowercase, so a differently cased id shares the same rate-limit bucket and row.
+  const parsedId = z.string().uuid().transform((id) => id.toLowerCase()).safeParse((await params).id);
   if (!parsedId.success) return NextResponse.json({ error: "Invalid incident ID" }, { status: 400 });
   let body: unknown;
   try {
@@ -46,7 +47,8 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 export async function GET(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const auth = await requireSreApiPermissions([{ resource: "sre_incident", action: "view" }]);
   if (!auth.success) return auth.response;
-  const parsedId = z.string().uuid().safeParse((await params).id);
+  // Lowercase, so a differently cased id shares the same rate-limit bucket and row.
+  const parsedId = z.string().uuid().transform((id) => id.toLowerCase()).safeParse((await params).id);
   if (!parsedId.success) return NextResponse.json({ error: "Invalid incident ID" }, { status: 400 });
   const scope = { organizationId: auth.context.organizationId, projectId: auth.context.project.id };
   const [incident] = await db

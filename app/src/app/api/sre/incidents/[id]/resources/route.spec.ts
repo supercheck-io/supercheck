@@ -44,6 +44,13 @@ describe("PATCH /api/sre/incidents/[id]/resources", () => {
     expect(mockUpdate).toHaveBeenCalledWith(context("project_editor"), id, { add: { monitorIds: [id] } });
   });
 
+  it("treats an upper-case id as the same incident for the rate limit and the update", async () => {
+    mockRequireAuthContext.mockResolvedValue(context("project_editor"));
+    expect((await patch({ add: { monitorIds: [id] } }, id.toUpperCase())).status).toBe(200);
+    expect(mockRateLimit).toHaveBeenCalledWith("user-1", id);
+    expect(mockUpdate).toHaveBeenCalledWith(context("project_editor"), id, expect.anything());
+  });
+
   it("denies a viewer and rejects bad ids and bodies", async () => {
     mockRequireAuthContext.mockResolvedValue(context("project_viewer"));
     expect((await patch({ add: { monitorIds: [id] } })).status).toBe(403);

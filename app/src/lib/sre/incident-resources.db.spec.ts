@@ -94,6 +94,11 @@ it("finds the open declared incident by monitor, and by a service mapped after t
   expect(await findOpenIncidentListingMonitor(mockDatabase as never, { organizationId: org, projectId: project, monitorId: lateMonitor })).toBeNull();
   await client`INSERT INTO sre_service_resources (id, service_id, resource_type, resource_id) VALUES (${uuidv7()}, ${service}, 'monitor', ${lateMonitor})`;
   expect(await findOpenIncidentListingMonitor(mockDatabase as never, { organizationId: org, projectId: project, monitorId: lateMonitor })).toMatchObject({ id: manual });
+  // Once the service is merged away, the incident no longer lists it, so its monitor's alerts stop joining.
+  await client`UPDATE sre_services SET status = 'merged' WHERE id = ${service}`;
+  expect(await findOpenIncidentListingMonitor(mockDatabase as never, { organizationId: org, projectId: project, monitorId: lateMonitor })).toBeNull();
+  expect(await findOpenIncidentListingMonitor(mockDatabase as never, { organizationId: org, projectId: project, monitorId: monitor })).toMatchObject({ id: manual });
+  await client`UPDATE sre_services SET status = 'active' WHERE id = ${service}`;
 });
 
 it("never matches another project's or org's incident, or a resolved one", async () => {

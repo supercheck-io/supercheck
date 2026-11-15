@@ -103,18 +103,24 @@ export async function generateSrePostmortem(
       };
     }
 
-    const timelineQuery = () =>
-      db
+    const timelineQuery = (executor: Pick<typeof db, "select">) =>
+      executor
         .select({ id: sreIncidentTimelineEvents.id, at: sreIncidentTimelineEvents.createdAt, eventType: sreIncidentTimelineEvents.eventType, data: sreIncidentTimelineEvents.eventData })
         .from(sreIncidentTimelineEvents)
         .where(eq(sreIncidentTimelineEvents.incidentId, incident.id));
-    const [tail, head, [total], evidence, [run]] = await Promise.all([
-      // Newest 150 plus the first 50, so a long incident keeps both its start and its resolution.
-      // Generous because postmortemTimeline drops briefs, edits and repeat investigations afterwards.
-      timelineQuery().orderBy(desc(sreIncidentTimelineEvents.createdAt), desc(sreIncidentTimelineEvents.id)).limit(TAIL_EVENTS),
-      // Same keys both ways, so the windows never overlap when events share a timestamp.
-      timelineQuery().orderBy(asc(sreIncidentTimelineEvents.createdAt), asc(sreIncidentTimelineEvents.id)).limit(HEAD_EVENTS),
-      db.select({ count: count() }).from(sreIncidentTimelineEvents).where(eq(sreIncidentTimelineEvents.incidentId, incident.id)),
+    // Both windows and the count read one snapshot, so the gap counts exactly the events between them.
+    const [tail, head, [total]] = await db.transaction(
+        async (tx) => [
+          // Newest 150 plus the first 50, so a long incident keeps both its start and its resolution.
+          // Generous because postmortemTimeline drops briefs, edits and repeat investigations afterwards.
+          await timelineQuery(tx).orderBy(desc(sreIncidentTimelineEvents.createdAt), desc(sreIncidentTimelineEvents.id)).limit(TAIL_EVENTS),
+          // Same keys both ways, so the windows never overlap when events share a timestamp.
+          await timelineQuery(tx).orderBy(asc(sreIncidentTimelineEvents.createdAt), asc(sreIncidentTimelineEvents.id)).limit(HEAD_EVENTS),
+          await tx.select({ count: count() }).from(sreIncidentTimelineEvents).where(eq(sreIncidentTimelineEvents.incidentId, incident.id)),
+        ] as const,
+        { isolationLevel: "repeatable read", accessMode: "read only" },
+      );
+    const [evidence, [run]] = await Promise.all([
       db
         .select({ id: sreEvidenceItems.id, title: sreEvidenceItems.title })
         .from(sreEvidenceItems)
