@@ -617,7 +617,11 @@ export class ExecutionService implements OnModuleDestroy {
       // Agent numbers go to the run (and, for a monitor, to the check result); never a reason to fail it.
       const agentTests =
         task.testType === 'agent'
-          ? await this.readAgentTests(extractedReportsDir, task.runId)
+          ? await this.readAgentTests(
+              extractedReportsDir,
+              task.runId,
+              runtimeSecrets,
+            )
           : undefined;
 
       if (finalStatus === 'passed') {
@@ -1175,7 +1179,12 @@ export class ExecutionService implements OnModuleDestroy {
         );
 
       if (testScripts.some((ts) => ts.type === 'agent'))
-        await this.readAgentTests(extractedReportsDir, runId, report);
+        await this.readAgentTests(
+          extractedReportsDir,
+          runId,
+          taskSecrets,
+          report,
+        );
 
       // Update the finalResult to include duration
       finalResult = {
@@ -1594,22 +1603,34 @@ export class ExecutionService implements OnModuleDestroy {
   private async readAgentTests(
     extractedReportsDir: string,
     runId: string | null | undefined,
+    secrets: Record<string, string>,
     report: Promise<PlaywrightReport> = this.loadPlaywrightReport(
       extractedReportsDir,
     ),
   ): Promise<AgentTestSummary[] | undefined> {
+    let agent: ReturnType<typeof agentMetadata>;
     try {
-      const tests = await readAgentSummaries(await report, extractedReportsDir);
-      const agent = agentMetadata(tests);
-      if (agent && runId)
-        await this.dbService.mergeRunMetadata(runId, { agent });
-      return agent?.tests;
+      const tests = await readAgentSummaries(
+        await report,
+        extractedReportsDir,
+        (text) => this.redactSecretsFromText(text, secrets),
+      );
+      agent = agentMetadata(tests);
     } catch (err) {
       this.logger.warn(
         `[${runId ?? 'test'}] Failed to read agent summary: ${err instanceof Error ? err.message : String(err)}`,
       );
-      return undefined;
     }
+    // null clears numbers left by an earlier attempt of a re-driven run
+    if (runId)
+      await this.dbService
+        .mergeRunMetadata(runId, { agent: agent ?? null })
+        .catch((err: unknown) =>
+          this.logger.warn(
+            `[${runId}] Failed to store agent summary: ${err instanceof Error ? err.message : String(err)}`,
+          ),
+        );
+    return agent?.tests;
   }
 
   /** Maps each `NNN-<testId>.spec.ts` in results.json to passed/failed/skipped; {} when the report is unusable. */

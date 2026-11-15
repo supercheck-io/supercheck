@@ -26,8 +26,10 @@ const MAX_METADATA_BYTES = 8 * 1024;
 // A summary holds at most 20 transcript entries of 4 KiB each; a bigger file is not ours.
 const MAX_FILE_BYTES = 512 * 1024;
 
-const clip = (v: unknown, max: number) =>
-  (typeof v === 'string' || typeof v === 'number' ? String(v) : '').slice(
+type Redact = (text: string) => string;
+// Redact before clipping so a secret cut at the boundary cannot survive in part.
+const clip = (v: unknown, max: number, redact: Redact) =>
+  redact(typeof v === 'string' || typeof v === 'number' ? String(v) : '').slice(
     0,
     max,
   );
@@ -41,16 +43,20 @@ export function testIdFromSpecFile(file: string): string | undefined {
   return file
     .split(/[\\/]/)
     .pop()
-    ?.match(/^(?:\d+-)?(.+?)\.agent\.spec\.ts$/)?.[1];
+    ?.match(/^(?:\d{3}-)?(.+?)\.agent\.spec\.ts$/)?.[1];
 }
 
-function sanitize(testId: string, raw: unknown): AgentTestSummary {
+function sanitize(
+  testId: string,
+  raw: unknown,
+  redact: Redact,
+): AgentTestSummary {
   const s = rec(raw);
   const attempts = Math.max(0, Math.round(num(s.attempts)));
   const passed = Math.min(attempts, Math.max(0, Math.round(num(s.passed))));
   return {
     testId,
-    title: clip(s.title, 200),
+    title: clip(s.title, 200, redact),
     attempts,
     passed,
     passRate: attempts ? passed / attempts : 0,
@@ -61,14 +67,14 @@ function sanitize(testId: string, raw: unknown): AgentTestSummary {
       : {}),
     toolNames: (Array.isArray(s.toolNames) ? s.toolNames : [])
       .slice(0, MAX_TOOL_NAMES)
-      .map((n) => clip(n, 100)),
+      .map((n) => clip(n, 100, redact)),
     durationMs: num(s.durationMs),
     slowestMs: num(s.slowestMs),
     failures: (Array.isArray(s.failures) ? s.failures : [])
       .slice(0, MAX_FAILURES)
       .map((f) => ({
         attempt: num(rec(f).attempt),
-        message: clip(rec(f).message, 200),
+        message: clip(rec(f).message, 200, redact),
       })),
   };
 }
@@ -82,6 +88,7 @@ function sanitize(testId: string, raw: unknown): AgentTestSummary {
 export async function readAgentSummaries(
   report: unknown,
   extractedReportsDir: string,
+  redact: Redact = (t) => t,
 ): Promise<AgentTestSummary[]> {
   const found: { testId: string; file: string }[] = [];
   const visit = (node: unknown, file?: string) => {
@@ -119,9 +126,14 @@ export async function readAgentSummaries(
       const hostPath = path.join(extractedReportsDir, rel);
       if (path.relative(extractedReportsDir, hostPath).startsWith('..'))
         continue;
-      if ((await fs.stat(hostPath)).size > MAX_FILE_BYTES) continue;
+      const st = await fs.lstat(hostPath);
+      if (!st.isFile() || st.size > MAX_FILE_BYTES) continue;
       tests.push(
-        sanitize(testId, JSON.parse(await fs.readFile(hostPath, 'utf8'))),
+        sanitize(
+          testId,
+          JSON.parse(await fs.readFile(hostPath, 'utf8')),
+          redact,
+        ),
       );
     } catch {
       // missing or malformed: leave this test without agent numbers

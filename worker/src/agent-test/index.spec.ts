@@ -12,6 +12,7 @@ jest.mock('@playwright/test', () => ({
 
 import { buildSummary, redactedJson, test as fixtures } from './index';
 import { newState } from './agent';
+import { secretsOf } from './clients';
 
 const fixture = (
   fixtures as unknown as {
@@ -114,6 +115,73 @@ describe('redactedJson (C6)', () => {
     expect(out).not.toContain('sk-live-123');
     expect(out).not.toContain('tok');
     expect(JSON.parse(out).reply).toBe('key is [REDACTED] and [REDACTED]');
+  });
+});
+
+describe('redaction edge cases', () => {
+  it('leaves numbers intact when a header value is short or numeric', () => {
+    const state = newState();
+    // as secretsOf would build it for headers { 'x-api-version': '2' } and { 'x-token': 'abcd1234' }
+    state.secrets.push(
+      ...secretsOf({
+        headers: {
+          'x-api-version': '2',
+          'x-trace': '34',
+          'x-token': 'abcd1234',
+        },
+      }),
+    );
+    expect(state.secrets).toEqual(['abcd1234']);
+    const summary = buildSummary(
+      't',
+      {
+        ...state,
+        sends: [
+          {
+            attempt: 1,
+            prompt: 'p',
+            reply: 'abcd1234 134',
+            durationMs: 2,
+            tokens: 1234,
+            toolNames: [],
+          },
+        ],
+      },
+      true,
+    );
+    const parsed = JSON.parse(redactedJson(summary, state.secrets));
+    expect(parsed.totalTokens).toBe(1234);
+    expect(parsed.transcript[0].reply).toBe('[REDACTED] 134');
+  });
+
+  it('redacts before clipping so a key at the boundary cannot survive in part', () => {
+    const key = 'sk-abcdefghijklmnop';
+    const state = {
+      ...newState(),
+      secrets: [key],
+      sends: [
+        {
+          attempt: 1,
+          prompt: `${'p'.repeat(4080)}${key}`,
+          reply: 'r',
+          durationMs: 1,
+          tokens: 1,
+          toolNames: [],
+        },
+      ],
+    };
+    const prompt = buildSummary('t', state, true).transcript[0].prompt;
+    expect(prompt).not.toContain('sk-');
+    expect(prompt).toContain('[REDACTED]');
+  });
+
+  it('treats URL credentials as secrets and ignores plain headers', () => {
+    expect(
+      secretsOf({
+        url: 'https://bot:p%40ss-word@example.com/x',
+        headers: { 'content-language': 'english' },
+      } as never),
+    ).toEqual(['bot', 'p%40ss-word', 'p@ss-word'].filter((v) => v.length >= 4));
   });
 });
 

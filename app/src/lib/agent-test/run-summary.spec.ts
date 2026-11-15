@@ -4,6 +4,7 @@ describe("sanitizeAgentSummary", () => {
   it("returns undefined without a summary", () => {
     expect(sanitizeAgentSummary(null)).toBeUndefined();
     expect(sanitizeAgentSummary({ agent: "x" })).toBeUndefined();
+    expect(sanitizeAgentSummary({ agent: null })).toBeUndefined();
     expect(sanitizeAgentSummary({ agent: { tests: "x" } })).toBeUndefined();
   });
 

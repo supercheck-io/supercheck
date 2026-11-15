@@ -8,6 +8,7 @@ import { collectLocalTests } from '../tests.js'
 import { buildLocalResources, fetchRemoteResources } from '../../utils/resources.js'
 import { reconcile } from '../../utils/reconcile.js'
 import { testRelativePath } from '../../utils/paths.js'
+import { prepareBodyForApi } from '../deploy.js'
 import { normalizeTestTypeForApi } from '../../utils/validation.js'
 import type { ApiClient } from '../../api/client.js'
 
@@ -44,12 +45,34 @@ describe('@type header', () => {
     }
 
     const local = buildLocalResources(config(), dir)
-    const localTypes = local.map((r) => (r.definition as { testType: string }).testType)
-    expect(localTypes.sort()).toEqual(['agent', 'api', 'custom', 'database', 'playwright'])
+    // Browser has no @type line, so its type stays unspecified locally.
+    const localTypes = local.map((r) => (r.definition as { testType?: string }).testType)
+    expect(localTypes.filter(Boolean).sort()).toEqual(['agent', 'api', 'custom', 'database'])
+    expect(localTypes).toContain(undefined)
     // Deploy sends the API type back, so nothing collapses to browser; same ids mean a second deploy updates, never duplicates.
-    expect(localTypes.map((t) => normalizeTestTypeForApi(t)).sort()).toEqual(['agent', 'api', 'browser', 'custom', 'database'])
+    expect(localTypes.filter(Boolean).map((t) => normalizeTestTypeForApi(t)).sort()).toEqual(['agent', 'api', 'custom', 'database'])
     const changes = reconcile(local, await fetchRemoteResources(client))
     expect(changes.filter((c) => c.type === 'test').map((c) => c.action)).toEqual(Array(5).fill('no-change'))
+  })
+
+  it('treats an unannotated file as type-unspecified: no diff against api/agent, no type on update, browser on create', async () => {
+    mkdirSync(join(dir, '_supercheck_', 'playwright'), { recursive: true })
+    for (const [type, id] of ids.slice(0, 2)) writeFileSync(join(dir, '_supercheck_', 'playwright', `old.${id}.pw.ts`), script.replace('x', `old ${type}`))
+    const remote = await fetchRemoteResources({ get: client.get } as unknown as ApiClient)
+    // Same script body as the remote, still unannotated.
+    for (const [, id] of ids.slice(0, 2)) writeFileSync(join(dir, '_supercheck_', 'playwright', `old.${id}.pw.ts`), script)
+    const local = buildLocalResources(config(), dir)
+    for (const r of local) expect(r.definition).not.toHaveProperty('testType')
+    const tests = reconcile(local, remote).filter((c) => c.type === 'test')
+    expect(tests.map((c) => c.details ?? []).join('|')).not.toContain('testType')
+    const body = prepareBodyForApi('test', { ...local[0].definition, title: 'renamed' }, 'update')
+    expect(body).not.toHaveProperty('type')
+    expect(prepareBodyForApi('test', { ...local[0].definition }, 'create').type).toBe('browser')
+    // Explicit annotation still wins, including explicit browser against a non-browser remote.
+    writeFileSync(join(dir, '_supercheck_', 'playwright', `old.${ids[1][1]}.pw.ts`), `// @type browser\n${script}`)
+    const explicit = reconcile(buildLocalResources(config(), dir), remote).filter((c) => c.id === ids[1][1])
+    expect(explicit[0].details?.join('|')).toContain('testType')
+    expect(prepareBodyForApi('test', { testType: 'api' }, 'update').type).toBe('api')
   })
 
   it('refuses a local run of an agent test', () => {

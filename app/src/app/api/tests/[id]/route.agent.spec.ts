@@ -30,7 +30,11 @@ jest.mock("@/utils/db", () => ({
   },
 }));
 
+const assertAgentTestSwitchRunnable = jest.fn();
+jest.mock("@/lib/monitor-write", () => ({ ...jest.requireActual("@/lib/monitor-write"), assertAgentTestSwitchRunnable: (...a: unknown[]) => assertAgentTestSwitchRunnable(...a) }));
+
 import { PUT } from "./route";
+import { ExecutionQueueError } from "@/lib/execution-errors";
 import { AuthError } from "@/lib/auth-context";
 
 const ID = "00000000-0000-4000-8000-000000000001";
@@ -51,6 +55,7 @@ const put = () =>
 beforeEach(() => {
   findFirst.mockReset().mockResolvedValue(stored);
   set.mockClear();
+  assertAgentTestSwitchRunnable.mockReset().mockResolvedValue(undefined);
 });
 
 describe("PUT /api/tests/[id] with type agent", () => {
@@ -58,6 +63,24 @@ describe("PUT /api/tests/[id] with type agent", () => {
     requireAuthContext.mockResolvedValue(ctx("project_editor"));
     expect((await put()).status).toBe(200);
     expect(set).toHaveBeenCalledWith(expect.objectContaining({ type: "agent" }));
+  });
+
+  it("refuses the switch with 503 AGENT_WORKERS_PENDING while its monitors' workers are pending, writing nothing", async () => {
+    requireAuthContext.mockResolvedValue(ctx("project_editor"));
+    assertAgentTestSwitchRunnable.mockRejectedValue(new ExecutionQueueError("agent_workers_pending", "pending"));
+    const res = await put();
+    expect(assertAgentTestSwitchRunnable).toHaveBeenCalledWith(ID, "org-1", "p1");
+    expect(res.status).toBe(503);
+    expect(res.headers.get("Retry-After")).toBeTruthy();
+    expect((await res.json()).code).toBe("AGENT_WORKERS_PENDING");
+    expect(set).not.toHaveBeenCalled();
+  });
+
+  it("does not gate a test that is already an agent test", async () => {
+    requireAuthContext.mockResolvedValue(ctx("project_editor"));
+    findFirst.mockResolvedValue({ ...stored, type: "agent" });
+    await put();
+    expect(assertAgentTestSwitchRunnable).not.toHaveBeenCalled();
   });
 
   it.each([

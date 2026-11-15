@@ -204,8 +204,8 @@ describe('send recording', () => {
       url,
       body: (m) => ({ q: m }),
       reply: 'text',
-      apiKey: 'k1',
-      headers: { h: 'hv' },
+      apiKey: 'key-1234',
+      headers: { 'x-token': 'hv-5678' },
     });
     await bot.send('outside');
     await agent.repeat(2, async () => {
@@ -224,7 +224,7 @@ describe('send recording', () => {
         [2, 'bad', 'err'],
       ]),
     );
-    expect(state.secrets).toEqual(['k1', 'hv']);
+    expect(state.secrets).toEqual(['key-1234', 'hv-5678']);
     expect(state.repeats[0].passRate).toBe(0);
   });
 });

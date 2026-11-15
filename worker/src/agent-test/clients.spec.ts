@@ -266,6 +266,18 @@ describe('a2a client', () => {
       'a2a agent error -32001: no such task',
     );
   });
+
+  it('redacts the key from a JSON-RPC error message', async () => {
+    handler = (_r, body, res) =>
+      json(res, {
+        jsonrpc: '2.0',
+        id: body.id,
+        error: { code: -32001, message: 'bad key sk-secret-key' },
+      });
+    await expect(
+      connect({ kind: 'a2a', url, apiKey: 'sk-secret-key' }).send('x'),
+    ).rejects.toThrow('a2a agent error -32001: bad key [REDACTED]');
+  });
 });
 
 describe('mcp client', () => {

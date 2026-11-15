@@ -7,7 +7,7 @@ jest.mock("@/utils/db", () => ({
 }));
 jest.mock("@/lib/monitor-schedule-reconcile", () => ({ reconcileMonitorSchedule: jest.fn().mockResolvedValue(undefined) }));
 // The SQL merge of worker keys is covered in monitor-write.spec.ts and monitor-service.db.spec.ts; here the written config is inspected as an object.
-jest.mock("@/lib/monitor-write", () => ({ ...jest.requireActual("@/lib/monitor-write"), configKeepingWorkerKeys: (config: unknown) => config }));
+jest.mock("@/lib/monitor-write", () => ({ ...jest.requireActual("@/lib/monitor-write"), configKeepingWorkerKeys: (config: unknown) => config, assertAgentMonitorRunnable: jest.fn() }));
 jest.mock("@/lib/queue", () => ({ addMonitorExecutionJobToQueue: jest.fn() }));
 jest.mock("@/lib/monitor-scheduler", () => ({
   scheduleMonitor: jest.fn(),
@@ -19,7 +19,8 @@ import {
   scheduleMonitor,
   deleteScheduledMonitor,
 } from "@/lib/monitor-scheduler";
-import { InvalidNotificationProvidersError, MonitorScheduleError } from "@/lib/monitor-write";
+import { InvalidNotificationProvidersError, MonitorScheduleError, assertAgentMonitorRunnable } from "@/lib/monitor-write";
+import { createMonitorHandler } from "./monitor-service";
 import { updateMonitorHandler, scheduleCreatedMonitor, insertMonitorRecord, MonitorTargetChangedError } from "./monitor-service";
 
 describe("updateMonitorHandler schedule synchronization", () => {
@@ -284,6 +285,47 @@ describe("insertMonitorRecord enabled flag", () => {
     const { values, executor: ex } = executor();
     await insertMonitorRecord(base as never, ex as never);
     expect(values).toHaveBeenCalledWith(expect.objectContaining({ enabled: true, status: "pending" }));
+  });
+});
+
+describe("agent monitor gate wiring", () => {
+  const base = { name: "m", type: "synthetic_test", target: "", frequencyMinutes: 5, config: { testId: "t" }, organizationId: "00000000-0000-4000-8000-000000000001", projectId: "00000000-0000-4000-8000-000000000002" };
+  const existing = { id: "m1", projectId: "p", organizationId: "o", type: "synthetic_test", target: "", config: { testId: "t" }, frequencyMinutes: 5, enabled: true, status: "up", scheduledJobId: null };
+  beforeEach(() => {
+    jest.clearAllMocks();
+    (db.query.monitors.findFirst as jest.Mock).mockResolvedValue(existing);
+    (db.update as jest.Mock).mockReset();
+    (db.transaction as jest.Mock).mockReset().mockResolvedValue(undefined);
+  });
+
+  it("insertMonitorRecord never gates (the route gates before its transaction opens)", async () => {
+    const values = jest.fn().mockReturnValue({ returning: jest.fn().mockResolvedValue([{}]) });
+    await insertMonitorRecord(base as never, { insert: jest.fn().mockReturnValue({ values }) } as never);
+    expect(assertAgentMonitorRunnable).not.toHaveBeenCalled();
+  });
+
+  it("createMonitorHandler gates an enabled monitor before inserting, and skips a disabled one", async () => {
+    const refusal = new Error("pending");
+    (assertAgentMonitorRunnable as jest.Mock).mockRejectedValueOnce(refusal);
+    await expect(createMonitorHandler(base as never)).rejects.toBe(refusal);
+    expect(assertAgentMonitorRunnable).toHaveBeenCalledTimes(1);
+    (assertAgentMonitorRunnable as jest.Mock).mockClear();
+    await createMonitorHandler({ ...base, enabled: false } as never).catch(() => undefined);
+    expect(assertAgentMonitorRunnable).not.toHaveBeenCalled();
+  });
+
+  it("updateMonitorHandler gates a config change with the merged config and refuses the write", async () => {
+    const refusal = new Error("pending");
+    (assertAgentMonitorRunnable as jest.Mock).mockRejectedValueOnce(refusal);
+    await expect(updateMonitorHandler("m1", { config: { testId: "t2" } } as never)).rejects.toBe(refusal);
+    expect(assertAgentMonitorRunnable).toHaveBeenCalledWith(expect.objectContaining({ type: "synthetic_test", config: { testId: "t2" }, projectId: "p", organizationId: "o" }));
+    expect(db.update).not.toHaveBeenCalled();
+  });
+
+  it("updateMonitorHandler does not gate a paused or disabled monitor", async () => {
+    (db.query.monitors.findFirst as jest.Mock).mockResolvedValue({ ...existing, status: "paused" });
+    await updateMonitorHandler("m1", { config: { testId: "t2" } } as never).catch(() => undefined);
+    expect(assertAgentMonitorRunnable).not.toHaveBeenCalled();
   });
 });
 

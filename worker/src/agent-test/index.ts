@@ -13,8 +13,11 @@ const TOOL_NAMES = 50;
 const FAILURES = 5;
 const FAILURE_CLIP = 200;
 
-const clip = (text: string, max: number) =>
-  text.length > max ? `${text.slice(0, max)}...` : text;
+// Redact first: a key cut at the clip boundary would otherwise survive in part.
+const clip = (text: string, max: number, secrets: string[]) => {
+  const t = redact(text, secrets);
+  return t.length > max ? `${t.slice(0, max)}...` : t;
+};
 
 /** The summary the worker reads from results.json. `raw` replies are never in it. */
 export function buildSummary(
@@ -54,22 +57,25 @@ export function buildSummary(
       .slice(0, FAILURES)
       .map((f) => ({
         attempt: f.attempt,
-        message: clip(f.message, FAILURE_CLIP),
+        message: clip(f.message, FAILURE_CLIP, state.secrets),
       })),
     transcript: state.sends.slice(0, TRANSCRIPT_ENTRIES).map((s) => ({
       attempt: s.attempt,
-      prompt: clip(s.prompt, TEXT_CLIP),
-      reply: clip(s.error ? `error: ${s.error}` : s.reply, TEXT_CLIP),
+      prompt: clip(s.prompt, TEXT_CLIP, state.secrets),
+      reply: clip(
+        s.error ? `error: ${s.error}` : s.reply,
+        TEXT_CLIP,
+        state.secrets,
+      ),
     })),
   };
 }
 
-/** Plain UTF-8 JSON with every key and header value removed, wherever it appears. */
+/** Plain UTF-8 JSON with every secret removed from each string value (never from the serialized text, which would corrupt numbers). */
 export function redactedJson(value: unknown, secrets: string[]): string {
-  const json = JSON.stringify(value);
-  // A secret inside a JSON string is stored escaped, so remove that form as well.
-  const forms = secrets.flatMap((s) => [s, JSON.stringify(s).slice(1, -1)]);
-  return redact(json, forms);
+  return JSON.stringify(value, (_key, v: unknown) =>
+    typeof v === 'string' ? redact(v, secrets) : v,
+  );
 }
 
 export const test = base.extend<{ agent: Agent }>({

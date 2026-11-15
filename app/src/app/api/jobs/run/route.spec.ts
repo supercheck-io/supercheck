@@ -44,6 +44,7 @@ jest.mock("@/lib/job-execution-utils", () => ({
   })),
 }));
 jest.mock("@/lib/execution/execution-policy", () => ({
+  ExecutionWorkloadError: class extends Error {},
   getExecutionPolicy: jest.fn().mockResolvedValue({ tier: "free" }),
 }));
 jest.mock("@/lib/services/polar-usage.service", () => ({ polarUsageService: { shouldBlockUsage: jest.fn() } }));
@@ -74,5 +75,19 @@ describe("POST /api/jobs/run", () => {
     expect(res.status).toBe(200);
     const task = (addJobToQueue as jest.Mock).mock.calls[0][0];
     expect(task.testScripts.map((t: { id: string }) => t.id)).toEqual(["saved-test"]);
+  });
+
+  it("answers 503 AGENT_WORKERS_PENDING with Retry-After when the queue gate refuses an agent test", async () => {
+    const { ExecutionQueueError } = jest.requireActual("@/lib/execution-errors");
+    tables.jobs = [{ organizationId: "org-1", projectId: "p1", jobType: "playwright", name: "J" }];
+    tables.jobTests = [{ id: "saved-test" }];
+    tables.tests = [{ id: "saved-test", title: "Saved", script: "s", type: "agent" }];
+    (addJobToQueue as jest.Mock).mockRejectedValueOnce(new ExecutionQueueError("agent_workers_pending", "pending"));
+
+    const res = await POST(new NextRequest("http://localhost/api/jobs/run", { method: "POST", body: JSON.stringify({ jobId: "j1", trigger: "manual", tests: [{ id: "x" }] }) }));
+
+    expect(res.status).toBe(503);
+    expect(res.headers.get("Retry-After")).toBeTruthy();
+    expect((await res.json()).code).toBe("AGENT_WORKERS_PENDING");
   });
 });

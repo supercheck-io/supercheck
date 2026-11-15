@@ -28,12 +28,13 @@ import { warningDefault } from '../utils/alert-config.js'
  * Prepare the body for API request by transforming local config shape
  * back to the raw API shape (reversing pull/normalization logic).
  */
-function prepareBodyForApi(type: string, body: Record<string, unknown>): Record<string, unknown> {
+export function prepareBodyForApi(type: string, body: Record<string, unknown>, action?: string): Record<string, unknown> {
   const payload = { ...body }
 
   if (type === 'test') {
     // Map local testType to API "type"
-    const normalizedType = normalizeTestTypeForApi(payload.testType)
+    // Unspecified type: browser on create, omitted on update so the stored type is kept.
+    const normalizedType = normalizeTestTypeForApi(payload.testType) ?? (action === 'create' ? 'browser' : undefined)
     if (normalizedType) payload.type = normalizedType
     delete payload.testType
     if (typeof payload.script === 'string') {
@@ -291,7 +292,7 @@ async function applyChange(
         if (change.action === 'create') throw new CLIError(`Secret variable "${change.name}" has no value. Set its environment variable before deploying.`, ExitCode.ConfigError)
         delete rawBody.value
       }
-      body = prepareBodyForApi(change.type, rawBody)
+      body = prepareBodyForApi(change.type, rawBody, change.action)
     }
     switch (change.action) {
       case 'create': {
@@ -356,7 +357,7 @@ export async function verifyDeployedTests(
   const targets = changes.flatMap((change, index) => {
     if (change.type !== 'test' || !['create', 'update'].includes(change.action)) return []
     const id = typeof results[index]?.id === 'string' ? String(results[index].id) : change.id
-    return id ? [{ id, name: change.name, testType: normalizeTestTypeForApi(change.local?.definition?.testType) }] : []
+    return id ? [{ id, name: change.name, testType: change.local?.definition?.testType === undefined && change.action === 'create' ? 'browser' : normalizeTestTypeForApi(change.local?.definition?.testType) }] : []
   })
   for (const target of targets) {
     // Only a positively identified browser test is ever run. Performance (any spelling) and unknown types are skipped.
@@ -454,7 +455,7 @@ export const deployCommand = new Command('deploy')
           // Fast client-side script-type mismatch detection
           for (const change of testsToValidate) {
             const script = String(change.local?.definition?.script ?? '')
-            const declaredType = normalizeTestTypeForApi(change.local?.definition?.testType)
+            const declaredType = normalizeTestTypeForApi(change.local?.definition?.testType) ?? (change.action === 'create' ? 'browser' : undefined)
             const mismatch = validateScriptTypeMatch(script, declaredType)
             if (mismatch) {
               throw new CLIError(`${change.name}: ${mismatch}`, ExitCode.ConfigError)
@@ -464,7 +465,7 @@ export const deployCommand = new Command('deploy')
           const inputs = testsToValidate.map((change) => ({
             name: change.name,
             script: String(change.local?.definition?.script ?? ''),
-            testType: normalizeTestTypeForApi(change.local?.definition?.testType),
+            testType: normalizeTestTypeForApi(change.local?.definition?.testType) ?? (change.action === 'create' ? 'browser' : undefined),
           }))
 
           const results = await validateScripts(client, inputs)

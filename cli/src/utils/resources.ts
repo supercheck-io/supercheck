@@ -178,7 +178,8 @@ export function buildLocalResources(config: SupercheckConfig, cwd: string): Loca
         definition: {
           id: testId,
           title,
-          testType: file.type !== 'playwright' ? 'k6' : annotatedType && annotatedType !== 'browser' ? annotatedType : 'playwright',
+          // An unannotated .pw.ts leaves the type unspecified (older pulls wrote no @type), so it never diffs or overwrites a remote api/database/custom/agent type.
+          ...(file.type !== 'playwright' ? { testType: 'k6' } : annotatedType ? { testType: annotatedType === 'browser' ? 'playwright' : annotatedType } : {}),
           script: cleanScript,
           ...(priority !== undefined ? { priority } : {}),
           ...(tags !== undefined ? { tags } : {}),

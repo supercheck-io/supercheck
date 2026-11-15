@@ -2,15 +2,22 @@
  * Agent tests in the execution service: spec file names (C7), and the agent-summary attachment
  * parsed from results.json into runs.metadata.agent with caps; a bad attachment never changes the run (C9).
  */
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
 import type { ConfigService } from '@nestjs/config';
+import { testIdFromSpecFile } from './agent-summary';
 import { ExecutionService } from './execution.service';
 
 const POD_DIR = '/tmp/playwright-reports';
 
-function createService() {
+function createService(secrets: Record<string, string> = {}) {
   const dbService = {
     storeReportMetadata: jest.fn().mockResolvedValue(undefined),
     mergeRunMetadata: jest.fn().mockResolvedValue(undefined),
@@ -36,7 +43,7 @@ function createService() {
     {
       resolveProjectVariables: jest
         .fn()
-        .mockResolvedValue({ variables: {}, secrets: {}, files: {} }),
+        .mockResolvedValue({ variables: {}, secrets, files: {} }),
     } as never,
     {} as never,
   );
@@ -205,8 +212,17 @@ describe('ExecutionService agent specs', () => {
       writeFileSync(path.join(dir, sub, name), content);
       return `${POD_DIR}/${sub}/${name}`;
     };
-    const read = (rep: unknown, runId: string | null = 'run-1') =>
-      service['readAgentTests'](dir, runId, Promise.resolve(rep) as never);
+    const read = (
+      rep: unknown,
+      runId: string | null = 'run-1',
+      secrets: Record<string, string> = {},
+    ) =>
+      service['readAgentTests'](
+        dir,
+        runId,
+        secrets,
+        Promise.resolve(rep) as never,
+      );
 
     it('stores the numbers without the transcript and returns them', async () => {
       const p = put('s.json', JSON.stringify(summary()));
@@ -278,6 +294,54 @@ describe('ExecutionService agent specs', () => {
       expect(t.failures[0].message).toHaveLength(200);
     });
 
+    it('redacts run secrets from title, tool names and failure messages before clipping', async () => {
+      const secret = 'sup3r-secret-value';
+      const p = put(
+        's.json',
+        JSON.stringify(
+          summary({
+            title: `t ${secret}`,
+            toolNames: [`call_${secret}`],
+            // the secret straddles the 200 char clip
+            failures: [{ attempt: 1, message: `${'x'.repeat(190)}${secret}` }],
+          }),
+        ),
+      );
+      await read(
+        report([{ file: 'abc.agent.spec.ts', attachmentPath: p }]),
+        'run-1',
+        { TOKEN: secret },
+      );
+      const stored = JSON.stringify(dbService.mergeRunMetadata.mock.calls);
+      expect(stored).not.toContain('sup3r');
+      expect(stored).toContain('[SECRET]');
+    });
+
+    it('does not take a UUID with a numeric first segment for a job prefix', () => {
+      expect(
+        testIdFromSpecFile(
+          '01934567-1234-7abc-8def-0123456789ab.agent.spec.ts',
+        ),
+      ).toBe('01934567-1234-7abc-8def-0123456789ab');
+      expect(testIdFromSpecFile('002-abc.agent.spec.ts')).toBe('abc');
+    });
+
+    it('skips a symlinked summary', async () => {
+      const real = path.join(dir, 'real.json');
+      writeFileSync(real, JSON.stringify(summary()));
+      symlinkSync(real, path.join(dir, 'a-chromium/attachments/link.json'));
+      expect(
+        await read(
+          report([
+            {
+              file: 'a.agent.spec.ts',
+              attachmentPath: `${POD_DIR}/a-chromium/attachments/link.json`,
+            },
+          ]),
+        ),
+      ).toBeUndefined();
+    });
+
     it('keeps at most 20 tests and 8 KiB in the run metadata', async () => {
       const big = summary({
         toolNames: Array.from(
@@ -329,7 +393,10 @@ describe('ExecutionService agent specs', () => {
         ),
       );
       expect(tests).toBeUndefined();
-      expect(dbService.mergeRunMetadata).not.toHaveBeenCalled();
+      // cleared, so a re-driven run keeps no stale numbers
+      expect(dbService.mergeRunMetadata).toHaveBeenCalledWith('run-1', {
+        agent: null,
+      });
     });
 
     it('ignores tests without the attachment and non-agent spec files', async () => {
@@ -349,14 +416,16 @@ describe('ExecutionService agent specs', () => {
         await service['readAgentTests'](
           dir,
           'run-1',
+          {},
           Promise.reject(new Error('gone')) as never,
         ),
       ).toBeUndefined();
       dbService.mergeRunMetadata.mockRejectedValueOnce(new Error('db down'));
       const p = put('s.json', JSON.stringify(summary()));
+      // the numbers still reach the caller (monitor result) when the run write fails
       expect(
         await read(report([{ file: 'a.agent.spec.ts', attachmentPath: p }])),
-      ).toBeUndefined();
+      ).toHaveLength(1);
     });
   });
 
@@ -422,8 +491,92 @@ describe('ExecutionService agent specs', () => {
       });
       expect(plain.success).toBe(true);
       expect(plain.agent).toBeUndefined();
-      expect(dbService.mergeRunMetadata).not.toHaveBeenCalled();
+      expect(dbService.mergeRunMetadata).toHaveBeenCalledWith('run-2', {
+        agent: null,
+      });
       service.onModuleDestroy();
+    });
+
+    const secretRun = (
+      secret: string,
+      file: string,
+      call: (service: ExecutionService) => Promise<unknown>,
+    ) => {
+      const { service, dbService } = createService({ PW: secret });
+      jest
+        .spyOn(service, '_executePlaywrightNativeRunner' as never)
+        .mockImplementation((async (_s: unknown, dir: string) => {
+          mkdirSync(path.join(dir, 'attachments'), { recursive: true });
+          writeFileSync(
+            path.join(dir, 'attachments', 's.json'),
+            JSON.stringify(
+              summary({
+                failures: [{ attempt: 1, message: `leak ${secret}` }],
+              }),
+            ),
+          );
+          writeFileSync(
+            path.join(dir, 'results.json'),
+            JSON.stringify(
+              report([
+                {
+                  file,
+                  attachmentPath: `${POD_DIR}/attachments/s.json`,
+                },
+              ]),
+            ),
+          );
+          return { success: true, stdout: '', stderr: '' };
+        }) as never);
+      jest
+        .spyOn(service, 'evaluatePlaywrightReport' as never)
+        .mockResolvedValue({ hasFailures: false, foundReport: true } as never);
+      jest
+        .spyOn(service, 'readJobTestStatuses' as never)
+        .mockResolvedValue({} as never);
+      return call(service)
+        .catch(() => undefined)
+        .then(() => {
+          service.onModuleDestroy();
+          return JSON.stringify(dbService.mergeRunMetadata.mock.calls);
+        });
+    };
+
+    it('never sends a run secret to the run metadata (single)', async () => {
+      const stored = await secretRun(
+        'hunter2-secret',
+        'test-1.agent.spec.ts',
+        (s) =>
+          s['runSingleTestReserved']({
+            testId: 'test-1',
+            code: 'test("a", async () => {});',
+            runId: 'run-1',
+            testType: 'agent',
+            secrets: { PW: 'hunter2-secret' },
+          }),
+      );
+      expect(stored).toContain('leak [SECRET]');
+      expect(stored).not.toContain('hunter2');
+    });
+
+    it('never sends a run secret to the run metadata (job)', async () => {
+      const stored = await secretRun(
+        'hunter2-secret',
+        '001-a.agent.spec.ts',
+        (s) =>
+          s['runJobReserved']({
+            jobId: 'job-1',
+            runId: 'run-1',
+            organizationId: 'org',
+            projectId: 'proj',
+            testScripts: [
+              { id: 'a', script: 'test("a", async () => {});', type: 'agent' },
+            ],
+            secrets: { PW: 'hunter2-secret' },
+          } as never),
+      );
+      expect(stored).toContain('leak [SECRET]');
+      expect(stored).not.toContain('hunter2');
     });
   });
 });

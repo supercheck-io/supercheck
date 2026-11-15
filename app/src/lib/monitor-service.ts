@@ -60,7 +60,6 @@ export async function insertMonitorRecord(
   }
 
   const validatedData = validation.data;
-  if (validatedData.enabled !== false) await assertAgentMonitorRunnable(validatedData);
   // Server-owned: the client never supplies these. The plaintext token is returned once, for the create response.
   const heartbeat = validatedData.type === "heartbeat" && validatedData.projectId
     ? createHeartbeatTokenColumns(validatedData.projectId)
@@ -160,6 +159,7 @@ export async function scheduleCreatedMonitor(
 }
 
 export async function createMonitorHandler(data: MonitorApiData) {
+  if (data.enabled !== false) await assertAgentMonitorRunnable(data);
   const { newMonitor, enabled } = await insertMonitorRecord(data);
   return scheduleCreatedMonitor(newMonitor, enabled);
 }

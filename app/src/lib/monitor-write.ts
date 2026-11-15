@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { and, eq, inArray, sql, type SQL } from "drizzle-orm";
+import { and, eq, inArray, ne, sql, type SQL } from "drizzle-orm";
 import { db } from "@/utils/db";
 import { monitorNotificationSettings, monitors, notificationProviders, tests } from "@/db/schema";
 import type { AlertConfig, MonitorConfig } from "@/db/schema";
@@ -10,6 +10,8 @@ import { sanitizeString } from "@/lib/input-sanitizer";
 import catalog from "@/lib/billing/plan-catalog.json";
 import { normalizeWarningToggles } from "@/lib/alerts/warning-kinds";
 import { HEARTBEAT_MAX_INTERVAL_MINUTES } from "@/lib/heartbeat/state";
+import { isExecutionQueueError } from "@/lib/execution-errors";
+import { buildExecutionQueueErrorResponse } from "@/lib/execution-api-responses";
 
 /** Config keys the worker writes. A client replacing `config` must not wipe or forge them. */
 export const WORKER_OWNED_CONFIG_KEYS = ["aggregatedAlertState", "sslLastCheckedAt", "sslCertificate", "sslProbeFailure", "sslAlertState", "aiEndpointState", "mcpState"] as const;
@@ -328,33 +330,51 @@ export async function mirrorProviderRowsToAlertConfig(tx: Pick<typeof db, "selec
 
 /**
  * An enabled synthetic monitor on an agent test needs workers with the agent fixture in every location it runs in
- * (the app rolls before the worker). Throws a retryable 503 `{ statusCode, message }`, which routes map to a response.
+ * (the app rolls before the worker). Throws the `agent_workers_pending` ExecutionQueueError, which thrownStatusResponse maps to 503 AGENT_WORKERS_PENDING.
  */
 export async function assertAgentMonitorRunnable(monitor: {
   type?: string | null;
   config?: MonitorConfig | null;
   projectId?: string | null;
   organizationId?: string | null;
-}): Promise<void> {
+}, testBecomingAgent = false): Promise<void> {
   const testId = monitor.config?.testId;
   if (monitor.type !== "synthetic_test" || typeof testId !== "string" || !isUuid(testId) || !monitor.projectId || !monitor.organizationId) return;
-  const test = await db.query.tests.findFirst({
-    where: and(eq(tests.id, testId), eq(tests.projectId, monitor.projectId), eq(tests.organizationId, monitor.organizationId)),
-    columns: { type: true },
-  });
-  if (test?.type !== "agent") return;
-  const [{ resolveMonitorLocations }, { assertAgentTestRunnable, monitorQueueName }, { isExecutionQueueError }] = await Promise.all([
+  if (!testBecomingAgent) {
+    const test = await db.query.tests.findFirst({
+      where: and(eq(tests.id, testId), eq(tests.projectId, monitor.projectId), eq(tests.organizationId, monitor.organizationId)),
+      columns: { type: true },
+    });
+    if (test?.type !== "agent") return;
+  }
+  const [{ resolveMonitorLocations, isMonitorLocationResolutionError }, { assertAgentTestRunnable, monitorQueueName }] = await Promise.all([
     import("@/lib/monitor-location-routing"),
     import("@/lib/queue"),
-    import("@/lib/execution-errors"),
   ]);
   try {
     const locations = await resolveMonitorLocations(monitor.config?.locationConfig ?? null, monitor.projectId, { monitorType: monitor.type });
     await assertAgentTestRunnable(locations.map(monitorQueueName));
   } catch (error) {
-    if (isExecutionQueueError(error)) throw { statusCode: 503, message: error.message };
+    // No eligible location is a config error the existing schedule path reports; it is not an agent-rollout condition.
+    if (error instanceof Error && !isExecutionQueueError(error) && isMonitorLocationResolutionError(error.message)) return;
     throw error;
   }
+}
+
+/** Switching a test to `agent` makes every enabled, running synthetic monitor on it an agent monitor: gate them before the write. */
+export async function assertAgentTestSwitchRunnable(testId: string, organizationId: string, projectId: string): Promise<void> {
+  const rows = await db
+    .select({ type: monitors.type, config: monitors.config, projectId: monitors.projectId, organizationId: monitors.organizationId })
+    .from(monitors)
+    .where(and(
+      eq(monitors.type, "synthetic_test"),
+      eq(monitors.projectId, projectId),
+      eq(monitors.organizationId, organizationId),
+      eq(monitors.enabled, true),
+      ne(monitors.status, "paused"),
+      sql`${monitors.config}->>'testId' = ${testId}`,
+    ));
+  for (const row of rows) await assertAgentMonitorRunnable(row, true);
 }
 
 /** True when the test belongs to this project and organization. */
@@ -450,6 +470,7 @@ export function sanitizeMonitorFields(body: Record<string, unknown>): void {
 
 /** Services throw plain `{ statusCode, message }` objects; map them to a response instead of a 500. */
 export function thrownStatusResponse(error: unknown): NextResponse | null {
+  if (isExecutionQueueError(error) && error.code === "agent_workers_pending") return buildExecutionQueueErrorResponse(error);
   if (!error || typeof error !== "object" || error instanceof Error) return null;
   const { statusCode, message, errors } = error as { statusCode?: unknown; message?: unknown; errors?: unknown };
   if (typeof statusCode !== "number" || statusCode < 400 || statusCode > 599) return null;

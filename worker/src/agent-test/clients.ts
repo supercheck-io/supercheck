@@ -16,11 +16,31 @@ const noUsage = (): AgentUsage => ({
   totalTokens: 0,
 });
 
-/** Header values and the key are removed from anything we put in an Error. */
+const CREDENTIAL_HEADER = /key|token|secret|auth|cookie/i;
+const MIN_SECRET = 4;
+
+/** The key, credential-like header values and URL credentials: removed from anything we put in an Error or summary. */
 export function secretsOf(options: AgentCommonOptions): string[] {
-  return [options.apiKey, ...Object.values(options.headers ?? {})].filter(
-    (v): v is string => typeof v === 'string' && v.length > 0,
-  );
+  const out: unknown[] = [options.apiKey];
+  for (const [name, value] of Object.entries(options.headers ?? {}))
+    if (CREDENTIAL_HEADER.test(name))
+      // "Bearer abc" leaks as bare "abc" too
+      out.push(value, typeof value === 'string' && value.split(/\s+/).pop());
+  try {
+    const u = new URL((options as { url?: string }).url ?? '');
+    out.push(u.username, u.password);
+    for (const part of [u.username, u.password])
+      out.push(decodeURIComponent(part));
+  } catch {
+    // no URL, or no credentials in it
+  }
+  return [
+    ...new Set(
+      out.filter(
+        (v): v is string => typeof v === 'string' && v.length >= MIN_SECRET,
+      ),
+    ),
+  ];
 }
 
 export function redact(text: string, secrets: string[]): string {
@@ -216,11 +236,15 @@ function rpcMessage(
   return found;
 }
 
-function rpcResult(kind: string, msg: Record<string, unknown>): unknown {
+function rpcResult(
+  kind: string,
+  msg: Record<string, unknown>,
+  secrets: string[],
+): unknown {
   if (msg.error) {
     const e = asRecord(msg.error);
     throw new Error(
-      `${kind} agent error ${asString(e.code)}: ${asString(e.message).slice(0, 200)}`,
+      `${kind} agent error ${asString(e.code)}: ${redact(asString(e.message), secrets).slice(0, 200)}`,
     );
   }
   return msg.result;
@@ -259,8 +283,9 @@ async function a2aSend(
     },
     legacy ? {} : { 'a2a-version': '1.0' },
   );
-  const msg = rpcMessage('a2a', text, id, secretsOf(options));
-  const result = asRecord(rpcResult('a2a', msg));
+  const secrets = secretsOf(options);
+  const msg = rpcMessage('a2a', text, id, secrets);
+  const result = asRecord(rpcResult('a2a', msg, secrets));
   // 1.0 wraps the answer as { task } or { message }; 0.3 returns the Task or Message itself.
   const body = asRecord(result.task ?? result.message ?? result);
   const status = asRecord(body.status);
@@ -315,7 +340,7 @@ async function mcpSend(
     accept,
   );
   const initResult = asRecord(
-    rpcResult('mcp', rpcMessage('mcp', init.text, 1, secrets)),
+    rpcResult('mcp', rpcMessage('mcp', init.text, 1, secrets), secrets),
   );
   const session = init.headers.get('mcp-session-id');
   const next = {
@@ -339,7 +364,7 @@ async function mcpSend(
     next,
   );
   const result = asRecord(
-    rpcResult('mcp', rpcMessage('mcp', call.text, 2, secrets)),
+    rpcResult('mcp', rpcMessage('mcp', call.text, 2, secrets), secrets),
   );
   const answer = (Array.isArray(result.content) ? result.content : [])
     .map((c) => asRecord(c).text)
