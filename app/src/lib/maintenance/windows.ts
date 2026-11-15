@@ -302,6 +302,9 @@ export async function createMaintenanceWindow(
       await tx.update(statusPageIncidents)
         .set(live ? { maintenanceWindowId: created.id } : { maintenanceWindowId: created.id, status: "resolved", resolvedAt: now, updatedAt: now })
         .where(eq(statusPageIncidents.id, posted.incident.id));
+      // Linking is a change to the window: a request that read it before (and checked it was not on a status
+      // page, as MCP does) now fails its updated_at guard instead of touching the public post.
+      if (live) await tx.update(maintenanceWindows).set({ updatedAt: now }).where(eq(maintenanceWindows.id, created.id));
       return Boolean(live);
     });
     if (!linked) warning = "status_page_failed";

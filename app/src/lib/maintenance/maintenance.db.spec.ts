@@ -6,9 +6,10 @@ import path from "node:path";
 import { promisify } from "node:util";
 import postgres from "postgres";
 import { drizzle } from "drizzle-orm/postgres-js";
+import * as schema from "@/db/schema";
 import { v7 as uuidv7 } from "uuid";
 
-let mockDatabase: ReturnType<typeof drizzle>;
+let mockDatabase: ReturnType<typeof drizzle<typeof schema>>;
 jest.mock("@/utils/db", () => ({ get db() { return mockDatabase; } }));
 jest.mock("@/lib/audit-logger", () => ({ logAuditEvent: jest.fn() }));
 jest.mock("@/lib/sre/sre-rate-limiter", () => ({ checkMaintenanceWriteRateLimit: jest.fn(async () => ({ allowed: true, remaining: 10 })) }));
@@ -66,7 +67,7 @@ beforeAll(async () => {
     timeout: 90_000,
   });
   client = postgres(url.toString(), { max: 2, onnotice: () => {} });
-  mockDatabase = drizzle(client);
+  mockDatabase = drizzle(client, { schema });
   await client`INSERT INTO organization (id, name, slug, created_at) VALUES (${org}, 'o', ${org}, now()), (${otherOrg}, 'x', ${otherOrg}, now())`;
   await client`INSERT INTO projects (id, organization_id, name, slug) VALUES (${project}, ${org}, 'p', ${project}), (${otherProject}, ${otherOrg}, 'q', ${otherProject})`;
   await client`INSERT INTO "user" (id, name, email, email_verified, created_at, updated_at) VALUES (${user}, 'u', 'u@example.com', true, now(), now())`;
@@ -195,6 +196,20 @@ describe("window lifecycle (M10, AC12)", () => {
     const toNextStart = 1440 - 60;
     expect(await extendMaintenanceWindow(actor, series.window.id, { byMinutes: toNextStart })).toMatchObject({ ok: false, code: "invalid" });
     expect(await extendMaintenanceWindow(actor, series.window.id, { byMinutes: toNextStart - 10 })).toMatchObject({ ok: true });
+  });
+
+  it("links a published post and advances the window's version, so earlier reads cannot change the post", async () => {
+    const [page] = await client`INSERT INTO status_pages (id, organization_id, project_id, name, subdomain) VALUES (uuidv7(), ${org}, ${project}, 'S5', ${`s${randomUUID().slice(0, 8)}`}) RETURNING id`;
+    const [component] = await client`INSERT INTO status_page_components (id, status_page_id, name) VALUES (uuidv7(), ${page!.id}, 'C') RETURNING id`;
+    const created = await createMaintenanceWindow(admin, oneOff(120, 60, { statusPages: [{ statusPageId: page!.id, componentIds: [component!.id] }] }), "api");
+    if (!created.ok) throw new Error(created.error);
+    expect(created).not.toHaveProperty("warning");
+    const [row] = await client`SELECT created_at, updated_at FROM maintenance_windows WHERE id = ${created.window.id}`;
+    expect(new Date(row!.updated_at).getTime()).toBeGreaterThan(new Date(row!.created_at).getTime());
+    const [linked] = await client`SELECT status FROM incidents WHERE maintenance_window_id = ${created.window.id}`;
+    expect(linked!.status).toBe("scheduled");
+    // MCP is refused for a window on a status page.
+    expect(await cancelMaintenanceWindow(admin, created.window.id, "mcp")).toMatchObject({ ok: false, code: "conflict" });
   });
 
   it("refuses to delete once a status-page post is linked, even after the window was read", async () => {
