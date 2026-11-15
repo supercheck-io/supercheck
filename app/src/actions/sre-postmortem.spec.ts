@@ -33,9 +33,11 @@ function chain(result: unknown[]) {
   c.then = (r: (v: unknown[]) => unknown) => Promise.resolve(result).then(r);
   return c;
 }
+const txConfigs: unknown[] = [];
 jest.mock("@/utils/db", () => ({
   db: {
     select: () => chain(queue.shift() ?? []),
+    transaction: (fn: (tx: unknown) => unknown, config: unknown) => { txConfigs.push(config); return fn({ select: () => chain(queue.shift() ?? []) }); },
     update: () => ({ set: (v: unknown) => { updates.push(v); return { where: (w: unknown) => { wheres.push(w); return Promise.resolve(); } }; } }),
   },
 }));
@@ -116,6 +118,8 @@ describe("generateSrePostmortem root cause", () => {
     await generateSrePostmortem({ incidentId });
     const labels = (generate.mock.calls[0][0] as { timeline: Array<{ label: string }> }).timeline.map((e) => e.label);
     expect(labels).toEqual(["Incident created: start", "… 214 events not shown …", "Resolved: fixed"]);
+    // Both windows and the count come from one snapshot.
+    expect(txConfigs.at(-1)).toEqual({ isolationLevel: "repeatable read", accessMode: "read only" });
   });
 
   it("rates the root cause only when an investigation completed, and reduces a stored report to its summary", async () => {

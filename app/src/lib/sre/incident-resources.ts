@@ -79,10 +79,16 @@ export async function findOpenIncidentListingMonitor(
             eq(sreIncidentResources.resourceType, "service"),
             inArray(
               sreIncidentResources.resourceId,
+              // A merged service is no longer listed on the incident, so it never pulls the monitor's alert in.
               executor
                 .select({ id: sreServiceResources.serviceId })
                 .from(sreServiceResources)
-                .where(and(eq(sreServiceResources.resourceType, "monitor"), eq(sreServiceResources.resourceId, input.monitorId))),
+                .innerJoin(sreServices, eq(sreServices.id, sreServiceResources.serviceId))
+                .where(and(
+                  eq(sreServiceResources.resourceType, "monitor"),
+                  eq(sreServiceResources.resourceId, input.monitorId),
+                  ne(sreServices.status, "merged"),
+                )),
             ),
           ),
         ),
