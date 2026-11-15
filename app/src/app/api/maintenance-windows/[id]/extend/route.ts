@@ -3,7 +3,7 @@ import { z } from "zod";
 
 import { requireSreApiPermissions, requireSreSameOriginRequest } from "../../../sre/_auth";
 import { extendMaintenanceWindow } from "@/lib/maintenance/windows";
-import { readJson, windowResponse } from "../../respond";
+import { clientSource, readJson, windowResponse } from "../../respond";
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const originError = requireSreSameOriginRequest(request);
@@ -14,5 +14,5 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   if (!id.success) return NextResponse.json({ error: "Invalid maintenance window ID" }, { status: 400 });
   const read = await readJson(request);
   if ("response" in read) return read.response;
-  return windowResponse(auth.context.organizationId, await extendMaintenanceWindow(auth.context, id.data, read.body as never));
+  return windowResponse(auth.context.organizationId, await extendMaintenanceWindow(auth.context, id.data, read.body as never, clientSource(request)));
 }

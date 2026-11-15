@@ -155,11 +155,11 @@ export function registerSreTools(tool: ToolRegistrar, ctx: McpCallContext): void
       },
       async ({ serviceIds, monitorIds, ...input }) => windowOut(await createMaintenanceWindow(windowActor(), { ...input, targets: { serviceIds, monitorIds }, statusPages: [] }, "mcp") as never));
     tool("end_maintenance_window", "End an active maintenance window now. Alerts resume at once." + UNTRUSTED, windowWrite, { id: idArg },
-      async ({ id }) => windowOut(await endMaintenanceWindow(windowActor(), id)));
+      async ({ id }) => windowOut(await endMaintenanceWindow(windowActor(), id, "mcp")));
     tool("extend_maintenance_window", "Extend an active maintenance window by some minutes." + UNTRUSTED, windowWrite, { id: idArg, byMinutes: z.number().int().min(1).max(10080) },
-      async ({ id, byMinutes }) => windowOut(await extendMaintenanceWindow(windowActor(), id, { byMinutes })));
+      async ({ id, byMinutes }) => windowOut(await extendMaintenanceWindow(windowActor(), id, { byMinutes }, "mcp")));
     tool("cancel_maintenance_window", "Cancel a scheduled maintenance window, or the rest of a recurring one." + UNTRUSTED, windowWrite, { id: idArg },
-      async ({ id }) => windowOut(await cancelMaintenanceWindow(windowActor(), id)));
+      async ({ id }) => windowOut(await cancelMaintenanceWindow(windowActor(), id, "mcp")));
     tool("acknowledge_incident", "Acknowledge an incident. Claims it for you if it is unassigned." + UNTRUSTED, write, { id: idArg },
       ({ id }) => lifecycle(id, () => acknowledgeIncident(actor, id)));
     tool("resolve_incident", "Resolve an incident with a resolution summary." + UNTRUSTED, write,

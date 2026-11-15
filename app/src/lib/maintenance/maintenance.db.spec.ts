@@ -19,6 +19,7 @@ import {
   advanceMaintenanceWindows,
   cancelMaintenanceWindow,
   createMaintenanceWindow,
+  deleteMaintenanceWindow,
   endMaintenanceWindow,
   extendMaintenanceWindow,
   getMaintenanceWindow,
@@ -168,7 +169,11 @@ describe("window lifecycle (M10, AC12)", () => {
     const [page] = await client`INSERT INTO status_pages (id, organization_id, project_id, name, subdomain) VALUES (uuidv7(), ${org}, ${project}, 'S2', ${`s${randomUUID().slice(0, 8)}`}) RETURNING id`;
     const [linked] = await client`INSERT INTO incidents (id, status_page_id, name, status, impact, scheduled_for, scheduled_until, maintenance_window_id, deliver_notifications)
       VALUES (uuidv7(), ${page!.id}, 'm', 'scheduled', 'minor', now() + interval '2 hours', now() + interval '3 hours', ${created.window.id}, false) RETURNING id`;
+    // While it is on a status page: no delete, no MCP change, and a role without status_page:update is refused.
+    expect(await deleteMaintenanceWindow(actor, created.window.id)).toMatchObject({ ok: false, code: "conflict" });
+    expect(await cancelMaintenanceWindow(actor, created.window.id, "mcp")).toMatchObject({ ok: false, code: "conflict" });
     expect(await cancelMaintenanceWindow(actor, created.window.id)).toMatchObject({ ok: true, window: { state: "cancelled" } });
+    expect(await deleteMaintenanceWindow(actor, created.window.id)).toMatchObject({ ok: true });
     const [row] = await client`SELECT status FROM incidents WHERE id = ${linked!.id}`;
     expect(row!.status).toBe("resolved");
     const updates = await client`SELECT body, deliver_notifications FROM incident_updates WHERE incident_id = ${linked!.id}`;

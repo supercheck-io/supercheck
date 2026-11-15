@@ -107,6 +107,8 @@ const scheduleOf = (row: Pick<WindowRow, "recurrence" | "timezone" | "localStart
   monthDay: row.monthDay,
 });
 
+export type WindowSource = "ui" | "api" | "cli" | "mcp";
+
 function can(actor: StatusPageIncidentActor, resource: "monitor" | "status_page", action: string) {
   return checkPermissionWithContext(resource, action, actor);
 }
@@ -195,7 +197,7 @@ export async function getMaintenanceWindow(actor: StatusPageIncidentActor, id: s
 export async function createMaintenanceWindow(
   actor: StatusPageIncidentActor,
   input: z.input<typeof windowInputSchema>,
-  source: "ui" | "api" | "cli" | "mcp",
+  source: WindowSource,
 ): Promise<WindowResult<{ window: MaintenanceWindowView; warning?: "status_page_failed" }>> {
   const parsed = windowInputSchema.safeParse(input);
   if (!parsed.success) return { ok: false, code: "invalid", error: parsed.error.issues[0]?.message ?? "Invalid maintenance window" };
@@ -282,13 +284,21 @@ export async function createMaintenanceWindow(
   return { ok: true, window: (await toViews([created]))[0]!, ...(warning ? { warning } : {}) };
 }
 
-async function loadForWrite(actor: StatusPageIncidentActor, id: string, permission: "update" | "delete") {
+async function loadForWrite(actor: StatusPageIncidentActor, id: string, permission: "update" | "delete", source: WindowSource) {
   if (!z.string().uuid().safeParse(id).success) return { error: { ok: false as const, code: "invalid" as const, error: "Invalid maintenance window" } };
   if (!can(actor, "monitor", permission)) return { error: { ok: false as const, code: "forbidden" as const, error: "Insufficient permissions to change maintenance windows" } };
   const rateLimited = await limited(actor);
   if (rateLimited) return { error: rateLimited as WindowResult<never> };
   const [row] = await db.select().from(maintenanceWindows).where(scopedWindow(actor, id)).limit(1);
   if (!row) return { error: { ok: false as const, code: "not_found" as const, error: "Maintenance window not found" } };
+  // A change to a window that is still on a status page also changes that public post.
+  const [onStatusPage] = await db.select({ id: statusPageIncidents.id }).from(statusPageIncidents)
+    .where(and(eq(statusPageIncidents.maintenanceWindowId, row.id), sql`${statusPageIncidents.status} <> 'resolved'`)).limit(1);
+  if (onStatusPage) {
+    if (permission === "delete") return { error: { ok: false as const, code: "conflict" as const, error: "This window is on a status page. Cancel it first." } };
+    if (source === "mcp") return { error: { ok: false as const, code: "conflict" as const, error: "This window is on a status page. Change it in Supercheck, not through MCP." } };
+    if (!can(actor, "status_page", "update")) return { error: { ok: false as const, code: "forbidden" as const, error: "Insufficient permissions to change the status page post" } };
+  }
   return { row };
 }
 
@@ -303,10 +313,11 @@ export async function updateMaintenanceWindow(
   actor: StatusPageIncidentActor,
   id: string,
   input: z.input<typeof windowUpdateSchema>,
+  source: WindowSource = "api",
 ): Promise<WindowResult<{ window: MaintenanceWindowView }>> {
   const parsed = windowUpdateSchema.safeParse(input);
   if (!parsed.success) return { ok: false, code: "invalid", error: parsed.error.issues[0]?.message ?? "Invalid maintenance window" };
-  const loaded = await loadForWrite(actor, id, "update");
+  const loaded = await loadForWrite(actor, id, "update", source);
   if ("error" in loaded) return loaded.error!;
   const { row } = loaded;
   const now = new Date();
@@ -351,13 +362,17 @@ export async function updateMaintenanceWindow(
       updatedAt: now,
     }).where(eq(maintenanceWindows.id, row.id)).returning();
   });
-  await audit(actor, "maintenance_window_updated", row.id);
+  await audit(actor, "maintenance_window_updated", row.id, {
+    source,
+    changed: Object.keys(data).filter((key) => data[key as keyof typeof data] !== undefined),
+    ...(targets !== undefined ? { scopeBefore: row.scope, scope, targets: targets.length } : {}),
+  });
   return { ok: true, window: (await toViews([updated!]))[0]! };
 }
 
 /** Ends the active occurrence now: a one-off completes, a series moves to its next occurrence. */
-export async function endMaintenanceWindow(actor: StatusPageIncidentActor, id: string): Promise<WindowResult<{ window: MaintenanceWindowView }>> {
-  const loaded = await loadForWrite(actor, id, "update");
+export async function endMaintenanceWindow(actor: StatusPageIncidentActor, id: string, source: WindowSource = "api"): Promise<WindowResult<{ window: MaintenanceWindowView }>> {
+  const loaded = await loadForWrite(actor, id, "update", source);
   if ("error" in loaded) return loaded.error!;
   const { row } = loaded;
   const now = new Date();
@@ -371,7 +386,7 @@ export async function endMaintenanceWindow(actor: StatusPageIncidentActor, id: s
         : { occurrenceEndsAt: now, completedAt: now, updatedAt: now },
     ).where(eq(maintenanceWindows.id, row.id)).returning();
   });
-  await audit(actor, "maintenance_window_ended", row.id);
+  await audit(actor, "maintenance_window_ended", row.id, { source });
   return { ok: true, window: (await toViews([updated!]))[0]! };
 }
 
@@ -379,10 +394,11 @@ export async function extendMaintenanceWindow(
   actor: StatusPageIncidentActor,
   id: string,
   input: z.input<typeof extendSchema>,
+  source: WindowSource = "api",
 ): Promise<WindowResult<{ window: MaintenanceWindowView }>> {
   const parsed = extendSchema.safeParse(input);
   if (!parsed.success) return { ok: false, code: "invalid", error: "Pass byMinutes or until" };
-  const loaded = await loadForWrite(actor, id, "update");
+  const loaded = await loadForWrite(actor, id, "update", source);
   if ("error" in loaded) return loaded.error!;
   const { row } = loaded;
   const now = new Date();
@@ -398,7 +414,7 @@ export async function extendMaintenanceWindow(
     await moveLinkedEnd(tx, row.id, until);
     return tx.update(maintenanceWindows).set({ occurrenceEndsAt: until, updatedAt: now }).where(eq(maintenanceWindows.id, row.id)).returning();
   });
-  await audit(actor, "maintenance_window_extended", row.id, { until: until.toISOString() });
+  await audit(actor, "maintenance_window_extended", row.id, { source, until: until.toISOString() });
   return { ok: true, window: (await toViews([updated!]))[0]! };
 }
 
@@ -406,8 +422,8 @@ export async function extendMaintenanceWindow(
  * Cancels a scheduled one-off or the rest of a series. A published status-page maintenance has no cancelled state,
  * so it is resolved with "This maintenance was cancelled"; subscribers hear about it only if they were told at creation.
  */
-export async function cancelMaintenanceWindow(actor: StatusPageIncidentActor, id: string): Promise<WindowResult<{ window: MaintenanceWindowView }>> {
-  const loaded = await loadForWrite(actor, id, "update");
+export async function cancelMaintenanceWindow(actor: StatusPageIncidentActor, id: string, source: WindowSource = "api"): Promise<WindowResult<{ window: MaintenanceWindowView }>> {
+  const loaded = await loadForWrite(actor, id, "update", source);
   if ("error" in loaded) return loaded.error!;
   const { row } = loaded;
   const now = new Date();
@@ -437,17 +453,17 @@ export async function cancelMaintenanceWindow(actor: StatusPageIncidentActor, id
       updatedAt: now,
     }).where(eq(maintenanceWindows.id, row.id)).returning();
   });
-  await audit(actor, "maintenance_window_cancelled", row.id);
+  await audit(actor, "maintenance_window_cancelled", row.id, { source });
   return { ok: true, window: (await toViews([updated!]))[0]! };
 }
 
-export async function deleteMaintenanceWindow(actor: StatusPageIncidentActor, id: string): Promise<WindowResult<object>> {
-  const loaded = await loadForWrite(actor, id, "delete");
+export async function deleteMaintenanceWindow(actor: StatusPageIncidentActor, id: string, source: WindowSource = "api"): Promise<WindowResult<object>> {
+  const loaded = await loadForWrite(actor, id, "delete", source);
   if ("error" in loaded) return loaded.error!;
   const { row } = loaded;
   if (windowState(row) === "active") return { ok: false, code: "conflict", error: "End the window before deleting it" };
   await db.delete(maintenanceWindows).where(eq(maintenanceWindows.id, row.id));
-  await audit(actor, "maintenance_window_deleted", row.id);
+  await audit(actor, "maintenance_window_deleted", row.id, { source });
   return { ok: true };
 }
 

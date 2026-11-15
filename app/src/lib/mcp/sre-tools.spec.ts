@@ -281,7 +281,7 @@ describe("maintenance window tools", () => {
   it("end, extend and cancel call the core and surface its failures", async () => {
     mockWindows.endMaintenanceWindow.mockResolvedValue(view);
     await tools().get("end_maintenance_window")!.run({ id });
-    expect(mockWindows.endMaintenanceWindow).toHaveBeenCalledWith(expect.objectContaining({ organizationId: "o" }), id);
+    expect(mockWindows.endMaintenanceWindow).toHaveBeenCalledWith(expect.objectContaining({ organizationId: "o" }), id, "mcp");
     mockWindows.extendMaintenanceWindow.mockResolvedValue({ ok: false, code: "conflict", error: "Only an active window can be extended" });
     await expect(tools().get("extend_maintenance_window")!.run({ id, byMinutes: 30 })).rejects.toMatchObject({ code: "conflict" });
     mockWindows.cancelMaintenanceWindow.mockResolvedValue({ ok: false, code: "not_found", error: "Maintenance window not found" });
