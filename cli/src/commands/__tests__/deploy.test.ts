@@ -64,6 +64,18 @@ describe('deploy heartbeat monitors', () => {
     expect(result.results).toEqual([expect.objectContaining({ action: 'create', type: 'monitor', id: M1, pingUrl: PING_URL })])
   })
 
+  it('an update that drops an enabled warning sends it as false, so the next diff is clean', async () => {
+    localId = M1
+    remote = [{ id: M1, type: 'monitor', name: definition.name, raw: { ...definition, alertConfig: { enabled: true, warnings: { heartbeat_late: true } } } }]
+    const local = { ...definition, alertConfig: { enabled: true } }
+    const original = definition.alertConfig
+    Object.assign(definition, { alertConfig: local.alertConfig })
+    try {
+      await deployCommand.parseAsync(['node', 'deploy', '--force'])
+    } finally { Object.assign(definition, { alertConfig: original }) }
+    expect(put).toHaveBeenCalledWith(`/api/monitors/${M1}`, { ...local, alertConfig: { enabled: true, warnings: { heartbeat_late: false } } })
+  })
+
   it('an update shows no ping URL (it is returned only on create)', async () => {
     localId = M1
     remote = [{ id: M1, type: 'monitor', name: definition.name, raw: { ...definition, frequencyMinutes: 60 } }]

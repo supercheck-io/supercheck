@@ -273,6 +273,14 @@ async function applyChange(
         if (typeof config.testId === 'string') config.testId = opts.state.resolve('test', config.testId)
         rawBody.config = config
       }
+      // Diff treats an omitted warning as off, but the server keeps a stored toggle it is not sent; send `false` for each one.
+      const remoteWarnings = (change.remote?.raw.alertConfig as Record<string, unknown> | undefined)?.warnings
+      if (change.type === 'monitor' && change.action === 'update' && rawBody.alertConfig && typeof rawBody.alertConfig === 'object' && remoteWarnings && typeof remoteWarnings === 'object') {
+        const alertConfig = rawBody.alertConfig as Record<string, unknown>
+        const local = (alertConfig.warnings ?? {}) as Record<string, unknown>
+        const turnedOff = Object.keys(remoteWarnings).filter((kind) => (remoteWarnings as Record<string, unknown>)[kind] === true && !(kind in local))
+        if (turnedOff.length > 0) rawBody.alertConfig = { ...alertConfig, warnings: { ...local, ...Object.fromEntries(turnedOff.map((kind) => [kind, false])) } }
+      }
       // An unset environment variable evaluates to '' in a pulled config. Never send that as a secret's value: on update
       // it would overwrite the stored secret with an empty one, and on create it would store nothing useful.
       if (change.type === 'variable' && rawBody.isSecret === true && (rawBody.value === undefined || rawBody.value === '')) {

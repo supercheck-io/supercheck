@@ -128,6 +128,26 @@ it.each([
   expect(insertWithinPlanLimit).not.toHaveBeenCalled();
 });
 
+const PROVIDER = "00000000-0000-4000-8000-0000000000ab";
+it("accepts a heartbeat whose only alert is an enabled warning, and rejects it for a type without warnings", async () => {
+  const body = (type: string) => ({
+    name: "m",
+    type,
+    ...(type === "heartbeat" ? { frequencyMinutes: 60 } : { target: "https://example.com" }),
+    alertConfig: { enabled: true, notificationProviders: [PROVIDER], alertOnFailure: false, alertOnRecovery: false, warnings: { heartbeat_late: true } },
+  });
+  // The channel belongs to the project, so only the alert-type rule can reject.
+  dbSelect.mockReturnValue({ from: () => ({ where: async () => [{ id: PROVIDER }] }) });
+  const create = (type: string) =>
+    POST(new NextRequest("http://localhost/api/monitors", { method: "POST", body: JSON.stringify(body(type)), headers: { "content-type": "application/json" } }));
+  const http = await create("http_request");
+  expect(http.status).toBe(400);
+  expect((await http.json()).error).toBe("At least one alert type must be selected when alerts are enabled");
+  const heartbeat = await create("heartbeat");
+  expect(heartbeat.status).not.toBe(400);
+  expect(insertWithinPlanLimit).toHaveBeenCalledTimes(1);
+});
+
 it("rejects an unknown incidentSeverity instead of dropping it", async () => {
   const res = await post({ enabled: false, notificationProviders: [], incidentSeverity: "sev9" });
   expect(res.status).toBe(400);

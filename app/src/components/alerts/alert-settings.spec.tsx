@@ -192,4 +192,14 @@ describe("AlertSettings warnings group (B24)", () => {
     expect(screen.getByText("Failure Threshold")).toBeInTheDocument();
     expect(screen.getByLabelText("Alert on failure")).toBeInTheDocument();
   });
+
+  it("counts an enabled warning as an alert type, only for a type that has it", () => {
+    const warningOnly = { ...base, alertOnFailure: false, alertOnRecovery: false, warnings: { heartbeat_late: true } };
+    const { rerender } = render(<AlertSettings value={warningOnly} monitorType="heartbeat" />);
+    expect(screen.queryByText("At least one alert type must be selected when alerts are enabled")).toBeNull();
+    rerender(<AlertSettings value={{ ...warningOnly, warnings: { heartbeat_late: false } }} monitorType="heartbeat" />);
+    expect(screen.getByText("At least one alert type must be selected when alerts are enabled")).toBeInTheDocument();
+    rerender(<AlertSettings value={warningOnly} monitorType="http_request" />);
+    expect(screen.getByText("At least one alert type must be selected when alerts are enabled")).toBeInTheDocument();
+  });
 });

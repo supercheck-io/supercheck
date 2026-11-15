@@ -28,6 +28,7 @@ import { invalidateMonitorCaches } from "./monitor-actions";
 import { Loader2, SaveIcon } from "lucide-react";
 import { presetFailureThreshold } from "./ai-endpoint-fields";
 import { rememberCreatedPingUrl } from "./heartbeat-ping-url-panel";
+import { hasWarningOn } from "@/lib/alerts/warning-kinds";
 
 type WizardStep = "monitor" | "location" | "alerts";
 
@@ -371,6 +372,7 @@ export function MonitorCreationWizard() {
         alertConfig.alertOnFailure,
         alertConfig.alertOnRecovery,
         alertConfig.alertOnSslExpiration,
+        hasWarningOn(monitorData?.type || type, alertConfig.warnings),
       ].some(Boolean);
 
       if (!alertTypesSelected) {

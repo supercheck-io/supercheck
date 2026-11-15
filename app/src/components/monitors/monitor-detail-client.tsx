@@ -709,7 +709,7 @@ export function MonitorDetailClient({
         )}
 
         {/* Status and Type Header */}
-        <div className="border rounded-lg p-2 mb-4 shadow-sm bg-card">
+        <div className="border rounded-lg p-2 mb-4 shadow-sm bg-card" data-testid="monitor-detail-header">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="flex min-w-0 items-center gap-3">
               {!isNotificationView && (

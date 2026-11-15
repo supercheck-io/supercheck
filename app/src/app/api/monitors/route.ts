@@ -513,6 +513,8 @@ export async function POST(req: NextRequest) {
         alertConfig.alertOnFailure,
         alertConfig.alertOnRecovery,
         alertConfig.alertOnSslExpiration,
+        // Warnings are type-scoped by normalizeMonitorAlertConfig; an enabled one counts.
+        Object.values(alertConfig.warnings ?? {}).includes(true),
       ].some(Boolean);
 
       if (!alertTypesSelected) {
@@ -962,6 +964,8 @@ export async function PUT(req: NextRequest) {
         alertConfig.alertOnFailure,
         alertConfig.alertOnRecovery,
         alertConfig.alertOnSslExpiration,
+        // Warnings are type-scoped by normalizeMonitorAlertConfig; an enabled one counts.
+        Object.values(alertConfig.warnings ?? {}).includes(true),
       ].some(Boolean);
 
       if (!alertTypesSelected) {

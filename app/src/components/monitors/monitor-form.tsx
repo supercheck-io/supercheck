@@ -79,6 +79,7 @@ import { addAiEndpointIssues, AiEndpointFields, AI_ENDPOINT_DEFAULT_URL, buildAi
 import { HeartbeatFields } from "./heartbeat-fields";
 import { heartbeatToMinutes, type HeartbeatUnit } from "./heartbeat-format";
 import { HEARTBEAT_MAX_GRACE_MINUTES, HEARTBEAT_MAX_INTERVAL_MINUTES } from "@/lib/heartbeat/state";
+import { hasWarningOn } from "@/lib/alerts/warning-kinds";
 
 // Defaults the AI endpoint preset applies to a new monitor; switching back to Standard HTTP undoes them while unchanged.
 const AI_PRESET_INTERVAL = "300";
@@ -1174,6 +1175,7 @@ export function MonitorForm({
         alertConfig.alertOnFailure,
         alertConfig.alertOnRecovery,
         alertConfig.alertOnSslExpiration,
+        hasWarningOn(type, alertConfig.warnings),
       ].some(Boolean);
 
       if (!alertTypesSelected) {

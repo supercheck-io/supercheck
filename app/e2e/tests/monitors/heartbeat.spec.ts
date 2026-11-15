@@ -3,6 +3,12 @@ import { test } from "../../fixtures";
 import { createMonitor, deleteMonitor } from "../../utils/test-data";
 import { waitForHydration } from "../../utils/hydration";
 
+// Only rendered matches: strict mode fails when a second, hidden copy is in the DOM.
+const byTestId = (page: Page, id: string) => page.getByTestId(id).filter({ visible: true });
+// The state badge in the page header, not any other badge on the page.
+const stateBadge = (page: Page) =>
+  byTestId(page, "monitor-detail-header").getByTestId("heartbeat-state-badge").filter({ visible: true });
+
 // Pings are evaluated by the worker's heartbeat sweep (every 30 s), so state changes need a running worker.
 const SWEEP_TIMEOUT = 120_000;
 
@@ -11,7 +17,7 @@ async function expectHeartbeatState(page: Page, monitorId: string, state: string
     .poll(
       async () => {
         await page.goto(`/monitors/${monitorId}`, { waitUntil: "domcontentloaded" });
-        return page.getByTestId("heartbeat-state-badge").getAttribute("data-state");
+        return stateBadge(page).getAttribute("data-state");
       },
       { timeout: SWEEP_TIMEOUT, intervals: [5_000] },
     )
@@ -34,7 +40,7 @@ test.describe("Heartbeat monitor @monitors @heartbeat", () => {
     await waitForHydration(page);
 
     // No target, method or location fields for a heartbeat (spec 4.6).
-    await expect(page.getByTestId("heartbeat-fields")).toBeVisible();
+    await expect(byTestId(page, "heartbeat-fields")).toBeVisible();
     await expect(page.getByLabel("Target")).toHaveCount(0);
     await page.getByLabel("Title").fill(name);
     await page.getByLabel("Expect a ping every", { exact: true }).fill("1");
@@ -44,7 +50,7 @@ test.describe("Heartbeat monitor @monitors @heartbeat", () => {
     // Alert step: thresholds are hidden; the Warnings group shows once alerts are on.
     await page.getByLabel("Enable Alerts").click();
     await expect(page.getByText("Failure Threshold")).toHaveCount(0);
-    await expect(page.getByTestId("alert-warnings-group")).toContainText(
+    await expect(byTestId(page, "alert-warnings-group")).toContainText(
       "Warnings notify your channels. They never open an incident.",
     );
     await page.getByLabel("Enable Alerts").click();
@@ -62,16 +68,16 @@ test.describe("Heartbeat monitor @monitors @heartbeat", () => {
     // The URL is shown in full once, right after create, and Copy puts it on the clipboard.
     await expect(page).toHaveURL(new RegExp(`/monitors/${body.id}`));
     await waitForHydration(page);
-    const urlBox = page.getByTestId("heartbeat-ping-url");
+    const urlBox = byTestId(page, "heartbeat-ping-url");
     await expect(urlBox).toHaveAttribute("data-revealed", "true");
     const pingUrl = (await urlBox.textContent())?.trim() ?? "";
     expect(pingUrl).toBe(body.heartbeat?.pingUrl);
     await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
-    await page.getByTestId("heartbeat-copy").click();
+    await byTestId(page, "heartbeat-copy").click();
     await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(pingUrl);
 
-    await expect(page.getByTestId("heartbeat-state-badge")).toHaveAttribute("data-state", "pending");
-    await expect(page.getByTestId("heartbeat-waiting")).toBeVisible();
+    await expect(stateBadge(page)).toHaveAttribute("data-state", "pending");
+    await expect(byTestId(page, "heartbeat-waiting")).toBeVisible();
 
     // The monitor GET never carries the URL or token.
     const read = await request.get(`/api/monitors/${body.id}`);
@@ -84,7 +90,7 @@ test.describe("Heartbeat monitor @monitors @heartbeat", () => {
     expect(await ping.text()).toBe("OK");
     await expectHeartbeatState(page, body.id, "up");
     await expect(page.getByTestId("heartbeat-ping-row").first()).toHaveAttribute("data-kind", "ping");
-    await expect(page.getByTestId("heartbeat-stat-last-ping")).not.toHaveText(/—/);
+    await expect(byTestId(page, "heartbeat-stat-last-ping")).not.toHaveText(/—/);
 
     // /fail turns it Down at once (no grace) and opens an incident.
     const fail = await request.post(`${pingUrl}/fail`);

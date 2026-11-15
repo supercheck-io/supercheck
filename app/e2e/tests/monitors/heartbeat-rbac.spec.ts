@@ -36,10 +36,10 @@ test.describe("Heartbeat ping URL RBAC @monitors @heartbeat @rbac", () => {
     await viewerPage.goto(`/monitors/${monitor.id}`, { waitUntil: "domcontentloaded" });
     await waitForHydration(viewerPage);
     await expect(viewerPage.getByRole("heading", { name: monitor.name, exact: true })).toBeVisible();
-    const panel = viewerPage.getByTestId("heartbeat-ping-url-panel");
+    const panel = viewerPage.getByTestId("heartbeat-ping-url-panel").filter({ visible: true });
     await expect(panel).toBeVisible();
-    await expect(viewerPage.getByTestId("heartbeat-ping-url")).toHaveAttribute("data-revealed", "false");
-    await expect(viewerPage.getByTestId("heartbeat-ping-url")).toContainText("/api/heartbeat/hb_•");
+    await expect(viewerPage.getByTestId("heartbeat-ping-url").filter({ visible: true })).toHaveAttribute("data-revealed", "false");
+    await expect(viewerPage.getByTestId("heartbeat-ping-url").filter({ visible: true })).toContainText("/api/heartbeat/hb_•");
     for (const name of ["Reveal", "Copy", "Rotate URL"]) {
       await expect(panel.getByRole("button", { name, exact: true })).toHaveCount(0);
     }
@@ -57,7 +57,7 @@ test.describe("Heartbeat ping URL RBAC @monitors @heartbeat @rbac", () => {
     await orgOwnerPage.goto(`/monitors/${monitor.id}`, { waitUntil: "domcontentloaded" });
     await waitForHydration(orgOwnerPage);
     for (const name of ["Reveal", "Copy", "Rotate URL"]) {
-      await expect(orgOwnerPage.getByTestId("heartbeat-ping-url-panel").getByRole("button", { name, exact: true })).toBeVisible();
+      await expect(orgOwnerPage.getByTestId("heartbeat-ping-url-panel").filter({ visible: true }).getByRole("button", { name, exact: true })).toBeVisible();
     }
   });
 });

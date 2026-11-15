@@ -43,6 +43,11 @@ export function normalizeWarningToggles(
   return Object.keys(out).length ? out : undefined;
 }
 
+/** True when at least one warning valid for this monitor type is switched on (it counts as an alert type). */
+export function hasWarningOn(type: string, warnings: unknown): boolean {
+  return Object.values(normalizeWarningToggles(type, warnings) ?? {}).includes(true);
+}
+
 /** `ssl_renewed` and `monitor_warning` notify only: no incident triage, no incident open/resolve. */
 export function isInformationalAlertType(type: string): boolean {
   return type === "ssl_renewed" || type === "monitor_warning";

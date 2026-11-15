@@ -11,7 +11,7 @@ const mockFetch = jest.fn<typeof fetch>()
 global.fetch = mockFetch
 afterAll(() => { global.fetch = realFetch })
 
-const { heartbeatCommand, buildPingRequestUrl } = await import('../heartbeat.js')
+const { heartbeatCommand, buildPingRequestUrl, pingTiming, retryDelayMs } = await import('../heartbeat.js')
 const { setOutputFormat } = await import('../../output/formatter.js')
 const { setMachineMode } = await import('../../utils/logger.js')
 const { ExitCode } = await import('../../utils/errors.js')
@@ -26,8 +26,15 @@ async function failure(promise: Promise<unknown>): Promise<{ message: string; ex
   throw new Error('expected a failure')
 }
 
+let clock = 0
+const sleeps: number[] = []
+pingTiming.now = () => clock
+pingTiming.sleep = async (ms: number) => { sleeps.push(ms); clock += ms }
+
 beforeEach(() => {
   stdout.length = 0
+  clock = 0
+  sleeps.length = 0
   mockFetch.mockReset()
   reset(heartbeatCommand)
   setOutputFormat('table'); setMachineMode(false)
@@ -46,8 +53,17 @@ describe('buildPingRequestUrl', () => {
     expect(() => buildPingRequestUrl(`${BASE}/fail`, 'start')).toThrow('/fail')
   })
 
+  it('accepts an app served under a sub-path', () => {
+    const sub = `https://example.com/supercheck/api/heartbeat/${TOKEN}`
+    expect(buildPingRequestUrl(sub).toString()).toBe(sub)
+    expect(buildPingRequestUrl(`${sub}/fail`).toString()).toBe(`${sub}/fail`)
+    expect(buildPingRequestUrl(sub, 'start').toString()).toBe(`${sub}/start`)
+  })
+
   it.each([
     'not a url',
+    `https://example.com/api/heartbeat/${TOKEN}/start/fail`,
+    `https://example.com/api/heartbeat/x/${TOKEN}`,
     'ftp://app.example.com/api/heartbeat/' + TOKEN,
     'https://app.example.com/api/monitors/' + TOKEN,
     'https://app.example.com/api/heartbeat/hb_short',
@@ -91,7 +107,7 @@ describe('heartbeat ping', () => {
     expect(mockFetch).not.toHaveBeenCalled()
   })
 
-  it.each([429, 500, 404])('HTTP %i exits with the API error code and no token', async (status) => {
+  it.each([429, 503, 500, 404])('HTTP %i exits with the API error code and no token', async (status) => {
     mockFetch.mockResolvedValue(new Response('no', { status }))
     const error = await failure(ping(BASE))
     expect(error.exitCode).toBe(ExitCode.ApiError)
@@ -111,5 +127,56 @@ describe('heartbeat ping', () => {
     const error = await failure(ping(BASE))
     expect(error.exitCode).toBe(ExitCode.GeneralError)
     expect(error.message).not.toContain(TOKEN)
+  })
+
+  it('retries 429 and 503 up to 3 times with 1 s, 2 s, 4 s backoff', async () => {
+    mockFetch.mockImplementation(async () => new Response('busy', { status: 503 }))
+    const error = await failure(ping(BASE))
+    expect(error.exitCode).toBe(ExitCode.ApiError)
+    expect(mockFetch).toHaveBeenCalledTimes(4)
+    expect(sleeps).toEqual([1000, 2000, 4000])
+  })
+
+  it('succeeds after a retried 429, honouring Retry-After', async () => {
+    mockFetch
+      .mockResolvedValueOnce(new Response('slow down', { status: 429, headers: { 'Retry-After': '7' } }))
+      .mockResolvedValueOnce(new Response('OK', { status: 200 }))
+    await ping(BASE)
+    expect(mockFetch).toHaveBeenCalledTimes(2)
+    expect(sleeps).toEqual([7000])
+  })
+
+  it('retries network errors and timeouts', async () => {
+    mockFetch
+      .mockRejectedValueOnce(new TypeError('fetch failed'))
+      .mockRejectedValueOnce(Object.assign(new Error('timed out'), { name: 'TimeoutError' }))
+      .mockResolvedValueOnce(new Response('OK', { status: 200 }))
+    await ping(BASE)
+    expect(mockFetch).toHaveBeenCalledTimes(3)
+  })
+
+  it.each([400, 404, 413, 500])('never retries HTTP %i', async (status) => {
+    mockFetch.mockImplementation(async () => new Response('no', { status }))
+    await failure(ping(BASE))
+    expect(mockFetch).toHaveBeenCalledTimes(1)
+  })
+
+  it('stops retrying when the next wait would pass the 60 s budget', async () => {
+    mockFetch.mockImplementation(async () => new Response('busy', { status: 429, headers: { 'Retry-After': '120' } }))
+    await failure(ping(BASE))
+    // 30 s (capped) + 10 s request fits once; a second 30 s wait would not.
+    expect(sleeps).toEqual([30000])
+    expect(mockFetch).toHaveBeenCalledTimes(2)
+  })
+})
+
+describe('retryDelayMs', () => {
+  it('reads seconds or an HTTP date, caps at 30 s and falls back to backoff', () => {
+    clock = Date.parse('2026-11-15T00:00:00Z')
+    expect(retryDelayMs('3', 0)).toBe(3000)
+    expect(retryDelayMs('600', 0)).toBe(30000)
+    expect(retryDelayMs(new Date(clock + 5000).toUTCString(), 0)).toBe(5000)
+    expect(retryDelayMs(null, 2)).toBe(4000)
+    expect(retryDelayMs('soon', 1)).toBe(2000)
   })
 })

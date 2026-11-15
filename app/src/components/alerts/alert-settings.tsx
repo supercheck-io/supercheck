@@ -44,7 +44,7 @@ import { useProjectContext } from "@/hooks/use-project-context";
 import { canCreateNotifications } from "@/lib/rbac/client-permissions";
 import { normalizeRole } from "@/lib/rbac/role-normalizer";
 import { useAppConfig } from "@/hooks/use-app-config";
-import { WARNING_KINDS, warningKindsForMonitorType } from "@/lib/alerts/warning-kinds";
+import { WARNING_KINDS, hasWarningOn, warningKindsForMonitorType } from "@/lib/alerts/warning-kinds";
 
 interface AlertSettingsProps {
   value?: AlertConfig;
@@ -216,6 +216,7 @@ export function AlertSettings({
         config.alertOnSuccess,
         config.alertOnTimeout,
         config.alertOnSslExpiration,
+        context === "monitor" && !!monitorType && hasWarningOn(monitorType, config.warnings),
       ].some(Boolean);
 
       if (!alertTypesSelected) {
@@ -234,6 +235,8 @@ export function AlertSettings({
     config.alertOnTimeout,
     config.alertOnSslExpiration,
     config.incidentEnabled,
+    config.warnings,
+    monitorType,
     context,
   ]);
 
