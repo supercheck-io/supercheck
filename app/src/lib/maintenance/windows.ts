@@ -172,12 +172,17 @@ export async function listMaintenanceWindows(
   const where = [eq(maintenanceWindows.organizationId, actor.organizationId), eq(maintenanceWindows.projectId, actor.project.id)];
   if (filters.state) where.push(stateFilter(filters.state, now));
   if (filters.monitorId) {
-    // Windows that cover the monitor: project scope, the monitor itself, or a service it is mapped to.
+    // Windows that cover the monitor: project scope, the monitor itself, a service it is mapped to, or a status-page component.
     where.push(sql`(${maintenanceWindows.scope} = 'project' OR EXISTS (
       SELECT 1 FROM maintenance_window_targets t WHERE t.window_id = ${maintenanceWindows.id} AND (
         (t.target_type = 'monitor' AND t.target_id = ${filters.monitorId}::uuid)
         OR (t.target_type = 'service' AND EXISTS (SELECT 1 FROM sre_service_resources r WHERE r.service_id = t.target_id AND r.resource_type = 'monitor' AND r.resource_id = ${filters.monitorId}::uuid))
-      )))`);
+      ))
+      -- Its live status-page post also mutes the monitors behind the post's components.
+      OR EXISTS (SELECT 1 FROM incidents i
+        JOIN incident_components ic ON ic.incident_id = i.id
+        JOIN status_page_component_monitors scm ON scm.component_id = ic.component_id
+        WHERE i.maintenance_window_id = ${maintenanceWindows.id} AND i.status <> 'resolved' AND scm.monitor_id = ${filters.monitorId}::uuid))`);
   }
   if (filters.serviceId) {
     where.push(sql`(${maintenanceWindows.scope} = 'project' OR EXISTS (
@@ -279,11 +284,27 @@ export async function createMaintenanceWindow(
       logger.error({ error, windowId: created.id }, "Posting a maintenance window to a status page failed");
       return { success: false as const, message: "failed" };
     });
-    if (posted.success) {
-      await db.update(statusPageIncidents).set({ maintenanceWindowId: created.id }).where(eq(statusPageIncidents.id, posted.incident.id));
-    } else {
+    if (!posted.success) {
       warning = "status_page_failed";
+      continue;
     }
+    // Someone may have cancelled, ended or rescheduled the window while the post was being created: link the
+    // post only to the window as it was published, under its row lock; otherwise take the stale post down.
+    const linked = await db.transaction(async (tx) => {
+      const [live] = await tx.select({ id: maintenanceWindows.id }).from(maintenanceWindows).where(and(
+        eq(maintenanceWindows.id, created.id),
+        isNull(maintenanceWindows.cancelledAt),
+        isNull(maintenanceWindows.completedAt),
+        eq(maintenanceWindows.occurrenceStartsAt, occurrence.startsAt),
+        eq(maintenanceWindows.occurrenceEndsAt, occurrence.endsAt),
+      )).for("update");
+      const now = new Date();
+      await tx.update(statusPageIncidents)
+        .set(live ? { maintenanceWindowId: created.id } : { maintenanceWindowId: created.id, status: "resolved", resolvedAt: now, updatedAt: now })
+        .where(eq(statusPageIncidents.id, posted.incident.id));
+      return Boolean(live);
+    });
+    if (!linked) warning = "status_page_failed";
   }
   await audit(actor, "maintenance_window_created", created.id, { source, scope: data.scope, recurrence: data.recurrence, targets: targets.length, statusPages: data.statusPages.length });
   return { ok: true, window: (await toViews([created]))[0]!, ...(warning ? { warning } : {}) };
@@ -307,13 +328,18 @@ async function loadForWrite(actor: StatusPageIncidentActor, id: string, permissi
   return { row, onStatusPage: Boolean(onStatusPage) };
 }
 
-/** The row is still live and on the occurrence it was read with: a concurrent tick, edit or delete loses nothing. */
+const ADVANCE_GRACE_MS = 10 * MINUTE;
+
+/**
+ * The row is still live and unchanged since it was read: every write bumps updated_at, so a concurrent tick,
+ * edit or delete makes this match nothing. Compared at millisecond precision, the precision the row was read at.
+ */
 function unchanged(row: WindowRow) {
   return and(
     eq(maintenanceWindows.id, row.id),
     isNull(maintenanceWindows.cancelledAt),
     isNull(maintenanceWindows.completedAt),
-    row.occurrenceEndsAt ? eq(maintenanceWindows.occurrenceEndsAt, row.occurrenceEndsAt) : isNull(maintenanceWindows.occurrenceEndsAt),
+    sql`date_trunc('milliseconds', ${maintenanceWindows.updatedAt}) = ${row.updatedAt.toISOString()}::timestamptz`,
   );
 }
 
@@ -502,10 +528,12 @@ export async function deleteMaintenanceWindow(actor: StatusPageIncidentActor, id
  * past occurrence_ends_at, so a missed tick only delays the next occurrence (fails open, toward alerting).
  */
 export async function advanceMaintenanceWindows(now = new Date()): Promise<number> {
+  // A result checked just before the end can be saved minutes later; it still matches the stored occurrence
+  // until the tick moves on, so the tick waits a grace period (schedules keep 2 hours between occurrences).
   const due = await db.select().from(maintenanceWindows).where(and(
     isNull(maintenanceWindows.cancelledAt),
     isNull(maintenanceWindows.completedAt),
-    or(lte(maintenanceWindows.occurrenceEndsAt, now), isNull(maintenanceWindows.occurrenceEndsAt)),
+    or(lte(maintenanceWindows.occurrenceEndsAt, new Date(now.getTime() - ADVANCE_GRACE_MS)), isNull(maintenanceWindows.occurrenceEndsAt)),
   )).limit(500);
   for (const row of due) {
     const next = row.recurrence === "once" ? null : occurrenceAtOrAfter(scheduleOf(row), row.occurrenceEndsAt && row.occurrenceEndsAt > now ? row.occurrenceEndsAt : now);

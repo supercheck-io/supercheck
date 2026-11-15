@@ -124,7 +124,28 @@ describe("isMonitorInMaintenance (M5)", () => {
       VALUES (uuidv7(), ${page!.id}, 'm', 'scheduled', 'minor', now() - interval '5 minutes', now() + interval '1 hour') RETURNING id`;
     await client`INSERT INTO incident_components (id, incident_id, component_id, old_status, new_status) VALUES (uuidv7(), ${incident!.id}, ${component!.id}, 'operational', 'under_maintenance')`;
     expect(await isMonitorInMaintenance(monB, new Date())).toBe(true);
+    // A window's post covers monB too, so listing windows for monB finds that window.
+    const window = await createMaintenanceWindow(actor, oneOff(-5), "api");
+    if (!window.ok) throw new Error(window.error);
+    await client`UPDATE incidents SET maintenance_window_id = ${window.window.id} WHERE id = ${incident!.id}`;
+    const forB = await listMaintenanceWindows(actor, { monitorId: monB });
+    expect(forB.ok && forB.windows.map((w) => w.id)).toEqual([window.window.id]);
     await client`DELETE FROM incidents WHERE id = ${incident!.id}`;
+  });
+
+  it("still covers a result checked before the end once the window is ended or the tick ran", async () => {
+    const created = await createMaintenanceWindow(actor, oneOff(-30), "api");
+    if (!created.ok) throw new Error(created.error);
+    const checkedBefore = new Date(Date.now() - MIN);
+    expect((await endMaintenanceWindow(actor, created.window.id)).ok).toBe(true);
+    expect(await isMonitorInMaintenance(monA, checkedBefore)).toBe(true);
+    expect(await isMonitorInMaintenance(monA, new Date(Date.now() + MIN))).toBe(false);
+    // The tick leaves a just-finished occurrence alone for a grace period.
+    const recent = await createMaintenanceWindow(actor, oneOff(-30), "api");
+    if (!recent.ok) throw new Error(recent.error);
+    await client`UPDATE maintenance_windows SET occurrence_ends_at = now() - interval '2 minutes' WHERE id = ${recent.window.id}`;
+    expect(await advanceMaintenanceWindows()).toBe(0);
+    expect(await isMonitorInMaintenance(monA, new Date(Date.now() - 3 * MIN))).toBe(true);
   });
 });
 

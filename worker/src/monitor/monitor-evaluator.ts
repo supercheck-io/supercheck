@@ -56,6 +56,8 @@ export type AggregatedAlertState = {
   priorFailureCount?: number;
   /** Some cycles of the current failure sequence were not counted (alerts off or paused). */
   failureCountUnknown?: boolean;
+  /** The outage this recovery follows failed only inside a maintenance window: it gets no recovery alert. */
+  maintenanceOnly?: boolean;
   executionGroupId?: string;
   /**
    * Id of the current failure sequence (and of the recovery that follows it), minted where the sequence starts.
@@ -201,6 +203,9 @@ export class MonitorEvaluator {
       ...(rawAlertState?.failureCountUnknown === true
         ? { failureCountUnknown: true }
         : {}),
+      ...(rawAlertState?.maintenanceOnly === true
+        ? { maintenanceOnly: true }
+        : {}),
       ...(typeof rawAlertState?.outageKey === 'string' &&
       UUID_PATTERN.test(rawAlertState.outageKey)
         ? { outageKey: rawAlertState.outageKey }
@@ -230,6 +235,8 @@ export class MonitorEvaluator {
             alertsSentForFailure: 0,
             alertsSentForRecovery: 0,
             recoverySequence: false,
+            // This failure began inside the window: if it recovers before failing outside one, it was no outage.
+            maintenanceOnly: true,
           };
     }
     if (currentStatus === 'down') {
@@ -295,6 +302,14 @@ export class MonitorEvaluator {
             previousState.priorFailureCount !== undefined
           ? { priorFailureCount: previousState.priorFailureCount }
           : {}),
+      // The outage this recovery ends failed only inside a maintenance window.
+      ...((
+        previousStatus === 'down'
+          ? previousState.maintenanceOnly === true
+          : continuingRecoverySequence && previousState.maintenanceOnly === true
+      )
+        ? { maintenanceOnly: true }
+        : {}),
       // The recovery is claimed under the key of the outage it ends.
       ...((previousStatus === 'down' || continuingRecoverySequence) &&
       previousState.outageKey
@@ -579,12 +594,18 @@ export class MonitorEvaluator {
         ? aggregatedAlertState?.priorFailureCount
         : (latestResult?.details as { priorFailureCount?: unknown } | null)
             ?.priorFailureCount;
-      const outageReachedThreshold = !(
-        typeof priorFailureCount === 'number' &&
-        priorFailureCount > 0 &&
-        priorFailureCount <
-          ((monitorAlertConfig?.failureThreshold as number) || 1)
-      );
+      const maintenanceOnly = isMultiLocationEvaluation
+        ? aggregatedAlertState?.maintenanceOnly === true
+        : (latestResult?.details as { maintenanceOnly?: unknown } | null)
+            ?.maintenanceOnly === true;
+      const outageReachedThreshold =
+        !maintenanceOnly &&
+        !(
+          typeof priorFailureCount === 'number' &&
+          priorFailureCount > 0 &&
+          priorFailureCount <
+            ((monitorAlertConfig?.failureThreshold as number) || 1)
+        );
 
       const recoveryDue =
         consecutiveSuccessCount >= recoveryThreshold &&

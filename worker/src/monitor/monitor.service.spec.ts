@@ -2282,6 +2282,50 @@ describe('MonitorService', () => {
       mockDbService.db.query.monitorResults.findFirst.mockReset();
     });
 
+    it('marks the recovery from failures seen only inside a window, so it sends no recovery alert', async () => {
+      const { isMonitorInMaintenance } = jest.requireMock('./maintenance');
+      let lastResult: Record<string, unknown> | undefined;
+      const rows: Record<string, unknown>[] = [];
+      mockDbService.db.insert.mockReturnValue({
+        values: jest
+          .fn()
+          .mockImplementation(async (value: Record<string, unknown>) => {
+            lastResult = value;
+            rows.push(value);
+          }),
+      });
+      mockDbService.db.query.monitorResults.findFirst.mockImplementation(
+        async () => lastResult,
+      );
+      // up, down inside the window, up x2 after it, then a real outage and its recovery.
+      const plan: Array<[boolean, boolean]> = [
+        [true, false],
+        [false, true],
+        [true, false],
+        [true, false],
+        [false, false],
+        [true, false],
+      ];
+      for (const [isUp, inWindow] of plan) {
+        isMonitorInMaintenance.mockResolvedValueOnce(inWindow);
+        await service['saveMonitorResultToDb']({
+          monitorId: mockMonitor.id,
+          location: 'eu',
+          checkedAt: new Date(),
+          status: isUp ? 'up' : 'down',
+          isUp,
+        });
+      }
+      expect(
+        rows.map(
+          (row) =>
+            (row.details as { maintenanceOnly?: boolean }).maintenanceOnly ===
+            true,
+        ),
+      ).toEqual([false, true, true, true, false, false]);
+      mockDbService.db.query.monitorResults.findFirst.mockReset();
+    });
+
     it('keys each outage on its result rows: new on a new failure, shared through the failure and its recovery', async () => {
       let lastResult: Record<string, unknown> | undefined;
       const values = jest

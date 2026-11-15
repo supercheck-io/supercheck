@@ -36,7 +36,7 @@ import {
 } from "@/db/schema";
 import { sql, and, eq, gte, lt, lte, or, inArray, desc, type SQL } from "drizzle-orm";
 import type { MonitoringLocation } from "@/db/schema/types";
-import { uptimeResults } from "@/lib/monitor-result-filters";
+import { excludeMaintenanceResults, excludeSupersededSyntheticResults, uptimeResults } from "@/lib/monitor-result-filters";
 import { monitorCyclePolicy } from "@/lib/monitor-cycles";
 
 // ============================================================================
@@ -242,6 +242,8 @@ export interface CheckRow {
   executionGroupId: string | null;
   /** Regions the worker enqueued for this cycle (details.expectedLocations); absent on older rows. */
   expectedLocations?: string[] | null;
+  /** Checked during maintenance: left out of uptime counts, kept for response times. */
+  inMaintenance?: boolean;
 }
 
 /** Region rule of one cycle: the persisted cycle snapshot, or the monitor's current config. */
@@ -629,6 +631,7 @@ async function fetchCheckRows(
       responseTimeMs: monitorResults.responseTimeMs,
       isStatusChange: monitorResults.isStatusChange,
       executionGroupId: monitorResults.executionGroupId,
+      inMaintenance: monitorResults.inMaintenance,
       expectedLocations: sql<string[] | null>`CASE WHEN jsonb_typeof(${monitorResults.details}->'expectedLocations') = 'array' THEN ${monitorResults.details}->'expectedLocations' END`,
     })
     .from(monitorResults)
@@ -643,7 +646,7 @@ async function fetchCheckRows(
             ),
           ),
         ),
-        uptimeResults,
+        excludeSupersededSyntheticResults,
         location ? eq(monitorResults.location, location as MonitoringLocation) : undefined,
       ),
     );
@@ -802,7 +805,7 @@ export class MonitorAggregationService {
       else byPeriod.set(key, [row]);
     }
     const checksByPeriod = new Map<number, { total: number; up: number }>();
-    for (const check of groupChecks(rows, resolve)) {
+    for (const check of groupChecks(rows.filter((row) => !row.inMaintenance), resolve)) {
       if (check.start < from || check.start >= to) continue;
       const key = periodOf(check.start);
       const counts = checksByPeriod.get(key) ?? { total: 0, up: 0 };
@@ -864,11 +867,11 @@ export class MonitorAggregationService {
         else byLocation.set(row.location, [row]);
       }
       for (const [location, locationRows] of byLocation) {
-        const up = locationRows.filter((row) => row.isUp).length;
+        const counted = locationRows.filter((row) => !row.inMaintenance);
         located.push(
           build(periodStart, location as MonitoringLocation, locationRows, {
-            total: locationRows.length,
-            up,
+            total: counted.length,
+            up: counted.filter((row) => row.isUp).length,
           }),
         );
       }
@@ -1181,11 +1184,13 @@ export class MonitorAggregationService {
           ),
           sql` OR `,
         );
+      // Response-time samples keep maintenance checks; the uptime counts below leave them out.
       const base = and(
         eq(monitorResults.monitorId, monitorId),
-        uptimeResults,
+        excludeSupersededSyntheticResults,
         location ? eq(monitorResults.location, location) : undefined,
       );
+      const counted = and(base, excludeMaintenanceResults);
 
       if (location) {
         const [counts] = await db
@@ -1194,7 +1199,7 @@ export class MonitorAggregationService {
             up: sql<number>`(count(*) filter (where ${monitorResults.isUp}))::int`,
           })
           .from(monitorResults)
-          .where(and(base, sql`(${inRanges(monitorResults.checkedAt, gaps)})`));
+          .where(and(counted, sql`(${inRanges(monitorResults.checkedAt, gaps)})`));
         totalChecks += counts?.total ?? 0;
         successfulChecks += counts?.up ?? 0;
       } else {
@@ -1202,7 +1207,7 @@ export class MonitorAggregationService {
         const margin = gaps.map(([a, b]): [number, number] => [a - CYCLE_MARGIN_MS, b + CYCLE_MARGIN_MS]);
         const shapes = await cycleShapes({
           monitorIds: [monitorId],
-          base: base!,
+          base: counted!,
           margin,
           firstAtFilter: inRanges(sql`min(first_at)`, gaps),
           nowIso: now.toISOString(),
@@ -1221,7 +1226,7 @@ export class MonitorAggregationService {
             up: sql<number>`(count(*) filter (where ${monitorResults.isUp}))::int`,
           })
           .from(monitorResults)
-          .where(and(base, sql`${monitorResults.executionGroupId} IS NULL`, sql`(${inRanges(monitorResults.checkedAt, gaps)})`));
+          .where(and(counted, sql`${monitorResults.executionGroupId} IS NULL`, sql`(${inRanges(monitorResults.checkedAt, gaps)})`));
         totalChecks += solo?.total ?? 0;
         successfulChecks += solo?.up ?? 0;
       }

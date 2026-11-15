@@ -25,7 +25,7 @@ describe('isMonitorInMaintenance', () => {
     );
     expect(query.sql).toMatch(/occurrence_ends_at > /);
     expect(query.sql).toMatch(
-      /cancelled_at IS NULL AND w.completed_at IS NULL/,
+      /w.cancelled_at IS NULL\s+AND w.occurrence_starts_at/,
     );
     expect(query.sql).toMatch(/sre_service_resources/);
     expect(query.sql).toMatch(/scheduled_until > /);

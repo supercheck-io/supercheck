@@ -23,7 +23,7 @@ export async function isMonitorInMaintenance(
         SELECT 1 FROM maintenance_windows w
         JOIN monitors m ON m.project_id = w.project_id AND m.organization_id = w.organization_id
         WHERE m.id = ${monitorId}
-          AND w.cancelled_at IS NULL AND w.completed_at IS NULL
+          AND w.cancelled_at IS NULL
           AND w.occurrence_starts_at <= ${iso}::timestamptz AND w.occurrence_ends_at > ${iso}::timestamptz
           AND (
             w.scope = 'project'

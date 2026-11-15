@@ -139,6 +139,9 @@ export function minimumGapMinutes(schedule: Pick<WindowSchedule, "recurrence" | 
   return Number.POSITIVE_INFINITY;
 }
 
+/** Free time between occurrences: covers a DST hour and the advance tick's grace for late check results. */
+const OCCURRENCE_MARGIN_MINUTES = 120;
+
 /** Field errors for a schedule; empty when valid. Occurrences never overlap, so one stored slot is enough. */
 export function validateSchedule(schedule: WindowSchedule): Record<string, string> {
   const errors: Record<string, string> = {};
@@ -146,8 +149,8 @@ export function validateSchedule(schedule: WindowSchedule): Record<string, strin
   if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(schedule.localStartTime)) errors.localStartTime = "Use HH:MM";
   if (!Number.isInteger(schedule.durationMinutes) || schedule.durationMinutes < MIN_DURATION_MINUTES || schedule.durationMinutes > MAX_DURATION_MINUTES) {
     errors.durationMinutes = "Duration must be between 5 minutes and 7 days";
-  } else if (schedule.durationMinutes >= minimumGapMinutes(schedule)) {
-    errors.durationMinutes = "Duration must be shorter than the time between occurrences";
+  } else if (schedule.durationMinutes > minimumGapMinutes(schedule) - OCCURRENCE_MARGIN_MINUTES) {
+    errors.durationMinutes = "Leave at least 2 hours between the end of one occurrence and the start of the next";
   }
   const validDate = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value) && isoDate(dateMs(value)) === value;
   if (!validDate(schedule.startsOn)) errors.startsOn = "Use a real date";

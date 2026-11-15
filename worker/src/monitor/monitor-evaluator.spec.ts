@@ -257,9 +257,26 @@ describe('MonitorEvaluator recovery alert after a short blip', () => {
     expect(after.consecutiveFailureCount).toBe(1);
     expect(after.outageKey).toEqual(expect.any(String));
     // A recovery inside the window is processed normally.
+    const recovered = evaluator.getNextAggregatedAlertState(
+      open,
+      'down',
+      'up',
+      true,
+    );
+    expect(recovered).toMatchObject({
+      consecutiveSuccessCount: 1,
+      consecutiveFailureCount: 0,
+    });
+    expect(recovered.maintenanceOnly).toBeUndefined();
+    // Recovering from failures seen only inside the window: no outage, so no recovery alert, through the streak.
+    const quiet = evaluator.getNextAggregatedAlertState(fresh, 'down', 'up');
+    expect(quiet).toMatchObject({
+      maintenanceOnly: true,
+      recoverySequence: true,
+    });
     expect(
-      evaluator.getNextAggregatedAlertState(open, 'down', 'up', true),
-    ).toMatchObject({ consecutiveSuccessCount: 1, consecutiveFailureCount: 0 });
+      evaluator.getNextAggregatedAlertState(quiet, 'up', 'up'),
+    ).toMatchObject({ maintenanceOnly: true });
   });
 
   it('carries the outage length through the up streak', () => {

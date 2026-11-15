@@ -98,13 +98,13 @@ describe("validateSchedule", () => {
     expect(validateSchedule({ ...base, durationMinutes: 10081 }).durationMinutes).toBeDefined();
     expect(validateSchedule({ ...base, endsOn: "2026-11-19" }).endsOn).toBeDefined();
   });
-  it("requires durations shorter than the gap between occurrences", () => {
-    expect(validateSchedule({ ...base, recurrence: "daily", durationMinutes: 1440 }).durationMinutes).toMatch(/shorter/);
-    expect(validateSchedule({ ...base, recurrence: "daily", durationMinutes: 1439 })).toEqual({});
+  it("requires 2 hours between the end of one occurrence and the start of the next", () => {
+    expect(validateSchedule({ ...base, recurrence: "daily", durationMinutes: 1321 }).durationMinutes).toMatch(/2 hours/);
+    expect(validateSchedule({ ...base, recurrence: "daily", durationMinutes: 1320 })).toEqual({});
     expect(minimumGapMinutes({ recurrence: "weekly", weekdays: [1, 2, 5] })).toBe(1440);
     expect(minimumGapMinutes({ recurrence: "weekly", weekdays: [0, 6] })).toBe(1440);
     expect(minimumGapMinutes({ recurrence: "weekly", weekdays: [1, 4] })).toBe(3 * 1440);
-    expect(validateSchedule({ ...base, recurrence: "weekly", weekdays: [1, 4], durationMinutes: 3 * 1440 }).durationMinutes).toMatch(/shorter/);
+    expect(validateSchedule({ ...base, recurrence: "weekly", weekdays: [1, 4], durationMinutes: 3 * 1440 }).durationMinutes).toMatch(/2 hours/);
     expect(validateSchedule({ ...base, recurrence: "weekly", weekdays: [] }).weekdays).toBeDefined();
     expect(validateSchedule({ ...base, recurrence: "monthly", monthDay: 29 }).monthDay).toBeDefined();
     expect(validateSchedule({ ...base, recurrence: "monthly", monthDay: -1 })).toEqual({});

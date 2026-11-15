@@ -2915,6 +2915,22 @@ export class MonitorService {
               lastResult?.details?.recoverySequence === true),
           // Id of this outage, so its alerts are claimed once whichever worker evaluates them.
           ...(outageKey ? { outageKey } : {}),
+          // Failures that began inside a maintenance window, and the recovery that ends them, are no outage:
+          // that recovery sends no alert.
+          ...((
+            resultData.isUp
+              ? lastResult &&
+                (lastResult.isUp
+                  ? lastResult.details?.recoverySequence === true &&
+                    lastResult.details?.maintenanceOnly === true
+                  : lastResult.details?.maintenanceOnly === true)
+              : inMaintenance &&
+                (!lastResult ||
+                  lastResult.isUp ||
+                  lastResult.details?.maintenanceOnly === true)
+          )
+            ? { maintenanceOnly: true }
+            : {}),
           // Length of an outage that sent no failure alert; gates the recovery alert on the failure threshold.
           ...(resultData.isUp && lastResult
             ? lastResult.isUp
