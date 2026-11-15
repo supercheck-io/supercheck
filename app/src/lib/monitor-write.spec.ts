@@ -363,6 +363,13 @@ describe("heartbeat write rules (B6, B15)", () => {
     expect(monitorTypeChangeError("website", "heartbeat")).toContain("to or from heartbeat");
   });
 
+  it("keeps a turned-off AI endpoint or MCP warning, so a default-on kind can be switched off", () => {
+    expect(normalizeMonitorAlertConfig({ warnings: { ai_model_changed: false, ai_tokens_high: false } }, null, "http_request"))
+      .toMatchObject({ ok: true, value: { warnings: { ai_model_changed: false, ai_tokens_high: false } } });
+    expect(normalizeMonitorAlertConfig({ warnings: { mcp_tools_changed: false, ai_model_changed: false } }, null, "mcp_server"))
+      .toMatchObject({ ok: true, value: { warnings: { mcp_tools_changed: false } } });
+  });
+
   it("keeps only warning kinds valid for the monitor type, and keeps stored toggles on an unrelated edit", () => {
     const raw = { warnings: { heartbeat_late: true, unknown_kind: true, mcp_tools_changed: true } };
     expect(normalizeMonitorAlertConfig(raw, null, "heartbeat")).toMatchObject({ ok: true, value: { warnings: { heartbeat_late: true } } });

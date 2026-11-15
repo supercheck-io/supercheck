@@ -20,7 +20,8 @@ const logger = new Logger('MonitorWarning');
  * The one place every MCP and AI endpoint warning leaves through. `episodeKey` starts with the kind
  * and names the detection (never a value), so the alert claim stays unique per detection.
  * The row is read fresh so the toggle, channels and name are the ones saved now; `reason` is built
- * from numbers and names, never secrets.
+ * from numbers and names, never secrets. At most once: the evaluators commit their state first, so a
+ * crash or failed send here is not retried by a redelivered cycle.
  */
 export async function dispatchMonitorWarning(
   db: PostgresJsDatabase<typeof schema>,

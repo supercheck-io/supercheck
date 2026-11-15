@@ -2,6 +2,7 @@ import { ConfigService } from '@nestjs/config';
 import {
   MAX_CLAIM_ATTEMPTS,
   MonitorAlertService,
+  notifiedTarget,
   redactAlertText,
   warningEpisodeUuid,
 } from './monitor-alert.service';
@@ -1200,6 +1201,7 @@ describe('MonitorAlertService', () => {
         ...heartbeat,
         type: 'mcp_server' as const,
         name: 'Docs MCP',
+        target: 'https://mcp.example.com/k3y-in-path/mcp',
         alertConfig: { ...heartbeat.alertConfig, warnings: undefined },
       };
       const key = 'mcp_tools_changed:cycle-1';
@@ -1212,8 +1214,17 @@ describe('MonitorAlertService', () => {
           .calls[0][1],
       ).toMatchObject({
         title: 'Tools changed - Docs MCP',
-        metadata: { warningKind: 'mcp_tools_changed' },
+        metadata: {
+          warningKind: 'mcp_tools_changed',
+          target: 'mcp.example.com',
+        },
       });
+      expect(
+        JSON.stringify(
+          ctx.notificationService.sendNotificationToMultipleProviders.mock
+            .calls[0][1],
+        ),
+      ).not.toContain('k3y-in-path');
       const off = setup();
       await expect(
         off.service.sendWarning(
@@ -1321,5 +1332,25 @@ describe('MonitorAlertService', () => {
         ctx.notificationService.sendNotificationToMultipleProviders,
       ).not.toHaveBeenCalled();
     });
+  });
+});
+
+describe('notifiedTarget', () => {
+  it('names an MCP endpoint by host only and leaves other targets alone', () => {
+    expect(
+      notifiedTarget({
+        type: 'mcp_server',
+        target: 'https://h.example.com:8443/k/mcp',
+      }),
+    ).toBe('h.example.com:8443');
+    expect(notifiedTarget({ type: 'mcp_server', target: 'not a url' })).toBe(
+      '',
+    );
+    expect(
+      notifiedTarget({
+        type: 'http_request',
+        target: 'https://a.example.com/p',
+      }),
+    ).toBe('https://a.example.com/p');
   });
 });

@@ -66,8 +66,12 @@ export async function evaluateAiEndpointWarnings(
     };
     const warnings: Array<[MonitorWarningKind, string, string]> = [];
 
-    // Served model: silent on the first value, once per new value, always remembered.
-    const model = ai.find((a) => a.servedModel)?.servedModel;
+    // Served model: silent on the first value, once per new value, always remembered. Locations that
+    // disagree (regional deployments, routers) compare nothing, so the order of rows cannot flip it.
+    const models = new Set(
+      ai.flatMap((a) => (a.servedModel ? [a.servedModel] : [])),
+    );
+    const model = models.size === 1 ? [...models][0] : undefined;
     if (model) {
       if (state.lastServedModel && state.lastServedModel !== model)
         warnings.push([

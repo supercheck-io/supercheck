@@ -71,7 +71,8 @@ export function normalizeWarningToggles(
   warnings: unknown,
 ): Record<string, boolean> | undefined {
   if (!warnings || typeof warnings !== "object" || Array.isArray(warnings)) return undefined;
-  const allowed = new Set<string>(warningKindsForMonitorType(type));
+  // Every kind of the type, preset-only ones included: an AI endpoint toggle must persist to be turned off.
+  const allowed = new Set<string>(warningKindsForMonitorType(type, true));
   const out: Record<string, boolean> = {};
   for (const [kind, value] of Object.entries(warnings as Record<string, unknown>)) {
     if (allowed.has(kind) && typeof value === "boolean") out[kind] = value;

@@ -124,6 +124,14 @@ describe('evaluateAiEndpointWarnings', () => {
       expect(dispatch.mock.calls[0][4]).not.toContain('secret-model-name');
     });
 
+    it('compares nothing while locations serve different models, whatever their order', async () => {
+      await evaluate('c1', [ai()]);
+      await evaluate('c2', [ai({ servedModel: 'gpt-y' }), ai()]);
+      await evaluate('c3', [ai(), ai({ servedModel: 'gpt-y' })]);
+      expect(dispatch).not.toHaveBeenCalled();
+      expect(state().lastServedModel).toBe('gpt-x');
+    });
+
     it('keeps the remembered model when a result carries none', async () => {
       await evaluate('c1', [ai()]);
       await evaluate('c2', [ai({ servedModel: undefined })]);

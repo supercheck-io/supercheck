@@ -601,13 +601,18 @@ export class MonitorService {
     }
 
     // MCP tool-list change and AI endpoint warnings, once per cycle; they log and swallow their own failures.
-    await evaluateCycleWarnings(
+    // Not awaited: a slow warning channel must not delay the failure alert below (warnings are at most once).
+    void evaluateCycleWarnings(
       this.dbService.db,
       this.monitorAlertService,
       monitor,
       options?.executionGroupId ?? options?.cycleKey ?? randomUUID(),
       new Date(Math.max(...results.map((r) => r.checkedAt.getTime()))),
       results,
+    ).catch((error: unknown) =>
+      this.logger.warn(
+        `Cycle warnings failed for monitor ${monitorId}: ${getErrorMessage(error)}`,
+      ),
     );
 
     // Calculate aggregated status
