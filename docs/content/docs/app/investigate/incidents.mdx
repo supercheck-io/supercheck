@@ -24,7 +24,7 @@ Only the title and severity are needed; everything else is optional and can chan
 | Field | Effect |
 |---|---|
 | **Service** | Sets the incident's service. Its owner becomes the assignee, as for alert-opened incidents; without a service, you are the assignee |
-| **Affected monitors** | The next alert from a listed monitor, or from a monitor mapped to a listed service, joins this incident instead of opening a new one. It joins as a related alert, so the monitor recovering does not resolve the incident: a person declared it, so a person resolves it |
+| **Affected monitors** | The next alert from a listed monitor, or from a monitor mapped to a listed service, joins this incident instead of opening a new one. This works even for a monitor with **Open incidents** turned off. It joins as a related alert, so the monitor recovering does not resolve the incident: a person declared it, so a person resolves it. The incident's sidebar lists them under **Affected**; they can be changed until the incident is resolved |
 | **Commander** | A project editor or admin; gets the incident emails |
 | **Post to a status page** | Also posts a public incident on the chosen components with an impact and a first message (needs status page permission). Subscribers are emailed only if **Notify subscribers** is on. If the public post fails, the incident is still created, the Activity feed records it, and you can post again from the status page's **Incidents** tab |
 

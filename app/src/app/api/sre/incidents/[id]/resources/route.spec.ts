@@ -4,7 +4,10 @@ import { NextRequest, NextResponse } from "next/server";
 const mockRequireAuthContext = jest.fn();
 const mockUpdate = jest.fn();
 const mockRateLimit = jest.fn();
-jest.mock("@/utils/db", () => ({ db: {} }));
+const mockIncidentRows: unknown[][] = [];
+jest.mock("@/utils/db", () => ({ db: { select: () => ({ from: () => ({ where: () => ({ limit: async () => mockIncidentRows.shift() ?? [] }) }) }) } }));
+const mockList = jest.fn();
+jest.mock("@/lib/sre/incident-resources", () => ({ listIncidentResources: (...a: unknown[]) => mockList(...a) }));
 jest.mock("@/lib/auth-context", () => ({
   requireAuthContext: () => mockRequireAuthContext(),
   isAuthError: (error: unknown) => error instanceof Error && error.message.startsWith("auth:"),
@@ -17,7 +20,7 @@ jest.mock("@/lib/deletion/org-state", () => ({
 }));
 jest.mock("@/lib/sre/manual-incident", () => ({ updateIncidentResources: (...args: unknown[]) => mockUpdate(...args) }));
 
-import { PATCH } from "./route";
+import { GET, PATCH } from "./route";
 
 const id = "018f0000-0000-7000-8000-0000000000d1";
 const context = (userRole: string) => ({ userId: "user-1", organizationId: "org-1", orgPendingDeletion: false, project: { id: "project-1", userRole } });
@@ -58,5 +61,27 @@ describe("PATCH /api/sre/incidents/[id]/resources", () => {
     expect((await patch({ add: { monitorIds: [id] } })).status).toBe(403);
     mockRateLimit.mockResolvedValueOnce({ allowed: false, remaining: 0, resetTime: Date.now() + 5000 });
     expect((await patch({ add: { monitorIds: [id] } })).status).toBe(429);
+  });
+});
+
+describe("GET /api/sre/incidents/[id]/resources", () => {
+  it("lists the incident's resources for a viewer, scoped to the project", async () => {
+    mockRequireAuthContext.mockResolvedValue(context("project_viewer"));
+    mockIncidentRows.push([{ id }]);
+    mockList.mockResolvedValue([{ type: "monitor", id, name: "API" }]);
+    const res = await GET(new NextRequest("https://app.example.com/x"), { params: Promise.resolve({ id }) });
+    expect(await res.json()).toEqual({ success: true, resources: [{ type: "monitor", id, name: "API" }] });
+    expect(mockList).toHaveBeenCalledWith({ organizationId: "org-1", projectId: "project-1" }, id);
+  });
+  it("answers 404 for an incident outside the project and 400 for a bad id", async () => {
+    mockRequireAuthContext.mockResolvedValue(context("project_viewer"));
+    mockIncidentRows.push([]);
+    expect((await GET(new NextRequest("https://app.example.com/x"), { params: Promise.resolve({ id }) })).status).toBe(404);
+    expect((await GET(new NextRequest("https://app.example.com/x"), { params: Promise.resolve({ id: "x" }) })).status).toBe(400);
+  });
+  it("maps a resolved incident on PATCH to 409", async () => {
+    mockRequireAuthContext.mockResolvedValue(context("project_editor"));
+    mockUpdate.mockResolvedValueOnce({ ok: false, code: "conflict", error: "Reopen the incident" });
+    expect((await patch({ add: { monitorIds: [id] } })).status).toBe(409);
   });
 });

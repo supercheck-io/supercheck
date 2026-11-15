@@ -92,3 +92,55 @@ export async function findOpenIncidentListingMonitor(
     .limit(1);
   return row ?? null;
 }
+
+/** Keys ("type:id") of the given rows whose monitor or service still exists in the project (not deleted or merged). */
+export async function liveResourceKeys(
+  executor: Pick<typeof db, "select">,
+  scope: { organizationId: string; projectId: string },
+  rows: Array<{ type: "service" | "monitor"; resourceId: string }>,
+): Promise<Set<string>> {
+  const serviceIds = rows.filter((row) => row.type === "service").map((row) => row.resourceId);
+  const monitorIds = rows.filter((row) => row.type === "monitor").map((row) => row.resourceId);
+  const [services, found] = await Promise.all([
+    serviceIds.length
+      ? executor.select({ id: sreServices.id }).from(sreServices)
+          .where(and(inArray(sreServices.id, serviceIds), eq(sreServices.organizationId, scope.organizationId), eq(sreServices.projectId, scope.projectId), ne(sreServices.status, "merged")))
+      : [],
+    monitorIds.length
+      ? executor.select({ id: monitors.id }).from(monitors)
+          .where(and(inArray(monitors.id, monitorIds), eq(monitors.organizationId, scope.organizationId), eq(monitors.projectId, scope.projectId), liveMonitor()))
+      : [],
+  ]);
+  return new Set([...services.map((row) => `service:${row.id}`), ...found.map((row) => `monitor:${row.id}`)]);
+}
+
+export type IncidentResourceView = { type: "service" | "monitor"; id: string; name: string };
+
+/** The incident's affected services and monitors that still exist, with names; scoped to its org and project. */
+export async function listIncidentResources(
+  scope: { organizationId: string; projectId: string },
+  incidentId: string,
+): Promise<IncidentResourceView[]> {
+  const rows = await db
+    .select({ type: sreIncidentResources.resourceType, resourceId: sreIncidentResources.resourceId })
+    .from(sreIncidentResources)
+    .innerJoin(sreIncidents, eq(sreIncidents.id, sreIncidentResources.incidentId))
+    .where(and(eq(sreIncidentResources.incidentId, incidentId), eq(sreIncidents.organizationId, scope.organizationId), eq(sreIncidents.projectId, scope.projectId)));
+  if (rows.length === 0) return [];
+  const serviceIds = rows.filter((row) => row.type === "service").map((row) => row.resourceId);
+  const monitorIds = rows.filter((row) => row.type === "monitor").map((row) => row.resourceId);
+  const [services, found] = await Promise.all([
+    serviceIds.length
+      ? db.select({ id: sreServices.id, name: sreServices.name }).from(sreServices)
+          .where(and(inArray(sreServices.id, serviceIds), eq(sreServices.organizationId, scope.organizationId), eq(sreServices.projectId, scope.projectId), ne(sreServices.status, "merged")))
+      : [],
+    monitorIds.length
+      ? db.select({ id: monitors.id, name: monitors.name }).from(monitors)
+          .where(and(inArray(monitors.id, monitorIds), eq(monitors.organizationId, scope.organizationId), eq(monitors.projectId, scope.projectId), liveMonitor()))
+      : [],
+  ]);
+  return [
+    ...services.map((row) => ({ type: "service" as const, id: row.id, name: row.name })),
+    ...found.map((row) => ({ type: "monitor" as const, id: row.id, name: row.name })),
+  ];
+}

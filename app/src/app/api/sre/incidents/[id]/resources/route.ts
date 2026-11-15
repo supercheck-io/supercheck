@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
+import { and, eq } from "drizzle-orm";
 import { z } from "zod";
+
+import { sreIncidents } from "@/db/schema";
+import { listIncidentResources } from "@/lib/sre/incident-resources";
+import { db } from "@/utils/db";
 
 import { permissionDeniedResponse } from "@/lib/deletion/org-state";
 import { createLogger } from "@/lib/logger/index";
@@ -28,11 +33,27 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     const result = await updateIncidentResources(auth.context, parsedId.data, body as never);
     if (!result.ok) {
       if (result.code === "forbidden") return permissionDeniedResponse(auth.context.organizationId, "Insufficient permissions to update incidents");
-      return NextResponse.json({ error: result.error }, { status: result.code === "not_found" ? 404 : 400 });
+      return NextResponse.json({ error: result.error }, { status: result.code === "not_found" ? 404 : result.code === "conflict" ? 409 : 400 });
     }
     return NextResponse.json({ success: true, added: result.added, removed: result.removed });
   } catch (error) {
     logger.error({ error }, "Error updating incident resources");
     return NextResponse.json({ error: "Failed to update incident" }, { status: 500 });
   }
+}
+
+/** GET: the incident's affected services and monitors, with names. */
+export async function GET(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const auth = await requireSreApiPermissions([{ resource: "sre_incident", action: "view" }]);
+  if (!auth.success) return auth.response;
+  const parsedId = z.string().uuid().safeParse((await params).id);
+  if (!parsedId.success) return NextResponse.json({ error: "Invalid incident ID" }, { status: 400 });
+  const scope = { organizationId: auth.context.organizationId, projectId: auth.context.project.id };
+  const [incident] = await db
+    .select({ id: sreIncidents.id })
+    .from(sreIncidents)
+    .where(and(eq(sreIncidents.id, parsedId.data), eq(sreIncidents.organizationId, scope.organizationId), eq(sreIncidents.projectId, scope.projectId)))
+    .limit(1);
+  if (!incident) return NextResponse.json({ error: "Incident not found" }, { status: 404 });
+  return NextResponse.json({ success: true, resources: await listIncidentResources(scope, incident.id) });
 }

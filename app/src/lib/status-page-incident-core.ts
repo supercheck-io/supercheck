@@ -42,7 +42,9 @@ export const createIncidentSchema = z.object({
   affectedComponentIds: z
     .array(z.string().uuid())
     .min(1, "Select at least one affected component")
-    .max(100, "Select at most 100 affected components"),
+    .max(100, "Select at most 100 affected components")
+    // One row per component: a repeated id would store the new status as the "old" one and break restore.
+    .transform((ids) => [...new Set(ids.map((id) => id.toLowerCase()))]),
   componentStatus: z
     .enum([
       "operational",

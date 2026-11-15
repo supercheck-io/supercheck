@@ -10,6 +10,7 @@ jest.mock("@/sre/lib/auto-investigate", () => ({ maybeAutoInvestigateOnOpen: jes
 jest.mock("@/lib/sre/incident-resources", () => ({
   MAX_INCIDENT_RESOURCES: 50,
   resolveIncidentResources: jest.fn(),
+  liveResourceKeys: jest.fn(async (_tx: unknown, _scope: unknown, rows: Array<{ type: string; resourceId: string }>) => new Set(rows.map((r) => `${r.type}:${r.resourceId}`))),
   addIncidentResources: jest.fn(async (_tx: unknown, _id: string, resources: unknown[]) => resources),
 }));
 jest.mock("@/lib/rbac/middleware", () => ({
@@ -120,6 +121,8 @@ describe("createManualIncident", () => {
   it("rejects services or monitors outside the project, and a commander who cannot act", async () => {
     jest.mocked(resolveIncidentResources).mockResolvedValueOnce(null);
     expect(await createManualIncident(actor(), { title: "t", affected: { monitorIds: [id(6)] } }, "api")).toMatchObject({ ok: false, code: "not_found" });
+    // A request that cannot write never spends the limit (I3).
+    expect(checkSreIncidentCreateRateLimit).not.toHaveBeenCalled();
     jest.mocked(isAssignableUser).mockResolvedValueOnce(false);
     expect(await createManualIncident(actor(), { title: "t", commanderUserId: id(8) }, "api")).toMatchObject({ ok: false, code: "invalid" });
     expect(db.transaction).not.toHaveBeenCalled();
@@ -209,5 +212,36 @@ describe("updateIncidentResources", () => {
     jest.mocked(resolveIncidentResources).mockResolvedValueOnce([{ type: "monitor", id: id(700), name: "New" }]);
     (db.transaction as jest.Mock).mockImplementationOnce(tx(listed));
     expect(await updateIncidentResources(actor(), id(9), { add: { monitorIds: [id(700)] } })).toMatchObject({ ok: false, code: "invalid" });
+  });
+
+  it("refuses to change a resolved incident (I6)", async () => {
+    jest.mocked(resolveIncidentResources).mockResolvedValueOnce([{ type: "monitor", id: id(6), name: "a" }]);
+    (db.transaction as jest.Mock).mockImplementationOnce(async (callback) => callback({
+      select: () => ({ from: () => ({ where: () => ({ for: async () => [{ id: id(9), status: "resolved" }] }) }) }),
+    }));
+    expect(await updateIncidentResources(actor(), id(9), { add: { monitorIds: [id(6)] } })).toMatchObject({ ok: false, code: "conflict" });
+  });
+
+  it("does not count deleted monitors toward the cap (I4)", async () => {
+    const { liveResourceKeys } = jest.requireMock("@/lib/sre/incident-resources");
+    liveResourceKeys.mockResolvedValueOnce(new Set());
+    const listed = Array.from({ length: 50 }, (_, n) => ({ id: id(500 + n), type: "monitor", resourceId: id(600 + n) }));
+    jest.mocked(resolveIncidentResources).mockResolvedValueOnce([{ type: "monitor", id: id(700), name: "New" }]);
+    (db.transaction as jest.Mock).mockImplementationOnce(async (callback) => {
+      let call = 0;
+      return callback({
+        select: () => ({ from: () => ({ where: () => (call++ === 0 ? { for: async () => [{ id: id(9), status: "triggered" }] } : Promise.resolve(listed)) }) }),
+        delete: () => ({ where: jest.fn() }),
+        insert: () => ({ values: () => Promise.resolve() }),
+        update: () => ({ set: () => ({ where: jest.fn() }) }),
+      });
+    });
+    expect(await updateIncidentResources(actor(), id(9), { add: { monitorIds: [id(700)] } })).toMatchObject({ ok: true });
+  });
+
+  it("dedupes repeated status page components (I1)", async () => {
+    jest.mocked(createStatusPageIncident).mockResolvedValue({ success: true, message: "ok", incident: { id: id(30) } as never });
+    await createManualIncident(actor(), { title: "t", statusPage: { statusPageId: id(20), componentIds: [id(21), id(21), id(21).toUpperCase()] } }, "cli");
+    expect(createStatusPageIncident).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ affectedComponentIds: [id(21)] }));
   });
 });

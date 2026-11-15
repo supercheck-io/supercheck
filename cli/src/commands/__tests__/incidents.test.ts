@@ -93,4 +93,11 @@ describe('incident create', () => {
     mockPost.mockRejectedValueOnce(limited)
     await expect(run('--title', 'x')).rejects.toBe(limited)
   })
+  it('fetches the service list once for several service names (I7)', async () => {
+    mockGet.mockResolvedValueOnce({ data: { services: [{ id: id(4), name: 'Checkout' }, { id: id(5), name: 'Search' }, { id: id(6), name: 'Auth' }] } })
+    mockPost.mockResolvedValueOnce({ data: { success: true, incident: { id: id(9), incidentNumber: 1 } } })
+    await run('--title', 'x', '--service', 'Checkout', '--affected-service', 'Search', '--affected-service', 'Auth')
+    expect(mockGet).toHaveBeenCalledTimes(1)
+    expect(mockPost.mock.calls[0]![1]).toMatchObject({ primaryServiceId: id(4), affected: { serviceIds: [id(5), id(6)] } })
+  })
 })

@@ -154,18 +154,22 @@ policyCommand.command('set')
 const collect = (value: string, previous: string[] = []) => [...previous, value]
 const isUuid = (value: string) => z.string().uuid().safeParse(value).success
 
-/** A service UUID, or a name matched case-insensitively against this project's services. */
-async function resolveServiceId(value: string): Promise<string> {
-  if (isUuid(value)) return value
-  const { data } = await createAuthenticatedClient().get<{ services: Array<{ id: string; name: string }>; truncated?: boolean }>('/api/sre/services')
-  // A cut list could hide a second service with the same name, so a name only resolves against the full list.
-  if (data.truncated) throw new CLIError(`This project has too many services to match "${value}" by name. Pass the service UUID (supercheck service list --json).`, ExitCode.ConfigError)
-  const matches = data.services.filter((service) => service.name.toLowerCase() === value.toLowerCase())
-  if (matches.length !== 1) {
-    const reason = matches.length ? `More than one service is named "${value}".` : `No service named "${value}".`
-    throw new CLIError(`${reason} Pass the service UUID (supercheck service list --json).`, ExitCode.ConfigError)
+/** Resolves service UUIDs or names; the service list is fetched at most once per command. */
+function serviceResolver() {
+  let services: Promise<{ services: Array<{ id: string; name: string }>; truncated?: boolean }> | undefined
+  return async (value: string): Promise<string> => {
+    if (isUuid(value)) return value
+    services ??= createAuthenticatedClient().get<{ services: Array<{ id: string; name: string }>; truncated?: boolean }>('/api/sre/services').then((r) => r.data)
+    const data = await services
+    // A cut list could hide a second service with the same name, so a name only resolves against the full list.
+    if (data.truncated) throw new CLIError(`This project has too many services to match "${value}" by name. Pass the service UUID (supercheck service list --json).`, ExitCode.ConfigError)
+    const matches = data.services.filter((service) => service.name.toLowerCase() === value.toLowerCase())
+    if (matches.length !== 1) {
+      const reason = matches.length ? `More than one service is named "${value}".` : `No service named "${value}".`
+      throw new CLIError(`${reason} Pass the service UUID (supercheck service list --json).`, ExitCode.ConfigError)
+    }
+    return matches[0]!.id
   }
-  return matches[0]!.id
 }
 
 incidentCommand.command('create')
@@ -200,6 +204,7 @@ incidentCommand.command('create')
       if (!isUuid(options.commander)) throw new CLIError('--commander must be "me" or a user UUID.', ExitCode.ConfigError)
       commanderUserId = options.commander
     }
+    const resolveServiceId = serviceResolver()
     const body = {
       title: options.title,
       severity: options.severity,

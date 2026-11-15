@@ -387,7 +387,12 @@ async function createOrGetIncidentForAlertHistory(alertHistoryId: string, failur
     return { skipped: true as const, reason: "recovery_handled" as const };
   }
 
-  if (alertConfig?.incidentEnabled === false) {
+  // Incidents off means this monitor never opens one; a person can still list it on a declared incident, and then
+  // its alert joins that incident (below) instead of being dropped.
+  if (
+    alertConfig?.incidentEnabled === false &&
+    !(sourceType === "monitor" && (await findOpenIncidentListingMonitor(db, { organizationId, projectId, monitorId: sourceId })))
+  ) {
     return { skipped: true as const, reason: "incident_disabled" as const };
   }
 
@@ -561,6 +566,9 @@ async function createOrGetIncidentForAlertHistory(alertHistoryId: string, failur
         alreadyTriaged: Boolean(declared.triageInvestigationRunId),
       };
     }
+
+    // Incidents off: only a declared incident may take the alert (above); never reopen or open one.
+    if (alertConfig?.incidentEnabled === false) return { skipped: true as const, reason: "incident_disabled" as const };
 
     // A failure shortly after an automatic recovery is the same incident coming back.
     const reopened = RECOVERABLE_FAILURE_TYPES.has(alert.type)

@@ -134,6 +134,19 @@ export function IncidentSidebar({
                 <span className="text-muted-foreground">None</span>
               )}
             </Row>
+            {(detail.affectedResources?.length ?? 0) > 0 && (
+              <Row label="Affected">
+                <ul className="flex flex-col gap-0.5" data-testid="incident-affected">
+                  {detail.affectedResources!.map((resource) => (
+                    <li key={`${resource.type}:${resource.id}`} className="min-w-0 truncate">
+                      <Link className={PANEL_LINK} href={resource.type === "service" ? `/services/${resource.id}` : `/monitors/${resource.id}`}>
+                        {resource.name}
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              </Row>
+            )}
             <Row label="Started">{formatDate(incident.createdAt)}</Row>
             <Row label="Alerts">
               {incident.alertCount}

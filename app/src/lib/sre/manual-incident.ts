@@ -8,7 +8,7 @@ import { createLogger } from "@/lib/logger/index";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { getDefaultAssigneeId, isAssignableUser } from "@/lib/sre/incident-lifecycle";
 import { notifyIncidentEvent } from "@/lib/sre/incident-notifier";
-import { addIncidentResources, MAX_INCIDENT_RESOURCES, resolveIncidentResources } from "@/lib/sre/incident-resources";
+import { addIncidentResources, liveResourceKeys, MAX_INCIDENT_RESOURCES, resolveIncidentResources } from "@/lib/sre/incident-resources";
 import { watchIncident } from "@/lib/sre/incident-watchers";
 import { checkSreIncidentCreateRateLimit } from "@/lib/sre/sre-rate-limiter";
 import { createStatusPageIncident, findStatusPageTargetError, type StatusPageIncidentActor } from "@/lib/status-page-incident-core";
@@ -46,7 +46,7 @@ export const manualIncidentInputSchema = z
     statusPage: z
       .object({
         statusPageId: uuid,
-        componentIds: z.array(uuid).min(1, "Select at least one affected component").max(100),
+        componentIds: z.array(uuid).min(1, "Select at least one affected component").max(100).transform((ids) => [...new Set(ids)]),
         impact: z.enum(["none", "minor", "major", "critical"]).default("minor"),
         message: z.string().trim().max(10000, "Message is too long").optional(),
         notifySubscribers: z.boolean().default(false),
@@ -96,12 +96,6 @@ export async function createManualIncident(
     return { ok: false, code: "forbidden", error: "Insufficient permissions to create incidents" };
   }
 
-  const limit = await checkSreIncidentCreateRateLimit(organizationId, userId);
-  if (!limit.allowed) {
-    const retryAfterSeconds = limit.resetTime ? Math.max(1, Math.ceil((limit.resetTime - Date.now()) / 1000)) : 60;
-    return { ok: false, code: "rate_limited", error: "Too many incidents declared. Try again shortly.", retryAfterSeconds };
-  }
-
   const scope = { organizationId, projectId };
   const resources = await resolveIncidentResources(db, scope, {
     serviceIds: [...(data.primaryServiceId ? [data.primaryServiceId] : []), ...(data.affected?.serviceIds ?? [])],
@@ -118,6 +112,13 @@ export async function createManualIncident(
   // Like alert-opened incidents: the service owner when a service is named, else the person declaring it.
   const assigneeUserId =
     (data.primaryServiceId ? await getDefaultAssigneeId(db, { ...scope, serviceId: data.primaryServiceId }) : null) ?? userId;
+
+  // Spent only by a request that will write: bad ids, a wrong page or commander never use up the limit.
+  const limit = await checkSreIncidentCreateRateLimit(organizationId, userId);
+  if (!limit.allowed) {
+    const retryAfterSeconds = limit.resetTime ? Math.max(1, Math.ceil((limit.resetTime - Date.now()) / 1000)) : 60;
+    return { ok: false, code: "rate_limited", error: "Too many incidents declared. Try again shortly.", retryAfterSeconds };
+  }
 
   const title = data.title.slice(0, 500);
   const summary = data.summary || null;
@@ -253,7 +254,7 @@ export async function updateIncidentResources(
   actor: StatusPageIncidentActor,
   incidentId: string,
   input: z.input<typeof incidentResourcesPatchSchema>,
-): Promise<{ ok: true; added: number; removed: number } | { ok: false; code: "invalid" | "forbidden" | "not_found"; error: string }> {
+): Promise<{ ok: true; added: number; removed: number } | { ok: false; code: "invalid" | "forbidden" | "not_found" | "conflict"; error: string }> {
   const parsed = incidentResourcesPatchSchema.safeParse(input);
   if (!parsed.success || !uuid.safeParse(incidentId).success) return { ok: false, code: "invalid", error: parsed.success ? "Invalid incident" : parsed.error.issues[0]?.message ?? "Invalid resources" };
   if (!checkPermissionWithContext("sre_incident", "update", actor)) return { ok: false, code: "forbidden", error: "Insufficient permissions to update incidents" };
@@ -267,11 +268,13 @@ export async function updateIncidentResources(
 
   const result = await db.transaction(async (tx) => {
     const [incident] = await tx
-      .select({ id: sreIncidents.id })
+      .select({ id: sreIncidents.id, status: sreIncidents.status })
       .from(sreIncidents)
       .where(and(eq(sreIncidents.id, incidentId), eq(sreIncidents.organizationId, scope.organizationId), eq(sreIncidents.projectId, scope.projectId)))
       .for("update");
     if (!incident) return null;
+    // A resolved incident's record is closed; reopen it first.
+    if (incident.status === "resolved") return "resolved" as const;
     const current = await tx
       .select({ id: sreIncidentResources.id, type: sreIncidentResources.resourceType, resourceId: sreIncidentResources.resourceId })
       .from(sreIncidentResources)
@@ -279,7 +282,9 @@ export async function updateIncidentResources(
     const removing = current.filter((row) => removeKeys.has(`${row.type}:${row.resourceId}`));
     const existing = new Set(current.map((row) => `${row.type}:${row.resourceId}`));
     const adding = toAdd.filter((ref) => !existing.has(`${ref.type}:${ref.id}`) || removeKeys.has(`${ref.type}:${ref.id}`));
-    if (current.length - removing.length + adding.length > MAX_INCIDENT_RESOURCES) return "too_many" as const;
+    // Deleted monitors and merged services no longer count toward the cap.
+    const live = await liveResourceKeys(tx, scope, current.filter((row) => !removeKeys.has(`${row.type}:${row.resourceId}`)));
+    if (live.size + adding.length > MAX_INCIDENT_RESOURCES) return "too_many" as const;
     if (removing.length > 0) await tx.delete(sreIncidentResources).where(inArray(sreIncidentResources.id, removing.map((row) => row.id)));
     const added = await addIncidentResources(tx, incident.id, toAdd);
     // Names of removed services, scoped to the project; a monitor removal reads as "N monitors" by type alone.
@@ -305,6 +310,7 @@ export async function updateIncidentResources(
     return { added: added.length, removed: removed.length };
   });
   if (result === null) return { ok: false, code: "not_found", error: "Incident not found or access denied" };
+  if (result === "resolved") return { ok: false, code: "conflict", error: "Reopen the incident before changing its affected resources" };
   if (result === "too_many") return { ok: false, code: "invalid", error: `List at most ${MAX_INCIDENT_RESOURCES} affected services and monitors` };
   if (result.added > 0 || result.removed > 0) {
     await logAuditEvent({

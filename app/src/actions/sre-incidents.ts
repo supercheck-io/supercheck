@@ -77,6 +77,7 @@ import { checkSreIncidentUpdateRateLimit } from "@/lib/sre/sre-rate-limiter";
 import { isWatchingIncident, watchIncident } from "@/lib/sre/incident-watchers";
 import { maybeAutoInvestigateOnOpen } from "@/sre/lib/auto-investigate";
 import { createManualIncident, type ManualIncidentInput } from "@/lib/sre/manual-incident";
+import { listIncidentResources, type IncidentResourceView } from "@/lib/sre/incident-resources";
 import { listMyFeedbackForRun, type MyFeedback } from "@/lib/sre/investigation-feedback";
 import { readStoredHypotheses, type SreInvestigationHypothesis } from "@/sre/lib/investigation-output";
 import { readStoredSteps, type SreInvestigationStep } from "@/sre/lib/investigation-trace";
@@ -222,6 +223,8 @@ export type SreIncidentDetail = {
   /** Set when the source's checks passed again after the incident opened and no failure has returned since. */
   recoveredAt?: string | null;
   publicIncident?: { id: string; statusPageId: string; status: string } | null;
+  /** Services and monitors a person listed as affected (deleted ones left out). */
+  affectedResources?: IncidentResourceView[];
   incident: SreIncidentListItem & {
     rootCauseSummary: string | null;
     confidenceScore: string | null;
@@ -1159,6 +1162,7 @@ export async function getSreIncidentDetails(
 
     const watching = await isWatchingIncident(incident.id, userId);
     const recoveredAt = await getSourceRecoveredAt(incident.id);
+    const affectedResources = await listIncidentResources({ organizationId, projectId: project.id }, incident.id);
 
     return {
       success: true,
@@ -1166,6 +1170,7 @@ export async function getSreIncidentDetails(
         watching,
         recoveredAt,
         publicIncident: publicIncident ?? null,
+        affectedResources,
         linkedAlerts,
         currentUserId: userId,
         incident: {

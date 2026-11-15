@@ -171,6 +171,22 @@ describe("processSreBackgroundAlertTriageJob", () => {
       expect(result).toMatchObject({ success: true });
     });
 
+    it("joins a declared incident even when the monitor has incidents turned off, and opens nothing otherwise (I2)", async () => {
+      const { findOpenIncidentListingMonitor } = jest.requireMock("@/lib/sre/incident-resources");
+      findOpenIncidentListingMonitor.mockResolvedValue({ id: "declared-1", triageInvestigationRunId: null });
+      try {
+        selectQueue.push([alertRow({ monitorAlertConfig: { enabled: true, incidentEnabled: false } })], [], [{ id: "ae-1" }], []);
+        await processSreBackgroundAlertTriageJob(JOB);
+        expect(inserts).toContainEqual(expect.objectContaining({ incidentId: "declared-1", role: "related" }));
+      } finally {
+        findOpenIncidentListingMonitor.mockResolvedValue(null);
+      }
+      inserts.length = 0;
+      selectQueue.push([alertRow({ monitorAlertConfig: { enabled: true, incidentEnabled: false } })]);
+      expect(await processSreBackgroundAlertTriageJob(JOB)).toEqual({ success: true, skipped: true, reason: "incident_disabled" });
+      expect(insertedIncident()).toBeUndefined();
+    });
+
     it("lets an incident already open for the monitor win over a declared one", async () => {
       const { findOpenIncidentListingMonitor } = jest.requireMock("@/lib/sre/incident-resources");
       const { findOpenIncidentForSource } = jest.requireMock("@/lib/sre/incident-lifecycle");
