@@ -8,7 +8,7 @@ The CLI is versioned separately; see [cli/CHANGELOG.md](cli/CHANGELOG.md). Prere
 
 ### Upgrade notes
 
-- **Migration `0081`.** Adds the `sre_incident_resources` table (affected services and monitors of an incident). Apply it before you update the app. No new environment variable.
+- **Migration `0083`.** Adds the `sre_incident_resources` table (affected services and monitors of an incident). Apply it before you update the app. No new environment variable.
 - **Order for this release: migration `0080`, then the worker, then the app.** Apply migration `0080` first. It adds the reminder schedule and escalation columns to `notification_policies` and reminder counters to `sre_incidents`, and counts incidents already reminded once so they are not reminded again. Existing policies keep reminding once until you set a repeat. No new environment variable.
 - **Custom webhooks are retried.** Every webhook channel, not only paging presets, is now retried up to 3 times on HTTP 429, 5xx and network errors. A receiver that processed a request but answered late or with a 5xx may get it twice; make custom receivers idempotent (use `dedupKey`).
 - **Worker before the app (AI endpoint preset and monitor credentials).** No new settings. The new worker is inert until a monitor uses the AI endpoint preset or a credential from a project secret, which only the new app can save. An older worker would run those monitors without their key and report them down.
