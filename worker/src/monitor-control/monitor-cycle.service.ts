@@ -34,7 +34,7 @@ export class MonitorCycleService {
 
   constructor(
     private readonly dbService: DbService,
-    alertService: MonitorAlertService,
+    private readonly alertService: MonitorAlertService,
     private readonly billing: BillingHoldService,
   ) {
     this.evaluator = new MonitorEvaluator(dbService, alertService);
@@ -423,6 +423,7 @@ export class MonitorCycleService {
     // makes a redelivery harmless, so it runs before the delivery verdict below.
     await evaluateCycleWarnings(
       this.dbService.db,
+      this.alertService,
       monitor,
       cycle.id,
       cycle.scheduledFor,

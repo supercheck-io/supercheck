@@ -6,6 +6,7 @@ import { liveMonitor } from '../db/deletion-visibility';
 import type { MonitorConfig, MonitorResultDetails } from '../db/schema/types';
 import {
   dispatchMonitorWarning,
+  type WarningSender,
   type MonitorWarningKind,
 } from './monitor-warning-dispatch';
 import {
@@ -32,6 +33,7 @@ const max = (values: Array<number | undefined>) => {
  */
 export async function evaluateAiEndpointWarnings(
   db: PostgresJsDatabase<typeof schema>,
+  alerts: WarningSender,
   monitorId: string,
   cycleKey: string,
   cycleAt: Date,
@@ -129,7 +131,7 @@ export async function evaluateAiEndpointWarnings(
     );
     if (!changed) return false;
     for (const [kind, reason, key] of warnings)
-      await dispatchMonitorWarning(monitorId, kind, reason, key);
+      await dispatchMonitorWarning(db, alerts, monitorId, kind, reason, key);
     return true;
   } catch (error) {
     logger.warn(

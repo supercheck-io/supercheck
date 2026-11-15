@@ -58,6 +58,8 @@ describe('MonitorCycleService.notifyCycle runs the MCP and AI warning evaluation
     ...over,
   });
 
+  const alertService = { sendWarning: jest.fn() };
+
   function build(selects: unknown[][]) {
     const queue = [...selects];
     const db = {
@@ -66,7 +68,7 @@ describe('MonitorCycleService.notifyCycle runs the MCP and AI warning evaluation
     };
     const service = new MonitorCycleService(
       { db } as never,
-      {} as never,
+      alertService as never,
       {} as never,
     );
     return { service, db };
@@ -87,6 +89,7 @@ describe('MonitorCycleService.notifyCycle runs the MCP and AI warning evaluation
     expect(evaluate).toHaveBeenCalledTimes(1);
     expect(evaluate).toHaveBeenCalledWith(
       db,
+      alertService,
       monitor,
       'cycle-1',
       cycle.scheduledFor,
@@ -108,9 +111,9 @@ describe('MonitorCycleService.notifyCycle runs the MCP and AI warning evaluation
     const { service } = build([[early], [monitor], [fast, late]]);
     await service.notifyCycle('cycle-1');
     const args = evaluate.mock.calls[0];
-    expect(args[4]).toEqual([fast]);
-    expect(args[5]).toMatchObject({ complete: true });
-    expect(args[5].upResults).toHaveLength(2);
+    expect(args[5]).toEqual([fast]);
+    expect(args[6]).toMatchObject({ complete: true });
+    expect(args[6].upResults).toHaveLength(2);
   });
 
   it('still evaluates when alert delivery failed, so a redelivery cannot skip it', async () => {
@@ -120,6 +123,7 @@ describe('MonitorCycleService.notifyCycle runs the MCP and AI warning evaluation
     const { service } = build([[cycle], [monitor], [row('eu')]]);
     expect(await service.notifyCycle('cycle-1')).toBe(false);
     expect(evaluate).toHaveBeenCalledWith(
+      expect.anything(),
       expect.anything(),
       monitor,
       'cycle-1',
@@ -135,7 +139,7 @@ describe('MonitorCycleService.notifyCycle runs the MCP and AI warning evaluation
     await first.service.notifyCycle('cycle-1');
     const second = build([[cycle], [monitor], [eu]]);
     await second.service.notifyCycle('cycle-1');
-    expect(evaluate.mock.calls.map((c) => c[2])).toEqual([
+    expect(evaluate.mock.calls.map((c) => c[3])).toEqual([
       'cycle-1',
       'cycle-1',
     ]);
@@ -159,10 +163,10 @@ describe('MonitorCycleService.notifyCycle runs the MCP and AI warning evaluation
       'cycle-N',
     );
     const [first, second] = evaluate.mock.calls;
-    expect(first[2]).toBe('cycle-N1');
-    expect(second[2]).toBe('cycle-N');
-    expect((second[3] as Date).getTime()).toBeLessThan(
-      (first[3] as Date).getTime(),
+    expect(first[3]).toBe('cycle-N1');
+    expect(second[3]).toBe('cycle-N');
+    expect((second[4] as Date).getTime()).toBeLessThan(
+      (first[4] as Date).getTime(),
     );
   });
 

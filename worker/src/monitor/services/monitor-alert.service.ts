@@ -27,6 +27,7 @@ import { getErrorMessage } from '../../common/validation';
 import { redactUrlsInText } from '../../common/validation/data-sanitizer';
 import {
   isInformationalAlertType,
+  WARNING_KINDS,
   warningTitle,
   type WarningKind,
 } from '../warning-kinds';
@@ -945,7 +946,8 @@ export class MonitorAlertService {
     if (
       monitor.deletingAt ||
       !alertConfig?.enabled ||
-      alertConfig.warnings?.[kind] !== true
+      // An unset toggle means the kind's default, as the alert settings show it.
+      (alertConfig.warnings?.[kind] ?? WARNING_KINDS[kind].defaultOn) !== true
     )
       return { delivered: false, suppressed: true };
     if (await this.isUnderScheduledMaintenance(monitor.id)) {

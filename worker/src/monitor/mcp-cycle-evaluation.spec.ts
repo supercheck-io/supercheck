@@ -23,6 +23,7 @@ import { dispatchMonitorWarning } from './monitor-warning-dispatch';
 import { persistGuardedState } from './monitor-warning-state';
 
 const dispatch = dispatchMonitorWarning as jest.Mock;
+const alerts = { sendWarning: jest.fn() };
 const persist = persistGuardedState as jest.Mock;
 
 const tool = (name: string, description = 'd', inputSchema: unknown = {}) =>
@@ -67,10 +68,11 @@ describe('evaluateMcpCycle', () => {
     );
   const evaluate = (
     cycleKey: string,
-    ups: Parameters<typeof evaluateMcpCycle>[4],
+    ups: Parameters<typeof evaluateMcpCycle>[5],
     overrideMs?: number,
-  ) => evaluateMcpCycle(db, 'm1', cycleKey, at(cycleKey, overrideMs), ups);
-  const kinds = () => dispatch.mock.calls.map((c) => [c[1], c[3]]);
+  ) =>
+    evaluateMcpCycle(db, alerts, 'm1', cycleKey, at(cycleKey, overrideMs), ups);
+  const kinds = () => dispatch.mock.calls.map((c) => [c[3], c[5]]);
 
   beforeEach(() => {
     config = { mcp: { auth: { type: 'none' }, slowMs: 1000 } };
@@ -144,7 +146,7 @@ describe('evaluateMcpCycle', () => {
     const B = [tool('a', 'changed text'), tool('c')];
     await evaluate('c2', [result(B)]);
     expect(kinds()).toEqual([['mcp_tools_changed', 'mcp_tools_changed:c2']]);
-    expect(dispatch.mock.calls[0][2]).toBe(
+    expect(dispatch.mock.calls[0][4]).toBe(
       'Tool list changed: 1 added, 1 removed, 1 changed',
     );
     expect(state().baseline!.hash).toBe(hashToolList(B));
@@ -204,6 +206,7 @@ describe('evaluateMcpCycle', () => {
       expect(
         await evaluateMcpCycle(
           db,
+          alerts,
           'm1',
           key,
           at(key),
@@ -222,6 +225,7 @@ describe('evaluateMcpCycle', () => {
     it('does not even take a baseline from early rows', async () => {
       await evaluateMcpCycle(
         db,
+        alerts,
         'm1',
         'c1',
         at('c1'),
@@ -271,7 +275,7 @@ describe('evaluateMcpCycle', () => {
           }),
         }),
       } as unknown as PostgresJsDatabase<typeof schema>;
-      return completeMcpTools(dbc, 'm1', key);
+      return completeMcpTools(dbc, alerts, 'm1', key);
     };
     const B = [tool('x')];
 
@@ -376,7 +380,9 @@ describe('evaluateMcpCycle', () => {
           throw new Error('db down');
         },
       } as unknown as PostgresJsDatabase<typeof schema>;
-      await expect(completeMcpTools(bad, 'm1', 'cyc')).resolves.toBe(false);
+      await expect(completeMcpTools(bad, alerts, 'm1', 'cyc')).resolves.toBe(
+        false,
+      );
     });
 
     it('retries when another writer moved the state, and records the change once', async () => {
@@ -414,7 +420,7 @@ describe('evaluateMcpCycle', () => {
       beyondStored: true,
     });
     expect(kinds()).toEqual([['mcp_tools_changed', 'mcp_tools_changed:c2']]);
-    expect(dispatch.mock.calls[0][2]).toBe(
+    expect(dispatch.mock.calls[0][4]).toBe(
       'Tool list changed beyond the stored tools',
     );
     expect(state().baseline!.hash).toBe('f'.repeat(64));
@@ -522,7 +528,7 @@ describe('evaluateMcpCycle', () => {
       expect(dispatch).not.toHaveBeenCalled();
       await evaluate('c3', slow());
       expect(kinds()).toEqual([['mcp_slow', 'mcp_slow:c1']]);
-      expect(dispatch.mock.calls[0][2]).toBe(
+      expect(dispatch.mock.calls[0][4]).toBe(
         'Checks took longer than 1000 ms for 3 cycles in a row',
       );
       await evaluate('c4', slow());

@@ -14,6 +14,7 @@ import { dispatchMonitorWarning } from './monitor-warning-dispatch';
 import { persistGuardedState } from './monitor-warning-state';
 
 const dispatch = dispatchMonitorWarning as jest.Mock;
+const alerts = { sendWarning: jest.fn() };
 const persist = persistGuardedState as jest.Mock;
 
 const ai = (over: Record<string, unknown> = {}) => ({
@@ -52,17 +53,18 @@ describe('evaluateAiEndpointWarnings', () => {
     );
   const evaluate = (
     cycleKey: string,
-    results: Parameters<typeof evaluateAiEndpointWarnings>[4],
+    results: Parameters<typeof evaluateAiEndpointWarnings>[5],
     overrideMs?: number,
   ) =>
     evaluateAiEndpointWarnings(
       db,
+      alerts,
       'm1',
       cycleKey,
       at(cycleKey, overrideMs),
       results,
     );
-  const kinds = () => dispatch.mock.calls.map((c) => [c[1], c[3]]);
+  const kinds = () => dispatch.mock.calls.map((c) => [c[3], c[5]]);
   const set = (
     settings: Partial<NonNullable<MonitorConfig['aiEndpoint']>> = {},
     st?: MonitorConfig['aiEndpointState'],
@@ -119,7 +121,7 @@ describe('evaluateAiEndpointWarnings', () => {
     it('never puts the model name in the warning text', async () => {
       await evaluate('c1', [ai()]);
       await evaluate('c2', [ai({ servedModel: 'secret-model-name' })]);
-      expect(dispatch.mock.calls[0][2]).not.toContain('secret-model-name');
+      expect(dispatch.mock.calls[0][4]).not.toContain('secret-model-name');
     });
 
     it('keeps the remembered model when a result carries none', async () => {

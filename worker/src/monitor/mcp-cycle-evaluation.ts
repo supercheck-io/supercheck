@@ -11,6 +11,7 @@ import type {
 import { diffTools, hasToolChanges } from './mcp-tool-diff';
 import {
   dispatchMonitorWarning,
+  type WarningSender,
   type MonitorWarningKind,
 } from './monitor-warning-dispatch';
 import {
@@ -122,6 +123,7 @@ async function readState(
  */
 export async function evaluateMcpCycle(
   db: PostgresJsDatabase<typeof schema>,
+  alerts: WarningSender,
   monitorId: string,
   cycleKey: string,
   cycleAt: Date,
@@ -192,6 +194,7 @@ export async function evaluateMcpCycle(
       return retry
         ? evaluateMcpCycle(
             db,
+            alerts,
             monitorId,
             cycleKey,
             cycleAt,
@@ -202,7 +205,7 @@ export async function evaluateMcpCycle(
         : false;
     }
     for (const [kind, reason, key] of warnings)
-      await dispatchMonitorWarning(monitorId, kind, reason, key);
+      await dispatchMonitorWarning(db, alerts, monitorId, kind, reason, key);
     return true;
   } catch (error) {
     logger.warn(
@@ -220,6 +223,7 @@ export async function evaluateMcpCycle(
  */
 export async function completeMcpTools(
   db: PostgresJsDatabase<typeof schema>,
+  alerts: WarningSender,
   monitorId: string,
   cycleId: string,
   attempt = 1,
@@ -290,11 +294,11 @@ export async function completeMcpTools(
       // Another writer (the closure's evaluation) moved the state between our read and write: re-read, bounded.
       // The retry returns false at once if this cycle's tool part was already recorded.
       return attempt < 3
-        ? completeMcpTools(db, monitorId, cycleId, attempt + 1)
+        ? completeMcpTools(db, alerts, monitorId, cycleId, attempt + 1)
         : false;
     }
     for (const [kind, reason, key] of warnings)
-      await dispatchMonitorWarning(monitorId, kind, reason, key);
+      await dispatchMonitorWarning(db, alerts, monitorId, kind, reason, key);
     return true;
   } catch (error) {
     logger.warn(

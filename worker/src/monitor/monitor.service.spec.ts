@@ -4196,6 +4196,7 @@ describe('MonitorService', () => {
         expect(evaluateCycleWarnings).toHaveBeenCalledTimes(1);
         expect(evaluateCycleWarnings).toHaveBeenCalledWith(
           mockDbService.db,
+          expect.anything(),
           mcpMonitor,
           insertedId,
           row.checkedAt,
@@ -4215,6 +4216,7 @@ describe('MonitorService', () => {
         });
         expect(completeMcpTools).toHaveBeenCalledWith(
           mockDbService.db,
+          expect.anything(),
           mockMonitor.id,
           'cycle-9',
         );
@@ -4243,6 +4245,7 @@ describe('MonitorService', () => {
         });
         expect(evaluateCycleWarnings).toHaveBeenCalledWith(
           mockDbService.db,
+          expect.anything(),
           mcpMonitor,
           'group-1',
           row.checkedAt,
@@ -4254,7 +4257,7 @@ describe('MonitorService', () => {
         await service.saveMonitorResults([row], { persisted: true });
         await service.saveMonitorResults([row], { persisted: true });
         const keys = (evaluateCycleWarnings as jest.Mock).mock.calls.map(
-          (c) => c[2],
+          (c) => c[3],
         );
         expect(keys).toHaveLength(2);
         expect(keys[0]).not.toBe(keys[1]);

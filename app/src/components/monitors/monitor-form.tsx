@@ -1310,6 +1310,7 @@ export function MonitorForm({
               }
               context="monitor"
               monitorType={type}
+              aiEndpoint={type === "http_request" && form.watch("preset") === "ai_endpoint"}
               sslCheckEnabled={
                 type === "website" && form.watch("websiteConfig_enableSslCheck")
               }

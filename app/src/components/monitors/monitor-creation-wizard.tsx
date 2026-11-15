@@ -549,6 +549,7 @@ export function MonitorCreationWizard() {
             }
             context="monitor"
             monitorType={monitorData?.type || type}
+            aiEndpoint={(monitorData as { preset?: string } | undefined)?.preset === "ai_endpoint"}
             sslCheckEnabled={
               monitorData?.type === "website" &&
               !!monitorData?.websiteConfig_enableSslCheck

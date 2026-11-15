@@ -8,9 +8,9 @@ import type * as schema from '../db/schema';
 import { evaluateAiEndpointWarnings } from './ai-endpoint-warnings';
 import { evaluateMcpCycle } from './mcp-cycle-evaluation';
 import { evaluateCycleWarnings } from './monitor-cycle-warnings';
-import { dispatchMonitorWarning } from './monitor-warning-dispatch';
 
 const db = {} as PostgresJsDatabase<typeof schema>;
+const alerts = { sendWarning: jest.fn() };
 const up = { isUp: true, responseTimeMs: 1, details: {} };
 const cycleAt = new Date('2026-01-01T00:00:00Z');
 const down = { isUp: false, details: {} };
@@ -21,6 +21,7 @@ describe('evaluateCycleWarnings', () => {
   it('hands an MCP monitor only its up results', async () => {
     await evaluateCycleWarnings(
       db,
+      alerts,
       { id: 'm', type: 'mcp_server', config: null },
       'c1',
       cycleAt,
@@ -28,6 +29,7 @@ describe('evaluateCycleWarnings', () => {
     );
     expect(evaluateMcpCycle).toHaveBeenCalledWith(
       db,
+      alerts,
       'm',
       'c1',
       cycleAt,
@@ -40,6 +42,7 @@ describe('evaluateCycleWarnings', () => {
     const tools = { complete: false, upResults: [up] };
     await evaluateCycleWarnings(
       db,
+      alerts,
       { id: 'm', type: 'mcp_server', config: null },
       'c1',
       cycleAt,
@@ -48,6 +51,7 @@ describe('evaluateCycleWarnings', () => {
     );
     expect(evaluateMcpCycle).toHaveBeenCalledWith(
       db,
+      alerts,
       'm',
       'c1',
       cycleAt,
@@ -60,6 +64,7 @@ describe('evaluateCycleWarnings', () => {
   it('hands an AI preset http monitor every result', async () => {
     await evaluateCycleWarnings(
       db,
+      alerts,
       { id: 'm', type: 'http_request', config: { aiEndpoint: { model: 'x' } } },
       'c1',
       cycleAt,
@@ -67,6 +72,7 @@ describe('evaluateCycleWarnings', () => {
     );
     expect(evaluateAiEndpointWarnings).toHaveBeenCalledWith(
       db,
+      alerts,
       'm',
       'c1',
       cycleAt,
@@ -83,18 +89,15 @@ describe('evaluateCycleWarnings', () => {
     ],
     ['a monitor with no config', { type: 'http_request', config: null }],
   ])('does nothing for %s', async (_n, monitor) => {
-    await evaluateCycleWarnings(db, { id: 'm', ...monitor }, 'c1', cycleAt, [
-      up,
-    ]);
+    await evaluateCycleWarnings(
+      db,
+      alerts,
+      { id: 'm', ...monitor },
+      'c1',
+      cycleAt,
+      [up],
+    );
     expect(evaluateMcpCycle).not.toHaveBeenCalled();
     expect(evaluateAiEndpointWarnings).not.toHaveBeenCalled();
-  });
-});
-
-describe('dispatchMonitorWarning', () => {
-  it('resolves (debug log only until the warning PR lands)', async () => {
-    await expect(
-      dispatchMonitorWarning('m', 'mcp_slow', 'reason', 'mcp_slow:c1'),
-    ).resolves.toBeUndefined();
   });
 });

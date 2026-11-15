@@ -3,6 +3,7 @@ import * as schema from '../db/schema';
 import type { MonitorConfig } from '../db/schema/types';
 import { evaluateAiEndpointWarnings } from './ai-endpoint-warnings';
 import { evaluateMcpCycle, type McpToolsInput } from './mcp-cycle-evaluation';
+import type { WarningSender } from './monitor-warning-dispatch';
 
 type CycleResult = {
   isUp: boolean;
@@ -18,6 +19,7 @@ type CycleResult = {
  */
 export async function evaluateCycleWarnings(
   db: PostgresJsDatabase<typeof schema>,
+  alerts: WarningSender,
   monitor: { id: string; type: string; config: MonitorConfig | null },
   cycleKey: string,
   cycleAt: Date,
@@ -28,6 +30,7 @@ export async function evaluateCycleWarnings(
   if (monitor.type === 'mcp_server')
     await evaluateMcpCycle(
       db,
+      alerts,
       monitor.id,
       cycleKey,
       cycleAt,
@@ -37,6 +40,7 @@ export async function evaluateCycleWarnings(
   else if (monitor.type === 'http_request' && monitor.config?.aiEndpoint)
     await evaluateAiEndpointWarnings(
       db,
+      alerts,
       monitor.id,
       cycleKey,
       cycleAt,

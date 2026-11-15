@@ -41,4 +41,24 @@ describe('warning kinds parity (app <-> worker)', () => {
     expect(Object.keys(appKinds()).length).toBeGreaterThan(0);
     expect(worker).toEqual(appKinds());
   });
+
+  it('the CLI knows the same default-on kinds, so monitors-as-code round-trips them', () => {
+    const cliSource = readFileSync(
+      join(__dirname, '../../../cli/src/utils/alert-config.ts'),
+      'utf8',
+    );
+    const list =
+      /WARNINGS_ON_BY_DEFAULT = new Set\(\[([^\]]*)\]/.exec(cliSource)?.[1] ??
+      '';
+    const cli = list
+      .split(',')
+      .map((t) => t.trim().replace(/["']/g, ''))
+      .filter(Boolean)
+      .sort();
+    const app = Object.entries(appKinds())
+      .filter(([, v]) => v.defaultOn)
+      .map(([k]) => k)
+      .sort();
+    expect(cli).toEqual(app);
+  });
 });

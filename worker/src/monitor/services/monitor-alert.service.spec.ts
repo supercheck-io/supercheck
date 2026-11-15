@@ -1195,6 +1195,42 @@ describe('MonitorAlertService', () => {
       ).not.toHaveBeenCalled();
     });
 
+    it('treats an unset toggle as the kind default: MCP tools changed is on, an explicit false wins', async () => {
+      const mcp = {
+        ...heartbeat,
+        type: 'mcp_server' as const,
+        name: 'Docs MCP',
+        alertConfig: { ...heartbeat.alertConfig, warnings: undefined },
+      };
+      const key = 'mcp_tools_changed:cycle-1';
+      const ctx = setup();
+      await expect(
+        ctx.service.sendWarning(mcp, 'mcp_tools_changed', 'r', key),
+      ).resolves.toMatchObject({ delivered: true });
+      expect(
+        ctx.notificationService.sendNotificationToMultipleProviders.mock
+          .calls[0][1],
+      ).toMatchObject({
+        title: 'Tools changed - Docs MCP',
+        metadata: { warningKind: 'mcp_tools_changed' },
+      });
+      const off = setup();
+      await expect(
+        off.service.sendWarning(
+          {
+            ...mcp,
+            alertConfig: {
+              ...mcp.alertConfig,
+              warnings: { mcp_tools_changed: false },
+            },
+          },
+          'mcp_tools_changed',
+          'r',
+          key,
+        ),
+      ).resolves.toEqual({ delivered: false, suppressed: true });
+    });
+
     it('sends nothing for a monitor being deleted', async () => {
       const ctx = setup();
       await expect(

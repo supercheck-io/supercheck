@@ -603,6 +603,7 @@ export class MonitorService {
     // MCP tool-list change and AI endpoint warnings, once per cycle; they log and swallow their own failures.
     await evaluateCycleWarnings(
       this.dbService.db,
+      this.monitorAlertService,
       monitor,
       options?.executionGroupId ?? options?.cycleKey ?? randomUUID(),
       new Date(Math.max(...results.map((r) => r.checkedAt.getTime()))),
@@ -972,6 +973,7 @@ export class MonitorService {
       if ((result.details as { mcp?: unknown } | undefined)?.mcp)
         await completeMcpTools(
           this.dbService.db,
+          this.monitorAlertService,
           result.monitorId,
           executionGroupId,
         );

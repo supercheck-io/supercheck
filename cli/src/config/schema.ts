@@ -44,7 +44,7 @@ export const alertConfigSchema = z.object({
   incidentEnabled: z.boolean().optional(),
   incidentSeverity: z.enum(['sev1', 'sev2', 'sev3', 'sev4']).optional(),
   autoResolveIncident: z.boolean().optional(),
-  // Warning-only alerts by kind (e.g. heartbeat_late): notify channels, never open an incident. Off unless true.
+  // Warning-only alerts by kind (e.g. heartbeat_late): notify channels, never open an incident. Unset takes the kind's default.
   warnings: z.record(z.string(), z.boolean()).optional(),
 }).passthrough()
 
