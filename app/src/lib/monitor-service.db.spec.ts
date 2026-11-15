@@ -24,6 +24,7 @@ jest.mock("@/lib/queue", () => ({ addMonitorExecutionJobToQueue: jest.fn(async (
 jest.mock("@/lib/monitor-scheduler", () => ({
   scheduleMonitor: jest.fn(async () => "schedule-1"),
   deleteScheduledMonitor: jest.fn(async () => true),
+  removeScheduledMonitor: jest.fn(async () => true),
 }));
 import { ResumeRefusedError } from "@/lib/middleware/plan-enforcement";
 import { MonitorTargetChangedError, updateMonitorHandler } from "./monitor-service";
