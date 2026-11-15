@@ -398,6 +398,29 @@ For **Synthetic Monitors**, detailed reports are generated when checks fail. Acc
 Use **Copy Prompt** to copy error details for AI-assisted debugging.
 </Callout>
 
+## Maintenance windows
+
+Schedule a maintenance window before planned work so nobody is paged for expected downtime. Open **Monitors → Maintenance**, or **Schedule maintenance** on a monitor or service page, in Quick Create or in the command menu (Cmd+K).
+
+| Setting | Detail |
+|---|---|
+| **Covers** | Chosen monitors, chosen services (every monitor mapped to them, including ones mapped later), or every monitor in the project |
+| **When** | A local start date and time, a duration (5 minutes to 7 days) and an IANA time zone. Recurring windows repeat daily, weekly on chosen days, or monthly on a day from 1 to 28 or the last day, until an optional end date. Start times follow the wall clock across daylight-saving changes |
+| **Status page** | A one-off window can also be shown as scheduled maintenance on status pages, with optional notices to subscribers at creation, start and end. Every monitor on the chosen components is muted too |
+
+During a window:
+
+- Checks keep running and results are stored, marked as maintenance in the results table.
+- No alerts are sent, no incidents open, and reminders for open incidents opened by alerts wait until the window ends. Incidents declared by a person still page.
+- Uptime on monitor pages, the dashboard and status pages leaves those checks out.
+- Failures do not count toward the alert threshold. A monitor that is still down after the window alerts once it has failed its threshold again; a monitor that recovers during the window recovers normally, without a notification.
+
+**End now** stops the active occurrence at once (a recurring window moves to its next one), **Extend** adds time, **Cancel** stops a scheduled window or the rest of a series, and **Delete** removes a window that is not active. A status-page maintenance follows: it ends, moves or is resolved as cancelled. Scheduling needs monitor update permission; deleting needs monitor delete permission. A project can have 100 upcoming or active windows.
+
+The app moves each window to its next occurrence. If the app is down when an occurrence would start, that occurrence starts late: alerting is never muted past a window's end.
+
+Also: `supercheck maintenance`, `/api/maintenance-windows` and the MCP tools `list_maintenance_windows`, `create_maintenance_window`, `end_maintenance_window`, `extend_maintenance_window` and `cancel_maintenance_window`.
+
 ## Monitor Status
 
 | Status | Meaning | Action |
