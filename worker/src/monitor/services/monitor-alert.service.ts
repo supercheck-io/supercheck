@@ -945,7 +945,7 @@ export class MonitorAlertService {
       (alertConfig.warnings?.[kind] ?? WARNING_KINDS[kind].defaultOn) !== true
     )
       return { delivered: false, suppressed: true };
-    if (await this.isUnderScheduledMaintenance(monitor.id)) {
+    if (await this.isMonitorInMaintenance(monitor.id)) {
       this.logger.log(
         `[WARN-NOTIFY] Suppressing ${kind} for monitor ${monitor.id} during scheduled maintenance`,
       );

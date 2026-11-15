@@ -1,6 +1,6 @@
 {
-  "id": "97ffc07b-7a62-4b87-949e-af93a25a10c6",
-  "prevId": "9a8c8bf5-676b-4c7e-b59f-62f9bb455969",
+  "id": "4694c475-0c0a-4eed-8f50-d1a902275251",
+  "prevId": "b34ec108-d742-4ef6-85c6-b003aa5e3141",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -7139,13 +7139,6 @@
           "type": "text",
           "primaryKey": false,
           "notNull": false
-        },
-        "in_maintenance": {
-          "name": "in_maintenance",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
         }
       },
       "indexes": {
@@ -7385,6 +7378,24 @@
           "primaryKey": false,
           "notNull": false
         },
+        "heartbeat_token_hash": {
+          "name": "heartbeat_token_hash",
+          "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "heartbeat_token_encrypted": {
+          "name": "heartbeat_token_encrypted",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "heartbeat_state": {
+          "name": "heartbeat_state",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -7400,6 +7411,38 @@
         }
       },
       "indexes": {
+        "monitors_heartbeat_sweep_idx": {
+          "name": "monitors_heartbeat_sweep_idx",
+          "columns": [
+            {
+              "expression": "id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "type = 'heartbeat'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "monitors_heartbeat_token_hash_uidx": {
+          "name": "monitors_heartbeat_token_hash_uidx",
+          "columns": [
+            {
+              "expression": "heartbeat_token_hash",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "heartbeat_token_hash IS NOT NULL",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
         "monitors_deleting_idx": {
           "name": "monitors_deleting_idx",
           "columns": [
@@ -7529,7 +7572,7 @@
         },
         "monitors_type_check": {
           "name": "monitors_type_check",
-          "value": "\"monitors\".\"type\" IN ('http_request', 'website', 'ping_host', 'port_check', 'synthetic_test')"
+          "value": "\"monitors\".\"type\" IN ('http_request', 'website', 'ping_host', 'port_check', 'synthetic_test', 'heartbeat', 'mcp_server')"
         },
         "monitors_status_check": {
           "name": "monitors_status_check",
@@ -8511,7 +8554,7 @@
         },
         "alert_history_type_check": {
           "name": "alert_history_type_check",
-          "value": "\"alert_history\".\"type\" IN ('monitor_failure', 'monitor_recovery', 'job_failed', 'job_success', 'job_timeout', 'ssl_expiring', 'ssl_renewed')"
+          "value": "\"alert_history\".\"type\" IN ('monitor_failure', 'monitor_recovery', 'job_failed', 'job_success', 'job_timeout', 'ssl_expiring', 'ssl_renewed', 'monitor_warning')"
         },
         "alert_history_status_check": {
           "name": "alert_history_status_check",
@@ -10375,12 +10418,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "maintenance_window_id": {
-          "name": "maintenance_window_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -10397,21 +10434,6 @@
         }
       },
       "indexes": {
-        "incidents_maintenance_window_id_idx": {
-          "name": "incidents_maintenance_window_id_idx",
-          "columns": [
-            {
-              "expression": "maintenance_window_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
         "incidents_open_automatic_component_idx": {
           "name": "incidents_open_automatic_component_idx",
           "columns": [
@@ -10563,19 +10585,6 @@
           "tableTo": "sre_incidents",
           "columnsFrom": [
             "sre_incident_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "set null",
-          "onUpdate": "no action"
-        },
-        "incidents_maintenance_window_id_maintenance_windows_id_fk": {
-          "name": "incidents_maintenance_window_id_maintenance_windows_id_fk",
-          "tableFrom": "incidents",
-          "tableTo": "maintenance_windows",
-          "columnsFrom": [
-            "maintenance_window_id"
           ],
           "columnsTo": [
             "id"
@@ -12394,361 +12403,6 @@
         "status_pages_status_check": {
           "name": "status_pages_status_check",
           "value": "\"status_pages\".\"status\" IN ('draft', 'published', 'archived')"
-        }
-      },
-      "isRLSEnabled": false
-    },
-    "public.maintenance_window_targets": {
-      "name": "maintenance_window_targets",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "window_id": {
-          "name": "window_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "target_type": {
-          "name": "target_type",
-          "type": "varchar(10)",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "target_id": {
-          "name": "target_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        }
-      },
-      "indexes": {
-        "maintenance_window_targets_window_target_unique_idx": {
-          "name": "maintenance_window_targets_window_target_unique_idx",
-          "columns": [
-            {
-              "expression": "window_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "target_type",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "target_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "maintenance_window_targets_target_idx": {
-          "name": "maintenance_window_targets_target_idx",
-          "columns": [
-            {
-              "expression": "target_type",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "target_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "maintenance_window_targets_window_id_maintenance_windows_id_fk": {
-          "name": "maintenance_window_targets_window_id_maintenance_windows_id_fk",
-          "tableFrom": "maintenance_window_targets",
-          "tableTo": "maintenance_windows",
-          "columnsFrom": [
-            "window_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "maintenance_window_targets_target_type_check": {
-          "name": "maintenance_window_targets_target_type_check",
-          "value": "\"maintenance_window_targets\".\"target_type\" IN ('service', 'monitor')"
-        }
-      },
-      "isRLSEnabled": false
-    },
-    "public.maintenance_windows": {
-      "name": "maintenance_windows",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "organization_id": {
-          "name": "organization_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "project_id": {
-          "name": "project_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "title": {
-          "name": "title",
-          "type": "varchar(200)",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "description": {
-          "name": "description",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "scope": {
-          "name": "scope",
-          "type": "varchar(10)",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "recurrence": {
-          "name": "recurrence",
-          "type": "varchar(10)",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "timezone": {
-          "name": "timezone",
-          "type": "varchar(64)",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "local_start_time": {
-          "name": "local_start_time",
-          "type": "time",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "duration_minutes": {
-          "name": "duration_minutes",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "starts_on": {
-          "name": "starts_on",
-          "type": "date",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "ends_on": {
-          "name": "ends_on",
-          "type": "date",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "weekdays": {
-          "name": "weekdays",
-          "type": "smallint[]",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "month_day": {
-          "name": "month_day",
-          "type": "smallint",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "occurrence_starts_at": {
-          "name": "occurrence_starts_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "occurrence_ends_at": {
-          "name": "occurrence_ends_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "cancelled_at": {
-          "name": "cancelled_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "completed_at": {
-          "name": "completed_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "created_by_user_id": {
-          "name": "created_by_user_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "maintenance_windows_project_occurrence_idx": {
-          "name": "maintenance_windows_project_occurrence_idx",
-          "columns": [
-            {
-              "expression": "project_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "occurrence_starts_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "maintenance_windows_organization_id_idx": {
-          "name": "maintenance_windows_organization_id_idx",
-          "columns": [
-            {
-              "expression": "organization_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "maintenance_windows_created_by_user_id_idx": {
-          "name": "maintenance_windows_created_by_user_id_idx",
-          "columns": [
-            {
-              "expression": "created_by_user_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "maintenance_windows_organization_id_organization_id_fk": {
-          "name": "maintenance_windows_organization_id_organization_id_fk",
-          "tableFrom": "maintenance_windows",
-          "tableTo": "organization",
-          "columnsFrom": [
-            "organization_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "maintenance_windows_project_id_projects_id_fk": {
-          "name": "maintenance_windows_project_id_projects_id_fk",
-          "tableFrom": "maintenance_windows",
-          "tableTo": "projects",
-          "columnsFrom": [
-            "project_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "maintenance_windows_created_by_user_id_user_id_fk": {
-          "name": "maintenance_windows_created_by_user_id_user_id_fk",
-          "tableFrom": "maintenance_windows",
-          "tableTo": "user",
-          "columnsFrom": [
-            "created_by_user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "set null",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "maintenance_windows_scope_check": {
-          "name": "maintenance_windows_scope_check",
-          "value": "\"maintenance_windows\".\"scope\" IN ('project', 'services', 'monitors')"
-        },
-        "maintenance_windows_recurrence_check": {
-          "name": "maintenance_windows_recurrence_check",
-          "value": "\"maintenance_windows\".\"recurrence\" IN ('once', 'daily', 'weekly', 'monthly')"
-        },
-        "maintenance_windows_duration_check": {
-          "name": "maintenance_windows_duration_check",
-          "value": "\"maintenance_windows\".\"duration_minutes\" BETWEEN 5 AND 10080"
-        },
-        "maintenance_windows_month_day_check": {
-          "name": "maintenance_windows_month_day_check",
-          "value": "\"maintenance_windows\".\"month_day\" IS NULL OR \"maintenance_windows\".\"month_day\" BETWEEN 1 AND 28 OR \"maintenance_windows\".\"month_day\" = -1"
         }
       },
       "isRLSEnabled": false
@@ -18156,118 +17810,6 @@
         "sre_incident_alerts_role_check": {
           "name": "sre_incident_alerts_role_check",
           "value": "\"sre_incident_alerts\".\"role\" IN ('trigger', 'related', 'red_herring')"
-        }
-      },
-      "isRLSEnabled": false
-    },
-    "public.sre_incident_resources": {
-      "name": "sre_incident_resources",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "incident_id": {
-          "name": "incident_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "resource_type": {
-          "name": "resource_type",
-          "type": "varchar(10)",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "resource_id": {
-          "name": "resource_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "sre_incident_resources_incident_resource_unique_idx": {
-          "name": "sre_incident_resources_incident_resource_unique_idx",
-          "columns": [
-            {
-              "expression": "incident_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "resource_type",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "resource_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "sre_incident_resources_resource_idx": {
-          "name": "sre_incident_resources_resource_idx",
-          "columns": [
-            {
-              "expression": "resource_type",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "resource_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "sre_incident_resources_incident_id_sre_incidents_id_fk": {
-          "name": "sre_incident_resources_incident_id_sre_incidents_id_fk",
-          "tableFrom": "sre_incident_resources",
-          "tableTo": "sre_incidents",
-          "columnsFrom": [
-            "incident_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "sre_incident_resources_resource_type_check": {
-          "name": "sre_incident_resources_resource_type_check",
-          "value": "\"sre_incident_resources\".\"resource_type\" IN ('service', 'monitor')"
         }
       },
       "isRLSEnabled": false

@@ -6659,6 +6659,1010 @@ paths:
                 type: integer
         "503":
           description: The ping could not be recorded; retry after `Retry-After`.
+  /api/maintenance-windows:
+    get:
+      operationId: listMaintenanceWindows
+      summary: List maintenance windows
+      description: Windows of the active project. Needs monitor view permission.
+      tags:
+        - Monitors
+      parameters:
+        - name: state
+          in: query
+          schema:
+            type: string
+            enum:
+              - active
+              - scheduled
+              - past
+        - name: monitorId
+          in: query
+          schema:
+            type: string
+            format: uuid
+          description: Only windows covering this monitor
+        - name: serviceId
+          in: query
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Windows
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  windows:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                          format: uuid
+                        title:
+                          type: string
+                        description:
+                          type: string
+                          nullable: true
+                        state:
+                          type: string
+                          enum:
+                            - scheduled
+                            - active
+                            - completed
+                            - cancelled
+                        scope:
+                          type: string
+                          enum:
+                            - project
+                            - services
+                            - monitors
+                        recurrence:
+                          type: string
+                          enum:
+                            - once
+                            - daily
+                            - weekly
+                            - monthly
+                        timezone:
+                          type: string
+                        localStartTime:
+                          type: string
+                        durationMinutes:
+                          type: integer
+                        startsOn:
+                          type: string
+                          format: date
+                        endsOn:
+                          type: string
+                          format: date
+                          nullable: true
+                        weekdays:
+                          type: array
+                          items:
+                            type: integer
+                          nullable: true
+                        monthDay:
+                          type: integer
+                          nullable: true
+                        occurrenceStartsAt:
+                          type: string
+                          format: date-time
+                          nullable: true
+                        occurrenceEndsAt:
+                          type: string
+                          format: date-time
+                          nullable: true
+                        targets:
+                          type: array
+                          items:
+                            type: object
+                            properties:
+                              type:
+                                type: string
+                                enum:
+                                  - service
+                                  - monitor
+                              id:
+                                type: string
+                                format: uuid
+                        statusPageIncidentIds:
+                          type: array
+                          items:
+                            type: string
+                            format: uuid
+        "400":
+          description: Invalid body or schedule; fieldErrors name the fields
+        "401":
+          description: Not authenticated
+        "403":
+          description: Insufficient permission, or the organization is pending deletion
+    post:
+      operationId: createMaintenanceWindow
+      summary: Schedule a maintenance window
+      description: During a window, covered monitors keep running; alerts, new
+        incidents and reminders for alert-opened incidents are muted, failures
+        do not count toward the alert threshold, and uptime leaves the checks
+        out. Needs monitor update permission (and status page update to
+        publish). 30 changes per minute per user.
+      tags:
+        - Monitors
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - title
+                - scope
+                - recurrence
+                - timezone
+                - localStartTime
+                - durationMinutes
+                - startsOn
+              properties:
+                title:
+                  type: string
+                  maxLength: 200
+                description:
+                  type: string
+                  maxLength: 2000
+                scope:
+                  type: string
+                  enum:
+                    - project
+                    - services
+                    - monitors
+                targets:
+                  type: object
+                  properties:
+                    serviceIds:
+                      type: array
+                      items:
+                        type: string
+                        format: uuid
+                      maxItems: 500
+                    monitorIds:
+                      type: array
+                      items:
+                        type: string
+                        format: uuid
+                      maxItems: 500
+                recurrence:
+                  type: string
+                  enum:
+                    - once
+                    - daily
+                    - weekly
+                    - monthly
+                timezone:
+                  type: string
+                  description: IANA time zone
+                localStartTime:
+                  type: string
+                  pattern: ^\d{2}:\d{2}$
+                durationMinutes:
+                  type: integer
+                  minimum: 5
+                  maximum: 10080
+                  description: Shorter than the time between occurrences
+                startsOn:
+                  type: string
+                  format: date
+                endsOn:
+                  type: string
+                  format: date
+                  nullable: true
+                weekdays:
+                  type: array
+                  items:
+                    type: integer
+                    minimum: 0
+                    maximum: 6
+                  description: "Weekly: 0 = Sunday"
+                monthDay:
+                  type: integer
+                  description: "Monthly: 1-28, or -1 for the last day"
+                statusPages:
+                  type: array
+                  description: One-off windows only
+                  items:
+                    type: object
+                    properties:
+                      statusPageId:
+                        type: string
+                        format: uuid
+                      componentIds:
+                        type: array
+                        items:
+                          type: string
+                          format: uuid
+                notifySubscribers:
+                  type: boolean
+                  default: false
+      responses:
+        "201":
+          description: Scheduled; warning status_page_failed if only the status page post
+            failed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  window:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                        format: uuid
+                      title:
+                        type: string
+                      description:
+                        type: string
+                        nullable: true
+                      state:
+                        type: string
+                        enum:
+                          - scheduled
+                          - active
+                          - completed
+                          - cancelled
+                      scope:
+                        type: string
+                        enum:
+                          - project
+                          - services
+                          - monitors
+                      recurrence:
+                        type: string
+                        enum:
+                          - once
+                          - daily
+                          - weekly
+                          - monthly
+                      timezone:
+                        type: string
+                      localStartTime:
+                        type: string
+                      durationMinutes:
+                        type: integer
+                      startsOn:
+                        type: string
+                        format: date
+                      endsOn:
+                        type: string
+                        format: date
+                        nullable: true
+                      weekdays:
+                        type: array
+                        items:
+                          type: integer
+                        nullable: true
+                      monthDay:
+                        type: integer
+                        nullable: true
+                      occurrenceStartsAt:
+                        type: string
+                        format: date-time
+                        nullable: true
+                      occurrenceEndsAt:
+                        type: string
+                        format: date-time
+                        nullable: true
+                      targets:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            type:
+                              type: string
+                              enum:
+                                - service
+                                - monitor
+                            id:
+                              type: string
+                              format: uuid
+                      statusPageIncidentIds:
+                        type: array
+                        items:
+                          type: string
+                          format: uuid
+        "400":
+          description: Invalid body or schedule; fieldErrors name the fields
+        "401":
+          description: Not authenticated
+        "403":
+          description: Insufficient permission, or the organization is pending deletion
+        "404":
+          description: Window, service, monitor or status page not found in the active
+            project
+        "409":
+          description: Not allowed in the window's current state, or 100 live windows
+            already
+        "429":
+          description: Too many maintenance changes; see Retry-After
+  /api/maintenance-windows/{id}:
+    get:
+      operationId: getMaintenanceWindow
+      summary: Get a maintenance window
+      tags:
+        - Monitors
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Window
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  window:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                        format: uuid
+                      title:
+                        type: string
+                      description:
+                        type: string
+                        nullable: true
+                      state:
+                        type: string
+                        enum:
+                          - scheduled
+                          - active
+                          - completed
+                          - cancelled
+                      scope:
+                        type: string
+                        enum:
+                          - project
+                          - services
+                          - monitors
+                      recurrence:
+                        type: string
+                        enum:
+                          - once
+                          - daily
+                          - weekly
+                          - monthly
+                      timezone:
+                        type: string
+                      localStartTime:
+                        type: string
+                      durationMinutes:
+                        type: integer
+                      startsOn:
+                        type: string
+                        format: date
+                      endsOn:
+                        type: string
+                        format: date
+                        nullable: true
+                      weekdays:
+                        type: array
+                        items:
+                          type: integer
+                        nullable: true
+                      monthDay:
+                        type: integer
+                        nullable: true
+                      occurrenceStartsAt:
+                        type: string
+                        format: date-time
+                        nullable: true
+                      occurrenceEndsAt:
+                        type: string
+                        format: date-time
+                        nullable: true
+                      targets:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            type:
+                              type: string
+                              enum:
+                                - service
+                                - monitor
+                            id:
+                              type: string
+                              format: uuid
+                      statusPageIncidentIds:
+                        type: array
+                        items:
+                          type: string
+                          format: uuid
+        "404":
+          description: Window, service, monitor or status page not found in the active
+            project
+    patch:
+      operationId: updateMaintenanceWindow
+      summary: Edit a maintenance window
+      description: Edits apply to future occurrences; an active occurrence keeps its times.
+      tags:
+        - Monitors
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title:
+                  type: string
+                description:
+                  type: string
+                scope:
+                  type: string
+                  enum:
+                    - project
+                    - services
+                    - monitors
+                targets:
+                  type: object
+                  properties:
+                    serviceIds:
+                      type: array
+                      items:
+                        type: string
+                        format: uuid
+                      maxItems: 500
+                    monitorIds:
+                      type: array
+                      items:
+                        type: string
+                        format: uuid
+                      maxItems: 500
+                recurrence:
+                  type: string
+                  enum:
+                    - once
+                    - daily
+                    - weekly
+                    - monthly
+                timezone:
+                  type: string
+                  description: IANA time zone
+                localStartTime:
+                  type: string
+                  pattern: ^\d{2}:\d{2}$
+                durationMinutes:
+                  type: integer
+                  minimum: 5
+                  maximum: 10080
+                  description: Shorter than the time between occurrences
+                startsOn:
+                  type: string
+                  format: date
+                endsOn:
+                  type: string
+                  format: date
+                  nullable: true
+                weekdays:
+                  type: array
+                  items:
+                    type: integer
+                    minimum: 0
+                    maximum: 6
+                  description: "Weekly: 0 = Sunday"
+                monthDay:
+                  type: integer
+                  description: "Monthly: 1-28, or -1 for the last day"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  window:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                        format: uuid
+                      title:
+                        type: string
+                      description:
+                        type: string
+                        nullable: true
+                      state:
+                        type: string
+                        enum:
+                          - scheduled
+                          - active
+                          - completed
+                          - cancelled
+                      scope:
+                        type: string
+                        enum:
+                          - project
+                          - services
+                          - monitors
+                      recurrence:
+                        type: string
+                        enum:
+                          - once
+                          - daily
+                          - weekly
+                          - monthly
+                      timezone:
+                        type: string
+                      localStartTime:
+                        type: string
+                      durationMinutes:
+                        type: integer
+                      startsOn:
+                        type: string
+                        format: date
+                      endsOn:
+                        type: string
+                        format: date
+                        nullable: true
+                      weekdays:
+                        type: array
+                        items:
+                          type: integer
+                        nullable: true
+                      monthDay:
+                        type: integer
+                        nullable: true
+                      occurrenceStartsAt:
+                        type: string
+                        format: date-time
+                        nullable: true
+                      occurrenceEndsAt:
+                        type: string
+                        format: date-time
+                        nullable: true
+                      targets:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            type:
+                              type: string
+                              enum:
+                                - service
+                                - monitor
+                            id:
+                              type: string
+                              format: uuid
+                      statusPageIncidentIds:
+                        type: array
+                        items:
+                          type: string
+                          format: uuid
+        "400":
+          description: Invalid body or schedule; fieldErrors name the fields
+        "401":
+          description: Not authenticated
+        "403":
+          description: Insufficient permission, or the organization is pending deletion
+        "404":
+          description: Window, service, monitor or status page not found in the active
+            project
+        "409":
+          description: Not allowed in the window's current state, or 100 live windows
+            already
+        "429":
+          description: Too many maintenance changes; see Retry-After
+    delete:
+      operationId: deleteMaintenanceWindow
+      summary: Delete a maintenance window
+      description: Only when not active. Needs monitor delete permission.
+      tags:
+        - Monitors
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Deleted
+        "400":
+          description: Invalid body or schedule; fieldErrors name the fields
+        "401":
+          description: Not authenticated
+        "403":
+          description: Insufficient permission, or the organization is pending deletion
+        "404":
+          description: Window, service, monitor or status page not found in the active
+            project
+        "409":
+          description: Not allowed in the window's current state, or 100 live windows
+            already
+        "429":
+          description: Too many maintenance changes; see Retry-After
+  /api/maintenance-windows/{id}/end:
+    post:
+      operationId: endMaintenanceWindow
+      summary: End an active maintenance window now
+      tags:
+        - Monitors
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Done
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  window:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                        format: uuid
+                      title:
+                        type: string
+                      description:
+                        type: string
+                        nullable: true
+                      state:
+                        type: string
+                        enum:
+                          - scheduled
+                          - active
+                          - completed
+                          - cancelled
+                      scope:
+                        type: string
+                        enum:
+                          - project
+                          - services
+                          - monitors
+                      recurrence:
+                        type: string
+                        enum:
+                          - once
+                          - daily
+                          - weekly
+                          - monthly
+                      timezone:
+                        type: string
+                      localStartTime:
+                        type: string
+                      durationMinutes:
+                        type: integer
+                      startsOn:
+                        type: string
+                        format: date
+                      endsOn:
+                        type: string
+                        format: date
+                        nullable: true
+                      weekdays:
+                        type: array
+                        items:
+                          type: integer
+                        nullable: true
+                      monthDay:
+                        type: integer
+                        nullable: true
+                      occurrenceStartsAt:
+                        type: string
+                        format: date-time
+                        nullable: true
+                      occurrenceEndsAt:
+                        type: string
+                        format: date-time
+                        nullable: true
+                      targets:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            type:
+                              type: string
+                              enum:
+                                - service
+                                - monitor
+                            id:
+                              type: string
+                              format: uuid
+                      statusPageIncidentIds:
+                        type: array
+                        items:
+                          type: string
+                          format: uuid
+        "400":
+          description: Invalid body or schedule; fieldErrors name the fields
+        "401":
+          description: Not authenticated
+        "403":
+          description: Insufficient permission, or the organization is pending deletion
+        "404":
+          description: Window, service, monitor or status page not found in the active
+            project
+        "409":
+          description: Not allowed in the window's current state, or 100 live windows
+            already
+        "429":
+          description: Too many maintenance changes; see Retry-After
+  /api/maintenance-windows/{id}/extend:
+    post:
+      operationId: extendMaintenanceWindow
+      summary: Extend an active maintenance window
+      tags:
+        - Monitors
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Done
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  window:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                        format: uuid
+                      title:
+                        type: string
+                      description:
+                        type: string
+                        nullable: true
+                      state:
+                        type: string
+                        enum:
+                          - scheduled
+                          - active
+                          - completed
+                          - cancelled
+                      scope:
+                        type: string
+                        enum:
+                          - project
+                          - services
+                          - monitors
+                      recurrence:
+                        type: string
+                        enum:
+                          - once
+                          - daily
+                          - weekly
+                          - monthly
+                      timezone:
+                        type: string
+                      localStartTime:
+                        type: string
+                      durationMinutes:
+                        type: integer
+                      startsOn:
+                        type: string
+                        format: date
+                      endsOn:
+                        type: string
+                        format: date
+                        nullable: true
+                      weekdays:
+                        type: array
+                        items:
+                          type: integer
+                        nullable: true
+                      monthDay:
+                        type: integer
+                        nullable: true
+                      occurrenceStartsAt:
+                        type: string
+                        format: date-time
+                        nullable: true
+                      occurrenceEndsAt:
+                        type: string
+                        format: date-time
+                        nullable: true
+                      targets:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            type:
+                              type: string
+                              enum:
+                                - service
+                                - monitor
+                            id:
+                              type: string
+                              format: uuid
+                      statusPageIncidentIds:
+                        type: array
+                        items:
+                          type: string
+                          format: uuid
+        "400":
+          description: Invalid body or schedule; fieldErrors name the fields
+        "401":
+          description: Not authenticated
+        "403":
+          description: Insufficient permission, or the organization is pending deletion
+        "404":
+          description: Window, service, monitor or status page not found in the active
+            project
+        "409":
+          description: Not allowed in the window's current state, or 100 live windows
+            already
+        "429":
+          description: Too many maintenance changes; see Retry-After
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                byMinutes:
+                  type: integer
+                  minimum: 1
+                until:
+                  type: string
+                  format: date-time
+  /api/maintenance-windows/{id}/cancel:
+    post:
+      operationId: cancelMaintenanceWindow
+      summary: Cancel a scheduled window or the rest of a series
+      tags:
+        - Monitors
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Done
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  window:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                        format: uuid
+                      title:
+                        type: string
+                      description:
+                        type: string
+                        nullable: true
+                      state:
+                        type: string
+                        enum:
+                          - scheduled
+                          - active
+                          - completed
+                          - cancelled
+                      scope:
+                        type: string
+                        enum:
+                          - project
+                          - services
+                          - monitors
+                      recurrence:
+                        type: string
+                        enum:
+                          - once
+                          - daily
+                          - weekly
+                          - monthly
+                      timezone:
+                        type: string
+                      localStartTime:
+                        type: string
+                      durationMinutes:
+                        type: integer
+                      startsOn:
+                        type: string
+                        format: date
+                      endsOn:
+                        type: string
+                        format: date
+                        nullable: true
+                      weekdays:
+                        type: array
+                        items:
+                          type: integer
+                        nullable: true
+                      monthDay:
+                        type: integer
+                        nullable: true
+                      occurrenceStartsAt:
+                        type: string
+                        format: date-time
+                        nullable: true
+                      occurrenceEndsAt:
+                        type: string
+                        format: date-time
+                        nullable: true
+                      targets:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            type:
+                              type: string
+                              enum:
+                                - service
+                                - monitor
+                            id:
+                              type: string
+                              format: uuid
+                      statusPageIncidentIds:
+                        type: array
+                        items:
+                          type: string
+                          format: uuid
+        "400":
+          description: Invalid body or schedule; fieldErrors name the fields
+        "401":
+          description: Not authenticated
+        "403":
+          description: Insufficient permission, or the organization is pending deletion
+        "404":
+          description: Window, service, monitor or status page not found in the active
+            project
+        "409":
+          description: Not allowed in the window's current state, or 100 live windows
+            already
+        "429":
+          description: Too many maintenance changes; see Retry-After
 components:
   securitySchemes:
     bearerAuth:
