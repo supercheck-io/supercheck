@@ -133,7 +133,7 @@ it("a config save keeps worker-owned keys written after the app read the row, an
   const id = pausedRows[0].id;
   // The worker writes a new baseline after the service's read; simulated by a write racing in via the DB.
   const state = { lastCycleKey: "worker-new", slowEpisodeKey: null, baseline: { hash: "h2", takenAt: "2026-11-15T00:00:00.000Z", tools: [] } };
-  await client`UPDATE monitors SET config = ${client.json({ method: "GET", mcpState: state })} WHERE id = ${id}`;
+  await client`UPDATE monitors SET config = ${JSON.stringify({ method: "GET", mcpState: state })}::jsonb WHERE id = ${id}`;
   await updateMonitorHandler(id, { config: { method: "POST", mcpState: { lastCycleKey: "forged" }, aggregatedAlertState: { forged: true } } as never });
   const [row] = await mockDatabase.select().from(schema.monitors).where(eq(schema.monitors.id, id));
   expect(row.config).toEqual({ method: "POST", mcpState: state });
@@ -144,7 +144,7 @@ it("changing an MCP monitor's target or login drops its tool baseline; other edi
   const id = pausedRows[0].id;
   const state = { lastCycleKey: "c1", baseline: { hash: "h", takenAt: "2026-11-15T00:00:00.000Z", tools: [] } };
   const mcp = { auth: { type: "bearer", secretKey: "T" } };
-  const reset = () => client`UPDATE monitors SET target = 'https://a.example.com/mcp', config = ${client.json({ mcp, mcpState: state })} WHERE id = ${id}`;
+  const reset = () => client`UPDATE monitors SET target = 'https://a.example.com/mcp', config = ${JSON.stringify({ mcp, mcpState: state })}::jsonb WHERE id = ${id}`;
   const read = async () => (await mockDatabase.select().from(schema.monitors).where(eq(schema.monitors.id, id)))[0];
   await reset();
   await updateMonitorHandler(id, { name: "renamed", config: { mcp, timeoutSeconds: 20 } as never });
