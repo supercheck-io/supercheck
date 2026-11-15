@@ -5,6 +5,7 @@ import { AxiosError, AxiosRequestConfig, Method } from 'axios'; // Import Method
 import * as tls from 'tls';
 import { randomUUID } from 'node:crypto';
 import { evaluateCycleWarnings } from './monitor-cycle-warnings';
+import { completeAiModel } from './ai-endpoint-warnings';
 import { completeMcpTools } from './mcp-cycle-evaluation';
 import { executeMcpCheck, MCP_DEFAULT_TIMEOUT_SECONDS } from './mcp-check';
 import { createMcpMonitorRequest } from './mcp-monitor-transport';
@@ -974,7 +975,14 @@ export class MonitorService {
         result.location,
       ))
     ) {
-      // A late region of a cycle the closure judged early: finish its tool-list check once every region is in.
+      // A late region of a cycle the closure judged early: finish its tool-list (MCP) or served-model (AI) check once every region is in.
+      if ((result.details as { ai?: unknown } | undefined)?.ai)
+        await completeAiModel(
+          this.dbService.db,
+          this.monitorAlertService,
+          result.monitorId,
+          executionGroupId,
+        );
       if ((result.details as { mcp?: unknown } | undefined)?.mcp)
         await completeMcpTools(
           this.dbService.db,
@@ -1328,6 +1336,7 @@ export class MonitorService {
           request: createMcpMonitorRequest(),
           resolveSecret: (key) =>
             resolveMonitorSecret(this.dbService.db, monitorId, key),
+          storedTarget: target,
         }),
       {
         // The check enforces its own deadline; the grace lets it report "timeout", not a system error.

@@ -209,6 +209,9 @@ export type MonitorConfig = {
     slowFirstTokenStreak?: number;
     slowFirstTokenEpisodeKey?: string | null;
     tokensHighEpisodeKey?: string | null;
+    /** The served-model part has its own guard: a cycle closed early finishes it when the last region reports. */
+    modelCycleKey?: string;
+    modelCycleAt?: string;
   };
   /** MCP Monitor settings; mcp_server only. */
   mcp?: McpMonitorConfig;

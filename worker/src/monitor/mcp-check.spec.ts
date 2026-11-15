@@ -16,6 +16,7 @@ import type { AddressInfo } from 'node:net';
 import type { MonitorConfig } from '../db/schema/types';
 import type { McpRequest } from '../common/mcp/mcp-http-client';
 import { executeMcpCheck } from './mcp-check';
+import { mcpEndpointKey } from './mcp-tool-diff';
 import { createMcpMonitorRequest } from './mcp-monitor-transport';
 import { SECRET_OVER_HTTP_MESSAGE } from './monitor-secret';
 
@@ -211,6 +212,25 @@ describe('executeMcpCheck', () => {
   });
 
   describe('success', () => {
+    it('stamps the settings hash of the stored target, not the URL it connected to', async () => {
+      const stored = `${url}/`.replace('http://', 'HTTP://');
+      const r = await executeMcpCheck(
+        url,
+        { mcp: { auth: { type: 'none' } } },
+        {
+          request: createMcpMonitorRequest(),
+          resolveSecret,
+          storedTarget: stored,
+        },
+      );
+      expect(r.details.mcp.endpointKey).toBe(
+        mcpEndpointKey(stored, { type: 'none' }),
+      );
+      expect((await run()).details.mcp.endpointKey).toBe(
+        mcpEndpointKey(url, { type: 'none' }),
+      );
+    });
+
     it('checks a 2026 server and records protocol, server, tools, hash and phase timings', async () => {
       const r = await run({ toolCall: { name: 'ping', arguments: { a: 1 } } });
       expect(r).toMatchObject({ status: 'up', isUp: true });

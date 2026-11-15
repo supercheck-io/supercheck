@@ -9,6 +9,7 @@ import {
   type WarningSender,
   type MonitorWarningKind,
 } from './monitor-warning-dispatch';
+import { toolsInputOf } from './mcp-cycle-evaluation';
 import {
   advanceSlowStreak,
   persistGuardedState,
@@ -25,6 +26,43 @@ const max = (values: Array<number | undefined>) => {
   return present.length ? Math.max(...present) : undefined;
 };
 
+const aiOf = (rows: AiCycleResult[]) =>
+  rows.flatMap((r) => {
+    const value = (r.details as MonitorResultDetails | null | undefined)?.ai;
+    return value ? [value] : [];
+  });
+
+/** The model part of a cycle runs once, and never for a cycle older than the newest one compared. */
+const modelDue = (state: AiState, cycleAt: Date) =>
+  !state.modelCycleAt || Date.parse(state.modelCycleAt) < cycleAt.getTime();
+
+/**
+ * Served model: silent on the first value, once per new value, always remembered. Locations that
+ * disagree (regional deployments, routers) compare nothing, so the order of rows cannot flip it.
+ */
+function compareModel(
+  state: AiState,
+  next: AiState,
+  ai: ReturnType<typeof aiOf>,
+  cycleKey: string,
+): Array<[MonitorWarningKind, string, string]> {
+  const models = new Set(
+    ai.flatMap((a) => (a.servedModel ? [a.servedModel] : [])),
+  );
+  const model = models.size === 1 ? [...models][0] : undefined;
+  if (!model) return [];
+  next.lastServedModel = model;
+  return state.lastServedModel && state.lastServedModel !== model
+    ? [
+        [
+          'ai_model_changed',
+          'The endpoint now serves a different model',
+          `ai_model_changed:${cycleKey}`,
+        ],
+      ]
+    : [];
+}
+
 /**
  * AI endpoint warnings for one cycle (http_request monitors with `config.aiEndpoint`): slow first
  * token for 3 cycles, served model changed, tokens high. Same shape as the MCP evaluation: state is read from the
@@ -40,14 +78,9 @@ export async function evaluateAiEndpointWarnings(
   results: AiCycleResult[],
   /** Control-plane cycles: every location's reply once all have reported (the frozen view may lack some). */
   full?: { complete: boolean; upResults: AiCycleResult[] },
+  retry = true,
 ): Promise<boolean> {
   try {
-    const aiOf = (rows: AiCycleResult[]) =>
-      rows.flatMap((r) => {
-        const value = (r.details as MonitorResultDetails | null | undefined)
-          ?.ai;
-        return value ? [value] : [];
-      });
     const ai = aiOf(results);
     if (ai.length === 0) return false;
 
@@ -71,22 +104,18 @@ export async function evaluateAiEndpointWarnings(
     };
     const warnings: Array<[MonitorWarningKind, string, string]> = [];
 
-    // Served model: silent on the first value, once per new value, always remembered. Locations that
-    // disagree (regional deployments, routers) compare nothing, so the order of rows cannot flip it.
-    // A cycle closed before every region reported compares nothing, so the first region to answer cannot flip it.
-    const modelSource = full ? (full.complete ? aiOf(full.upResults) : []) : ai;
-    const models = new Set(
-      modelSource.flatMap((a) => (a.servedModel ? [a.servedModel] : [])),
-    );
-    const model = models.size === 1 ? [...models][0] : undefined;
-    if (model) {
-      if (state.lastServedModel && state.lastServedModel !== model)
-        warnings.push([
-          'ai_model_changed',
-          'The endpoint now serves a different model',
-          `ai_model_changed:${cycleKey}`,
-        ]);
-      next.lastServedModel = model;
+    // A cycle closed before every region reported defers the model part to completeAiModel.
+    if ((!full || full.complete) && modelDue(state, cycleAt)) {
+      warnings.push(
+        ...compareModel(
+          state,
+          next,
+          aiOf(full ? full.upResults : results),
+          cycleKey,
+        ),
+      );
+      next.modelCycleKey = cycleKey;
+      next.modelCycleAt = cycleAt.toISOString();
     }
 
     // First token: the slowest location decides; a cycle with no first token (down) is left alone.
@@ -139,14 +168,117 @@ export async function evaluateAiEndpointWarnings(
       cycleKey,
       cycleAt,
       next,
+      { also: { modelCycleKey: state.modelCycleKey } },
     );
-    if (!changed) return false;
+    if (!changed) {
+      // A late-region model completion may have written between our read and write: read again once.
+      return retry
+        ? evaluateAiEndpointWarnings(
+            db,
+            alerts,
+            monitorId,
+            cycleKey,
+            cycleAt,
+            results,
+            full,
+            false,
+          )
+        : false;
+    }
     for (const [kind, reason, key] of warnings)
       await dispatchMonitorWarning(db, alerts, monitorId, kind, reason, key);
     return true;
   } catch (error) {
     logger.warn(
       `AI endpoint warning evaluation failed for monitor ${monitorId}: ${error instanceof Error ? error.message : String(error)}`,
+    );
+    return false;
+  }
+}
+
+/**
+ * Finishes the model part of a control-plane cycle that closed before every location reported. Called
+ * when a late regional row of that cycle is saved: it runs only once every expected location has a real
+ * row, uses its own `modelCycleKey/At` guard so the closure's slow and token parts are not counted twice,
+ * and writes nothing else. Never throws.
+ */
+export async function completeAiModel(
+  db: PostgresJsDatabase<typeof schema>,
+  alerts: WarningSender,
+  monitorId: string,
+  cycleId: string,
+  attempt = 1,
+): Promise<boolean> {
+  try {
+    const [cycle] = await db
+      .select({
+        status: schema.monitorCycles.status,
+        monitorId: schema.monitorCycles.monitorId,
+        scheduledFor: schema.monitorCycles.scheduledFor,
+        expectedLocations: schema.monitorCycles.expectedLocations,
+      })
+      .from(schema.monitorCycles)
+      .where(eq(schema.monitorCycles.id, cycleId))
+      .limit(1);
+    if (!cycle || cycle.monitorId !== monitorId || cycle.status !== 'closed')
+      return false;
+    const rows = await db
+      .select({
+        location: schema.monitorResults.location,
+        isUp: schema.monitorResults.isUp,
+        details: schema.monitorResults.details,
+        checkedAt: schema.monitorResults.checkedAt,
+      })
+      .from(schema.monitorResults)
+      .where(
+        and(
+          eq(schema.monitorResults.monitorId, monitorId),
+          eq(schema.monitorResults.executionGroupId, cycleId),
+        ),
+      );
+    const input = toolsInputOf(cycle.expectedLocations, rows);
+    if (!input.complete) return false;
+
+    const [row] = await db
+      .select({ config: schema.monitors.config })
+      .from(schema.monitors)
+      .where(and(eq(schema.monitors.id, monitorId), liveMonitor()))
+      .limit(1);
+    if (!row?.config?.aiEndpoint) return false;
+    const state: AiState = row.config.aiEndpointState ?? {};
+    const cycleAt = cycle.scheduledFor;
+    if ((state.modelCycleKey ?? '') === cycleId || !modelDue(state, cycleAt))
+      return false;
+    const next: AiState = {
+      ...state,
+      modelCycleKey: cycleId,
+      modelCycleAt: cycleAt.toISOString(),
+    };
+    const warnings = compareModel(state, next, aiOf(input.upResults), cycleId);
+    const changed = await persistGuardedState(
+      db,
+      monitorId,
+      'aiEndpointState',
+      state.modelCycleKey,
+      cycleId,
+      cycleAt,
+      next,
+      {
+        keyField: 'modelCycleKey',
+        atField: 'modelCycleAt',
+        also: { lastCycleKey: state.lastCycleKey },
+      },
+    );
+    if (!changed)
+      return attempt < 3
+        ? completeAiModel(db, alerts, monitorId, cycleId, attempt + 1)
+        : false;
+    for (const [kind, reason, key] of warnings)
+      await dispatchMonitorWarning(db, alerts, monitorId, kind, reason, key);
+    return true;
+  } catch (error) {
+    logger.warn(
+      `AI model completion failed for monitor ${monitorId}: ${error instanceof Error ? error.message : String(error)}`,
     );
     return false;
   }

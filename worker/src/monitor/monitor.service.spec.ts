@@ -3,6 +3,7 @@ import { resolveMonitorSecret } from './monitor-secret';
 import { executeMcpCheck } from './mcp-check';
 import { evaluateCycleWarnings } from './monitor-cycle-warnings';
 import { completeMcpTools } from './mcp-cycle-evaluation';
+import { completeAiModel } from './ai-endpoint-warnings';
 import { throwError } from 'rxjs';
 /**
  * Monitor Service Tests
@@ -43,6 +44,10 @@ jest.mock('./monitor-cycle-warnings', () => ({
 
 jest.mock('./mcp-cycle-evaluation', () => ({
   completeMcpTools: jest.fn().mockResolvedValue(false),
+}));
+
+jest.mock('./ai-endpoint-warnings', () => ({
+  completeAiModel: jest.fn().mockResolvedValue(false),
 }));
 
 jest.mock('./mcp-check', () => ({
@@ -4140,6 +4145,20 @@ describe('MonitorService', () => {
       );
     });
 
+    it('stamps results from the stored target, not the normalized URL the check connects to', async () => {
+      (executeMcpCheck as jest.Mock).mockClear().mockResolvedValue({
+        status: 'up',
+        details: { mcp: {} },
+        isUp: true,
+      });
+      await service.executeMonitor({
+        ...mcpJob,
+        target: 'https://MCP.example.com/Path/mcp',
+      });
+      const [, , deps] = (executeMcpCheck as jest.Mock).mock.calls[0];
+      expect(deps.storedTarget).toBe('https://MCP.example.com/Path/mcp');
+    });
+
     it('reports an invalid mcp_server target as a check error without running the check', async () => {
       (executeMcpCheck as jest.Mock).mockClear();
       const result = await service.executeMonitor({
@@ -4228,9 +4247,30 @@ describe('MonitorService', () => {
           .spyOn(service as any, 'recordCycleArrival')
           .mockResolvedValue(true);
         (completeMcpTools as jest.Mock).mockClear();
+        (completeAiModel as jest.Mock).mockClear();
         await service.saveDistributedMonitorResult(
           { ...row, details: { statusCode: 200 } },
           { executionGroupId: 'cycle-9', monitorCycle: true, persisted: true },
+        );
+        expect(completeMcpTools).not.toHaveBeenCalled();
+        expect(completeAiModel).not.toHaveBeenCalled();
+      });
+
+      it('a late AI endpoint row of an already closed cycle completes its served-model check', async () => {
+        jest
+          .spyOn(service as any, 'recordCycleArrival')
+          .mockResolvedValue(true);
+        (completeAiModel as jest.Mock).mockClear();
+        (completeMcpTools as jest.Mock).mockClear();
+        await service.saveDistributedMonitorResult(
+          { ...row, details: { ai: { totalMs: 5, servedModel: 'm' } } },
+          { executionGroupId: 'cycle-9', monitorCycle: true, persisted: true },
+        );
+        expect(completeAiModel).toHaveBeenCalledWith(
+          mockDbService.db,
+          expect.anything(),
+          mockMonitor.id,
+          'cycle-9',
         );
         expect(completeMcpTools).not.toHaveBeenCalled();
       });

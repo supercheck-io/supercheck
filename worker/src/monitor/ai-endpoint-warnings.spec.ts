@@ -9,7 +9,10 @@ jest.mock('./monitor-warning-state', () => ({
 import type { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import type * as schema from '../db/schema';
 import type { MonitorConfig } from '../db/schema/types';
-import { evaluateAiEndpointWarnings } from './ai-endpoint-warnings';
+import {
+  completeAiModel,
+  evaluateAiEndpointWarnings,
+} from './ai-endpoint-warnings';
 import { dispatchMonitorWarning } from './monitor-warning-dispatch';
 import { persistGuardedState } from './monitor-warning-state';
 
@@ -306,7 +309,8 @@ describe('evaluateAiEndpointWarnings', () => {
 
   it('sends nothing when its UPDATE changed no row, and swallows failures', async () => {
     await evaluate('c1', [ai()]);
-    persist.mockResolvedValueOnce(false);
+    // Changed no row twice: the first try and its one re-read.
+    persist.mockResolvedValueOnce(false).mockResolvedValueOnce(false);
     expect(await evaluate('c2', [ai({ servedModel: 'gpt-y' })])).toBe(false);
     expect(dispatch).not.toHaveBeenCalled();
     persist.mockRejectedValueOnce(new Error('db down'));
@@ -330,6 +334,144 @@ describe('evaluateAiEndpointWarnings', () => {
       'new',
       at('new'),
       expect.any(Object),
+      { also: { modelCycleKey: undefined } },
     );
+  });
+});
+
+describe('completeAiModel (late rows reach a cycle closed early)', () => {
+  type State = NonNullable<MonitorConfig['aiEndpointState']>;
+  let config: MonitorConfig;
+  let cycle: Record<string, unknown> | undefined;
+  let rows: Array<Record<string, unknown>>;
+  const scheduledFor = new Date(1_800_000_005_000);
+  const row = (location: string, servedModel: string) => ({
+    location,
+    isUp: true,
+    checkedAt: new Date(1_800_000_006_000),
+    ...ai({ servedModel }),
+  });
+  const complete = (key = 'cyc') => {
+    let n = 0;
+    const dbc = {
+      select: () => ({
+        from: () => ({
+          where: () => {
+            n += 1;
+            if (n % 3 === 1)
+              return { limit: () => Promise.resolve(cycle ? [cycle] : []) };
+            return n % 3 === 2
+              ? Promise.resolve(rows)
+              : { limit: () => Promise.resolve([{ config }]) };
+          },
+        }),
+      }),
+    } as unknown as PostgresJsDatabase<typeof schema>;
+    return completeAiModel(dbc, alerts, 'm1', key);
+  };
+  const state = () => config.aiEndpointState as State;
+
+  beforeEach(() => {
+    dispatch.mockClear();
+    config = {
+      aiEndpoint: { model: 'gpt-x' },
+      aiEndpointState: {
+        lastServedModel: 'gpt-x',
+        lastCycleKey: 'cyc',
+        modelCycleKey: 'older',
+        modelCycleAt: new Date(1_800_000_000_000).toISOString(),
+      },
+    };
+    cycle = {
+      status: 'closed',
+      monitorId: 'm1',
+      scheduledFor,
+      expectedLocations: ['eu', 'us'],
+    };
+    rows = [row('eu', 'gpt-y'), row('us', 'gpt-y')];
+    persist
+      .mockReset()
+      .mockImplementation(
+        (_db, _id, _key, readKey, cycleKey, cycleAt, next, opts) => {
+          const o = opts as {
+            keyField: string;
+            atField: string;
+            also: Record<string, string | undefined>;
+          };
+          const st = (config.aiEndpointState ?? {}) as Record<
+            string,
+            string | undefined
+          >;
+          const stored = st[o.keyField] ?? '';
+          const lastAt = st[o.atField];
+          if (
+            stored !== (readKey ?? '') ||
+            stored === cycleKey ||
+            (lastAt && Date.parse(lastAt) >= (cycleAt as Date).getTime()) ||
+            Object.entries(o.also).some(([k, v]) => (st[k] ?? '') !== (v ?? ''))
+          )
+            return Promise.resolve(false);
+          config = { ...config, aiEndpointState: next as State };
+          return Promise.resolve(true);
+        },
+      );
+  });
+
+  it('compares the model once every region is in, and only once', async () => {
+    expect(await complete()).toBe(true);
+    expect(dispatch.mock.calls.map((c) => [c[3], c[5]])).toEqual([
+      ['ai_model_changed', 'ai_model_changed:cyc'],
+    ]);
+    expect(state()).toMatchObject({
+      lastServedModel: 'gpt-y',
+      modelCycleKey: 'cyc',
+      modelCycleAt: scheduledFor.toISOString(),
+    });
+    expect(await complete()).toBe(false);
+    expect(dispatch).toHaveBeenCalledTimes(1);
+  });
+
+  it('waits while a region is missing, and compares nothing while regions disagree', async () => {
+    rows = [row('eu', 'gpt-y')];
+    expect(await complete()).toBe(false);
+    rows = [row('eu', 'gpt-y'), row('us', 'gpt-x')];
+    expect(await complete()).toBe(true);
+    expect(dispatch).not.toHaveBeenCalled();
+    expect(state().lastServedModel).toBe('gpt-x');
+  });
+
+  it("skips an open cycle, another monitor's cycle, a cycle older than the last compared, and a monitor without the preset", async () => {
+    cycle = { ...cycle, status: 'open' };
+    expect(await complete()).toBe(false);
+    cycle = { ...cycle, status: 'closed', monitorId: 'other' };
+    expect(await complete()).toBe(false);
+    cycle = undefined;
+    expect(await complete()).toBe(false);
+    cycle = {
+      status: 'closed',
+      monitorId: 'm1',
+      scheduledFor,
+      expectedLocations: ['eu', 'us'],
+    };
+    config = {
+      ...config,
+      aiEndpointState: {
+        ...state(),
+        modelCycleAt: new Date(1_800_000_009_000).toISOString(),
+      },
+    };
+    expect(await complete()).toBe(false);
+    config = {};
+    expect(await complete()).toBe(false);
+    expect(persist).not.toHaveBeenCalled();
+  });
+
+  it('re-reads at most three times when another writer moved the state, and swallows failures', async () => {
+    persist.mockReset().mockResolvedValue(false);
+    expect(await complete()).toBe(false);
+    expect(persist).toHaveBeenCalledTimes(3);
+    persist.mockReset().mockRejectedValue(new Error('db down'));
+    await expect(complete()).resolves.toBe(false);
+    expect(dispatch).not.toHaveBeenCalled();
   });
 });

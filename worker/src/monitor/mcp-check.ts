@@ -35,6 +35,11 @@ export interface McpCheckDeps {
   /** Monitor-policy transport; build one per check (`createMcpMonitorRequest`). */
   request: McpRequest;
   resolveSecret: (key: string) => Promise<MonitorSecretResult>;
+  /**
+   * The stored target as the evaluator reads it (`target` here may be normalized by URL validation),
+   * so the stamped settings hash matches. Defaults to `target`.
+   */
+  storedTarget?: string;
 }
 
 export interface McpCheckResult {
@@ -78,7 +83,7 @@ export async function executeMcpCheck(
 ): Promise<McpCheckResult> {
   const started = Date.now();
   const mcp: McpResultDetails = {
-    endpointKey: mcpEndpointKey(target, config.mcp?.auth),
+    endpointKey: mcpEndpointKey(deps.storedTarget ?? target, config.mcp?.auth),
   };
   const secrets: string[] = [];
   const totalLimitMs =
