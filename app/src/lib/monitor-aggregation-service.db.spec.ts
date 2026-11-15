@@ -427,3 +427,19 @@ it("keeps the latest duplicate, archives superseded rows and cascades their dele
     await client`SELECT id FROM monitor_aggregate_dedup_audit`,
   ).toHaveLength(0);
 });
+
+it("counts a heartbeat outage in uptime: one up per ping window, one down per missed interval (B19)", async () => {
+  await mockDatabase.update(schema.monitors).set({ type: "heartbeat", target: "", frequencyMinutes: 60 }).where(eq(schema.monitors.id, monitorId));
+  await mockDatabase.insert(schema.monitorResults).values([
+    { monitorId, checkedAt: at(60), location: "local", status: "up", isUp: true, responseTimeMs: 4200, details: { heartbeat: { kind: "ping" } } },
+    { monitorId, checkedAt: at(120), location: "local", status: "up", isUp: true, responseTimeMs: null, details: { heartbeat: { kind: "ping" } } },
+    { monitorId, checkedAt: at(195), location: "local", status: "down", isUp: false, details: { heartbeat: { kind: "missed" } } },
+    { monitorId, checkedAt: at(255), location: "local", status: "down", isUp: false, details: { heartbeat: { kind: "fail" } } },
+  ]);
+  expect((await monitorAggregationService.runDailyAggregation()).errors).toEqual([]);
+  const aggregates = await mockDatabase.select().from(schema.monitorAggregates).where(eq(schema.monitorAggregates.monitorId, monitorId));
+  expect(aggregates.find((r) => r.location === null)).toMatchObject({ totalChecks: 4, successfulChecks: 2, failedChecks: 2 });
+  const window = await monitorAggregationService.getWindowMetrics(monitorId, "daily", day, new Date(day.getTime() + 86_400_000), null);
+  // Response time is the run duration, and only rows that measured one count.
+  expect(window).toMatchObject({ totalChecks: 4, uptimePercentage: 50, avgResponseMs: 4200 });
+});

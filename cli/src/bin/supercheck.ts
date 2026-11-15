@@ -22,6 +22,7 @@ import { jobCommand } from '../commands/jobs.js'
 import { runCommand, dashboardCommand } from '../commands/runs.js'
 import { testCommand } from '../commands/tests.js'
 import { monitorCommand } from '../commands/monitors.js'
+import { heartbeatCommand } from '../commands/heartbeat.js'
 import { varCommand } from '../commands/variables.js'
 import { tagCommand } from '../commands/tags.js'
 import { requirementCommand } from '../commands/requirements.js'
@@ -109,7 +110,8 @@ const program = new Command()
 
     // Commands that inspect an untrusted checkout must never load its .env or execute its config.
     // Identify them by their top-level command, not by a (possibly coincidental) subcommand name.
-    if (['discover', 'onboard', 'plan', 'ci', 'agent', 'link'].includes(topLevel.name())) return
+    // `heartbeat ping` runs inside customers' cron jobs: it needs no login, config or project context.
+    if (['discover', 'onboard', 'plan', 'ci', 'agent', 'link', 'heartbeat'].includes(topLevel.name())) return
 
     if (actionOpts.offline || ['init', 'login', 'logout', 'doctor'].includes(actionCommand.name()) || (actionCommand.name() === 'capabilities' && !actionOpts.online)) return
 
@@ -167,6 +169,7 @@ program.addCommand(runCommand)
 program.addCommand(dashboardCommand)
 program.addCommand(testCommand)
 program.addCommand(monitorCommand)
+program.addCommand(heartbeatCommand)
 program.addCommand(varCommand)
 program.addCommand(tagCommand)
 program.addCommand(requirementCommand)

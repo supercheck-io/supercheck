@@ -286,3 +286,58 @@ describe("insertMonitorRecord enabled flag", () => {
     expect(values).toHaveBeenCalledWith(expect.objectContaining({ enabled: true, status: "pending" }));
   });
 });
+
+describe("heartbeat monitors in the service", () => {
+  const base = { name: "hb", type: "heartbeat", target: "", frequencyMinutes: 60, organizationId: "00000000-0000-4000-8000-000000000001", projectId: "00000000-0000-4000-8000-000000000002" };
+  beforeEach(() => {
+    jest.clearAllMocks();
+    (reconcileMonitorSchedule as jest.Mock).mockResolvedValue(undefined);
+  });
+
+  it("insertMonitorRecord stores a token hash, ciphertext and anchor, and returns the token once", async () => {
+    const values = jest.fn().mockReturnValue({ returning: jest.fn().mockResolvedValue([{ id: "m" }]) });
+    const result = await insertMonitorRecord(base as never, { insert: jest.fn().mockReturnValue({ values }) } as never);
+    expect(result.heartbeatToken).toMatch(/^hb_[0-9a-f]{32}$/);
+    const row = values.mock.calls[0][0];
+    expect(row.heartbeatTokenHash).toMatch(/^[0-9a-f]{64}$/);
+    expect(row.heartbeatTokenEncrypted).not.toContain(result.heartbeatToken);
+    expect(row.heartbeatState).toBeDefined();
+  });
+
+  it("insertMonitorRecord ignores token or state columns a caller passes for another type", async () => {
+    const values = jest.fn().mockReturnValue({ returning: jest.fn().mockResolvedValue([{ id: "m" }]) });
+    const result = await insertMonitorRecord(
+      { ...base, type: "http_request", target: "https://example.com", heartbeatTokenHash: "f".repeat(64), heartbeatState: { pingSeq: 9 } } as never,
+      { insert: jest.fn().mockReturnValue({ values }) } as never,
+    );
+    expect(result.heartbeatToken).toBeNull();
+    expect(values.mock.calls[0][0]).not.toHaveProperty("heartbeatTokenHash");
+    expect(values.mock.calls[0][0]).not.toHaveProperty("heartbeatState");
+  });
+
+  it("scheduleCreatedMonitor never schedules or runs a heartbeat (B9)", async () => {
+    const { addMonitorExecutionJobToQueue } = jest.requireMock("@/lib/queue") as { addMonitorExecutionJobToQueue: jest.Mock };
+    await scheduleCreatedMonitor({ id: "m", type: "heartbeat", frequencyMinutes: 60 } as never, true);
+    expect(scheduleMonitor).not.toHaveBeenCalled();
+    expect(addMonitorExecutionJobToQueue).not.toHaveBeenCalled();
+  });
+
+  it("updateMonitorHandler refuses a type change to or from heartbeat before writing", async () => {
+    (db.query.monitors.findFirst as jest.Mock).mockResolvedValue({ id: "m", type: "heartbeat", status: "up", enabled: true, frequencyMinutes: 60, config: {} });
+    await expect(updateMonitorHandler("m", { type: "http_request" })).rejects.toMatchObject({ statusCode: 400 });
+    expect(db.update).not.toHaveBeenCalled();
+  });
+
+  it("updateMonitorHandler does not trigger a run for a heartbeat whose interval changed", async () => {
+    const existing = { id: "m", projectId: "p", type: "heartbeat", target: "", status: "up", enabled: true, frequencyMinutes: 60, config: {}, scheduledJobId: null };
+    (db.query.monitors.findFirst as jest.Mock).mockResolvedValue(existing);
+    const chain = { set: jest.fn().mockReturnThis(), where: jest.fn().mockReturnThis(), returning: jest.fn().mockResolvedValue([{ ...existing, frequencyMinutes: 120 }]) };
+    (db.update as jest.Mock).mockReturnValue(chain);
+    await updateMonitorHandler("m", { frequencyMinutes: 120 });
+    expect(reconcileMonitorSchedule).toHaveBeenCalledWith("m", "p");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    // No immediate run: that path would read the monitor a second time and enqueue it.
+    expect(db.query.monitors.findFirst).toHaveBeenCalledTimes(1);
+    expect(chain.set.mock.calls[0][0]).not.toHaveProperty("heartbeatState");
+  });
+});

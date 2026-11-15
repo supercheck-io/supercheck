@@ -38,6 +38,7 @@ const VIEWER_VISIBLE_KEYS: Record<Exclude<DeclaredConfigKey, ProtectedConfigKey>
   playwrightOptions: true,
   aiEndpointState: true,
   mcpState: true,
+  heartbeat: true,
 };
 
 /** Request credentials and payloads are available only to monitor updaters. */

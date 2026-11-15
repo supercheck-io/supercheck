@@ -12,6 +12,9 @@ const EXTRA_PATTERNS: [RegExp, string][] = [
   // Supercheck's own credentials: CLI and recorder keys (sck_live_, sck_test_), trigger keys (sck_trigger_), and job keys.
   [/\bsck_(?:live|test|trigger)_[A-Za-z0-9_-]{8,}/g, "[REDACTED_KEY]"],
   [/\bjob_[a-f0-9]{24,}/gi, "[REDACTED_KEY]"],
+  // Heartbeat ping URLs carry their token in the path; strip the path segment and any bare token.
+  [/\/api\/heartbeat\/[^\s/?#"'<>]+/gi, "/api/heartbeat/[REDACTED]"],
+  [/\bhb_[0-9a-f]{32}\b/gi, "[REDACTED_KEY]"],
 ];
 
 function redactExtra(value: string): string {

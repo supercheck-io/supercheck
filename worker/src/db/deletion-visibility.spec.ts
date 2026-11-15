@@ -49,6 +49,8 @@ const DIRECT =
 
 // Files that may query those tables without the helper, with why.
 const UNFILTERED_OK: Record<string, string> = {
+  'monitor/heartbeat/heartbeat-sweep.service.ts':
+    'heartbeat claim filters deleting_at IS NULL in a raw aliased subquery (FOR UPDATE SKIP LOCKED)',
   'db/deletion-visibility.ts': 'defines the helpers',
   'execution/processors/playwright-execution.processor.ts':
     'run lifecycle writes by run and job id; a job being deleted is detected with isJobDeleting and its runs end as cancelled',
@@ -68,6 +70,8 @@ const UNFILTERED_OK: Record<string, string> = {
 };
 // Files that may name the deleting_at column directly (everything else uses the helper).
 const DIRECT_COLUMN_OK: Record<string, string> = {
+  'monitor/heartbeat/heartbeat-sweep.service.ts':
+    'heartbeat claim filters deleting_at IS NULL in a raw aliased subquery (FOR UPDATE SKIP LOCKED)',
   'db/deletion-visibility.ts': 'defines the helpers',
 };
 

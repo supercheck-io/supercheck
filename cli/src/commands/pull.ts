@@ -12,6 +12,7 @@ import { logger } from '../utils/logger.js'
 import { ensureGitignoreEntries } from '../utils/gitignore.js'
 import { jobCronWarning } from '../utils/cron.js'
 import { UNEVALUATED_MONITOR_CONFIG_KEYS } from '../utils/monitor-config-keys.js'
+import { normalizeAlertConfig } from '../utils/alert-config.js'
 import { withSpinner } from '../utils/spinner.js'
 import { CLIError, ExitCode, ApiRequestError } from '../utils/errors.js'
 import { fetchAllPages, fetchRemoteRequirements, fetchStatusPagesWithComponents, type RemoteRequirement } from '../utils/resources.js'
@@ -432,24 +433,8 @@ export function buildMonitorDefinitions(
 
     // Pass alertConfig through, stripping only defaults
     if (m.alertConfig && typeof m.alertConfig === 'object') {
-      const alert = { ...m.alertConfig } as Record<string, unknown>
-
-      // Remove empty/default values
-      if (alert.customMessage === '' || alert.customMessage === null) delete alert.customMessage
-      if (alert.failureThreshold === 1) delete alert.failureThreshold
-      if (alert.recoveryThreshold === 1) delete alert.recoveryThreshold
-
-      // Remove false boolean flags (they're defaults)
-      for (const key of ['alertOnFailure', 'alertOnRecovery', 'alertOnSslExpiration', 'alertOnSuccess', 'alertOnTimeout']) {
-        if (alert[key] === false) delete alert[key]
-      }
-
-      // Remove empty notificationProviders array
-      if (Array.isArray(alert.notificationProviders) && (alert.notificationProviders as string[]).length === 0) {
-        delete alert.notificationProviders
-      }
-
-      if (Object.keys(alert).length > 0) def.alertConfig = alert
+      const alert = normalizeAlertConfig(m.alertConfig)
+      if (alert) def.alertConfig = alert
     }
 
     const masked = redact(def)

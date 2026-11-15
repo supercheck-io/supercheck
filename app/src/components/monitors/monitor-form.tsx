@@ -77,6 +77,10 @@ import { CredentialField } from "./credential-field";
 import { monitorPrefill } from "./monitor-prefill";
 import { addAiEndpointIssues, AiEndpointFields, AI_ENDPOINT_DEFAULT_URL, buildAiEndpointConfig } from "./ai-endpoint-fields";
 import { addMcpIssues, buildMcpConfig, McpServerFields, MCP_DEFAULT_TIMEOUT } from "./mcp-server-fields";
+import { HeartbeatFields } from "./heartbeat-fields";
+import { heartbeatToMinutes, type HeartbeatUnit } from "./heartbeat-format";
+import { HEARTBEAT_MAX_GRACE_MINUTES, HEARTBEAT_MAX_INTERVAL_MINUTES } from "@/lib/heartbeat/state";
+import { hasWarningOn } from "@/lib/alerts/warning-kinds";
 
 // Defaults the AI endpoint preset applies to a new monitor; switching back to Standard HTTP undoes them while unchanged.
 const AI_PRESET_INTERVAL = "300";
@@ -127,7 +131,8 @@ const syntheticCheckIntervalOptions = [
 
 
 // Create schema for the form with conditional validation
-const formSchema = z
+// Exported for the validation spec.
+export const formSchema = z
   .object({
     name: z
       .string()
@@ -135,7 +140,7 @@ const formSchema = z
       .max(100, "Title must be 100 characters or less"),
     target: z.string().optional(),
     type: z.enum(
-      ["http_request", "website", "ping_host", "port_check", "synthetic_test", "mcp_server"],
+      ["http_request", "website", "ping_host", "port_check", "synthetic_test", "heartbeat", "mcp_server"],
       {
         error: "Please select a check type",
       }
@@ -143,6 +148,11 @@ const formSchema = z
     interval: z.string().default("1800"),
     // Synthetic test specific
     syntheticConfig_testId: z.string().optional(),
+    // Heartbeat: expected interval and grace period as number + unit (stored in minutes)
+    heartbeatConfig_every: z.string().optional(),
+    heartbeatConfig_everyUnit: z.enum(["minutes", "hours", "days"]).optional(),
+    heartbeatConfig_grace: z.string().optional(),
+    heartbeatConfig_graceUnit: z.enum(["minutes", "hours", "days"]).optional(),
     // Optional fields that may be required based on type
     // HTTP Request specific
     httpConfig_method: z
@@ -229,6 +239,27 @@ const formSchema = z
           path: ["interval"],
         });
       }
+    }
+
+    // Heartbeat: no target; the job calls the ping URL. Interval 1 min to 31 days, grace 1 min to 1 day.
+    if (data.type === "heartbeat") {
+      const every = heartbeatToMinutes(data.heartbeatConfig_every ?? "", data.heartbeatConfig_everyUnit ?? "hours");
+      if (!(every >= 1 && every <= HEARTBEAT_MAX_INTERVAL_MINUTES)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Enter a whole number from 1 minute to 31 days",
+          path: ["heartbeatConfig_every"],
+        });
+      }
+      const grace = heartbeatToMinutes(data.heartbeatConfig_grace ?? "", data.heartbeatConfig_graceUnit ?? "minutes");
+      if (!(grace >= 1 && grace <= HEARTBEAT_MAX_GRACE_MINUTES)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Enter a whole number from 1 minute to 1 day",
+          path: ["heartbeatConfig_grace"],
+        });
+      }
+      return;
     }
 
     // Target validation varies by monitor type
@@ -382,6 +413,14 @@ const formSchema = z
 // Define the form values type
 export type FormValues = z.infer<typeof formSchema>;
 
+// Every hour with the default grace for that interval (20%, at least 5 minutes).
+const HEARTBEAT_FORM_DEFAULTS = {
+  heartbeatConfig_every: "1",
+  heartbeatConfig_everyUnit: "hours",
+  heartbeatConfig_grace: "12",
+  heartbeatConfig_graceUnit: "minutes",
+} satisfies Partial<FormValues>;
+
 // Default values for creating a new monitor
 const creationDefaultValues: FormValues = {
   name: "",
@@ -407,6 +446,7 @@ const creationDefaultValues: FormValues = {
   mcpConfig_authType: "none",
   mcpConfig_protocol: "auto",
   mcpConfig_timeoutSeconds: MCP_DEFAULT_TIMEOUT,
+  ...HEARTBEAT_FORM_DEFAULTS,
 };
 
 const mapApiTestToTest = (testData: Record<string, unknown>): Test => {
@@ -454,6 +494,7 @@ interface AlertConfiguration {
   incidentEnabled?: boolean;
   incidentSeverity?: "sev1" | "sev2" | "sev3" | "sev4";
   autoResolveIncident?: boolean;
+  warnings?: Record<string, boolean>;
 }
 
 interface MonitorFormProps {
@@ -612,6 +653,7 @@ export function MonitorForm({
         mcpConfig_authType: "none",
         mcpConfig_protocol: "auto",
         mcpConfig_timeoutSeconds: MCP_DEFAULT_TIMEOUT,
+        ...HEARTBEAT_FORM_DEFAULTS,
         ...prefill,
       };
     }
@@ -834,6 +876,7 @@ export function MonitorForm({
     port_check: "e.g., example.com or 192.168.1.1 (hostname or IP address)",
     synthetic_test: "Select a test to monitor",
     mcp_server: "https://mcp.example.com/mcp",
+    heartbeat: "",
   };
 
   async function onSubmit(data: FormValues) {
@@ -978,6 +1021,14 @@ export function MonitorForm({
       };
     } else if (sanitizedData.type === "mcp_server") {
       config = buildMcpConfig(sanitizedData);
+    } else if (data.type === "heartbeat") {
+      apiData.target = "";
+      apiData.frequencyMinutes = heartbeatToMinutes(data.heartbeatConfig_every ?? "", data.heartbeatConfig_everyUnit ?? "hours");
+      config = {
+        heartbeat: {
+          graceMinutes: heartbeatToMinutes(data.heartbeatConfig_grace ?? "", data.heartbeatConfig_graceUnit ?? "minutes"),
+        },
+      };
     } else if (sanitizedData.type === "synthetic_test") {
       // Synthetic monitor configuration
       if (!sanitizedData.syntheticConfig_testId) {
@@ -1004,12 +1055,17 @@ export function MonitorForm({
     // Edit: keep stored keys the form does not manage (timeouts, retry strategy, regions...)
     if (editMode) config = mergeEditConfig(data.type, initialConfig, config);
 
-    // Add location config to all monitor types
-    config.locationConfig = locationConfig;
+    // Add location config to all monitor types except heartbeat, which runs nowhere
+    if (data.type !== "heartbeat") config.locationConfig = locationConfig;
     apiData.config = config;
 
     // Unchanged interval is not re-sent, so legacy values the API would now reject still save
-    if (editMode && sanitizedData.interval === initialData?.interval) {
+    const unchangedInterval =
+      data.type === "heartbeat"
+        ? apiData.frequencyMinutes ===
+          heartbeatToMinutes(initialData?.heartbeatConfig_every ?? "", initialData?.heartbeatConfig_everyUnit ?? "hours")
+        : sanitizedData.interval === initialData?.interval;
+    if (editMode && unchangedInterval) {
       delete apiData.frequencyMinutes;
     }
 
@@ -1144,6 +1200,7 @@ export function MonitorForm({
         alertConfig.alertOnFailure,
         alertConfig.alertOnRecovery,
         alertConfig.alertOnSslExpiration,
+        hasWarningOn(type, alertConfig.warnings),
       ].some(Boolean);
 
       if (!alertTypesSelected) {
@@ -1162,7 +1219,8 @@ export function MonitorForm({
         alertConfig: alertConfig,
         config: {
           ...(initialConfig || {}), // Preserve existing config fields
-          locationConfig: locationConfig, // Override only locationConfig
+          // Override only locationConfig (heartbeat monitors have none)
+          ...(type === "heartbeat" ? {} : { locationConfig }),
         },
       };
       await handleDirectSave(updateData, true);
@@ -1247,6 +1305,7 @@ export function MonitorForm({
                   incidentEnabled: config.incidentEnabled,
                   incidentSeverity: config.incidentSeverity,
                   autoResolveIncident: config.autoResolveIncident,
+                  warnings: config.warnings,
                 })
               }
               context="monitor"
@@ -1308,7 +1367,7 @@ export function MonitorForm({
           </div>
           {editMode && (
             <div className="flex items-center gap-2">
-              {hasMultipleLocations && (
+              {hasMultipleLocations && type !== "heartbeat" && (
                 <Button
                   type="button"
                   variant="outline"
@@ -1352,7 +1411,9 @@ export function MonitorForm({
                               ? "Production server"
                               : type === "port_check"
                                 ? "Database port"
-                                : "My Website"
+                                : type === "heartbeat"
+                                  ? "Nightly database backup"
+                                  : "My Website"
                           }
                           {...field}
                         />
@@ -1362,7 +1423,8 @@ export function MonitorForm({
                   )}
                 />
 
-                {/* Right column - Check Interval with Info Icon */}
+                {/* Right column - Check Interval with Info Icon (heartbeat sets its own interval below) */}
+                {type !== "heartbeat" && (
                 <FormField
                   control={form.control}
                   name="interval"
@@ -1448,6 +1510,7 @@ export function MonitorForm({
                     );
                   }}
                 />
+                )}
 
                 {type === "http_request" && (
                   <FormField
@@ -1516,8 +1579,10 @@ export function MonitorForm({
                 />
               )}
 
-              {/* Target field for non-synthetic monitors */}
-              {type !== "synthetic_test" && (
+              {type === "heartbeat" && <HeartbeatFields form={form} editMode={editMode} />}
+
+              {/* Target field for monitors that check something (not synthetic or heartbeat) */}
+              {type !== "synthetic_test" && type !== "heartbeat" && (
                 <div className={(type === "port_check" || type === "ping_host") ? "grid grid-cols-1 md:grid-cols-2 gap-4" : ""}>
                   <FormField
                     control={form.control}

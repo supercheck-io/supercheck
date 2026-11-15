@@ -3221,7 +3221,7 @@
       "post": {
         "operationId": "createMonitor",
         "summary": "Create a monitor",
-        "description": "Create a new uptime or performance monitor.",
+        "description": "Create a new uptime or performance monitor. For `type: heartbeat` the target is empty and the response adds `heartbeat.pingUrl` (returned only here). New heartbeat monitors default to a sev2 incident on a missed run and the `heartbeat_late` warning off. See /docs/app/heartbeat.",
         "tags": [
           "Monitors"
         ],
@@ -4457,7 +4457,8 @@
                       "job_success",
                       "job_timeout",
                       "ssl_expiring",
-                      "ssl_renewed"
+                      "ssl_renewed",
+                      "monitor_warning"
                     ]
                   },
                   "message": {
@@ -8820,6 +8821,427 @@
           }
         }
       }
+    },
+    "/api/monitors/{id}/heartbeat-url": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "description": "Heartbeat monitor ID"
+        }
+      ],
+      "get": {
+        "operationId": "getHeartbeatUrl",
+        "summary": "Reveal a heartbeat ping URL",
+        "description": "Returns the ping URL of a heartbeat monitor. Requires monitor update permission; audited as `monitor_heartbeat_url_revealed`. 404 for other monitor types. See /docs/app/heartbeat.",
+        "tags": [
+          "Monitors"
+        ],
+        "responses": {
+          "200": {
+            "description": "The ping URL. Sent with `Cache-Control: no-store`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "pingUrl"
+                  ],
+                  "properties": {
+                    "pingUrl": {
+                      "type": "string",
+                      "format": "uri",
+                      "example": "https://app.example.com/api/heartbeat/hb_3f9c0d2a7b1e4c6f8a9d0b1c2e3f4a5b"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "description": "Needs monitor update permission (editors and above); also refused while a super admin impersonates a user, and for an organization pending deletion (`code: ORG_PENDING_DELETION`)."
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "description": "More than 30 requests in 10 minutes for this user; retry after `Retry-After`.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait before retrying.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error"
+          },
+          "409": {
+            "description": "No ping URL is stored; rotate it to create one."
+          }
+        }
+      }
+    },
+    "/api/monitors/{id}/heartbeat-url/rotate": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "description": "Heartbeat monitor ID"
+        }
+      ],
+      "post": {
+        "operationId": "rotateHeartbeatUrl",
+        "summary": "Rotate a heartbeat ping URL",
+        "description": "Creates a new ping URL; the old one stops working at once. Requires monitor update permission; audited as `monitor_heartbeat_url_rotated`. See /docs/app/heartbeat.",
+        "tags": [
+          "Monitors"
+        ],
+        "responses": {
+          "200": {
+            "description": "The ping URL. Sent with `Cache-Control: no-store`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "pingUrl"
+                  ],
+                  "properties": {
+                    "pingUrl": {
+                      "type": "string",
+                      "format": "uri",
+                      "example": "https://app.example.com/api/heartbeat/hb_3f9c0d2a7b1e4c6f8a9d0b1c2e3f4a5b"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "description": "Needs monitor update permission (editors and above); also refused while a super admin impersonates a user, and for an organization pending deletion (`code: ORG_PENDING_DELETION`)."
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "description": "More than 10 requests in 10 minutes for this user; retry after `Retry-After`.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait before retrying.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/api/heartbeat/{token}": {
+      "parameters": [
+        {
+          "name": "token",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "pattern": "^hb_[0-9a-f]{32}$"
+          },
+          "description": "The token from the ping URL."
+        }
+      ],
+      "get": {
+        "operationId": "heartbeatPingGet",
+        "summary": "Send a heartbeat ping",
+        "description": "Public endpoint called by your job when it finishes. No authentication: the token in the URL identifies the monitor. GET, POST and HEAD are accepted; the body is ignored. See /docs/app/heartbeat.",
+        "tags": [
+          "Monitors"
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Always `OK` (text/plain, `Cache-Control: no-store`), whether or not the token matched a monitor.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string",
+                  "example": "OK"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "`Content-Length` over 10 000 bytes. The body is never read or stored."
+          },
+          "429": {
+            "description": "More than 10 pings a minute for this token, or 1200 a minute from this client.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait before retrying.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The ping could not be recorded; retry after `Retry-After`."
+          }
+        }
+      },
+      "post": {
+        "operationId": "heartbeatPingPost",
+        "summary": "Send a heartbeat ping",
+        "description": "Public endpoint called by your job when it finishes. No authentication: the token in the URL identifies the monitor. GET, POST and HEAD are accepted; the body is ignored. See /docs/app/heartbeat.",
+        "tags": [
+          "Monitors"
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Always `OK` (text/plain, `Cache-Control: no-store`), whether or not the token matched a monitor.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string",
+                  "example": "OK"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "`Content-Length` over 10 000 bytes. The body is never read or stored."
+          },
+          "429": {
+            "description": "More than 10 pings a minute for this token, or 1200 a minute from this client.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait before retrying.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The ping could not be recorded; retry after `Retry-After`."
+          }
+        }
+      },
+      "head": {
+        "operationId": "heartbeatPingHead",
+        "summary": "Send a heartbeat ping",
+        "description": "Public endpoint called by your job when it finishes. No authentication: the token in the URL identifies the monitor. GET, POST and HEAD are accepted; the body is ignored. See /docs/app/heartbeat.",
+        "tags": [
+          "Monitors"
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Always `OK` (text/plain, `Cache-Control: no-store`), whether or not the token matched a monitor.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string",
+                  "example": "OK"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "`Content-Length` over 10 000 bytes. The body is never read or stored."
+          },
+          "429": {
+            "description": "More than 10 pings a minute for this token, or 1200 a minute from this client.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait before retrying.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The ping could not be recorded; retry after `Retry-After`."
+          }
+        }
+      }
+    },
+    "/api/heartbeat/{token}/{action}": {
+      "parameters": [
+        {
+          "name": "token",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "pattern": "^hb_[0-9a-f]{32}$"
+          },
+          "description": "The token from the ping URL."
+        },
+        {
+          "name": "action",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "enum": [
+              "start",
+              "fail"
+            ]
+          },
+          "description": "`start` records that a run began (the next ping reports its duration); `fail` marks the monitor down at once."
+        }
+      ],
+      "get": {
+        "operationId": "heartbeatActionGet",
+        "summary": "Report a heartbeat run start or failure",
+        "description": "Public endpoint called by your job when it finishes. No authentication: the token in the URL identifies the monitor. GET, POST and HEAD are accepted; the body is ignored. See /docs/app/heartbeat.",
+        "tags": [
+          "Monitors"
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Always `OK` (text/plain, `Cache-Control: no-store`), whether or not the token matched a monitor.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string",
+                  "example": "OK"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "`Content-Length` over 10 000 bytes. The body is never read or stored."
+          },
+          "429": {
+            "description": "More than 10 pings a minute for this token, or 1200 a minute from this client.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait before retrying.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The ping could not be recorded; retry after `Retry-After`."
+          },
+          "404": {
+            "description": "Unknown action."
+          }
+        }
+      },
+      "post": {
+        "operationId": "heartbeatActionPost",
+        "summary": "Report a heartbeat run start or failure",
+        "description": "Public endpoint called by your job when it finishes. No authentication: the token in the URL identifies the monitor. GET, POST and HEAD are accepted; the body is ignored. See /docs/app/heartbeat.",
+        "tags": [
+          "Monitors"
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Always `OK` (text/plain, `Cache-Control: no-store`), whether or not the token matched a monitor.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string",
+                  "example": "OK"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "`Content-Length` over 10 000 bytes. The body is never read or stored."
+          },
+          "429": {
+            "description": "More than 10 pings a minute for this token, or 1200 a minute from this client.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait before retrying.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The ping could not be recorded; retry after `Retry-After`."
+          },
+          "404": {
+            "description": "Unknown action."
+          }
+        }
+      },
+      "head": {
+        "operationId": "heartbeatActionHead",
+        "summary": "Report a heartbeat run start or failure",
+        "description": "Public endpoint called by your job when it finishes. No authentication: the token in the URL identifies the monitor. GET, POST and HEAD are accepted; the body is ignored. See /docs/app/heartbeat.",
+        "tags": [
+          "Monitors"
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Always `OK` (text/plain, `Cache-Control: no-store`), whether or not the token matched a monitor.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string",
+                  "example": "OK"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "`Content-Length` over 10 000 bytes. The body is never read or stored."
+          },
+          "429": {
+            "description": "More than 10 pings a minute for this token, or 1200 a minute from this client.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait before retrying.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The ping could not be recorded; retry after `Retry-After`."
+          },
+          "404": {
+            "description": "Unknown action."
+          }
+        }
+      }
     }
   },
   "components": {
@@ -9429,7 +9851,8 @@
             "type": "string"
           },
           "type": {
-            "type": "string"
+            "type": "string",
+            "description": "Alert type, e.g. `monitor_failure`, `monitor_recovery`, `ssl_expiring`, `ssl_renewed` or `monitor_warning` (warning-only, never opens an incident)."
           },
           "message": {
             "type": "string"
@@ -9450,6 +9873,15 @@
               "errorMessage": {
                 "type": "string",
                 "nullable": true
+              },
+              "warning": {
+                "type": "object",
+                "description": "Warning-only alerts: the warning kind, e.g. `heartbeat_late`.",
+                "properties": {
+                  "kind": {
+                    "type": "string"
+                  }
+                }
               }
             },
             "additionalProperties": true
@@ -9677,7 +10109,7 @@
           },
           "target": {
             "type": "string",
-            "description": "URL, host, or synthetic test target being monitored"
+            "description": "URL, host, or synthetic test target. Empty (or omitted on create) for `heartbeat` monitors, which receive pings instead."
           },
           "type": {
             "type": "string",
@@ -9687,6 +10119,7 @@
               "ping_host",
               "port_check",
               "synthetic_test",
+              "heartbeat",
               "mcp_server"
             ]
           },
@@ -9703,7 +10136,7 @@
           },
           "frequencyMinutes": {
             "type": "integer",
-            "description": "Check interval in minutes"
+            "description": "Check interval in minutes; for `heartbeat` the expected ping interval"
           },
           "enabled": {
             "type": "boolean"
@@ -9757,6 +10190,10 @@
             "type": "string",
             "format": "date-time",
             "nullable": true
+          },
+          "heartbeat": {
+            "$ref": "#/components/schemas/HeartbeatSummary",
+            "description": "Present for `heartbeat` monitors only."
           }
         }
       },
@@ -10891,6 +11328,18 @@
                 "type": "integer"
               }
             }
+          },
+          "heartbeat": {
+            "type": "object",
+            "description": "Heartbeat monitors only.",
+            "properties": {
+              "graceMinutes": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 1440,
+                "description": "How late a ping may be before the monitor goes down. Default: 20% of the interval, at least 5 minutes, at most 1440."
+              }
+            }
           }
         },
         "additionalProperties": true
@@ -10949,6 +11398,13 @@
             "type": "boolean",
             "default": true,
             "description": "Resolve the incident automatically when the source recovers."
+          },
+          "warnings": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "boolean"
+            },
+            "description": "Warning-only notifications by kind, for example `{ \"heartbeat_late\": true }` (heartbeat monitors: a ping is late but inside the grace period). Warnings notify the monitor's channels and never open an incident. Kinds that do not apply to the monitor type are dropped. See /docs/app/communicate/alerts#warnings."
           }
         }
       },
@@ -11034,20 +11490,22 @@
               "ping_host",
               "port_check",
               "synthetic_test",
+              "heartbeat",
               "mcp_server"
             ],
-            "default": "http_request"
+            "default": "http_request",
+            "description": "Monitor type. A `heartbeat` monitor cannot change to another type, and no other type can change to `heartbeat`."
           },
           "target": {
             "type": "string",
-            "description": "URL, host, or synthetic test target to monitor"
+            "description": "URL, host, or synthetic test target. Empty (or omitted on create) for `heartbeat` monitors, which receive pings instead."
           },
           "frequencyMinutes": {
             "type": "integer",
-            "description": "Check interval in minutes. Whole minutes, 1 to 1440. `config.timeoutSeconds` must not exceed this interval in seconds.",
+            "description": "Check interval in minutes. Whole minutes, 1 to 1440; for `heartbeat` the expected ping interval, 1 to 44640 (31 days). `config.timeoutSeconds` must not exceed this interval in seconds.",
             "default": 5,
             "minimum": 1,
-            "maximum": 1440,
+            "maximum": 44640,
             "example": 5
           },
           "enabled": {
@@ -11083,17 +11541,20 @@
               "ping_host",
               "port_check",
               "synthetic_test",
+              "heartbeat",
               "mcp_server"
-            ]
+            ],
+            "description": "Monitor type. A `heartbeat` monitor cannot change to another type, and no other type can change to `heartbeat`."
           },
           "target": {
-            "type": "string"
+            "type": "string",
+            "description": "URL, host, or synthetic test target. Empty (or omitted on create) for `heartbeat` monitors, which receive pings instead."
           },
           "frequencyMinutes": {
             "type": "integer",
             "minimum": 1,
-            "maximum": 1440,
-            "description": "Check interval in minutes. Whole minutes, 1 to 1440. `config.timeoutSeconds` must not exceed this interval in seconds."
+            "maximum": 44640,
+            "description": "Check interval in minutes. Whole minutes, 1 to 1440; for `heartbeat` the expected ping interval, 1 to 44640 (31 days). `config.timeoutSeconds` must not exceed this interval in seconds."
           },
           "enabled": {
             "type": "boolean"
@@ -11134,17 +11595,20 @@
               "ping_host",
               "port_check",
               "synthetic_test",
+              "heartbeat",
               "mcp_server"
-            ]
+            ],
+            "description": "Monitor type. A `heartbeat` monitor cannot change to another type, and no other type can change to `heartbeat`."
           },
           "target": {
-            "type": "string"
+            "type": "string",
+            "description": "URL, host, or synthetic test target. Empty (or omitted on create) for `heartbeat` monitors, which receive pings instead."
           },
           "frequencyMinutes": {
             "type": "integer",
             "minimum": 1,
-            "maximum": 1440,
-            "description": "Check interval in minutes. Whole minutes, 1 to 1440. `config.timeoutSeconds` must not exceed this interval in seconds."
+            "maximum": 44640,
+            "description": "Check interval in minutes. Whole minutes, 1 to 1440; for `heartbeat` the expected ping interval, 1 to 44640 (31 days). `config.timeoutSeconds` must not exceed this interval in seconds."
           },
           "enabled": {
             "type": "boolean"
@@ -12565,6 +13029,66 @@
             "type": "string",
             "format": "date-time",
             "nullable": true
+          }
+        }
+      },
+      "HeartbeatSummary": {
+        "type": "object",
+        "description": "Read-only state of a `heartbeat` monitor. Never contains the ping URL or token. See /docs/app/heartbeat.",
+        "properties": {
+          "state": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "up",
+              "late",
+              "down",
+              "paused"
+            ],
+            "description": "`pending` until the first ping; `late` when a ping is overdue but inside the grace period."
+          },
+          "lastPingAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "lastPingKind": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "ping",
+              "fail",
+              null
+            ]
+          },
+          "lastStartAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "Last `/start` call."
+          },
+          "nextExpectedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When the next ping is due (last ping, creation or resume, plus the interval)."
+          },
+          "graceMinutes": {
+            "type": "integer",
+            "description": "How late a ping may be before the monitor goes down."
+          },
+          "pingUrl": {
+            "type": "string",
+            "format": "uri",
+            "description": "Only in the `POST /api/monitors` response that created the monitor. Later, use `GET /api/monitors/{id}/heartbeat-url`."
           }
         }
       }

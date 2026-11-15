@@ -1,0 +1,71 @@
+import { getClientIP, UNKNOWN_CLIENT_IP } from "@/lib/session-security";
+import { createLogger } from "@/lib/logger/index";
+import { hashHeartbeatToken, isHeartbeatTokenFormat } from "./token";
+import { checkHeartbeatRateLimit } from "./rate-limit";
+import { recordHeartbeatPing, type HeartbeatPingKind } from "./ping";
+
+const logger = createLogger({ module: "heartbeat-ping" }) as {
+  warn: (data: unknown, msg?: string) => void;
+};
+
+/** Error name and Postgres code only; safe to log for queries that carry secrets as params. */
+export function dbErrorSummary(error: unknown): { errorName: string; causeCode?: string } {
+  const cause = (error as { cause?: { code?: unknown } } | null)?.cause;
+  return {
+    errorName: error instanceof Error ? error.name : typeof error,
+    ...(typeof cause?.code === "string" ? { causeCode: cause.code } : {}),
+  };
+}
+
+// Chat and mail link previews fetch pasted URLs; they must not count as a run (they still get the same 200).
+const LINK_PREVIEW_AGENT =
+  /slackbot|slack-imgproxy|msteams|skypeuripreview|microsoftpreview|discordbot|telegrambot|whatsapp|twitterbot|facebookexternalhit|linkedinbot|googleimageproxy|applebot|mattermost-bot/i;
+
+export function isLinkPreviewAgent(userAgent: string | null): boolean {
+  return !!userAgent && LINK_PREVIEW_AGENT.test(userAgent);
+}
+
+export const HEARTBEAT_MAX_BODY_BYTES = 10_000;
+
+const OK_HEADERS = { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" };
+
+function respond(request: Request, status: number, body: string, extra: Record<string, string> = {}): Response {
+  return new Response(request.method === "HEAD" ? null : body, { status, headers: { ...OK_HEADERS, ...extra } });
+}
+
+/**
+ * Public heartbeat ping (spec 4.3). Every outcome that is not a rate limit or an oversized body
+ * answers the same `200 OK`, so a caller cannot tell a valid token from an invalid one (D16).
+ * The body is never read. The token itself is never logged.
+ */
+export async function handleHeartbeatPing(request: Request, token: string, kind: HeartbeatPingKind): Promise<Response> {
+  const length = Number(request.headers.get("content-length") ?? 0);
+  if (Number.isFinite(length) && length > HEARTBEAT_MAX_BODY_BYTES) return respond(request, 413, "Payload Too Large");
+  // Link previewers only GET/HEAD; a POST from the same sender (e.g. a Slack workflow) is a real ping.
+  const preview = request.method !== "POST" && isLinkPreviewAgent(request.headers.get("user-agent"));
+  if (!isHeartbeatTokenFormat(token) || preview) {
+    return respond(request, 200, "OK");
+  }
+
+  const tokenHash = hashHeartbeatToken(token);
+  const ip = getClientIP(request.headers);
+  const limit = await checkHeartbeatRateLimit(tokenHash, ip === UNKNOWN_CLIENT_IP ? null : ip);
+  if (!limit.allowed) {
+    return respond(request, 429, "Too Many Requests", { "Retry-After": String(limit.retryAfterSeconds) });
+  }
+
+  try {
+    await recordHeartbeatPing(tokenHash, kind, request.headers.get("user-agent"));
+  } catch (error) {
+    // A DB error must not reveal anything either; the hash prefix is enough to correlate.
+    logger.warn(
+      // Never the message: drizzle query errors embed the params (full token hash, user agent).
+      { tokenHashPrefix: tokenHash.slice(0, 8), ...dbErrorSummary(error) },
+      "Heartbeat ping not recorded",
+    );
+    await limit.release();
+    // Spread retries so cron jobs that fired together do not retry in step against a failing database.
+    return respond(request, 503, "Service Unavailable", { "Retry-After": String(3 + Math.floor(Math.random() * 8)) });
+  }
+  return respond(request, 200, "OK");
+}

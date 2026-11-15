@@ -6,6 +6,7 @@ import { liveJob, liveMonitor } from "@/lib/deletion/visibility";
 import { checkPermissionWithContext } from '@/lib/rbac/middleware';
 import { requireAuthContext, isAuthError, authErrorStatus } from '@/lib/auth-context';
 import { enqueueSreAlertTriageJob } from '@/sre/lib/background-alert-triage-queue';
+import { isInformationalAlertType } from '@/lib/alerts/warning-kinds';
 import { isUuid } from '@/lib/uuid';
 import { checkSreAlertHistoryWriteRateLimit } from '@/lib/sre/sre-rate-limiter';
 
@@ -206,6 +207,8 @@ export async function GET(request: NextRequest) {
           delivery: item.deliveryMetadata?.delivery,
           correlation: item.deliveryMetadata?.correlation,
           provider: item.deliveryMetadata?.provider,
+          // Warning-only alerts: the kind lives here (outage_key is a derived uuid), for the "Warning" label.
+          ...(item.deliveryMetadata?.warning ? { warning: { kind: item.deliveryMetadata.warning.kind } } : {}),
         },
       }));
 
@@ -348,7 +351,8 @@ export async function POST(request: NextRequest) {
       'job_success',
       'job_timeout',
       'ssl_expiring',
-      'ssl_renewed'
+      'ssl_renewed',
+      'monitor_warning',
     ];
     if (!validAlertTypes.includes(body.type)) {
       return NextResponse.json(
@@ -399,7 +403,8 @@ export async function POST(request: NextRequest) {
       .returning();
 
     try {
-      await enqueueSreAlertTriageJob({ alertHistoryId: result.id });
+      // Notices and warnings only notify: they never reach incident triage.
+      if (!isInformationalAlertType(body.type)) await enqueueSreAlertTriageJob({ alertHistoryId: result.id });
     } catch (error) {
       console.error("Error enqueueing SRE alert triage job:", error);
     }

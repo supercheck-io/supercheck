@@ -18,6 +18,7 @@ import { monitors, monitorResults } from "@/db/schema";
 import { eq, desc, and, gte } from "drizzle-orm";
 import { getS3FileContentFromUrl, getS3FileContent } from "@/lib/s3-proxy";
 import { excludeSupersededSyntheticResults } from "@/lib/monitor-result-filters";
+import { MONITOR_READ_COLUMNS } from "@/lib/monitor-response";
 
 
 interface AnalyzeMonitorRequest {
@@ -129,7 +130,7 @@ export async function POST(request: NextRequest) {
 
     // Step 5: Fetch monitor data
     const monitor = await db
-      .select()
+      .select(MONITOR_READ_COLUMNS)
       .from(monitors)
       .where(and(eq(monitors.id, monitorId), liveMonitor()))
       .limit(1)

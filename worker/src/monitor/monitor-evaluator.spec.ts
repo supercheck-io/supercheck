@@ -437,6 +437,36 @@ describe('MonitorEvaluator.updateMonitorStatus paused guard', () => {
   });
 });
 
+describe('MonitorEvaluator.updateMonitorStatus failures', () => {
+  const failing = () => {
+    const dbService = {
+      db: {
+        query: {
+          monitors: { findFirst: jest.fn(async () => ({ status: 'up' })) },
+        },
+        update: jest.fn(() => ({
+          set: jest.fn(() => ({
+            where: jest.fn().mockRejectedValue(new Error('db down')),
+          })),
+        })),
+      },
+    };
+    return new MonitorEvaluator(dbService as never, {} as never);
+  };
+
+  it('logs and returns by default', async () => {
+    await expect(
+      failing().updateMonitorStatus('m1', 'up', new Date()),
+    ).resolves.toBeUndefined();
+  });
+
+  it('rethrows when asked', async () => {
+    await expect(
+      failing().updateMonitorStatus('m1', 'up', new Date(), true),
+    ).rejects.toThrow('db down');
+  });
+});
+
 describe('incident-only monitors (alerts off or no channel)', () => {
   it('classifies alert settings', () => {
     expect(isIncidentOnly({ enabled: false, incidentEnabled: true })).toBe(

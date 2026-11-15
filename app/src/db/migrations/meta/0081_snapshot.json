@@ -1,5 +1,5 @@
 {
-  "id": "3da80349-e91a-48e5-b19a-c1d2c4bb35ed",
+  "id": "b34ec108-d742-4ef6-85c6-b003aa5e3141",
   "prevId": "4a755f50-91b6-4277-add0-239a3459b4d2",
   "version": "7",
   "dialect": "postgresql",
@@ -7378,6 +7378,24 @@
           "primaryKey": false,
           "notNull": false
         },
+        "heartbeat_token_hash": {
+          "name": "heartbeat_token_hash",
+          "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "heartbeat_token_encrypted": {
+          "name": "heartbeat_token_encrypted",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "heartbeat_state": {
+          "name": "heartbeat_state",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -7393,6 +7411,38 @@
         }
       },
       "indexes": {
+        "monitors_heartbeat_sweep_idx": {
+          "name": "monitors_heartbeat_sweep_idx",
+          "columns": [
+            {
+              "expression": "id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "type = 'heartbeat'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "monitors_heartbeat_token_hash_uidx": {
+          "name": "monitors_heartbeat_token_hash_uidx",
+          "columns": [
+            {
+              "expression": "heartbeat_token_hash",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "heartbeat_token_hash IS NOT NULL",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
         "monitors_deleting_idx": {
           "name": "monitors_deleting_idx",
           "columns": [
@@ -7522,7 +7572,7 @@
         },
         "monitors_type_check": {
           "name": "monitors_type_check",
-          "value": "\"monitors\".\"type\" IN ('http_request', 'website', 'ping_host', 'port_check', 'synthetic_test', 'mcp_server')"
+          "value": "\"monitors\".\"type\" IN ('http_request', 'website', 'ping_host', 'port_check', 'synthetic_test', 'heartbeat')"
         },
         "monitors_status_check": {
           "name": "monitors_status_check",
@@ -8504,7 +8554,7 @@
         },
         "alert_history_type_check": {
           "name": "alert_history_type_check",
-          "value": "\"alert_history\".\"type\" IN ('monitor_failure', 'monitor_recovery', 'job_failed', 'job_success', 'job_timeout', 'ssl_expiring', 'ssl_renewed')"
+          "value": "\"alert_history\".\"type\" IN ('monitor_failure', 'monitor_recovery', 'job_failed', 'job_success', 'job_timeout', 'ssl_expiring', 'ssl_renewed', 'monitor_warning')"
         },
         "alert_history_status_check": {
           "name": "alert_history_status_check",

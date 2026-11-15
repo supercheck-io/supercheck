@@ -39,6 +39,7 @@ import { storedRootCause } from "@/lib/sre/evidence-brief-summary";
 import { safeTarget, safeText } from "./redact";
 import { incidentsEnabled } from "@/lib/incident-settings";
 import { getNotificationPolicy } from "@/lib/sre/notification-policy";
+import { heartbeatSummary } from "@/lib/heartbeat/state";
 
 const MAX_LIMIT = 50;
 const ANNOTATIONS = {
@@ -289,15 +290,32 @@ export function registerMcpTools(server: McpServer, ctx: McpCallContext): void {
     return { run: { ...runDto(rest), error: safeText(errorDetails) } };
   });
 
-  tool("list_monitors", "List monitors with current status (targets are stripped of credentials and query strings)." + UNTRUSTED, "monitor", page, async ({ limit, cursor }) => {
+  // Heartbeat state for heartbeat monitors (never the ping URL or token); undefined, so omitted, for other types.
+  const heartbeatColumns = { enabled: monitors.enabled, frequencyMinutes: monitors.frequencyMinutes, config: monitors.config, heartbeatState: monitors.heartbeatState, createdAt: monitors.createdAt };
+  const heartbeatFields = (m: Parameters<typeof heartbeatSummary>[0] & { type: string }) =>
+    m.type === "heartbeat" ? { heartbeat: heartbeatSummary(m) } : {};
+
+  tool("list_monitors", "List monitors with current status (targets are stripped of credentials and query strings). Heartbeat monitors add `heartbeat` (state, last ping, next expected ping, grace); the ping URL is never returned." + UNTRUSTED, "monitor", page, async ({ limit, cursor }) => {
     const rows = await db
-      .select({ id: monitors.id, name: monitors.name, type: monitors.type, target: monitors.target, status: monitors.status, lastCheckAt: monitors.lastCheckAt })
+      .select({ id: monitors.id, name: monitors.name, type: monitors.type, target: monitors.target, status: monitors.status, lastCheckAt: monitors.lastCheckAt, ...heartbeatColumns })
       .from(monitors)
       .where(scope(monitors, [liveMonitor(), cursor ? lt(monitors.id, cursor) : undefined]))
       .orderBy(desc(monitors.id))
       .limit(limit + 1);
     const { items, nextCursor } = paged(rows, limit);
-    return { monitors: items.map((m) => ({ ...m, name: safeText(m.name, 255), target: safeTarget(m.target), lastCheckAt: iso(m.lastCheckAt) })), nextCursor };
+    return {
+      monitors: items.map((m) => ({
+        id: m.id,
+        name: safeText(m.name, 255),
+        type: m.type,
+        target: safeTarget(m.target),
+        status: m.status,
+        lastCheckAt: iso(m.lastCheckAt),
+        ...(m.type === "heartbeat" ? { frequencyMinutes: m.frequencyMinutes } : {}),
+        ...heartbeatFields(m),
+      })),
+      nextCursor,
+    };
   });
 
   // Lifecycle fields: ids and timestamps only. Names/emails of assignees are not exposed.
@@ -386,9 +404,9 @@ export function registerMcpTools(server: McpServer, ctx: McpCallContext): void {
     };
   });
 
-  tool("get_monitor", "Get one monitor with non-secret check settings and alert/incident settings (headers, auth and request bodies are never returned)." + UNTRUSTED, "monitor", { id: idArg }, async ({ id }) => {
+  tool("get_monitor", "Get one monitor with non-secret check settings and alert/incident settings (headers, auth, request bodies and heartbeat ping URLs are never returned). For a heartbeat, frequencyMinutes is the expected ping interval and `heartbeat` holds its state." + UNTRUSTED, "monitor", { id: idArg }, async ({ id }) => {
     const [m] = await db
-      .select({ id: monitors.id, name: monitors.name, description: monitors.description, type: monitors.type, target: monitors.target, status: monitors.status, enabled: monitors.enabled, frequencyMinutes: monitors.frequencyMinutes, lastCheckAt: monitors.lastCheckAt, config: monitors.config, alertConfig: monitors.alertConfig })
+      .select({ id: monitors.id, name: monitors.name, description: monitors.description, type: monitors.type, target: monitors.target, status: monitors.status, lastCheckAt: monitors.lastCheckAt, alertConfig: monitors.alertConfig, ...heartbeatColumns })
       .from(monitors)
       .where(scope(monitors, [liveMonitor(), eq(monitors.id, id)]))
       .limit(1);
@@ -464,6 +482,7 @@ export function registerMcpTools(server: McpServer, ctx: McpCallContext): void {
         locationThreshold: locations.length && typeof loc?.threshold === "number" ? loc.threshold : null,
         settings,
         ...(latestAi ? { latestAi } : {}),
+        ...heartbeatFields(m),
         alerts: {
           enabled: m.alertConfig?.enabled === true,
           alertOnFailure: m.alertConfig?.alertOnFailure === true,
@@ -471,6 +490,7 @@ export function registerMcpTools(server: McpServer, ctx: McpCallContext): void {
           ...incidentSettings(m.alertConfig),
           // A monitor with alerts off opens incidents only when opted in.
           incidentEnabled: incidentsEnabled(m.alertConfig),
+          ...(m.alertConfig?.warnings ? { warnings: m.alertConfig.warnings } : {}),
         },
       },
     };

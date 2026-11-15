@@ -9,6 +9,7 @@ import {
   ChevronsLeftRightEllipsis,
   ArrowLeftRight,
   Plug,
+  HeartPulse,
 } from "lucide-react";
 import { typeText } from "@/lib/type-tones";
 import { PlaywrightLogo } from "@/components/logo/playwright-logo";
@@ -95,5 +96,12 @@ export const monitorTypes = [
     icon: Plug,
     color: typeText("monitor", "mcp_server"),
     description: "Check an MCP server and its tools",
+  },
+  {
+    label: "Heartbeat Monitor",
+    value: "heartbeat",
+    icon: HeartPulse,
+    color: typeText("monitor", "heartbeat"),
+    description: "Get alerted when a cron job, backup or scheduled agent stops checking in",
   },
 ];

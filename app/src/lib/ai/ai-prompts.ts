@@ -799,6 +799,7 @@ EXPLANATION:
         ping_host: "Ping Host Monitor",
         port_check: "Port Check Monitor",
         mcp_server: "MCP Monitor",
+        heartbeat: "Heartbeat Monitor (a scheduled job pings Supercheck; down means a missed or failed run, response time is the run duration)",
       };
       return typeMap[type] || type;
     };
@@ -858,7 +859,7 @@ ${isSynthetic ? `This is a Playwright Synthetic Monitor. Focus on:
 <MONITOR_CONTEXT>
 Name: ${AISecurityService.escapeForPrompt(monitor.name)}
 Type: ${formatMonitorType(monitor.type)}
-URL/Target: ${AISecurityService.escapeForPrompt(monitor.url)}
+URL/Target: ${AISecurityService.escapeForPrompt(monitor.url || "none (the monitored job sends pings)")}
 Current Status: ${monitor.status.toUpperCase()}
 </MONITOR_CONTEXT>
 

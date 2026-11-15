@@ -8,7 +8,40 @@ import { withSpinner } from '../utils/spinner.js'
 import { CLIError, ExitCode } from '../utils/errors.js'
 import { z } from 'zod'
 
-const VALID_MONITOR_TYPES = ['http_request', 'website', 'ping_host', 'port_check', 'synthetic_test', 'mcp_server'] as const
+const HEARTBEAT_MAX_INTERVAL_MINUTES = 44640
+const HEARTBEAT_MAX_GRACE_MINUTES = 1440
+
+const VALID_MONITOR_TYPES = ['http_request', 'website', 'ping_host', 'port_check', 'synthetic_test', 'heartbeat', 'mcp_server'] as const
+const DURATION_UNITS: Record<string, number> = { m: 1, h: 60, d: 1440 }
+
+/** `5m`, `1h`, `1d` (or bare minutes) to whole minutes, within the server's limits. */
+export function parseDurationMinutes(value: string, flag: string, max: number): number {
+  const match = /^(\d+)\s*([mhd])?$/i.exec(value.trim())
+  const minutes = match ? Number(match[1]) * DURATION_UNITS[(match[2] ?? 'm').toLowerCase()] : NaN
+  if (!Number.isSafeInteger(minutes) || minutes < 1 || minutes > max) {
+    throw new CLIError(`Invalid value for ${flag}: "${value}". Use a duration such as 5m, 1h or 1d, between 1 minute and ${max} minutes.`, ExitCode.ConfigError)
+  }
+  return minutes
+}
+
+/** Heartbeat ping URLs are secrets: shown only when the server returns one (create, reveal, rotate). */
+export function outputWithPingUrl(data: Record<string, unknown>, pingUrl: unknown): void {
+  if (typeof pingUrl !== 'string' || !pingUrl) { outputDetail(data); return }
+  if (getOutputFormat() !== 'table') { outputDetail(data); return }
+  const heartbeat = data.heartbeat && typeof data.heartbeat === 'object' ? { ...(data.heartbeat as Record<string, unknown>) } : undefined
+  if (heartbeat) delete heartbeat.pingUrl
+  const rest: Record<string, unknown> = { ...data, ...(heartbeat ? { heartbeat } : {}) }
+  delete rest.pingUrl
+  if (Object.keys(rest).length > 0) outputDetail(rest)
+  logger.output(`\nPing URL (keep it secret; it is shown only now):\n${pingUrl}`, { redact: false })
+}
+
+/** Table view of a heartbeat row: its own state (late included), interval with grace, and last ping. */
+function heartbeatRow(row: Record<string, unknown>): Record<string, unknown> {
+  const heartbeat = row.heartbeat as Record<string, unknown> | undefined
+  if (row.type !== 'heartbeat' || !heartbeat) return row
+  return { ...row, status: heartbeat.state ?? row.status, frequencyMinutes: `${row.frequencyMinutes} (grace ${heartbeat.graceMinutes ?? '-'})`, lastPingAt: heartbeat.lastPingAt }
+}
 const VALID_HTTP_METHODS = ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'HEAD', 'OPTIONS'] as const
 
 function normalizeMonitorType(value: string): string {
@@ -79,13 +112,15 @@ monitorCommand
       ),
     )
 
-    output(data.data, {
+    const rows = getOutputFormat() === 'table' ? data.data.map(heartbeatRow) : data.data
+    output(rows, {
       columns: [
         { key: 'id', header: 'ID' },
         { key: 'name', header: 'Name' },
         { key: 'type', header: 'Type' },
         { key: 'status', header: 'Status' },
         { key: 'frequencyMinutes', header: 'Freq (min)' },
+        ...(rows.some((row) => row.type === 'heartbeat') ? [{ key: 'lastPingAt', header: 'Last ping' }] : []),
       ],
     })
 
@@ -187,7 +222,7 @@ monitorCommand
     const statusInfo: Record<string, unknown> = {
       id: data.id,
       name: data.name,
-      status: data.status,
+      status: (data.heartbeat as Record<string, unknown> | undefined)?.state ?? data.status,
       lastCheckAt: data.lastCheckAt,
       responseTimeMs: getLatestMonitorResponseTimeMs(data),
     }
@@ -262,8 +297,10 @@ monitorCommand
   .description('Create a new monitor')
   .requiredOption('--name <name>', 'Monitor name')
   .option('--url <url>', 'URL or hostname to monitor (required except for synthetic tests)')
-  .option('--type <type>', 'Monitor type (http_request, website, ping_host, port_check, synthetic_test, mcp_server)', 'http_request')
+  .option('--type <type>', 'Monitor type (http_request, website, ping_host, port_check, synthetic_test, heartbeat, mcp_server)', 'http_request')
   .option('--interval-minutes <minutes>', 'Check interval in minutes (1-1440)', '5')
+  .option('--every <duration>', 'Heartbeat: expected ping interval, e.g. 5m, 1h, 1d (up to 31d)')
+  .option('--grace <duration>', 'Heartbeat: how late a ping may be before the monitor goes down, e.g. 10m (up to 1d)')
   .option('--interval <seconds>', '[deprecated: use --interval-minutes] Check interval in seconds')
   .option('--timeout <seconds>', 'Request timeout in seconds (default 30; 60 with --preset ai-endpoint)')
   .option('--method <method>', 'HTTP method (GET, POST, PUT, DELETE, PATCH, HEAD, OPTIONS; default GET)')
@@ -286,9 +323,33 @@ monitorCommand
   .option('--call-args <json>', 'JSON object of arguments for --call-tool (mcp_server)')
   .option('--slow-ms <ms>', 'Warn when a check is slower than this for 3 checks in a row, 100-60000 ms (mcp_server)')
   .option('--dry-run', 'Show what would be sent without creating')
-  .action(async (options: { name: string; url?: string; type: string; intervalMinutes: string; interval?: string; timeout?: string; method?: string; testId?: string; port?: string; protocol?: string; dryRun?: boolean; preset?: string; model?: string; secret?: string; keyHeader?: string; prompt?: string; expect?: string; maxTokens?: string; firstTokenTimeout?: string; warnFirstTokenMs?: string; warnTokens?: string; header?: string; requireTool?: string[]; callTool?: string; callArgs?: string; slowMs?: string }) => {
+  .action(async (options: { name: string; url?: string; type: string; intervalMinutes: string; interval?: string; timeout?: string; method?: string; testId?: string; port?: string; protocol?: string; dryRun?: boolean; preset?: string; model?: string; secret?: string; keyHeader?: string; prompt?: string; expect?: string; maxTokens?: string; firstTokenTimeout?: string; warnFirstTokenMs?: string; warnTokens?: string; header?: string; requireTool?: string[]; callTool?: string; callArgs?: string; slowMs?: string; every?: string; grace?: string }) => {
     const client = createAuthenticatedClient()
     const monitorType = normalizeMonitorType(options.type)
+    if (monitorType === 'heartbeat') {
+      if (options.url !== undefined) throw new CLIError('--url is not used by heartbeat monitors; your job calls the ping URL instead.', ExitCode.ConfigError)
+      if (!options.every) throw new CLIError('--every is required for heartbeat monitors (e.g. --every 1h).', ExitCode.ConfigError)
+      buildAiEndpointPreset(options, monitorType)
+      buildMcpConfig(options, monitorType)
+      const graceMinutes = options.grace !== undefined ? parseDurationMinutes(options.grace, '--grace', HEARTBEAT_MAX_GRACE_MINUTES) : undefined
+      const body: Record<string, unknown> = {
+        name: options.name,
+        target: '',
+        type: monitorType,
+        frequencyMinutes: parseDurationMinutes(options.every, '--every', HEARTBEAT_MAX_INTERVAL_MINUTES),
+        config: graceMinutes !== undefined ? { heartbeat: { graceMinutes } } : {},
+      }
+      if (options.dryRun) {
+        logger.header('Dry run — monitor create payload:')
+        outputDetail({ dryRun: true, payload: body })
+        return
+      }
+      const { data } = await withSpinner('Creating monitor', () => client.post<Record<string, unknown>>('/api/monitors', body))
+      logger.success(`Monitor "${options.name}" created (${data.id})`)
+      outputWithPingUrl(data, (data.heartbeat as Record<string, unknown> | undefined)?.pingUrl)
+      return
+    }
+    if (options.every !== undefined || options.grace !== undefined) throw new CLIError('--every and --grace apply only to --type heartbeat.', ExitCode.ConfigError)
     // --secret and --expect are shared with the MCP flags, so they are not AI-preset strays for mcp_server.
     const aiEndpoint = buildAiEndpointPreset(monitorType === 'mcp_server' ? { ...options, secret: undefined, expect: undefined } : options, monitorType)
     const mcp = buildMcpConfig(options, monitorType)
@@ -363,11 +424,13 @@ monitorCommand
   .option('--url <url>', 'URL to monitor')
   .option('--interval-minutes <minutes>', 'Check interval in minutes (1-1440)')
   .option('--interval <seconds>', '[deprecated: use --interval-minutes] Check interval in seconds')
+  .option('--every <duration>', 'Heartbeat: expected ping interval, e.g. 5m, 1h, 1d (up to 31d)')
+  .option('--grace <duration>', 'Heartbeat: grace period, e.g. 10m (up to 1d)')
   .option('--timeout <seconds>', 'Request timeout in seconds')
   .option('--method <method>', 'HTTP method (GET, POST, PUT, DELETE, PATCH, HEAD, OPTIONS)')
   .option('--active <boolean>', 'Enable or disable monitor (true/false)')
   .option('--dry-run', 'Show what would be sent without updating')
-  .action(async (id: string, options: { name?: string; url?: string; intervalMinutes?: string; interval?: string; timeout?: string; method?: string; active?: string; dryRun?: boolean }) => {
+  .action(async (id: string, options: { name?: string; url?: string; intervalMinutes?: string; interval?: string; every?: string; grace?: string; timeout?: string; method?: string; active?: string; dryRun?: boolean }) => {
     const client = createAuthenticatedClient()
 
     const body: Record<string, unknown> = {}
@@ -390,16 +453,18 @@ monitorCommand
     } else if (options.intervalMinutes !== undefined) {
       body.frequencyMinutes = parseIntStrict(options.intervalMinutes, '--interval-minutes', { min: 1, max: 1440 })
     }
+    if (options.every !== undefined) body.frequencyMinutes = parseDurationMinutes(options.every, '--every', HEARTBEAT_MAX_INTERVAL_MINUTES)
     if (options.active !== undefined) body.enabled = parseBooleanStrict(options.active, '--active')
 
     // timeout and method go in config object
     const config: Record<string, unknown> = {}
     if (options.timeout !== undefined) config.timeoutSeconds = parseIntStrict(options.timeout, '--timeout', { min: 1, max: 3600 })
     if (options.method !== undefined) config.method = normalizeHttpMethod(options.method)
+    if (options.grace !== undefined) config.heartbeat = { graceMinutes: parseDurationMinutes(options.grace, '--grace', HEARTBEAT_MAX_GRACE_MINUTES) }
     if (Object.keys(config).length > 0) body.config = config
 
     if (Object.keys(body).length === 0) {
-      throw new CLIError('No fields to update. Use --name, --url, --interval-minutes, --timeout, --method, or --active.', ExitCode.ConfigError)
+      throw new CLIError('No fields to update. Use --name, --url, --interval-minutes, --every, --grace, --timeout, --method, or --active.', ExitCode.ConfigError)
     }
 
     if (options.dryRun) {
@@ -433,4 +498,26 @@ monitorCommand
     )
     logger.success(`Monitor ${id} deleted`)
     outputMutation({ id, deleted: true })
+  })
+
+monitorCommand
+  .command('heartbeat-url <id>')
+  .description('Show the ping URL of a heartbeat monitor, or replace it with --rotate')
+  .option('--rotate', 'Issue a new ping URL; the old one stops working at once')
+  .option('--force', 'Skip the rotate confirmation')
+  .action(async (id: string, options: { rotate?: boolean; force?: boolean }) => {
+    if (options.rotate && !options.force) {
+      const { confirmPrompt } = await import('../utils/prompt.js')
+      await confirmPrompt(`Rotate the ping URL of monitor ${id}? The old URL stops working at once.`, { default: false })
+    }
+    const client = createAuthenticatedClient()
+    const path = `/api/monitors/${encodeURIComponent(id)}/heartbeat-url`
+    const { data } = await withSpinner(
+      options.rotate ? 'Rotating ping URL' : 'Fetching ping URL',
+      () => options.rotate ? client.post<{ pingUrl?: string }>(`${path}/rotate`, {}, { retries: 0 }) : client.get<{ pingUrl?: string }>(path),
+    )
+    if (typeof data.pingUrl !== 'string') throw new CLIError('The server did not return a ping URL. Is this a heartbeat monitor?', ExitCode.ApiError)
+    if (options.rotate) logger.success(`Ping URL of monitor ${id} rotated`)
+    if (getOutputFormat() === 'quiet') logger.output(data.pingUrl, { redact: false })
+    else outputWithPingUrl({ id, pingUrl: data.pingUrl }, data.pingUrl)
   })

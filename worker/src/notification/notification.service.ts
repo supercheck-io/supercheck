@@ -244,6 +244,16 @@ function observedTime(payload: NotificationPayload): Date {
 
 const EMAIL_ERROR_MAX = 1000;
 
+/** Appended to every warning-only alert (alert type `monitor_warning`), on every channel. */
+export const WARNING_NOTICE = 'This is a warning. No incident was opened.';
+
+function warningKindOf(payload: NotificationPayload): string | undefined {
+  const kind: unknown = payload.metadata?.warningKind;
+  return payload.type === 'monitor_warning' && typeof kind === 'string'
+    ? kind
+    : undefined;
+}
+
 const sentenceCase = (v: string) =>
   v.charAt(0).toUpperCase() + v.slice(1).toLowerCase();
 
@@ -446,10 +456,13 @@ export class NotificationService implements OnApplicationShutdown {
         ? this.sha256(details.responseBody)
         : undefined;
     const errorHash = result.error ? this.sha256(result.error) : undefined;
+    const warningKind = warningKindOf(payload);
 
     return {
       ...result,
       deliveryMetadata: {
+        // Not in AlertDeliveryMetadata yet: the alert history UI labels a warning by its kind.
+        ...(warningKind ? { warning: { kind: warningKind } } : {}),
         version: 1,
         provider: {
           id: provider.id,
@@ -548,9 +561,13 @@ export class NotificationService implements OnApplicationShutdown {
     const targetUrl =
       target === undefined ? undefined : redactTargetUrl(target);
 
+    const message = redactUrlsInText(payload.message);
     return {
       ...payload,
-      message: redactUrlsInText(payload.message),
+      message:
+        payload.type === 'monitor_warning'
+          ? `${message}\n\n${WARNING_NOTICE}`
+          : message,
       metadata: {
         ...payload.metadata,
         ...(target === undefined ? {} : { target: targetUrl }),
@@ -889,7 +906,10 @@ export class NotificationService implements OnApplicationShutdown {
       // Monitors and jobs share one path: the payload's title/message (including a
       // custom message) and the shared field builder.
       const rendered = await this.emailTemplateService.renderMonitorAlertEmail({
-        title: formatted.title,
+        title:
+          payload.type === 'monitor_warning'
+            ? `Warning: ${formatted.title}`
+            : formatted.title,
         message: payload.message,
         fields: buildEmailFields(formatted.fields, payload),
         footer: formatted.footer,
@@ -1385,6 +1405,7 @@ export class NotificationService implements OnApplicationShutdown {
       victorOpsMessageType: this.getVictorOpsMessageType(alertAction),
       splunkOnCallMessageType: this.getVictorOpsMessageType(alertAction),
       dedupKey: this.getWebhookDedupKey(payload),
+      warningKind: warningKindOf(payload) ?? '',
       // Saved preset channels keep their old template; fix what the vendor needs here, by preset id.
       ...presetOverrides(
         preset,
@@ -1417,6 +1438,7 @@ export class NotificationService implements OnApplicationShutdown {
       case 'job_failed':
       case 'job_timeout':
       case 'ssl_expiring':
+      case 'monitor_warning':
         return 'trigger';
       default:
         // Backward compatibility for older payload names used in tests and
@@ -1454,6 +1476,8 @@ export class NotificationService implements OnApplicationShutdown {
       }
     }
 
+    const warningKind = warningKindOf(payload);
+    if (warningKind) return `warning:${payload.targetId}:${warningKind}`;
     return `${this.getWebhookDedupScope(payload)}:${payload.targetId}`;
   }
 

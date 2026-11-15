@@ -1,6 +1,7 @@
 import { liveMonitor } from "@/lib/deletion/visibility";
 import { hasPermissionForUser, requireAuth } from "@/lib/rbac/middleware";
 import { monitorConfigForRead, monitorResultForRead, monitorTargetForRead } from "@/lib/monitor-read-config";
+import { heartbeatSummary } from "@/lib/heartbeat/state";
 import { Metadata } from "next";
 import { MonitorDetailClient, MonitorWithResults, MonitorResultItem } from "@/components/monitors/monitor-detail-client";
 import { PageBreadcrumbs } from "@/components/page-breadcrumbs";
@@ -45,6 +46,8 @@ async function getMonitorDetailsDirectly(id: string): Promise<MonitorWithResults
           lastCheckAt: monitors.lastCheckAt,
           config: monitors.config,
           alertConfig: monitors.alertConfig,
+          // Runtime state only; the token columns are never selected here
+          heartbeatState: monitors.heartbeatState,
           projectId: monitors.projectId,
           organizationId: monitors.organizationId,
           projectName: projects.name,
@@ -113,6 +116,7 @@ async function getMonitorDetailsDirectly(id: string): Promise<MonitorWithResults
       config: monitorConfigForRead(monitor.config, canUpdate) ?? undefined,
       alertConfig: monitor.alertConfig || undefined,
       projectName: monitor.projectName || undefined,
+      heartbeat: heartbeatSummary({ ...monitor, frequencyMinutes }),
     };
 
     return transformedMonitor;

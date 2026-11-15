@@ -16,13 +16,14 @@ export interface MonitorAlertConfig {
   incidentEnabled?: boolean;
   incidentSeverity?: "sev1" | "sev2" | "sev3" | "sev4";
   autoResolveIncident?: boolean;
+  warnings?: Record<string, boolean>;
 }
 
 export interface Monitor {
   id: string;
   name: string;
   description?: string | null;
-  type: "http_request" | "website" | "ping_host" | "port_check" | "synthetic_test" | "mcp_server";
+  type: "http_request" | "website" | "ping_host" | "port_check" | "synthetic_test" | "heartbeat" | "mcp_server";
   target: string;
   frequencyMinutes: number;
   enabled: boolean;
@@ -48,6 +49,15 @@ export interface Monitor {
   uptime?: string | number;
   active?: boolean;
   tags?: Array<{ id: string; name: string; color: string }>;
+  /** Read-only heartbeat summary (heartbeat monitors only); see lib/heartbeat/state.ts heartbeatSummary. */
+  heartbeat?: {
+    state: "pending" | "up" | "late" | "down" | "paused";
+    lastPingAt: string | null;
+    lastPingKind: "ping" | "fail" | null;
+    lastStartAt: string | null;
+    nextExpectedAt: string | null;
+    graceMinutes: number;
+  };
 }
 
 export interface MonitorsResponse extends PaginatedResponse<Monitor> {}

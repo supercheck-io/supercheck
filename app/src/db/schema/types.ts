@@ -52,7 +52,7 @@ export type ArtifactPaths = {
 export type ReportType = "test" | "job" | "monitor" | "k6_test" | "k6_job";
 
 // Monitor types
-export const MONITOR_TYPE_VALUES = ["http_request", "website", "ping_host", "port_check", "synthetic_test", "mcp_server"] as const;
+export const MONITOR_TYPE_VALUES = ["http_request", "website", "ping_host", "port_check", "synthetic_test", "heartbeat", "mcp_server"] as const;
 export type MonitorType = (typeof MONITOR_TYPE_VALUES)[number];
 
 export const MONITOR_STATUS_VALUES = ["up", "down", "paused", "pending", "maintenance", "error"] as const;
@@ -197,6 +197,8 @@ export type MonitorConfig = {
     /** Warn when one call uses more tokens than this (warning only). */
     warnTotalTokens?: number;
   };
+  /** Heartbeat monitors only: how late a ping may be before the monitor goes down. */
+  heartbeat?: { graceMinutes?: number };
   /** Worker-owned; clients cannot write it. */
   aiEndpointState?: {
     lastServedModel?: string;
@@ -240,6 +242,30 @@ export type MonitorConfig = {
   [key: string]: unknown;
 };
 
+/**
+ * Heartbeat runtime state (monitors.heartbeat_state). The ping route writes the ping keys and the
+ * worker sweep writes the bookkeeping keys, each as a jsonb expression on the current row value.
+ */
+export type HeartbeatState = {
+  /** Set on create and on resume: the deadline counts from max(lastPingAt, anchorAt). */
+  anchorAt?: string;
+  lastPingAt?: string;
+  lastPingKind?: "ping" | "fail";
+  lastStartAt?: string;
+  pingSeq?: number;
+  /** Incremented on every /fail, so a fail followed by a ping in one sweep window is not lost. */
+  failSeq?: number;
+  lastFailAt?: string;
+  evaluatedFailSeq?: number;
+  lastUserAgent?: string;
+  evaluatedSeq?: number;
+  leaseUntil?: string;
+  lateEpisodeKey?: string;
+  lastMissedAt?: string;
+  deadlineShiftedFor?: string;
+  deadlineShiftMs?: number;
+};
+
 // Alert types
 export type AlertConfig = {
   enabled: boolean;
@@ -258,6 +284,8 @@ export type AlertConfig = {
   incidentSeverity?: "sev1" | "sev2" | "sev3" | "sev4";
   /** Resolve the incident on recovery if unacknowledged. Undefined = true. */
   autoResolveIncident?: boolean;
+  /** Warning-only notifications by kind (see lib/alerts/warning-kinds.ts). Never open an incident. */
+  warnings?: Record<string, boolean>;
 };
 
 export type AlertType =
@@ -267,7 +295,8 @@ export type AlertType =
   | "job_success"
   | "job_timeout"
   | "ssl_expiring"
-  | "ssl_renewed";
+  | "ssl_renewed"
+  | "monitor_warning";
 
 export type AlertStatus = "sent" | "failed" | "pending";
 
@@ -305,6 +334,8 @@ export type AlertDeliveryMetadata = {
     /** Each HTTP attempt (max 4): status, or a redacted error when no response arrived. */
     attemptLog?: AlertDeliveryAttempt[];
   };
+  /** Set on `monitor_warning` rows. */
+  warning?: { kind: string };
 };
 
 export type AlertDeliveryAttempt = {

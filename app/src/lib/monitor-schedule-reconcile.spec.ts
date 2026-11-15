@@ -50,6 +50,7 @@ it.each([
   ["paused", { status: "paused" }],
   ["disabled", { enabled: false }],
   ["zero frequency", { frequencyMinutes: 0 }],
+  ["heartbeat (B9)", { type: "heartbeat", target: "" }],
 ])("removes the job and clears the scheduler id for a %s monitor", async (_n, change) => {
   row = { ...active, ...change };
   await reconcileMonitorSchedule("m1", "p1");

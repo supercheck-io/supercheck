@@ -6,6 +6,7 @@ import {
   Mail,
   Webhook,
   BotMessageSquare,
+  TriangleAlert,
 } from "lucide-react";
 import { MicrosoftTeamsLogo } from "@/components/logo/microsoft-teams-logo";
 import { TelegramLogo } from "@/components/logo/telegram-logo";
@@ -81,6 +82,12 @@ export const alertTypes = [
     label: "SSL Renewed",
     icon: CheckCircle,
     color: "text-success",
+  },
+  {
+    value: "monitor_warning",
+    label: "Warning",
+    icon: TriangleAlert,
+    color: "text-warning",
   },
 ];
 

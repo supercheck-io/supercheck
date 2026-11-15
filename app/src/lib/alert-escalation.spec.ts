@@ -9,6 +9,8 @@ describe("isActionableAlertForIncident", () => {
     ["sent", "monitor_recovery", "Back up", false],
     // Informational notice: never opens an incident.
     ["sent", "ssl_renewed", "SSL certificate renewed (valid until 2027-02-01)", false],
+    ["sent", "monitor_warning", "Late ping - Nightly backup", false],
+    ["failed", "monitor_warning", "Late ping - Nightly backup", false],
     ["sent", "job_success", "Done", false],
     // A failed delivery still opens an incident, like the background path.
     ["failed", "monitor_failure", "Down", true],

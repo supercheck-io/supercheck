@@ -119,6 +119,31 @@ describe("MCP tools", () => {
     expect(JSON.stringify(res)).not.toMatch(/SECRET|pw|t=1/);
   });
 
+  it("list_monitors and get_monitor return heartbeat state and interval, never the ping URL or token (B26)", async () => {
+    const heartbeatRow = {
+      id: id(1), name: "Nightly", description: null, type: "heartbeat", target: "", status: "up", enabled: true, frequencyMinutes: 60,
+      lastCheckAt: new Date("2026-01-01T10:00:00Z"), createdAt: new Date("2026-01-01T00:00:00Z"),
+      config: { heartbeat: { graceMinutes: 15 } }, alertConfig: { enabled: true, notificationProviders: [], warnings: { heartbeat_late: true } },
+      heartbeatState: { lastPingAt: "2026-01-01T10:00:00.000Z", lastPingKind: "ping", pingSeq: 4, lastUserAgent: "curl/8" },
+    };
+    queue.push([heartbeatRow]);
+    const list = await handlers.get("list_monitors")!({ limit: 5 });
+    expect((list.structuredContent.monitors as unknown[])[0]).toMatchObject({
+      type: "heartbeat", frequencyMinutes: 60,
+      heartbeat: { lastPingAt: "2026-01-01T10:00:00.000Z", lastPingKind: "ping", nextExpectedAt: "2026-01-01T11:00:00.000Z", graceMinutes: 15 },
+    });
+    queue.push([heartbeatRow]);
+    const one = await handlers.get("get_monitor")!({ id: id(1) });
+    expect(one.structuredContent.monitor).toMatchObject({ frequencyMinutes: 60, heartbeat: { graceMinutes: 15 }, alerts: { warnings: { heartbeat_late: true } } });
+    for (const res of [list, one]) expect(JSON.stringify(res)).not.toMatch(/heartbeatToken|hb_|pingSeq|curl\/8|\/api\/heartbeat/);
+  });
+
+  it("other monitor types carry no heartbeat field", async () => {
+    queue.push([{ id: id(1), name: "m", type: "http_request", target: "https://example.com", status: "up", lastCheckAt: null, enabled: true, frequencyMinutes: 5, config: null, heartbeatState: null, createdAt: null }]);
+    const res = await handlers.get("list_monitors")!({ limit: 5 });
+    expect((res.structuredContent.monitors as Record<string, unknown>[])[0]).not.toHaveProperty("heartbeat");
+  });
+
   it("audits ids and timing only, not arguments", async () => {
     queue.push([]);
     await handlers.get("get_test")!({ id: id(9) });

@@ -48,6 +48,8 @@ interface ResponseTimeBarChartProps {
   data: ResponseTimeChartDataPoint[];
   /** AI endpoint preset: draw a dashed first-token series beside the total time. */
   showFirstToken?: boolean;
+  /** Card title; a heartbeat calls it "Run duration". */
+  title?: string;
 }
 
 interface TooltipProps {
@@ -113,7 +115,7 @@ const CustomTooltip = ({ active, payload, label }: TooltipProps) => {
   return null;
 };
 
-export function ResponseTimeBarChart({ data, showFirstToken = false }: ResponseTimeBarChartProps) {
+export function ResponseTimeBarChart({ data, showFirstToken = false, title = "Response Time" }: ResponseTimeBarChartProps) {
   const [visiblePoints, setVisiblePoints] = React.useState(0);
 
   // Input validation
@@ -186,7 +188,7 @@ export function ResponseTimeBarChart({ data, showFirstToken = false }: ResponseT
     return (
       <Card className="shadow-sm flex flex-col min-h-[335px]">
         <CardHeader className="pb-4">
-          <CardTitle className="text-lg font-semibold">Response Time</CardTitle>
+          <CardTitle className="text-lg font-semibold">{title}</CardTitle>
           <CardDescription className="text-sm">
             Performance metrics will appear here once monitoring begins.
           </CardDescription>
@@ -232,7 +234,7 @@ export function ResponseTimeBarChart({ data, showFirstToken = false }: ResponseT
     return (
       <Card className="shadow-sm flex flex-col min-h-[335px]">
         <CardHeader className="pb-4">
-          <CardTitle className="text-lg font-semibold">Response Time</CardTitle>
+          <CardTitle className="text-lg font-semibold">{title}</CardTitle>
           <CardDescription className="text-sm">
             No response data available
           </CardDescription>
@@ -280,7 +282,7 @@ export function ResponseTimeBarChart({ data, showFirstToken = false }: ResponseT
   return (
     <Card className="h-full flex flex-col shadow-sm min-h-[335px]">
       <CardHeader className="pb-3">
-        <CardTitle className="text-lg font-semibold">Response Time</CardTitle>
+        <CardTitle className="text-lg font-semibold">{title}</CardTitle>
         <CardDescription className="text-sm">
           Recent response times in milliseconds ({data.length} data points)
           {showFirstToken ? ". Solid: total time. Dashed: first token." : ""}

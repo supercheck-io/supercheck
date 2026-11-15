@@ -15,6 +15,7 @@
     "automate",
     "---Monitor---",
     "monitor",
+    "heartbeat",
     "---Settings---",
     "admin",
     "---Deployment---",

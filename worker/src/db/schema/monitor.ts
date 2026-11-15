@@ -31,6 +31,7 @@ import type {
   MonitorResultDetails,
   MonitoringLocation,
   AlertConfig,
+  HeartbeatState,
 } from './types';
 
 /**
@@ -68,6 +69,12 @@ export const monitors = pgTable(
       withTimezone: true,
     }),
     scheduledJobId: varchar('scheduled_job_id', { length: 255 }),
+    /** SHA-256 hex of the heartbeat ping token (lookup only). Never returned by any API. */
+    heartbeatTokenHash: varchar('heartbeat_token_hash', { length: 64 }),
+    /** Ping token encrypted with encryptValue(token, projectId), for reveal. Never returned by any API. */
+    heartbeatTokenEncrypted: text('heartbeat_token_encrypted'),
+    /** Heartbeat runtime state written only by the ping route and the worker sweep (never by edit paths). */
+    heartbeatState: jsonb('heartbeat_state').$type<HeartbeatState>(),
     deletingAt: timestamp('deleting_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }),

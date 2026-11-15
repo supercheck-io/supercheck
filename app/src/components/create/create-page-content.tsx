@@ -431,6 +431,8 @@ export function CreatePageContent({
                         ? "Check a network port"
                         : monitorType.value === "mcp_server"
                           ? "Check an MCP server"
+                        : monitorType.value === "heartbeat"
+                          ? "Alert when a job stops pinging"
                           : "Run scheduled flows"
               }
               onClick={() =>

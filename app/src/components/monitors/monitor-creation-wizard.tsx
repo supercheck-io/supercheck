@@ -27,6 +27,8 @@ import { useQueryClient } from "@tanstack/react-query";
 import { invalidateMonitorCaches } from "./monitor-actions";
 import { Loader2, SaveIcon } from "lucide-react";
 import { presetFailureThreshold } from "./ai-endpoint-fields";
+import { rememberCreatedPingUrl } from "./heartbeat-ping-url-panel";
+import { hasWarningOn } from "@/lib/alerts/warning-kinds";
 
 type WizardStep = "monitor" | "location" | "alerts";
 
@@ -43,6 +45,10 @@ export function MonitorCreationWizard() {
   const queryClient = useQueryClient();
   const searchParams = useSearchParams();
   const stepFromUrl = searchParams?.get("wizardStep") as WizardStep | null;
+  // A heartbeat runs nowhere: no location step, and its alert defaults differ (spec 4.5).
+  const isHeartbeat = searchParams?.get("type") === "heartbeat";
+  // Alert defaults differ by type (heartbeat pins sev2), so a draft for one type never seeds another.
+  const alertDraftKey = `${STORAGE_KEYS.ALERT}:${searchParams?.get("type") || "http_request"}`;
   const { maxMonitorNotificationChannels } = useAppConfig();
 
   // Check if multiple locations are available — skip location step when only one
@@ -103,7 +109,7 @@ export function MonitorCreationWizard() {
 
   const getInitialAlertConfig = useCallback((): AlertConfig => {
     if (typeof window !== "undefined") {
-      const saved = sessionStorage.getItem(STORAGE_KEYS.ALERT);
+      const saved = sessionStorage.getItem(alertDraftKey);
       if (saved) {
         try {
           return JSON.parse(saved);
@@ -120,8 +126,14 @@ export function MonitorCreationWizard() {
       alertOnSslExpiration: false,
       failureThreshold: 1,
       recoveryThreshold: 1,
+      ...(isHeartbeat && {
+        incidentEnabled: true,
+        incidentSeverity: "sev2" as const,
+        autoResolveIncident: true,
+        warnings: { heartbeat_late: false },
+      }),
     };
-  }, []);
+  }, [isHeartbeat, alertDraftKey]);
 
   const [currentStep, setCurrentStep] = useState<WizardStep>(
     stepFromUrl || "monitor"
@@ -197,11 +209,11 @@ export function MonitorCreationWizard() {
     if (typeof window === "undefined" || !isMountedRef.current) return;
 
     const timeoutId = setTimeout(() => {
-      sessionStorage.setItem(STORAGE_KEYS.ALERT, JSON.stringify(alertConfig));
+      sessionStorage.setItem(alertDraftKey, JSON.stringify(alertConfig));
     }, 300);
 
     return () => clearTimeout(timeoutId);
-  }, [alertConfig]);
+  }, [alertConfig, alertDraftKey]);
 
   // Sync URL with current step
   useEffect(() => {
@@ -235,9 +247,9 @@ export function MonitorCreationWizard() {
       sessionStorage.removeItem(STORAGE_KEYS.MONITOR_DATA);
       sessionStorage.removeItem(STORAGE_KEYS.API_DATA);
       sessionStorage.removeItem(STORAGE_KEYS.LOCATION);
-      sessionStorage.removeItem(STORAGE_KEYS.ALERT);
+      sessionStorage.removeItem(alertDraftKey);
     }
-  }, []);
+  }, [alertDraftKey]);
 
   // Get monitor type from URL for dynamic title
   const urlType = searchParams?.get("type") || "http_request";
@@ -248,6 +260,7 @@ export function MonitorCreationWizard() {
     "port_check",
     "synthetic_test",
     "mcp_server",
+    "heartbeat",
   ];
   const type = validTypes.includes(urlType as MonitorType)
     ? (urlType as MonitorType)
@@ -289,6 +302,11 @@ export function MonitorCreationWizard() {
       }));
     }
 
+    if (formData.type === "heartbeat") {
+      setCurrentStep("alerts");
+      return;
+    }
+
     // When skipping the location step (single location), auto-set the
     // locationConfig to the actual available location. DEFAULT_LOCATION_CONFIG
     // has an empty locations array; this ensures the DB config contains the
@@ -316,7 +334,7 @@ export function MonitorCreationWizard() {
   };
 
   const handleBackFromAlerts = () => {
-    setCurrentStep(hasMultipleLocations ? "location" : "monitor");
+    setCurrentStep(hasMultipleLocations && !isHeartbeat ? "location" : "monitor");
   };
 
   const handleCancel = () => {
@@ -367,6 +385,7 @@ export function MonitorCreationWizard() {
         alertConfig.alertOnFailure,
         alertConfig.alertOnRecovery,
         alertConfig.alertOnSslExpiration,
+        hasWarningOn(monitorData?.type || type, alertConfig.warnings),
       ].some(Boolean);
 
       if (!alertTypesSelected) {
@@ -384,7 +403,7 @@ export function MonitorCreationWizard() {
       // Include location config in the monitor config
       const configWithLocation = {
         ...(apiData?.config || {}),
-        locationConfig,
+        ...(isHeartbeat ? {} : { locationConfig }),
       };
 
       const finalData = {
@@ -405,6 +424,8 @@ export function MonitorCreationWizard() {
       if (response.ok) {
         const result = await response.json();
         toast.success("Monitor created successfully");
+        // The full ping URL is returned once, on create; the detail page shows it without a reveal.
+        rememberCreatedPingUrl(result.id, result.heartbeat?.pingUrl);
 
         // Clear draft data
         clearDraft();
@@ -446,7 +467,7 @@ export function MonitorCreationWizard() {
           onSave={handleMonitorNext}
           onCancel={handleCancel}
           hideAlerts={true}
-          nextStepLabel={hasMultipleLocations ? "Next: Location Settings" : "Next: Alert Settings"}
+          nextStepLabel={hasMultipleLocations && !isHeartbeat ? "Next: Location Settings" : "Next: Alert Settings"}
           monitorType={type as MonitorType}
           title={typeTitle}
           description="Configure a new uptime monitor"
@@ -523,6 +544,7 @@ export function MonitorCreationWizard() {
               incidentEnabled: config.incidentEnabled,
               incidentSeverity: config.incidentSeverity,
               autoResolveIncident: config.autoResolveIncident,
+              warnings: config.warnings,
               })
             }
             context="monitor"

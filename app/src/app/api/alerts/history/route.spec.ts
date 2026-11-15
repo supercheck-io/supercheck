@@ -106,6 +106,14 @@ describe("POST /api/alerts/history", () => {
     expect((await post({ monitorId: MONITOR_ID, type: "made_up" })).status).toBe(400);
   });
 
+  it("accepts a warning-only alert and never sends it to incident triage", async () => {
+    mockSourceLookup([{ id: MONITOR_ID }]);
+    const values = mockInsert();
+    expect((await post({ monitorId: MONITOR_ID, type: "monitor_warning" })).status).toBe(200);
+    expect(values).toHaveBeenCalledWith(expect.objectContaining({ type: "monitor_warning" }));
+    expect(enqueueSreAlertTriageJob).not.toHaveBeenCalled();
+  });
+
   it("rejects oversized text fields before writing", async () => {
     const values = mockInsert();
     expect((await post({ monitorId: MONITOR_ID, message: "x".repeat(2001) })).status).toBe(400);
@@ -167,6 +175,24 @@ describe("GET /api/alerts/history rows", () => {
     expect(body.map((r: { notificationProvider: string }) => r.notificationProvider)).toEqual([
       "Deleted channel", "slack", "legacy-email",
     ]);
+  });
+
+  it("returns the warning kind from delivery metadata for warning-only alerts", async () => {
+    requireAuthContext.mockResolvedValue({
+      userId: "u1", organizationId: "org-a",
+      project: { id: "project-a", name: "A", organizationId: "org-a", userRole: "project_editor" }, isCliAuth: false,
+    });
+    db.execute.mockImplementation(async (q: { queryChunks: unknown[] }) => {
+      const text = JSON.stringify(q.queryChunks);
+      if (text.includes("information_schema")) return [{ exists: true }];
+      if (text.includes("ORDER BY")) {
+        return [row("w1", "legacy-email", { type: "monitor_warning", deliveryMetadata: { warning: { kind: "heartbeat_late" } } }), row("f1", "legacy-email")];
+      }
+      return [];
+    });
+    const body = await (await GET(new NextRequest("http://localhost/api/alerts/history"))).json();
+    expect(body[0]).toMatchObject({ type: "monitor_warning", metadata: { warning: { kind: "heartbeat_late" } } });
+    expect(body[1].metadata).not.toHaveProperty("warning");
   });
 
   it("serialises raw timestamptz text as ISO and keeps a missing sent_at null", async () => {

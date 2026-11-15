@@ -367,6 +367,13 @@ describe("queue location refresh", () => {
       expect(flow.data).not.toHaveProperty("scheduledCheck");
     });
 
+    it("refuses a heartbeat: it has no check to run (B9)", async () => {
+      await expect(queueModule.addMonitorExecutionJobToQueue({ ...task, type: "heartbeat" as never, target: "" })).rejects.toThrow("heartbeat");
+      expect(resolveMonitorLocations).not.toHaveBeenCalled();
+      expect(flowAddBulk).not.toHaveBeenCalled();
+      expect(recordSchedulingFailure).not.toHaveBeenCalled();
+    });
+
     it("still records a real scheduling failure", async () => {
       resolveMonitorLocations.mockRejectedValue(new Error("project restricts all locations"));
       await expect(queueModule.addMonitorExecutionJobToQueue(task)).rejects.toThrow("project restricts all locations");

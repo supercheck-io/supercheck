@@ -66,6 +66,7 @@ const DIRECT_COLUMN_OK = new Set([
   "lib/monitor-schedule-reconcile.ts",
   "lib/scheduler/job-scheduler.ts",
   "lib/scheduler/monitor-scheduler.ts",
+  "lib/heartbeat/ping.ts", // raw SQL on an aliased table (single-statement ping UPDATE); filters deleting_at IS NULL
 ]);
 
 // Roots (monitors, jobs, runs) plus the link and child tables that hang off them: a query on those must also hide a

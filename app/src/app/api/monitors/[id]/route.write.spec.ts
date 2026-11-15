@@ -462,3 +462,52 @@ describe("review fixes: drifted rows, audit on schedule failure, alertConfig typ
   });
 });
 const PROVIDER_ID = "00000000-0000-4000-8000-0000000000aa";
+
+describe("heartbeat edits (B6, B7)", () => {
+  const heartbeat = {
+    ...stored, type: "heartbeat", target: "", frequencyMinutes: 60, scheduledJobId: null, config: {}, createdAt: "2026-01-01T00:00:00.000Z",
+    alertConfig: { enabled: false, notificationProviders: [], incidentEnabled: true, warnings: { heartbeat_late: true } },
+    heartbeatTokenHash: "stored-hash", heartbeatTokenEncrypted: "stored-cipher", heartbeatState: { pingSeq: 3 },
+  };
+  const forged = { heartbeatTokenHash: "f".repeat(64), heartbeatTokenEncrypted: "forged", heartbeatState: null };
+
+  beforeEach(() => {
+    findFirst.mockResolvedValue(heartbeat);
+    set.mockReturnValue({ where: jest.fn().mockReturnValue({ returning: jest.fn().mockResolvedValue([heartbeat]) }) });
+  });
+
+  it.each([["PUT", PUT], ["PATCH", PATCH]] as const)("%s cannot set or wipe the token and state columns, and never returns them", async (method, handler) => {
+    const res = await call(handler, method, { name: "renamed", ...forged });
+    expect(res.status).toBe(200);
+    for (const k of Object.keys(forged)) expect(payload()).not.toHaveProperty(k);
+    const text = JSON.stringify(await res.json());
+    expect(text).not.toMatch(/heartbeatToken|stored-hash|stored-cipher|heartbeatState/);
+  });
+
+  it.each([["PUT", PUT], ["PATCH", PATCH]] as const)("%s refuses a type change away from heartbeat", async (method, handler) => {
+    const res = await call(handler, method, { type: "http_request", target: "https://example.com" });
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toContain("to or from heartbeat");
+    expect(set).not.toHaveBeenCalled();
+  });
+
+  it("refuses a type change to heartbeat", async () => {
+    findFirst.mockResolvedValue(stored);
+    expect((await call(PATCH, "PATCH", { type: "heartbeat", target: "" })).status).toBe(400);
+    expect(set).not.toHaveBeenCalled();
+  });
+
+  it.each([["PUT", PUT], ["PATCH", PATCH]] as const)("%s allows an interval up to 31 days and rejects longer", async (method, handler) => {
+    expect((await call(handler, method, { frequencyMinutes: 44640 })).status).toBe(200);
+    expect((await call(handler, method, { frequencyMinutes: 44641 })).status).toBe(400);
+  });
+
+  it("rejects a target on a heartbeat", async () => {
+    expect((await call(PATCH, "PATCH", { target: "https://example.com" })).status).toBe(400);
+  });
+
+  it("PATCH keeps stored warning toggles on an unrelated alert edit and drops unknown kinds", async () => {
+    await call(PATCH, "PATCH", { alertConfig: { failureThreshold: 1, warnings: { made_up: true } } });
+    expect((payload().alertConfig as { warnings: unknown }).warnings).toEqual({ heartbeat_late: true });
+  });
+});

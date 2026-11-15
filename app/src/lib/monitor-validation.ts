@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { HEARTBEAT_MAX_GRACE_MINUTES } from "@/lib/heartbeat/state";
 
 const monitorTypeSchema = z.enum([
   "http_request",
@@ -7,6 +8,7 @@ const monitorTypeSchema = z.enum([
   "port_check",
   "synthetic_test",
   "mcp_server",
+  "heartbeat",
 ]);
 
 const hostnamePattern =
@@ -299,6 +301,30 @@ export function validateMonitorConfiguration({
 
   const locationResult = validateLocationPolicy(monitorConfig);
   if (!locationResult.success) return locationResult;
+
+  if (monitorType === "heartbeat") {
+    // Nothing is probed: the job pings us. The target column stays empty for this type only.
+    if (target !== undefined && target !== null && target !== "") {
+      return invalid("Invalid monitor target", "target must be empty for heartbeat monitors");
+    }
+    const heartbeat = monitorConfig.heartbeat;
+    if (heartbeat !== undefined && heartbeat !== null) {
+      const grace = isRecord(heartbeat) ? heartbeat.graceMinutes : undefined;
+      if (
+        !isRecord(heartbeat) ||
+        (grace !== undefined && (typeof grace !== "number" || !Number.isInteger(grace) || grace < 1 || grace > HEARTBEAT_MAX_GRACE_MINUTES))
+      ) {
+        return invalid(
+          "Invalid monitor configuration",
+          `config.heartbeat.graceMinutes must be a whole number between 1 and ${HEARTBEAT_MAX_GRACE_MINUTES}`,
+        );
+      }
+    }
+    return { success: true };
+  }
+  if (isRecord(incomingConfig) && incomingConfig.heartbeat != null) {
+    return invalid("Invalid monitor configuration", "config.heartbeat is only supported on heartbeat monitors");
+  }
 
   if (monitorType === "synthetic_test") {
     const testId = z.string().uuid().safeParse(monitorConfig.testId);

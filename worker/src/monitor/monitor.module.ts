@@ -16,6 +16,7 @@ import { ResourceManagerService } from '../common/resources/resource-manager.ser
 import { LocationModule } from '../common/location/location.module';
 import { VariableResolverService } from '../common/services/variable-resolver.service';
 import { SreAlertTriageQueueService } from './services/sre-alert-triage-queue.service';
+import { HeartbeatSweepService } from './heartbeat/heartbeat-sweep.service';
 
 // Define job options for monitor execution queues
 const monitorJobOptions = {
@@ -85,7 +86,12 @@ export class MonitorModule {
         ExecutionModule,
         LocationModule,
       ],
-      providers: [...commonProviders, MonitorDynamicWorkerService],
+      providers: [
+        ...commonProviders,
+        MonitorDynamicWorkerService,
+        // Heartbeat monitors are judged here every 30 s, not by queued checks.
+        HeartbeatSweepService,
+      ],
       exports: [MonitorService],
     };
   }

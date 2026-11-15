@@ -154,6 +154,7 @@ const STATUS_COLORS: Record<string, 'success' | 'error' | 'warning'> = {
   // Warning states (yellow)
   paused: 'warning',
   pending: 'warning',
+  late: 'warning',
   disabled: 'warning',
   degraded: 'warning',
   unknown: 'warning',

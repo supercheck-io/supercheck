@@ -7,6 +7,7 @@ import { reconcileMonitorSchedule } from "@/lib/monitor-schedule-reconcile";
 import { resumeRefusalResponse, withResumeWithinPlan, ResumeRefusedError } from "@/lib/middleware/plan-enforcement";
 import { monitorResumeBlockedResponse, trialIntervalErrorResponse } from "@/lib/execution/trial-interval-response";
 import { monitorConfigForRead, monitorTargetForRead, monitorResultForRead } from "@/lib/monitor-read-config";
+import { monitorForResponse, WITHOUT_HEARTBEAT_TOKEN } from "@/lib/monitor-response";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/utils/db";
 import {
@@ -43,6 +44,7 @@ import {
   InvalidNotificationProvidersError,
   MonitorScheduleError,
   mergePatch,
+  monitorTypeChangeError,
   monitorNameError,
   normalizeMonitorAlertConfig,
   monitorAuditTarget,
@@ -113,6 +115,7 @@ export async function GET(
         eq(monitors.organizationId, context.organizationId),
         liveMonitor(),
       ),
+      columns: WITHOUT_HEARTBEAT_TOKEN,
     });
 
     if (!monitor) {
@@ -129,7 +132,7 @@ export async function GET(
     const canUpdateMonitor = checkPermissionWithContext("monitor", "update", context);
     // Ensure alertConfig has proper defaults if it's null or undefined
     const responseMonitor = {
-      ...monitor,
+      ...monitorForResponse(monitor),
       config: monitorConfigForRead(monitor.config, canUpdateMonitor),
       target: monitorTargetForRead(monitor.target, canUpdateMonitor),
       recentResults: recentResults.map(monitorResultForRead),
@@ -229,6 +232,7 @@ export async function PUT(
         eq(monitors.organizationId, authCtx.organizationId),
         liveMonitor(),
       ),
+      columns: WITHOUT_HEARTBEAT_TOKEN,
     });
 
     if (!currentMonitor) {
@@ -241,8 +245,11 @@ export async function PUT(
     const nameError = monitorNameError(updateData.name);
     if (nameError) return NextResponse.json({ error: nameError }, { status: 400 });
 
+    const typeChangeError = monitorTypeChangeError(currentMonitor.type, updateData.type);
+    if (typeChangeError) return NextResponse.json({ error: typeChangeError }, { status: 400 });
+
     if (rawData.frequencyMinutes !== undefined) {
-      const frequencyError = frequencyMinutesError(rawData.frequencyMinutes);
+      const frequencyError = frequencyMinutesError(rawData.frequencyMinutes, currentMonitor.type);
       if (frequencyError) {
         return NextResponse.json({ error: "Invalid frequency", details: frequencyError }, { status: 400 });
       }
@@ -389,7 +396,7 @@ export async function PUT(
       } else if (!isObject(rawData.alertConfig)) {
         return NextResponse.json({ error: "alertConfig must be an object or null" }, { status: 400 });
       } else {
-        const normalized = normalizeMonitorAlertConfig(rawData.alertConfig, currentMonitor.alertConfig);
+        const normalized = normalizeMonitorAlertConfig(rawData.alertConfig, currentMonitor.alertConfig, currentMonitor.type);
         if (!normalized.ok) {
           return NextResponse.json({ error: normalized.error }, { status: 400 });
         }
@@ -586,7 +593,7 @@ export async function PUT(
     });
 
     if (scheduleFailed) return NextResponse.json({ error: SCHEDULE_FAILURE_MESSAGE }, { status: 503 });
-    return NextResponse.json(updatedMonitor);
+    return NextResponse.json(monitorForResponse(updatedMonitor));
   } catch (error) {
     if (isAuthError(error)) {
       return NextResponse.json(
@@ -652,6 +659,7 @@ export async function PATCH(
         eq(monitors.organizationId, authCtx.organizationId),
         liveMonitor(),
       ),
+      columns: WITHOUT_HEARTBEAT_TOKEN,
     });
 
     if (!currentMonitor) {
@@ -688,7 +696,9 @@ export async function PATCH(
     if (rawData.name !== undefined && (typeof rawData.name !== "string" || !rawData.name.trim() || [...rawData.name].length > 255)) {
       return NextResponse.json({ error: "name must be 1-255 characters" }, { status: 400 });
     }
-    const frequencyError = rawData.frequencyMinutes !== undefined ? frequencyMinutesError(rawData.frequencyMinutes) : null;
+    const typeChangeError = monitorTypeChangeError(currentMonitor.type, rawData.type);
+    if (typeChangeError) return NextResponse.json({ error: typeChangeError }, { status: 400 });
+    const frequencyError = rawData.frequencyMinutes !== undefined ? frequencyMinutesError(rawData.frequencyMinutes, currentMonitor.type) : null;
     if (frequencyError) return NextResponse.json({ error: frequencyError }, { status: 400 });
     if (rawData.status !== undefined) {
       if (!["paused", "up", "down", "pending"].includes(rawData.status)) {
@@ -797,6 +807,8 @@ export async function PATCH(
       // Same normaliser and rules as PUT, applied to the merged result.
       const normalized = normalizeMonitorAlertConfig(
         mergePatch(currentMonitor.alertConfig ?? {}, rawData.alertConfig),
+        undefined,
+        currentMonitor.type,
       );
       const alertError = normalized.ok ? enabledAlertConfigError(normalized.value) : normalized.error;
       if (!normalized.ok || alertError) {
@@ -868,7 +880,7 @@ export async function PATCH(
     });
 
     if (patchScheduleFailed) return NextResponse.json({ error: SCHEDULE_FAILURE_MESSAGE }, { status: 503 });
-    return NextResponse.json(updatedMonitor);
+    return NextResponse.json(monitorForResponse(updatedMonitor));
   } catch (error) {
     if (isAuthError(error)) {
       return NextResponse.json(

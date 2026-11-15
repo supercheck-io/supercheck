@@ -94,6 +94,10 @@ import {
 import { useQueryClient } from "@tanstack/react-query";
 import { formatUptime, getResumeStatus, invalidateMonitorCaches, invalidateDeletedMonitorCaches } from "./monitor-actions";
 import { useLocationMetadata } from "@/hooks/use-locations";
+import { HeartbeatPingUrlPanel } from "./heartbeat-ping-url-panel";
+import { HeartbeatPingHistory } from "./heartbeat-ping-history";
+import { HeartbeatStateBadge } from "./heartbeat-state-badge";
+import { formatRunDuration, heartbeatScheduleLabel } from "./heartbeat-format";
 
 export interface MonitorResultItem {
   id: string;
@@ -237,6 +241,8 @@ export function MonitorDetailClient({
     results: paginatedTableResults,
     pagination: paginationMeta,
     isFetching: isLoadingResults,
+    error: resultsError,
+    refetch: refetchResults,
   } = useMonitorResults(monitor.id, {
     page: currentPage,
     limit: resultsPerPage,
@@ -526,6 +532,13 @@ export function MonitorDetailClient({
       ? formatResponseTime(latestResult.responseTimeMs)
       : "N/A";
 
+  // Heartbeat: the job pings us, so the stats are about pings, not checks (spec 4.6)
+  const heartbeat = monitor.type === "heartbeat" ? monitor.heartbeat : undefined;
+  const isHeartbeat = monitor.type === "heartbeat";
+  // The latest run only: a ping without /start has no duration, and an older run's must not stand in for it.
+  const lastRunDuration = formatRunDuration(monitor.recentResults?.[0]?.responseTimeMs);
+  const hasRunDuration = responseTimeData.some((point) => typeof point.time === "number");
+
   // AI endpoint preset: extra stats from the latest check; a plain HTTP monitor shows none of this
   const aiEndpoint = monitor.config?.aiEndpoint as { model?: string } | undefined;
   const latestAi = aiEndpoint ? aiDetails(latestResult) : undefined;
@@ -705,7 +718,7 @@ export function MonitorDetailClient({
         )}
 
         {/* Status and Type Header */}
-        <div className="border rounded-lg p-2 mb-4 shadow-sm bg-card">
+        <div className="border rounded-lg p-2 mb-4 shadow-sm bg-card" data-testid="monitor-detail-header">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="flex min-w-0 items-center gap-3">
               {!isNotificationView && (
@@ -731,11 +744,16 @@ export function MonitorDetailClient({
                     : monitor.name}
                 </h1>
                 <div className="flex items-center gap-2">
+                  {heartbeat && <HeartbeatStateBadge state={heartbeat.state} />}
                   <div
                     className="text-sm text-muted-foreground truncate max-w-md"
                     title={maskUrlPassword(monitor.url) ?? undefined}
                   >
-                    {aiEndpoint ? (
+                    {isHeartbeat ? (
+                      <span data-testid="monitor-heartbeat-subtitle">
+                        Heartbeat · {heartbeatScheduleLabel(monitor.frequencyMinutes, heartbeat?.graceMinutes ?? 0)}
+                      </span>
+                    ) : aiEndpoint ? (
                       <span data-testid="monitor-ai-subtitle">
                         {aiHost}
                         {aiEndpoint.model ? ` · ${aiEndpoint.model}` : ""}
@@ -1006,6 +1024,28 @@ export function MonitorDetailClient({
 
           {/* Metric groups: current state, last 24 hours, last 30 days */}
           <div className="mt-4 mx-3 grid grid-cols-[repeat(auto-fit,minmax(330px,1fr))] gap-3 pb-4">
+            {heartbeat ? (
+              <MetricGroup title="Heartbeat">
+                <MetricStat
+                  icon={<Clock className="h-4 w-4 text-muted-foreground" />}
+                  label="Last ping"
+                  testId="heartbeat-stat-last-ping"
+                  value={heartbeat.lastPingAt ? formatDateTime(heartbeat.lastPingAt) : null}
+                />
+                <MetricStat
+                  icon={<CalendarIcon className="h-4 w-4 text-muted-foreground" />}
+                  label="Next expected by"
+                  testId="heartbeat-stat-next"
+                  value={heartbeat.state === "paused" || !heartbeat.nextExpectedAt ? null : formatDateTime(heartbeat.nextExpectedAt)}
+                />
+                <MetricStat
+                  icon={<Activity className="h-4 w-4 text-muted-foreground" />}
+                  label="Last run duration"
+                  testId="heartbeat-stat-duration"
+                  value={lastRunDuration}
+                />
+              </MetricGroup>
+            ) : (
             <MetricGroup title="Current">
               <MetricStat
                 icon={<StatusHeaderIcon status={currentActualStatus} />}
@@ -1031,6 +1071,7 @@ export function MonitorDetailClient({
                 value={currentResponseTime === "N/A" ? null : currentResponseTime}
               />
             </MetricGroup>
+            )}
 
             {aiEndpoint && (
               <MetricGroup title="AI endpoint">
@@ -1116,6 +1157,16 @@ export function MonitorDetailClient({
           </div>
         </div>
 
+        {isHeartbeat && !isNotificationView && (
+          <div className="mb-4">
+            <HeartbeatPingUrlPanel
+              monitorId={monitor.id}
+              canManage={permissionsReady && canEditMonitor}
+              pending={heartbeat?.state === "pending"}
+            />
+          </div>
+        )}
+
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           {/* For all monitors, show charts and results in two columns */}
           <div className="flex flex-col gap-4">
@@ -1135,10 +1186,16 @@ export function MonitorDetailClient({
               />
             </div>
 
-            {/* Response Time Chart */}
-            <div>
-              <ResponseTimeBarChart data={responseTimeData} showFirstToken={Boolean(aiEndpoint)} />
-            </div>
+            {/* Response Time Chart; a heartbeat has a duration only when its job calls /start */}
+            {(!isHeartbeat || hasRunDuration) && (
+              <div>
+                <ResponseTimeBarChart
+                  data={responseTimeData}
+                  showFirstToken={Boolean(aiEndpoint)}
+                  title={isHeartbeat ? "Run duration" : undefined}
+                />
+              </div>
+            )}
 
             {isMcp && (
               <McpToolsPanel
@@ -1150,6 +1207,18 @@ export function MonitorDetailClient({
             )}
           </div>
 
+          {isHeartbeat ? (
+            <HeartbeatPingHistory
+              results={paginatedTableResults}
+              isLoading={isLoadingResults}
+              error={resultsError}
+              onRetry={() => void refetchResults()}
+              page={currentPage}
+              totalPages={totalPages}
+              total={totalResultsCount}
+              onPageChange={setCurrentPage}
+            />
+          ) : (
           <Card className="shadow-sm flex flex-col">
             <CardHeader className="flex-shrink-0">
               <div className="flex items-center justify-between">
@@ -1559,6 +1628,7 @@ export function MonitorDetailClient({
                 )}
             </CardContent>
           </Card>
+          )}
         </div>
 
         <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>

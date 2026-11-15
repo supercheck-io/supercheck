@@ -23,6 +23,7 @@ import { throwError } from 'rxjs';
 import { PgDialect } from 'drizzle-orm/pg-core';
 import { Test, TestingModule } from '@nestjs/testing';
 import { HttpService } from '@nestjs/axios';
+import { Logger } from '@nestjs/common';
 import { of } from 'rxjs';
 
 // Mock problematic dependencies before import
@@ -3042,6 +3043,69 @@ describe('MonitorService', () => {
       };
 
       expect(heartbeatJob.type).toBe('heartbeat');
+    });
+
+    it('recordExternalResult fails when the status write fails, before any alert', async () => {
+      const evaluator = (
+        service as unknown as {
+          evaluator: {
+            getMonitorById: jest.Mock;
+            updateMonitorStatus: (...args: unknown[]) => Promise<void>;
+            evaluateAndSendAlert: (...args: unknown[]) => Promise<unknown>;
+          };
+        }
+      ).evaluator;
+      jest.spyOn(evaluator, 'getMonitorById').mockResolvedValue({
+        ...mockMonitor,
+        type: 'heartbeat',
+        status: 'down',
+        enabled: true,
+      });
+      jest
+        .spyOn(
+          service as unknown as {
+            insertResultWithRetry: () => Promise<boolean>;
+          },
+          'insertResultWithRetry',
+        )
+        .mockResolvedValue(true);
+      const update = jest
+        .spyOn(evaluator, 'updateMonitorStatus')
+        .mockRejectedValue(new Error('db down'));
+      const alert = jest.spyOn(evaluator, 'evaluateAndSendAlert');
+      await expect(
+        service.recordExternalResult(
+          { id: mockMonitor.id },
+          {
+            monitorId: mockMonitor.id,
+            location: 'local',
+            status: 'up',
+            isUp: true,
+            checkedAt: new Date(),
+          },
+        ),
+      ).rejects.toThrow('db down');
+      expect(update).toHaveBeenCalledWith(
+        mockMonitor.id,
+        'up',
+        expect.any(Date),
+        true,
+      );
+      expect(alert).not.toHaveBeenCalled();
+    });
+
+    it('refuses to run a heartbeat monitor as a queued check', async () => {
+      const warn = jest.spyOn(Logger.prototype, 'warn');
+      await expect(
+        service.executeMonitor({
+          ...mockJobData,
+          type: 'heartbeat',
+          target: '',
+        }),
+      ).resolves.toBeNull();
+      expect(warn).toHaveBeenCalledWith(
+        expect.stringContaining('Refusing to run heartbeat monitor'),
+      );
     });
   });
 

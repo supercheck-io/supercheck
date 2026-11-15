@@ -76,11 +76,12 @@ export async function processScheduledMonitor(
     where: eq(monitors.id, monitorId),
     columns: { config: true, target: true, type: true, projectId: true, organizationId: true, frequencyMinutes: true, enabled: true, status: true, deletingAt: true },
   });
-  if (!monitor || monitor.enabled === false || monitor.status === 'paused' || monitor.deletingAt) {
+  if (!monitor || monitor.enabled === false || monitor.status === 'paused' || monitor.deletingAt || monitor.type === 'heartbeat') {
     // A deleted monitor still firing means the schedule delete after commit failed, so remove this job's
     // own repeatable schedule. Best effort: a later firing retries. Paused monitors are left alone: resume
     // re-adds the same repeat key, so removing here could race a resume and unschedule a live monitor.
-    if ((!monitor || monitor.deletingAt) && job.repeatJobKey) {
+    // A heartbeat is never scheduled (the worker sweep evaluates its pings), so a stray repeatable goes too.
+    if ((!monitor || monitor.deletingAt || monitor.type === 'heartbeat') && job.repeatJobKey) {
       try {
         const { monitorSchedulerQueue } = await getQueues();
         await monitorSchedulerQueue.removeRepeatableByKey(job.repeatJobKey);
