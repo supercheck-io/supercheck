@@ -3,6 +3,7 @@
 import React, { useEffect, useState, useMemo, useCallback } from "react";
 import { Spinner } from "@/components/ui/spinner";
 import { NewIncidentAction } from "@/components/sre/incidents/new-incident-action";
+import { MonitorMaintenanceBar } from "@/components/maintenance/maintenance-windows-panel";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { deleteMonitor } from "@/actions/delete-monitor";
 import {
@@ -955,6 +956,7 @@ export function MonitorDetailClient({
                   </Button>
 
                   <NewIncidentAction variant="detail" defaults={{ monitorId: monitor.id }} />
+                  <MonitorMaintenanceBar monitorId={monitor.id} />
 
                   <Button
                     variant="outline"

@@ -1,8 +1,9 @@
 "use client";
+
 import React, { useState, useCallback } from "react";
 import { CreateCard } from "./create-card";
 import { useRouter } from "next/navigation";
-import { Video, Chrome } from "lucide-react";
+import { CalendarClock, Video, Chrome } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -30,6 +31,7 @@ type ScriptType =
 
 export type QuickCreateCapabilities = {
   canDeclareIncidents: boolean;
+  canScheduleMaintenance: boolean;
   canCreateProjects: boolean;
   canInviteMembers: boolean;
   canCreateCliTokens: boolean;
@@ -167,16 +169,24 @@ export function CreatePageContent({
       onClick: () => router.push(`/notifications?create=true&type=${provider.type}`),
     };
   });
-  const respondTypes = capabilities.canDeclareIncidents
-    ? [
-        {
+  const respondTypes = [
+    capabilities.canDeclareIncidents
+      ? {
           icon: <NAV.incidents.icon size={20} className={AREA_TEXT[NAV.incidents.tone]} />,
           title: "Declare incident",
           description: "Open an incident by hand",
           onClick: () => router.push("/incidents?new=1"),
-        },
-      ]
-    : [];
+        }
+      : null,
+    capabilities.canScheduleMaintenance
+      ? {
+          icon: <CalendarClock size={20} className={AREA_TEXT[NAV.monitors.tone]} />,
+          title: "Schedule maintenance",
+          description: "Mute alerts for planned work",
+          onClick: () => router.push("/monitors?tab=maintenance&new=1"),
+        }
+      : null,
+  ].filter((item): item is NonNullable<typeof item> => Boolean(item));
 
   const investigationTypes = capabilities.canInvestigateSre
     ? [

@@ -10,6 +10,7 @@ import {
 import { ServiceDetailView } from "./service-detail-view";
 
 jest.mock("@/components/sre/incidents/new-incident-action", () => ({ NewIncidentAction: () => null }));
+jest.mock("@/components/maintenance/maintenance-windows-panel", () => ({ MonitorMaintenanceBar: () => null, ServiceMaintenanceAction: () => null }));
 jest.mock("@/actions/sre-services", () => ({
   addSreServiceResource: jest.fn(),
   approveSreTopologySuggestion: jest.fn(),

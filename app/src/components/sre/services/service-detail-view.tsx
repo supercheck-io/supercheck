@@ -58,6 +58,7 @@ import {
 import { PANEL_LINK, SEVERITY_TONES } from "@/components/sre/incidents/incident-sidebar";
 import { Button } from "@/components/ui/button";
 import { NewIncidentAction } from "@/components/sre/incidents/new-incident-action";
+import { ServiceMaintenanceAction } from "@/components/maintenance/maintenance-windows-panel";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import {
   Dialog,
@@ -419,6 +420,7 @@ export function ServiceDetailView({ initialDetail }: ServiceDetailViewProps) {
         </div>
         <div className="flex shrink-0 flex-wrap items-center gap-2 self-start">
           <NewIncidentAction variant="detail" defaults={{ serviceId: detail.service.id }} />
+          <ServiceMaintenanceAction serviceId={detail.service.id} />
         <Button
           variant="outline"
           size="sm"

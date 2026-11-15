@@ -18,6 +18,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
+import { useAllMonitors } from "@/hooks/use-all-monitors";
 import { useProjectContext } from "@/hooks/use-project-context";
 import { useSreIncidentAssignees } from "@/hooks/use-sre";
 import { useStatusPageDetail, useStatusPages } from "@/hooks/use-status-pages";
@@ -26,19 +27,6 @@ import { getSreIncidentAnalyticsQueryKey, getSreIncidentsQueryKey } from "@/lib/
 
 const NONE = "none";
 type Impact = "none" | "minor" | "major" | "critical";
-
-/** All monitors in the project, page by page (at most 2,000). */
-async function fetchAllMonitors(): Promise<Array<{ id: string; name: string }>> {
-  const all: Array<{ id: string; name: string }> = [];
-  for (let page = 1; page <= 20; page += 1) {
-    const response = await fetch(`/api/monitors?page=${page}&limit=100`);
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    const body = (await response.json()) as { data: Array<{ id: string; name: string }>; pagination?: { hasNextPage?: boolean } };
-    all.push(...body.data.map(({ id, name }) => ({ id, name })));
-    if (!body.pagination?.hasNextPage) break;
-  }
-  return all;
-}
 
 export type DeclareIncidentDefaults = { serviceId?: string; monitorId?: string };
 
@@ -82,12 +70,7 @@ export function DeclareIncidentDialog({
     staleTime: 60_000,
   });
   // Every monitor, not one page: the API caps a page at 100.
-  const monitors = useQuery({
-    queryKey: ["monitors", "picker", projectId],
-    queryFn: fetchAllMonitors,
-    enabled: open && Boolean(projectId),
-    staleTime: 60_000,
-  });
+  const monitors = useAllMonitors(open);
   const assignees = useSreIncidentAssignees(open);
   const statusPages = useStatusPages({ enabled: open && postPublicly });
   const pageDetail = useStatusPageDetail(open && postPublicly ? statusPageId : null);

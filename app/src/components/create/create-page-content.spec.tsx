@@ -27,6 +27,7 @@ const allCapabilities: QuickCreateCapabilities = {
   canCreateSreServices: true,
   canConfigureSreConnectors: true,
   canDeclareIncidents: true,
+  canScheduleMaintenance: true,
 };
 
 describe("CreatePageContent", () => {
@@ -68,6 +69,7 @@ describe("CreatePageContent", () => {
           canCreateSreServices: false,
           canConfigureSreConnectors: false,
           canDeclareIncidents: false,
+          canScheduleMaintenance: false,
         }}
       />,
     );

@@ -1,5 +1,5 @@
 import {
-  ArrowLeftRight, Chrome, ChevronsLeftRightEllipsis, Database, EthernetPort, HeartPulse, LaptopMinimal, Plug, SquareFunction,
+  ArrowLeftRight, CalendarClock, Chrome, ChevronsLeftRightEllipsis, Database, EthernetPort, HeartPulse, LaptopMinimal, Plug, SquareFunction,
   type LucideIcon,
 } from "lucide-react";
 import type { ComponentType } from "react";
@@ -17,9 +17,10 @@ import { ADMIN_TYPES, TYPE_TEXT, TYPE_TEXT_FORCE, VARIABLE_TYPES, typeTone, type
  */
 type Icon = LucideIcon | ComponentType<{ className?: string }>;
 
-export type CreateCapability = "incidents" | "sreServices" | "sreConnectors" | "projects" | "members" | "cliTokens";
+export type CreateCapability = "incidents" | "maintenance" | "sreServices" | "sreConnectors" | "projects" | "members" | "cliTokens";
 export type CreateCapabilities = {
   canDeclareIncidents: boolean;
+  canScheduleMaintenance: boolean;
   canCreateProjects: boolean;
   canInviteMembers: boolean;
   canCreateCliTokens: boolean;
@@ -28,6 +29,7 @@ export type CreateCapabilities = {
 };
 export const CAPABILITY_FLAG: Record<CreateCapability, keyof CreateCapabilities> = {
   incidents: "canDeclareIncidents",
+  maintenance: "canScheduleMaintenance",
   sreServices: "canCreateSreServices",
   sreConnectors: "canConfigureSreConnectors",
   projects: "canCreateProjects",
@@ -79,6 +81,10 @@ export const CREATE_ACTIONS: CreateAction[] = [
   {
     id: "respond-incident", group: "respond", title: "Declare incident", url: "/incidents?new=1", icon: NAV.incidents.icon,
     text: AREA_TEXT[NAV.incidents.tone], force: "", gate: "incidents",
+  },
+  {
+    id: "respond-maintenance", group: "respond", title: "Schedule maintenance", url: "/monitors?tab=maintenance&new=1", icon: CalendarClock,
+    text: AREA_TEXT[NAV.monitors.tone], force: "", gate: "maintenance",
   },
 
   test("browser", "Browser Test", Chrome),
