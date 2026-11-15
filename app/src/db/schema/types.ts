@@ -180,6 +180,10 @@ export type HeartbeatState = {
   lastPingKind?: "ping" | "fail";
   lastStartAt?: string;
   pingSeq?: number;
+  /** Incremented on every /fail, so a fail followed by a ping in one sweep window is not lost. */
+  failSeq?: number;
+  lastFailAt?: string;
+  evaluatedFailSeq?: number;
   lastUserAgent?: string;
   evaluatedSeq?: number;
   leaseUntil?: string;

@@ -17,6 +17,14 @@ export function dbErrorSummary(error: unknown): { errorName: string; causeCode?:
   };
 }
 
+// Chat and mail link previews fetch pasted URLs; they must not count as a run (they still get the same 200).
+const LINK_PREVIEW_AGENT =
+  /slackbot|slack-imgproxy|msteams|skypeuripreview|microsoftpreview|discordbot|telegrambot|whatsapp|twitterbot|facebookexternalhit|linkedinbot|googleimageproxy|applebot|mattermost-bot/i;
+
+export function isLinkPreviewAgent(userAgent: string | null): boolean {
+  return !!userAgent && LINK_PREVIEW_AGENT.test(userAgent);
+}
+
 export const HEARTBEAT_MAX_BODY_BYTES = 10_000;
 
 const OK_HEADERS = { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" };
@@ -33,7 +41,9 @@ function respond(request: Request, status: number, body: string, extra: Record<s
 export async function handleHeartbeatPing(request: Request, token: string, kind: HeartbeatPingKind): Promise<Response> {
   const length = Number(request.headers.get("content-length") ?? 0);
   if (Number.isFinite(length) && length > HEARTBEAT_MAX_BODY_BYTES) return respond(request, 413, "Payload Too Large");
-  if (!isHeartbeatTokenFormat(token)) return respond(request, 200, "OK");
+  if (!isHeartbeatTokenFormat(token) || isLinkPreviewAgent(request.headers.get("user-agent"))) {
+    return respond(request, 200, "OK");
+  }
 
   const tokenHash = hashHeartbeatToken(token);
   const ip = getClientIP(request.headers);

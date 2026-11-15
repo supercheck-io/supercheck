@@ -1,6 +1,7 @@
 jest.mock("@/utils/db", () => ({ db: {} }));
 import {
   AlertConfigConflictError,
+  enabledAlertConfigError,
   assertKeptProvidersValid,
   scheduleOutOfSync,
   frequencyMinutesError,
@@ -276,6 +277,12 @@ describe("heartbeat write rules (B6, B15)", () => {
     expect(noType.ok && noType.value).not.toHaveProperty("warnings");
   });
 
+  it("keeps heartbeat thresholds at 1 on every write, whatever the client sends", () => {
+    const out = normalizeMonitorAlertConfig({ failureThreshold: 5, recoveryThreshold: 3 }, { failureThreshold: 4 }, "heartbeat");
+    expect(out).toMatchObject({ ok: true, value: { failureThreshold: 1, recoveryThreshold: 1 } });
+    expect(normalizeMonitorAlertConfig({ failureThreshold: 5 }, null, "http_request")).toMatchObject({ ok: true, value: { failureThreshold: 5 } });
+  });
+
   it("gives a new heartbeat the contract defaults: one miss is a failure, sev2 incident, auto-resolve, late warning off", () => {
     expect(heartbeatCreateAlertConfig(null)).toEqual({
       enabled: false,
@@ -320,5 +327,32 @@ describe("heartbeat write rules (B6, B15)", () => {
     } as never;
     await mirrorProviderRowsToAlertConfig(tx, "m1");
     expect(set).toHaveBeenCalledWith({ alertConfig: expect.objectContaining({ notificationProviders: [PROVIDER], warnings: { heartbeat_late: true } }) });
+  });
+});
+
+describe("enabledAlertConfigError counts enabled warnings as an alert type", () => {
+  const base = {
+    enabled: true,
+    notificationProviders: ["0198d0f0-0000-7000-8000-000000000001"],
+    alertOnFailure: false,
+    alertOnRecovery: false,
+    alertOnSslExpiration: false,
+    failureThreshold: 1,
+    recoveryThreshold: 1,
+  };
+
+  it("accepts a heartbeat whose only alert is the late-ping warning", () => {
+    const normalized = normalizeMonitorAlertConfig({ ...base, warnings: { heartbeat_late: true } }, undefined, "heartbeat");
+    expect(normalized.ok && enabledAlertConfigError(normalized.value)).toBeNull();
+  });
+
+  it("still rejects no alert type when the warning is off or not valid for the type", () => {
+    const off = normalizeMonitorAlertConfig({ ...base, warnings: { heartbeat_late: false } }, undefined, "heartbeat");
+    const wrongType = normalizeMonitorAlertConfig({ ...base, warnings: { heartbeat_late: true } }, undefined, "http_request");
+    for (const normalized of [off, wrongType]) {
+      expect(normalized.ok && enabledAlertConfigError(normalized.value)).toBe(
+        "At least one alert type must be selected when alerts are enabled",
+      );
+    }
   });
 });

@@ -24,7 +24,14 @@ export async function recordHeartbeatPing(
           'lastPingKind', ${kind}::text,
           'pingSeq', coalesce((m.heartbeat_state->>'pingSeq')::bigint, 0) + 1,
           'lastUserAgent', ${ua}::text
-        ))`;
+        ))${
+          kind === "fail"
+            ? sql` || jsonb_build_object(
+                'failSeq', coalesce((m.heartbeat_state->>'failSeq')::bigint, 0) + 1,
+                'lastFailAt', to_jsonb(now())
+              )`
+            : sql``
+        }`;
   const rows = await db.execute(sql`
     UPDATE monitors AS m
     SET heartbeat_state = coalesce(m.heartbeat_state, '{}'::jsonb) || ${patch}

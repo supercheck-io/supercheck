@@ -58,7 +58,7 @@ The ping URL always answers `200 OK`, even when the token is unknown, rotated or
 </Callout>
 
 <Callout type="warn">
-Do not paste the ping URL into chat or email: link previews and mail scanners open URLs and would record a ping. If the URL leaks, rotate it.
+Requests from known chat link previews (Slack, Teams, Discord and similar) are ignored, but mail scanners and other tools that open links would still record a ping, so do not paste the URL into chat or email. If the URL leaks, rotate it.
 </Callout>
 
 ## Send pings
@@ -97,7 +97,7 @@ supercheck heartbeat ping "$URL" --start  # job started
 supercheck heartbeat ping "$URL" --fail   # job failed
 ```
 
-`heartbeat ping` sends one request and exits `0` when the server accepts it, `4` on an HTTP error (for example `429`), `5` after a 10-second timeout and `1` when it cannot connect. It never prints the token in its errors.
+`heartbeat ping` retries `429`, `503` and network errors up to 3 times within about 60 seconds, and exits `0` when the server accepts it, `4` on an HTTP error (for example `429`), `5` after a 10-second timeout and `1` when it cannot connect. It never prints the token in its errors.
 
 ## Late and down
 
@@ -122,7 +122,7 @@ The ping URL uses your instance's public app URL; there is no extra setting. The
 | Grace period | 1 minute to 1 day |
 | Ping history | At most one entry per 30 seconds; several pings inside 30 seconds become one entry |
 | Pings per URL | 10 per minute; more return `429` |
-| Pings per client IP | 120 per minute across all URLs (many jobs behind one NAT share it); more return `429` |
+| Pings per client IP | 1200 per minute across all URLs (many jobs behind one NAT share it); more return `429` |
 | Request size | 10 kB; larger requests return `413` |
 | Schedules | A fixed interval only. Cron expressions and time zones are not supported yet |
 

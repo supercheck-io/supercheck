@@ -60,6 +60,8 @@ describe("heartbeatDisplayState (B20)", () => {
     ["up, inside the interval", {}, "2026-01-01T10:59:59Z", "up"],
     ["up, exactly at the deadline", {}, "2026-01-01T11:00:00Z", "up"],
     ["up, overdue", {}, "2026-01-01T11:00:01Z", "late"],
+    ["up, overdue but deadline shifted after an app outage", { heartbeatState: { lastPingAt: "2026-01-01T10:00:00.000Z", deadlineShiftMs: 1_800_000 } }, "2026-01-01T11:20:00Z", "up"],
+    ["up, past the shifted time", { heartbeatState: { lastPingAt: "2026-01-01T10:00:00.000Z", deadlineShiftMs: 1_800_000 } }, "2026-01-01T11:30:01Z", "late"],
   ])("%s", (_label, overrides, now, expected) => {
     expect(heartbeatDisplayState(monitor(overrides), at(now))).toBe(expected);
   });

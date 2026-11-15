@@ -92,7 +92,11 @@ it("/start sets lastStartAt without counting a ping; /fail counts a failed ping"
   expect(lastCheckAt).toBeNull();
   expect((await callAction(token, "fail")).status).toBe(200);
   ({ state } = await read(id));
-  expect(state).toMatchObject({ lastPingKind: "fail", pingSeq: 1 });
+  expect(state).toMatchObject({ lastPingKind: "fail", pingSeq: 1, failSeq: 1, lastFailAt: expect.any(String) });
+  // A success ping after the fail keeps the fail count, so the sweep can still record the failure.
+  expect((await call(GET, token)).status).toBe(200);
+  ({ state } = await read(id));
+  expect(state).toMatchObject({ lastPingKind: "ping", pingSeq: 2, failSeq: 1 });
 });
 
 it("keeps keys written by others (anchorAt, sweep bookkeeping)", async () => {

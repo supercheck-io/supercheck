@@ -2,7 +2,9 @@ import { createHash, randomUUID } from "node:crypto";
 import { getRedisConnection } from "@/lib/queue";
 
 export const HEARTBEAT_TOKEN_LIMIT_PER_MINUTE = 10;
-export const HEARTBEAT_IP_LIMIT_PER_MINUTE = 120;
+// High on purpose: many jobs often share one NAT address, and a dropped ping is a false "missed" alert.
+// The 128-bit token stops guessing; this only bounds load from one address.
+export const HEARTBEAT_IP_LIMIT_PER_MINUTE = 1200;
 
 export type HeartbeatRateLimitResult = { allowed: true } | { allowed: false; retryAfterSeconds: number };
 

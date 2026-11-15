@@ -44,7 +44,9 @@ export function heartbeatLastAt(monitor: HeartbeatMonitorLike): number | null {
 export function heartbeatNextExpectedAt(monitor: HeartbeatMonitorLike): Date | null {
   const last = heartbeatLastAt(monitor);
   if (last === null) return null;
-  return new Date(last + monitor.frequencyMinutes * 60_000);
+  // The worker moves the deadline after an app outage (deadlineShiftMs); the badge follows it, never "Late" early.
+  const shift = Number(monitor.heartbeatState?.deadlineShiftMs ?? 0);
+  return new Date(last + monitor.frequencyMinutes * 60_000 + (Number.isFinite(shift) && shift > 0 ? shift : 0));
 }
 
 /**

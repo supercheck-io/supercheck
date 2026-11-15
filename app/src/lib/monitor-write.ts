@@ -91,8 +91,9 @@ export function normalizeMonitorAlertConfig(
       alertOnFailure: flag("alertOnFailure", true),
       alertOnRecovery: flag("alertOnRecovery", true),
       alertOnSslExpiration: flag("alertOnSslExpiration", false),
-      failureThreshold: num("failureThreshold"),
-      recoveryThreshold: num("recoveryThreshold"),
+      // Heartbeat: one missed run is one failure and one ping recovers (spec 4.6); thresholds are not editable.
+      failureThreshold: monitorType === "heartbeat" ? 1 : num("failureThreshold"),
+      recoveryThreshold: monitorType === "heartbeat" ? 1 : num("recoveryThreshold"),
       customMessage: typeof raw.customMessage === "string" ? raw.customMessage : typeof prior.customMessage === "string" ? prior.customMessage : "",
       incidentEnabled: optionalBool("incidentEnabled"),
       incidentSeverity: ["sev1", "sev2", "sev3", "sev4"].includes(raw.incidentSeverity as string)
@@ -150,7 +151,9 @@ export function enabledAlertConfigError(config: AlertConfig): string | null {
   }
   const max = parseInt(process.env.MAX_MONITOR_NOTIFICATION_CHANNELS || "10", 10);
   if (config.notificationProviders.length > max) return `You can only select up to ${max} notification channels`;
-  if (!config.alertOnFailure && !config.alertOnRecovery && !config.alertOnSslExpiration) {
+  // Warnings are already scoped to the monitor type by normalizeMonitorAlertConfig; an enabled one is an alert type.
+  const warningOn = Object.values(config.warnings ?? {}).includes(true);
+  if (!config.alertOnFailure && !config.alertOnRecovery && !config.alertOnSslExpiration && !warningOn) {
     return "At least one alert type must be selected when alerts are enabled";
   }
   return null;

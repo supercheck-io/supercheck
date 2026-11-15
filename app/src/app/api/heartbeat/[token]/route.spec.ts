@@ -57,6 +57,17 @@ describe("public heartbeat ping (B2-B5)", () => {
     expect(mockRecord).not.toHaveBeenCalled();
   });
 
+  it("a chat link preview answers the same 200 OK and records nothing", async () => {
+    for (const ua of ["Slackbot-LinkExpanding 1.0 (+https://api.slack.com/robots)", "Mozilla/5.0 SkypeUriPreview Preview/0.5", "Discordbot/2.0"]) {
+      const res = await GET(new Request(url(), { headers: { "user-agent": ua } }), ctx());
+      expect([res.status, await res.text()]).toEqual([200, "OK"]);
+    }
+    expect(mockRecord).not.toHaveBeenCalled();
+    const real = await GET(new Request(url(), { headers: { "user-agent": "curl/8.5.0" } }), ctx());
+    expect(real.status).toBe(200);
+    expect(mockRecord).toHaveBeenCalledTimes(1);
+  });
+
   it("an unknown token (no row matched) answers the same 200 OK", async () => {
     mockRecord.mockResolvedValue(false);
     const res = await GET(new Request(url()), ctx());

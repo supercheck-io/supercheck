@@ -11,7 +11,7 @@ beforeEach(() => {
 });
 
 describe("checkHeartbeatRateLimit (B4)", () => {
-  it("uses 10 per token and 120 per IP hash, never the raw IP", async () => {
+  it("uses 10 per token and 1200 per IP hash, never the raw IP", async () => {
     mockEval.mockResolvedValue([1, 0]);
     await expect(checkHeartbeatRateLimit("h".repeat(64), "203.0.113.9")).resolves.toEqual({ allowed: true });
     const [, keyCount, tokenKey, ipKey, , , tokenLimit, ipLimit] = mockEval.mock.calls[0];
@@ -20,7 +20,7 @@ describe("checkHeartbeatRateLimit (B4)", () => {
     expect(ipKey).toMatch(/^supercheck:heartbeat:rl:ip:[0-9a-f]{64}$/);
     expect(ipKey).not.toContain("203.0.113.9");
     expect([tokenLimit, ipLimit]).toEqual([HEARTBEAT_TOKEN_LIMIT_PER_MINUTE, HEARTBEAT_IP_LIMIT_PER_MINUTE]);
-    expect([tokenLimit, ipLimit]).toEqual([10, 120]);
+    expect([tokenLimit, ipLimit]).toEqual([10, 1200]);
   });
 
   it("gives an unknown client IP its own per-token bucket instead of one shared bucket", async () => {

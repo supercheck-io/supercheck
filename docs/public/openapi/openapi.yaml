@@ -6218,7 +6218,7 @@ paths:
           description: "`Content-Length` over 10 000 bytes. The body is never read or
             stored."
         "429":
-          description: More than 10 pings a minute for this token, or 120 a minute from
+          description: More than 10 pings a minute for this token, or 1200 a minute from
             this client.
           headers:
             Retry-After:
@@ -6249,7 +6249,7 @@ paths:
           description: "`Content-Length` over 10 000 bytes. The body is never read or
             stored."
         "429":
-          description: More than 10 pings a minute for this token, or 120 a minute from
+          description: More than 10 pings a minute for this token, or 1200 a minute from
             this client.
           headers:
             Retry-After:
@@ -6280,7 +6280,7 @@ paths:
           description: "`Content-Length` over 10 000 bytes. The body is never read or
             stored."
         "429":
-          description: More than 10 pings a minute for this token, or 120 a minute from
+          description: More than 10 pings a minute for this token, or 1200 a minute from
             this client.
           headers:
             Retry-After:
@@ -6332,7 +6332,7 @@ paths:
           description: "`Content-Length` over 10 000 bytes. The body is never read or
             stored."
         "429":
-          description: More than 10 pings a minute for this token, or 120 a minute from
+          description: More than 10 pings a minute for this token, or 1200 a minute from
             this client.
           headers:
             Retry-After:
@@ -6365,7 +6365,7 @@ paths:
           description: "`Content-Length` over 10 000 bytes. The body is never read or
             stored."
         "429":
-          description: More than 10 pings a minute for this token, or 120 a minute from
+          description: More than 10 pings a minute for this token, or 1200 a minute from
             this client.
           headers:
             Retry-After:
@@ -6398,7 +6398,7 @@ paths:
           description: "`Content-Length` over 10 000 bytes. The body is never read or
             stored."
         "429":
-          description: More than 10 pings a minute for this token, or 120 a minute from
+          description: More than 10 pings a minute for this token, or 1200 a minute from
             this client.
           headers:
             Retry-After:
