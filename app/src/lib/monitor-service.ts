@@ -238,7 +238,7 @@ export async function updateMonitorHandler(
 
   const { providerSync } = options;
   // Worker-owned keys come from the row at write time, not from the earlier read.
-  const deletedWorkerKeys = workerKeysDroppedByWrite(existingMonitor, { target: updateData.target, config: updateData.config });
+  const deletedWorkerKeys = workerKeysDroppedByWrite(existingMonitor, { target: updateData.target, config: updateData.config, alertConfig: updateData.alertConfig });
   const setData = updateData.config === undefined
     ? (deletedWorkerKeys.length ? { ...updateData, config: configWithoutKeys(monitorTable.config, deletedWorkerKeys) } : updateData)
     : { ...updateData, config: configKeepingWorkerKeys(updateData.config, monitorTable.config, deletedWorkerKeys) };

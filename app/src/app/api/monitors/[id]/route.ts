@@ -424,7 +424,7 @@ export async function PUT(
                   config: configKeepingWorkerKeys(
                     updatePayload.config,
                     monitors.config,
-                    workerKeysDroppedByWrite(currentMonitor, { target: updatePayload.target, config: updatePayload.config }),
+                    workerKeysDroppedByWrite(currentMonitor, { target: updatePayload.target, config: updatePayload.config, alertConfig: updatePayload.alertConfig }),
                   ),
                 }
               : mcpDropped.length

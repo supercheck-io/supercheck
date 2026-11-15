@@ -52,22 +52,26 @@ export function configWithoutKeys(configColumn: unknown, keys: readonly string[]
  * baseline and history does not mix servers. `config` is the config being written (undefined: not replaced).
  */
 export function workerKeysDroppedByWrite(
-  stored: { target?: string | null; config?: unknown } | null | undefined,
-  next: { target?: string | null; config?: unknown },
+  stored: { target?: string | null; config?: unknown; alertConfig?: unknown } | null | undefined,
+  next: { target?: string | null; config?: unknown; alertConfig?: unknown },
 ): string[] {
+  // Decided from the saved settings, never from whether the earlier read had the key: the worker may write it
+  // between that read and this update.
   const dropped: string[] = [];
   const storedConfig = (stored?.config ?? {}) as Record<string, unknown>;
   const nextConfig = next.config as Record<string, unknown> | undefined;
-  if (nextConfig && storedConfig.sslAlertState !== undefined && nextConfig.sslAlertState === undefined) dropped.push("sslAlertState");
-  if (storedConfig.mcpState !== undefined) {
-    const auth = (c: unknown) => {
-      const a = (c as { mcp?: { auth?: Record<string, unknown> } } | undefined)?.mcp?.auth;
-      return JSON.stringify([a?.type, a?.secretKey, a?.headerName]);
-    };
-    const targetChanged = next.target != null && next.target !== stored?.target;
-    const authChanged = nextConfig !== undefined && auth(nextConfig) !== auth(storedConfig);
-    if (targetChanged || authChanged) dropped.push("mcpState");
+  if (nextConfig) {
+    const alerts = (next.alertConfig ?? stored?.alertConfig) as { enabled?: boolean; alertOnSslExpiration?: boolean } | null | undefined;
+    const sslAlertsOn = nextConfig.enableSslCheck === true && alerts?.enabled === true && alerts.alertOnSslExpiration === true;
+    if (!sslAlertsOn) dropped.push("sslAlertState");
   }
+  const auth = (c: unknown) => {
+    const a = (c as { mcp?: { auth?: Record<string, unknown> } } | undefined)?.mcp?.auth;
+    return JSON.stringify([a?.type, a?.secretKey, a?.headerName]);
+  };
+  const targetChanged = next.target != null && next.target !== stored?.target;
+  const authChanged = nextConfig !== undefined && auth(nextConfig) !== auth(storedConfig);
+  if (targetChanged || authChanged) dropped.push("mcpState");
   return dropped;
 }
 

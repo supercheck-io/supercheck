@@ -309,26 +309,32 @@ describe("configKeepingWorkerKeys", () => {
   });
 });
 
-describe("workerKeysDroppedByWrite (MCP baseline)", () => {
+describe("workerKeysDroppedByWrite", () => {
   const stored = { target: "https://a.example.com/mcp", config: { mcpState: { lastCycleKey: "c" }, mcp: { auth: { type: "bearer", secretKey: "T" } } } };
+  const mcpDropped = (s: Parameters<typeof workerKeysDroppedByWrite>[0], n: Parameters<typeof workerKeysDroppedByWrite>[1]) =>
+    workerKeysDroppedByWrite(s, n).includes("mcpState");
   it("drops mcpState when the target changes, with or without a config", () => {
     expect(workerKeysDroppedByWrite(stored, { target: "https://b.example.com/mcp" })).toEqual(["mcpState"]);
-    expect(workerKeysDroppedByWrite(stored, { target: "https://b.example.com/mcp", config: stored.config })).toEqual(["mcpState"]);
+    expect(mcpDropped(stored, { target: "https://b.example.com/mcp", config: stored.config })).toBe(true);
   });
   it.each([
     [{ type: "bearer", secretKey: "OTHER" }],
     [{ type: "header", secretKey: "T", headerName: "X-Key" }],
     [{ type: "none" }],
   ])("drops mcpState when the login changes to %j", (auth) => {
-    expect(workerKeysDroppedByWrite(stored, { config: { mcp: { auth } } })).toEqual(["mcpState"]);
+    expect(mcpDropped(stored, { config: { mcp: { auth } } })).toBe(true);
   });
-  it("keeps mcpState for other edits and when there is none", () => {
-    expect(workerKeysDroppedByWrite(stored, { target: stored.target, config: { mcp: { auth: stored.config.mcp.auth, slowMs: 500 }, timeoutSeconds: 10 } })).toEqual([]);
+  it("drops mcpState on a target change even when the earlier read had none (the worker may write it meanwhile)", () => {
+    expect(mcpDropped({ target: "a", config: {} }, { target: "b" })).toBe(true);
+  });
+  it("keeps mcpState for other edits", () => {
+    expect(mcpDropped(stored, { target: stored.target, config: { mcp: { auth: stored.config.mcp.auth, slowMs: 500 }, timeoutSeconds: 10 } })).toBe(false);
     expect(workerKeysDroppedByWrite(stored, {})).toEqual([]);
-    expect(workerKeysDroppedByWrite({ target: "a", config: {} }, { target: "b" })).toEqual([]);
   });
-  it("still reports a deliberately deleted SSL notice", () => {
-    expect(workerKeysDroppedByWrite({ config: { sslAlertState: {} } }, { config: {} })).toEqual(["sslAlertState"]);
+  it("drops sslAlertState whenever the saved settings send no SSL alerts, even if the earlier read had none", () => {
+    expect(workerKeysDroppedByWrite({ config: {} }, { config: { enableSslCheck: false } })).toEqual(["sslAlertState"]);
+    expect(workerKeysDroppedByWrite({ config: {}, alertConfig: { enabled: true, alertOnSslExpiration: true } }, { config: { enableSslCheck: true } })).toEqual([]);
+    expect(workerKeysDroppedByWrite({ config: {} }, { config: { enableSslCheck: true }, alertConfig: { enabled: true, alertOnSslExpiration: false } })).toEqual(["sslAlertState"]);
   });
   it("renders a config write that removes the key", () => {
     expect(new PgDialect().sqlToQuery(configWithoutKeys(monitors.config, ["mcpState"])).sql).toContain("- ARRAY['mcpState']");
