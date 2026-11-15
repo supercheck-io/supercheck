@@ -1,3 +1,4 @@
+import { isMonitorInMaintenance } from '../monitor/maintenance';
 import { Injectable, Logger } from '@nestjs/common';
 import { and, desc, eq, gt, isNotNull, isNull, sql } from 'drizzle-orm';
 import { DbService } from '../db/db.service';
@@ -210,6 +211,12 @@ export class MonitorCycleService {
       // reported, and a late result stays a diagnostic row.
       const synthetic =
         decision.closedBy === 'deadline' ? decision.missing : [];
+      // One check per cycle: missing-region rows inside a window are flagged and do not advance the sequence.
+      const inMaintenance = await isMonitorInMaintenance(
+        tx,
+        cycle.monitorId,
+        cycle.scheduledFor,
+      );
       for (const location of synthetic) {
         const [previous] = await tx
           .select()
@@ -222,7 +229,7 @@ export class MonitorCycleService {
           )
           .orderBy(desc(schema.monitorResults.checkedAt))
           .limit(1);
-        const counters = nextSequenceCounters(previous, false);
+        const counters = nextSequenceCounters(previous, false, inMaintenance);
         await tx.insert(schema.monitorResults).values({
           monitorId: cycle.monitorId,
           location,
@@ -235,7 +242,7 @@ export class MonitorCycleService {
             errorMessage: `No result from ${location} before the cycle deadline`,
             executionGroupId: cycle.id,
             recoverySequence: false,
-            outageKey: nextOutageKey(previous, false),
+            outageKey: nextOutageKey(previous, false, inMaintenance),
           },
           isStatusChange: counters.isStatusChange,
           consecutiveFailureCount: counters.consecutiveFailureCount,
@@ -243,6 +250,7 @@ export class MonitorCycleService {
           alertsSentForFailure: counters.alertsSentForFailure,
           alertsSentForRecovery: counters.alertsSentForRecovery,
           executionGroupId: cycle.id,
+          inMaintenance,
         });
       }
 
@@ -299,6 +307,7 @@ export class MonitorCycleService {
             monitor.config,
             previousStatus,
             decision.status,
+            inMaintenance,
           ),
           executionGroupId: cycle.id,
         };

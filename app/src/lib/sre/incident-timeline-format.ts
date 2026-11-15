@@ -17,6 +17,7 @@ export const STATE_LABELS: Record<string, string> = {
   manual_incident_created: "Incident created",
   resources_affected: "Affected resources changed",
   status_page_post_failed: "Status page post failed",
+  paging_suppressed_maintenance: "Reminders paused for maintenance",
   created_from_alert_history: "Incident created from alert",
   created_from_background_alert_triage: "Incident created from alert",
   triage_failed: "AI triage failed",

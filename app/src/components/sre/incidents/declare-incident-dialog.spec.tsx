@@ -17,16 +17,14 @@ jest.mock("next/navigation", () => ({ useRouter: () => ({ push: mockPush }) }));
 jest.mock("@/actions/sre-incidents", () => ({ createManualSreIncident: jest.fn() }));
 jest.mock("@/actions/sre-services", () => ({ getSreServices: jest.fn() }));
 jest.mock("@tanstack/react-query", () => ({
-  useQuery: ({ queryKey }: { queryKey: string[] }) =>
-    queryKey[0] === "monitors"
-      ? { data: [{ id: "m-1", name: "Checkout monitor" }], isLoading: false, error: null }
-      : { data: { services: [{ id: "svc-1", name: "Checkout API", status: "active" }] } },
+  useQuery: () => ({ data: { services: [{ id: "svc-1", name: "Checkout API", status: "active" }] } }),
   useQueryClient: () => ({ invalidateQueries: jest.fn().mockResolvedValue(undefined) }),
 }));
 let mockRole = "project_editor";
 jest.mock("@/hooks/use-project-context", () => ({
   useProjectContext: () => ({ projectId: "p-1", currentProject: { userRole: mockRole } }),
 }));
+jest.mock("@/hooks/use-all-monitors", () => ({ useAllMonitors: () => ({ data: [{ id: "m-1", name: "Checkout monitor" }], isLoading: false, error: null }) }));
 jest.mock("@/hooks/use-sre", () => ({ useSreIncidentAssignees: () => ({ data: { assignees: [{ id: "u-2", name: "Priya", image: null }] } }) }));
 jest.mock("@/hooks/use-status-pages", () => ({
   useStatusPages: () => ({ statusPages: [{ id: "sp-1", name: "Public" }], loading: false }),

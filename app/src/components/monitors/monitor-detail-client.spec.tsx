@@ -3,6 +3,7 @@ import { MonitorDetailClient } from "./monitor-detail-client";
 
 const invalidateQueries = jest.fn();
 jest.mock("@/components/sre/incidents/new-incident-action", () => ({ NewIncidentAction: () => null }));
+jest.mock("@/components/maintenance/maintenance-windows-panel", () => ({ MonitorMaintenanceBar: () => null, ServiceMaintenanceAction: () => null }));
 jest.mock("@tanstack/react-query", () => ({
   useQueryClient: () => ({ invalidateQueries }),
   useIsRestoring: () => false,

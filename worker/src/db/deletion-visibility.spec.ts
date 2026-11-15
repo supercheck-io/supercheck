@@ -52,6 +52,8 @@ const UNFILTERED_OK: Record<string, string> = {
   'monitor/heartbeat/heartbeat-sweep.service.ts':
     'heartbeat claim filters deleting_at IS NULL in a raw aliased subquery (FOR UPDATE SKIP LOCKED)',
   'db/deletion-visibility.ts': 'defines the helpers',
+  'monitor/maintenance.ts':
+    'the mute check is keyed by one monitor id and only decides whether its alerts are held',
   'execution/processors/playwright-execution.processor.ts':
     'run lifecycle writes by run and job id; a job being deleted is detected with isJobDeleting and its runs end as cancelled',
   'k6/processors/k6-execution.processor.ts':
@@ -73,6 +75,8 @@ const DIRECT_COLUMN_OK: Record<string, string> = {
   'monitor/heartbeat/heartbeat-sweep.service.ts':
     'heartbeat claim filters deleting_at IS NULL in a raw aliased subquery (FOR UPDATE SKIP LOCKED)',
   'db/deletion-visibility.ts': 'defines the helpers',
+  'monitor/maintenance.ts':
+    'the mute check is keyed by one monitor id and only decides whether its alerts are held',
 };
 
 function sources(): Array<{ rel: string; text: string }> {

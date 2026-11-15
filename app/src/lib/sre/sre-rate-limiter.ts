@@ -278,6 +278,12 @@ export async function checkSreIncidentCreateRateLimit(
   return perOrg.unavailable ? { allowed: true, remaining: 1 } : perOrg;
 }
 
+/** Maintenance window writes: 30 per minute per user. Fails open like the incident writes (they mute paging). */
+export async function checkMaintenanceWriteRateLimit(userId: string): Promise<SreRateLimitResult> {
+  const result = await checkSreRateLimit(`maintenance-write:${userId}`, 30, 60 * 1000);
+  return result.unavailable ? { allowed: true, remaining: 1 } : result;
+}
+
 /**
  * Rate limit investigation feedback submissions.
  * Per-user, per-investigation run: max 20 per 10 minutes.

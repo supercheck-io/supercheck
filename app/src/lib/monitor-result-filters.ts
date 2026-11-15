@@ -30,3 +30,33 @@ export const excludeSupersededSyntheticResults = sql`NOT (
 
 /** For latency and execution-time figures: a synthetic row has no measurement at all. */
 export const excludeSyntheticResults = sql`NOT ${isSynthetic}`;
+
+/**
+ * For uptime: checks inside a maintenance window are left out of both the numerator and the denominator. The
+ * rows stay for the results table and charts, which show them as maintenance. A multi-region cycle with any region
+ * inside a window is left out whole: dropping only some regions would count the cycle short of its regions, as down.
+ */
+export const excludeMaintenanceResults = sql`(${monitorResults.inMaintenance} IS NOT TRUE AND NOT (
+  ${monitorResults.executionGroupId} IS NOT NULL AND EXISTS (
+    SELECT 1 FROM monitor_results muted
+    WHERE muted.monitor_id = ${monitorResults.monitorId}
+      AND muted.execution_group_id = ${monitorResults.executionGroupId}
+      AND muted.in_maintenance
+      -- A synthetic row a real result replaced does not count, as in excludeSupersededSyntheticResults.
+      AND NOT (
+        muted.is_up IS NOT TRUE AND muted.response_time_ms IS NULL
+        AND COALESCE(muted.details->>'synthetic', '') = 'true'
+        AND EXISTS (
+          SELECT 1 FROM monitor_results replacement
+          WHERE replacement.monitor_id = muted.monitor_id
+            AND replacement.execution_group_id = muted.execution_group_id
+            AND replacement.location = muted.location
+            AND replacement.id <> muted.id
+            AND COALESCE(replacement.details->>'synthetic', '') <> 'true'
+        )
+      )
+  )
+))`;
+
+/** Uptime counts: one row per check (superseded synthetic rows dropped) and nothing checked during maintenance. */
+export const uptimeResults = sql`(${excludeSupersededSyntheticResults} AND ${excludeMaintenanceResults})`;

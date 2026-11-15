@@ -26,6 +26,7 @@ import { organization, projects } from "./organization";
 import { user } from "./auth";
 import { monitors } from "./monitor";
 import { sreIncidents, sreServices } from "./sre";
+import { maintenanceWindows } from "./maintenance";
 import type {
   StatusPageStatus,
   ComponentStatus,
@@ -231,9 +232,12 @@ export const incidents = pgTable("incidents", {
   resolvedAt: timestamp("resolved_at", { withTimezone: true }),
   sreIncidentId: uuid("sre_incident_id").references((): AnyPgColumn => sreIncidents.id, { onDelete: "set null" }),
   shortlink: varchar("shortlink", { length: 255 }),
+  /** Set when a maintenance window published this scheduled incident; ending or cancelling the window updates it. */
+  maintenanceWindowId: uuid("maintenance_window_id").references((): AnyPgColumn => maintenanceWindows.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
 }, (table) => ({
+  maintenanceWindowIdx: index("incidents_maintenance_window_id_idx").on(table.maintenanceWindowId),
   automaticOpenIdx: uniqueIndex("incidents_open_automatic_component_idx").on(table.sourceComponentId).where(sql`${table.sourceComponentId} is not null and ${table.status} <> 'resolved'`),
   sourceComponentIdx: index("incidents_source_component_idx").on(table.sourceComponentId),
   incidentsSreIncidentIdIdx: index("incidents_sre_incident_id_idx").on(table.sreIncidentId),

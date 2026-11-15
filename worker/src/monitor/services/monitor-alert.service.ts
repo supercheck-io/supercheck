@@ -1,7 +1,8 @@
 import { createHash } from 'node:crypto';
+import { isMonitorInMaintenance } from '../maintenance';
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { and, eq, inArray, lte, gt, ne, sql } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 import { liveMonitor } from '../../db/deletion-visibility';
 import { DbService } from '../../db/db.service';
 import * as schema from '../../db/schema';
@@ -160,35 +161,16 @@ export class MonitorAlertService {
       );
   }
 
-  /** An unresolved scheduled-maintenance incident covers the monitor right now. */
-  private async isUnderScheduledMaintenance(
+  /** A maintenance window or a status-page scheduled maintenance covered the monitor when the result was observed (else now): alerts are muted. */
+  private isMonitorInMaintenance(
     monitorId: string,
+    observedAt?: Date,
   ): Promise<boolean> {
-    const now = new Date();
-    const rows = await this.dbService.db
-      .select({ id: schema.incidents.id })
-      .from(schema.statusPageComponentMonitors)
-      .innerJoin(
-        schema.incidentComponents,
-        eq(
-          schema.incidentComponents.componentId,
-          schema.statusPageComponentMonitors.componentId,
-        ),
-      )
-      .innerJoin(
-        schema.incidents,
-        eq(schema.incidents.id, schema.incidentComponents.incidentId),
-      )
-      .where(
-        and(
-          eq(schema.statusPageComponentMonitors.monitorId, monitorId),
-          ne(schema.incidents.status, 'resolved'),
-          lte(schema.incidents.scheduledFor, now),
-          gt(schema.incidents.scheduledUntil, now),
-        ),
-      )
-      .limit(1);
-    return rows.length > 0;
+    return isMonitorInMaintenance(
+      this.dbService.db,
+      monitorId,
+      observedAt ?? new Date(),
+    );
   }
 
   /**
@@ -196,7 +178,7 @@ export class MonitorAlertService {
    * alerts off. Held back during scheduled maintenance like an alert, so the next failing check retries.
    */
   async signalFailure(monitorId: string, reason: string, observedAt?: Date) {
-    if (await this.isUnderScheduledMaintenance(monitorId)) {
+    if (await this.isMonitorInMaintenance(monitorId, observedAt)) {
       return {
         delivered: false,
         suppressed: true,
@@ -597,7 +579,7 @@ export class MonitorAlertService {
       return { delivered: false };
     }
 
-    if (await this.isUnderScheduledMaintenance(monitorId)) {
+    if (await this.isMonitorInMaintenance(monitorId, observedAt)) {
       this.logger.log(
         `[NOTIFY] Suppressing monitor ${monitorId} alert during scheduled maintenance`,
       );
@@ -839,7 +821,7 @@ export class MonitorAlertService {
     }
 
     // Same rule as status alerts. Nothing is recorded as sent, so the next check after the window alerts again.
-    if (await this.isUnderScheduledMaintenance(monitorId)) {
+    if (await this.isMonitorInMaintenance(monitorId)) {
       this.logger.log(
         `[SSL-NOTIFY] Suppressing monitor ${monitorId} SSL notice during scheduled maintenance`,
       );
@@ -963,7 +945,7 @@ export class MonitorAlertService {
       (alertConfig.warnings?.[kind] ?? WARNING_KINDS[kind].defaultOn) !== true
     )
       return { delivered: false, suppressed: true };
-    if (await this.isUnderScheduledMaintenance(monitor.id)) {
+    if (await this.isMonitorInMaintenance(monitor.id)) {
       this.logger.log(
         `[WARN-NOTIFY] Suppressing ${kind} for monitor ${monitor.id} during scheduled maintenance`,
       );

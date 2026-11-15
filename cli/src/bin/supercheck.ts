@@ -38,6 +38,7 @@ import { doctorCommand } from '../commands/doctor.js'
 import { upgradeCommand } from '../commands/upgrade.js'
 import { incidentCommand } from '../commands/incidents.js'
 import { serviceCommand } from '../commands/services.js'
+import { maintenanceCommand } from '../commands/maintenance.js'
 import { sreCommand } from '../commands/sre.js'
 import { analyticsCommand } from '../commands/analytics.js'
 import { tokenCommand } from '../commands/tokens.js'
@@ -189,6 +190,7 @@ program.addCommand(auditCommand)
 // Register commands — AI SRE
 program.addCommand(incidentCommand)
 program.addCommand(serviceCommand)
+program.addCommand(maintenanceCommand)
 program.addCommand(sreCommand)
 program.addCommand(analyticsCommand)
 program.addCommand(tokenCommand)

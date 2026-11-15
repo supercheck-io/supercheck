@@ -1,3 +1,4 @@
+import { listMaintenanceWindows } from "@/lib/maintenance/windows";
 import { liveJob, liveMonitor, liveRunOfLiveJob } from "@/lib/deletion/visibility";
 import { and, asc, desc, eq, exists, ilike, inArray, isNull, lt, ne, or, sql, type SQL } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
@@ -358,6 +359,20 @@ export function registerMcpTools(server: McpServer, ctx: McpCallContext): void {
     const { autoInvestigateEnabledAt, ...policy } = await getNotificationPolicy(ctx.projectId);
     return { policy: { ...policy, autoInvestigateEnabledAt: iso(autoInvestigateEnabledAt) } };
   });
+
+  tool("list_maintenance_windows", "List maintenance windows: during one, covered monitors keep running but send no alerts, open no incidents and are left out of uptime. Filter by state (active, scheduled, past) or by a monitor it covers." + UNTRUSTED, "monitor",
+    { state: z.enum(["active", "scheduled", "past"]).optional(), monitorId: z.string().uuid().optional() },
+    async ({ state, monitorId }) => {
+      const result = await listMaintenanceWindows(
+        { userId: ctx.userId, organizationId: ctx.organizationId, orgPendingDeletion: ctx.orgPendingDeletion, project: { id: ctx.projectId, userRole: ctx.role } },
+        { state, monitorId },
+      );
+      if (!result.ok) throw new McpToolFailure(result.code, result.error);
+      return { windows: result.windows.map((w) => ({
+        id: w.id, title: safeText(w.title, 200), state: w.state, scope: w.scope, recurrence: w.recurrence, timezone: w.timezone,
+        occurrenceStartsAt: iso(w.occurrenceStartsAt), occurrenceEndsAt: iso(w.occurrenceEndsAt), targets: w.targets,
+      })) };
+    });
 
   // Incident settings of an alert config; both switches default to on.
   const incidentSettings = (alert: { incidentEnabled?: boolean; incidentSeverity?: string; autoResolveIncident?: boolean } | null | undefined) => ({

@@ -2,7 +2,7 @@ import { liveMonitor } from "@/lib/deletion/visibility";
 import { and, eq, gte, isNotNull, lt, sql } from "drizzle-orm";
 import { db } from "@/utils/db";
 import { monitorAggregates, monitorResults, monitors } from "@/db/schema";
-import { excludeSupersededSyntheticResults } from "@/lib/monitor-result-filters";
+import { uptimeResults } from "@/lib/monitor-result-filters";
 
 /**
  * Raw check-row counts per UTC period for a project, served from monitor_aggregates where they hold and
@@ -10,7 +10,7 @@ import { excludeSupersededSyntheticResults } from "@/lib/monitor-result-filters"
  *
  * Counts are rows (one per region), not cycles: the per-location aggregate rows are summed, never the
  * combined row. The aggregator builds both from the same raw rows with the same
- * `excludeSupersededSyntheticResults` filter used by the raw path below, so the two agree.
+ * `uptimeResults` filter (no superseded synthetic rows, no maintenance rows) as the raw path below, so the two agree.
  */
 export type PeriodCounts = Map<number, { total: number; up: number }>;
 export type RawGap = { monitorId: string; from: number; to: number | null };
@@ -129,7 +129,7 @@ export async function getRowCountsByPeriod(input: {
     FROM jsonb_to_recordset(${ranges}::jsonb) AS g(m uuid, f timestamptz, t timestamptz)
     JOIN ${monitorResults} ON ${monitorResults.monitorId} = g.m
       AND ${monitorResults.checkedAt} >= g.f AND ${monitorResults.checkedAt} < g.t
-    WHERE ${excludeSupersededSyntheticResults}
+    WHERE ${uptimeResults}
     GROUP BY 1`);
   for (const row of raw) add(Number(row.period) * unit, Number(row.total), Number(row.up));
   return out;
