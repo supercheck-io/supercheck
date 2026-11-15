@@ -471,7 +471,10 @@ export async function extendMaintenanceWindow(
   if (until.getTime() - row.occurrenceStartsAt!.getTime() > 7 * 24 * 60 * MINUTE) return { ok: false, code: "invalid", error: "A window can last at most 7 days" };
   if (row.recurrence !== "once") {
     const next = nextOccurrence(scheduleOf(row), row.occurrenceEndsAt!, row.occurrenceStartsAt);
-    if (next && until > next.startsAt) return { ok: false, code: "invalid", error: "The new end runs into the next occurrence" };
+    // The advance tick picks up the next occurrence only ADVANCE_GRACE_MS after this one ends.
+    if (next && until.getTime() > next.startsAt.getTime() - ADVANCE_GRACE_MS) {
+      return { ok: false, code: "invalid", error: "Leave at least 10 minutes before the next occurrence starts" };
+    }
   }
   const [updated] = await db.transaction(async (tx) => {
     const done = await tx.update(maintenanceWindows).set({ occurrenceEndsAt: until, updatedAt: now }).where(unchanged(row)).returning();
@@ -530,7 +533,22 @@ export async function deleteMaintenanceWindow(actor: StatusPageIncidentActor, id
   if ("error" in loaded) return loaded.error!;
   const { row } = loaded;
   if (windowState(row) === "active") return { ok: false, code: "conflict", error: "End the window before deleting it" };
-  await db.delete(maintenanceWindows).where(eq(maintenanceWindows.id, row.id));
+  // Under the row lock that linking a status-page post also takes: a post linked meanwhile blocks the delete.
+  const outcome = await db.transaction(async (tx) => {
+    // Same row as read (any state: past and cancelled windows can be deleted), nothing written since.
+    const [locked] = await tx.select({ id: maintenanceWindows.id }).from(maintenanceWindows).where(and(
+      eq(maintenanceWindows.id, row.id),
+      sql`date_trunc('milliseconds', ${maintenanceWindows.updatedAt}) = ${row.updatedAt.toISOString()}::timestamptz`,
+    )).for("update");
+    if (!locked) return "changed" as const;
+    const [posted] = await tx.select({ id: statusPageIncidents.id }).from(statusPageIncidents)
+      .where(and(eq(statusPageIncidents.maintenanceWindowId, row.id), sql`${statusPageIncidents.status} <> 'resolved'`)).limit(1);
+    if (posted) return "on_status_page" as const;
+    await tx.delete(maintenanceWindows).where(eq(maintenanceWindows.id, row.id));
+    return "deleted" as const;
+  });
+  if (outcome === "changed") return CHANGED;
+  if (outcome === "on_status_page") return { ok: false, code: "conflict", error: "This window is on a status page. Cancel it first." };
   await audit(actor, "maintenance_window_deleted", row.id, { source });
   return { ok: true };
 }

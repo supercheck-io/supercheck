@@ -188,6 +188,26 @@ describe("window lifecycle (M10, AC12)", () => {
     expect(await extendMaintenanceWindow(actor, later.window.id, { byMinutes: 30 })).toMatchObject({ ok: false, code: "conflict" });
   });
 
+  it("keeps 10 minutes before a series' next occurrence when extending", async () => {
+    // Daily 60 minutes, started 5 minutes ago: tomorrow starts 1440 minutes after today's start.
+    const series = await createMaintenanceWindow(actor, { ...oneOff(-5), recurrence: "daily" }, "api");
+    if (!series.ok) throw new Error(series.error);
+    const toNextStart = 1440 - 60;
+    expect(await extendMaintenanceWindow(actor, series.window.id, { byMinutes: toNextStart })).toMatchObject({ ok: false, code: "invalid" });
+    expect(await extendMaintenanceWindow(actor, series.window.id, { byMinutes: toNextStart - 10 })).toMatchObject({ ok: true });
+  });
+
+  it("refuses to delete once a status-page post is linked, even after the window was read", async () => {
+    const created = await createMaintenanceWindow(actor, oneOff(120), "api");
+    if (!created.ok) throw new Error(created.error);
+    const [page] = await client`INSERT INTO status_pages (id, organization_id, project_id, name, subdomain) VALUES (uuidv7(), ${org}, ${project}, 'S4', ${`s${randomUUID().slice(0, 8)}`}) RETURNING id`;
+    await client`INSERT INTO incidents (id, status_page_id, name, status, impact, scheduled_for, scheduled_until, maintenance_window_id)
+      VALUES (uuidv7(), ${page!.id}, 'm', 'scheduled', 'minor', now() + interval '2 hours', now() + interval '3 hours', ${created.window.id})`;
+    expect(await deleteMaintenanceWindow(admin, created.window.id)).toMatchObject({ ok: false, code: "conflict" });
+    await client`UPDATE incidents SET status = 'resolved' WHERE maintenance_window_id = ${created.window.id}`;
+    expect(await deleteMaintenanceWindow(admin, created.window.id)).toMatchObject({ ok: true });
+  });
+
   it("cancels a scheduled one-off and resolves its linked status-page maintenance", async () => {
     const created = await createMaintenanceWindow(actor, oneOff(120), "api");
     if (!created.ok) throw new Error(created.error);
