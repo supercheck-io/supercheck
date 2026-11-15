@@ -157,7 +157,11 @@ export function MonitorMaintenanceBar({ monitorId }: { monitorId: string }) {
   const canWrite = Boolean(currentProject?.userRole && checkRolePermissionsClient(currentProject.userRole, { monitor: ["update"] }));
   const active = useMaintenanceWindows({ monitorId, state: "active" });
   const [open, setOpen] = useState(false);
-  const current = active.data?.[0];
+  // Alerts stay muted until the last of the overlapping windows ends.
+  const current = active.data?.reduce<MaintenanceWindowItem | undefined>(
+    (latest, window) => (!latest || (window.occurrenceEndsAt ?? "") > (latest.occurrenceEndsAt ?? "") ? window : latest),
+    undefined,
+  );
   if (!current && !canWrite) return null;
   return (
     <div className="flex flex-wrap items-center gap-2">

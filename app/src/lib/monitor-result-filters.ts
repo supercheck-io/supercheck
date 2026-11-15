@@ -33,9 +33,17 @@ export const excludeSyntheticResults = sql`NOT ${isSynthetic}`;
 
 /**
  * For uptime: checks inside a maintenance window are left out of both the numerator and the denominator. The
- * rows stay for the results table and charts, which show them as maintenance.
+ * rows stay for the results table and charts, which show them as maintenance. A multi-region cycle with any region
+ * inside a window is left out whole: dropping only some regions would count the cycle short of its regions, as down.
  */
-export const excludeMaintenanceResults = sql`${monitorResults.inMaintenance} IS NOT TRUE`;
+export const excludeMaintenanceResults = sql`(${monitorResults.inMaintenance} IS NOT TRUE AND NOT (
+  ${monitorResults.executionGroupId} IS NOT NULL AND EXISTS (
+    SELECT 1 FROM monitor_results muted
+    WHERE muted.monitor_id = ${monitorResults.monitorId}
+      AND muted.execution_group_id = ${monitorResults.executionGroupId}
+      AND muted.in_maintenance
+  )
+))`;
 
 /** Uptime counts: one row per check (superseded synthetic rows dropped) and nothing checked during maintenance. */
 export const uptimeResults = sql`(${excludeSupersededSyntheticResults} AND ${excludeMaintenanceResults})`;

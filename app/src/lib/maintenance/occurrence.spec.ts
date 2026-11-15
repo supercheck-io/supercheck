@@ -11,6 +11,13 @@ describe("zonedTimeToUtc", () => {
     expect(iso(zonedTimeToUtc("2026-07-01", "09:30", "UTC"))).toBe("2026-07-01T09:30:00.000Z");
     expect(iso(zonedTimeToUtc("2026-07-01", "09:30", "Asia/Kolkata"))).toBe("2026-07-01T04:00:00.000Z");
   });
+  it("takes the earlier instant of a repeated hour far east of UTC", () => {
+    // Auckland leaves daylight time at 03:00 NZDT on 4 Apr 2027 (14:00Z): 02:30 first happens at 13:30Z (+13).
+    expect(zonedTimeToUtc("2027-04-04", "02:30", "Pacific/Auckland").toISOString()).toBe("2027-04-03T13:30:00.000Z");
+    expect(zonedTimeToUtc("2027-04-04", "03:30", "Pacific/Auckland").toISOString()).toBe("2027-04-03T15:30:00.000Z");
+    expect(zonedTimeToUtc("2027-09-26", "02:30", "Pacific/Auckland").toISOString()).toBe("2027-09-25T14:00:00.000Z");
+  });
+
   it("moves a start inside a spring-forward gap to the first valid minute", () => {
     // Berlin 2026-03-29: 02:00 -> 03:00 local (01:00Z).
     expect(iso(zonedTimeToUtc("2026-03-29", "02:30", "Europe/Berlin"))).toBe("2026-03-29T01:00:00.000Z");

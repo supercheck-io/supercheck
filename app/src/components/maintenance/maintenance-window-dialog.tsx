@@ -68,6 +68,8 @@ export function MaintenanceWindowDialog({ open, onOpenChange, defaults }: { open
   const [pickerOpen, setPickerOpen] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [pending, setPending] = useState(false);
+  // The status page controls show only for a one-off; hidden, they neither block nor post.
+  const posting = canPostPublicly && publish && recurrence === "once";
 
   const monitors = useAllMonitors(open && scope === "monitors");
   const services = useQuery({ queryKey: ["sre-services", "picker", projectId], queryFn: getSreServices, enabled: open && scope === "services" && Boolean(projectId), staleTime: 60_000 });
@@ -98,7 +100,7 @@ export function MaintenanceWindowDialog({ open, onOpenChange, defaults }: { open
           endsOn: recurrence !== "once" && endsOn ? endsOn : null,
           weekdays: recurrence === "weekly" ? weekdays : null,
           monthDay: recurrence === "monthly" ? Number(monthDay) : null,
-          statusPages: publish && recurrence === "once" && statusPageId ? [{ statusPageId, componentIds }] : [],
+          statusPages: posting && statusPageId ? [{ statusPageId, componentIds }] : [],
           notifySubscribers: notify,
         }),
       });
@@ -120,7 +122,7 @@ export function MaintenanceWindowDialog({ open, onOpenChange, defaults }: { open
   };
 
   const fieldError = (key: string) => (fieldErrors[key] ? <p className="text-xs text-destructive" id={`mw-${key}-error`}>{fieldErrors[key]}</p> : null);
-  const invalid = !title.trim() || (scope !== "project" && selectedCount === 0) || (recurrence === "weekly" && weekdays.length === 0) || (publish && (!statusPageId || componentIds.length === 0));
+  const invalid = !title.trim() || (scope !== "project" && selectedCount === 0) || (recurrence === "weekly" && weekdays.length === 0) || (posting && (!statusPageId || componentIds.length === 0));
 
   return (
     <Dialog open={open} onOpenChange={(next) => (next || !pending) && onOpenChange(next)}>

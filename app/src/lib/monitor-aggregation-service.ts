@@ -804,8 +804,11 @@ export class MonitorAggregationService {
       if (list) list.push(row);
       else byPeriod.set(key, [row]);
     }
+    // Uptime leaves out maintenance rows, and a whole cycle when any of its regions ran inside a window.
+    const mutedGroups = new Set(rows.filter((row) => row.inMaintenance && row.executionGroupId).map((row) => row.executionGroupId));
+    const uptimeRows = (list: CheckRow[]) => list.filter((row) => !row.inMaintenance && !(row.executionGroupId && mutedGroups.has(row.executionGroupId)));
     const checksByPeriod = new Map<number, { total: number; up: number }>();
-    for (const check of groupChecks(rows.filter((row) => !row.inMaintenance), resolve)) {
+    for (const check of groupChecks(uptimeRows(rows), resolve)) {
       if (check.start < from || check.start >= to) continue;
       const key = periodOf(check.start);
       const counts = checksByPeriod.get(key) ?? { total: 0, up: 0 };
@@ -867,7 +870,7 @@ export class MonitorAggregationService {
         else byLocation.set(row.location, [row]);
       }
       for (const [location, locationRows] of byLocation) {
-        const counted = locationRows.filter((row) => !row.inMaintenance);
+        const counted = uptimeRows(locationRows);
         located.push(
           build(periodStart, location as MonitoringLocation, locationRows, {
             total: counted.length,

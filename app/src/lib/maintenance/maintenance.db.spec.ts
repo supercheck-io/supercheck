@@ -240,6 +240,21 @@ describe("updates", () => {
     expect(new Date(linked!.scheduled_until).getTime()).toBe(moved.ok && moved.window.occurrenceEndsAt!.getTime());
   });
 
+  it("never brings back an occurrence that already ran after the schedule is lengthened", async () => {
+    const series = await createMaintenanceWindow(actor, { ...oneOff(-30), recurrence: "daily" }, "api");
+    if (!series.ok) throw new Error(series.error);
+    // Lengthened mid-occurrence: today's stays 60 minutes, and ending it moves to tomorrow, not a longer today.
+    const edited = await updateMaintenanceWindow(actor, series.window.id, { durationMinutes: 180 });
+    expect(edited.ok && edited.window.occurrenceEndsAt!.getTime()).toBe(series.window.occurrenceEndsAt!.getTime());
+    const ended = await endMaintenanceWindow(actor, series.window.id);
+    expect(ended.ok && ended.window.occurrenceStartsAt!.getTime() - series.window.occurrenceStartsAt!.getTime()).toBe(24 * 60 * MIN);
+    // The tick, too, after the stored occurrence is over.
+    await client`UPDATE maintenance_windows SET occurrence_starts_at = ${series.window.occurrenceStartsAt!.toISOString()}::timestamptz, occurrence_ends_at = now() - interval '15 minutes' WHERE id = ${series.window.id}`;
+    expect(await advanceMaintenanceWindows()).toBe(1);
+    const advanced = await getMaintenanceWindow(actor, series.window.id);
+    expect(advanced.ok && advanced.window.occurrenceStartsAt!.getTime()).toBeGreaterThan(Date.now());
+  });
+
   it("ends a series' active occurrence by moving to the next one, and lists live windows before history", async () => {
     const series = await createMaintenanceWindow(actor, { ...oneOff(-5), recurrence: "daily" }, "api");
     if (!series.ok) throw new Error(series.error);

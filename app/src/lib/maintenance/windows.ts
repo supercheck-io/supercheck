@@ -331,6 +331,16 @@ async function loadForWrite(actor: StatusPageIncidentActor, id: string, permissi
 const ADVANCE_GRACE_MS = 10 * MINUTE;
 
 /**
+ * The occurrence at or after `from` that starts after `ran`, the start of an occurrence that already began. An
+ * edited schedule (say, a longer duration) never brings back an occurrence that already ran or was ended.
+ */
+function nextOccurrence(schedule: WindowSchedule, from: Date, ran: Date | null): Occurrence | null {
+  let next = occurrenceAtOrAfter(schedule, from);
+  while (next && ran && next.startsAt <= ran) next = occurrenceAtOrAfter(schedule, next.endsAt);
+  return next;
+}
+
+/**
  * The row is still live and unchanged since it was read: every write bumps updated_at, so a concurrent tick,
  * edit or delete makes this match nothing. Compared at millisecond precision, the precision the row was read at.
  */
@@ -380,7 +390,9 @@ export async function updateMaintenanceWindow(
   if (targets === null) return { ok: false, code: "not_found", error: "Pick at least one service or monitor in this project" };
 
   // Edits apply to future occurrences only: an active occurrence keeps its times.
-  const occurrence: Occurrence | null = state === "active" ? { startsAt: row.occurrenceStartsAt!, endsAt: row.occurrenceEndsAt! } : occurrenceAtOrAfter(merged, now);
+  const occurrence: Occurrence | null = state === "active"
+    ? { startsAt: row.occurrenceStartsAt!, endsAt: row.occurrenceEndsAt! }
+    : nextOccurrence(merged, now, row.occurrenceStartsAt && row.occurrenceStartsAt <= now ? row.occurrenceStartsAt : null);
   if (!occurrence) return { ok: false, code: "invalid", error: "This schedule has no occurrence in the future" };
   const [updated] = await db.transaction(async (tx) => {
     const [claimed] = await tx.update(maintenanceWindows).set({ updatedAt: now }).where(unchanged(row)).returning({ id: maintenanceWindows.id });
@@ -426,7 +438,7 @@ export async function endMaintenanceWindow(actor: StatusPageIncidentActor, id: s
   const { row } = loaded;
   const now = new Date();
   if (windowState(row, now) !== "active") return { ok: false, code: "conflict", error: "Only an active window can be ended" };
-  const next = row.recurrence === "once" ? null : occurrenceAtOrAfter(scheduleOf(row), row.occurrenceEndsAt!);
+  const next = row.recurrence === "once" ? null : nextOccurrence(scheduleOf(row), row.occurrenceEndsAt!, row.occurrenceStartsAt);
   const [updated] = await db.transaction(async (tx) => {
     const done = await tx.update(maintenanceWindows).set(
       next
@@ -458,7 +470,7 @@ export async function extendMaintenanceWindow(
   if (until <= now) return { ok: false, code: "invalid", error: "The new end must be in the future" };
   if (until.getTime() - row.occurrenceStartsAt!.getTime() > 7 * 24 * 60 * MINUTE) return { ok: false, code: "invalid", error: "A window can last at most 7 days" };
   if (row.recurrence !== "once") {
-    const next = occurrenceAtOrAfter(scheduleOf(row), row.occurrenceEndsAt!);
+    const next = nextOccurrence(scheduleOf(row), row.occurrenceEndsAt!, row.occurrenceStartsAt);
     if (next && until > next.startsAt) return { ok: false, code: "invalid", error: "The new end runs into the next occurrence" };
   }
   const [updated] = await db.transaction(async (tx) => {
@@ -536,7 +548,7 @@ export async function advanceMaintenanceWindows(now = new Date()): Promise<numbe
     or(lte(maintenanceWindows.occurrenceEndsAt, new Date(now.getTime() - ADVANCE_GRACE_MS)), isNull(maintenanceWindows.occurrenceEndsAt)),
   )).limit(500);
   for (const row of due) {
-    const next = row.recurrence === "once" ? null : occurrenceAtOrAfter(scheduleOf(row), row.occurrenceEndsAt && row.occurrenceEndsAt > now ? row.occurrenceEndsAt : now);
+    const next = row.recurrence === "once" ? null : nextOccurrence(scheduleOf(row), row.occurrenceEndsAt && row.occurrenceEndsAt > now ? row.occurrenceEndsAt : now, row.occurrenceStartsAt);
     await db.update(maintenanceWindows).set(
       next ? { occurrenceStartsAt: next.startsAt, occurrenceEndsAt: next.endsAt, updatedAt: now } : { completedAt: now, updatedAt: now },
     ).where(unchanged(row));

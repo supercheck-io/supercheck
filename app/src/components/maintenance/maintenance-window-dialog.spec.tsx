@@ -77,4 +77,14 @@ describe("MaintenanceWindowDialog", () => {
     fireEvent.click(screen.getByRole("checkbox", { name: "Mon" }));
     expect(screen.getByRole("button", { name: "Schedule maintenance" })).toBeEnabled();
   });
+
+  it("does not let hidden status page fields block a recurring window", () => {
+    render(<MaintenanceWindowDialog open onOpenChange={jest.fn()} defaults={{ monitorId: "m-1" }} />);
+    fireEvent.change(screen.getByLabelText("Title"), { target: { value: "x" } });
+    fireEvent.click(screen.getByRole("switch", { name: "Show on a status page" }));
+    expect(screen.getByRole("button", { name: "Schedule maintenance" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("combobox", { name: "Repeats" }));
+    fireEvent.click(screen.getByRole("option", { name: "Daily" }));
+    expect(screen.getByRole("button", { name: "Schedule maintenance" })).toBeEnabled();
+  });
 });

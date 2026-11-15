@@ -67,9 +67,11 @@ export function zonedTimeToUtc(date: string, time: string, zone: string): Date {
   const [year, month, day] = date.split("-").map(Number);
   const [hour, minute] = time.split(":").map(Number);
   const target = Date.UTC(year!, month! - 1, day!, hour!, minute!);
-  // Offsets either side of the target cover any transition within a day.
-  const candidates = [target - DAY / 2, target + DAY / 2]
-    .map((probe) => target - (wallMs(new Date(probe), zone) - probe))
+  // The wall time read as UTC is off by up to 14 hours, so probe offsets a whole day either side: the offset in
+  // force before a transition near the target is always among them (Pacific/Auckland at +13 needs the -1 day probe).
+  const candidates = [...new Set([-DAY, -DAY / 2, 0, DAY / 2, DAY]
+    .map((shift) => target + shift)
+    .map((probe) => target - (wallMs(new Date(probe), zone) - probe)))]
     .sort((a, b) => a - b);
   const exact = candidates.find((utc) => wallMs(new Date(utc), zone) === target);
   if (exact !== undefined) return new Date(exact);

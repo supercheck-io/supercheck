@@ -101,6 +101,14 @@ describe("monitor and service actions", () => {
     expect(screen.getByRole("dialog")).toHaveAttribute("data-defaults", JSON.stringify({ monitorId: "m-1" }));
   });
 
+  it("shows the latest end when overlapping windows cover the monitor", () => {
+    const end = (h: number) => new Date(Date.UTC(2026, 10, 20, h, 0)).toISOString();
+    mockWindows = { data: [win({ id: "w-1", occurrenceEndsAt: end(11) }), win({ id: "w-2", occurrenceEndsAt: end(13) })] };
+    render(<MonitorMaintenanceBar monitorId="m-1" />);
+    const latest = new Date(end(13)).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+    expect(screen.getByTestId("maintenance-banner")).toHaveTextContent(`In maintenance until ${latest}`);
+  });
+
   it("renders nothing for a viewer when no window is active", () => {
     mockRole = "project_viewer";
     mockWindows = { data: [] };
