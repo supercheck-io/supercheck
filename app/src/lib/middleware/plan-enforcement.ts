@@ -218,10 +218,16 @@ export async function withResumeWithinPlan<T>(
       const value = await write(tx);
       // A heartbeat resumed here counts its deadline from now, not from its last ping before the pause.
       if (resource === "monitor" && current?.status === "paused") {
-        await tx
+        const [anchored] = await tx
           .update(monitors)
           .set({ heartbeatState: HEARTBEAT_ANCHOR_ON_RESUME })
-          .where(and(eq(monitors.id, targetId), eq(monitors.type, "heartbeat"), ne(monitors.status, "paused")));
+          .where(and(eq(monitors.id, targetId), eq(monitors.type, "heartbeat"), ne(monitors.status, "paused")))
+          .returning({ heartbeatState: monitors.heartbeatState });
+        // The written row (one object, or the rows array) was read before the anchor; refresh it for the response.
+        const row = Array.isArray(value) ? value[0] : value;
+        if (anchored && row && typeof row === "object" && "heartbeatState" in row) {
+          (row as { heartbeatState: unknown }).heartbeatState = anchored.heartbeatState;
+        }
       }
       return { ok: true as const, value };
     });

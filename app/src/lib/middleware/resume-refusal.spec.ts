@@ -3,6 +3,7 @@ jest.mock("@/utils/db", () => ({ db: {} }));
 const mockStatus = jest.fn();
 const mockCount = jest.fn();
 const mockAnchor = jest.fn();
+let mockReturning: unknown[] = [];
 let lockBusy = false;
 jest.mock("@/lib/middleware/plan-limit-lock", () => {
   class PlanLimitBusyError extends Error {}
@@ -15,7 +16,7 @@ jest.mock("@/lib/middleware/plan-limit-lock", () => {
       let first = true;
       const tx = {
         select: () => ({ from: () => ({ where: async () => { if (first) { first = false; return mockStatus(); } return mockCount(); } }) }),
-        update: () => ({ set: (values: unknown) => ({ where: async () => mockAnchor(values) }) }),
+        update: () => ({ set: (values: unknown) => ({ where: () => ({ returning: async () => { mockAnchor(values); return mockReturning; } }) }) }),
       };
       return fn(tx);
     },
@@ -51,6 +52,16 @@ describe("withResumeWithinPlan", () => {
     await expect(withResumeWithinPlan("org", "monitor", "m1", async () => "done")).resolves.toEqual({ ok: true, value: "done" });
     // A resumed heartbeat re-anchors its deadline (the UPDATE is scoped to heartbeat rows that are no longer paused).
     expect(mockAnchor).toHaveBeenCalledWith({ heartbeatState: expect.anything() });
+  });
+
+  it("returns the re-anchored heartbeat state in the written row", async () => {
+    mockStatus.mockResolvedValue([{ status: "paused" }]);
+    mockCount.mockResolvedValue([{ count: 1 }]);
+    mockReturning = [{ heartbeatState: { anchorAt: "2026-11-15T00:00:00Z" } }];
+    const row = { id: "m1", heartbeatState: { lastPingAt: "2026-11-01T00:00:00Z" } };
+    const out = await withResumeWithinPlan("org", "monitor", "m1", async () => [row]);
+    expect(out).toEqual({ ok: true, value: [{ id: "m1", heartbeatState: { anchorAt: "2026-11-15T00:00:00Z" } }] });
+    mockReturning = [];
   });
 
   it("does not re-anchor a monitor that was not paused", async () => {
