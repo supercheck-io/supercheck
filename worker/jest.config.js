@@ -90,6 +90,8 @@ module.exports = {
     },
   },
   testTimeout: 10000,
+  // Workers here take ~200 ms to exit even with no leak, so the 500 ms default trips the CI leak guard on a slow runner; a handle that never closes still trips it.
+  workerGracefulExitTimeout: 5000,
   // Transform ESM modules that Jest can't parse by default
   transformIgnorePatterns: [
     'node_modules/(?!(execa|strip-final-newline|npm-run-path|path-key|onetime|mimic-fn|human-signals|is-stream|get-stream|signal-exit|@kubernetes/client-node|tar|minipass|minizlib|mkdirp|yallist)/)',
