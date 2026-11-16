@@ -76,6 +76,8 @@ type MetadataKey = 'title' | 'priority' | 'tags' | 'type'
 const LINE_ENTRY = new RegExp(`^\\s*\\/\\/\\s*@(${METADATA_KEYS})\\s+(?!\\s*\\{)(\\S.*?)\\s*$`)
 const DOC_ENTRY = new RegExp(`^(\\s*\\*\\s*)@(${METADATA_KEYS})\\s+(?!\\s*\\{)(.*?)\\s*(\\*\\/)?\\s*$`)
 
+const DOC_TYPE_WORD = /^(?:browser|api|database|custom|agent|performance|playwright|k6)$/i
+
 interface Header { kind: 'line' | 'jsdoc' | 'none'; first: number; last: number }
 
 /**
@@ -104,6 +106,8 @@ function entryAt(header: Header, line: string, index: number): { key: string; va
   }
   if (header.kind === 'jsdoc' && index > header.first && index <= header.last) {
     const m = DOC_ENTRY.exec(line)
+    // A JSDoc `@type string` is someone else's tag; only a known type word is ours.
+    if (m && m[2] === 'type' && !DOC_TYPE_WORD.test(m[3])) return undefined
     return m ? { key: m[2], value: m[3] } : undefined
   }
   return undefined
@@ -134,7 +138,7 @@ export function headerKind(script: string): Header['kind'] {
   return findHeader(script.split('\n')).kind
 }
 
-const AGENT_IMPORT = /(?:from|require\()\s*['"]@supercheck\/agent-test['"]/
+const AGENT_IMPORT = /(?:\bfrom|\bimport|\brequire)\s*\(?\s*['"`]@supercheck\/agent-test['"`]/
 /** The test type a script declares: its `@type` header, else 'agent' when it imports the agent SDK. */
 export function scriptTestType(script: string): string | undefined {
   return readScriptMetadata(script, 'type') ?? (AGENT_IMPORT.test(script) ? 'agent' : undefined)

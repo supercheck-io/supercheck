@@ -264,11 +264,12 @@ export function RunDetails({
 
 	  // The summary is written when the run finishes, so a run watched live fetches it once it ends.
   const [agent, setAgent] = useState(run.agent ?? null);
+  const showAgentCard = Boolean(run.isAgentRun || run.agent?.tests?.length);
   const [agentLoading, setAgentLoading] = useState(false);
   const [agentError, setAgentError] = useState(false);
   const startedLive = useRef(run.status === "running" || run.status === "queued");
   useEffect(() => {
-    if (!run.isAgentRun || !startedLive.current || !["passed", "failed", "error"].includes(currentStatus)) return;
+    if (!showAgentCard || !startedLive.current || !["passed", "failed", "error"].includes(currentStatus)) return;
     startedLive.current = false;
     setAgentLoading(true);
     fetch(`/api/runs/${encodeURIComponent(run.id)}`)
@@ -276,7 +277,7 @@ export function RunDetails({
       .then((data) => setAgent(data?.agent ?? null))
       .catch(() => setAgentError(true))
       .finally(() => setAgentLoading(false));
-  }, [currentStatus, run.id, run.isAgentRun]);
+  }, [currentStatus, run.id, showAgentCard]);
 
   const statusInfo = runStatuses.find((s) => s.value === currentStatus);
 	  const isBillingBlocked = isBillingBlockedStatus(currentStatus);
@@ -596,7 +597,7 @@ export function RunDetails({
 	        </Alert>
 	      ) : null}
 
-	      {run.isAgentRun ? <AgentResultsCard agent={agent} loading={agentLoading} error={agentError} /> : null}
+	      {showAgentCard ? <AgentResultsCard agent={agent} loading={agentLoading} error={agentError} /> : null}
 
 
 	      <div className={`bg-card rounded-lg border overflow-hidden ${isNotificationView ? "" : reportFitClass}`}>

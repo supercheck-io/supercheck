@@ -51,6 +51,7 @@ export async function GET(
         reportUrl: reports.s3Url,
         trigger: runs.trigger,
         testId: sql<string | null>`${runs.metadata}->>'testId'`,
+        testType: sql<string | null>`${runs.metadata}->>'testType'`,
         // Only the agent summary leaves the row, through the sanitizer.
         agentMetadata: sql<unknown>`${runs.metadata}->'agent'`,
         projectId: runs.projectId,
@@ -96,11 +97,11 @@ export async function GET(
       testCount = 1; // a single-test run has no job to count tests through
     }
 
-    const { agentMetadata, ...rest } = run;
+    const { agentMetadata, testType, ...rest } = run;
     const response = {
       ...rest,
       agent: sanitizeAgentSummary({ agent: agentMetadata }),
-      isAgentRun: await isAgentRun({ jobId: run.jobId, testId: run.testId, projectId: authCtx.project.id }),
+      isAgentRun: await isAgentRun({ jobId: run.jobId, testId: run.testId, testType, projectId: authCtx.project.id }),
       reportUrl: runReportPath(run.id, run.reportUrl),
       testCount,
     };

@@ -1,5 +1,5 @@
 import { describe, it, expect } from '@jest/globals'
-import { slugify, testFilename, extractUuidFromFilename, stripTitleMetadata, readScriptMetadata, setScriptMetadata } from '../slug.js'
+import { slugify, testFilename, extractUuidFromFilename, stripTitleMetadata, readScriptMetadata, setScriptMetadata, scriptTestType } from '../slug.js'
 
 describe('slug utilities', () => {
   it('slugify should normalize titles', () => {
@@ -100,5 +100,29 @@ describe('slug utilities', () => {
       expect(readScriptMetadata(tagged, 'type')).toBe('api')
       expect(stripTitleMetadata(tagged)).toBe(doc)
     })
+  })
+})
+
+describe('JSDoc @type', () => {
+  it('leaves a non-type word alone, and still owns a known one', () => {
+    const own = '/**\n * @type string\n */\nx()'
+    expect(stripTitleMetadata(own)).toBe(own)
+    expect(readScriptMetadata(own, 'type')).toBeUndefined()
+    expect(stripTitleMetadata('/**\n * @type agent\n */\nx()')).toBe('/**\n */\nx()')
+  })
+})
+
+describe('agent import detection', () => {
+  it.each([
+    "import { test } from '@supercheck/agent-test'",
+    "import '@supercheck/agent-test'",
+    "await import('@supercheck/agent-test')",
+    "require ( `@supercheck/agent-test` )",
+    'import { test } from "@supercheck/agent-test"',
+  ])('detects %s', (script) => {
+    expect(scriptTestType(script)).toBe('agent')
+  })
+  it('ignores other packages', () => {
+    expect(scriptTestType("import '@supercheck/other'")).toBeUndefined()
   })
 })

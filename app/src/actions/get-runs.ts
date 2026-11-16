@@ -161,7 +161,7 @@ export async function getRun(
       location: run.location || null,
       testCount,
       agent: sanitizeAgentSummary(metadata),
-      isAgentRun: await isAgentRun({ jobId: run.jobId, testId: (metadata as { testId?: unknown } | null)?.testId, projectId: run.projectId }),
+      isAgentRun: await isAgentRun({ jobId: run.jobId, testId: (metadata as { testId?: unknown } | null)?.testId, testType: (metadata as { testType?: unknown } | null)?.testType, projectId: run.projectId }),
     };
 
     return response;

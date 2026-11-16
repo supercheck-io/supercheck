@@ -16,10 +16,19 @@ const HEARTBEAT_PREFIX = 'supercheck:worker-heartbeat:';
 const HEARTBEAT_INTERVAL_MS = 30_000;
 const HEARTBEAT_TTL_SECONDS = 60;
 
+/** The tag, or the `@sha256:...` digest, of an image reference; never the registry or any credentials in it. */
+export function imageTag(image: string | undefined): string {
+  const ref = image?.trim() ?? '';
+  const digest = /@([a-z0-9]+:[0-9a-f]+)$/i.exec(ref);
+  if (digest) return `@${digest[1]}`;
+  return /:([^:/@]+)$/.exec(ref)?.[1] ?? '';
+}
+
 /**
  * Features this worker can run. `agent-test` is reported only when the fixture package resolves and
- * the execution image (WORKER_IMAGE) is not known to be older than this worker: a plain version tag
- * must equal the worker's version, while a digest, `latest` or no image is trusted (ops enforces
+ * the execution image (WORKER_IMAGE) is not known to be older than this worker: a full-version tag
+ * (1.4.0 or v1.4.0) must equal the worker's version, while floating or named tags (1.6, prod), a digest,
+ * `latest` or no image are trusted (ops enforces
  * digest equality). Without this, an app could queue agent tests that an old execution image fails
  * to import. `WORKER_CAPABILITIES` (comma list) replaces detection, to run the worker from source
  * against a matching WORKER_IMAGE.
@@ -39,9 +48,12 @@ export function workerCapabilities(
   } catch {
     return [];
   }
-  const image = env.WORKER_IMAGE?.trim() ?? '';
-  const tag = image.includes('@') ? '' : /:([^:/]+)$/.exec(image)?.[1];
-  if (tag && tag !== 'latest' && tag.replace(/^v/, '') !== getServiceVersion())
+  const tag = imageTag(env.WORKER_IMAGE).replace(/^v/, '');
+  // Only a full release version can be older; floating (1.6) and named (prod, latest) tags are trusted.
+  if (
+    /^\d+\.\d+\.\d+/.test(tag) &&
+    tag !== getServiceVersion().replace(/^v/, '')
+  )
     return [];
   return ['agent-test'];
 }
@@ -165,7 +177,7 @@ export class HeartbeatService implements OnModuleInit, OnModuleDestroy {
       pid: process.pid,
       capabilities: this.capabilities,
       version: getServiceVersion(),
-      image: process.env.WORKER_IMAGE?.trim() || null,
+      image: imageTag(process.env.WORKER_IMAGE) || null,
     };
 
     try {

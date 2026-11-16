@@ -43,7 +43,9 @@ it("counts the job's tests for a job run", async () => {
 });
 
 it("adds the server-computed isAgentRun, scoped to the caller's project", async () => {
-  rows.push({ id: "r", jobId: "j", testId: null, reportUrl: null });
-  expect((await (await get()).json()).isAgentRun).toBe(true);
-  expect(isAgentRun).toHaveBeenCalledWith({ jobId: "j", testId: null, projectId: "p" });
+  rows.push({ id: "r", jobId: "j", testId: null, testType: "agent", reportUrl: null });
+  const body = await (await get()).json();
+  expect(body.isAgentRun).toBe(true);
+  expect(body).not.toHaveProperty("testType");
+  expect(isAgentRun).toHaveBeenCalledWith({ jobId: "j", testId: null, testType: "agent", projectId: "p" });
 });

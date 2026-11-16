@@ -193,6 +193,17 @@ describe('agent.judge', () => {
     expect(state.secrets).toContain('judge-key');
   });
 
+  it('rejects a credential too short to redact, before any request', async () => {
+    await expect(
+      createAgent(newState()).judge('x', 'r', {
+        url,
+        apiKey: 'ab',
+        model: 'j',
+      }),
+    ).rejects.toThrow(/^agent\.judge: .*at least/);
+    expect(seen).toEqual([]);
+  });
+
   it('returns a failing grade with the reason', async () => {
     reply = answer('{"pass": false, "reason": "no number"}');
     expect(

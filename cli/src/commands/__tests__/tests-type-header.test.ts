@@ -66,7 +66,25 @@ describe('local run refusal', () => {
   })
 })
 
+describe('local batch discovery', () => {
+  it('skips remote-only files with a notice and still runs the rest', () => {
+    mkdirSync(join(dir, '_supercheck_', 'playwright'), { recursive: true })
+    const put = (n: string, body: string) => writeFileSync(join(dir, '_supercheck_', 'playwright', n), body)
+    put('a.019a0000-0000-7000-8000-000000000001.pw.ts', pw)
+    put('b.019a0000-0000-7000-8000-000000000002.pw.ts', `// @type api\n${pw}`)
+    put('c.019a0000-0000-7000-8000-000000000003.pw.ts', agentSdk)
+    const tests = collectLocalTests(dir, { playwright: '_supercheck_/playwright/**/*.pw.ts' }, { all: true })
+    expect(tests.map((t) => t.name)).toEqual([expect.stringContaining('a.019a')])
+  })
+})
+
 describe('JSDoc @type expressions', () => {
+  it('does not throw on test update --file or strip a JSDoc @type word that is not ours', async () => {
+    const f = file('u.pw.ts', `/**\n * @type string\n */\n${pw}`)
+    await update(f)
+    expect(patch.mock.calls[0][1]).not.toHaveProperty('type')
+    expect(Buffer.from((patch.mock.calls[0][1] as { script: string }).script, 'base64').toString()).toContain('@type string')
+  })
   it('deploys a file starting with a JSDoc type expression, keeping the line', () => {
     mkdirSync(join(dir, '_supercheck_', 'playwright'), { recursive: true })
     const script = `/**\n * @type {import('x').Y}\n */\n${pw}`

@@ -109,17 +109,21 @@ export function collectLocalTests(
   const files = discoverFiles(cwd, patterns)
     .filter((file) => !filterType || file.type === filterType)
 
-  return files.map((file) => {
+  return files.flatMap((file) => {
     const script = readFileSync(file.absolutePath, 'utf-8')
-    refuseLocalAgent(script, toDisplayName(cwd, file.absolutePath))
+    const remoteOnly = remoteOnlyTestType(script)
+    if (remoteOnly) {
+      logger.warn(`skipped ${toDisplayName(cwd, file.absolutePath)}: ${remoteOnly} tests run remotely`)
+      return []
+    }
     const validationType = requestedType ?? normalizeTestTypeForApi(file.type)
-    return {
+    return [{
       path: file.absolutePath,
       type: file.type,
       name: toDisplayName(cwd, file.absolutePath),
       script,
       validationType,
-    }
+    }]
   })
 }
 

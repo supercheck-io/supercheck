@@ -146,6 +146,7 @@ export function createAgent(state: AgentState): Agent {
     },
 
     async judge(text, rubric, options) {
+      validateOptions({ kind: 'openai', ...options }, 'agent.judge');
       state.secrets.push(...secretsOf(options));
       const r = await chatCompletion(options, [
         {

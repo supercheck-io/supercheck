@@ -214,6 +214,15 @@ describe("agent-test import must be type agent", () => {
     }
   });
 
+  it.each([
+    "import '@supercheck/agent-test';",
+    "const m = await import('@supercheck/agent-test');",
+    "const m = require ( `@supercheck/agent-test` );",
+    "import { agent } from \"@supercheck/agent-test\";",
+  ])("detects %s", (script) => {
+    expect(validateScriptTypeMatch(script, "browser")).toMatchObject({ valid: false, suggestedType: "agent" });
+  });
+
   it("accepts the agent type, and does not force plain scripts to agent", () => {
     expect(validateScriptTypeMatch(esm, "agent").valid).toBe(true);
     expect(validateScriptTypeMatch("import { test } from '@playwright/test';", "browser").valid).toBe(true);

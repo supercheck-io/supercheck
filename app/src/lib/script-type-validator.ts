@@ -34,7 +34,7 @@ export interface ScriptTypeValidationResult {
  * - Non-k6 scripts MUST NOT have type "performance"
  * - Scripts importing '@supercheck/agent-test' MUST have type "agent" (one-directional)
  */
-const AGENT_IMPORT = /(?:from\s+|require\s*\(\s*)['"]@supercheck\/agent-test['"]/;
+const AGENT_IMPORT = /(?:\bfrom|\bimport|\brequire)\s*\(?\s*['"`]@supercheck\/agent-test['"`]/;
 
 export function validateScriptTypeMatch(
   script: string,

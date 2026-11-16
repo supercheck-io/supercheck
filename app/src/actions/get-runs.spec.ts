@@ -23,9 +23,9 @@ describe("run history authorization", () => {
     expect(hasPermissionForUser).toHaveBeenCalledWith("user", "run", "view", { organizationId: "org", projectId: "project" });
   });
   it("returns the server-computed isAgentRun, scoped to the run's project and test", async () => {
-    jest.mocked(db.select).mockReturnValue({ from: jest.fn().mockReturnThis(), leftJoin: jest.fn().mockReturnThis(), where: jest.fn().mockReturnThis(), limit: jest.fn(async () => [{ ...run, metadata: { testId: "t1" } }]) } as never);
+    jest.mocked(db.select).mockReturnValue({ from: jest.fn().mockReturnThis(), leftJoin: jest.fn().mockReturnThis(), where: jest.fn().mockReturnThis(), limit: jest.fn(async () => [{ ...run, metadata: { testId: "t1", testType: "agent" } }]) } as never);
     expect((await getRun("run"))?.isAgentRun).toBe(true);
-    expect(isAgentRun).toHaveBeenCalledWith({ jobId: null, testId: "t1", projectId: "project" });
+    expect(isAgentRun).toHaveBeenCalledWith({ jobId: null, testId: "t1", testType: "agent", projectId: "project" });
   });
   it("does not expose a run to a user without project permission", async () => {
     jest.mocked(hasPermissionForUser).mockResolvedValue(false);

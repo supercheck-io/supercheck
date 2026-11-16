@@ -71,11 +71,14 @@ function requestHeaders(
 }
 
 /** Throws on options a run could not use; checked at connect() so a typo fails before any request. */
-export function validateOptions(options: AgentOptions): void {
+export function validateOptions(
+  options: AgentOptions,
+  where = 'agent.connect',
+): void {
   const o = options as unknown as Record<string, unknown>;
   if (!['openai', 'http', 'a2a', 'mcp'].includes(String(o.kind)))
     throw new TypeError(
-      `agent.connect: kind must be "openai", "http", "a2a" or "mcp", got ${String(o.kind)}`,
+      `${where}: kind must be "openai", "http", "a2a" or "mcp", got ${String(o.kind)}`,
     );
   let url: URL | undefined;
   try {
@@ -84,11 +87,11 @@ export function validateOptions(options: AgentOptions): void {
     // reported below
   }
   if (url?.protocol !== 'http:' && url?.protocol !== 'https:')
-    throw new TypeError('agent.connect: url must be an http(s) URL');
+    throw new TypeError(`${where}: url must be an http(s) URL`);
   const t = options.timeoutMs;
   if (t !== undefined && (!Number.isInteger(t) || t < 1 || t > MAX_TIMEOUT_MS))
     throw new RangeError(
-      `agent.connect: timeoutMs must be an integer from 1 to ${MAX_TIMEOUT_MS}`,
+      `${where}: timeoutMs must be an integer from 1 to ${MAX_TIMEOUT_MS}`,
     );
   // Redaction ignores values this short (they would blank ordinary text), so they could not be hidden.
   const credentials = [
@@ -101,7 +104,7 @@ export function validateOptions(options: AgentOptions): void {
   ];
   if (credentials.some((v) => typeof v === 'string' && v.length < MIN_SECRET))
     throw new Error(
-      `agent.connect: an apiKey or credential header value must be at least ${MIN_SECRET} characters`,
+      `${where}: an apiKey or credential header value must be at least ${MIN_SECRET} characters`,
     );
 }
 

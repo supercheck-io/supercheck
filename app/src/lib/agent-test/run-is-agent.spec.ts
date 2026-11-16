@@ -17,6 +17,11 @@ describe("isAgentRun", () => {
     expect(await isAgentRun({ jobId: null, testId: "not-a-uuid", projectId: "p" })).toBe(false);
     expect(select).not.toHaveBeenCalled();
   });
+  it("is true for a playground agent run, which has no tests row", async () => {
+    expect(await isAgentRun({ jobId: null, testId: TEST_ID, testType: "agent", projectId: "p" })).toBe(true);
+    expect(select).not.toHaveBeenCalled();
+    expect(await isAgentRun({ jobId: null, testId: null, testType: "browser", projectId: "p" })).toBe(false);
+  });
   it("is true when the project has a matching agent test, false otherwise", async () => {
     limit.mockResolvedValueOnce([{ id: TEST_ID }]);
     expect(await isAgentRun({ jobId: null, testId: TEST_ID, projectId: "p" })).toBe(true);

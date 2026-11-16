@@ -60,7 +60,7 @@ function toDisplayName(cwd: string, filePath: string): string {
   return normalized.startsWith('_supercheck_/') ? normalized.replace(/^_supercheck_\//, '') : normalized
 }
 
-function resolveJobLocalTests(
+export function resolveJobLocalTests(
   cwd: string,
   tests: string[],
   patterns: { playwright?: string; k6?: string },
@@ -72,7 +72,7 @@ function resolveJobLocalTests(
     if (uuid) uuidMap.set(uuid, file.absolutePath)
   }
 
-  return tests.map((ref) => {
+  const resolvedTests = tests.flatMap((ref) => {
     let resolved: string | undefined
 
     if (ref.endsWith('.pw.ts') || ref.endsWith('.k6.ts') || ref.endsWith('.pw.js') || ref.endsWith('.k6.js')) {
@@ -91,11 +91,16 @@ function resolveJobLocalTests(
     try { script = readFileSync(resolved, 'utf-8') } catch { throw new CLIError(`Cannot read local test: ${resolved}`, ExitCode.ConfigError) }
     const remoteOnly = remoteOnlyTestType(script)
     if (remoteOnly) {
-      throw new CLIError(`${toDisplayName(cwd, resolved)}: local test execution only supports "browser" and "performance" tests. "${remoteOnly}" tests are executed remotely.`, ExitCode.ConfigError)
+      logger.warn(`skipped ${toDisplayName(cwd, resolved)}: ${remoteOnly} tests run remotely`)
+      return []
     }
     const type = inferLocalTestType(resolved)
-    return { path: resolved, type, name: toDisplayName(cwd, resolved), script }
+    return [{ path: resolved, type, name: toDisplayName(cwd, resolved), script }]
   })
+  if (tests.length > 0 && resolvedTests.length === 0) {
+    throw new CLIError('No job tests can run locally: api, database, custom and agent tests run remotely. Run the job without --local.', ExitCode.ConfigError)
+  }
+  return resolvedTests
 }
 
 async function validateJobTests(
