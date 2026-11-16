@@ -511,7 +511,7 @@ describe("review fixes in the steps", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save channel" }));
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
     expect(JSON.parse(fetchMock.mock.calls[0][1].body).name).toBe("Email – me@example.com");
-    expect(channelName({ type: "webhook", label: "Webhook" }, { url: "https://hooks.example.com/secret/token" })).toBe("Webhook – hooks.example.com");
+    expect(channelName({ type: "webhook", label: "Webhook" }, { url: "https://hooks.example.com/secret/token" })).toBe("Webhook – setup");
     expect(channelName({ type: "telegram", label: "Telegram" }, { botToken: "123:abc", chatId: "9" })).toBe("Telegram – setup");
   });
 

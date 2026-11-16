@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { checkSetupLockRateLimit } from "@/lib/sre/sre-rate-limiter";
+import { checkSetupLockRateLimit, checkSetupReleaseRateLimit } from "@/lib/sre/sre-rate-limiter";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { logAuditEvent } from "@/lib/audit-logger";
 import { guardProject, readJsonBody } from "@/lib/setup/route-guard";
@@ -54,8 +54,8 @@ export async function POST(request: NextRequest, { params }: Params) {
 
 export async function DELETE(request: NextRequest, { params }: Params) {
   try {
-    // Release only clears the caller's own lock, so it must never be refused by the claim budget (a 429 would leave the lock stuck).
-    const guard = await guardProject(request, (await params).id, { resource: "monitor", action: "create" }, async () => ({ allowed: true, remaining: 1 }));
+    // Release only clears the caller's own lock: it has its own budget, so a spent claim budget never leaves the lock stuck.
+    const guard = await guardProject(request, (await params).id, { resource: "monitor", action: "create" }, checkSetupReleaseRateLimit);
     if (guard instanceof NextResponse) return guard;
     // The body is optional: a bodiless DELETE only releases a lock stored without a tab token.
     const raw = await readJsonBody(request);
