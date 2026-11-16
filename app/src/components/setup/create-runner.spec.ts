@@ -1,6 +1,6 @@
 import type { SetupDraft } from "@/lib/setup/draft-schema";
 import { SETUP_FEATURES } from "@/lib/setup/features";
-import { buildCreateItems, runAll, runItem, retryWithDependents, PROJECT_CHANGED_ERROR, PROJECT_HEADER, TAKEN_OVER_ERROR, NETWORK_ERROR, RATE_LIMIT_NOTE, type CreateItem, type ItemResult, type RunnerDeps } from "./create-runner";
+import { buildCreateItems, runAll, runItem, retryWithDependents, PROJECT_CHANGED_ERROR, PROJECT_HEADER, TAKEN_OVER_ERROR, CANCELLED_ERROR, NETWORK_ERROR, RATE_LIMIT_NOTE, type CreateItem, type ItemResult, type RunnerDeps } from "./create-runner";
 
 const PROJECT = "p-1";
 const PROVIDER = "00000000-0000-4000-8000-000000000001";
@@ -586,5 +586,43 @@ describe("review fixes", () => {
     const run = makeDeps({ getStatusPages: jest.fn(async () => ({ success: true, statusPages: [{ id: "sp-9", name: "Acme status" }] })) });
     const item = build(draft({ statusPage: { name: "Acme status", publish: true } })).find((i) => i.kind === "status_page") as CreateItem;
     expect(await runItem(item, run.deps)).toMatchObject({ status: "adopted", note: "Already there (publish it from Status pages)" });
+  });
+});
+
+describe("item identity", () => {
+  it("gives URLs that collided under a 32-bit hash distinct keys", () => {
+    const keys = build({ monitors: { pages: [{ url: "https://x.example/Ab", name: "a" }, { url: "https://x.example/BA", name: "b" }] } }).map((i) => i.key);
+    expect(new Set(keys).size).toBe(2);
+    expect(keys[0]).toMatch(/^monitor:[a-z_]+:[0-9a-z]+$/);
+  });
+});
+
+describe("cancellation", () => {
+  it("starts no item and never heartbeats after the signal aborts", async () => {
+    const controller = new AbortController();
+    const heartbeat = jest.fn(async () => true);
+    const { deps, calls } = makeDeps({ heartbeat, signal: controller.signal });
+    const updates: string[] = [];
+    await runAll(build(draft()), deps, (key, r) => {
+      updates.push(`${key}:${r.status}`);
+      if (r.status === "done") controller.abort();
+    });
+    expect(updates).toHaveLength(2);
+    expect(calls.filter((c) => c.method === "POST")).toHaveLength(1);
+    expect(heartbeat).toHaveBeenCalledTimes(1);
+    const item = build(draft())[1];
+    expect(await runItem(item, deps)).toEqual({ status: "failed", error: CANCELLED_ERROR });
+    expect(heartbeat).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not re-claim the lock after a rate-limit wait that outlasts the abort", async () => {
+    const controller = new AbortController();
+    const heartbeat = jest.fn(async () => true);
+    const { deps } = makeDeps({ heartbeat, signal: controller.signal, sleep: async () => controller.abort() });
+    const base = deps.fetchJson;
+    deps.fetchJson = jest.fn(async (url, init) => (url === "/api/monitors" && init?.method === "POST" ? { ok: false, status: 429, data: {}, retryAfterSeconds: 1 } : base(url, init)));
+    const result = await runItem(build(draft())[0], deps);
+    expect(result.error).toBe(CANCELLED_ERROR);
+    expect(heartbeat).toHaveBeenCalledTimes(1);
   });
 });

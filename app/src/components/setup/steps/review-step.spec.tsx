@@ -60,6 +60,36 @@ function setup(over: Partial<ReviewStepProps> = {}) {
 }
 
 describe("ReviewStep", () => {
+  it("cancels the run via stopRef and on unmount, creating nothing more", async () => {
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    const original = monitorPost;
+    fetchMock.mockImplementation(async (url: string, init?: { method?: string; body?: string }) => {
+      if (url === "/api/context") return { ok: true, status: 200, json: async () => ({ project: { id: PROJECT_ID } }) };
+      if (url.startsWith("/api/monitors?")) return { ok: true, status: 200, json: async () => ({ data: [], pagination: { hasNextPage: false } }) };
+      if (url === "/api/monitors" && init?.method === "POST") {
+        await gate;
+        return original(JSON.parse(init.body as string));
+      }
+      return { ok: false, status: 404, json: async () => ({}) };
+    });
+    const heartbeat = jest.fn(async () => true);
+    const stopRef = { current: null as (() => Promise<void>) | null };
+    const onActiveChange = jest.fn();
+    const { unmount } = setup({ heartbeat, stopRef, onActiveChange });
+    fireEvent.click(screen.getByRole("button", { name: "Create 6 items" }));
+    await waitFor(() => expect(onActiveChange).toHaveBeenLastCalledWith(true));
+    const stopped = stopRef.current!();
+    release();
+    await stopped;
+    const posts = () => fetchMock.mock.calls.filter(([url, init]) => url === "/api/monitors" && init?.method === "POST").length;
+    expect(posts()).toBe(1);
+    expect(heartbeat).toHaveBeenCalledTimes(1);
+    unmount();
+    expect(stopRef.current).toBeNull();
+  });
+
+
   it("lists what is already saved, what will be created and what was skipped", () => {
     setup();
     expect(screen.getByText("Already saved")).toBeTruthy();
