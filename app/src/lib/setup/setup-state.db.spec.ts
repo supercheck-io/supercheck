@@ -25,6 +25,7 @@ import {
   monitorsRemaining,
   releaseAiRun,
   releaseLock,
+  saveSuggestions,
   setUserPersona,
   updateSetupState,
 } from "./setup-state";
@@ -353,5 +354,30 @@ describe("releaseAiRun", () => {
     await pending;
     expect(released).toBe(true);
     expect(await lastAiRunAt()).toBeNull();
+  });
+});
+
+describe("saveSuggestions", () => {
+  it("merges into draft.tests without touching other keys, bumps updated_at, scopes by org", async () => {
+    const first = await updateSetupState(orgA, projA, u1, { draft: { app: { url: "https://a.io/x" }, tests: { requirements: [{ title: "Keep" }] } } }, null);
+    if (first.kind !== "ok") throw new Error("expected ok");
+    await saveSuggestions(orgA, projA, [{ title: "S1", description: "d", priority: "high" }]);
+    const after = await getSetupState(orgA, projA, u1);
+    expect(after.draft).toEqual({
+      app: { url: "https://a.io/x" },
+      tests: { requirements: [{ title: "Keep" }], suggestions: [{ title: "S1", description: "d", priority: "high" }] },
+    });
+    expect(after.updatedAt).not.toBe(first.state.updatedAt);
+    // A client holding the old version now conflicts instead of overwriting.
+    expect((await updateSetupState(orgA, projA, u1, { currentStep: "tests" }, first.state.updatedAt)).kind).toBe("conflict");
+
+    await saveSuggestions(orgB, projA, [{ title: "Other org" }]);
+    expect((await getSetupState(orgA, projA, u1)).draft.tests?.suggestions).toEqual([{ title: "S1", description: "d", priority: "high" }]);
+  });
+  it("works on a row created by the AI claim (empty draft) and rejects invalid items", async () => {
+    await claimAiRun(orgA, projA);
+    await saveSuggestions(orgA, projA, [{ title: "S1" }]);
+    expect((await getSetupState(orgA, projA, u1)).draft).toEqual({ tests: { requirements: [], suggestions: [{ title: "S1" }] } });
+    await expect(saveSuggestions(orgA, projA, [{ title: "" }])).rejects.toThrow();
   });
 });

@@ -1,4 +1,5 @@
 import { act, renderHook } from "@testing-library/react";
+import { toast } from "sonner";
 
 import { makeResponse, PROJECT_ID } from "./test-fixtures";
 import { createWrapper } from "./test-wrapper";
@@ -133,5 +134,29 @@ describe("useSetupSession recordCreated", () => {
     const { result } = setup();
     await act(async () => { await result.current.recordCreated("monitor:a", ID_A); });
     expect(puts()).toHaveLength(1);
+  });
+});
+
+describe("useSetupSession 409 with server-saved suggestions", () => {
+  const sug = [{ title: "Login works" }];
+  it("keeps the server's tests.suggestions and stays quiet when the tab already holds them", async () => {
+    const server = makeResponse({}, { updatedAt: "t-server", draft: { tests: { requirements: [], suggestions: sug } } });
+    fetchMock.mockResolvedValueOnce(reply(409, { error: "conflict", state: server.state }));
+    const { result } = setup();
+    (toast.error as jest.Mock).mockClear();
+    act(() => result.current.patchDraft((d) => ({ ...d, tests: { requirements: [], suggestions: sug } })));
+    await act(async () => { await result.current.flush(); });
+    expect(result.current.draft.tests?.suggestions).toEqual(sug);
+    expect(toast.error).not.toHaveBeenCalled();
+  });
+  it("adopts them and warns when the tab did not hold them (reload mid-request)", async () => {
+    const server = makeResponse({}, { updatedAt: "t-server", draft: { tests: { requirements: [], suggestions: sug } } });
+    fetchMock.mockResolvedValueOnce(reply(409, { error: "conflict", state: server.state }));
+    const { result } = setup();
+    (toast.error as jest.Mock).mockClear();
+    act(() => result.current.patchDraft((d) => ({ ...d, app: { url: "https://a.io" } })));
+    await act(async () => { await result.current.flush(); });
+    expect(result.current.draft.tests?.suggestions).toEqual(sug);
+    expect(toast.error).toHaveBeenCalled();
   });
 });

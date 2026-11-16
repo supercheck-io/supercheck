@@ -15,7 +15,7 @@ import { AISecurityService, AuthService } from "@/lib/ai/ai-security";
 import { checkSlidingWindowRateLimit } from "@/lib/sre/sre-rate-limiter";
 import { subscriptionService } from "@/lib/services/subscription-service";
 import { guardProject, readJsonBody } from "@/lib/setup/route-guard";
-import { claimAiRun, getSetupState, releaseAiRun } from "@/lib/setup/setup-state";
+import { claimAiRun, getSetupState, releaseAiRun, saveSuggestions } from "@/lib/setup/setup-state";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -157,6 +157,13 @@ export async function POST(request: NextRequest, { params }: Params) {
             : { error: "AI could not produce suggestions. Try again." },
           { status: 502 },
         );
+      }
+
+      // Saved before replying, so a tab that reloads mid-request still finds the suggestions it paid for.
+      try {
+        await saveSuggestions(organizationId, projectId, cleaned);
+      } catch (error) {
+        console.error("[Setup suggest] Saving suggestions failed:", error instanceof Error ? error.name : "unknown");
       }
 
       await logAuditEvent({

@@ -29,7 +29,7 @@ jest.mock("@/lib/ai/ai-security", () => {
   return { ...actual, AuthService: { checkRateLimit: jest.fn() } };
 });
 jest.mock("@/lib/services/subscription-service", () => ({ subscriptionService: { blockUntilSubscribed: jest.fn() } }));
-jest.mock("@/lib/setup/setup-state", () => ({ claimAiRun: jest.fn(), releaseAiRun: jest.fn(), getSetupState: jest.fn() }));
+jest.mock("@/lib/setup/setup-state", () => ({ claimAiRun: jest.fn(), releaseAiRun: jest.fn(), getSetupState: jest.fn(), saveSuggestions: jest.fn() }));
 
 import { generateText } from "ai";
 import { POST } from "./route";
@@ -41,7 +41,7 @@ import { isAIProviderConfigured } from "@/lib/ai/ai-provider";
 import { AuthService } from "@/lib/ai/ai-security";
 import { subscriptionService } from "@/lib/services/subscription-service";
 import { aiRateLimiter } from "@/lib/ai/ai-rate-limiter";
-import { claimAiRun, getSetupState, releaseAiRun } from "@/lib/setup/setup-state";
+import { claimAiRun, getSetupState, releaseAiRun, saveSuggestions } from "@/lib/setup/setup-state";
 
 const PROJECT = "11111111-1111-4111-8111-111111111111";
 const ORG = "22222222-2222-4222-8222-222222222222";
@@ -149,6 +149,15 @@ describe("generation", () => {
       expect.objectContaining({ action: "project_setup.requirements_suggested", metadata: { count: 1, aiModel: "m" } }),
     );
     expect((generateText as jest.Mock).mock.calls[0][0].prompt).toContain("Stored");
+  });
+  it("persists the sanitized suggestions before replying, and still returns 200 when saving throws", async () => {
+    const res = await POST(req(), params);
+    expect(res.status).toBe(200);
+    expect(saveSuggestions).toHaveBeenCalledWith(ORG, PROJECT, [{ title: "Login works", description: "d", priority: "high" }]);
+    (saveSuggestions as jest.Mock).mockRejectedValueOnce(new Error("db down"));
+    const failed = await POST(req(), params);
+    expect(failed.status).toBe(200);
+    expect(await failed.json()).toEqual({ requirements: [{ title: "Login works", description: "d", priority: "high" }] });
   });
   it("uses a stored scan whose pages have no title (scanner stores null)", async () => {
     (getSetupState as jest.Mock).mockResolvedValue({ scanResult: { pages: [{ path: "/pricing", status: 200, ms: 5, title: null }] } });

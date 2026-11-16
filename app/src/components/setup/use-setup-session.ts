@@ -110,10 +110,13 @@ export function useSetupSession(projectId: string, initial: SetupStateDto, lockT
           // Ids this tab created must survive the reload, or a re-run would create them again.
           const local = latest.current.draft.created ?? {};
           const unsaved = Object.entries(local).some(([key, id]) => server.draft.created?.[key] !== id);
-          latest.current = fromState({ ...server, draft: { ...server.draft, created: { ...server.draft.created, ...local } } });
+          const merged = { ...server.draft, created: { ...server.draft.created, ...local } };
+          // A server-side write of what this tab already holds (AI suggestions) is not "somewhere else".
+          const same = keys.every((k) => k === "draft") && JSON.stringify({ ...server.draft, created: undefined }) === JSON.stringify({ ...latest.current.draft, created: undefined });
+          latest.current = fromState({ ...server, draft: merged });
           updatedAt.current = server.updatedAt;
           setState(latest.current);
-          toast.error("Setup was changed somewhere else. Your view was reloaded with the saved version.");
+          if (!same) toast.error("Setup was changed somewhere else. Your view was reloaded with the saved version.");
           if (!unsaved) {
             lastSaveOk.current = true;
             setSaveState("idle");
