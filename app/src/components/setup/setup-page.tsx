@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -10,7 +11,7 @@ import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useProjectContext } from "@/hooks/use-project-context";
-import { getProjectSetupQueryKey, updateProjectSetup, useProjectSetup, useUserPreferences } from "@/hooks/use-project-setup";
+import { getProjectSetupQueryKey, setProjectSetupData, updateProjectSetup, useProjectSetup, useUserPreferences } from "@/hooks/use-project-setup";
 import { NAV } from "@/lib/nav-areas";
 import { useSession } from "@/utils/auth-client";
 import { SetupChecklist } from "./setup-checklist";
@@ -28,14 +29,21 @@ export function SetupSkeleton() {
   );
 }
 
-function ErrorState({ message, onRetry }: { message: string; onRetry: () => void }) {
+function ErrorState({ message, onRetry, title = "Could not load project setup", backHref }: { message: string; onRetry: () => void; title?: string; backHref?: string }) {
   return (
     <Alert variant="error" data-testid="setup-error">
-      <p className="text-sm font-semibold">Could not load project setup</p>
+      <p className="text-sm font-semibold">{title}</p>
       <p className="text-sm">{message}</p>
-      <Button type="button" variant="outline" size="sm" className="mt-2" onClick={onRetry}>
-        Retry
-      </Button>
+      <div className="mt-2 flex flex-wrap items-center gap-2">
+        <Button type="button" variant="outline" size="sm" onClick={onRetry}>
+          Retry
+        </Button>
+        {backHref ? (
+          <Link href={backHref} className="text-sm font-medium underline underline-offset-4">
+            Back to dashboard
+          </Link>
+        ) : null}
+      </div>
     </Alert>
   );
 }
@@ -47,6 +55,8 @@ export function SetupPage() {
   const { currentProject, switchProject, loading: projectLoading } = useProjectContext();
   const session = useSession();
   const [switchFailed, setSwitchFailed] = useState(false);
+  // Bumped by Retry so the switch effect runs again.
+  const [switchAttempt, setSwitchAttempt] = useState(0);
   const [wizardOpen, setWizardOpen] = useState<boolean | null>(null);
   const [welcomed, setWelcomed] = useState(false);
 
@@ -54,8 +64,10 @@ export function SetupPage() {
   const needsSwitch = Boolean(projectParam && currentProject && currentProject.id !== projectParam);
   useEffect(() => {
     if (!needsSwitch || !projectParam) return;
-    void switchProject(projectParam, `/setup?project=${encodeURIComponent(projectParam)}`).then((ok) => !ok && setSwitchFailed(true));
-  }, [needsSwitch, projectParam, switchProject]);
+    void switchProject(projectParam, `/setup?project=${encodeURIComponent(projectParam)}`)
+      .then((ok) => !ok && setSwitchFailed(true))
+      .catch(() => setSwitchFailed(true));
+  }, [needsSwitch, projectParam, switchProject, switchAttempt]);
 
   const projectId = needsSwitch ? null : (projectParam ?? currentProject?.id ?? null);
   const setup = useProjectSetup(projectId);
@@ -69,7 +81,19 @@ export function SetupPage() {
     if (unseenMember) router.replace("/setup/welcome");
   }, [unseenMember, router]);
 
-  if (switchFailed) return <ErrorState message="The project could not be opened." onRetry={() => setSwitchFailed(false)} />;
+  if (switchFailed) {
+    return (
+      <ErrorState
+        title="Could not open the project"
+        message="The project could not be opened."
+        backHref="/"
+        onRetry={() => {
+          setSwitchFailed(false);
+          setSwitchAttempt((n) => n + 1);
+        }}
+      />
+    );
+  }
   if (projectLoading || !projectId || setup.isPending || prefs.isPending || unseenMember) {
     if (setup.isError || prefs.isError) {
       return <ErrorState message="Check your connection and try again." onRetry={() => { void setup.refetch(); void prefs.refetch(); }} />;
@@ -99,7 +123,7 @@ export function SetupPage() {
   const write = async (status: "in_progress" | "dismissed") => {
     try {
       const res = await updateProjectSetup(projectId, { expectedUpdatedAt: state.updatedAt, status });
-      queryClient.setQueryData(getProjectSetupQueryKey(projectId), res);
+      setProjectSetupData(queryClient, projectId, res);
       return true;
     } catch {
       void queryClient.invalidateQueries({ queryKey: getProjectSetupQueryKey(projectId) });

@@ -13,7 +13,11 @@ import { resolveSetupFeatures } from "@/lib/setup/features";
 import { SETUP_STEP_KEYS } from "@/lib/setup/persona";
 import { guardProject, readJsonBody } from "@/lib/setup/route-guard";
 import { getChecklistCounts, getSetupState, monitorsRemaining, updateSetupState } from "@/lib/setup/setup-state";
-import type { SetupPermissions, SetupResponse, SetupStateDto } from "@/lib/setup/types";
+import { trialCheckIntervalViolation } from "@/lib/execution/trial-limits";
+import type { SetupPermissions, SetupResponse, SetupStateDto, SetupSummary } from "@/lib/setup/types";
+import type { SetupCounts } from "@/lib/setup/checklist";
+
+const projectIsEmpty = (c: SetupCounts) => c.monitors + c.tests + c.jobs + c.statusPages === 0;
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -32,10 +36,12 @@ const updateSchema = z
 
 async function buildResponse(userId: string, ctx: ProjectPermissionContext, knownState?: SetupStateDto): Promise<SetupResponse> {
   const projectId = ctx.project.id;
-  const [state, counts, remaining, [project]] = await Promise.all([
+  const [state, counts, remaining, trialViolation, [project]] = await Promise.all([
     knownState ?? getSetupState(ctx.organizationId, projectId, userId),
     getChecklistCounts(ctx.organizationId, projectId),
     monitorsRemaining(ctx.organizationId),
+    // Asks for the shortest interval: a trial answers with its minimum, everyone else with null (1 minute).
+    trialCheckIntervalViolation(ctx.organizationId, 1),
     db.select({ name: projects.name }).from(projects).where(eq(projects.id, projectId)).limit(1),
   ]);
   const features = resolveSetupFeatures({ aiConfigured: isAIProviderConfigured() });
@@ -58,6 +64,8 @@ async function buildResponse(userId: string, ctx: ProjectPermissionContext, know
     features,
     permissions,
     monitorsRemaining: remaining,
+    minIntervalMinutes: trialViolation?.minimumMinutes ?? 1,
+    projectEmpty: projectIsEmpty(counts),
   };
 }
 
@@ -65,6 +73,16 @@ export async function GET(request: NextRequest, { params }: Params) {
   try {
     const guard = await guardProject(request, (await params).id, { resource: "project", action: "view" }, checkSetupReadRateLimit);
     if (guard instanceof NextResponse) return guard;
+    if (request.nextUrl.searchParams.get("summary") === "1") {
+      // Sidebar poll: state and counts only, no plan lookup, permissions or project name.
+      const [state, counts] = await Promise.all([
+        getSetupState(guard.ctx.organizationId, guard.ctx.project.id, guard.userId),
+        getChecklistCounts(guard.ctx.organizationId, guard.ctx.project.id),
+      ]);
+      const checklist = deriveChecklist(counts, resolveSetupFeatures({ aiConfigured: isAIProviderConfigured() }), state.statusPageOptOut);
+      const summary: SetupSummary = { status: state.status, done: checklist.done, total: checklist.total, projectEmpty: projectIsEmpty(counts) };
+      return NextResponse.json(summary);
+    }
     return NextResponse.json(await buildResponse(guard.userId, guard.ctx));
   } catch (error) {
     console.error("Error reading project setup:", error);

@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch";
 import { TableBadge } from "@/components/ui/table-badge";
 import { WEBHOOK_PRESETS, getWebhookPreset } from "@/lib/notification-providers/webhook-presets";
+import { SETUP_LIMITS } from "@/lib/setup/draft-schema";
 import { checkSetupProject, postJson, responseError, type StepProps } from "./step-types";
 
 type ChannelType = "email" | "slack" | "teams" | "discord" | "telegram" | "webhook";
@@ -55,6 +56,20 @@ interface SavedProvider {
 
 const REPEAT_OPTIONS = [5, 10, 15, 30, 60];
 
+/** A name that tells channels apart in the list. Never includes a token, chat id or webhook path: email addresses and webhook hosts only. */
+export function channelName(channel: { type: ChannelType; label: string }, values: Record<string, string>): string {
+  let detail = "setup";
+  if (channel.type === "email") detail = values.emails?.split(",")[0]?.trim() || detail;
+  if (channel.type === "webhook") {
+    try {
+      detail = new URL(values.url ?? "").host || detail;
+    } catch {
+      // keep "setup"
+    }
+  }
+  return `${channel.label} – ${detail}`.slice(0, 100);
+}
+
 function ChannelForm({
   projectId,
   channel,
@@ -96,7 +111,7 @@ function ChannelForm({
 
   const save = async () => {
     setBusy("save");
-    const name = channel.label;
+    const name = channelName(channel, values);
     try {
       // The route also refuses a switched project (expected-project header); this covers the rest.
       const changed = await checkSetupProject(projectId);
@@ -190,6 +205,7 @@ export function AlertsStep({ response, draft, patchDraft, features, permissions,
     setOpen(null);
   };
 
+  const channelsFull = providerIds.length >= SETUP_LIMITS.maxChannels;
   const repeat = draft.alerts?.repeatUntilAck;
   const setRepeat = (next: { enabled: boolean; repeatMinutes: number }) =>
     patchDraft((d) => ({ ...d, alerts: { providerIds: [], ...d.alerts, repeatUntilAck: next } }));
@@ -212,7 +228,9 @@ export function AlertsStep({ response, draft, patchDraft, features, permissions,
         </section>
       ) : null}
 
-      {!readOnly && permissions.canCreateNotification ? (
+      {channelsFull ? (
+        <Alert variant="info">You have {SETUP_LIMITS.maxChannels} channels, the most setup keeps. Add more later from Notifications.</Alert>
+      ) : !readOnly && permissions.canCreateNotification ? (
         <section aria-label="Add a channel" className="space-y-3">
           <div role="group" aria-label="Channel types" className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
             {CHANNELS.map((channel) => (
@@ -234,8 +252,10 @@ export function AlertsStep({ response, draft, patchDraft, features, permissions,
           </div>
           {open ? <ChannelForm key={open} projectId={response.projectId} channel={CHANNELS.find((c) => c.type === open)!} defaultEmail={userEmail} onSaved={onSaved} /> : null}
         </section>
-      ) : (
+      ) : !permissions.canCreateNotification ? (
         <Alert variant="info">You do not have permission to add channels in this project. Ask a project admin.</Alert>
+      ) : (
+        <Alert variant="info">Setup is running somewhere else, so channels cannot be added from this tab.</Alert>
       )}
 
       {features.repeatUntilAck ? (
@@ -247,7 +267,7 @@ export function AlertsStep({ response, draft, patchDraft, features, permissions,
               </Label>
               <p className="text-xs text-muted-foreground">
                 {permissions.canUpdateProject
-                  ? "Remind again while an incident is unacknowledged."
+                  ? "Remind again while an incident is unacknowledged, using the project's notification policy. If the policy has no channels yet, setup adds the ones you saved here."
                   : "Ask a project admin. Only project admins can turn on repeat reminders."}
               </p>
             </div>

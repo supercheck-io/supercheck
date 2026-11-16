@@ -1,6 +1,6 @@
 import type { SetupDraft } from "@/lib/setup/draft-schema";
 import { SETUP_FEATURES } from "@/lib/setup/features";
-import { buildCreateItems, runAll, runItem, retryWithDependents, PROJECT_CHANGED_ERROR, PROJECT_HEADER, TAKEN_OVER_ERROR, type CreateItem, type ItemResult, type RunnerDeps } from "./create-runner";
+import { buildCreateItems, runAll, runItem, retryWithDependents, PROJECT_CHANGED_ERROR, PROJECT_HEADER, TAKEN_OVER_ERROR, NETWORK_ERROR, RATE_LIMIT_NOTE, type CreateItem, type ItemResult, type RunnerDeps } from "./create-runner";
 
 const PROJECT = "p-1";
 const PROVIDER = "00000000-0000-4000-8000-000000000001";
@@ -137,7 +137,17 @@ describe("runAll", () => {
   it("stops without creating anything when the context call fails", async () => {
     const { deps } = makeDeps({ fetchJson: jest.fn().mockRejectedValue(new Error("offline")) });
     const [item] = build(draft());
+    expect((await runItem(item, deps)).error).toBe(NETWORK_ERROR);
+  });
+
+  it("reports a project mismatch only when the context names another project", async () => {
+    const { deps } = makeDeps({ fetchJson: jest.fn().mockResolvedValue({ ok: true, status: 200, data: { project: { id: "other" } } }) });
+    const [item] = build(draft());
     expect((await runItem(item, deps)).error).toBe(PROJECT_CHANGED_ERROR);
+    const failing = makeDeps({ fetchJson: jest.fn().mockResolvedValue({ ok: false, status: 500, data: {} }) });
+    const failed = await runItem(item, failing.deps);
+    expect(failed.error).toMatch(/HTTP 500/);
+    expect(failed.error).not.toBe(PROJECT_CHANGED_ERROR);
   });
 
   it("keeps going after a failed item, and Retry runs just that item", async () => {
@@ -450,5 +460,102 @@ describe("components: adoption and retry chain", () => {
     const seen: string[] = [];
     await retryWithDependents(items[0], items, run.deps, (k) => seen.push(k), () => true);
     expect(new Set(seen)).toEqual(new Set([items[0].key]));
+  });
+});
+
+describe("review fixes", () => {
+  const monitorPost = (calls: Array<{ url: string; method?: string }>) => calls.filter((c) => c.url === "/api/monitors" && c.method === "POST");
+
+  it("repeat reminders: a policy with no channels gets the alert step's channels, one with channels keeps them", async () => {
+    const d = draft({ alerts: { providerIds: [PROVIDER], repeatUntilAck: { enabled: true, repeatMinutes: 10 } } });
+    const repeat = build(d).find((i) => i.kind === "repeat") as CreateItem;
+    const empty = makeDeps({ getPolicy: jest.fn(async () => ({ success: true, data: { policy: { channelIds: [] } } })) });
+    await runItem(repeat, empty.deps);
+    expect(empty.deps.savePolicy).toHaveBeenCalledWith(PROJECT, expect.objectContaining({ channelIds: [PROVIDER], renotifyRepeatMinutes: 10 }));
+    const kept = makeDeps();
+    await runItem(repeat, kept.deps);
+    expect(kept.deps.savePolicy).toHaveBeenCalledWith(PROJECT, expect.objectContaining({ channelIds: ["x"] }));
+  });
+
+  it("waits out a 429 with Retry-After (capped) and retries the same item", async () => {
+    const sleeps: number[] = [];
+    const notes: Array<string | undefined> = [];
+    const run = makeDeps({ sleep: async (ms) => void sleeps.push(ms) });
+    const base = run.deps.fetchJson;
+    let limited = 2;
+    run.deps.fetchJson = jest.fn(async (url, init) => {
+      if (url === "/api/monitors" && init?.method === "POST" && limited-- > 0) return { ok: false, status: 429, data: { error: "Too many requests", retryAfter: 500 }, retryAfterSeconds: limited === 1 ? 7 : undefined };
+      return base(url, init);
+    });
+    const [item] = build(draft());
+    const result = await runItem(item, run.deps, {}, (p) => notes.push(p.note));
+    expect(result.status).toBe("done");
+    expect(sleeps).toEqual([7000, 60000]); // header first, then the body value capped at 60 s
+    expect(notes).toContain(RATE_LIMIT_NOTE);
+  });
+
+  it("fails after the retries are used up", async () => {
+    const run = makeDeps({ sleep: async () => undefined });
+    const base = run.deps.fetchJson;
+    run.deps.fetchJson = jest.fn(async (url, init) => (url === "/api/monitors" && init?.method === "POST" ? { ok: false, status: 429, data: { error: "Too many requests" } } : base(url, init)));
+    const [item] = build(draft());
+    expect(await runItem(item, run.deps)).toMatchObject({ status: "failed", error: "Too many requests" });
+    expect(monitorPost(run.calls)).toHaveLength(0);
+    expect((run.deps.fetchJson as jest.Mock).mock.calls.filter(([u, i]) => u === "/api/monitors" && i?.method === "POST")).toHaveLength(3);
+  });
+
+  it("an AI endpoint does not adopt the plain page monitor on the same URL, and a page does not adopt the AI one", async () => {
+    const url = "https://api.example.com/v1/chat/completions";
+    const d = draft({
+      monitors: { pages: [{ url, name: "page" }], aiEndpoint: { name: "AI", url, model: "m", secretKey: "OPENAI_KEY" } },
+    });
+    const items = build(d);
+    const plain = { id: "m-plain", type: "http_request", target: url, name: "page", config: {} };
+    const ai = items.find((i) => i.kind === "ai_endpoint") as CreateItem;
+    const withPlain = makeDeps({}, [plain]);
+    expect((await runItem(ai, withPlain.deps)).status).toBe("done");
+    const page = items.find((i) => i.kind === "http_request") as CreateItem;
+    const withAi = makeDeps({}, [{ id: "m-ai", type: "http_request", target: url, name: "AI", config: { aiEndpoint: { model: "m" } } }]);
+    expect((await runItem(page, withAi.deps)).status).toBe("done");
+    expect(monitorPost(withAi.calls)).toHaveLength(1);
+    const adopt = makeDeps({}, [{ id: "m-ai", type: "http_request", target: url, name: "AI", config: { aiEndpoint: { model: "m" } } }]);
+    expect((await runItem(ai, adopt.deps)).status).toBe("adopted");
+  });
+
+  it("warnings on an AI endpoint set the default first-token threshold", () => {
+    const d = draft({ alerts: { providerIds: [PROVIDER], warnings: true }, monitors: { pages: [], aiEndpoint: { name: "AI", url: "https://a.example.com/v1", model: "m", secretKey: "OPENAI_KEY" } } });
+    expect((build(d)[0].payload as { config: { aiEndpoint: Record<string, unknown> } }).config.aiEndpoint.warnFirstTokenMs).toBe(3000);
+    const off = draft({ monitors: d.monitors });
+    expect((build(off)[0].payload as { config: { aiEndpoint: Record<string, unknown> } }).config.aiEndpoint).not.toHaveProperty("warnFirstTokenMs");
+  });
+
+  it("raises the interval to the plan minimum", () => {
+    const items = build(draft({ monitors: { pages: [{ url: "https://app.example.com/", name: "a" }], frequencyMinutes: 1, heartbeat: { name: "hb", frequencyMinutes: 2 } } }), { minIntervalMinutes: 5 });
+    expect(items.map((i) => (i.payload as { frequencyMinutes: number }).frequencyMinutes)).toEqual([5, 5]);
+  });
+
+  it("a network error is a retryable failure, not a project change, and a second concurrent run of an item is ignored", async () => {
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    const run = makeDeps();
+    const base = run.deps.fetchJson;
+    run.deps.fetchJson = jest.fn(async (url, init) => {
+      if (url === "/api/monitors" && init?.method === "POST") await gate;
+      return base(url, init);
+    });
+    const [item] = build(draft());
+    const first = runItem(item, run.deps);
+    expect((await runItem(item, run.deps)).status).toBe("running");
+    release();
+    expect((await first).status).toBe("done");
+    const offline = makeDeps();
+    offline.deps.fetchJson = jest.fn(async () => { throw new TypeError("Failed to fetch"); });
+    expect(await runItem(item, offline.deps)).toMatchObject({ status: "failed", error: NETWORK_ERROR });
+  });
+
+  it("notes an existing status page that setup did not publish", async () => {
+    const run = makeDeps({ getStatusPages: jest.fn(async () => ({ success: true, statusPages: [{ id: "sp-9", name: "Acme status" }] })) });
+    const item = build(draft({ statusPage: { name: "Acme status", publish: true } })).find((i) => i.kind === "status_page") as CreateItem;
+    expect(await runItem(item, run.deps)).toMatchObject({ status: "adopted", note: "Already there (publish it from Status pages)" });
   });
 });

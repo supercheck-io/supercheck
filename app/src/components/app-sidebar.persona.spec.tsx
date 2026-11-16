@@ -7,7 +7,7 @@ let mockSetupOn = true;
 jest.mock("@/hooks/use-admin-status", () => ({ useAdminStatus: () => ({ isAdmin: false, isOrgAdmin: false, isLoading: false }) }));
 jest.mock("@/hooks/use-project-setup", () => ({
   useUserPreferences: () => ({ data: mockPersona ? { persona: mockPersona, seen: true } : undefined }),
-  useProjectSetup: (id: string | null) => ({ data: id ? mockSetup : undefined }),
+  useProjectSetupSummary: (id: string | null) => ({ data: id ? mockSetup : undefined }),
 }));
 jest.mock("@/hooks/use-app-config", () => ({ useAppConfig: () => ({ setupFeatures: { setup: mockSetupOn } }) }));
 jest.mock("@/hooks/use-project-context", () => ({ useProjectContextSafe: () => ({ currentProject: { id: "p1" } }) }));
@@ -34,7 +34,7 @@ jest.mock("@/components/nav-main", () => ({
 
 import { AppSidebar } from "./app-sidebar";
 
-const setupData = (status: string) => ({ state: { status }, checklist: { done: 2, total: 8 } });
+const setupData = (status: string, projectEmpty = false) => ({ status, done: 2, total: 8, projectEmpty });
 const renderSidebar = () =>
   render(<QueryClientProvider client={new QueryClient()}><AppSidebar /></QueryClientProvider>);
 const labels = () => screen.getAllByTestId(/^group-(?!ungrouped)/).map((g) => g.getAttribute("data-testid")!.slice(6)).slice(0, 4);
@@ -96,6 +96,16 @@ describe("AppSidebar project setup entry", () => {
   it("hides the entry while loading or when the feature is off", () => {
     renderSidebar();
     expect(screen.queryByText(/Project setup/)).toBeNull();
+  });
+
+  it("hides an untouched entry on a project that already has data, and shows it on an empty one", () => {
+    mockSetup = setupData("not_started", false);
+    const { unmount } = renderSidebar();
+    expect(screen.queryByText(/Project setup/)).toBeNull();
+    unmount();
+    mockSetup = setupData("not_started", true);
+    renderSidebar();
+    expect(screen.getByText("Project setup2/8")).toBeInTheDocument();
   });
 
   it("hides the entry when the feature is off", () => {

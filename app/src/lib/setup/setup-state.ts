@@ -228,7 +228,7 @@ export async function getChecklistCounts(organizationId: string, projectId: stri
       (SELECT count(*)::int FROM monitors m WHERE m.organization_id = ${o} AND m.project_id = ${p} AND ${liveMonitor("m")}) AS "monitors",
       (SELECT count(*)::int FROM monitors m WHERE m.organization_id = ${o} AND m.project_id = ${p} AND m.type = 'heartbeat' AND ${liveMonitor("m")}) AS "heartbeatMonitors",
       (SELECT count(*)::int FROM notification_providers np WHERE np.organization_id = ${o} AND np.project_id = ${p}) AS "notificationProviders",
-      (SELECT count(*)::int FROM status_pages sp WHERE sp.organization_id = ${o} AND sp.project_id = ${p}) AS "statusPages",
+      (SELECT count(*)::int FROM status_pages sp WHERE sp.organization_id = ${o} AND sp.project_id = ${p} AND sp.status <> 'archived') AS "statusPages",
       (SELECT count(*)::int FROM requirements r WHERE r.organization_id = ${o} AND r.project_id = ${p}) AS "requirements",
       (SELECT count(*)::int FROM tests t WHERE t.organization_id = ${o} AND t.project_id = ${p}) AS "tests",
       (SELECT count(*)::int FROM jobs j WHERE j.organization_id = ${o} AND j.project_id = ${p} AND ${liveJob("j")}) AS "jobs",
@@ -241,16 +241,16 @@ export async function getChecklistCounts(organizationId: string, projectId: stri
         (SELECT count(*)::int FROM member mb WHERE mb.organization_id = ${o})
         + (SELECT count(*)::int FROM invitation i WHERE i.organization_id = ${o} AND i.status = 'pending' AND i.expires_at > now())
       ) AS "membersAndInvites",
-      (SELECT count(*)::int FROM apikey k WHERE k.project_id = ${p} AND k.job_id IS NULL) AS "cliTokens",
+      (SELECT count(*)::int FROM apikey k WHERE k.project_id = ${p} AND k.job_id IS NULL AND COALESCE(k.enabled, true) AND (k.expires_at IS NULL OR k.expires_at > now())) AS "cliTokens",
       0 AS "pushDevices"
   `);
   return rows[0] as SetupCounts;
 }
 
-/** Monitors the org can still add; null when uncapped (self-hosted) or unreadable. */
+/** Monitors the org can still add: 0 only when the plan limit is reached; null when uncapped (self-hosted) or the plan could not be read. */
 export async function monitorsRemaining(organizationId: string): Promise<number | null> {
   const check = await checkMonitorLimit(organizationId, await countPlanMonitors(db, organizationId));
-  if (!check.allowed) return 0;
+  if (!check.allowed) return "limit" in check ? 0 : null;
   return "remaining" in check && typeof check.remaining === "number" ? check.remaining : null;
 }
 

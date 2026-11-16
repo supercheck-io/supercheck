@@ -1,9 +1,10 @@
 "use client";
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import type { UserPersona } from "@/db/schema/project-setup";
 import type {
   SetupResponse,
+  SetupSummary,
   SetupUpdateRequest,
   UserPreferencesDto,
 } from "@/lib/setup/types";
@@ -11,6 +12,8 @@ import type {
 export const PROJECT_SETUP_QUERY_KEY = ["project-setup"] as const;
 export const getProjectSetupQueryKey = (projectId: string | null | undefined) =>
   [...PROJECT_SETUP_QUERY_KEY, projectId ?? "none"] as const;
+export const getProjectSetupSummaryQueryKey = (projectId: string | null | undefined) =>
+  [...getProjectSetupQueryKey(projectId), "summary"] as const;
 export const USER_PREFERENCES_QUERY_KEY = ["user-preferences"] as const;
 
 async function readJson<T>(response: Response): Promise<T> {
@@ -43,11 +46,29 @@ export async function updateProjectSetup(
   );
 }
 
+/** Store a full setup response and the sidebar summary derived from it, so both stay in step after a write. */
+export function setProjectSetupData(queryClient: QueryClient, projectId: string, res: SetupResponse) {
+  queryClient.setQueryData(getProjectSetupQueryKey(projectId), res);
+  const summary: SetupSummary = { status: res.state.status, done: res.checklist.done, total: res.checklist.total, projectEmpty: res.projectEmpty };
+  queryClient.setQueryData(getProjectSetupSummaryQueryKey(projectId), summary);
+}
+
 /** Setup state + checklist for a project; disabled until a project id is known. */
 export function useProjectSetup(projectId: string | null | undefined) {
   return useQuery({
     queryKey: getProjectSetupQueryKey(projectId),
     queryFn: () => fetchProjectSetup(projectId as string),
+    enabled: Boolean(projectId),
+    staleTime: 30_000,
+    retry: 1,
+  });
+}
+
+/** Light read for the sidebar: status, counts and whether the project is empty. */
+export function useProjectSetupSummary(projectId: string | null | undefined) {
+  return useQuery({
+    queryKey: getProjectSetupSummaryQueryKey(projectId),
+    queryFn: async (): Promise<SetupSummary> => readJson(await fetch(`/api/projects/${projectId}/setup?summary=1`, { cache: "no-store" })),
     enabled: Boolean(projectId),
     staleTime: 30_000,
     retry: 1,

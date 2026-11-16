@@ -70,6 +70,11 @@ describe("Welcome", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(onDone).toHaveBeenCalled());
     expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({ persona: "qa" });
+    // "No preference" clears a saved persona.
+    fetchMock.mockClear();
+    fireEvent.click(screen.getByRole("button", { name: "No preference" }));
+    await waitFor(() => expect(onDone).toHaveBeenCalledTimes(2));
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({ persona: null });
     onDone.mockClear();
     fetchMock.mockClear();
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));

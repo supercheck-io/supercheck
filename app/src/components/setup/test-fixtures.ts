@@ -44,6 +44,8 @@ export function makeResponse(overrides: Partial<SetupResponse> = {}, state: Part
       canCreateNotification: true,
     },
     monitorsRemaining: null,
+    minIntervalMinutes: 1,
+    projectEmpty: true,
     ...overrides,
   };
 }

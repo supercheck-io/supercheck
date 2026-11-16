@@ -42,7 +42,8 @@ export async function fetchJson(url: string, init?: { method?: string; body?: un
     body: init?.body ? JSON.stringify(init.body) : undefined,
     cache: "no-store",
   });
-  return { ok: res.ok, status: res.status, data: await res.json().catch(() => ({})) };
+  const retryAfter = Number(res.headers?.get("Retry-After"));
+  return { ok: res.ok, status: res.status, data: await res.json().catch(() => ({})), ...(Number.isFinite(retryAfter) && retryAfter > 0 ? { retryAfterSeconds: retryAfter } : {}) };
 }
 
 /** Error text when the active project is no longer the setup project (another tab switched), else null. */

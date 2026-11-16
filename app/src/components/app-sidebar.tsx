@@ -39,7 +39,7 @@ import { NAV } from "@/lib/nav-areas";
 import { createActionsFor, type CreateGroupId } from "@/lib/create-actions";
 import { useAppConfig } from "@/hooks/use-app-config";
 import { useProjectContextSafe } from "@/hooks/use-project-context";
-import { useProjectSetup, useUserPreferences } from "@/hooks/use-project-setup";
+import { useProjectSetupSummary, useUserPreferences } from "@/hooks/use-project-setup";
 import { sidebarLayout, type SidebarGroup as PersonaGroup, type UserPersona } from "@/lib/setup/persona";
 import { getReleaseVersionBadge } from "@/lib/release-metadata";
 
@@ -194,14 +194,15 @@ function AppSidebarWithPrefs(props: SidebarProps) {
   const { data: preferences } = useUserPreferences();
   const { setupFeatures } = useAppConfig();
   const projectId = useProjectContextSafe()?.currentProject?.id ?? null;
-  const { data: setup } = useProjectSetup(setupFeatures.setup ? projectId : null);
-  const open = setup && setup.state.status !== "completed" && setup.state.status !== "dismissed";
+  const { data: setup } = useProjectSetupSummary(setupFeatures.setup ? projectId : null);
+  // Same rule as the dashboard card: in progress, or not started on a project that is still empty (so an upgrade does not nag existing projects).
+  const open = setup && (setup.status === "in_progress" || (setup.status === "not_started" && setup.projectEmpty));
   return (
     <AppSidebarView
       {...props}
       prefs={{
         persona: preferences?.persona ?? null,
-        setupBadge: open ? `${setup.checklist.done}/${setup.checklist.total}` : null,
+        setupBadge: open ? `${setup.done}/${setup.total}` : null,
       }}
     />
   );
@@ -284,10 +285,10 @@ function AppSidebarView({ prefs, ...props }: SidebarProps & { prefs: SidebarPref
   });
   // Literal groupLabel strings stay in this order: the command palette spec reads them from source.
   const groups: Record<PersonaGroup, React.ReactNode> = {
-    Respond: <NavMain key="Respond" groupLabel="Respond" items={respondItems} {...fold("Respond")} />,
-    Communicate: <NavMain key="Communicate" groupLabel="Communicate" items={data.Communicate} {...fold("Communicate")} />,
-    Automate: <NavMain key="Automate" groupLabel="Automate" items={data.Automate} {...fold("Automate")} />,
-    Monitor: <NavMain key="Monitor" groupLabel="Monitor" items={data.Monitor} {...fold("Monitor")} />,
+    Respond: <NavMain key={`Respond-${prefs.persona}`} groupLabel="Respond" items={respondItems} {...fold("Respond")} />,
+    Communicate: <NavMain key={`Communicate-${prefs.persona}`} groupLabel="Communicate" items={data.Communicate} {...fold("Communicate")} />,
+    Automate: <NavMain key={`Automate-${prefs.persona}`} groupLabel="Automate" items={data.Automate} {...fold("Automate")} />,
+    Monitor: <NavMain key={`Monitor-${prefs.persona}`} groupLabel="Monitor" items={data.Monitor} {...fold("Monitor")} />,
   };
 
   return (

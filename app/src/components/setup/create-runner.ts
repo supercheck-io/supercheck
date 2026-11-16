@@ -1,5 +1,5 @@
-import { warningKindsForMonitorType } from "@/lib/alerts/warning-kinds";
-import type { SetupDraft } from "@/lib/setup/draft-schema";
+import { AI_WARN_FIRST_TOKEN_DEFAULT_MS, warningKindsForMonitorType } from "@/lib/alerts/warning-kinds";
+import { SETUP_LIMITS, type SetupDraft } from "@/lib/setup/draft-schema";
 import type { SetupFeatures } from "@/lib/setup/features";
 import type { SetupStepKey } from "@/lib/setup/persona";
 
@@ -36,6 +36,11 @@ export interface CreateItem {
 }
 
 export const PROJECT_CHANGED_ERROR = "Project changed in another tab";
+export const NETWORK_ERROR = "Network error. Check your connection and retry.";
+export const RATE_LIMIT_NOTE = "Waiting for the rate limit...";
+/** Longest wait for one 429 and how often an item is retried after it, so one item cannot stall the run. */
+const MAX_RATE_LIMIT_WAIT_SECONDS = 60;
+const MAX_RATE_LIMIT_RETRIES = 2;
 export const TAKEN_OVER_ERROR = "Another person took over setup";
 /** Sent with every REST write so the server can refuse it when the active project is no longer this one. */
 export const PROJECT_HEADER = "x-supercheck-project-id";
@@ -44,6 +49,8 @@ interface FetchResult {
   ok: boolean;
   status: number;
   data: unknown;
+  /** Retry-After header in seconds, when the response had one. */
+  retryAfterSeconds?: number;
 }
 
 type ActionResult = { success: boolean; message?: string; error?: string; [key: string]: unknown };
@@ -63,10 +70,15 @@ export interface RunnerDeps {
   /** Persist an id into draft.created; resolves once saved. */
   recordCreated: (key: string, id: string) => Promise<void>;
   getCreated: () => Record<string, string>;
+  /** Test seam for the rate-limit wait. */
+  sleep?: (ms: number) => Promise<void>;
 }
 
+/** Reports a progress note (rate-limit wait) while an item is running. */
+type Progress = (result: Partial<ItemResult>) => void;
+
 interface Lookup {
-  monitors?: Array<{ id: string; type: string; target: string; name: string }>;
+  monitors?: Array<{ id: string; type: string; target: string; name: string; config?: { aiEndpoint?: unknown } | null }>;
   statusPages?: Array<{ id: string; name: string }>;
 }
 
@@ -80,6 +92,8 @@ export interface BuildOptions {
   skipped: readonly SetupStepKey[];
   features: Pick<SetupFeatures, "repeatUntilAck" | "warningAlerts" | "heartbeat" | "aiEndpoint" | "mcpMonitor">;
   canUpdateProject: boolean;
+  /** Shortest interval the org's plan allows (a trial rejects shorter ones); default 1. */
+  minIntervalMinutes?: number;
 }
 
 function errorText(data: unknown, fallback: string): string {
@@ -95,7 +109,8 @@ export function buildCreateItems(draft: SetupDraft, opts: BuildOptions): CreateI
   const items: CreateItem[] = [];
   const providerIds = skipped.includes("alerts") ? [] : (draft.alerts?.providerIds ?? []);
   const warnings = Boolean(features.warningAlerts && draft.alerts?.warnings && providerIds.length);
-  const frequencyMinutes = draft.monitors?.frequencyMinutes ?? 5;
+  const minInterval = opts.minIntervalMinutes ?? 1;
+  const frequencyMinutes = Math.max(draft.monitors?.frequencyMinutes ?? 5, minInterval);
 
   const alertConfig = (type: string, extra: { ssl?: boolean; aiEndpoint?: boolean } = {}) => {
     if (providerIds.length === 0) return undefined;
@@ -140,14 +155,15 @@ export function buildCreateItems(draft: SetupDraft, opts: BuildOptions): CreateI
     }
     const heartbeat = features.heartbeat ? draft.monitors?.heartbeat : undefined;
     if (heartbeat) {
+      const beatEvery = Math.max(heartbeat.frequencyMinutes, minInterval);
       items.push({
         key: `monitor:heartbeat:${hash(heartbeat.name)}`,
         kind: "heartbeat",
         step: "monitors",
         label: heartbeat.name,
-        detail: `Expects a ping every ${heartbeat.frequencyMinutes} min`,
+        detail: `Expects a ping every ${beatEvery} min`,
         payload: withAlerts(
-          { name: heartbeat.name, type: "heartbeat", target: "", frequencyMinutes: heartbeat.frequencyMinutes, config: { heartbeat: { graceMinutes: Math.max(1, Math.min(heartbeat.frequencyMinutes, 60)) } } },
+          { name: heartbeat.name, type: "heartbeat", target: "", frequencyMinutes: beatEvery, config: { heartbeat: { graceMinutes: Math.max(1, Math.min(beatEvery, 60)) } } },
           alertConfig("heartbeat"),
         ),
       });
@@ -161,7 +177,7 @@ export function buildCreateItems(draft: SetupDraft, opts: BuildOptions): CreateI
         label: ai.name,
         detail: ai.url,
         payload: withAlerts(
-          { name: ai.name, type: "http_request", target: ai.url, frequencyMinutes, config: { aiEndpoint: { model: ai.model, secretKey: ai.secretKey } } },
+          { name: ai.name, type: "http_request", target: ai.url, frequencyMinutes, config: { aiEndpoint: { model: ai.model, secretKey: ai.secretKey, ...(warnings ? { warnFirstTokenMs: AI_WARN_FIRST_TOKEN_DEFAULT_MS } : {}) } } },
           alertConfig("http_request", { aiEndpoint: true }),
         ),
       });
@@ -218,7 +234,7 @@ export function buildCreateItems(draft: SetupDraft, opts: BuildOptions): CreateI
       step: "alerts",
       label: "Repeat until acknowledged",
       detail: `Every ${repeat.repeatMinutes} min`,
-      payload: { repeatMinutes: repeat.repeatMinutes },
+      payload: { repeatMinutes: repeat.repeatMinutes, providerIds: draft.alerts?.providerIds ?? [] },
     });
   }
   return items;
@@ -254,21 +270,27 @@ const isMonitorKind = (kind: ItemKind) => ["website", "http_request", "heartbeat
 export async function ensureProject(deps: Pick<RunnerDeps, "setupProjectId" | "fetchJson">): Promise<string | null> {
   try {
     const res = await deps.fetchJson("/api/context");
+    // Only a readable answer naming another project is a mismatch; a failed lookup is not.
+    if (!res.ok) return `Could not confirm the active project (HTTP ${res.status}). Retry.`;
     const id = (res.data as { project?: { id?: string } })?.project?.id;
-    return res.ok && id === deps.setupProjectId ? null : PROJECT_CHANGED_ERROR;
+    return id === deps.setupProjectId ? null : PROJECT_CHANGED_ERROR;
   } catch {
-    return PROJECT_CHANGED_ERROR;
+    return NETWORK_ERROR;
   }
 }
 
-async function createMonitor(item: CreateItem, deps: RunnerDeps, lookup: Lookup): Promise<ItemResult> {
+const isNetworkFailure = (error: unknown) => error instanceof TypeError;
+
+async function createMonitor(item: CreateItem, deps: RunnerDeps, lookup: Lookup, progress?: Progress): Promise<ItemResult> {
   const created = deps.getCreated()[item.key];
   const monitors = await listMonitors(deps, lookup);
   const payload = item.payload as { type: string; target: string; name: string };
+  // An AI endpoint and a plain page can share a URL, so the AI preset is part of the natural key.
+  const wantsAi = item.kind === "ai_endpoint";
   const natural = monitors.find((m) =>
     payload.type === "heartbeat"
       ? m.type === "heartbeat" && m.name === payload.name
-      : m.type === payload.type && m.target === payload.target,
+      : m.type === payload.type && m.target === payload.target && Boolean(m.config?.aiEndpoint) === wantsAi,
   );
   if (created) {
     return monitors.some((m) => m.id === created)
@@ -279,10 +301,19 @@ async function createMonitor(item: CreateItem, deps: RunnerDeps, lookup: Lookup)
     await deps.recordCreated(item.key, natural.id);
     return { status: "adopted", note: "A matching monitor already exists" };
   }
-  const res = await projectFetch(deps, "/api/monitors", { method: "POST", body: item.payload });
+  let res = await projectFetch(deps, "/api/monitors", { method: "POST", body: item.payload });
+  // The create API allows 20 a minute and a run can add more, so wait out a 429 and retry the same item.
+  for (let retry = 0; res.status === 429 && retry < MAX_RATE_LIMIT_RETRIES; retry++) {
+    const bodyWait = Number((res.data as { retryAfter?: unknown } | null)?.retryAfter);
+    const seconds = Math.min(MAX_RATE_LIMIT_WAIT_SECONDS, Math.max(1, res.retryAfterSeconds ?? (Number.isFinite(bodyWait) ? bodyWait : 15)));
+    progress?.({ status: "running", note: RATE_LIMIT_NOTE });
+    await (deps.sleep ?? ((ms) => new Promise<void>((resolve) => setTimeout(resolve, ms))))(seconds * 1000);
+    progress?.({ status: "running", note: undefined });
+    res = await projectFetch(deps, "/api/monitors", { method: "POST", body: item.payload });
+  }
   if (!res.ok) return { status: "failed", error: errorText(res.data, "Could not create the monitor") };
   const body = res.data as { id: string; heartbeat?: { pingUrl?: string } };
-  lookup.monitors?.push({ id: body.id, type: payload.type, target: payload.target, name: payload.name });
+  lookup.monitors?.push({ id: body.id, type: payload.type, target: payload.target, name: payload.name, config: item.kind === "ai_endpoint" ? { aiEndpoint: true } : null });
   await deps.recordCreated(item.key, body.id);
   return { status: "done", pingUrl: body.heartbeat?.pingUrl };
 }
@@ -314,7 +345,7 @@ async function createStatusPageItem(item: CreateItem, deps: RunnerDeps, lookup: 
     await deps.recordCreated(item.key, natural.id);
     // An existing page is never published by setup.
     await deps.recordCreated(PUBLISH_KEY, natural.id);
-    return { status: "adopted", note: "A status page with this name already exists" };
+    return { status: "adopted", note: item.payload.publish ? "Already there (publish it from Status pages)" : "A status page with this name already exists" };
   }
   const res = await deps.createStatusPage({ name });
   const id = res.statusPage?.id;
@@ -360,9 +391,12 @@ async function saveRepeat(item: CreateItem, deps: RunnerDeps): Promise<ItemResul
   if (!current.success || !current.data) return { status: "failed", error: current.error ?? "Could not read the notification policy" };
   const { policy } = current.data;
   const minutes = Number(item.payload.repeatMinutes);
-  // Merge only the reminder fields; channels and escalation stay as they are.
+  // Reminders go only to the policy's channels, so a policy with none gets this run's alert channels; existing ones are kept.
+  const existing = Array.isArray(policy.channelIds) ? (policy.channelIds as string[]) : [];
+  const setupChannels = Array.isArray(item.payload.providerIds) ? (item.payload.providerIds as string[]).slice(0, SETUP_LIMITS.maxChannels) : [];
+  // Merge only the reminder fields; escalation stays as it is.
   const saved = await deps.savePolicy(deps.setupProjectId, {
-    channelIds: policy.channelIds,
+    channelIds: existing.length > 0 ? existing : setupChannels,
     emailServiceOwnersOnSev12: policy.emailServiceOwnersOnSev12,
     renotifyUnackedMinutes: minutes,
     renotifyRepeatMinutes: minutes,
@@ -389,25 +423,32 @@ async function throttledHeartbeat(beat: () => Promise<boolean>): Promise<boolean
   return ok;
 }
 
-/** Run one item. Never throws: a failure becomes `{ status: "failed" }`. */
-export async function runItem(item: CreateItem, deps: RunnerDeps, lookup: Lookup = {}): Promise<ItemResult> {
+const inFlight = new Set<string>();
+
+/** Run one item. Never throws: a failure becomes `{ status: "failed" }`. A second concurrent run of the same item is ignored. */
+export async function runItem(item: CreateItem, deps: RunnerDeps, lookup: Lookup = {}, progress?: Progress): Promise<ItemResult> {
+  const guard = `${deps.setupProjectId}:${item.key}`;
+  if (inFlight.has(guard)) return { status: "running" };
+  inFlight.add(guard);
   try {
     // A takeover by another person must stop this run before it writes anything more.
     if (deps.heartbeat && !(await throttledHeartbeat(deps.heartbeat))) return { status: "failed", error: TAKEN_OVER_ERROR };
     const changed = await ensureProject(deps);
     if (changed) return { status: "failed", error: changed };
-    if (isMonitorKind(item.kind)) return await createMonitor(item, deps, lookup);
+    if (isMonitorKind(item.kind)) return await createMonitor(item, deps, lookup, progress);
     if (item.kind === "status_page") return await createStatusPageItem(item, deps, lookup);
     if (item.kind === "component") return await createComponentItem(item, deps, lookup);
     return await saveRepeat(item, deps);
   } catch (error) {
-    return { status: "failed", error: error instanceof Error ? error.message : "Something went wrong" };
+    return { status: "failed", error: isNetworkFailure(error) ? NETWORK_ERROR : error instanceof Error ? error.message : "Something went wrong" };
+  } finally {
+    inFlight.delete(guard);
   }
 }
 
 const STOPPING_ERRORS = [PROJECT_CHANGED_ERROR, TAKEN_OVER_ERROR];
 
-/** Run items in order. Stops at "Project changed in another tab" or a lock takeover; other failures do not stop the run. */
+/** Run items in order. Stops at "Project changed in another tab" or a lock takeover; other failures (including a network error) do not stop the run. */
 export async function runAll(
   items: CreateItem[],
   deps: RunnerDeps,
@@ -417,9 +458,10 @@ export async function runAll(
   const lookup: Lookup = {};
   for (const item of items) {
     if (!shouldRun(item.key)) continue;
-    onUpdate(item.key, { status: "running" });
-    const result = await runItem(item, deps, lookup);
-    onUpdate(item.key, result);
+    onUpdate(item.key, { status: "running", error: undefined, note: undefined });
+    const result = await runItem(item, deps, lookup, (partial) => onUpdate(item.key, { status: "running", ...partial }));
+    // A duplicate run reports "running" and the run that owns the item delivers the final result.
+    if (result.status !== "running") onUpdate(item.key, { note: undefined, ...result });
     if (result.error && STOPPING_ERRORS.includes(result.error)) return;
   }
 }
@@ -436,9 +478,10 @@ export async function retryWithDependents(
   isSkipped: (key: string) => boolean,
 ): Promise<void> {
   const lookup: Lookup = {};
-  onUpdate(item.key, { status: "running", error: undefined });
-  const result = await runItem(item, deps, lookup);
-  onUpdate(item.key, result);
+  onUpdate(item.key, { status: "running", error: undefined, note: undefined });
+  const result = await runItem(item, deps, lookup, (partial) => onUpdate(item.key, { status: "running", ...partial }));
+  if (result.status === "running") return;
+  onUpdate(item.key, { note: undefined, ...result });
   if (result.status !== "done" && result.status !== "adopted") return;
   const dependents = items.filter(
     (other) => other.kind === "component" && isSkipped(other.key) && (item.kind === "status_page" || other.monitorKey === item.key),
@@ -446,7 +489,7 @@ export async function retryWithDependents(
   for (const dependent of dependents) {
     onUpdate(dependent.key, { status: "running", error: undefined, note: undefined });
     const next = await runItem(dependent, deps, lookup);
-    onUpdate(dependent.key, { ...next, note: next.note });
+    if (next.status !== "running") onUpdate(dependent.key, { note: undefined, ...next });
     if (next.error && STOPPING_ERRORS.includes(next.error)) return;
   }
 }
