@@ -46,6 +46,9 @@ describe("safeText", () => {
     const escapedJson = safeJson({ note: escapedQuote });
     expect(escapedJson).not.toContain("0123456789abcdef");
     expect(JSON.parse(escapedJson)).toEqual({ note: "Authorization: Digest [REDACTED]" });
+    const structured = safeJson({ password: "plain-secret", tokenCount: 3, headers: { Authorization: "Basic dXNlcjpwdw==", "X-Api-Key": "k1", Cookie: "s=1" }, nested: [{ clientSecret: { v: "deep" } }] });
+    expect(structured).not.toMatch(/plain-secret|dXNlcjpwdw|k1|s=1|deep/);
+    expect(JSON.parse(structured)).toMatchObject({ tokenCount: 3, headers: { Authorization: "[REDACTED]" } });
   });
   it("stays fast on long whitespace after an auth scheme", () => {
     const started = Date.now();

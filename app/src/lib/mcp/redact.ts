@@ -40,11 +40,14 @@ export function safeText(value: string | null | undefined, max = MAX_FIELD_CHARS
  * Free-form JSON as redacted text. Each string is redacted before encoding, so the patterns never meet JSON escapes
  * and the result parses unless it is cut at `max`.
  */
+// The connector sanitizer's field rule ("clientSecret", "db_password"), applied to keys since values are redacted one by one.
+const SECRET_KEY = /(?:token|api[_-]?key|secret|password|passwd|pwd|credentials?|authorization|cookie)$/i;
+
 export function safeJson(value: unknown, max = MAX_FIELD_CHARS): string {
   const redact = (node: unknown): unknown =>
     typeof node === "string" ? redactExtra(redactConnectorText(node))
       : Array.isArray(node) ? node.map(redact)
-      : node && typeof node === "object" ? Object.fromEntries(Object.entries(node).map(([k, v]) => [k, redact(v)]))
+      : node && typeof node === "object" ? Object.fromEntries(Object.entries(node).map(([k, v]) => [k, SECRET_KEY.test(k) ? "[REDACTED]" : redact(v)]))
       : node;
   const text = JSON.stringify(redact(value));
   return text.length > max ? `${text.slice(0, max)}… [truncated]` : text;
