@@ -4,8 +4,23 @@ Notable changes to `@supercheck/cli`. The format follows [Keep a Changelog](http
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-11-16
+
+This release adds heartbeat and MCP monitors, the AI endpoint preset, agent tests, incident declaration, reminders and escalation, maintenance windows and post-mortems.
+
+### Upgrade notes
+
+- **Server version.** The new commands call API routes that Supercheck 1.6.0 and earlier do not have. Against an older self-hosted server they fail with a "newer server" message (HTTP 404). Update the server first. Supercheck Cloud already has them.
+
 ### Added
 
+- MCP monitors: `monitor create --type mcp_server --url <url>` with `--secret`, `--header`, `--protocol auto|2025|2026`, `--require-tool`, `--call-tool`, `--call-args`, `--expect` and `--slow-ms`. Monitors-as-code round-trips `config.mcp`; pull and diff drop the worker-owned `mcpState`. Warnings `mcp_tools_changed` and `mcp_slow` are on by default.
+- AI endpoint preset warnings: `--warn-first-token-ms` and `--warn-tokens`. Warnings `ai_slow_first_token`, `ai_model_changed` and `ai_tokens_high` are on by default.
+- `incident policy get|set`: reminders until someone acknowledges (`--first-reminder`, `--repeat`, `--max`) and one escalation step (`--escalate-after`, `--escalate-channel`, `--escalate-member`).
+- `notification test <id> [--resolve]` sends a test page, or its resolve event, through a saved channel. `notification list` shows each channel's health.
+- `incident resources <id>` lists an incident's affected services and monitors, and changes them with `--add-service`, `--remove-service`, `--add-monitor` and `--remove-monitor`.
+- `incident postmortem <id>` prints the post-mortem as Markdown, or as JSON with `--json`.
+- `maintenance update <id>`, `maintenance list --service <id>` and `maintenance extend <id> --until <time>`.
 - Agent tests: `test create --type agent`, and a `*.pw.ts` file with `// @type agent` deploys as an agent test. `test run --local` and `job run --local` refuse them (agent tests run in the cloud). `agent_run_failed` joins the default-on warnings. `skills authoring` covers `@supercheck/agent-test`.
 - Heartbeat monitors: `monitor create --type heartbeat --every <dur> [--grace <dur>]` (durations like `5m`, `1h`, `1d`) prints the ping URL once (`heartbeat.pingUrl` in `--json`); `monitor update` takes `--every` and `--grace`; `monitor heartbeat-url <id> [--rotate]` reveals or replaces the URL; `heartbeat ping <url> [--start|--fail]` sends a ping with no login, retries 429, 503 and network errors up to 3 times (honouring `Retry-After`, within about 60 s), accepts apps served under a sub-path, and exits 0 on 2xx. `monitor list` shows the heartbeat state (including `late`), interval with grace, and last ping.
 - Monitors-as-code: `type: 'heartbeat'`, `config.heartbeat.graceMinutes` and `alertConfig.warnings` (for example `{ heartbeat_late: true }`). Deploy prints a new heartbeat's ping URL once; pull never writes the URL or runtime state, and diff ignores them. Heartbeat tokens (`hb_…`) are masked in all other CLI output.
@@ -23,6 +38,7 @@ Notable changes to `@supercheck/cli`. The format follows [Keep a Changelog](http
 
 ### Fixed
 
+- `notification test --type … --payload` prints its result with `--json`.
 - `pull` writes a `// @type` line for API, database, custom and agent tests, and `deploy` and `diff` read it. Before, these tests came back as browser tests on the next deploy.
 - `npx` works on Windows, and a blank `SUPERCHECK_URL` is ignored instead of breaking the CLI.
 - A rejected `SUPERCHECK_TOKEN` no longer suggests browser login.
@@ -177,7 +193,9 @@ Requirements, status pages, test priority and tags now work from the terminal an
 
 - First tracked release of `@supercheck/cli`.
 
-[Unreleased]: https://github.com/supercheck-io/supercheck/compare/cli-v0.5.0...HEAD
+[Unreleased]: https://github.com/supercheck-io/supercheck/compare/cli-v0.6.0...HEAD
+
+[0.6.0]: https://github.com/supercheck-io/supercheck/compare/cli-v0.5.0...cli-v0.6.0
 [0.5.0]: https://github.com/supercheck-io/supercheck/compare/cli-v0.4.0...cli-v0.5.0
 [0.4.0]: https://github.com/supercheck-io/supercheck/compare/cli-v0.3.2...cli-v0.4.0
 [0.3.2]: https://github.com/supercheck-io/supercheck/compare/cli-v0.2.1...cli-v0.3.2

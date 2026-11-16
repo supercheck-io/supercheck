@@ -302,6 +302,33 @@ paths:
         `reached: 0` when its target was removed) and failed pages (`kind:
         page_failed`, `preset`, `status`, `fallback`), with provider ids and
         types only."
+  /api/sre/incidents/{id}/postmortem:
+    get:
+      operationId: getSreIncidentPostmortem
+      summary: Get an incident post-mortem
+      tags:
+        - AI SRE
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: "The post-mortem: `postmortem` (`sections`, `generatedAt`,
+            `updatedAt`) and `markdown`, both null until one is written"
+        "400":
+          description: Invalid incident ID
+        "401":
+          description: Authentication required
+        "403":
+          description: Insufficient permission
+        "404":
+          description: Incident not found in the active project
+      description: Read-only. Sections are `summary`, `impact`, `timeline`,
+        `root_cause`, `contributing_factors` and `follow_ups`.
   /api/sre/incidents/{id}/resolve:
     post:
       operationId: resolveSreIncident
