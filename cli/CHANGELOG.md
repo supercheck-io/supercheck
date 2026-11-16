@@ -10,7 +10,7 @@ This release adds heartbeat and MCP monitors, the AI endpoint preset, agent test
 
 ### Upgrade notes
 
-- **Server version.** The new commands call API routes that Supercheck 1.6.0 and earlier do not have. Against an older self-hosted server they fail with a "newer server" message (HTTP 404). Update the server first. Supercheck Cloud already has them.
+- **Server version.** The new commands need a Supercheck server released after 1.6.0. Against 1.6.0 or earlier, `incident` and `maintenance` commands say the server is too old, and other new commands fail with HTTP 404. Update a self-hosted server first; Supercheck Cloud already has them.
 
 ### Added
 
@@ -20,7 +20,7 @@ This release adds heartbeat and MCP monitors, the AI endpoint preset, agent test
 - `notification test <id> [--resolve]` sends a test page, or its resolve event, through a saved channel. `notification list` shows each channel's health.
 - `incident resources <id>` lists an incident's affected services and monitors, and changes them with `--add-service`, `--remove-service`, `--add-monitor` and `--remove-monitor`.
 - `incident postmortem <id>` prints the post-mortem as Markdown, or as JSON with `--json`.
-- `maintenance update <id>`, `maintenance list --service <id>` and `maintenance extend <id> --until <time>`.
+- `maintenance update <id>` (`--until none` removes a series' end date), `maintenance list --service <id>` and `maintenance extend <id> --to <time>`.
 - Agent tests: `test create --type agent`, and a `*.pw.ts` file with `// @type agent` deploys as an agent test. `test run --local` and `job run --local` refuse them (agent tests run in the cloud). `agent_run_failed` joins the default-on warnings. `skills authoring` covers `@supercheck/agent-test`.
 - Heartbeat monitors: `monitor create --type heartbeat --every <dur> [--grace <dur>]` (durations like `5m`, `1h`, `1d`) prints the ping URL once (`heartbeat.pingUrl` in `--json`); `monitor update` takes `--every` and `--grace`; `monitor heartbeat-url <id> [--rotate]` reveals or replaces the URL; `heartbeat ping <url> [--start|--fail]` sends a ping with no login, retries 429, 503 and network errors up to 3 times (honouring `Retry-After`, within about 60 s), accepts apps served under a sub-path, and exits 0 on 2xx. `monitor list` shows the heartbeat state (including `late`), interval with grace, and last ping.
 - Monitors-as-code: `type: 'heartbeat'`, `config.heartbeat.graceMinutes` and `alertConfig.warnings` (for example `{ heartbeat_late: true }`). Deploy prints a new heartbeat's ping URL once; pull never writes the URL or runtime state, and diff ignores them. Heartbeat tokens (`hb_…`) are masked in all other CLI output.

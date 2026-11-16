@@ -149,9 +149,9 @@ describe('incident resources and postmortem', () => {
   it('prints the markdown without terminal escapes in table mode', async () => {
     mockFormat.mockReturnValue('table')
     const write = jest.spyOn(process.stdout, 'write').mockImplementation(() => true)
-    mockGet.mockResolvedValueOnce({ data: { success: true, postmortem: {}, markdown: '# PM\n\u001b]8;;https://evil\u0007click\u001b[0m\tok' } })
+    mockGet.mockResolvedValueOnce({ data: { success: true, postmortem: {}, markdown: '# PM\n\u001b]8;;https://evil\u0007click\u001b[0m\u009b31m\tok' } })
     await runSub('postmortem', id(9))
-    expect(write).toHaveBeenCalledWith('# PM\n]8;;https://evilclick[0m\tok\n')
+    expect(write).toHaveBeenCalledWith('# PM\n]8;;https://evilclick[0m31m\tok\n')
     write.mockRestore()
     mockFormat.mockReturnValue('json')
   })

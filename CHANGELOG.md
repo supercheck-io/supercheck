@@ -8,7 +8,7 @@ The CLI is versioned separately; see [cli/CHANGELOG.md](cli/CHANGELOG.md). Prere
 
 ### Upgrade notes
 
-- **Migration `0084`, then the app, then the worker.** Adds the maintenance-window tables and columns. It can time out on a busy install; if it does, run it again. An older worker keeps working and simply does not mute for maintenance windows. No new environment variable.
+- **Migration `0084`, then the app, then the worker.** `0084` adds `maintenance_windows` and `maintenance_window_targets`, `monitor_results.in_maintenance` (default false, no table rewrite) and `incidents.maintenance_window_id`. It sets a 5-second lock timeout because `monitor_results` takes constant inserts; if it times out, run it again. An older worker keeps working and simply does not mute for maintenance windows. No new environment variable.
 - **Migration `0083`.** Adds the `sre_incident_resources` table. Apply it before you update the app. No new environment variable.
 - **Order for this release: migration `0080`, then the worker, then the app.** Adds the incident reminder and escalation columns. Existing policies keep reminding once until you set a repeat. No new environment variable.
 - **Custom webhooks are retried.** Every webhook channel, not only paging presets, is now retried up to 3 times on HTTP 429, 5xx and network errors. A receiver that processed a request but answered late or with a 5xx may get it twice; make custom receivers idempotent (use `dedupKey`).
@@ -21,7 +21,7 @@ The CLI is versioned separately; see [cli/CHANGELOG.md](cli/CHANGELOG.md). Prere
 - **Rate limiters fail closed.** Invitations and API key verification now return `503` with a `Retry-After` header when Redis is unavailable, instead of letting requests through unthrottled.
 - **Re-run `setup-k3s.sh` (required for self-hosted).** Every test run now first checks that the sandbox network policy blocks the Kubernetes API, and refuses to run user code if it does not. Installs whose execution policy predates 1.5.0 (for example, upgraded by pulling new images without re-running `setup-k3s.sh`) fail every run with *Infrastructure error: execution network isolation not enforced*. `install.sh --upgrade` and the documented manual upgrade already re-run it; otherwise run `sudo bash setup-k3s.sh --execution-plane-only` on the main server and on every worker server. Clusters that do not enforce Kubernetes NetworkPolicy cannot run tests.
 - **MCP clients.** A client that registers itself now gets `mcp:read` only; it must request `mcp:incidents:write` or `mcp:sre` explicitly.
-- **Monitor check groups: migration `0074`, then the worker.** Apply `0074` before you update the worker. `MONITOR_GROUP_EVALUATION_RETENTION_DAYS` (default 14, minimum 2) sets how long group receipts are kept. For this release the worker also writes the old receipt, so rolling back to an earlier worker neither re-counts nor re-alerts a group; that write is removed in the next release, after which rolling back below this version is not safe.
+- **Monitor check groups: migration `0074` and rollback.** Migration `0074` adds `monitor_group_evaluations`, which now holds the alert receipt of each worker-aggregated check group instead of `monitor_results.details`. Apply it before you update the worker. `MONITOR_GROUP_EVALUATION_RETENTION_DAYS` (default 14, minimum 2) sets how long receipts are kept. For this release the worker also writes the old receipt into one `monitor_results` row when it sends a group's alerts, so rolling back to an earlier worker neither re-counts nor re-alerts a group. A group's alerts are sent under a 2-minute lease: a retry never double-sends (one that meets a live lease fails as busy and retries after it), and if a worker dies between claiming and sending, the next retry after the lease delivers the alert, which can duplicate it in that rare window (logged as `monitor_group_notification_lease_expired`). That second write is temporary and is removed in the next release; after that, rolling back below this version is not safe.
 
 ### Added
 
@@ -80,6 +80,10 @@ The CLI is versioned separately; see [cli/CHANGELOG.md](cli/CHANGELOG.md). Prere
 
 - Creating an MCP monitor without `config.mcp` (or an AI endpoint preset without a model) now names the missing field.
 - Incident pages show the incident title in the browser tab.
+- Extending a maintenance window can no longer move its end earlier; use **End now** to finish early.
+- Changing a window's days without a weekly or monthly schedule is refused instead of silently ignored.
+- Listing maintenance windows for a service also finds windows on the monitors mapped to it.
+- MCP `get_incident_timeline` no longer returns investigation evidence, and MCP output hides Discord, Teams and Telegram webhook secrets.
 - Paging webhooks now close what they open: a passing job resolves its page instead of opening a new one, Opsgenie and Jira Service Management alerts are closed by alias, incident.io receives `firing`/`resolved`, Better Stack receives `alert`/`resolved`, and PagerDuty failures are sent as `critical`. These fixes apply to channels saved before this release too.
 - Webhook deliveries are retried on HTTP 429, 5xx and network errors (honouring `Retry-After` up to 10 seconds) and never on other 4xx. A rejected integration key (HTTP 401/403) is no longer retried on later checks and is shown on the channel. When a page fails and an incident opens, the incident message falls back to the project's policy channels, then to its owners and admins.
 - The worker image no longer ships JavaScript source map files.

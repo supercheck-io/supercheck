@@ -434,7 +434,72 @@
         ],
         "responses": {
           "200": {
-            "description": "The post-mortem: `postmortem` (`sections`, `generatedAt`, `updatedAt`) and `markdown`, both null until one is written"
+            "description": "The post-mortem: `postmortem` (`sections`, `generatedAt`, `updatedAt`) and `markdown`, both null until one is written",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "postmortem",
+                    "markdown"
+                  ],
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "postmortem": {
+                      "type": [
+                        "object",
+                        "null"
+                      ],
+                      "properties": {
+                        "sections": {
+                          "type": "object",
+                          "description": "Section text by key; a missing or empty key has no text yet.",
+                          "properties": {
+                            "summary": {
+                              "type": "string"
+                            },
+                            "impact": {
+                              "type": "string"
+                            },
+                            "timeline": {
+                              "type": "string"
+                            },
+                            "root_cause": {
+                              "type": "string"
+                            },
+                            "contributing_factors": {
+                              "type": "string"
+                            },
+                            "follow_ups": {
+                              "type": "string"
+                            }
+                          },
+                          "additionalProperties": false
+                        },
+                        "generatedAt": {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        "updatedAt": {
+                          "type": "string",
+                          "format": "date-time"
+                        }
+                      }
+                    },
+                    "markdown": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "description": "The post-mortem as Markdown, or null when there is none."
+                    }
+                  }
+                }
+              }
+            }
           },
           "400": {
             "description": "Invalid incident ID"
@@ -10909,7 +10974,8 @@
               }
             }
           }
-        }
+        },
+        "description": "The new end must be later than the current end (use the end action to finish early) and in the future."
       }
     },
     "/api/maintenance-windows/{id}/cancel": {

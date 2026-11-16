@@ -756,9 +756,9 @@ During a window monitors keep running, but alerts, incidents and reminders are m
 | `maintenance list` | List windows | `--state active\|scheduled\|past`, `--monitor <id>`, `--service <id>` |
 | `maintenance get <id>` | Show one window | — |
 | `maintenance create` | Schedule a window | `--title`, `--start "YYYY-MM-DD HH:MM"`, `--duration` (required); scope `--project`, `--service`, `--monitor` (pick one, repeatable); `--description`, `--timezone`, `--repeat daily\|weekly\|monthly`, `--days mon,thu`, `--day 1-28\|last`, `--until YYYY-MM-DD`, `--status-page` + `--component`, `--notify` |
-| `maintenance update <id>` | Change a window; only the flags you pass change | `--title`, `--description`, a scope flag, `--start`, `--duration`, `--timezone`, `--repeat once\|daily\|weekly\|monthly`, `--days`, `--day`, `--until`; all optional. `--start` without `--timezone` uses the window's zone. Status page posts are set at create only |
+| `maintenance update <id>` | Change a window; only the flags you pass change | `--title`, `--description`, a scope flag, `--start`, `--duration`, `--timezone`, `--repeat once\|daily\|weekly\|monthly`, `--days`, `--day`, `--until YYYY-MM-DD\|none`; all optional. `--start` without `--timezone` uses the window's zone. Status page posts are set at create only |
 | `maintenance end <id>` | End an active window now | — |
-| `maintenance extend <id>` | Extend an active window | exactly one of `--by 30m` or `--until <ISO 8601>` |
+| `maintenance extend <id>` | Extend an active window (never shortens it) | exactly one of `--by 30m` or `--to <ISO 8601 date-time>`; no offset means local time |
 | `maintenance cancel <id>` | Cancel a scheduled window, or the rest of a recurring one | — |
 | `maintenance delete <id>` | Delete a window that is not active | `--force` |
 
@@ -767,7 +767,7 @@ During a window monitors keep running, but alerts, incidents and reminders are m
 ```bash
 supercheck maintenance create --title "DB upgrade" --monitor <monitor-uuid> \
   --start "2026-11-20 02:00" --duration 90m --timezone Europe/Berlin
-supercheck maintenance extend <window-uuid> --until 2026-11-20T04:00:00Z
+supercheck maintenance extend <window-uuid> --to 2026-11-20T04:00:00Z
 ```
 
 ### Triage and investigation

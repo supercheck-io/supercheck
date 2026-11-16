@@ -5,12 +5,13 @@ import { getOutputFormat, output, outputDetail } from '../output/formatter.js'
 import { logger } from '../utils/logger.js'
 import { confirmPrompt } from '../utils/prompt.js'
 import { withSpinner } from '../utils/spinner.js'
-import { CLIError, ExitCode } from '../utils/errors.js'
+import { CLIError, ExitCode, withRouteCheck } from '../utils/errors.js'
 
 const DAYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat']
 const collect = (value: string, previous: string[] = []) => [...previous, value]
 const isUuid = (value: string) => z.string().uuid().safeParse(value).success
 const path = (id: string) => `/api/maintenance-windows/${encodeURIComponent(id)}`
+const api = () => createAuthenticatedClient()
 
 /** "90m", "2h", "1h30m" or a bare number of minutes. */
 export function parseDuration(value: string): number {
@@ -42,6 +43,17 @@ function parseMonthDay(day?: string) {
   return monthDay
 }
 
+/** A strict ISO 8601 date-time; without an offset it is local time. Rejects dates that would roll over (2026-02-30). */
+export function parseInstant(value: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2})(?:\.\d{1,3})?)?(Z|[+-]\d{2}:\d{2})?$/.exec(value.trim())
+  const [y, mo, d, h, mi, s] = (m ?? []).slice(1, 7).map((part) => Number(part ?? 0))
+  const realDay = m && new Date(Date.UTC(y!, mo! - 1, d!)).getUTCDate() === d && mo! >= 1 && mo! <= 12
+  if (!m || !realDay || h! > 23 || mi! > 59 || s! > 59) {
+    throw new CLIError(`"${value}" is not an ISO 8601 date-time. Use 2026-11-20T04:00 (local time) or 2026-11-20T04:00:00Z.`, ExitCode.ConfigError)
+  }
+  return new Date(value.trim()).toISOString()
+}
+
 const columns = [
   { key: 'title', header: 'Title' }, { key: 'state', header: 'State' }, { key: 'scope', header: 'Scope' },
   { key: 'recurrence', header: 'Repeats' }, { key: 'occurrenceStartsAt', header: 'Starts' }, { key: 'occurrenceEndsAt', header: 'Ends' },
@@ -58,12 +70,12 @@ maintenanceCommand.command('list')
   .action(async (options: { state?: string; monitor?: string; service?: string }) => {
     if (options.monitor && !isUuid(options.monitor)) throw new CLIError('--monitor takes a monitor UUID.', ExitCode.ConfigError)
     if (options.service && !isUuid(options.service)) throw new CLIError('--service takes a service UUID.', ExitCode.ConfigError)
-    const { data } = await withSpinner('Fetching maintenance windows', () => createAuthenticatedClient().get<{ windows: Record<string, unknown>[] }>('/api/maintenance-windows', { ...(options.state ? { state: options.state } : {}), ...(options.monitor ? { monitorId: options.monitor } : {}), ...(options.service ? { serviceId: options.service } : {}) }))
+    const { data } = await withSpinner('Fetching maintenance windows', () => withRouteCheck(() => api().get<{ windows: Record<string, unknown>[] }>('/api/maintenance-windows', { ...(options.state ? { state: options.state } : {}), ...(options.monitor ? { monitorId: options.monitor } : {}), ...(options.service ? { serviceId: options.service } : {}) })))
     output(data.windows, { columns })
   })
 
 maintenanceCommand.command('get <id>').description('Show one maintenance window').action(async (id: string) => {
-  const { data } = await withSpinner('Fetching maintenance window', () => createAuthenticatedClient().get<{ window: Record<string, unknown> }>(path(requireId(id))))
+  const { data } = await withSpinner('Fetching maintenance window', () => withRouteCheck(() => api().get<{ window: Record<string, unknown> }>(path(requireId(id)))))
   outputDetail(data.window)
 })
 
@@ -119,7 +131,7 @@ maintenanceCommand.command('create')
       ...(options.statusPage ? { statusPages: [{ statusPageId: options.statusPage, componentIds: options.component }] } : {}),
       notifySubscribers: options.notify === true,
     }
-    const { data } = await withSpinner('Scheduling maintenance', () => createAuthenticatedClient().post<{ window: Record<string, unknown>; warning?: string }>('/api/maintenance-windows', body, { retries: 0 }))
+    const { data } = await withSpinner('Scheduling maintenance', () => withRouteCheck(() => api().post<{ window: Record<string, unknown>; warning?: string }>('/api/maintenance-windows', body, { retries: 0 })))
     logger.success('Maintenance window scheduled')
     if (data.warning === 'status_page_failed') logger.warn('The window was created, but posting it to the status page failed.')
     outputDetail(data.window)
@@ -138,7 +150,7 @@ maintenanceCommand.command('update <id>')
   .addOption(new Option('--repeat <recurrence>', 'Repeat the window').choices(['once', 'daily', 'weekly', 'monthly']))
   .option('--days <days>', 'Weekly: comma-separated days, for example mon,thu')
   .option('--day <day>', 'Monthly: a day from 1 to 28, or "last"')
-  .option('--until <date>', 'Last local date an occurrence may start, YYYY-MM-DD')
+  .option('--until <date>', 'Last local date an occurrence may start, YYYY-MM-DD, or "none" to remove the end date')
   .action(async (id: string, options: {
     title?: string; description?: string; project?: boolean; service: string[]; monitor: string[]; start?: string; duration?: string; timezone?: string
     repeat?: 'once' | 'daily' | 'weekly' | 'monthly'; days?: string; day?: string; until?: string
@@ -156,18 +168,18 @@ maintenanceCommand.command('update <id>')
       ...(options.duration ? { durationMinutes: parseDuration(options.duration) } : {}),
       ...(options.timezone ? { timezone: options.timezone } : {}),
       ...(options.repeat ? { recurrence: options.repeat } : {}),
-      ...(options.until ? { endsOn: options.until } : {}),
+      ...(options.until ? { endsOn: options.until === 'none' ? null : options.until } : {}),
       ...(options.days ? { weekdays: parseWeekdays(options.days) } : {}),
       ...(options.day ? { monthDay: parseMonthDay(options.day) } : {}),
     }
     if (Object.keys(body).length === 0) throw new CLIError('Pass at least one field to change, for example --title or --duration.', ExitCode.ConfigError)
-    const { data } = await withSpinner('Updating maintenance window', () => createAuthenticatedClient().patch<{ window: Record<string, unknown> }>(path(id), body))
+    const { data } = await withSpinner('Updating maintenance window', () => withRouteCheck(() => api().patch<{ window: Record<string, unknown> }>(path(id), body)))
     logger.success('Maintenance window updated')
     outputDetail(data.window)
   })
 
 async function lifecycle(id: string, action: 'end' | 'extend' | 'cancel', body: unknown, done: string) {
-  const { data } = await withSpinner(`Updating maintenance window`, () => createAuthenticatedClient().post<{ window: Record<string, unknown> }>(`${path(requireId(id))}/${action}`, body, { retries: 0 }))
+  const { data } = await withSpinner(`Updating maintenance window`, () => withRouteCheck(() => api().post<{ window: Record<string, unknown> }>(`${path(requireId(id))}/${action}`, body, { retries: 0 })))
   logger.success(done)
   outputDetail(data.window)
 }
@@ -177,11 +189,10 @@ maintenanceCommand.command('end <id>').description('End an active window now; al
 maintenanceCommand.command('extend <id>')
   .description('Extend an active window')
   .option('--by <duration>', 'How much longer: minutes, or 30m, 1h')
-  .option('--until <iso>', 'New end, an ISO 8601 date-time such as 2026-11-20T04:00:00Z (no offset means your local time)')
-  .action((id: string, options: { by?: string; until?: string }) => {
-    if (Boolean(options.by) === Boolean(options.until)) throw new CLIError('Pass exactly one of --by or --until.', ExitCode.ConfigError)
-    if (options.until && Number.isNaN(Date.parse(options.until))) throw new CLIError(`"${options.until}" is not an ISO 8601 date-time.`, ExitCode.ConfigError)
-    return lifecycle(id, 'extend', options.by ? { byMinutes: parseDuration(options.by) } : { until: new Date(options.until as string).toISOString() }, 'Maintenance window extended')
+  .option('--to <time>', 'New end, later than the current one: an ISO 8601 date-time such as 2026-11-20T04:00 (local time) or 2026-11-20T04:00:00Z')
+  .action((id: string, options: { by?: string; to?: string }) => {
+    if (Boolean(options.by) === Boolean(options.to)) throw new CLIError('Pass exactly one of --by or --to.', ExitCode.ConfigError)
+    return lifecycle(id, 'extend', options.by ? { byMinutes: parseDuration(options.by) } : { until: parseInstant(options.to!) }, 'Maintenance window extended')
   })
 
 maintenanceCommand.command('cancel <id>').description('Cancel a scheduled window, or the rest of a recurring one').action((id: string) => lifecycle(id, 'cancel', {}, 'Maintenance window cancelled'))
@@ -195,7 +206,7 @@ maintenanceCommand.command('delete <id>')
       if (!process.stdin.isTTY || getOutputFormat() === 'json') throw new CLIError('Refusing to delete without confirmation in a non-interactive session. Pass --force to proceed.', ExitCode.ConfigError)
       await confirmPrompt(`Delete maintenance window ${id}?`, { default: false })
     }
-    await withSpinner('Deleting maintenance window', () => createAuthenticatedClient().delete(path(id)))
+    await withSpinner('Deleting maintenance window', () => withRouteCheck(() => api().delete(path(id))))
     logger.success('Maintenance window deleted')
     outputDetail({ id, deleted: true })
   })

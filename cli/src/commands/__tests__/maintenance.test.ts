@@ -19,6 +19,7 @@ jest.unstable_mockModule('../../utils/logger.js', () => ({
 jest.unstable_mockModule('../../utils/spinner.js', () => ({ withSpinner: async (_t: string, fn: () => Promise<unknown>) => fn() }))
 
 const { maintenanceCommand, parseDuration } = await import('../maintenance.js')
+const { ApiRequestError } = await import('../../utils/errors.js')
 
 const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`
 const run = (...args: string[]) => maintenanceCommand.parseAsync(['node', 'maintenance', ...args])
@@ -105,16 +106,29 @@ describe('maintenance CLI', () => {
     await expect(run('list', '--service', 'x')).rejects.toThrow('service UUID')
   })
 
-  it('extends until a date and needs exactly one of --by or --until', async () => {
+  it('says the server is too old on a bare 404, and passes a JSON 404 through', async () => {
+    mockGet.mockRejectedValueOnce(new ApiRequestError('not found', 404, undefined))
+    await expect(run('list')).rejects.toThrow('newer Supercheck server')
+    mockGet.mockRejectedValueOnce(new ApiRequestError('not found', 404, { error: 'Maintenance window not found' }))
+    await expect(run('get', id(9))).rejects.toThrow('not found')
+  })
+
+  it('extends to a strict ISO time and needs exactly one of --by or --to', async () => {
     mockPost.mockResolvedValue({ data: { window: { id: id(9) } } })
-    await run('extend', id(9), '--until', '2026-11-20T04:00:00Z')
+    await run('extend', id(9), '--to', '2026-11-20T04:00:00Z')
     expect(mockPost).toHaveBeenCalledWith(`/api/maintenance-windows/${id(9)}/extend`, { until: '2026-11-20T04:00:00.000Z' }, { retries: 0 })
-    await expect(run('extend', id(9))).rejects.toThrow('exactly one')
-    await expect(run('extend', id(9), '--by', '1h', '--until', '2026-11-20T04:00:00Z')).rejects.toThrow('exactly one')
-    await expect(run('extend', id(9), '--until', 'soon')).rejects.toThrow('ISO 8601')
+    await run('extend', id(9), '--to', '2026-11-20T04:00+02:00')
+    expect(mockPost).toHaveBeenLastCalledWith(expect.any(String), { until: '2026-11-20T02:00:00.000Z' }, { retries: 0 })
     // No offset means the user's local time, sent to the server as UTC.
-    await run('extend', id(9), '--until', '2026-11-20T04:00')
+    await run('extend', id(9), '--to', '2026-11-20T04:00')
     expect(mockPost).toHaveBeenLastCalledWith(expect.any(String), { until: new Date('2026-11-20T04:00').toISOString() }, { retries: 0 })
+    expect(mockPost).toHaveBeenCalledTimes(3)
+    await expect(run('extend', id(9))).rejects.toThrow('exactly one')
+    await expect(run('extend', id(9), '--by', '1h', '--to', '2026-11-20T04:00:00Z')).rejects.toThrow('exactly one')
+    for (const bad of ['soon', '2', '2026-11-20', 'Nov 20 2026', '2026-02-30T04:00', '2026-13-01T04:00', '2026-11-20T24:00']) {
+      await expect(run('extend', id(9), '--to', bad)).rejects.toThrow('ISO 8601')
+    }
+    expect(mockPost).toHaveBeenCalledTimes(3)
   })
 
   it('updates only the fields passed and rejects an empty update', async () => {
@@ -136,5 +150,7 @@ describe('maintenance CLI', () => {
     await run('update', id(9), '--repeat', 'monthly', '--day', 'last')
     expect(mockPatch.mock.calls[4]![1]).toMatchObject({ recurrence: 'monthly', monthDay: -1 })
     expect(mockPatch).toHaveBeenCalledTimes(5)
+    await run('update', id(9), '--until', 'none')
+    expect(mockPatch.mock.calls[5]![1]).toEqual({ endsOn: null })
   })
 })

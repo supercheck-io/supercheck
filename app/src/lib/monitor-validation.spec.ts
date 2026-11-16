@@ -307,6 +307,8 @@ describe("MCP monitor validation (B12)", () => {
     ["no tool name", { mcp: { ...base, toolCall: {} } }, "config.mcp.toolCall.name is required"],
     ["bad protocol", { mcp: { ...base, protocol: "2024" } }, "config.mcp.protocol: "],
     ["non-string tool name", { mcp: { ...base, requiredTools: [42] } }, "config.mcp.requiredTools.0: "],
+    ["no auth type", { mcp: { auth: {} } }, "config.mcp.auth.type is required"],
+    ["bearer without secret", { mcp: { auth: { type: "bearer" } } }, "config.mcp.auth.secretKey is required"],
   ])("names the field when it rejects %s", (_name, config, details) => {
     expect(mcp(config)).toMatchObject({ success: false, details: expect.stringContaining(details) });
   });

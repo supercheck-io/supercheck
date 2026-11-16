@@ -63,6 +63,7 @@ const page = {
   cursor: z.string().uuid().optional().describe("id of the last item of the previous page"),
 };
 const idArg = z.string().uuid();
+const EVIDENCE_EVENT_TYPES = new Set(["ai_finding", "tool_call", "evidence_added", "recommendation_added", "verification_result"]);
 const RUN_STATUSES = ["running", "passed", "failed", "error", "blocked", "queued"] as const;
 // `open` is a filter, not a stored status: every incident that is not resolved.
 const INCIDENT_STATUSES = ["open", "triggered", "investigating", "identified", "recommendations_ready", "user_applying_fix", "verifying", "resolved"] as const;
@@ -360,15 +361,19 @@ export function registerMcpTools(server: McpServer, ctx: McpCallContext): void {
     if (!i) throw new NotFoundError("Incident not found");
     const { postmortem, ...rest } = i;
     return { incident: { ...rest, ...lifecycleDto(i),
-      postmortem: postmortem ? { sections: Object.fromEntries(Object.entries(postmortem.sections).map(([k, v]) => [k, safeText(v)])), generatedAt: postmortem.generatedAt ?? null, updatedAt: postmortem.updatedAt ?? null } : null, lastAlertAt: iso(i.lastAlertAt), title: safeText(i.title, 500), rootCauseSummary: safeText(storedRootCause(i.rootCauseSummary)), // A reopened incident keeps its previous resolution in the database; only a resolved one reports it.
+      postmortem: postmortem ? { sections: Object.fromEntries(Object.entries(postmortem.sections).map(([k, v]) => [k, safeText(v) ?? ""])), generatedAt: postmortem.generatedAt ?? null, updatedAt: postmortem.updatedAt ?? null } : null, lastAlertAt: iso(i.lastAlertAt), title: safeText(i.title, 500), rootCauseSummary: safeText(storedRootCause(i.rootCauseSummary)), // A reopened incident keeps its previous resolution in the database; only a resolved one reports it.
       resolutionSummary: i.status === "resolved" ? safeText(i.resolutionSummary) : null, createdAt: iso(i.createdAt), resolvedAt: iso(i.resolvedAt) } };
   });
 
-  tool("get_incident_timeline", "Get an incident's timeline: the newest 500 events, oldest first. `data` is the event payload as redacted JSON text, cut at 1000 characters (so it may not parse)." + UNTRUSTED, "sre_incident", { incidentId: idArg }, async ({ incidentId }) => {
+  tool("get_incident_timeline", "Get an incident's timeline: the newest 500 events, oldest first. `data` is the event payload as redacted JSON text, cut at 1000 characters (so it may not parse); null for investigation evidence (findings, tool calls, evidence, recommendations, verifications)." + UNTRUSTED, "sre_incident", { incidentId: idArg }, async ({ incidentId }) => {
     const [i] = await db.select({ id: sreIncidents.id }).from(sreIncidents).where(scope(sreIncidents, [eq(sreIncidents.id, incidentId)])).limit(1);
     if (!i) throw new NotFoundError("Incident not found");
     const events = await newestIncidentTimelineEvents(incidentId);
-    return { events: events.map((e) => ({ id: e.id, eventType: e.eventType, actorType: e.actorType, actorUserId: e.actorUserId, createdAt: iso(e.createdAt), data: e.eventData ? safeText(JSON.stringify(e.eventData), 1000) : null })) };
+    return { events: events.map((e) => ({
+      id: e.id, eventType: e.eventType, actorType: e.actorType, actorUserId: e.actorUserId, createdAt: iso(e.createdAt),
+      // Investigation evidence (reports, tool calls, findings) is never returned over MCP; the event type still shows it happened.
+      data: e.eventData && !EVIDENCE_EVENT_TYPES.has(e.eventType) ? safeText(JSON.stringify(e.eventData), 1000) : null,
+    })) };
   });
 
   tool("list_notification_channels", "List the project's notification channels: name, type, webhook preset, enabled and delivery health. Configuration, URLs and credentials are never returned." + UNTRUSTED, "notification", page, async ({ limit, cursor }) => {
@@ -379,7 +384,7 @@ export function registerMcpTools(server: McpServer, ctx: McpCallContext): void {
       .orderBy(desc(notificationProviders.id))
       .limit(limit + 1);
     const { items, nextCursor } = paged(rows, limit);
-    const health = await loadProviderHealth(items.map((r) => r.id));
+    const { health } = await loadProviderHealth(items.map((r) => r.id));
     return { nextCursor, channels: items.map((r) => {
       // Only the preset name is read from the decrypted config; an undecryptable one just has none.
       let preset: string | null = null;

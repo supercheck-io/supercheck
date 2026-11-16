@@ -357,6 +357,18 @@ describe("MCP tools", () => {
     expect(JSON.stringify(res)).not.toMatch(/hb_0123|a:b@/);
     queue.push([{ ...row, postmortem: null }]);
     expect((await handlers.get("get_incident")!({ id: id(1) })).structuredContent.incident).toMatchObject({ postmortem: null });
+    queue.push([{ ...row, postmortem: { sections: { summary: "", impact: "x" } } }]);
+    expect((await handlers.get("get_incident")!({ id: id(1) })).structuredContent.incident).toMatchObject({ postmortem: { sections: { summary: "", impact: "x" } } });
+  });
+
+  it("get_incident_timeline withholds investigation evidence but keeps the event", async () => {
+    queue.push([{ id: id(1) }]);
+    queue.push(["ai_finding", "tool_call", "evidence_added", "recommendation_added", "verification_result", "comment"].map((eventType, n) => (
+      { id: id(n + 2), eventType, actorType: "agent", actorUserId: null, createdAt: new Date(n), eventData: { summary: "REPORT-TEXT" } })));
+    const res = await handlers.get("get_incident_timeline")!({ incidentId: id(1) });
+    const events = res.structuredContent.events as { eventType: string; data: string | null }[];
+    expect(events.filter((e) => e.data !== null).map((e) => e.eventType)).toEqual(["comment"]);
+    expect(events).toHaveLength(6);
   });
 
   it("get_incident_timeline returns the project's events oldest first, redacted", async () => {
@@ -381,7 +393,7 @@ describe("MCP tools", () => {
       { id: id(2), name: "Team", type: "slack", isEnabled: false, config: { encrypted: "CIPHER-LEAK2" } },
     ]);
     decryptConfig.mockReturnValue({ url: "https://hooks.example.com/SECRET-URL", headers: { Authorization: "Bearer SECRET-TOKEN" }, preset: "incident_io" });
-    loadProviderHealth.mockResolvedValue(new Map([[id(1), { state: "ok", at: "2026-11-01T00:00:00.000Z" }]]));
+    loadProviderHealth.mockResolvedValue({ health: new Map([[id(1), { state: "ok", at: "2026-11-01T00:00:00.000Z" }]]), lastUsed: new Map() });
     const res = await handlers.get("list_notification_channels")!({});
     expect(res.structuredContent.channels).toEqual([
       { id: id(1), name: "Pager", type: "webhook", preset: "incident_io", enabled: true, health: { state: "ok", at: "2026-11-01T00:00:00.000Z" } },
@@ -396,14 +408,14 @@ describe("MCP tools", () => {
   it("list_notification_channels survives an undecryptable webhook config", async () => {
     queue.push([{ id: id(1), name: "Pager", type: "webhook", isEnabled: true, config: {} }]);
     decryptConfig.mockImplementation(() => { throw new Error("bad key SECRET"); });
-    loadProviderHealth.mockResolvedValue(new Map());
+    loadProviderHealth.mockResolvedValue({ health: new Map(), lastUsed: new Map() });
     const res = await handlers.get("list_notification_channels")!({});
     expect((res.structuredContent.channels as { preset: unknown }[])[0].preset).toBeNull();
   });
 
   it("list_notification_channels pages with a cursor", async () => {
     queue.push([1, 2, 3].map((n) => ({ id: id(n), name: `C${n}`, type: "slack", isEnabled: true, config: {} })));
-    loadProviderHealth.mockResolvedValue(new Map());
+    loadProviderHealth.mockResolvedValue({ health: new Map(), lastUsed: new Map() });
     const res = await handlers.get("list_notification_channels")!({ limit: 2, cursor: id(9) });
     expect((res.structuredContent.channels as unknown[]).length).toBe(2);
     expect(res.structuredContent.nextCursor).toBe(id(2));
@@ -412,7 +424,7 @@ describe("MCP tools", () => {
   it("list_notification_channels returns null for a stored preset that is not a known id", async () => {
     queue.push([{ id: id(1), name: "Pager", type: "webhook", isEnabled: true, config: {} }]);
     decryptConfig.mockReturnValue({ preset: { evil: "x" } });
-    loadProviderHealth.mockResolvedValue(new Map());
+    loadProviderHealth.mockResolvedValue({ health: new Map(), lastUsed: new Map() });
     const res = await handlers.get("list_notification_channels")!({});
     expect((res.structuredContent.channels as { preset: unknown }[])[0].preset).toBeNull();
   });

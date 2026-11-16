@@ -6,25 +6,12 @@ import { logger } from '../utils/logger.js'
 import { redactText } from '../utils/redact.js'
 import { confirmPrompt } from '../utils/prompt.js'
 import { withSpinner } from '../utils/spinner.js'
-import { ApiRequestError, CLIError, ExitCode } from '../utils/errors.js'
+import { CLIError, ExitCode, withRouteCheck } from '../utils/errors.js'
 import { resolveIncidentId } from '../utils/incidents.js'
 
 type IncidentEnvelope = { incidents: Record<string, unknown>[]; truncated?: boolean }
 
 /** An older server has no such route: Next answers 404 without the JSON `error` body a real "not found" carries. */
-async function withRouteCheck<T>(run: () => Promise<T>): Promise<T> {
-  try {
-    return await run()
-  } catch (error) {
-    const body = error instanceof ApiRequestError ? error.responseBody : undefined
-    const hasJsonError = typeof body === 'object' && body !== null && typeof (body as { error?: unknown }).error === 'string'
-    if (error instanceof ApiRequestError && error.statusCode === 404 && !hasJsonError) {
-      throw new CLIError('This command requires a newer Supercheck server. Upgrade the server and try again.', ExitCode.ApiError)
-    }
-    throw error
-  }
-}
-
 export const incidentCommand = new Command('incident').alias('incidents').description('Manage AI SRE incidents')
 
 incidentCommand.command('list')
@@ -320,6 +307,6 @@ incidentCommand.command('postmortem <id>')
     id = await resolveIncidentId(id)
     const { data } = await withSpinner('Fetching post-mortem', () => withRouteCheck(() => createAuthenticatedClient().get<{ postmortem: unknown; markdown: string | null }>(`/api/sre/incidents/${encodeURIComponent(id)}/postmortem`)))
     if (getOutputFormat() === 'json') outputDetail(data)
-    else if (data.markdown) process.stdout.write(`${redactText([...data.markdown].filter((c) => c === '\n' || c === '\t' || (c >= ' ' && c !== '\u007f')).join(''))}\n`)
+    else if (data.markdown) process.stdout.write(`${redactText([...data.markdown].filter((c) => c === '\n' || c === '\t' || (c >= ' ' && (c < '\u007f' || c > '\u009f'))).join(''))}\n`)
     else logger.info('No post-mortem yet')
   })

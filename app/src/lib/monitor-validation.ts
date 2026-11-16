@@ -34,7 +34,9 @@ function invalid(error: string, details: string): MonitorValidationResult {
 function issueDetail(prefix: string, value: unknown, issue: z.core.$ZodIssue): string {
   const path = [prefix, ...issue.path.map(String)].join(".");
   const actual = issue.path.reduce<unknown>((node, key) => (isRecord(node) || Array.isArray(node) ? (node as Record<string, unknown>)[String(key)] : undefined), value);
-  return issue.code === "invalid_type" && actual === undefined ? `${path} is required` : `${path}: ${issue.message}`;
+  if (actual === undefined && (issue.code === "invalid_type" || issue.code === "invalid_value")) return `${path} is required`;
+  // Messages written to follow the field name ("is required", "must be ...") read without a colon.
+  return /^(is|must) /.test(issue.message) ? `${path} ${issue.message}` : `${path}: ${issue.message}`;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
