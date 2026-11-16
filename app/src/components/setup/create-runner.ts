@@ -41,6 +41,8 @@ export const RATE_LIMIT_NOTE = "Waiting for the rate limit...";
 /** Longest wait for one 429 and how often an item is retried after it, so one item cannot stall the run. */
 const MAX_RATE_LIMIT_WAIT_SECONDS = 60;
 const MAX_RATE_LIMIT_RETRIES = 2;
+// Exact text of the server error in lib/sre/notification-policy.ts.
+const CHANNEL_NOT_IN_PROJECT = "Some channels do not belong to this project";
 export const TAKEN_OVER_ERROR = "Another person took over setup";
 /** Sent with every REST write so the server can refuse it when the active project is no longer this one. */
 export const PROJECT_HEADER = "x-supercheck-project-id";
@@ -388,6 +390,8 @@ async function createMonitor(item: CreateItem, deps: RunnerDeps, lookup: Lookup,
     progress?.({ status: "running", note: RATE_LIMIT_NOTE });
     await (deps.sleep ?? ((ms) => new Promise<void>((resolve) => setTimeout(resolve, ms))))(seconds * 1000);
     progress?.({ status: "running", note: undefined });
+    // The wait can outlast the lock, so ask directly (not the throttled wrapper) before writing again.
+    if (deps.heartbeat && !(await deps.heartbeat())) return { status: "failed", error: TAKEN_OVER_ERROR };
     res = await projectFetch(deps, "/api/monitors", { method: "POST", body: item.payload });
   }
   if (!res.ok) return { status: "failed", error: errorText(res.data, "Could not create the monitor") };
@@ -474,20 +478,34 @@ async function saveRepeat(item: CreateItem, deps: RunnerDeps): Promise<ItemResul
   const existing = Array.isArray(policy.channelIds) ? (policy.channelIds as string[]) : [];
   const setupChannels = Array.isArray(item.payload.providerIds) ? (item.payload.providerIds as string[]).slice(0, SETUP_LIMITS.maxChannels) : [];
   // Merge only the reminder fields; escalation stays as it is.
-  const saved = await deps.savePolicy(deps.setupProjectId, {
-    channelIds: existing.length > 0 ? existing : setupChannels,
-    emailServiceOwnersOnSev12: policy.emailServiceOwnersOnSev12,
-    renotifyUnackedMinutes: minutes,
-    renotifyRepeatMinutes: minutes,
-    renotifyMax: policy.renotifyMax,
-    escalateAfterMinutes: policy.escalateAfterMinutes,
-    escalateChannelId: policy.escalateChannelId,
-    escalateUserId: policy.escalateUserId,
-    autoInvestigateOnOpen: policy.autoInvestigateOnOpen,
-  });
+  const save = (channelIds: string[]) =>
+    deps.savePolicy(deps.setupProjectId, {
+      channelIds,
+      emailServiceOwnersOnSev12: policy.emailServiceOwnersOnSev12,
+      renotifyUnackedMinutes: minutes,
+      renotifyRepeatMinutes: minutes,
+      renotifyMax: policy.renotifyMax,
+      escalateAfterMinutes: policy.escalateAfterMinutes,
+      escalateChannelId: policy.escalateChannelId,
+      escalateUserId: policy.escalateUserId,
+      autoInvestigateOnOpen: policy.autoInvestigateOnOpen,
+    });
+  const channelIds = existing.length > 0 ? existing : setupChannels;
+  let saved = await save(channelIds);
+  let note: string | undefined;
+  // A channel deleted since the draft was made fails the save; keep only the ones that still exist and retry once.
+  if (!saved.success && existing.length === 0 && setupChannels.length > 0 && saved.error === CHANNEL_NOT_IN_PROJECT) {
+    const res = await projectFetch(deps, "/api/notification-providers");
+    if (res.ok && Array.isArray(res.data)) {
+      const live = new Set((res.data as Array<{ id: string }>).map((row) => row.id));
+      const remaining = setupChannels.filter((id) => live.has(id));
+      saved = await save(remaining);
+      if (saved.success && remaining.length === 0) note = "Reminders have no channel: add one under Notifications";
+    }
+  }
   if (!saved.success) return { status: "failed", error: saved.error ?? "Could not save the notification policy" };
   await deps.recordCreated(item.key, deps.setupProjectId);
-  return { status: "done" };
+  return note ? { status: "done", note } : { status: "done" };
 }
 
 const HEARTBEAT_MIN_GAP_MS = 30_000;

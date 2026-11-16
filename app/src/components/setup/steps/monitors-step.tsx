@@ -123,15 +123,17 @@ export function MonitorsStep({ response, draft, patchDraft, features, readOnly, 
   };
   const hasStalePages = Boolean(appOrigin) && monitors.pages.some((page) => !isCurrentOrigin(page.url));
   useEffect(() => {
-    if (!hasStalePages || !appUrl || !home || readOnly) return;
-    const moved = monitors.pages.map((page) => {
-      if (isCurrentOrigin(page.url)) return page;
+    if (!hasStalePages || !appUrl || !homeUrl || !homeName || readOnly) return;
+    const moved = monitors.pages.flatMap((page) => {
+      if (isCurrentOrigin(page.url)) return [page];
       const parsed = new URL(page.url);
-      return parsed.pathname === "/" ? home : (pageFor(appUrl, parsed.pathname) ?? page);
+      // A page that cannot move to the new origin is dropped, so the effect cannot see it as stale again.
+      const next = parsed.pathname === "/" ? { url: homeUrl, name: homeName } : pageFor(appUrl, parsed.pathname);
+      return next ? [next] : [];
     });
     patchDraft((d) => ({ ...d, monitors: { ...d.monitors, pages: moved.filter((p, i) => moved.findIndex((q) => q.url === p.url) === i) } }));
     // eslint-disable-next-line react-hooks/exhaustive-deps -- isCurrentOrigin only reads appOrigin/scanOrigin, derived from the deps below
-  }, [hasStalePages, appUrl, scanOrigin, home, readOnly, monitors.pages, patchDraft]);
+  }, [hasStalePages, appUrl, scanOrigin, homeUrl, homeName, readOnly, monitors.pages, patchDraft]);
 
   // Scanned pages that loaded (2xx/3xx; status 0 means the fetch failed), at most 10; only the homepage starts ticked.
   const scanned = (appUrl && scan ? scan.pages.filter((p) => p.status >= 200 && p.status < 400 && p.path !== "/").slice(0, 10) : [])
