@@ -82,6 +82,8 @@ export function ReviewStep({ response, features, permissions, draft, skipped, re
   const [results, setResults] = useState<Record<string, ItemResult>>({});
   const [running, setRunning] = useState(false);
   const [finished, setFinished] = useState(false);
+  // A stopped run is not a finished one: pending and failed items can still be created.
+  const [cancelled, setCancelled] = useState(false);
   const [retrying, setRetrying] = useState(false);
   const [finishFailed, setFinishFailed] = useState(false);
 
@@ -138,13 +140,17 @@ export function ReviewStep({ response, features, permissions, draft, skipped, re
 
   const start = async () => {
     setRunning(true);
+    setCancelled(false);
     // A lost lock aborts the run; taking the lock back must let a new run start.
     if (controller.current.signal.aborted) controller.current = new AbortController();
-    const run = runAll(items, { ...deps, signal: controller.current.signal }, update);
+    const { signal } = controller.current;
+    // Done and adopted items keep their recorded ids; a continue only reruns the rest.
+    const run = runAll(items, { ...deps, signal }, update, (key) => results[key]?.status !== "done" && results[key]?.status !== "adopted");
     activeRun.current = run;
     await run;
     setRunning(false);
-    setFinished(true);
+    setCancelled(signal.aborted);
+    setFinished(!signal.aborted);
   };
 
   const retry = async (item: CreateItem) => {
@@ -279,7 +285,7 @@ export function ReviewStep({ response, features, permissions, draft, skipped, re
         <div className="flex flex-wrap gap-2">
           {!finished && items.length > 0 ? (
             <Button type="button" disabled={running || readOnly || waitSeconds > 0} onClick={start}>
-              {running ? "Creating..." : `Create ${items.length} item${items.length === 1 ? "" : "s"}`}
+              {running ? "Creating..." : cancelled ? "Continue creating" : `Create ${items.length} item${items.length === 1 ? "" : "s"}`}
             </Button>
           ) : (
             <Button type="button" disabled={running || readOnly} onClick={finish}>
