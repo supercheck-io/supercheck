@@ -33,7 +33,7 @@ describe("type tones", () => {
       expect(dark).toContain(`--type-${tone}: oklch(${d});`);
     }
     expect(Object.values(TYPE_TONE.test)).toEqual(["sky", "teal", "cyan", "blue", "purple", "purple"]);
-    expect(Object.values(TYPE_TONE.monitor)).toEqual(["teal", "sky", "cyan", "blue", "purple", "teal", "purple", "purple"]);
+    expect(Object.values(TYPE_TONE.monitor)).toEqual(["aqua", "cyan", "sky", "blue", "purple", "orchid", "fuchsia", "rose"]);
     expect(TYPE_TONE.job).toEqual({ playwright: "sky", k6: "purple" });
   });
 
@@ -41,13 +41,13 @@ describe("type tones", () => {
     const shared = new Set<string>(Object.values(TYPE_TONE.test));
     // The two non-functional tests share purple; Performance stands apart by its k6 logo.
     expect(TYPE_TONE.test.agent).toBe(TYPE_TONE.test.performance);
+    // Monitors never repeat a tone among themselves; they may share one with a test.
+    const monitors = Object.values(TYPE_TONE.monitor);
+    expect(new Set(monitors).size).toBe(monitors.length);
+    for (const tone of monitors) shared.add(tone);
     const others = [TYPE_TONE.variable, TYPE_TONE.sre, TYPE_TONE.admin].flatMap((g) => Object.values(g));
     expect(new Set(others).size).toBe(others.length);
     for (const tone of others) expect(shared.has(tone)).toBe(false);
-    // Every monitor reuses a test tone; MCP and AI Endpoint take the Agent test's.
-    for (const tone of Object.values(TYPE_TONE.monitor)) expect(shared.has(tone)).toBe(true);
-    expect(TYPE_TONE.monitor.mcp_server).toBe(TYPE_TONE.test.agent);
-    expect(TYPE_TONE.monitor.ai_endpoint).toBe(TYPE_TONE.monitor.mcp_server);
     // No tone is defined without a user.
     const used = new Set<string>([...shared, ...others]);
     expect([...TYPE_TONES].filter((t) => !used.has(t))).toEqual([]);

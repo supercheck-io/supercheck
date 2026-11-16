@@ -21,6 +21,9 @@ import { clearProjectsCache } from "@/hooks/use-project-context";
 interface DeleteOrganizationButtonProps {
   organizationId: string;
   organizationName: string;
+  /** Controlled mode (opened from a menu): no trigger button is rendered. Remount with a new `key` per opening so it starts clean. */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }
 
 type DeletionInfo = { graceDays: number; emailAvailable: boolean; hasSubscription: boolean; pending: boolean };
@@ -29,8 +32,11 @@ type DeletionInfo = { graceDays: number; emailAvailable: boolean; hasSubscriptio
  * Owner-only: asks to delete the organization after the name is typed. Never immediate: the organization turns
  * read-only for a grace window and the owner can cancel until it ends.
  */
-export function DeleteOrganizationButton({ organizationId, organizationName }: DeleteOrganizationButtonProps) {
-  const [open, setOpen] = useState(false);
+export function DeleteOrganizationButton({ organizationId, organizationName, open: openProp, onOpenChange }: DeleteOrganizationButtonProps) {
+  const [openState, setOpenState] = useState(false);
+  const controlled = openProp !== undefined;
+  const open = controlled ? openProp : openState;
+  const setOpen = (next: boolean) => (controlled ? onOpenChange?.(next) : setOpenState(next));
   const [typedName, setTypedName] = useState("");
   const [isDeleting, setIsDeleting] = useState(false);
   const [info, setInfo] = useState<DeletionInfo | null>(null);
@@ -108,11 +114,12 @@ export function DeleteOrganizationButton({ organizationId, organizationName }: D
 
   return (
     <>
-      <Button
-        variant="ghost"
-        size="icon"
-        className="h-7 w-7 shrink-0 text-destructive hover:text-destructive"
-        onClick={() => {
+      {!controlled && (
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-7 w-7 shrink-0 text-destructive hover:text-destructive"
+          onClick={() => {
           setTypedName("");
           setNeedsReauth(false);
           setRequested(null);
@@ -121,11 +128,12 @@ export function DeleteOrganizationButton({ organizationId, organizationName }: D
           setInfoFailed(false);
           setOpen(true);
         }}
-        title="Delete organization"
-        aria-label="Delete organization"
-      >
-        <Trash2 className="h-3.5 w-3.5" />
-      </Button>
+          title="Delete organization"
+          aria-label="Delete organization"
+        >
+          <Trash2 className="h-3.5 w-3.5" />
+        </Button>
+      )}
       <Dialog open={open} onOpenChange={close}>
         <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
           <DialogHeader>

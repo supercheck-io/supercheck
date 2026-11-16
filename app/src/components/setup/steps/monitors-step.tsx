@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, type ReactNode } from "react";
-import { Activity, BrainCircuit, Plug, type LucideIcon } from "lucide-react";
+import { BrainCircuit, HeartPulse, Plug, type LucideIcon } from "lucide-react";
 
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -306,7 +306,7 @@ export function MonitorsStep({ response, draft, patchDraft, features, readOnly, 
       {features.heartbeat ? (
         <OptionalCard
           id="heartbeat"
-          icon={Activity}
+          icon={HeartPulse}
           tone={TYPE_TONE.monitor.heartbeat}
           title="Have a cron job or worker? Add a heartbeat"
           description="It pings a URL when it runs. You are alerted when a ping is missing."

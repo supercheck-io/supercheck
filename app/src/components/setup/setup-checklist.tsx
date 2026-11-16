@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Activity, ExternalLink, Smartphone, type LucideIcon } from "lucide-react";
+import { HeartPulse, ExternalLink, Smartphone, type LucideIcon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { IconChip, type IconTone } from "@/components/ui/icon-chip";
@@ -14,7 +14,7 @@ const GROUPS: ChecklistGroup[] = ["watch", "prove", "fix", "team"];
 export const CHECKLIST_ICONS: Record<string, { icon: LucideIcon; tone: IconTone }> = {
   monitors: NAV.monitors,
   alerts: NAV.notifications,
-  heartbeat: { icon: Activity, tone: TYPE_TONE.monitor.heartbeat },
+  heartbeat: { icon: HeartPulse, tone: TYPE_TONE.monitor.heartbeat },
   statusPage: NAV.statusPages,
   requirements: NAV.requirements,
   tests: NAV.tests,
