@@ -377,6 +377,19 @@ export async function ensureProject(deps: Pick<RunnerDeps, "setupProjectId" | "f
   }
 }
 
+/** A wait that ends early when the run is cancelled, so Stop does not sit out a 60 s rate-limit pause. */
+const abortableSleep = (signal?: AbortSignal) => (ms: number) =>
+  new Promise<void>((resolve) => {
+    const done = () => {
+      clearTimeout(timer);
+      signal?.removeEventListener("abort", done);
+      resolve();
+    };
+    const timer = setTimeout(done, ms);
+    if (signal?.aborted) return done();
+    signal?.addEventListener("abort", done);
+  });
+
 const isNetworkFailure = (error: unknown) => error instanceof TypeError;
 
 async function createMonitor(item: CreateItem, deps: RunnerDeps, lookup: Lookup, progress?: Progress): Promise<ItemResult> {
@@ -405,7 +418,7 @@ async function createMonitor(item: CreateItem, deps: RunnerDeps, lookup: Lookup,
     const bodyWait = Number((res.data as { retryAfter?: unknown } | null)?.retryAfter);
     const seconds = Math.min(MAX_RATE_LIMIT_WAIT_SECONDS, Math.max(1, res.retryAfterSeconds ?? (Number.isFinite(bodyWait) ? bodyWait : 15)));
     progress?.({ status: "running", note: RATE_LIMIT_NOTE });
-    await (deps.sleep ?? ((ms) => new Promise<void>((resolve) => setTimeout(resolve, ms))))(seconds * 1000);
+    await (deps.sleep ?? abortableSleep(deps.signal))(seconds * 1000);
     progress?.({ status: "running", note: undefined });
     if (deps.signal?.aborted) return { status: "failed", error: CANCELLED_ERROR };
     // The wait can outlast the lock, so ask directly (not the throttled wrapper) before writing again.
