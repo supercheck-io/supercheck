@@ -32,7 +32,8 @@ export type SetupScanErrorCode =
   | 'blocked_private'
   | 'bot_protection'
   | 'timeout'
-  | 'too_many_redirects';
+  | 'too_many_redirects'
+  | 'ssl_invalid';
 
 export interface SetupScanResult {
   finalUrl: string;
@@ -132,8 +133,16 @@ class ScanFailure extends Error {
   }
 }
 
+/** Node/OpenSSL codes for a certificate that fails verification (expired, self-signed, wrong host, ...). */
+const TLS_CERT_ERROR =
+  /^(CERT_|DEPTH_ZERO_SELF_SIGNED_CERT|SELF_SIGNED_CERT|UNABLE_TO_(VERIFY_LEAF_SIGNATURE|GET_ISSUER_CERT)|ERR_TLS_CERT_ALTNAME_INVALID)/;
+
 function classify(error: unknown): ScanFailure {
   const message = error instanceof Error ? error.message : '';
+  const tlsCode = (error as { code?: unknown } | null)?.code;
+  if (typeof tlsCode === 'string' && TLS_CERT_ERROR.test(tlsCode)) {
+    return new ScanFailure('ssl_invalid');
+  }
   if (message.includes(BLOCKED_MESSAGE)) {
     return new ScanFailure('blocked_private', 'private_or_reserved_address');
   }
@@ -296,6 +305,11 @@ export async function processSetupScan(
     const failure = error instanceof ScanFailure ? error : classify(error);
     return {
       ...emptyResult(startOrigin, failure.code),
+      // The request refused the certificate; the unverified read still reports its expiry date.
+      ssl:
+        failure.code === 'ssl_invalid'
+          ? await readSsl(start, deps, budget)
+          : null,
       blockedReason: failure.blockedReason,
     };
   }

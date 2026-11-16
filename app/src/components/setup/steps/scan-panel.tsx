@@ -25,6 +25,7 @@ const SCAN_ERRORS: Record<NonNullable<ScanSummary["error"]> | "timeout" | "unava
   bot_protection: "The site answered with a bot-protection page, so we could not read it. You can still add monitors by hand.",
   unreachable: "We could not reach this address. Check the URL, or continue and add monitors by hand.",
   timeout: "The scan took too long and was stopped. Try again, or continue without it.",
+  ssl_invalid: "The SSL certificate is invalid or expired.",
   too_many_redirects: "The address redirected too many times. Check the URL, or continue without a scan.",
   unavailable: "Scan unavailable, continue without it.",
   failed: "The scan failed. Try again, or continue without it.",
@@ -139,7 +140,13 @@ export function scanFindings(result: ScanSummary): Array<{ label: string; tone: 
 }
 
 export function ScanFindings({ result }: { result: ScanSummary }) {
-  if (result.error) return <Alert variant="error">{SCAN_ERRORS[result.error]}</Alert>;
+  if (result.error) {
+    const expiry = result.error === "ssl_invalid" ? Date.parse(result.ssl?.validTo ?? "") : NaN;
+    const message = Number.isNaN(expiry)
+      ? SCAN_ERRORS[result.error]
+      : `The SSL certificate is invalid or expired (${new Date(expiry).toISOString().slice(0, 10)}).`;
+    return <Alert variant="error">{message}</Alert>;
+  }
   return (
     <Table data-testid="setup-scan-findings">
       <TableHeader>

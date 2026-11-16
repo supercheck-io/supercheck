@@ -35,7 +35,7 @@ const scanResultSchema = z.object({
   // Validated page by page below, so one bad page does not drop the rest.
   pages: z.array(z.unknown()).max(MAX_PAGES),
   blockedReason: z.string().max(60).optional(),
-  error: z.enum(["unreachable", "blocked_private", "bot_protection", "timeout", "too_many_redirects"]).optional(),
+  error: z.enum(["unreachable", "blocked_private", "bot_protection", "timeout", "too_many_redirects", "ssl_invalid"]).optional(),
 });
 export type ScanSummary = Omit<z.infer<typeof scanResultSchema>, "pages"> & { pages: z.infer<typeof pageSchema>[] };
 

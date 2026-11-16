@@ -262,6 +262,39 @@ describe('setup scan processor', () => {
     expect(addr).toEqual([{ address: '93.184.216.34', family: 4 }]);
   });
 
+  it('reports an expired certificate as ssl_invalid with its details', async () => {
+    const validTo = new Date(Date.now() - 5 * 86_400_000);
+    const readCertificate = jest.fn().mockResolvedValue({
+      certificate: {
+        valid_to: validTo.toUTCString(),
+        issuer: { CN: 'Test CA' },
+      },
+      authorized: false,
+    });
+    const r = await scan(
+      () => {
+        throw new AxiosError('certificate has expired', 'CERT_HAS_EXPIRED');
+      },
+      { readCertificate },
+      'https://93.184.216.34/',
+    ).result;
+    expect(r).toMatchObject({ reachable: false, error: 'ssl_invalid' });
+    expect(r.ssl).toMatchObject({ issuer: 'Test CA' });
+    expect(r.ssl?.daysRemaining).toBeLessThan(0);
+    expect(readCertificate).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps ssl_invalid when the certificate itself cannot be read', async () => {
+    const r = await scan(
+      () => {
+        throw new AxiosError('self signed', 'DEPTH_ZERO_SELF_SIGNED_CERT');
+      },
+      { readCertificate: jest.fn().mockRejectedValue(new Error('tls')) },
+      'https://93.184.216.34/',
+    ).result;
+    expect(r).toMatchObject({ error: 'ssl_invalid', ssl: null });
+  });
+
   it('returns ssl null when the certificate cannot be read', async () => {
     const fail = jest.fn().mockRejectedValue(new Error('tls'));
     const failed = await scan(

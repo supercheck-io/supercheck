@@ -4,6 +4,7 @@ import { waitForHydration } from '../../utils/hydration';
 import {
   chooseProfile,
   expectStep,
+  goToStep,
   monitorNames,
   next,
   purgeCreatedItems,
@@ -11,7 +12,7 @@ import {
   wizard,
 } from '../../utils/setup-test-data';
 
-// The wizard order for "Keep production up": App, Alerts, Monitors, Status page, Review and create.
+// The wizard order for "Keep production up": App, Alerts, Monitors, (AI SRE), Status page, (Requirements and tests), Review and create.
 test.describe('Project setup creator flow @setup', () => {
   let context: BrowserContext;
   let page: Page;
@@ -51,12 +52,8 @@ test.describe('Project setup creator flow @setup', () => {
     // The homepage monitor starts ticked.
     await expectStep(page, 'monitors');
     await expect(wizard(page).getByRole('checkbox').first()).toBeChecked();
-    await next(page);
-
-    await expectStep(page, 'statusPage');
-    await next(page);
-
-    await expectStep(page, 'review');
+    await goToStep(page, 'statusPage');
+    await goToStep(page, 'review');
     const review = page.getByTestId('setup-review');
     await expect(review).toContainText('Already saved');
     // Website monitor, status page and its component.

@@ -43,7 +43,7 @@ describe("AiSreStep", () => {
 
   it("saves immediately, then validates, and shows Connected; the draft keeps only the id", async () => {
     mockCreate.mockResolvedValue({ success: true, connector: { id: CID }, message: "ok" });
-    mockValidate.mockResolvedValue({ success: true, message: "ok" });
+    mockValidate.mockResolvedValue({ success: true, message: "ok", connector: { lastValidationStatus: "valid" } });
     const d = drafting();
     render(<AiSreStep {...makeStepProps({ ...admin(), patchDraft: d.patchDraft, draft: d.get() })} />);
     open(/GitHub/);
@@ -62,7 +62,7 @@ describe("AiSreStep", () => {
 
   it("sends both Datadog keys and an optional endpoint; Prometheus needs a URL and may skip the token", async () => {
     mockCreate.mockResolvedValue({ success: true, connector: { id: CID }, message: "ok" });
-    mockValidate.mockResolvedValue({ success: true, message: "ok" });
+    mockValidate.mockResolvedValue({ success: true, message: "ok", connector: { lastValidationStatus: "valid" } });
     render(<AiSreStep {...makeStepProps({ ...admin() })} />);
     open(/Datadog/);
     type("API key", "k1");
@@ -89,6 +89,19 @@ describe("AiSreStep", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save and test" }));
     expect(await screen.findByText("Sentry: Saved, token rejected")).toBeTruthy();
     expect(screen.getByText(/Saved, but the token was rejected\. 401 Unauthorized\./)).toBeTruthy();
+    expect(d.get().aiSre?.connectorIds).toEqual([CID]);
+  });
+
+  it("keeps the connector and says the token was rejected when the check ran but failed", async () => {
+    mockCreate.mockResolvedValue({ success: true, connector: { id: CID }, message: "ok" });
+    mockValidate.mockResolvedValue({ success: true, message: "Connector is missing credentials", connector: { lastValidationStatus: "invalid_credentials" } });
+    const d = drafting();
+    render(<AiSreStep {...makeStepProps({ ...admin(), patchDraft: d.patchDraft, draft: d.get() })} />);
+    open(/Sentry/);
+    type("Auth token", "bad");
+    fireEvent.click(screen.getByRole("button", { name: "Save and test" }));
+    expect(await screen.findByText("Sentry: Saved, token rejected")).toBeTruthy();
+    expect(screen.getByText(/Saved, but the token was rejected\. Connector is missing credentials/)).toBeTruthy();
     expect(d.get().aiSre?.connectorIds).toEqual([CID]);
   });
 

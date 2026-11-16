@@ -3,6 +3,7 @@ import { expect, test, type BrowserContext, type Page } from '@playwright/test';
 import {
   chooseProfile,
   expectStep,
+  goToStep,
   monitorNames,
   next,
   purgeCreatedItems,
@@ -40,10 +41,9 @@ test.describe('Project setup create failure @setup', () => {
     await wizard(page).getByLabel('Add a page path').fill('/pricing');
     await wizard(page).getByRole('button', { name: 'Add page' }).click();
     await expect(wizard(page).getByRole('checkbox')).toHaveCount(2);
-    await next(page);
-    await expectStep(page, 'statusPage');
+    await goToStep(page, 'statusPage');
     await next(page, 'Skip this step');
-    await expectStep(page, 'review');
+    await goToStep(page, 'review');
 
     // Fail the first monitor POST only; the list GET (with a query string) never matches.
     let failed = 0;

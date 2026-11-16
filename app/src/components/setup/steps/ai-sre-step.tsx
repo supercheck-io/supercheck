@@ -89,9 +89,11 @@ function ConnectorForm({ def, projectId, onSaved }: { def: (typeof CONNECTORS)[n
       let outcome: Outcome;
       try {
         const checked = await validateSreConnector({ id });
-        outcome = checked.success
-          ? { state: "connected", text: "Connected" }
-          : { state: "rejected", text: `Saved, but the token was rejected. ${checked.error} Update it from the connector page.` };
+        // The action reports success even when the check failed: only the stored status says the token works.
+        outcome =
+          checked.success && checked.connector?.lastValidationStatus === "valid"
+            ? { state: "connected", text: "Connected" }
+            : { state: "rejected", text: `Saved, but the token was rejected. ${checked.success ? checked.message : checked.error} Update it from the connector page.` };
       } catch {
         outcome = { state: "saved", text: "Saved, but could not test it. Test it from the connector page." };
       }

@@ -191,3 +191,15 @@ describe("scanFindings", () => {
     expect(row({ pages: [] }, "Pages found")).toMatchObject({ tone: "neutral", word: "0" });
   });
 });
+
+describe("invalid certificate", () => {
+  it("names the certificate expiry date", () => {
+    render(<ScanFindings result={result({ reachable: false, status: null, pages: [], error: "ssl_invalid", ssl: { validTo: "2026-03-04T00:00:00.000Z", daysRemaining: -257, issuer: "R3" } })} />);
+    expect(screen.getByText("The SSL certificate is invalid or expired (2026-03-04).")).toBeTruthy();
+  });
+
+  it("falls back to the plain message without certificate details", () => {
+    render(<ScanFindings result={result({ reachable: false, status: null, pages: [], error: "ssl_invalid", ssl: null })} />);
+    expect(screen.getByText("The SSL certificate is invalid or expired.")).toBeTruthy();
+  });
+});
