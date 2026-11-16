@@ -207,6 +207,25 @@ export class AISecurityService {
   }
 
   /**
+   * Plain-text sanitizer for untrusted short strings (page titles, paths): removes injection
+   * patterns outright, drops control/invisible characters and angle brackets, and caps length.
+   */
+  static sanitizeUntrustedText(content: string, maxLength: number): string {
+    if (typeof content !== "string") return "";
+    let text = content
+      .normalize("NFKC")
+      .replace(/[​-‍﻿‎‏⁠-⁤⁦-⁯]/g, "")
+      .replace(/[\x00-\x09\x0B-\x1F\x7F]/g, " "); // keep \n so line-anchored patterns still match
+    // Repeat so removing one match cannot splice the surrounding text into a new one.
+    for (let i = 0; i < 5; i++) {
+      const before = text;
+      for (const pattern of PROMPT_INJECTION_PATTERNS) text = text.replace(pattern, "");
+      if (text === before) break;
+    }
+    return text.replace(/[<>`]/g, "").replace(/\s+/g, " ").trim().slice(0, maxLength);
+  }
+
+  /**
    * Escape user content for safe inclusion in prompts
    * Prevents prompt injection by escaping instruction markers
    */

@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch";
 import { TableBadge } from "@/components/ui/table-badge";
 import { WEBHOOK_PRESETS, getWebhookPreset } from "@/lib/notification-providers/webhook-presets";
+import { CopyFromProject } from "./copy-from-project";
 import { SETUP_LIMITS } from "@/lib/setup/draft-schema";
 import { checkSetupProject, postJson, responseError, type StepProps } from "./step-types";
 
@@ -303,8 +304,18 @@ export function AlertsStep({ response, draft, patchDraft, features, permissions,
         <Alert variant="info">Setup is running somewhere else, so channels cannot be added from this tab.</Alert>
       )}
 
+      {!readOnly && permissions.canCreateNotification ? (
+        <CopyFromProject
+          kind="providers"
+          setupProjectId={response.projectId}
+          disabled={readOnly}
+          capacity={Math.max(0, SETUP_LIMITS.maxChannels - providerIds.length)}
+          onCopied={(ids) => patchDraft((d) => ({ ...d, alerts: { ...d.alerts, providerIds: [...new Set([...(d.alerts?.providerIds ?? []), ...ids])].slice(0, 10) } }))}
+        />
+      ) : null}
+
       {features.repeatUntilAck ? (
-        <section className="rounded-lg border p-4" data-testid="setup-card-repeat">
+        <section className="rounded-xl border p-4" data-testid="setup-card-repeat">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
               <Label htmlFor="setup-repeat" className="text-sm font-semibold">
@@ -350,7 +361,7 @@ export function AlertsStep({ response, draft, patchDraft, features, permissions,
       ) : null}
 
       {features.warningAlerts ? (
-        <section className="rounded-lg border p-4" data-testid="setup-card-warnings">
+        <section className="rounded-xl border p-4" data-testid="setup-card-warnings">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
               <Label htmlFor="setup-warnings" className="text-sm font-semibold">

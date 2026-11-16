@@ -53,7 +53,10 @@ export async function updateProjectSetup(
 
 /** Store a full setup response and the sidebar summary derived from it, so both stay in step after a write. */
 export function setProjectSetupData(queryClient: QueryClient, projectId: string, res: SetupResponse) {
-  queryClient.setQueryData(getProjectSetupQueryKey(projectId), res);
+  // A write does not recompute the plan lock (null): keep what the last full read said.
+  const previous = queryClient.getQueryData<SetupResponse>(getProjectSetupQueryKey(projectId));
+  const aiTestsLocked = res.aiTestsLocked ?? previous?.aiTestsLocked ?? null;
+  queryClient.setQueryData(getProjectSetupQueryKey(projectId), { ...res, aiTestsLocked });
   const summary: SetupSummary = { status: res.state.status, done: res.checklist.done, total: res.checklist.total, projectEmpty: res.projectEmpty };
   queryClient.setQueryData(getProjectSetupSummaryQueryKey(projectId), summary);
 }

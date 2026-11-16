@@ -6,6 +6,7 @@ import { AppService } from './app.service';
 import { ExecutionModule } from './execution.module';
 import { K6Module } from './k6/k6.module';
 import { MonitorModule } from './monitor/monitor.module';
+import { SetupModule } from './setup/setup.module';
 import { NotificationModule } from './notification/notification.module';
 // SchedulerModule removed - scheduler now runs in the App for capacity management
 import { HealthModule } from './health/health.module';
@@ -33,6 +34,7 @@ import { buildRedisOptions } from './common/redis/redis-options';
     ExecutionModule,
     K6Module.forRoot(), // Location-aware K6 queue registration
     MonitorModule.forRoot(), // Location-aware Monitor queue registration
+    SetupModule, // setup-scan consumer, gated on the monitor queue token
     NotificationModule,
     // SchedulerModule removed - now part of App
     HealthModule,

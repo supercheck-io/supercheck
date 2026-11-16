@@ -6,6 +6,7 @@ import { projects } from "@/db/schema";
 import { PROJECT_SETUP_STATUSES } from "@/db/schema/project-setup";
 import { checkPermissionWithContext, type ProjectPermissionContext } from "@/lib/rbac/middleware";
 import { logAuditEvent } from "@/lib/audit-logger";
+import { SubscriptionAccessDeniedError, subscriptionService } from "@/lib/services/subscription-service";
 import { isAIProviderConfigured } from "@/lib/ai/ai-provider";
 import { checkSetupReadRateLimit, checkSetupWriteRateLimit } from "@/lib/sre/sre-rate-limiter";
 import { deriveChecklist } from "@/lib/setup/checklist";
@@ -44,6 +45,15 @@ async function buildResponse(userId: string, ctx: ProjectPermissionContext, know
     trialCheckIntervalViolation(ctx.organizationId, 1),
     db.select({ name: projects.name }).from(projects).where(eq(projects.id, projectId)).limit(1),
   ]);
+  // Same gate as suggest-requirements: a trial (not paid) org is locked; self-hosted never is. Only a full read
+  // looks it up (a write passes its known state and the client keeps the value it had). A failed lookup is
+  // unknown (null), not locked: suggest-requirements enforces the plan itself.
+  const aiTestsLocked = knownState
+    ? null
+    : await subscriptionService.blockUntilSubscribed(ctx.organizationId, { allowTrial: false }).then(
+        () => false,
+        (error) => (error instanceof SubscriptionAccessDeniedError ? true : null),
+      );
   const features = resolveSetupFeatures({ aiConfigured: isAIProviderConfigured() });
   const can = (resource: Parameters<typeof checkPermissionWithContext>[0], action: string) =>
     checkPermissionWithContext(resource, action, ctx);
@@ -51,6 +61,7 @@ async function buildResponse(userId: string, ctx: ProjectPermissionContext, know
     canEdit: can("monitor", "create"),
     canUpdateProject: can("project", "update"),
     canConfigureConnectors: can("sre_connector", "configure"),
+    canCreateServices: can("sre_service", "create"),
     canInvite: can("invitation", "create"),
     canCreateTests: can("test", "create"),
     canCreateStatusPage: can("status_page", "create"),
@@ -64,6 +75,7 @@ async function buildResponse(userId: string, ctx: ProjectPermissionContext, know
     features,
     permissions,
     monitorsRemaining: remaining,
+    aiTestsLocked,
     minIntervalMinutes: trialViolation?.minimumMinutes ?? 1,
     projectEmpty: projectIsEmpty(counts),
   };
