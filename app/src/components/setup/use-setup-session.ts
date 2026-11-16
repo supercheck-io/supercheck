@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
-import { getProjectSetupQueryKey, updateProjectSetup } from "@/hooks/use-project-setup";
+import { setProjectSetupData, updateProjectSetup } from "@/hooks/use-project-setup";
 import type { SetupDraft } from "@/lib/setup/draft-schema";
 import type { SetupStepKey } from "@/lib/setup/persona";
 import type { SetupLockInfo, SetupStateDto, SetupUpdateRequest } from "@/lib/setup/types";
@@ -28,6 +28,14 @@ const fromState = (s: SetupStateDto): Tracked => ({
   status: s.status,
 });
 
+/** "pages.0.url: Must be an http(s) URL" style text from the server's 400, else null (a network failure has no reason to show). */
+function failureMessage(error: unknown): string | null {
+  const failure = error as { status?: number; message?: string; body?: { details?: unknown } };
+  if (!failure.status) return null;
+  const details = Array.isArray(failure.body?.details) ? failure.body.details.filter((d): d is string => typeof d === "string") : [];
+  return details.length > 0 ? details[0] : (failure.message ?? null);
+}
+
 /**
  * Local copy of the setup state with debounced, serialized autosave. Writes carry
  * `expectedUpdatedAt`; on a 409 the server state replaces the local one and the user is told.
@@ -41,6 +49,8 @@ export function useSetupSession(projectId: string, initial: SetupStateDto, lockT
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const chain = useRef<Promise<void>>(Promise.resolve());
   const [saveState, setSaveState] = useState<SaveState>("idle");
+  /** The server's own reason for the last failed save, shown next to "Could not save the draft". */
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   /** Whether the last save attempt persisted everything that was dirty. */
   const lastSaveOk = useRef(true);
@@ -62,14 +72,16 @@ export function useSetupSession(projectId: string, initial: SetupStateDto, lockT
           const res = await updateProjectSetup(projectId, body);
           updatedAt.current = res.state.updatedAt;
           lastSaveOk.current = true;
+          setSaveError(null);
           setSaveState("saved");
-          queryClient.setQueryData(getProjectSetupQueryKey(projectId), res);
+          setProjectSetupData(queryClient, projectId, res);
           return;
         } catch (error) {
           const failure = error as { status?: number; body?: { state?: SetupStateDto } };
           if (!(failure.status === 409 && failure.body?.state)) {
             for (const key of keys) dirty.current.add(key);
             lastSaveOk.current = false;
+            setSaveError(failureMessage(error));
             setSaveState("error");
             return;
           }
@@ -125,7 +137,7 @@ export function useSetupSession(projectId: string, initial: SetupStateDto, lockT
 
   useEffect(() => () => void flush(), [flush]);
 
-  return { ...state, saveState, patch, patchDraft, flush, recordCreated, getCreated };
+  return { ...state, saveState, saveError, patch, patchDraft, flush, recordCreated, getCreated };
 }
 
 /** Take the lock on mount, heartbeat every 60 s, release on unmount. Another holder makes it read-only. */

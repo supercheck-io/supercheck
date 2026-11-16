@@ -1,4 +1,4 @@
-import { MAX_DRAFT_BYTES, parseSetupDraft, stripUrl } from "./draft-schema";
+import { MAX_DRAFT_BYTES, aiEndpointUrlSchema, parseSetupDraft, schemaError, stripUrl } from "./draft-schema";
 
 describe("parseSetupDraft", () => {
   it("accepts an empty or null draft", () => {
@@ -54,6 +54,26 @@ describe("secret names", () => {
   it("accepts valid variable names and an unset mcp name", () => {
     expect(parseSetupDraft({ app: { testAccountSecret: "SETUP_TEST_PASS" } }).success).toBe(true);
     expect(parseSetupDraft({ monitors: { mcpMonitor: { name: "M", url: "https://a.io/mcp", secretKey: "" } } }).success).toBe(true);
+  });
+});
+
+describe("setup field limits shared with the UI", () => {
+  const ai = (extra: Record<string, unknown>) => ({ monitors: { aiEndpoint: { name: "AI", url: "https://a.io/v1", model: "m", secretKey: "OPENAI_KEY", ...extra } } });
+  it("rejects a 21st page, reserved secret names and an http MCP URL", () => {
+    const pages = Array.from({ length: 21 }, (_, i) => ({ url: `https://a.io/p${i}`, name: `p${i}` }));
+    expect(parseSetupDraft({ monitors: { pages } }).success).toBe(false);
+    expect(parseSetupDraft(ai({ secretKey: "PORT" })).success).toBe(false);
+    expect(parseSetupDraft(ai({ secretKey: "SUPERCHECK_KEY" })).success).toBe(false);
+    expect(parseSetupDraft({ app: { testAccountSecret: "USER" } }).success).toBe(false);
+    expect(parseSetupDraft({ monitors: { mcpMonitor: { name: "M", url: "http://a.io/mcp" } } }).success).toBe(false);
+    expect(parseSetupDraft({ monitors: { mcpMonitor: { name: "M", url: "https://a.io/mcp" } } }).success).toBe(true);
+  });
+  it("keeps only api-version from an AI endpoint URL, with a plain value", () => {
+    const parsed = parseSetupDraft(ai({ url: "https://x.openai.azure.com/openai/deployments/d/chat?api-version=2024-02-01&api-key=sk-1&token=2" }));
+    expect(parsed.success && parsed.data.monitors?.aiEndpoint?.url).toBe("https://x.openai.azure.com/openai/deployments/d/chat?api-version=2024-02-01");
+    const odd = parseSetupDraft(ai({ url: "https://a.io/v1?api-version=sk-live-abc$def" }));
+    expect(odd.success && odd.data.monitors?.aiEndpoint?.url).toBe("https://a.io/v1");
+    expect(schemaError(aiEndpointUrlSchema, "ftp://a.io")).toBe("Must be an http(s) URL");
   });
 });
 

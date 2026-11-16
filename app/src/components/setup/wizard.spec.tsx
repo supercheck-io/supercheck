@@ -165,13 +165,23 @@ describe("navigation and draft", () => {
     renderWizard(makeResponse({}, { status: "in_progress" }));
     fireEvent.click(screen.getByRole("button", { name: "Continue" }));
     await leaveAndFlush();
-    expect(await screen.findByText("Could not save the draft")).toBeTruthy();
+    expect(await screen.findByText("Could not save the draft: boom")).toBeTruthy();
+    // The dialog offers a way out that does not pretend the draft was saved.
+    expect(screen.getByRole("button", { name: "Leave without saving" })).toBeTruthy();
     // Leaving would lose the draft: the dialog stays open with the reason and nothing navigates.
     expect(await screen.findByText(/Your draft could not be saved/)).toBeTruthy();
     expect(push).not.toHaveBeenCalled();
     putHandler = () => ({ status: 200, body: makeResponse({}, { updatedAt: "ok" }) });
     fireEvent.click(screen.getByRole("button", { name: "Try again" }));
     expect(await screen.findByText("Draft saved")).toBeTruthy();
+  });
+
+  it("lets an owner dismiss setup from the exit dialog", async () => {
+    renderWizard(makeResponse({}, { status: "in_progress" }));
+    fireEvent.click(screen.getByRole("button", { name: "Exit setup" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Dismiss setup" }));
+    await waitFor(() => expect(push).toHaveBeenCalledWith("/"));
+    expect(puts().some((c) => (c.body as { status?: string })?.status === "dismissed")).toBe(true);
   });
 
   it("says created items stay once something was created", async () => {

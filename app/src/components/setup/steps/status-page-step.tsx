@@ -14,7 +14,9 @@ export function StatusPageStep({ response, draft, patchDraft, setStatusPageOptOu
   const monitors = draft.monitors?.pages ?? [];
   const extras = [draft.monitors?.heartbeat?.name, draft.monitors?.aiEndpoint?.name, draft.monitors?.mcpMonitor?.name].filter(Boolean) as string[];
   const components = [...monitors.map((m) => m.name), ...extras];
-  const name = page.name ?? `${response.projectName} status`;
+  const defaultName = `${response.projectName} status`;
+  // The default is offered on the first visit only; clearing the field afterwards leaves it empty (an error), never refilled.
+  const name = draft.statusPage ? (page.name ?? "") : defaultName;
   const disabled = readOnly || !permissions.canCreateStatusPage;
 
   const set = (next: Partial<typeof page>) => patchDraft((d) => ({ ...d, statusPage: { ...d.statusPage, ...next } }));
@@ -22,8 +24,8 @@ export function StatusPageStep({ response, draft, patchDraft, setStatusPageOptOu
   // First visit: store the default name shown in the field, or Review would create nothing for it.
   const untouched = !draft.statusPage;
   useEffect(() => {
-    if (untouched && !disabled) patchDraft((d) => (d.statusPage ? d : { ...d, statusPage: { name } }));
-  }, [untouched, disabled, name, patchDraft]);
+    if (untouched && !disabled) patchDraft((d) => (d.statusPage ? d : { ...d, statusPage: { name: defaultName } }));
+  }, [untouched, disabled, defaultName, patchDraft]);
 
   return (
     <div className="space-y-6">
@@ -53,7 +55,8 @@ export function StatusPageStep({ response, draft, patchDraft, setStatusPageOptOu
         <>
           <div className="space-y-1.5">
             <Label htmlFor="setup-status-name">Name</Label>
-            <Input id="setup-status-name" value={name} maxLength={255} disabled={disabled} onChange={(event) => set({ name: event.target.value.trim() ? event.target.value : undefined })} />
+            <Input id="setup-status-name" value={name} maxLength={255} disabled={disabled} aria-invalid={!name.trim()} onChange={(event) => set({ name: event.target.value.trim() ? event.target.value : undefined })} />
+            {!name.trim() && draft.statusPage ? <p className="text-xs text-failure">A name is required, or no status page is created.</p> : null}
             <p className="text-xs text-muted-foreground">An address is generated for you. Add a custom domain later in the page settings.</p>
           </div>
           <div className="flex items-start justify-between gap-3 rounded-lg border p-4">

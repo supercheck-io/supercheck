@@ -36,7 +36,7 @@ export interface ReviewStepProps extends StepProps {
   recordCreated: (key: string, id: string) => Promise<void>;
   getCreated: () => Record<string, string>;
   /** Mark setup completed (PUT status). */
-  complete: () => Promise<void>;
+  complete: () => Promise<boolean>;
   completed: boolean;
   /** Re-claims the setup lock; false when someone took over. */
   heartbeat?: () => Promise<boolean>;
@@ -70,12 +70,14 @@ const STATUS_LABEL: Record<ItemResult["status"], string> = {
 
 export function ReviewStep({ response, features, permissions, draft, skipped, readOnly, recordCreated, getCreated, complete, completed, heartbeat }: ReviewStepProps) {
   const items = useMemo(
-    () => buildCreateItems(draft, { skipped, features, canUpdateProject: permissions.canUpdateProject, canCreateTests: permissions.canCreateTests, canConfigureConnectors: permissions.canConfigureConnectors }),
-    [draft, skipped, features, permissions.canUpdateProject, permissions.canCreateTests, permissions.canConfigureConnectors],
+    () => buildCreateItems(draft, { skipped, features, canUpdateProject: permissions.canUpdateProject, canCreateTests: permissions.canCreateTests, canConfigureConnectors: permissions.canConfigureConnectors, minIntervalMinutes: response.minIntervalMinutes }),
+    [draft, skipped, features, permissions.canUpdateProject, permissions.canCreateTests, permissions.canConfigureConnectors, response.minIntervalMinutes],
   );
   const [results, setResults] = useState<Record<string, ItemResult>>({});
   const [running, setRunning] = useState(false);
   const [finished, setFinished] = useState(false);
+  const [retrying, setRetrying] = useState(false);
+  const [finishFailed, setFinishFailed] = useState(false);
 
   const deps: RunnerDeps = {
     setupProjectId: response.projectId,
@@ -116,11 +118,20 @@ export function ReviewStep({ response, features, permissions, draft, skipped, re
   };
 
   const retry = async (item: CreateItem) => {
-    await retryWithDependents(item, items, deps, update, (key) => results[key]?.status === "skipped");
+    // One Retry at a time: two at once would race on the same lookups and ids.
+    if (retrying) return;
+    setRetrying(true);
+    try {
+      await retryWithDependents(item, items, deps, update, (key) => results[key]?.status === "skipped");
+    } finally {
+      setRetrying(false);
+    }
   };
 
   const finish = async () => {
-    await complete();
+    setFinishFailed(false);
+    // "Finished" is shown only once the completed status is saved.
+    setFinishFailed(!(await complete().catch(() => false)));
   };
 
   const savedChannels = draft.alerts?.providerIds?.length ?? 0;
@@ -131,6 +142,7 @@ export function ReviewStep({ response, features, permissions, draft, skipped, re
   const pings = items.filter((item) => results[item.key]?.pingUrl);
   const started = Object.keys(results).length > 0;
   const testsCreated = items.some((item) => item.kind === "requirement" && (results[item.key]?.status === "done" || results[item.key]?.status === "adopted"));
+  const skippedAlertsWithChannels = skipped.includes("alerts") && savedChannels > 0 && items.some((item) => item.step === "monitors");
 
   return (
     <div className="space-y-6" data-testid="setup-review">
@@ -148,6 +160,12 @@ export function ReviewStep({ response, features, permissions, draft, skipped, re
             {savedSecrets > 0 ? <li>Test account secrets</li> : null}
           </ul>
         </section>
+      ) : null}
+
+      {skippedAlertsWithChannels ? (
+        <Alert variant="info" data-testid="setup-skipped-alerts">
+          Monitors will be created without alerts because you skipped Alerts. The channel{savedChannels === 1 ? "" : "s"} you saved stay in the project.
+        </Alert>
       ) : null}
 
       <section aria-labelledby="setup-will-create" className="space-y-2">
@@ -180,7 +198,7 @@ export function ReviewStep({ response, features, permissions, draft, skipped, re
                     </Button>
                   ) : null}
                   {result.status === "failed" ? (
-                    <Button type="button" size="sm" variant="outline" aria-label={`Retry ${item.label}`} disabled={running || readOnly} onClick={() => retry(item)}>
+                    <Button type="button" size="sm" variant="outline" aria-label={`Retry ${item.label}`} disabled={running || retrying || readOnly} onClick={() => retry(item)}>
                       Retry
                     </Button>
                   ) : null}
@@ -214,7 +232,9 @@ export function ReviewStep({ response, features, permissions, draft, skipped, re
 
       {failed.length > 0 && !running ? <Alert variant="error">{failed.length} item{failed.length === 1 ? "" : "s"} failed. Nothing that succeeded was rolled back. Retry the failed ones or finish and fix them later.</Alert> : null}
 
-      {completed ? (
+      {finishFailed ? <Alert variant="error">Could not save that setup is finished. Check your connection and try again.</Alert> : null}
+
+      {completed && !finishFailed ? (
         <Alert variant="success">
           Setup is finished.{" "}
           <Link href="/" className="font-medium underline underline-offset-4">

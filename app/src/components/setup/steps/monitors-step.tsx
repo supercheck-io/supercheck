@@ -8,11 +8,23 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import { stripUrl, type SetupDraft } from "@/lib/setup/draft-schema";
+import { AI_ENDPOINT_DEFAULT_URL } from "@/components/monitors/ai-endpoint-fields";
+import {
+  AI_ENDPOINT_QUERY_ALLOWLIST,
+  SETUP_LIMITS,
+  aiEndpointUrlSchema,
+  mcpUrlSchema,
+  schemaError,
+  secretNameSchema,
+  setupModelSchema,
+  setupNameSchema,
+  setupUrlSchema,
+  stripUrl,
+  type SetupDraft,
+} from "@/lib/setup/draft-schema";
 import { scanMatchesUrl, type StepProps } from "./step-types";
 
 const INTERVALS = [1, 5, 10, 15, 30, 60];
-const SECRET_NAME = /^[A-Z][A-Z0-9_]{3,19}$/;
 
 type Page = { url: string; name: string };
 type MonitorsDraft = NonNullable<SetupDraft["monitors"]>;
@@ -29,6 +41,14 @@ function pageFor(appUrl: string, path: string): Page | null {
   const url = stripUrl(`${base.origin}${clean}`);
   return url ? { url, name: `${base.host}${new URL(url).pathname}` } : null;
 }
+
+/** Error for a page the server schema would reject (long path or name), else null. */
+function pageError(page: Page): string | null {
+  return schemaError(setupUrlSchema, page.url) ?? schemaError(setupNameSchema, page.name);
+}
+
+/** Inline error for a non-empty value that the draft schema rejects; empty shows nothing (the item is just not added). */
+const fieldError = (schema: Parameters<typeof schemaError>[0], value: string) => (value.trim() === "" ? null : schemaError(schema, value));
 
 function OptionalCard({
   id,
@@ -93,6 +113,26 @@ export function MonitorsStep({ response, draft, patchDraft, features, readOnly, 
     }
   }, [untouched, homeUrl, homeName, readOnly, patchDraft]);
 
+  // The app URL changed after pages were suggested: move pages from the old address onto the new one.
+  // Pages on the scan's final origin (a redirect, e.g. example.com -> www.example.com) are not stale.
+  const appOrigin = appUrl ? new URL(appUrl).origin : null;
+  const scanOrigin = scan ? new URL(scan.finalUrl).origin : null;
+  const isCurrentOrigin = (url: string) => {
+    const origin = new URL(url).origin;
+    return origin === appOrigin || origin === scanOrigin;
+  };
+  const hasStalePages = Boolean(appOrigin) && monitors.pages.some((page) => !isCurrentOrigin(page.url));
+  useEffect(() => {
+    if (!hasStalePages || !appUrl || !home || readOnly) return;
+    const moved = monitors.pages.map((page) => {
+      if (isCurrentOrigin(page.url)) return page;
+      const parsed = new URL(page.url);
+      return parsed.pathname === "/" ? home : (pageFor(appUrl, parsed.pathname) ?? page);
+    });
+    patchDraft((d) => ({ ...d, monitors: { ...d.monitors, pages: moved.filter((p, i) => moved.findIndex((q) => q.url === p.url) === i) } }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- isCurrentOrigin only reads appOrigin/scanOrigin, derived from the deps below
+  }, [hasStalePages, appUrl, scanOrigin, home, readOnly, monitors.pages, patchDraft]);
+
   // Scanned pages that loaded (2xx/3xx; status 0 means the fetch failed), at most 10; only the homepage starts ticked.
   const scanned = (appUrl && scan ? scan.pages.filter((p) => p.status >= 200 && p.status < 400 && p.path !== "/").slice(0, 10) : [])
     .map((p) => (scan ? pageFor(scan.finalUrl, p.path) : null))
@@ -103,7 +143,11 @@ export function MonitorsStep({ response, draft, patchDraft, features, readOnly, 
   const suggestions = [...(home ? [home] : []), ...scanned, ...extras];
   const selected = new Set(monitors.pages.map((page) => page.url));
   const [path, setPath] = useState("");
-  const [pathError, setPathError] = useState(false);
+  const [pathError, setPathError] = useState<string | null>(null);
+  const minInterval = response.minIntervalMinutes ?? 1;
+  const intervals = [...new Set([minInterval, ...INTERVALS.filter((m) => m > minInterval)])];
+  const interval = Math.max(monitors.frequencyMinutes ?? 5, minInterval);
+  const pagesFull = monitors.pages.length >= SETUP_LIMITS.maxPages;
 
   // Count what Create will add, so the cap is visible before Review.
   const planned =
@@ -116,8 +160,11 @@ export function MonitorsStep({ response, draft, patchDraft, features, readOnly, 
 
   const addPath = () => {
     const page = appUrl && path.trim() ? pageFor(appUrl, path) : null;
-    if (!page) return setPathError(true);
-    setPathError(false);
+    if (!page) return setPathError("Enter a path like /pricing.");
+    const rejected = pageError(page);
+    if (rejected) return setPathError(`That path is too long or not valid: ${rejected}`);
+    if (!selected.has(page.url) && pagesFull) return setPathError(`You can add up to ${SETUP_LIMITS.maxPages} pages.`);
+    setPathError(null);
     setPath("");
     if (!selected.has(page.url)) setMonitors({ pages: [...monitors.pages, page] });
   };
@@ -129,7 +176,7 @@ export function MonitorsStep({ response, draft, patchDraft, features, readOnly, 
   const [hbEvery, setHbEvery] = useState(String(hb?.frequencyMinutes ?? 60));
   const commitHb = (name: string, every: string) => {
     const minutes = Number(every);
-    const ok = name.trim() && Number.isInteger(minutes) && minutes >= 1 && minutes <= 44640;
+    const ok = !schemaError(setupNameSchema, name) && Number.isInteger(minutes) && minutes >= minInterval && minutes <= 44640;
     setMonitors({ heartbeat: ok ? { name: name.trim(), frequencyMinutes: minutes } : undefined });
   };
 
@@ -139,9 +186,9 @@ export function MonitorsStep({ response, draft, patchDraft, features, readOnly, 
   const [aiForm, setAiForm] = useState({ name: ai?.name ?? "AI endpoint", url: ai?.url ?? (aiPath && scan ? `${new URL(scan.finalUrl).origin}${aiPath.path}` : ""), model: ai?.model ?? "", secretKey: ai?.secretKey ?? "" });
   const commitAi = (next: typeof aiForm) => {
     setAiForm(next);
-    const url = stripUrl(next.url);
-    const ok = next.name.trim() && url && next.model.trim() && SECRET_NAME.test(next.secretKey);
-    setMonitors({ aiEndpoint: ok ? { name: next.name.trim(), url: url as string, model: next.model.trim(), secretKey: next.secretKey } : undefined });
+    const url = stripUrl(next.url, AI_ENDPOINT_QUERY_ALLOWLIST);
+    const ok = !schemaError(setupNameSchema, next.name) && !schemaError(aiEndpointUrlSchema, next.url) && !schemaError(setupModelSchema, next.model) && !schemaError(secretNameSchema, next.secretKey);
+    setMonitors({ aiEndpoint: ok && url ? { name: next.name.trim(), url, model: next.model.trim(), secretKey: next.secretKey } : undefined });
   };
 
   // MCP
@@ -151,8 +198,8 @@ export function MonitorsStep({ response, draft, patchDraft, features, readOnly, 
   const commitMcp = (next: typeof mcpForm) => {
     setMcpForm(next);
     const url = stripUrl(next.url);
-    const secretOk = next.secretKey === "" || SECRET_NAME.test(next.secretKey);
-    setMonitors({ mcpMonitor: next.name.trim() && url && secretOk ? { name: next.name.trim(), url, ...(next.secretKey ? { secretKey: next.secretKey } : {}) } : undefined });
+    const ok = !schemaError(setupNameSchema, next.name) && !schemaError(mcpUrlSchema, next.url) && (next.secretKey === "" || !schemaError(secretNameSchema, next.secretKey));
+    setMonitors({ mcpMonitor: ok && url ? { name: next.name.trim(), url, ...(next.secretKey ? { secretKey: next.secretKey } : {}) } : undefined });
   };
 
   return (
@@ -160,7 +207,7 @@ export function MonitorsStep({ response, draft, patchDraft, features, readOnly, 
       {remaining !== null ? (
         <Alert variant={overCap ? "warning" : "info"} data-testid="setup-monitor-cap">
           {overCap
-            ? `Your plan allows ${remaining} more monitor${remaining === 1 ? "" : "s"}. You picked ${planned}; Create will stop at the limit.`
+            ? `Your plan allows ${remaining} more monitor${remaining === 1 ? "" : "s"}. You picked ${planned}; Create continues, and monitors over the limit fail with the plan message.`
             : `Your plan allows ${remaining} more monitor${remaining === 1 ? "" : "s"}.`}
         </Alert>
       ) : null}
@@ -181,7 +228,7 @@ export function MonitorsStep({ response, draft, patchDraft, features, readOnly, 
                 <Checkbox
                   id={`setup-page-${index}`}
                   checked={selected.has(page.url)}
-                  disabled={readOnly}
+                  disabled={readOnly || (pagesFull && !selected.has(page.url))}
                   onCheckedChange={(checked) => togglePage(page, checked === true)}
                 />
                 <label htmlFor={`setup-page-${index}`} className="min-w-0 flex-1 truncate text-sm">
@@ -200,22 +247,23 @@ export function MonitorsStep({ response, draft, patchDraft, features, readOnly, 
                 id="setup-page-path"
                 placeholder="/pricing"
                 value={path}
-                aria-invalid={pathError}
+                aria-invalid={Boolean(pathError)}
                 onChange={(event) => setPath(event.target.value)}
                 onKeyDown={(event) => event.key === "Enter" && (event.preventDefault(), addPath())}
               />
             </div>
-            <Button type="button" variant="outline" onClick={addPath}>
+            <Button type="button" variant="outline" disabled={pagesFull} onClick={addPath}>
               Add page
             </Button>
           </div>
         ) : null}
-        {pathError ? <p className="text-xs text-failure">Enter a path like /pricing.</p> : null}
+        {pathError ? <p className="text-xs text-failure">{pathError}</p> : null}
+        {pagesFull ? <p className="text-xs text-muted-foreground">You have {SETUP_LIMITS.maxPages} pages, the most setup adds. Add more later from Monitors.</p> : null}
 
         <div className="space-y-1.5">
           <Label htmlFor="setup-interval">Check every</Label>
           <Select
-            value={String(monitors.frequencyMinutes ?? 5)}
+            value={String(interval)}
             disabled={readOnly}
             onValueChange={(value) => setMonitors({ frequencyMinutes: Number(value) })}
           >
@@ -223,7 +271,7 @@ export function MonitorsStep({ response, draft, patchDraft, features, readOnly, 
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {INTERVALS.map((minutes) => (
+              {intervals.map((minutes) => (
                 <SelectItem key={minutes} value={String(minutes)}>
                   {minutes} min
                 </SelectItem>
@@ -246,8 +294,8 @@ export function MonitorsStep({ response, draft, patchDraft, features, readOnly, 
             else setMonitors({ heartbeat: undefined });
           }}
         >
-          <Field id="setup-hb-name" label="Name" value={hbName} onChange={(e) => (setHbName(e.target.value), commitHb(e.target.value, hbEvery))} />
-          <Field id="setup-hb-every" label="Expect a ping every (minutes)" type="number" min={1} value={hbEvery} onChange={(e) => (setHbEvery(e.target.value), commitHb(hbName, e.target.value))} help="The ping URL is shown once, after Create." />
+          <Field id="setup-hb-name" label="Name" value={hbName} disabled={readOnly} maxLength={SETUP_LIMITS.maxNameChars} onChange={(e) => (setHbName(e.target.value), commitHb(e.target.value, hbEvery))} />
+          <Field id="setup-hb-every" label="Expect a ping every (minutes)" type="number" min={minInterval} disabled={readOnly} error={Number(hbEvery) < minInterval || Number(hbEvery) > 44640 || !Number.isInteger(Number(hbEvery))} value={hbEvery} onChange={(e) => (setHbEvery(e.target.value), commitHb(hbName, e.target.value))} help={Number(hbEvery) < minInterval ? `Your plan allows a ping interval of ${minInterval} minutes or more.` : "The ping URL is shown once, after Create."} />
         </OptionalCard>
       ) : null}
 
@@ -264,15 +312,16 @@ export function MonitorsStep({ response, draft, patchDraft, features, readOnly, 
             else setMonitors({ aiEndpoint: undefined });
           }}
         >
-          <Field id="setup-ai-name" label="Name" value={aiForm.name} onChange={(e) => commitAi({ ...aiForm, name: e.target.value })} />
-          <Field id="setup-ai-url" label="Endpoint URL" type="url" placeholder="https://api.openai.com/v1/chat/completions" value={aiForm.url} onChange={(e) => commitAi({ ...aiForm, url: e.target.value })} />
-          <Field id="setup-ai-model" label="Model" value={aiForm.model} onChange={(e) => commitAi({ ...aiForm, model: e.target.value })} />
+          <Field id="setup-ai-name" label="Name" value={aiForm.name} disabled={readOnly} maxLength={SETUP_LIMITS.maxNameChars} onChange={(e) => commitAi({ ...aiForm, name: e.target.value })} />
+          <Field id="setup-ai-url" label="Endpoint URL" type="url" placeholder={AI_ENDPOINT_DEFAULT_URL} value={aiForm.url} disabled={readOnly} maxLength={SETUP_LIMITS.maxUrlChars} error={Boolean(fieldError(aiEndpointUrlSchema, aiForm.url))} help={fieldError(aiEndpointUrlSchema, aiForm.url) ?? "Only api-version is kept from the query string; other parameters are dropped because they can carry keys."} onChange={(e) => commitAi({ ...aiForm, url: e.target.value })} />
+          <Field id="setup-ai-model" label="Model" value={aiForm.model} disabled={readOnly} maxLength={SETUP_LIMITS.maxModelChars} error={Boolean(fieldError(setupModelSchema, aiForm.model))} help={fieldError(setupModelSchema, aiForm.model) ?? undefined} onChange={(e) => commitAi({ ...aiForm, model: e.target.value })} />
           <Field
             id="setup-ai-secret"
             label="API key secret name"
             value={aiForm.secretKey}
-            error={aiForm.secretKey !== "" && !SECRET_NAME.test(aiForm.secretKey)}
-            help="Name of a project secret, 4 to 20 characters: capitals, digits and underscores. Create it under Variables."
+            disabled={readOnly}
+            error={Boolean(fieldError(secretNameSchema, aiForm.secretKey))}
+            help={fieldError(secretNameSchema, aiForm.secretKey) ?? "Name of a project secret, 4 to 20 characters: capitals, digits and underscores. Create it under Variables."}
             onChange={(e) => commitAi({ ...aiForm, secretKey: e.target.value.toUpperCase() })}
           />
         </OptionalCard>
@@ -291,14 +340,15 @@ export function MonitorsStep({ response, draft, patchDraft, features, readOnly, 
             else setMonitors({ mcpMonitor: undefined });
           }}
         >
-          <Field id="setup-mcp-name" label="Name" value={mcpForm.name} onChange={(e) => commitMcp({ ...mcpForm, name: e.target.value })} />
-          <Field id="setup-mcp-url" label="Server URL" type="url" value={mcpForm.url} onChange={(e) => commitMcp({ ...mcpForm, url: e.target.value })} />
+          <Field id="setup-mcp-name" label="Name" value={mcpForm.name} disabled={readOnly} maxLength={SETUP_LIMITS.maxNameChars} onChange={(e) => commitMcp({ ...mcpForm, name: e.target.value })} />
+          <Field id="setup-mcp-url" label="Server URL" type="url" placeholder="https://mcp.example.com/mcp" value={mcpForm.url} disabled={readOnly} maxLength={SETUP_LIMITS.maxUrlChars} error={Boolean(fieldError(mcpUrlSchema, mcpForm.url))} help={fieldError(mcpUrlSchema, mcpForm.url) ?? undefined} onChange={(e) => commitMcp({ ...mcpForm, url: e.target.value })} />
           <Field
             id="setup-mcp-secret"
             label="Token secret name (optional)"
             value={mcpForm.secretKey}
-            error={mcpForm.secretKey !== "" && !SECRET_NAME.test(mcpForm.secretKey)}
-            help="Name of a project secret holding a bearer token. Leave empty for no authentication."
+            disabled={readOnly}
+            error={Boolean(fieldError(secretNameSchema, mcpForm.secretKey))}
+            help={fieldError(secretNameSchema, mcpForm.secretKey) ?? "Name of a project secret holding a bearer token. Leave empty for no authentication."}
             onChange={(e) => commitMcp({ ...mcpForm, secretKey: e.target.value.toUpperCase() })}
           />
         </OptionalCard>

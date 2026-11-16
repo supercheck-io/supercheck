@@ -1,6 +1,6 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import Link from "next/link";
 import { useQueryClient } from "@tanstack/react-query";
 import { CheckCircle2, Circle } from "lucide-react";
@@ -13,7 +13,7 @@ import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAppConfig } from "@/hooks/use-app-config";
 import { useProjectContextSafe } from "@/hooks/use-project-context";
-import { getProjectSetupQueryKey, updateProjectSetup, useProjectSetup } from "@/hooks/use-project-setup";
+import { getProjectSetupQueryKey, setProjectSetupData, updateProjectSetup, useProjectSetup } from "@/hooks/use-project-setup";
 import { NAV } from "@/lib/nav-areas";
 import type { Checklist } from "@/lib/setup/checklist";
 import type { ProjectSetupStatus } from "@/db/schema/project-setup";
@@ -98,6 +98,7 @@ export function DashboardGettingStarted({ fallback, onlyInProgress = false }: { 
   const { setupFeatures } = useAppConfig();
   const project = useProjectContextSafe()?.currentProject ?? null;
   const queryClient = useQueryClient();
+  const [dismissing, setDismissing] = useState(false);
   const query = useProjectSetup(setupFeatures.setup ? project?.id : null);
 
   if (!setupFeatures.setup || !project) return <>{fallback}</>;
@@ -108,13 +109,18 @@ export function DashboardGettingStarted({ fallback, onlyInProgress = false }: { 
   if (onlyInProgress && state.status !== "in_progress") return <>{fallback}</>;
 
   const dismiss = async () => {
+    // A second click while the first is in flight would send a stale expectedUpdatedAt and show a false error.
+    if (dismissing) return;
+    setDismissing(true);
     try {
       const res = await updateProjectSetup(project.id, { expectedUpdatedAt: state.updatedAt, status: "dismissed" });
-      queryClient.setQueryData(getProjectSetupQueryKey(project.id), res);
+      setProjectSetupData(queryClient, project.id, res);
     } catch {
       // A 409 means the state moved on; refetch so the retry carries the current updatedAt.
       void queryClient.invalidateQueries({ queryKey: getProjectSetupQueryKey(project.id) });
       toast.error("Could not dismiss. Try again.");
+    } finally {
+      setDismissing(false);
     }
   };
 
@@ -125,6 +131,7 @@ export function DashboardGettingStarted({ fallback, onlyInProgress = false }: { 
       canEdit={permissions.canEdit}
       projectId={project.id}
       onDismiss={dismiss}
+      dismissing={dismissing}
     />
   );
 }

@@ -5,9 +5,10 @@ import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { stripUrl } from "@/lib/setup/draft-schema";
+import { SETUP_LIMITS, stripUrl } from "@/lib/setup/draft-schema";
+import { PROJECT_HEADER } from "../create-runner";
 import { ScanPanel } from "./scan-panel";
-import { checkSetupProject, postJson, responseError, type StepProps } from "./step-types";
+import { checkSetupProject, fetchJson, postJson, responseError, type StepProps } from "./step-types";
 
 /** Secret names are 4-20 chars, uppercase (createVariableSchema). */
 const TEST_ACCOUNT_USER = "SETUP_TEST_USER";
@@ -21,8 +22,11 @@ export function AppStep({ response, draft, patchDraft, readOnly, scan, setScan }
   const [saving, setSaving] = useState(false);
   const [accountError, setAccountError] = useState<string | null>(null);
 
-  // Secrets this attempt already created (key -> value), so a retry after a partial failure continues with the rest.
-  const created = useRef(new Map<string, string>());
+  // Secrets this attempt already created (key -> id and value), so a retry after a partial failure continues with the rest,
+  // and a changed username updates the secret this attempt made instead of colliding with it.
+  const created = useRef(new Map<string, { id: string; value: string }>());
+  // A secret with one of these names was already in the project before this attempt.
+  const [existsAlready, setExistsAlready] = useState(false);
 
   const stripped = url.trim() ? stripUrl(url) : null;
   const invalid = touched && url.trim() !== "" && !stripped;
@@ -37,6 +41,7 @@ export function AppStep({ response, draft, patchDraft, readOnly, scan, setScan }
   const saveAccount = async () => {
     setSaving(true);
     setAccountError(null);
+    setExistsAlready(false);
     try {
       // The variables route also refuses a switched project (expected-project header); this covers the rest.
       const changed = await checkSetupProject(response.projectId);
@@ -48,14 +53,28 @@ export function AppStep({ response, draft, patchDraft, readOnly, scan, setScan }
         [TEST_ACCOUNT_USER, username, "Setup test account username"],
         [TEST_ACCOUNT_PASSWORD, password, "Setup test account password"],
       ];
+      let collided = false;
       for (const [key, value, description] of pairs) {
-        if (created.current.get(key) === value) continue;
-        const res = await postJson("/api/variables", { key, value, isSecret: true, description }, response.projectId);
-        if (!res.ok) {
-          setAccountError(res.status === 409 && !created.current.has(key) ? "A secret with this name already exists. Update it in Variables." : responseError(res.data, "Could not save the test account"));
-          return;
+        const own = created.current.get(key);
+        if (own?.value === value) continue;
+        if (own) {
+          const updated = await fetchJson(`/api/variables/${own.id}`, { method: "PUT", body: { value }, headers: { [PROJECT_HEADER]: response.projectId } });
+          if (!updated.ok) return setAccountError(responseError(updated.data, "Could not save the test account"));
+          own.value = value;
+          continue;
         }
-        created.current.set(key, value);
+        const res = await postJson<{ id?: string }>("/api/variables", { key, value, isSecret: true, description }, response.projectId);
+        if (res.status === 409) {
+          collided = true; // never overwrite a secret that was not made here
+          continue;
+        }
+        if (!res.ok || !res.data.id) return setAccountError(responseError(res.data, "Could not save the test account"));
+        created.current.set(key, { id: res.data.id, value });
+      }
+      if (collided) {
+        setExistsAlready(true);
+        setAccountError(`A secret named ${TEST_ACCOUNT_USER} or ${TEST_ACCOUNT_PASSWORD} already exists. Use it as it is, or change it in Variables.`);
+        return;
       }
       patchDraft((d) => ({ ...d, app: { ...d.app, testAccountSecret: TEST_ACCOUNT_PASSWORD } }));
       setUsername("");
@@ -78,6 +97,7 @@ export function AppStep({ response, draft, patchDraft, readOnly, scan, setScan }
           type="url"
           inputMode="url"
           placeholder="https://app.example.com"
+          maxLength={SETUP_LIMITS.maxUrlChars}
           value={url}
           disabled={readOnly}
           aria-invalid={invalid}
@@ -117,6 +137,20 @@ export function AppStep({ response, draft, patchDraft, readOnly, scan, setScan }
               </div>
             </div>
             {accountError ? <Alert variant="error">{accountError}</Alert> : null}
+            {existsAlready ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  patchDraft((d) => ({ ...d, app: { ...d.app, testAccountSecret: TEST_ACCOUNT_PASSWORD } }));
+                  setAccountError(null);
+                  setExistsAlready(false);
+                }}
+              >
+                Use the existing secret
+              </Button>
+            ) : null}
             <Button type="button" variant="outline" size="sm" disabled={!username || !password || saving} onClick={saveAccount}>
               Save test account
             </Button>

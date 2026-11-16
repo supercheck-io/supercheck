@@ -268,6 +268,8 @@ describe("getChecklistCounts", () => {
       (${id()}, ${orgA}, ${projA}, 'n', 'email', '{}'::jsonb), (${id()}, ${orgA}, ${projA2}, 'n', 'email', '{}'::jsonb)`;
     await client`INSERT INTO status_pages (id, organization_id, project_id, name, subdomain) VALUES
       (${pageId}, ${orgA}, ${projA}, 's', ${`s${randomUUID().slice(0, 8)}`}), (${id()}, ${orgB}, ${projB}, 's', ${`s${randomUUID().slice(0, 8)}`})`;
+    // An archived page does not count as a status page.
+    await client`INSERT INTO status_pages (id, organization_id, project_id, name, subdomain, status) VALUES (${id()}, ${orgA}, ${projA}, 'old', ${`s${randomUUID().slice(0, 8)}`}, 'archived')`;
     await client`INSERT INTO tests (id, organization_id, project_id, title, script, type) VALUES (${id()}, ${orgA}, ${projA}, 't', 's', 'browser'), (${id()}, ${orgB}, ${projB}, 't', 's', 'browser')`;
     await client`INSERT INTO jobs (id, organization_id, project_id, name) VALUES (${jobId}, ${orgA}, ${projA}, 'j'), (${otherJob}, ${orgB}, ${projB}, 'j')`;
     await client`INSERT INTO jobs (id, organization_id, project_id, name, deleting_at) VALUES (${delJobId}, ${orgA}, ${projA}, 'gone', now())`;
@@ -282,6 +284,9 @@ describe("getChecklistCounts", () => {
       (${id()}, ${u1}, ${projA}, 'h1', true, now(), now()),
       (${id()}, ${u1}, ${projA2}, 'h2', true, now(), now())`;
     await client`INSERT INTO apikey (id, user_id, project_id, job_id, key, enabled, created_at, updated_at) VALUES (${id()}, ${u1}, ${projA}, ${jobId}, 'h3', true, now(), now())`;
+    // A disabled and an expired CLI token do not count.
+    await client`INSERT INTO apikey (id, user_id, project_id, key, enabled, created_at, updated_at) VALUES (${id()}, ${u1}, ${projA}, 'h4', false, now(), now())`;
+    await client`INSERT INTO apikey (id, user_id, project_id, key, enabled, expires_at, created_at, updated_at) VALUES (${id()}, ${u1}, ${projA}, 'h5', true, now() - interval '1 day', now(), now())`;
 
     expect(await getChecklistCounts(orgA, projA)).toEqual({
       monitors: 2, heartbeatMonitors: 1, notificationProviders: 1, statusPages: 1, requirements: 0, tests: 1, jobs: 1,
@@ -295,8 +300,11 @@ describe("getChecklistCounts", () => {
 describe("monitorsRemaining", () => {
   it("returns the plan's remaining, 0 when blocked, null when uncapped", async () => {
     expect(await monitorsRemaining(orgA)).toBe(2);
-    (checkMonitorLimit as jest.Mock).mockResolvedValueOnce({ allowed: false });
+    (checkMonitorLimit as jest.Mock).mockResolvedValueOnce({ allowed: false, limit: 5, currentCount: 5 });
     expect(await monitorsRemaining(orgA)).toBe(0);
+    // A plan that could not be read is unknown, not "0 more".
+    (checkMonitorLimit as jest.Mock).mockResolvedValueOnce({ allowed: false, requiresSubscription: true });
+    expect(await monitorsRemaining(orgA)).toBeNull();
     (checkMonitorLimit as jest.Mock).mockResolvedValueOnce({ allowed: true });
     expect(await monitorsRemaining(orgA)).toBeNull();
   });

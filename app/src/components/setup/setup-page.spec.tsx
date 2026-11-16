@@ -170,6 +170,11 @@ describe("SetupPage project switching", () => {
     search = "project=22222222-2222-4222-8222-222222222222";
     renderPage();
     expect(await screen.findByText("The project could not be opened.")).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Back to dashboard" }).getAttribute("href")).toBe("/");
+    // Retry runs the switch again instead of leaving a skeleton.
+    switchProject.mockResolvedValue(true);
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    await waitFor(() => expect(switchProject).toHaveBeenCalledTimes(2));
   });
 });
 

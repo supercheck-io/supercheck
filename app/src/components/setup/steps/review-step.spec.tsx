@@ -61,7 +61,7 @@ function setup(over: Partial<ReviewStepProps> = {}) {
     skipped: ["tests" as const],
     recordCreated: jest.fn(async (key: string, id: string) => void (created[key] = id)),
     getCreated: () => created,
-    complete: jest.fn(async () => undefined),
+    complete: jest.fn(async () => true),
     completed: false,
     ...over,
   };
@@ -133,6 +133,22 @@ describe("ReviewStep", () => {
     setup({ ...makeStepProps({ draft: { monitors: { pages: [{ url: "https://a.example.com/", name: "a" }] } } }), completed: true });
     expect(screen.getByText("Setup is finished.")).toBeTruthy();
     expect(screen.getByRole("link", { name: "Go to dashboard" }).getAttribute("href")).toBe("/");
+  });
+
+  it("shows Setup is finished only after the final save succeeded, else an error and a retry", async () => {
+    const complete = jest.fn(async () => false);
+    setup({ ...makeStepProps({ draft: {} }), skipped: ["app", "alerts", "monitors", "statusPage"], complete });
+    fireEvent.click(screen.getByRole("button", { name: "Finish setup" }));
+    expect(await screen.findByText(/Could not save that setup is finished/)).toBeTruthy();
+    expect(screen.queryByText("Setup is finished.")).toBeNull();
+    complete.mockResolvedValue(true);
+    fireEvent.click(screen.getByRole("button", { name: "Finish setup" }));
+    await waitFor(() => expect(screen.queryByText(/Could not save that setup is finished/)).toBeNull());
+  });
+
+  it("says monitors are created without alerts when Alerts was skipped after saving a channel", () => {
+    setup({ skipped: ["alerts"] });
+    expect(screen.getByTestId("setup-skipped-alerts").textContent).toMatch(/without alerts because you skipped Alerts/);
   });
 
   it("disables Create for viewers with a reason", () => {

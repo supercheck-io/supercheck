@@ -117,6 +117,18 @@ describe("DashboardGettingStarted", () => {
     expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toEqual({ expectedUpdatedAt: "t1", status: "dismissed" });
   });
 
+  it("sends one dismissal when Dismiss is clicked twice", async () => {
+    fetchMock.mockResolvedValueOnce({ ok: true, status: 200, json: async () => makeResponse({}, { updatedAt: "t1" }) });
+    fetchMock.mockResolvedValueOnce({ ok: true, status: 200, json: async () => makeResponse({}, { status: "dismissed", updatedAt: "t2" }) });
+    render(<DashboardGettingStarted fallback={fallback} />, { wrapper: createWrapper().Wrapper });
+    const button = await screen.findByRole("button", { name: "Dismiss" });
+    fireEvent.click(button);
+    fireEvent.click(button);
+    expect(await screen.findByText("Empty state")).toBeTruthy();
+    expect(fetchMock.mock.calls.filter(([, init]) => init?.method === "PUT")).toHaveLength(1);
+    expect(toast.error).not.toHaveBeenCalled();
+  });
+
   it("tells the user when dismissing fails", async () => {
     fetchMock.mockResolvedValueOnce({ ok: true, status: 200, json: async () => makeResponse() });
     fetchMock.mockResolvedValueOnce({ ok: false, status: 409, json: async () => ({ error: "conflict" }) });

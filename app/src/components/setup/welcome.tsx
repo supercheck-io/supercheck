@@ -93,9 +93,14 @@ export function Welcome({ mode, projectName, organizationName, initialPersona = 
           </Button>
         )}
         {mode === "change" ? (
-          <Button variant="ghost" disabled={save.isPending} onClick={onDone}>
-            Cancel
-          </Button>
+          <>
+            <Button variant="outline" disabled={save.isPending} onClick={() => submit(null)}>
+              No preference
+            </Button>
+            <Button variant="ghost" disabled={save.isPending} onClick={onDone}>
+              Cancel
+            </Button>
+          </>
         ) : (
           <Button variant="ghost" disabled={save.isPending} onClick={() => submit(null)}>
             Skip

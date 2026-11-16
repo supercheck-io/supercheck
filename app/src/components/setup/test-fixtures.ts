@@ -45,6 +45,8 @@ export function makeResponse(overrides: Partial<SetupResponse> = {}, state: Part
     },
     monitorsRemaining: null,
     aiTestsLocked: false,
+    minIntervalMinutes: 1,
+    projectEmpty: true,
     ...overrides,
   };
 }

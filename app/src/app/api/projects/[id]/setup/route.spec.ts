@@ -4,6 +4,7 @@ import { NextRequest } from "next/server";
 const mockLimit = jest.fn();
 jest.mock("@/utils/db", () => ({ db: { select: () => ({ from: () => ({ where: () => ({ limit: mockLimit }) }) }) } }));
 jest.mock("@/lib/services/subscription-service", () => ({ subscriptionService: { blockUntilSubscribed: jest.fn() } }));
+jest.mock("@/lib/execution/trial-limits", () => ({ trialCheckIntervalViolation: jest.fn() }));
 jest.mock("@/lib/ai/ai-provider", () => ({ isAIProviderConfigured: () => false }));
 jest.mock("@/lib/audit-logger", () => ({ logAuditEvent: jest.fn() }));
 jest.mock("@/lib/deletion/org-state", () => ({
@@ -34,6 +35,7 @@ import { logAuditEvent } from "@/lib/audit-logger";
 import { permissionDeniedResponse } from "@/lib/deletion/org-state";
 import { requireAuth, resolveProjectPermissionContext, checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { checkSetupReadRateLimit, checkSetupWriteRateLimit } from "@/lib/sre/sre-rate-limiter";
+import { trialCheckIntervalViolation } from "@/lib/execution/trial-limits";
 import { getChecklistCounts, getSetupState, monitorsRemaining, updateSetupState } from "@/lib/setup/setup-state";
 
 const PROJECT = "11111111-1111-4111-8111-111111111111";
@@ -59,6 +61,7 @@ beforeEach(() => {
   (getChecklistCounts as jest.Mock).mockResolvedValue(counts);
   (monitorsRemaining as jest.Mock).mockResolvedValue(7);
   (subscriptionService.blockUntilSubscribed as jest.Mock).mockResolvedValue(undefined);
+  (trialCheckIntervalViolation as jest.Mock).mockResolvedValue(null);
   mockLimit.mockResolvedValue([{ name: "Acme" }]);
   allow();
 });
@@ -84,6 +87,23 @@ describe("GET /api/projects/[id]/setup", () => {
     (subscriptionService.blockUntilSubscribed as jest.Mock).mockRejectedValueOnce(new Error("trial"));
     expect((await (await GET(req("GET"), params())).json()).aiTestsLocked).toBe(true);
   });
+  it("reports the trial's shortest interval and whether the project is empty", async () => {
+    (trialCheckIntervalViolation as jest.Mock).mockResolvedValue({ minimumMinutes: 5 });
+    (getChecklistCounts as jest.Mock).mockResolvedValue({ ...counts, monitors: 0 });
+    const body = await (await GET(req("GET"), params())).json();
+    expect(body).toMatchObject({ minIntervalMinutes: 5, projectEmpty: true });
+    (trialCheckIntervalViolation as jest.Mock).mockResolvedValue(null);
+    expect((await (await GET(req("GET"), params())).json()).minIntervalMinutes).toBe(1);
+  });
+
+  it("?summary=1 returns only status, counts and emptiness, without the plan lookups", async () => {
+    const res = await GET(new NextRequest(`http://localhost/api/projects/${PROJECT}/setup?summary=1`), params());
+    expect(await res.json()).toEqual({ status: "not_started", done: 1, total: expect.any(Number), projectEmpty: false });
+    expect(monitorsRemaining).not.toHaveBeenCalled();
+    expect(trialCheckIntervalViolation).not.toHaveBeenCalled();
+    expect(checkSetupReadRateLimit).toHaveBeenCalled();
+  });
+
   it("resolves the project from the path, not the active project", async () => {
     const other = "33333333-3333-4333-8333-333333333333";
     (resolveProjectPermissionContext as jest.Mock).mockResolvedValue({ ...ctx, project: { ...ctx.project, id: other } });

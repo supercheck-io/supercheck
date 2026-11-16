@@ -58,6 +58,18 @@ export interface SetupResponse {
   monitorsRemaining: number | null;
   /** AI test suggestions need a paid plan: true on a cloud trial. Always false when self-hosted. */
   aiTestsLocked: boolean;
+  /** Shortest check interval (minutes) the org's plan allows; 1 when there is no trial restriction. */
+  minIntervalMinutes: number;
+  /** No monitors, tests, jobs or status pages yet. */
+  projectEmpty: boolean;
+}
+
+/** GET /api/projects/[id]/setup?summary=1: only what the sidebar needs. */
+export interface SetupSummary {
+  status: ProjectSetupStatus;
+  done: number;
+  total: number;
+  projectEmpty: boolean;
 }
 
 /** PUT /api/projects/[id]/setup body. 409 { error: "conflict", state } on a stale expectedUpdatedAt. */

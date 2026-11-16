@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 import { FEATURES, makeResponse, makeStepProps, PROJECT_ID } from "../test-fixtures";
-import { AlertsStep } from "./alerts-step";
+import { AlertsStep, channelName } from "./alerts-step";
 import { AppStep } from "./app-step";
 import { DeveloperStep } from "./developer-step";
 import { InviteStep } from "./invite-step";
@@ -248,7 +248,7 @@ describe("AppStep", () => {
   });
 
   it("saves the test account as project secrets and keeps only the secret name in the draft", async () => {
-    fetchMock.mockImplementation(() => json({}, 201));
+    fetchMock.mockImplementation(() => json({ id: "v-1" }, 201));
     const d = drafting();
     render(<AppStep {...makeStepProps({ patchDraft: d.patchDraft })} />);
     fireEvent.change(screen.getByLabelText("Username"), { target: { value: "qa-user" } });
@@ -267,8 +267,33 @@ describe("AppStep", () => {
     fireEvent.change(screen.getByLabelText("Username"), { target: { value: "u" } });
     fireEvent.change(screen.getByLabelText("Password"), { target: { value: "p" } });
     fireEvent.click(screen.getByRole("button", { name: "Save test account" }));
-    expect(await screen.findByText("A secret with this name already exists. Update it in Variables.")).toBeTruthy();
+    expect(await screen.findByText(/already exists\. Use it as it is/)).toBeTruthy();
     expect(d.get().app?.testAccountSecret).toBeUndefined();
+    // Reusing the existing secret records only its name, and nothing was overwritten.
+    fireEvent.click(screen.getByRole("button", { name: "Use the existing secret" }));
+    expect(d.get().app?.testAccountSecret).toBe("SETUP_TEST_PASS");
+    expect(fetchMock.mock.calls.every(([, init]) => init.method === "POST")).toBe(true);
+  });
+
+  it("updates the secret it created when the username changes after a partial failure", async () => {
+    let passwordAttempts = 0;
+    fetchMock.mockImplementation((url: string, init?: { method?: string; body?: string }) => {
+      if (init?.method === "PUT") return json({}, 200);
+      const key = JSON.parse(init?.body as string).key;
+      if (key === "SETUP_TEST_PASS" && ++passwordAttempts === 1) return json({ error: "Server error" }, 500);
+      return json({ id: `id-${key}` }, 201);
+    });
+    render(<AppStep {...makeStepProps()} />);
+    fireEvent.change(screen.getByLabelText("Username"), { target: { value: "first" } });
+    fireEvent.change(screen.getByLabelText("Password"), { target: { value: "hunter2" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save test account" }));
+    expect(await screen.findByText("Server error")).toBeTruthy();
+    fireEvent.change(screen.getByLabelText("Username"), { target: { value: "second" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save test account" }));
+    await waitFor(() => expect(fetchMock.mock.calls.some(([, init]) => init.method === "PUT")).toBe(true));
+    const put = fetchMock.mock.calls.find(([, init]) => init.method === "PUT");
+    expect(put?.[0]).toBe("/api/variables/id-SETUP_TEST_USER");
+    expect(JSON.parse(put?.[1].body)).toEqual({ value: "second" });
   });
 
   it("refuses to save secrets when another tab switched the active project", async () => {
@@ -295,7 +320,7 @@ describe("AppStep", () => {
     fetchMock.mockImplementation((_url: string, init?: { body?: string }) => {
       const key = JSON.parse(init?.body as string).key;
       if (key === "SETUP_TEST_PASS" && ++passwordAttempts === 1) return json({ error: "Server error" }, 500);
-      return json({}, 201);
+      return json({ id: "v-1" }, 201);
     });
     const d = drafting();
     render(<AppStep {...makeStepProps({ patchDraft: d.patchDraft })} />);
@@ -320,7 +345,7 @@ describe("AppStep", () => {
   });
 
   it("sends the setup project so the server can refuse a switched project", async () => {
-    fetchMock.mockImplementation(() => json({}, 201));
+    fetchMock.mockImplementation(() => json({ id: "v-1" }, 201));
     render(<AppStep {...makeStepProps()} />);
     fireEvent.change(screen.getByLabelText("Username"), { target: { value: "u" } });
     fireEvent.change(screen.getByLabelText("Password"), { target: { value: "p" } });
@@ -474,5 +499,95 @@ describe("scan in the app and monitors steps", () => {
   it("leaves the AI endpoint card closed without such a path", () => {
     render(<MonitorsStep {...makeStepProps({ scan: withScan, draft: { app: { url: "https://app.example.com/" } } })} />);
     expect(screen.queryByLabelText("Endpoint URL")).toBeNull();
+  });
+});
+
+describe("review fixes in the steps", () => {
+  const home = { url: "https://app.example.com/", name: "app.example.com" };
+
+  it("names a channel by what it is, never by its token or webhook path", async () => {
+    fetchMock.mockImplementation((url: string, init?: { method?: string }) => (init?.method === "POST" ? json({ id: PROVIDER }, 201) : json({})));
+    render(<AlertsStep {...makeStepProps({ userEmail: "me@example.com" })} />);
+    fireEvent.click(screen.getByRole("button", { name: "Save channel" }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body).name).toBe("Email – me@example.com");
+    expect(channelName({ type: "webhook", label: "Webhook" }, { url: "https://hooks.example.com/secret/token" })).toBe("Webhook – hooks.example.com");
+    expect(channelName({ type: "telegram", label: "Telegram" }, { botToken: "123:abc", chatId: "9" })).toBe("Telegram – setup");
+  });
+
+  it("stops adding channels at ten, and shows the lock message instead of a permission message on a read-only tab", () => {
+    fetchMock.mockImplementation(() => json([]));
+    const ids = Array.from({ length: 10 }, (_, i) => `00000000-0000-4000-8000-0000000000${String(i).padStart(2, "0")}`);
+    const { rerender } = render(<AlertsStep {...makeStepProps({ draft: { alerts: { providerIds: ids } } })} />);
+    expect(screen.getByText(/You have 10 channels/)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Slack" })).toBeNull();
+    rerender(<AlertsStep {...makeStepProps({ readOnly: true })} />);
+    expect(screen.getByText(/Setup is running somewhere else/)).toBeTruthy();
+    expect(screen.queryByText(/do not have permission to add channels/)).toBeNull();
+  });
+
+  it("blocks a 21st page and shows an inline error for an over-long path", () => {
+    const pages = Array.from({ length: 20 }, (_, i) => ({ url: `https://app.example.com/p${i}`, name: `p${i}` }));
+    const full = render(<MonitorsStep {...makeStepProps({ draft: { app: { url: "https://app.example.com/" }, monitors: { pages } } })} />);
+    expect(screen.getByRole("button", { name: "Add page" })).toBeDisabled();
+    full.unmount();
+    const d = drafting({ app: { url: "https://app.example.com/" }, monitors: { pages: [home] } });
+    render(<MonitorsStep {...makeStepProps({ patchDraft: d.patchDraft, draft: d.get() })} />);
+    fireEvent.change(screen.getByLabelText("Add a page path"), { target: { value: `/${"a".repeat(300)}` } });
+    fireEvent.click(screen.getByRole("button", { name: "Add page" }));
+    expect(d.get().monitors?.pages).toHaveLength(1);
+    expect(screen.getByText(/too long or not valid/)).toBeTruthy();
+  });
+
+  it("rejects reserved secret names, http MCP URLs and keeps api-version on the AI URL", () => {
+    const d = drafting({ monitors: { pages: [] } });
+    render(<MonitorsStep {...makeStepProps({ patchDraft: d.patchDraft, draft: d.get() })} />);
+    fireEvent.click(screen.getByLabelText("Monitor an AI endpoint"));
+    fireEvent.change(screen.getByLabelText("Endpoint URL"), { target: { value: "https://x.openai.azure.com/openai/deployments/d/chat/completions?api-version=2024-02-01&key=abc" } });
+    fireEvent.change(screen.getByLabelText("Model"), { target: { value: "gpt-4o" } });
+    fireEvent.change(screen.getByLabelText("API key secret name"), { target: { value: "port" } });
+    expect(screen.getByText("Cannot use system reserved variable names")).toBeTruthy();
+    expect(d.get().monitors?.aiEndpoint).toBeUndefined();
+    fireEvent.change(screen.getByLabelText("API key secret name"), { target: { value: "AZURE_KEY" } });
+    expect(d.get().monitors?.aiEndpoint?.url).toBe("https://x.openai.azure.com/openai/deployments/d/chat/completions?api-version=2024-02-01");
+    fireEvent.click(screen.getByLabelText("Monitor an MCP server"));
+    fireEvent.change(screen.getByLabelText("Server URL"), { target: { value: "http://mcp.example.com/mcp" } });
+    expect(screen.getByText("Must be an https URL")).toBeTruthy();
+    expect(d.get().monitors?.mcpMonitor).toBeUndefined();
+  });
+
+  it("offers only the intervals the plan allows", () => {
+    const response = makeResponse({ minIntervalMinutes: 5 });
+    render(<MonitorsStep {...makeStepProps({ response, draft: { app: { url: "https://app.example.com/" }, monitors: { pages: [home], frequencyMinutes: 1 } } })} />);
+    fireEvent.keyDown(screen.getByLabelText("Check every"), { key: "Enter" });
+    expect(screen.queryByRole("option", { name: "1 min" })).toBeNull();
+    expect(screen.getByRole("option", { name: "5 min" })).toBeTruthy();
+  });
+
+  it("moves suggested pages onto a changed app URL", () => {
+    const d = drafting({ app: { url: "https://new.example.com/" }, monitors: { pages: [home, { url: "https://app.example.com/pricing", name: "app.example.com/pricing" }] } });
+    render(<MonitorsStep {...makeStepProps({ patchDraft: d.patchDraft, draft: d.get() })} />);
+    expect(d.get().monitors?.pages.map((p) => p.url)).toEqual(["https://new.example.com/", "https://new.example.com/pricing"]);
+  });
+
+  it("makes every card input read-only on a read-only tab and states the cap copy truthfully", () => {
+    const draft = { app: { url: "https://app.example.com/" }, monitors: { pages: [home], heartbeat: { name: "hb", frequencyMinutes: 5 }, aiEndpoint: { name: "AI", url: "https://a.example.com/v1", model: "m", secretKey: "OPENAI_KEY" }, mcpMonitor: { name: "MCP", url: "https://m.example.com/mcp" } } };
+    render(<MonitorsStep {...makeStepProps({ readOnly: true, draft, response: makeResponse({ monitorsRemaining: 1 }) })} />);
+    for (const label of ["Expect a ping every (minutes)", "Endpoint URL", "Model", "API key secret name", "Server URL"]) expect(screen.getByLabelText(label)).toBeDisabled();
+    expect(screen.getByTestId("setup-monitor-cap").textContent).toMatch(/Create continues/);
+  });
+
+  it("shows no plan cap when it is unknown", () => {
+    render(<MonitorsStep {...makeStepProps({ response: makeResponse({ monitorsRemaining: null }) })} />);
+    expect(screen.queryByTestId("setup-monitor-cap")).toBeNull();
+  });
+
+  it("does not refill a cleared status page name", () => {
+    const d = drafting({ statusPage: { name: "Acme" } });
+    const { rerender } = render(<StatusPageStep {...makeStepProps({ patchDraft: d.patchDraft, draft: d.get() })} />);
+    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "" } });
+    rerender(<StatusPageStep {...makeStepProps({ patchDraft: d.patchDraft, draft: d.get() })} />);
+    expect((screen.getByLabelText("Name") as HTMLInputElement).value).toBe("");
+    expect(screen.getByText(/A name is required/)).toBeTruthy();
   });
 });

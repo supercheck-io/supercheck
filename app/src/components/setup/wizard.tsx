@@ -85,6 +85,7 @@ export function SetupWizard({ response, persona, userEmail }: WizardProps) {
   const [leaving, setLeaving] = useState(false);
   const [scan, setScan] = useState<ScanSummary | null>(response.state.scanResult as ScanSummary | null);
   const [leaveError, setLeaveError] = useState(false);
+  const [dismissing, setDismissing] = useState(false);
 
   const steps = useMemo(
     () =>
@@ -122,8 +123,9 @@ export function SetupWizard({ response, persona, userEmail }: WizardProps) {
     features: setupFeatures,
     permissions: response.permissions,
     draft: session.draft,
-    patchDraft: session.patchDraft,
-    setStatusPageOptOut: (optOut) => session.patch({ statusPageOptOut: optOut }),
+    // A read-only tab never writes, whatever a step calls.
+    patchDraft: readOnly ? () => undefined : session.patchDraft,
+    setStatusPageOptOut: (optOut) => !readOnly && session.patch({ statusPageOptOut: optOut }),
     readOnly,
     userEmail,
     scan,
@@ -136,6 +138,22 @@ export function SetupWizard({ response, persona, userEmail }: WizardProps) {
     // Leaving with an unsaved draft would lose it, so stay and say so.
     if (!(await session.flush())) {
       setLeaveError(true);
+      return;
+    }
+    router.push("/");
+  };
+
+  // Same effect as Dismiss on the dashboard card, for owners and admins who land here directly.
+  const dismiss = async () => {
+    setLeaveError(false);
+    setDismissing(true);
+    const previous = session.status;
+    session.patch({ status: "dismissed" });
+    const saved = await session.flush();
+    if (!saved) {
+      session.patch({ status: previous });
+      setLeaveError(true);
+      setDismissing(false);
       return;
     }
     router.push("/");
@@ -166,7 +184,7 @@ export function SetupWizard({ response, persona, userEmail }: WizardProps) {
 
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-sm text-muted-foreground" aria-live="polite" data-testid="setup-save-state">
-          {session.saveState === "saving" ? "Saving..." : session.saveState === "saved" ? "Draft saved" : session.saveState === "error" ? "Could not save the draft" : ""}
+          {session.saveState === "saving" ? "Saving..." : session.saveState === "saved" ? "Draft saved" : session.saveState === "error" ? `Could not save the draft${session.saveError ? `: ${session.saveError}` : ""}` : ""}
           {session.saveState === "error" ? (
             <Button type="button" variant="link" size="sm" onClick={() => void session.flush()}>
               Try again
@@ -242,7 +260,7 @@ export function SetupWizard({ response, persona, userEmail }: WizardProps) {
               completed={session.status === "completed"}
               complete={async () => {
                 session.patch({ status: "completed" });
-                await session.flush();
+                return session.flush();
               }}
             />
           ) : Body ? (
@@ -282,7 +300,17 @@ export function SetupWizard({ response, persona, userEmail }: WizardProps) {
             <Button type="button" variant="outline" onClick={() => setLeaving(false)}>
               Keep going
             </Button>
-            <Button type="button" onClick={leave}>
+            {session.saveState === "error" ? (
+              <Button type="button" variant="outline" onClick={() => router.push("/")}>
+                Leave without saving
+              </Button>
+            ) : null}
+            {!readOnly ? (
+              <Button type="button" variant="ghost" disabled={dismissing} onClick={dismiss}>
+                Dismiss setup
+              </Button>
+            ) : null}
+            <Button type="button" disabled={dismissing} onClick={leave}>
               Leave and resume later
             </Button>
           </DialogFooter>
