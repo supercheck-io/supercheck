@@ -223,6 +223,13 @@ export function copyConnectors(scope: CopyScope, ids: string[]): Promise<CopyIte
             // A disabled connector is never queried, and a copy is never created disabled.
             if (row.status === "disabled") return false;
             if (canon(row.config) !== canon(source.config) || row.privateAgentId !== source.privateAgentId) return false;
+            if (
+              row.riskLevel !== source.riskLevel ||
+              row.defaultTimeWindowMinutes !== source.defaultTimeWindowMinutes ||
+              canon(row.outputLimits) !== canon(source.outputLimits)
+            ) {
+              return false;
+            }
             const [rowCredential] = await tx.select().from(externalConnectorCredentials).where(eq(externalConnectorCredentials.connectorId, row.id)).limit(1);
             if (!rowCredential || !plain) return !rowCredential && !plain;
             try {

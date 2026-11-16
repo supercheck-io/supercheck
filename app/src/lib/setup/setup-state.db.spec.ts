@@ -17,11 +17,13 @@ jest.mock("@/lib/middleware/plan-enforcement", () => ({
 }));
 
 import {
+  claimAiRun,
   claimLock,
   getChecklistCounts,
   getSetupState,
   getUserPreferences,
   monitorsRemaining,
+  releaseAiRun,
   releaseLock,
   setUserPersona,
   updateSetupState,
@@ -317,5 +319,39 @@ describe("monitorsRemaining", () => {
     expect(await monitorsRemaining(orgA)).toBeNull();
     (checkMonitorLimit as jest.Mock).mockResolvedValueOnce({ allowed: true });
     expect(await monitorsRemaining(orgA)).toBeNull();
+  });
+});
+
+describe("releaseAiRun", () => {
+  const lastAiRunAt = async () => (await client`SELECT last_ai_run_at FROM project_setup_state WHERE project_id = ${projA}`)[0]?.last_ai_run_at ?? null;
+
+  it("restores the pre-claim value only while the row still holds this claim", async () => {
+    const claim = await claimAiRun(orgA, projA);
+    if (claim.kind !== "claimed") throw new Error("expected claim");
+    await releaseAiRun(orgA, projA, claim);
+    expect(await lastAiRunAt()).toBeNull();
+
+    const stale = await claimAiRun(orgA, projA);
+    if (stale.kind !== "claimed") throw new Error("expected claim");
+    const newer = new Date(stale.claimedAt.getTime() + 5000);
+    await client`UPDATE project_setup_state SET last_ai_run_at = ${newer.toISOString()}::timestamptz WHERE project_id = ${projA}`;
+    await releaseAiRun(orgA, projA, stale);
+    expect(new Date(await lastAiRunAt()).getTime()).toBe(newer.getTime());
+  });
+
+  it("waits for the advisory lock a concurrent claim holds", async () => {
+    const claim = await claimAiRun(orgA, projA);
+    if (claim.kind !== "claimed") throw new Error("expected claim");
+    let released = false;
+    let pending: Promise<void> = Promise.resolve();
+    await client.begin(async (tx) => {
+      await tx`SELECT pg_advisory_xact_lock(hashtext(${`setup-ai-run:${projA}`}))`;
+      pending = releaseAiRun(orgA, projA, claim).then(() => void (released = true));
+      await new Promise((r) => setTimeout(r, 300));
+      expect(released).toBe(false);
+    });
+    await pending;
+    expect(released).toBe(true);
+    expect(await lastAiRunAt()).toBeNull();
   });
 });

@@ -242,6 +242,18 @@ describe("copyConnectors", () => {
     await seedConnector(orgA, projTgt, "Loki", { token: "different-token" });
     expect((await copyConnectors(scope, [src2]))[0]).toMatchObject({ status: "copied", name: "Loki (copied)" });
   });
+  it("does not adopt a same-name connector with other limits or time window", async () => {
+    const src = await seedConnector(orgA, projSrc, "Limits");
+    const other = await seedConnector(orgA, projTgt, "Limits");
+    await mockDatabase.update(schema.externalConnectors).set({ defaultTimeWindowMinutes: 999 }).where(eq(schema.externalConnectors.id, other));
+    const [res] = await copyConnectors(scope, [src]);
+    expect(res).toMatchObject({ status: "copied", name: "Limits (copied)" });
+    expect(res.id).not.toBe(other);
+    const src2 = await seedConnector(orgA, projSrc, "Caps");
+    const other2 = await seedConnector(orgA, projTgt, "Caps");
+    await mockDatabase.update(schema.externalConnectors).set({ outputLimits: { maxRows: 1 } as never }).where(eq(schema.externalConnectors.id, other2));
+    expect((await copyConnectors(scope, [src2]))[0]).toMatchObject({ status: "copied", name: "Caps (copied)" });
+  });
   it("truncates a long base name so the (copied) name fits the 100-char column", async () => {
     const long = "c".repeat(100);
     const src = await seedConnector(orgA, projSrc, long);

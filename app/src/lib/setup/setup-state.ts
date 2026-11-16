@@ -312,16 +312,20 @@ export async function claimAiRun(organizationId: string, projectId: string): Pro
 
 /** Restores the pre-claim value after a failed AI call, only if nobody re-claimed since. */
 export async function releaseAiRun(organizationId: string, projectId: string, claim: { claimedAt: Date; previous: Date | null }): Promise<void> {
-  await db
-    .update(projectSetupState)
-    .set({ lastAiRunAt: claim.previous })
-    .where(
-      and(
-        eq(projectSetupState.organizationId, organizationId),
-        eq(projectSetupState.projectId, projectId),
-        eq(projectSetupState.lastAiRunAt, claim.claimedAt),
-      ),
-    );
+  // Same lock as claimAiRun, so a release cannot interleave with another claim.
+  await db.transaction(async (tx) => {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`setup-ai-run:${projectId}`}))`);
+    await tx
+      .update(projectSetupState)
+      .set({ lastAiRunAt: claim.previous })
+      .where(
+        and(
+          eq(projectSetupState.organizationId, organizationId),
+          eq(projectSetupState.projectId, projectId),
+          eq(projectSetupState.lastAiRunAt, claim.claimedAt),
+        ),
+      );
+  });
 }
 
 /**
