@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState, type ComponentType } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { CheckCircle2, CircleCheckBig, Terminal, type LucideIcon } from "lucide-react";
+import { AppWindow, CheckCircle2, CircleCheckBig, Terminal, type LucideIcon } from "lucide-react";
 
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -42,7 +42,7 @@ interface StepMeta {
 const STEP_META: Partial<Record<SetupStepKey, StepMeta>> = {
   developer: { title: "Set up from your terminal", sub: "CLI and coding agents", icon: Terminal, tone: TYPE_TONE.admin.cliToken },
   invite: { title: "Invite your team first?", sub: "Bring people in", icon: ADMIN_TYPES.member.icon, tone: TYPE_TONE.admin.member },
-  app: { title: "Your app", sub: "URL and test account", icon: NAV.monitors.icon, tone: NAV.monitors.tone },
+  app: { title: "Your app", sub: "URL and test account", icon: AppWindow, tone: NAV.monitors.tone },
   alerts: { title: "Alerts", sub: "Where we tell you", icon: NAV.notifications.icon, tone: NAV.notifications.tone },
   monitors: { title: "Monitors", sub: "Uptime and SSL", icon: NAV.monitors.icon, tone: NAV.monitors.tone },
   statusPage: { title: "Status page", sub: "Tell your users", icon: NAV.statusPages.icon, tone: NAV.statusPages.tone },
