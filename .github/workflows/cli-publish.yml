@@ -207,7 +207,11 @@ jobs:
             fi
             echo ""
             echo "- **npm tag:** \`$NPM_TAG\`"
-            echo "- **Package:** https://www.npmjs.com/package/@supercheck/cli/v/$PKG_VERSION"
+            if [[ "$DRY_RUN" == "true" ]]; then
+              echo "- **Package:** https://www.npmjs.com/package/@supercheck/cli"
+            else
+              echo "- **Package:** https://www.npmjs.com/package/@supercheck/cli/v/$PKG_VERSION"
+            fi
           } >> "$GITHUB_STEP_SUMMARY"
 
   release:

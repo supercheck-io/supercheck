@@ -11,7 +11,11 @@ export const MAX_FAILURES = 20;
 export function cell(text, max = 200) {
   const flat = String(text ?? '').replace(/\s+/g, ' ').trim();
   const cut = flat.length > max ? `${flat.slice(0, max - 1)}…` : flat;
-  return cut.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\|/g, '\\|');
+  return cut
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/[\\`*_[\]()!#~|]/g, '\\$&');
 }
 
 function readJson(file) {
@@ -36,6 +40,7 @@ function counts({ passed, failed, skipped, total }) {
 }
 
 export function render({ title, results, coverage, outcome, artifactUrl, root = process.cwd() }) {
+  if (outcome === 'skipped') return `## ⏭️ ${cell(title)}\n\nNot run: an earlier step failed.\n`;
   const ok = outcome ? outcome === 'success' : results?.success === true;
   const lines = [`## ${ok ? '✅' : '❌'} ${cell(title)}`, ''];
 
@@ -53,13 +58,13 @@ export function render({ title, results, coverage, outcome, artifactUrl, root = 
     for (const suite of results.testResults) {
       const file = path.relative(root, suite.name);
       const failedTests = suite.assertionResults.filter((t) => t.status === 'failed');
-      if (suite.status === 'failed' && failedTests.length === 0) failures.push([file, '_suite failed to run_']);
+      if (suite.status === 'failed' && failedTests.length === 0) failures.push([file, null]);
       for (const t of failedTests) failures.push([file, t.fullName]);
     }
     if (failures.length) {
       lines.push('', '### Failed tests', '', '| File | Test |', '| --- | --- |');
       for (const [file, name] of failures.slice(0, MAX_FAILURES)) {
-        lines.push(`| \`${cell(file)}\` | ${name.startsWith('_') ? name : cell(name)} |`);
+        lines.push(`| ${cell(file)} | ${name === null ? '_suite failed to run_' : cell(name)} |`);
       }
       if (failures.length > MAX_FAILURES) lines.push('', `…and ${failures.length - MAX_FAILURES} more; see the job log.`);
     }

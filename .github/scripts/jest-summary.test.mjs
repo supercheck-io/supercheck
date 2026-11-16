@@ -56,15 +56,15 @@ test('passing run shows counts, duration and coverage', () => {
 test('failures are listed with relative paths and escaped names', () => {
   const md = render({ title: 'T', results: results({ failed: ['x | <b>y</b>\nz'], brokenSuite: true }), outcome: 'failure', root: ROOT });
   assert.match(md, /^## ❌ T/);
-  assert.match(md, /\| `src\/a\.spec\.ts` \| x \\\| &lt;b&gt;y&lt;\/b&gt; z \|/);
-  assert.match(md, /\| `src\/b\.spec\.ts` \| _suite failed to run_ \|/);
+  assert.ok(md.includes('| src/a.spec.ts | x \\| &lt;b&gt;y&lt;/b&gt; z |'), md);
+  assert.ok(md.includes('| src/b.spec.ts | _suite failed to run_ |'), md);
   assert.match(md, /❌ 2 failed/);
 });
 
 test('failure list is capped', () => {
   const failed = Array.from({ length: MAX_FAILURES + 5 }, (_, i) => `t${i}`);
   const md = render({ title: 'T', results: results({ failed }), outcome: 'failure', root: ROOT });
-  assert.equal(md.split('\n').filter((l) => l.startsWith('| `src/a.spec.ts`')).length, MAX_FAILURES);
+  assert.equal(md.split('\n').filter((l) => l.startsWith('| src/a.spec.ts |')).length, MAX_FAILURES);
   assert.match(md, /…and 5 more/);
 });
 
@@ -77,6 +77,17 @@ test('a failed step with green tests points at the log', () => {
 test('missing results still render', () => {
   const md = render({ title: 'T', results: null, outcome: 'failure' });
   assert.match(md, /No Jest results were written/);
+});
+
+test('test names cannot inject markdown, links or the suite marker', () => {
+  const md = render({ title: 'T', results: results({ failed: ['_x_ ![i](https://e.x/p.png) [l](https://e.x) `c`'] }), outcome: 'failure', root: ROOT });
+  assert.ok(md.includes('\\_x\\_ \\!\\[i\\]\\(https://e.x/p.png\\) \\[l\\]\\(https://e.x\\) \\`c\\`'), md);
+  assert.doesNotMatch(md, /_suite failed to run_/);
+});
+
+test('a skipped test step says not run', () => {
+  const md = render({ title: 'T', results: null, outcome: 'skipped' });
+  assert.match(md, /^## ⏭️ T\n\nNot run/);
 });
 
 test('cell truncates long names', () => {
