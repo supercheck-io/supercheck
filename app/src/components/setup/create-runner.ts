@@ -93,23 +93,6 @@ interface Lookup {
   services?: Array<{ id: string; name: string }>;
 }
 
-/** 106-bit identity (two cyrb53 lanes): the 32-bit `hash` collides on near-equal titles such as "Check Ab" / "Check BA". */
-function identity(value: string): string {
-  const lane = (seed: number) => {
-    let h1 = 0xdeadbeef ^ seed;
-    let h2 = 0x41c6ce57 ^ seed;
-    for (let i = 0; i < value.length; i++) {
-      const ch = value.charCodeAt(i);
-      h1 = Math.imul(h1 ^ ch, 2654435761);
-      h2 = Math.imul(h2 ^ ch, 1597334677);
-    }
-    h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
-    h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
-    return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(36);
-  };
-  return `${lane(0)}${lane(1)}`;
-}
-
 // Two independent cyrb53 lanes (~106 bits) so distinct URLs (/Ab vs /BA) never share a key.
 function identity(value: string): string {
   const lane = (seed: number) => {
