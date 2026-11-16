@@ -136,6 +136,13 @@ describe("GET /api/projects/[id]/setup", () => {
     expect(down.headers.get("Retry-After")).toBe("60");
   });
 
+  it("413 on a declared Content-Length over the cap, without reading the body", async () => {
+    const request = req("PUT", {}, { "content-length": String(70 * 1024) });
+    const text = jest.spyOn(request, "text");
+    expect((await PUT(request, params())).status).toBe(413);
+    expect(text).not.toHaveBeenCalled();
+  });
+
   it("500 on an unexpected failure", async () => {
     jest.spyOn(console, "error").mockImplementation(() => {});
     (getSetupState as jest.Mock).mockRejectedValue(new Error("db"));

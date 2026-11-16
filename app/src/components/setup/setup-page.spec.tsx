@@ -1,6 +1,7 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 import { FEATURES, makeResponse, PROJECT_ID } from "./test-fixtures";
+import { getProjectSetupQueryKey } from "@/hooks/use-project-setup";
 import { createWrapper } from "./test-wrapper";
 import { SetupPage } from "./setup-page";
 import { WelcomePage } from "./welcome-page";
@@ -54,7 +55,7 @@ beforeEach(() => {
   useProjectContext.mockReturnValue(project());
 });
 
-const renderPage = (ui = <SetupPage />) => render(ui, { wrapper: createWrapper().Wrapper });
+const renderPage = (ui = <SetupPage />, wrapper = createWrapper().Wrapper) => render(ui, { wrapper });
 
 describe("SetupPage view selection", () => {
   it("shows a skeleton while loading", () => {
@@ -140,7 +141,7 @@ describe("SetupPage project switching", () => {
   it("switches to the project in the URL before loading its setup", async () => {
     search = "project=22222222-2222-4222-8222-222222222222";
     renderPage();
-    await waitFor(() => expect(switchProject).toHaveBeenCalledWith("22222222-2222-4222-8222-222222222222"));
+    await waitFor(() => expect(switchProject).toHaveBeenCalledWith("22222222-2222-4222-8222-222222222222", "/setup?project=22222222-2222-4222-8222-222222222222"));
     expect(fetchMock.mock.calls.some(([url]) => String(url).includes("/projects/22222222"))).toBe(false);
   });
 
@@ -181,5 +182,18 @@ describe("WelcomePage", () => {
     expect(await screen.findByText("Could not load your preferences", {}, { timeout: 4000 })).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     await waitFor(() => expect(replace).toHaveBeenCalledWith("/"));
+  });
+});
+
+describe("SetupPage finishing", () => {
+  it("keeps an auto-opened wizard on screen after setup completes", async () => {
+    const { client, Wrapper } = createWrapper();
+    renderPage(<SetupPage />, Wrapper);
+    expect(await screen.findByTestId("setup-wizard")).toBeTruthy();
+    act(() => {
+      client.setQueryData(getProjectSetupQueryKey(PROJECT_ID), makeResponse({}, { status: "completed", updatedAt: "t9" }));
+    });
+    expect(screen.getByTestId("setup-wizard")).toBeTruthy();
+    expect(screen.queryByTestId("setup-checklist-view")).toBeNull();
   });
 });

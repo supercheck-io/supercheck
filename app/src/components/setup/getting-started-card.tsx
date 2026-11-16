@@ -106,6 +106,8 @@ export function DashboardGettingStarted({ fallback }: { fallback: ReactNode }) {
       const res = await updateProjectSetup(project.id, { expectedUpdatedAt: state.updatedAt, status: "dismissed" });
       queryClient.setQueryData(getProjectSetupQueryKey(project.id), res);
     } catch {
+      // A 409 means the state moved on; refetch so the retry carries the current updatedAt.
+      void queryClient.invalidateQueries({ queryKey: getProjectSetupQueryKey(project.id) });
       toast.error("Could not dismiss. Try again.");
     }
   };

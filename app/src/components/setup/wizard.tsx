@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState, type ComponentType } from "react";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 import { Bell, Globe, ListChecks, Tally4, Terminal, UserPlus, type LucideIcon } from "lucide-react";
 
 import { Alert } from "@/components/ui/alert";
@@ -86,19 +87,23 @@ export function SetupWizard({ response, persona, userEmail }: WizardProps) {
       }),
     [persona, setupFeatures],
   );
-  const savedIndex = session.currentStep ? steps.indexOf(session.currentStep) : 0;
+  const readOnly = !response.permissions.canEdit || lock.readOnly;
+  // A read-only viewer can still look around, but nothing may be written, so the step stays local.
+  const [localStep, setLocalStep] = useState<SetupStepKey | null>(null);
+  const currentStep = readOnly ? (localStep ?? session.currentStep) : session.currentStep;
+  const savedIndex = currentStep ? steps.indexOf(currentStep) : 0;
   const index = Math.max(0, savedIndex);
   const key = steps[index];
   const meta = STEP_META[key] as StepMeta;
-  const readOnly = !response.permissions.canEdit || lock.readOnly;
 
   const { status, patch } = session;
   useEffect(() => {
     if (status === "not_started" && !readOnly) patch({ status: "in_progress" });
   }, [status, readOnly, patch]);
 
+  const goTo = (step: SetupStepKey) => (readOnly ? setLocalStep(step) : session.patch({ currentStep: step }));
   const go = (target: number, mode: "back" | "continue" | "skip" = "continue") => {
-    if (mode === "back") return session.patch({ currentStep: steps[target] });
+    if (mode === "back" || readOnly) return goTo(steps[target]);
     const skipped = new Set(session.skipped);
     if (mode === "skip") skipped.add(key);
     else skipped.delete(key);
@@ -130,6 +135,17 @@ export function SetupWizard({ response, persona, userEmail }: WizardProps) {
           <p className="text-sm">
             {lock.holder.userName ?? "Someone"} started it {minutesAgo(lock.holder.lockedAt)}. Only one person can run setup at a time, so nothing is created twice. You can look around, but nothing here can be changed.
           </p>
+          {response.permissions.canUpdateProject ? (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="mt-2"
+              onClick={async () => (await lock.takeOver()) || toast.error("Could not take over setup. Try again.")}
+            >
+              Take over
+            </Button>
+          ) : null}
         </Alert>
       ) : null}
       {!response.permissions.canEdit ? <Alert variant="info">You have view access. A project admin can finish setup.</Alert> : null}
@@ -162,7 +178,7 @@ export function SetupWizard({ response, persona, userEmail }: WizardProps) {
                     type="button"
                     data-testid={`setup-step-${stepKey}`}
                     aria-current={current ? "step" : undefined}
-                    onClick={() => session.patch({ currentStep: stepKey })}
+                    onClick={() => goTo(stepKey)}
                     className={cn(
                       "flex w-full items-center gap-3 rounded-md px-3 py-2 text-left text-sm outline-none transition-colors hover:bg-accent focus-visible:ring-[3px] focus-visible:ring-ring/50",
                       current && "bg-accent font-medium",
@@ -241,7 +257,9 @@ export function SetupWizard({ response, persona, userEmail }: WizardProps) {
           <DialogHeader>
             <DialogTitle>Leave setup?</DialogTitle>
             <DialogDescription>
-              Your choices are saved as a draft. Nothing has been created yet. You can resume from Project setup in the sidebar.
+              {Object.keys(session.getCreated()).length > 0
+                ? "Items already created stay in your project, and your choices are saved as a draft. You can resume from Project setup in the sidebar."
+                : "Your choices are saved as a draft. Nothing has been created yet. You can resume from Project setup in the sidebar."}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

@@ -105,13 +105,14 @@ export async function updateSetupState(
   if (patch.currentStep !== undefined) set.currentStep = patch.currentStep;
   if (patch.skipped !== undefined) set.skipped = patch.skipped;
   if (patch.statusPageOptOut !== undefined) set.statusPageOptOut = patch.statusPageOptOut;
+  const { row: existing, lockerName } = await loadRow(organizationId, projectId);
   if (patch.status !== undefined) {
     set.status = patch.status;
-    set.completedAt = patch.status === "completed" ? new Date() : null;
-    set.dismissedAt = patch.status === "dismissed" ? new Date() : null;
+    // Re-sending the same status keeps the first timestamp.
+    const same = existing?.status === patch.status;
+    if (!(same && patch.status === "completed")) set.completedAt = patch.status === "completed" ? new Date() : null;
+    if (!(same && patch.status === "dismissed")) set.dismissedAt = patch.status === "dismissed" ? new Date() : null;
   }
-
-  const { row: existing, lockerName } = await loadRow(organizationId, projectId);
   const blockedBy = existing && lockOf(existing, lockerName, userId);
   if (blockedBy && !blockedBy.mine) return { kind: "locked", lock: blockedBy };
   const previousStatus = existing?.status ?? "not_started";
@@ -125,7 +126,9 @@ export async function updateSetupState(
       .onConflictDoNothing({ target: projectSetupState.projectId })
       .returning({ id: projectSetupState.id });
     wrote = inserted.length > 0;
-  } else {
+  }
+  // A lock claim can insert the row between our read and insert: fall through to the guarded update.
+  if (!wrote) {
     const stale = expectedUpdatedAt
       ? sql`date_trunc('milliseconds', ${projectSetupState.updatedAt}) = ${expectedUpdatedAt}::timestamptz`
       : sql`${projectSetupState.updatedAt} = to_timestamp(0)`;
@@ -156,7 +159,7 @@ export async function updateSetupState(
 export type LockResult = { kind: "ok"; lock: SetupLockInfo } | { kind: "locked"; lock: SetupLockInfo };
 
 /** Take or heartbeat the lock in one atomic upsert. Does not touch updated_at (that is the draft's version). */
-export async function claimLock(organizationId: string, projectId: string, userId: string): Promise<LockResult> {
+export async function claimLock(organizationId: string, projectId: string, userId: string, takeover = false): Promise<LockResult> {
   const now = new Date();
   const claimed = await db
     .insert(projectSetupState)
@@ -166,7 +169,9 @@ export async function claimLock(organizationId: string, projectId: string, userI
       set: { lockedByUserId: userId, lockedAt: sql`now()` },
       setWhere: and(
         eq(projectSetupState.organizationId, organizationId),
-        sql`(${projectSetupState.lockedByUserId} IS NULL OR ${projectSetupState.lockedByUserId} = ${userId} OR ${LOCK_EXPIRED})`,
+        takeover
+          ? undefined
+          : sql`(${projectSetupState.lockedByUserId} IS NULL OR ${projectSetupState.lockedByUserId} = ${userId} OR ${LOCK_EXPIRED})`,
       ),
     })
     .returning({ id: projectSetupState.id });

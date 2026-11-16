@@ -36,6 +36,19 @@ describe("parseSetupDraft", () => {
   });
 });
 
+describe("secret names", () => {
+  const key = "sk-live-abcdefghijklmnopqrstuvwxyz0123456789";
+  it("rejects a pasted API key in all three secret-name fields", () => {
+    expect(parseSetupDraft({ app: { testAccountSecret: key } }).success).toBe(false);
+    expect(parseSetupDraft({ monitors: { aiEndpoint: { name: "AI", url: "https://a.io/v1", model: "m", secretKey: key } } }).success).toBe(false);
+    expect(parseSetupDraft({ monitors: { mcpMonitor: { name: "M", url: "https://a.io/mcp", secretKey: key } } }).success).toBe(false);
+  });
+  it("accepts valid variable names and an unset mcp name", () => {
+    expect(parseSetupDraft({ app: { testAccountSecret: "SETUP_TEST_PASS" } }).success).toBe(true);
+    expect(parseSetupDraft({ monitors: { mcpMonitor: { name: "M", url: "https://a.io/mcp", secretKey: "" } } }).success).toBe(true);
+  });
+});
+
 describe("stripUrl", () => {
   it("returns null for garbage and non-http", () => {
     expect(stripUrl("not a url")).toBeNull();

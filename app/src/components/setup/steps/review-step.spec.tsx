@@ -91,8 +91,17 @@ describe("ReviewStep", () => {
     expect(await screen.findAllByText("Monitor limit reached")).toHaveLength(2);
     expect(screen.getByText(/2 items failed/)).toBeTruthy();
     monitorPost = () => ({ ok: true, status: 201, json: async () => ({ id: `m${++seq}` }) });
-    fireEvent.click(screen.getAllByRole("button", { name: "Retry" })[0]);
+    expect(screen.getByRole("button", { name: "Retry app.example.com" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Retry app.example.com" }));
     await waitFor(() => expect(screen.getAllByText("Monitor limit reached")).toHaveLength(1));
+  });
+
+  it("reports an unreadable status page list instead of throwing", async () => {
+    const getPages = (jest.requireMock("@/actions/get-status-pages") as { getStatusPages: jest.Mock }).getStatusPages;
+    getPages.mockResolvedValueOnce({ success: false, error: "denied" });
+    setup({ ...makeStepProps({ draft: { statusPage: { name: "Acme status" } } }) });
+    fireEvent.click(screen.getByRole("button", { name: /^Create \d+ item/ }));
+    expect(await screen.findByText("Could not read status pages")).toBeTruthy();
   });
 
   it("stops with a project-changed error", async () => {

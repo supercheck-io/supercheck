@@ -1,3 +1,4 @@
+import { ensureProject } from "../create-runner";
 import type { SetupDraft } from "@/lib/setup/draft-schema";
 import type { SetupFeatures } from "@/lib/setup/features";
 import type { SetupResponse } from "@/lib/setup/types";
@@ -28,3 +29,16 @@ export function responseError(data: unknown, fallback: string): string {
   if (typeof body.message === "string") return body.message;
   return fallback;
 }
+
+export async function fetchJson(url: string, init?: { method?: string; body?: unknown }) {
+  const res = await fetch(url, {
+    method: init?.method ?? "GET",
+    headers: init?.body ? { "Content-Type": "application/json" } : undefined,
+    body: init?.body ? JSON.stringify(init.body) : undefined,
+    cache: "no-store",
+  });
+  return { ok: res.ok, status: res.status, data: await res.json().catch(() => ({})) };
+}
+
+/** Error text when the active project is no longer the setup project (another tab switched), else null. */
+export const checkSetupProject = (setupProjectId: string) => ensureProject({ setupProjectId, fetchJson });

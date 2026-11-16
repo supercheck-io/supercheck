@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 
-import { FEATURES, makeResponse, makeStepProps } from "../test-fixtures";
+import { FEATURES, makeResponse, makeStepProps, PROJECT_ID } from "../test-fixtures";
 import { AlertsStep } from "./alerts-step";
 import { AppStep } from "./app-step";
 import { DeveloperStep } from "./developer-step";
@@ -23,11 +23,14 @@ const pick = (label: string, option: string | RegExp) => {
 
 const PROVIDER = "00000000-0000-4000-8000-000000000001";
 const fetchMock = jest.fn();
+const json = (body: unknown, status = 200) => Promise.resolve({ ok: status < 400, status, json: async () => body });
+let activeProject: string;
 beforeEach(() => {
   fetchMock.mockReset();
-  global.fetch = fetchMock as unknown as typeof fetch;
+  activeProject = PROJECT_ID;
+  // The active-project check is answered here, so fetchMock only sees the step's own requests.
+  global.fetch = ((url: string, init?: unknown) => (url === "/api/context" ? json({ project: { id: activeProject } }) : fetchMock(url, init))) as unknown as typeof fetch;
 });
-const json = (body: unknown, status = 200) => Promise.resolve({ ok: status < 400, status, json: async () => body });
 
 /** A patchDraft that applies the change to a draft we can inspect. */
 function drafting(initial: SetupDraft = {}) {
@@ -84,6 +87,14 @@ describe("AlertsStep", () => {
     const body = JSON.parse(fetchMock.mock.calls[0][1].body);
     expect(body).toMatchObject({ type: "email", config: { emails: "me@example.com" } });
     expect(JSON.stringify(d.get())).not.toContain("me@example.com");
+  });
+
+  it("refuses to save a channel when another tab switched the active project", async () => {
+    activeProject = "22222222-2222-4222-8222-222222222222";
+    render(<AlertsStep {...makeStepProps()} />);
+    fireEvent.click(screen.getByRole("button", { name: "Save channel" }));
+    expect(await screen.findByText("Project changed in another tab")).toBeTruthy();
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("tests a channel and shows the failure", async () => {
@@ -236,16 +247,28 @@ describe("AppStep", () => {
     expect(JSON.stringify(d.get())).not.toContain("hunter2");
   });
 
-  it("treats an existing secret as saved, and shows an error otherwise", async () => {
+  it("does not show an existing secret as saved", async () => {
     fetchMock.mockImplementation(() => json({ error: "Variable with this key already exists" }, 409));
     const d = drafting();
-    const { unmount } = render(<AppStep {...makeStepProps({ patchDraft: d.patchDraft })} />);
+    render(<AppStep {...makeStepProps({ patchDraft: d.patchDraft })} />);
     fireEvent.change(screen.getByLabelText("Username"), { target: { value: "u" } });
     fireEvent.change(screen.getByLabelText("Password"), { target: { value: "p" } });
     fireEvent.click(screen.getByRole("button", { name: "Save test account" }));
-    await waitFor(() => expect(d.get().app?.testAccountSecret).toBeDefined());
-    unmount();
+    expect(await screen.findByText("A secret with this name already exists. Update it in Variables.")).toBeTruthy();
+    expect(d.get().app?.testAccountSecret).toBeUndefined();
+  });
 
+  it("refuses to save secrets when another tab switched the active project", async () => {
+    activeProject = "22222222-2222-4222-8222-222222222222";
+    render(<AppStep {...makeStepProps()} />);
+    fireEvent.change(screen.getByLabelText("Username"), { target: { value: "u" } });
+    fireEvent.change(screen.getByLabelText("Password"), { target: { value: "p" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save test account" }));
+    expect(await screen.findByText("Project changed in another tab")).toBeTruthy();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("shows an API error when saving the test account fails", async () => {
     fetchMock.mockImplementation(() => json({ error: "Variable name must be at least 4 characters" }, 400));
     render(<AppStep {...makeStepProps()} />);
     fireEvent.change(screen.getByLabelText("Username"), { target: { value: "u" } });

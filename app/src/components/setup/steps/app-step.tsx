@@ -6,13 +6,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { stripUrl } from "@/lib/setup/draft-schema";
-import { postJson, responseError, type StepProps } from "./step-types";
+import { checkSetupProject, postJson, responseError, type StepProps } from "./step-types";
 
 /** Secret names are 4-20 chars, uppercase (createVariableSchema). */
 const TEST_ACCOUNT_USER = "SETUP_TEST_USER";
 const TEST_ACCOUNT_PASSWORD = "SETUP_TEST_PASS";
 
-export function AppStep({ draft, patchDraft, readOnly }: StepProps) {
+export function AppStep({ response, draft, patchDraft, readOnly }: StepProps) {
   const [url, setUrl] = useState(draft.app?.url ?? "");
   const [touched, setTouched] = useState(false);
   const [username, setUsername] = useState("");
@@ -33,14 +33,21 @@ export function AppStep({ draft, patchDraft, readOnly }: StepProps) {
   const saveAccount = async () => {
     setSaving(true);
     setAccountError(null);
+    // The variables route writes to the active project, so confirm it is still this one.
+    const changed = await checkSetupProject(response.projectId);
+    if (changed) {
+      setAccountError(changed);
+      setSaving(false);
+      return;
+    }
     const pairs: Array<[string, string, string]> = [
       [TEST_ACCOUNT_USER, username, "Setup test account username"],
       [TEST_ACCOUNT_PASSWORD, password, "Setup test account password"],
     ];
     for (const [key, value, description] of pairs) {
       const res = await postJson("/api/variables", { key, value, isSecret: true, description });
-      if (!res.ok && res.status !== 409) {
-        setAccountError(responseError(res.data, "Could not save the test account"));
+      if (!res.ok) {
+        setAccountError(res.status === 409 ? "A secret with this name already exists. Update it in Variables." : responseError(res.data, "Could not save the test account"));
         setSaving(false);
         return;
       }

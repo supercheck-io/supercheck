@@ -246,10 +246,53 @@ describe("status page, components and repeat policy", () => {
 
     const existing = makeDeps({ getStatusPages: jest.fn(async () => ({ success: true, statusPages: [{ id: "sp-1", name: "x" }] })) });
     existing.created[sp.key] = "sp-1";
+    existing.created["statuspage:publish"] = "sp-1";
     expect((await runItem(sp, existing.deps)).status).toBe("adopted");
+    expect(existing.deps.publishStatusPage).not.toHaveBeenCalled();
     const deleted = makeDeps();
     deleted.created[sp.key] = "sp-gone";
     expect((await runItem(sp, deleted.deps)).status).toBe("skipped");
+  });
+
+  it("retries a failed publish on the next run, then records it so it is not published twice", async () => {
+    const sp = build(spDraft()).find((i) => i.kind === "status_page") as CreateItem;
+    const publish = jest.fn().mockResolvedValueOnce({ success: false, message: "nope" }).mockResolvedValue({ success: true });
+    const pages: Array<{ id: string; name: string }> = [];
+    const run = makeDeps({
+      publishStatusPage: publish,
+      getStatusPages: jest.fn(async () => ({ success: true, statusPages: pages })),
+      createStatusPage: jest.fn(async () => { pages.push({ id: "sp-1", name: "Acme status" }); return { success: true, statusPage: { id: "sp-1" } }; }),
+    });
+    expect((await runItem(sp, run.deps)).status).toBe("failed");
+    expect(run.created[sp.key]).toBe("sp-1");
+    expect(run.created["statuspage:publish"]).toBeUndefined();
+    expect((await runItem(sp, run.deps)).status).toBe("done");
+    expect(publish).toHaveBeenCalledTimes(2);
+    expect(run.deps.createStatusPage).toHaveBeenCalledTimes(1);
+    expect((await runItem(sp, run.deps)).status).toBe("adopted");
+    expect(publish).toHaveBeenCalledTimes(2);
+  });
+
+  it("never publishes a page it only adopted by name", async () => {
+    const adopt = makeDeps({ getStatusPages: jest.fn(async () => ({ success: true, statusPages: [{ id: "sp-old", name: "Acme status" }] })) });
+    const sp = build(spDraft()).find((i) => i.kind === "status_page") as CreateItem;
+    await runItem(sp, adopt.deps);
+    expect((await runItem(sp, adopt.deps)).status).toBe("adopted");
+    expect(adopt.deps.publishStatusPage).not.toHaveBeenCalled();
+  });
+
+  it("skips a component whose monitor or status page was deleted since", async () => {
+    const comp = build(spDraft()).find((i) => i.kind === "component") as CreateItem;
+    const noMonitor = makeDeps({ getStatusPages: jest.fn(async () => ({ success: true, statusPages: [{ id: "sp-1", name: "x" }] })) });
+    noMonitor.created.statuspage = "sp-1";
+    noMonitor.created[comp.monitorKey as string] = "m-gone";
+    expect(await runItem(comp, noMonitor.deps)).toMatchObject({ status: "skipped", note: "The monitor was deleted" });
+    const noPage = makeDeps({}, [{ id: "m-1", type: "website", target: "t", name: "n" }]);
+    noPage.created.statuspage = "sp-gone";
+    noPage.created[comp.monitorKey as string] = "m-1";
+    expect(await runItem(comp, noPage.deps)).toMatchObject({ status: "skipped", note: "The status page was deleted" });
+    expect(noMonitor.deps.createComponent).not.toHaveBeenCalled();
+    expect(noPage.deps.createComponent).not.toHaveBeenCalled();
   });
 
   it("reports status page failures and a draft left behind when publishing fails", async () => {
@@ -273,7 +316,10 @@ describe("status page, components and repeat policy", () => {
     const recorded = makeDeps();
     recorded.created[comp.key] = "c-9";
     expect((await runItem(comp, recorded.deps)).status).toBe("adopted");
-    const bad = makeDeps({ createComponent: jest.fn(async () => ({ success: false, message: "Component failed" })) });
+    const bad = makeDeps(
+      { createComponent: jest.fn(async () => ({ success: false, message: "Component failed" })), getStatusPages: jest.fn(async () => ({ success: true, statusPages: [{ id: "sp-1", name: "x" }] })) },
+      [{ id: "m-1", type: "website", target: "t", name: "n" }],
+    );
     bad.created.statuspage = "sp-1";
     bad.created[comp.monitorKey as string] = "m-1";
     expect(await runItem(comp, bad.deps)).toMatchObject({ status: "failed", error: "Component failed" });

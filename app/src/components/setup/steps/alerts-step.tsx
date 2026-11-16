@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch";
 import { TableBadge } from "@/components/ui/table-badge";
 import { WEBHOOK_PRESETS, getWebhookPreset } from "@/lib/notification-providers/webhook-presets";
-import { postJson, responseError, type StepProps } from "./step-types";
+import { checkSetupProject, postJson, responseError, type StepProps } from "./step-types";
 
 type ChannelType = "email" | "slack" | "teams" | "discord" | "telegram" | "webhook";
 
@@ -56,10 +56,12 @@ interface SavedProvider {
 const REPEAT_OPTIONS = [5, 10, 15, 30, 60];
 
 function ChannelForm({
+  projectId,
   channel,
   defaultEmail,
   onSaved,
 }: {
+  projectId: string;
   channel: (typeof CHANNELS)[number];
   defaultEmail?: string | null;
   onSaved: (provider: SavedProvider) => void;
@@ -90,6 +92,13 @@ function ChannelForm({
   const save = async () => {
     setBusy("save");
     const name = channel.label;
+    // The route writes to the active project, so confirm it is still the setup project.
+    const changed = await checkSetupProject(projectId);
+    if (changed) {
+      setResult({ ok: false, text: changed });
+      setBusy(null);
+      return;
+    }
     const res = await postJson<{ id?: string; name?: string; type?: string }>("/api/notification-providers", { name, type: channel.type, config: { ...config(), name } });
     if (res.ok && res.data.id) {
       onSaved({ id: res.data.id, name, type: channel.type });
@@ -146,7 +155,7 @@ function ChannelForm({
   );
 }
 
-export function AlertsStep({ draft, patchDraft, features, permissions, readOnly, userEmail }: StepProps) {
+export function AlertsStep({ response, draft, patchDraft, features, permissions, readOnly, userEmail }: StepProps) {
   const providerIds = draft.alerts?.providerIds ?? [];
   const [saved, setSaved] = useState<SavedProvider[]>([]);
   const [open, setOpen] = useState<ChannelType | null>(providerIds.length === 0 && userEmail ? "email" : null);
@@ -214,7 +223,7 @@ export function AlertsStep({ draft, patchDraft, features, permissions, readOnly,
               </Button>
             ))}
           </div>
-          {open ? <ChannelForm key={open} channel={CHANNELS.find((c) => c.type === open)!} defaultEmail={userEmail} onSaved={onSaved} /> : null}
+          {open ? <ChannelForm key={open} projectId={response.projectId} channel={CHANNELS.find((c) => c.type === open)!} defaultEmail={userEmail} onSaved={onSaved} /> : null}
         </section>
       ) : (
         <Alert variant="info">You do not have permission to add channels in this project. Ask a project admin.</Alert>

@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { keySchema } from "@/lib/validations/variable";
+
 /**
  * The setup draft holds non-secret choices only (spec 6). Every level is `.strict()`, so an
  * unknown key (a token pasted into the wrong field, an old client) is rejected, and stored URLs
@@ -31,6 +33,8 @@ const safeUrl = z
     return stripped;
   });
 
+/** Secret NAMES only, same rule as project variables; a pasted key cannot match it. "" = not set. */
+const secretName = keySchema.or(z.literal(""));
 const uuid = z.string().uuid();
 const name = z.string().trim().min(1).max(255);
 
@@ -43,7 +47,7 @@ const appStep = z
   .object({
     url: safeUrl.optional(),
     /** Name of the project secret holding the test account (the value is never here). */
-    testAccountSecret: z.string().max(255).optional(),
+    testAccountSecret: secretName.optional(),
   })
   .strict();
 
@@ -65,11 +69,11 @@ const monitorsStep = z
     frequencyMinutes: z.number().int().min(1).max(1440).optional(),
     heartbeat: z.object({ name, frequencyMinutes: z.number().int().min(1).max(44640) }).strict().optional(),
     aiEndpoint: z
-      .object({ name, url: safeUrl, model: z.string().trim().min(1).max(200), secretKey: z.string().max(255) })
+      .object({ name, url: safeUrl, model: z.string().trim().min(1).max(200), secretKey: keySchema })
       .strict()
       .optional(),
     mcpMonitor: z
-      .object({ name, url: safeUrl, secretKey: z.string().max(255).optional() })
+      .object({ name, url: safeUrl, secretKey: secretName.optional() })
       .strict()
       .optional(),
   })

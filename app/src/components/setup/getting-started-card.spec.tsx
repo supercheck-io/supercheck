@@ -112,5 +112,8 @@ describe("DashboardGettingStarted", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Dismiss" }));
     await waitFor(() => expect(toast.error).toHaveBeenCalled());
     expect(screen.getByTestId("getting-started-card")).toBeTruthy();
+    // The failed write invalidates the setup query, so a third request refetches the current state.
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+    expect(fetchMock.mock.calls[2][1]?.method).toBeUndefined();
   });
 });
