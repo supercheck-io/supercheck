@@ -223,6 +223,19 @@ describe("agent-test import must be type agent", () => {
     expect(validateScriptTypeMatch(script, "browser")).toMatchObject({ valid: false, suggestedType: "agent" });
   });
 
+  it.each([
+    "// Example: import '@supercheck/agent-test'\nimport { test } from '@playwright/test';",
+    "/* see import { agent } from '@supercheck/agent-test' */\nimport { test } from '@playwright/test';",
+    "import type { AgentReply } from '@supercheck/agent-test';\nimport { test } from '@playwright/test';",
+  ])("ignores a mention in a comment or a type-only import: %s", (script) => {
+    expect(validateScriptTypeMatch(script, "browser").valid).toBe(true);
+  });
+
+  it("still detects a runtime import next to a URL comment", () => {
+    const script = "const base = 'https://example.com'; // docs\nimport { agent } from '@supercheck/agent-test';";
+    expect(validateScriptTypeMatch(script, "browser")).toMatchObject({ valid: false, suggestedType: "agent" });
+  });
+
   it("accepts the agent type, and does not force plain scripts to agent", () => {
     expect(validateScriptTypeMatch(esm, "agent").valid).toBe(true);
     expect(validateScriptTypeMatch("import { test } from '@playwright/test';", "browser").valid).toBe(true);

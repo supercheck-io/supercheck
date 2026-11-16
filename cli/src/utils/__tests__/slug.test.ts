@@ -122,6 +122,13 @@ describe('agent import detection', () => {
   ])('detects %s', (script) => {
     expect(scriptTestType(script)).toBe('agent')
   })
+  it.each([
+    "// Example: import '@supercheck/agent-test'\nimport { test } from '@playwright/test'",
+    "/* import { agent } from '@supercheck/agent-test' */",
+    "import type { AgentReply } from '@supercheck/agent-test'",
+  ])('ignores a mention in a comment or a type-only import: %s', (script) => {
+    expect(scriptTestType(script)).toBeUndefined()
+  })
   it('ignores other packages', () => {
     expect(scriptTestType("import '@supercheck/other'")).toBeUndefined()
   })

@@ -281,7 +281,7 @@ export function registerMcpTools(server: McpServer, ctx: McpCallContext): void {
     return { runs: items.map(runDto), nextCursor };
   });
 
-  tool("get_run", "Get one run with a redacted, truncated error excerpt. For agent tests, failure messages are clipped to 200 characters and may quote the agent's reply; prompts, replies and transcripts are not stored." + UNTRUSTED, "run", { id: idArg }, async ({ id }) => {
+  tool("get_run", "Get one run with a redacted, truncated error excerpt. For agent tests, failure messages are clipped to 200 characters and may quote the agent's reply; prompts and replies are never returned." + UNTRUSTED, "run", { id: idArg }, async ({ id }) => {
     const [r] = await db
       .select({ ...runColumns, errorDetails: runs.errorDetails, agentMetadata: sql<unknown>`${runs.metadata}->'agent'` })
       .from(runs)

@@ -36,6 +36,15 @@ export interface ScriptTypeValidationResult {
  */
 const AGENT_IMPORT = /(?:\bfrom|\bimport|\brequire)\s*\(?\s*['"`]@supercheck\/agent-test['"`]/;
 
+/** True when the script loads @supercheck/agent-test at runtime; comments and `import type` don't count. */
+export function importsAgentTest(script: string): boolean {
+  const code = script
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/(^|[^:])\/\/.*$/gm, "$1")
+    .replace(/\bimport\s+type\b[^;]*;?/g, "");
+  return AGENT_IMPORT.test(code);
+}
+
 export function validateScriptTypeMatch(
   script: string,
   declaredType: TestType,
@@ -64,7 +73,7 @@ export function validateScriptTypeMatch(
     };
   }
 
-  if (declaredType !== "agent" && AGENT_IMPORT.test(script)) {
+  if (declaredType !== "agent" && importsAgentTest(script)) {
     return {
       valid: false,
       error: `Script imports @supercheck/agent-test but test type is "${declaredType}". Agent test scripts must use type "agent".`,

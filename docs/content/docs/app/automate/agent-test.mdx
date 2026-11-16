@@ -45,7 +45,7 @@ Pass keys in yourself with `getSecret` and URLs with `getVariable`; nothing is a
 | `agent.judge(text, rubric, { url, apiKey, model })` | Asks your own OpenAI-compatible model to grade the text against the rubric. Returns `{ pass, reason }` |
 | `expect` | Playwright's `expect`, unchanged |
 
-The run page shows an **Agent results** card with the pass rate, attempts, tokens, slowest attempt, tools called and the failures. Failure messages are clipped to 200 characters and may quote the agent's reply. Prompts, replies and transcripts are not stored.
+The run page shows an **Agent results** card with the pass rate, attempts, tokens, slowest attempt, tools called and the failures. Failure messages are clipped to 200 characters and may quote the agent's reply. Prompts and replies are left out of the run record, the API and MCP, but the saved Playwright report keeps the full transcript (with your API key and credential headers redacted), like any other report content.
 
 ## Limits
 

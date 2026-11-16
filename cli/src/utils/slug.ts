@@ -139,9 +139,17 @@ export function headerKind(script: string): Header['kind'] {
 }
 
 const AGENT_IMPORT = /(?:\bfrom|\bimport|\brequire)\s*\(?\s*['"`]@supercheck\/agent-test['"`]/
+/** True when the script loads @supercheck/agent-test at runtime; comments and `import type` don't count. */
+export function importsAgentTest(script: string): boolean {
+  const code = script
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/(^|[^:])\/\/.*$/gm, '$1')
+    .replace(/\bimport\s+type\b[^;]*;?/g, '')
+  return AGENT_IMPORT.test(code)
+}
 /** The test type a script declares: its `@type` header, else 'agent' when it imports the agent SDK. */
 export function scriptTestType(script: string): string | undefined {
-  return readScriptMetadata(script, 'type') ?? (AGENT_IMPORT.test(script) ? 'agent' : undefined)
+  return readScriptMetadata(script, 'type') ?? (importsAgentTest(script) ? 'agent' : undefined)
 }
 
 /** The non-browser, non-performance type a script declares, which can only run in the cloud. */
