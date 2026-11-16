@@ -38,12 +38,14 @@ export function makeResponse(overrides: Partial<SetupResponse> = {}, state: Part
       canEdit: true,
       canUpdateProject: true,
       canConfigureConnectors: false,
+      canCreateServices: false,
       canInvite: true,
       canCreateTests: true,
       canCreateStatusPage: true,
       canCreateNotification: true,
     },
     monitorsRemaining: null,
+    aiTestsLocked: false,
     minIntervalMinutes: 1,
     projectEmpty: true,
     ...overrides,
@@ -61,6 +63,8 @@ export function makeStepProps(overrides: Partial<StepProps> = {}): StepProps {
     setStatusPageOptOut: jest.fn(),
     readOnly: false,
     userEmail: "me@example.com",
+    scan: null,
+    setScan: jest.fn(),
     ...overrides,
   };
 }

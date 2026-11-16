@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
   getProjectSetupQueryKey,
   getProjectSetupSummaryQueryKey,
+  setProjectSetupData,
   USER_PREFERENCES_QUERY_KEY,
   useProjectSetup,
   useProjectSetupSummary,
@@ -26,5 +27,18 @@ describe("project setup queries stay out of the saved cache", () => {
       expect(client.getQueryCache().find({ queryKey })?.meta).toEqual({ persist: false });
     }
     client.clear();
+  });
+});
+
+describe("setProjectSetupData", () => {
+  it("keeps the last known aiTestsLocked when a write response does not compute it", () => {
+    const client = new QueryClient();
+    const key = getProjectSetupQueryKey("p1");
+    const base = { state: { status: "in_progress" }, checklist: { done: 1, total: 2 }, projectEmpty: false };
+    client.setQueryData(key, { ...base, aiTestsLocked: true });
+    setProjectSetupData(client, "p1", { ...base, aiTestsLocked: null } as never);
+    expect((client.getQueryData(key) as { aiTestsLocked: boolean | null }).aiTestsLocked).toBe(true);
+    setProjectSetupData(client, "p1", { ...base, aiTestsLocked: false } as never);
+    expect((client.getQueryData(key) as { aiTestsLocked: boolean | null }).aiTestsLocked).toBe(false);
   });
 });

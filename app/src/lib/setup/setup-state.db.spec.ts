@@ -17,12 +17,15 @@ jest.mock("@/lib/middleware/plan-enforcement", () => ({
 }));
 
 import {
+  claimAiRun,
   claimLock,
   getChecklistCounts,
   getSetupState,
   getUserPreferences,
   monitorsRemaining,
+  releaseAiRun,
   releaseLock,
+  saveSuggestions,
   setUserPersona,
   updateSetupState,
 } from "./setup-state";
@@ -317,5 +320,64 @@ describe("monitorsRemaining", () => {
     expect(await monitorsRemaining(orgA)).toBeNull();
     (checkMonitorLimit as jest.Mock).mockResolvedValueOnce({ allowed: true });
     expect(await monitorsRemaining(orgA)).toBeNull();
+  });
+});
+
+describe("releaseAiRun", () => {
+  const lastAiRunAt = async () => (await client`SELECT last_ai_run_at FROM project_setup_state WHERE project_id = ${projA}`)[0]?.last_ai_run_at ?? null;
+
+  it("restores the pre-claim value only while the row still holds this claim", async () => {
+    const claim = await claimAiRun(orgA, projA);
+    if (claim.kind !== "claimed") throw new Error("expected claim");
+    await releaseAiRun(orgA, projA, claim);
+    expect(await lastAiRunAt()).toBeNull();
+
+    const stale = await claimAiRun(orgA, projA);
+    if (stale.kind !== "claimed") throw new Error("expected claim");
+    const newer = new Date(stale.claimedAt.getTime() + 5000);
+    await client`UPDATE project_setup_state SET last_ai_run_at = ${newer.toISOString()}::timestamptz WHERE project_id = ${projA}`;
+    await releaseAiRun(orgA, projA, stale);
+    expect(new Date(await lastAiRunAt()).getTime()).toBe(newer.getTime());
+  });
+
+  it("waits for the advisory lock a concurrent claim holds", async () => {
+    const claim = await claimAiRun(orgA, projA);
+    if (claim.kind !== "claimed") throw new Error("expected claim");
+    let released = false;
+    let pending: Promise<void> = Promise.resolve();
+    await client.begin(async (tx) => {
+      await tx`SELECT pg_advisory_xact_lock(hashtext(${`setup-ai-run:${projA}`}))`;
+      pending = releaseAiRun(orgA, projA, claim).then(() => void (released = true));
+      await new Promise((r) => setTimeout(r, 300));
+      expect(released).toBe(false);
+    });
+    await pending;
+    expect(released).toBe(true);
+    expect(await lastAiRunAt()).toBeNull();
+  });
+});
+
+describe("saveSuggestions", () => {
+  it("merges into draft.tests without touching other keys, bumps updated_at, scopes by org", async () => {
+    const first = await updateSetupState(orgA, projA, u1, { draft: { app: { url: "https://a.io/x" }, tests: { requirements: [{ title: "Keep" }] } } }, null);
+    if (first.kind !== "ok") throw new Error("expected ok");
+    await saveSuggestions(orgA, projA, [{ title: "S1", description: "d", priority: "high" }]);
+    const after = await getSetupState(orgA, projA, u1);
+    expect(after.draft).toEqual({
+      app: { url: "https://a.io/x" },
+      tests: { requirements: [{ title: "Keep" }], suggestions: [{ title: "S1", description: "d", priority: "high" }] },
+    });
+    expect(after.updatedAt).not.toBe(first.state.updatedAt);
+    // A client holding the old version now conflicts instead of overwriting.
+    expect((await updateSetupState(orgA, projA, u1, { currentStep: "tests" }, first.state.updatedAt)).kind).toBe("conflict");
+
+    await saveSuggestions(orgB, projA, [{ title: "Other org" }]);
+    expect((await getSetupState(orgA, projA, u1)).draft.tests?.suggestions).toEqual([{ title: "S1", description: "d", priority: "high" }]);
+  });
+  it("works on a row created by the AI claim (empty draft) and rejects invalid items", async () => {
+    await claimAiRun(orgA, projA);
+    await saveSuggestions(orgA, projA, [{ title: "S1" }]);
+    expect((await getSetupState(orgA, projA, u1)).draft).toEqual({ tests: { requirements: [], suggestions: [{ title: "S1" }] } });
+    await expect(saveSuggestions(orgA, projA, [{ title: "" }])).rejects.toThrow();
   });
 });

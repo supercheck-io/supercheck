@@ -112,6 +112,15 @@ export async function expectStep(page: Page, key: string): Promise<void> {
   await expect(stepButton(page, key)).toHaveAttribute('aria-current', 'step');
 }
 
+/**
+ * Jump to a step through the rail. The AI steps sit between the others only when a provider is
+ * configured (the CI app has a stand-in one), so flows that do not care about them jump past them.
+ */
+export async function goToStep(page: Page, key: string): Promise<void> {
+  await stepButton(page, key).click();
+  await expectStep(page, key);
+}
+
 export async function next(page: Page, name: 'Continue' | 'Skip this step' = 'Continue'): Promise<void> {
   await wizard(page).getByRole('button', { name, exact: true }).click();
 }

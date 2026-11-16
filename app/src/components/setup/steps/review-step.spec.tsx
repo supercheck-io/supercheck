@@ -13,6 +13,15 @@ jest.mock("@/actions/notification-policy", () => ({
   saveProjectNotificationPolicy: jest.fn(async () => ({ success: true })),
 }));
 
+jest.mock("@/actions/requirements", () => ({
+  findRequirementsForSetup: jest.fn(async () => ({ success: true, requirements: [] })),
+  createRequirement: jest.fn(async () => ({ id: "req-1", success: true })),
+}));
+jest.mock("@/actions/sre-services", () => ({
+  getSreServices: jest.fn(async () => ({ success: true, services: [] })),
+  createSreService: jest.fn(async () => ({ success: true, service: { id: "svc-1" }, message: "ok" })),
+}));
+
 const actions = {
   createComponent: (jest.requireMock("@/actions/create-component") as { createComponent: jest.Mock }).createComponent,
   save: (jest.requireMock("@/actions/notification-policy") as { saveProjectNotificationPolicy: jest.Mock }).saveProjectNotificationPolicy,
@@ -244,5 +253,25 @@ describe("ReviewStep", () => {
     setup({ readOnly: true });
     expect(screen.getByText(/You have view access/)).toBeTruthy();
     expect(screen.getByRole("button", { name: "Create 6 items" })).toBeDisabled();
+  });
+});
+
+describe("ReviewStep requirements and services", () => {
+  it("creates requirements and a service, then offers Generate test and the jobs link", async () => {
+    const { props } = setup({
+      skipped: [],
+      permissions: { ...makeStepProps().permissions, canConfigureConnectors: true, canCreateServices: true },
+      draft: { tests: { requirements: [{ title: "User can sign in", description: "d" }] }, aiSre: { connectorIds: [PROVIDER], services: [{ name: "app.example.com" }] } },
+    });
+    expect(screen.getByText("1 AI SRE connector")).toBeTruthy();
+    expect(screen.queryByTestId("setup-jobs-link")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Create 2 items" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Finish setup" })).toBeTruthy());
+    expect(screen.getByRole("link", { name: "Generate test for User can sign in" }).getAttribute("href")).toBe("/playground?scriptType=browser&requirementId=req-1");
+    expect(screen.getByRole("link", { name: "Create a scheduled job or CI key" }).getAttribute("href")).toBe("/jobs/create");
+    expect(props.recordCreated).toHaveBeenCalledWith(expect.stringMatching(/^requirement:[0-9a-z]+$/), "req-1");
+// Writes carry the setup project so a tab switch cannot send them to another project.
+expect(jest.requireMock("@/actions/requirements").createRequirement).toHaveBeenCalledWith({ title: "User can sign in", description: "d" }, PROJECT_ID);
+expect(jest.requireMock("@/actions/sre-services").createSreService).toHaveBeenCalledWith({ name: "app.example.com" }, PROJECT_ID);
   });
 });

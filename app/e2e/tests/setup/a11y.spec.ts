@@ -5,8 +5,9 @@ import { chooseProfile, expectStep, purgeCreatedItems, signUpFreshCreator, stepB
 
 // @axe-core/playwright is not a dependency of this suite, so this covers what Playwright can
 // check directly: the labelled step list, aria-current, keyboard operation, dark mode and no
-// horizontal page scroll at 320px.
-const STEPS = ['app', 'alerts', 'monitors', 'statusPage', 'review'];
+// horizontal page scroll at 320px. The rail also lists the AI steps when a provider is configured,
+// so the walk follows the rail itself and only requires the always-present steps.
+const REQUIRED_STEPS = ['app', 'alerts', 'monitors', 'statusPage', 'review'];
 
 async function expectNoHorizontalScroll(page: Page) {
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
@@ -45,10 +46,14 @@ test.describe('Project setup accessibility @setup', () => {
     await expect(rail).toBeVisible();
     await expect(rail.locator('[aria-current="step"]')).toHaveCount(1);
     await expectStep(page, 'app');
+    const steps = await rail
+      .locator('[data-testid^="setup-step-"]')
+      .evaluateAll((els) => els.map((el) => (el.getAttribute('data-testid') ?? '').replace('setup-step-', '')));
+    expect(steps).toEqual(expect.arrayContaining(REQUIRED_STEPS));
 
     // Tab walks the rail in order; Enter selects the focused step and moves aria-current.
     await stepButton(page, 'app').focus();
-    for (const key of STEPS.slice(1)) {
+    for (const key of steps.slice(1)) {
       await page.keyboard.press('Tab');
       await expect(stepButton(page, key)).toBeFocused();
       await page.keyboard.press('Enter');

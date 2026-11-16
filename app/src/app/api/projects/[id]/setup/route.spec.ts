@@ -3,6 +3,10 @@ import { NextRequest } from "next/server";
 
 const mockLimit = jest.fn();
 jest.mock("@/utils/db", () => ({ db: { select: () => ({ from: () => ({ where: () => ({ limit: mockLimit }) }) }) } }));
+jest.mock("@/lib/services/subscription-service", () => ({
+  SubscriptionAccessDeniedError: class SubscriptionAccessDeniedError extends Error {},
+  subscriptionService: { blockUntilSubscribed: jest.fn() },
+}));
 jest.mock("@/lib/execution/trial-limits", () => ({ trialCheckIntervalViolation: jest.fn() }));
 jest.mock("@/lib/ai/ai-provider", () => ({ isAIProviderConfigured: () => false }));
 jest.mock("@/lib/audit-logger", () => ({ logAuditEvent: jest.fn() }));
@@ -29,6 +33,7 @@ jest.mock("@/lib/setup/setup-state", () => ({
 }));
 
 import { GET, PUT } from "./route";
+import { subscriptionService } from "@/lib/services/subscription-service";
 import { logAuditEvent } from "@/lib/audit-logger";
 import { permissionDeniedResponse } from "@/lib/deletion/org-state";
 import { requireAuth, resolveProjectPermissionContext, checkPermissionWithContext } from "@/lib/rbac/middleware";
@@ -58,6 +63,7 @@ beforeEach(() => {
   (getSetupState as jest.Mock).mockResolvedValue(state);
   (getChecklistCounts as jest.Mock).mockResolvedValue(counts);
   (monitorsRemaining as jest.Mock).mockResolvedValue(7);
+  (subscriptionService.blockUntilSubscribed as jest.Mock).mockResolvedValue(undefined);
   (trialCheckIntervalViolation as jest.Mock).mockResolvedValue(null);
   mockLimit.mockResolvedValue([{ name: "Acme" }]);
   allow();
@@ -72,13 +78,31 @@ describe("GET /api/projects/[id]/setup", () => {
     expect(body.checklist.items.find((i: { key: string }) => i.key === "monitors").done).toBe(true);
     expect(body.features.aiSre).toBe(false); // no AI provider configured
     expect(body.permissions).toEqual({
-      canEdit: true, canUpdateProject: true, canConfigureConnectors: true, canInvite: true,
+      canEdit: true, canUpdateProject: true, canConfigureConnectors: true, canCreateServices: true, canInvite: true,
       canCreateTests: true, canCreateStatusPage: true, canCreateNotification: true,
     });
     expect(getSetupState).toHaveBeenCalledWith(ORG, PROJECT, "u1");
     expect(getChecklistCounts).toHaveBeenCalledWith(ORG, PROJECT);
   });
 
+  it("reports aiTestsLocked for an org that is not on a paid plan", async () => {
+    expect((await (await GET(req("GET"), params())).json()).aiTestsLocked).toBe(false);
+    const { SubscriptionAccessDeniedError } = jest.requireMock("@/lib/services/subscription-service");
+    (subscriptionService.blockUntilSubscribed as jest.Mock).mockRejectedValueOnce(new SubscriptionAccessDeniedError("trial"));
+    expect((await (await GET(req("GET"), params())).json()).aiTestsLocked).toBe(true);
+  });
+  it("reports aiTestsLocked as unknown (null) when the plan lookup fails, so the UI does not lock", async () => {
+    jest.spyOn(console, "error").mockImplementation(() => undefined);
+    (subscriptionService.blockUntilSubscribed as jest.Mock).mockRejectedValueOnce(new Error("db down"));
+    expect((await (await GET(req("GET"), params())).json()).aiTestsLocked).toBeNull();
+  });
+  it("does not look up the plan on the summary read or on a PUT", async () => {
+    await GET(new NextRequest(`http://localhost/api/projects/${PROJECT}/setup?summary=1`), params());
+    (updateSetupState as jest.Mock).mockResolvedValue({ kind: "ok", previousStatus: "not_started", state });
+    const put = await PUT(req("PUT", { expectedUpdatedAt: null, currentStep: "app" }), params());
+    expect((await put.json()).aiTestsLocked).toBeNull();
+    expect(subscriptionService.blockUntilSubscribed).not.toHaveBeenCalled();
+  });
   it("reports the trial's shortest interval and whether the project is empty", async () => {
     (trialCheckIntervalViolation as jest.Mock).mockResolvedValue({ minimumMinutes: 5 });
     (getChecklistCounts as jest.Mock).mockResolvedValue({ ...counts, monitors: 0 });

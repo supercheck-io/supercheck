@@ -65,6 +65,7 @@ import { logAuditEvent } from "@/lib/audit-logger";
 
 import {
   getRequirements,
+  findRequirementsForSetup,
   createRequirement,
   updateRequirement,
   deleteRequirement,
@@ -173,7 +174,41 @@ describe("Requirements Server Actions", () => {
       });
     });
 
+    describe("findRequirementsForSetup", () => {
+      it("refuses a lookup when the active project is not the expected setup project", async () => {
+        await expect(findRequirementsForSetup({ ids: [], titles: ["a"] }, "other-project")).rejects.toThrow();
+        expect(mockDb.select).not.toHaveBeenCalled();
+      });
+      it("requires view permission", async () => {
+        mockCheckPermissionWithContext.mockReturnValue(false);
+        await expect(findRequirementsForSetup({ ids: [], titles: ["a"] })).rejects.toThrow("Insufficient permissions to view requirements");
+      });
+
+      it("skips the query without ids or titles", async () => {
+        expect(await findRequirementsForSetup({ ids: ["not-a-uuid"], titles: [] })).toEqual({ success: true, requirements: [] });
+        expect(mockDb.select).not.toHaveBeenCalled();
+      });
+
+      it("queries only those ids/titles, scoped to the org and project, capped at 50 each", async () => {
+        const where = jest.fn(() => Promise.resolve([{ id: testRequirementId, title: "Old one" }]));
+        (mockDb.select as jest.Mock).mockImplementationOnce(() => ({ from: () => ({ where }) }));
+        const titles = Array.from({ length: 60 }, (_, i) => `t${i}`);
+        const result = await findRequirementsForSetup({ ids: [testRequirementId], titles });
+        expect(result).toEqual({ success: true, requirements: [{ id: testRequirementId, title: "Old one" }] });
+        const { sql, params } = new PgDialect().sqlToQuery((where.mock.calls[0] as unknown[])[0] as SQL);
+        expect(sql).toContain('"organization_id"');
+        expect(sql).toContain('"project_id"');
+        expect(params).toEqual(expect.arrayContaining([testOrgId, testProjectId, testRequirementId, "t49"]));
+        expect(params).not.toContain("t50");
+      });
+    });
+
     describe("createRequirement", () => {
+      it("refuses a write when the active project is not the expected setup project", async () => {
+        const result = await createRequirement({ title: "T", priority: "medium" } as never, "other-project");
+        expect(result).toMatchObject({ success: false });
+        expect(mockDb.insert).not.toHaveBeenCalled();
+      });
       it("should require create permission", async () => {
         mockCheckPermissionWithContext.mockReturnValue(false);
 

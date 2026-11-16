@@ -38,7 +38,7 @@ test.describe('Project setup self-hosted @setup', () => {
     await context.close();
   });
 
-  test('sign-up lands on /setup with no subscribe step, no plan cap and no AI steps @critical', async () => {
+  test('sign-up lands on /setup with no subscribe step, no plan cap @critical', async () => {
     await expect(page).toHaveURL(/\/setup/);
     await expect(page).not.toHaveURL(/\/subscribe/);
     await chooseProfile(page, 'Keep production up');
@@ -50,9 +50,6 @@ test.describe('Project setup self-hosted @setup', () => {
     await expectStep(page, 'monitors');
     await expect(page.getByTestId('setup-monitor-cap')).toHaveCount(0);
     await expect(wizard(page)).not.toContainText(/upgrade|plan allows/i);
-
-    // AI steps only exist with a provider and their flag on; neither holds here.
-    await expect(stepButton(page, 'tests')).toHaveCount(0);
-    await expect(stepButton(page, 'aiSre')).toHaveCount(0);
+    // The AI steps (tests, aiSre) appear only when a provider is configured, so they are not asserted either way.
   });
 });

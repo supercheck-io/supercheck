@@ -5,6 +5,12 @@ describe("resolveSetupFeatures", () => {
     expect(resolveSetupFeatures({ aiConfigured: true })).toEqual(SETUP_FEATURES);
   });
 
+  it("ships the AI steps on, gated on a provider", () => {
+    expect(SETUP_FEATURES.aiTests).toBe(true);
+    expect(SETUP_FEATURES.aiSre).toBe(true);
+    expect(resolveSetupFeatures({ aiConfigured: false })).toMatchObject({ aiTests: false, aiSre: false });
+  });
+
   it("turns AI-backed features off when no provider is configured", () => {
     const resolved = resolveSetupFeatures({ aiConfigured: false, registry: { ...SETUP_FEATURES, aiTests: true, aiSre: true } });
     expect(resolved.aiTests).toBe(false);
