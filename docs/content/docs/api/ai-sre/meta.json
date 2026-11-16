@@ -6,6 +6,7 @@
     "declareSreIncident",
     "getSreIncident",
     "getSreIncidentTimeline",
+    "getSreIncidentPostmortem",
     "acknowledgeSreIncident",
     "assignSreIncident",
     "resolveSreIncident",

@@ -2,6 +2,7 @@ import { jest, describe, it, expect, beforeEach } from '@jest/globals'
 
 const mockGet = jest.fn<(...args: unknown[]) => Promise<{ data: unknown }>>()
 const mockPost = jest.fn<(...args: unknown[]) => Promise<{ data: unknown }>>()
+const mockPatch = jest.fn<(...args: unknown[]) => Promise<{ data: unknown }>>()
 const mockDelete = jest.fn<(...args: unknown[]) => Promise<{ data: unknown }>>()
 const mockOutput = jest.fn<(...args: unknown[]) => void>()
 const mockOutputDetail = jest.fn<(...args: unknown[]) => void>()
@@ -9,7 +10,7 @@ const mockSuccess = jest.fn<(...args: unknown[]) => void>()
 const mockWarn = jest.fn<(...args: unknown[]) => void>()
 
 jest.unstable_mockModule('../../api/authenticated-client.js', () => ({
-  createAuthenticatedClient: () => ({ get: mockGet, post: mockPost, delete: mockDelete }),
+  createAuthenticatedClient: () => ({ get: mockGet, post: mockPost, patch: mockPatch, delete: mockDelete }),
 }))
 jest.unstable_mockModule('../../output/formatter.js', () => ({ output: mockOutput, outputDetail: mockOutputDetail, getOutputFormat: () => 'json' }))
 jest.unstable_mockModule('../../utils/logger.js', () => ({
@@ -18,6 +19,7 @@ jest.unstable_mockModule('../../utils/logger.js', () => ({
 jest.unstable_mockModule('../../utils/spinner.js', () => ({ withSpinner: async (_t: string, fn: () => Promise<unknown>) => fn() }))
 
 const { maintenanceCommand, parseDuration } = await import('../maintenance.js')
+const { ApiRequestError } = await import('../../utils/errors.js')
 
 const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`
 const run = (...args: string[]) => maintenanceCommand.parseAsync(['node', 'maintenance', ...args])
@@ -92,5 +94,63 @@ describe('maintenance CLI', () => {
     mockDelete.mockResolvedValueOnce({ data: {} })
     await run('delete', id(9), '--force')
     expect(mockDelete).toHaveBeenCalledWith(`/api/maintenance-windows/${id(9)}`)
+  })
+
+  it('lists by service and gets one window', async () => {
+    mockGet.mockResolvedValue({ data: { windows: [], window: { id: id(9) } } })
+    await run('list', '--service', id(2))
+    expect(mockGet).toHaveBeenCalledWith('/api/maintenance-windows', { serviceId: id(2) })
+    await run('get', id(9))
+    expect(mockGet).toHaveBeenLastCalledWith(`/api/maintenance-windows/${id(9)}`)
+    expect(mockOutputDetail).toHaveBeenCalledWith({ id: id(9) })
+    await expect(run('list', '--service', 'x')).rejects.toThrow('service UUID')
+  })
+
+  it('says the server is too old on a bare 404, and passes a JSON 404 through', async () => {
+    mockGet.mockRejectedValueOnce(new ApiRequestError('not found', 404, undefined))
+    await expect(run('list')).rejects.toThrow('newer Supercheck server')
+    mockGet.mockRejectedValueOnce(new ApiRequestError('not found', 404, { error: 'Maintenance window not found' }))
+    await expect(run('get', id(9))).rejects.toThrow('not found')
+  })
+
+  it('extends to a strict ISO time and needs exactly one of --by or --to', async () => {
+    mockPost.mockResolvedValue({ data: { window: { id: id(9) } } })
+    await run('extend', id(9), '--to', '2026-11-20T04:00:00Z')
+    expect(mockPost).toHaveBeenCalledWith(`/api/maintenance-windows/${id(9)}/extend`, { until: '2026-11-20T04:00:00.000Z' }, { retries: 0 })
+    await run('extend', id(9), '--to', '2026-11-20T04:00+02:00')
+    expect(mockPost).toHaveBeenLastCalledWith(expect.any(String), { until: '2026-11-20T02:00:00.000Z' }, { retries: 0 })
+    // No offset means the user's local time, sent to the server as UTC.
+    await run('extend', id(9), '--to', '2026-11-20T04:00')
+    expect(mockPost).toHaveBeenLastCalledWith(expect.any(String), { until: new Date('2026-11-20T04:00').toISOString() }, { retries: 0 })
+    expect(mockPost).toHaveBeenCalledTimes(3)
+    await expect(run('extend', id(9))).rejects.toThrow('exactly one')
+    await expect(run('extend', id(9), '--by', '1h', '--to', '2026-11-20T04:00:00Z')).rejects.toThrow('exactly one')
+    for (const bad of ['soon', '2', '2026-11-20', 'Nov 20 2026', '2026-02-30T04:00', '2026-13-01T04:00', '2026-11-20T24:00', '2026-11-20T04:00+99:99']) {
+      await expect(run('extend', id(9), '--to', bad)).rejects.toThrow('ISO 8601')
+    }
+    expect(mockPost).toHaveBeenCalledTimes(3)
+  })
+
+  it('updates only the fields passed and rejects an empty update', async () => {
+    mockPatch.mockResolvedValue({ data: { window: { id: id(9) } } })
+    await run('update', id(9), '--title', 'New', '--duration', '2h', '--start', '2026-11-21 03:00', '--service', id(2))
+    expect(mockPatch).toHaveBeenCalledWith(`/api/maintenance-windows/${id(9)}`, {
+      title: 'New', scope: 'services', targets: { serviceIds: [id(2)], monitorIds: [] }, startsOn: '2026-11-21', localStartTime: '03:00', durationMinutes: 120,
+    })
+    await expect(run('update', id(9))).rejects.toThrow('at least one field')
+    await expect(run('update', id(9), '--project', '--monitor', id(1))).rejects.toThrow('one scope')
+    await expect(run('update', id(9), '--monitor', 'm')).rejects.toThrow()
+    expect(mockPatch).toHaveBeenCalledTimes(1)
+    await run('update', id(9), '--project')
+    expect(mockPatch.mock.calls[1]![1]).toMatchObject({ scope: 'project' })
+    await run('update', id(9), '--monitor', id(1))
+    expect(mockPatch.mock.calls[2]![1]).toMatchObject({ scope: 'monitors', targets: { monitorIds: [id(1)] } })
+    await run('update', id(9), '--repeat', 'weekly', '--days', 'mon,thu')
+    expect(mockPatch.mock.calls[3]![1]).toMatchObject({ recurrence: 'weekly', weekdays: [1, 4] })
+    await run('update', id(9), '--repeat', 'monthly', '--day', 'last')
+    expect(mockPatch.mock.calls[4]![1]).toMatchObject({ recurrence: 'monthly', monthDay: -1 })
+    expect(mockPatch).toHaveBeenCalledTimes(5)
+    await run('update', id(9), '--until', 'none')
+    expect(mockPatch.mock.calls[5]![1]).toEqual({ endsOn: null })
   })
 })

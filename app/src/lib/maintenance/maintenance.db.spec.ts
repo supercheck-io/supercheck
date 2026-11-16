@@ -190,6 +190,33 @@ describe("window lifecycle (M10, AC12)", () => {
     expect(await extendMaintenanceWindow(actor, later.window.id, { byMinutes: 30 })).toMatchObject({ ok: false, code: "conflict" });
   });
 
+  it("never shortens a window through extend", async () => {
+    const created = await createMaintenanceWindow(actor, oneOff(-5), "api");
+    if (!created.ok) throw new Error(created.error);
+    const earlier = new Date(created.window.occurrenceEndsAt!.getTime() - 10 * MIN);
+    expect(await extendMaintenanceWindow(actor, created.window.id, { until: earlier })).toMatchObject({ ok: false, code: "invalid", error: "The new end must be after the current end" });
+    expect(await extendMaintenanceWindow(actor, created.window.id, { until: created.window.occurrenceEndsAt! })).toMatchObject({ ok: false, code: "invalid" });
+    expect(await isMonitorInMaintenance(monA, new Date())).toBe(true);
+  });
+
+  it("refuses days that the schedule would drop", async () => {
+    const created = await createMaintenanceWindow(actor, oneOff(60), "api");
+    if (!created.ok) throw new Error(created.error);
+    expect(await updateMaintenanceWindow(actor, created.window.id, { weekdays: [1] })).toMatchObject({ ok: false, code: "invalid", fieldErrors: { weekdays: expect.any(String) } });
+    expect(await updateMaintenanceWindow(actor, created.window.id, { monthDay: 3 })).toMatchObject({ ok: false, code: "invalid", fieldErrors: { monthDay: expect.any(String) } });
+    expect(await updateMaintenanceWindow(actor, created.window.id, { recurrence: "weekly", weekdays: [1] })).toMatchObject({ ok: true, window: { weekdays: [1] } });
+  });
+
+  it("lists a monitor-scoped window under the service its monitor is mapped to", async () => {
+    await client`INSERT INTO sre_service_resources (id, service_id, resource_type, resource_id) VALUES (${uuidv7()}, ${service}, 'monitor', ${monB})`;
+    const onMonitor = await createMaintenanceWindow(actor, oneOff(60, 60, { targets: { monitorIds: [monB] } }), "api");
+    const unrelated = await createMaintenanceWindow(actor, oneOff(60, 60, { targets: { monitorIds: [monA] } }), "api");
+    if (!onMonitor.ok || !unrelated.ok) throw new Error("create failed");
+    const listed = await listMaintenanceWindows(actor, { serviceId: service });
+    expect(listed.ok && listed.windows.map((w) => w.id)).toEqual([onMonitor.window.id]);
+    await client`DELETE FROM sre_service_resources WHERE resource_id = ${monB}`;
+  });
+
   it("keeps 10 minutes before a series' next occurrence when extending", async () => {
     // Daily 60 minutes, started 5 minutes ago: tomorrow starts 1440 minutes after today's start.
     const series = await createMaintenanceWindow(actor, { ...oneOff(-5), recurrence: "daily" }, "api");

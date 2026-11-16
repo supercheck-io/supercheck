@@ -1,4 +1,5 @@
 import { listMaintenanceWindows } from "@/lib/maintenance/windows";
+import { WEBHOOK_PRESET_IDS } from "@/lib/notification-providers/webhook-presets";
 import { liveJob, liveMonitor, liveRunOfLiveJob } from "@/lib/deletion/visibility";
 import { and, asc, desc, eq, exists, ilike, inArray, isNull, lt, ne, or, sql, type SQL } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
@@ -9,6 +10,7 @@ import {
   jobTests,
   monitorResults,
   monitors,
+  notificationProviders,
   projectVariables,
   projects,
   requirementCoverageSnapshots,
@@ -37,11 +39,14 @@ import { UNTRUSTED } from "./config";
 import { McpToolFailure, registerSreTools, type ToolRegistrar } from "./sre-tools";
 import { getDisplayStatus } from "@/lib/sre/incident-status-display";
 import { storedRootCause } from "@/lib/sre/evidence-brief-summary";
-import { safeTarget, safeText } from "./redact";
+import { safeJson, safeTarget, safeText } from "./redact";
 import { incidentsEnabled } from "@/lib/incident-settings";
 import { getNotificationPolicy } from "@/lib/sre/notification-policy";
 import { sanitizeAgentSummary } from "@/lib/agent-test/run-summary";
 import { heartbeatSummary } from "@/lib/heartbeat/state";
+import { newestIncidentTimelineEvents } from "@/lib/sre/incident-timeline-query";
+import { loadProviderHealth } from "@/lib/notification-providers/channel-health";
+import { decryptNotificationProviderConfig } from "@/lib/notification-providers/crypto";
 
 const MAX_LIMIT = 50;
 const ANNOTATIONS = {
@@ -58,6 +63,7 @@ const page = {
   cursor: z.string().uuid().optional().describe("id of the last item of the previous page"),
 };
 const idArg = z.string().uuid();
+const EVIDENCE_EVENT_TYPES = new Set(["ai_finding", "tool_call", "evidence_added", "recommendation_added", "verification_result"]);
 const RUN_STATUSES = ["running", "passed", "failed", "error", "blocked", "queued"] as const;
 // `open` is a filter, not a stored status: every incident that is not resolved.
 const INCIDENT_STATUSES = ["open", "triggered", "investigating", "identified", "recommendations_ready", "user_applying_fix", "verifying", "resolved"] as const;
@@ -346,15 +352,50 @@ export function registerMcpTools(server: McpServer, ctx: McpCallContext): void {
     return { incidents: items.map((i) => ({ ...i, ...lifecycleDto(i), title: safeText(i.title, 500), createdAt: iso(i.createdAt), resolvedAt: iso(i.resolvedAt) })), nextCursor };
   });
 
-  tool("get_incident", "Get one incident with its root-cause summary, assignment, acknowledgement, resolution summary and number of alerts (the opening alert plus repeats while it stayed open) and when the latest one fired." + UNTRUSTED, "sre_incident", { id: idArg }, async ({ id }) => {
+  tool("get_incident", "Get one incident with its root-cause summary, post-mortem sections (null until written), assignment, acknowledgement, resolution summary and number of alerts (the opening alert plus repeats while it stayed open) and when the latest one fired." + UNTRUSTED, "sre_incident", { id: idArg }, async ({ id }) => {
     const [i] = await db
-      .select({ id: sreIncidents.id, number: sreIncidents.incidentNumber, title: sreIncidents.title, severity: sreIncidents.severity, status: sreIncidents.status, rootCauseSummary: sreIncidents.rootCauseSummary, resolutionSummary: sreIncidents.resolutionSummary, createdAt: sreIncidents.createdAt, resolvedAt: sreIncidents.resolvedAt, alertCount: sreIncidents.alertCount, lastAlertAt: sreIncidents.lastAlertAt, ...incidentLifecycle })
+      .select({ id: sreIncidents.id, number: sreIncidents.incidentNumber, title: sreIncidents.title, severity: sreIncidents.severity, status: sreIncidents.status, rootCauseSummary: sreIncidents.rootCauseSummary, resolutionSummary: sreIncidents.resolutionSummary, createdAt: sreIncidents.createdAt, resolvedAt: sreIncidents.resolvedAt, alertCount: sreIncidents.alertCount, lastAlertAt: sreIncidents.lastAlertAt, postmortem: sreIncidents.postmortem, ...incidentLifecycle })
       .from(sreIncidents)
       .where(scope(sreIncidents, [eq(sreIncidents.id, id)]))
       .limit(1);
     if (!i) throw new NotFoundError("Incident not found");
-    return { incident: { ...i, ...lifecycleDto(i), lastAlertAt: iso(i.lastAlertAt), title: safeText(i.title, 500), rootCauseSummary: safeText(storedRootCause(i.rootCauseSummary)), // A reopened incident keeps its previous resolution in the database; only a resolved one reports it.
+    const { postmortem, ...rest } = i;
+    return { incident: { ...rest, ...lifecycleDto(i),
+      postmortem: postmortem ? { sections: Object.fromEntries(Object.entries(postmortem.sections).map(([k, v]) => [k, safeText(v) ?? ""])), generatedAt: postmortem.generatedAt ?? null, updatedAt: postmortem.updatedAt ?? null } : null, lastAlertAt: iso(i.lastAlertAt), title: safeText(i.title, 500), rootCauseSummary: safeText(storedRootCause(i.rootCauseSummary)), // A reopened incident keeps its previous resolution in the database; only a resolved one reports it.
       resolutionSummary: i.status === "resolved" ? safeText(i.resolutionSummary) : null, createdAt: iso(i.createdAt), resolvedAt: iso(i.resolvedAt) } };
+  });
+
+  tool("get_incident_timeline", "Get an incident's timeline: the newest 500 events, oldest first. `data` is the event payload as redacted JSON text, cut at 1000 characters (so it may not parse); null for investigation evidence (findings, tool calls, evidence, recommendations, verifications)." + UNTRUSTED, "sre_incident", { incidentId: idArg }, async ({ incidentId }) => {
+    const [i] = await db.select({ id: sreIncidents.id }).from(sreIncidents).where(scope(sreIncidents, [eq(sreIncidents.id, incidentId)])).limit(1);
+    if (!i) throw new NotFoundError("Incident not found");
+    const events = await newestIncidentTimelineEvents(incidentId);
+    return { events: events.map((e) => ({
+      id: e.id, eventType: e.eventType, actorType: e.actorType, actorUserId: e.actorUserId, createdAt: iso(e.createdAt),
+      // Investigation evidence (reports, tool calls, findings) is never returned over MCP; the event type still shows it happened.
+      data: e.eventData && !EVIDENCE_EVENT_TYPES.has(e.eventType) ? safeJson(e.eventData, 1000) : null,
+    })) };
+  });
+
+  tool("list_notification_channels", "List the project's notification channels: name, type, webhook preset, enabled and delivery health. Configuration, URLs and credentials are never returned." + UNTRUSTED, "notification", page, async ({ limit, cursor }) => {
+    const rows = await db
+      .select({ id: notificationProviders.id, name: notificationProviders.name, type: notificationProviders.type, isEnabled: notificationProviders.isEnabled, config: notificationProviders.config })
+      .from(notificationProviders)
+      .where(scope(notificationProviders, [cursor ? lt(notificationProviders.id, cursor) : undefined]))
+      .orderBy(desc(notificationProviders.id))
+      .limit(limit + 1);
+    const { items, nextCursor } = paged(rows, limit);
+    const { health } = await loadProviderHealth(items.map((r) => r.id));
+    return { nextCursor, channels: items.map((r) => {
+      // Only the preset name is read from the decrypted config; an undecryptable one just has none.
+      let preset: string | null = null;
+      if (r.type === "webhook") {
+        try {
+          const stored: unknown = decryptNotificationProviderConfig(r.config, ctx.projectId).preset;
+          preset = typeof stored === "string" && (WEBHOOK_PRESET_IDS as readonly string[]).includes(stored) ? stored : null;
+        } catch { /* leave null */ }
+      }
+      return { id: r.id, name: safeText(r.name, 255), type: r.type, preset, enabled: r.isEnabled, health: health.get(r.id) ?? { state: "unknown", at: null } };
+    }) };
   });
 
   tool("get_incident_policy", "Get the project's incident policy: which channels hear about incidents, unacknowledged reminders (first after N minutes, then every M, at most K) and the one escalation step. Channel and member ids only." + UNTRUSTED, "project", {}, async () => {
@@ -363,12 +404,12 @@ export function registerMcpTools(server: McpServer, ctx: McpCallContext): void {
     return { policy: { ...policy, autoInvestigateEnabledAt: iso(autoInvestigateEnabledAt) } };
   });
 
-  tool("list_maintenance_windows", "List maintenance windows: during one, covered monitors keep running but send no alerts, open no incidents and are left out of uptime. Filter by state (active, scheduled, past) or by a monitor it covers." + UNTRUSTED, "monitor",
-    { state: z.enum(["active", "scheduled", "past"]).optional(), monitorId: z.string().uuid().optional() },
-    async ({ state, monitorId }) => {
+  tool("list_maintenance_windows", "List maintenance windows: during one, covered monitors keep running but send no alerts, open no incidents and are left out of uptime. Filter by state (active, scheduled, past), by a monitor or by a service it covers." + UNTRUSTED, "monitor",
+    { state: z.enum(["active", "scheduled", "past"]).optional(), monitorId: z.string().uuid().optional(), serviceId: z.string().uuid().optional() },
+    async ({ state, monitorId, serviceId }) => {
       const result = await listMaintenanceWindows(
         { userId: ctx.userId, organizationId: ctx.organizationId, orgPendingDeletion: ctx.orgPendingDeletion, project: { id: ctx.projectId, userRole: ctx.role } },
-        { state, monitorId },
+        { state, monitorId, serviceId },
       );
       if (!result.ok) throw new McpToolFailure(result.code, result.error);
       return { windows: result.windows.map((w) => ({

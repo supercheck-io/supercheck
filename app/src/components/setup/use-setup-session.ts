@@ -110,11 +110,21 @@ export function useSetupSession(projectId: string, initial: SetupStateDto, lockT
           // Ids this tab created must survive the reload, or a re-run would create them again.
           const local = latest.current.draft.created ?? {};
           const unsaved = Object.entries(local).some(([key, id]) => server.draft.created?.[key] !== id);
-          latest.current = fromState({ ...server, draft: { ...server.draft, created: { ...server.draft.created, ...local } } });
+          // Ticked requirements are the user's own edits: keep them over the server's copy (it only added suggestions).
+          const localReqs = latest.current.draft.tests?.requirements ?? [];
+          const keepReqs = localReqs.length > 0 && JSON.stringify(localReqs) !== JSON.stringify(server.draft.tests?.requirements ?? []);
+          const merged = {
+            ...server.draft,
+            created: { ...server.draft.created, ...local },
+            ...(keepReqs ? { tests: { ...server.draft.tests, requirements: localReqs } } : {}),
+          };
+          // A server-side write of what this tab already holds (AI suggestions) is not "somewhere else".
+          const same = keys.every((k) => k === "draft") && JSON.stringify({ ...server.draft, created: undefined }) === JSON.stringify({ ...latest.current.draft, created: undefined });
+          latest.current = fromState({ ...server, draft: merged });
           updatedAt.current = server.updatedAt;
           setState(latest.current);
-          toast.error("Setup was changed somewhere else. Your view was reloaded with the saved version.");
-          if (!unsaved) {
+          if (!same) toast.error("Setup was changed somewhere else. Your view was reloaded with the saved version.");
+          if (!unsaved && !keepReqs) {
             lastSaveOk.current = true;
             setSaveState("idle");
             return true;
@@ -146,6 +156,12 @@ export function useSetupSession(projectId: string, initial: SetupStateDto, lockT
     [patch],
   );
 
+  /** A server-side write (AI suggestions) bumped updated_at: take the new version so the next autosave does not 409 and drop local edits. */
+  const adoptServerVersion = useCallback((serverUpdatedAt: string) => {
+    if (Date.parse(updatedAt.current ?? "") >= Date.parse(serverUpdatedAt)) return;
+    updatedAt.current = serverUpdatedAt;
+  }, []);
+
   /** Persist an id into draft.created right away (used by the create runner). */
   const pendingRecord = useRef<Promise<boolean> | null>(null);
   const recordCreated = useCallback(
@@ -168,7 +184,7 @@ export function useSetupSession(projectId: string, initial: SetupStateDto, lockT
 
   useEffect(() => () => void flush(), [flush]);
 
-  return { ...state, saveState, saveError, patch, patchDraft, flush, recordCreated, getCreated };
+  return { ...state, saveState, saveError, patch, patchDraft, flush, recordCreated, getCreated, adoptServerVersion };
 }
 
 /** Take the lock on mount (silently only from an idle tab of the same user), heartbeat every 60 s, release on unmount. Another holder makes it read-only. */

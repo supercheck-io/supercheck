@@ -52,7 +52,7 @@ export async function readJsonBody(request: NextRequest): Promise<{ body: unknow
 export async function guardProject(
   request: NextRequest,
   rawId: string,
-  permission: { resource: "project" | "monitor"; action: "view" | "create" },
+  permission: { resource: Parameters<typeof checkPermissionWithContext>[0]; action: string },
   rateLimit: (userId: string) => Promise<SreRateLimitResult>,
 ): Promise<{ userId: string; ctx: ProjectPermissionContext } | NextResponse> {
   const bearer = rejectBearer(request);

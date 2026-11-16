@@ -7,13 +7,14 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SETUP_LIMITS, stripUrl } from "@/lib/setup/draft-schema";
 import { PROJECT_HEADER } from "../create-runner";
+import { ScanPanel } from "./scan-panel";
 import { checkSetupProject, fetchJson, postJson, responseError, type StepProps } from "./step-types";
 
 /** Secret names are 4-20 chars, uppercase (createVariableSchema). */
 const TEST_ACCOUNT_USER = "SETUP_TEST_USER";
 const TEST_ACCOUNT_PASSWORD = "SETUP_TEST_PASS";
 
-export function AppStep({ response, draft, patchDraft, readOnly }: StepProps) {
+export function AppStep({ response, draft, patchDraft, readOnly, scan, setScan }: StepProps) {
   const [url, setUrl] = useState(draft.app?.url ?? "");
   const [touched, setTouched] = useState(false);
   const [username, setUsername] = useState("");
@@ -109,7 +110,9 @@ export function AppStep({ response, draft, patchDraft, readOnly }: StepProps) {
         </p>
       </div>
 
-      <fieldset className="space-y-3 rounded-lg border p-4" disabled={readOnly}>
+      <ScanPanel projectId={response.projectId} url={stripped} disabled={readOnly || invalid} onResult={(result, scanned) => { setScan(result); patchDraft((d) => ({ ...d, app: { ...d.app, scannedUrl: scanned } })); }} initial={scan} initialUrl={draft.app?.scannedUrl} />
+
+      <fieldset className="space-y-3 rounded-xl border p-4" disabled={readOnly}>
         <legend className="px-1 text-sm font-semibold">
           Test account <span className="font-normal text-muted-foreground">(optional)</span>
         </legend>

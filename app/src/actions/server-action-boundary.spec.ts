@@ -25,7 +25,7 @@ it("ignores forged authorization context for getPrivateAgents", async () => {
 it("ignores forged authorization context for getSreConnectors", async () => {
   
   await (getSreConnectors as (...args: unknown[]) => Promise<unknown>)(forged);
-  expect(jest.requireMock("@/lib/server-actions/sre-connectors").getSreConnectors).toHaveBeenCalledWith();
+  expect(jest.requireMock("@/lib/server-actions/sre-connectors").getSreConnectors).toHaveBeenCalledWith(undefined, undefined);
 });
 it("ignores forged authorization context for getSreConnectorSetupOptions", async () => {
   

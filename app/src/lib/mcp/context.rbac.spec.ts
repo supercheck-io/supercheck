@@ -9,7 +9,7 @@ const as = (role: string): McpCallContext => ({ userId: "u", clientId: "c", orga
 const roles = ["super_admin", "org_owner", "org_admin", "project_admin", "project_editor", "project_viewer"];
 const resources = [
   "test", "job", "run", "monitor", "requirement", "status_page", "variable",
-  "sre_service", "sre_incident", "sre_investigation", "project",
+  "sre_service", "sre_incident", "sre_investigation", "project", "notification",
 ] as const;
 
 describe("assertCanView against the real RBAC tables", () => {

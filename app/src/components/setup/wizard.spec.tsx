@@ -69,6 +69,7 @@ const leaveAndFlush = async () => {
 
 describe("step rail", () => {
   it("lists the default order as a labelled nav with the current step marked", () => {
+    useAppConfig.mockReturnValue({ setupFeatures: { ...FEATURES, aiTests: false, aiSre: false } });
     renderWizard();
     const nav = screen.getByRole("navigation", { name: "Setup steps" });
     expect(Array.from(nav.querySelectorAll("button")).map((b) => b.getAttribute("data-testid"))).toEqual([
@@ -82,11 +83,11 @@ describe("step rail", () => {
     expect(screen.getByText("Step 1 of 5")).toBeTruthy();
   });
 
-  it("orders steps by persona and never renders tests or AI SRE in this PR, even with their flags on", () => {
+  it("orders steps by persona, with the AI steps once their flags are on", () => {
     useAppConfig.mockReturnValue({ setupFeatures: { ...FEATURES, aiTests: true, aiSre: true } });
     renderWizard(makeResponse(), "developer");
     const ids = Array.from(screen.getByRole("navigation", { name: "Setup steps" }).querySelectorAll("button")).map((b) => b.getAttribute("data-testid"));
-    expect(ids).toEqual(["setup-step-developer", "setup-step-app", "setup-step-monitors", "setup-step-alerts", "setup-step-statusPage", "setup-step-review"]);
+    expect(ids).toEqual(["setup-step-developer", "setup-step-app", "setup-step-monitors", "setup-step-alerts", "setup-step-tests", "setup-step-statusPage", "setup-step-aiSre", "setup-step-review"]);
     expect(screen.getByText("npx supercheck login --json")).toBeTruthy();
   });
 

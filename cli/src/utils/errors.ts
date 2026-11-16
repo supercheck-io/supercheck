@@ -93,3 +93,17 @@ export function authHint(error: unknown): string | null {
     ? 'SUPERCHECK_TOKEN is set and was rejected; browser login cannot override it. Replace it with a valid CLI token or unset it.'
     : AUTH_HINT
 }
+
+/** A 404 without a JSON error means the server predates the route, not that the resource is missing. */
+export async function withRouteCheck<T>(run: () => Promise<T>): Promise<T> {
+  try {
+    return await run()
+  } catch (error) {
+    const body = error instanceof ApiRequestError ? error.responseBody : undefined
+    const hasJsonError = typeof body === 'object' && body !== null && typeof (body as { error?: unknown }).error === 'string'
+    if (error instanceof ApiRequestError && error.statusCode === 404 && !hasJsonError) {
+      throw new CLIError('This command requires a newer Supercheck server. Upgrade the server and try again.', ExitCode.ApiError)
+    }
+    throw error
+  }
+}

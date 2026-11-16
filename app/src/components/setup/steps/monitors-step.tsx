@@ -27,7 +27,7 @@ import {
   stripUrl,
   type SetupDraft,
 } from "@/lib/setup/draft-schema";
-import type { StepProps } from "./step-types";
+import { scanMatchesUrl, type StepProps } from "./step-types";
 
 const INTERVALS = [1, 5, 10, 15, 30, 60];
 
@@ -105,8 +105,12 @@ function Field({ id, label, help, error, ...props }: { id: string; label: string
   );
 }
 
-export function MonitorsStep({ response, draft, patchDraft, features, readOnly }: StepProps) {
+/** A path the scan found that accepts the streamed chat-completions request the AI check sends. */
+const AI_PATH = /^\/v1\/chat\/completions\/?$/;
+
+export function MonitorsStep({ response, draft, patchDraft, features, readOnly, scan: storedScan }: StepProps) {
   const appUrl = draft.app?.url;
+  const scan = scanMatchesUrl(storedScan, appUrl, draft.app?.scannedUrl) ? storedScan : null;
   const monitors: MonitorsDraft = draft.monitors ?? { pages: [] };
   const setMonitors = (next: Partial<MonitorsDraft>) => patchDraft((d) => ({ ...d, monitors: { pages: [], ...d.monitors, ...next } }));
 
@@ -122,23 +126,35 @@ export function MonitorsStep({ response, draft, patchDraft, features, readOnly }
   }, [untouched, homeUrl, homeName, readOnly, patchDraft]);
 
   // The app URL changed after pages were suggested: move pages from the old address onto the new one.
+  // Pages on the scan's final origin (a redirect, e.g. example.com -> www.example.com) are not stale.
   const appOrigin = appUrl ? new URL(appUrl).origin : null;
-  const hasStalePages = Boolean(appOrigin) && monitors.pages.some((page) => new URL(page.url).origin !== appOrigin);
+  const scanOrigin = scan ? new URL(scan.finalUrl).origin : null;
+  const isCurrentOrigin = (url: string) => {
+    const origin = new URL(url).origin;
+    return origin === appOrigin || origin === scanOrigin;
+  };
+  const hasStalePages = Boolean(appOrigin) && monitors.pages.some((page) => !isCurrentOrigin(page.url));
   useEffect(() => {
     if (!hasStalePages || !appUrl || !homeUrl || !homeName || readOnly) return;
-    const origin = new URL(appUrl).origin;
     const moved = monitors.pages.flatMap((page) => {
+      if (isCurrentOrigin(page.url)) return [page];
       const parsed = new URL(page.url);
-      if (parsed.origin === origin) return [page];
       // A page that cannot move to the new origin is dropped, so the effect cannot see it as stale again.
       const next = parsed.pathname === "/" ? { url: homeUrl, name: homeName } : pageFor(appUrl, parsed.pathname);
       return next ? [next] : [];
     });
     patchDraft((d) => ({ ...d, monitors: { ...d.monitors, pages: moved.filter((p, i) => moved.findIndex((q) => q.url === p.url) === i) } }));
-  }, [hasStalePages, appUrl, homeUrl, homeName, readOnly, monitors.pages, patchDraft]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- isCurrentOrigin only reads appOrigin/scanOrigin, derived from the deps below
+  }, [hasStalePages, appUrl, scanOrigin, homeUrl, homeName, readOnly, monitors.pages, patchDraft]);
 
-  const extras = monitors.pages.filter((page) => page.url !== home?.url);
-  const suggestions = [...(home ? [home] : []), ...extras];
+  // Scanned pages that loaded (2xx/3xx; status 0 means the fetch failed), at most 10; only the homepage starts ticked.
+  const scanned = (appUrl && scan ? scan.pages.filter((p) => !p.redirected && p.status >= 200 && p.status < 400 && p.path !== "/").slice(0, 10) : [])
+    .map((p) => (scan ? pageFor(scan.finalUrl, p.path) : null))
+    .filter((page): page is Page => page !== null);
+  const aiPath = scan ? scan.pages.find((p) => p.status !== 0 && AI_PATH.test(p.path)) : undefined;
+  const known = new Set([home?.url, ...scanned.map((page) => page.url)]);
+  const extras = monitors.pages.filter((page) => !known.has(page.url));
+  const suggestions = [...(home ? [home] : []), ...scanned, ...extras];
   const selected = new Set(monitors.pages.map((page) => page.url));
   const [path, setPath] = useState("");
   const [pathError, setPathError] = useState<string | null>(null);
@@ -188,8 +204,8 @@ export function MonitorsStep({ response, draft, patchDraft, features, readOnly }
 
   // AI endpoint
   const ai = monitors.aiEndpoint;
-  const [aiOpen, setAiOpen] = useState(Boolean(ai));
-  const [aiForm, setAiForm] = useState({ name: ai?.name ?? "AI endpoint", url: ai?.url ?? "", model: ai?.model ?? "", secretKey: ai?.secretKey ?? "" });
+  const [aiOpen, setAiOpen] = useState(Boolean(ai) || Boolean(aiPath));
+  const [aiForm, setAiForm] = useState({ name: ai?.name ?? "AI endpoint", url: ai?.url ?? (aiPath && scan ? `${new URL(scan.finalUrl).origin}${aiPath.path}` : ""), model: ai?.model ?? "", secretKey: ai?.secretKey ?? "" });
   const commitAi = (next: typeof aiForm) => {
     setAiForm(next);
     const url = stripUrl(next.url, AI_ENDPOINT_QUERY_ALLOWLIST);
@@ -224,11 +240,11 @@ export function MonitorsStep({ response, draft, patchDraft, features, readOnly }
             Pages to watch
           </h3>
           <p className="text-xs text-muted-foreground">
-            {appUrl ? "We suggest a monitor for your homepage. Add the pages that matter." : "Add your app URL in the first step to get suggestions, or skip this step."}
+            {appUrl ? (scanned.length > 0 ? "We suggest your homepage and the pages the scan found. Tick the ones that matter." : "We suggest a monitor for your homepage. Add the pages that matter.") : "Add your app URL in the first step to get suggestions, or skip this step."}
           </p>
         </div>
         {suggestions.length > 0 ? (
-          <ul className="divide-y rounded-lg border">
+          <ul className="divide-y rounded-xl border">
             {suggestions.map((page, index) => (
               <li key={page.url} className="flex items-center gap-3 px-4 py-2.5">
                 <Checkbox
@@ -313,7 +329,7 @@ export function MonitorsStep({ response, draft, patchDraft, features, readOnly }
           icon={BrainCircuit}
           tone={TYPE_TONE.monitor.ai_endpoint}
           title="Monitor an AI endpoint"
-          description="Checks an OpenAI-compatible endpoint with a small streaming request."
+          description={aiPath ? "The scan found an OpenAI-compatible path on your app. Add a model and the secret holding its API key." : "Checks an OpenAI-compatible endpoint with a small streaming request."}
           enabled={aiOpen}
           disabled={readOnly}
           onToggle={(on) => {

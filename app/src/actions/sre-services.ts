@@ -22,7 +22,7 @@ import {
   statusPages,
   tests,
 } from "@/db/schema";
-import { requireProjectContext } from "@/lib/project-context";
+import { PROJECT_MISMATCH_MESSAGE, requireProjectContext } from "@/lib/project-context";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { logAuditEvent } from "@/lib/audit-logger";
 import { createLogger } from "@/lib/logger/index";
@@ -310,12 +310,13 @@ function formatValidationErrors(error: z.ZodError) {
   ) as Record<string, string[]>;
 }
 
-export async function getSreServices(): Promise<{
+export async function getSreServices(expectedProjectId?: string): Promise<{
   success: true;
   services: SreServiceListItem[];
 } | { success: false; error: string; services: [] }> {
   try {
     const { userId, organizationId, orgPendingDeletion, project } = await requireProjectContext();
+    if (expectedProjectId && expectedProjectId !== project.id) return { success: false, error: PROJECT_MISMATCH_MESSAGE, services: [] };
     const canView = checkPermissionWithContext("sre_service", "view", {
       userId,
       organizationId,
@@ -346,7 +347,7 @@ export async function getSreServices(): Promise<{
   }
 }
 
-export async function createSreService(input: z.infer<typeof serviceInputSchema>): Promise<ServiceActionResult> {
+export async function createSreService(input: z.infer<typeof serviceInputSchema>, expectedProjectId?: string): Promise<ServiceActionResult> {
   try {
     const parsed = serviceInputSchema.safeParse(input);
     if (!parsed.success) {
@@ -358,6 +359,7 @@ export async function createSreService(input: z.infer<typeof serviceInputSchema>
     }
 
     const { userId, organizationId, orgPendingDeletion, project } = await requireProjectContext();
+    if (expectedProjectId && expectedProjectId !== project.id) return { success: false, error: PROJECT_MISMATCH_MESSAGE };
     const canCreate = checkPermissionWithContext("sre_service", "create", {
       userId,
       organizationId,

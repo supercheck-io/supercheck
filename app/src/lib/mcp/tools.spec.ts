@@ -13,6 +13,10 @@ function chain(): unknown {
   return c;
 }
 jest.mock("@/utils/db", () => ({ db: { select: () => chain() } }));
+const loadProviderHealth = jest.fn();
+jest.mock("@/lib/notification-providers/channel-health", () => ({ loadProviderHealth: (...a: unknown[]) => loadProviderHealth(...a) }));
+const decryptConfig = jest.fn();
+jest.mock("@/lib/notification-providers/crypto", () => ({ decryptNotificationProviderConfig: (...a: unknown[]) => decryptConfig(...a) }));
 const logAuditEvent = jest.fn();
 jest.mock("@/lib/audit-logger", () => ({ logAuditEvent: (...a: unknown[]) => logAuditEvent(...a) }));
 
@@ -55,8 +59,8 @@ describe("MCP tools", () => {
   it("registers the read-only tool set", () => {
     expect([...handlers.keys()].sort()).toEqual(
       [
-        "get_context", "get_incident", "get_incident_policy", "get_investigation", "get_job", "get_monitor", "get_requirement", "get_run", "get_service", "get_status_page", "get_test",
-        "list_incidents", "list_investigations", "list_jobs", "list_maintenance_windows", "list_monitors", "list_requirements", "list_runs", "list_services", "list_status_pages", "list_tests", "list_variables",
+        "get_context", "get_incident", "get_incident_policy", "get_incident_timeline", "get_investigation", "get_job", "get_monitor", "get_requirement", "get_run", "get_service", "get_status_page", "get_test",
+        "list_incidents", "list_investigations", "list_jobs", "list_maintenance_windows", "list_notification_channels", "list_monitors", "list_requirements", "list_runs", "list_services", "list_status_pages", "list_tests", "list_variables",
         "prepare_local_authoring",
       ].sort(),
     );
@@ -162,6 +166,9 @@ describe("MCP tools", () => {
     ["list_services", "sre_service", {}],
     ["get_service", "sre_service", { id: id(1) }],
     ["list_variables", "variable", {}],
+    ["get_incident_timeline", "sre_incident", { incidentId: id(1) }],
+    ["list_notification_channels", "notification", {}],
+    ["list_maintenance_windows", "monitor", {}],
     ["list_investigations", "sre_investigation", {}],
     ["get_investigation", "sre_investigation", { id: id(1) }],
   ];
@@ -340,6 +347,92 @@ describe("MCP tools", () => {
     queue.push([{ id: id(1), number: 3, title: "t", severity: "sev2", status: "investigating", rootCauseSummary: null, resolutionSummary: null, createdAt: null, resolvedAt: null, assigneeUserId: null, commanderUserId: null, acknowledgedAt: null, acknowledgedByUserId: null, mitigatedAt: null, alertCount: 2, lastAlertAt: null }]);
     const res = await handlers.get("get_incident")!({ id: id(1) });
     expect(res.structuredContent.incident).toMatchObject({ status: "investigating", statusLabel: expect.any(String), alertCount: 2 });
+  });
+
+  it("get_incident returns post-mortem sections redacted, and null when absent", async () => {
+    const row = { id: id(1), number: 3, title: "t", severity: "sev2", status: "triggered", rootCauseSummary: null, resolutionSummary: null, createdAt: null, resolvedAt: null, assigneeUserId: null, commanderUserId: null, acknowledgedAt: null, acknowledgedByUserId: null, mitigatedAt: null };
+    queue.push([{ ...row, postmortem: { sections: { summary: "ping /api/heartbeat/hb_0123456789abcdef0123456789abcdef used postgres://a:b@db/x" }, generatedAt: "2026-11-01T00:00:00Z" } }]);
+    const res = await handlers.get("get_incident")!({ id: id(1) });
+    expect(res.structuredContent.incident).toMatchObject({ postmortem: { generatedAt: "2026-11-01T00:00:00Z", updatedAt: null } });
+    expect(JSON.stringify(res)).not.toMatch(/hb_0123|a:b@/);
+    queue.push([{ ...row, postmortem: null }]);
+    expect((await handlers.get("get_incident")!({ id: id(1) })).structuredContent.incident).toMatchObject({ postmortem: null });
+    queue.push([{ ...row, postmortem: { sections: { summary: "", impact: "x" } } }]);
+    expect((await handlers.get("get_incident")!({ id: id(1) })).structuredContent.incident).toMatchObject({ postmortem: { sections: { summary: "", impact: "x" } } });
+  });
+
+  it("get_incident_timeline withholds investigation evidence but keeps the event", async () => {
+    queue.push([{ id: id(1) }]);
+    queue.push(["ai_finding", "tool_call", "evidence_added", "recommendation_added", "verification_result", "comment"].map((eventType, n) => (
+      { id: id(n + 2), eventType, actorType: "agent", actorUserId: null, createdAt: new Date(n), eventData: { summary: "REPORT-TEXT" } })));
+    const res = await handlers.get("get_incident_timeline")!({ incidentId: id(1) });
+    const events = res.structuredContent.events as { eventType: string; data: string | null }[];
+    expect(events.filter((e) => e.data !== null).map((e) => e.eventType)).toEqual(["comment"]);
+    expect(events).toHaveLength(6);
+  });
+
+  it("get_incident_timeline returns the project's events oldest first, redacted", async () => {
+    queue.push([{ id: id(1) }]);
+    queue.push([{ id: id(2), eventType: "comment", actorType: "user", actorUserId: null, createdAt: new Date(0), eventData: { note: "token sck_live_abcdefgh12345678 hb_0123456789abcdef0123456789abcdef" } }, { id: id(3), eventType: "resolved", actorType: "system", actorUserId: null, createdAt: new Date(1), eventData: null }]);
+    const res = await handlers.get("get_incident_timeline")!({ incidentId: id(1) });
+    expect((res.structuredContent.events as { id: string }[]).map((e) => e.id)).toEqual([id(3), id(2)]);
+    expect(JSON.stringify(res)).not.toMatch(/sck_live_abcdefgh|hb_0123/);
+    const wheres = (calls as [string, unknown[]][]).filter(([m]) => m === "where");
+    expect(new PgDialect().sqlToQuery(wheres.at(-2)![1][0] as SQL).params).toEqual(expect.arrayContaining([id(1), "o", "p"]));
+  });
+
+  it("get_incident_timeline refuses an incident outside the project and reads no events", async () => {
+    queue.push([]);
+    const res = await handlers.get("get_incident_timeline")!({ incidentId: id(1) });
+    expect(res).toMatchObject({ isError: true, structuredContent: { code: "not_found" } });
+  });
+
+  it("list_notification_channels returns identity, preset and health, never config", async () => {
+    queue.push([
+      { id: id(1), name: "Pager", type: "webhook", isEnabled: true, config: { encrypted: "CIPHER-LEAK" } },
+      { id: id(2), name: "Team", type: "slack", isEnabled: false, config: { encrypted: "CIPHER-LEAK2" } },
+    ]);
+    decryptConfig.mockReturnValue({ url: "https://hooks.example.com/SECRET-URL", headers: { Authorization: "Bearer SECRET-TOKEN" }, preset: "incident_io" });
+    loadProviderHealth.mockResolvedValue({ health: new Map([[id(1), { state: "ok", at: "2026-11-01T00:00:00.000Z" }]]), lastUsed: new Map() });
+    const res = await handlers.get("list_notification_channels")!({});
+    expect(res.structuredContent.channels).toEqual([
+      { id: id(1), name: "Pager", type: "webhook", preset: "incident_io", enabled: true, health: { state: "ok", at: "2026-11-01T00:00:00.000Z" } },
+      { id: id(2), name: "Team", type: "slack", preset: null, enabled: false, health: { state: "unknown", at: null } },
+    ]);
+    expect(JSON.stringify(res)).not.toMatch(/SECRET|CIPHER|hooks\.example/);
+    expect(res.structuredContent.nextCursor).toBeNull();
+    const where = lastWhere();
+    expect(where.params).toEqual(["o", "p"]);
+  });
+
+  it("list_notification_channels survives an undecryptable webhook config", async () => {
+    queue.push([{ id: id(1), name: "Pager", type: "webhook", isEnabled: true, config: {} }]);
+    decryptConfig.mockImplementation(() => { throw new Error("bad key SECRET"); });
+    loadProviderHealth.mockResolvedValue({ health: new Map(), lastUsed: new Map() });
+    const res = await handlers.get("list_notification_channels")!({});
+    expect((res.structuredContent.channels as { preset: unknown }[])[0].preset).toBeNull();
+  });
+
+  it("list_notification_channels pages with a cursor", async () => {
+    queue.push([1, 2, 3].map((n) => ({ id: id(n), name: `C${n}`, type: "slack", isEnabled: true, config: {} })));
+    loadProviderHealth.mockResolvedValue({ health: new Map(), lastUsed: new Map() });
+    const res = await handlers.get("list_notification_channels")!({ limit: 2, cursor: id(9) });
+    expect((res.structuredContent.channels as unknown[]).length).toBe(2);
+    expect(res.structuredContent.nextCursor).toBe(id(2));
+  });
+
+  it("list_notification_channels returns null for a stored preset that is not a known id", async () => {
+    queue.push([{ id: id(1), name: "Pager", type: "webhook", isEnabled: true, config: {} }]);
+    decryptConfig.mockReturnValue({ preset: { evil: "x" } });
+    loadProviderHealth.mockResolvedValue({ health: new Map(), lastUsed: new Map() });
+    const res = await handlers.get("list_notification_channels")!({});
+    expect((res.structuredContent.channels as { preset: unknown }[])[0].preset).toBeNull();
+  });
+
+  it("list_maintenance_windows passes the serviceId filter to the shared query", async () => {
+    queue.push([]);
+    const res = await handlers.get("list_maintenance_windows")!({ serviceId: id(5) });
+    expect(res.structuredContent).toEqual({ windows: [] });
   });
 
   it("get_incident reports a resolution summary only while the incident is resolved", async () => {

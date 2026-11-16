@@ -72,7 +72,7 @@ export function MaintenanceWindowDialog({ open, onOpenChange, defaults }: { open
   const posting = canPostPublicly && publish && recurrence === "once";
 
   const monitors = useAllMonitors(open && scope === "monitors");
-  const services = useQuery({ queryKey: ["sre-services", "picker", projectId], queryFn: getSreServices, enabled: open && scope === "services" && Boolean(projectId), staleTime: 60_000 });
+  const services = useQuery({ queryKey: ["sre-services", "picker", projectId], queryFn: () => getSreServices(), enabled: open && scope === "services" && Boolean(projectId), staleTime: 60_000 });
   const statusPages = useStatusPages({ enabled: open && publish });
   const pageDetail = useStatusPageDetail(open && publish ? statusPageId : null);
   const monitorItems = monitors.data ?? [];

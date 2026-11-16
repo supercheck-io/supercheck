@@ -271,3 +271,99 @@ export async function setUserPersona(userId: string, persona: UserPersona | null
     .onConflictDoUpdate({ target: userPreferences.userId, set: { persona, updatedAt: sql`now()` } });
   return { persona, seen: true };
 }
+
+const AI_RUN_INTERVAL_MS = 24 * 60 * 60_000;
+
+export type AiRunClaim =
+  | { kind: "claimed"; claimedAt: Date; previous: Date | null }
+  | { kind: "daily_limit"; retryAt: Date };
+
+/**
+ * Atomically takes the once-per-day AI slot (D10). A transaction-scoped advisory lock per project makes the
+ * read of the rollback value and the claim one step, so a release landing between them cannot leak a stale value.
+ * The transaction ends before the AI call.
+ */
+export async function claimAiRun(organizationId: string, projectId: string): Promise<AiRunClaim> {
+  return db.transaction(async (tx) => {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`setup-ai-run:${projectId}`}))`);
+    const [before] = await tx
+      .select({ at: projectSetupState.lastAiRunAt })
+      .from(projectSetupState)
+      .where(and(eq(projectSetupState.organizationId, organizationId), eq(projectSetupState.projectId, projectId)))
+      .limit(1);
+    const previous = before?.at ?? null;
+    const claimedAt = new Date();
+    const won = await tx
+      .insert(projectSetupState)
+      .values({ organizationId, projectId, lastAiRunAt: claimedAt, updatedAt: NEVER_WRITTEN })
+      .onConflictDoUpdate({
+        target: projectSetupState.projectId,
+        set: { lastAiRunAt: claimedAt },
+        setWhere: and(
+          eq(projectSetupState.organizationId, organizationId),
+          sql`(${projectSetupState.lastAiRunAt} IS NULL OR ${projectSetupState.lastAiRunAt} < now() - interval '1 day')`,
+        ),
+      })
+      .returning({ id: projectSetupState.id });
+    if (won.length > 0) return { kind: "claimed" as const, claimedAt, previous };
+    return { kind: "daily_limit" as const, retryAt: new Date((previous ?? claimedAt).getTime() + AI_RUN_INTERVAL_MS) };
+  });
+}
+
+/** Restores the pre-claim value after a failed AI call, only if nobody re-claimed since. */
+export async function releaseAiRun(organizationId: string, projectId: string, claim: { claimedAt: Date; previous: Date | null }): Promise<void> {
+  // Same lock as claimAiRun, so a release cannot interleave with another claim.
+  await db.transaction(async (tx) => {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`setup-ai-run:${projectId}`}))`);
+    await tx
+      .update(projectSetupState)
+      .set({ lastAiRunAt: claim.previous })
+      .where(
+        and(
+          eq(projectSetupState.organizationId, organizationId),
+          eq(projectSetupState.projectId, projectId),
+          eq(projectSetupState.lastAiRunAt, claim.claimedAt),
+        ),
+      );
+  });
+}
+
+/**
+ * Stores the sanitized last scan summary. Leaves updated_at alone: that is the draft's version, not the scan's.
+ * `scannedAt` orders scans: a read of an older scan never replaces a newer stored one.
+ */
+export async function saveScanResult(organizationId: string, projectId: string, scanResult: Record<string, unknown>, scannedAt: number): Promise<void> {
+  await db
+    .insert(projectSetupState)
+    .values({ organizationId, projectId, scanResult: { ...scanResult, scannedAt }, updatedAt: NEVER_WRITTEN })
+    .onConflictDoUpdate({
+      target: projectSetupState.projectId,
+      set: { scanResult: { ...scanResult, scannedAt } },
+      setWhere: and(
+        eq(projectSetupState.organizationId, organizationId),
+        sql`(${projectSetupState.scanResult}->>'scannedAt' IS NULL OR (${projectSetupState.scanResult}->>'scannedAt')::numeric <= ${scannedAt})`,
+      ),
+    });
+}
+
+export type SetupSuggestion = NonNullable<NonNullable<SetupDraft["tests"]>["suggestions"]>[number];
+
+/**
+ * Saves AI suggestions into draft.tests.suggestions in one jsonb update, leaving every other draft key alone, so a
+ * tab that reloads mid-request still finds them. Bumps updated_at: a client holding an older draft gets a 409 and
+ * adopts this one instead of overwriting it. Throws when the items fail the draft schema. Returns the new updated_at so the caller's session can adopt it.
+ */
+export async function saveSuggestions(organizationId: string, projectId: string, suggestions: SetupSuggestion[]): Promise<string | null> {
+  const parsed = parseSetupDraft({ tests: { requirements: [], suggestions } });
+  if (!parsed.success) throw new Error(parsed.error);
+  const valid = JSON.stringify(parsed.data.tests?.suggestions ?? []);
+  const [row] = await db
+    .update(projectSetupState)
+    .set({
+      draft: sql`jsonb_set(${projectSetupState.draft}, '{tests}', coalesce(${projectSetupState.draft}->'tests', '{"requirements":[]}'::jsonb) || jsonb_build_object('suggestions', ${valid}::jsonb), true)`,
+      updatedAt: sql`clock_timestamp()`,
+    })
+    .where(and(eq(projectSetupState.organizationId, organizationId), eq(projectSetupState.projectId, projectId)))
+    .returning({ updatedAt: projectSetupState.updatedAt });
+  return row ? row.updatedAt.toISOString() : null;
+}

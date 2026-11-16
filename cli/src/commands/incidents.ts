@@ -3,27 +3,15 @@ import { z } from 'zod'
 import { createAuthenticatedClient } from '../api/authenticated-client.js'
 import { getOutputFormat, output, outputDetail } from '../output/formatter.js'
 import { logger } from '../utils/logger.js'
+import { redactText } from '../utils/redact.js'
 import { confirmPrompt } from '../utils/prompt.js'
 import { withSpinner } from '../utils/spinner.js'
-import { ApiRequestError, CLIError, ExitCode } from '../utils/errors.js'
+import { CLIError, ExitCode, withRouteCheck } from '../utils/errors.js'
 import { resolveIncidentId } from '../utils/incidents.js'
 
 type IncidentEnvelope = { incidents: Record<string, unknown>[]; truncated?: boolean }
 
 /** An older server has no such route: Next answers 404 without the JSON `error` body a real "not found" carries. */
-async function withRouteCheck<T>(run: () => Promise<T>): Promise<T> {
-  try {
-    return await run()
-  } catch (error) {
-    const body = error instanceof ApiRequestError ? error.responseBody : undefined
-    const hasJsonError = typeof body === 'object' && body !== null && typeof (body as { error?: unknown }).error === 'string'
-    if (error instanceof ApiRequestError && error.statusCode === 404 && !hasJsonError) {
-      throw new CLIError('This command requires a newer Supercheck server. Upgrade the server and try again.', ExitCode.ApiError)
-    }
-    throw error
-  }
-}
-
 export const incidentCommand = new Command('incident').alias('incidents').description('Manage AI SRE incidents')
 
 incidentCommand.command('list')
@@ -284,4 +272,41 @@ incidentCommand.command('ack <id>')
     if (data.alreadyAcknowledged === true) logger.info(typeof data.message === 'string' ? data.message : 'Incident was already acknowledged')
     else logger.success('Incident acknowledged')
     outputDetail(data)
+  })
+
+incidentCommand.command('resources <id>')
+  .description('Show or change the services and monitors an incident affects')
+  .option('--add-service <service>', 'Add an affected service, by UUID or exact name (repeatable)', collect, [])
+  .option('--remove-service <service>', 'Remove an affected service, by UUID or exact name (repeatable)', collect, [])
+  .option('--add-monitor <id>', 'Add an affected monitor UUID (repeatable)', collect, [])
+  .option('--remove-monitor <id>', 'Remove an affected monitor UUID (repeatable)', collect, [])
+  .action(async (id: string, options: { addService: string[]; removeService: string[]; addMonitor: string[]; removeMonitor: string[] }) => {
+    const bad = [...options.addMonitor, ...options.removeMonitor].find((value) => !isUuid(value))
+    if (bad) throw new CLIError(`"${bad}" is not a UUID.`, ExitCode.ConfigError)
+    id = await resolveIncidentId(id)
+    const url = `/api/sre/incidents/${encodeURIComponent(id)}/resources`
+    const changing = options.addService.length + options.removeService.length + options.addMonitor.length + options.removeMonitor.length > 0
+    if (!changing) {
+      const { data } = await withSpinner('Fetching incident resources', () => withRouteCheck(() => createAuthenticatedClient().get<{ resources: Record<string, unknown>[] }>(url)))
+      output(data.resources, { columns: [{ key: 'type', header: 'Type' }, { key: 'name', header: 'Name' }, { key: 'id', header: 'ID' }] })
+      return
+    }
+    const resolveServiceId = serviceResolver()
+    const body = {
+      add: { serviceIds: await Promise.all(options.addService.map(resolveServiceId)), monitorIds: options.addMonitor },
+      remove: { serviceIds: await Promise.all(options.removeService.map(resolveServiceId)), monitorIds: options.removeMonitor },
+    }
+    const { data } = await withSpinner('Updating incident resources', () => withRouteCheck(() => createAuthenticatedClient().patch<{ added: number; removed: number }>(url, body)))
+    logger.success(`Incident resources updated (${data.added} added, ${data.removed} removed)`)
+    outputDetail({ added: data.added, removed: data.removed })
+  })
+
+incidentCommand.command('postmortem <id>')
+  .description('Show the incident post-mortem as markdown')
+  .action(async (id: string) => {
+    id = await resolveIncidentId(id)
+    const { data } = await withSpinner('Fetching post-mortem', () => withRouteCheck(() => createAuthenticatedClient().get<{ postmortem: unknown; markdown: string | null }>(`/api/sre/incidents/${encodeURIComponent(id)}/postmortem`)))
+    if (getOutputFormat() === 'json') outputDetail(data)
+    else if (data.markdown) process.stdout.write(`${redactText([...data.markdown].filter((c) => c === '\n' || c === '\t' || (c >= ' ' && (c < '\u007f' || c > '\u009f'))).join(''))}\n`)
+    else logger.info('No post-mortem yet')
   })

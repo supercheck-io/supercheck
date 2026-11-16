@@ -185,8 +185,12 @@ export async function listMaintenanceWindows(
         WHERE i.maintenance_window_id = ${maintenanceWindows.id} AND i.status <> 'resolved' AND scm.monitor_id = ${filters.monitorId}::uuid))`);
   }
   if (filters.serviceId) {
+    // Windows that cover the service: project scope, the service itself, or a monitor mapped to it.
     where.push(sql`(${maintenanceWindows.scope} = 'project' OR EXISTS (
-      SELECT 1 FROM maintenance_window_targets t WHERE t.window_id = ${maintenanceWindows.id} AND t.target_type = 'service' AND t.target_id = ${filters.serviceId}::uuid))`);
+      SELECT 1 FROM maintenance_window_targets t WHERE t.window_id = ${maintenanceWindows.id} AND (
+        (t.target_type = 'service' AND t.target_id = ${filters.serviceId}::uuid)
+        OR (t.target_type = 'monitor' AND EXISTS (SELECT 1 FROM sre_service_resources r WHERE r.service_id = ${filters.serviceId}::uuid AND r.resource_type = 'monitor' AND r.resource_id = t.target_id))
+      )))`);
   }
   const rows = await db.select().from(maintenanceWindows).where(and(...where))
     // Unfiltered, live windows sort first so a long history never hides them behind the 200-row limit.
@@ -400,6 +404,9 @@ export async function updateMaintenanceWindow(
   const scheduleEdit = Object.keys(scheduleFields).some((key) => data[key as keyof typeof data] !== undefined);
   if (state === "active" && row.recurrence === "once" && scheduleEdit) return { ok: false, code: "conflict", error: "This window is in progress. End or extend it instead of changing its schedule." };
   const merged: WindowSchedule = { ...scheduleOf(row), ...Object.fromEntries(Object.entries(data).filter(([key, value]) => key in scheduleFields && value !== undefined)) };
+  // Days sent for a schedule that does not use them would be dropped silently, so refuse them.
+  if (data.weekdays != null && merged.recurrence !== "weekly") return { ok: false, code: "invalid", error: "weekdays need a weekly recurrence", fieldErrors: { weekdays: "weekdays need a weekly recurrence" } };
+  if (data.monthDay != null && merged.recurrence !== "monthly") return { ok: false, code: "invalid", error: "monthDay needs a monthly recurrence", fieldErrors: { monthDay: "monthDay needs a monthly recurrence" } };
   merged.weekdays = merged.recurrence === "weekly" ? merged.weekdays : null;
   merged.monthDay = merged.recurrence === "monthly" ? merged.monthDay : null;
   const fieldErrors = validateSchedule(merged);
@@ -488,6 +495,8 @@ export async function extendMaintenanceWindow(
   if (windowState(row, now) !== "active") return { ok: false, code: "conflict", error: "Only an active window can be extended" };
   const until = "until" in parsed.data ? parsed.data.until : new Date(row.occurrenceEndsAt!.getTime() + parsed.data.byMinutes * MINUTE);
   if (until <= now) return { ok: false, code: "invalid", error: "The new end must be in the future" };
+  // Extending never shortens: ending early is "end", so a typo cannot resume alerts mid-maintenance.
+  if (until <= row.occurrenceEndsAt!) return { ok: false, code: "invalid", error: "The new end must be after the current end" };
   if (until.getTime() - row.occurrenceStartsAt!.getTime() > 7 * 24 * 60 * MINUTE) return { ok: false, code: "invalid", error: "A window can last at most 7 days" };
   if (row.recurrence !== "once") {
     const next = nextOccurrence(scheduleOf(row), row.occurrenceEndsAt!, row.occurrenceStartsAt);

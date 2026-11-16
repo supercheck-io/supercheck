@@ -95,14 +95,14 @@ Choose **AI Endpoint Monitor** under **Monitor → Create** to check a chat-comp
 | Field | Default | Notes |
 |---|---|---|
 | Endpoint URL | `https://api.openai.com/v1/chat/completions` | Any OpenAI-compatible chat-completions URL |
-| API key | — | Name of a project secret (**Variables**). The key is never stored on the monitor. Tick **No key** for an open endpoint |
+| API key secret | — | Name of a project secret (**Variables**). The key is never stored on the monitor. Tick **No key** for an open endpoint |
 | Key header | `Authorization` | Sends `Bearer <key>`. Any other header name (for example Azure `api-key`) sends the raw key |
 | Model | — | Required |
 | Prompt | `Reply with the single word OK.` | Up to 2,000 characters |
 | Max tokens | `16` | 1-512. Reasoning models (gpt-5, o-series) spend tokens on thinking, so they need more, for example 256 |
 | Reply must contain | — | Optional, case-insensitive |
-| First token limit | 15 s | 0.5-60 s, and no more than the total time limit. Slower is a failed check |
-| Total time limit | 60 s | 5-120 s |
+| First token limit (seconds) | 15 s | 0.5-60 s, and no more than the total time limit. Slower is a failed check |
+| Total time limit (seconds) | 60 s | 5-120 s |
 
 | What happened | Result |
 |---|---|
@@ -114,7 +114,7 @@ Choose **AI Endpoint Monitor** under **Monitor → Create** to check a chat-comp
 | Stream ends early, or the reply is empty | Down |
 | No first token within the limit | Timeout |
 
-Two optional limits raise warnings without failing the check or opening an incident. **Warn first token (ms)** warns when the first token is slower than the limit for 3 checks in a row. **Warn total tokens** warns once when a reply uses more tokens than the limit. The monitor also warns when the served model differs from the last check (for example a provider swaps `gpt-4o-mini` snapshots). See [Alerts](/docs/app/communicate/alerts#alert-types).
+Two optional limits raise warnings without failing the check or opening an incident. **Warn when first token is slower than (ms)** warns when the first token is slower than the limit for 3 checks in a row. **Warn when a call uses more tokens than** warns once when a reply uses more tokens than the limit. The monitor also warns when the served model differs from the last check (for example a provider swaps `gpt-4o-mini` snapshots). See [Alerts](/docs/app/communicate/alerts#alert-types).
 
 Every result records first-token time, total time, the model that served the reply, and token counts (plus cost when the provider reports it). The reply text is not stored. The detail page shows first token, tokens per call and served model next to the usual response time.
 
@@ -246,7 +246,7 @@ A change is a warning, not an incident. A tool list that goes back to an earlier
 
 Any of these counts as a failed check and opens an incident after the failure threshold (default 2), at `sev2` by default.
 
-Each check records the protocol, server name and version, tool count, and connect, list and call times. Tool arguments and replies are not stored. An MCP monitor uses one monitor slot and no Playwright minutes.
+Each check records the protocol, server name and version, tool count, and connect, list and call times. Tool arguments and replies are not stored.
 
 ## Locations
 
@@ -437,8 +437,6 @@ Also: `supercheck maintenance`, `/api/maintenance-windows` and the MCP tools `li
 | **Error** | Configuration or system error | Fix monitor configuration |
 
 If a monitor's locations have no live worker, that check is skipped and not counted as down. With several locations, only the locations that ran are judged. A scheduled check that waited in a busy queue for more than three times the interval (at least 3 minutes) may be skipped when a newer result already exists; skipped checks record no result, downtime or alert.
-
-When your organization reaches its overage cap with hard stop on, synthetic monitor checks pause until the cap is raised or the billing period resets. They record no result, downtime or alert, and org admins see a banner in the app. HTTP, website, ping and port monitors keep running. See [Subscription](/docs/app/admin/subscription).
 
 ## Check Intervals
 

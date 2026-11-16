@@ -65,7 +65,7 @@ export function DeclareIncidentDialog({
 
   const services = useQuery({
     queryKey: ["sre-services", "picker", projectId],
-    queryFn: getSreServices,
+    queryFn: () => getSreServices(),
     enabled: open && Boolean(projectId),
     staleTime: 60_000,
   });
