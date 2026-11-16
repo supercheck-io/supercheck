@@ -1,4 +1,8 @@
 import { randomUUID } from 'node:crypto';
+import {
+  getDefaultAutoSelectFamilyAttemptTimeout,
+  setDefaultAutoSelectFamilyAttemptTimeout,
+} from 'node:net';
 import type {
   AgentClient,
   AgentCommonOptions,
@@ -7,6 +11,12 @@ import type {
   AgentToolCall,
   AgentUsage,
 } from './types';
+
+// Node tries each address of a host for only 250 ms by default, so an agent more than ~250 ms away
+// fails with ETIMEDOUT although curl reaches it. The setting is process-wide; only agent test processes load this module.
+export const CONNECT_ATTEMPT_MS = 2_000;
+if (getDefaultAutoSelectFamilyAttemptTimeout() < CONNECT_ATTEMPT_MS)
+  setDefaultAutoSelectFamilyAttemptTimeout(CONNECT_ATTEMPT_MS);
 
 const DEFAULT_TIMEOUT_MS = 30_000;
 const MAX_TIMEOUT_MS = 120_000;

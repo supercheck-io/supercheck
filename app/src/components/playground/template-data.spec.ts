@@ -344,6 +344,56 @@ it.each(["navigator", "document"])(
   },
 );
 
-it("offers the three agent templates", () => {
-  expect(getTemplatesByType("agent").map((t) => t.id)).toEqual(["pw-agent-chat", "pw-agent-tool-guard", "pw-agent-a2a"]);
+it("offers the agent templates, quick start first", () => {
+  expect(getTemplatesByType("agent").map((t) => t.id)).toEqual([
+    "pw-agent-quick-start",
+    "pw-agent-chat",
+    "pw-agent-multi-turn",
+    "pw-agent-json-contract",
+    "pw-agent-tool-call",
+    "pw-agent-tool-guard",
+    "pw-agent-judge",
+    "pw-agent-latency-budget",
+    "pw-agent-prompt-injection",
+    "pw-agent-http",
+    "pw-agent-a2a",
+    "pw-agent-mcp-auth",
+  ]);
+  for (const t of getTemplatesByType("agent")) expect(t.setup).toBeTruthy();
+});
+
+describe("agent quick start", () => {
+  const template = codeTemplates.find((t) => t.id === "pw-agent-quick-start")!;
+
+  it("needs no variables or secrets", () => {
+    expect(template.code).not.toMatch(/getVariable|getSecret/);
+  });
+
+  async function runWith(reply: string) {
+    let body: (fixtures: unknown) => Promise<void> = async () => {};
+    const register = (_name: string, fn: typeof body) => { body = fn; };
+    evaluateTemplate(template.id, { "@supercheck/agent-test": { test: register, expect } });
+    const connect = jest.fn(() => ({ send: async () => ({ text: reply, durationMs: 5 }) }));
+    const repeat = async (n: number, fn: () => Promise<unknown>) => {
+      let passed = 0;
+      for (let i = 0; i < n; i++) await fn().then(() => passed++, () => undefined);
+      return { passRate: passed / n };
+    };
+    await body({ agent: { connect, repeat } });
+    return connect;
+  }
+
+  it("calls the public DeepWiki MCP tool without a key and passes on a good reply", async () => {
+    const connect = await runWith("Available pages for microsoft/playwright:\n- 1 Playwright Overview");
+    expect(connect).toHaveBeenCalledWith({
+      kind: "mcp",
+      url: "https://mcp.deepwiki.com/mcp",
+      tool: "read_wiki_structure",
+      argument: "repoName",
+    });
+  });
+
+  it("fails when the tool answers about something else", async () => {
+    await expect(runWith("Repository not found")).rejects.toThrow();
+  });
 });

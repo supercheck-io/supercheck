@@ -1,5 +1,5 @@
 import {
-  ArrowLeftRight, CalendarClock, Chrome, ChevronsLeftRightEllipsis, Database, EthernetPort, HeartPulse, LaptopMinimal, Plug, SquareFunction, Bot,
+  ArrowLeftRight, CalendarClock, Chrome, ChevronsLeftRightEllipsis, Database, EthernetPort, Activity, LaptopMinimal, Plug, SquareFunction, Bot,
   type LucideIcon,
 } from "lucide-react";
 import type { ComponentType } from "react";
@@ -112,7 +112,7 @@ export const CREATE_ACTIONS: CreateAction[] = [
   monitor("port_check", "Port Monitor", EthernetPort),
   monitor("synthetic_test", "Synthetic Monitor", PlaywrightLogo, true),
   monitor("mcp_server", "MCP Monitor", Plug),
-  monitor("heartbeat", "Heartbeat Monitor", HeartPulse),
+  monitor("heartbeat", "Heartbeat Monitor", Activity),
 
   {
     id: "status-page", group: "statusPages", title: "Status Page", url: "/status-pages?create=true", icon: NAV.statusPages.icon,

@@ -8,6 +8,51 @@ An agent test calls an AI agent you run (a chat model, a support bot, an A2A age
 
 Agent tests run in the cloud only. You can create, edit and run them in the [Playground](/docs/app/automate/playground), schedule them in a [job](/docs/app/automate/jobs) or watch them with a synthetic monitor.
 
+## Try it in 1 minute
+
+1. Open **Create → Agent Test**. The editor opens with the **Quick start** template. It calls a tool on DeepWiki, a free public MCP server, so it needs no key or variable.
+2. Click **Run**. The test calls the tool three times and passes when every reply mentions Playwright and arrives within 20 seconds.
+3. Open the run. The **Agent results** card shows the pass rate, the slowest call, the tool called and any failures. Token counts appear for chat agents; MCP servers report none.
+4. Click **Templates** and pick one for your own agent. Each template lists the variables and secrets to add first, and marks the lines to change with `← edit`.
+
+## How a run works
+
+```mermaid
+%%{init: {"flowchart":{"nodeSpacing":20,"rankSpacing":24,"padding":12,"wrappingWidth":140}}}%%
+flowchart LR
+    A[Agent test script] --> B[Run in the cloud sandbox]
+    B --> C[agent.connect and send call your agent]
+    C --> D[expect and repeat decide pass or fail]
+    D --> E[Agent results card and report]
+    E --> F[Save, add to a job or monitor]
+
+    classDef action fill:#1d4ed8,stroke:#60a5fa,color:#fff
+    classDef complete fill:#047857,stroke:#34d399,color:#fff
+    class A,B,C,D,E action
+    class F complete
+```
+
+`@supercheck/agent-test` is the small library every agent test imports. It is Playwright's `test` and `expect` plus an `agent` fixture that connects to your agent, sends messages, repeats checks and grades answers. It is installed in the Supercheck runner, so there is nothing to install yourself. The Playground editor shows its types and autocompletes it.
+
+## Templates
+
+| Template | What it checks | Needs |
+|---|---|---|
+| Quick start: public MCP server | A public MCP tool answers, three times in a row | Nothing |
+| Chat agent (OpenAI-compatible) | One answer states a fact, fast and within a token limit | `AGENT_URL`, `AGENT_MODEL`, `AGENT_KEY` |
+| Multi-turn memory | The agent remembers an earlier turn | Same |
+| JSON reply contract | Replies are valid JSON with the fields your app reads | Same |
+| Calls the right tool | The agent picks the right tool with the right arguments | Same |
+| Tool guard with pass rate | A dangerous tool the agent is offered is never called, over 10 tries | Same |
+| AI-graded answer | Your own judge model grades the answer against a rubric | Same plus `JUDGE_MODEL` |
+| Speed and token budget | Every answer stays within time and token limits | Same |
+| Prompt-injection resistance | Common attacks never reveal the hidden instructions | Same |
+| Custom HTTP agent | A bot behind your own JSON API answers | `AGENT_URL`, `AGENT_KEY` |
+| A2A agent | An A2A agent replies | `AGENT_URL`, `AGENT_KEY` |
+| MCP tool with a key | One tool on your own MCP server answers | `MCP_URL`, `MCP_TOKEN` |
+
+Add variables and secrets on the [Variables](/docs/app/automate/variables) page. Templates read them with `getVariable(..., { required: true })`, so a missing one fails with its name instead of a confusing connection error.
+
 ## Example
 
 ```typescript
@@ -16,9 +61,9 @@ import { test, expect } from '@supercheck/agent-test';
 test('support bot states the refund policy', async ({ agent }) => {
   const bot = agent.connect({
     kind: 'openai', // 'openai' | 'http' | 'a2a' | 'mcp'
-    url: getVariable('BOT_URL'),
-    apiKey: getSecret('BOT_KEY'),
-    model: 'support-bot',
+    url: getVariable('AGENT_URL'),
+    apiKey: getSecret('AGENT_KEY'),
+    model: getVariable('AGENT_MODEL'),
   });
 
   const result = await agent.repeat(10, async () => {
@@ -50,7 +95,7 @@ The run page shows an **Agent results** card with the pass rate, attempts, token
 ## Limits
 
 - **Tools are only those the agent reports.** For `openai` they are the `tool_calls` the agent returns; for `a2a`, what the task history exposes. A black-box HTTP agent reports none.
-- **A run lasts at most 5 minutes**, and in a job that limit is shared by every test in the job. Keep agent tests in their own job.
+- **A run lasts at most 5 minutes**, and in a job that limit is shared by every test in the job. Keep agent tests in their own job. Inside a run, one test may take at most 4 minutes, and one `repeat()` at most 200 seconds. Each `send()` times out after `timeoutMs`.
 - **You pay for the calls.** Calls to your agent and to your judge model are billed by their provider, not by Supercheck. AI grading uses your own judge endpoint and key (`agent.judge`); it does not use Supercheck AI credits.
 - **Public addresses only.** The test runs in the same sandbox as other tests: an agent on a private or internal address is unreachable. Expose it on a public URL.
 - **Remote only.** `supercheck test run --local` and `job run --local` refuse agent tests.
