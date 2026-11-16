@@ -8,11 +8,16 @@ jest.mock('tls', () => ({
 import { readCertificate } from './tls-certificate';
 
 const lookup = jest.fn() as never;
-const fakeSocket = (cert: unknown = {}) =>
-  Object.assign(new EventEmitter(), {
-    destroy: jest.fn(),
-    getPeerCertificate: jest.fn().mockReturnValue(cert),
+// Like Node: once destroy() runs the handle is gone and getPeerCertificate() returns null.
+const fakeSocket = (cert: unknown = {}) => {
+  let destroyed = false;
+  return Object.assign(new EventEmitter(), {
+    destroy: jest.fn(() => {
+      destroyed = true;
+    }),
+    getPeerCertificate: jest.fn(() => (destroyed ? null : cert)),
   });
+};
 const opts = { hostname: 'a.test', port: 443, lookup, timeoutMs: 1000 };
 
 describe('readCertificate', () => {
@@ -34,6 +39,10 @@ describe('readCertificate', () => {
     expect(o.rejectUnauthorized).toBeUndefined();
     expect(info).toMatchObject({ issuer: 'CA', daysRemaining: 3 });
     expect(socket.destroy).toHaveBeenCalled();
+    // The certificate is read before the socket is closed.
+    expect(socket.getPeerCertificate.mock.invocationCallOrder[0]).toBeLessThan(
+      socket.destroy.mock.invocationCallOrder[0],
+    );
   });
 
   it('returns the verification error code without a date', async () => {

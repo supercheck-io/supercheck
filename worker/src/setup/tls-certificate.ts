@@ -27,8 +27,11 @@ export function readCertificate(options: {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
-      socket.destroy();
-      fn();
+      try {
+        fn(); // reads the peer certificate, so it must run before destroy() clears the socket handle
+      } finally {
+        socket.destroy();
+      }
     };
 
     const socket = tls.connect(
