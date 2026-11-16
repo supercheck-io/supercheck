@@ -56,9 +56,18 @@ export async function listConnectorIds(scope: CopyScope): Promise<string[]> {
   return rows.map((row) => row.id);
 }
 
-/** Serializes concurrent copies of the same item into one target project: neither table has a unique key on it. */
-const lockAdoptionKey = (tx: Pick<typeof db, "execute">, kind: string, scope: CopyScope, source: { type: string; name: string }) =>
-  tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${JSON.stringify([kind, scope.organizationId, scope.targetProjectId, source.type, source.name])}))`);
+/**
+ * Serializes concurrent copies into one target project: neither table has a unique key on name. The key leaves the name
+ * out so copies of "X" and "X (copied)" cannot both pick the same suffixed name. Transaction-scoped.
+ */
+const lockAdoptionKey = (tx: Pick<typeof db, "execute">, kind: string, scope: CopyScope, source: { type: string }) =>
+  tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${JSON.stringify([kind, scope.organizationId, scope.targetProjectId, source.type])}))`);
+
+/** Column widths: connectors varchar(100), providers varchar(255). */
+const CONNECTOR_NAME_MAX = 100;
+const PROVIDER_NAME_MAX = 255;
+/** Room for " (copied 9999999999)" when searching for suffixed names of a truncated base. */
+const SUFFIX_ROOM = 20;
 
 /** Key-order independent text of a value, for comparing two decrypted configs. Never logged or returned. */
 const canon = (value: unknown): string =>
@@ -75,18 +84,21 @@ const escapeLike = (value: string) => value.replace(/[\\%_]/g, "\\$&");
 async function resolveTarget<Row extends { name: string }>(
   rows: Row[],
   baseName: string,
+  maxLength: number,
   same: (row: Row) => Promise<boolean>,
 ): Promise<{ adopt: Row } | { name: string }> {
   for (let i = 0; ; i++) {
-    const name = i === 0 ? baseName : i === 1 ? `${baseName} (copied)` : `${baseName} (copied ${i})`;
+    const suffix = i === 0 ? "" : i === 1 ? " (copied)" : ` (copied ${i})`;
+    const name = baseName.slice(0, maxLength - suffix.length) + suffix;
     const row = rows.find((r) => r.name === name);
     if (!row) return { name };
     if (await same(row)) return { adopt: row };
   }
 }
 
-const sameNameFilter = (column: typeof notificationProviders.name | typeof externalConnectors.name, name: string) =>
-  or(eq(column, name), like(column, `${escapeLike(name)} (copied%`));
+// The base is cut to fit the column, so match on its leading part; resolveTarget compares exact names.
+const sameNameFilter = (column: typeof notificationProviders.name | typeof externalConnectors.name, name: string, maxLength: number) =>
+  or(eq(column, name), like(column, `${escapeLike(name.slice(0, maxLength - SUFFIX_ROOM))}%(copied%`));
 
 export function copyProviders(scope: CopyScope, ids: string[]): Promise<CopyItemResult[]> {
   const { organizationId, sourceProjectId, targetProjectId, userId } = scope;
@@ -118,12 +130,19 @@ export function copyProviders(scope: CopyScope, ids: string[]): Promise<CopyItem
                 eq(notificationProviders.organizationId, organizationId),
                 eq(notificationProviders.projectId, targetProjectId),
                 eq(notificationProviders.type, source.type),
-                sameNameFilter(notificationProviders.name, source.name),
+                sameNameFilter(notificationProviders.name, source.name, PROVIDER_NAME_MAX),
               ),
             );
-          const target = await resolveTarget(candidates, source.name, async (row) => {
+          // Compared in the form it is written in, so an un-normalized source adopts its earlier copy.
+          let written: unknown = plain;
+          try {
+            written = normalizeProviderConfig(source.type as NotificationProviderType, plain as Record<string, unknown>);
+          } catch {
+            // An invalid config is rejected below if nothing matches.
+          }
+          const target = await resolveTarget(candidates, source.name, PROVIDER_NAME_MAX, async (row) => {
             try {
-              return canon(decryptNotificationProviderConfig(row.config, targetProjectId)) === canon(plain);
+              return canon(decryptNotificationProviderConfig(row.config, targetProjectId)) === canon(written);
             } catch {
               return false;
             }
@@ -136,7 +155,7 @@ export function copyProviders(scope: CopyScope, ids: string[]): Promise<CopyItem
             throw new CopyItemError("This channel's settings no longer pass validation");
           }
           const config = encryptNotificationProviderConfig(
-            normalizeProviderConfig(source.type as NotificationProviderType, plain as Record<string, unknown>) as PlainNotificationProviderConfig,
+            written as PlainNotificationProviderConfig,
             targetProjectId,
           );
           const [created] = await tx
@@ -195,10 +214,10 @@ export function copyConnectors(scope: CopyScope, ids: string[]): Promise<CopyIte
                 eq(externalConnectors.organizationId, organizationId),
                 eq(externalConnectors.projectId, targetProjectId),
                 eq(externalConnectors.type, source.type),
-                sameNameFilter(externalConnectors.name, source.name),
+                sameNameFilter(externalConnectors.name, source.name, CONNECTOR_NAME_MAX),
               ),
             );
-          const target = await resolveTarget(candidates, source.name, async (row) => {
+          const target = await resolveTarget(candidates, source.name, CONNECTOR_NAME_MAX, async (row) => {
             if (canon(row.config) !== canon(source.config) || row.privateAgentId !== source.privateAgentId) return false;
             const [rowCredential] = await tx.select().from(externalConnectorCredentials).where(eq(externalConnectorCredentials.connectorId, row.id)).limit(1);
             if (!rowCredential || !plain) return !rowCredential && !plain;

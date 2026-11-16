@@ -561,6 +561,7 @@ async function getConnectorListItem(
 
 export async function getSreConnectors(
   requestContext?: ProjectAuthContext,
+  expectedProjectId?: string,
 ): Promise<
   | { success: true; connectors: SreConnectorListItem[] }
   | { success: false; error: string; connectors: [] }
@@ -568,6 +569,7 @@ export async function getSreConnectors(
   try {
     const { userId, organizationId, orgPendingDeletion, project } =
       requestContext ?? (await requireProjectContext());
+    if (expectedProjectId && expectedProjectId !== project.id) return { success: false, error: PROJECT_MISMATCH_MESSAGE, connectors: [] };
     const canView = checkPermissionWithContext("sre_connector", "view", {
       userId,
       organizationId,
@@ -1357,6 +1359,7 @@ class ConnectorChangedError extends Error {}
 
 export async function rotateSreConnectorCredential(
   input: z.infer<typeof rotateConnectorCredentialSchema>,
+  expectedProjectId?: string,
 ): Promise<SreConnectorActionResult> {
   try {
     const parsed = rotateConnectorCredentialSchema.safeParse(input);
@@ -1369,6 +1372,7 @@ export async function rotateSreConnectorCredential(
     }
 
     const { userId, organizationId, orgPendingDeletion, project } = await requireProjectContext();
+    if (expectedProjectId && expectedProjectId !== project.id) return { success: false, error: PROJECT_MISMATCH_MESSAGE };
     const canConfigure = checkPermissionWithContext(
       "sre_connector",
       "configure",

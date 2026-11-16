@@ -39,7 +39,7 @@ jest.mock("@/utils/db", () => {
   };
 });
 
-import { createSreConnector, validateSreConnector } from "./sre-connectors";
+import { createSreConnector, getSreConnectors, rotateSreConnectorCredential, validateSreConnector } from "./sre-connectors";
 
 describe("validateSreConnector with a row of a removed type", () => {
   it("blocks it without sending a request", async () => {
@@ -113,6 +113,10 @@ describe("expectedProjectId guard", () => {
       "other-project",
     );
     expect(c.success).toBe(false);
+    const l = await getSreConnectors(undefined, "other-project");
+    expect(l).toMatchObject({ success: false, connectors: [] });
+    const r = await rotateSreConnectorCredential({ id: "018f0000-0000-7000-8000-000000000004", credentialType: "api_key", value: { secret: "x" } }, "other-project");
+    expect(r.success).toBe(false);
     expect(mockFindConnector).not.toHaveBeenCalled();
     expect(mockSet).not.toHaveBeenCalled();
   });

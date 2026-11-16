@@ -123,6 +123,39 @@ describe("copyProviders", () => {
     expect(third).toMatchObject({ status: "copied", name: "Slack ops (copied 3)" });
     expect(JSON.stringify([first, again, third])).not.toContain("SECRET");
   });
+  it("copying an un-normalized email source twice makes one row (the second adopts)", async () => {
+    const [src] = await mockDatabase
+      .insert(schema.notificationProviders)
+      .values({ organizationId: orgA, projectId: projSrc, name: "Mail", type: "email", config: encryptNotificationProviderConfig({ emails: "a@x.com, b@x.com" }, projSrc), createdByUserId: u1 })
+      .returning();
+    const [first] = await copyProviders(scope, [src.id]);
+    const [second] = await copyProviders(scope, [src.id]);
+    expect(first.status).toBe("copied");
+    expect(second).toMatchObject({ status: "adopted", id: first.id, name: "Mail" });
+    expect(await mockDatabase.select().from(schema.notificationProviders).where(eq(schema.notificationProviders.projectId, projTgt))).toHaveLength(1);
+  });
+  it("truncates a long base name so the (copied) name fits the 255-char column", async () => {
+    const other = "https://hooks.slack.com/services/T111/B111/OTHERSECRET";
+    const long = "p".repeat(255);
+    const src = await seedProvider(orgA, projSrc, long);
+    await seedProvider(orgA, projTgt, long, other);
+    const [first] = await copyProviders(scope, [src.id]);
+    expect(first.status).toBe("copied");
+    expect(first.name).toHaveLength(255);
+    expect(first.name!.endsWith(" (copied)")).toBe(true);
+    expect(await copyProviders(scope, [src.id])).toEqual([expect.objectContaining({ status: "adopted", id: first.id })]);
+  });
+  it("concurrent copies of X and X (copied) never pick the same name", async () => {
+    const other = "https://hooks.slack.com/services/T111/B111/OTHERSECRET";
+    const a = await seedProvider(orgA, projSrc, "X");
+    const b = await seedProvider(orgA, projSrc, "X (copied)", other);
+    await seedProvider(orgA, projTgt, "X", other);
+    const results = (await Promise.all([copyProviders(scope, [a.id]), copyProviders(scope, [b.id])])).flat();
+    expect(results.every((r) => r.status === "copied")).toBe(true);
+    const names = (await mockDatabase.select({ name: schema.notificationProviders.name }).from(schema.notificationProviders).where(eq(schema.notificationProviders.projectId, projTgt))).map((r) => r.name);
+    expect(names).toHaveLength(3);
+    expect(new Set(names).size).toBe(3);
+  });
   it("fails a channel whose config no longer passes validation, leaving no row", async () => {
     const src = await seedProvider(orgA, projSrc, "Bad hook", "https://evil.example.com/hook");
     const [res] = await copyProviders(scope, [src.id]);
@@ -192,6 +225,16 @@ describe("copyConnectors", () => {
     const src2 = await seedConnector(orgA, projSrc, "Loki");
     await seedConnector(orgA, projTgt, "Loki", { token: "different-token" });
     expect((await copyConnectors(scope, [src2]))[0]).toMatchObject({ status: "copied", name: "Loki (copied)" });
+  });
+  it("truncates a long base name so the (copied) name fits the 100-char column", async () => {
+    const long = "c".repeat(100);
+    const src = await seedConnector(orgA, projSrc, long);
+    await seedConnector(orgA, projTgt, long, { endpoint: "https://93.184.216.35" });
+    const [first] = await copyConnectors(scope, [src]);
+    expect(first.status).toBe("copied");
+    expect(first.name).toHaveLength(100);
+    expect(first.name!.endsWith(" (copied)")).toBe(true);
+    expect(await copyConnectors(scope, [src])).toEqual([expect.objectContaining({ status: "adopted", id: first.id })]);
   });
   it("keeps the source's risk level and read-only permissions", async () => {
     const src = await seedConnector(orgA, projSrc, "Risky", { riskLevel: "high" });

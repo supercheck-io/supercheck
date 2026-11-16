@@ -7,7 +7,9 @@ import { AiSreStep } from "./ai-sre-step";
 const mockCreate = jest.fn();
 const mockValidate = jest.fn();
 const mockList = jest.fn();
+const mockRotate = jest.fn();
 jest.mock("@/actions/sre-connectors", () => ({
+  rotateSreConnectorCredential: (...args: unknown[]) => mockRotate(...args),
   getSreConnectors: (...args: unknown[]) => mockList(...args),
   createSreConnector: (...args: unknown[]) => mockCreate(...args),
   validateSreConnector: (...args: unknown[]) => mockValidate(...args),
@@ -18,6 +20,7 @@ let activeProject: string;
 beforeEach(() => {
   mockCreate.mockReset();
   mockValidate.mockReset();
+  mockRotate.mockReset().mockResolvedValue({ success: true });
   mockList.mockReset().mockResolvedValue({ success: true, connectors: [] });
   activeProject = PROJECT_ID;
   global.fetch = (async () => ({ ok: true, status: 200, json: async () => ({ project: { id: activeProject } }) })) as unknown as typeof fetch;
@@ -103,7 +106,7 @@ describe("AiSreStep", () => {
   it("adopts a connector that already exists instead of creating a duplicate after a lost answer", async () => {
     mockList.mockResolvedValue({ success: true, connectors: [{ id: CID, name: "GitHub", type: "github", status: "configured" }, { id: "x", name: "GitHub", type: "sentry", status: "configured" }] });
     mockValidate.mockResolvedValue({ success: true, message: "ok", connector: { lastValidationStatus: "valid" } });
-    const d = drafting();
+    const d = drafting({ aiSre: { connectorIds: [CID], services: [] } });
     render(<AiSreStep {...makeStepProps({ ...admin(), patchDraft: d.patchDraft, draft: d.get() })} />);
     open(/GitHub/);
     type("Access token", "ghp_x");
@@ -112,6 +115,65 @@ describe("AiSreStep", () => {
     expect(mockCreate).not.toHaveBeenCalled();
     expect(mockValidate).toHaveBeenCalledWith({ id: CID }, PROJECT_ID);
     expect(d.get().aiSre?.connectorIds).toEqual([CID]);
+  });
+
+  it("never adopts a same-name connector this setup did not record: creates a new one and shows a duplicate-name error", async () => {
+    mockList.mockResolvedValue({ success: true, connectors: [{ id: CID, name: "GitHub", type: "github", status: "configured" }] });
+    mockCreate.mockResolvedValue({ success: false, error: "A connector with this name already exists" });
+    const d = drafting();
+    render(<AiSreStep {...makeStepProps({ ...admin(), patchDraft: d.patchDraft, draft: d.get() })} />);
+    open(/GitHub/);
+    type("Access token", "t");
+    fireEvent.click(screen.getByRole("button", { name: "Save and test" }));
+    expect(await screen.findByText(/already exists/)).toBeTruthy();
+    expect(mockList).toHaveBeenCalledWith(PROJECT_ID);
+    expect(mockCreate).toHaveBeenCalledTimes(1);
+    expect(mockValidate).not.toHaveBeenCalled();
+    expect(d.patchDraft).not.toHaveBeenCalled();
+  });
+
+  it("saves the typed token to an adopted connector before testing it", async () => {
+    mockList.mockResolvedValue({ success: true, connectors: [{ id: CID, name: "GitHub", type: "github", status: "configured" }] });
+    mockValidate.mockResolvedValue({ success: true, message: "ok", connector: { lastValidationStatus: "valid" } });
+    const d = drafting({ aiSre: { connectorIds: [CID], services: [] } });
+    render(<AiSreStep {...makeStepProps({ ...admin(), patchDraft: d.patchDraft, draft: d.get() })} />);
+    open(/GitHub/);
+    type("Access token", "new_tok");
+    fireEvent.click(screen.getByRole("button", { name: "Save and test" }));
+    await screen.findByText(/GitHub: Connected/);
+    expect(mockRotate).toHaveBeenCalledWith({ id: CID, credentialType: "api_key", value: { secret: "new_tok" } }, PROJECT_ID);
+    expect(mockRotate.mock.invocationCallOrder[0]).toBeLessThan(mockValidate.mock.invocationCallOrder[0]);
+    expect(mockCreate).not.toHaveBeenCalled();
+  });
+
+  it("does not validate or record when saving the token to an adopted connector fails", async () => {
+    mockList.mockResolvedValue({ success: true, connectors: [{ id: CID, name: "GitHub", type: "github", status: "configured" }] });
+    mockRotate.mockResolvedValue({ success: false, error: "nope" });
+    const d = drafting({ aiSre: { connectorIds: [CID], services: [] } });
+    render(<AiSreStep {...makeStepProps({ ...admin(), patchDraft: d.patchDraft, draft: d.get() })} />);
+    open(/GitHub/);
+    type("Access token", "t");
+    fireEvent.click(screen.getByRole("button", { name: "Save and test" }));
+    expect(await screen.findByText("nope")).toBeTruthy();
+    expect(mockValidate).not.toHaveBeenCalled();
+    expect(d.patchDraft).not.toHaveBeenCalled();
+  });
+
+  it.each(["list", "rotate", "create", "validate"])("never records the id when %s returns the project-mismatch message", async (stage) => {
+    const MSG = "Project changed in another tab";
+    const known = stage === "rotate" || stage === "validate";
+    mockList.mockResolvedValue(stage === "list" ? { success: false, error: MSG, connectors: [] } : { success: true, connectors: known ? [{ id: CID, name: "GitHub", type: "github", status: "configured" }] : [] });
+    mockRotate.mockResolvedValue(stage === "rotate" ? { success: false, error: MSG } : { success: true });
+    mockCreate.mockResolvedValue(stage === "create" ? { success: false, error: MSG } : { success: true, connector: { id: CID } });
+    mockValidate.mockResolvedValue(stage === "validate" ? { success: false, error: MSG } : { success: true, connector: { lastValidationStatus: "valid" } });
+    const d = drafting({ aiSre: { connectorIds: known ? [CID] : [], services: [] } });
+    render(<AiSreStep {...makeStepProps({ ...admin(), patchDraft: d.patchDraft, draft: d.get() })} />);
+    open(/GitHub/);
+    type("Access token", "t");
+    fireEvent.click(screen.getByRole("button", { name: "Save and test" }));
+    expect(await screen.findByText(MSG)).toBeTruthy();
+    expect(d.patchDraft).not.toHaveBeenCalled();
+    if (stage === "list") expect(mockCreate).not.toHaveBeenCalled();
   });
 
   it("creates the connector when the lookup fails or finds only a disabled one", async () => {

@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { Radio } from "lucide-react";
 
-import { createSreConnector, getSreConnectors, validateSreConnector } from "@/actions/sre-connectors";
+import { createSreConnector, getSreConnectors, rotateSreConnectorCredential, validateSreConnector } from "@/actions/sre-connectors";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -13,6 +13,7 @@ import { Label } from "@/components/ui/label";
 import { TableBadge } from "@/components/ui/table-badge";
 import { getConnectorQueryGuide } from "@/components/sre/connectors/connector-query-guides";
 import { SRE_CONNECTOR_CATALOG } from "@/components/sre/connectors/connector-catalog";
+import { PROJECT_CHANGED_ERROR } from "../create-runner";
 import { CopyFromProject } from "./copy-from-project";
 import { checkSetupProject, type StepProps } from "./step-types";
 
@@ -68,11 +69,23 @@ function ConnectorForm({ def, projectId, knownIds, onSaved }: { def: (typeof CON
     const hasCredential = Object.keys(credentialValue).length > 0;
     try {
       // A save whose answer was lost (network drop) already exists: adopt it instead of creating a duplicate.
-      // Prefers one this setup recorded, else the same type and exact name in the project.
-      const existing = await getSreConnectors()
-        .then((r) => (r.success ? r.connectors.filter((c) => c.type === def.type && c.name === labelOf(def.type) && c.status !== "disabled") : []))
-        .catch(() => []);
-      const adopted = existing.find((c) => knownIds.includes(c.id)) ?? existing[0];
+      // Only a connector this setup recorded is adopted; a same-name one made by hand is never taken over.
+      const listed = await getSreConnectors(projectId).catch(() => null);
+      if (listed && !listed.success && listed.error === PROJECT_CHANGED_ERROR) {
+        setError(listed.error);
+        setBusy(false);
+        return;
+      }
+      const adopted = listed?.success ? listed.connectors.find((c) => knownIds.includes(c.id) && c.type === def.type && c.status !== "disabled") : undefined;
+      if (adopted && hasCredential) {
+        // The adopted connector keeps its old token, so save what was typed before testing it.
+        const rotated = await rotateSreConnectorCredential({ id: adopted.id, credentialType: "api_key", value: credentialValue }, projectId);
+        if (!rotated.success) {
+          setError(rotated.error);
+          setBusy(false);
+          return;
+        }
+      }
       // Saved right away (D8): the token never enters the setup draft.
       const created = adopted ? { success: true as const, connector: { id: adopted.id } } : await createSreConnector({
         name: labelOf(def.type),
@@ -95,6 +108,11 @@ function ConnectorForm({ def, projectId, knownIds, onSaved }: { def: (typeof CON
       let outcome: Outcome;
       try {
         const checked = await validateSreConnector({ id }, projectId);
+        if (!checked.success && checked.error === PROJECT_CHANGED_ERROR) {
+          setError(checked.error);
+          setBusy(false);
+          return;
+        }
         // The action reports success even when the check failed: only the stored status says the token works.
         outcome =
           checked.success && checked.connector?.lastValidationStatus === "valid"
