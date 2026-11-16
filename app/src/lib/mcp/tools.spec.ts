@@ -388,6 +388,7 @@ describe("MCP tools", () => {
       { id: id(2), name: "Team", type: "slack", preset: null, enabled: false, health: { state: "unknown", at: null } },
     ]);
     expect(JSON.stringify(res)).not.toMatch(/SECRET|CIPHER|hooks\.example/);
+    expect(res.structuredContent.nextCursor).toBeNull();
     const where = lastWhere();
     expect(where.params).toEqual(["o", "p"]);
   });
@@ -398,6 +399,14 @@ describe("MCP tools", () => {
     loadProviderHealth.mockResolvedValue(new Map());
     const res = await handlers.get("list_notification_channels")!({});
     expect((res.structuredContent.channels as { preset: unknown }[])[0].preset).toBeNull();
+  });
+
+  it("list_notification_channels pages with a cursor", async () => {
+    queue.push([1, 2, 3].map((n) => ({ id: id(n), name: `C${n}`, type: "slack", isEnabled: true, config: {} })));
+    loadProviderHealth.mockResolvedValue(new Map());
+    const res = await handlers.get("list_notification_channels")!({ limit: 2, cursor: id(9) });
+    expect((res.structuredContent.channels as unknown[]).length).toBe(2);
+    expect(res.structuredContent.nextCursor).toBe(id(2));
   });
 
   it("list_notification_channels returns null for a stored preset that is not a known id", async () => {

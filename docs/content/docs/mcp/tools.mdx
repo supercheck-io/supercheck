@@ -40,7 +40,7 @@ Returned text (test titles, error excerpts, incident summaries, investigation fi
 | `list_maintenance_windows` | monitors | `state` (`active`, `scheduled`, `past`), `monitorId`, `serviceId` | `id`, `title`, `state`, `scope`, `recurrence`, `timezone`, `occurrenceStartsAt`, `occurrenceEndsAt`, `targets` |
 | `get_incident` | incidents | `id` | One incident with `statusLabel`, its root-cause summary, `postmortem` (`sections`, `generatedAt`, `updatedAt`; `null` until written), resolution summary, assignment and acknowledgement, and `alertCount` (the opening alert plus repeats while the incident stayed open) and `lastAlertAt` |
 | `get_incident_timeline` | incidents | `incidentId` | The newest 500 events, oldest first: `id`, `eventType`, `actorType`, `actorUserId`, `createdAt`, `data` (payload as redacted JSON text) |
-| `list_notification_channels` | notifications | none | `id`, `name`, `type`, `preset` (webhooks only), `enabled`, `health`. Never the configuration, URLs or credentials |
+| `list_notification_channels` | notifications | `limit`, `cursor` | `id`, `name`, `type`, `preset` (webhooks only), `enabled`, `health`. Never the configuration, URLs or credentials |
 | `get_incident_policy` | project | none | The project's Default incident policy: `channelIds`, `renotifyUnackedMinutes` (first reminder), `renotifyRepeatMinutes`, `renotifyMax`, `escalateAfterMinutes`, `escalateChannelId` or `escalateUserId`, `emailServiceOwnersOnSev12`, `autoInvestigateOnOpen`. Ids only, never channel addresses. Read-only: change it in the app or with `supercheck incident policy set` |
 | `list_investigations` | investigations | `limit`, `cursor`, `incidentId` | AI SRE investigation runs: `agentType`, `status`, start and end, `durationMs`, `confidenceScore` |
 | `get_investigation` | investigations | `id` | One investigation with its root-cause hypothesis and recommendations |
@@ -97,7 +97,7 @@ Results AI SRE already produced (hypotheses, confidence, recommendations) are re
 </Accordion>
 <Accordion title="Not available" id="not-available">
 
-Creating, editing or deleting tests, monitors, jobs and variables, test scripts, variable values, monitor credentials and request settings, notification channels, status page subscribers, run reports and artifact files, investigation evidence and tool calls, and an incident timeline. Use the [CLI](/docs/cli/commands) for authoring and deploys.
+Creating, editing or deleting tests, monitors, jobs and variables, test scripts, variable values, monitor credentials and request settings, notification channel settings, status page subscribers, run reports and artifact files, and investigation evidence and tool calls. Use the [CLI](/docs/cli/commands) for authoring and deploys.
 
 </Accordion>
 </Accordions>

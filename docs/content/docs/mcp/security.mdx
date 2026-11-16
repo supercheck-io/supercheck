@@ -29,7 +29,7 @@ icon: ShieldCheck
 <Accordions>
 <Accordion title="What is filtered" id="what-is-filtered">
 
-- Test scripts, variable values, notification channels, trigger keys, monitor credentials, headers and request bodies, status page subscribers, and investigation prompts, evidence and cost are never returned. Jobs show only which alerts are on, and monitors only non-secret check settings.
+- Test scripts, variable values, notification channel settings (URLs, headers, tokens), trigger keys, monitor credentials, headers and request bodies, status page subscribers, and investigation prompts, evidence and cost are never returned. Jobs show only which alerts are on, and monitors only non-secret check settings.
 - Monitor targets are reduced to scheme and host, so URLs that hide a secret in the path or query stay hidden.
 - Text is scanned for credentials (tokens, API keys, `Authorization` and cookie headers, URL passwords) and replaced with `[REDACTED…]` markers (including Supercheck's own API keys and email addresses), and long fields are cut off with `[truncated]`.
 - Requests over 1 MB are rejected.

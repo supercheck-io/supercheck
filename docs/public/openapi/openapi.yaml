@@ -3151,7 +3151,8 @@ paths:
                 config:
                   type: object
                   description: Provider-specific configuration (e.g. `webhookUrl` for Slack). For
-                    webhooks, `preset` selects a paging service template.
+                    webhooks, `preset` names the paging service; send the full
+                    request settings with it.
                   properties:
                     preset:
                       type: string
@@ -3163,9 +3164,10 @@ paths:
                         - splunk_on_call
                         - better_stack
                         - incident_io
-                      description: Webhook only. A paging preset fills the method, headers and body
-                        template for that service; `custom` (default) keeps your
-                        own.
+                      description: "Webhook only. Names the paging service the channel is for. It does
+                        not fill the request: send `method`, `headers` and
+                        `bodyTemplate` too, or create the channel in the app,
+                        which fills them from the preset."
               required:
                 - name
                 - type
@@ -3238,11 +3240,12 @@ paths:
                         - splunk_on_call
                         - better_stack
                         - incident_io
-                      description: Webhook only. A paging preset fills the method, headers and body
-                        template for that service; `custom` (default) keeps your
-                        own.
-                  description: Provider-specific configuration. For webhooks, `preset` selects a
-                    paging service template.
+                      description: "Webhook only. Names the paging service the channel is for. It does
+                        not fill the request: send `method`, `headers` and
+                        `bodyTemplate` too, or create the channel in the app,
+                        which fills them from the preset."
+                  description: Provider-specific configuration. For webhooks, `preset` names the
+                    paging service; send the full request settings with it.
               required:
                 - name
                 - type

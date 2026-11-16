@@ -33,7 +33,7 @@ function invalid(error: string, details: string): MonitorValidationResult {
 /** Names the field a schema issue is about; a missing field reads "<path> is required". */
 function issueDetail(prefix: string, value: unknown, issue: z.core.$ZodIssue): string {
   const path = [prefix, ...issue.path.map(String)].join(".");
-  const actual = issue.path.reduce<unknown>((node, key) => (isRecord(node) ? node[String(key)] : undefined), value);
+  const actual = issue.path.reduce<unknown>((node, key) => (isRecord(node) || Array.isArray(node) ? (node as Record<string, unknown>)[String(key)] : undefined), value);
   return issue.code === "invalid_type" && actual === undefined ? `${path} is required` : `${path}: ${issue.message}`;
 }
 

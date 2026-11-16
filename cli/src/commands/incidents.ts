@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { createAuthenticatedClient } from '../api/authenticated-client.js'
 import { getOutputFormat, output, outputDetail } from '../output/formatter.js'
 import { logger } from '../utils/logger.js'
+import { redactText } from '../utils/redact.js'
 import { confirmPrompt } from '../utils/prompt.js'
 import { withSpinner } from '../utils/spinner.js'
 import { ApiRequestError, CLIError, ExitCode } from '../utils/errors.js'
@@ -319,6 +320,6 @@ incidentCommand.command('postmortem <id>')
     id = await resolveIncidentId(id)
     const { data } = await withSpinner('Fetching post-mortem', () => withRouteCheck(() => createAuthenticatedClient().get<{ postmortem: unknown; markdown: string | null }>(`/api/sre/incidents/${encodeURIComponent(id)}/postmortem`)))
     if (getOutputFormat() === 'json') outputDetail(data)
-    else if (data.markdown) process.stdout.write(`${[...data.markdown].filter((c) => c === '\n' || c === '\t' || (c >= ' ' && c !== '\u007f')).join('')}\n`)
+    else if (data.markdown) process.stdout.write(`${redactText([...data.markdown].filter((c) => c === '\n' || c === '\t' || (c >= ' ' && c !== '\u007f')).join(''))}\n`)
     else logger.info('No post-mortem yet')
   })

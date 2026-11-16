@@ -371,15 +371,16 @@ export function registerMcpTools(server: McpServer, ctx: McpCallContext): void {
     return { events: events.map((e) => ({ id: e.id, eventType: e.eventType, actorType: e.actorType, actorUserId: e.actorUserId, createdAt: iso(e.createdAt), data: e.eventData ? safeText(JSON.stringify(e.eventData), 1000) : null })) };
   });
 
-  tool("list_notification_channels", "List the project's notification channels: name, type, webhook preset, enabled and delivery health. Configuration, URLs and credentials are never returned." + UNTRUSTED, "notification", {}, async () => {
+  tool("list_notification_channels", "List the project's notification channels: name, type, webhook preset, enabled and delivery health. Configuration, URLs and credentials are never returned." + UNTRUSTED, "notification", page, async ({ limit, cursor }) => {
     const rows = await db
       .select({ id: notificationProviders.id, name: notificationProviders.name, type: notificationProviders.type, isEnabled: notificationProviders.isEnabled, config: notificationProviders.config })
       .from(notificationProviders)
-      .where(scope(notificationProviders))
+      .where(scope(notificationProviders, [cursor ? lt(notificationProviders.id, cursor) : undefined]))
       .orderBy(desc(notificationProviders.id))
-      .limit(MAX_LIMIT);
-    const health = await loadProviderHealth(rows.map((r) => r.id));
-    return { channels: rows.map((r) => {
+      .limit(limit + 1);
+    const { items, nextCursor } = paged(rows, limit);
+    const health = await loadProviderHealth(items.map((r) => r.id));
+    return { nextCursor, channels: items.map((r) => {
       // Only the preset name is read from the decrypted config; an undecryptable one just has none.
       let preset: string | null = null;
       if (r.type === "webhook") {
