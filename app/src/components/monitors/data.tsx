@@ -9,7 +9,7 @@ import {
   ChevronsLeftRightEllipsis,
   ArrowLeftRight,
   Plug,
-  HeartPulse,
+  Activity,
 } from "lucide-react";
 import { typeText } from "@/lib/type-tones";
 import { PlaywrightLogo } from "@/components/logo/playwright-logo";
@@ -100,7 +100,7 @@ export const monitorTypes = [
   {
     label: "Heartbeat Monitor",
     value: "heartbeat",
-    icon: HeartPulse,
+    icon: Activity,
     color: typeText("monitor", "heartbeat"),
     description: "Get alerted when a cron job, backup or scheduled agent stops checking in",
   },

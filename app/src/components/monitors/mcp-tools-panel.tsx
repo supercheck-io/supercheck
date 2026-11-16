@@ -100,7 +100,7 @@ export function McpToolsPanel({ baseline, changes, pending = false, failure, now
     <Card className="shadow-sm" data-testid="mcp-tools-panel">
       <CardHeader className="pb-2">
         <CardTitle className="flex items-center gap-2 text-lg font-semibold">
-          <Plug className="h-4 w-4 text-type-orchid" aria-hidden />
+          <Plug className="h-4 w-4 text-type-purple" aria-hidden />
           Tools
           {baseline && (
             <span className="text-sm font-normal text-muted-foreground" data-testid="mcp-tool-count">

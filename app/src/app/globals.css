@@ -62,8 +62,6 @@
   --type-lime: oklch(0.648 0.2 131.684);
   --type-clay: oklch(0.55 0.1 50);
   --type-olive: oklch(0.5 0.1 115);
-  --type-orchid: oklch(0.58 0.21 355);
-  --type-magenta: oklch(0.591 0.293 322.896);
   --organization: oklch(0.52 0.1 80);
   --superadmin: oklch(0.59 0.235 350);
   --statuspage: var(--success-strong);
@@ -129,8 +127,6 @@
   --type-lime: oklch(0.841 0.238 128.85);
   --type-clay: oklch(0.74 0.09 55);
   --type-olive: oklch(0.76 0.1 118);
-  --type-orchid: oklch(0.76 0.15 355);
-  --type-magenta: oklch(0.74 0.238 322.16);
   --organization: oklch(0.78 0.11 85);
   --superadmin: oklch(0.72 0.2 350);
   --statuspage: var(--success-strong);
@@ -191,8 +187,6 @@
   --color-type-lime: var(--type-lime);
   --color-type-clay: var(--type-clay);
   --color-type-olive: var(--type-olive);
-  --color-type-orchid: var(--type-orchid);
-  --color-type-magenta: var(--type-magenta);
   --color-organization: var(--organization);
   --color-superadmin: var(--superadmin);
   --color-statuspage: var(--statuspage);
