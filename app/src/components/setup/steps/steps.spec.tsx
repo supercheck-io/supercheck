@@ -10,6 +10,17 @@ import { StatusPageStep } from "./status-page-step";
 import { responseError } from "./step-types";
 import type { SetupDraft } from "@/lib/setup/draft-schema";
 
+// Radix Select needs pointer-capture and scroll APIs that jsdom lacks.
+beforeAll(() => {
+  Element.prototype.hasPointerCapture ??= () => false;
+  Element.prototype.releasePointerCapture ??= () => undefined;
+  Element.prototype.scrollIntoView ??= () => undefined;
+});
+const pick = (label: string, option: string | RegExp) => {
+  fireEvent.keyDown(screen.getByLabelText(label), { key: "Enter" });
+  fireEvent.click(screen.getByRole("option", { name: option }));
+};
+
 const PROVIDER = "00000000-0000-4000-8000-000000000001";
 const fetchMock = jest.fn();
 beforeEach(() => {
@@ -56,7 +67,7 @@ describe("AlertsStep", () => {
   it("shows the repeat interval and saves a change", () => {
     const d = drafting({ alerts: { providerIds: [], repeatUntilAck: { enabled: true, repeatMinutes: 15 } } });
     render(<AlertsStep {...makeStepProps({ patchDraft: d.patchDraft, draft: d.get() })} />);
-    fireEvent.change(screen.getByLabelText("Repeat every"), { target: { value: "30" } });
+    pick("Repeat every", "30 min");
     expect(d.get().alerts?.repeatUntilAck).toEqual({ enabled: true, repeatMinutes: 30 });
   });
 
@@ -89,7 +100,7 @@ describe("AlertsStep", () => {
     fetchMock.mockImplementation(() => json({ id: PROVIDER }, 201));
     render(<AlertsStep {...makeStepProps({ userEmail: null })} />);
     fireEvent.click(screen.getByRole("button", { name: /^Webhook/ }));
-    fireEvent.change(screen.getByLabelText("Service"), { target: { value: "pagerduty" } });
+    pick("Service", /pagerduty/i);
     fireEvent.change(screen.getByLabelText("Endpoint URL"), { target: { value: "https://events.pagerduty.com/v2/enqueue" } });
     fireEvent.click(screen.getByRole("button", { name: "Save channel" }));
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
@@ -140,7 +151,7 @@ describe("MonitorsStep", () => {
     rerender(<MonitorsStep {...makeStepProps({ patchDraft: d.patchDraft, draft: d.get() })} />);
     fireEvent.click(screen.getAllByRole("checkbox")[1]);
     expect(d.get().monitors?.pages).toHaveLength(1);
-    fireEvent.change(screen.getByLabelText("Check every"), { target: { value: "10" } });
+    pick("Check every", "10 min");
     expect(d.get().monitors?.frequencyMinutes).toBe(10);
   });
 

@@ -7,6 +7,7 @@ import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { TableBadge } from "@/components/ui/table-badge";
 import { WEBHOOK_PRESETS, getWebhookPreset } from "@/lib/notification-providers/webhook-presets";
@@ -103,18 +104,18 @@ function ChannelForm({
       {channel.type === "webhook" ? (
         <div className="space-y-1.5">
           <Label htmlFor="setup-webhook-preset">Service</Label>
-          <select
-            id="setup-webhook-preset"
-            className="h-9 w-full rounded-md border bg-background px-3 text-sm"
-            value={presetId}
-            onChange={(event) => setPresetId(event.target.value)}
-          >
-            {WEBHOOK_PRESETS.map((preset) => (
-              <option key={preset.id} value={preset.id}>
-                {preset.label}
-              </option>
-            ))}
-          </select>
+          <Select value={presetId} onValueChange={setPresetId}>
+            <SelectTrigger id="setup-webhook-preset" className="w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {WEBHOOK_PRESETS.map((preset) => (
+                <SelectItem key={preset.id} value={preset.id}>
+                  {preset.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           <p className="text-xs text-muted-foreground">{getWebhookPreset(presetId)?.summary}</p>
         </div>
       ) : null}
@@ -244,19 +245,22 @@ export function AlertsStep({ draft, patchDraft, features, permissions, readOnly,
               <Label htmlFor="setup-repeat-every" className="text-xs">
                 Repeat every
               </Label>
-              <select
-                id="setup-repeat-every"
-                className="h-8 rounded-md border bg-background px-2 text-sm"
-                value={repeat.repeatMinutes}
+              <Select
+                value={String(repeat.repeatMinutes)}
                 disabled={readOnly || !permissions.canUpdateProject}
-                onChange={(event) => setRepeat({ enabled: true, repeatMinutes: Number(event.target.value) })}
+                onValueChange={(value) => setRepeat({ enabled: true, repeatMinutes: Number(value) })}
               >
-                {REPEAT_OPTIONS.map((minutes) => (
-                  <option key={minutes} value={minutes}>
-                    {minutes} min
-                  </option>
-                ))}
-              </select>
+                <SelectTrigger id="setup-repeat-every" className="h-8 w-28">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {REPEAT_OPTIONS.map((minutes) => (
+                    <SelectItem key={minutes} value={String(minutes)}>
+                      {minutes} min
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           ) : null}
         </section>
