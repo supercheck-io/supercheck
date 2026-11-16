@@ -2395,8 +2395,9 @@ test('public MCP tool answers', async ({ agent }) => {
     expect(run.durationMs).toBeLessThan(20_000); // and answered in under 20 seconds
   });
 
-  // All 3 attempts must pass. Lower this (for example 0.8) for agents that are allowed to slip now and then.
-  expect(result.passRate).toBe(1);
+  // The share of attempts that must pass: 1 = all 3. With 3 attempts, 0.66 allows one failure;
+  // raise the repeat count for finer steps (with 5 attempts, 0.8 allows one).
+  expect(result.passRate).toBeGreaterThanOrEqual(1);
 });
 `,
   },
