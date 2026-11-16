@@ -1,0 +1,73 @@
+---
+title: Agent Test
+description: Test your own AI agent with repeated runs and a pass rate
+icon: Bot
+---
+
+An agent test calls an AI agent you run (a chat model, a support bot, an A2A agent or an MCP tool) and checks the replies. Agent replies vary, so a test sends the same prompt several times and asserts on the **pass rate** instead of one answer.
+
+Agent tests run in the cloud only. You can create, edit and run them in the [Playground](/docs/app/automate/playground), schedule them in a [job](/docs/app/automate/jobs) or watch them with a synthetic monitor.
+
+## Example
+
+```typescript
+import { test, expect } from '@supercheck/agent-test';
+
+test('support bot states the refund policy', async ({ agent }) => {
+  const bot = agent.connect({
+    kind: 'openai', // 'openai' | 'http' | 'a2a' | 'mcp'
+    url: getVariable('BOT_URL'),
+    apiKey: getSecret('BOT_KEY'),
+    model: 'support-bot',
+  });
+
+  const result = await agent.repeat(10, async () => {
+    const run = await bot.send('What is your refund policy?');
+    expect(run.text).toContain('30 days');
+    expect(run.toolNames).not.toContain('delete_account');
+    expect(run.durationMs).toBeLessThan(20_000);
+    expect(run.usage.totalTokens).toBeLessThan(4_000);
+  });
+
+  expect(result.passRate).toBeGreaterThanOrEqual(0.8);
+});
+```
+
+Pass keys in yourself with `getSecret` and URLs with `getVariable`; nothing is added to the test for you. The test fails when its own assertions fail, as with any other test.
+
+## API
+
+| API | Meaning |
+|---|---|
+| `agent.connect(options)` | Returns a client. `kind: "openai"`: chat completions at `url` (`model`, optional `system`, `tools`). `kind: "http"`: `POST url` with `body(message)` and `reply: "json.path"`. `kind: "a2a"`: A2A 1.0 `SendMessage` over JSON-RPC (`legacy: true` sends the 0.3 `message/send`). `kind: "mcp"`: calls one tool of an MCP server, with the message as the named argument. Common options: `apiKey`, `headers`, `timeoutMs` (default 30,000, max 120,000) |
+| `client.send(message, { conversation? })` | One turn. Returns `{ text, json?, toolCalls: [{ name, arguments }], toolNames, usage: { promptTokens, completionTokens, totalTokens, cost? }, durationMs, raw }` |
+| `agent.repeat(n, fn, { concurrency? })` | Runs `fn` n times (1 to 20, concurrency 1 to 5, default 1). A throw inside `fn` is one failed attempt. It has a 200-second budget: when that is used up it starts no further attempt and counts each one left as failed with the message "not run: time budget used". Returns `{ attempts, passed, failed, passRate, failures: [{ attempt, message }] }`. It does not throw; assert on `passRate` |
+| `agent.judge(text, rubric, { url, apiKey, model })` | Asks your own OpenAI-compatible model to grade the text against the rubric. Returns `{ pass, reason }` |
+| `expect` | Playwright's `expect`, unchanged |
+
+The run page shows an **Agent results** card with the pass rate, attempts, tokens, slowest attempt, tools called and the failures. Failure messages are clipped to 200 characters and may quote the agent's reply. Prompts and replies are left out of the run record, the API and MCP, but the saved Playwright report keeps the full transcript (with your API key and credential headers redacted), like any other report content.
+
+## Limits
+
+- **Tools are only those the agent reports.** For `openai` they are the `tool_calls` the agent returns; for `a2a`, what the task history exposes. A black-box HTTP agent reports none.
+- **A run lasts at most 5 minutes**, and in a job that limit is shared by every test in the job. Keep agent tests in their own job.
+- **You pay for the calls.** Calls to your agent and to your judge model are billed by their provider, not by Supercheck. AI grading uses your own judge endpoint and key (`agent.judge`); it does not use Supercheck AI credits.
+- **Public addresses only.** The test runs in the same sandbox as other tests: an agent on a private or internal address is unreachable. Expose it on a public URL.
+- **Remote only.** `supercheck test run --local` and `job run --local` refuse agent tests.
+
+## Watch an agent with a synthetic monitor
+
+Pick an agent test in a [synthetic monitor](/docs/app/monitor#synthetic-monitor) to check your agent on a schedule. The monitor shows the pass rate of each run.
+
+Plan the number of calls before you pick an interval. A 5-minute interval is 8,640 runs a month (30 days), so a test that repeats 10 times sends about 86,400 calls a month to your agent for each location. A 15-minute interval cuts that to 28,800.
+
+For an agent test the monitor form defaults to a failure threshold of 3 and a `sev3` incident. A single failed run sends a **Single failed agent run** warning to your alert channels and opens no incident; the incident opens after 3 failed runs in a row. See [Alerts](/docs/app/communicate/alerts#warnings).
+
+## In repositories
+
+With the [CLI](/docs/cli/configuration#test-metadata-annotations), an agent test is a normal `*.pw.ts` file whose first line is `// @type agent`. `supercheck pull` writes the line and `deploy` sends the test as an agent test.
+
+```typescript
+// @type agent
+import { test, expect } from '@supercheck/agent-test';
+```

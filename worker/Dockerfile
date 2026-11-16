@@ -92,6 +92,14 @@ RUN --mount=type=cache,target=/root/.npm,sharing=locked \
     npm ci --omit=dev --legacy-peer-deps --no-audit --no-fund --max-old-space-size=4096
 
 COPY --from=builder --chown=pwuser:pwuser /worker/dist ./dist
+
+# Agent tests import @supercheck/agent-test, and execution pods run this same image. nest build compiles it
+# into dist/src/agent-test but does not emit package.json, so that comes from source. The ownership is
+# fixed by the chown of /worker below.
+RUN mkdir -p node_modules/@supercheck && \
+    cp -r dist/src/agent-test node_modules/@supercheck/agent-test && \
+    rm -f node_modules/@supercheck/agent-test/*.spec.*
+COPY --from=builder /worker/src/agent-test/package.json ./node_modules/@supercheck/agent-test/package.json
 COPY --from=builder --chown=pwuser:pwuser /worker/playwright.config.js ./
 
 # Create directories for test execution with proper permissions

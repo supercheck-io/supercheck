@@ -10,6 +10,7 @@ import { resumeRefusalResponse, withResumeWithinPlan } from "@/lib/middleware/pl
 import { ensureSubscribedForResume, monitorResumeBlockedResponse, subscriptionDeniedResponse } from "@/lib/execution/trial-interval-response";
 import { hasPermissionForUser, forbiddenOrNotFound } from '@/lib/rbac/middleware';
 import { logAuditEvent } from "@/lib/audit-logger";
+import { assertAgentMonitorRunnable, thrownStatusResponse } from "@/lib/monitor-write";
 import { reconcileMonitorSchedule } from "@/lib/monitor-schedule-reconcile";
 import { createLogger } from "@/lib/logger/index";
 
@@ -87,6 +88,17 @@ export async function PATCH(
     // A trial that ended pauses monitors; only subscribing may undo that.
     const resumeBlocked = await monitorResumeBlockedResponse(currentMonitor.organizationId, currentMonitor.status, { status });
     if (resumeBlocked) return resumeBlocked;
+
+    // Resuming an agent-test monitor needs workers with the agent fixture in each of its locations.
+    if (currentMonitor.status === "paused" && status !== "paused") {
+      try {
+        await assertAgentMonitorRunnable(currentMonitor);
+      } catch (error) {
+        const thrown = thrownStatusResponse(error);
+        if (thrown) return thrown;
+        throw error;
+      }
+    }
 
     // Update the monitor status in the database. Hold the live project row (FOR SHARE) so a
     // concurrent project delete cannot pause the monitor and then be overwritten by this write.

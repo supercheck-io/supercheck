@@ -293,6 +293,42 @@ describe("MCP tools", () => {
     expect(lastWhere().params).toEqual(expect.arrayContaining(["browser", "high", "%log\\%in%"]));
   });
 
+  it("list_tests accepts the agent type", async () => {
+    expect(schemas.get("list_tests")!.type.safeParse("agent").success).toBe(true);
+    queue.push([]);
+    await handlers.get("list_tests")!({ limit: 5, type: "agent" });
+    expect(lastWhere().params).toContain("agent");
+  });
+
+  it("get_run returns agent numbers and tool names, redacted and capped, never transcripts", async () => {
+    const agentMetadata = {
+      tests: [{
+        testId: id(5), title: "bot", attempts: 10, passed: 8, passRate: 0.8, totalTokens: 1200, judgeTokens: 0, toolNames: ["search"], durationMs: 5000, slowestMs: 900,
+        failures: [{ attempt: 3, message: "bad reply postgres://a:b@db/x" }],
+        transcript: [{ prompt: "SECRET PROMPT", reply: "SECRET REPLY" }],
+      }],
+      transcript: "SECRET TOP",
+    };
+    queue.push([{ id: id(1), jobId: null, status: "failed", trigger: "manual", location: null, durationMs: 1, startedAt: null, completedAt: null, errorDetails: null, agentMetadata }]);
+    const res = await handlers.get("get_run")!({ id: id(1) });
+    expect(res.structuredContent.run).toMatchObject({ agent: { tests: [{ passRate: 0.8, attempts: 10, toolNames: ["search"], failures: [{ attempt: 3 }] }] } });
+    expect(JSON.stringify(res)).not.toMatch(/SECRET|a:b@|agentMetadata/);
+    // Scoped to the connection's project (the organization check is a subquery on projects).
+    expect(lastWhere().params).toEqual(expect.arrayContaining([ctx.projectId, id(1)]));
+  });
+
+  it("get_run omits agent for a run without a summary and is denied without run view permission", async () => {
+    queue.push([{ id: id(1), jobId: null, status: "passed", trigger: "manual", location: null, durationMs: 1, startedAt: null, completedAt: null, errorDetails: null, agentMetadata: null }]);
+    expect((await handlers.get("get_run")!({ id: id(1) })).structuredContent.run).not.toHaveProperty("agent");
+    const { McpAccessDeniedError } = jest.requireActual("./context");
+    assertCanView.mockImplementation(() => {
+      throw new McpAccessDeniedError("forbidden");
+    });
+    const before = calls.length;
+    expect(await handlers.get("get_run")!({ id: id(1) })).toMatchObject({ isError: true, structuredContent: { code: "forbidden" } });
+    expect(calls.length).toBe(before);
+  });
+
   it("get_monitor returns alert and incident settings, never channels", async () => {
     queue.push([{ id: id(1), name: "m", description: null, type: "http_request", target: "https://example.com", status: "up", enabled: true, frequencyMinutes: 5, lastCheckAt: null, config: {}, alertConfig: { enabled: true, alertOnFailure: true, notificationProviders: ["prov-secret"], incidentEnabled: false, incidentSeverity: "sev1", autoResolveIncident: false } }]);
     const res = await handlers.get("get_monitor")!({ id: id(1) });
@@ -428,5 +464,6 @@ describe("MCP tools", () => {
   it("points to CLI commands for requirements, pull and diff", async () => {
     const res = await handlers.get("prepare_local_authoring")!({});
     expect(res.structuredContent.commands).toEqual(expect.arrayContaining(["supercheck requirement --help", "supercheck pull", "supercheck diff", "supercheck deploy"]));
+    expect(JSON.stringify(res.structuredContent)).toContain("// @type agent");
   });
 });

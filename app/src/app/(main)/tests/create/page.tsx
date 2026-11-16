@@ -19,6 +19,7 @@ const testDescriptions: Record<string, string> = {
   api: "Test REST APIs, validate responses, and verify integrations.",
   database: "Query and test database operations with full schema verification.",
   custom: "Create advanced integration tests combining multiple approaches.",
+  agent: "Test your AI agent: send prompts, check replies and tool calls, require a pass rate.",
   performance:
     "Load test with k6, simulate concurrent users, and monitor metrics.",
 };

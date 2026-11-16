@@ -45,10 +45,17 @@ export const WARNING_KINDS = {
     help: "Notify when a reply uses more tokens than Warn total tokens. Sends nothing until that limit is set.",
     defaultOn: true,
   },
+  agent_run_failed: {
+    monitorTypes: ["synthetic_test"],
+    agentTestOnly: true,
+    label: "Single failed agent run",
+    help: "An agent test run failed before the failure threshold. Notifies only; never opens an incident.",
+    defaultOn: true,
+  },
 } as const satisfies Record<
   string,
-  // aiEndpointOnly: listed only for HTTP monitors that use the AI endpoint preset.
-  { monitorTypes: readonly MonitorType[]; aiEndpointOnly?: true; label: string; help: string; defaultOn: boolean }
+  // aiEndpointOnly: listed only for HTTP monitors that use the AI endpoint preset; agentTestOnly: only for synthetic monitors on an agent test.
+  { monitorTypes: readonly MonitorType[]; aiEndpointOnly?: true; agentTestOnly?: true; label: string; help: string; defaultOn: boolean }
 >;
 
 export type WarningKind = keyof typeof WARNING_KINDS;
@@ -57,11 +64,15 @@ export function isWarningKind(kind: string): kind is WarningKind {
   return Object.prototype.hasOwnProperty.call(WARNING_KINDS, kind);
 }
 
-/** Kinds offered for this monitor; `aiEndpoint` adds the AI endpoint preset's kinds. Normalization keeps all type kinds. */
-export function warningKindsForMonitorType(type: string, aiEndpoint = false): WarningKind[] {
+/** Kinds offered for this monitor; `aiEndpoint` / `agentTest` add the AI endpoint preset's and agent test's kinds (a bare boolean means `aiEndpoint`). Normalization keeps all type kinds. */
+export function warningKindsForMonitorType(
+  type: string,
+  options: boolean | { aiEndpoint?: boolean; agentTest?: boolean } = {},
+): WarningKind[] {
+  const { aiEndpoint, agentTest } = typeof options === "boolean" ? { aiEndpoint: options, agentTest: false } : options;
   return (Object.keys(WARNING_KINDS) as WarningKind[]).filter((kind) => {
-    const def: { monitorTypes: readonly string[]; aiEndpointOnly?: true } = WARNING_KINDS[kind];
-    return def.monitorTypes.includes(type) && (aiEndpoint || !def.aiEndpointOnly);
+    const def: { monitorTypes: readonly string[]; aiEndpointOnly?: true; agentTestOnly?: true } = WARNING_KINDS[kind];
+    return def.monitorTypes.includes(type) && (aiEndpoint || !def.aiEndpointOnly) && (agentTest || !def.agentTestOnly);
   });
 }
 
@@ -72,7 +83,7 @@ export function normalizeWarningToggles(
 ): Record<string, boolean> | undefined {
   if (!warnings || typeof warnings !== "object" || Array.isArray(warnings)) return undefined;
   // Every kind of the type, preset-only ones included: an AI endpoint toggle must persist to be turned off.
-  const allowed = new Set<string>(warningKindsForMonitorType(type, true));
+  const allowed = new Set<string>(warningKindsForMonitorType(type, { aiEndpoint: true, agentTest: true }));
   const out: Record<string, boolean> = {};
   for (const [kind, value] of Object.entries(warnings as Record<string, unknown>)) {
     if (allowed.has(kind) && typeof value === "boolean") out[kind] = value;

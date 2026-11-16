@@ -321,6 +321,7 @@ export function pullTests(tests: RemoteTest[], cwd: string, summary: PullSummary
       // Prefer JSDoc injection if a block exists, otherwise use single-line comments.
       script = setScriptMetadata(script, 'title', test.title)
       if (test.priority) script = setScriptMetadata(script, 'priority', test.priority)
+      if (['agent', 'api', 'database', 'custom'].includes(test.type)) script = setScriptMetadata(script, 'type', test.type)
       const tagNames = (test.tags ?? []).map((tag) => tag.name).sort()
       if (tagNames.length > 0) script = setScriptMetadata(script, 'tags', tagNames.join(', '))
 

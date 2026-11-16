@@ -56,7 +56,7 @@ export const testSchema = z.object({
   id: z.string(),
   name: z.string(),
   description: z.string().nullable(),
-  type: z.enum(["browser", "api", "custom", "database", "performance"]),
+  type: z.enum(["browser", "api", "custom", "database", "agent", "performance"]),
   status: z.enum(["running", "passed", "failed", "error"]).optional(),
   lastRunAt: z.string().nullable().optional(),
   duration: z.number().nullable().optional(), // in milliseconds

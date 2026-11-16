@@ -168,6 +168,7 @@ export default function TestSelector({
         case "api":
         case "custom":
         case "database":
+        case "agent":
         case "performance":
           mappedType = test.type;
           break;

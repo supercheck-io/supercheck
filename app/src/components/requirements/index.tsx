@@ -52,6 +52,7 @@ import {
     ArrowLeftRight,
     Database,
     SquareFunction,
+    Bot,
     Sparkles,
 } from "lucide-react";
 import {
@@ -527,7 +528,7 @@ export default function RequirementsPage() {
                                                     </PopoverContent>
                                                 </Popover>
                                             </div>
-                                            <div className="grid grid-cols-5 gap-2">
+                                            <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
                                                 <button
                                                     onClick={() => router.push(`/playground?scriptType=browser&requirementId=${selectedRequirement.id}`)}
                                                     className={`group flex flex-col items-center gap-2 p-4 rounded-lg border border-border/60 bg-background hover:bg-accent ${TYPE_HOVER_BORDER[typeTone("test", "browser")]} transition-all duration-200`}
@@ -563,6 +564,15 @@ export default function RequirementsPage() {
                                                         <SquareFunction className="h-5 w-5" />
                                                     </div>
                                                     <span className="text-xs font-medium text-foreground">Custom</span>
+                                                </button>
+                                                <button
+                                                    onClick={() => router.push(`/playground?scriptType=agent&requirementId=${selectedRequirement.id}`)}
+                                                    className={`group flex flex-col items-center gap-2 p-4 rounded-lg border border-border/60 bg-background hover:bg-accent ${TYPE_HOVER_BORDER[typeTone("test", "agent")]} transition-all duration-200`}
+                                                >
+                                                    <div className={`p-2.5 rounded-lg ${TYPE_CHIP[typeTone("test", "agent")]} transition-colors`}>
+                                                        <Bot className="h-5 w-5" />
+                                                    </div>
+                                                    <span className="text-xs font-medium text-foreground">Agent</span>
                                                 </button>
                                                 <button
                                                     onClick={() => router.push(`/playground?scriptType=performance&requirementId=${selectedRequirement.id}`)}

@@ -374,6 +374,7 @@ export async function restoreTrialSuspensions(
       .map((row) => row.resourceId);
     const now = new Date();
 
+    // shortcut: system resume skips the agent-worker gate (it must not fail), so an agent monitor can queue during the rollout window; upgrade if that proves noisy.
     // A resumed monitor starts as pending so its first check sets the real state.
     const resumed = monitorIds.length
       ? await tx

@@ -555,6 +555,9 @@ export function MonitorDetailClient({
 
   // MCP Monitor: tool count, protocol and server identity come from the latest check; the tool list from the stored baseline
   const isMcp = monitor.type === "mcp_server";
+  // Synthetic monitors on an agent test store details.agent; the column shows when any loaded result (not just this page) has it, so paging does not toggle it.
+  const agentPassRate = (r: { details?: unknown }) => (r.details as { agent?: { passRate?: unknown } } | undefined)?.agent?.passRate;
+  const showPassRate = monitor.type === "synthetic_test" && [...paginatedTableResults, ...(monitor.recentResults ?? [])].some((r) => typeof agentPassRate(r) === "number");
   const latestMcp = isMcp ? latestResult?.details?.mcp : undefined;
   const mcpServer = latestMcp?.serverName
     ? `${latestMcp.serverName}${latestMcp.serverVersion ? ` ${latestMcp.serverVersion}` : ""}`
@@ -1294,7 +1297,7 @@ export function MonitorDetailClient({
                   </div>
                 )}
                 <div className="w-full">
-                  <table className={`w-full ${aiEndpoint ? "min-w-[850px]" : isMcp ? "min-w-[740px]" : "min-w-[640px]"} table-fixed divide-y divide-border`}>
+                  <table className={`w-full ${aiEndpoint ? "min-w-[850px]" : isMcp || showPassRate ? "min-w-[740px]" : "min-w-[640px]"} table-fixed divide-y divide-border`}>
                     <colgroup>
                       <col className="w-[64px]" />
                       <col className="w-[192px]" />
@@ -1303,6 +1306,7 @@ export function MonitorDetailClient({
                       {aiEndpoint && <col className="w-[112px]" />}
                       {aiEndpoint && <col className="w-[96px]" />}
                       {isMcp && <col className="w-[84px]" />}
+                      {showPassRate && <col className="w-[96px]" />}
                       <col />
                     </colgroup>
                     <thead className="bg-background sticky top-0 z-10 border-b">
@@ -1355,6 +1359,14 @@ export function MonitorDetailClient({
                             Tools
                           </th>
                         )}
+                        {showPassRate && (
+                          <th
+                            scope="col"
+                            className="px-4 py-3 text-left text-xs font-medium text-muted-foreground whitespace-nowrap"
+                          >
+                            Pass rate
+                          </th>
+                        )}
                         <th
                           scope="col"
                           className="px-4 py-3 text-left text-xs font-medium text-muted-foreground whitespace-nowrap"
@@ -1369,7 +1381,7 @@ export function MonitorDetailClient({
                         // Initial loading state (no data yet)
                         <tr>
                           <td
-                            colSpan={(monitor.type === "synthetic_test" ? 6 : 5) + (aiEndpoint ? 2 : 0) + (isMcp ? 1 : 0)}
+                            colSpan={(monitor.type === "synthetic_test" ? 6 : 5) + (aiEndpoint ? 2 : 0) + (isMcp ? 1 : 0) + (showPassRate ? 1 : 0)}
                             className="text-center relative"
                             style={{ height: "320px" }}
                           >
@@ -1491,6 +1503,11 @@ export function MonitorDetailClient({
                                   {typeof result.details?.mcp?.toolCount === "number" ? result.details.mcp.toolCount : "N/A"}
                                 </td>
                               )}
+                              {showPassRate && (
+                                <td className="px-4 py-[11.5px] whitespace-nowrap overflow-hidden text-ellipsis text-sm text-muted-foreground" data-testid="agent-row-pass-rate">
+                                  {typeof agentPassRate(result) === "number" ? `${Math.round((agentPassRate(result) as number) * 100)}%` : "N/A"}
+                                </td>
+                              )}
                               <td className="px-4 py-[11.5px] overflow-hidden text-sm text-muted-foreground">
                                 {monitor.type === "synthetic_test" ? (
                                   // Synthetic test: show report on failure, N/A on success
@@ -1557,7 +1574,7 @@ export function MonitorDetailClient({
                         // Empty state
                         <tr>
                           <td
-                            colSpan={(monitor.type === "synthetic_test" ? 6 : 5) + (aiEndpoint ? 2 : 0) + (isMcp ? 1 : 0)}
+                            colSpan={(monitor.type === "synthetic_test" ? 6 : 5) + (aiEndpoint ? 2 : 0) + (isMcp ? 1 : 0) + (showPassRate ? 1 : 0)}
                             className="px-4 py-16 text-center"
                           >
                             <div className="text-center space-y-3">

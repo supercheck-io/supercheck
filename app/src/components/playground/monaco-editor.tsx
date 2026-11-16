@@ -14,7 +14,7 @@ import { Maximize2, X, Loader2 } from "lucide-react";
 import { useMonacoPerformance } from "./use-monaco-performance";
 import { getCachedTypeDefs } from "@/components/monaco-prefetcher";
 import { registerMonacoThemes, getMonacoTheme } from "@/lib/monaco-config";
-import { loadPlaywrightEditorTypes } from "@/lib/playwright-editor-types";
+import { loadAgentTestEditorTypes, loadPlaywrightEditorTypes } from "@/lib/playwright-editor-types";
 
 interface MonacoEditorProps {
   value: string;
@@ -193,6 +193,7 @@ export const MonacoEditorClient = memo(
               }
             }
             await loadPlaywrightEditorTypes(monaco.languages.typescript.typescriptDefaults);
+            await loadAgentTestEditorTypes(monaco.languages.typescript.typescriptDefaults).catch((e) => console.warn("Agent test types unavailable", e));
           } catch (error) {
             console.error("Error in loadTypeDefinitions:", error);
           }

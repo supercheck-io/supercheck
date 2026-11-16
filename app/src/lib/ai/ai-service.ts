@@ -12,7 +12,7 @@ interface AIFixRequest {
   prompt: string;
   maxTokens?: number;
   temperature?: number;
-  testType?: "browser" | "api" | "custom" | "database";
+  testType?: "browser" | "api" | "custom" | "database" | "agent";
   // Optional rate limit context
   userId?: string;
   orgId?: string;

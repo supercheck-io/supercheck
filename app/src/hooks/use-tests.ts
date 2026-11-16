@@ -14,7 +14,8 @@ export interface Test {
     | "browser"
     | "database"
     | "custom"
-    | "performance";
+    | "performance"
+    | "agent";
   priority?: "low" | "medium" | "high";
   script?: string;
   createdAt: string;

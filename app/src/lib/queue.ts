@@ -16,7 +16,7 @@ import {
   invalidateLocationCache,
 } from "./location-registry";
 import { omitExecutionSecrets } from "./execution-payload";
-import { ExecutionQueueError } from "./execution-errors";
+import { AGENT_WORKERS_PENDING_MESSAGE, ExecutionQueueError } from "./execution-errors";
 
 /**
  * Admission check at enqueue. A shortfall caused only by in-flight runs is not a rejection:
@@ -134,6 +134,8 @@ export interface TestExecutionTask {
   projectId?: string;
   location?: string | null;
   metadata?: Record<string, unknown>;
+  /** Only sent for `agent`; absent keeps the worker's browser-test naming. */
+  testType?: "agent";
 }
 
 export interface JobExecutionTask {
@@ -142,6 +144,8 @@ export interface JobExecutionTask {
     id: string;
     script: string;
     name?: string;
+    /** Test type; the worker names an `agent` spec `.agent.spec.ts` (other values keep today's naming). */
+    type?: string;
   }>;
   runId: string; // Optional run ID to distinguish parallel executions of the same job
   originalJobId?: string; // The original job ID from the 'jobs' table
@@ -235,6 +239,23 @@ async function assertK6QueueAvailable(location: string): Promise<void> {
       "queue_unavailable",
       `No active k6 worker available for location "${location}". Retry after a worker starts heartbeating.`,
     );
+  }
+}
+
+/**
+ * Refuses an agent test while any live worker on the given queues runs an image without the agent fixture (no worker at all is fine: the job waits).
+ * The app rolls before the worker, so an old worker would otherwise fail the run at import.
+ */
+export async function assertAgentTestRunnable(queueNames: readonly string[]): Promise<void> {
+  let missing: string[];
+  try {
+    const { queuesMissingCapability } = await import("@/lib/worker-registry");
+    missing = await queuesMissingCapability(queueNames, "agent-test");
+  } catch (error) {
+    throw new ExecutionQueueError("queue_unavailable", "Unable to verify workers for agent tests", error);
+  }
+  if (missing.length > 0) {
+    throw new ExecutionQueueError("agent_workers_pending", AGENT_WORKERS_PENDING_MESSAGE);
   }
 }
 
@@ -1007,6 +1028,7 @@ export async function addTestToQueue(task: TestExecutionTask): Promise<{
 
   try {
     await assertExecutionQueueReady();
+    if (task.testType === "agent") await assertAgentTestRunnable([PLAYWRIGHT_QUEUE]);
     const { getCapacityManager } = await import("./capacity-manager");
     const capacityManager = await getCapacityManager();
 
@@ -1094,6 +1116,7 @@ export async function addJobToQueue(task: JobExecutionTask): Promise<{
 
   try {
     await assertExecutionQueueReady();
+    if (task.testScripts.some((t) => t.type === "agent")) await assertAgentTestRunnable([PLAYWRIGHT_QUEUE]);
     const { getCapacityManager } = await import("./capacity-manager");
     const capacityManager = await getCapacityManager();
 

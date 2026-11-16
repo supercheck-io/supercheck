@@ -39,7 +39,7 @@ jest.mock("@/lib/execution/trial-interval-response", () => ({
 }));
 jest.mock("@/lib/s3-cleanup", () => ({ createS3CleanupService: jest.fn() }));
 // The SQL merge of worker keys is covered in monitor-write.spec.ts and monitor-service.db.spec.ts; here the written config is inspected as an object.
-jest.mock("@/lib/monitor-write", () => ({ ...jest.requireActual("@/lib/monitor-write"), configKeepingWorkerKeys: (config: unknown) => config }));
+jest.mock("@/lib/monitor-write", () => ({ ...jest.requireActual("@/lib/monitor-write"), configKeepingWorkerKeys: (config: unknown) => config, assertAgentMonitorRunnable: jest.fn() }));
 jest.mock("@/lib/queue", () => ({ addMonitorExecutionJobToQueue: jest.fn() }));
 jest.mock("@/lib/location-registry", () => ({
   getWorkloadCapableLocationCodes: jest.fn().mockResolvedValue(["eu-central"]),
@@ -54,6 +54,8 @@ jest.mock("@/lib/worker-registry", () => ({ getActiveWorkerQueueNames: jest.fn()
 
 import { NextRequest } from "next/server";
 import { PATCH, PUT } from "./route";
+import { assertAgentMonitorRunnable } from "@/lib/monitor-write";
+import { ExecutionQueueError } from "@/lib/execution-errors";
 
 const ID = "00000000-0000-4000-8000-000000000002";
 const stored = {
@@ -509,5 +511,31 @@ describe("heartbeat edits (B6, B7)", () => {
   it("PATCH keeps stored warning toggles on an unrelated alert edit and drops unknown kinds", async () => {
     await call(PATCH, "PATCH", { alertConfig: { failureThreshold: 1, warnings: { made_up: true } } });
     expect((payload().alertConfig as { warnings: unknown }).warnings).toEqual({ heartbeat_late: true });
+  });
+});
+
+describe("PUT agent monitor gate", () => {
+  const synthetic = { ...stored, type: "synthetic_test", target: "", config: { testId: "00000000-0000-4000-8000-0000000000aa" } };
+  beforeEach(() => { findFirst.mockResolvedValue(synthetic); });
+
+  it("answers 503 AGENT_WORKERS_PENDING and writes nothing while workers are pending", async () => {
+    (assertAgentMonitorRunnable as jest.Mock).mockRejectedValueOnce(new ExecutionQueueError("agent_workers_pending", "pending"));
+    const res = await call(PUT, "PUT", { config: { testId: "00000000-0000-4000-8000-0000000000aa" } });
+    expect(res.status).toBe(503);
+    expect((await res.json()).code).toBe("AGENT_WORKERS_PENDING");
+    expect(set).not.toHaveBeenCalled();
+  });
+
+  it("gates a resume (status paused to active)", async () => {
+    findFirst.mockResolvedValue({ ...synthetic, enabled: false, status: "paused" });
+    await call(PUT, "PUT", { status: "up" });
+    expect(assertAgentMonitorRunnable).toHaveBeenCalledWith(expect.objectContaining({ type: "synthetic_test", projectId: "project-1", organizationId: "org-1" }));
+  });
+
+  it("does not gate a paused or disabled result", async () => {
+    await call(PUT, "PUT", { status: "paused" });
+    findFirst.mockResolvedValue({ ...synthetic, enabled: false, status: "paused" });
+    await call(PUT, "PUT", { name: "renamed" });
+    expect(assertAgentMonitorRunnable).not.toHaveBeenCalled();
   });
 });

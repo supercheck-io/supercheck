@@ -69,6 +69,7 @@ function mapToTestType(type: string | undefined): Test["type"] {
     case "api":
     case "custom":
     case "database":
+    case "agent":
     case "performance":
       return type; // Already valid
     default:
@@ -763,6 +764,7 @@ export default function Jobs() {
                                 Custom
                               </SelectItem>
                               <SelectItem value="database">Database</SelectItem>
+                              <SelectItem value="agent">Agent</SelectItem>
                             </SelectContent>
                           </Select>
                         </div>

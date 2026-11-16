@@ -336,6 +336,16 @@ jobs:
           cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/worker:buildcache
           cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/worker:buildcache,mode=max,ignore-error=true
 
+      # Agent tests import @supercheck/agent-test from this image (execution pods run it too), and the
+      # worker only reports the agent-test capability when it resolves. Runs the pushed digest for the
+      # runner's own platform; a failure stops the release before it is signed and deployed.
+      - name: Smoke test worker image (agent-test package)
+        env:
+          WORKER_DIGEST: ${{ steps.build-worker.outputs.digest }}
+        run: |
+          docker run --rm "$REGISTRY/$IMAGE_NAME/worker@$WORKER_DIGEST" \
+            node -e "require('@supercheck/agent-test')"
+
       # Associates commits and finalizes the Sentry release that the image builds
       # uploaded source maps to. Skipped without a token; never blocks a release.
       - name: Finalize Sentry release

@@ -32,7 +32,20 @@ export interface ScriptTypeValidationResult {
  * Rules:
  * - k6 scripts (importing from 'k6/*') MUST have type "performance"
  * - Non-k6 scripts MUST NOT have type "performance"
+ * - Scripts importing '@supercheck/agent-test' MUST have type "agent" (one-directional)
  */
+const AGENT_IMPORT = /(?:\bfrom|\bimport|\brequire)\s*\(?\s*['"`]@supercheck\/agent-test['"`]/;
+
+/** True when the script loads @supercheck/agent-test at runtime; comments and `import type` don't count. */
+export function importsAgentTest(script: string): boolean {
+  const code = script
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/(^|[^:])\/\/.*$/gm, "$1")
+    // Up to the type import's own module string only: semicolonless code must not swallow the next import.
+    .replace(/\bimport\s+type\b[^'"`]*['"`][^'"`]*['"`]/g, "");
+  return AGENT_IMPORT.test(code);
+}
+
 export function validateScriptTypeMatch(
   script: string,
   declaredType: TestType,
@@ -56,8 +69,16 @@ export function validateScriptTypeMatch(
     return {
       valid: false,
       error:
-        'Test type is "performance" but the script does not contain k6 imports. Performance tests require k6 scripts. Use a Playwright-based test type (browser, api, database, or custom) for non-k6 scripts.',
+        'Test type is "performance" but the script does not contain k6 imports. Performance tests require k6 scripts. Use a Playwright-based test type (browser, api, database, custom, or agent) for non-k6 scripts.',
       suggestedType: "browser",
+    };
+  }
+
+  if (declaredType !== "agent" && importsAgentTest(script)) {
+    return {
+      valid: false,
+      error: `Script imports @supercheck/agent-test but test type is "${declaredType}". Agent test scripts must use type "agent".`,
+      suggestedType: "agent",
     };
   }
 
@@ -84,7 +105,8 @@ export function normalizeTestType(value: unknown): TestType {
     normalized === "performance" ||
     normalized === "api" ||
     normalized === "database" ||
-    normalized === "custom"
+    normalized === "custom" ||
+    normalized === "agent"
   ) {
     return normalized;
   }

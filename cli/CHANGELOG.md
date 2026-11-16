@@ -6,6 +6,7 @@ Notable changes to `@supercheck/cli`. The format follows [Keep a Changelog](http
 
 ### Added
 
+- Agent tests: `test create --type agent`, and a `*.pw.ts` file with `// @type agent` deploys as an agent test. `test run --local` and `job run --local` refuse them (agent tests run in the cloud). `agent_run_failed` joins the default-on warnings. `skills authoring` covers `@supercheck/agent-test`.
 - Heartbeat monitors: `monitor create --type heartbeat --every <dur> [--grace <dur>]` (durations like `5m`, `1h`, `1d`) prints the ping URL once (`heartbeat.pingUrl` in `--json`); `monitor update` takes `--every` and `--grace`; `monitor heartbeat-url <id> [--rotate]` reveals or replaces the URL; `heartbeat ping <url> [--start|--fail]` sends a ping with no login, retries 429, 503 and network errors up to 3 times (honouring `Retry-After`, within about 60 s), accepts apps served under a sub-path, and exits 0 on 2xx. `monitor list` shows the heartbeat state (including `late`), interval with grace, and last ping.
 - Monitors-as-code: `type: 'heartbeat'`, `config.heartbeat.graceMinutes` and `alertConfig.warnings` (for example `{ heartbeat_late: true }`). Deploy prints a new heartbeat's ping URL once; pull never writes the URL or runtime state, and diff ignores them. Heartbeat tokens (`hb_…`) are masked in all other CLI output.
 - `maintenance list|get|create|end|extend|cancel|delete`: schedule maintenance windows from scripts, for example before a deploy.
@@ -22,6 +23,7 @@ Notable changes to `@supercheck/cli`. The format follows [Keep a Changelog](http
 
 ### Fixed
 
+- `pull` writes a `// @type` line for API, database, custom and agent tests, and `deploy` and `diff` read it. Before, these tests came back as browser tests on the next deploy.
 - `npx` works on Windows, and a blank `SUPERCHECK_URL` is ignored instead of breaking the CLI.
 - A rejected `SUPERCHECK_TOKEN` no longer suggests browser login.
 

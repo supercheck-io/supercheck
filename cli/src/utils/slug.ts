@@ -69,11 +69,14 @@ export function extractUuidFromFilename(filename: string): string | undefined {
 }
 
 /** Local-only annotations injected by `supercheck pull`; stripped before diff and deploy. */
-const METADATA_KEYS = 'title|priority|tags'
-type MetadataKey = 'title' | 'priority' | 'tags'
+const METADATA_KEYS = 'title|priority|tags|type'
+type MetadataKey = 'title' | 'priority' | 'tags' | 'type'
 
-const LINE_ENTRY = new RegExp(`^\\s*\\/\\/\\s*@(${METADATA_KEYS})\\s+(\\S.*?)\\s*$`)
-const DOC_ENTRY = new RegExp(`^(\\s*\\*\\s*)@(${METADATA_KEYS})\\s+(.*?)\\s*(\\*\\/)?\\s*$`)
+// `@type {import('x').Y}` is a JSDoc type expression, not our annotation.
+const LINE_ENTRY = new RegExp(`^\\s*\\/\\/\\s*@(${METADATA_KEYS})\\s+(?!\\s*\\{)(\\S.*?)\\s*$`)
+const DOC_ENTRY = new RegExp(`^(\\s*\\*\\s*)@(${METADATA_KEYS})\\s+(?!\\s*\\{)(.*?)\\s*(\\*\\/)?\\s*$`)
+
+const DOC_TYPE_WORD = /^(?:browser|api|database|custom|agent|performance|playwright|k6)$/i
 
 interface Header { kind: 'line' | 'jsdoc' | 'none'; first: number; last: number }
 
@@ -103,13 +106,15 @@ function entryAt(header: Header, line: string, index: number): { key: string; va
   }
   if (header.kind === 'jsdoc' && index > header.first && index <= header.last) {
     const m = DOC_ENTRY.exec(line)
+    // A JSDoc `@type string` is someone else's tag; only a known type word is ours.
+    if (m && m[2] === 'type' && !DOC_TYPE_WORD.test(m[3])) return undefined
     return m ? { key: m[2], value: m[3] } : undefined
   }
   return undefined
 }
 
 /**
- * Strip `@title`, `@priority` and `@tags` annotations from the script header (see `findHeader`).
+ * Strip `@title`, `@priority`, `@tags` and `@type` annotations from the script header (see `findHeader`).
  * They are a local-only convenience injected by `supercheck pull`, not part of the test.
  */
 export function stripTitleMetadata(script: string): string {
@@ -126,6 +131,32 @@ export function stripTitleMetadata(script: string): string {
   // Old pulls left one blank line after the leading `//` run; drop it with the run.
   if (header.kind === 'line' && out[header.first]?.trim() === '') out.splice(header.first, 1)
   return out.join('\n')
+}
+
+/** Whether the annotations live in a `// @key` run, a JSDoc block, or nowhere. */
+export function headerKind(script: string): Header['kind'] {
+  return findHeader(script.split('\n')).kind
+}
+
+const AGENT_IMPORT = /(?:\bfrom|\bimport|\brequire)\s*\(?\s*['"`]@supercheck\/agent-test['"`]/
+/** True when the script loads @supercheck/agent-test at runtime; comments and `import type` don't count. */
+export function importsAgentTest(script: string): boolean {
+  const code = script
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/(^|[^:])\/\/.*$/gm, '$1')
+    // Up to the type import's own module string only: semicolonless code must not swallow the next import.
+    .replace(/\bimport\s+type\b[^'"`]*['"`][^'"`]*['"`]/g, '')
+  return AGENT_IMPORT.test(code)
+}
+/** The test type a script declares: its `@type` header, else 'agent' when it imports the agent SDK. */
+export function scriptTestType(script: string): string | undefined {
+  return readScriptMetadata(script, 'type') ?? (importsAgentTest(script) ? 'agent' : undefined)
+}
+
+/** The non-browser, non-performance type a script declares, which can only run in the cloud. */
+export function remoteOnlyTestType(script: string): string | undefined {
+  const type = scriptTestType(script)?.toLowerCase()
+  return type && ['agent', 'api', 'database', 'custom'].includes(type) ? type : undefined
 }
 
 /** Reads a header annotation's value, or `undefined` when the header has none. */

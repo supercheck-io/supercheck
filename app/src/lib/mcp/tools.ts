@@ -40,6 +40,7 @@ import { storedRootCause } from "@/lib/sre/evidence-brief-summary";
 import { safeTarget, safeText } from "./redact";
 import { incidentsEnabled } from "@/lib/incident-settings";
 import { getNotificationPolicy } from "@/lib/sre/notification-policy";
+import { sanitizeAgentSummary } from "@/lib/agent-test/run-summary";
 import { heartbeatSummary } from "@/lib/heartbeat/state";
 
 const MAX_LIMIT = 50;
@@ -60,7 +61,7 @@ const idArg = z.string().uuid();
 const RUN_STATUSES = ["running", "passed", "failed", "error", "blocked", "queued"] as const;
 // `open` is a filter, not a stored status: every incident that is not resolved.
 const INCIDENT_STATUSES = ["open", "triggered", "investigating", "identified", "recommendations_ready", "user_applying_fix", "verifying", "resolved"] as const;
-const TEST_TYPES = ["browser", "api", "database", "custom", "performance"] as const;
+const TEST_TYPES = ["browser", "api", "database", "custom", "agent", "performance"] as const;
 const COVERAGE_STATUSES = ["covered", "failing", "missing"] as const;
 const MAX_CHILDREN = 100;
 const HTTP_METHODS = new Set(["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]);
@@ -280,15 +281,17 @@ export function registerMcpTools(server: McpServer, ctx: McpCallContext): void {
     return { runs: items.map(runDto), nextCursor };
   });
 
-  tool("get_run", "Get one run with a redacted, truncated error excerpt." + UNTRUSTED, "run", { id: idArg }, async ({ id }) => {
+  tool("get_run", "Get one run with a redacted, truncated error excerpt. For agent tests, failure messages are clipped to 200 characters and may quote the agent's reply; prompts and replies are never returned." + UNTRUSTED, "run", { id: idArg }, async ({ id }) => {
     const [r] = await db
-      .select({ ...runColumns, errorDetails: runs.errorDetails })
+      .select({ ...runColumns, errorDetails: runs.errorDetails, agentMetadata: sql<unknown>`${runs.metadata}->'agent'` })
       .from(runs)
       .where(runScope([eq(runs.id, id)]))
       .limit(1);
     if (!r) throw new NotFoundError("Run not found");
-    const { errorDetails, ...rest } = r;
-    return { run: { ...runDto(rest), error: safeText(errorDetails) } };
+    const { errorDetails, agentMetadata, ...rest } = r;
+    // Numbers, tool names and clipped failures only; never prompts or replies.
+    const agent = sanitizeAgentSummary({ agent: agentMetadata }, (value, max) => safeText(value, max) ?? "");
+    return { run: { ...runDto(rest), error: safeText(errorDetails), ...(agent ? { agent } : {}) } };
   });
 
   // Heartbeat state for heartbeat monitors (never the ping URL or token); undefined, so omitted, for other types.
@@ -798,6 +801,7 @@ export function registerMcpTools(server: McpServer, ctx: McpCallContext): void {
   });
 
   tool("prepare_local_authoring", "Commands for creating or editing tests, requirements and status pages, which are authored through the supercheck CLI rather than this server.", "project", {}, async () => ({
+    note: "In a repo, a test file's type comes from a `// @type <type>` header line, for example `// @type agent` (no line means browser).",
     commands: ["npm i -g @supercheck/cli", "supercheck login", "supercheck init", "supercheck test create", "supercheck deploy", "supercheck requirement --help", "supercheck pull", "supercheck diff"],
   }));
 }

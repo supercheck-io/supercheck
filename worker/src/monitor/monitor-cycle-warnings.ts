@@ -1,12 +1,14 @@
 import type { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import * as schema from '../db/schema';
 import type { MonitorConfig } from '../db/schema/types';
+import { evaluateAgentRunWarning } from './agent-run-warning';
 import { evaluateAiEndpointWarnings } from './ai-endpoint-warnings';
 import { evaluateMcpCycle, type McpToolsInput } from './mcp-cycle-evaluation';
 import type { WarningSender } from './monitor-warning-dispatch';
 
 type CycleResult = {
   isUp: boolean;
+  location: string;
   responseTimeMs?: number | null;
   details?: unknown;
 };
@@ -47,4 +49,6 @@ export async function evaluateCycleWarnings(
       results,
       tools,
     );
+  else if (monitor.type === 'synthetic_test')
+    await evaluateAgentRunWarning(db, alerts, monitor.id, results);
 }

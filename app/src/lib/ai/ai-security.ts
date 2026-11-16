@@ -153,7 +153,7 @@ export class AISecurityService {
   static sanitizeCodeOutput(
     code: string,
     options: {
-      testType?: "browser" | "api" | "custom" | "database" | "performance";
+      testType?: "browser" | "api" | "custom" | "database" | "performance" | "agent";
       strict?: boolean;
     } = {},
   ): string {
@@ -285,6 +285,7 @@ export class AISecurityService {
       "custom",
       "database",
       "performance",
+      "agent",
     ];
     if (!validTestTypes.includes(body.testType)) {
       throw new Error("Invalid test type");

@@ -34,6 +34,7 @@ test.describe('Tests UI lifecycle @tests', () => {
     await expect(page.getByRole('button', { name: /^API Test REST APIs/ })).toBeVisible();
     await expect(page.getByRole('button', { name: /^Database Query and test database/ })).toBeVisible();
     await expect(page.getByRole('button', { name: /^Custom Create advanced integration/ })).toBeVisible();
+    await expect(page.getByRole('button', { name: /^Agent Test your AI agent/ })).toBeVisible();
     await expect(page.getByRole('button', { name: /^Performance Load test with k6/ })).toBeVisible();
   });
 

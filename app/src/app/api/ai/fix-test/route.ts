@@ -216,7 +216,7 @@ export async function POST(request: NextRequest) {
           const aiResponse = await AIFixService.generateScriptFix({
             prompt: basicPrompt,
             temperature: 0.2,
-            testType: testType as "browser" | "api" | "custom" | "database",
+            testType: testType as "browser" | "api" | "custom" | "database" | "agent",
           });
           refundCredit = undefined; // content produced: keep the charge
 
@@ -289,7 +289,7 @@ export async function POST(request: NextRequest) {
       prompt,
       maxTokens: 2000,
       temperature: 0.1, // Low temperature for consistent, reliable fixes
-      testType: testType as "browser" | "api" | "custom" | "database",
+      testType: testType as "browser" | "api" | "custom" | "database" | "agent",
     });
     refundCredit = undefined; // content produced: keep the charge
 
@@ -302,7 +302,8 @@ export async function POST(request: NextRequest) {
           | "api"
           | "custom"
           | "database"
-          | "performance",
+          | "performance"
+          | "agent",
       }
     );
     const sanitizedExplanation = AISecurityService.sanitizeTextOutput(

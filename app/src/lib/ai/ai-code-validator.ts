@@ -217,7 +217,7 @@ export class AICodeValidator {
   validate(
     code: string,
     options: {
-      testType?: "browser" | "api" | "custom" | "database" | "performance";
+      testType?: "browser" | "api" | "custom" | "database" | "performance" | "agent";
       strict?: boolean;
     } = {}
   ): ValidationResult {
@@ -524,7 +524,7 @@ export const aiCodeValidator = AICodeValidator.getInstance();
 export function validateAICode(
   code: string,
   options?: {
-    testType?: "browser" | "api" | "custom" | "database" | "performance";
+    testType?: "browser" | "api" | "custom" | "database" | "performance" | "agent";
     strict?: boolean;
   }
 ): ValidationResult {

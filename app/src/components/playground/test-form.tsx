@@ -74,11 +74,11 @@ const testCaseSchema = testsInsertSchema
         : "Priority must be low, medium, or high",
     }),
     type: z.enum(
-      ["browser", "api", "custom", "database", "performance"] as const,
+      ["browser", "api", "custom", "database", "agent", "performance"] as const,
       {
         error: (issue) => issue.input === undefined
           ? "Test type is required"
-          : "Test type must be browser, api, custom, database, or performance",
+          : "Test type must be browser, api, custom, database, agent, or performance",
       }
     ),
     location: z

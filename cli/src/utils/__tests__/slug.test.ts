@@ -1,5 +1,5 @@
 import { describe, it, expect } from '@jest/globals'
-import { slugify, testFilename, extractUuidFromFilename, stripTitleMetadata, readScriptMetadata, setScriptMetadata } from '../slug.js'
+import { slugify, testFilename, extractUuidFromFilename, stripTitleMetadata, readScriptMetadata, setScriptMetadata, scriptTestType } from '../slug.js'
 
 describe('slug utilities', () => {
   it('slugify should normalize titles', () => {
@@ -87,5 +87,52 @@ describe('slug utilities', () => {
       expect(readScriptMetadata('// @title Old\n\nfoo()\n', 'title')).toBe('Old')
       expect(readScriptMetadata('/**\n * @title Old\n */\nfoo()\n', 'title')).toBe('Old')
     })
+
+    it('leaves JSDoc @type expressions alone', () => {
+      const line = "// @type {import('x').Y}\n\nfoo()\n"
+      const doc = "/**\n * @type {import('x').Y}\n */\nfoo()\n"
+      for (const script of [line, doc]) {
+        expect(readScriptMetadata(script, 'type')).toBeUndefined()
+        expect(stripTitleMetadata(script)).toBe(script)
+      }
+      const tagged = setScriptMetadata(doc, 'type', 'api')
+      expect(tagged).toBe("/**\n * @type api\n * @type {import('x').Y}\n */\nfoo()\n")
+      expect(readScriptMetadata(tagged, 'type')).toBe('api')
+      expect(stripTitleMetadata(tagged)).toBe(doc)
+    })
+  })
+})
+
+describe('JSDoc @type', () => {
+  it('leaves a non-type word alone, and still owns a known one', () => {
+    const own = '/**\n * @type string\n */\nx()'
+    expect(stripTitleMetadata(own)).toBe(own)
+    expect(readScriptMetadata(own, 'type')).toBeUndefined()
+    expect(stripTitleMetadata('/**\n * @type agent\n */\nx()')).toBe('/**\n */\nx()')
+  })
+})
+
+describe('agent import detection', () => {
+  it.each([
+    "import { test } from '@supercheck/agent-test'",
+    "import '@supercheck/agent-test'",
+    "await import('@supercheck/agent-test')",
+    "require ( `@supercheck/agent-test` )",
+    'import { test } from "@supercheck/agent-test"',
+  ])('detects %s', (script) => {
+    expect(scriptTestType(script)).toBe('agent')
+  })
+  it.each([
+    "// Example: import '@supercheck/agent-test'\nimport { test } from '@playwright/test'",
+    "/* import { agent } from '@supercheck/agent-test' */",
+    "import type { AgentReply } from '@supercheck/agent-test'",
+  ])('ignores a mention in a comment or a type-only import: %s', (script) => {
+    expect(scriptTestType(script)).toBeUndefined()
+  })
+  it('detects a runtime import after a semicolonless type import', () => {
+    expect(scriptTestType("import type { AgentReply } from '@supercheck/agent-test'\nimport { test, expect } from '@supercheck/agent-test'")).toBe('agent')
+  })
+  it('ignores other packages', () => {
+    expect(scriptTestType("import '@supercheck/other'")).toBeUndefined()
   })
 })

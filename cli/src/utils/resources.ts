@@ -2,12 +2,13 @@ import { getApiClient } from '../api/client.js'
 import { discoverFiles, readFileContent } from './discovery.js'
 import { logger } from './logger.js'
 import { ApiRequestError, CLIError, ExitCode } from './errors.js'
-import { extractUuidFromFilename, readScriptMetadata, stripTitleMetadata } from './slug.js'
+import { extractUuidFromFilename, headerKind, readScriptMetadata, stripTitleMetadata } from './slug.js'
 import { decodeStoredTestScript, sanitizeTestScript } from './script.js'
 import type { LocalResource, RemoteResource } from './reconcile.js'
 import type { SupercheckConfig } from '../config/schema.js'
 import type { PaginatedResponse } from '../api/client.js'
 import { normalizeLocalStatusPage, statusPageToDefinition } from './status-pages.js'
+import { normalizeTestTypeForApi } from './validation.js'
 import { PRIORITIES } from './priority.js'
 import { UNEVALUATED_MONITOR_CONFIG_KEYS } from './monitor-config-keys.js'
 import { normalizeAlertConfig } from './alert-config.js'
@@ -163,6 +164,16 @@ export function buildLocalResources(config: SupercheckConfig, cwd: string): Loca
       const tagsAnnotation = readScriptMetadata(script, 'tags')
       const tags = tagsAnnotation === undefined ? undefined : normalizeTagNames(tagsAnnotation.split(','))
 
+      // Optional @type annotation: pull writes it for agent, api, database and custom tests (browser has none).
+      const typeAnnotation = readScriptMetadata(script, 'type')
+      const parsedType = typeAnnotation === undefined ? undefined : normalizeTestTypeForApi(typeAnnotation)
+      const annotatedType = parsedType === 'performance' ? undefined : parsedType
+      // Only a `// @type` line is ours to reject; an unknown word in a JSDoc block is someone else's tag.
+      const badType = typeAnnotation !== undefined && annotatedType === undefined
+      if (badType && headerKind(script) === 'line') {
+        throw new CLIError(`${displayName}: @type must be browser, api, database, custom or agent (got "${typeAnnotation}").`, ExitCode.ConfigError)
+      }
+
       resources.push({
         id: testId,
         type: 'test',
@@ -170,7 +181,8 @@ export function buildLocalResources(config: SupercheckConfig, cwd: string): Loca
         definition: {
           id: testId,
           title,
-          testType: file.type === 'playwright' ? 'playwright' : 'k6',
+          // An unannotated .pw.ts leaves the type unspecified (older pulls wrote no @type), so it never diffs or overwrites a remote api/database/custom/agent type.
+          ...(file.type !== 'playwright' ? { testType: 'k6' } : annotatedType ? { testType: annotatedType === 'browser' ? 'playwright' : annotatedType } : {}),
           script: cleanScript,
           ...(priority !== undefined ? { priority } : {}),
           ...(tags !== undefined ? { tags } : {}),
@@ -324,8 +336,10 @@ function normalizeRemoteRaw(type: string, raw: Record<string, unknown>): Record<
 
   if (type === 'test') {
     // Map API 'type' to 'testType' matching local resource structure
-    // k6/performance tests map to 'k6'; all other types (browser, api, database, custom) map to 'playwright'
+    // k6/performance tests map to 'k6'; agent, api, database and custom keep their type (matching the `// @type` line);
+    // browser maps to 'playwright'
     if (normalized.type === 'performance') normalized.testType = 'k6'
+    else if (normalized.type === 'agent' || normalized.type === 'api' || normalized.type === 'database' || normalized.type === 'custom') normalized.testType = normalized.type
     else normalized.testType = 'playwright'
 
     // Remove original 'type' field to avoid field mismatch in diff

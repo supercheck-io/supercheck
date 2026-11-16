@@ -4,7 +4,7 @@
 // constraint never fails the migration (the constraint stays NOT VALID and still rejects new bad writes).
 import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { cpSync, mkdirSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
+import { cpSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -161,6 +161,7 @@ describe("status value checks on a fresh database", () => {
       VALUES (${randomUUID()}, 't', ${type}, ${tenant.org}, ${tenant.project})`;
     expect(await codeOf(test("bogus"))).toBe("23514");
     expect(await codeOf(test("api"))).toBe("accepted");
+    expect(await codeOf(test("agent"))).toBe("accepted");
     // Better Auth writes the US spelling and the application the UK one; both stay valid.
     const org = tenant.org;
     const user = randomUUID();
@@ -181,9 +182,12 @@ describe("existing data that violates a constraint", () => {
     const before = path.join(workDir, "before");
     mkdirSync(path.join(before, "src/db"), { recursive: true });
     cpSync(MIGRATIONS_DIR, path.join(before, "src/db/migrations"), { recursive: true });
-    const target = readdirSync(path.join(before, "src/db/migrations")).find((f) => f.startsWith("0052_") && f.endsWith(".sql"));
+    const files = readdirSync(path.join(before, "src/db/migrations")).filter((f) => f.endsWith(".sql")).sort();
+    const target = files.find((f) => f.startsWith("0052_"));
     expect(target).toBeDefined();
-    rmSync(path.join(before, "src/db/migrations", target as string));
+    // Hold back 0052 and every later migration that re-adds tests_type_check, so the legacy row can be written first.
+    const heldBack = files.filter((f) => f === target || (f > (target as string) && readFileSync(path.join(MIGRATIONS_DIR, f), "utf8").includes("tests_type_check")));
+    for (const f of heldBack) rmSync(path.join(before, "src/db/migrations", f));
     await migrate(dirtyName, before);
 
     const tenant = await seedTenant(dirty);
@@ -191,7 +195,7 @@ describe("existing data that violates a constraint", () => {
       VALUES (${randomUUID()}, 'x', ${type}, ${tenant.org}, ${tenant.project})`;
     await test("legacy_type");
 
-    cpSync(path.join(MIGRATIONS_DIR, target as string), path.join(before, "src/db/migrations", target as string));
+    for (const f of heldBack) cpSync(path.join(MIGRATIONS_DIR, f), path.join(before, "src/db/migrations", f));
     const { stdout, stderr } = await migrate(dirtyName, before);
     expect(`${stdout}${stderr}`).toContain("tests_type_check left NOT VALID");
 
