@@ -112,7 +112,7 @@ export function AppStep({ response, draft, patchDraft, readOnly, scan, setScan }
 
       <ScanPanel projectId={response.projectId} url={stripped} disabled={readOnly || invalid} onResult={(result, scanned) => { setScan(result); patchDraft((d) => ({ ...d, app: { ...d.app, scannedUrl: scanned } })); }} initial={scan} initialUrl={draft.app?.scannedUrl} />
 
-      <fieldset className="space-y-3 rounded-lg border p-4" disabled={readOnly}>
+      <fieldset className="space-y-3 rounded-xl border p-4" disabled={readOnly}>
         <legend className="px-1 text-sm font-semibold">
           Test account <span className="font-normal text-muted-foreground">(optional)</span>
         </legend>

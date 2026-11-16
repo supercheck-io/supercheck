@@ -73,7 +73,7 @@ export function CopyFromProject({ kind, setupProjectId, disabled, capacity, onCo
   };
 
   return (
-    <section className="space-y-3 rounded-lg border p-4" data-testid={`setup-copy-${kind}`}>
+    <section className="space-y-3 rounded-xl border p-4" data-testid={`setup-copy-${kind}`}>
       <div>
         <h3 className="text-sm font-semibold">Copy from a project</h3>
         <p className="text-xs text-muted-foreground">Reuse the {noun.all} you already set up. Secrets are copied encrypted and never shown.</p>
@@ -106,7 +106,7 @@ export function CopyFromProject({ kind, setupProjectId, disabled, capacity, onCo
         items.length === 0 ? (
           <p className="text-sm text-muted-foreground">That project has no {noun.all} to copy.</p>
         ) : (
-          <ul className="divide-y rounded-lg border" aria-label="Copy results">
+          <ul className="divide-y rounded-xl border" aria-label="Copy results">
             {items.map((item, index) => (
               <li key={item.sourceId} className="flex flex-wrap items-center gap-3 px-4 py-2 text-sm">
                 <span className="min-w-0 flex-1">

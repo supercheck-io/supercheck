@@ -315,7 +315,7 @@ export function AlertsStep({ response, draft, patchDraft, features, permissions,
       ) : null}
 
       {features.repeatUntilAck ? (
-        <section className="rounded-lg border p-4" data-testid="setup-card-repeat">
+        <section className="rounded-xl border p-4" data-testid="setup-card-repeat">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
               <Label htmlFor="setup-repeat" className="text-sm font-semibold">
@@ -361,7 +361,7 @@ export function AlertsStep({ response, draft, patchDraft, features, permissions,
       ) : null}
 
       {features.warningAlerts ? (
-        <section className="rounded-lg border p-4" data-testid="setup-card-warnings">
+        <section className="rounded-xl border p-4" data-testid="setup-card-warnings">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
               <Label htmlFor="setup-warnings" className="text-sm font-semibold">

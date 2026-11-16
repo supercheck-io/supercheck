@@ -114,9 +114,9 @@ export function TestsStep({ response, features, permissions, draft, patchDraft, 
   };
 
   const agentCard = features.agentTest ? (
-    <section className="flex flex-wrap items-center justify-between gap-3 rounded-lg border p-4" data-testid="setup-card-agent-test">
+    <section className="flex flex-wrap items-center justify-between gap-3 rounded-xl border p-4" data-testid="setup-card-agent-test">
       <div className="flex min-w-0 items-start gap-3">
-        <Bot className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+        <Bot className="mt-0.5 size-5 shrink-0 text-ai" aria-hidden="true" />
         <div>
           <h3 className="text-sm font-semibold">Test an AI agent</h3>
           <p className="text-xs text-muted-foreground">Check how your agent answers. This opens the agent test form; setup keeps your place.</p>
@@ -168,7 +168,7 @@ export function TestsStep({ response, features, permissions, draft, patchDraft, 
       )}
 
       {options.length > 0 ? (
-        <ul className="divide-y rounded-lg border" aria-label="Suggested requirements">
+        <ul className="divide-y rounded-xl border" aria-label="Suggested requirements">
           {options.map((option, index) => (
             <li key={option.title} className="flex items-start gap-3 px-4 py-3">
               <Checkbox

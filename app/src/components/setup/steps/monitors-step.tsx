@@ -244,7 +244,7 @@ export function MonitorsStep({ response, draft, patchDraft, features, readOnly, 
           </p>
         </div>
         {suggestions.length > 0 ? (
-          <ul className="divide-y rounded-lg border">
+          <ul className="divide-y rounded-xl border">
             {suggestions.map((page, index) => (
               <li key={page.url} className="flex items-center gap-3 px-4 py-2.5">
                 <Checkbox

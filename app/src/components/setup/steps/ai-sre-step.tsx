@@ -11,6 +11,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { TableBadge } from "@/components/ui/table-badge";
+import { ConnectorTypeIcon } from "@/components/logo/connector-logos";
 import { getConnectorQueryGuide } from "@/components/sre/connectors/connector-query-guides";
 import { SRE_CONNECTOR_CATALOG } from "@/components/sre/connectors/connector-catalog";
 import { PROJECT_CHANGED_ERROR } from "../create-runner";
@@ -146,7 +147,7 @@ function ConnectorForm({ def, projectId, knownIds, onSaved }: { def: (typeof CON
   };
 
   return (
-    <div className="space-y-3 rounded-lg border p-4" data-testid={`setup-connector-form-${def.type}`}>
+    <div className="space-y-3 rounded-xl border p-4" data-testid={`setup-connector-form-${def.type}`}>
       {def.fields.map((field) => (
         <div key={field.key} className="space-y-1.5">
           <Label htmlFor={`setup-${def.type}-${field.key}`}>{field.label}</Label>
@@ -202,6 +203,7 @@ export function AiSreStep({ response, permissions, draft, patchDraft, readOnly }
             {outcomes.map(({ type, outcome }, i) => (
               <li key={`${type}-${i}`} data-testid={`setup-connector-result-${type}`}>
                 <TableBadge tone={outcome.state === "connected" ? "success" : "warning"}>
+                  <ConnectorTypeIcon type={type} className="mr-1 size-3.5" />
                   {labelOf(type)}: {outcome.state === "connected" ? "Connected" : outcome.state === "saved" ? "Saved, not tested" : "Saved, token rejected"}
                 </TableBadge>
               </li>
@@ -218,16 +220,17 @@ export function AiSreStep({ response, permissions, draft, patchDraft, readOnly }
 
       {!readOnly ? (
         <section aria-label="Connect a tool" className="space-y-3">
-          <div role="group" aria-label="Connector types" className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+          <div role="group" aria-label="Connector types" className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {CONNECTORS.map(({ type }) => (
               <Button
                 key={type}
                 type="button"
                 variant="outline"
                 aria-pressed={open === type}
-                className="h-auto justify-start whitespace-normal px-3 py-2 text-left"
+                className="h-auto min-h-[64px] justify-start gap-3 whitespace-normal rounded-xl border-border/60 p-4 text-left aria-pressed:border-primary aria-pressed:bg-accent"
                 onClick={() => setOpen(open === type ? null : type)}
               >
+                <ConnectorTypeIcon type={type} className="size-5 shrink-0" />
                 <span className="min-w-0">
                   <span className="block text-sm font-medium">{labelOf(type)}</span>
                   <span className="block text-xs font-normal text-muted-foreground">{SRE_CONNECTOR_CATALOG.find((c) => c.value === type)?.description}</span>
@@ -255,9 +258,9 @@ export function AiSreStep({ response, permissions, draft, patchDraft, readOnly }
 
       <CopyFromProject kind="connectors" setupProjectId={response.projectId} disabled={readOnly} onCopied={addIds} />
 
-      <section className="flex flex-wrap items-center justify-between gap-3 rounded-lg border p-4" data-testid="setup-card-private-agent">
+      <section className="flex flex-wrap items-center justify-between gap-3 rounded-xl border p-4" data-testid="setup-card-private-agent">
         <div className="flex min-w-0 items-start gap-3">
-          <Radio className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+          <Radio className="mt-0.5 size-5 shrink-0 text-ai" aria-hidden="true" />
           <div>
             <h3 className="text-sm font-semibold">Tools inside a private network?</h3>
             <p className="text-xs text-muted-foreground">A private agent reaches Kubernetes, internal Prometheus and similar tools. Register it in organization settings.</p>
@@ -278,7 +281,7 @@ export function AiSreStep({ response, permissions, draft, patchDraft, readOnly }
         </h3>
         <p className="text-xs text-muted-foreground">A service groups monitors and tools, so incidents show who owns what. Review creates the ticked one.</p>
         {host ? (
-          <div className="flex items-center gap-3 rounded-lg border px-4 py-2.5">
+          <div className="flex items-center gap-3 rounded-xl border px-4 py-2.5">
             <Checkbox
               id="setup-service-host"
               checked={services.some((s) => s.name === host)}
@@ -294,7 +297,7 @@ export function AiSreStep({ response, permissions, draft, patchDraft, readOnly }
         )}
         {/* Selected for an earlier app URL: stays listed so it can still be removed. */}
         {services.filter((s) => s.name !== host).map((s) => (
-          <div key={s.name} className="flex items-center gap-3 rounded-lg border px-4 py-2.5">
+          <div key={s.name} className="flex items-center gap-3 rounded-xl border px-4 py-2.5">
             <Checkbox
               id={`setup-service-${s.name}`}
               checked
