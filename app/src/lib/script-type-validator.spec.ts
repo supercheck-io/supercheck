@@ -231,6 +231,10 @@ describe("agent-test import must be type agent", () => {
     expect(validateScriptTypeMatch(script, "browser").valid).toBe(true);
   });
 
+  it("detects a runtime import after a semicolonless type import", () => {
+    expect(validateScriptTypeMatch("import type { AgentReply } from '@supercheck/agent-test'\nimport { test, expect } from '@supercheck/agent-test'", "browser")).toMatchObject({ valid: false, suggestedType: "agent" });
+  });
+
   it("still detects a runtime import next to a URL comment", () => {
     const script = "const base = 'https://example.com'; // docs\nimport { agent } from '@supercheck/agent-test';";
     expect(validateScriptTypeMatch(script, "browser")).toMatchObject({ valid: false, suggestedType: "agent" });

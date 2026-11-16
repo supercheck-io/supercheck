@@ -129,6 +129,9 @@ describe('agent import detection', () => {
   ])('ignores a mention in a comment or a type-only import: %s', (script) => {
     expect(scriptTestType(script)).toBeUndefined()
   })
+  it('detects a runtime import after a semicolonless type import', () => {
+    expect(scriptTestType("import type { AgentReply } from '@supercheck/agent-test'\nimport { test, expect } from '@supercheck/agent-test'")).toBe('agent')
+  })
   it('ignores other packages', () => {
     expect(scriptTestType("import '@supercheck/other'")).toBeUndefined()
   })

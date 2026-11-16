@@ -144,7 +144,8 @@ export function importsAgentTest(script: string): boolean {
   const code = script
     .replace(/\/\*[\s\S]*?\*\//g, '')
     .replace(/(^|[^:])\/\/.*$/gm, '$1')
-    .replace(/\bimport\s+type\b[^;]*;?/g, '')
+    // Up to the type import's own module string only: semicolonless code must not swallow the next import.
+    .replace(/\bimport\s+type\b[^'"`]*['"`][^'"`]*['"`]/g, '')
   return AGENT_IMPORT.test(code)
 }
 /** The test type a script declares: its `@type` header, else 'agent' when it imports the agent SDK. */
