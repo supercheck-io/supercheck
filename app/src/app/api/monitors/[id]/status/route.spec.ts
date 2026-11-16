@@ -26,6 +26,8 @@ jest.mock("@/lib/middleware/plan-enforcement", () => ({
   ...jest.requireActual("@/lib/middleware/plan-enforcement"),
   withResumeWithinPlan: (...a: unknown[]) => withResumeWithinPlan(...a),
 }));
+const assertAgentMonitorRunnable = jest.fn();
+jest.mock("@/lib/monitor-write", () => ({ ...jest.requireActual("@/lib/monitor-write"), assertAgentMonitorRunnable: (...a: unknown[]) => assertAgentMonitorRunnable(...a) }));
 import { NextRequest } from "next/server";
 import { PgDialect } from "drizzle-orm/pg-core";
 import type { SQL } from "drizzle-orm";
@@ -54,6 +56,26 @@ it.each([{ organizationId: null, projectId: "project" }, { organizationId: "org"
   const response = await PATCH(new NextRequest("http://localhost/api/monitors/monitor/status", { method: "PATCH", body: JSON.stringify({ status: "paused" }) }), { params: Promise.resolve({ id: "monitor" }) });
   expect(response.status).toBe(404);
   expect(db.update).not.toHaveBeenCalled();
+});
+
+it("refuses to resume an agent-test monitor while workers are pending: 503 AGENT_WORKERS_PENDING, nothing written", async () => {
+  const { ExecutionQueueError } = jest.requireActual("@/lib/execution-errors");
+  jest.mocked(db.query.monitors.findFirst).mockResolvedValue({ id: "m", organizationId: "org", projectId: "p", status: "paused" } as never);
+  jest.mocked(hasPermissionForUser).mockResolvedValue(true);
+  assertAgentMonitorRunnable.mockRejectedValueOnce(new ExecutionQueueError("agent_workers_pending", "pending"));
+  const response = await patch("up");
+  expect(response.status).toBe(503);
+  expect(response.headers.get("Retry-After")).toBeTruthy();
+  expect((await response.json()).code).toBe("AGENT_WORKERS_PENDING");
+  expect(db.update).not.toHaveBeenCalled();
+  expect(db.transaction).not.toHaveBeenCalled();
+});
+
+it("does not gate a pause", async () => {
+  jest.mocked(db.query.monitors.findFirst).mockResolvedValue({ id: "m", organizationId: "org", projectId: "p", status: "up" } as never);
+  jest.mocked(hasPermissionForUser).mockResolvedValue(true);
+  await patch("paused").catch(() => undefined);
+  expect(assertAgentMonitorRunnable).not.toHaveBeenCalled();
 });
 
 it("refuses to resume a paused monitor without a plan (c9)", async () => {

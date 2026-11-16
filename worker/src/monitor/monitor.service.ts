@@ -3196,6 +3196,7 @@ export class MonitorService {
           variables: resolvedVariables,
           secrets: resolvedSecrets,
           files: resolvedFiles,
+          ...(test.type === 'agent' ? { testType: 'agent' } : {}),
         },
         true,
         true,
@@ -3253,6 +3254,20 @@ export class MonitorService {
           );
       }
 
+      // A script can hold several agent tests: report their combined attempts.
+      const agentRuns = testResult.agent ?? [];
+      const attempts = agentRuns.reduce((n, t) => n + t.attempts, 0);
+      const passed = agentRuns.reduce((n, t) => n + t.passed, 0);
+      const agentDetails = agentRuns.length
+        ? {
+            agent: {
+              passRate: attempts > 0 ? passed / attempts : 0,
+              attempts,
+              totalTokens: agentRuns.reduce((n, t) => n + t.totalTokens, 0),
+            },
+          }
+        : {};
+
       // 6. Convert test result to monitor result format
       if (testResult.success) {
         this.logger.log(
@@ -3269,6 +3284,7 @@ export class MonitorService {
             testType: test.type,
             reportUrl: testResult.reportUrl || undefined,
             message: 'Test execution successful',
+            ...agentDetails,
             // Truncate logs for storage efficiency
             executionSummary: testResult.stdout?.substring(0, 500),
           },
@@ -3289,6 +3305,7 @@ export class MonitorService {
             testTitle: test.title,
             testType: test.type,
             errorMessage: testResult.error || 'Test execution failed',
+            ...agentDetails,
             reportUrl: testResult.reportUrl || undefined,
             // Truncate logs for storage efficiency
             executionSummary: testResult.stdout?.substring(0, 500),

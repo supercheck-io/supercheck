@@ -17,6 +17,8 @@ jest.mock("@/lib/auth-context", () => ({
 }));
 jest.mock("@/lib/rbac/middleware", () => ({ checkPermissionWithContext: () => true }));
 jest.mock("@/lib/resource-deletion/run", () => ({ deleteRunWithContext: jest.fn() }));
+jest.mock("@/lib/agent-test/run-is-agent", () => ({ isAgentRun: jest.fn(async () => true) }));
+import { isAgentRun } from "@/lib/agent-test/run-is-agent";
 import { GET } from "./route";
 
 const get = () =>
@@ -38,4 +40,12 @@ it("counts the job's tests for a job run", async () => {
   rows.push({ id: "r", jobId: "j", testId: null, reportUrl: null });
   counts.push({ count: 3 });
   expect((await (await get()).json()).testCount).toBe(3);
+});
+
+it("adds the server-computed isAgentRun, scoped to the caller's project", async () => {
+  rows.push({ id: "r", jobId: "j", testId: null, testType: "agent", reportUrl: null });
+  const body = await (await get()).json();
+  expect(body.isAgentRun).toBe(true);
+  expect(body).not.toHaveProperty("testType");
+  expect(isAgentRun).toHaveBeenCalledWith({ jobId: "j", testId: null, testType: "agent", projectId: "p" });
 });

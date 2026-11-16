@@ -273,3 +273,41 @@ describe("heartbeat monitor detail", () => {
     expect(screen.getByTestId("heartbeat-stat-next")).toHaveTextContent("—");
   });
 });
+
+describe("agent test monitor", () => {
+  const row = (details: object) => ({
+    id: "r9", monitorId: "m9", checkedAt: new Date(Date.now() - 20_000).toISOString(), isUp: true, status: "up", isStatusChange: false, responseTimeMs: 900, location: "eu-central", details,
+  });
+  const synthetic = { id: "m9", name: "Bot", type: "synthetic_test", target: "t1", status: "up", frequencyMinutes: 5, config: { testId: "t1" }, recentResults: [] } as never;
+
+  it("adds a Pass rate column from details.agent", async () => {
+    mockResults = [row({ agent: { passRate: 0.8, attempts: 10, totalTokens: 900 } })];
+    try {
+      render(<MonitorDetailClient monitor={synthetic} />);
+      expect(screen.getByRole("columnheader", { name: "Pass rate" })).toBeInTheDocument();
+      expect(await screen.findByTestId("agent-row-pass-rate")).toHaveTextContent("80%");
+    } finally {
+      mockResults = [];
+    }
+  });
+
+  it("keeps the Pass rate column when the current page has no agent rows but loaded results do", () => {
+    mockResults = [row({})];
+    try {
+      render(<MonitorDetailClient monitor={{ ...(synthetic as object), recentResults: [row({ agent: { passRate: 1 } })] } as never} />);
+      expect(screen.getByRole("columnheader", { name: "Pass rate" })).toBeInTheDocument();
+    } finally {
+      mockResults = [];
+    }
+  });
+
+  it("has no Pass rate column for a synthetic monitor on another test type", async () => {
+    mockResults = [row({})];
+    try {
+      render(<MonitorDetailClient monitor={synthetic} />);
+      expect(screen.queryByRole("columnheader", { name: "Pass rate" })).toBeNull();
+    } finally {
+      mockResults = [];
+    }
+  });
+});

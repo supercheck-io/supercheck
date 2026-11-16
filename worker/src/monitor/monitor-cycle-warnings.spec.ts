@@ -1,19 +1,23 @@
 jest.mock('./mcp-cycle-evaluation', () => ({ evaluateMcpCycle: jest.fn() }));
+jest.mock('./agent-run-warning', () => ({
+  evaluateAgentRunWarning: jest.fn(),
+}));
 jest.mock('./ai-endpoint-warnings', () => ({
   evaluateAiEndpointWarnings: jest.fn(),
 }));
 
 import type { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import type * as schema from '../db/schema';
+import { evaluateAgentRunWarning } from './agent-run-warning';
 import { evaluateAiEndpointWarnings } from './ai-endpoint-warnings';
 import { evaluateMcpCycle } from './mcp-cycle-evaluation';
 import { evaluateCycleWarnings } from './monitor-cycle-warnings';
 
 const db = {} as PostgresJsDatabase<typeof schema>;
 const alerts = { sendWarning: jest.fn() };
-const up = { isUp: true, responseTimeMs: 1, details: {} };
+const up = { isUp: true, location: 'local', responseTimeMs: 1, details: {} };
 const cycleAt = new Date('2026-01-01T00:00:00Z');
-const down = { isUp: false, details: {} };
+const down = { isUp: false, location: 'local', details: {} };
 
 describe('evaluateCycleWarnings', () => {
   beforeEach(() => jest.clearAllMocks());
@@ -101,5 +105,20 @@ describe('evaluateCycleWarnings', () => {
     );
     expect(evaluateMcpCycle).not.toHaveBeenCalled();
     expect(evaluateAiEndpointWarnings).not.toHaveBeenCalled();
+  });
+
+  it('hands a synthetic monitor every result for the agent run warning', async () => {
+    await evaluateCycleWarnings(
+      db,
+      alerts,
+      { id: 'm', type: 'synthetic_test', config: null },
+      'c1',
+      cycleAt,
+      [down],
+    );
+    expect(evaluateAgentRunWarning).toHaveBeenCalledWith(db, alerts, 'm', [
+      down,
+    ]);
+    expect(evaluateMcpCycle).not.toHaveBeenCalled();
   });
 });

@@ -8,6 +8,7 @@ import { eq, and, count, sql } from "drizzle-orm";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { requireAuthContext, isAuthError, authErrorStatus } from "@/lib/auth-context";
 import { logAuditEvent } from "@/lib/audit-logger";
+import { assertAgentTestSwitchRunnable, thrownStatusResponse } from "@/lib/monitor-write";
 import { requireSameOriginRequest } from "@/lib/security/same-origin";
 import {
   validateTestScript,
@@ -221,6 +222,11 @@ export async function PUT(
       }
     }
 
+    // Enabled synthetic monitors on this test start running agent runs once it is an agent test.
+    if (resolvedType === "agent" && existingTest.type !== "agent") {
+      await assertAgentTestSwitchRunnable(testId, context.organizationId, context.project.id);
+    }
+
     // Update the test
     const [updatedTest] = await db
       .update(tests)
@@ -259,6 +265,8 @@ export async function PUT(
         { status: authErrorStatus(error) },
       );
     }
+    const pending = thrownStatusResponse(error);
+    if (pending) return pending;
     console.error(`Error updating test ${testId}:`, error);
     return NextResponse.json(
       { error: "Failed to update test" },

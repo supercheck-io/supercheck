@@ -59,6 +59,7 @@ import {
   scheduleFailureResponse,
   syntheticFrequencyError,
   thrownStatusResponse,
+  assertAgentMonitorRunnable,
   timeoutFrequencyError,
 } from "@/lib/monitor-write";
 import type { AlertConfig } from "@/db/schema";
@@ -545,6 +546,9 @@ export async function POST(req: NextRequest) {
         );
       }
     }
+
+    // Before the insert transaction opens: the gate reads workers and the test, and must not hold a lock or plan slot.
+    if (monitorData.enabled) await assertAgentMonitorRunnable(monitorData);
 
     // Serialize count -> limit check -> insert per organization so concurrent
     // requests cannot both pass the plan limit.

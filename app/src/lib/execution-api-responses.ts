@@ -51,6 +51,11 @@ export function buildExecutionQueueErrorResponse(
 
   const capacityExceeded = error.code === "capacity_exceeded";
   const capacityUnavailable = error.code === "capacity_unavailable";
+  if (error.code === "agent_workers_pending")
+    return NextResponse.json(
+      { error: getExecutionQueueRunError(error), code: "AGENT_WORKERS_PENDING" },
+      { status: 503, headers: { "Retry-After": String(RETRY_AFTER_SECONDS) } },
+    );
   return NextResponse.json(
     capacityExceeded
       ? {

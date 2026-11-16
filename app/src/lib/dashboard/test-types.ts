@@ -3,6 +3,7 @@ const TYPE_LABELS: Record<string, string> = {
   browser: "browser",
   database: "database",
   custom: "custom",
+  agent: "agent",
   performance: "performance",
 };
 

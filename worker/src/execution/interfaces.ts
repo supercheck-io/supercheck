@@ -7,6 +7,7 @@ import {
   MonitoringLocation,
   JobType,
 } from '../db/schema';
+import type { AgentTestSummary } from './services/agent-summary';
 
 // Result of a single test execution
 export interface TestResult {
@@ -18,6 +19,7 @@ export interface TestResult {
   stderr: string;
   executionTimeMs?: number; // Actual test execution time in milliseconds (for synthetic monitors)
   billableMs?: number; // Container run time evidenced by Kubernetes; 0 when no container started
+  agent?: AgentTestSummary[]; // Agent test numbers parsed from the report (single tests)
 }
 
 // Represents a test script to be executed as part of a job
@@ -25,6 +27,7 @@ export interface TestScript {
   id: string;
   script: string;
   name?: string;
+  type?: string; // 'agent' names the spec `NNN-<id>.agent.spec.ts`
 }
 
 // Result of executing multiple tests (a job)
@@ -75,6 +78,8 @@ export interface TestExecutionTask {
   projectId?: string;
   location?: string | null;
   metadata?: Record<string, unknown>;
+  /** 'agent' names the spec `<id>.agent.spec.ts`, which runs in the no-retry agent project. Absent = as before. */
+  testType?: string;
 }
 
 // Task data for the job execution queue

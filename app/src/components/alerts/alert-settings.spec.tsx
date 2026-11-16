@@ -176,6 +176,13 @@ describe("AlertSettings warnings group (B24)", () => {
     expect(screen.queryByLabelText("Tools changed")).toBeNull();
   });
 
+  it("lists the agent warning only for a synthetic monitor on an agent test", () => {
+    const { rerender } = render(<AlertSettings value={base} monitorType="synthetic_test" />);
+    expect(screen.queryByTestId("alert-warning-agent_run_failed")).toBeNull();
+    rerender(<AlertSettings value={base} monitorType="synthetic_test" agentTest />);
+    expect(screen.getByTestId("alert-warning-agent_run_failed")).toBeChecked();
+  });
+
   it("emits the toggled warning and keeps the other alert settings", () => {
     const onChange = jest.fn();
     render(<AlertSettings value={base} monitorType="heartbeat" onChange={onChange} />);

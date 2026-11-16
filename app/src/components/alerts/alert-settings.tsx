@@ -56,6 +56,8 @@ interface AlertSettingsProps {
   monitorType?: MonitorType;
   /** HTTP monitor using the AI endpoint preset: also lists the AI endpoint warnings. */
   aiEndpoint?: boolean;
+  /** Synthetic monitor on an agent test: also lists the agent warning. */
+  agentTest?: boolean;
   sslCheckEnabled?: boolean;
 }
 
@@ -87,6 +89,7 @@ export function AlertSettings({
   context = "monitor",
   monitorType,
   aiEndpoint = false,
+  agentTest = false,
   sslCheckEnabled = false,
 }: AlertSettingsProps) {
   const { maxJobNotificationChannels, maxMonitorNotificationChannels } =
@@ -286,7 +289,7 @@ export function AlertSettings({
       : config.incidentEnabled !== false;
   // With alerts off the incident resolves from the check itself; with alerts on it follows the recovery alert.
   const autoResolveNeedsRecoveryAlert = context !== "monitor" || config.enabled;
-  const warningKinds = context === "monitor" && monitorType ? warningKindsForMonitorType(monitorType, aiEndpoint) : [];
+  const warningKinds = context === "monitor" && monitorType ? warningKindsForMonitorType(monitorType, { aiEndpoint, agentTest }) : [];
   // A heartbeat counts one missed run as one failure, so thresholds do not apply.
   const showThresholds = monitorType !== "heartbeat";
 

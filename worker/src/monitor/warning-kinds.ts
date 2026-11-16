@@ -42,6 +42,13 @@ export const WARNING_KINDS = {
     help: 'Notify when a reply uses more tokens than Warn total tokens. Sends nothing until that limit is set.',
     defaultOn: true,
   },
+  agent_run_failed: {
+    monitorTypes: ['synthetic_test'],
+    agentTestOnly: true,
+    label: 'Single failed agent run',
+    help: 'An agent test run failed before the failure threshold; no incident.',
+    defaultOn: true,
+  },
 } as const;
 
 export type WarningKind = keyof typeof WARNING_KINDS;
@@ -64,6 +71,8 @@ export function warningTitle(kind: WarningKind, monitorName: string): string {
       return `Model changed - ${monitorName}`;
     case 'ai_tokens_high':
       return `High token use - ${monitorName}`;
+    case 'agent_run_failed':
+      return `Agent run failed - ${monitorName}`;
   }
 }
 

@@ -10,10 +10,37 @@ import { buildRedisOptions } from '../redis/redis-options';
 import Redis from 'ioredis';
 import { hostname } from 'os';
 import { PLAYWRIGHT_QUEUE } from '../../execution/constants';
+import { getServiceVersion } from '../version';
 
 const HEARTBEAT_PREFIX = 'supercheck:worker-heartbeat:';
 const HEARTBEAT_INTERVAL_MS = 30_000;
 const HEARTBEAT_TTL_SECONDS = 60;
+
+/** The tag, or the `@sha256:...` digest, of an image reference; never the registry or any credentials in it. */
+export function imageTag(image: string | undefined): string {
+  const ref = image?.trim() ?? '';
+  const digest = /@([a-z0-9]+:[0-9a-f]+)$/i.exec(ref);
+  if (digest) return `@${digest[1]}`;
+  return /:([^:/@]+)$/.exec(ref)?.[1] ?? '';
+}
+
+/**
+ * Features this worker can run. Only workers that ship the agent-test fixture send this field, so an old
+ * worker reports nothing. `agent-test` is withheld only when the execution image (WORKER_IMAGE) is known
+ * to be older: a full-version tag (1.4.0 or v1.4.0) must equal this worker's version. Floating or named
+ * tags (1.6, prod), a digest, `latest` or no image are trusted (ops enforces digest equality).
+ */
+export function workerCapabilities(
+  env: NodeJS.ProcessEnv = process.env,
+): string[] {
+  const tag = imageTag(env.WORKER_IMAGE).replace(/^v/, '');
+  if (
+    /^\d+\.\d+\.\d+/.test(tag) &&
+    tag !== getServiceVersion().replace(/^v/, '')
+  )
+    return [];
+  return ['agent-test'];
+}
 
 interface WorkerHeartbeat {
   location: string;
@@ -22,6 +49,9 @@ interface WorkerHeartbeat {
   lastHeartbeat: string;
   queues: string[];
   pid: number;
+  capabilities: string[];
+  version: string;
+  image: string | null;
 }
 
 @Injectable()
@@ -32,6 +62,7 @@ export class HeartbeatService implements OnModuleInit, OnModuleDestroy {
   private readonly heartbeatKey: string;
   private readonly location: string;
   private readonly startedAt = new Date().toISOString();
+  private readonly capabilities = workerCapabilities();
   // Advertise only queues this worker actually consumes (WORKER_QUEUES).
   private queues = new Set<string>(
     consumesWorkerQueue('global-playwright') ? [PLAYWRIGHT_QUEUE] : [],
@@ -128,6 +159,9 @@ export class HeartbeatService implements OnModuleInit, OnModuleDestroy {
       lastHeartbeat: new Date().toISOString(),
       queues: this.getQueues(),
       pid: process.pid,
+      capabilities: this.capabilities,
+      version: getServiceVersion(),
+      image: imageTag(process.env.WORKER_IMAGE) || null,
     };
 
     try {

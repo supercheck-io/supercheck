@@ -21,6 +21,8 @@ import { logAuditEvent } from "@/lib/audit-logger";
 import { updateCoverageSnapshot } from "@/lib/requirements-internal";
 import { MAX_SCRIPT_LENGTH, MAX_DESCRIPTION_LENGTH } from "@/lib/validations/common";
 import { subscriptionService, SubscriptionAccessDeniedError } from "@/lib/services/subscription-service";
+import { assertAgentTestSwitchRunnable } from "@/lib/monitor-write";
+import { getExecutionQueueRunError, isExecutionQueueError } from "@/lib/execution-errors";
 import {
   validateTestScript,
   validateScriptTypeMatch,
@@ -143,6 +145,15 @@ export async function saveTest(
     // Check if this is an update (has an ID) or a new test
     if (validatedData.id) {
       const testId = validatedData.id;
+
+      if (resolvedType === "agent" && existingTest?.type !== "agent") {
+        try {
+          await assertAgentTestSwitchRunnable(testId, organizationId, project.id);
+        } catch (error) {
+          if (isExecutionQueueError(error)) return { id: "", success: false, error: getExecutionQueueRunError(error) };
+          throw error;
+        }
+      }
 
       // Update the test in the database; explicit fields only, so client input
       // cannot overwrite ownership columns such as createdByUserId.

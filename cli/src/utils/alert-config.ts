@@ -1,5 +1,5 @@
 /** Warning kinds that are on when unset (app/src/lib/alerts/warning-kinds.ts `defaultOn`); every other kind is off. */
-const WARNINGS_ON_BY_DEFAULT = new Set(['mcp_tools_changed', 'mcp_slow', 'ai_slow_first_token', 'ai_model_changed', 'ai_tokens_high'])
+const WARNINGS_ON_BY_DEFAULT = new Set(['mcp_tools_changed', 'mcp_slow', 'ai_slow_first_token', 'ai_model_changed', 'ai_tokens_high', 'agent_run_failed'])
 
 export function warningDefault(kind: string): boolean {
   return WARNINGS_ON_BY_DEFAULT.has(kind)

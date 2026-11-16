@@ -28,6 +28,7 @@ it("keeps IDs unique and test types isolated", () => {
     "api",
     "database",
     "custom",
+    "agent",
     "performance",
   ] as const) {
     expect(getTemplatesByType(type).length).toBeGreaterThan(0);
@@ -342,3 +343,7 @@ it.each(["navigator", "document"])(
     expect(tool?.name).toBe("add");
   },
 );
+
+it("offers the three agent templates", () => {
+  expect(getTemplatesByType("agent").map((t) => t.id)).toEqual(["pw-agent-chat", "pw-agent-tool-guard", "pw-agent-a2a"]);
+});

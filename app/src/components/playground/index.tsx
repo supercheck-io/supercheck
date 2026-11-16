@@ -93,6 +93,7 @@ const VALID_TEST_TYPES: TestType[] = [
   "api",
   "database",
   "custom",
+  "agent",
   "performance",
 ];
 
@@ -379,6 +380,11 @@ const Playground: React.FC<PlaygroundProps> = ({
             promptParts.push(`- Connection configuration`);
             promptParts.push(`- SQL query to execute`);
             promptParts.push(`- Expected result schema`);
+          } else if (type === "agent") {
+            promptParts.push(`\nRequired Information (fill in if not in description above):`);
+            promptParts.push(`- Agent endpoint kind (openai, http, a2a or mcp) and URL`);
+            promptParts.push(`- Prompt to send and what the reply must contain`);
+            promptParts.push(`- Tools that must or must not be called, and the pass rate to require`);
           } else if (type === "performance") {
             promptParts.push(`\nRequired Information (fill in if not in description above):`);
             promptParts.push(`- Target URL`);
@@ -543,7 +549,7 @@ const Playground: React.FC<PlaygroundProps> = ({
       const defaultType = "browser" as TestType;
       const typeToSet =
         scriptTypeParam &&
-          ["browser", "api", "custom", "database", "performance"].includes(
+          ["browser", "api", "custom", "database", "agent", "performance"].includes(
             scriptTypeParam
           )
           ? scriptTypeParam

@@ -23,7 +23,7 @@ interface RuntimeInfo {
   guidance: string[];
 }
 
-const PLAYWRIGHT_TYPES: TestType[] = ["browser", "api", "database", "custom"];
+const PLAYWRIGHT_TYPES: TestType[] = ["browser", "api", "database", "custom", "agent"];
 
 const PLAYWRIGHT_LIBRARIES: AllowedLibrary[] = [
   {

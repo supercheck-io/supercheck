@@ -37,6 +37,8 @@ jest.mock("@/lib/execution/trial-interval-response", () => ({
 const insertWithinPlanLimit = jest.fn();
 jest.mock("@/lib/middleware/plan-limit-lock", () => ({ insertWithinPlanLimit: (...a: unknown[]) => insertWithinPlanLimit(...a) }));
 jest.mock("@/lib/middleware/plan-enforcement", () => ({ checkMonitorLimit: jest.fn(), ResumeRefusedError: class extends Error {}, resumeRefusalResponse: jest.fn() }));
+const assertAgentMonitorRunnable = jest.fn();
+jest.mock("@/lib/monitor-write", () => ({ ...jest.requireActual("@/lib/monitor-write"), assertAgentMonitorRunnable: (...a: unknown[]) => assertAgentMonitorRunnable(...a) }));
 jest.mock("@/lib/monitor-service", () => ({ insertMonitorRecord: jest.fn(), scheduleCreatedMonitor: jest.fn(), updateMonitorHandler: jest.fn(), MonitorTargetChangedError: class MonitorTargetChangedError extends Error {} }));
 jest.mock("@/lib/location-registry", () => ({
   getProjectAvailableLocationCodes: jest.fn().mockResolvedValue([]),
@@ -223,6 +225,28 @@ it("rejects a synthetic monitor that runs more often than every 5 minutes", asyn
   );
   expect(res.status).toBe(400);
   expect(insertWithinPlanLimit).not.toHaveBeenCalled();
+});
+
+it("gates an enabled create before the insert transaction opens, answering 503 AGENT_WORKERS_PENDING", async () => {
+  const { ExecutionQueueError } = jest.requireActual("@/lib/execution-errors");
+  assertAgentMonitorRunnable.mockRejectedValueOnce(new ExecutionQueueError("agent_workers_pending", "pending"));
+  const res = await post({ enabled: false, notificationProviders: [] });
+  expect(res.status).toBe(503);
+  expect(res.headers.get("Retry-After")).toBeTruthy();
+  expect((await res.json()).code).toBe("AGENT_WORKERS_PENDING");
+  expect(insertWithinPlanLimit).not.toHaveBeenCalled();
+});
+
+it("does not gate a disabled create", async () => {
+  insertWithinPlanLimit.mockResolvedValue({ ok: true, row: null });
+  await POST(
+    new NextRequest("http://localhost/api/monitors", {
+      method: "POST",
+      body: JSON.stringify({ name: "m", type: "http_request", target: "https://example.com", enabled: false, alertConfig: { enabled: false, notificationProviders: [] } }),
+      headers: { "content-type": "application/json" },
+    }),
+  );
+  expect(assertAgentMonitorRunnable).not.toHaveBeenCalled();
 });
 
 it("does not insert into a project deleted before the insert took its lock", async () => {

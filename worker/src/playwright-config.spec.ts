@@ -21,13 +21,23 @@ describe('Playwright execution configuration', () => {
         `
       const config = require(${JSON.stringify(configPath)});
       const titles = ['plain test', 'test @firefox', 'test @webkit', 'test @mobile'];
+      const runs = (project, file) =>
+        (!project.testMatch || project.testMatch.test(file)) &&
+        (!project.testIgnore || !project.testIgnore.test(file));
       console.log(JSON.stringify({
         use: config.use,
         reporter: config.reporter,
         selected: titles.map(title => config.projects.filter(project =>
+          runs(project, 'a.spec.ts') &&
           (!project.grep || project.grep.test(title)) &&
           (!project.grepInvert || !project.grepInvert.test(title))
         ).map(project => project.name)),
+        byFile: Object.fromEntries(['a.spec.ts', 'a.agent.spec.ts', '001-a.agent.spec.ts', 'a.agent.spec.tsx', 'agent.spec.ts'].map(file => [
+          file, config.projects.filter(project => runs(project, file)).map(project => project.name),
+        ])),
+        agent: (({ name, retries, timeout, use }) => ({ name, retries, timeout, use }))(config.projects.find(p => p.name === 'agent')),
+        retries: config.retries,
+        browserProjectsOverrideRetries: config.projects.some(p => p.name !== 'agent' && p.retries !== undefined),
         allDefault: config.projects.every(project => project.default !== false)
       }));
     `,
@@ -72,5 +82,26 @@ describe('Playwright execution configuration', () => {
       ['mobile-safari'],
     ]);
     expect(config.allDefault).toBe(true);
+  });
+
+  it('runs agent specs only in the agent project: no retries, no browser, longer timeout', () => {
+    const config = loadConfig();
+    expect(config.byFile['a.agent.spec.ts']).toEqual(['agent']);
+    expect(config.byFile['001-a.agent.spec.ts']).toEqual(['agent']);
+    expect(config.agent).toMatchObject({ retries: 0, timeout: 240000 });
+    expect(config.agent.use).toBeUndefined();
+  });
+
+  it('keeps every other spec out of the agent project and the global retry on the browser projects', () => {
+    const config = loadConfig();
+    for (const file of ['a.spec.ts', 'a.agent.spec.tsx', 'agent.spec.ts'])
+      expect(config.byFile[file]).toEqual([
+        'chromium',
+        'firefox',
+        'safari',
+        'mobile-safari',
+      ]);
+    expect(config.retries).toBeGreaterThan(0);
+    expect(config.browserProjectsOverrideRetries).toBe(false);
   });
 });

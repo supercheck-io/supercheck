@@ -29,14 +29,27 @@ describe('verifyDeployedTests', () => {
     expect(String(out[0].reason)).toMatch(/Performance/)
   })
 
+  it('runs a created test whose type is unspecified (browser default)', async () => {
+    await run([change('c', undefined)])
+    expect(post).toHaveBeenCalledTimes(1)
+  })
+
   it('names the type of a known non-browser test it skips', async () => {
     const out = await run([change('a', 'api')])
     expect(post).not.toHaveBeenCalled()
     expect(String(out[0].reason)).toMatch(/Only browser tests.*api/)
   })
 
+  it('verifies an unannotated update by the remote type: browser runs, api skips', async () => {
+    const upd = (testType: string) => ({ ...change('u', undefined, 'update'), remote: { raw: { testType } } })
+    const out = await run([upd('playwright'), upd('api')])
+    expect(post).toHaveBeenCalledTimes(1)
+    expect(out[0]).toMatchObject({ status: 'passed' })
+    expect(String(out[1].reason)).toMatch(/Only browser tests.*api/)
+  })
+
   it.each([undefined, null, 'mystery', 42])('does not run a test whose type is %j', async (type) => {
-    const out = await run([change('u', type)])
+    const out = await run([change('u', type, 'update')])
     expect(post).not.toHaveBeenCalled()
     expect(out[0]).toMatchObject({ status: 'skipped' })
   })

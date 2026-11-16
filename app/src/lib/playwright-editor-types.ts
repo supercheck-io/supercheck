@@ -19,3 +19,14 @@ export async function loadPlaywrightEditorTypes(
     }
   }
 }
+
+// Types for '@supercheck/agent-test', served like public/supercheck.d.ts; worker agent-test-types.spec.ts keeps it in sync.
+export async function loadAgentTestEditorTypes(
+  defaults: Pick<languages.typescript.LanguageServiceDefaults, "getExtraLibs" | "addExtraLib">
+) {
+  const uri = "file:///node_modules/@supercheck/agent-test/index.d.ts";
+  if (defaults.getExtraLibs()[uri]) return;
+  const response = await fetch("/agent-test-types.d.ts");
+  if (!response.ok) throw new Error("Failed to load agent test editor types");
+  defaults.addExtraLib(await response.text(), uri);
+}

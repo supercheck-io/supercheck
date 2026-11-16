@@ -6,6 +6,7 @@ import {
   Chrome,
   ArrowLeftRight,
   SquareFunction,
+  Bot,
 } from "lucide-react";
 import type { ComponentType } from "react";
 import { typeText } from "@/lib/type-tones";
@@ -64,6 +65,12 @@ export const types: TestTypeOption[] = [
     value: "custom",
     icon: SquareFunction,
     color: typeText("test", "custom"),
+  },
+  {
+    label: "Agent",
+    value: "agent",
+    icon: Bot,
+    color: typeText("test", "agent"),
   },
   {
     label: "Performance",

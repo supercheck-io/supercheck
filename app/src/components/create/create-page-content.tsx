@@ -26,6 +26,7 @@ type ScriptType =
   | "api"
   | "custom"
   | "database"
+  | "agent"
   | "performance"
   | "record";
 
@@ -87,7 +88,9 @@ export function CreatePageContent({
               ? "Check database queries"
               : type.value === "custom"
                 ? "Script a custom check"
-                : "Run performance tests",
+                : type.value === "agent"
+                  ? "Test your AI agent"
+                  : "Run performance tests",
       path: `/playground?scriptType=${type.value}`,
       scriptType: type.value as ScriptType,
     })),

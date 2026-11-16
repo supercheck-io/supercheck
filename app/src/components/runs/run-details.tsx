@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState, useMemo } from "react";
+import { useCallback, useEffect, useRef, useState, useMemo } from "react";
 import { runStatuses, triggerTypes } from "./data";
 import { toast } from "sonner";
 import { ReportViewer } from "@/components/shared/report-viewer";
@@ -44,6 +44,7 @@ import { PerformanceTestReport } from "@/components/playground/performance-test-
 import type { K6RunStatus } from "@/lib/k6-runs";
 import { AIJobAnalyzeButton } from "./ai-job-analyze-button";
 import { useLocationMetadata } from "@/hooks/use-locations";
+import { AgentResultsCard, type AgentRunSummary } from "./agent-results-card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { formatBillingBlockedMessage, isBillingBlockedStatus } from "@/lib/billing-errors";
 
@@ -66,6 +67,10 @@ type RunResponse = {
   testCount?: number;
   trigger?: string;
   location?: string | null;
+  /** Sanitized runs.metadata.agent; absent for runs without agent tests. */
+  agent?: AgentRunSummary | null;
+  /** Server-computed; the agent card is fetched and shown only for these runs. */
+  isAgentRun?: boolean;
 };
 
 // Below lg the page scrolls, so the report gets a viewport-relative height; at lg+ the
@@ -257,7 +262,24 @@ export function RunDetails({
     [currentStatus, run.id, duration]
   );
 
-	  const statusInfo = runStatuses.find((s) => s.value === currentStatus);
+	  // The summary is written when the run finishes, so a run watched live fetches it once it ends.
+  const [agent, setAgent] = useState(run.agent ?? null);
+  const showAgentCard = Boolean(run.isAgentRun || run.agent?.tests?.length);
+  const [agentLoading, setAgentLoading] = useState(false);
+  const [agentError, setAgentError] = useState(false);
+  const startedLive = useRef(run.status === "running" || run.status === "queued");
+  useEffect(() => {
+    if (!showAgentCard || !startedLive.current || !["passed", "failed", "error"].includes(currentStatus)) return;
+    startedLive.current = false;
+    setAgentLoading(true);
+    fetch(`/api/runs/${encodeURIComponent(run.id)}`)
+      .then((res) => (res.ok ? res.json() : Promise.reject(new Error(String(res.status)))))
+      .then((data) => setAgent(data?.agent ?? null))
+      .catch(() => setAgentError(true))
+      .finally(() => setAgentLoading(false));
+  }, [currentStatus, run.id, showAgentCard]);
+
+  const statusInfo = runStatuses.find((s) => s.value === currentStatus);
 	  const isBillingBlocked = isBillingBlockedStatus(currentStatus);
 
   const handleDeleteRun = async () => {
@@ -574,6 +596,9 @@ export function RunDetails({
 	          </AlertDescription>
 	        </Alert>
 	      ) : null}
+
+	      {showAgentCard ? <AgentResultsCard agent={agent} loading={agentLoading} error={agentError} /> : null}
+
 
 	      <div className={`bg-card rounded-lg border overflow-hidden ${isNotificationView ? "" : reportFitClass}`}>
         {isPerformanceRun ? (
