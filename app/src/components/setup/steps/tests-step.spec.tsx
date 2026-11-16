@@ -125,6 +125,20 @@ describe("TestsStep", () => {
     expect(d.get().tests?.suggestions).toHaveLength(2);
   });
 
+  it("keeps an option ticked while the request was running", async () => {
+    let resolve!: (v: unknown) => void;
+    fetchMock.mockReturnValue(new Promise((r) => (resolve = r)));
+    const old = Array.from({ length: 10 }, (_, i) => ({ title: `Old ${i}` }));
+    const d = drafting({ tests: { requirements: [], suggestions: old } });
+    const { rerender } = render(<TestsStep {...mk({ scan, patchDraft: d.patchDraft, draft: d.get() })} />);
+    suggest();
+    fireEvent.click(screen.getByLabelText(/Old 3/));
+    rerender(<TestsStep {...mk({ scan, patchDraft: d.patchDraft, draft: d.get() })} />);
+    resolve(await json({ requirements: Array.from({ length: 10 }, (_, i) => ({ title: `New ${i}`, description: "" })) }));
+    await screen.findByLabelText(/New 0/);
+    expect(screen.getByLabelText(/Old 3/)).toBeChecked();
+  });
+
   it("explains the daily limit with the retry time", async () => {
     fetchMock.mockReturnValue(json({ code: "daily_limit", retryAt: "2030-01-01T00:00:00.000Z" }, 429));
     render(<TestsStep {...mk({ scan })} />);

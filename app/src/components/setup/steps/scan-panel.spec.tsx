@@ -54,7 +54,7 @@ describe("scan polling", () => {
     expect(polls).toBe(2);
     await flush(SCAN_POLL_MS);
     expect(polls).toBe(3);
-    expect(onResult).toHaveBeenCalledWith(result());
+    expect(onResult).toHaveBeenCalledWith(result(), "https://app.example.com/");
     const table = screen.getByTestId("setup-scan-findings");
     expect(table.textContent).toContain("Reachable");
     expect(table.textContent).toContain("200 in 182 ms");

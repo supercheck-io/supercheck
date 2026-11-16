@@ -310,12 +310,13 @@ function formatValidationErrors(error: z.ZodError) {
   ) as Record<string, string[]>;
 }
 
-export async function getSreServices(): Promise<{
+export async function getSreServices(expectedProjectId?: string): Promise<{
   success: true;
   services: SreServiceListItem[];
 } | { success: false; error: string; services: [] }> {
   try {
     const { userId, organizationId, orgPendingDeletion, project } = await requireProjectContext();
+    if (expectedProjectId && expectedProjectId !== project.id) return { success: false, error: PROJECT_MISMATCH_MESSAGE, services: [] };
     const canView = checkPermissionWithContext("sre_service", "view", {
       userId,
       organizationId,

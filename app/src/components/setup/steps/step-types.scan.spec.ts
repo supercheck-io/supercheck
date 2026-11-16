@@ -16,4 +16,9 @@ describe("scanMatchesUrl", () => {
     expect(scanMatchesUrl(scan("https://example.com/"), "")).toBe(false);
     expect(scanMatchesUrl(scan("not a url"), "https://example.com")).toBe(false);
   });
+
+  it("matches a cross-domain redirect by the URL it was submitted for, and rejects another URL", () => {
+    expect(scanMatchesUrl(scan("https://other.example.net/"), "https://app.example.com/", "https://app.example.com/")).toBe(true);
+    expect(scanMatchesUrl(scan("https://app.example.com/"), "https://changed.example.org/", "https://app.example.com/")).toBe(false);
+  });
 });

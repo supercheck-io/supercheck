@@ -148,6 +148,11 @@ describe("copy", () => {
     expect(copyProviders).toHaveBeenCalledWith(expect.anything(), [PID]);
     expect(copyConnectors).toHaveBeenCalledWith(expect.anything(), [CID]);
   });
+  it("limit caps how many source items all* copies", async () => {
+    (listProviderIds as jest.Mock).mockResolvedValue(["p1", "p2", "p3"]);
+    await POST(req({ sourceProjectId: SOURCE, allProviders: true, limit: 2 }), params);
+    expect(copyProviders).toHaveBeenCalledWith(expect.anything(), ["p1", "p2"]);
+  });
   it("all* keeps the permission checks: an editor cannot copy all connectors", async () => {
     (checkPermissionWithContext as jest.Mock).mockImplementation((r: string) => r !== "sre_connector");
     expect((await POST(req({ sourceProjectId: SOURCE, allConnectors: true }), params)).status).toBe(403);

@@ -108,6 +108,14 @@ describe("copyProviders", () => {
     expect(res).toMatchObject({ status: "adopted", id: existing.id });
     expect(await mockDatabase.select().from(schema.notificationProviders).where(eq(schema.notificationProviders.projectId, projTgt))).toHaveLength(1);
   });
+  it("does not adopt a disabled same-name channel for an enabled source: creates an enabled copy", async () => {
+    const src = await seedProvider(orgA, projSrc, "Slack ops");
+    const disabled = await seedProvider(orgA, projTgt, "Slack ops");
+    await mockDatabase.update(schema.notificationProviders).set({ isEnabled: false }).where(eq(schema.notificationProviders.id, disabled.id));
+    const [res] = await copyProviders(scope, [src.id]);
+    expect(res).toMatchObject({ status: "copied", name: "Slack ops (copied)" });
+    expect(res.id).not.toBe(disabled.id);
+  });
   it("does not adopt a same-name channel that points somewhere else: copies under a unique name, then adopts that copy", async () => {
     const other = "https://hooks.slack.com/services/T111/B111/OTHERSECRET";
     const src = await seedProvider(orgA, projSrc, "Slack ops");
@@ -209,6 +217,14 @@ describe("copyConnectors", () => {
     const results = await Promise.all([copyConnectors(scope, [src]), copyConnectors(scope, [src])]);
     expect(results.flat().map((r) => r.status).sort()).toEqual(["adopted", "copied"]);
     expect(await mockDatabase.select().from(schema.externalConnectors).where(eq(schema.externalConnectors.projectId, projTgt))).toHaveLength(1);
+  });
+  it("does not adopt a disabled same-name connector: creates an enabled copy", async () => {
+    const src = await seedConnector(orgA, projSrc, "Prom");
+    const disabled = await seedConnector(orgA, projTgt, "Prom");
+    await mockDatabase.update(schema.externalConnectors).set({ status: "disabled" }).where(eq(schema.externalConnectors.id, disabled));
+    const [res] = await copyConnectors(scope, [src]);
+    expect(res).toMatchObject({ status: "copied", name: "Prom (copied)" });
+    expect(res.id).not.toBe(disabled);
   });
   it("adopts a same type+name connector", async () => {
     const src = await seedConnector(orgA, projSrc, "Prom");

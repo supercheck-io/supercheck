@@ -13,7 +13,7 @@ type Params = { params: Promise<{ id: string }> };
 const ids = z.array(z.string().uuid()).max(10).optional();
 // `all*` copies every item in the source project (up to 10 per kind), for callers that cannot list another project.
 const bodySchema = z
-  .object({ sourceProjectId: z.string().uuid(), providerIds: ids, connectorIds: ids, allProviders: z.boolean().optional(), allConnectors: z.boolean().optional() })
+  .object({ sourceProjectId: z.string().uuid(), providerIds: ids, connectorIds: ids, allProviders: z.boolean().optional(), allConnectors: z.boolean().optional(), limit: z.number().int().min(1).max(10).optional() })
   .strict();
 
 const HOUR_MS = 60 * 60_000;
@@ -37,6 +37,7 @@ export async function POST(request: NextRequest, { params }: Params) {
     const parsed = bodySchema.safeParse(read.body);
     if (!parsed.success) return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
     const { sourceProjectId } = parsed.data;
+    const cap = parsed.data.limit ?? 10;
     let providerIds = [...new Set(parsed.data.providerIds ?? [])];
     let connectorIds = [...new Set(parsed.data.connectorIds ?? [])];
     const wantProviders = providerIds.length > 0 || Boolean(parsed.data.allProviders);
@@ -63,8 +64,8 @@ export async function POST(request: NextRequest, { params }: Params) {
     if (limited) return limited;
 
     const scope = { organizationId: target.organizationId, sourceProjectId, targetProjectId: target.project.id, userId };
-    if (parsed.data.allProviders) providerIds = [...new Set([...providerIds, ...(await listProviderIds(scope))])].slice(0, 10);
-    if (parsed.data.allConnectors) connectorIds = [...new Set([...connectorIds, ...(await listConnectorIds(scope))])].slice(0, 10);
+    if (parsed.data.allProviders) providerIds = [...new Set([...providerIds, ...(await listProviderIds(scope))])].slice(0, cap);
+    if (parsed.data.allConnectors) connectorIds = [...new Set([...connectorIds, ...(await listConnectorIds(scope))])].slice(0, cap);
     const providers = await copyProviders(scope, providerIds);
     const connectors = await copyConnectors(scope, connectorIds);
 

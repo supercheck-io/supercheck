@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Bot, Sparkles } from "lucide-react";
 
@@ -53,9 +53,14 @@ export function TestsStep({ response, features, permissions, draft, patchDraft, 
   });
   const [loading, setLoading] = useState(false);
   const [failure, setFailure] = useState<Failure | null>(null);
+  // The request outlives renders: read the selection and options as they are when it completes, not when it started.
+  const latest = useRef({ ticked, options });
+  useEffect(() => {
+    latest.current = { ticked, options };
+  });
 
   // Only the scan that matches the app URL on screen may feed suggestions (the server also keeps an older one).
-  const matchedScan = scanMatchesUrl(scan, draft.app?.url) ? scan : null;
+  const matchedScan = scanMatchesUrl(scan, draft.app?.url, draft.app?.scannedUrl) ? scan : null;
   const suggestPages = matchedScan ? suggestablePages(matchedScan) : [];
   const hasScan = suggestPages.length > 0;
   const maxTicked = ticked.length >= MAX_OPTIONS;
@@ -74,10 +79,11 @@ export function TestsStep({ response, features, permissions, draft, patchDraft, 
       const res = await postJson<{ requirements?: Suggestion[]; code?: string; retryAt?: string }>(`/api/projects/${response.projectId}/setup/suggest-requirements`, { pages: suggestPages.map(({ path, title }) => ({ path, title })).slice(0, 50) });
       if (res.ok && res.data.requirements) {
         // One bounded set for display and for the draft: ticked ones stay, then the newest run, then older unticked ones.
-        const tickedTitles = new Set(ticked.map((r) => r.title));
-        const known = new Set(options.map((o) => o.title));
+        const { ticked: nowTicked, options: nowOptions } = latest.current;
+        const tickedTitles = new Set(nowTicked.map((r) => r.title));
+        const known = new Set(nowOptions.map((o) => o.title));
         const fresh = res.data.requirements.filter((r) => !known.has(r.title));
-        const next = [...options.filter((o) => tickedTitles.has(o.title)), ...fresh, ...options.filter((o) => !tickedTitles.has(o.title))].slice(0, MAX_OPTIONS);
+        const next = [...nowOptions.filter((o) => tickedTitles.has(o.title)), ...fresh, ...nowOptions.filter((o) => !tickedTitles.has(o.title))].slice(0, MAX_OPTIONS);
         setOptions(next);
         const priorities = ["low", "medium", "high"];
         const suggestions = next.map(({ title, description, priority }) => ({

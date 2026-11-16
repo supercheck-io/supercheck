@@ -141,6 +141,8 @@ export function copyProviders(scope: CopyScope, ids: string[]): Promise<CopyItem
             // An invalid config is rejected below if nothing matches.
           }
           const target = await resolveTarget(candidates, source.name, PROVIDER_NAME_MAX, async (row) => {
+            // A disabled channel never sends, so an enabled source is not "already there" when the match is disabled.
+            if (source.isEnabled && !row.isEnabled) return false;
             try {
               return canon(decryptNotificationProviderConfig(row.config, targetProjectId)) === canon(written);
             } catch {
@@ -218,6 +220,8 @@ export function copyConnectors(scope: CopyScope, ids: string[]): Promise<CopyIte
               ),
             );
           const target = await resolveTarget(candidates, source.name, CONNECTOR_NAME_MAX, async (row) => {
+            // A disabled connector is never queried, and a copy is never created disabled.
+            if (row.status === "disabled") return false;
             if (canon(row.config) !== canon(source.config) || row.privateAgentId !== source.privateAgentId) return false;
             const [rowCredential] = await tx.select().from(externalConnectorCredentials).where(eq(externalConnectorCredentials.connectorId, row.id)).limit(1);
             if (!rowCredential || !plain) return !rowCredential && !plain;

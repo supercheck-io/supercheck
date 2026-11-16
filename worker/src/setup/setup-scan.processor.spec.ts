@@ -431,4 +431,17 @@ describe('setup scan processor', () => {
     expect(extractTitle('no title')).toBeNull();
     expect(extractTitle('<title>a\u0000<b>b</b></title>')).toBe('a b');
   });
+
+  it('stays fast on a 512 KB body made of unterminated title tags', () => {
+    const size = 512 * 1024;
+    for (const unit of ['<title', '<title>', '<title ' + 'x'.repeat(400)]) {
+      const body = unit.repeat(Math.ceil(size / unit.length));
+      const started = Date.now();
+      expect(extractTitle(body)).toBeNull();
+      expect(Date.now() - started).toBeLessThan(1000);
+    }
+    expect(
+      extractTitle('x'.repeat(70 * 1024) + '<title>late</title>'),
+    ).toBeNull();
+  });
 });

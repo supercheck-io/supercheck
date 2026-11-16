@@ -99,7 +99,7 @@ const AI_PATH = /^\/v1\/chat\/completions\/?$/;
 
 export function MonitorsStep({ response, draft, patchDraft, features, readOnly, scan: storedScan }: StepProps) {
   const appUrl = draft.app?.url;
-  const scan = scanMatchesUrl(storedScan, appUrl) ? storedScan : null;
+  const scan = scanMatchesUrl(storedScan, appUrl, draft.app?.scannedUrl) ? storedScan : null;
   const monitors: MonitorsDraft = draft.monitors ?? { pages: [] };
   const setMonitors = (next: Partial<MonitorsDraft>) => patchDraft((d) => ({ ...d, monitors: { pages: [], ...d.monitors, ...next } }));
 

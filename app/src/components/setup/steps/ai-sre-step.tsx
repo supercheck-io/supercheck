@@ -46,6 +46,19 @@ const CONNECTORS: Array<{ type: ConnectorType; fields: FieldDef[] }> = [
 
 type Outcome = { state: "connected" | "rejected" | "saved"; text: string };
 
+/** Host and path only, no trailing slash, so a typed URL compares with the stored (query-redacted) one. */
+const sameEndpoint = (a: string | null | undefined, b: string) => {
+  const norm = (u: string) => {
+    try {
+      const { origin, pathname } = new URL(u);
+      return `${origin}${pathname}`.replace(/\/+$/, "");
+    } catch {
+      return u.trim();
+    }
+  };
+  return !!a && norm(a) === norm(b);
+};
+
 const labelOf = (type: string) => SRE_CONNECTOR_CATALOG.find((c) => c.value === type)?.label ?? type;
 
 function ConnectorForm({ def, projectId, knownIds, onSaved }: { def: (typeof CONNECTORS)[number]; projectId: string; knownIds: string[]; onSaved: (id: string, outcome: Outcome) => void }) {
@@ -76,7 +89,11 @@ function ConnectorForm({ def, projectId, knownIds, onSaved }: { def: (typeof CON
         setBusy(false);
         return;
       }
-      const adopted = listed?.success ? listed.connectors.find((c) => knownIds.includes(c.id) && c.type === def.type && c.status !== "disabled") : undefined;
+      // A typed endpoint must match too: another host is a new connector, never a rotation of the copied one.
+      const typedEndpoint = values.endpointUrl?.trim() ?? "";
+      const adopted = listed?.success
+        ? listed.connectors.find((c) => knownIds.includes(c.id) && c.type === def.type && c.status !== "disabled" && (!typedEndpoint || sameEndpoint(c.endpointUrl, typedEndpoint)))
+        : undefined;
       if (adopted && hasCredential) {
         // The adopted connector keeps its old token, so save what was typed before testing it.
         const rotated = await rotateSreConnectorCredential({ id: adopted.id, credentialType: "api_key", value: credentialValue }, projectId);
@@ -275,6 +292,20 @@ export function AiSreStep({ response, permissions, draft, patchDraft, readOnly }
         ) : (
           <p className="text-xs text-muted-foreground">Add your app URL in the first step to get a suggested service.</p>
         )}
+        {/* Selected for an earlier app URL: stays listed so it can still be removed. */}
+        {services.filter((s) => s.name !== host).map((s) => (
+          <div key={s.name} className="flex items-center gap-3 rounded-lg border px-4 py-2.5">
+            <Checkbox
+              id={`setup-service-${s.name}`}
+              checked
+              disabled={readOnly}
+              onCheckedChange={() => setAiSre({ services: services.filter((x) => x.name !== s.name) })}
+            />
+            <Label htmlFor={`setup-service-${s.name}`} className="min-w-0 break-all text-sm font-normal">
+              Create a service named {s.name}
+            </Label>
+          </div>
+        ))}
         <Link href="/services" className="text-sm font-medium underline underline-offset-4">
           Manage services
         </Link>

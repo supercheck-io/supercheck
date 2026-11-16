@@ -95,8 +95,13 @@ function cleanText(raw: string): string {
   );
 }
 
+/** A title lives in <head>: only the start is searched, and every part of the pattern is bounded. */
+const TITLE_SEARCH_CHARS = 64 * 1024;
+
 export function extractTitle(html: string): string | null {
-  const match = /<title[^>]*>([\s\S]{0,2000}?)<\/title>/i.exec(html);
+  const match = /<title\b[^>]{0,500}>([\s\S]{0,2000}?)<\/title>/i.exec(
+    html.slice(0, TITLE_SEARCH_CHARS),
+  );
   return match ? cleanText(match[1]) || null : null;
 }
 

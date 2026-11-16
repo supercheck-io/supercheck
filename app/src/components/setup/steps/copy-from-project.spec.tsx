@@ -59,6 +59,18 @@ describe("CopyFromProject", () => {
     expect(onCopied).toHaveBeenCalledWith(["n1", "n2"]);
   });
 
+  it("limits the request to the remaining capacity and disables copying when there is none", async () => {
+    fetchMock.mockReturnValue(json({ providers: [{ sourceId: "a", id: "n1", status: "copied" }], connectors: [] }));
+    const { rerender } = render(<CopyFromProject kind="providers" setupProjectId={TARGET} disabled={false} capacity={2} onCopied={jest.fn()} />);
+    expect(screen.getByText(/at most 2 will be copied/)).toBeTruthy();
+    fireEvent.click(pickSource("alert channels"));
+    await screen.findByText("Copied");
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({ sourceProjectId: OTHER, allProviders: true, limit: 2 });
+    rerender(<CopyFromProject kind="providers" setupProjectId={TARGET} disabled={false} capacity={0} onCopied={jest.fn()} />);
+    expect(screen.getByText(/limit is reached/)).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Copy all alert channels from Prod/ })).toBeDisabled();
+  });
+
   it("copies all connectors with allConnectors", async () => {
     fetchMock.mockReturnValue(json({ providers: [], connectors: [{ sourceId: "a", id: "c1", status: "copied" }] }));
     const onCopied = renderIt("connectors");

@@ -37,7 +37,7 @@ const STATUS: Record<CopyItem["status"], { word: string; tone: "success" | "info
 };
 
 /** Second-project shortcut: copy every alert channel or connector of another project (spec 7). */
-export function CopyFromProject({ kind, setupProjectId, disabled, onCopied }: { kind: Kind; setupProjectId: string; disabled: boolean; onCopied: (ids: string[]) => void }) {
+export function CopyFromProject({ kind, setupProjectId, disabled, capacity, onCopied }: { kind: Kind; setupProjectId: string; disabled: boolean; /** Room left in the draft: the copy is limited to it so no copied item is dropped. */ capacity?: number; onCopied: (ids: string[]) => void }) {
   const ctx = useProjectContextSafe();
   const [sourceId, setSourceId] = useState("");
   const [busy, setBusy] = useState(false);
@@ -57,6 +57,7 @@ export function CopyFromProject({ kind, setupProjectId, disabled, onCopied }: { 
       const res = await postJson<Partial<Record<Kind, CopyItem[]>>>(`/api/projects/${setupProjectId}/setup/copy`, {
         sourceProjectId: sourceId,
         [kind === "providers" ? "allProviders" : "allConnectors"]: true,
+        ...(capacity !== undefined ? { limit: capacity } : {}),
       });
       const result = res.data[kind];
       if (!res.ok || !result) {
@@ -93,10 +94,13 @@ export function CopyFromProject({ kind, setupProjectId, disabled, onCopied }: { 
             </SelectContent>
           </Select>
         </div>
-        <Button type="button" variant="outline" disabled={disabled || busy || !source} onClick={() => void copy()}>
+        <Button type="button" variant="outline" disabled={disabled || busy || !source || capacity === 0} onClick={() => void copy()}>
           {busy ? "Copying..." : source ? `Copy all ${noun.all} from ${source.name}` : `Copy all ${noun.all}`}
         </Button>
       </div>
+      {capacity !== undefined && capacity < 10 ? (
+        <p className="text-xs text-muted-foreground">{capacity === 0 ? `Setup keeps up to 10 ${noun.all}, and that limit is reached.` : `Setup keeps up to 10 ${noun.all}, so at most ${capacity} will be copied.`}</p>
+      ) : null}
       {error ? <Alert variant="error">{error}</Alert> : null}
       {items ? (
         items.length === 0 ? (

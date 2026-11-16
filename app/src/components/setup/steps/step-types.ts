@@ -24,8 +24,10 @@ export interface StepProps {
 const hostOf = (url: string) => new URL(url).host.replace(/^www\./i, "").toLowerCase();
 
 /** A scan only describes the site it ran against: ignore it once the app URL points somewhere else. */
-export function scanMatchesUrl(scan: ScanSummary | null, appUrl: string | null | undefined): scan is ScanSummary {
+export function scanMatchesUrl(scan: ScanSummary | null, appUrl: string | null | undefined, scannedUrl?: string): scan is ScanSummary {
   if (!scan || !appUrl) return false;
+  // The URL the scan was submitted for decides; the final host only matters for a scan saved without it.
+  if (scannedUrl) return scannedUrl === appUrl;
   try {
     const scanned = hostOf(scan.finalUrl);
     const entered = hostOf(appUrl);

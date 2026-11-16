@@ -32,7 +32,7 @@ const SCAN_ERRORS: Record<NonNullable<ScanSummary["error"]> | "timeout" | "unava
 };
 
 /** Starts a scan and polls it every 2 s until it finishes, 5 min pass, or the component unmounts. */
-export function useScan(projectId: string, onResult: (result: ScanSummary) => void) {
+export function useScan(projectId: string, onResult: (result: ScanSummary, url: string) => void) {
   const [phase, setPhase] = useState<ScanPhase>({ kind: "idle" });
   const alive = useRef(true);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -105,7 +105,7 @@ export function useScan(projectId: string, onResult: (result: ScanSummary) => vo
         if (body.status === "done" && body.result) {
           stopRun();
           setPhase({ kind: "done", result: body.result, url });
-          onResult(body.result);
+          onResult(body.result, url);
           return;
         }
         if (body.status === "failed") return fail(SCAN_ERRORS.failed);
@@ -186,7 +186,7 @@ export function ScanFindings({ result }: { result: ScanSummary }) {
                 {row.word}
               </TableBadge>
             </TableCell>
-            <TableCell className="text-muted-foreground">{row.detail}</TableCell>
+            <TableCell className="break-words text-muted-foreground [overflow-wrap:anywhere]">{row.detail}</TableCell>
           </TableRow>
         ))}
       </TableBody>
@@ -194,12 +194,12 @@ export function ScanFindings({ result }: { result: ScanSummary }) {
   );
 }
 
-export function ScanPanel({ projectId, url, disabled, onResult, initial }: { projectId: string; url: string | null; disabled: boolean; onResult: (result: ScanSummary) => void; initial: ScanSummary | null }) {
+export function ScanPanel({ projectId, url, disabled, onResult, initial, initialUrl }: { projectId: string; url: string | null; disabled: boolean; onResult: (result: ScanSummary, url: string) => void; initial: ScanSummary | null; initialUrl?: string }) {
   const { phase, start } = useScan(projectId, onResult);
   const current: ScanPhase = phase.kind === "idle" && initial ? { kind: "done", result: initial } : phase;
   // A finished scan belongs to the address it ran against; hide it once the URL points elsewhere. A run is compared
   // with the URL it was submitted for (a redirect to another domain changes finalUrl); a stored scan, by its final host.
-  const matches = current.kind === "done" && (current.url !== undefined ? current.url === url : scanMatchesUrl(current.result, url));
+  const matches = current.kind === "done" && (current.url !== undefined ? current.url === url : scanMatchesUrl(current.result, url, initialUrl));
   const shown: ScanPhase = current.kind === "done" && !matches ? { kind: "idle" } : current;
   const scanning = phase.kind === "scanning";
   return (
@@ -209,7 +209,7 @@ export function ScanPanel({ projectId, url, disabled, onResult, initial }: { pro
           <h3 id="setup-scan" className="text-sm font-semibold">
             Scan your app <span className="font-normal text-muted-foreground">(optional)</span>
           </h3>
-          <p className="text-xs text-muted-foreground">We look at the homepage and a few pages to suggest monitors. Nothing is stored except codes, timings and page paths.</p>
+          <p className="text-xs text-muted-foreground">We look at the homepage and a few pages to suggest monitors. Nothing is stored except codes, timings, page paths and page titles.</p>
         </div>
         <Button type="button" variant="outline" size="sm" disabled={disabled || !url || scanning} onClick={() => url && void start(url)}>
           {scanning ? <Loader2 className="animate-spin" aria-hidden="true" /> : null}
@@ -217,7 +217,7 @@ export function ScanPanel({ projectId, url, disabled, onResult, initial }: { pro
         </Button>
       </div>
       <div aria-live="polite">
-        {scanning ? <p className="text-sm text-muted-foreground">Scanning {url}. This usually takes under a minute.</p> : null}
+        {scanning ? <p className="break-words text-sm text-muted-foreground [overflow-wrap:anywhere]" title={url ?? undefined}>Scanning {url}. This usually takes under a minute.</p> : null}
         {shown.kind === "error" ? <Alert variant="error">{shown.message}</Alert> : null}
         {shown.kind === "done" ? <ScanFindings result={shown.result} /> : null}
       </div>

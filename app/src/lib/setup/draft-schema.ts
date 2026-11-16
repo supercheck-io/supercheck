@@ -76,6 +76,8 @@ const created = z.record(z.string().max(120), uuid).refine((value) => Object.key
 const appStep = z
   .object({
     url: safeUrl.optional(),
+    /** The (stripped) URL the latest scan was submitted for: a redirect to another domain still belongs to it. */
+    scannedUrl: safeUrl.optional(),
     /** Name of the project secret holding the test account (the value is never here). */
     testAccountSecret: secretName.optional(),
   })

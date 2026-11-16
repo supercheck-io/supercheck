@@ -307,6 +307,7 @@ export function AlertsStep({ response, draft, patchDraft, features, permissions,
           kind="providers"
           setupProjectId={response.projectId}
           disabled={readOnly}
+          capacity={Math.max(0, SETUP_LIMITS.maxChannels - providerIds.length)}
           onCopied={(ids) => patchDraft((d) => ({ ...d, alerts: { ...d.alerts, providerIds: [...new Set([...(d.alerts?.providerIds ?? []), ...ids])].slice(0, 10) } }))}
         />
       ) : null}

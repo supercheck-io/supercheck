@@ -463,12 +463,14 @@ describe("scan in the app and monitors steps", () => {
     jest.useFakeTimers();
     fetchMock.mockImplementation((url: string, init?: { method?: string }) => (init?.method === "POST" ? json({ scanId: "s" }, 202) : json({ status: "done", result: withScan })));
     const setScan = jest.fn();
-    render(<AppStep {...makeStepProps({ draft: { app: { url: "https://app.example.com/" } }, setScan })} />);
+    const d = drafting({ app: { url: "https://app.example.com/" } });
+    render(<AppStep {...makeStepProps({ draft: d.get(), patchDraft: d.patchDraft, setScan })} />);
     fireEvent.click(screen.getByRole("button", { name: "Scan" }));
     await act(async () => {
       await jest.advanceTimersByTimeAsync(2100);
     });
     expect(setScan).toHaveBeenCalledWith(withScan);
+    expect(d.get().app?.scannedUrl).toBe("https://app.example.com/");
     jest.useRealTimers();
   });
 
@@ -508,6 +510,10 @@ describe("scan in the app and monitors steps", () => {
   });
 
   it("builds suggestions and the AI endpoint URL from the scan's final origin after a redirect", () => {
+    const crossDomain = { ...scan, finalUrl: "https://other.example.net/", redirects: 1 };
+    const { unmount } = render(<MonitorsStep {...makeStepProps({ scan: crossDomain, draft: { app: { url: "https://example.com/", scannedUrl: "https://example.com/" }, monitors: { pages: [] } } })} />);
+    expect(screen.getByLabelText(/other.example.net\/pricing/)).toBeTruthy();
+    unmount();
     const redirected = { ...scan, finalUrl: "https://www.example.com/", redirects: 1 };
     render(<MonitorsStep {...makeStepProps({ scan: redirected, draft: { app: { url: "https://example.com/" }, monitors: { pages: [] } } })} />);
     expect(screen.getByLabelText(/www.example.com\/pricing/)).toBeTruthy();

@@ -126,7 +126,7 @@ export function ReviewStep({ response, features, permissions, draft, skipped, re
     findRequirements: (query) => findRequirementsForSetup(query, response.projectId),
     createRequirement: (data) => createRequirement(data, response.projectId),
     getServices: async () => {
-      const res = await getSreServices();
+      const res = await getSreServices(response.projectId);
       return { success: res.success, services: res.services.map((x) => ({ id: x.id, name: x.name })) };
     },
     createService: (data) => createSreService(data as Parameters<typeof createSreService>[0], response.projectId) as ReturnType<RunnerDeps["createService"]>,

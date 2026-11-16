@@ -207,6 +207,33 @@ describe("AiSreStep", () => {
     expect(mockCreate.mock.calls[1][0]).toMatchObject({ type: "prometheus", endpointUrl: "https://prom.example.com", credential: undefined });
   });
 
+  it("does not adopt a copied connector when a different endpoint is typed: creates a new one", async () => {
+    mockList.mockResolvedValue({ success: true, connectors: [{ id: CID, name: "Prometheus", type: "prometheus", status: "configured", endpointUrl: "https://a.example.com" }] });
+    mockCreate.mockResolvedValue({ success: true, connector: { id: "00000000-0000-4000-8000-0000000000c9" } });
+    mockValidate.mockResolvedValue({ success: true, message: "ok", connector: { lastValidationStatus: "valid" } });
+    const d = drafting({ aiSre: { connectorIds: [CID], services: [] } });
+    render(<AiSreStep {...makeStepProps({ ...admin(), patchDraft: d.patchDraft, draft: d.get() })} />);
+    open(/Prometheus/);
+    type("Prometheus URL", "https://b.example.com");
+    type("Bearer token (optional)", "tok");
+    fireEvent.click(screen.getByRole("button", { name: "Save and test" }));
+    await screen.findByText(/Prometheus: Connected/);
+    expect(mockRotate).not.toHaveBeenCalled();
+    expect(mockCreate).toHaveBeenCalledWith(expect.objectContaining({ type: "prometheus", endpointUrl: "https://b.example.com" }), PROJECT_ID);
+  });
+
+  it("adopts a recorded connector whose endpoint matches the typed one", async () => {
+    mockList.mockResolvedValue({ success: true, connectors: [{ id: CID, name: "Prometheus", type: "prometheus", status: "configured", endpointUrl: "https://a.example.com/" }] });
+    mockValidate.mockResolvedValue({ success: true, message: "ok", connector: { lastValidationStatus: "valid" } });
+    const d = drafting({ aiSre: { connectorIds: [CID], services: [] } });
+    render(<AiSreStep {...makeStepProps({ ...admin(), patchDraft: d.patchDraft, draft: d.get() })} />);
+    open(/Prometheus/);
+    type("Prometheus URL", "https://a.example.com");
+    fireEvent.click(screen.getByRole("button", { name: "Save and test" }));
+    await screen.findByText(/Prometheus: Connected/);
+    expect(mockCreate).not.toHaveBeenCalled();
+  });
+
   it("keeps the connector and says the token was rejected when validation fails", async () => {
     mockCreate.mockResolvedValue({ success: true, connector: { id: CID }, message: "ok" });
     mockValidate.mockResolvedValue({ success: false, error: "401 Unauthorized." });
@@ -313,5 +340,12 @@ describe("AiSreStep", () => {
   it("asks for an app URL when there is none", () => {
     render(<AiSreStep {...makeStepProps({ ...admin() })} />);
     expect(screen.getByText(/Add your app URL in the first step/)).toBeTruthy();
+  });
+
+  it("lists a service chosen for an earlier app URL so it can be removed", () => {
+    const d = drafting({ app: { url: "https://new.example.com" }, aiSre: { connectorIds: [], services: [{ name: "old.example.com" }, { name: "keep" }] } });
+    render(<AiSreStep {...makeStepProps({ ...admin(), patchDraft: d.patchDraft, draft: d.get() })} />);
+    fireEvent.click(screen.getByLabelText("Create a service named old.example.com"));
+    expect(d.get().aiSre?.services).toEqual([{ name: "keep" }]);
   });
 });
