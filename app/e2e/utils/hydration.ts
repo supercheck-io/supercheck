@@ -12,8 +12,12 @@ export async function waitForHydration(page: Page): Promise<void> {
   await expect
     .poll(
       () =>
+        // The root layout sets the flag before streamed page chunks load; a click on a
+        // not-yet-hydrated segment is dropped, so also wait for every script ("load").
         page.evaluate(
-          () => document.documentElement.dataset.hydrated === "true",
+          () =>
+            document.readyState === "complete" &&
+            document.documentElement.dataset.hydrated === "true",
         ),
       { timeout: 30_000 },
     )
