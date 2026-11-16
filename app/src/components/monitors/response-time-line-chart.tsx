@@ -50,6 +50,8 @@ interface ResponseTimeBarChartProps {
   showFirstToken?: boolean;
   /** Card title; a heartbeat calls it "Run duration". */
   title?: string;
+  /** Replaces the default empty-state copy (a heartbeat has no duration until /start is called). */
+  empty?: { description: string; heading: string; hint: string };
 }
 
 interface TooltipProps {
@@ -115,7 +117,7 @@ const CustomTooltip = ({ active, payload, label }: TooltipProps) => {
   return null;
 };
 
-export function ResponseTimeBarChart({ data, showFirstToken = false, title = "Response Time" }: ResponseTimeBarChartProps) {
+export function ResponseTimeBarChart({ data, showFirstToken = false, title = "Response Time", empty }: ResponseTimeBarChartProps) {
   const [visiblePoints, setVisiblePoints] = React.useState(0);
 
   // Input validation
@@ -190,7 +192,7 @@ export function ResponseTimeBarChart({ data, showFirstToken = false, title = "Re
         <CardHeader className="pb-4">
           <CardTitle className="text-lg font-semibold">{title}</CardTitle>
           <CardDescription className="text-sm">
-            Performance metrics will appear here once monitoring begins.
+            {empty?.description ?? "Performance metrics will appear here once monitoring begins."}
           </CardDescription>
         </CardHeader>
         <CardContent className="flex items-center justify-center flex-1">
@@ -212,10 +214,10 @@ export function ResponseTimeBarChart({ data, showFirstToken = false, title = "Re
             </div>
             <div>
               <p className="text-muted-foreground font-medium">
-                No Response Data
+                {empty?.heading ?? "No Response Data"}
               </p>
               <p className="text-sm text-muted-foreground mt-1">
-                Response time data will be displayed here after the first check.
+                {empty?.hint ?? "Response time data will be displayed here after the first check."}
               </p>
             </div>
           </div>
@@ -236,7 +238,7 @@ export function ResponseTimeBarChart({ data, showFirstToken = false, title = "Re
         <CardHeader className="pb-4">
           <CardTitle className="text-lg font-semibold">{title}</CardTitle>
           <CardDescription className="text-sm">
-            No response data available
+            {empty?.description ?? "No response data available"}
           </CardDescription>
         </CardHeader>
         <CardContent className="flex items-center justify-center flex-1">
@@ -258,10 +260,10 @@ export function ResponseTimeBarChart({ data, showFirstToken = false, title = "Re
             </div>
             <div>
               <p className="text-muted-foreground font-medium">
-                No Response Data
+                {empty?.heading ?? "No Response Data"}
               </p>
               <p className="text-sm text-muted-foreground mt-1">
-                No response time data available.
+                {empty?.hint ?? "No response time data available."}
               </p>
             </div>
           </div>

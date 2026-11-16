@@ -35,7 +35,7 @@ describe("HeartbeatPingHistory", () => {
     expect(within(rows[1]).getByText("12 s")).toBeInTheDocument();
     expect(within(rows[2]).getByText("Missed")).toBeInTheDocument();
     expect(within(rows[2]).getByText("No ping before the grace period ended")).toBeInTheDocument();
-    expect(screen.getByText("Total 3 entries")).toBeInTheDocument();
+    expect(screen.getByText("Showing 3 of 3 recent pings.")).toBeInTheDocument();
   });
 
   it("falls back to up/down for rows without heartbeat details", () => {
@@ -57,7 +57,7 @@ describe("HeartbeatPingHistory", () => {
   it("pages through the history", () => {
     const onPageChange = jest.fn();
     render(<HeartbeatPingHistory {...props} results={[row("a", true)]} total={1} page={2} totalPages={3} onPageChange={onPageChange} />);
-    expect(screen.getByText("Total 1 entry")).toBeInTheDocument();
+    expect(screen.getByText("Showing 1 of 1 recent ping.")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Previous page" }));
     fireEvent.click(screen.getByRole("button", { name: "Next page" }));
     expect(onPageChange.mock.calls).toEqual([[1], [3]]);

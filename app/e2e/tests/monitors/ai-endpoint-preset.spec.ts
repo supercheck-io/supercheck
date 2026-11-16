@@ -3,23 +3,20 @@ import { test } from '../../fixtures';
 import { createProjectSecret, deleteMonitor, deleteProjectSecret } from '../../utils/test-data';
 import { waitForHydration } from '../../utils/hydration';
 
-test.describe('AI endpoint monitor preset @monitors', () => {
-  test('creates a preset monitor with a project secret and reopens it in the preset @high @positive', async ({ projectAdminPage: page, cleanup }) => {
+test.describe('AI endpoint Monitor type @monitors', () => {
+  test('creates an AI Endpoint Monitor with a project secret and reopens it as one @high @positive', async ({ projectAdminPage: page, cleanup }) => {
     const request = page.request;
     const secretKey = `E2E_AI_${String(Date.now()).slice(-6)}`;
     const secret = await createProjectSecret(request, secretKey, 'sk-e2e-not-a-real-key');
     cleanup.add(`secret ${secretKey}`, () => deleteProjectSecret(request, secret.projectId, secret.id));
 
     const name = `E2E AI endpoint ${Date.now()}`;
-    await page.goto('/monitors/create?type=http_request');
+    await page.goto('/monitors/create?type=ai_endpoint');
     await waitForHydration(page);
 
     await page.getByRole('textbox', { name: 'Title' }).fill(name);
-    // Invalid plain-request headers are hidden by the preset and must not block saving.
-    await page.getByPlaceholder('{ "Authorization": "Bearer ..." }').fill('not json');
-    await page.getByTestId('monitor-preset').click();
-    await page.getByRole('option', { name: 'AI endpoint (OpenAI-compatible)' }).click();
 
+    await expect(page.getByText('AI Endpoint Monitor').first()).toBeVisible();
     await expect(page.getByTestId('ai-endpoint-fields')).toBeVisible();
     await expect(page.getByRole('textbox', { name: 'Target' })).toHaveValue('https://api.openai.com/v1/chat/completions');
     await expect(page.getByTestId('ai-monthly-calls')).toContainText('about 8,640 calls a month');
@@ -53,7 +50,8 @@ test.describe('AI endpoint monitor preset @monitors', () => {
 
     await page.goto(`/monitors/${monitorId}/edit`);
     await waitForHydration(page);
-    await expect(page.getByTestId('monitor-preset')).toContainText('AI endpoint (OpenAI-compatible)');
+    await expect(page.getByText('Edit AI Endpoint Monitor')).toBeVisible();
+    await expect(page.getByTestId('monitor-preset')).toHaveCount(0);
     await expect(page.getByTestId('ai-model')).toHaveValue('gpt-4o-mini');
   });
 
@@ -62,12 +60,10 @@ test.describe('AI endpoint monitor preset @monitors', () => {
     page.on('response', (response) => {
       if (response.request().method() === 'POST' && new URL(response.url()).pathname === '/api/monitors') created.push(response.url());
     });
-    await page.goto('/monitors/create?type=http_request');
+    await page.goto('/monitors/create?type=ai_endpoint');
     await waitForHydration(page);
 
     await page.getByRole('textbox', { name: 'Title' }).fill(`E2E AI no model ${Date.now()}`);
-    await page.getByTestId('monitor-preset').click();
-    await page.getByRole('option', { name: 'AI endpoint (OpenAI-compatible)' }).click();
     await page.getByTestId('ai-no-key').click();
     await page.locator('form button[type="submit"]').click();
 

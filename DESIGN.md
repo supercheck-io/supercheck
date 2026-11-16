@@ -70,7 +70,8 @@ Rules for chips:
 
 ## 5. Layout
 
-- App pages: `PageBreadcrumbs`, then one `Card` (`m-4`) holding the feature component. The title row is `PageHeader`, search and filters go on a toolbar row under it, then the content.
+- App pages: `PageBreadcrumbs`, then one `Card` (`m-4 shadow-sm`, `CardContent className="p-6"`) holding the feature component, whose root is `space-y-4`. The title row is `PageHeader`: page tabs (if any) and then the primary create action go in its `actions`. Search, filters and View go on a toolbar row under it, then the table (rows `h-[53px]`, cells `py-2.5`) and `DataTablePagination`. Runs is the reference list page.
+- Empty lists: when a list has never had data, `DashboardEmptyState` (`min-h-[420px]`, `h-10 w-10` icon without colour, one sentence-case action) replaces the toolbar and table, and the header create button is hidden so the action shows once. A list that is empty only because of filters keeps the in-table "No results" row. Services is the reference.
 - Spacing comes from the 4px scale (`gap-2`, `gap-3`, `p-4`, `p-6`). Card padding is `p-6` on pages and `p-4` inside panels.
 - Radius: `rounded-md` for controls and small (`sm`) chips, `rounded-lg` for page (`md`) chips and small panels, `rounded-xl` for cards and screenshots.
 - Marketing and pricing: content width `max-w-6xl`, sections separated by `py-24`, left-aligned headings, one idea per section.

@@ -12,7 +12,7 @@ export type TypeTone = (typeof TYPE_TONES)[number];
 
 export const TYPE_TONE = {
   test: { browser: "sky", api: "teal", database: "cyan", custom: "blue", performance: "purple", agent: "purple" },
-  monitor: { http_request: "teal", website: "sky", ping_host: "cyan", port_check: "blue", synthetic_test: "purple", heartbeat: "teal", mcp_server: "purple" },
+  monitor: { http_request: "teal", website: "sky", ping_host: "cyan", port_check: "blue", synthetic_test: "purple", heartbeat: "teal", mcp_server: "purple", ai_endpoint: "purple" },
   // A job runs a test engine, so it shares the tone of that test type.
   job: { playwright: "sky", k6: "purple" },
   variable: { variable: "stone", secret: "violet", file: "indigo" },

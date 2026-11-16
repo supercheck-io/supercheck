@@ -247,8 +247,8 @@ describe("heartbeat monitor detail", () => {
     expect(screen.queryByText("Recent Check Results")).toBeNull();
     // Editors get the reveal controls once permissions are known.
     expect(await screen.findByRole("button", { name: "Reveal" })).toBeInTheDocument();
-    // No run duration recorded: the chart is not shown.
-    expect(chartProps).toBeNull();
+    // No run duration recorded: the card still renders, with its empty copy.
+    expect(chartProps).toMatchObject({ title: "Run duration", empty: { heading: "No run durations yet" } });
   });
 
   it("shows last ping, next expected and last run duration, and titles the chart Run duration", () => {
@@ -262,15 +262,32 @@ describe("heartbeat monitor detail", () => {
         )}
       />,
     );
-    expect(screen.getByTestId("heartbeat-stat-last-ping")).toHaveTextContent("1 minute ago");
-    expect(screen.getByTestId("heartbeat-stat-next")).toHaveTextContent("in about 1 hour");
+    expect(screen.getByTestId("heartbeat-stat-last-ping")).toHaveTextContent("1m ago");
+    expect(screen.getByTestId("heartbeat-stat-next")).toHaveTextContent(/^Next expected byin 5[89]m$/);
     expect(screen.getByTestId("heartbeat-stat-duration")).toHaveTextContent("4 min 08 s");
     expect(chartProps).toMatchObject({ title: "Run duration" });
   });
 
   it("hides the next expected time while paused", () => {
     render(<MonitorDetailClient monitor={heartbeatMonitor("paused", { nextExpectedAt: new Date().toISOString() })} />);
-    expect(screen.getByTestId("heartbeat-stat-next")).toHaveTextContent("—");
+    expect(screen.getByTestId("heartbeat-stat-next")).toHaveTextContent("Paused");
+  });
+
+  it("shows Never before the first ping and overdue when late", () => {
+    const { unmount } = render(<MonitorDetailClient monitor={heartbeatMonitor("pending")} />);
+    expect(screen.getByTestId("heartbeat-stat-last-ping")).toHaveTextContent("Never");
+    expect(screen.getByTestId("heartbeat-stat-duration")).toHaveTextContent("—");
+    unmount();
+    render(<MonitorDetailClient monitor={heartbeatMonitor("down", { lastPingAt: new Date(Date.now() - 3 * 3_600_000).toISOString(), nextExpectedAt: new Date(Date.now() - 3 * 60_000).toISOString() })} />);
+    expect(screen.getByTestId("heartbeat-stat-last-ping")).toHaveTextContent("3h ago");
+    expect(screen.getByTestId("heartbeat-stat-next")).toHaveTextContent("overdue 3m");
+  });
+
+  it("labels the 24h and 30d groups as run times and always renders the run duration chart", () => {
+    render(<MonitorDetailClient monitor={heartbeatMonitor("up")} />);
+    expect(screen.getAllByText("Avg run")).toHaveLength(2);
+    expect(screen.getAllByText("P95 run")).toHaveLength(2);
+    expect(chartProps).toMatchObject({ title: "Run duration" });
   });
 });
 

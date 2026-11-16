@@ -13,8 +13,8 @@ export default function RequirementsPage() {
     return (
         <div>
             <PageBreadcrumbs items={breadcrumbs} />
-            <Card className="shadow-sm hover:shadow-md transition-shadow duration-200 m-4">
-                <CardContent>
+            <Card className="m-4 shadow-sm">
+                <CardContent className="p-6">
                     {/* Suspense boundary required because Requirements uses useSearchParams() */}
                     <Suspense
                         fallback={

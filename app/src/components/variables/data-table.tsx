@@ -248,7 +248,7 @@ export function DataTable<TData, TValue>({
                 <TableRow
                   key={row.id}
                   data-state={row.getIsSelected() && "selected"}
-                  className={cn(onRowClick && "cursor-pointer")}
+                  className={cn("h-[53px]", onRowClick && "cursor-pointer")}
                   onClick={onRowClick ? () => onRowClick(row) : undefined}
                 >
                   {row.getVisibleCells().map((cell) => (
@@ -270,7 +270,7 @@ export function DataTable<TData, TValue>({
                   {columnFilters.length > 0 || globalFilter
                     ? "No variables match your filters. Clear the search or filters to see all variables."
                     : meta?.canManage || meta?.canCreateEdit
-                      ? "No variables yet. Use Add Variable to create one."
+                      ? "No variables yet. Use Add variable to create one."
                       : "No variables yet."}
                 </TableCell>
               </TableRow>

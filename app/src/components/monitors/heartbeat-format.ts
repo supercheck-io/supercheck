@@ -55,3 +55,25 @@ export function heartbeatFormValues(frequencyMinutes: number, graceMinutes: numb
     heartbeatConfig_graceUnit: grace.unit,
   };
 }
+
+/** "just now", "5m", "8h", "3d": a short span that never truncates in a stat tile. */
+function compactSpan(ms: number): string {
+  const minutes = Math.floor(ms / 60_000);
+  if (minutes < 1) return "<1m";
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h`;
+  return `${Math.floor(hours / 24)}d`;
+}
+
+/** Last ping: "just now", "5m ago", "8h ago", "3d ago". */
+export function formatPingAgo(at: Date, now: number = Date.now()): string {
+  const ms = now - at.getTime();
+  return ms < 60_000 ? "just now" : `${compactSpan(ms)} ago`;
+}
+
+/** Next expected ping: "in 52m", "in 2d", or "overdue 3m" once the time has passed. */
+export function formatPingDue(at: Date, now: number = Date.now()): string {
+  const ms = at.getTime() - now;
+  return ms >= 0 ? `in ${compactSpan(ms)}` : `overdue ${compactSpan(-ms)}`;
+}

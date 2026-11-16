@@ -219,13 +219,14 @@ export function DataTable<TData, TValue>({
     if (!isLoading && data.length === 0) {
         return (
             <DashboardEmptyState
+                className="min-h-[420px]"
                 title="No requirements yet"
                 description={
                     canCreateRequirement
                         ? "Create a requirement to track its test coverage, or upload a document from the Documents tab to extract them."
                         : "No requirements have been added to this project yet. Ask a project editor or administrator to add one."
                 }
-                icon={<Target className="h-12 w-12" />}
+                icon={<Target className="h-10 w-10" />}
                 action={
                     canCreateRequirement ? (
                         <Button
@@ -233,7 +234,7 @@ export function DataTable<TData, TValue>({
                             data-testid="create-requirement-button"
                         >
                             <PlusIcon className="mr-2 h-4 w-4" />
-                            Create Requirement
+                            Create requirement
                         </Button>
                     ) : undefined
                 }
@@ -242,7 +243,7 @@ export function DataTable<TData, TValue>({
     }
 
     return (
-        <div className="space-y-2 -mb-2">
+        <div className="space-y-4">
             <DataTableToolbar table={table} canCreateRequirement={canCreateRequirement} />
             <div className="rounded-t-lg border relative">
                 <Table>
@@ -285,7 +286,7 @@ export function DataTable<TData, TValue>({
                                     <TableRow
                                         key={row.id}
                                         data-state={row.getIsSelected() && "selected"}
-                                        className={cn(onRowClick && "cursor-pointer")}
+                                        className={cn("h-[53px]", onRowClick && "cursor-pointer")}
                                         onClick={() => onRowClick?.(row)}
                                     >
                                         {row.getVisibleCells().map((cell) => (

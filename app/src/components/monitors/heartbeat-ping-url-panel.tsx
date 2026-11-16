@@ -123,9 +123,9 @@ export function HeartbeatPingUrlPanel({ monitorId, canManage, pending = false }:
 
   return (
     <Card className="shadow-sm" data-testid="heartbeat-ping-url-panel">
-      <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2 space-y-0">
+      <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2 space-y-0 p-4 pb-3">
         <CardTitle className="flex items-center gap-2 text-lg font-semibold">
-          <Link2 className="h-5 w-5 text-muted-foreground" aria-hidden="true" />
+          <Link2 className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
           Ping URL
         </CardTitle>
         {canManage && (
@@ -147,7 +147,7 @@ export function HeartbeatPingUrlPanel({ monitorId, canManage, pending = false }:
           </div>
         )}
       </CardHeader>
-      <CardContent className="space-y-4">
+      <CardContent className="space-y-3 p-4 pt-0">
         {!pingUrl && <span className="sr-only">Ping URL hidden.</span>}
         <code
           className="block break-all rounded-md border bg-muted/40 px-3 py-2 font-mono text-sm"
@@ -191,24 +191,18 @@ export function HeartbeatPingUrlPanel({ monitorId, canManage, pending = false }:
           ))}
         </Tabs>
 
-        <div className="space-y-1 text-xs text-muted-foreground">
-          <p>
-            Optional: call <span className="font-mono">/start</span> when the job begins to record how long it ran.
-          </p>
-          <p>
-            Call <span className="font-mono">/fail</span> to report a failure straight away. GET, POST and HEAD all work.
-          </p>
-          <p>
-            <a
-              href="https://supercheck.io/docs/app/heartbeat"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="underline underline-offset-2 hover:text-foreground"
-            >
-              Heartbeat docs
-            </a>
-          </p>
-        </div>
+        <p className="text-xs text-muted-foreground">
+          Optional: call <span className="font-mono">/start</span> when the job begins to record how long it ran, or{" "}
+          <span className="font-mono">/fail</span> to report a failure straight away. GET, POST and HEAD all work.{" "}
+          <a
+            href="https://supercheck.io/docs/app/heartbeat"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="underline underline-offset-2 hover:text-foreground"
+          >
+            Heartbeat docs
+          </a>
+        </p>
       </CardContent>
 
       <AlertDialog open={confirmRotate} onOpenChange={setConfirmRotate}>

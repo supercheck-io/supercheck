@@ -25,8 +25,8 @@ export default async function ServicesPage() {
           { label: "Services", isCurrentPage: true },
         ]}
       />
-      <Card className="m-4 min-w-0 overflow-hidden shadow-sm transition-shadow duration-200 hover:shadow-md">
-        <CardContent>
+      <Card className="m-4 min-w-0 overflow-hidden shadow-sm">
+        <CardContent className="p-6">
           <ServiceCatalog
             key={context.project.id}
             projectId={context.project.id}

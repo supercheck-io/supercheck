@@ -47,6 +47,8 @@ export function MonitorCreationWizard() {
   const stepFromUrl = searchParams?.get("wizardStep") as WizardStep | null;
   // A heartbeat runs nowhere: no location step, and its alert defaults differ (spec 4.5).
   const isHeartbeat = searchParams?.get("type") === "heartbeat";
+  // The AI Endpoint Monitor is a UI type only: it is saved as an http_request monitor with the AI preset.
+  const isAiEndpoint = searchParams?.get("type") === "ai_endpoint";
   // Alert defaults differ by type (heartbeat pins sev2), so a draft for one type never seeds another.
   const alertDraftKey = `${STORAGE_KEYS.ALERT}:${searchParams?.get("type") || "http_request"}`;
   const { maxMonitorNotificationChannels } = useAppConfig();
@@ -267,7 +269,7 @@ export function MonitorCreationWizard() {
     : "http_request";
   // Same label as the monitor type picker and breadcrumbs (e.g. "HTTP Monitor")
   const typeTitle =
-    monitorTypes.find((monitorType) => monitorType.value === type)?.label ??
+    monitorTypes.find((monitorType) => monitorType.value === (isAiEndpoint ? "ai_endpoint" : type))?.label ??
     "Monitor";
 
   // Don't clear monitor data when URL changes - preserve form state
@@ -469,6 +471,7 @@ export function MonitorCreationWizard() {
           hideAlerts={true}
           nextStepLabel={hasMultipleLocations && !isHeartbeat ? "Next: Location Settings" : "Next: Alert Settings"}
           monitorType={type as MonitorType}
+          aiEndpoint={isAiEndpoint}
           title={typeTitle}
           description="Configure a new uptime monitor"
           // Pass monitorData to preserve state when navigating back

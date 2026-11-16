@@ -53,7 +53,7 @@ export class StatusPagesPage extends BasePage {
 
     this.emptyStateCreateButton = page
       .locator('[data-testid="empty-state-create"]')
-      .or(page.locator('button:has-text("Create Your First Status Page")'));
+      .or(page.locator('button:has-text("Create status page")'));
 
     this.statusPageCards = page
       .locator('[data-testid="status-page-card"]')

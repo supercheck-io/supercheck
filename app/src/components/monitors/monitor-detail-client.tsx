@@ -40,7 +40,7 @@ import {
   CardTitle,
   CardDescription,
 } from "@/components/ui/card";
-import { monitorStatuses, monitorTypes } from "@/components/monitors/data";
+import { displayMonitorType, monitorStatuses, monitorTypes } from "@/components/monitors/data";
 import { Monitor } from "./schema";
 import {
   formatDistanceToNow,
@@ -99,7 +99,8 @@ import { useLocationMetadata } from "@/hooks/use-locations";
 import { HeartbeatPingUrlPanel } from "./heartbeat-ping-url-panel";
 import { HeartbeatPingHistory } from "./heartbeat-ping-history";
 import { HeartbeatStateBadge } from "./heartbeat-state-badge";
-import { formatRunDuration, heartbeatScheduleLabel } from "./heartbeat-format";
+import { formatPingAgo, formatPingDue, formatRunDuration, heartbeatScheduleLabel } from "./heartbeat-format";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 export interface MonitorResultItem {
   id: string;
@@ -182,20 +183,33 @@ function MetricStat({
   label,
   value,
   testId,
+  tooltip,
 }: {
   icon: React.ReactNode;
   label: string;
   value: string | null;
   testId?: string;
+  /** Full text on hover or focus; replaces the native title. */
+  tooltip?: string;
 }) {
+  const text = value ?? <span className="text-muted-foreground">—</span>;
   return (
-    <div className="min-w-0" data-testid={testId} title={value ?? undefined}>
+    <div className="min-w-0" data-testid={testId} title={tooltip ? undefined : value ?? undefined}>
       <div className="flex items-center gap-1.5 text-[13px] font-medium text-muted-foreground">
         {icon}
         <span className="truncate">{label}</span>
       </div>
       <div className="mt-1 truncate text-xl font-semibold">
-        {value ?? <span className="text-muted-foreground">—</span>}
+        {tooltip && value ? (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span tabIndex={0} className="rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{text}</span>
+            </TooltipTrigger>
+            <TooltipContent>{tooltip}</TooltipContent>
+          </Tooltip>
+        ) : (
+          text
+        )}
       </div>
     </div>
   );
@@ -525,7 +539,7 @@ export function MonitorDetailClient({
   const statusInfo = monitorStatuses.find(
     (s) => s.value === currentActualStatus
   );
-  const monitorTypeInfo = monitorTypes.find((t) => t.value === monitor.type);
+  const monitorTypeInfo = monitorTypes.find((t) => t.value === displayMonitorType(monitor));
 
   const currentResponseTime =
     latestResult &&
@@ -539,8 +553,7 @@ export function MonitorDetailClient({
   const isHeartbeat = monitor.type === "heartbeat";
   // The latest run only: a ping without /start has no duration, and an older run's must not stand in for it.
   const lastRunDuration = formatRunDuration(monitor.recentResults?.[0]?.responseTimeMs);
-  const hasRunDuration = responseTimeData.some((point) => typeof point.time === "number");
-
+  
   // AI endpoint preset: extra stats from the latest check; a plain HTTP monitor shows none of this
   const aiEndpoint = monitor.config?.aiEndpoint as { model?: string } | undefined;
   const latestAi = aiEndpoint ? aiDetails(latestResult) : undefined;
@@ -723,7 +736,7 @@ export function MonitorDetailClient({
         )}
 
         {/* Status and Type Header */}
-        <div className="border rounded-lg p-2 mb-4 shadow-sm bg-card" data-testid="monitor-detail-header">
+        <div className="border rounded-lg p-4 mb-4 shadow-sm bg-card" data-testid="monitor-detail-header">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="flex min-w-0 items-center gap-3">
               {!isNotificationView && (
@@ -1031,20 +1044,22 @@ export function MonitorDetailClient({
           </div>
 
           {/* Metric groups: current state, last 24 hours, last 30 days */}
-          <div className="mt-4 mx-3 grid grid-cols-[repeat(auto-fit,minmax(330px,1fr))] gap-3 pb-4">
+          <div className="mt-4 grid grid-cols-[repeat(auto-fit,minmax(330px,1fr))] gap-3">
             {heartbeat ? (
               <MetricGroup title="Heartbeat">
                 <MetricStat
                   icon={<Clock className="h-4 w-4 text-muted-foreground" />}
                   label="Last ping"
                   testId="heartbeat-stat-last-ping"
-                  value={heartbeat.lastPingAt ? formatDateTime(heartbeat.lastPingAt) : null}
+                  value={heartbeat.lastPingAt ? formatPingAgo(new Date(heartbeat.lastPingAt)) : "Never"}
+                  tooltip={heartbeat.lastPingAt ? format(new Date(heartbeat.lastPingAt), "MMM d, yyyy HH:mm:ss") : undefined}
                 />
                 <MetricStat
                   icon={<CalendarIcon className="h-4 w-4 text-muted-foreground" />}
                   label="Next expected by"
                   testId="heartbeat-stat-next"
-                  value={heartbeat.state === "paused" || !heartbeat.nextExpectedAt ? null : formatDateTime(heartbeat.nextExpectedAt)}
+                  value={heartbeat.state === "paused" ? "Paused" : heartbeat.nextExpectedAt ? formatPingDue(new Date(heartbeat.nextExpectedAt)) : null}
+                  tooltip={heartbeat.state !== "paused" && heartbeat.nextExpectedAt ? format(new Date(heartbeat.nextExpectedAt), "MMM d, yyyy HH:mm:ss") : undefined}
                 />
                 <MetricStat
                   icon={<Activity className="h-4 w-4 text-muted-foreground" />}
@@ -1135,12 +1150,12 @@ export function MonitorDetailClient({
               />
               <MetricStat
                 icon={<Zap className="h-4 w-4 text-sky-500" />}
-                label="Avg Resp"
+                label={isHeartbeat ? "Avg run" : "Avg Resp"}
                 value={naToNull(calculatedMetrics.avgResponse24h)}
               />
               <MetricStat
                 icon={<ChartNoAxesCombined className="h-4 w-4 text-orange-500" />}
-                label="P95 Resp"
+                label={isHeartbeat ? "P95 run" : "P95 Resp"}
                 value={naToNull(calculatedMetrics.p95Response24h)}
               />
             </MetricGroup>
@@ -1153,12 +1168,12 @@ export function MonitorDetailClient({
               />
               <MetricStat
                 icon={<Zap className="h-4 w-4 text-sky-500" />}
-                label="Avg Resp"
+                label={isHeartbeat ? "Avg run" : "Avg Resp"}
                 value={naToNull(calculatedMetrics.avgResponse30d)}
               />
               <MetricStat
                 icon={<ChartNoAxesCombined className="h-4 w-4 text-orange-500" />}
-                label="P95 Resp"
+                label={isHeartbeat ? "P95 run" : "P95 Resp"}
                 value={naToNull(calculatedMetrics.p95Response30d)}
               />
             </MetricGroup>
@@ -1195,15 +1210,18 @@ export function MonitorDetailClient({
             </div>
 
             {/* Response Time Chart; a heartbeat has a duration only when its job calls /start */}
-            {(!isHeartbeat || hasRunDuration) && (
-              <div>
-                <ResponseTimeBarChart
-                  data={responseTimeData}
-                  showFirstToken={Boolean(aiEndpoint)}
-                  title={isHeartbeat ? "Run duration" : undefined}
-                />
-              </div>
-            )}
+            <div>
+              <ResponseTimeBarChart
+                data={responseTimeData}
+                showFirstToken={Boolean(aiEndpoint)}
+                title={isHeartbeat ? "Run duration" : undefined}
+                empty={isHeartbeat ? {
+                  description: "Time between a /start ping and the ping that finishes the run.",
+                  heading: "No run durations yet",
+                  hint: "Call /start when the job begins to record how long it runs.",
+                } : undefined}
+              />
+            </div>
 
             {isMcp && (
               <McpToolsPanel

@@ -3,9 +3,9 @@
 import { useState } from "react";
 import type { UseFormReturn } from "react-hook-form";
 import { z } from "zod";
-import { ChevronRight, X } from "lucide-react";
+import { X } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { OptionalSection } from "./optional-section";
 import { FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -173,6 +173,7 @@ interface McpServerFieldsProps {
 export function McpServerFields({ form, projectId }: McpServerFieldsProps) {
   const authType = form.watch("mcpConfig_authType") ?? "none";
   const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [toolOpen, setToolOpen] = useState(true);
 
   return (
     <div className="space-y-4" data-testid="mcp-server-fields">
@@ -242,11 +243,12 @@ export function McpServerFields({ form, projectId }: McpServerFieldsProps) {
         )}
       />
 
-      <div className="space-y-3 rounded-md border p-4">
-        <div>
-          <p className="text-sm font-medium">Call a tool</p>
-          <p className="text-xs text-muted-foreground">Optional. Pick a read-only tool. It runs on every check.</p>
-        </div>
+      <OptionalSection
+        title="Call a tool"
+        description="Pick a read-only tool. It runs on every check."
+        open={toolOpen}
+        onOpenChange={setToolOpen}
+      >
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <FormField
             control={form.control}
@@ -288,7 +290,7 @@ export function McpServerFields({ form, projectId }: McpServerFieldsProps) {
             </FormItem>
           )}
         />
-      </div>
+      </OptionalSection>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <FormField
@@ -321,14 +323,13 @@ export function McpServerFields({ form, projectId }: McpServerFieldsProps) {
         />
       </div>
 
-      <Collapsible open={advancedOpen} onOpenChange={setAdvancedOpen}>
-        <CollapsibleTrigger asChild>
-          <Button type="button" variant="ghost" size="sm" className="-ml-2 gap-1" data-testid="mcp-advanced-toggle">
-            <ChevronRight className={`h-4 w-4 transition-transform ${advancedOpen ? "rotate-90" : ""}`} />
-            Advanced
-          </Button>
-        </CollapsibleTrigger>
-        <CollapsibleContent className="pt-2">
+      <OptionalSection
+        title="Advanced"
+        description="Choose the MCP protocol version."
+        open={advancedOpen}
+        onOpenChange={setAdvancedOpen}
+        testId="mcp-advanced-toggle"
+      >
           <FormField
             control={form.control}
             name="mcpConfig_protocol"
@@ -352,8 +353,7 @@ export function McpServerFields({ form, projectId }: McpServerFieldsProps) {
               </FormItem>
             )}
           />
-        </CollapsibleContent>
-      </Collapsible>
+      </OptionalSection>
     </div>
   );
 }

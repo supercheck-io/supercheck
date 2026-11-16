@@ -803,6 +803,7 @@ EXPLANATION:
       val != null ? `${val.toFixed(1)}${unit}` : "N/A";
 
     const formatMonitorType = (type: string) => {
+      if (type === "http_request" && monitor.config?.aiEndpoint) return "AI Endpoint Monitor";
       const typeMap: Record<string, string> = {
         synthetic_test: "Playwright Synthetic Monitor",
         http_request: "HTTP Request Monitor",

@@ -1,9 +1,8 @@
 import type { Table } from "@tanstack/react-table";
-import { PlusIcon, X, Search, Upload, Download, Loader2 } from "lucide-react";
+import { X, Search, Upload, Download, Loader2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -23,7 +22,6 @@ export function DataTableToolbar<TData>({
     table,
     canCreateRequirement = false,
 }: DataTableToolbarProps<TData>) {
-    const router = useRouter();
     const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
     const [isExporting, setIsExporting] = useState(false);
 
@@ -58,19 +56,19 @@ export function DataTableToolbar<TData>({
         <>
             <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="flex flex-wrap items-center gap-2">
-                    <div className="relative">
+                    <div className="relative w-full sm:w-[250px]">
                         <Search className="absolute left-2 top-2 h-4 w-4 text-muted-foreground" />
                         <Input
                             placeholder="Filter by all available fields..."
                             value={(table.getState().globalFilter as string) ?? ""}
                             onChange={(event) => table.setGlobalFilter(event.target.value)}
-                            className="h-8 w-[250px] pr-8 pl-8"
+                            className="h-8 pr-8 pl-8"
                             data-testid="search-input"
                         />
                         {(table.getState().globalFilter as string)?.length > 0 && (
                             <button
                                 type="reset"
-                                className="absolute right-2 top-1/2 -translate-y-1/2 text-red-500 rounded-sm bg-red-200 p-0.5"
+                                className="absolute right-2 top-1/2 -translate-y-1/2 rounded-sm p-0.5 text-muted-foreground hover:text-foreground"
                                 onClick={() => table.setGlobalFilter("")}
                                 tabIndex={0}
                                 aria-label="Clear search"
@@ -126,14 +124,6 @@ export function DataTableToolbar<TData>({
                     >
                         <Upload className="mr-2 h-4 w-4" />
                         Upload
-                    </Button>
-                    <Button
-                        onClick={() => router.push("/requirements/new")}
-                        disabled={!canCreateRequirement}
-                        data-testid="create-requirement-button"
-                    >
-                        <PlusIcon className="h-4 w-4 mr-2" />
-                        Create Requirement
                     </Button>
                 </div>
             </div>

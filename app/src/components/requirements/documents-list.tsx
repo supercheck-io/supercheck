@@ -28,6 +28,7 @@ import {
     Loader2,
 } from "lucide-react";
 import { SupercheckLoading } from "@/components/shared/supercheck-loading";
+import { DashboardEmptyState } from "@/components/dashboard/dashboard-empty-state";
 import { Badge } from "@/components/ui/badge";
 import { formatDistanceToNow, format } from "date-fns";
 import { UploadDocumentDialog } from "./upload-document-dialog";
@@ -72,25 +73,21 @@ interface DocumentsListProps {
     canUpload?: boolean;
 }
 
-// Empty state component
+// First-run empty state, shared look with the other list pages
 function EmptyDocumentsState({ onUpload }: { onUpload: () => void }) {
     return (
-        <Card className="border-dashed">
-            <CardContent className="flex flex-col items-center justify-center py-16">
-                <div className="w-16 h-16 rounded-full bg-blue-500/10 flex items-center justify-center mb-6">
-                    <FileUp className="h-8 w-8 text-blue-500" />
-                </div>
-                <h3 className="text-xl font-semibold mb-2">No documents uploaded</h3>
-                <p className="text-muted-foreground text-sm text-center max-w-md mb-6">
-                    Upload your PRD, specs, or requirements documents. Our AI will extract testable
-                    requirements automatically.
-                </p>
-                <Button onClick={onUpload} className="gap-2">
-                    <Upload className="h-4 w-4" />
-                    Upload Document
+        <DashboardEmptyState
+            className="min-h-[420px]"
+            title="No documents uploaded"
+            description="Upload your PRD, specs, or requirements documents. Our AI will extract testable requirements automatically."
+            icon={<FileUp className="h-10 w-10" />}
+            action={
+                <Button onClick={onUpload}>
+                    <Upload className="mr-2 h-4 w-4" />
+                    Upload document
                 </Button>
-            </CardContent>
-        </Card>
+            }
+        />
     );
 }
 
@@ -501,27 +498,25 @@ export function DocumentsList({ canUpload = false }: DocumentsListProps) {
     };
 
     return (
-        <div className="space-y-4 pt-4 max-h-[calc(100vh-210px)] flex flex-col">
+        <div className="space-y-4">
             {canUpload && (documents.length > 0 || isLoading) && (
                 <div className="flex shrink-0 items-center justify-end">
                     <Button onClick={() => setUploadDialogOpen(true)} className="gap-2">
                         <Upload className="h-4 w-4" />
-                        Upload Document
+                        Upload document
                     </Button>
                 </div>
             )}
 
             {/* Documents Grid or Empty State */}
             {isLoading ? (
-                <div className="flex-1 overflow-y-auto">
+                <div>
                     <SupercheckLoading className="h-[200px]" />
                 </div>
             ) : documents.length === 0 ? (
-                <div className="flex-1 overflow-y-auto">
-                    <EmptyDocumentsState onUpload={() => setUploadDialogOpen(true)} />
-                </div>
+                <EmptyDocumentsState onUpload={() => setUploadDialogOpen(true)} />
             ) : (
-                <div className="flex-1 overflow-y-auto min-h-0 pr-2 -mr-2">
+                <div>
                     <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 pb-4">
                         {documents.map((doc) => (
                             <DocumentCard

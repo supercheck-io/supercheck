@@ -10,37 +10,20 @@ const columns: ColumnDef<Row>[] = [
   { accessorKey: "status" },
 ];
 
-function Harness({ onAdd, setupGuide }: { onAdd?: () => void; setupGuide?: React.ReactNode }) {
+function Harness() {
   const table = useReactTable({
     data: [{ name: "checkout-api", tier: "1", status: "active" }],
     columns,
     getCoreRowModel: getCoreRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
   });
-  return <ServicesToolbar table={table} onAdd={onAdd} setupGuide={setupGuide} />;
+  return <ServicesToolbar table={table} />;
 }
 
 describe("ServicesToolbar", () => {
-  it("keeps the title and both actions in one row, with search and filters in a row below", () => {
-    const onAdd = jest.fn();
-    render(<Harness onAdd={onAdd} setupGuide={<button type="button">Setup guide</button>} />);
-    const heading = screen.getByRole("heading", { name: "Services" });
-    const add = screen.getByTestId("add-service-btn");
-    const guide = screen.getByRole("button", { name: "Setup guide" });
-    const search = screen.getByLabelText("Search services");
-
-    // heading -> text column -> chip row -> title row
-    const titleRow = heading.closest("div")!.parentElement!.parentElement!;
-    expect(titleRow).toContainElement(add);
-    expect(titleRow).toContainElement(guide);
-    expect(titleRow).not.toContainElement(search);
-
-    fireEvent.click(add);
-    expect(onAdd).toHaveBeenCalledTimes(1);
-  });
-
-  it("hides Add service without permission and still shows search and filters", () => {
+  it("holds search and filters only; the title and Add service live in the page header", () => {
     render(<Harness />);
+    expect(screen.queryByRole("heading", { name: "Services" })).not.toBeInTheDocument();
     expect(screen.queryByTestId("add-service-btn")).not.toBeInTheDocument();
     expect(screen.getByLabelText("Search services")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Tier/ })).toBeInTheDocument();

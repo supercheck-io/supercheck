@@ -10,6 +10,7 @@ import {
   ArrowLeftRight,
   Plug,
   Activity,
+  BrainCircuit,
 } from "lucide-react";
 import { typeText } from "@/lib/type-tones";
 import { PlaywrightLogo } from "@/components/logo/playwright-logo";
@@ -98,6 +99,13 @@ export const monitorTypes = [
     description: "Check an MCP server and its tools",
   },
   {
+    label: "AI Endpoint Monitor",
+    value: "ai_endpoint",
+    icon: BrainCircuit,
+    color: typeText("monitor", "ai_endpoint"),
+    description: "Check an OpenAI-compatible chat API answers correctly and fast",
+  },
+  {
     label: "Heartbeat Monitor",
     value: "heartbeat",
     icon: Activity,
@@ -105,3 +113,11 @@ export const monitorTypes = [
     description: "Get alerted when a cron job, backup or scheduled agent stops checking in",
   },
 ];
+
+/**
+ * The AI Endpoint Monitor is a UI-only type: it is stored as an `http_request` monitor with `config.aiEndpoint`.
+ * Every surface that shows a monitor's type reads it through this helper.
+ */
+export function displayMonitorType(m: { type: string; config?: { aiEndpoint?: unknown } | null }): string {
+  return m.type === "http_request" && m.config?.aiEndpoint ? "ai_endpoint" : m.type;
+}

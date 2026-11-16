@@ -99,6 +99,8 @@ export default function RequirementsPage() {
 
 
 
+    const [activeTab, setActiveTab] = useState("requirements");
+
     const isMounted = useSyncExternalStore(
         () => () => { },
         () => true,
@@ -231,33 +233,45 @@ export default function RequirementsPage() {
     // Don't render until mounted and cache is restored
     if (!isMounted || reqIsRestoring) {
         return (
-            <div className="flex h-full flex-col space-y-2 p-2 w-full max-w-full overflow-x-hidden">
+            <div className="space-y-4">
                 <DataTableSkeleton columns={6} rows={3} />
             </div>
         );
     }
 
     return (
-        <div className="mt-6 flex h-full flex-col space-y-2 p-2 w-full max-w-full overflow-x-hidden">
+        <div className="w-full max-w-full space-y-4 overflow-x-hidden">
             {/* Tabs sit beside the title, as on Runs, so the table keeps the page height. */}
-            <Tabs defaultValue="requirements" className="w-full">
+            <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
                 <PageHeader
                     title="Requirements"
                     icon={NAV.requirements.icon}
                     tone={NAV.requirements.tone}
                     description="Manage requirements and their test coverage"
-                    className="-mt-2"
                     actions={
-                        <TabsList>
-                            <TabsTrigger value="requirements" className="gap-2">
-                                <Target className="h-4 w-4" />
-                                Requirements
-                            </TabsTrigger>
-                            <TabsTrigger value="documents" className="gap-2">
-                                <FileText className="h-4 w-4" />
-                                Documents
-                            </TabsTrigger>
-                        </TabsList>
+                        <>
+                            <TabsList>
+                                <TabsTrigger value="requirements" className="gap-2">
+                                    <Target className="h-4 w-4" />
+                                    Requirements
+                                </TabsTrigger>
+                                <TabsTrigger value="documents" className="gap-2">
+                                    <FileText className="h-4 w-4" />
+                                    Documents
+                                </TabsTrigger>
+                            </TabsList>
+                            {/* The first-run empty state carries its own create button. */}
+                            {activeTab === "requirements" && (requirements.length > 0 || isLoading) ? (
+                                <Button
+                                    onClick={() => router.push("/requirements/new")}
+                                    disabled={!canCreateRequirement}
+                                    data-testid="create-requirement-button"
+                                >
+                                    <Plus className="h-4 w-4 mr-2" />
+                                    Create requirement
+                                </Button>
+                            ) : null}
+                        </>
                     }
                 />
 

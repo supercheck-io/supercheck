@@ -77,12 +77,13 @@ import { CredentialField } from "./credential-field";
 import { monitorPrefill } from "./monitor-prefill";
 import { addAiEndpointIssues, AiEndpointFields, AI_ENDPOINT_DEFAULT_URL, buildAiEndpointConfig } from "./ai-endpoint-fields";
 import { addMcpIssues, buildMcpConfig, McpServerFields, MCP_DEFAULT_TIMEOUT } from "./mcp-server-fields";
+import { OptionalSection } from "./optional-section";
 import { HeartbeatFields } from "./heartbeat-fields";
 import { heartbeatToMinutes, type HeartbeatUnit } from "./heartbeat-format";
 import { HEARTBEAT_MAX_GRACE_MINUTES, HEARTBEAT_MAX_INTERVAL_MINUTES } from "@/lib/heartbeat/state";
 import { hasWarningOn } from "@/lib/alerts/warning-kinds";
 
-// Defaults the AI endpoint preset applies to a new monitor; switching back to Standard HTTP undoes them while unchanged.
+// Defaults a new AI Endpoint Monitor starts with.
 const AI_PRESET_INTERVAL = "300";
 const AI_PRESET_FAILURE_THRESHOLD = 2;
 
@@ -503,6 +504,8 @@ interface MonitorFormProps {
   editMode?: boolean;
   id?: string;
   monitorType?: FormValues["type"];
+  /** New AI Endpoint Monitor: an http_request monitor whose preset is fixed and whose defaults are applied once. */
+  aiEndpoint?: boolean;
   title?: string;
   description?: string;
   hideAlerts?: boolean;
@@ -540,6 +543,7 @@ export function MonitorForm({
   editMode = false,
   id,
   monitorType,
+  aiEndpoint = false,
   title,
   description,
   hideAlerts = false,
@@ -601,7 +605,9 @@ export function MonitorForm({
   const prevSelectedTestIdRef = React.useRef<string | null>(null);
 
   // Get current monitor type from URL params if not provided as prop
-  const urlType = searchParams.get("type") as FormValues["type"];
+  // AI Endpoint is a UI type stored as an HTTP monitor with config.aiEndpoint
+  const rawUrlType = searchParams.get("type");
+  const urlType = (rawUrlType === "ai_endpoint" ? "http_request" : rawUrlType) as FormValues["type"];
   const fromTestId = searchParams.get("fromTest");
   const currentMonitorType = monitorType || urlType || "http_request";
   // "Monitor this" from the free tools; new monitors only.
@@ -655,11 +661,17 @@ export function MonitorForm({
         mcpConfig_protocol: "auto",
         mcpConfig_timeoutSeconds: MCP_DEFAULT_TIMEOUT,
         ...HEARTBEAT_FORM_DEFAULTS,
+        ...(aiEndpoint && {
+          preset: "ai_endpoint" as const,
+          target: AI_ENDPOINT_DEFAULT_URL,
+          interval: AI_PRESET_INTERVAL,
+          aiConfig_timeoutSeconds: "60",
+        }),
         ...prefill,
       };
     }
     return creationDefaultValues;
-  }, [currentMonitorType, initialData, fromTestId, prefill]);
+  }, [currentMonitorType, initialData, fromTestId, prefill, aiEndpoint]);
 
   const form = useForm<FormValues>({
     resolver: (async (values, ctx, opts) => {
@@ -734,30 +746,13 @@ export function MonitorForm({
   const aiPreset = type === "http_request" && preset === "ai_endpoint";
   const aiLocationCount = locationConfig.enabled ? Math.max(1, locationConfig.locations.length) : 1;
 
-  // Choosing the preset swaps the request fields; a new monitor also takes the preset's interval and alert threshold.
-  function choosePreset(value: "none" | "ai_endpoint") {
-    form.setValue("preset", value, { shouldDirty: true });
-    if (value !== "ai_endpoint") {
-      // On create, undo what the preset set while it still holds the preset's value, so the user's own edits stay.
-      // On edit, the stored target and timeout are the user's, so switching back and forth keeps them.
-      if (!editMode) {
-        if (form.getValues("target")?.trim() === AI_ENDPOINT_DEFAULT_URL) form.setValue("target", "", { shouldDirty: true });
-        form.setValue("aiConfig_timeoutSeconds", "");
-        if (form.getValues("interval") === AI_PRESET_INTERVAL) form.setValue("interval", getDefaultValues().interval, { shouldDirty: true });
-        setAlertConfig((current) =>
-          current.failureThreshold === AI_PRESET_FAILURE_THRESHOLD ? { ...current, failureThreshold: initialAlertConfigValue.failureThreshold } : current,
-        );
-      }
-      return;
-    }
-    const target = form.getValues("target");
-    if (!target || !target.trim()) form.setValue("target", AI_ENDPOINT_DEFAULT_URL, { shouldDirty: true });
-    if (!form.getValues("aiConfig_timeoutSeconds")) form.setValue("aiConfig_timeoutSeconds", "60");
-    if (!editMode) {
-      form.setValue("interval", AI_PRESET_INTERVAL, { shouldDirty: true });
+  // A new AI Endpoint Monitor takes the preset's alert threshold once (the form defaults carry the rest).
+  useEffect(() => {
+    if (aiEndpoint && !editMode && !initialData) {
       setAlertConfig((current) => ({ ...current, failureThreshold: AI_PRESET_FAILURE_THRESHOLD }));
     }
-  }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Auto-adjust interval when switching to synthetic monitor
   useEffect(() => {
@@ -785,13 +780,8 @@ export function MonitorForm({
     // Always reset form when URL type changes, unless we're in edit mode
     if (!editMode && urlType && urlType !== type) {
       // Create fresh default values for the new monitor type
-      const newDefaults: FormValues = {
-        ...creationDefaultValues,
-        type: urlType,
-      };
-
       // Reset form completely
-      form.reset(newDefaults);
+      form.reset({ ...creationDefaultValues, ...getDefaultValues(), type: urlType });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [urlType, type, editMode, initialData]);
@@ -799,12 +789,8 @@ export function MonitorForm({
   // Handle initial form setup when component first mounts
   useEffect(() => {
     if (!editMode && !initialData && urlType) {
-      const initialDefaults: FormValues = {
-        ...creationDefaultValues,
-        type: urlType,
-        ...prefill,
-      };
-      form.reset(initialDefaults);
+      // getDefaultValues carries the prefill and the AI Endpoint defaults
+      form.reset({ ...creationDefaultValues, ...getDefaultValues(), type: urlType });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editMode, initialData, urlType, prefillKey]); // Run when these values change
@@ -1376,7 +1362,7 @@ export function MonitorForm({
             <div className="flex items-center gap-2">
               {monitorTypes.map(
                 (type) =>
-                  monitorType === type.value && (
+                  (aiPreset ? "ai_endpoint" : monitorType) === type.value && (
                     <type.icon
                       className={`h-6 w-6 ${type.color} mt-0.5 flex-shrink-0`}
                       key={type.value}
@@ -1425,8 +1411,8 @@ export function MonitorForm({
         <CardContent className="space-y-4">
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-              {/* Monitor Name, Check Interval and (HTTP request only) Preset - aligned on same line */}
-              <div className={type === "http_request" ? "grid grid-cols-1 md:grid-cols-3 gap-4" : "grid grid-cols-1 md:grid-cols-2 gap-4"}>
+              {/* Monitor Name and Check Interval - aligned on same line */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {/* Left column - Monitor Name */}
                 <FormField
                   control={form.control}
@@ -1542,33 +1528,6 @@ export function MonitorForm({
                 />
                 )}
 
-                {type === "http_request" && (
-                  <FormField
-                    control={form.control}
-                    name="preset"
-                    render={({ field }) => (
-                      <FormItem className="space-y-2">
-                        <FormLabel>Preset</FormLabel>
-                        <Select
-                          value={field.value ?? "none"}
-                          onValueChange={(value) => choosePreset(value as "none" | "ai_endpoint")}
-                        >
-                          <FormControl>
-                            <SelectTrigger className="w-full" data-testid="monitor-preset">
-                              <SelectValue />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            <SelectItem value="none">Standard HTTP</SelectItem>
-                            <SelectItem value="ai_endpoint">AI endpoint (OpenAI-compatible)</SelectItem>
-                          </SelectContent>
-                        </Select>
-                        {field.value === "ai_endpoint" && <FormDescription>Checks an OpenAI-compatible chat API</FormDescription>}
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                )}
               </div>
 
               {/* Test Selector for synthetic monitors - full width */}
@@ -1922,34 +1881,7 @@ export function MonitorForm({
                   {/* Authentication and Response Content Validation sections side by side */}
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-6">
                     {/* Authentication Section */}
-                    <Card>
-                      <Collapsible
-                        open={isAuthSectionOpen}
-                        onOpenChange={setIsAuthSectionOpen}
-                      >
-                        <CollapsibleTrigger asChild>
-                          <CardHeader className="cursor-pointer hover:bg-muted/50 transition-colors pb-3">
-                            <div className="flex items-center space-x-2">
-                              {isAuthSectionOpen ? (
-                                <ChevronDown className="h-4 w-4" />
-                              ) : (
-                                <ChevronRight className="h-4 w-4" />
-                              )}
-                              <CardTitle className="text-base">
-                                Authentication
-                              </CardTitle>
-                              <span className="text-xs text-muted-foreground bg-muted px-2 py-1 rounded">
-                                Optional
-                              </span>
-                            </div>
-                            <CardDescription className="text-sm">
-                              Configure authentication credentials for protected
-                              endpoints
-                            </CardDescription>
-                          </CardHeader>
-                        </CollapsibleTrigger>
-                        <CollapsibleContent>
-                          <CardContent className="pt-0 space-y-4">
+                    <OptionalSection title="Authentication" description="Configure authentication credentials for protected endpoints" open={isAuthSectionOpen} onOpenChange={setIsAuthSectionOpen}>
                             <FormField
                               control={form.control}
                               name="httpConfig_authType"
@@ -2007,40 +1939,10 @@ export function MonitorForm({
                                 <CredentialField form={form} projectId={currentProject?.id} kind="token" hasStoredInline={Boolean(initialData?.httpConfig_authToken)} />
                               </div>
                             )}
-                          </CardContent>
-                        </CollapsibleContent>
-                      </Collapsible>
-                    </Card>
+                          </OptionalSection>
 
                     {/* Response Content Validation Section */}
-                    <Card>
-                      <Collapsible
-                        open={isKeywordSectionOpen}
-                        onOpenChange={setIsKeywordSectionOpen}
-                      >
-                        <CollapsibleTrigger asChild>
-                          <CardHeader className="cursor-pointer hover:bg-muted/50 transition-colors pb-3">
-                            <div className="flex items-center space-x-2">
-                              {isKeywordSectionOpen ? (
-                                <ChevronDown className="h-4 w-4" />
-                              ) : (
-                                <ChevronRight className="h-4 w-4" />
-                              )}
-                              <CardTitle className="text-base">
-                                Response Content Validation
-                              </CardTitle>
-                              <span className="text-xs text-muted-foreground bg-muted px-2 py-1 rounded">
-                                Optional
-                              </span>
-                            </div>
-                            <CardDescription className="text-sm">
-                              Validate response content by checking for specific
-                              keywords or text
-                            </CardDescription>
-                          </CardHeader>
-                        </CollapsibleTrigger>
-                        <CollapsibleContent>
-                          <CardContent className="pt-0 space-y-4">
+                    <OptionalSection title="Response Content Validation" description="Validate response content by checking for specific keywords or text" open={isKeywordSectionOpen} onOpenChange={setIsKeywordSectionOpen}>
                             <FormField
                               control={form.control}
                               name="httpConfig_keywordInBody"
@@ -2101,10 +2003,7 @@ export function MonitorForm({
                                 </FormItem>
                               )}
                             />
-                          </CardContent>
-                        </CollapsibleContent>
-                      </Collapsible>
-                    </Card>
+                          </OptionalSection>
                   </div>
                 </div>
               )}
@@ -2337,34 +2236,7 @@ export function MonitorForm({
                   {/* Authentication and Content Validation sections side by side for Website */}
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-4">
                     {/* Authentication Section */}
-                    <Card>
-                      <Collapsible
-                        open={isAuthSectionOpen}
-                        onOpenChange={setIsAuthSectionOpen}
-                      >
-                        <CollapsibleTrigger asChild>
-                          <CardHeader className="cursor-pointer hover:bg-muted/50 transition-colors pb-2">
-                            <div className="flex items-center space-x-2">
-                              {isAuthSectionOpen ? (
-                                <ChevronDown className="h-4 w-4" />
-                              ) : (
-                                <ChevronRight className="h-4 w-4" />
-                              )}
-                              <CardTitle className="text-base">
-                                Authentication
-                              </CardTitle>
-                              <span className="text-xs text-muted-foreground bg-muted px-2 py-1 rounded">
-                                Optional
-                              </span>
-                            </div>
-                            <CardDescription className="text-sm">
-                              Configure authentication credentials for protected
-                              websites
-                            </CardDescription>
-                          </CardHeader>
-                        </CollapsibleTrigger>
-                        <CollapsibleContent>
-                          <CardContent className="pt-0 space-y-4">
+                    <OptionalSection title="Authentication" description="Configure authentication credentials for protected websites" open={isAuthSectionOpen} onOpenChange={setIsAuthSectionOpen}>
                             <FormField
                               control={form.control}
                               name="httpConfig_authType"
@@ -2422,40 +2294,10 @@ export function MonitorForm({
                                 <CredentialField form={form} projectId={currentProject?.id} kind="token" hasStoredInline={Boolean(initialData?.httpConfig_authToken)} />
                               </div>
                             )}
-                          </CardContent>
-                        </CollapsibleContent>
-                      </Collapsible>
-                    </Card>
+                          </OptionalSection>
 
                     {/* Content Validation Section */}
-                    <Card>
-                      <Collapsible
-                        open={isKeywordSectionOpen}
-                        onOpenChange={setIsKeywordSectionOpen}
-                      >
-                        <CollapsibleTrigger asChild>
-                          <CardHeader className="cursor-pointer hover:bg-muted/50 transition-colors pb-2">
-                            <div className="flex items-center space-x-2">
-                              {isKeywordSectionOpen ? (
-                                <ChevronDown className="h-4 w-4" />
-                              ) : (
-                                <ChevronRight className="h-4 w-4" />
-                              )}
-                              <CardTitle className="text-base">
-                                Content Validation
-                              </CardTitle>
-                              <span className="text-xs text-muted-foreground bg-muted px-2 py-1 rounded">
-                                Optional
-                              </span>
-                            </div>
-                            <CardDescription className="text-sm">
-                              Check if specific text or keywords exist on your
-                              website
-                            </CardDescription>
-                          </CardHeader>
-                        </CollapsibleTrigger>
-                        <CollapsibleContent>
-                          <CardContent className="pt-0 space-y-4">
+                    <OptionalSection title="Content Validation" description="Check if specific text or keywords exist on your website" open={isKeywordSectionOpen} onOpenChange={setIsKeywordSectionOpen}>
                             <FormField
                               control={form.control}
                               name="httpConfig_keywordInBody"
@@ -2516,10 +2358,7 @@ export function MonitorForm({
                                 </FormItem>
                               )}
                             />
-                          </CardContent>
-                        </CollapsibleContent>
-                      </Collapsible>
-                    </Card>
+                          </OptionalSection>
                   </div>
                 </div>
               )}

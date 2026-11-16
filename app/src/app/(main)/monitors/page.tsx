@@ -12,8 +12,8 @@ export default function MonitorsPage() {
   return (
     <div>
       <PageBreadcrumbs items={breadcrumbs} />
-      <Card className="shadow-sm hover:shadow-md transition-shadow duration-200 m-4">  
-        <CardContent>
+      <Card className="m-4 shadow-sm">
+        <CardContent className="p-6">
           <Suspense fallback={null}>
             <MonitorsPageTabs />
           </Suspense>

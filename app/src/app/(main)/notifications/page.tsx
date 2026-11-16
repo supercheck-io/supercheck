@@ -234,7 +234,7 @@ function NotificationsPage() {
     <div className="">
       <PageBreadcrumbs items={breadcrumbs} />
       <div className="">
-        <Card className="shadow-sm hover:shadow-md transition-shadow duration-200 m-4">
+        <Card className="m-4 shadow-sm">
           <CardContent className="p-6">
             <div className="space-y-4">
               <Tabs value={tab} onValueChange={onTabChange} className="w-full">
@@ -278,10 +278,10 @@ function NotificationsPage() {
                     <ListErrorState title="Failed to fetch notification channels" error={providersError} onRetry={() => refetchProviders()} />
                   ) : providers.length === 0 && !providersLoading ? (
                     <DashboardEmptyState
-                      className="min-h-[360px]"
+                      className="min-h-[420px]"
                       title="No notification channels"
                       description="Add your first notification channel to start receiving alerts"
-                      icon={<BellRing className="h-12 w-12" />}
+                      icon={<BellRing className="h-10 w-10" />}
                       action={
                         <Button onClick={() => openCreateDialog()} disabled={!canCreate}>
                           <Plus className="h-4 w-4 mr-2" />

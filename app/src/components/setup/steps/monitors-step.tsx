@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, type ReactNode } from "react";
-import { Activity, Plug, Sparkles, type LucideIcon } from "lucide-react";
+import { Activity, BrainCircuit, Plug, type LucideIcon } from "lucide-react";
 
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -310,8 +310,8 @@ export function MonitorsStep({ response, draft, patchDraft, features, readOnly }
       {features.aiEndpoint ? (
         <OptionalCard
           id="ai-endpoint"
-          icon={Sparkles}
-          tone="ai"
+          icon={BrainCircuit}
+          tone={TYPE_TONE.monitor.ai_endpoint}
           title="Monitor an AI endpoint"
           description="Checks an OpenAI-compatible endpoint with a small streaming request."
           enabled={aiOpen}

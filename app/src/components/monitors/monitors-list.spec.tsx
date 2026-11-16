@@ -4,6 +4,7 @@ import MonitorsList from "./monitors-list";
 const useMonitorsMock = jest.fn();
 jest.mock("@/hooks/use-monitors", () => ({ useMonitors: () => useMonitorsMock() }));
 jest.mock("next/navigation", () => ({ useRouter: () => ({ push: jest.fn() }) }));
+jest.mock("@/hooks/use-project-context", () => ({ useProjectContext: () => ({ currentProject: { userRole: "project_editor" } }) }));
 jest.mock("./columns", () => ({ columns: [] }));
 jest.mock("./data-table", () => ({ DataTable: () => <div data-testid="table" /> }));
 
@@ -24,4 +25,12 @@ it("notes the 200-row cap when it is hit", () => {
   useMonitorsMock.mockReturnValue({ ...base, monitors });
   render(<MonitorsList />);
   expect(screen.getByRole("status")).toHaveTextContent("Showing the latest 200");
+});
+
+it("shows a first-run empty state and hides the header create action", () => {
+  useMonitorsMock.mockReturnValue(base);
+  render(<MonitorsList />);
+  expect(screen.getByText("No monitors yet")).toBeInTheDocument();
+  expect(screen.getAllByRole("button", { name: "Create monitor" })).toHaveLength(1);
+  expect(screen.queryByTestId("table")).toBeNull();
 });

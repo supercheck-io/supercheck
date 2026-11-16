@@ -135,7 +135,7 @@ test.describe('RBAC - Viewer Restrictions @auth @rbac', () => {
       canManage: false,
     });
     await expect(page.getByText('Loading data...', { exact: true })).toHaveCount(0);
-    await expect(page.getByRole('button', { name: 'Add Variable', exact: true })).toBeDisabled();
+    await expect(page.getByRole('button', { name: 'Add variable', exact: true })).toBeDisabled();
   });
 });
 
@@ -160,7 +160,7 @@ test.describe('RBAC - Editor Capabilities @auth @rbac', () => {
 
   test('Editor can open the variable form @high @rbac', async ({ editorPage: page }) => {
     await page.goto('/variables');
-    await page.getByRole('button', { name: 'Add Variable', exact: true }).click();
+    await page.getByRole('button', { name: 'Add variable', exact: true }).click();
     await expect(page.getByRole('dialog')).toBeVisible();
     await expect(page.getByRole('dialog').getByLabel('Variable Name *', { exact: true })).toBeEditable();
   });
@@ -192,13 +192,13 @@ test.describe('RBAC - Project Admin Capabilities @auth @rbac', () => {
     expect(await projects.json()).toMatchObject({ success: true, data: expect.any(Array) });
 
     await page.goto('/tests');
-    await expect(page.getByRole('button', { name: 'Create Test', exact: true })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Create Test', exact: true })).toBeEnabled();
+    await expect(page.getByRole('button', { name: 'Create test', exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Create test', exact: true })).toBeEnabled();
   });
 
   test('Project admin can open the variable form @high @rbac', async ({ projectAdminPage: page }) => {
     await page.goto('/variables');
-    await page.getByRole('button', { name: 'Add Variable', exact: true }).click();
+    await page.getByRole('button', { name: 'Add variable', exact: true }).click();
     await expect(page.getByRole('dialog')).toBeVisible();
     await expect(page.getByRole('dialog').getByLabel('Variable Name *', { exact: true })).toBeEditable();
   });

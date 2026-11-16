@@ -7,7 +7,7 @@ import { UUIDField } from "@/components/ui/uuid-field";
 import { toast } from "sonner";
 
 import { MonitorStatusIndicator } from "./monitor-status-indicator";
-import { monitorTypes } from "./data";
+import { displayMonitorType, monitorTypes } from "./data";
 import { formatDurationMinutes } from "@/lib/date-utils";
 import { TruncatedTextWithTooltip } from "@/components/ui/truncated-text-with-tooltip";
 
@@ -76,8 +76,8 @@ export const statusPageColumns: ColumnDef<Monitor>[] = [
     },
   },
   {
-    accessorKey: "type",
     id: "type",
+    accessorFn: (row) => displayMonitorType(row),
     header: ({ column }) => (
       <DataTableColumnHeader column={column} title="Type" />
     ),

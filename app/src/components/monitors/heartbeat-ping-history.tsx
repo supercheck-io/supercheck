@@ -1,9 +1,8 @@
 "use client";
 
 import { format } from "date-fns";
-import { ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -57,14 +56,18 @@ export function HeartbeatPingHistory({
   onPageChange,
 }: HeartbeatPingHistoryProps) {
   return (
-    <Card className="flex flex-col shadow-sm" data-testid="heartbeat-ping-history">
-      <CardHeader className="flex flex-row items-center justify-between space-y-0">
+    <Card className="flex h-full flex-col shadow-sm" data-testid="heartbeat-ping-history">
+      <CardHeader className="flex-shrink-0">
         <CardTitle className="text-lg font-semibold">Ping history</CardTitle>
-        {total > 0 && <span className="text-xs text-muted-foreground">Total {total} {total === 1 ? "entry" : "entries"}</span>}
+        {!error && results.length > 0 && (
+          <CardDescription>
+            Showing {results.length} of {total} recent {total === 1 ? "ping" : "pings"}.
+          </CardDescription>
+        )}
       </CardHeader>
-      <CardContent className="flex-1 space-y-3">
+      <CardContent className="flex flex-1 flex-col p-0">
         {error ? (
-          <Alert variant="error">
+          <Alert variant="error" className="mx-6 mb-6 w-auto">
             <AlertDescription className="flex flex-wrap items-center gap-2">
               Could not load the ping history.
               {onRetry && (
@@ -75,25 +78,25 @@ export function HeartbeatPingHistory({
             </AlertDescription>
           </Alert>
         ) : isLoading && results.length === 0 ? (
-          <div className="space-y-2" aria-busy="true" aria-label="Loading ping history">
+          <div className="space-y-2 px-6 pb-6" aria-busy="true" aria-label="Loading ping history">
             <Skeleton className="h-4 w-full" />
             <Skeleton className="h-4 w-4/5" />
             <Skeleton className="h-4 w-3/5" />
           </div>
         ) : results.length === 0 ? (
-          <div className="py-8 text-center" data-testid="heartbeat-ping-history-empty">
+          <div className="flex flex-1 flex-col items-center justify-center py-8 text-center" data-testid="heartbeat-ping-history-empty">
             <p className="text-sm font-medium">No pings yet</p>
             <p className="text-xs text-muted-foreground">Pings, failures and missed runs appear here.</p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
+          <div className="w-full overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead scope="col">Time</TableHead>
-                  <TableHead scope="col">Result</TableHead>
-                  <TableHead scope="col">Run duration</TableHead>
-                  <TableHead scope="col">Client</TableHead>
+                  <TableHead scope="col" className="px-4 text-xs font-medium text-muted-foreground whitespace-nowrap">Time</TableHead>
+                  <TableHead scope="col" className="px-4 text-xs font-medium text-muted-foreground whitespace-nowrap">Result</TableHead>
+                  <TableHead scope="col" className="px-4 text-xs font-medium text-muted-foreground whitespace-nowrap">Run duration</TableHead>
+                  <TableHead scope="col" className="px-4 text-xs font-medium text-muted-foreground whitespace-nowrap">Client</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -102,16 +105,16 @@ export function HeartbeatPingHistory({
                   const duration = formatRunDuration(row.responseTimeMs);
                   return (
                     <TableRow key={row.id} data-testid="heartbeat-ping-row" data-kind={kind}>
-                      <TableCell className="whitespace-nowrap tabular-nums">
+                      <TableCell className="whitespace-nowrap px-4 tabular-nums">
                         {format(new Date(row.checkedAt), "MMM d, HH:mm:ss")}
                       </TableCell>
-                      <TableCell>
+                      <TableCell className="px-4">
                         <TableBadge tone={RESULT[kind].tone} compact>
                           {RESULT[kind].label}
                         </TableBadge>
                       </TableCell>
-                      <TableCell className="tabular-nums">{duration ?? <span className="text-muted-foreground">-</span>}</TableCell>
-                      <TableCell className="max-w-[220px] truncate font-mono text-xs" title={userAgent ?? undefined}>
+                      <TableCell className="px-4 tabular-nums">{duration ?? <span className="text-muted-foreground">-</span>}</TableCell>
+                      <TableCell className="max-w-[220px] truncate px-4 font-mono text-xs" title={userAgent ?? undefined}>
                         {kind === "missed" ? (
                           <span className="font-sans text-muted-foreground">No ping before the grace period ended</span>
                         ) : (
@@ -126,16 +129,18 @@ export function HeartbeatPingHistory({
           </div>
         )}
         {totalPages > 1 && !error && (
-          <nav className="flex items-center justify-end gap-2" aria-label="Ping history pages">
-            <span className="text-xs text-muted-foreground">
+          <nav className="mt-auto flex flex-shrink-0 items-center justify-between rounded-b-lg border-t bg-card px-4 py-3" aria-label="Ping history pages">
+            <span className="text-sm text-muted-foreground">
               Page {page} of {totalPages}
             </span>
-            <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => onPageChange(page - 1)} disabled={page <= 1 || isLoading} aria-label="Previous page">
-              <ChevronLeft className="h-4 w-4" />
-            </Button>
-            <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => onPageChange(page + 1)} disabled={page >= totalPages || isLoading} aria-label="Next page">
-              <ChevronRight className="h-4 w-4" />
-            </Button>
+            <div className="flex items-center space-x-2">
+              <Button variant="outline" size="sm" className="min-w-[80px]" onClick={() => onPageChange(page - 1)} disabled={page <= 1 || isLoading} aria-label="Previous page">
+                Previous
+              </Button>
+              <Button variant="outline" size="sm" className="min-w-[60px]" onClick={() => onPageChange(page + 1)} disabled={page >= totalPages || isLoading} aria-label="Next page">
+                Next
+              </Button>
+            </div>
           </nav>
         )}
       </CardContent>

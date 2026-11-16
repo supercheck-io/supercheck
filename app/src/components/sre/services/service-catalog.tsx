@@ -153,16 +153,27 @@ export function ServiceCatalog({
   }
 
   return (
-    <div className="mt-6 min-w-0 space-y-4 p-2">
+    <div className="min-w-0 space-y-4">
+      <PageHeader
+        title="Services"
+        icon={NAV.services.icon}
+        tone={NAV.services.tone}
+        description="Link monitors and jobs to services for investigation context."
+        actions={
+          services.length > 0 ? (
+            <>
+              {setupStatus && <SreSetupGuideDialog status={setupStatus} />}
+              {permissions.canCreate && (
+                <Button onClick={handleAdd} data-testid="add-service-btn">
+                  <Plus className="mr-2 h-4 w-4" />
+                  Add service
+                </Button>
+              )}
+            </>
+          ) : undefined
+        }
+      />
       {services.length === 0 ? (
-        <>
-        <PageHeader
-          title="Services"
-          icon={NAV.services.icon}
-          tone={NAV.services.tone}
-          description="Link monitors and jobs to services for investigation context."
-          className="mb-4 -mt-2"
-        />
         <DashboardEmptyState
           className="min-h-[420px]"
           title="No services registered"
@@ -184,7 +195,6 @@ export function ServiceCatalog({
             </div>
           }
         />
-        </>
       ) : (
         <DataTable
           columns={columns}
@@ -193,15 +203,7 @@ export function ServiceCatalog({
           initialColumnFilters={ACTIVE_ONLY}
           onRowClick={handleRowClick}
           renderToolbar={(table) => (
-            <ServicesToolbar
-              table={table}
-              onAdd={permissions.canCreate ? handleAdd : undefined}
-              setupGuide={
-                setupStatus ? (
-                  <SreSetupGuideDialog status={setupStatus} />
-                ) : undefined
-              }
-            />
+            <ServicesToolbar table={table} />
           )}
           entityLabel="services"
           meta={{
