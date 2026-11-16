@@ -10,6 +10,7 @@ const sources = {
   'products.ts': read('../src/lib/products.ts'),
   'home page': read('../src/app/(home)/page.tsx'),
   'pricing page': read('../src/app/pricing/page.tsx'),
+  'security page': read('../src/app/security/page.tsx'),
   'product page': read('../src/app/product/[product]/page.tsx'),
   'solutions page': read('../src/app/solutions/[persona]/page.tsx'),
   'site-header.tsx': read('../src/components/site-header.tsx'),

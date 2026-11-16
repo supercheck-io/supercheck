@@ -23,7 +23,7 @@ export default function SecurityPage() {
                         <p className="mb-4">
                             This page describes the security controls built into Supercheck and how we run
                             Supercheck Cloud. Supercheck Cloud is coming soon; signups are not open yet. Sections
-                            marked &ldquo;Cloud&rdquo; describe how we operate the hosted service. Self-hosted operators
+                            marked &ldquo;Cloud&rdquo; describe how the hosted service is set up for launch. Self-hosted operators
                             run their own infrastructure and control those parts themselves.
                         </p>
                     </section>
@@ -58,8 +58,8 @@ export default function SecurityPage() {
                     <section className="mb-10">
                         <h2 className="text-2xl font-semibold mb-4">4. Audit log</h2>
                         <p className="mb-4">
-                            Supercheck records an audit log of security-relevant actions. Audit entries are kept for
-                            12 months. After 30 days, email addresses in audit entries are replaced with a keyed hash.
+                            Supercheck records an audit log of security-relevant actions. By default, audit entries are
+                            kept for 12 months, and after 30 days email addresses in them are replaced with a keyed hash.
                         </p>
                     </section>
 
@@ -81,7 +81,7 @@ export default function SecurityPage() {
 
                     <section className="mb-10">
                         <h2 className="text-2xl font-semibold mb-4">7. Infrastructure providers (Cloud)</h2>
-                        <p className="mb-4">Supercheck Cloud relies on these providers to run the service:</p>
+                        <p className="mb-4">Supercheck Cloud relies on providers including:</p>
                         <ul className="mb-4 list-disc space-y-2 pl-6">
                             <li><strong>Hetzner:</strong> compute servers</li>
                             <li><strong>Cloudflare:</strong> DNS and object storage</li>
@@ -93,7 +93,7 @@ export default function SecurityPage() {
                         <p className="mb-4">
                             See the{' '}
                             <Link href="/privacy" className="text-fd-primary hover:underline">Privacy Policy</Link>{' '}
-                            for what data is shared and why.
+                            for the data shared with AI, authentication, payment, and notification providers.
                         </p>
                     </section>
 
