@@ -89,6 +89,36 @@ describe("ReviewStep", () => {
     expect(stopRef.current).toBeNull();
   });
 
+  it("offers Continue creating after a stopped run instead of Finish", async () => {
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    const original = monitorPost;
+    let blocked = true;
+    fetchMock.mockImplementation(async (url: string, init?: { method?: string; body?: string }) => {
+      if (url === "/api/context") return { ok: true, status: 200, json: async () => ({ project: { id: PROJECT_ID } }) };
+      if (url.startsWith("/api/monitors?")) return { ok: true, status: 200, json: async () => ({ data: [], pagination: { hasNextPage: false } }) };
+      if (url === "/api/monitors" && init?.method === "POST") {
+        if (blocked) await gate;
+        return original(JSON.parse(init.body as string));
+      }
+      return { ok: false, status: 404, json: async () => ({}) };
+    });
+    const stopRef = { current: null as (() => Promise<void>) | null };
+    const onActiveChange = jest.fn();
+    setup({ stopRef, onActiveChange });
+    fireEvent.click(screen.getByRole("button", { name: "Create 6 items" }));
+    await waitFor(() => expect(onActiveChange).toHaveBeenLastCalledWith(true));
+    const stopped = stopRef.current!();
+    release();
+    await stopped;
+    blocked = false;
+    expect(await screen.findByRole("button", { name: "Continue creating" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Finish setup" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Continue creating" }));
+    expect(await screen.findByRole("button", { name: "Finish setup" })).toBeTruthy();
+    expect(screen.getByTestId("setup-create-item-0").textContent).toContain("Created");
+  });
+
   it("starts a fresh run after a stop (a lost lock taken back)", async () => {
     const heartbeat = jest.fn(async () => true);
     const stopRef = { current: null as (() => Promise<void>) | null };
