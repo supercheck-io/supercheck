@@ -280,6 +280,17 @@ export class MonitorCycleService {
         return 'superseded';
       }
 
+      // The shared alert state freezes only when every result the cycle was judged on was checked inside a window:
+      // each region row carries the decision made at its own check time, and missing-region rows the one at the
+      // scheduled time. A cycle with any result outside a window counts, so a real outage is never hidden, and one
+      // region with a fast clock cannot freeze a cycle on its own.
+      const judged = [
+        ...decision.observed.map(
+          (location) => latest.get(location)!.inMaintenance,
+        ),
+        ...synthetic.map(() => inMaintenance),
+      ];
+      const evaluatedInMaintenance = judged.length > 0 && judged.every(Boolean);
       const previousStatus = monitor.status;
       const observedRows = decision.observed.map((location) =>
         latest.get(location)!,
@@ -307,7 +318,7 @@ export class MonitorCycleService {
             monitor.config,
             previousStatus,
             decision.status,
-            inMaintenance,
+            evaluatedInMaintenance,
           ),
           executionGroupId: cycle.id,
         };

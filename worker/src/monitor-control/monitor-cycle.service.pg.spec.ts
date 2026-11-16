@@ -212,6 +212,7 @@ suite('MonitorCycleService (PostgreSQL)', () => {
     location: string,
     isUp: boolean,
     checkedAt = new Date(t0.getTime() + 1000),
+    inMaintenance = false,
   ) {
     await db.insert(schema.monitorResults).values({
       monitorId,
@@ -221,6 +222,8 @@ suite('MonitorCycleService (PostgreSQL)', () => {
       isUp,
       responseTimeMs: isUp ? 120 : null,
       executionGroupId: cycleId,
+      // As saveMonitorResultToDb stores it: the decision at this row's own check time.
+      inMaintenance,
     });
   }
 
@@ -307,6 +310,128 @@ suite('MonitorCycleService (PostgreSQL)', () => {
       missingLocations: ['ap'],
     });
     expect(await results('c4')).toHaveLength(2);
+  });
+
+  describe('maintenance and the shared failure count', () => {
+    const at = (seconds: number) => new Date(t0.getTime() + seconds * 1000);
+    async function multiRegion(
+      aggregatedAlertState?: object,
+      status: 'up' | 'down' = 'up',
+    ) {
+      await db
+        .update(schema.monitors)
+        .set({
+          status,
+          config: {
+            locationConfig: {
+              enabled: true,
+              locations: ['eu', 'us', 'ap'],
+              strategy: 'majority',
+            },
+            ...(aggregatedAlertState ? { aggregatedAlertState } : {}),
+          } as never,
+        })
+        .where(eq(schema.monitors.id, monitorId));
+    }
+    async function window(from: Date, to: Date) {
+      await client`INSERT INTO maintenance_windows (id, organization_id, project_id, title, scope, recurrence, timezone, local_start_time, duration_minutes, starts_on, occurrence_starts_at, occurrence_ends_at)
+        SELECT uuidv7(), organization_id, project_id, 'Deploy', 'project', 'once', 'UTC', '10:00', 60, '2026-10-21',
+          ${from.toISOString()}::timestamptz, ${to.toISOString()}::timestamptz
+        FROM monitors WHERE id = ${monitorId}`;
+    }
+    afterEach(async () => {
+      await client`DELETE FROM maintenance_windows`;
+    });
+
+    it('freezes when every result was checked inside a window that began after the cycle was scheduled, and sends no alert', async () => {
+      await multiRegion();
+      await window(at(30), at(3600));
+      await openCycle('mw1');
+      await report('mw1', 'eu', false, at(60), true);
+      await report('mw1', 'us', false, at(60), true);
+      expect(await service.closeCycle('mw1', at(65))).toBe('closed');
+      expect((await cycleRow('mw1')).evaluation).toMatchObject({
+        currentStatus: 'down',
+        alertState: { consecutiveFailureCount: 0, maintenanceOnly: true },
+      });
+      await service.notifyCycle('mw1');
+      expect(sendNotification).not.toHaveBeenCalledWith(
+        monitorId,
+        'failure',
+        expect.anything(),
+        expect.anything(),
+        expect.anything(),
+      );
+    });
+
+    it('counts a cycle with any result checked outside the window, so a real outage is not hidden', async () => {
+      await multiRegion();
+      await window(at(30), at(3600));
+      await openCycle('mw2');
+      await report('mw2', 'eu', false, at(10), false);
+      await report('mw2', 'us', false, at(40), true);
+      expect(await service.closeCycle('mw2', at(45))).toBe('closed');
+      expect((await cycleRow('mw2')).evaluation?.alertState).toMatchObject({
+        consecutiveFailureCount: 1,
+      });
+      expect((await cycleRow('mw2')).evaluation?.alertState).not.toHaveProperty(
+        'maintenanceOnly',
+      );
+    });
+
+    it('keeps an outage that began before the window where it was, without resetting or advancing it', async () => {
+      await multiRegion(
+        {
+          consecutiveFailureCount: 2,
+          consecutiveSuccessCount: 0,
+          alertsSentForFailure: 1,
+          alertsSentForRecovery: 0,
+        },
+        'down',
+      );
+      await window(at(-60), at(3600));
+      await openCycle('mw3');
+      await report('mw3', 'eu', false, at(5), true);
+      await report('mw3', 'us', false, at(5), true);
+      expect(await service.closeCycle('mw3', at(10))).toBe('closed');
+      expect((await cycleRow('mw3')).evaluation?.alertState).toMatchObject({
+        consecutiveFailureCount: 2,
+        alertsSentForFailure: 1,
+      });
+    });
+
+    it('at the deadline, judges missing regions at the scheduled time', async () => {
+      await multiRegion();
+      // The window already covers the scheduled time: the missing region's row is inside it too, so the cycle freezes.
+      await window(at(-60), at(3600));
+      await openCycle('mw4');
+      await report('mw4', 'eu', false, at(5), true);
+      await report('mw4', 'us', true, at(5), true);
+      expect(await service.closeCycle('mw4', afterDeadline)).toBe('closed');
+      const synthetic = (await results('mw4')).find(
+        (row) => row.location === 'ap',
+      );
+      expect(synthetic).toMatchObject({ isUp: false, inMaintenance: true });
+      expect((await cycleRow('mw4')).evaluation?.alertState).toMatchObject({
+        consecutiveFailureCount: 0,
+      });
+    });
+
+    it('at the deadline, counts the cycle when the window began only after the scheduled time', async () => {
+      await multiRegion();
+      await window(at(30), at(3600));
+      await openCycle('mw5');
+      await report('mw5', 'eu', false, at(60), true);
+      expect(await service.closeCycle('mw5', afterDeadline)).toBe('closed');
+      expect(
+        (await results('mw5')).filter(
+          (row) => row.inMaintenance === false && row.isUp === false,
+        ),
+      ).toHaveLength(2);
+      expect((await cycleRow('mw5')).evaluation?.alertState).toMatchObject({
+        consecutiveFailureCount: 1,
+      });
+    });
   });
 
   it('closes a cycle once under concurrent closers and writes failed rows once', async () => {
