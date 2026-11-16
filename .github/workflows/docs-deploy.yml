@@ -68,6 +68,7 @@ jobs:
         run: npm run test:trial-docs
 
       - name: Build static site
+        id: build
         working-directory: docs
         run: npm run build
 
@@ -103,7 +104,8 @@ jobs:
           .github/scripts/checks-summary.sh "Docs validation"
           "OpenAPI sync=${{ steps.openapi.outcome }}"
           "Pricing trial copy=${{ steps.trial.outcome }}"
-          "Static build and API pages=${{ steps.rendered.outcome }}"
+          "Static build=${{ steps.build.outcome }}"
+          "Rendered API pages=${{ steps.rendered.outcome }}"
           "Free tools pages, unconfigured=${{ steps.tools_off.outcome }}"
           "Free tools pages, configured=${{ steps.tools_on.outcome }}"
 
