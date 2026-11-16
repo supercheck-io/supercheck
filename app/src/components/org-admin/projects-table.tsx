@@ -3,7 +3,7 @@
 import * as React from "react";
 import { AdminDataTable } from "@/components/admin/admin-data-table";
 import { ProjectTableToolbar } from "./project-table-toolbar";
-import { createProjectColumns, type Project } from "./project-columns";
+import { createProjectColumns, type Project, type ProjectActions } from "./project-columns";
 
 interface ProjectsTableProps {
   projects: Project[];
@@ -23,17 +23,8 @@ interface ProjectsTableProps {
 
 
 export function ProjectsTable({ projects, onCreateProject, onEditProject, onManageLocations, onManageIncidentPolicy, onDeleteProject, onRestoreProject, restoringIds, canCreateProjects = false, canManageProject = false }: ProjectsTableProps) {
-  // New column defs remount every cell, which closes an open row menu. Parents pass fresh
-  // handler lambdas each render, so read them through a ref and rebuild only when one appears or goes.
-  const handlers = { onEditProject, onManageLocations, onManageIncidentPolicy, onDeleteProject, onRestoreProject };
-  const latest = React.useRef(handlers);
-  latest.current = handlers;
-  const present = (Object.keys(handlers) as (keyof typeof handlers)[]).filter((k) => handlers[k]).join();
-  const columns = React.useMemo(() => {
-    const via = (key: keyof typeof handlers) =>
-      present.split(",").includes(key) ? (project: Project) => latest.current[key]?.(project) : undefined;
-    return createProjectColumns(via("onEditProject"), canManageProject, via("onManageLocations"), via("onManageIncidentPolicy"), via("onDeleteProject"), via("onRestoreProject"), restoringIds);
-  }, [present, canManageProject, restoringIds]);
+  // Stable defs: new ones remount every cell, which would close an open row menu on any parent re-render.
+  const columns = React.useMemo(() => createProjectColumns(), []);
 
    
   const CustomToolbar = React.useCallback(({ table }: { table: any }) => (
@@ -48,6 +39,7 @@ export function ProjectsTable({ projects, onCreateProject, onEditProject, onMana
       itemName="projects"
       meta={{
         globalFilterColumns: ["name", "description"],
+        projectActions: { onEditProject, canManageProject, onManageLocations, onManageIncidentPolicy, onDeleteProject, onRestoreProject, restoringIds } satisfies ProjectActions,
       }}
     />
   );

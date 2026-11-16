@@ -42,15 +42,18 @@ export interface Project {
   deleted?: { until: string | null };
 }
 
-export function createProjectColumns(
-  onEditProject?: (project: Project) => void,
-  canManageProject?: boolean,
-  onManageLocations?: (project: Project) => void,
-  onManageIncidentPolicy?: (project: Project) => void,
-  onDeleteProject?: (project: Project) => void,
-  onRestoreProject?: (project: Project) => void,
-  restoringIds?: ReadonlySet<string>
-): ColumnDef<Project>[] {
+/** Row actions, passed as table meta so the column defs (and the cells they mount) stay stable across renders. */
+export interface ProjectActions {
+  onEditProject?: (project: Project) => void;
+  canManageProject?: boolean;
+  onManageLocations?: (project: Project) => void;
+  onManageIncidentPolicy?: (project: Project) => void;
+  onDeleteProject?: (project: Project) => void;
+  onRestoreProject?: (project: Project) => void;
+  restoringIds?: ReadonlySet<string>;
+}
+
+export function createProjectColumns(): ColumnDef<Project>[] {
   return [
     {
       accessorKey: "id",
@@ -196,8 +199,10 @@ export function createProjectColumns(
     {
       id: "actions",
       header: "Actions",
-      cell: ({ row }) => {
+      cell: ({ row, table }) => {
         const project = row.original;
+        const { onEditProject, canManageProject, onManageLocations, onManageIncidentPolicy, onDeleteProject, onRestoreProject, restoringIds } =
+          (table.options.meta as { projectActions?: ProjectActions } | undefined)?.projectActions ?? {};
 
         if (project.deleted) {
           if (!onRestoreProject) return null;
