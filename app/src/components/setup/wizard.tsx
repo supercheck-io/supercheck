@@ -271,6 +271,7 @@ export function SetupWizard({ response, persona, userEmail }: WizardProps) {
             <ReviewStep
               {...stepProps}
               skipped={session.skipped}
+              waitSeconds={lock.reclaimWaitSeconds}
               recordCreated={session.recordCreated}
               getCreated={session.getCreated}
               heartbeat={lock.heartbeat}

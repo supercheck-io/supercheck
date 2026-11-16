@@ -90,6 +90,23 @@ describe("useSetupSession recordCreated", () => {
     }
   });
 
+  it("reports the save it waited for, not a later save's outcome", async () => {
+    jest.useFakeTimers();
+    try {
+      fetchMock.mockResolvedValueOnce(reply(200, makeResponse({}, { updatedAt: "t1" })));
+      fetchMock.mockResolvedValueOnce(reply(500, { error: "boom" }));
+      const { result } = setup();
+      const a = result.current.recordCreated("monitor:a", ID_A).then(() => "ok", () => "failed");
+      await act(async () => { await jest.advanceTimersByTimeAsync(100); });
+      const b = result.current.recordCreated("monitor:b", ID_B).then(() => "ok", () => "failed");
+      await act(async () => { await jest.advanceTimersByTimeAsync(200); });
+      expect(await a).toBe("ok");
+      expect(await b).toBe("failed");
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
   it("rejects when the write did not persist, so the runner shows the item as failed", async () => {
     fetchMock.mockResolvedValue(reply(500, { error: "boom" }));
     const { result } = setup();

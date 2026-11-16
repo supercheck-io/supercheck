@@ -628,4 +628,24 @@ describe("cancellation", () => {
     expect(result.error).toBe(CANCELLED_ERROR);
     expect(heartbeat).toHaveBeenCalledTimes(1);
   });
+
+  it("ends the default rate-limit wait on abort and does not post again", async () => {
+    jest.useFakeTimers();
+    try {
+      const controller = new AbortController();
+      const { deps, calls } = makeDeps({ signal: controller.signal });
+      const base = deps.fetchJson;
+      deps.fetchJson = jest.fn(async (url, init) => (url === "/api/monitors" && init?.method === "POST" ? { ok: false, status: 429, data: {}, retryAfterSeconds: 60 } : base(url, init)));
+      const run = runItem(build(draft())[0], deps);
+      await jest.advanceTimersByTimeAsync(1_000);
+      controller.abort();
+      await jest.advanceTimersByTimeAsync(0);
+      expect((await run).error).toBe(CANCELLED_ERROR);
+      expect(deps.fetchJson).toHaveBeenCalledWith("/api/monitors", expect.objectContaining({ method: "POST" }));
+      expect((deps.fetchJson as jest.Mock).mock.calls.filter(([u, i]) => u === "/api/monitors" && i?.method === "POST")).toHaveLength(1);
+      void calls;
+    } finally {
+      jest.useRealTimers();
+    }
+  });
 });

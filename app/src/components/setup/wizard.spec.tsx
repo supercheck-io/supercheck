@@ -259,6 +259,22 @@ describe("lock", () => {
     expect(calls.some((c) => c.method === "POST" && c.body?.reclaim === true && c.body?.force === true)).toBe(true);
   });
 
+  it("keeps Create disabled with a countdown for 35 s after a forced reclaim", async () => {
+    lockStatus = 423;
+    lockSameUser = true;
+    renderWizard(makeResponse({}, { status: "in_progress", currentStep: "review", draft: { statusPage: { name: "Acme status" } } }));
+    fireEvent.click(await screen.findByRole("button", { name: "Use this tab instead" }));
+    jest.useFakeTimers();
+    try {
+      expect(await screen.findByTestId("setup-reclaim-wait")).toBeTruthy();
+      expect(screen.getByRole("button", { name: /^Create/ })).toBeDisabled();
+      await act(async () => { await jest.advanceTimersByTimeAsync(35_000); });
+      expect(screen.queryByTestId("setup-reclaim-wait")).toBeNull();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
   it("releases a lock whose claim finished after the wizard unmounted", async () => {
     let open: () => void = () => undefined;
     lockGate = new Promise<void>((resolve) => { open = resolve; });

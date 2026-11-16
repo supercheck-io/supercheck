@@ -40,6 +40,8 @@ const RATE_LIMIT_RETRIES = 3;
 const RETRY_AFTER_CAP_S = 30;
 /** Rapid recordCreated calls within this window share one save. */
 const RECORD_COALESCE_MS = 50;
+/** Just past the runner's 30 s ownership-check gap, so a forced-out tab has stopped before this one creates. */
+const RECLAIM_WAIT_MS = 35_000;
 
 /** PUT, waiting out a 429 for its Retry-After (capped) up to three times; nothing was written, so the same body is safe to resend. */
 async function putWithRateLimitRetry(projectId: string, body: SetupUpdateRequest) {
@@ -77,10 +79,11 @@ export function useSetupSession(projectId: string, initial: SetupStateDto, lockT
   const flush = useCallback((): Promise<boolean> => {
     if (timer.current) clearTimeout(timer.current);
     timer.current = null;
-    chain.current = chain.current.then(async () => {
+    // Each flush reports its own outcome, so a caller is never told about a later save.
+    const run = chain.current.then(async (): Promise<boolean> => {
       // A second attempt only follows a 409 whose merge left local created ids to re-save.
       for (let attempt = 0; attempt < 2; attempt++) {
-        if (dirty.current.size === 0) return;
+        if (dirty.current.size === 0) return lastSaveOk.current;
         const keys = [...dirty.current];
         dirty.current.clear();
         const body: SetupUpdateRequest = { expectedUpdatedAt: updatedAt.current, lockToken };
@@ -93,7 +96,7 @@ export function useSetupSession(projectId: string, initial: SetupStateDto, lockT
           setSaveError(null);
           setSaveState("saved");
           setProjectSetupData(queryClient, projectId, res);
-          return;
+          return true;
         } catch (error) {
           const failure = error as { status?: number; body?: { state?: SetupStateDto } };
           if (!(failure.status === 409 && failure.body?.state)) {
@@ -101,7 +104,7 @@ export function useSetupSession(projectId: string, initial: SetupStateDto, lockT
             lastSaveOk.current = false;
             setSaveError(failureMessage(error));
             setSaveState("error");
-            return;
+            return false;
           }
           const server = failure.body.state;
           // Ids this tab created must survive the reload, or a re-run would create them again.
@@ -114,15 +117,17 @@ export function useSetupSession(projectId: string, initial: SetupStateDto, lockT
           if (!unsaved) {
             lastSaveOk.current = true;
             setSaveState("idle");
-            return;
+            return true;
           }
           dirty.current.add("draft");
         }
       }
       lastSaveOk.current = false;
       setSaveState("error");
+      return false;
     });
-    return chain.current.then(() => lastSaveOk.current);
+    chain.current = run.then(() => undefined);
+    return run;
   }, [projectId, queryClient, lockToken]);
 
   const patch = useCallback(
@@ -147,15 +152,15 @@ export function useSetupSession(projectId: string, initial: SetupStateDto, lockT
     async (key: string, id: string) => {
       patch({ draft: { ...latest.current.draft, created: { ...latest.current.draft.created, [key]: id } } });
       // Calls inside the window share one PUT, so a burst of created items stays under the write limit.
-      pendingRecord.current ??= new Promise<boolean>((resolve) =>
+      // Each call waits on the save it joined, not on a later save's outcome.
+      const saved = (pendingRecord.current ??= new Promise<boolean>((resolve) =>
         setTimeout(() => {
           pendingRecord.current = null;
           void flush().then(resolve);
         }, RECORD_COALESCE_MS),
-      );
-      await pendingRecord.current;
+      ));
       // Rejecting shows the item as failed to record instead of silently succeeding.
-      if (!lastSaveOk.current) throw new Error("Created, but your progress could not be saved. Check your connection and retry.");
+      if (!(await saved)) throw new Error("Created, but your progress could not be saved. Check your connection and retry.");
     },
     [patch, flush],
   );
@@ -170,6 +175,17 @@ export function useSetupSession(projectId: string, initial: SetupStateDto, lockT
 export function useSetupLock(projectId: string, enabled: boolean, initialHolder: SetupLockInfo | null, lockToken: string) {
   const [holder, setHolder] = useState<SetupLockInfo | null>(initialHolder && !initialHolder.mine ? initialHolder : null);
   const held = useRef(false);
+  // The other tab only notices a forced reclaim at its next throttled ownership check (30 s in create-runner).
+  const [reclaimUntil, setReclaimUntil] = useState(0);
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (reclaimUntil <= Date.now()) return;
+    const tick = setInterval(() => {
+      setNow(Date.now());
+      if (Date.now() >= reclaimUntil) clearInterval(tick);
+    }, 1000);
+    return () => clearInterval(tick);
+  }, [reclaimUntil]);
   const url = `/api/projects/${projectId}/setup/lock`;
   // The token identifies this tab: two tabs of the same user must not both hold the lock.
   const post = useCallback(
@@ -191,6 +207,10 @@ export function useSetupLock(projectId: string, enabled: boolean, initialHolder:
       if (res.ok) {
         held.current = true;
         setHolder(null);
+        if (!takeover) {
+          setNow(Date.now());
+          setReclaimUntil(Date.now() + RECLAIM_WAIT_MS);
+        }
       }
       return res.ok;
     },
@@ -268,5 +288,6 @@ export function useSetupLock(projectId: string, enabled: boolean, initialHolder:
     }
   }, [claim]);
 
-  return { holder, readOnly: holder !== null, takeOver, useHere, heartbeat };
+  const reclaimWaitSeconds = Math.max(0, Math.ceil((reclaimUntil - now) / 1000));
+  return { holder, readOnly: holder !== null, takeOver, useHere, heartbeat, reclaimWaitSeconds };
 }

@@ -31,6 +31,8 @@ const STEP_TITLES: Partial<Record<SetupStepKey, string>> = {
 
 export interface ReviewStepProps extends StepProps {
   skipped: SetupStepKey[];
+  /** Seconds left after "Use this tab instead" before the other tab has stopped; Create and Retry wait. */
+  waitSeconds?: number;
   recordCreated: (key: string, id: string) => Promise<void>;
   getCreated: () => Record<string, string>;
   /** Mark setup completed (PUT status). */
@@ -70,7 +72,7 @@ const STATUS_LABEL: Record<ItemResult["status"], string> = {
   failed: "Failed",
 };
 
-export function ReviewStep({ response, features, permissions, draft, skipped, readOnly, recordCreated, getCreated, complete, completed, heartbeat, onActiveChange, stopRef }: ReviewStepProps) {
+export function ReviewStep({ response, features, permissions, draft, skipped, readOnly, waitSeconds = 0, recordCreated, getCreated, complete, completed, heartbeat, onActiveChange, stopRef }: ReviewStepProps) {
   const items = useMemo(
     () => buildCreateItems(draft, { skipped, features, canUpdateProject: permissions.canUpdateProject, minIntervalMinutes: response.minIntervalMinutes }),
     [draft, skipped, features, permissions.canUpdateProject, response.minIntervalMinutes],
@@ -167,6 +169,7 @@ export function ReviewStep({ response, features, permissions, draft, skipped, re
   return (
     <div className="space-y-6" data-testid="setup-review">
       {readOnly ? <Alert variant="info">You have view access. Ask a project admin to create these items.</Alert> : null}
+      {waitSeconds > 0 ? <Alert variant="info" data-testid="setup-reclaim-wait">Waiting for the other tab to stop… {waitSeconds}s</Alert> : null}
 
       {savedChannels + savedSecrets > 0 ? (
         <section aria-labelledby="setup-saved" className="space-y-2">
@@ -210,7 +213,7 @@ export function ReviewStep({ response, features, permissions, draft, skipped, re
                     {STATUS_LABEL[result.status]}
                   </TableBadge>
                   {result.status === "failed" ? (
-                    <Button type="button" size="sm" variant="outline" aria-label={`Retry ${item.label}`} disabled={running || retrying || readOnly} onClick={() => retry(item)}>
+                    <Button type="button" size="sm" variant="outline" aria-label={`Retry ${item.label}`} disabled={running || retrying || readOnly || waitSeconds > 0} onClick={() => retry(item)}>
                       Retry
                     </Button>
                   ) : null}
@@ -247,7 +250,7 @@ export function ReviewStep({ response, features, permissions, draft, skipped, re
       ) : (
         <div className="flex flex-wrap gap-2">
           {!finished && items.length > 0 ? (
-            <Button type="button" disabled={running || readOnly} onClick={start}>
+            <Button type="button" disabled={running || readOnly || waitSeconds > 0} onClick={start}>
               {running ? "Creating..." : `Create ${items.length} item${items.length === 1 ? "" : "s"}`}
             </Button>
           ) : (
