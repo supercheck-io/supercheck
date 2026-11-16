@@ -555,9 +555,9 @@ export function MonitorDetailClient({
 
   // MCP Monitor: tool count, protocol and server identity come from the latest check; the tool list from the stored baseline
   const isMcp = monitor.type === "mcp_server";
-  // Synthetic monitors on an agent test store details.agent; the column shows when any shown row has it.
+  // Synthetic monitors on an agent test store details.agent; the column shows when any loaded result (not just this page) has it, so paging does not toggle it.
   const agentPassRate = (r: { details?: unknown }) => (r.details as { agent?: { passRate?: unknown } } | undefined)?.agent?.passRate;
-  const showPassRate = monitor.type === "synthetic_test" && paginatedTableResults.some((r) => typeof agentPassRate(r) === "number");
+  const showPassRate = monitor.type === "synthetic_test" && [...paginatedTableResults, ...(monitor.recentResults ?? [])].some((r) => typeof agentPassRate(r) === "number");
   const latestMcp = isMcp ? latestResult?.details?.mcp : undefined;
   const mcpServer = latestMcp?.serverName
     ? `${latestMcp.serverName}${latestMcp.serverVersion ? ` ${latestMcp.serverVersion}` : ""}`

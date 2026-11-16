@@ -10,24 +10,40 @@ import { buildRedisOptions } from '../redis/redis-options';
 import Redis from 'ioredis';
 import { hostname } from 'os';
 import { PLAYWRIGHT_QUEUE } from '../../execution/constants';
+import { getServiceVersion } from '../version';
 
 const HEARTBEAT_PREFIX = 'supercheck:worker-heartbeat:';
 const HEARTBEAT_INTERVAL_MS = 30_000;
 const HEARTBEAT_TTL_SECONDS = 60;
 
 /**
- * Features this image can run. `agent-test` is reported only when the fixture package resolves, so an
- * image without it reports nothing and the app refuses to queue agent tests (app rolls before worker).
+ * Features this worker can run. `agent-test` is reported only when the fixture package resolves and
+ * the execution image (WORKER_IMAGE) is not known to be older than this worker: a plain version tag
+ * must equal the worker's version, while a digest, `latest` or no image is trusted (ops enforces
+ * digest equality). Without this, an app could queue agent tests that an old execution image fails
+ * to import. `WORKER_CAPABILITIES` (comma list) replaces detection, to run the worker from source
+ * against a matching WORKER_IMAGE.
  */
 export function workerCapabilities(
   resolve: (id: string) => string = require.resolve,
+  env: NodeJS.ProcessEnv = process.env,
 ): string[] {
+  const override = env.WORKER_CAPABILITIES;
+  if (override !== undefined)
+    return override
+      .split(',')
+      .map((c) => c.trim())
+      .filter(Boolean);
   try {
     resolve('@supercheck/agent-test');
-    return ['agent-test'];
   } catch {
     return [];
   }
+  const image = env.WORKER_IMAGE?.trim() ?? '';
+  const tag = image.includes('@') ? '' : /:([^:/]+)$/.exec(image)?.[1];
+  if (tag && tag !== 'latest' && tag.replace(/^v/, '') !== getServiceVersion())
+    return [];
+  return ['agent-test'];
 }
 
 interface WorkerHeartbeat {
@@ -38,6 +54,8 @@ interface WorkerHeartbeat {
   queues: string[];
   pid: number;
   capabilities: string[];
+  version: string;
+  image: string | null;
 }
 
 @Injectable()
@@ -146,6 +164,8 @@ export class HeartbeatService implements OnModuleInit, OnModuleDestroy {
       queues: this.getQueues(),
       pid: process.pid,
       capabilities: this.capabilities,
+      version: getServiceVersion(),
+      image: process.env.WORKER_IMAGE?.trim() || null,
     };
 
     try {

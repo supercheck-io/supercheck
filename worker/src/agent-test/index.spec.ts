@@ -213,8 +213,15 @@ describe('agent fixture', () => {
     await rm(dir, { recursive: true, force: true });
   });
 
-  const info = (status: string, attach = jest.fn()) => ({
+  const info = (
+    status: string,
+    attach = jest.fn(),
+    errors: { message?: string }[] = [],
+  ) => ({
     title: 'my test',
+    titlePath: ['a.agent.spec.ts', 'suite', 'my test'],
+    project: { name: 'agent' },
+    errors,
     status,
     outputPath: (name: string) => join(dir, name),
     attach,
@@ -249,7 +256,7 @@ describe('agent fixture', () => {
       expect(text).not.toContain(secret);
     const summary = JSON.parse(text);
     expect(summary).toMatchObject({
-      title: 'my test',
+      title: 'suite › my test',
       attempts: 2,
       passed: 2,
       passRate: 1,
@@ -264,5 +271,71 @@ describe('agent fixture', () => {
         outputPath: () => join(dir, 'missing-dir', 'agent-summary.json'),
       }),
     ).resolves.toBeUndefined();
+  });
+
+  const run = async (testInfo: object, body = async () => undefined) => {
+    await rm(join(dir, 'agent-summary.json'), { force: true });
+    await fixture({}, async () => body(), testInfo);
+  };
+  const summaryText = () => readFile(join(dir, 'agent-summary.json'), 'utf8');
+
+  it('writes and attaches nothing for a skipped test', async () => {
+    const attach = jest.fn();
+    await run(info('skipped', attach));
+    expect(attach).not.toHaveBeenCalled();
+    await expect(summaryText()).rejects.toThrow();
+  });
+
+  it('refuses to run outside an agent test', async () => {
+    await expect(
+      fixture({}, async () => undefined, {
+        ...info('passed'),
+        project: { name: 'chromium' },
+      }),
+    ).rejects.toThrow('set the test type to Agent');
+  });
+
+  it("records the test's own redacted, colourless, clipped error when no repeat failed", async () => {
+    const message = `\u001b[31mexpect failed ${'x'.repeat(400)}\u001b[39m`;
+    await run(info('failed', jest.fn(), [{ message }]));
+    const s = JSON.parse(await summaryText());
+    expect(s).toMatchObject({ attempts: 1, passed: 0 });
+    expect(s.failures).toHaveLength(1);
+    expect(s.failures[0].message).toMatch(/^expect failed x+\.\.\.$/);
+    expect(s.failures[0].message.length).toBe(203);
+  });
+
+  it('keeps repeat failures instead of the test error', async () => {
+    await fixture(
+      {},
+      async (agent) => {
+        await agent.repeat(1, async () => {
+          throw new Error('attempt boom');
+        });
+      },
+      info('failed', jest.fn(), [{ message: 'outer' }]),
+    );
+    expect(JSON.parse(await summaryText()).failures).toEqual([
+      { attempt: 1, message: 'attempt boom' },
+    ]);
+  });
+
+  it('still reports partial repeat counts when the test ends mid-repeat', async () => {
+    // Playwright resolves use() when the body fails, with attempts still in flight.
+    await fixture(
+      {},
+      async (agent) => {
+        void agent.repeat(2, async () => {
+          await new Promise(() => undefined);
+        });
+        await new Promise((r) => setImmediate(r));
+      },
+      info('failed', jest.fn(), [{ message: 'timeout' }]),
+    );
+    expect(JSON.parse(await summaryText())).toMatchObject({
+      attempts: 2,
+      passed: 0,
+      passRate: 0,
+    });
   });
 });

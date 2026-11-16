@@ -50,6 +50,61 @@ export function redact(text: string, secrets: string[]): string {
   return out;
 }
 
+const timeoutOf = (options: AgentCommonOptions) =>
+  Math.min(
+    Math.max(options.timeoutMs ?? DEFAULT_TIMEOUT_MS, 1),
+    MAX_TIMEOUT_MS,
+  );
+
+/** Set in order, so names collapse case-insensitively and a user `Authorization` overrides the apiKey. */
+function requestHeaders(
+  options: AgentCommonOptions,
+  base: Record<string, string>,
+  extra: Record<string, string> = {},
+): Headers {
+  const headers = new Headers();
+  for (const [name, value] of Object.entries(base)) headers.set(name, value);
+  if (options.apiKey) headers.set('authorization', `Bearer ${options.apiKey}`);
+  for (const layer of [extra, options.headers ?? {}])
+    for (const [name, value] of Object.entries(layer)) headers.set(name, value);
+  return headers;
+}
+
+/** Throws on options a run could not use; checked at connect() so a typo fails before any request. */
+export function validateOptions(options: AgentOptions): void {
+  const o = options as unknown as Record<string, unknown>;
+  if (!['openai', 'http', 'a2a', 'mcp'].includes(String(o.kind)))
+    throw new TypeError(
+      `agent.connect: kind must be "openai", "http", "a2a" or "mcp", got ${String(o.kind)}`,
+    );
+  let url: URL | undefined;
+  try {
+    url = new URL(String(o.url));
+  } catch {
+    // reported below
+  }
+  if (url?.protocol !== 'http:' && url?.protocol !== 'https:')
+    throw new TypeError('agent.connect: url must be an http(s) URL');
+  const t = options.timeoutMs;
+  if (t !== undefined && (!Number.isInteger(t) || t < 1 || t > MAX_TIMEOUT_MS))
+    throw new RangeError(
+      `agent.connect: timeoutMs must be an integer from 1 to ${MAX_TIMEOUT_MS}`,
+    );
+  // Redaction ignores values this short (they would blank ordinary text), so they could not be hidden.
+  const credentials = [
+    options.apiKey,
+    ...Object.entries(options.headers ?? {}).flatMap(([name, value]) =>
+      CREDENTIAL_HEADER.test(name)
+        ? [value, typeof value === 'string' && value.split(/\s+/).pop()]
+        : [],
+    ),
+  ];
+  if (credentials.some((v) => typeof v === 'string' && v.length < MIN_SECRET))
+    throw new Error(
+      `agent.connect: an apiKey or credential header value must be at least ${MIN_SECRET} characters`,
+    );
+}
+
 interface Post {
   status: number;
   headers: Headers;
@@ -64,27 +119,27 @@ async function post(
   extraHeaders: Record<string, string> = {},
   /** JSON-RPC id to wait for: an SSE reply is read only until that response arrives (servers may keep the stream open). */
   rpcId?: number,
+  /** Absolute time (ms) the whole exchange must end by; defaults to this request's own timeout. */
+  deadlineAt?: number,
 ): Promise<Post> {
-  const timeoutMs = Math.min(
-    Math.max(options.timeoutMs ?? DEFAULT_TIMEOUT_MS, 1),
-    MAX_TIMEOUT_MS,
-  );
+  const timeoutMs = timeoutOf(options);
   const secrets = secretsOf(options);
   let res: Response;
   let text: string;
   try {
     res = await fetch(url, {
       method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        ...(options.apiKey
-          ? { authorization: `Bearer ${options.apiKey}` }
-          : {}),
-        ...extraHeaders,
-        ...options.headers,
-      },
+      headers: requestHeaders(
+        options,
+        { 'content-type': 'application/json' },
+        extraHeaders,
+      ),
       body: JSON.stringify(body),
-      signal: AbortSignal.timeout(timeoutMs),
+      signal: AbortSignal.timeout(
+        deadlineAt === undefined
+          ? timeoutMs
+          : Math.max(deadlineAt - Date.now(), 1),
+      ),
     });
     text =
       rpcId !== undefined &&
@@ -102,8 +157,11 @@ async function post(
     throw new Error(`${kind} agent request failed: ${redact(why, secrets)}`);
   }
   if (!res.ok)
-    throw new Error(
-      `${kind} agent replied HTTP ${res.status}: ${redact(text, secrets).slice(0, 200)}`,
+    throw Object.assign(
+      new Error(
+        `${kind} agent replied HTTP ${res.status}: ${redact(text, secrets).slice(0, 200)}`,
+      ),
+      { sessionId: res.headers.get('mcp-session-id') },
     );
   return { status: res.status, headers: res.headers, text };
 }
@@ -185,7 +243,6 @@ export async function chatCompletion(
     tools?: unknown[];
   },
   messages: { role: string; content: string }[],
-  extraBody: Record<string, unknown> = {},
 ): Promise<AgentReply> {
   const startedAt = Date.now();
   const { text: body } = await post('openai', options.url, options, {
@@ -194,9 +251,14 @@ export async function chatCompletion(
       ? [{ role: 'system', content: options.system }, ...messages]
       : messages,
     ...(options.tools ? { tools: options.tools } : {}),
-    ...extraBody,
   });
   const json = asRecord(parseJson('openai', body, secretsOf(options)));
+  if (json.error) {
+    const e = asRecord(json.error);
+    throw new Error(
+      `openai agent error: ${redact(asString(e.message, asString(json.error)), secretsOf(options)).slice(0, 200)}`,
+    );
+  }
   const message = asRecord(asRecord((json.choices as unknown[])?.[0]).message);
   const toolCalls: AgentToolCall[] = (
     Array.isArray(message.tool_calls) ? message.tool_calls : []
@@ -214,13 +276,18 @@ export async function chatCompletion(
   });
   const u = asRecord(json.usage);
   return reply(
-    typeof message.content === 'string' ? message.content : '',
+    typeof message.content === 'string'
+      ? message.content
+      : textOfParts(message.content),
     {
       toolCalls,
       usage: {
         promptTokens: asNumber(u.prompt_tokens),
         completionTokens: asNumber(u.completion_tokens),
-        totalTokens: asNumber(u.total_tokens),
+        totalTokens:
+          typeof u.total_tokens === 'number'
+            ? u.total_tokens
+            : asNumber(u.prompt_tokens) + asNumber(u.completion_tokens),
         ...(typeof u.cost === 'number' ? { cost: u.cost } : {}),
       },
     },
@@ -370,36 +437,45 @@ async function mcpSend(
     method,
     params,
   });
-  const init = await post(
-    'mcp',
-    options.url,
-    options,
-    rpc(1, 'initialize', {
-      protocolVersion: '2025-06-18',
-      capabilities: {},
-      clientInfo: { name: 'supercheck-agent-test', version: '1.0.0' },
-    }),
-    accept,
-    1,
-  );
-  const initResult = asRecord(
-    rpcResult('mcp', rpcMessage('mcp', init.text, 1, secrets), secrets),
-  );
-  const session = init.headers.get('mcp-session-id');
-  const next = {
-    ...accept,
-    'mcp-protocol-version': asString(initResult.protocolVersion, '2025-06-18'),
-    ...(session ? { 'mcp-session-id': session } : {}),
-  };
+  const deadlineAt = startedAt + timeoutOf(options);
   const args = { [options.argument ?? 'message']: message };
+  let session: string | null = null;
   let call: Post;
   try {
+    const init = await post(
+      'mcp',
+      options.url,
+      options,
+      rpc(1, 'initialize', {
+        protocolVersion: '2025-06-18',
+        capabilities: {},
+        clientInfo: { name: 'supercheck-agent-test', version: '1.0.0' },
+      }),
+      accept,
+      1,
+      deadlineAt,
+    );
+    // Before parsing: an init error reply may still have opened a session that must be deleted.
+    session = init.headers.get('mcp-session-id');
+    const initResult = asRecord(
+      rpcResult('mcp', rpcMessage('mcp', init.text, 1, secrets), secrets),
+    );
+    const next = {
+      ...accept,
+      'mcp-protocol-version': asString(
+        initResult.protocolVersion,
+        '2025-06-18',
+      ),
+      ...(session ? { 'mcp-session-id': session } : {}),
+    };
     await post(
       'mcp',
       options.url,
       options,
       rpc(undefined, 'notifications/initialized', {}),
       next,
+      undefined,
+      deadlineAt,
     );
     call = await post(
       'mcp',
@@ -408,21 +484,23 @@ async function mcpSend(
       rpc(2, 'tools/call', { name: options.tool, arguments: args }),
       next,
       2,
+      deadlineAt,
     );
+  } catch (error) {
+    // An initialize answered with an HTTP error may still have opened a session.
+    session ??= (error as { sessionId?: string | null }).sessionId ?? null;
+    throw error;
   } finally {
     // Best effort, like the worker MCP client: free the server's per-session state.
-    if (session)
+    if (session) {
+      const headers = requestHeaders(options, {});
+      headers.set('mcp-session-id', session);
       await fetch(options.url, {
         method: 'DELETE',
-        headers: {
-          ...(options.apiKey
-            ? { authorization: `Bearer ${options.apiKey}` }
-            : {}),
-          ...options.headers,
-          'mcp-session-id': session,
-        },
+        headers,
         signal: AbortSignal.timeout(5_000),
       }).catch(() => undefined);
+    }
   }
   const result = asRecord(
     rpcResult('mcp', rpcMessage('mcp', call.text, 2, secrets), secrets),

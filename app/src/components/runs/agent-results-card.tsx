@@ -61,8 +61,8 @@ export function AgentResultsCard({ agent, loading = false, error = false }: { ag
                 <div className="text-xs font-medium text-muted-foreground">Tools called</div>
                 {t.toolNames?.length ? (
                   <div className="flex flex-wrap gap-1">
-                    {t.toolNames.map((n) => (
-                      <Badge key={n} variant="outline" className="max-w-full break-all font-mono text-xs">{n}</Badge>
+                    {t.toolNames.map((n, ni) => (
+                      <Badge key={ni} variant="outline" className="max-w-full break-all font-mono text-xs">{n}</Badge>
                     ))}
                   </div>
                 ) : (
@@ -73,8 +73,8 @@ export function AgentResultsCard({ agent, loading = false, error = false }: { ag
                 <div className="space-y-1">
                   <div className="text-xs font-medium text-muted-foreground">Failures</div>
                   <ul className="space-y-1 text-sm" data-testid="agent-results-failures">
-                    {t.failures.map((f) => (
-                      <li key={f.attempt} className="break-words">
+                    {t.failures.map((f, fi) => (
+                      <li key={fi} className="break-words">
                         <span className="font-medium">Attempt {f.attempt}:</span> {f.message}
                       </li>
                     ))}

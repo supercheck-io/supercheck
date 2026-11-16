@@ -11,6 +11,7 @@ import {
   hasPermissionForUser,
 } from "@/lib/rbac/middleware";
 import { Role } from "@/lib/rbac/permissions";
+import { isAgentRun } from "@/lib/agent-test/run-is-agent";
 import { sanitizeAgentSummary, type AgentRunSummary } from "@/lib/agent-test/run-summary";
 
 // Type based on the actual API response from /api/runs/[runId]
@@ -32,6 +33,8 @@ type RunResponse = {
   trigger?: string;
   location?: string | null;
   agent?: AgentRunSummary;
+  /** Server-computed: the run is, or contains, an agent test. */
+  isAgentRun?: boolean;
 };
 
 export async function getRun(
@@ -158,6 +161,7 @@ export async function getRun(
       location: run.location || null,
       testCount,
       agent: sanitizeAgentSummary(metadata),
+      isAgentRun: await isAgentRun({ jobId: run.jobId, testId: (metadata as { testId?: unknown } | null)?.testId, projectId: run.projectId }),
     };
 
     return response;

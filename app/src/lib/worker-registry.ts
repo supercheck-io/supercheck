@@ -116,8 +116,8 @@ export async function getActiveWorkerQueueNames(): Promise<Set<string>> {
 }
 
 /**
- * Queues that cannot run a feature yet: no live worker consumes them, or at least one live consumer lacks
- * the capability (a mixed rollout could hand the job to the old one).
+ * Queues that cannot run a feature yet: at least one live consumer lacks the capability (a mixed rollout could
+ * hand the job to the old one). No consumer at all is fine: the job waits for a worker, which scales up on the new image.
  */
 export async function queuesMissingCapability(
   queueNames: readonly string[],
@@ -126,7 +126,7 @@ export async function queuesMissingCapability(
   const workers = await getActiveWorkers();
   return queueNames.filter((queue) => {
     const consumers = workers.filter((w) => w.queues.includes(queue));
-    return consumers.length === 0 || consumers.some((w) => !w.capabilities.includes(capability));
+    return consumers.some((w) => !w.capabilities.includes(capability));
   });
 }
 

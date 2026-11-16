@@ -872,15 +872,29 @@ export function MonitorForm({
 
   // An agent test replies slowly and unevenly, so a new monitor starts at 3 failures and sev3 (once, only over untouched values).
   const agentTest = type === "synthetic_test" && selectedTests[0]?.type === "agent";
-  const agentDefaultsApplied = React.useRef(false);
+  // Switching back to another test type restores what was there before, again only over untouched values.
+  const agentDefaultsApplied = React.useRef<{ before: Pick<AlertConfiguration, "failureThreshold" | "incidentSeverity">; applied: Pick<AlertConfiguration, "failureThreshold" | "incidentSeverity"> } | null>(null);
+  const latestAlertConfig = React.useRef(alertConfig);
+  latestAlertConfig.current = alertConfig;
   useEffect(() => {
-    if (!agentTest || editMode || agentDefaultsApplied.current) return;
-    agentDefaultsApplied.current = true;
-    setAlertConfig((current) => ({
-      ...current,
-      failureThreshold: current.failureThreshold === initialAlertConfigValue.failureThreshold ? 3 : current.failureThreshold,
-      incidentSeverity: current.incidentSeverity ?? "sev3",
-    }));
+    if (editMode) return;
+    const state = agentDefaultsApplied.current;
+    if (agentTest && !state) {
+      const { failureThreshold, incidentSeverity } = latestAlertConfig.current;
+      const applied = {
+        failureThreshold: failureThreshold === initialAlertConfigValue.failureThreshold ? 3 : failureThreshold,
+        incidentSeverity: incidentSeverity ?? ("sev3" as const),
+      };
+      agentDefaultsApplied.current = { before: { failureThreshold, incidentSeverity }, applied };
+      setAlertConfig((current) => ({ ...current, ...applied }));
+    } else if (!agentTest && state) {
+      agentDefaultsApplied.current = null;
+      setAlertConfig((current) => ({
+        ...current,
+        failureThreshold: current.failureThreshold === state.applied.failureThreshold ? state.before.failureThreshold : current.failureThreshold,
+        incidentSeverity: current.incidentSeverity === state.applied.incidentSeverity ? state.before.incidentSeverity : current.incidentSeverity,
+      }));
+    }
   }, [agentTest, editMode, initialAlertConfigValue.failureThreshold]);
 
   const targetPlaceholders: Record<FormValues["type"], string> = {

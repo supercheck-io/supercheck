@@ -105,7 +105,7 @@ describe("worker-registry helpers", () => {
   });
 
   describe("queuesMissingCapability", () => {
-    it("needs a live consumer and every consumer to report the capability", async () => {
+    it("refuses a queue only when a live consumer lacks the capability (no consumer is fine)", async () => {
       const beats = [
         { location: "eu", queues: ["playwright-global", "monitor-eu"], capabilities: ["agent-test"] },
         { location: "us", queues: ["monitor-us"], capabilities: ["agent-test"] },
@@ -121,7 +121,7 @@ describe("worker-registry helpers", () => {
       const { queuesMissingCapability } = await import("./worker-registry");
       await expect(
         queuesMissingCapability(["playwright-global", "monitor-eu", "monitor-us", "monitor-ap"], "agent-test")
-      ).resolves.toEqual(["monitor-us", "monitor-ap"]);
+      ).resolves.toEqual(["monitor-us"]);
     });
   });
 });

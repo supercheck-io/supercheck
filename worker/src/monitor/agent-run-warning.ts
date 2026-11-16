@@ -10,15 +10,14 @@ import {
 
 const logger = new Logger('AgentRunWarning');
 
-type CycleResult = { isUp: boolean; details?: unknown };
+type CycleResult = { isUp: boolean; location: string; details?: unknown };
 
 /**
  * A failed agent test run that is still below the failure threshold sends `agent_run_failed`; the run
- * that reaches the threshold opens the incident instead. The episode is the failure streak: monitor
- * results carry one `outageKey` for the whole streak, so one warning per streak per channel.
+ * that reaches the threshold opens the incident instead. Streaks are per location, so each failing
+ * location warns on its own newest row. The episode is that streak: its `outageKey` (a UUID minted per
+ * location chain), so one warning per streak per channel.
  * Runs after the result rows are stored, and logs and swallows its own failures.
- * shortcut: the streak is read from the monitor's newest row, not per region; a multi-region agent
- * monitor is not a supported shape yet.
  */
 export async function evaluateAgentRunWarning(
   db: PostgresJsDatabase<typeof schema>,
@@ -26,11 +25,24 @@ export async function evaluateAgentRunWarning(
   monitorId: string,
   results: CycleResult[],
 ): Promise<void> {
-  const failed = results.find(
-    (r) =>
-      !r.isUp && (r.details as { testType?: unknown })?.testType === 'agent',
-  );
-  if (!failed) return;
+  const failures = new Map<string, CycleResult>();
+  for (const r of results)
+    if (
+      !r.isUp &&
+      (r.details as { testType?: unknown })?.testType === 'agent' &&
+      !failures.has(r.location)
+    )
+      failures.set(r.location, r);
+  for (const failed of failures.values())
+    await warnLocation(db, alerts, monitorId, failed);
+}
+
+async function warnLocation(
+  db: PostgresJsDatabase<typeof schema>,
+  alerts: WarningSender,
+  monitorId: string,
+  failed: CycleResult,
+): Promise<void> {
   try {
     const [row] = await db
       .select({
@@ -40,7 +52,12 @@ export async function evaluateAgentRunWarning(
         details: schema.monitorResults.details,
       })
       .from(schema.monitorResults)
-      .where(eq(schema.monitorResults.monitorId, monitorId))
+      .where(
+        and(
+          eq(schema.monitorResults.monitorId, monitorId),
+          eq(schema.monitorResults.location, failed.location),
+        ),
+      )
       .orderBy(desc(schema.monitorResults.checkedAt))
       .limit(1);
     if (!row || row.isUp) return;
@@ -69,7 +86,7 @@ export async function evaluateAgentRunWarning(
     );
   } catch (error) {
     logger.warn(
-      `Agent run warning for monitor ${monitorId} was not sent: ${error instanceof Error ? error.message : String(error)}`,
+      `Agent run warning for monitor ${monitorId} (${failed.location}) was not sent: ${error instanceof Error ? error.message : String(error)}`,
     );
   }
 }

@@ -470,7 +470,7 @@ export function sanitizeMonitorFields(body: Record<string, unknown>): void {
 
 /** Services throw plain `{ statusCode, message }` objects; map them to a response instead of a 500. */
 export function thrownStatusResponse(error: unknown): NextResponse | null {
-  if (isExecutionQueueError(error) && error.code === "agent_workers_pending") return buildExecutionQueueErrorResponse(error);
+  if (isExecutionQueueError(error)) return buildExecutionQueueErrorResponse(error);
   if (!error || typeof error !== "object" || error instanceof Error) return null;
   const { statusCode, message, errors } = error as { statusCode?: unknown; message?: unknown; errors?: unknown };
   if (typeof statusCode !== "number" || statusCode < 400 || statusCode > 599) return null;

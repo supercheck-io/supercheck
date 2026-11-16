@@ -150,7 +150,7 @@ export async function saveTest(
         try {
           await assertAgentTestSwitchRunnable(testId, organizationId, project.id);
         } catch (error) {
-          if (isExecutionQueueError(error) && error.code === "agent_workers_pending") return { id: "", success: false, error: getExecutionQueueRunError(error) };
+          if (isExecutionQueueError(error)) return { id: "", success: false, error: getExecutionQueueRunError(error) };
           throw error;
         }
       }

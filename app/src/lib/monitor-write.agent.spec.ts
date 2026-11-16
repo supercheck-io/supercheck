@@ -43,6 +43,11 @@ describe("assertAgentMonitorRunnable", () => {
     expect((await response?.json()).code).toBe("AGENT_WORKERS_PENDING");
   });
 
+  it("maps queue_unavailable (Redis down) to 503 EXECUTION_QUEUE_UNAVAILABLE, not a 500", async () => {
+    const response = thrownStatusResponse(new ExecutionQueueError("queue_unavailable", "Unable to verify workers"));
+    expect(response?.status).toBe(503);
+    expect((await response?.json()).code).toBe("EXECUTION_QUEUE_UNAVAILABLE");
+  });
   it("skips the gate when no configured location is eligible, leaving the config error to the schedule path", async () => {
     resolveMonitorLocations.mockRejectedValue(new Error("Monitor has locations explicitly configured [eu] but none are currently enabled."));
     await expect(assertAgentMonitorRunnable(monitor)).resolves.toBeUndefined();

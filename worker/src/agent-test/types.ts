@@ -62,7 +62,6 @@ export interface AgentReply {
   toolNames: string[];
   usage: AgentUsage;
   durationMs: number;
-  firstTokenMs?: number;
   raw: unknown;
 }
 

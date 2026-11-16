@@ -66,20 +66,72 @@ describe('agent.repeat', () => {
     expect(max).toBe(3);
   });
 
-  it('starts no attempt after 200 s and counts the rest as failed', async () => {
+  it('bounds each attempt by the 200 s budget and counts the rest as failed', async () => {
     jest.useFakeTimers();
     const done = createAgent(newState()).repeat(4, async () => {
       await new Promise((r) => setTimeout(r, 120_000));
     });
     await jest.advanceTimersByTimeAsync(400_000);
     const r = await done;
-    // attempts 1 and 2 start before 200 s; 3 and 4 are not run
-    expect(r.passed).toBe(2);
+    // attempt 1 ends at 120 s; attempt 2 is cut at 200 s; 3 and 4 never start
+    expect(r.passed).toBe(1);
     expect(r.failures).toEqual([
+      { attempt: 2, message: 'not finished: time budget used' },
       { attempt: 3, message: 'not run: time budget used' },
       { attempt: 4, message: 'not run: time budget used' },
     ]);
-    expect(r.passRate).toBe(0.5);
+    expect(r.passRate).toBe(0.25);
+  });
+
+  it('returns even when an attempt never settles, and ignores its late rejection', async () => {
+    jest.useFakeTimers();
+    let reject!: (e: Error) => void;
+    const done = createAgent(newState()).repeat(
+      1,
+      () => new Promise((_, rej) => (reject = rej)),
+    );
+    await jest.advanceTimersByTimeAsync(200_000);
+    expect((await done).failures).toEqual([
+      { attempt: 1, message: 'not finished: time budget used' },
+    ]);
+    reject(new Error('late')); // would be an unhandled rejection without the guard
+    await jest.advanceTimersByTimeAsync(1);
+  });
+
+  it('records partial counts before the repeat ends, so an aborted test still reports them', async () => {
+    const state = newState();
+    const agent = createAgent(state);
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    let calls = 0;
+    const done = agent.repeat(3, async () => {
+      if (++calls === 1) return;
+      if (calls === 2) throw new Error('boom');
+      await gate;
+    });
+    await new Promise((r) => setImmediate(r));
+    expect(state.repeats[0]).toMatchObject({
+      attempts: 3,
+      passed: 1,
+      failed: 1,
+      failures: [{ attempt: 2, message: 'boom' }],
+    });
+    release();
+    await done;
+    expect(state.repeats).toHaveLength(1);
+    expect(state.repeats[0].passed).toBe(2);
+  });
+
+  it('records only a top-level repeat, not one nested in an attempt', async () => {
+    const state = newState();
+    const agent = createAgent(state);
+    let inner: unknown;
+    const outer = await agent.repeat(2, async () => {
+      inner = await agent.repeat(3, async () => undefined);
+    });
+    expect(inner).toMatchObject({ attempts: 3, passed: 3 });
+    expect(state.repeats).toEqual([outer]);
+    expect(outer.attempts).toBe(2);
   });
 });
 
@@ -134,6 +186,7 @@ describe('agent.judge', () => {
     expect(grade).toEqual({ pass: true, reason: 'mentions 30 days' });
     expect(seen[0].auth).toBe('Bearer judge-key');
     expect(seen[0].body.model).toBe('j');
+    expect(seen[0].body).not.toHaveProperty('temperature');
     expect(JSON.stringify(seen[0].body.messages)).toContain('must say 30 days');
     expect(state.judgeTokens).toBe(7);
     expect(state.sends).toEqual([]); // judge calls are not agent sends

@@ -349,7 +349,7 @@ export function verificationFailureMessage(unverified: Record<string, unknown>[]
 
 export async function verifyDeployedTests(
   client: ReturnType<typeof createAuthenticatedClient>,
-  changes: { action: string; type: string; name: string; id?: string; local?: { definition: Record<string, unknown> } }[],
+  changes: { action: string; type: string; name: string; id?: string; local?: { definition: Record<string, unknown> }; remote?: { raw?: Record<string, unknown> } }[],
   results: Record<string, unknown>[],
   timeoutMs: number,
 ): Promise<Record<string, unknown>[]> {
@@ -357,7 +357,7 @@ export async function verifyDeployedTests(
   const targets = changes.flatMap((change, index) => {
     if (change.type !== 'test' || !['create', 'update'].includes(change.action)) return []
     const id = typeof results[index]?.id === 'string' ? String(results[index].id) : change.id
-    return id ? [{ id, name: change.name, testType: change.local?.definition?.testType === undefined && change.action === 'create' ? 'browser' : normalizeTestTypeForApi(change.local?.definition?.testType) }] : []
+    return id ? [{ id, name: change.name, testType: normalizeTestTypeForApi(change.local?.definition?.testType ?? change.remote?.raw?.testType ?? (change.action === 'create' ? 'browser' : undefined)) }] : []
   })
   for (const target of targets) {
     // Only a positively identified browser test is ever run. Performance (any spelling) and unknown types are skipped.

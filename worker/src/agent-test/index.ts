@@ -1,5 +1,6 @@
 import { test as base, expect } from '@playwright/test';
 import { writeFile } from 'node:fs/promises';
+import { stripVTControlCharacters } from 'node:util';
 import { createAgent, newState, type AgentState } from './agent';
 import { redact } from './clients';
 import type { Agent } from './types';
@@ -24,6 +25,8 @@ export function buildSummary(
   title: string,
   state: AgentState,
   passedWithoutRepeat: boolean,
+  /** The test's own error, shown when it failed outside any repeat() attempt. */
+  testError?: string,
 ) {
   const repeats = state.repeats;
   const attempts = repeats.length
@@ -34,6 +37,7 @@ export function buildSummary(
     : passedWithoutRepeat
       ? 1
       : 0;
+  const repeatFailures = repeats.flatMap((r) => r.failures);
   const costs = state.sends.flatMap((s) =>
     s.cost === undefined ? [] : [s.cost],
   );
@@ -52,8 +56,12 @@ export function buildSummary(
     ),
     durationMs: durations.reduce((a, b) => a + b, 0),
     slowestMs: Math.max(0, ...durations),
-    failures: repeats
-      .flatMap((r) => r.failures)
+    failures: (repeatFailures.length
+      ? repeatFailures
+      : testError
+        ? [{ attempt: 1, message: testError }]
+        : []
+    )
       .slice(0, FAILURES)
       .map((f) => ({
         attempt: f.attempt,
@@ -81,14 +89,24 @@ export function redactedJson(value: unknown, secrets: string[]): string {
 export const test = base.extend<{ agent: Agent }>({
   // eslint-disable-next-line no-empty-pattern -- Playwright reads the fixture's dependencies from this pattern
   agent: async ({}, use, testInfo) => {
+    if (testInfo.project.name !== 'agent')
+      throw new Error(
+        '@supercheck/agent-test runs only in agent tests: set the test type to Agent',
+      );
     const state = newState();
     await use(createAgent(state));
+    if (testInfo.status === 'skipped') return;
     // After the test body: the summary must never fail the test, and needs no secret to be known to Supercheck.
     try {
+      const passed = testInfo.status === 'passed';
       const summary = buildSummary(
-        testInfo.title,
+        // titlePath is [file, ...describes, title]; the file name is noise.
+        testInfo.titlePath.slice(1).join(' › '),
         state,
-        testInfo.status === 'passed',
+        passed,
+        passed || !testInfo.errors[0]?.message
+          ? undefined
+          : stripVTControlCharacters(testInfo.errors[0].message),
       );
       const path = testInfo.outputPath('agent-summary.json');
       await writeFile(path, redactedJson(summary, state.secrets), 'utf8');

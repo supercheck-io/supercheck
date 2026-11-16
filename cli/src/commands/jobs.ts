@@ -16,7 +16,7 @@ import { parseIntStrict } from '../utils/number.js'
 import type { PaginatedResponse } from '../api/client.js'
 import { getStoredBaseUrl, requireTriggerKey } from '../auth/store.js'
 import { withSpinner } from '../utils/spinner.js'
-import { extractUuidFromFilename, readScriptMetadata } from '../utils/slug.js'
+import { extractUuidFromFilename, remoteOnlyTestType } from '../utils/slug.js'
 import { normalizeTestTypeForApi, validateScripts, validateScriptTypeMatch } from '../utils/validation.js'
 import { runCommand } from '../utils/exec.js'
 import { createTempPlaywrightConfig } from '../utils/playwright.js'
@@ -89,8 +89,9 @@ function resolveJobLocalTests(
 
     let script: string
     try { script = readFileSync(resolved, 'utf-8') } catch { throw new CLIError(`Cannot read local test: ${resolved}`, ExitCode.ConfigError) }
-    if (readScriptMetadata(script, 'type')?.toLowerCase() === 'agent') {
-      throw new CLIError(`${toDisplayName(cwd, resolved)}: local test execution only supports "browser" and "performance" tests. "agent" tests are executed remotely.`, ExitCode.ConfigError)
+    const remoteOnly = remoteOnlyTestType(script)
+    if (remoteOnly) {
+      throw new CLIError(`${toDisplayName(cwd, resolved)}: local test execution only supports "browser" and "performance" tests. "${remoteOnly}" tests are executed remotely.`, ExitCode.ConfigError)
     }
     const type = inferLocalTestType(resolved)
     return { path: resolved, type, name: toDisplayName(cwd, resolved), script }

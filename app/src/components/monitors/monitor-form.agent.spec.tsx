@@ -63,6 +63,20 @@ describe("monitor form on an agent test", () => {
     testType = "agent";
   });
 
+  it("restores the previous defaults when a new monitor switches from an agent test to another type", async () => {
+    await openAlertsOnCreate();
+    expect(alertProps.current?.value).toMatchObject({ failureThreshold: 3, incidentSeverity: "sev3" });
+    testType = "browser";
+    fireEvent.click(screen.getByRole("button", { name: /Back|Previous/ }));
+    fireEvent.click(screen.getByRole("button", { name: "pick test" }));
+    fireEvent.click(screen.getByRole("button", { name: /Create|Next/ }));
+    await screen.findByTestId("alert-settings");
+    testType = "agent";
+    expect(alertProps.current?.agentTest).toBe(false);
+    expect(alertProps.current?.value.failureThreshold).toBe(1);
+    expect(alertProps.current?.value.incidentSeverity).toBeUndefined();
+  });
+
   it("leaves a stored monitor untouched on edit", async () => {
     render(<MonitorForm {...props} editMode id="m1" initialData={{ type: "synthetic_test", syntheticConfig_testId: "t1" } as never} alertConfig={{ enabled: true, failureThreshold: 1 } as never} />);
     fireEvent.click(screen.getByRole("button", { name: /Configure Alerts/ }));

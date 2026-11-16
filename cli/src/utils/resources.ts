@@ -2,7 +2,7 @@ import { getApiClient } from '../api/client.js'
 import { discoverFiles, readFileContent } from './discovery.js'
 import { logger } from './logger.js'
 import { ApiRequestError, CLIError, ExitCode } from './errors.js'
-import { extractUuidFromFilename, readScriptMetadata, stripTitleMetadata } from './slug.js'
+import { extractUuidFromFilename, headerKind, readScriptMetadata, stripTitleMetadata } from './slug.js'
 import { decodeStoredTestScript, sanitizeTestScript } from './script.js'
 import type { LocalResource, RemoteResource } from './reconcile.js'
 import type { SupercheckConfig } from '../config/schema.js'
@@ -166,8 +166,11 @@ export function buildLocalResources(config: SupercheckConfig, cwd: string): Loca
 
       // Optional @type annotation: pull writes it for agent, api, database and custom tests (browser has none).
       const typeAnnotation = readScriptMetadata(script, 'type')
-      const annotatedType = typeAnnotation === undefined ? undefined : normalizeTestTypeForApi(typeAnnotation)
-      if (typeAnnotation !== undefined && (annotatedType === undefined || annotatedType === 'performance')) {
+      const parsedType = typeAnnotation === undefined ? undefined : normalizeTestTypeForApi(typeAnnotation)
+      const annotatedType = parsedType === 'performance' ? undefined : parsedType
+      // Only a `// @type` line is ours to reject; an unknown word in a JSDoc block is someone else's tag.
+      const badType = typeAnnotation !== undefined && annotatedType === undefined
+      if (badType && headerKind(script) === 'line') {
         throw new CLIError(`${displayName}: @type must be browser, api, database, custom or agent (got "${typeAnnotation}").`, ExitCode.ConfigError)
       }
 

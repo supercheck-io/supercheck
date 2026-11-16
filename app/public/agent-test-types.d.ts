@@ -73,7 +73,6 @@ declare module '@supercheck/agent-test' {
     toolNames: string[];
     usage: AgentUsage;
     durationMs: number;
-    firstTokenMs?: number;
     raw: unknown;
   }
 

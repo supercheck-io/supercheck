@@ -340,7 +340,7 @@ CONFIDENCE:
 import { test, expect } from '@supercheck/agent-test';
 - test('name', async ({ agent }) => { ... }); const bot = agent.connect({ kind: 'openai' | 'http' | 'a2a' | 'mcp', url, apiKey, model, headers, timeoutMs }).
 - kind 'openai' posts chat completions; 'http' needs body(message) and reply: 'json.path'; 'a2a' speaks JSON-RPC SendMessage; 'mcp' calls one tool of an MCP server.
-- const run = await bot.send(message): run.text, run.json, run.toolCalls, run.toolNames, run.usage.totalTokens, run.durationMs, run.firstTokenMs. Only tools the agent reports are visible.
+- const run = await bot.send(message): run.text, run.json, run.toolCalls, run.toolNames, run.usage.totalTokens, run.durationMs. Only tools the agent reports are visible.
 - const result = await agent.repeat(n, async () => { ... }, { concurrency }): n at most 20, concurrency at most 5, a throw is one failed attempt. It never throws; assert on result.passRate (for example expect(result.passRate).toBeGreaterThanOrEqual(0.8)).
 - agent.judge(text, rubric, { url, apiKey, model }) grades with the customer's own OpenAI-compatible model and returns { pass, reason }.
 - Never call getSecret inside the fixture: pass the key in the script, for example apiKey: getSecret('BOT_KEY'), and read URLs with getVariable('BOT_URL').

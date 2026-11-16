@@ -243,7 +243,7 @@ async function assertK6QueueAvailable(location: string): Promise<void> {
 }
 
 /**
- * Refuses an agent test until every live worker on the given queues runs an image with the agent fixture.
+ * Refuses an agent test while any live worker on the given queues runs an image without the agent fixture (no worker at all is fine: the job waits).
  * The app rolls before the worker, so an old worker would otherwise fail the run at import.
  */
 export async function assertAgentTestRunnable(queueNames: readonly string[]): Promise<void> {

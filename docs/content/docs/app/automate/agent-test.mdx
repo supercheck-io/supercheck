@@ -40,12 +40,12 @@ Pass keys in yourself with `getSecret` and URLs with `getVariable`; nothing is a
 | API | Meaning |
 |---|---|
 | `agent.connect(options)` | Returns a client. `kind: "openai"`: chat completions at `url` (`model`, optional `system`, `tools`). `kind: "http"`: `POST url` with `body(message)` and `reply: "json.path"`. `kind: "a2a"`: A2A 1.0 `SendMessage` over JSON-RPC (`legacy: true` sends the 0.3 `message/send`). `kind: "mcp"`: calls one tool of an MCP server, with the message as the named argument. Common options: `apiKey`, `headers`, `timeoutMs` (default 30,000, max 120,000) |
-| `client.send(message, { conversation? })` | One turn. Returns `{ text, json?, toolCalls: [{ name, arguments }], toolNames, usage: { promptTokens, completionTokens, totalTokens, cost? }, durationMs, firstTokenMs?, raw }` |
+| `client.send(message, { conversation? })` | One turn. Returns `{ text, json?, toolCalls: [{ name, arguments }], toolNames, usage: { promptTokens, completionTokens, totalTokens, cost? }, durationMs, raw }` |
 | `agent.repeat(n, fn, { concurrency? })` | Runs `fn` n times (1 to 20, concurrency 1 to 5, default 1). A throw inside `fn` is one failed attempt. It has a 200-second budget: when that is used up it starts no further attempt and counts each one left as failed with the message "not run: time budget used". Returns `{ attempts, passed, failed, passRate, failures: [{ attempt, message }] }`. It does not throw; assert on `passRate` |
 | `agent.judge(text, rubric, { url, apiKey, model })` | Asks your own OpenAI-compatible model to grade the text against the rubric. Returns `{ pass, reason }` |
 | `expect` | Playwright's `expect`, unchanged |
 
-The run page shows an **Agent results** card with the pass rate, attempts, tokens, slowest attempt, tools called and the failures.
+The run page shows an **Agent results** card with the pass rate, attempts, tokens, slowest attempt, tools called and the failures. Failure messages are clipped to 200 characters and may quote the agent's reply. Prompts, replies and transcripts are not stored.
 
 ## Limits
 

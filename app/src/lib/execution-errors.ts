@@ -1,5 +1,5 @@
 export const AGENT_WORKERS_PENDING_MESSAGE =
-  "Agent tests need updated workers, which are not running yet. Try again after the worker update finishes.";
+  "Agent tests need updated workers, and some workers still run an older version. Try again after the worker update finishes.";
 
 export type ExecutionQueueErrorCode =
   | "capacity_exceeded"

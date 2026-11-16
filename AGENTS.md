@@ -57,6 +57,7 @@ cd ../worker && npm run dev       # http://localhost:8000/health/ready
 
 - Verify connections: `curl localhost:3000/api/health` (database/redis/s3 must be `ok`) and `curl localhost:8000/health/ready`.
 - Execution still runs as Kubernetes Jobs. On OrbStack (no gVisor RuntimeClass) set `EXECUTION_RUNTIME_CLASS_NAME=none` in `worker/.env`; to run a locally built execution image, also set `EXECUTION_IMAGE_PULL_POLICY=Never` and `WORKER_IMAGE=supercheck-worker:latest`. Inspect runs with `kubectl get jobs,pods -n supercheck-execution`. Rebuild the execution image (`docker compose -f docker-compose-local.yml build worker`) after changing execution runtime code.
+- Agent tests: a source worker reports the `agent-test` capability only if `WORKER_IMAGE` is unset, `latest`, a digest, or a tag equal to the worker version. With a locally built `WORKER_IMAGE` tag that differs, set `WORKER_CAPABILITIES=agent-test` in `worker/.env` (comma list; replaces detection). Only do this when that image has `@supercheck/agent-test`.
 - Restore the containerized stack: stop the dev servers, then `docker compose -f docker-compose-local.yml up -d app worker`.
 - Run `npm run db:migrate` in `app/` after pulling schema changes.
 - Stop dev servers you started by PID; do not kill processes you did not start.

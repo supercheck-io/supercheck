@@ -44,6 +44,7 @@ describe('AIPromptBuilder', () => {
     const p = AIPromptBuilder.buildCreatePrompt({ testType: 'agent', userRequest: 'check refunds' });
     expect(p).toContain("@supercheck/agent-test");
     expect(p).toContain('agent.repeat');
+    expect(p).not.toContain('firstTokenMs');
     expect(p).toContain('passRate');
     expect(p).toContain("apiKey: getSecret('BOT_KEY')");
     expect(p).toContain('5 minutes');

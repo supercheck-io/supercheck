@@ -26,6 +26,7 @@ const HELPER = "lib/deletion/visibility";
 // Files that may query the tables without the helper, with why.
 const UNFILTERED_OK: Record<string, string> = {
   "lib/deletion/visibility.ts": "defines the helpers",
+  "lib/agent-test/run-is-agent.ts": "only called for a run the caller already loaded through liveRunOfLiveJob; reads tests and job_tests",
   "lib/maintenance/predicate.ts": "the mute check is keyed by one monitor id and only decides whether its alerts are held",
   "lib/deletion/purge.ts": "purge must see deleting rows",
   "lib/deletion/request.ts": "sets and reads the flag itself",

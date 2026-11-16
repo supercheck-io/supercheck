@@ -8,6 +8,7 @@ import type { WarningSender } from './monitor-warning-dispatch';
 
 type CycleResult = {
   isUp: boolean;
+  location: string;
   responseTimeMs?: number | null;
   details?: unknown;
 };

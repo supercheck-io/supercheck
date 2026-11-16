@@ -13,6 +13,7 @@ const monitorRow = {
 };
 const failedAgent = {
   isUp: false,
+  location: 'local',
   details: {
     testType: 'agent',
     agent: { passRate: 0.6, attempts: 10, totalTokens: 1 },
@@ -67,7 +68,7 @@ describe('evaluateAgentRunWarning', () => {
 
   it('falls back to the result id as the streak key, and omits the pass rate without one', async () => {
     await evaluateAgentRunWarning(fakeDb(row({ details: {} })), alerts, 'm1', [
-      { isUp: false, details: { testType: 'agent' } },
+      { isUp: false, location: 'local', details: { testType: 'agent' } },
     ]);
     expect(alerts.sendWarning).toHaveBeenCalledWith(
       monitorRow,
@@ -75,6 +76,34 @@ describe('evaluateAgentRunWarning', () => {
       'Agent run failed (1 of 3 before an incident)',
       'agent_run_failed:r3',
     );
+  });
+
+  it("warns once per failing location, each on that location's own streak", async () => {
+    const answers = [
+      [row({ details: { outageKey: 'o-eu' } })],
+      [{ alertConfig: { failureThreshold: 3 } }],
+      [monitorRow],
+      [row({ details: { outageKey: 'o-us' } })],
+      [{ alertConfig: { failureThreshold: 3 } }],
+      [monitorRow],
+    ];
+    const chain: Record<string, unknown> = {};
+    chain.from = () => chain;
+    chain.where = () => chain;
+    chain.orderBy = () => chain;
+    chain.limit = () => Promise.resolve(answers.shift() ?? []);
+    const db = {
+      select: () => chain,
+    } as unknown as PostgresJsDatabase<typeof schema>;
+    await evaluateAgentRunWarning(db, alerts, 'm1', [
+      { ...failedAgent, location: 'eu' },
+      { ...failedAgent, location: 'us' },
+      { ...failedAgent, location: 'us' },
+    ]);
+    expect(alerts.sendWarning.mock.calls.map((c) => c[3])).toEqual([
+      'agent_run_failed:o-eu',
+      'agent_run_failed:o-us',
+    ]);
   });
 
   it('sends nothing for the failure that reaches the threshold (that opens the incident)', async () => {
@@ -92,12 +121,15 @@ describe('evaluateAgentRunWarning', () => {
   });
 
   it.each([
-    ['a passing run', [{ isUp: true, details: { testType: 'agent' } }]],
+    [
+      'a passing run',
+      [{ isUp: true, location: 'local', details: { testType: 'agent' } }],
+    ],
     [
       'a failed non-agent test',
-      [{ isUp: false, details: { testType: 'browser' } }],
+      [{ isUp: false, location: 'local', details: { testType: 'browser' } }],
     ],
-    ['a result without details', [{ isUp: false }]],
+    ['a result without details', [{ isUp: false, location: 'local' }]],
   ])('does nothing for %s', async (_n, results) => {
     const db = fakeDb(row());
     await evaluateAgentRunWarning(db, alerts, 'm1', results);

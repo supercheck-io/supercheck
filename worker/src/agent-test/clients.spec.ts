@@ -1,7 +1,7 @@
 import * as http from 'http';
 import type { AddressInfo } from 'net';
 import { createAgent, newState } from './agent';
-import { redact } from './clients';
+import { createClient, redact } from './clients';
 
 type Handler = (
   req: http.IncomingMessage,
@@ -42,6 +42,21 @@ const json = (res: http.ServerResponse, body: unknown, status = 200) => {
   res.end(JSON.stringify(body));
 };
 const connect = (options: any) => createAgent(newState()).connect(options);
+
+const rpcReply = (
+  res: http.ServerResponse,
+  id: number,
+  result: unknown,
+  sse = false,
+) => {
+  const msg = JSON.stringify({ jsonrpc: '2.0', id, result });
+  if (sse) {
+    res.writeHead(200, { 'content-type': 'text/event-stream' });
+    res.end(
+      `event: message\ndata: {"jsonrpc":"2.0","method":"ping"}\n\nevent: message\ndata: ${msg}\n\n`,
+    );
+  } else json(res, JSON.parse(msg));
+};
 
 describe('openai client', () => {
   it('returns text, tool calls and usage, and sends key, model, system and history', async () => {
@@ -153,8 +168,8 @@ describe('openai client', () => {
         kind: 'openai',
         url: `http://127.0.0.1:${port}/x`,
         model: 'm',
-        timeoutMs: 9_999_999,
-        apiKey: 'k',
+        timeoutMs: 120_000,
+        apiKey: 'key-1234',
       }).send('x'),
     ).rejects.toThrow(/request failed: ECONNREFUSED/);
   });
@@ -286,6 +301,18 @@ describe('a2a client', () => {
 });
 
 describe('mcp client', () => {
+  it('closes a session that initialize opened even when it answered with an HTTP error', async () => {
+    handler = (_req, _body, res) => {
+      res.writeHead(500, { 'mcp-session-id': 'sess-err' });
+      res.end('boom');
+    };
+    await expect(
+      connect({ kind: 'mcp', url, tool: 'ask' }).send('m'),
+    ).rejects.toThrow('mcp agent replied HTTP 500');
+    expect(seen.at(-1)?.headers['mcp-session-id']).toBe('sess-err');
+    expect(seen.at(-1)?.body).toBeUndefined();
+  });
+
   it('stops reading an SSE reply at its response even if the stream stays open, then closes the session', async () => {
     handler = (_req, body, res) => {
       if (body.method === 'initialize') {
@@ -317,20 +344,43 @@ describe('mcp client', () => {
     ]);
   });
 
-  const rpcReply = (
-    res: http.ServerResponse,
-    id: number,
-    result: unknown,
-    sse = false,
-  ) => {
-    const msg = JSON.stringify({ jsonrpc: '2.0', id, result });
-    if (sse) {
-      res.writeHead(200, { 'content-type': 'text/event-stream' });
-      res.end(
-        `event: message\ndata: {"jsonrpc":"2.0","method":"ping"}\n\nevent: message\ndata: ${msg}\n\n`,
-      );
-    } else json(res, JSON.parse(msg));
-  };
+  it('closes the session when the initialize reply is an error', async () => {
+    handler = (_r, _b, res) => {
+      res.setHeader('mcp-session-id', 'sess-err');
+      json(res, {
+        jsonrpc: '2.0',
+        id: 1,
+        error: { code: -32000, message: 'no' },
+      });
+    };
+    await expect(
+      connect({ kind: 'mcp', url, tool: 'ask' }).send('x'),
+    ).rejects.toThrow('mcp agent error -32000');
+    expect(seen.map((s) => s.body?.method ?? 'DELETE')).toEqual([
+      'initialize',
+      'DELETE',
+    ]);
+    expect(seen[1].headers['mcp-session-id']).toBe('sess-err');
+  });
+
+  it('spends one timeout across initialize, initialized and the call', async () => {
+    const slow = (ms: number, fn: () => void) => setTimeout(fn, ms);
+    handler = (_r, body, res) => {
+      if (body.method === 'initialize')
+        return void slow(300, () => rpcReply(res, 1, {}));
+      if (body.method === 'notifications/initialized')
+        return void slow(300, () => {
+          res.writeHead(202);
+          res.end();
+        });
+      // tools/call never answers
+    };
+    const t0 = Date.now();
+    await expect(
+      connect({ kind: 'mcp', url, tool: 'ask', timeoutMs: 700 }).send('x'),
+    ).rejects.toThrow('timed out after 700ms');
+    expect(Date.now() - t0).toBeLessThan(1000);
+  });
 
   it('initializes, notifies, then calls the tool with the message as the named argument', async () => {
     handler = (_r, body, res) => {
@@ -352,7 +402,7 @@ describe('mcp client', () => {
       url,
       tool: 'ask',
       argument: 'q',
-      apiKey: 'k',
+      apiKey: 'key-1234',
     }).send('ping');
     expect(seen.map((s) => s.body?.method ?? 'DELETE')).toEqual([
       'initialize',
@@ -423,11 +473,112 @@ describe('mcp client', () => {
   });
 });
 
-it('rejects an unknown kind and redacts secrets from text', async () => {
-  await expect(connect({ kind: 'nope' }).send('x')).rejects.toThrow(
-    'Unknown agent kind: nope',
-  );
+it('redacts secrets from text', () => {
   expect(redact('a sk-1 b sk-1-long', ['sk-1', 'sk-1-long'])).toBe(
     'a [REDACTED] b [REDACTED]',
   );
+});
+
+it('createClient still refuses an unknown kind', async () => {
+  await expect(
+    createClient({ kind: 'nope' } as never).send('x'),
+  ).rejects.toThrow('Unknown agent kind: nope');
+});
+
+describe('connect validation', () => {
+  const ok = { kind: 'http', url: 'http://h/x', body: () => ({}), reply: 'a' };
+  it.each([
+    [{ ...ok, kind: 'nope' }, TypeError, 'kind must be'],
+    [{ ...ok, kind: undefined }, TypeError, 'kind must be'],
+    [{ ...ok, url: 'not a url' }, TypeError, 'http(s) URL'],
+    [{ ...ok, url: undefined }, TypeError, 'http(s) URL'],
+    [{ ...ok, url: 'file:///etc/passwd' }, TypeError, 'http(s) URL'],
+    [{ ...ok, timeoutMs: 0 }, RangeError, 'timeoutMs'],
+    [{ ...ok, timeoutMs: 120_001 }, RangeError, 'timeoutMs'],
+    [{ ...ok, timeoutMs: 1.5 }, RangeError, 'timeoutMs'],
+    [{ ...ok, timeoutMs: NaN }, RangeError, 'timeoutMs'],
+    [{ ...ok, apiKey: 'abc' }, Error, 'at least 4'],
+    [{ ...ok, headers: { 'x-api-key': 'ab' } }, Error, 'at least 4'],
+    [{ ...ok, headers: { Authorization: 'Bearer x' } }, Error, 'at least 4'],
+  ])('rejects %j', (options, type, text) => {
+    expect(() => connect(options)).toThrow(type);
+    expect(() => connect(options)).toThrow(text);
+  });
+
+  it('accepts the bounds and short non-credential headers', () => {
+    expect(() =>
+      connect({ ...ok, timeoutMs: 1, headers: { 'x-team': 'a' } }),
+    ).not.toThrow();
+    expect(() =>
+      connect({ ...ok, url: 'https://h', timeoutMs: 120_000, apiKey: 'abcd' }),
+    ).not.toThrow();
+  });
+});
+
+describe('request headers', () => {
+  it('sends one authorization value when the user header differs in case', async () => {
+    handler = (_r, _b, res) => json(res, { text: 'ok' });
+    await connect({
+      kind: 'http',
+      url,
+      apiKey: 'key-A-1234',
+      headers: { Authorization: 'Bearer user-B-1234' },
+      body: () => ({}),
+      reply: 'text',
+    }).send('x');
+    expect(seen[0].headers.authorization).toBe('Bearer user-B-1234');
+  });
+
+  it('sends one authorization value on the MCP session close too', async () => {
+    handler = (_r, body, res) => {
+      if (body.method === 'initialize') {
+        res.setHeader('mcp-session-id', 'sess-h');
+        return rpcReply(res, body.id, {});
+      }
+      if (body.method === 'notifications/initialized') {
+        res.writeHead(202);
+        return res.end();
+      }
+      rpcReply(res, body.id, { content: [{ text: 'a' }] });
+    };
+    await connect({
+      kind: 'mcp',
+      url,
+      tool: 't',
+      apiKey: 'key-A-1234',
+      headers: { Authorization: 'Bearer user-B-1234' },
+    }).send('x');
+    expect(seen.at(-1)?.headers.authorization).toBe('Bearer user-B-1234');
+    expect(seen.at(-1)?.headers['mcp-session-id']).toBe('sess-h');
+  });
+});
+
+describe('openai reply shapes', () => {
+  const bot = () =>
+    connect({ kind: 'openai', url, model: 'm', apiKey: 'sk-1234' });
+  it('throws a redacted error for a 200 reply carrying an error', async () => {
+    handler = (_r, _b, res) =>
+      json(res, { error: { message: 'quota sk-1234 exceeded' } });
+    const error = await bot()
+      .send('x')
+      .catch((e: Error) => e);
+    expect((error as Error).message).toBe(
+      'openai agent error: quota [REDACTED] exceeded',
+    );
+  });
+
+  it('reads array content parts and falls back to prompt + completion tokens', async () => {
+    handler = (_r, _b, res) =>
+      json(res, {
+        choices: [
+          {
+            message: { content: [{ text: 'a' }, { type: 'x' }, { text: 'b' }] },
+          },
+        ],
+        usage: { prompt_tokens: 4, completion_tokens: 3 },
+      });
+    const r = await bot().send('x');
+    expect(r.text).toBe('a\nb');
+    expect(r.usage.totalTokens).toBe(7);
+  });
 });

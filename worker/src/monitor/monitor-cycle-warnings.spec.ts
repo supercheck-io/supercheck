@@ -15,9 +15,9 @@ import { evaluateCycleWarnings } from './monitor-cycle-warnings';
 
 const db = {} as PostgresJsDatabase<typeof schema>;
 const alerts = { sendWarning: jest.fn() };
-const up = { isUp: true, responseTimeMs: 1, details: {} };
+const up = { isUp: true, location: 'local', responseTimeMs: 1, details: {} };
 const cycleAt = new Date('2026-01-01T00:00:00Z');
-const down = { isUp: false, details: {} };
+const down = { isUp: false, location: 'local', details: {} };
 
 describe('evaluateCycleWarnings', () => {
   beforeEach(() => jest.clearAllMocks());

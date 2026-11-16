@@ -32,7 +32,10 @@ export interface ScriptTypeValidationResult {
  * Rules:
  * - k6 scripts (importing from 'k6/*') MUST have type "performance"
  * - Non-k6 scripts MUST NOT have type "performance"
+ * - Scripts importing '@supercheck/agent-test' MUST have type "agent" (one-directional)
  */
+const AGENT_IMPORT = /(?:from\s+|require\s*\(\s*)['"]@supercheck\/agent-test['"]/;
+
 export function validateScriptTypeMatch(
   script: string,
   declaredType: TestType,
@@ -58,6 +61,14 @@ export function validateScriptTypeMatch(
       error:
         'Test type is "performance" but the script does not contain k6 imports. Performance tests require k6 scripts. Use a Playwright-based test type (browser, api, database, custom, or agent) for non-k6 scripts.',
       suggestedType: "browser",
+    };
+  }
+
+  if (declaredType !== "agent" && AGENT_IMPORT.test(script)) {
+    return {
+      valid: false,
+      error: `Script imports @supercheck/agent-test but test type is "${declaredType}". Agent test scripts must use type "agent".`,
+      suggestedType: "agent",
     };
   }
 

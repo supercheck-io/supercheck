@@ -17,6 +17,13 @@ const agent = {
   ],
 };
 
+it("renders repeated attempt numbers and tool names without duplicate key warnings", () => {
+  const spy = jest.spyOn(console, "error").mockImplementation(() => {});
+  render(<AgentResultsCard agent={{ tests: [{ title: "t", attempts: 2, passed: 0, passRate: 0, toolNames: ["a", "a"], failures: [{ attempt: 1, message: "x" }, { attempt: 1, message: "y" }] }] }} />);
+  expect(spy.mock.calls.flat().join(" ")).not.toMatch(/same key/);
+  spy.mockRestore();
+});
+
 it("shows pass rate, attempts, tokens, slowest attempt, tools and failures as text", () => {
   render(<AgentResultsCard agent={agent} />);
   const card = screen.getByTestId("agent-results-card");

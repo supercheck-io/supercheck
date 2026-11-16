@@ -40,6 +40,14 @@ describe('verifyDeployedTests', () => {
     expect(String(out[0].reason)).toMatch(/Only browser tests.*api/)
   })
 
+  it('verifies an unannotated update by the remote type: browser runs, api skips', async () => {
+    const upd = (testType: string) => ({ ...change('u', undefined, 'update'), remote: { raw: { testType } } })
+    const out = await run([upd('playwright'), upd('api')])
+    expect(post).toHaveBeenCalledTimes(1)
+    expect(out[0]).toMatchObject({ status: 'passed' })
+    expect(String(out[1].reason)).toMatch(/Only browser tests.*api/)
+  })
+
   it.each([undefined, null, 'mystery', 42])('does not run a test whose type is %j', async (type) => {
     const out = await run([change('u', type, 'update')])
     expect(post).not.toHaveBeenCalled()

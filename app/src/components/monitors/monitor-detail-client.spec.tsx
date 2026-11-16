@@ -291,6 +291,16 @@ describe("agent test monitor", () => {
     }
   });
 
+  it("keeps the Pass rate column when the current page has no agent rows but loaded results do", () => {
+    mockResults = [row({})];
+    try {
+      render(<MonitorDetailClient monitor={{ ...(synthetic as object), recentResults: [row({ agent: { passRate: 1 } })] } as never} />);
+      expect(screen.getByRole("columnheader", { name: "Pass rate" })).toBeInTheDocument();
+    } finally {
+      mockResults = [];
+    }
+  });
+
   it("has no Pass rate column for a synthetic monitor on another test type", async () => {
     mockResults = [row({})];
     try {

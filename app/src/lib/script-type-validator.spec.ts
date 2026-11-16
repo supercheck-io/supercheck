@@ -203,3 +203,23 @@ describe("validateTestScript", () => {
     ).toEqual({ valid: true });
   });
 });
+
+describe("agent-test import must be type agent", () => {
+  const esm = "import { test } from '@playwright/test';\nimport { agent } from '@supercheck/agent-test';";
+  const cjs = "const { agent } = require(\"@supercheck/agent-test\");";
+
+  it.each(["browser", "api", "database", "custom"] as const)("rejects an agent script saved as %s", (type) => {
+    for (const script of [esm, cjs]) {
+      expect(validateScriptTypeMatch(script, type)).toMatchObject({ valid: false, suggestedType: "agent" });
+    }
+  });
+
+  it("accepts the agent type, and does not force plain scripts to agent", () => {
+    expect(validateScriptTypeMatch(esm, "agent").valid).toBe(true);
+    expect(validateScriptTypeMatch("import { test } from '@playwright/test';", "browser").valid).toBe(true);
+  });
+
+  it("flows through validateTestScript (save, playground and validate-script)", () => {
+    expect(validateTestScript(esm, "browser")).toMatchObject({ valid: false, errorType: "type" });
+  });
+});

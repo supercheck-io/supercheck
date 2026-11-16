@@ -8,6 +8,7 @@ import { eq, and, count, sql, inArray } from "drizzle-orm";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { requireAuthContext, isAuthError, authErrorStatus } from "@/lib/auth-context";
 import { runReportPath } from "@/lib/run-report-url";
+import { isAgentRun } from "@/lib/agent-test/run-is-agent";
 import { sanitizeAgentSummary } from "@/lib/agent-test/run-summary";
 
 import { permissionDeniedResponse } from "@/lib/deletion/org-state";
@@ -99,6 +100,7 @@ export async function GET(
     const response = {
       ...rest,
       agent: sanitizeAgentSummary({ agent: agentMetadata }),
+      isAgentRun: await isAgentRun({ jobId: run.jobId, testId: run.testId, projectId: authCtx.project.id }),
       reportUrl: runReportPath(run.id, run.reportUrl),
       testCount,
     };

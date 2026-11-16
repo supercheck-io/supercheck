@@ -19,7 +19,7 @@ import { createTempPlaywrightConfig } from '../utils/playwright.js'
 import { ensureDependenciesForTestType, DependencyError } from '../utils/deps.js'
 import { getSse } from '../utils/sse.js'
 import { decodeStoredTestScript, encodeStoredTestScript } from '../utils/script.js'
-import { readScriptMetadata, stripTitleMetadata } from '../utils/slug.js'
+import { readScriptMetadata, remoteOnlyTestType, scriptTestType, stripTitleMetadata } from '../utils/slug.js'
 import type { ApiTestType } from '../utils/validation.js'
 import { addAssignedTags, getAssignedTags, removeAssignedTags } from '../utils/tag-assignment.js'
 
@@ -41,8 +41,9 @@ function requireApiTestType(input: string, optionName: string): ApiTestType {
 }
 
 function refuseLocalAgent(script: string, name: string): void {
-  if (readScriptMetadata(script, 'type')?.toLowerCase() === 'agent') {
-    throw new CLIError(`${name}: local test execution only supports "browser" and "performance" tests. "agent" tests are executed remotely.`, ExitCode.ConfigError)
+  const remoteOnly = remoteOnlyTestType(script)
+  if (remoteOnly) {
+    throw new CLIError(`${name}: local test execution only supports "browser" and "performance" tests. "${remoteOnly}" tests are executed remotely.`, ExitCode.ConfigError)
   }
 }
 
@@ -262,7 +263,7 @@ testCommand
       throw new CLIError(`Cannot read file: ${filePath}`, ExitCode.ConfigError)
     }
 
-    const typeArg = options.type || inferTestType(options.file) || 'playwright'
+    const typeArg = options.type || scriptTestType(script) || inferTestType(options.file) || 'playwright'
 
     // Validate script content matches declared type before sending to API
     const typeMismatchError = validateScriptTypeMatch(script, normalizeTestTypeForApi(typeArg))
@@ -329,6 +330,10 @@ testCommand
       } catch {
         throw new CLIError(`Cannot read file: ${filePath}`, ExitCode.GeneralError)
       }
+
+      // The header only sets the type when --type is absent; without either, update leaves the type alone.
+      const headerType = readScriptMetadata(raw, 'type')
+      if (body.type === undefined && headerType !== undefined) body.type = requireApiTestType(headerType, '@type')
 
       const effectiveType = (() => {
         if (typeof body.type === 'string') {

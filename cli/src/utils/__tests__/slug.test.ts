@@ -87,5 +87,18 @@ describe('slug utilities', () => {
       expect(readScriptMetadata('// @title Old\n\nfoo()\n', 'title')).toBe('Old')
       expect(readScriptMetadata('/**\n * @title Old\n */\nfoo()\n', 'title')).toBe('Old')
     })
+
+    it('leaves JSDoc @type expressions alone', () => {
+      const line = "// @type {import('x').Y}\n\nfoo()\n"
+      const doc = "/**\n * @type {import('x').Y}\n */\nfoo()\n"
+      for (const script of [line, doc]) {
+        expect(readScriptMetadata(script, 'type')).toBeUndefined()
+        expect(stripTitleMetadata(script)).toBe(script)
+      }
+      const tagged = setScriptMetadata(doc, 'type', 'api')
+      expect(tagged).toBe("/**\n * @type api\n * @type {import('x').Y}\n */\nfoo()\n")
+      expect(readScriptMetadata(tagged, 'type')).toBe('api')
+      expect(stripTitleMetadata(tagged)).toBe(doc)
+    })
   })
 })

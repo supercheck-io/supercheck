@@ -59,6 +59,7 @@ import {
   syncMonitorProviderRows,
   syntheticFrequencyError,
   thrownStatusResponse,
+  assertAgentMonitorRunnable,
   timeoutFrequencyError,
   testInProject,
 } from "@/lib/monitor-write";
@@ -67,7 +68,7 @@ import {
   findUnsupportedMonitorLocations,
   unsupportedMonitorLocationsMessage,
 } from "@/lib/monitor-location-routing";
-import type { LocationConfig } from "@/db/schema";
+import type { LocationConfig, MonitorConfig } from "@/db/schema";
 
 import { permissionDeniedResponse } from "@/lib/deletion/org-state";
 const logger = createLogger({ module: "monitor-detail-api" }) as {
@@ -388,6 +389,19 @@ export async function PUT(
       updatePayload.config = preserveWorkerConfigKeys(currentMonitor.config, updateData.config);
     }
 
+    // Same gate as updateMonitorHandler: saving or resuming a running monitor whose test is (or becomes) an agent test.
+    if (
+      (updatePayload.enabled ?? currentMonitor.enabled) && (updatePayload.status ?? currentMonitor.status) !== "paused" &&
+      (updateData.config !== undefined || type !== undefined || status !== undefined || rawData.enabled !== undefined)
+    ) {
+      await assertAgentMonitorRunnable({
+        type: updatePayload.type ?? currentMonitor.type,
+        config: (updatePayload.config ?? currentMonitor.config) as MonitorConfig | null,
+        projectId: currentMonitor.projectId,
+        organizationId: currentMonitor.organizationId,
+      });
+    }
+
     let normalizedProviderIds: string[] = [];
     // Only update alertConfig if it's explicitly provided; otherwise existing alert settings are preserved
     if (rawData.hasOwnProperty("alertConfig")) {
@@ -604,6 +618,8 @@ export async function PUT(
         { status: authErrorStatus(error) },
       );
     }
+    const thrown = thrownStatusResponse(error);
+    if (thrown) return thrown;
     logger.error({ err: error, monitorId: id }, "Error updating monitor");
     return NextResponse.json(
       { error: "Failed to update monitor" },

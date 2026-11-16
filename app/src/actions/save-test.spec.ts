@@ -13,6 +13,8 @@ jest.mock("@/lib/deletion/org-state", () => {
 import { NextRequest } from "next/server";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { saveTest } from "./save-test";
+import { assertAgentTestSwitchRunnable } from "@/lib/monitor-write";
+import { ExecutionQueueError } from "@/lib/execution-errors";
 import { PUT } from "@/app/api/tests/[id]/route";
 import { encodeStoredTestScript } from "@/lib/test-script";
 import { subscriptionService, SubscriptionAccessDeniedError } from "@/lib/services/subscription-service";
@@ -70,6 +72,7 @@ jest.mock("@/lib/requirements-internal", () => ({
   updateCoverageSnapshot: jest.fn(),
 }));
 jest.mock("next/cache", () => ({ revalidatePath: jest.fn() }));
+jest.mock("@/lib/monitor-write", () => ({ ...jest.requireActual("@/lib/monitor-write"), assertAgentTestSwitchRunnable: jest.fn() }));
 
 beforeEach(() => {
   jest.mocked(subscriptionService.blockUntilSubscribed).mockReset().mockResolvedValue();
@@ -273,5 +276,14 @@ describe("PUT /api/tests/[id] request hardening", () => {
   it("trims the title and accepts a null description", async () => {
     expect((await put(JSON.stringify({ title: "  Hi  ", description: null }))).status).toBe(200);
     expect(mockSet).toHaveBeenCalledWith(expect.objectContaining({ title: "Hi", description: null }));
+  });
+});
+
+describe("saveTest switching to agent", () => {
+  it("returns the safe queue error for any ExecutionQueueError and does not write", async () => {
+    jest.mocked(assertAgentTestSwitchRunnable).mockRejectedValueOnce(new ExecutionQueueError("queue_unavailable", "redis down at 10.0.0.1"));
+    const result = await saveTest({ id: "00000000-0000-4000-8000-000000000001", title: "T", type: "agent", script: "// agent" } as never);
+    expect(result).toMatchObject({ success: false, error: "Execution queue temporarily unavailable" });
+    expect(mockSet).not.toHaveBeenCalled();
   });
 });

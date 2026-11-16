@@ -76,6 +76,8 @@ cd /path/to/supercheck/deploy/docker
 docker compose -f docker-compose-local.yml up -d app worker
 ```
 
+A source worker reports the `agent-test` capability (needed to queue agent tests) only if `WORKER_IMAGE` is unset, `latest`, a digest, or a tag equal to the worker version. If you run a locally built image under another tag, set `WORKER_CAPABILITIES=agent-test` in `worker/.env` (comma list; it replaces detection) after checking that the image has `@supercheck/agent-test`.
+
 Worker test runs still execute as Kubernetes Jobs. For a local cluster, use a namespace-scoped worker kubeconfig through `KUBECONFIG`. OrbStack has no gVisor `RuntimeClass`; set `EXECUTION_RUNTIME_CLASS_NAME=none` to run without the sandbox, and use only local, trusted targets.
 
 ## Workflow
