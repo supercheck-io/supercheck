@@ -30,6 +30,9 @@ export interface AppConfig {
   };
 }
 
+// AI steps stay hidden until the server says a provider is configured
+const DEFAULT_SETUP_FEATURES: SetupFeatures = { ...SETUP_FEATURES, aiTests: false, aiSre: false };
+
 const DEFAULT_CONFIG: AppConfig = {
   hosting: { selfHosted: false, cloudHosted: true },
   authProviders: {
@@ -41,8 +44,7 @@ const DEFAULT_CONFIG: AppConfig = {
     allowedEmailDomains: [],
   },
   mcp: { enabled: false },
-  // AI steps stay hidden until the server says a provider is configured
-  setup: { ...SETUP_FEATURES, aiTests: false, aiSre: false },
+  setup: DEFAULT_SETUP_FEATURES,
   demoMode: false,
   showCommunityLinks: false,
   limits: {
@@ -96,7 +98,7 @@ export function useAppConfig() {
     isCloudHosted: effectiveConfig.hosting?.cloudHosted ?? true,
     isMcpEnabled: effectiveConfig.mcp?.enabled ?? false,
     isDemoMode: effectiveConfig.demoMode ?? false,
-    setupFeatures: effectiveConfig.setup ?? DEFAULT_CONFIG.setup!,
+    setupFeatures: effectiveConfig.setup ?? DEFAULT_SETUP_FEATURES,
     showCommunityLinks: effectiveConfig.showCommunityLinks ?? false,
     isGithubEnabled: effectiveConfig.authProviders?.github?.enabled ?? false,
     isGoogleEnabled: effectiveConfig.authProviders?.google?.enabled ?? false,
