@@ -79,6 +79,15 @@ jest.mock("./polar-usage.service", () => ({
   },
 }));
 
+const mockHasActiveSubscription = jest.fn();
+jest.mock("./subscription-service", () => ({
+  subscriptionService: { hasActiveSubscription: (...args: unknown[]) => mockHasActiveSubscription(...args) },
+}));
+const mockGetActiveTrial = jest.fn();
+jest.mock("@/lib/execution/trial-limits", () => ({
+  getActiveTrial: (...args: unknown[]) => mockGetActiveTrial(...args),
+}));
+
 jest.mock("@/lib/feature-flags", () => ({
   isPolarEnabled: jest.fn(() => true),
 }));
@@ -91,6 +100,8 @@ import { usageNotificationService } from "./usage-notification.service";
 describe("UsageNotificationService", () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockHasActiveSubscription.mockResolvedValue(true);
+    mockGetActiveTrial.mockResolvedValue(undefined);
 
     (db.query.organization.findFirst as jest.Mock).mockResolvedValue({
       id: "org_123",
@@ -332,4 +343,29 @@ describe("UsageNotificationService", () => {
       expect.any(Date),
     );
   });
+
+  it("sends no usage or spending email to a lapsed organization", async () => {
+    mockHasActiveSubscription.mockResolvedValue(false);
+    (polarUsageService.getUsageMetrics as jest.Mock).mockResolvedValue({
+      playwrightMinutes: { used: 5, included: 0, percentage: 100 },
+      k6VuMinutes: { used: 0, included: 0, percentage: 100 },
+      aiCredits: { used: 0, included: 0, percentage: 100 },
+      sreInvestigations: { used: 0, included: 0, percentage: 100 },
+      totalOverageCostCents: 50_000,
+    });
+
+    await expect(usageNotificationService.checkAndNotify("org_123")).resolves.toEqual([]);
+    expect(mockGetActiveTrial).toHaveBeenCalledWith("org_123");
+    expect(polarUsageService.getUsageMetrics).not.toHaveBeenCalled();
+    expect(db.insert).not.toHaveBeenCalled();
+  });
+
+  it("still checks usage for an organization on an active trial", async () => {
+    mockHasActiveSubscription.mockResolvedValue(false);
+    mockGetActiveTrial.mockResolvedValue({ id: "trial_1" });
+
+    await usageNotificationService.checkAndNotify("org_123");
+    expect(polarUsageService.getUsageMetrics).toHaveBeenCalledWith("org_123");
+  });
+
 });

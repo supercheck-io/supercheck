@@ -111,8 +111,9 @@ export async function GET() {
     const periodEnd = org.usagePeriodEnd ?? org.subscriptionEndsAt;
 
     const memberLimit = effectiveMemberLimit(plan, org.memberUnits);
+    // A lapsed organization has no allowances, so report 0% rather than "100% used".
     const toPercent = (used: number, included: number) =>
-      included > 0 ? Math.floor((used / included) * 100) : 100;
+      plan.id === "blocked" ? 0 : included > 0 ? Math.floor((used / included) * 100) : 100;
 
     return NextResponse.json({
       organizationId,

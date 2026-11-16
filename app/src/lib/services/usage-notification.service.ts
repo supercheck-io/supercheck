@@ -20,6 +20,7 @@ import { renderUsageNotificationEmail } from "@/lib/email-renderer";
 import { billingSettingsService } from "./billing-settings.service";
 import { polarUsageService } from "./polar-usage.service";
 import { isPolarEnabled } from "@/lib/feature-flags";
+import { getActiveTrial } from "@/lib/execution/trial-limits";
 
 type NotificationType = 
   | "usage_50_percent"
@@ -74,6 +75,13 @@ class UsageNotificationService {
 
       if (!org) {
         return [{ sent: false, error: "Organization not found" }];
+      }
+
+      // A lapsed organization (no paid access, no active trial) has no
+      // allowances to warn about; its UI shows the subscription as ended.
+      const { subscriptionService } = await import("./subscription-service");
+      if (!(await subscriptionService.hasActiveSubscription(organizationId)) && !(await getActiveTrial(organizationId))) {
+        return [];
       }
 
       // Get billing settings

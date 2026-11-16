@@ -212,6 +212,29 @@ describe("SubscriptionTab", () => {
     expect(screen.queryByText("$29.00")).not.toBeInTheDocument();
   });
 
+  it("shows a lapsed organization the ended state, not exhausted usage", async () => {
+    const zero = { used: 40, included: 0, overage: 40, percentage: 0 };
+    const none = { current: 3, limit: 0, remaining: 0, percentage: 0 };
+    fetchMock.mockImplementation(async (url: string) => ({
+      ok: true,
+      json: async () => url.endsWith("/current")
+        ? { ...billing, trial: null,
+            subscription: { ...subscription, plan: null, status: "canceled", accessReason: "canceled_expired", basePriceCents: null, hasBillingCustomer: false },
+            usage: { playwrightMinutes: zero, k6VuMinutes: zero, aiCredits: zero, sreInvestigations: zero },
+            limits: { monitors: none, statusPages: none, projects: none, teamMembers: none } }
+        : { organizationId: "org_1", spending: { currentDollars: 500, hardStopEnabled: true, isAtLimit: true, limitDollars: 100 } },
+    }));
+    render(<SubscriptionTab currentUserRole="org_owner" />);
+    expect(await screen.findByText("Subscription ended")).toBeInTheDocument();
+    expect(screen.getByText(/Your subscription has ended/)).toBeInTheDocument();
+    const resubscribe = screen.getByRole("link", { name: "Resubscribe" });
+    expect(resubscribe).toHaveAttribute("href", "/subscribe");
+    resubscribe.focus();
+    expect(resubscribe).toHaveFocus();
+    expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
+    expect(screen.queryByText(/100%|Usage This Period|Resource Limits|Hard Stop Active/i)).not.toBeInTheDocument();
+  });
+
   it("compares all billable meters before suggesting Pro", async () => {
     fetchMock.mockImplementation(async (url: string) => ({ ok: true, json: async () =>
       url.endsWith("/current") ? { ...billing, usage: { ...billing.usage,
