@@ -14,17 +14,7 @@ it('immediately publishes queue registration and removal instead of waiting for 
   );
 });
 
-it('reports agent-test only when the fixture package resolves', () => {
-  expect(workerCapabilities(() => '/x')).toEqual(['agent-test']);
-  expect(
-    workerCapabilities(() => {
-      throw new Error('Cannot find module');
-    }),
-  ).toEqual([]);
-});
-
 describe('workerCapabilities with the execution image', () => {
-  const ok = () => '/x';
   beforeEach(() => {
     process.env.SUPERCHECK_VERSION = '1.4.0';
   });
@@ -44,19 +34,9 @@ describe('workerCapabilities with the execution image', () => {
     ['an older v tag', 'ghcr.io/o/worker:v1.3.9', false],
     ['no image', undefined, true],
   ])('with %s', (_n, image, reported) => {
-    expect(workerCapabilities(ok, { WORKER_IMAGE: image })).toEqual(
+    expect(workerCapabilities({ WORKER_IMAGE: image })).toEqual(
       reported ? ['agent-test'] : [],
     );
-  });
-
-  it('lets WORKER_CAPABILITIES replace detection', () => {
-    const none = () => {
-      throw new Error('missing');
-    };
-    expect(
-      workerCapabilities(none, { WORKER_CAPABILITIES: ' agent-test, ' }),
-    ).toEqual(['agent-test']);
-    expect(workerCapabilities(ok, { WORKER_CAPABILITIES: '' })).toEqual([]);
   });
 });
 

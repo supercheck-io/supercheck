@@ -25,31 +25,15 @@ export function imageTag(image: string | undefined): string {
 }
 
 /**
- * Features this worker can run. `agent-test` is reported only when the fixture package resolves and
- * the execution image (WORKER_IMAGE) is not known to be older than this worker: a full-version tag
- * (1.4.0 or v1.4.0) must equal the worker's version, while floating or named tags (1.6, prod), a digest,
- * `latest` or no image are trusted (ops enforces
- * digest equality). Without this, an app could queue agent tests that an old execution image fails
- * to import. `WORKER_CAPABILITIES` (comma list) replaces detection, to run the worker from source
- * against a matching WORKER_IMAGE.
+ * Features this worker can run. Only workers that ship the agent-test fixture send this field, so an old
+ * worker reports nothing. `agent-test` is withheld only when the execution image (WORKER_IMAGE) is known
+ * to be older: a full-version tag (1.4.0 or v1.4.0) must equal this worker's version. Floating or named
+ * tags (1.6, prod), a digest, `latest` or no image are trusted (ops enforces digest equality).
  */
 export function workerCapabilities(
-  resolve: (id: string) => string = require.resolve,
   env: NodeJS.ProcessEnv = process.env,
 ): string[] {
-  const override = env.WORKER_CAPABILITIES;
-  if (override !== undefined)
-    return override
-      .split(',')
-      .map((c) => c.trim())
-      .filter(Boolean);
-  try {
-    resolve('@supercheck/agent-test');
-  } catch {
-    return [];
-  }
   const tag = imageTag(env.WORKER_IMAGE).replace(/^v/, '');
-  // Only a full release version can be older; floating (1.6) and named (prod, latest) tags are trusted.
   if (
     /^\d+\.\d+\.\d+/.test(tag) &&
     tag !== getServiceVersion().replace(/^v/, '')

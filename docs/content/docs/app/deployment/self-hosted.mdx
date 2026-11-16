@@ -415,7 +415,7 @@ sudo docker save --platform "linux/$(dpkg --print-architecture)" "$WORKER_IMAGE"
 
 Use the version in your `.env` (`SUPERCHECK_VERSION`).
 
-A worker reports the `agent-test` capability when its image is not older than the worker. To override that detection, set `WORKER_CAPABILITIES` to a comma-separated list (for example `agent-test`, or empty for none).
+A worker reports the `agent-test` capability unless its execution image (`WORKER_IMAGE`) has an older full version tag than the worker, so keep both on the same version.
 
 </Accordion>
 <Accordion title="Compose says a secret is missing from .env" id="missing-secret">
