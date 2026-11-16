@@ -6,6 +6,8 @@ import {
   isStatusPageBrandingHidden,
 } from "@/lib/feature-flags";
 import { isMcpServerEnabled } from "@/lib/mcp/config";
+import { isAIProviderConfigured } from "@/lib/ai/ai-provider";
+import { resolveSetupFeatures } from "@/lib/setup/features";
 import {
   getStatusPageRuntimeConfig,
 } from "@/lib/status-page-domain";
@@ -54,6 +56,9 @@ export async function GET(request: NextRequest) {
 
     // Remote MCP server (off by default): lets the UI offer "Connected apps" only where it exists
     mcp: { enabled: isMcpServerEnabled() },
+
+    // Project setup (onboarding) flags: code registry, AI steps need a configured provider
+    setup: resolveSetupFeatures({ aiConfigured: isAIProviderConfigured() }),
 
     // Demo mode flag
     demoMode: process.env.DEMO_MODE === "true",
