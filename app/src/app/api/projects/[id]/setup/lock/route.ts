@@ -21,7 +21,7 @@ export async function POST(request: NextRequest, { params }: Params) {
     if (guard instanceof NextResponse) return guard;
     const raw = await readJsonBody(request);
     if (raw instanceof NextResponse) return raw;
-    const body = (raw.body ?? {}) as { takeover?: unknown; lockToken?: unknown };
+    const body = (raw.body ?? {}) as { takeover?: unknown; reclaim?: unknown; lockToken?: unknown };
     const takeover = body.takeover === true;
     const lockToken = tokenOf(body);
     if (lockToken === false) return NextResponse.json({ error: "Invalid lock token" }, { status: 400 });
@@ -31,7 +31,7 @@ export async function POST(request: NextRequest, { params }: Params) {
       return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 });
     }
     const previous = takeover ? (await getSetupState(ctx.organizationId, ctx.project.id, userId)).lock : null;
-    const result = await claimLock(ctx.organizationId, ctx.project.id, userId, lockToken, takeover);
+    const result = await claimLock(ctx.organizationId, ctx.project.id, userId, lockToken, takeover, body.reclaim === true);
     if (result.kind === "locked") return NextResponse.json({ error: "locked", lock: result.lock }, { status: 423 });
     if (takeover && previous && !previous.mine) {
       await logAuditEvent({
@@ -54,7 +54,8 @@ export async function POST(request: NextRequest, { params }: Params) {
 
 export async function DELETE(request: NextRequest, { params }: Params) {
   try {
-    const guard = await guardProject(request, (await params).id, { resource: "monitor", action: "create" }, checkSetupLockRateLimit);
+    // Release only clears the caller's own lock, so it must never be refused by the claim budget (a 429 would leave the lock stuck).
+    const guard = await guardProject(request, (await params).id, { resource: "monitor", action: "create" }, async () => ({ allowed: true, remaining: 1 }));
     if (guard instanceof NextResponse) return guard;
     // The body is optional: a bodiless DELETE only releases a lock stored without a tab token.
     const raw = await readJsonBody(request);

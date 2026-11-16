@@ -171,11 +171,29 @@ describe("runAll", () => {
     const heartbeat = jest.fn().mockResolvedValueOnce(true).mockResolvedValue(false);
     const { deps } = makeDeps({ heartbeat });
     const results: Record<string, ItemResult> = {};
+    // Each item is 31 s after the last, so each one re-checks.
+    let now = 1_000_000;
+    const spy = jest.spyOn(Date, "now").mockImplementation(() => (now += 31_000));
     await runAll(build(draft()), deps, (k, r) => (results[k] = r));
+    spy.mockRestore();
     expect(heartbeat).toHaveBeenCalledTimes(2);
     expect(Object.values(results).map((r) => r.status)).toEqual(["done", "failed"]);
     expect(Object.values(results)[1].error).toBe(TAKEN_OVER_ERROR);
     expect((deps.fetchJson as jest.Mock).mock.calls.filter(([, i]) => i?.method === "POST")).toHaveLength(1);
+  });
+
+  it("checks ownership before the first item, then at most once per 30 s", async () => {
+    const heartbeat = jest.fn().mockResolvedValue(true);
+    const { deps } = makeDeps({ heartbeat });
+    const items = build(draft());
+    let now = 1_000_000;
+    const spy = jest.spyOn(Date, "now").mockImplementation(() => now);
+    await runAll(items, deps, () => undefined);
+    expect(heartbeat).toHaveBeenCalledTimes(1);
+    now += 31_000;
+    await runItem(items[0], deps);
+    spy.mockRestore();
+    expect(heartbeat).toHaveBeenCalledTimes(2);
   });
 
   it("honours shouldRun", async () => {
@@ -380,9 +398,18 @@ describe("components: adoption and retry chain", () => {
     return run;
   };
 
-  it("adopts a component with the same name or the same monitor instead of creating a second one", async () => {
+  it("does not adopt a same-name component that belongs to another monitor", async () => {
     const comp = build(spDraft()).find((i) => i.kind === "component") as CreateItem;
-    const byName = ready({ getComponents: jest.fn(async () => ({ success: true, components: [{ id: "c-old", name: "app.example.com", monitorIds: [] }] })) });
+    const run = ready({ getComponents: jest.fn(async () => ({ success: true, components: [{ id: "c-other", name: "app.example.com", monitorIds: ["m-9"] }] })) });
+    run.created[comp.monitorKey as string] = "m-1";
+    expect((await runItem(comp, run.deps)).status).toBe("done");
+    expect(run.deps.createComponent).toHaveBeenCalledTimes(1);
+    expect(run.created[comp.key]).not.toBe("c-other");
+  });
+
+  it("adopts a component that already carries this monitor instead of creating a second one", async () => {
+    const comp = build(spDraft()).find((i) => i.kind === "component") as CreateItem;
+    const byName = ready({ getComponents: jest.fn(async () => ({ success: true, components: [{ id: "c-old", name: "app.example.com", monitorIds: ["m-1"] }] })) });
     byName.created[comp.monitorKey as string] = "m-1";
     expect(await runItem(comp, byName.deps)).toMatchObject({ status: "adopted" });
     expect(byName.created[comp.key]).toBe("c-old");

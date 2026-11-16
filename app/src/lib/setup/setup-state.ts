@@ -175,6 +175,8 @@ export async function claimLock(
   userId: string,
   lockToken: string | null,
   takeover = false,
+  // A tab opening fresh takes over its own user's older tab lock; heartbeats (no reclaim) keep the per-tab check, so tabs never steal back and forth.
+  reclaim = false,
 ): Promise<LockResult> {
   const now = new Date();
   const claimed = await db
@@ -185,7 +187,11 @@ export async function claimLock(
       set: { lockedByUserId: userId, lockedAt: sql`now()`, lockToken },
       setWhere: and(
         eq(projectSetupState.organizationId, organizationId),
-        takeover ? undefined : holderOrFree(userId, lockToken),
+        takeover
+          ? undefined
+          : reclaim
+            ? sql`(${projectSetupState.lockedByUserId} IS NULL OR ${LOCK_EXPIRED} OR ${projectSetupState.lockedByUserId} = ${userId})`
+            : holderOrFree(userId, lockToken),
       ),
     })
     .returning({ id: projectSetupState.id });

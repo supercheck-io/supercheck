@@ -135,7 +135,11 @@ export function useSetupLock(projectId: string, enabled: boolean, initialHolder:
   const url = `/api/projects/${projectId}/setup/lock`;
   // The token identifies this tab: two tabs of the same user must not both hold the lock.
   const post = useCallback(
-    (takeover = false): RequestInit => ({ method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ lockToken, ...(takeover ? { takeover: true } : {}) }) }),
+    (takeover = false, reclaim = false): RequestInit => ({
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ lockToken, ...(takeover ? { takeover: true } : {}), ...(reclaim ? { reclaim: true } : {}) }),
+    }),
     [lockToken],
   );
   const drop = useMemo<RequestInit>(
@@ -162,9 +166,9 @@ export function useSetupLock(projectId: string, enabled: boolean, initialHolder:
       if (held.current) void fetch(url, drop).catch(() => undefined);
       held.current = false;
     };
-    const take = async () => {
+    const take = async (first = false) => {
       try {
-        const res = await fetch(url, post());
+        const res = await fetch(url, post(false, first));
         if (cancelled) {
           // Unmounted while the claim was in flight: it still took the lock, so give it back.
           if (res.ok) void fetch(url, drop).catch(() => undefined);
@@ -182,7 +186,7 @@ export function useSetupLock(projectId: string, enabled: boolean, initialHolder:
         // A missed heartbeat is retried on the next tick; the lock expires only after 15 minutes.
       }
     };
-    void take();
+    void take(true);
     const interval = setInterval(() => void take(), 60_000);
     // Closing the tab never runs the unmount cleanup reliably, so release on pagehide too.
     window.addEventListener("pagehide", release);

@@ -339,9 +339,10 @@ async function createComponentItem(item: CreateItem, deps: RunnerDeps, lookup: L
   if (!(await listMonitors(deps, lookup)).some((m) => m.id === monitorId)) return { status: "skipped", note: "The monitor was deleted" };
   if (!(await listStatusPages(deps, lookup)).some((p) => p.id === statusPageId)) return { status: "skipped", note: "The status page was deleted" };
   const name = String(item.payload.name);
+  // Adopt only a component that already carries this monitor; a same-name one for another monitor is not ours.
   const existing = await deps.getComponents(statusPageId);
   if (!existing.success) return { status: "failed", error: "Could not read the status page components" };
-  const natural = existing.components.find((c) => c.name === name || c.monitorIds.includes(monitorId));
+  const natural = existing.components.find((c) => c.monitorIds.includes(monitorId));
   if (natural) {
     await deps.recordCreated(item.key, natural.id);
     return { status: "adopted", note: "A matching component already exists" };
@@ -376,11 +377,23 @@ async function saveRepeat(item: CreateItem, deps: RunnerDeps): Promise<ItemResul
   return { status: "done" };
 }
 
+const HEARTBEAT_MIN_GAP_MS = 30_000;
+const lastBeat = new WeakMap<() => Promise<boolean>, number>();
+
+/** The lock route allows 12 claims a minute, so ownership is re-checked at most every 30 s (and before the first item). */
+async function throttledHeartbeat(beat: () => Promise<boolean>): Promise<boolean> {
+  const last = lastBeat.get(beat);
+  if (last !== undefined && Date.now() - last < HEARTBEAT_MIN_GAP_MS) return true;
+  const ok = await beat();
+  if (ok) lastBeat.set(beat, Date.now());
+  return ok;
+}
+
 /** Run one item. Never throws: a failure becomes `{ status: "failed" }`. */
 export async function runItem(item: CreateItem, deps: RunnerDeps, lookup: Lookup = {}): Promise<ItemResult> {
   try {
     // A takeover by another person must stop this run before it writes anything more.
-    if (deps.heartbeat && !(await deps.heartbeat())) return { status: "failed", error: TAKEN_OVER_ERROR };
+    if (deps.heartbeat && !(await throttledHeartbeat(deps.heartbeat))) return { status: "failed", error: TAKEN_OVER_ERROR };
     const changed = await ensureProject(deps);
     if (changed) return { status: "failed", error: changed };
     if (isMonitorKind(item.kind)) return await createMonitor(item, deps, lookup);
