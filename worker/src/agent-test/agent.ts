@@ -129,6 +129,8 @@ export function createAgent(state: AgentState): Agent {
                   () => reject(new Error('not finished: time budget used')),
                   remaining,
                 );
+                // The budget only bounds attempts; it must never keep the process alive.
+                timer.unref();
               }),
             ]);
             passes++;
