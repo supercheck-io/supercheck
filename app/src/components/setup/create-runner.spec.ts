@@ -29,6 +29,10 @@ function makeDeps(overrides: Partial<RunnerDeps> = {}, existing: Array<Record<st
     createComponent: jest.fn(async () => ({ success: true, component: { id: "c-1" } })),
     getPolicy: jest.fn(async () => ({ success: true, data: { policy: { channelIds: ["x"], emailServiceOwnersOnSev12: true, renotifyUnackedMinutes: null, renotifyRepeatMinutes: null, renotifyMax: 4, escalateAfterMinutes: 30, escalateChannelId: null, escalateUserId: null, autoInvestigateOnOpen: false } } })),
     savePolicy: jest.fn(async () => ({ success: true })),
+    getRequirements: jest.fn(async () => ({ success: true, requirements: [] as Array<{ id: string; title: string }> })),
+    createRequirement: jest.fn(async () => ({ id: "r-new", success: true })),
+    getServices: jest.fn(async () => ({ success: true, services: [] as Array<{ id: string; name: string }> })),
+    createService: jest.fn(async () => ({ success: true, service: { id: "s-new" } })),
     recordCreated: jest.fn(async (key: string, id: string) => {
       created[key] = id;
     }),
@@ -348,5 +352,86 @@ describe("status page, components and repeat policy", () => {
     const { deps } = makeDeps({ getPolicy: jest.fn().mockRejectedValue("boom") });
     const repeat = build(spDraft()).find((i) => i.kind === "repeat") as CreateItem;
     expect((await runItem(repeat, deps)).error).toBe("Something went wrong");
+  });
+});
+
+describe("requirement and service items", () => {
+  const withBoth = (): SetupDraft => ({
+    tests: { requirements: [{ title: "User can sign in", description: "Happy path" }, { title: "User can log out" }] },
+    aiSre: { connectorIds: [], services: [{ name: "app.example.com" }] },
+  });
+  const items = () => buildCreateItems(withBoth(), { skipped: [], features, canUpdateProject: true });
+
+  it("builds requirement:<n> and service items, honouring skips, flags and permissions", () => {
+    expect(items().map((i) => [i.key.split(":")[0], i.kind, i.step])).toEqual([
+      ["requirement", "requirement", "tests"],
+      ["requirement", "requirement", "tests"],
+      ["service", "service", "aiSre"],
+    ]);
+    expect(items()[0].key).toBe("requirement:0");
+    expect(items()[1].payload).toEqual({ title: "User can log out" });
+    const only = (over: Partial<Parameters<typeof buildCreateItems>[1]>) => buildCreateItems(withBoth(), { skipped: [], features, canUpdateProject: true, ...over });
+    expect(only({ skipped: ["tests", "aiSre"] })).toEqual([]);
+    expect(only({ features: { ...features, aiTests: false, aiSre: false } })).toEqual([]);
+    expect(only({ canCreateTests: false, canConfigureConnectors: false })).toEqual([]);
+  });
+
+  it("creates, records ids, and does not recreate on a re-run", async () => {
+    const { deps, created } = makeDeps();
+    const results: Record<string, ItemResult> = {};
+    await runAll(items(), deps, (k, r) => (results[k] = r));
+    expect(Object.values(results).map((r) => r.status)).toEqual(["done", "done", "done"]);
+    expect(deps.createRequirement).toHaveBeenCalledTimes(2);
+    expect(deps.createRequirement).toHaveBeenCalledWith({ title: "User can sign in", description: "Happy path" });
+    expect(Object.values(created)).toEqual(expect.arrayContaining(["r-new", "s-new"]));
+    (deps.getRequirements as jest.Mock).mockResolvedValue({ success: true, requirements: [{ id: "r-new", title: "x" }] });
+    (deps.getServices as jest.Mock).mockResolvedValue({ success: true, services: [{ id: "s-new", name: "app.example.com" }] });
+    await runAll(items(), deps, (k, r) => (results[k] = r));
+    expect(deps.createRequirement).toHaveBeenCalledTimes(2);
+    expect(deps.createService).toHaveBeenCalledTimes(1);
+    expect(results["requirement:0"].status).toBe("adopted");
+  });
+
+  it("adopts an existing requirement and service by exact title / name", async () => {
+    const { deps, created } = makeDeps({
+      getRequirements: jest.fn(async () => ({ success: true, requirements: [{ id: "r-1", title: "User can sign in" }] })),
+      getServices: jest.fn(async () => ({ success: true, services: [{ id: "s-1", name: "app.example.com" }] })),
+    });
+    const list = items();
+    expect((await runItem(list[0], deps)).status).toBe("adopted");
+    expect((await runItem(list[2], deps)).status).toBe("adopted");
+    expect(created).toMatchObject({ "requirement:0": "r-1", [list[2].key]: "s-1" });
+    expect(deps.createRequirement).not.toHaveBeenCalled();
+    expect(deps.createService).not.toHaveBeenCalled();
+  });
+
+  it("skips an item that was created and then deleted", async () => {
+    const { deps, created } = makeDeps();
+    const list = items();
+    created["requirement:0"] = "gone";
+    created[list[2].key] = "gone";
+    expect((await runItem(list[0], deps)).status).toBe("skipped");
+    expect((await runItem(list[2], deps)).status).toBe("skipped");
+  });
+
+  it("fails with the action error and succeeds on retry", async () => {
+    const createRequirement = jest.fn().mockResolvedValueOnce({ id: "", success: false, error: "Insufficient permissions" }).mockResolvedValue({ id: "r-9", success: true });
+    const createService = jest.fn().mockResolvedValueOnce({ success: false, error: "An active service with this name already exists" }).mockResolvedValue({ success: true, service: { id: "s-9" } });
+    const { deps } = makeDeps({ createRequirement, createService });
+    const list = items();
+    expect(await runItem(list[0], deps)).toEqual({ status: "failed", error: "Insufficient permissions" });
+    expect((await runItem(list[0], deps)).status).toBe("done");
+    expect((await runItem(list[2], deps)).error).toMatch(/already exists/);
+    expect((await runItem(list[2], deps)).status).toBe("done");
+  });
+
+  it("reports unreadable lookups as failures", async () => {
+    const { deps } = makeDeps({
+      getRequirements: jest.fn(async () => ({ success: false, requirements: [] })),
+      getServices: jest.fn(async () => ({ success: false, services: [] })),
+    });
+    const list = items();
+    expect((await runItem(list[0], deps)).error).toMatch(/requirements/);
+    expect((await runItem(list[2], deps)).error).toMatch(/services/);
   });
 });

@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch";
 import { TableBadge } from "@/components/ui/table-badge";
 import { WEBHOOK_PRESETS, getWebhookPreset } from "@/lib/notification-providers/webhook-presets";
+import { CopyFromProject } from "./copy-from-project";
 import { checkSetupProject, postJson, responseError, type StepProps } from "./step-types";
 
 type ChannelType = "email" | "slack" | "teams" | "discord" | "telegram" | "webhook";
@@ -228,6 +229,15 @@ export function AlertsStep({ response, draft, patchDraft, features, permissions,
       ) : (
         <Alert variant="info">You do not have permission to add channels in this project. Ask a project admin.</Alert>
       )}
+
+      {!readOnly && permissions.canCreateNotification ? (
+        <CopyFromProject
+          kind="providers"
+          setupProjectId={response.projectId}
+          disabled={readOnly}
+          onCopied={(ids) => patchDraft((d) => ({ ...d, alerts: { ...d.alerts, providerIds: [...new Set([...(d.alerts?.providerIds ?? []), ...ids])].slice(0, 10) } }))}
+        />
+      ) : null}
 
       {features.repeatUntilAck ? (
         <section className="rounded-lg border p-4" data-testid="setup-card-repeat">

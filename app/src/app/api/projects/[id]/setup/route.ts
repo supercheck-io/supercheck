@@ -6,6 +6,7 @@ import { projects } from "@/db/schema";
 import { PROJECT_SETUP_STATUSES } from "@/db/schema/project-setup";
 import { checkPermissionWithContext, type ProjectPermissionContext } from "@/lib/rbac/middleware";
 import { logAuditEvent } from "@/lib/audit-logger";
+import { subscriptionService } from "@/lib/services/subscription-service";
 import { isAIProviderConfigured } from "@/lib/ai/ai-provider";
 import { checkSetupReadRateLimit, checkSetupWriteRateLimit } from "@/lib/sre/sre-rate-limiter";
 import { deriveChecklist } from "@/lib/setup/checklist";
@@ -37,6 +38,11 @@ async function buildResponse(userId: string, ctx: ProjectPermissionContext, know
     monitorsRemaining(ctx.organizationId),
     db.select({ name: projects.name }).from(projects).where(eq(projects.id, projectId)).limit(1),
   ]);
+  // Same gate as suggest-requirements: a trial (not paid) org is locked; self-hosted never is.
+  const aiTestsLocked = await subscriptionService.blockUntilSubscribed(ctx.organizationId, { allowTrial: false }).then(
+    () => false,
+    () => true,
+  );
   const features = resolveSetupFeatures({ aiConfigured: isAIProviderConfigured() });
   const can = (resource: Parameters<typeof checkPermissionWithContext>[0], action: string) =>
     checkPermissionWithContext(resource, action, ctx);
@@ -57,6 +63,7 @@ async function buildResponse(userId: string, ctx: ProjectPermissionContext, know
     features,
     permissions,
     monitorsRemaining: remaining,
+    aiTestsLocked,
   };
 }
 

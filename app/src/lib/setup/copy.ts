@@ -25,6 +25,27 @@ async function runItem(sourceId: string, work: () => Promise<Omit<CopyItemResult
   }
 }
 
+/** Ids of every provider / connector in the source project, oldest first, capped like an explicit list. */
+export async function listProviderIds(scope: CopyScope): Promise<string[]> {
+  const rows = await db
+    .select({ id: notificationProviders.id })
+    .from(notificationProviders)
+    .where(and(eq(notificationProviders.organizationId, scope.organizationId), eq(notificationProviders.projectId, scope.sourceProjectId)))
+    .orderBy(notificationProviders.createdAt)
+    .limit(10);
+  return rows.map((row) => row.id);
+}
+
+export async function listConnectorIds(scope: CopyScope): Promise<string[]> {
+  const rows = await db
+    .select({ id: externalConnectors.id })
+    .from(externalConnectors)
+    .where(and(eq(externalConnectors.organizationId, scope.organizationId), eq(externalConnectors.projectId, scope.sourceProjectId)))
+    .orderBy(externalConnectors.createdAt)
+    .limit(10);
+  return rows.map((row) => row.id);
+}
+
 export function copyProviders(scope: CopyScope, ids: string[]): Promise<CopyItemResult[]> {
   const { organizationId, sourceProjectId, targetProjectId, userId } = scope;
   // Sequential on purpose: each item is its own transaction and the response keeps request order.

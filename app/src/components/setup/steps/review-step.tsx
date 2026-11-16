@@ -5,6 +5,8 @@ import Link from "next/link";
 import { CheckCircle2, Circle, Loader2, MinusCircle, XCircle } from "lucide-react";
 
 import { createComponent } from "@/actions/create-component";
+import { getRequirements, createRequirement } from "@/actions/requirements";
+import { createSreService, getSreServices } from "@/actions/sre-services";
 import { createStatusPage } from "@/actions/create-status-page";
 import { getProjectNotificationPolicy, saveProjectNotificationPolicy } from "@/actions/notification-policy";
 import { getStatusPages } from "@/actions/get-status-pages";
@@ -65,8 +67,8 @@ const STATUS_LABEL: Record<ItemResult["status"], string> = {
 
 export function ReviewStep({ response, features, permissions, draft, skipped, readOnly, recordCreated, getCreated, complete, completed }: ReviewStepProps) {
   const items = useMemo(
-    () => buildCreateItems(draft, { skipped, features, canUpdateProject: permissions.canUpdateProject }),
-    [draft, skipped, features, permissions.canUpdateProject],
+    () => buildCreateItems(draft, { skipped, features, canUpdateProject: permissions.canUpdateProject, canCreateTests: permissions.canCreateTests, canConfigureConnectors: permissions.canConfigureConnectors }),
+    [draft, skipped, features, permissions.canUpdateProject, permissions.canCreateTests, permissions.canConfigureConnectors],
   );
   const [results, setResults] = useState<Record<string, ItemResult>>({});
   const [running, setRunning] = useState(false);
@@ -85,6 +87,16 @@ export function ReviewStep({ response, features, permissions, draft, skipped, re
       createComponent({ ...data, status: "operational", showcase: true, onlyShowIfDegraded: false, position: 0, aggregationMethod: "worst_case", failureThreshold: 1 }),
     getPolicy: (projectId) => getProjectNotificationPolicy(projectId),
     savePolicy: (projectId, input) => saveProjectNotificationPolicy(projectId, input as Parameters<typeof saveProjectNotificationPolicy>[1]),
+    getRequirements: async () => {
+      const res = await getRequirements();
+      return { success: true, requirements: res.requirements.map((r) => ({ id: r.id, title: r.title })) };
+    },
+    createRequirement: (data) => createRequirement(data),
+    getServices: async () => {
+      const res = await getSreServices();
+      return { success: res.success, services: res.services.map((x) => ({ id: x.id, name: x.name })) };
+    },
+    createService: (data) => createSreService(data as Parameters<typeof createSreService>[0]) as ReturnType<RunnerDeps["createService"]>,
     recordCreated,
     getCreated,
   };
@@ -109,17 +121,19 @@ export function ReviewStep({ response, features, permissions, draft, skipped, re
   };
 
   const savedChannels = draft.alerts?.providerIds?.length ?? 0;
+  const savedConnectors = draft.aiSre?.connectorIds?.length ?? 0;
   const savedSecrets = draft.app?.testAccountSecret ? 1 : 0;
   const skippedTitles = skipped.map((key) => STEP_TITLES[key]).filter(Boolean) as string[];
   const failed = items.filter((item) => results[item.key]?.status === "failed");
   const pings = items.filter((item) => results[item.key]?.pingUrl);
   const started = Object.keys(results).length > 0;
+  const testsCreated = items.some((item) => item.kind === "requirement" && (results[item.key]?.status === "done" || results[item.key]?.status === "adopted"));
 
   return (
     <div className="space-y-6" data-testid="setup-review">
       {readOnly ? <Alert variant="info">You have view access. Ask a project admin to create these items.</Alert> : null}
 
-      {savedChannels + savedSecrets > 0 ? (
+      {savedChannels + savedSecrets + savedConnectors > 0 ? (
         <section aria-labelledby="setup-saved" className="space-y-2">
           <h3 id="setup-saved" className="text-sm font-semibold">
             Already saved
@@ -127,6 +141,7 @@ export function ReviewStep({ response, features, permissions, draft, skipped, re
           <p className="text-xs text-muted-foreground">Saved and encrypted when you entered them, using the same actions as the app. Nothing more to do.</p>
           <ul className="space-y-1 text-sm">
             {savedChannels > 0 ? <li>{savedChannels} alert channel{savedChannels === 1 ? "" : "s"}</li> : null}
+            {savedConnectors > 0 ? <li>{savedConnectors} AI SRE connector{savedConnectors === 1 ? "" : "s"}</li> : null}
             {savedSecrets > 0 ? <li>Test account secrets</li> : null}
           </ul>
         </section>
@@ -154,6 +169,13 @@ export function ReviewStep({ response, features, permissions, draft, skipped, re
                   <TableBadge tone={result.status === "failed" ? "danger" : result.status === "done" || result.status === "adopted" ? "success" : "neutral"} compact>
                     {STATUS_LABEL[result.status]}
                   </TableBadge>
+                  {item.kind === "requirement" && (result.status === "done" || result.status === "adopted") && getCreated()[item.key] ? (
+                    <Button asChild size="sm" variant="outline">
+                      <Link href={`/playground?scriptType=browser&requirementId=${getCreated()[item.key]}`} aria-label={`Generate test for ${item.label}`}>
+                        Generate test
+                      </Link>
+                    </Button>
+                  ) : null}
                   {result.status === "failed" ? (
                     <Button type="button" size="sm" variant="outline" aria-label={`Retry ${item.label}`} disabled={running || readOnly} onClick={() => retry(item)}>
                       Retry
@@ -166,6 +188,15 @@ export function ReviewStep({ response, features, permissions, draft, skipped, re
         )}
         {skippedTitles.length > 0 ? <p className="text-xs text-muted-foreground">Skipped: {skippedTitles.join(", ")}. They stay on the checklist.</p> : null}
       </section>
+
+      {testsCreated ? (
+        <Alert variant="info" data-testid="setup-jobs-link">
+          Run your tests on a schedule or from CI.{" "}
+          <Link href="/jobs/create" className="font-medium underline underline-offset-4">
+            Create a scheduled job or CI key
+          </Link>
+        </Alert>
+      ) : null}
 
       {pings.map((item) => (
         <Alert key={item.key} variant="warning" data-testid="setup-ping-url">

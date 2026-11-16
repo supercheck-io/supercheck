@@ -21,7 +21,7 @@ export interface ItemResult {
   note?: string;
 }
 
-export type ItemKind = "website" | "http_request" | "heartbeat" | "ai_endpoint" | "mcp_server" | "status_page" | "component" | "repeat";
+export type ItemKind = "website" | "http_request" | "heartbeat" | "ai_endpoint" | "mcp_server" | "status_page" | "component" | "repeat" | "requirement" | "service";
 
 export interface CreateItem {
   key: string;
@@ -56,12 +56,18 @@ export interface RunnerDeps {
   savePolicy: (projectId: string, input: Record<string, unknown>) => Promise<ActionResult>;
   /** Persist an id into draft.created; resolves once saved. */
   recordCreated: (key: string, id: string) => Promise<void>;
+  getRequirements: () => Promise<{ success: boolean; requirements: Array<{ id: string; title: string }> }>;
+  createRequirement: (data: { title: string; description?: string }) => Promise<{ id: string; success: boolean; error?: string }>;
+  getServices: () => Promise<{ success: boolean; services: Array<{ id: string; name: string }> }>;
+  createService: (data: { name: string }) => Promise<ActionResult & { service?: { id: string } }>;
   getCreated: () => Record<string, string>;
 }
 
 interface Lookup {
   monitors?: Array<{ id: string; type: string; target: string; name: string }>;
   statusPages?: Array<{ id: string; name: string }>;
+  requirements?: Array<{ id: string; title: string }>;
+  services?: Array<{ id: string; name: string }>;
 }
 
 function hash(value: string): string {
@@ -72,8 +78,11 @@ function hash(value: string): string {
 
 export interface BuildOptions {
   skipped: readonly SetupStepKey[];
-  features: Pick<SetupFeatures, "repeatUntilAck" | "warningAlerts" | "heartbeat" | "aiEndpoint" | "mcpMonitor">;
+  features: Pick<SetupFeatures, "repeatUntilAck" | "warningAlerts" | "heartbeat" | "aiEndpoint" | "mcpMonitor"> & Partial<Pick<SetupFeatures, "aiTests" | "aiSre">>;
   canUpdateProject: boolean;
+  /** test:create / sre_connector:configure; the server enforces them too. Default true. */
+  canCreateTests?: boolean;
+  canConfigureConnectors?: boolean;
 }
 
 function errorText(data: unknown, fallback: string): string {
@@ -215,6 +224,24 @@ export function buildCreateItems(draft: SetupDraft, opts: BuildOptions): CreateI
       payload: { repeatMinutes: repeat.repeatMinutes },
     });
   }
+
+  if (!skipped.includes("tests") && features.aiTests && opts.canCreateTests !== false) {
+    (draft.tests?.requirements ?? []).forEach((requirement, n) =>
+      items.push({
+        key: `requirement:${n}`,
+        kind: "requirement",
+        step: "tests",
+        label: requirement.title,
+        detail: requirement.description,
+        payload: { title: requirement.title, ...(requirement.description ? { description: requirement.description } : {}) },
+      }),
+    );
+  }
+  if (!skipped.includes("aiSre") && features.aiSre && opts.canConfigureConnectors !== false) {
+    for (const service of draft.aiSre?.services ?? []) {
+      items.push({ key: `service:${hash(service.name)}`, kind: "service", step: "aiSre", label: service.name, detail: "Service", payload: { name: service.name } });
+    }
+  }
   return items;
 }
 
@@ -238,6 +265,59 @@ async function listStatusPages(deps: RunnerDeps, lookup: Lookup) {
   if (!res.success) throw new Error("Could not read status pages");
   lookup.statusPages = res.statusPages;
   return res.statusPages;
+}
+
+async function createRequirementItem(item: CreateItem, deps: RunnerDeps, lookup: Lookup): Promise<ItemResult> {
+  const created = deps.getCreated()[item.key];
+  if (!lookup.requirements) {
+    const res = await deps.getRequirements();
+    if (!res.success) throw new Error("Could not read requirements");
+    lookup.requirements = res.requirements;
+  }
+  const known = lookup.requirements;
+  if (created) {
+    return known.some((r) => r.id === created)
+      ? { status: "adopted", note: "Already created" }
+      : { status: "skipped", note: "Deleted since it was created, so it was not recreated" };
+  }
+  const title = String(item.payload.title);
+  const natural = known.find((r) => r.title === title);
+  if (natural) {
+    await deps.recordCreated(item.key, natural.id);
+    return { status: "adopted", note: "A requirement with this title already exists" };
+  }
+  const res = await deps.createRequirement({ title, description: item.payload.description as string | undefined });
+  if (!res.success || !res.id) return { status: "failed", error: res.error ?? "Could not create the requirement" };
+  known.push({ id: res.id, title });
+  await deps.recordCreated(item.key, res.id);
+  return { status: "done" };
+}
+
+async function createServiceItem(item: CreateItem, deps: RunnerDeps, lookup: Lookup): Promise<ItemResult> {
+  const created = deps.getCreated()[item.key];
+  if (!lookup.services) {
+    const res = await deps.getServices();
+    if (!res.success) throw new Error("Could not read services");
+    lookup.services = res.services;
+  }
+  const known = lookup.services;
+  if (created) {
+    return known.some((x) => x.id === created)
+      ? { status: "adopted", note: "Already created" }
+      : { status: "skipped", note: "Deleted since it was created, so it was not recreated" };
+  }
+  const name = String(item.payload.name);
+  const natural = known.find((x) => x.name === name);
+  if (natural) {
+    await deps.recordCreated(item.key, natural.id);
+    return { status: "adopted", note: "A service with this name already exists" };
+  }
+  const res = await deps.createService({ name });
+  const id = res.service?.id;
+  if (!res.success || !id) return { status: "failed", error: res.error ?? res.message ?? "Could not create the service" };
+  known.push({ id, name });
+  await deps.recordCreated(item.key, id);
+  return { status: "done" };
 }
 
 const isMonitorKind = (kind: ItemKind) => ["website", "http_request", "heartbeat", "ai_endpoint", "mcp_server"].includes(kind);
@@ -367,6 +447,8 @@ export async function runItem(item: CreateItem, deps: RunnerDeps, lookup: Lookup
     if (isMonitorKind(item.kind)) return await createMonitor(item, deps, lookup);
     if (item.kind === "status_page") return await createStatusPageItem(item, deps, lookup);
     if (item.kind === "component") return await createComponentItem(item, deps, lookup);
+    if (item.kind === "requirement") return await createRequirementItem(item, deps, lookup);
+    if (item.kind === "service") return await createServiceItem(item, deps, lookup);
     return await saveRepeat(item, deps);
   } catch (error) {
     return { status: "failed", error: error instanceof Error ? error.message : "Something went wrong" };

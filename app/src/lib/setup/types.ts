@@ -56,6 +56,8 @@ export interface SetupResponse {
   permissions: SetupPermissions;
   /** Monitors the org can still add; null = no cap (self-hosted / unlimited). */
   monitorsRemaining: number | null;
+  /** AI test suggestions need a paid plan: true on a cloud trial. Always false when self-hosted. */
+  aiTestsLocked: boolean;
 }
 
 /** PUT /api/projects/[id]/setup body. 409 { error: "conflict", state } on a stale expectedUpdatedAt. */

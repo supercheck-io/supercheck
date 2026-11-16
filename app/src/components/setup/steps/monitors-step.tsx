@@ -73,7 +73,10 @@ function Field({ id, label, help, error, ...props }: { id: string; label: string
   );
 }
 
-export function MonitorsStep({ response, draft, patchDraft, features, readOnly }: StepProps) {
+/** A path the scan found that looks like an OpenAI-compatible API. */
+const AI_PATH = /^\/v1\/(chat\/completions|models)\/?$/;
+
+export function MonitorsStep({ response, draft, patchDraft, features, readOnly, scan }: StepProps) {
   const appUrl = draft.app?.url;
   const monitors: MonitorsDraft = draft.monitors ?? { pages: [] };
   const setMonitors = (next: Partial<MonitorsDraft>) => patchDraft((d) => ({ ...d, monitors: { pages: [], ...d.monitors, ...next } }));
@@ -89,8 +92,14 @@ export function MonitorsStep({ response, draft, patchDraft, features, readOnly }
     }
   }, [untouched, homeUrl, homeName, readOnly, patchDraft]);
 
-  const extras = monitors.pages.filter((page) => page.url !== home?.url);
-  const suggestions = [...(home ? [home] : []), ...extras];
+  // Scanned pages that loaded (status < 400), at most 10; only the homepage starts ticked.
+  const scanned = (appUrl && scan ? scan.pages.filter((p) => p.status < 400 && p.path !== "/").slice(0, 10) : [])
+    .map((p) => (appUrl ? pageFor(appUrl, p.path) : null))
+    .filter((page): page is Page => page !== null);
+  const aiPath = appUrl ? scan?.pages.find((p) => AI_PATH.test(p.path)) : undefined;
+  const known = new Set([home?.url, ...scanned.map((page) => page.url)]);
+  const extras = monitors.pages.filter((page) => !known.has(page.url));
+  const suggestions = [...(home ? [home] : []), ...scanned, ...extras];
   const selected = new Set(monitors.pages.map((page) => page.url));
   const [path, setPath] = useState("");
   const [pathError, setPathError] = useState(false);
@@ -125,8 +134,8 @@ export function MonitorsStep({ response, draft, patchDraft, features, readOnly }
 
   // AI endpoint
   const ai = monitors.aiEndpoint;
-  const [aiOpen, setAiOpen] = useState(Boolean(ai));
-  const [aiForm, setAiForm] = useState({ name: ai?.name ?? "AI endpoint", url: ai?.url ?? "", model: ai?.model ?? "", secretKey: ai?.secretKey ?? "" });
+  const [aiOpen, setAiOpen] = useState(Boolean(ai) || Boolean(aiPath));
+  const [aiForm, setAiForm] = useState({ name: ai?.name ?? "AI endpoint", url: ai?.url ?? (aiPath && appUrl ? `${new URL(appUrl).origin}${aiPath.path}` : ""), model: ai?.model ?? "", secretKey: ai?.secretKey ?? "" });
   const commitAi = (next: typeof aiForm) => {
     setAiForm(next);
     const url = stripUrl(next.url);
@@ -161,7 +170,7 @@ export function MonitorsStep({ response, draft, patchDraft, features, readOnly }
             Pages to watch
           </h3>
           <p className="text-xs text-muted-foreground">
-            {appUrl ? "We suggest a monitor for your homepage. Add the pages that matter." : "Add your app URL in the first step to get suggestions, or skip this step."}
+            {appUrl ? (scanned.length > 0 ? "We suggest your homepage and the pages the scan found. Tick the ones that matter." : "We suggest a monitor for your homepage. Add the pages that matter.") : "Add your app URL in the first step to get suggestions, or skip this step."}
           </p>
         </div>
         {suggestions.length > 0 ? (
@@ -245,7 +254,7 @@ export function MonitorsStep({ response, draft, patchDraft, features, readOnly }
         <OptionalCard
           id="ai-endpoint"
           title="Monitor an AI endpoint"
-          description="Checks an OpenAI-compatible endpoint with a small streaming request."
+          description={aiPath ? "The scan found an OpenAI-compatible path on your app. Add a model and the secret holding its API key." : "Checks an OpenAI-compatible endpoint with a small streaming request."}
           enabled={aiOpen}
           disabled={readOnly}
           onToggle={(on) => {

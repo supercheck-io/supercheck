@@ -1,0 +1,162 @@
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+
+import type { SetupDraft } from "@/lib/setup/draft-schema";
+import { makeResponse, makeStepProps, PROJECT_ID } from "../test-fixtures";
+import { AiSreStep } from "./ai-sre-step";
+
+const mockCreate = jest.fn();
+const mockValidate = jest.fn();
+jest.mock("@/actions/sre-connectors", () => ({
+  createSreConnector: (...args: unknown[]) => mockCreate(...args),
+  validateSreConnector: (...args: unknown[]) => mockValidate(...args),
+}));
+const CID = "00000000-0000-4000-8000-0000000000c1";
+
+let activeProject: string;
+beforeEach(() => {
+  mockCreate.mockReset();
+  mockValidate.mockReset();
+  activeProject = PROJECT_ID;
+  global.fetch = (async () => ({ ok: true, status: 200, json: async () => ({ project: { id: activeProject } }) })) as unknown as typeof fetch;
+});
+
+function drafting(initial: SetupDraft = {}) {
+  let draft = initial;
+  const patchDraft = jest.fn((fn: (d: SetupDraft) => SetupDraft) => {
+    draft = fn(draft);
+  });
+  return { patchDraft, get: () => draft };
+}
+const admin = () => {
+  const response = makeResponse();
+  return { permissions: { ...response.permissions, canConfigureConnectors: true } };
+};
+const open = (name: RegExp) => fireEvent.click(screen.getByRole("button", { name }));
+const type = (label: string, value: string) => fireEvent.change(screen.getByLabelText(label), { target: { value } });
+
+describe("AiSreStep", () => {
+  it("shows Ask a project admin without sre_connector:configure", () => {
+    render(<AiSreStep {...makeStepProps()} />);
+    expect(screen.getByText(/Ask a project admin/)).toBeTruthy();
+    expect(screen.queryByRole("group", { name: "Connector types" })).toBeNull();
+  });
+
+  it("saves immediately, then validates, and shows Connected; the draft keeps only the id", async () => {
+    mockCreate.mockResolvedValue({ success: true, connector: { id: CID }, message: "ok" });
+    mockValidate.mockResolvedValue({ success: true, message: "ok" });
+    const d = drafting();
+    render(<AiSreStep {...makeStepProps({ ...admin(), patchDraft: d.patchDraft, draft: d.get() })} />);
+    open(/GitHub/);
+    const save = screen.getByRole("button", { name: "Save and test" });
+    expect(save).toBeDisabled();
+    type("Access token", "ghp_secret_value");
+    fireEvent.click(save);
+    expect(await screen.findByText(/GitHub: Connected/)).toBeTruthy();
+    expect(mockCreate).toHaveBeenCalledWith(expect.objectContaining({ name: "GitHub", type: "github", riskLevel: "low", credential: { credentialType: "api_key", value: { secret: "ghp_secret_value" } } }));
+    expect(mockCreate.mock.invocationCallOrder[0]).toBeLessThan(mockValidate.mock.invocationCallOrder[0]);
+    expect(mockValidate).toHaveBeenCalledWith({ id: CID });
+    expect(d.get().aiSre?.connectorIds).toEqual([CID]);
+    expect(JSON.stringify(d.get())).not.toContain("ghp_secret_value");
+    expect(screen.queryByLabelText("Access token")).toBeNull();
+  });
+
+  it("sends both Datadog keys and an optional endpoint; Prometheus needs a URL and may skip the token", async () => {
+    mockCreate.mockResolvedValue({ success: true, connector: { id: CID }, message: "ok" });
+    mockValidate.mockResolvedValue({ success: true, message: "ok" });
+    render(<AiSreStep {...makeStepProps({ ...admin() })} />);
+    open(/Datadog/);
+    type("API key", "k1");
+    expect(screen.getByRole("button", { name: "Save and test" })).toBeDisabled();
+    type("Application key", "k2");
+    fireEvent.click(screen.getByRole("button", { name: "Save and test" }));
+    await screen.findByText(/Datadog: Connected/);
+    expect(mockCreate.mock.calls[0][0]).toMatchObject({ type: "datadog", endpointUrl: "", credential: { value: { apiKey: "k1", applicationKey: "k2" } } });
+    open(/Prometheus/);
+    expect(screen.getByRole("button", { name: "Save and test" })).toBeDisabled();
+    type("Prometheus URL", "https://prom.example.com");
+    fireEvent.click(screen.getByRole("button", { name: "Save and test" }));
+    await waitFor(() => expect(mockCreate).toHaveBeenCalledTimes(2));
+    expect(mockCreate.mock.calls[1][0]).toMatchObject({ type: "prometheus", endpointUrl: "https://prom.example.com", credential: undefined });
+  });
+
+  it("keeps the connector and says the token was rejected when validation fails", async () => {
+    mockCreate.mockResolvedValue({ success: true, connector: { id: CID }, message: "ok" });
+    mockValidate.mockResolvedValue({ success: false, error: "401 Unauthorized." });
+    const d = drafting();
+    render(<AiSreStep {...makeStepProps({ ...admin(), patchDraft: d.patchDraft, draft: d.get() })} />);
+    open(/Sentry/);
+    type("Auth token", "bad");
+    fireEvent.click(screen.getByRole("button", { name: "Save and test" }));
+    expect(await screen.findByText("Sentry: Saved, token rejected")).toBeTruthy();
+    expect(screen.getByText(/Saved, but the token was rejected\. 401 Unauthorized\./)).toBeTruthy();
+    expect(d.get().aiSre?.connectorIds).toEqual([CID]);
+  });
+
+  it("shows a save error and does not validate or record anything", async () => {
+    mockCreate.mockResolvedValue({ success: false, error: "Insufficient permissions" });
+    const d = drafting();
+    render(<AiSreStep {...makeStepProps({ ...admin(), patchDraft: d.patchDraft })} />);
+    open(/GitHub/);
+    type("Access token", "t");
+    fireEvent.click(screen.getByRole("button", { name: "Save and test" }));
+    expect(await screen.findByText("Insufficient permissions")).toBeTruthy();
+    expect(mockValidate).not.toHaveBeenCalled();
+    expect(d.patchDraft).not.toHaveBeenCalled();
+    expect(screen.getByLabelText("Access token")).toHaveValue("t");
+  });
+
+  it("handles a missing connector id and a thrown action", async () => {
+    mockCreate.mockResolvedValueOnce({ success: true, message: "ok" });
+    render(<AiSreStep {...makeStepProps({ ...admin() })} />);
+    open(/GitHub/);
+    type("Access token", "t");
+    fireEvent.click(screen.getByRole("button", { name: "Save and test" }));
+    expect(await screen.findByText(/could not be read back/)).toBeTruthy();
+    mockCreate.mockRejectedValueOnce(new Error("boom"));
+    fireEvent.click(screen.getByRole("button", { name: "Save and test" }));
+    expect(await screen.findByText(/Could not save the connector/)).toBeTruthy();
+  });
+
+  it("refuses to save when the active project changed in another tab", async () => {
+    activeProject = "99999999-9999-4999-8999-999999999999";
+    render(<AiSreStep {...makeStepProps({ ...admin() })} />);
+    open(/Grafana/);
+    type("Grafana URL", "https://g.example.com");
+    fireEvent.click(screen.getByRole("button", { name: "Save and test" }));
+    expect(await screen.findByText("Project changed in another tab")).toBeTruthy();
+    expect(mockCreate).not.toHaveBeenCalled();
+  });
+
+  it("toggling a type closes its form; read-only hides the forms", () => {
+    const { rerender } = render(<AiSreStep {...makeStepProps({ ...admin() })} />);
+    open(/GitHub/);
+    expect(screen.getByTestId("setup-connector-form-github")).toBeTruthy();
+    open(/GitHub/);
+    expect(screen.queryByTestId("setup-connector-form-github")).toBeNull();
+    rerender(<AiSreStep {...makeStepProps({ ...admin(), readOnly: true })} />);
+    expect(screen.queryByRole("group", { name: "Connector types" })).toBeNull();
+  });
+
+  it("counts connectors saved earlier and links the private agent page and services", () => {
+    render(<AiSreStep {...makeStepProps({ ...admin(), draft: { aiSre: { connectorIds: [CID], services: [] } } })} />);
+    expect(screen.getByText("1 saved earlier")).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Set up a private agent" }).getAttribute("href")).toBe("/org-admin?tab=private-agents");
+    expect(screen.getByRole("link", { name: "Manage services" }).getAttribute("href")).toBe("/services");
+  });
+
+  it("suggests one service from the app host and stores it in the draft", () => {
+    const d = drafting({ app: { url: "https://app.example.com/" } });
+    const { rerender } = render(<AiSreStep {...makeStepProps({ ...admin(), patchDraft: d.patchDraft, draft: d.get() })} />);
+    fireEvent.click(screen.getByLabelText("Create a service named app.example.com"));
+    expect(d.get().aiSre?.services).toEqual([{ name: "app.example.com" }]);
+    rerender(<AiSreStep {...makeStepProps({ ...admin(), patchDraft: d.patchDraft, draft: d.get() })} />);
+    expect(screen.getByLabelText("Create a service named app.example.com")).toBeChecked();
+    fireEvent.click(screen.getByLabelText("Create a service named app.example.com"));
+    expect(d.get().aiSre?.services).toEqual([]);
+  });
+
+  it("asks for an app URL when there is none", () => {
+    render(<AiSreStep {...makeStepProps({ ...admin() })} />);
+    expect(screen.getByText(/Add your app URL in the first step/)).toBeTruthy();
+  });
+});

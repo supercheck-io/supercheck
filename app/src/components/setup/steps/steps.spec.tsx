@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 import { FEATURES, makeResponse, makeStepProps, PROJECT_ID } from "../test-fixtures";
 import { AlertsStep } from "./alerts-step";
@@ -343,5 +343,66 @@ describe("responseError", () => {
     expect(responseError({ error: "a", message: "b" }, "c")).toBe("a");
     expect(responseError({ message: "b" }, "c")).toBe("b");
     expect(responseError(null, "c")).toBe("c");
+  });
+});
+
+describe("scan in the app and monitors steps", () => {
+  const scan = {
+    finalUrl: "https://app.example.com/",
+    reachable: true,
+    status: 200,
+    redirects: 0,
+    responseMs: 90,
+    ssl: null,
+    pages: [
+      { path: "/", status: 200, ms: 1, title: null },
+      { path: "/pricing", status: 200, ms: 1, title: null },
+      { path: "/broken", status: 500, ms: 1, title: null },
+      { path: "/v1/chat/completions", status: 405, ms: 1, title: null },
+    ],
+  };
+  const withScan = { ...scan, pages: scan.pages.filter((p) => p.path !== "/v1/chat/completions") };
+
+  it("app step starts a scan for the entered URL and hands the result up", async () => {
+    jest.useFakeTimers();
+    fetchMock.mockImplementation((url: string, init?: { method?: string }) => (init?.method === "POST" ? json({ scanId: "s" }, 202) : json({ status: "done", result: withScan })));
+    const setScan = jest.fn();
+    render(<AppStep {...makeStepProps({ draft: { app: { url: "https://app.example.com/" } }, setScan })} />);
+    fireEvent.click(screen.getByRole("button", { name: "Scan" }));
+    await act(async () => {
+      await jest.advanceTimersByTimeAsync(2100);
+    });
+    expect(setScan).toHaveBeenCalledWith(withScan);
+    jest.useRealTimers();
+  });
+
+  it("monitors step suggests scanned pages (status < 400, homepage ticked only) and keeps manual add", () => {
+    const d = drafting({ app: { url: "https://app.example.com/" } });
+    const props = () => makeStepProps({ scan: withScan, patchDraft: d.patchDraft, draft: d.get() });
+    const { rerender } = render(<MonitorsStep {...props()} />);
+    rerender(<MonitorsStep {...props()} />);
+    expect(screen.getByLabelText(/app.example.com\/pricing/)).not.toBeChecked();
+    expect(screen.queryByLabelText(/broken/)).toBeNull();
+    expect(screen.getByLabelText(/^app.example.com\s*Website/)).toBeChecked();
+    fireEvent.click(screen.getByLabelText(/app.example.com\/pricing/));
+    expect(d.get().monitors?.pages.map((p) => p.url)).toContain("https://app.example.com/pricing");
+    expect(screen.getByLabelText("Add a page path")).toBeTruthy();
+  });
+
+  it("monitors step caps scanned suggestions at 10", () => {
+    const many = { ...scan, pages: Array.from({ length: 15 }, (_, i) => ({ path: `/p${i}`, status: 200, ms: 1, title: null })) };
+    render(<MonitorsStep {...makeStepProps({ scan: many, draft: { app: { url: "https://app.example.com/" }, monitors: { pages: [{ url: "https://app.example.com/", name: "app.example.com" }] } } })} />);
+    expect(screen.getAllByRole("checkbox").length).toBe(11);
+  });
+
+  it("opens the AI endpoint card prefilled when the scan found an OpenAI-compatible path", () => {
+    render(<MonitorsStep {...makeStepProps({ scan, draft: { app: { url: "https://app.example.com/" } } })} />);
+    expect(screen.getByTestId("setup-card-ai-endpoint").textContent).toContain("found an OpenAI-compatible path");
+    expect(screen.getByLabelText("Endpoint URL")).toHaveValue("https://app.example.com/v1/chat/completions");
+  });
+
+  it("leaves the AI endpoint card closed without such a path", () => {
+    render(<MonitorsStep {...makeStepProps({ scan: withScan, draft: { app: { url: "https://app.example.com/" } } })} />);
+    expect(screen.queryByLabelText("Endpoint URL")).toBeNull();
   });
 });

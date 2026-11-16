@@ -14,13 +14,13 @@ jest.mock("@/lib/rbac/middleware", () => ({
 }));
 jest.mock("@/lib/sre/sre-rate-limiter", () => ({ checkSlidingWindowRateLimit: jest.fn() }));
 jest.mock("@/lib/audit-logger", () => ({ logAuditEvent: jest.fn() }));
-jest.mock("@/lib/setup/copy", () => ({ copyProviders: jest.fn(), copyConnectors: jest.fn() }));
+jest.mock("@/lib/setup/copy", () => ({ copyProviders: jest.fn(), copyConnectors: jest.fn(), listProviderIds: jest.fn(), listConnectorIds: jest.fn() }));
 
 import { POST } from "./route";
 import { requireAuth, resolveProjectPermissionContext, checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { checkSlidingWindowRateLimit } from "@/lib/sre/sre-rate-limiter";
 import { logAuditEvent } from "@/lib/audit-logger";
-import { copyConnectors, copyProviders } from "@/lib/setup/copy";
+import { copyConnectors, copyProviders, listConnectorIds, listProviderIds } from "@/lib/setup/copy";
 
 const TARGET = "11111111-1111-4111-8111-111111111111";
 const SOURCE = "33333333-3333-4333-8333-333333333333";
@@ -43,6 +43,8 @@ beforeEach(() => {
   (resolveProjectPermissionContext as jest.Mock).mockImplementation(async (_u: string, id: string) => mk(id));
   (checkPermissionWithContext as jest.Mock).mockReturnValue(true);
   (checkSlidingWindowRateLimit as jest.Mock).mockResolvedValue({ allowed: true, remaining: 1 });
+  (listProviderIds as jest.Mock).mockResolvedValue([PID]);
+  (listConnectorIds as jest.Mock).mockResolvedValue([CID]);
   (copyProviders as jest.Mock).mockResolvedValue([{ sourceId: PID, id: "np", status: "copied", name: "Slack", type: "slack" }]);
   (copyConnectors as jest.Mock).mockResolvedValue([
     { sourceId: CID, id: "nc", status: "copied", name: "Prom", type: "prometheus" },
@@ -138,6 +140,21 @@ describe("copy", () => {
     await POST(req({ sourceProjectId: SOURCE, providerIds: [PID] }), params);
     expect((logAuditEvent as jest.Mock).mock.calls.map((c) => c[0].action)).toEqual(["project_setup.copied"]);
     expect(copyConnectors).toHaveBeenCalledWith(expect.anything(), []);
+  });
+  it("all* resolves the source ids server-side and merges them with explicit ids", async () => {
+    const res = await POST(req({ sourceProjectId: SOURCE, allProviders: true, allConnectors: true }), params);
+    expect(res.status).toBe(200);
+    expect(listProviderIds).toHaveBeenCalledWith(expect.objectContaining({ sourceProjectId: SOURCE }));
+    expect(copyProviders).toHaveBeenCalledWith(expect.anything(), [PID]);
+    expect(copyConnectors).toHaveBeenCalledWith(expect.anything(), [CID]);
+  });
+  it("all* keeps the permission checks: an editor cannot copy all connectors", async () => {
+    (checkPermissionWithContext as jest.Mock).mockImplementation((r: string) => r !== "sre_connector");
+    expect((await POST(req({ sourceProjectId: SOURCE, allConnectors: true }), params)).status).toBe(403);
+    expect(listConnectorIds).not.toHaveBeenCalled();
+  });
+  it("all* false and no ids is still Nothing to copy", async () => {
+    expect((await POST(req({ sourceProjectId: SOURCE, allProviders: false }), params)).status).toBe(400);
   });
   it("500 on an unexpected error without leaking it", async () => {
     (copyProviders as jest.Mock).mockRejectedValue(new Error("secret-detail"));

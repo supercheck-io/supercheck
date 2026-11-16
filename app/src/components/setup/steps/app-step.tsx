@@ -6,13 +6,14 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { stripUrl } from "@/lib/setup/draft-schema";
+import { ScanPanel } from "./scan-panel";
 import { checkSetupProject, postJson, responseError, type StepProps } from "./step-types";
 
 /** Secret names are 4-20 chars, uppercase (createVariableSchema). */
 const TEST_ACCOUNT_USER = "SETUP_TEST_USER";
 const TEST_ACCOUNT_PASSWORD = "SETUP_TEST_PASS";
 
-export function AppStep({ response, draft, patchDraft, readOnly }: StepProps) {
+export function AppStep({ response, draft, patchDraft, readOnly, scan, setScan }: StepProps) {
   const [url, setUrl] = useState(draft.app?.url ?? "");
   const [touched, setTouched] = useState(false);
   const [username, setUsername] = useState("");
@@ -80,6 +81,8 @@ export function AppStep({ response, draft, patchDraft, readOnly }: StepProps) {
           {invalid ? "Enter a full http or https address." : "The next steps suggest monitors for this address. Query strings are not stored."}
         </p>
       </div>
+
+      <ScanPanel projectId={response.projectId} url={stripped} disabled={readOnly || invalid} onResult={setScan} initial={scan} />
 
       <fieldset className="space-y-3 rounded-lg border p-4" disabled={readOnly}>
         <legend className="px-1 text-sm font-semibold">

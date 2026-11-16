@@ -1,6 +1,7 @@
 import { ensureProject } from "../create-runner";
 import type { SetupDraft } from "@/lib/setup/draft-schema";
 import type { SetupFeatures } from "@/lib/setup/features";
+import type { ScanSummary } from "@/lib/setup/scan";
 import type { SetupResponse } from "@/lib/setup/types";
 
 /** What every step receives from the wizard shell. */
@@ -15,6 +16,9 @@ export interface StepProps {
   /** Another user holds the lock, or the caller cannot edit. */
   readOnly: boolean;
   userEmail?: string | null;
+  /** Latest scan of the app URL (kept by the server too); null when none ran. */
+  scan: ScanSummary | null;
+  setScan: (scan: ScanSummary) => void;
 }
 
 export async function postJson<T = unknown>(url: string, body: unknown): Promise<{ ok: boolean; status: number; data: T }> {

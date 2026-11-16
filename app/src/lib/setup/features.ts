@@ -13,8 +13,8 @@ export const SETUP_FEATURES = {
   agentTest: true, // Agent test (#911)
   codingRecipe: true, // coding-agent recipe (#903)
   maintenance: true, // maintenance windows (#910)
-  aiTests: false, // project setup PR B (scan + suggested requirements)
-  aiSre: false, // project setup PR B (AI SRE step)
+  aiTests: true, // project setup PR B (scan + suggested requirements)
+  aiSre: true, // project setup PR B (AI SRE step)
   mobile: false, // mobile app, session 16
 } as const;
 

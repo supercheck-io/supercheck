@@ -3,6 +3,7 @@ import { NextRequest } from "next/server";
 
 const mockLimit = jest.fn();
 jest.mock("@/utils/db", () => ({ db: { select: () => ({ from: () => ({ where: () => ({ limit: mockLimit }) }) }) } }));
+jest.mock("@/lib/services/subscription-service", () => ({ subscriptionService: { blockUntilSubscribed: jest.fn() } }));
 jest.mock("@/lib/ai/ai-provider", () => ({ isAIProviderConfigured: () => false }));
 jest.mock("@/lib/audit-logger", () => ({ logAuditEvent: jest.fn() }));
 jest.mock("@/lib/deletion/org-state", () => ({
@@ -28,6 +29,7 @@ jest.mock("@/lib/setup/setup-state", () => ({
 }));
 
 import { GET, PUT } from "./route";
+import { subscriptionService } from "@/lib/services/subscription-service";
 import { logAuditEvent } from "@/lib/audit-logger";
 import { permissionDeniedResponse } from "@/lib/deletion/org-state";
 import { requireAuth, resolveProjectPermissionContext, checkPermissionWithContext } from "@/lib/rbac/middleware";
@@ -56,6 +58,7 @@ beforeEach(() => {
   (getSetupState as jest.Mock).mockResolvedValue(state);
   (getChecklistCounts as jest.Mock).mockResolvedValue(counts);
   (monitorsRemaining as jest.Mock).mockResolvedValue(7);
+  (subscriptionService.blockUntilSubscribed as jest.Mock).mockResolvedValue(undefined);
   mockLimit.mockResolvedValue([{ name: "Acme" }]);
   allow();
 });
@@ -76,6 +79,11 @@ describe("GET /api/projects/[id]/setup", () => {
     expect(getChecklistCounts).toHaveBeenCalledWith(ORG, PROJECT);
   });
 
+  it("reports aiTestsLocked for an org that is not on a paid plan", async () => {
+    expect((await (await GET(req("GET"), params())).json()).aiTestsLocked).toBe(false);
+    (subscriptionService.blockUntilSubscribed as jest.Mock).mockRejectedValueOnce(new Error("trial"));
+    expect((await (await GET(req("GET"), params())).json()).aiTestsLocked).toBe(true);
+  });
   it("resolves the project from the path, not the active project", async () => {
     const other = "33333333-3333-4333-8333-333333333333";
     (resolveProjectPermissionContext as jest.Mock).mockResolvedValue({ ...ctx, project: { ...ctx.project, id: other } });

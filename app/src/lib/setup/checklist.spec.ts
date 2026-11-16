@@ -20,6 +20,12 @@ describe("deriveChecklist", () => {
     expect(doneKeys(c)).toEqual(["monitors", "tests", "team", "cliToken"]);
   });
 
+  it("shows and ticks requirements, connectors and services when the AI steps are on", () => {
+    const c = deriveChecklist({ ...zero, requirements: 1, connectorsOrAgents: 1, services: 1 }, features, false);
+    expect(doneKeys(c)).toEqual(["requirements", "connectors", "services"]);
+    expect(deriveChecklist(zero, resolveSetupFeatures({ aiConfigured: false }), false).items.find((i) => i.key === "connectors")).toBeUndefined();
+  });
+
   it("counts the status page opt-out as done", () => {
     expect(doneKeys(deriveChecklist(zero, features, true))).toEqual(["statusPage"]);
   });

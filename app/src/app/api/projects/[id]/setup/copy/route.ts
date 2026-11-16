@@ -4,14 +4,17 @@ import { logAuditEvent } from "@/lib/audit-logger";
 import { permissionDeniedResponse } from "@/lib/deletion/org-state";
 import { checkPermissionWithContext, resolveProjectPermissionContext } from "@/lib/rbac/middleware";
 import { checkSlidingWindowRateLimit } from "@/lib/sre/sre-rate-limiter";
-import { copyConnectors, copyProviders, type CopyItemResult } from "@/lib/setup/copy";
+import { copyConnectors, copyProviders, listConnectorIds, listProviderIds, type CopyItemResult } from "@/lib/setup/copy";
 import { rateLimitResponse, readJsonBody, rejectBearer, sessionUserId } from "@/lib/setup/route-guard";
 import { isUuid } from "@/lib/uuid";
 
 type Params = { params: Promise<{ id: string }> };
 
 const ids = z.array(z.string().uuid()).max(10).optional();
-const bodySchema = z.object({ sourceProjectId: z.string().uuid(), providerIds: ids, connectorIds: ids }).strict();
+// `all*` copies every item in the source project (up to 10 per kind), for callers that cannot list another project.
+const bodySchema = z
+  .object({ sourceProjectId: z.string().uuid(), providerIds: ids, connectorIds: ids, allProviders: z.boolean().optional(), allConnectors: z.boolean().optional() })
+  .strict();
 
 const HOUR_MS = 60 * 60_000;
 const strip = ({ name, type, ...rest }: CopyItemResult) => {
@@ -37,10 +40,12 @@ export async function POST(request: NextRequest, { params }: Params) {
     const parsed = bodySchema.safeParse(read.body);
     if (!parsed.success) return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
     const { sourceProjectId } = parsed.data;
-    const providerIds = [...new Set(parsed.data.providerIds ?? [])];
-    const connectorIds = [...new Set(parsed.data.connectorIds ?? [])];
+    let providerIds = [...new Set(parsed.data.providerIds ?? [])];
+    let connectorIds = [...new Set(parsed.data.connectorIds ?? [])];
+    const wantProviders = providerIds.length > 0 || Boolean(parsed.data.allProviders);
+    const wantConnectors = connectorIds.length > 0 || Boolean(parsed.data.allConnectors);
     if (sourceProjectId === target.project.id) return NextResponse.json({ error: "Source and target project must differ" }, { status: 400 });
-    if (providerIds.length + connectorIds.length === 0) return NextResponse.json({ error: "Nothing to copy" }, { status: 400 });
+    if (!wantProviders && !wantConnectors) return NextResponse.json({ error: "Nothing to copy" }, { status: 400 });
 
     // Cross-org and unknown source are both "not found": never reveal another org's project.
     const source = await resolveProjectPermissionContext(userId, sourceProjectId);
@@ -49,9 +54,9 @@ export async function POST(request: NextRequest, { params }: Params) {
     }
 
     const allowed =
-      (providerIds.length === 0 ||
+      (!wantProviders ||
         (checkPermissionWithContext("notification", "create", target) && checkPermissionWithContext("notification", "update", source))) &&
-      (connectorIds.length === 0 ||
+      (!wantConnectors ||
         (checkPermissionWithContext("sre_connector", "configure", target) && checkPermissionWithContext("sre_connector", "configure", source)));
     if (!allowed) return permissionDeniedResponse(target.organizationId, "Insufficient permissions");
 
@@ -61,6 +66,8 @@ export async function POST(request: NextRequest, { params }: Params) {
     if (limited) return limited;
 
     const scope = { organizationId: target.organizationId, sourceProjectId, targetProjectId: target.project.id, userId };
+    if (parsed.data.allProviders) providerIds = [...new Set([...providerIds, ...(await listProviderIds(scope))])].slice(0, 10);
+    if (parsed.data.allConnectors) connectorIds = [...new Set([...connectorIds, ...(await listConnectorIds(scope))])].slice(0, 10);
     const providers = await copyProviders(scope, providerIds);
     const connectors = await copyConnectors(scope, connectorIds);
 

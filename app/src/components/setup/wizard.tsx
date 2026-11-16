@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState, type ComponentType } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Bell, Globe, ListChecks, Tally4, Terminal, UserPlus, type LucideIcon } from "lucide-react";
+import { Bell, FlaskConical, Globe, ListChecks, Radar, Tally4, Terminal, UserPlus, type LucideIcon } from "lucide-react";
 
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -13,14 +13,17 @@ import { useAppConfig } from "@/hooks/use-app-config";
 import { cn } from "@/lib/utils";
 import type { SetupFeature } from "@/lib/setup/features";
 import { stepOrder, type SetupStepKey, type UserPersona } from "@/lib/setup/persona";
+import type { ScanSummary } from "@/lib/setup/scan";
 import type { SetupResponse } from "@/lib/setup/types";
 import { AlertsStep } from "./steps/alerts-step";
+import { AiSreStep } from "./steps/ai-sre-step";
 import { AppStep } from "./steps/app-step";
 import { DeveloperStep } from "./steps/developer-step";
 import { InviteStep } from "./steps/invite-step";
 import { MonitorsStep } from "./steps/monitors-step";
 import { ReviewStep } from "./steps/review-step";
 import { StatusPageStep } from "./steps/status-page-step";
+import { TestsStep } from "./steps/tests-step";
 import type { StepProps } from "./steps/step-types";
 import { useSetupLock, useSetupSession } from "./use-setup-session";
 
@@ -31,11 +34,7 @@ interface StepMeta {
   tone: IconTone;
 }
 
-/**
- * Extension point: a step exists when it has an entry in both maps below. `tests` and `aiSre`
- * (project setup PR B) have neither, so they never render until their PR adds a component and
- * turns on the flag named in STEP_FLAG.
- */
+/** A step exists when it has an entry in both STEP_META and STEP_COMPONENTS; STEP_FLAG hides it when its flag is off. */
 const STEP_META: Partial<Record<SetupStepKey, StepMeta>> = {
   developer: { title: "Set up from your terminal", sub: "CLI and coding agents", icon: Terminal, tone: "zinc" },
   invite: { title: "Invite your team first?", sub: "Bring people in", icon: UserPlus, tone: "lime" },
@@ -43,6 +42,8 @@ const STEP_META: Partial<Record<SetupStepKey, StepMeta>> = {
   alerts: { title: "Alerts", sub: "Where we tell you", icon: Bell, tone: "communicate" },
   monitors: { title: "Monitors", sub: "Uptime and SSL", icon: Globe, tone: "monitor" },
   statusPage: { title: "Status page", sub: "Tell your users", icon: Tally4, tone: "statuspage" },
+  tests: { title: "Requirements and tests", sub: "AI suggestions, Beta", icon: FlaskConical, tone: "automate" },
+  aiSre: { title: "AI SRE", sub: "Connect your stack", icon: Radar, tone: "ai" },
   review: { title: "Review and create", sub: "Create everything", icon: ListChecks, tone: "slate" },
 };
 
@@ -58,6 +59,8 @@ const STEP_COMPONENTS: Partial<Record<SetupStepKey, ComponentType<StepProps>>> =
   alerts: AlertsStep,
   monitors: MonitorsStep,
   statusPage: StatusPageStep,
+  tests: TestsStep,
+  aiSre: AiSreStep,
 };
 
 function minutesAgo(iso: string): string {
@@ -78,6 +81,7 @@ export function SetupWizard({ response, persona, userEmail }: WizardProps) {
   const session = useSetupSession(response.projectId, response.state);
   const lock = useSetupLock(response.projectId, response.permissions.canEdit, response.state.lock);
   const [leaving, setLeaving] = useState(false);
+  const [scan, setScan] = useState<ScanSummary | null>(response.state.scanResult as ScanSummary | null);
 
   const steps = useMemo(
     () =>
@@ -119,6 +123,8 @@ export function SetupWizard({ response, persona, userEmail }: WizardProps) {
     setStatusPageOptOut: (optOut) => session.patch({ statusPageOptOut: optOut }),
     readOnly,
     userEmail,
+    scan,
+    setScan,
   };
   const Body = STEP_COMPONENTS[key];
 
