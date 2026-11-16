@@ -535,6 +535,12 @@ jobs:
         with:
           persist-credentials: false
 
+      # The reporter test imports a .ts file, which needs Node's built-in type stripping.
+      - name: Setup Node.js
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
       - name: Verify licenses and distribution notices
         id: licenses
         run: node .github/scripts/check-licenses.mjs
