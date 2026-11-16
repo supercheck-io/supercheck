@@ -4,7 +4,7 @@ import { normalizeAlertConfig, warningDefault } from '../alert-config.js'
 describe('warning toggles round-trip relative to each kind default', () => {
   it('knows which kinds are on when unset', () => {
     expect(warningDefault('heartbeat_late')).toBe(false)
-    for (const kind of ['mcp_tools_changed', 'mcp_slow', 'ai_slow_first_token', 'ai_model_changed', 'ai_tokens_high']) {
+    for (const kind of ['mcp_tools_changed', 'mcp_slow', 'ai_slow_first_token', 'ai_model_changed', 'ai_tokens_high', 'agent_run_failed']) {
       expect(warningDefault(kind)).toBe(true)
     }
   })

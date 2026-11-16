@@ -2,6 +2,7 @@ import { jest, describe, it, expect, beforeEach } from '@jest/globals'
 
 const mockGet = jest.fn<(...args: unknown[]) => Promise<{ data: unknown }>>()
 const mockPost = jest.fn<(...args: unknown[]) => Promise<{ data: unknown }>>()
+const mockPatch = jest.fn<(...args: unknown[]) => Promise<{ data: unknown }>>()
 const mockDelete = jest.fn<(...args: unknown[]) => Promise<{ data: unknown }>>()
 const mockOutput = jest.fn<(...args: unknown[]) => void>()
 const mockOutputDetail = jest.fn<(...args: unknown[]) => void>()
@@ -9,7 +10,7 @@ const mockSuccess = jest.fn<(...args: unknown[]) => void>()
 const mockWarn = jest.fn<(...args: unknown[]) => void>()
 
 jest.unstable_mockModule('../../api/authenticated-client.js', () => ({
-  createAuthenticatedClient: () => ({ get: mockGet, post: mockPost, delete: mockDelete }),
+  createAuthenticatedClient: () => ({ get: mockGet, post: mockPost, patch: mockPatch, delete: mockDelete }),
 }))
 jest.unstable_mockModule('../../output/formatter.js', () => ({ output: mockOutput, outputDetail: mockOutputDetail, getOutputFormat: () => 'json' }))
 jest.unstable_mockModule('../../utils/logger.js', () => ({
@@ -92,5 +93,35 @@ describe('maintenance CLI', () => {
     mockDelete.mockResolvedValueOnce({ data: {} })
     await run('delete', id(9), '--force')
     expect(mockDelete).toHaveBeenCalledWith(`/api/maintenance-windows/${id(9)}`)
+  })
+
+  it('lists by service and gets one window', async () => {
+    mockGet.mockResolvedValue({ data: { windows: [], window: { id: id(9) } } })
+    await run('list', '--service', id(2))
+    expect(mockGet).toHaveBeenCalledWith('/api/maintenance-windows', { serviceId: id(2) })
+    await run('get', id(9))
+    expect(mockGet).toHaveBeenLastCalledWith(`/api/maintenance-windows/${id(9)}`)
+    expect(mockOutputDetail).toHaveBeenCalledWith({ id: id(9) })
+    await expect(run('list', '--service', 'x')).rejects.toThrow('service UUID')
+  })
+
+  it('extends until a date and needs exactly one of --by or --until', async () => {
+    mockPost.mockResolvedValue({ data: { window: { id: id(9) } } })
+    await run('extend', id(9), '--until', '2026-11-20T04:00:00Z')
+    expect(mockPost).toHaveBeenCalledWith(`/api/maintenance-windows/${id(9)}/extend`, { until: '2026-11-20T04:00:00Z' }, { retries: 0 })
+    await expect(run('extend', id(9))).rejects.toThrow('exactly one')
+    await expect(run('extend', id(9), '--by', '1h', '--until', '2026-11-20T04:00:00Z')).rejects.toThrow('exactly one')
+    await expect(run('extend', id(9), '--until', 'soon')).rejects.toThrow('ISO 8601')
+  })
+
+  it('updates only the fields passed and rejects an empty update', async () => {
+    mockPatch.mockResolvedValue({ data: { window: { id: id(9) } } })
+    await run('update', id(9), '--title', 'New', '--duration', '2h', '--start', '2026-11-21 03:00', '--service', id(2))
+    expect(mockPatch).toHaveBeenCalledWith(`/api/maintenance-windows/${id(9)}`, {
+      title: 'New', scope: 'services', targets: { serviceIds: [id(2)], monitorIds: [] }, startsOn: '2026-11-21', localStartTime: '03:00', durationMinutes: 120,
+    })
+    await expect(run('update', id(9))).rejects.toThrow('at least one field')
+    await expect(run('update', id(9), '--project', '--monitor', id(1))).rejects.toThrow('one scope')
+    expect(mockPatch).toHaveBeenCalledTimes(1)
   })
 })

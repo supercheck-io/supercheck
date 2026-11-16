@@ -285,3 +285,40 @@ incidentCommand.command('ack <id>')
     else logger.success('Incident acknowledged')
     outputDetail(data)
   })
+
+incidentCommand.command('resources <id>')
+  .description('Show or change the services and monitors an incident affects')
+  .option('--add-service <service>', 'Add an affected service, by UUID or exact name (repeatable)', collect, [])
+  .option('--remove-service <service>', 'Remove an affected service, by UUID or exact name (repeatable)', collect, [])
+  .option('--add-monitor <id>', 'Add an affected monitor UUID (repeatable)', collect, [])
+  .option('--remove-monitor <id>', 'Remove an affected monitor UUID (repeatable)', collect, [])
+  .action(async (id: string, options: { addService: string[]; removeService: string[]; addMonitor: string[]; removeMonitor: string[] }) => {
+    const bad = [...options.addMonitor, ...options.removeMonitor].find((value) => !isUuid(value))
+    if (bad) throw new CLIError(`"${bad}" is not a UUID.`, ExitCode.ConfigError)
+    id = await resolveIncidentId(id)
+    const url = `/api/sre/incidents/${encodeURIComponent(id)}/resources`
+    const changing = options.addService.length + options.removeService.length + options.addMonitor.length + options.removeMonitor.length > 0
+    if (!changing) {
+      const { data } = await withSpinner('Fetching incident resources', () => withRouteCheck(() => createAuthenticatedClient().get<{ resources: Record<string, unknown>[] }>(url)))
+      output(data.resources, { columns: [{ key: 'type', header: 'Type' }, { key: 'name', header: 'Name' }, { key: 'id', header: 'ID' }] })
+      return
+    }
+    const resolveServiceId = serviceResolver()
+    const body = {
+      add: { serviceIds: await Promise.all(options.addService.map(resolveServiceId)), monitorIds: options.addMonitor },
+      remove: { serviceIds: await Promise.all(options.removeService.map(resolveServiceId)), monitorIds: options.removeMonitor },
+    }
+    const { data } = await withSpinner('Updating incident resources', () => withRouteCheck(() => createAuthenticatedClient().patch<{ added: number; removed: number }>(url, body)))
+    logger.success(`Incident resources updated (${data.added} added, ${data.removed} removed)`)
+    outputDetail({ added: data.added, removed: data.removed })
+  })
+
+incidentCommand.command('postmortem <id>')
+  .description('Show the incident post-mortem as markdown')
+  .action(async (id: string) => {
+    id = await resolveIncidentId(id)
+    const { data } = await withSpinner('Fetching post-mortem', () => withRouteCheck(() => createAuthenticatedClient().get<{ postmortem: unknown; markdown: string | null }>(`/api/sre/incidents/${encodeURIComponent(id)}/postmortem`)))
+    if (getOutputFormat() === 'json') outputDetail(data)
+    else if (data.markdown) process.stdout.write(`${data.markdown}\n`)
+    else logger.info('No post-mortem yet')
+  })

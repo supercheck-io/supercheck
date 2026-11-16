@@ -2,15 +2,17 @@ import { jest, describe, it, expect, beforeEach } from '@jest/globals'
 
 const mockGet = jest.fn<(...args: unknown[]) => Promise<{ data: unknown }>>()
 const mockPost = jest.fn<(...args: unknown[]) => Promise<{ data: unknown }>>()
+const mockPatch = jest.fn<(...args: unknown[]) => Promise<{ data: unknown }>>()
+const mockOutput = jest.fn<(...args: unknown[]) => void>()
 const mockOutputDetail = jest.fn<(...args: unknown[]) => void>()
 const mockSuccess = jest.fn<(...args: unknown[]) => void>()
 const mockWarn = jest.fn<(...args: unknown[]) => void>()
 
 jest.unstable_mockModule('../../api/authenticated-client.js', () => ({
-  createAuthenticatedClient: () => ({ get: mockGet, post: mockPost, getBaseUrl: () => 'https://app.example.com' }),
+  createAuthenticatedClient: () => ({ get: mockGet, post: mockPost, patch: mockPatch, getBaseUrl: () => 'https://app.example.com' }),
 }))
 jest.unstable_mockModule('../../output/formatter.js', () => ({
-  output: jest.fn(),
+  output: mockOutput,
   outputDetail: mockOutputDetail,
   getOutputFormat: () => 'json',
 }))
@@ -102,5 +104,42 @@ describe('incident create', () => {
     await run('--title', 'x', '--service', 'Checkout', '--affected-service', 'Search', '--affected-service', 'Auth')
     expect(mockGet).toHaveBeenCalledTimes(1)
     expect(mockPost.mock.calls[0]![1]).toMatchObject({ primaryServiceId: id(4), affected: { serviceIds: [id(5), id(6)] } })
+  })
+})
+
+describe('incident resources and postmortem', () => {
+  const runSub = (...args: string[]) => incidentCommand.parseAsync(['node', 'incident', ...args])
+  beforeEach(() => {
+    jest.resetAllMocks()
+    for (const name of ['resources', 'postmortem']) {
+      const command = incidentCommand.commands.find((c) => c.name() === name)!
+      for (const option of command.options) command.setOptionValue(option.attributeName(), option.defaultValue)
+    }
+  })
+
+  it('lists resources when no change flag is given', async () => {
+    mockGet.mockResolvedValueOnce({ data: { success: true, resources: [{ type: 'service', id: id(4), name: 'API' }] } })
+    await runSub('resources', id(9))
+    expect(mockGet).toHaveBeenCalledWith(`/api/sre/incidents/${id(9)}/resources`)
+    expect(mockOutput).toHaveBeenCalledWith([{ type: 'service', id: id(4), name: 'API' }], expect.anything())
+  })
+
+  it('patches add and remove, resolving services by name', async () => {
+    mockGet.mockResolvedValueOnce({ data: { services: [{ id: id(4), name: 'Checkout' }] } })
+    mockPatch.mockResolvedValueOnce({ data: { success: true, added: 2, removed: 1 } })
+    await runSub('resources', id(9), '--add-service', 'checkout', '--add-monitor', id(6), '--remove-monitor', id(7))
+    expect(mockPatch).toHaveBeenCalledWith(`/api/sre/incidents/${id(9)}/resources`, {
+      add: { serviceIds: [id(4)], monitorIds: [id(6)] }, remove: { serviceIds: [], monitorIds: [id(7)] },
+    })
+    expect(mockOutputDetail).toHaveBeenCalledWith({ added: 2, removed: 1 })
+    await expect(runSub('resources', id(9), '--add-monitor', 'nope')).rejects.toThrow('is not a UUID')
+  })
+
+  it('prints the post-mortem body in JSON mode', async () => {
+    const body = { success: true, postmortem: { sections: { summary: 'x' } }, markdown: '# PM' }
+    mockGet.mockResolvedValueOnce({ data: body })
+    await runSub('postmortem', id(9))
+    expect(mockGet).toHaveBeenCalledWith(`/api/sre/incidents/${id(9)}/postmortem`)
+    expect(mockOutputDetail).toHaveBeenCalledWith(body)
   })
 })

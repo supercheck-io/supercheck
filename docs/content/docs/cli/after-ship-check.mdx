@@ -4,7 +4,7 @@ description: Have a coding agent run your Supercheck job after each deploy and s
 icon: ShieldCheck
 ---
 
-Coding agents ship fast. This recipe makes the agent run one of your Supercheck jobs after every deploy, then stop and tell you when a check fails instead of carrying on.
+The agent runs one of your Supercheck jobs after every deploy and stops when a check fails.
 
 ## Copy-paste prompt
 
@@ -33,39 +33,15 @@ Never print or commit SUPERCHECK_TOKEN.
       '-- exit 2/3/4 -> STOP. report the auth, config or API error
 ```
 
-## Commands
-
-```bash
-supercheck job list --json
-supercheck job run --id <job-id> --wait --timeout 600 --json
-supercheck run get <runId> --json
-supercheck run wait <runId>
-```
+## Exit codes
 
 | Exit code | Meaning | What the agent does |
 |---|---|---|
 | `0` | Run passed | Reports the run URL and continues |
-| `1` | Run failed, errored or was cancelled | Stops and reports the failed test |
+| `1` | Run failed, errored or cancelled | Stops and reports the failed test |
 | `2` | Authentication error | Stops and reports it |
 | `3` | Configuration error (for example `--wait` with `--local`) | Stops and reports it |
 | `4` | API or network error | Stops and reports it |
-| `5` | Still running when `--timeout` ran out | Stops, reports the run id |
+| `5` | Still running when `--timeout` ran out | Stops and reports the run id |
 
-`--wait` and `--timeout` (default 300 seconds) apply to cloud runs only. A local run (`--local`) already waits, so `--wait` with `--local` exits 3.
-
-## Install the guide for your agent
-
-The same instructions ship inside the CLI as `supercheck skills ship`. Install the Supercheck skill so the agent finds them:
-
-| Agent | Command |
-|---|---|
-| Claude Code | `supercheck agent install --target claude` |
-| Cursor | `supercheck agent install --target cursor` |
-| Codex | `supercheck agent install --target codex` |
-| GitHub Copilot | `supercheck agent install --target generic --pointer AGENTS.md` (Copilot reads `AGENTS.md`) |
-
-## Token
-
-The agent needs `SUPERCHECK_TOKEN`: a project CLI token whose owner can trigger jobs (editor or above). Keep it in the agent's environment or secret store, never in the repository.
-
-`supercheck ci init` only writes a GitHub Actions workflow file. It runs nothing by itself; this recipe is what runs the checks after a ship.
+`--wait` and `--timeout` (default 300 seconds) apply to cloud runs only. The same steps ship in the CLI as `supercheck skills ship`. To install the skill and create the token, see [Agent quickstart](/docs/cli/agent-quickstart).

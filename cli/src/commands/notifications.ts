@@ -237,6 +237,7 @@ notificationCommand
 
     if (data.success) {
       logger.success(data.message ?? 'Test notification sent successfully')
+      outputDetail(data)
     } else {
       throw new CLIError(data.error ?? 'Test notification failed', ExitCode.GeneralError)
     }

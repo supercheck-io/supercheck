@@ -26,6 +26,15 @@ describe('pull round trip', () => {
     expect(def.config).toEqual({ timeoutSeconds: 30, mcp })
   })
 
+  it('drops aiEndpointState and keeps config.aiEndpoint on an AI endpoint monitor', () => {
+    const aiEndpoint = { model: 'gpt-4o-mini', secretKey: 'OPENAI_KEY', warnFirstTokenMs: 2000 }
+    const [def] = buildMonitorDefinitions([{
+      id: 'm', name: 'AI', type: 'http_request', target: 'https://api.example.com/v1/chat/completions',
+      config: { timeoutSeconds: 60, aiEndpoint, aiEndpointState: { lastServedModel: 'gpt-4o-mini-2024-07-18' } },
+    } as never])
+    expect(def.config).toEqual({ timeoutSeconds: 60, aiEndpoint })
+  })
+
   it('warns when a pulled job cron is not 5 fields', () => {
     mockWarn.mockClear()
     buildJobDefinitions([{ id: 'j', name: 'Every second', cronSchedule: '* * * * * *', tests: [] } as never], new Map())

@@ -291,6 +291,7 @@ describe('notification provider command', () => {
         config: { webhookUrl: 'https://hooks.slack.test/abc' },
       })
       expect(mockSuccess).toHaveBeenCalledWith('Delivered to #alerts')
+      expect(mockOutputDetail).toHaveBeenCalledWith({ success: true, message: 'Delivered to #alerts' })
     })
 
     it('surfaces the provider error as a general failure', async () => {
