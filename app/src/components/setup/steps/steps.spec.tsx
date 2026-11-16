@@ -97,6 +97,19 @@ describe("AlertsStep", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it("re-enables the buttons and shows an error when a test or save request is rejected by the network", async () => {
+    fetchMock.mockImplementation(() => Promise.reject(new Error("offline")));
+    render(<AlertsStep {...makeStepProps({ userEmail: null })} />);
+    fireEvent.click(screen.getByRole("button", { name: /Slack/ }));
+    fireEvent.change(screen.getByLabelText("Incoming webhook URL"), { target: { value: "https://hooks.slack.com/services/x" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send test" }));
+    expect(await screen.findByText(/The test failed/)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Send test" })).toBeEnabled();
+    fireEvent.click(screen.getByRole("button", { name: "Save channel" }));
+    expect(await screen.findByText(/Could not save the channel/)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Save channel" })).toBeEnabled();
+  });
+
   it("tests a channel and shows the failure", async () => {
     fetchMock.mockImplementation(() => json({ success: false, error: "Slack rejected it" }, 400));
     render(<AlertsStep {...makeStepProps({ userEmail: null })} />);
@@ -275,6 +288,45 @@ describe("AppStep", () => {
     fireEvent.change(screen.getByLabelText("Password"), { target: { value: "p" } });
     fireEvent.click(screen.getByRole("button", { name: "Save test account" }));
     expect(await screen.findByText("Variable name must be at least 4 characters")).toBeTruthy();
+  });
+
+  it("continues with the failed secret on retry instead of stopping at the one it already created", async () => {
+    let passwordAttempts = 0;
+    fetchMock.mockImplementation((_url: string, init?: { body?: string }) => {
+      const key = JSON.parse(init?.body as string).key;
+      if (key === "SETUP_TEST_PASS" && ++passwordAttempts === 1) return json({ error: "Server error" }, 500);
+      return json({}, 201);
+    });
+    const d = drafting();
+    render(<AppStep {...makeStepProps({ patchDraft: d.patchDraft })} />);
+    fireEvent.change(screen.getByLabelText("Username"), { target: { value: "qa-user" } });
+    fireEvent.change(screen.getByLabelText("Password"), { target: { value: "hunter2" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save test account" }));
+    expect(await screen.findByText("Server error")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Save test account" }));
+    await waitFor(() => expect(d.get().app?.testAccountSecret).toBe("SETUP_TEST_PASS"));
+    // user once, password twice: the username is not posted again (it would 409).
+    expect(fetchMock.mock.calls.map(([, init]) => JSON.parse(init.body).key)).toEqual(["SETUP_TEST_USER", "SETUP_TEST_PASS", "SETUP_TEST_PASS"]);
+  });
+
+  it("re-enables Save and shows an error when the request is rejected by the network", async () => {
+    fetchMock.mockImplementation(() => Promise.reject(new Error("offline")));
+    render(<AppStep {...makeStepProps()} />);
+    fireEvent.change(screen.getByLabelText("Username"), { target: { value: "u" } });
+    fireEvent.change(screen.getByLabelText("Password"), { target: { value: "p" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save test account" }));
+    expect(await screen.findByText(/Could not save the test account/)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Save test account" })).toBeEnabled();
+  });
+
+  it("sends the setup project so the server can refuse a switched project", async () => {
+    fetchMock.mockImplementation(() => json({}, 201));
+    render(<AppStep {...makeStepProps()} />);
+    fireEvent.change(screen.getByLabelText("Username"), { target: { value: "u" } });
+    fireEvent.change(screen.getByLabelText("Password"), { target: { value: "p" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save test account" }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    expect(fetchMock.mock.calls[0][1].headers["x-supercheck-project-id"]).toBe(PROJECT_ID);
   });
 
   it("shows a saved test account instead of the form", () => {

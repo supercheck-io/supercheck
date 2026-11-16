@@ -4,7 +4,6 @@ import SignUpPage from "./page";
 
 const push = jest.fn();
 const replace = jest.fn();
-const VALID_TOKEN = "01a149f7-ce26-70e2-997b-806e9f48d9de";
 // Prefixed `mock` so jest.mock factories may reference it.
 const mockQuery = { value: "" };
 

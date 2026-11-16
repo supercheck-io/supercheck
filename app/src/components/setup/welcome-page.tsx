@@ -10,16 +10,19 @@ import { useUserPreferences } from "@/hooks/use-project-setup";
 import { SetupSkeleton } from "./setup-page";
 import { Welcome } from "./welcome";
 
-/** /setup/welcome: the persona question for invited members. They never see the wizard from here. */
-export function WelcomePage() {
+/**
+ * /setup/welcome: the persona question for invited members. They never see the wizard from here.
+ * `change` (from the user menu) skips the first-visit redirect and goes back where the user came from.
+ */
+export function WelcomePage({ change = false }: { change?: boolean }) {
   const router = useRouter();
   const prefs = useUserPreferences();
   const { currentProject } = useProjectContext();
   const seen = prefs.data?.seen;
 
   useEffect(() => {
-    if (seen) router.replace("/");
-  }, [seen, router]);
+    if (seen && !change) router.replace("/");
+  }, [seen, change, router]);
 
   if (prefs.isError) {
     return (
@@ -31,13 +34,14 @@ export function WelcomePage() {
       </Alert>
     );
   }
-  if (!prefs.data || seen) return <SetupSkeleton />;
+  if (!prefs.data || (seen && !change)) return <SetupSkeleton />;
   return (
     <Welcome
-      mode="member"
+      mode={change ? "change" : "member"}
+      initialPersona={prefs.data.persona}
       projectName={currentProject?.name ?? ""}
       organizationName={currentProject?.organizationName}
-      onDone={() => router.push("/")}
+      onDone={() => (change && window.history.length > 1 ? router.back() : router.push("/"))}
     />
   );
 }

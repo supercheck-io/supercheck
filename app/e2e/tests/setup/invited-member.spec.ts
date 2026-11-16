@@ -23,8 +23,11 @@ async function openSetup(page: Page): Promise<void> {
     await expect(page.getByTestId('setup-wizard')).toHaveCount(0);
     await welcome.getByRole('button', { name: 'Skip' }).click();
     await expect(page).toHaveURL(/\/$/);
+    // Let the dashboard settle so no client navigation of the welcome page is still in flight.
+    await waitForHydration(page);
     await page.goto('/setup');
     await waitForHydration(page);
+    await expect(page).toHaveURL(/\/setup$/);
   }
   await expect(checklist).toBeVisible({ timeout: 30_000 });
 }

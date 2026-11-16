@@ -22,6 +22,7 @@ const stepKey = z.enum(SETUP_STEP_KEYS);
 const updateSchema = z
   .object({
     expectedUpdatedAt: z.string().datetime().nullable().optional(),
+    lockToken: z.string().uuid().optional(),
     status: z.enum(PROJECT_SETUP_STATUSES).optional(),
     currentStep: stepKey.nullable().optional(),
     draft: z.unknown().optional(), // strict allowlist applied by parseSetupDraft in the state layer
@@ -91,9 +92,9 @@ export async function PUT(request: NextRequest, { params }: Params) {
     if (!parsed.success) {
       return NextResponse.json({ error: "Invalid request", details: parsed.error.issues.map((i) => i.message) }, { status: 400 });
     }
-    const { expectedUpdatedAt, ...patch } = parsed.data;
+    const { expectedUpdatedAt, lockToken, ...patch } = parsed.data;
 
-    const result = await updateSetupState(ctx.organizationId, projectId, userId, patch as Parameters<typeof updateSetupState>[3], expectedUpdatedAt);
+    const result = await updateSetupState(ctx.organizationId, projectId, userId, patch as Parameters<typeof updateSetupState>[3], expectedUpdatedAt, lockToken ?? null);
     switch (result.kind) {
       case "invalid":
         return NextResponse.json({ error: "Invalid draft", details: [result.error] }, { status: 400 });

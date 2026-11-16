@@ -1,4 +1,4 @@
-import { expect, type APIRequestContext, type Browser, type BrowserContext, type Page } from '@playwright/test';
+import { expect, test, type APIRequestContext, type Browser, type BrowserContext, type Page } from '@playwright/test';
 
 import { SignUpPage } from '../pages/auth';
 import { generateTestPassword } from './env';
@@ -18,14 +18,30 @@ export type FreshCreator = {
  * as on any local self-hosted app; the accounts are throwaway and live in that app's database.
  */
 export async function signUpFreshCreator(browser: Browser, baseURL: string, label: string): Promise<FreshCreator> {
+  // The default 60 s hook budget is too tight for a sign-up that waits out the auth rate limit.
+  test.setTimeout(180_000);
   // Playwright applies the project's signed-in storageState to new contexts; start signed out.
   const context = await browser.newContext({ baseURL, storageState: { cookies: [], origins: [] } });
   const page = await context.newPage();
-  const email = `setup-${label}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}@example.com`;
   const signUp = new SignUpPage(page);
-  await signUp.navigate();
-  await waitForHydration(page);
-  await signUp.signUpWithEmail(`Setup ${label}`, email, generateTestPassword());
+  // Better Auth allows 3 sign-up calls per 10 s per address, and earlier specs in the same run use it too:
+  // on a 429 wait out the window instead of sitting on the form until the hook times out.
+  let email = '';
+  for (let attempt = 0; ; attempt++) {
+    email = `setup-${label}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}@example.com`;
+    await signUp.navigate();
+    await waitForHydration(page);
+    const answered = page.waitForResponse((r) => r.url().includes('/api/auth/sign-up/email') && r.request().method() === 'POST');
+    await signUp.signUpWithEmail(`Setup ${label}`, email, generateTestPassword());
+    const res = await answered;
+    if (res.status() !== 429) {
+      expect(res.ok(), `sign-up answered ${res.status()}`).toBe(true);
+      break;
+    }
+    expect(attempt, 'sign-up kept answering 429').toBeLessThan(3);
+    const wait = Number(res.headers()['retry-after']) || 10;
+    await new Promise((resolve) => setTimeout(resolve, (wait + 1) * 1000));
+  }
   await page.waitForURL((url) => !url.pathname.startsWith('/sign-up'), { timeout: 60_000 });
 
   // Sign-up provisions the default organization and project asynchronously.

@@ -22,6 +22,8 @@ test.describe('Project setup skip and resume @setup', () => {
   });
 
   test.afterAll(async () => {
+    // beforeAll can fail before the page exists.
+    if (!page) return;
     await purgeCreatedItems(page.request);
     await context.close();
   });

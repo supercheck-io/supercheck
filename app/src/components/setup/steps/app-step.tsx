@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -21,6 +21,9 @@ export function AppStep({ response, draft, patchDraft, readOnly, scan, setScan }
   const [saving, setSaving] = useState(false);
   const [accountError, setAccountError] = useState<string | null>(null);
 
+  // Secrets this attempt already created (key -> value), so a retry after a partial failure continues with the rest.
+  const created = useRef(new Map<string, string>());
+
   const stripped = url.trim() ? stripUrl(url) : null;
   const invalid = touched && url.trim() !== "" && !stripped;
 
@@ -34,29 +37,34 @@ export function AppStep({ response, draft, patchDraft, readOnly, scan, setScan }
   const saveAccount = async () => {
     setSaving(true);
     setAccountError(null);
-    // The variables route writes to the active project, so confirm it is still this one.
-    const changed = await checkSetupProject(response.projectId);
-    if (changed) {
-      setAccountError(changed);
-      setSaving(false);
-      return;
-    }
-    const pairs: Array<[string, string, string]> = [
-      [TEST_ACCOUNT_USER, username, "Setup test account username"],
-      [TEST_ACCOUNT_PASSWORD, password, "Setup test account password"],
-    ];
-    for (const [key, value, description] of pairs) {
-      const res = await postJson("/api/variables", { key, value, isSecret: true, description });
-      if (!res.ok) {
-        setAccountError(res.status === 409 ? "A secret with this name already exists. Update it in Variables." : responseError(res.data, "Could not save the test account"));
-        setSaving(false);
+    try {
+      // The variables route also refuses a switched project (expected-project header); this covers the rest.
+      const changed = await checkSetupProject(response.projectId);
+      if (changed) {
+        setAccountError(changed);
         return;
       }
+      const pairs: Array<[string, string, string]> = [
+        [TEST_ACCOUNT_USER, username, "Setup test account username"],
+        [TEST_ACCOUNT_PASSWORD, password, "Setup test account password"],
+      ];
+      for (const [key, value, description] of pairs) {
+        if (created.current.get(key) === value) continue;
+        const res = await postJson("/api/variables", { key, value, isSecret: true, description }, response.projectId);
+        if (!res.ok) {
+          setAccountError(res.status === 409 && !created.current.has(key) ? "A secret with this name already exists. Update it in Variables." : responseError(res.data, "Could not save the test account"));
+          return;
+        }
+        created.current.set(key, value);
+      }
+      patchDraft((d) => ({ ...d, app: { ...d.app, testAccountSecret: TEST_ACCOUNT_PASSWORD } }));
+      setUsername("");
+      setPassword("");
+    } catch {
+      setAccountError("Could not save the test account. Check your connection and try again.");
+    } finally {
+      setSaving(false);
     }
-    patchDraft((d) => ({ ...d, app: { ...d.app, testAccountSecret: TEST_ACCOUNT_PASSWORD } }));
-    setUsername("");
-    setPassword("");
-    setSaving(false);
   };
 
   const savedSecret = draft.app?.testAccountSecret;

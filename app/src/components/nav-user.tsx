@@ -104,7 +104,7 @@ export function NavUser() {
           <UserCog className="h-4 w-4 mr-2" />Account
         </DropdownMenuItem>
         <DropdownMenuItem asChild>
-          <Link href="/setup/welcome" data-testid="persona-menu-item"><UserRoundPen className="h-4 w-4 mr-2" />Change persona</Link>
+          <Link href="/setup/welcome?change=1" data-testid="persona-menu-item"><UserRoundPen className="h-4 w-4 mr-2" />Change persona</Link>
         </DropdownMenuItem>
         <DropdownMenuItem onClick={handleLogout} data-testid="sign-out-button">Log out</DropdownMenuItem>
       </DropdownMenuContent>

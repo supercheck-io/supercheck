@@ -85,28 +85,37 @@ function ChannelForm({
 
   const test = async () => {
     setBusy("test");
-    const res = await postJson<{ success?: boolean; message?: string }>("/api/notification-providers/test", { type: channel.type, config: config() });
-    setResult(res.ok && res.data.success !== false ? { ok: true, text: res.data.message ?? "Test sent." } : { ok: false, text: responseError(res.data, "The test failed.") });
-    setBusy(null);
+    try {
+      const res = await postJson<{ success?: boolean; message?: string }>("/api/notification-providers/test", { type: channel.type, config: config() });
+      setResult(res.ok && res.data.success !== false ? { ok: true, text: res.data.message ?? "Test sent." } : { ok: false, text: responseError(res.data, "The test failed.") });
+    } catch {
+      setResult({ ok: false, text: "The test failed. Check your connection and try again." });
+    } finally {
+      setBusy(null);
+    }
   };
 
   const save = async () => {
     setBusy("save");
     const name = channel.label;
-    // The route writes to the active project, so confirm it is still the setup project.
-    const changed = await checkSetupProject(projectId);
-    if (changed) {
-      setResult({ ok: false, text: changed });
+    try {
+      // The route also refuses a switched project (expected-project header); this covers the rest.
+      const changed = await checkSetupProject(projectId);
+      if (changed) {
+        setResult({ ok: false, text: changed });
+        return;
+      }
+      const res = await postJson<{ id?: string; name?: string; type?: string }>("/api/notification-providers", { name, type: channel.type, config: { ...config(), name } }, projectId);
+      if (res.ok && res.data.id) {
+        onSaved({ id: res.data.id, name, type: channel.type });
+      } else {
+        setResult({ ok: false, text: responseError(res.data, "Could not save the channel.") });
+      }
+    } catch {
+      setResult({ ok: false, text: "Could not save the channel. Check your connection and try again." });
+    } finally {
       setBusy(null);
-      return;
     }
-    const res = await postJson<{ id?: string; name?: string; type?: string }>("/api/notification-providers", { name, type: channel.type, config: { ...config(), name } });
-    if (res.ok && res.data.id) {
-      onSaved({ id: res.data.id, name, type: channel.type });
-    } else {
-      setResult({ ok: false, text: responseError(res.data, "Could not save the channel.") });
-    }
-    setBusy(null);
   };
 
   return (

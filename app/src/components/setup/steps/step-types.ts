@@ -1,4 +1,4 @@
-import { ensureProject } from "../create-runner";
+import { ensureProject, PROJECT_HEADER } from "../create-runner";
 import type { SetupDraft } from "@/lib/setup/draft-schema";
 import type { SetupFeatures } from "@/lib/setup/features";
 import type { ScanSummary } from "@/lib/setup/scan";
@@ -33,8 +33,13 @@ export function scanMatchesUrl(scan: ScanSummary | null, appUrl: string | null |
   }
 }
 
-export async function postJson<T = unknown>(url: string, body: unknown): Promise<{ ok: boolean; status: number; data: T }> {
-  const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+/** `projectId` is sent as the expected project: the server answers 409 when the active project is another one. */
+export async function postJson<T = unknown>(url: string, body: unknown, projectId?: string): Promise<{ ok: boolean; status: number; data: T }> {
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...(projectId ? { [PROJECT_HEADER]: projectId } : {}) },
+    body: JSON.stringify(body),
+  });
   const data = (await res.json().catch(() => ({}))) as T;
   return { ok: res.ok, status: res.status, data };
 }
@@ -46,10 +51,10 @@ export function responseError(data: unknown, fallback: string): string {
   return fallback;
 }
 
-export async function fetchJson(url: string, init?: { method?: string; body?: unknown }) {
+export async function fetchJson(url: string, init?: { method?: string; body?: unknown; headers?: Record<string, string> }) {
   const res = await fetch(url, {
     method: init?.method ?? "GET",
-    headers: init?.body ? { "Content-Type": "application/json" } : undefined,
+    headers: init?.body || init?.headers ? { ...(init.body ? { "Content-Type": "application/json" } : {}), ...init.headers } : undefined,
     body: init?.body ? JSON.stringify(init.body) : undefined,
     cache: "no-store",
   });

@@ -63,6 +63,8 @@ export interface SetupResponse {
 /** PUT /api/projects/[id]/setup body. 409 { error: "conflict", state } on a stale expectedUpdatedAt. */
 export interface SetupUpdateRequest {
   expectedUpdatedAt?: string | null;
+  /** Per-tab token sent on the lock claim; a write from another tab of the same user gets 423. */
+  lockToken?: string;
   status?: ProjectSetupStatus;
   currentStep?: SetupStepKey | null;
   draft?: SetupDraft;
@@ -70,7 +72,7 @@ export interface SetupUpdateRequest {
   statusPageOptOut?: boolean;
 }
 
-/** POST /api/projects/[id]/setup/lock → 200 { lock } | 423 { error: "locked", lock }. DELETE → 204. */
+/** POST|DELETE /api/projects/[id]/setup/lock body: { lockToken?: uuid, takeover?: boolean }. POST → 200 { lock } | 423 { error: "locked", lock }. DELETE → 204. */
 export interface SetupLockResponse {
   lock: SetupLockInfo;
 }

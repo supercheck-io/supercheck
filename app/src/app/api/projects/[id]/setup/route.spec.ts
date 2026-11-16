@@ -166,7 +166,7 @@ describe("PUT /api/projects/[id]/setup", () => {
     const res = await PUT(req("PUT", { expectedUpdatedAt: null, currentStep: "app", skipped: ["tests"] }), params());
     expect(res.status).toBe(200);
     expect((await res.json()).state.status).toBe("in_progress");
-    expect(updateSetupState).toHaveBeenCalledWith(ORG, PROJECT, "u1", { currentStep: "app", skipped: ["tests"] }, null);
+    expect(updateSetupState).toHaveBeenCalledWith(ORG, PROJECT, "u1", { currentStep: "app", skipped: ["tests"] }, null, null);
     expect(logAuditEvent).not.toHaveBeenCalled(); // no status change
   });
 
@@ -223,6 +223,14 @@ describe("PUT /api/projects/[id]/setup", () => {
     const res = await PUT(req("PUT", {}), params());
     expect(res.status).toBe(423);
     expect(await res.json()).toEqual({ error: "locked", lock });
+  });
+
+  it("passes the per-tab lock token to the state layer and rejects a malformed one", async () => {
+    const tab = "33333333-3333-4333-8333-333333333333";
+    (updateSetupState as jest.Mock).mockResolvedValue(ok);
+    await PUT(req("PUT", { expectedUpdatedAt: null, currentStep: "app", lockToken: tab }), params());
+    expect(updateSetupState).toHaveBeenCalledWith(ORG, PROJECT, "u1", { currentStep: "app" }, null, tab);
+    expect((await PUT(req("PUT", { lockToken: "nope" }), params())).status).toBe(400);
   });
 
   it("400 for an invalid draft, unknown field, bad status, bad JSON; 413 over 64 KB", async () => {

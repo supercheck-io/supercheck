@@ -124,7 +124,7 @@ describe("updateSetupState", () => {
   });
 
   it("is refused while another user holds a live lock, allowed for the holder and after expiry", async () => {
-    expect((await claimLock(orgA, projA, u1)).kind).toBe("ok");
+    expect((await claimLock(orgA, projA, u1, null)).kind).toBe("ok");
     const refused = await updateSetupState(orgA, projA, u2, { currentStep: "app" }, null);
     expect(refused).toMatchObject({ kind: "locked", lock: { userId: u1, userName: "Una", mine: false } });
     // The lock-created row is "never written", so the holder's first write uses null.
@@ -152,7 +152,7 @@ describe("updateSetupState", () => {
 
 describe("locks", () => {
   it("two concurrent claims: exactly one wins", async () => {
-    const results = await Promise.all([claimLock(orgA, projA, u1), claimLock(orgA, projA, u2)]);
+    const results = await Promise.all([claimLock(orgA, projA, u1, null), claimLock(orgA, projA, u2, null)]);
     expect(results.map((r) => r.kind).sort()).toEqual(["locked", "ok"]);
     const winner = results.find((r) => r.kind === "ok")!;
     const loser = results.find((r) => r.kind === "locked")!;
@@ -161,38 +161,68 @@ describe("locks", () => {
   });
 
   it("heartbeat by the holder refreshes, a live lock blocks others, expiry frees it", async () => {
-    await claimLock(orgA, projA, u1);
+    await claimLock(orgA, projA, u1, null);
     await client`UPDATE project_setup_state SET locked_at = now() - interval '10 minutes'`;
-    const beat = await claimLock(orgA, projA, u1);
+    const beat = await claimLock(orgA, projA, u1, null);
     expect(beat.kind).toBe("ok");
     expect(Date.now() - new Date(beat.lock.lockedAt).getTime()).toBeLessThan(60_000);
-    expect((await claimLock(orgA, projA, u2)).kind).toBe("locked");
+    expect((await claimLock(orgA, projA, u2, null)).kind).toBe("locked");
     await client`UPDATE project_setup_state SET locked_at = now() - interval '16 minutes'`;
     expect((await getSetupState(orgA, projA, u2)).lock).toBeNull();
-    expect((await claimLock(orgA, projA, u2)).kind).toBe("ok");
+    expect((await claimLock(orgA, projA, u2, null)).kind).toBe("ok");
   });
 
   it("does not bump updated_at, so a heartbeat never invalidates the draft token", async () => {
     const first = await updateSetupState(orgA, projA, u1, { currentStep: "app" }, null);
     if (first.kind !== "ok") throw new Error("setup");
-    await claimLock(orgA, projA, u1);
+    await claimLock(orgA, projA, u1, null);
     expect((await updateSetupState(orgA, projA, u1, { currentStep: "tests" }, first.state.updatedAt)).kind).toBe("ok");
   });
 
   it("release clears only the caller's own lock", async () => {
-    await claimLock(orgA, projA, u1);
-    await releaseLock(orgA, projA, u2);
+    await claimLock(orgA, projA, u1, null);
+    await releaseLock(orgA, projA, u2, null);
     expect((await getSetupState(orgA, projA, u2)).lock?.userId).toBe(u1);
-    await releaseLock(orgB, projA, u1); // wrong org
+    await releaseLock(orgB, projA, u1, null); // wrong org
     expect((await getSetupState(orgA, projA, u2)).lock?.userId).toBe(u1);
-    await releaseLock(orgA, projA, u1);
+    await releaseLock(orgA, projA, u1, null);
     expect((await getSetupState(orgA, projA, u2)).lock).toBeNull();
   });
 
+  it("two tabs of the same user: only the holding tab may claim, write or release", async () => {
+    const tabA = randomUUID();
+    const tabB = randomUUID();
+    expect((await claimLock(orgA, projA, u1, tabA)).kind).toBe("ok");
+    const second = await claimLock(orgA, projA, u1, tabB);
+    expect(second).toMatchObject({ kind: "locked", lock: { userId: u1, mine: false } });
+    // Heartbeat by the holding tab still works; a GET with no tab identity reports the user's lock as mine.
+    expect((await claimLock(orgA, projA, u1, tabA)).kind).toBe("ok");
+    expect((await getSetupState(orgA, projA, u1)).lock?.mine).toBe(true);
+    // A write from the other tab, or from one with no token, is refused; the holder's passes.
+    expect(await updateSetupState(orgA, projA, u1, { currentStep: "app" }, null, tabB)).toMatchObject({ kind: "locked" });
+    expect(await updateSetupState(orgA, projA, u1, { currentStep: "app" }, null, null)).toMatchObject({ kind: "locked" });
+    expect((await updateSetupState(orgA, projA, u1, { currentStep: "app" }, null, tabA)).kind).toBe("ok");
+    // The other tab's release (pagehide) does not free the holder's lock.
+    await releaseLock(orgA, projA, u1, tabB);
+    expect((await getSetupState(orgA, projA, u1)).lock).not.toBeNull();
+    await releaseLock(orgA, projA, u1, tabA);
+    expect((await getSetupState(orgA, projA, u1)).lock).toBeNull();
+    expect((await claimLock(orgA, projA, u1, tabB)).kind).toBe("ok");
+  });
+
+  it("takeover moves the lock to the taker's tab, so the old tab turns read-only", async () => {
+    const old = randomUUID();
+    const taker = randomUUID();
+    await claimLock(orgA, projA, u1, old);
+    expect((await claimLock(orgA, projA, u2, taker, true)).kind).toBe("ok");
+    expect((await claimLock(orgA, projA, u1, old)).kind).toBe("locked");
+    expect(await updateSetupState(orgA, projA, u1, { currentStep: "app" }, null, old)).toMatchObject({ kind: "locked" });
+  });
+
   it("another org cannot take a project's lock", async () => {
-    await claimLock(orgA, projA, u1);
+    await claimLock(orgA, projA, u1, null);
     await client`UPDATE project_setup_state SET locked_by_user_id = NULL, locked_at = NULL`;
-    const cross = await claimLock(orgB, projA, u2);
+    const cross = await claimLock(orgB, projA, u2, null);
     expect(cross.kind).toBe("locked");
     const [row] = await client`SELECT locked_by_user_id FROM project_setup_state WHERE project_id = ${projA}`;
     expect(row!.locked_by_user_id).toBeNull();

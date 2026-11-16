@@ -5,6 +5,7 @@ import { ReviewStep, type ReviewStepProps } from "./review-step";
 
 jest.mock("@/actions/create-component", () => ({ createComponent: jest.fn(async () => ({ success: true, component: { id: "c1" } })) }));
 jest.mock("@/actions/create-status-page", () => ({ createStatusPage: jest.fn(async () => ({ success: true, statusPage: { id: "sp1" } })) }));
+jest.mock("@/actions/get-components", () => ({ getComponents: jest.fn(async () => ({ success: true, components: [] })) }));
 jest.mock("@/actions/get-status-pages", () => ({ getStatusPages: jest.fn(async () => ({ success: true, statusPages: [{ id: "sp-old", name: "Old" }] })) }));
 jest.mock("@/actions/publish-status-page", () => ({ publishStatusPage: jest.fn(async () => ({ success: true })) }));
 jest.mock("@/actions/notification-policy", () => ({
