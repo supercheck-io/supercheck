@@ -174,6 +174,9 @@ export function McpServerFields({ form, projectId }: McpServerFieldsProps) {
   const authType = form.watch("mcpConfig_authType") ?? "none";
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [toolOpen, setToolOpen] = useState(true);
+  // A submit error inside "Call a tool" keeps the section open so the message is visible.
+  const { errors } = form.formState;
+  const toolHasError = Boolean(errors.mcpConfig_toolName || errors.mcpConfig_toolArgs || errors.mcpConfig_toolExpect);
 
   return (
     <div className="space-y-4" data-testid="mcp-server-fields">
@@ -246,7 +249,7 @@ export function McpServerFields({ form, projectId }: McpServerFieldsProps) {
       <OptionalSection
         title="Call a tool"
         description="Pick a read-only tool. It runs on every check."
-        open={toolOpen}
+        open={toolOpen || toolHasError}
         onOpenChange={setToolOpen}
       >
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

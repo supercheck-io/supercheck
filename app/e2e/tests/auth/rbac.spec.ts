@@ -16,6 +16,7 @@
 import { test, expect } from '../../fixtures/roles.fixture';
 import { requireCredentials, requireRbacUser, env } from '../../utils/env';
 import { authenticateWithApi } from '../../utils/api-auth';
+import { waitForHydration } from '../../utils/hydration';
 
 test.describe('RBAC - Unauthenticated Access @auth @rbac @security', () => {
   // Override global storage state to test unauthenticated access
@@ -160,6 +161,7 @@ test.describe('RBAC - Editor Capabilities @auth @rbac', () => {
 
   test('Editor can open the variable form @high @rbac', async ({ editorPage: page }) => {
     await page.goto('/variables');
+    await waitForHydration(page);
     await page.getByRole('button', { name: 'Add variable', exact: true }).click();
     await expect(page.getByRole('dialog')).toBeVisible();
     await expect(page.getByRole('dialog').getByLabel('Variable Name *', { exact: true })).toBeEditable();

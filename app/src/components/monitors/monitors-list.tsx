@@ -73,7 +73,7 @@ export default function MonitorsList({ tabs }: { tabs?: ReactNode } = {}) {
         actions={
           <>
             {tabs}
-            {!isEmpty && createButton}
+            {!isEmpty && !loading && !isLoading && !error && createButton}
           </>
         }
       />

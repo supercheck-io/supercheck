@@ -35,3 +35,9 @@ export function draftForHandoff<T extends { target?: unknown }>(draft: T | undef
   if (!draft) return undefined;
   return handoffUrl && draft.target !== handoffUrl ? undefined : draft;
 }
+
+/** AI Endpoint and HTTP monitors share the stored type, so a draft only carries over to the same UI type. */
+export function draftForUiType<T extends { preset?: unknown }>(draft: T | undefined, wantsAiEndpoint: boolean): T | undefined {
+  if (!draft) return undefined;
+  return (draft.preset === "ai_endpoint") === wantsAiEndpoint ? draft : undefined;
+}

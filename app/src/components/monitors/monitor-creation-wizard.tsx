@@ -3,7 +3,7 @@
 import { monitorTypes } from "@/components/monitors/data";
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { MonitorForm } from "./monitor-form";
-import { draftForHandoff } from "./monitor-prefill";
+import { draftForHandoff, draftForUiType } from "./monitor-prefill";
 import { channelsOptional } from "@/lib/incident-settings";
 import { AlertSettings } from "@/components/alerts/alert-settings";
 import { LocationConfigSection } from "./location-config-section";
@@ -70,7 +70,10 @@ export function MonitorCreationWizard() {
       if (saved) {
         try {
           // An explicit hand-off ("Monitor this") wins over an older draft for another target.
-          const draft = draftForHandoff(JSON.parse(saved), searchParams?.get("url"));
+          const handoff = draftForHandoff(JSON.parse(saved), searchParams?.get("url"));
+          // AI Endpoint and HTTP share the stored type; drop a draft made for the other one.
+          const wantsAi = searchParams?.get("type") === "ai_endpoint";
+          const draft = draftForUiType(handoff, wantsAi);
           if (!draft) sessionStorage.removeItem(STORAGE_KEYS.MONITOR_DATA);
           return draft;
         } catch {

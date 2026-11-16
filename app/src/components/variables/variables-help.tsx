@@ -61,6 +61,7 @@ await page.goto(baseUrl);`}</pre>
                   size="sm"
                   variant="ghost"
                   className="absolute top-1.5 right-1.5 h-5 w-5 p-0"
+                  aria-label="Copy variable example"
                   onClick={() =>
                     handleCopyCode(`const baseUrl = getVariable('BASE_URL');\nconst timeout = getVariable('TIMEOUT', { type: 'number', default: 5000 });\nawait page.goto(baseUrl);`)
                   }
@@ -91,6 +92,7 @@ await page.setExtraHTTPHeaders({
                   size="sm"
                   variant="ghost"
                   className="absolute top-1.5 right-1.5 h-5 w-5 p-0"
+                  aria-label="Copy secret example"
                   onClick={() =>
                     handleCopyCode(`const password = getSecret('PASSWORD');\nconst apiKey = getSecret('API_KEY');\nawait page.fill('[name=\"password\"]', password);\nawait page.setExtraHTTPHeaders({\n  Authorization: \`Bearer \${apiKey}\`\n});`)
                   }
@@ -120,6 +122,7 @@ const k6CsvContent = open(getFile('USERS_CSV'));`}</pre>
                   size="sm"
                   variant="ghost"
                   className="absolute top-1.5 right-1.5 h-5 w-5 p-0"
+                  aria-label="Copy file example"
                   onClick={() =>
                     handleCopyCode(`// Playwright\nconst playwrightCsvContent = readFile('USERS_CSV');\n\n// k6 (init context)\nconst k6CsvContent = open(getFile('USERS_CSV'));`)
                   }
