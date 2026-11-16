@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 
-import { FEATURES, makeResponse, makeStepProps } from "../test-fixtures";
+import { FEATURES, makeResponse, makeStepProps, PROJECT_ID } from "../test-fixtures";
 import { AlertsStep } from "./alerts-step";
 import { AppStep } from "./app-step";
 import { DeveloperStep } from "./developer-step";
@@ -10,13 +10,27 @@ import { StatusPageStep } from "./status-page-step";
 import { responseError } from "./step-types";
 import type { SetupDraft } from "@/lib/setup/draft-schema";
 
+// Radix Select needs pointer-capture and scroll APIs that jsdom lacks.
+beforeAll(() => {
+  Element.prototype.hasPointerCapture ??= () => false;
+  Element.prototype.releasePointerCapture ??= () => undefined;
+  Element.prototype.scrollIntoView ??= () => undefined;
+});
+const pick = (label: string, option: string | RegExp) => {
+  fireEvent.keyDown(screen.getByLabelText(label), { key: "Enter" });
+  fireEvent.click(screen.getByRole("option", { name: option }));
+};
+
 const PROVIDER = "00000000-0000-4000-8000-000000000001";
 const fetchMock = jest.fn();
+const json = (body: unknown, status = 200) => Promise.resolve({ ok: status < 400, status, json: async () => body });
+let activeProject: string;
 beforeEach(() => {
   fetchMock.mockReset();
-  global.fetch = fetchMock as unknown as typeof fetch;
+  activeProject = PROJECT_ID;
+  // The active-project check is answered here, so fetchMock only sees the step's own requests.
+  global.fetch = ((url: string, init?: unknown) => (url === "/api/context" ? json({ project: { id: activeProject } }) : fetchMock(url, init))) as unknown as typeof fetch;
 });
-const json = (body: unknown, status = 200) => Promise.resolve({ ok: status < 400, status, json: async () => body });
 
 /** A patchDraft that applies the change to a draft we can inspect. */
 function drafting(initial: SetupDraft = {}) {
@@ -56,7 +70,7 @@ describe("AlertsStep", () => {
   it("shows the repeat interval and saves a change", () => {
     const d = drafting({ alerts: { providerIds: [], repeatUntilAck: { enabled: true, repeatMinutes: 15 } } });
     render(<AlertsStep {...makeStepProps({ patchDraft: d.patchDraft, draft: d.get() })} />);
-    fireEvent.change(screen.getByLabelText("Repeat every"), { target: { value: "30" } });
+    pick("Repeat every", "30 min");
     expect(d.get().alerts?.repeatUntilAck).toEqual({ enabled: true, repeatMinutes: 30 });
   });
 
@@ -75,6 +89,14 @@ describe("AlertsStep", () => {
     expect(JSON.stringify(d.get())).not.toContain("me@example.com");
   });
 
+  it("refuses to save a channel when another tab switched the active project", async () => {
+    activeProject = "22222222-2222-4222-8222-222222222222";
+    render(<AlertsStep {...makeStepProps()} />);
+    fireEvent.click(screen.getByRole("button", { name: "Save channel" }));
+    expect(await screen.findByText("Project changed in another tab")).toBeTruthy();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it("tests a channel and shows the failure", async () => {
     fetchMock.mockImplementation(() => json({ success: false, error: "Slack rejected it" }, 400));
     render(<AlertsStep {...makeStepProps({ userEmail: null })} />);
@@ -89,7 +111,7 @@ describe("AlertsStep", () => {
     fetchMock.mockImplementation(() => json({ id: PROVIDER }, 201));
     render(<AlertsStep {...makeStepProps({ userEmail: null })} />);
     fireEvent.click(screen.getByRole("button", { name: /^Webhook/ }));
-    fireEvent.change(screen.getByLabelText("Service"), { target: { value: "pagerduty" } });
+    pick("Service", /pagerduty/i);
     fireEvent.change(screen.getByLabelText("Endpoint URL"), { target: { value: "https://events.pagerduty.com/v2/enqueue" } });
     fireEvent.click(screen.getByRole("button", { name: "Save channel" }));
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
@@ -140,7 +162,7 @@ describe("MonitorsStep", () => {
     rerender(<MonitorsStep {...makeStepProps({ patchDraft: d.patchDraft, draft: d.get() })} />);
     fireEvent.click(screen.getAllByRole("checkbox")[1]);
     expect(d.get().monitors?.pages).toHaveLength(1);
-    fireEvent.change(screen.getByLabelText("Check every"), { target: { value: "10" } });
+    pick("Check every", "10 min");
     expect(d.get().monitors?.frequencyMinutes).toBe(10);
   });
 
@@ -225,16 +247,28 @@ describe("AppStep", () => {
     expect(JSON.stringify(d.get())).not.toContain("hunter2");
   });
 
-  it("treats an existing secret as saved, and shows an error otherwise", async () => {
+  it("does not show an existing secret as saved", async () => {
     fetchMock.mockImplementation(() => json({ error: "Variable with this key already exists" }, 409));
     const d = drafting();
-    const { unmount } = render(<AppStep {...makeStepProps({ patchDraft: d.patchDraft })} />);
+    render(<AppStep {...makeStepProps({ patchDraft: d.patchDraft })} />);
     fireEvent.change(screen.getByLabelText("Username"), { target: { value: "u" } });
     fireEvent.change(screen.getByLabelText("Password"), { target: { value: "p" } });
     fireEvent.click(screen.getByRole("button", { name: "Save test account" }));
-    await waitFor(() => expect(d.get().app?.testAccountSecret).toBeDefined());
-    unmount();
+    expect(await screen.findByText("A secret with this name already exists. Update it in Variables.")).toBeTruthy();
+    expect(d.get().app?.testAccountSecret).toBeUndefined();
+  });
 
+  it("refuses to save secrets when another tab switched the active project", async () => {
+    activeProject = "22222222-2222-4222-8222-222222222222";
+    render(<AppStep {...makeStepProps()} />);
+    fireEvent.change(screen.getByLabelText("Username"), { target: { value: "u" } });
+    fireEvent.change(screen.getByLabelText("Password"), { target: { value: "p" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save test account" }));
+    expect(await screen.findByText("Project changed in another tab")).toBeTruthy();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("shows an API error when saving the test account fails", async () => {
     fetchMock.mockImplementation(() => json({ error: "Variable name must be at least 4 characters" }, 400));
     render(<AppStep {...makeStepProps()} />);
     fireEvent.change(screen.getByLabelText("Username"), { target: { value: "u" } });

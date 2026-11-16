@@ -3,8 +3,10 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { stripUrl, type SetupDraft } from "@/lib/setup/draft-schema";
 import type { StepProps } from "./step-types";
@@ -166,13 +168,11 @@ export function MonitorsStep({ response, draft, patchDraft, features, readOnly }
           <ul className="divide-y rounded-lg border">
             {suggestions.map((page, index) => (
               <li key={page.url} className="flex items-center gap-3 px-4 py-2.5">
-                <input
+                <Checkbox
                   id={`setup-page-${index}`}
-                  type="checkbox"
-                  className="size-4 accent-primary"
                   checked={selected.has(page.url)}
                   disabled={readOnly}
-                  onChange={(event) => togglePage(page, event.target.checked)}
+                  onCheckedChange={(checked) => togglePage(page, checked === true)}
                 />
                 <label htmlFor={`setup-page-${index}`} className="min-w-0 flex-1 truncate text-sm">
                   {page.name}
@@ -204,19 +204,22 @@ export function MonitorsStep({ response, draft, patchDraft, features, readOnly }
 
         <div className="space-y-1.5">
           <Label htmlFor="setup-interval">Check every</Label>
-          <select
-            id="setup-interval"
-            className="h-9 rounded-md border bg-background px-3 text-sm"
-            value={monitors.frequencyMinutes ?? 5}
+          <Select
+            value={String(monitors.frequencyMinutes ?? 5)}
             disabled={readOnly}
-            onChange={(event) => setMonitors({ frequencyMinutes: Number(event.target.value) })}
+            onValueChange={(value) => setMonitors({ frequencyMinutes: Number(value) })}
           >
-            {INTERVALS.map((minutes) => (
-              <option key={minutes} value={minutes}>
-                {minutes} min
-              </option>
-            ))}
-          </select>
+            <SelectTrigger id="setup-interval" className="w-32">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {INTERVALS.map((minutes) => (
+                <SelectItem key={minutes} value={String(minutes)}>
+                  {minutes} min
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
       </section>
 

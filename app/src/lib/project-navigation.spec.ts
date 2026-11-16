@@ -41,6 +41,10 @@ describe("project navigation cache isolation", () => {
     reloadProjectContext(clearProjects, "//other.example/subscribe");
     expect((replace.mock.calls.at(-1)?.[0] as URL).origin).toBe("https://app.supercheck.io");
   });
+  it("keeps a query string on the destination", () => {
+    reloadProjectContext(clearProjects, "/setup?project=abc");
+    expect(replace).toHaveBeenCalledWith(new URL("https://app.supercheck.io/setup?project=abc"));
+  });
   it("clears other tabs once for storage and broadcast signals and cleans up listeners", () => {
     const unsubscribe = listenForProjectChanges(clearProjects);
     listeners.get("storage")?.({ key: "unrelated", newValue: "x" });

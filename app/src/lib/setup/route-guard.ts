@@ -33,6 +33,10 @@ export const MAX_BODY_BYTES = 64 * 1024;
 
 /** Reads a JSON body under the 64 KB cap; returns a response on failure. */
 export async function readJsonBody(request: NextRequest): Promise<{ body: unknown } | NextResponse> {
+  // Reject on the declared length first so an oversized body is never read into memory.
+  if (Number(request.headers.get("content-length")) > MAX_BODY_BYTES) {
+    return NextResponse.json({ error: "Request body too large" }, { status: 413 });
+  }
   const text = await request.text();
   if (new TextEncoder().encode(text).length > MAX_BODY_BYTES) {
     return NextResponse.json({ error: "Request body too large" }, { status: 413 });

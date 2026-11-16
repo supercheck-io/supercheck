@@ -15,7 +15,7 @@ import { TableBadge } from "@/components/ui/table-badge";
 import type { SetupStepKey } from "@/lib/setup/persona";
 import { CopyValueButton } from "../copy-value-button";
 import { buildCreateItems, runAll, runItem, type CreateItem, type ItemResult, type RunnerDeps } from "../create-runner";
-import type { StepProps } from "./step-types";
+import { fetchJson, type StepProps } from "./step-types";
 
 const STEP_TITLES: Partial<Record<SetupStepKey, string>> = {
   app: "Your app",
@@ -35,16 +35,6 @@ export interface ReviewStepProps extends StepProps {
   /** Mark setup completed (PUT status). */
   complete: () => Promise<void>;
   completed: boolean;
-}
-
-async function fetchJson(url: string, init?: { method?: string; body?: unknown }) {
-  const res = await fetch(url, {
-    method: init?.method ?? "GET",
-    headers: init?.body ? { "Content-Type": "application/json" } : undefined,
-    body: init?.body ? JSON.stringify(init.body) : undefined,
-    cache: "no-store",
-  });
-  return { ok: res.ok, status: res.status, data: await res.json().catch(() => ({})) };
 }
 
 function StatusIcon({ status }: { status: ItemResult["status"] }) {
@@ -87,7 +77,7 @@ export function ReviewStep({ response, features, permissions, draft, skipped, re
     fetchJson,
     getStatusPages: async () => {
       const res = await getStatusPages();
-      return { success: res.success, statusPages: res.statusPages.map((p) => ({ id: p.id, name: p.name })) };
+      return { success: res.success, statusPages: res.success ? res.statusPages.map((p) => ({ id: p.id, name: p.name })) : [] };
     },
     createStatusPage: (data) => createStatusPage(data) as ReturnType<RunnerDeps["createStatusPage"]>,
     publishStatusPage: (id) => publishStatusPage(id),
@@ -165,7 +155,7 @@ export function ReviewStep({ response, features, permissions, draft, skipped, re
                     {STATUS_LABEL[result.status]}
                   </TableBadge>
                   {result.status === "failed" ? (
-                    <Button type="button" size="sm" variant="outline" disabled={running || readOnly} onClick={() => retry(item)}>
+                    <Button type="button" size="sm" variant="outline" aria-label={`Retry ${item.label}`} disabled={running || readOnly} onClick={() => retry(item)}>
                       Retry
                     </Button>
                   ) : null}

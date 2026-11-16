@@ -25,7 +25,14 @@ describe("project switching", () => {
     expect(success).toBe(true);
     expect(result.current.currentProject?.organizationId).toBe("team");
     expect(announceProjectChange).toHaveBeenCalledTimes(1);
-    expect(reloadProjectContext).toHaveBeenCalledWith(clearProjectsCache);
+    expect(reloadProjectContext).toHaveBeenCalledWith(clearProjectsCache, undefined);
+  });
+
+  it("reloads into the requested destination after a switch", async () => {
+    global.fetch = jest.fn().mockResolvedValue({ ok: true, json: async () => ({ success: true, project }) });
+    const { result } = renderHook(() => useProjectContextState({ initialProjects: [project], initialCurrentProject: project }));
+    await act(async () => { await result.current.switchProject("project-1", "/setup?project=project-1"); });
+    expect(reloadProjectContext).toHaveBeenCalledWith(clearProjectsCache, "/setup?project=project-1");
   });
 
   it("preserves context and cache after a rejected switch", async () => {

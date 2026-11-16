@@ -54,7 +54,7 @@ export function SetupPage() {
   const needsSwitch = Boolean(projectParam && currentProject && currentProject.id !== projectParam);
   useEffect(() => {
     if (!needsSwitch || !projectParam) return;
-    void switchProject(projectParam).then((ok) => !ok && setSwitchFailed(true));
+    void switchProject(projectParam, `/setup?project=${encodeURIComponent(projectParam)}`).then((ok) => !ok && setSwitchFailed(true));
   }, [needsSwitch, projectParam, switchProject]);
 
   const projectId = needsSwitch ? null : (projectParam ?? currentProject?.id ?? null);
@@ -85,7 +85,10 @@ export function SetupPage() {
   }
 
   const finished = state.status === "completed" || state.status === "dismissed";
-  const open = wizardOpen ?? (permissions.canEdit && !finished && (isCreator || state.status === "in_progress"));
+  const autoOpen = permissions.canEdit && !finished && (isCreator || state.status === "in_progress");
+  // Latch the auto-open: finishing flips `finished`, which must not unmount the wizard and its one-time ping URLs.
+  if (wizardOpen === null && autoOpen) setWizardOpen(true);
+  const open = wizardOpen ?? autoOpen;
 
   if (open && permissions.canEdit) {
     return <SetupWizard response={setup.data} persona={prefs.data.persona} userEmail={session.data?.user?.email} />;
@@ -97,6 +100,7 @@ export function SetupPage() {
       queryClient.setQueryData(getProjectSetupQueryKey(projectId), res);
       return true;
     } catch {
+      void queryClient.invalidateQueries({ queryKey: getProjectSetupQueryKey(projectId) });
       toast.error("Could not update setup. Try again.");
       return false;
     }

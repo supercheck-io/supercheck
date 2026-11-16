@@ -242,7 +242,7 @@ async function listStatusPages(deps: RunnerDeps, lookup: Lookup) {
 
 const isMonitorKind = (kind: ItemKind) => ["website", "http_request", "heartbeat", "ai_endpoint", "mcp_server"].includes(kind);
 
-async function ensureProject(deps: RunnerDeps): Promise<string | null> {
+export async function ensureProject(deps: Pick<RunnerDeps, "setupProjectId" | "fetchJson">): Promise<string | null> {
   try {
     const res = await deps.fetchJson("/api/context");
     const id = (res.data as { project?: { id?: string } })?.project?.id;
@@ -273,42 +273,62 @@ async function createMonitor(item: CreateItem, deps: RunnerDeps, lookup: Lookup)
   const res = await deps.fetchJson("/api/monitors", { method: "POST", body: item.payload });
   if (!res.ok) return { status: "failed", error: errorText(res.data, "Could not create the monitor") };
   const body = res.data as { id: string; heartbeat?: { pingUrl?: string } };
+  lookup.monitors?.push({ id: body.id, type: payload.type, target: payload.target, name: payload.name });
   await deps.recordCreated(item.key, body.id);
   return { status: "done", pingUrl: body.heartbeat?.pingUrl };
+}
+
+const PUBLISH_KEY = "statuspage:publish";
+
+async function publishOnce(id: string, deps: RunnerDeps): Promise<ItemResult | null> {
+  const published = await deps.publishStatusPage(id);
+  if (!published.success) return { status: "failed", error: `Created as a draft; publishing failed: ${published.message ?? "unknown error"}` };
+  await deps.recordCreated(PUBLISH_KEY, id);
+  return null;
 }
 
 async function createStatusPageItem(item: CreateItem, deps: RunnerDeps, lookup: Lookup): Promise<ItemResult> {
   const created = deps.getCreated()[item.key];
   const pages = await listStatusPages(deps, lookup);
   if (created) {
-    return pages.some((p) => p.id === created)
-      ? { status: "adopted", note: "Already created" }
-      : { status: "skipped", note: "Deleted since it was created, so it was not recreated" };
+    if (!pages.some((p) => p.id === created)) return { status: "skipped", note: "Deleted since it was created, so it was not recreated" };
+    // Publish is its own recorded step, so a publish that failed after the create is retried here.
+    if (item.payload.publish && !deps.getCreated()[PUBLISH_KEY]) {
+      const failed = await publishOnce(created, deps);
+      return failed ?? { status: "done", note: "Published" };
+    }
+    return { status: "adopted", note: "Already created" };
   }
   const name = String(item.payload.name);
   const natural = pages.find((p) => p.name === name);
   if (natural) {
     await deps.recordCreated(item.key, natural.id);
+    // An existing page is never published by setup.
+    await deps.recordCreated(PUBLISH_KEY, natural.id);
     return { status: "adopted", note: "A status page with this name already exists" };
   }
   const res = await deps.createStatusPage({ name });
   const id = res.statusPage?.id;
   if (!res.success || !id) return { status: "failed", error: res.message ?? "Could not create the status page" };
+  lookup.statusPages?.push({ id, name });
   await deps.recordCreated(item.key, id);
   if (item.payload.publish) {
-    const published = await deps.publishStatusPage(id);
-    if (!published.success) return { status: "failed", error: `Created as a draft; publishing failed: ${published.message ?? "unknown error"}` };
+    const failed = await publishOnce(id, deps);
+    if (failed) return failed;
   }
   return { status: "done" };
 }
 
-async function createComponentItem(item: CreateItem, deps: RunnerDeps): Promise<ItemResult> {
+async function createComponentItem(item: CreateItem, deps: RunnerDeps, lookup: Lookup): Promise<ItemResult> {
   const created = deps.getCreated();
   if (created[item.key]) return { status: "adopted", note: "Already created" };
   const statusPageId = created.statuspage;
   const monitorId = item.monitorKey ? created[item.monitorKey] : undefined;
   if (!statusPageId) return { status: "skipped", note: "The status page was not created" };
   if (!monitorId) return { status: "skipped", note: "The monitor was not created" };
+  // A monitor or page deleted since it was created can never succeed, so it is not a failure.
+  if (!(await listMonitors(deps, lookup)).some((m) => m.id === monitorId)) return { status: "skipped", note: "The monitor was deleted" };
+  if (!(await listStatusPages(deps, lookup)).some((p) => p.id === statusPageId)) return { status: "skipped", note: "The status page was deleted" };
   const res = await deps.createComponent({ statusPageId, name: String(item.payload.name), monitorIds: [monitorId] });
   const component = res.component as { id?: string } | undefined;
   if (!res.success) return { status: "failed", error: res.message ?? "Could not create the component" };
@@ -346,7 +366,7 @@ export async function runItem(item: CreateItem, deps: RunnerDeps, lookup: Lookup
     if (changed) return { status: "failed", error: changed };
     if (isMonitorKind(item.kind)) return await createMonitor(item, deps, lookup);
     if (item.kind === "status_page") return await createStatusPageItem(item, deps, lookup);
-    if (item.kind === "component") return await createComponentItem(item, deps);
+    if (item.kind === "component") return await createComponentItem(item, deps, lookup);
     return await saveRepeat(item, deps);
   } catch (error) {
     return { status: "failed", error: error instanceof Error ? error.message : "Something went wrong" };

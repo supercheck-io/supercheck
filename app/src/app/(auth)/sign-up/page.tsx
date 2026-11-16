@@ -288,10 +288,11 @@ function SignUpPageContent() {
         const acceptResult = await acceptResponse.json();
 
         if (acceptResponse.ok && acceptResult.success) {
-          // Success - redirect directly to dashboard
+          // Success - continue to the persona question
           console.log(`✅ Auto-accepted invitation to ${acceptResult.data?.organizationName}`);
           announceProjectChange();
-          reloadProjectContext(clearProjectsCache);
+          // Invited members answer the persona question only (setup spec D18).
+          reloadProjectContext(clearProjectsCache, "/setup/welcome");
           return;
         } else {
           console.warn("Could not auto-accept invitation:", acceptResult.error);

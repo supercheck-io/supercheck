@@ -7,10 +7,11 @@ import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { TableBadge } from "@/components/ui/table-badge";
 import { WEBHOOK_PRESETS, getWebhookPreset } from "@/lib/notification-providers/webhook-presets";
-import { postJson, responseError, type StepProps } from "./step-types";
+import { checkSetupProject, postJson, responseError, type StepProps } from "./step-types";
 
 type ChannelType = "email" | "slack" | "teams" | "discord" | "telegram" | "webhook";
 
@@ -55,10 +56,12 @@ interface SavedProvider {
 const REPEAT_OPTIONS = [5, 10, 15, 30, 60];
 
 function ChannelForm({
+  projectId,
   channel,
   defaultEmail,
   onSaved,
 }: {
+  projectId: string;
   channel: (typeof CHANNELS)[number];
   defaultEmail?: string | null;
   onSaved: (provider: SavedProvider) => void;
@@ -89,6 +92,13 @@ function ChannelForm({
   const save = async () => {
     setBusy("save");
     const name = channel.label;
+    // The route writes to the active project, so confirm it is still the setup project.
+    const changed = await checkSetupProject(projectId);
+    if (changed) {
+      setResult({ ok: false, text: changed });
+      setBusy(null);
+      return;
+    }
     const res = await postJson<{ id?: string; name?: string; type?: string }>("/api/notification-providers", { name, type: channel.type, config: { ...config(), name } });
     if (res.ok && res.data.id) {
       onSaved({ id: res.data.id, name, type: channel.type });
@@ -103,18 +113,18 @@ function ChannelForm({
       {channel.type === "webhook" ? (
         <div className="space-y-1.5">
           <Label htmlFor="setup-webhook-preset">Service</Label>
-          <select
-            id="setup-webhook-preset"
-            className="h-9 w-full rounded-md border bg-background px-3 text-sm"
-            value={presetId}
-            onChange={(event) => setPresetId(event.target.value)}
-          >
-            {WEBHOOK_PRESETS.map((preset) => (
-              <option key={preset.id} value={preset.id}>
-                {preset.label}
-              </option>
-            ))}
-          </select>
+          <Select value={presetId} onValueChange={setPresetId}>
+            <SelectTrigger id="setup-webhook-preset" className="w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {WEBHOOK_PRESETS.map((preset) => (
+                <SelectItem key={preset.id} value={preset.id}>
+                  {preset.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           <p className="text-xs text-muted-foreground">{getWebhookPreset(presetId)?.summary}</p>
         </div>
       ) : null}
@@ -145,7 +155,7 @@ function ChannelForm({
   );
 }
 
-export function AlertsStep({ draft, patchDraft, features, permissions, readOnly, userEmail }: StepProps) {
+export function AlertsStep({ response, draft, patchDraft, features, permissions, readOnly, userEmail }: StepProps) {
   const providerIds = draft.alerts?.providerIds ?? [];
   const [saved, setSaved] = useState<SavedProvider[]>([]);
   const [open, setOpen] = useState<ChannelType | null>(providerIds.length === 0 && userEmail ? "email" : null);
@@ -213,7 +223,7 @@ export function AlertsStep({ draft, patchDraft, features, permissions, readOnly,
               </Button>
             ))}
           </div>
-          {open ? <ChannelForm key={open} channel={CHANNELS.find((c) => c.type === open)!} defaultEmail={userEmail} onSaved={onSaved} /> : null}
+          {open ? <ChannelForm key={open} projectId={response.projectId} channel={CHANNELS.find((c) => c.type === open)!} defaultEmail={userEmail} onSaved={onSaved} /> : null}
         </section>
       ) : (
         <Alert variant="info">You do not have permission to add channels in this project. Ask a project admin.</Alert>
@@ -244,19 +254,22 @@ export function AlertsStep({ draft, patchDraft, features, permissions, readOnly,
               <Label htmlFor="setup-repeat-every" className="text-xs">
                 Repeat every
               </Label>
-              <select
-                id="setup-repeat-every"
-                className="h-8 rounded-md border bg-background px-2 text-sm"
-                value={repeat.repeatMinutes}
+              <Select
+                value={String(repeat.repeatMinutes)}
                 disabled={readOnly || !permissions.canUpdateProject}
-                onChange={(event) => setRepeat({ enabled: true, repeatMinutes: Number(event.target.value) })}
+                onValueChange={(value) => setRepeat({ enabled: true, repeatMinutes: Number(value) })}
               >
-                {REPEAT_OPTIONS.map((minutes) => (
-                  <option key={minutes} value={minutes}>
-                    {minutes} min
-                  </option>
-                ))}
-              </select>
+                <SelectTrigger id="setup-repeat-every" className="h-8 w-28">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {REPEAT_OPTIONS.map((minutes) => (
+                    <SelectItem key={minutes} value={String(minutes)}>
+                      {minutes} min
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           ) : null}
         </section>

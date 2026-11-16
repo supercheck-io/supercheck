@@ -17,18 +17,20 @@ jest.mock("@/actions/notification-policy", () => ({ getProjectNotificationPolicy
 const { useAppConfig } = jest.requireMock("@/hooks/use-app-config") as { useAppConfig: jest.Mock };
 const { toast } = jest.requireMock("sonner") as { toast: { error: jest.Mock } };
 
-type Call = { url: string; method: string; body?: Record<string, unknown> };
+type Call = { url: string; method: string; body?: Record<string, unknown>; keepalive?: boolean };
 let calls: Call[];
 let lockStatus: number;
+let lockGate: Promise<void> | null;
 let putHandler: (call: Call) => { status: number; body: unknown };
 
-const fetchMock = jest.fn(async (url: string, init?: { method?: string; body?: string }) => {
-  const call: Call = { url, method: init?.method ?? "GET", body: init?.body ? JSON.parse(init.body) : undefined };
+const fetchMock = jest.fn(async (url: string, init?: { method?: string; body?: string; keepalive?: boolean }) => {
+  const call: Call = { url, method: init?.method ?? "GET", body: init?.body ? JSON.parse(init.body) : undefined, keepalive: init?.keepalive };
   calls.push(call);
   const reply = (status: number, body: unknown) => ({ ok: status < 400, status, json: async () => body });
   if (url.endsWith("/setup/lock")) {
     if (call.method === "DELETE") return reply(204, {});
-    return lockStatus === 423
+    if (lockGate) await lockGate;
+    return lockStatus === 423 && !call.body?.takeover
       ? reply(423, { error: "locked", lock: { userId: "u2", userName: "Priya Shah", lockedAt: new Date(Date.now() - 6 * 60_000).toISOString(), mine: false } })
       : reply(200, { lock: { userId: "u1", userName: "Me", lockedAt: new Date().toISOString(), mine: true } });
   }
@@ -42,6 +44,7 @@ const fetchMock = jest.fn(async (url: string, init?: { method?: string; body?: s
 beforeEach(() => {
   calls = [];
   lockStatus = 200;
+  lockGate = null;
   push.mockReset();
   toast.error.mockReset();
   fetchMock.mockClear();
@@ -167,6 +170,14 @@ describe("navigation and draft", () => {
     expect(await screen.findByText("Draft saved")).toBeTruthy();
   });
 
+  it("says created items stay once something was created", async () => {
+    const created = { "monitor:website:abc": "00000000-0000-4000-8000-000000000009" };
+    renderWizard(makeResponse({}, { status: "in_progress", draft: { created } }));
+    fireEvent.click(screen.getByRole("button", { name: "Exit setup" }));
+    expect(await screen.findByText(/already created stay in your project/)).toBeTruthy();
+    expect(screen.queryByText(/Nothing has been created yet/)).toBeNull();
+  });
+
   it("keeps the dialog closed when the user keeps going", async () => {
     renderWizard(makeResponse({}, { status: "in_progress" }));
     fireEvent.click(screen.getByRole("button", { name: "Exit setup" }));
@@ -205,6 +216,52 @@ describe("lock", () => {
     expect(screen.getByText(/Priya Shah started it 6 minutes ago/)).toBeTruthy();
     expect(screen.getByLabelText("App URL")).toBeDisabled();
     expect(screen.getByRole("button", { name: "Skip this step" })).toBeDisabled();
+  });
+
+  it("releases a lock whose claim finished after the wizard unmounted", async () => {
+    let open: () => void = () => undefined;
+    lockGate = new Promise<void>((resolve) => { open = resolve; });
+    const view = renderWizard(makeResponse({}, { status: "in_progress" }));
+    await waitFor(() => expect(calls.some((c) => c.method === "POST")).toBe(true));
+    view.unmount();
+    expect(calls.some((c) => c.method === "DELETE")).toBe(false);
+    open();
+    await waitFor(() => expect(calls.some((c) => c.method === "DELETE" && c.keepalive)).toBe(true));
+  });
+
+  it("releases the lock with a keepalive request when the page is hidden", async () => {
+    renderWizard(makeResponse({}, { status: "in_progress" }));
+    await waitFor(() => expect(calls.some((c) => c.method === "POST")).toBe(true));
+    await act(async () => { await Promise.resolve(); });
+    window.dispatchEvent(new Event("pagehide"));
+    expect(calls.filter((c) => c.method === "DELETE" && c.keepalive)).toHaveLength(1);
+  });
+
+  it("lets a project admin take over a held lock, and hides the button from others", async () => {
+    lockStatus = 423;
+    const view = renderWizard(makeResponse({}, { status: "in_progress" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Take over" }));
+    await waitFor(() => expect(screen.queryByTestId("setup-locked")).toBeNull());
+    expect(calls.some((c) => c.method === "POST" && c.body?.takeover === true)).toBe(true);
+    view.unmount();
+    const base = makeResponse({}, { status: "in_progress" });
+    renderWizard({ ...base, permissions: { ...base.permissions, canUpdateProject: false } });
+    await screen.findByTestId("setup-locked");
+    expect(screen.queryByRole("button", { name: "Take over" })).toBeNull();
+  });
+
+  it("moves between steps locally, without saving, while read-only", async () => {
+    lockStatus = 423;
+    renderWizard(makeResponse({}, { status: "in_progress" }));
+    await screen.findByTestId("setup-locked");
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+    expect(screen.getByTestId("setup-step-alerts").getAttribute("aria-current")).toBe("step");
+    fireEvent.click(screen.getByTestId("setup-step-monitors"));
+    expect(screen.getByTestId("setup-step-monitors").getAttribute("aria-current")).toBe("step");
+    await leaveAndFlush();
+    await waitFor(() => expect(push).toHaveBeenCalledWith("/"));
+    expect(puts()).toHaveLength(0);
+    expect(screen.queryByText("Could not save the draft")).toBeNull();
   });
 
   it("shows a lock already held by someone else before the first response", () => {

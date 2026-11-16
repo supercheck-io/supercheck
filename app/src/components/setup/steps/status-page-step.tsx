@@ -1,5 +1,7 @@
 "use client";
 
+import { useEffect } from "react";
+
 import { Alert } from "@/components/ui/alert";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -16,6 +18,12 @@ export function StatusPageStep({ response, draft, patchDraft, setStatusPageOptOu
   const disabled = readOnly || !permissions.canCreateStatusPage;
 
   const set = (next: Partial<typeof page>) => patchDraft((d) => ({ ...d, statusPage: { ...d.statusPage, ...next } }));
+
+  // First visit: store the default name shown in the field, or Review would create nothing for it.
+  const untouched = !draft.statusPage;
+  useEffect(() => {
+    if (untouched && !disabled) patchDraft((d) => (d.statusPage ? d : { ...d, statusPage: { name } }));
+  }, [untouched, disabled, name, patchDraft]);
 
   return (
     <div className="space-y-6">

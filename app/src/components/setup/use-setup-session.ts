@@ -42,35 +42,54 @@ export function useSetupSession(projectId: string, initial: SetupStateDto, debou
   const chain = useRef<Promise<void>>(Promise.resolve());
   const [saveState, setSaveState] = useState<SaveState>("idle");
 
+  /** Whether the last save attempt persisted everything that was dirty. */
+  const lastSaveOk = useRef(true);
+
   const flush = useCallback((): Promise<void> => {
     if (timer.current) clearTimeout(timer.current);
     timer.current = null;
     chain.current = chain.current.then(async () => {
-      if (dirty.current.size === 0) return;
-      const keys = [...dirty.current];
-      dirty.current.clear();
-      const body: SetupUpdateRequest = { expectedUpdatedAt: updatedAt.current };
-      for (const key of keys) (body as Record<string, unknown>)[key] = latest.current[key];
-      setSaveState("saving");
-      try {
-        const res = await updateProjectSetup(projectId, body);
-        updatedAt.current = res.state.updatedAt;
-        setSaveState("saved");
-        queryClient.setQueryData(getProjectSetupQueryKey(projectId), res);
-      } catch (error) {
-        const failure = error as { status?: number; body?: { state?: SetupStateDto } };
-        if (failure.status === 409 && failure.body?.state) {
+      // A second attempt only follows a 409 whose merge left local created ids to re-save.
+      for (let attempt = 0; attempt < 2; attempt++) {
+        if (dirty.current.size === 0) return;
+        const keys = [...dirty.current];
+        dirty.current.clear();
+        const body: SetupUpdateRequest = { expectedUpdatedAt: updatedAt.current };
+        for (const key of keys) (body as Record<string, unknown>)[key] = latest.current[key];
+        setSaveState("saving");
+        try {
+          const res = await updateProjectSetup(projectId, body);
+          updatedAt.current = res.state.updatedAt;
+          lastSaveOk.current = true;
+          setSaveState("saved");
+          queryClient.setQueryData(getProjectSetupQueryKey(projectId), res);
+          return;
+        } catch (error) {
+          const failure = error as { status?: number; body?: { state?: SetupStateDto } };
+          if (!(failure.status === 409 && failure.body?.state)) {
+            for (const key of keys) dirty.current.add(key);
+            lastSaveOk.current = false;
+            setSaveState("error");
+            return;
+          }
           const server = failure.body.state;
-          latest.current = fromState(server);
+          // Ids this tab created must survive the reload, or a re-run would create them again.
+          const local = latest.current.draft.created ?? {};
+          const unsaved = Object.entries(local).some(([key, id]) => server.draft.created?.[key] !== id);
+          latest.current = fromState({ ...server, draft: { ...server.draft, created: { ...server.draft.created, ...local } } });
           updatedAt.current = server.updatedAt;
           setState(latest.current);
-          setSaveState("idle");
           toast.error("Setup was changed somewhere else. Your view was reloaded with the saved version.");
-          return;
+          if (!unsaved) {
+            lastSaveOk.current = true;
+            setSaveState("idle");
+            return;
+          }
+          dirty.current.add("draft");
         }
-        for (const key of keys) dirty.current.add(key);
-        setSaveState("error");
       }
+      lastSaveOk.current = false;
+      setSaveState("error");
     });
     return chain.current;
   }, [projectId, queryClient]);
@@ -96,6 +115,8 @@ export function useSetupSession(projectId: string, initial: SetupStateDto, debou
     async (key: string, id: string) => {
       patch({ draft: { ...latest.current.draft, created: { ...latest.current.draft.created, [key]: id } } });
       await flush();
+      // Rejecting shows the item as failed to record instead of silently succeeding.
+      if (!lastSaveOk.current) throw new Error("Created, but your progress could not be saved. Check your connection and retry.");
     },
     [patch, flush],
   );
@@ -110,15 +131,35 @@ export function useSetupSession(projectId: string, initial: SetupStateDto, debou
 export function useSetupLock(projectId: string, enabled: boolean, initialHolder: SetupLockInfo | null) {
   const [holder, setHolder] = useState<SetupLockInfo | null>(initialHolder && !initialHolder.mine ? initialHolder : null);
   const held = useRef(false);
+  const url = `/api/projects/${projectId}/setup/lock`;
+
+  const claim = useCallback(
+    async (takeover: boolean) => {
+      const res = await fetch(url, takeover ? { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ takeover: true }) } : { method: "POST" });
+      if (res.ok) {
+        held.current = true;
+        setHolder(null);
+      }
+      return res.ok;
+    },
+    [url],
+  );
 
   useEffect(() => {
     if (!enabled) return;
     let cancelled = false;
-    const url = `/api/projects/${projectId}/setup/lock`;
+    const release = () => {
+      if (held.current) void fetch(url, { method: "DELETE", keepalive: true }).catch(() => undefined);
+      held.current = false;
+    };
     const take = async () => {
       try {
         const res = await fetch(url, { method: "POST" });
-        if (cancelled) return;
+        if (cancelled) {
+          // Unmounted while the claim was in flight: it still took the lock, so give it back.
+          if (res.ok) void fetch(url, { method: "DELETE", keepalive: true }).catch(() => undefined);
+          return;
+        }
         if (res.status === 423) {
           const body = (await res.json().catch(() => ({}))) as { lock?: SetupLockInfo };
           held.current = false;
@@ -133,13 +174,24 @@ export function useSetupLock(projectId: string, enabled: boolean, initialHolder:
     };
     void take();
     const interval = setInterval(() => void take(), 60_000);
+    // Closing the tab never runs the unmount cleanup reliably, so release on pagehide too.
+    window.addEventListener("pagehide", release);
     return () => {
       cancelled = true;
       clearInterval(interval);
-      if (held.current) void fetch(url, { method: "DELETE", keepalive: true }).catch(() => undefined);
-      held.current = false;
+      window.removeEventListener("pagehide", release);
+      release();
     };
-  }, [projectId, enabled]);
+  }, [url, enabled]);
 
-  return { holder, readOnly: holder !== null };
+  /** Needs project:update on the server; the previous holder turns read-only on their next heartbeat. */
+  const takeOver = useCallback(async () => {
+    try {
+      return await claim(true);
+    } catch {
+      return false;
+    }
+  }, [claim]);
+
+  return { holder, readOnly: holder !== null, takeOver };
 }
