@@ -132,6 +132,10 @@ describe("AI endpoint preset validation", () => {
   const run = (config: Record<string, unknown>, type = "http_request") =>
     validateMonitorConfiguration({ type, target: "https://api.openai.com/v1/chat/completions", config, incomingConfig: config });
 
+  it("names a missing preset field", () => {
+    expect(run({ aiEndpoint: {} })).toMatchObject({ success: false, details: "config.aiEndpoint.model is required" });
+  });
+
   it("requires https when a project secret is sent, unless internal targets are allowed", () => {
     const http = (config: Record<string, unknown>) =>
       validateMonitorConfiguration({ type: "http_request", target: "http://api.example.com/v1/chat/completions", config, incomingConfig: config });
@@ -295,6 +299,18 @@ describe("MCP monitor validation (B12)", () => {
     ["timeout over 60", { mcp: base, timeoutSeconds: 61 }],
   ])("rejects %s", (_name, config) => {
     expect(mcp(config)).toMatchObject({ success: false, error: "Invalid monitor configuration" });
+  });
+
+  it.each([
+    ["no config.mcp", {}, "config.mcp is required for mcp_server monitors"],
+    ["no auth", { mcp: {} }, "config.mcp.auth is required"],
+    ["no tool name", { mcp: { ...base, toolCall: {} } }, "config.mcp.toolCall.name is required"],
+    ["bad protocol", { mcp: { ...base, protocol: "2024" } }, "config.mcp.protocol: "],
+    ["non-string tool name", { mcp: { ...base, requiredTools: [42] } }, "config.mcp.requiredTools.0: "],
+    ["no auth type", { mcp: { auth: {} } }, "config.mcp.auth.type is required"],
+    ["bearer without secret", { mcp: { auth: { type: "bearer" } } }, "config.mcp.auth.secretKey is required"],
+  ])("names the field when it rejects %s", (_name, config, details) => {
+    expect(mcp(config)).toMatchObject({ success: false, details: expect.stringContaining(details) });
   });
 
   it("accepts the boundaries", () => {

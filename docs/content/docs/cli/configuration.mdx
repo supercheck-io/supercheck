@@ -279,7 +279,7 @@ Monitors reference project secrets by name, so a pulled config holds no credenti
 }
 ```
 
-`config.mcpState` holds the tool-list baseline and change history. The server manages it: `pull` and `diff` drop it, and it is never sent on `deploy`.
+`config.mcpState` holds the tool-list baseline and change history. The worker owns it: the server ignores it on `deploy`, and `pull` and `diff` drop it (as they do `aiEndpointState`).
 
 ### Heartbeat monitors
 

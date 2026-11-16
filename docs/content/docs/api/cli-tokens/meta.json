@@ -5,6 +5,10 @@
     "listCliTokens",
     "createCliToken",
     "updateCliToken",
-    "deleteCliToken"
+    "deleteCliToken",
+    "requestDeviceCode",
+    "exchangeDeviceCode",
+    "approveDeviceCode",
+    "denyDeviceCode"
   ]
 }

@@ -15,13 +15,14 @@ Every command is `supercheck <group> <command>`. Run `supercheck <command> --hel
 | [Runs](#runs) | `run list/get/permissions/status/wait/stream/cancel/delete`, `dashboard` |
 | [Tests](#tests) | `test list/get/create/update/delete/tags/tag/validate/run/execute/status` |
 | [Requirements](#requirements) | `requirement list/get/create/update/delete/link/unlink/coverage/export` |
-| [Monitors](#monitors) | `monitor list/get/status/results/stats/create/update/delete` |
+| [Monitors](#monitors) | `monitor list/get/status/results/stats/create/update/delete/heartbeat-url`, `heartbeat ping` |
 | [Variables](#variables), [Tags](#tags) | `var list/get/set/upload/download/delete`, `tag list/create/delete` |
 | [Analytics](#analytics) | `analytics playwright/k6` |
 | [Tokens and projects](#tokens-and-projects) | `token list/create/enable/disable/revoke`, `project list/members` |
-| [Notification providers](#notification-providers) | `notification list/get/create/update/delete/test` |
+| [Notification providers](#notification-providers) | `notification list/get/create/update/delete`, `notification test <id> [--resolve]` |
 | [Alerts and audit](#alerts--audit) | `alert history`, `audit` |
-| [AI SRE](#ai-sre) | `incident`, `sre`, `service` |
+| [AI SRE](#ai-sre) | `incident list/get/timeline/create\|declare/policy/resources/postmortem/assign/unassign/ack/resolve`, `sre`, `service` |
+| [Maintenance windows](#maintenance-windows) | `maintenance list/get/create/update/end/extend/cancel/delete` |
 | [Monitoring-as-Code](#monitoring-as-code) | `pull`, `diff`, `deploy`, `destroy` |
 | [Utilities](#utilities) | `health`, `locations`, `upgrade`, `doctor` |
 
@@ -104,7 +105,7 @@ An operation that requires confirmation exits `3` when declined or when input cl
 
 | Command | What it does | Key flags |
 |---|---|---|
-| `supercheck skills [topic]` | Print the offline workflow index or a focused guide (`onboarding`, `authoring`, `local`, `sync`, `configure`, `execute`, `ci`, `safety`, `investigate`). Bundled with the CLI version; no credentials | — |
+| `supercheck skills [topic]` | Print the offline workflow index or a focused guide (`onboarding`, `authoring`, `local`, `sync`, `configure`, `execute`, `ci`, `ship`, `safety`, `investigate`). Bundled with the CLI version; no credentials | — |
 | `supercheck skills install` | Write a small `.agents/skills/supercheck/SKILL.md` pointer. Existing skill files are preserved unless `--force` | `--path <directory>`, `--force` |
 | `supercheck capabilities` | Report CLI version, local workflow capabilities, and whether credentials are present | `--online` |
 | `supercheck schema config` | Describe the installed configuration schema without loading repository code; a field list, or the full structure with `--json` | `--json` |
@@ -622,7 +623,7 @@ supercheck tag delete <id> --force    # Skip confirmation
 | `notification test <id>` | Send a test through a saved channel; webhooks and paging services get a test page with dedup key `test:<id>` and the receiver's HTTP status | `--resolve` (close the test page) |
 | `notification test` | Test an unsaved configuration | `--type`, `--payload` (one payload option required) |
 
-Types: `email`, `slack`, `webhook`, `telegram`, `discord`, `teams`. `--payload` is a JSON object; `--data` and `--config` are aliases.
+Types: `email`, `slack`, `webhook`, `telegram`, `discord`, `teams`. `--payload` is a JSON object; `--data` and `--config` are aliases. Paging presets (PagerDuty, Opsgenie and the rest) are set up in the app; the CLI can list and test those channels but not create them from a preset.
 
 <Accordions>
 <Accordion title="Examples" id="notifications-examples">
@@ -694,6 +695,9 @@ AI SRE commands use the active project from the CLI token and follow your role's
 | `incident list` | List incidents (status label, assignee and acknowledgement shown) | `--status`, `--severity`, `--assignee me\|unassigned\|<user-id>` |
 | `incident get <ref>` | Get an incident | — |
 | `incident timeline <ref>` | Incident timeline; reminders, escalations and failed pages are shown as one line each | — |
+| `incident create` (alias `declare`) | Declare an incident by hand | `--title` (required), `--severity`, `--service`, `--affected-service`, `--monitor`, `--summary`, `--commander`, `--status-page`, `--component`, `--notify` |
+| `incident resources <ref>` | List the services and monitors an incident affects; change them with the flags | `--add-service`, `--remove-service`, `--add-monitor`, `--remove-monitor` |
+| `incident postmortem <ref>` | Print the post-mortem as markdown (`--json` returns the sections too) | — |
 | `incident policy get` | Show the project's incident policy (reminders and escalation) | — |
 | `incident policy set` | Change reminders and escalation; flags you omit are kept | `--first-reminder <min\|off>`, `--repeat <min\|off>`, `--max <1-10>`, `--escalate-after <min\|off>`, `--escalate-channel <id>`, `--escalate-member <user-id>` |
 | `incident assign <ref>` | Assign the incident, or its commander, to a project editor or admin | `--user <user-id\|me>` (required), `--commander` |
@@ -722,11 +726,13 @@ supercheck incident ack <incident-number-or-uuid>
 supercheck incident resolve <incident-number-or-uuid> --summary "Traffic restored after rollback"
 supercheck incident create --title "Checkout errors reported by customers" --severity sev2 \
   --service "Checkout API" --monitor <monitor-uuid> --summary "Support reports 500s at payment"
+supercheck incident resources <incident-number-or-uuid> --add-service "Checkout API" --remove-monitor <monitor-uuid>
+supercheck incident postmortem <incident-number-or-uuid>
 supercheck incident create --title "Login outage" --severity sev1 \
   --status-page <status-page-uuid> --component <component-uuid> --impact major --message "We are investigating." --notify
 ```
 
-`incident create` (alias `declare`) opens an incident by hand, with the same notifications and reminders as one opened by an alert. Only `--title` is required; `--severity` defaults to `sev3`. `--service` takes a UUID or the exact service name, and that service's owner becomes the assignee. Each `--monitor` (and `--affected-service`) is listed as affected: its next alert joins this incident instead of opening a new one. `--commander` takes `me` or a user UUID. `--status-page` with at least one `--component` also posts a public incident; subscribers are emailed only with `--notify`. If the public post fails, the incident is still created and the command warns. Declaring is limited to 10 per minute per user and 60 per hour per organization, and needs incident create permission (editor or above).
+`incident create` (alias `declare`) opens an incident by hand, with the same notifications and reminders as one opened by an alert. Only `--title` is required; `--severity` defaults to `sev3`. `--service` takes a UUID or the exact service name, and that service's owner becomes the assignee. Each `--monitor` (and `--affected-service`) is listed as affected: its next alert joins this incident instead of opening a new one. `--commander` takes `me` or a user UUID. `--status-page` with at least one `--component` also posts a public incident; subscribers are emailed only with `--notify`. If the public post fails, the incident is still created and the command warns. Declaring needs editor access or above; rate limits are in [Incidents](/docs/app/investigate/incidents).
 
 The **Status** column shows the display label (Triggered, Acknowledged, Investigating, Fixing, Monitoring, Resolved), also returned as `statusLabel` with `--json`. `--status` filters on the stored values: `open`, `triggered`, `investigating`, `identified`, `recommendations_ready`, `user_applying_fix`, `verifying`, `resolved`.
 
@@ -743,19 +749,26 @@ supercheck incident policy set --first-reminder off --escalate-after off
 
 ### Maintenance windows
 
+During a window monitors keep running, but alerts, incidents and reminders are muted and uptime leaves it out. See [Maintenance windows](/docs/app/monitor#maintenance-windows).
+
+| Command | What it does | Key flags |
+|---|---|---|
+| `maintenance list` | List windows | `--state active\|scheduled\|past`, `--monitor <id>`, `--service <id>` |
+| `maintenance get <id>` | Show one window | — |
+| `maintenance create` | Schedule a window | `--title`, `--start "YYYY-MM-DD HH:MM"`, `--duration` (required); scope `--project`, `--service`, `--monitor` (pick one, repeatable); `--description`, `--timezone`, `--repeat daily\|weekly\|monthly`, `--days mon,thu`, `--day 1-28\|last`, `--until YYYY-MM-DD`, `--status-page` + `--component`, `--notify` |
+| `maintenance update <id>` | Change a window; only the flags you pass change | `--title`, `--description`, a scope flag, `--start`, `--duration`, `--timezone`, `--repeat once\|daily\|weekly\|monthly`, `--days`, `--day`, `--until YYYY-MM-DD\|none`; all optional. `--start` without `--timezone` uses the window's zone. Status page posts are set at create only |
+| `maintenance end <id>` | End an active window now | — |
+| `maintenance extend <id>` | Extend an active window (never shortens it) | exactly one of `--by 30m` or `--to <ISO 8601 date-time>`; no offset means local time |
+| `maintenance cancel <id>` | Cancel a scheduled window, or the rest of a recurring one | — |
+| `maintenance delete <id>` | Delete a window that is not active | `--force` |
+
+`--start` is the local start in `--timezone` (default: your machine's zone). A one-off window can be shown on a status page with `--status-page <id> --component <id>`.
+
 ```bash
-supercheck maintenance list --state active
 supercheck maintenance create --title "DB upgrade" --monitor <monitor-uuid> \
   --start "2026-11-20 02:00" --duration 90m --timezone Europe/Berlin
-supercheck maintenance create --title "Nightly batch" --service <service-uuid> \
-  --start "2026-11-20 01:00" --duration 30m --timezone UTC --repeat weekly --days mon,thu --until 2027-03-01
-supercheck maintenance end <window-uuid>
-supercheck maintenance extend <window-uuid> --by 30m
-supercheck maintenance cancel <window-uuid>
-supercheck maintenance delete <window-uuid> --force
+supercheck maintenance extend <window-uuid> --to 2026-11-20T04:00:00Z
 ```
-
-Pick one scope: `--project`, `--service` or `--monitor` (repeatable). `--start` is the local start in `--timezone` (default: your machine's zone). `--repeat monthly` takes `--day 1-28` or `--day last`. A one-off window can be shown on a status page with `--status-page <id> --component <id>`; `--notify` tells subscribers at creation, start and end. During a window monitors keep running, but alerts, incidents and reminders are muted and uptime leaves it out. See [Maintenance windows](/docs/app/monitor#maintenance-windows).
 
 ### Triage and investigation
 

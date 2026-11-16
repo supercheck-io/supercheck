@@ -106,6 +106,7 @@ export type McpViewResource =
   | "requirement"
   | "status_page"
   | "variable"
+  | "notification"
   | "sre_service"
   | "sre_incident"
   | "sre_investigation"

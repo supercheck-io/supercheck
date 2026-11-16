@@ -414,6 +414,115 @@
         "description": "Timeline events (`eventType`, `actorType`, `eventData`, `createdAt`). Events of type `notification` record reminders (`kind: reminder`, `n`, `of`), the escalation step (`kind: escalation`; `reached: 0` when its target was removed) and failed pages (`kind: page_failed`, `preset`, `status`, `fallback`), with provider ids and types only."
       }
     },
+    "/api/sre/incidents/{id}/postmortem": {
+      "get": {
+        "operationId": "getSreIncidentPostmortem",
+        "summary": "Get an incident post-mortem",
+        "tags": [
+          "AI SRE"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The post-mortem: `postmortem` (`sections`, `generatedAt`, `updatedAt`) and `markdown`, both null until one is written",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "postmortem",
+                    "markdown"
+                  ],
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "postmortem": {
+                      "type": [
+                        "object",
+                        "null"
+                      ],
+                      "properties": {
+                        "sections": {
+                          "type": "object",
+                          "description": "Section text by key; a missing or empty key has no text yet.",
+                          "properties": {
+                            "summary": {
+                              "type": "string"
+                            },
+                            "impact": {
+                              "type": "string"
+                            },
+                            "timeline": {
+                              "type": "string"
+                            },
+                            "root_cause": {
+                              "type": "string"
+                            },
+                            "contributing_factors": {
+                              "type": "string"
+                            },
+                            "follow_ups": {
+                              "type": "string"
+                            }
+                          },
+                          "additionalProperties": false
+                        },
+                        "generatedAt": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "format": "date-time"
+                        },
+                        "updatedAt": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "format": "date-time"
+                        }
+                      }
+                    },
+                    "markdown": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "description": "The post-mortem as Markdown, or null when there is none."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid incident ID"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Insufficient permission"
+          },
+          "404": {
+            "description": "Incident not found in the active project"
+          }
+        },
+        "description": "Read-only. Sections are `summary`, `impact`, `timeline`, `root_cause`, `contributing_factors` and `follow_ups`."
+      }
+    },
     "/api/sre/incidents/{id}/resolve": {
       "post": {
         "operationId": "resolveSreIncident",
@@ -4504,7 +4613,22 @@
                   },
                   "config": {
                     "type": "object",
-                    "description": "Provider-specific configuration (e.g. `webhookUrl` for Slack)"
+                    "description": "Provider-specific configuration (e.g. `webhookUrl` for Slack). For webhooks, `preset` names the paging service; send the full request settings with it.",
+                    "properties": {
+                      "preset": {
+                        "type": "string",
+                        "enum": [
+                          "custom",
+                          "pagerduty",
+                          "opsgenie",
+                          "jsm_ops",
+                          "splunk_on_call",
+                          "better_stack",
+                          "incident_io"
+                        ],
+                        "description": "Webhook only. Names the paging service the channel is for. It does not fill the request: send `method`, `headers` and `bodyTemplate` too, or create the channel in the app, which fills them from the preset."
+                      }
+                    }
                   }
                 },
                 "required": [
@@ -4596,7 +4720,23 @@
                     "type": "string"
                   },
                   "config": {
-                    "type": "object"
+                    "type": "object",
+                    "properties": {
+                      "preset": {
+                        "type": "string",
+                        "enum": [
+                          "custom",
+                          "pagerduty",
+                          "opsgenie",
+                          "jsm_ops",
+                          "splunk_on_call",
+                          "better_stack",
+                          "incident_io"
+                        ],
+                        "description": "Webhook only. Names the paging service the channel is for. It does not fill the request: send `method`, `headers` and `bodyTemplate` too, or create the channel in the app, which fills them from the preset."
+                      }
+                    },
+                    "description": "Provider-specific configuration. For webhooks, `preset` names the paging service; send the full request settings with it."
                   }
                 },
                 "required": [
@@ -4674,7 +4814,8 @@
                     ]
                   },
                   "config": {
-                    "type": "object"
+                    "type": "object",
+                    "description": "Provider-specific configuration"
                   }
                 },
                 "required": [
@@ -10839,7 +10980,8 @@
               }
             }
           }
-        }
+        },
+        "description": "The new end must be later than the current end (use the end action to finish early) and in the future."
       }
     },
     "/api/maintenance-windows/{id}/cancel": {
@@ -11364,43 +11506,77 @@
             "description": "URL to the run report"
           },
           "agent": {
-          "type": "object",
-          "description": "Agent test results, present only for runs of agent tests. Numbers, tool names and clipped failure messages; prompts and replies are not included.",
-          "properties": {
-            "tests": {
-              "type": "array",
-              "maxItems": 20,
-              "items": {
-                "type": "object",
-                "properties": {
-                  "testId": { "type": "string" },
-                  "title": { "type": "string" },
-                  "attempts": { "type": "integer" },
-                  "passed": { "type": "integer" },
-                  "passRate": { "type": "number", "description": "Passed attempts divided by attempts (0 to 1)" },
-                  "totalTokens": { "type": "integer" },
-                  "judgeTokens": { "type": "integer" },
-                  "cost": { "type": "number", "description": "Only when the agent reports it" },
-                  "toolNames": { "type": "array", "maxItems": 50, "items": { "type": "string" } },
-                  "durationMs": { "type": "integer" },
-                  "slowestMs": { "type": "integer", "description": "Slowest attempt" },
-                  "failures": {
-                    "type": "array",
-                    "maxItems": 5,
-                    "items": {
-                      "type": "object",
-                      "properties": {
-                        "attempt": { "type": "integer" },
-                        "message": { "type": "string", "maxLength": 200 }
+            "type": "object",
+            "description": "Agent test results, present only for runs of agent tests. Numbers, tool names and clipped failure messages; prompts and replies are not included. Returned by GET /api/runs/{runId} only.",
+            "properties": {
+              "tests": {
+                "type": "array",
+                "maxItems": 20,
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "testId": {
+                      "type": "string"
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "attempts": {
+                      "type": "integer"
+                    },
+                    "passed": {
+                      "type": "integer"
+                    },
+                    "passRate": {
+                      "type": "number",
+                      "description": "Passed attempts divided by attempts (0 to 1)"
+                    },
+                    "totalTokens": {
+                      "type": "integer"
+                    },
+                    "judgeTokens": {
+                      "type": "integer"
+                    },
+                    "cost": {
+                      "type": "number",
+                      "description": "Only when the agent reports it"
+                    },
+                    "toolNames": {
+                      "type": "array",
+                      "maxItems": 50,
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "durationMs": {
+                      "type": "integer"
+                    },
+                    "slowestMs": {
+                      "type": "integer",
+                      "description": "Slowest attempt"
+                    },
+                    "failures": {
+                      "type": "array",
+                      "maxItems": 5,
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "attempt": {
+                            "type": "integer"
+                          },
+                          "message": {
+                            "type": "string",
+                            "maxLength": 200
+                          }
+                        }
                       }
                     }
                   }
                 }
               }
             }
-          }
-        },
-        "testCount": {
+          },
+          "testCount": {
             "type": "integer",
             "nullable": true
           },
@@ -11422,6 +11598,10 @@
             "type": "string",
             "format": "uuid",
             "nullable": true
+          },
+          "isAgentRun": {
+            "type": "boolean",
+            "description": "True when the run's test, or a test in its job, is an agent test. Returned by GET /api/runs/{runId} only."
           }
         }
       },
@@ -12969,19 +13149,65 @@
           },
           "aiEndpoint": {
             "type": "object",
-            "required": ["model"],
+            "required": [
+              "model"
+            ],
             "additionalProperties": false,
             "description": "AI endpoint preset: an OpenAI-compatible streaming chat call. Only on http_request monitors; method, headers, body, auth, keywordInBody and expectedStatusCodes must be absent. The prompt and secretKey are returned to editors only.",
             "properties": {
-              "secretKey": { "type": "string", "minLength": 1, "maxLength": 255, "description": "Project secret holding the API key. Omit to send no key." },
-              "keyHeader": { "type": "string", "pattern": "^[A-Za-z0-9-]{1,64}$", "default": "Authorization", "description": "Authorization sends a Bearer key; any other header name sends the raw key." },
-              "model": { "type": "string", "minLength": 1, "maxLength": 200 },
-              "prompt": { "type": "string", "minLength": 1, "maxLength": 2000, "default": "Reply with the single word OK." },
-              "maxTokens": { "type": "integer", "minimum": 1, "maximum": 512, "default": 16, "description": "Reasoning models (gpt-5, o-series) spend tokens on thinking and need more, for example 256." },
-              "expectText": { "type": "string", "description": "The reply must contain this text (not case sensitive)." },
-              "firstTokenTimeoutMs": { "type": "integer", "minimum": 500, "maximum": 60000, "default": 15000, "description": "Must not exceed the total timeout (`timeoutSeconds` x 1000, default 60 s)." },
-              "warnFirstTokenMs": { "type": "integer", "minimum": 100, "maximum": 60000, "description": "Send a warning when the first token is slower than this for 3 cycles in a row. Off when unset." },
-              "warnTotalTokens": { "type": "integer", "minimum": 1, "maximum": 1000000, "description": "Send a warning when one call uses more tokens than this. Off when unset." }
+              "secretKey": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 255,
+                "description": "Project secret holding the API key. Omit to send no key."
+              },
+              "keyHeader": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9-]{1,64}$",
+                "default": "Authorization",
+                "description": "Authorization sends a Bearer key; any other header name sends the raw key."
+              },
+              "model": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              },
+              "prompt": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 2000,
+                "default": "Reply with the single word OK."
+              },
+              "maxTokens": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 512,
+                "default": 16,
+                "description": "Reasoning models (gpt-5, o-series) spend tokens on thinking and need more, for example 256."
+              },
+              "expectText": {
+                "type": "string",
+                "description": "The reply must contain this text (not case sensitive)."
+              },
+              "firstTokenTimeoutMs": {
+                "type": "integer",
+                "minimum": 500,
+                "maximum": 60000,
+                "default": 15000,
+                "description": "Must not exceed the total timeout (`timeoutSeconds` x 1000, default 60 s)."
+              },
+              "warnFirstTokenMs": {
+                "type": "integer",
+                "minimum": 100,
+                "maximum": 60000,
+                "description": "Send a warning when the first token is slower than this for 3 cycles in a row. Off when unset."
+              },
+              "warnTotalTokens": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 1000000,
+                "description": "Send a warning when one call uses more tokens than this. Off when unset."
+              }
             }
           },
           "aiEndpointState": {
@@ -12989,39 +13215,94 @@
             "readOnly": true,
             "description": "Written by the worker; ignored on create and update.",
             "properties": {
-              "lastServedModel": { "type": "string" }
+              "lastServedModel": {
+                "type": "string"
+              }
             }
           },
           "mcp": {
             "type": "object",
-            "required": ["auth"],
+            "required": [
+              "auth"
+            ],
             "additionalProperties": false,
             "description": "MCP Monitor settings. Only on mcp_server monitors, whose `target` is the MCP endpoint URL (https; http only when the server runs with ALLOW_INTERNAL_TARGETS=true; no credentials or fragment). Viewers get this object without `toolCall.arguments`, `auth.headerName` and `auth.secretKey`.",
             "properties": {
               "auth": {
                 "type": "object",
-                "required": ["type"],
+                "required": [
+                  "type"
+                ],
                 "additionalProperties": false,
                 "properties": {
-                  "type": { "type": "string", "enum": ["none", "bearer", "header"] },
-                  "secretKey": { "type": "string", "minLength": 1, "maxLength": 255, "description": "Name of a secret in the monitor's own project. Required for `bearer` and `header`; an unknown name is rejected." },
-                  "headerName": { "type": "string", "pattern": "^[A-Za-z0-9-]{1,64}$", "description": "Header that carries the secret. Required for `header`." }
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "none",
+                      "bearer",
+                      "header"
+                    ]
+                  },
+                  "secretKey": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 255,
+                    "description": "Name of a secret in the monitor's own project. Required for `bearer` and `header`; an unknown name is rejected."
+                  },
+                  "headerName": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9-]{1,64}$",
+                    "description": "Header that carries the secret. Required for `header`."
+                  }
                 }
               },
-              "protocol": { "type": "string", "enum": ["auto", "2025", "2026"], "default": "auto" },
-              "requiredTools": { "type": "array", "maxItems": 50, "items": { "type": "string", "pattern": "^[A-Za-z0-9_.:-]{1,128}$" }, "description": "Tool names that must be listed by the server." },
+              "protocol": {
+                "type": "string",
+                "enum": [
+                  "auto",
+                  "2025",
+                  "2026"
+                ],
+                "default": "auto"
+              },
+              "requiredTools": {
+                "type": "array",
+                "maxItems": 50,
+                "items": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9_.:-]{1,128}$"
+                },
+                "description": "Tool names that must be listed by the server."
+              },
               "toolCall": {
                 "type": "object",
-                "required": ["name"],
+                "required": [
+                  "name"
+                ],
                 "additionalProperties": false,
                 "description": "Optional tool called on every check. Pick a read-only tool.",
                 "properties": {
-                  "name": { "type": "string", "pattern": "^[A-Za-z0-9_.:-]{1,128}$" },
-                  "arguments": { "type": "object", "description": "Fixed arguments, at most 8 KiB when serialized." },
-                  "expectText": { "type": "string", "maxLength": 500, "description": "The tool result must contain this text." }
+                  "name": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9_.:-]{1,128}$"
+                  },
+                  "arguments": {
+                    "type": "object",
+                    "description": "Fixed arguments, at most 8 KiB when serialized."
+                  },
+                  "expectText": {
+                    "type": "string",
+                    "maxLength": 500,
+                    "description": "The tool result must contain this text."
+                  }
                 }
               },
-              "slowMs": { "type": "integer", "minimum": 100, "maximum": 60000, "description": "Send a warning when a check takes longer than this for 3 cycles in a row. Off when unset." }
+              "slowMs": {
+                "type": "integer",
+                "minimum": 100,
+                "maximum": 60000,
+                "description": "Send a warning when a check takes longer than this for 3 cycles in a row. Off when unset."
+              }
             }
           },
           "mcpState": {
@@ -13029,9 +13310,85 @@
             "readOnly": true,
             "description": "Written by the worker (detected protocol, tool-list baseline and recent changes); ignored on create and update.",
             "properties": {
-              "detectedProtocol": { "type": "string", "enum": ["2025", "2026"] },
-              "baseline": { "type": "object", "properties": { "hash": { "type": "string" }, "takenAt": { "type": "string", "format": "date-time" }, "tools": { "type": "array", "items": { "type": "object", "properties": { "name": { "type": "string" }, "fingerprint": { "type": "string" } } } } } },
-              "changes": { "type": "array", "description": "Newest last, at most 10.", "items": { "type": "object", "properties": { "at": { "type": "string", "format": "date-time" }, "added": { "type": "array", "items": { "type": "string" } }, "removed": { "type": "array", "items": { "type": "string" } }, "changed": { "type": "array", "items": { "type": "object", "properties": { "name": { "type": "string" }, "reasons": { "type": "array", "items": { "type": "string", "enum": ["description", "schema"] } } } } } } } }
+              "detectedProtocol": {
+                "type": "string",
+                "enum": [
+                  "2025",
+                  "2026"
+                ]
+              },
+              "baseline": {
+                "type": "object",
+                "properties": {
+                  "hash": {
+                    "type": "string"
+                  },
+                  "takenAt": {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  "tools": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "name": {
+                          "type": "string"
+                        },
+                        "fingerprint": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
+                }
+              },
+              "changes": {
+                "type": "array",
+                "description": "Newest last, at most 10.",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "at": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "added": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "removed": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "changed": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "name": {
+                            "type": "string"
+                          },
+                          "reasons": {
+                            "type": "array",
+                            "items": {
+                              "type": "string",
+                              "enum": [
+                                "description",
+                                "schema"
+                              ]
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
             }
           },
           "port": {
@@ -13068,8 +13425,14 @@
             "readOnly": true,
             "description": "First failed certificate probe for the current host while no certificate could be read. Written by the worker; ignored on create and update.",
             "properties": {
-              "since": { "type": "string", "format": "date-time" },
-              "host": { "type": "string", "nullable": true }
+              "since": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "host": {
+                "type": "string",
+                "nullable": true
+              }
             }
           },
           "sslCertificate": {
@@ -13077,13 +13440,29 @@
             "readOnly": true,
             "description": "Last certificate the worker read for a website monitor with SSL checks on. Written by the worker; ignored on create and update.",
             "properties": {
-              "valid": { "type": "boolean" },
-              "issuer": { "type": "string" },
-              "subject": { "type": "string" },
-              "validFrom": { "type": "string", "format": "date-time" },
-              "validTo": { "type": "string", "format": "date-time" },
-              "daysRemaining": { "type": "integer" },
-              "host": { "type": "string" }
+              "valid": {
+                "type": "boolean"
+              },
+              "issuer": {
+                "type": "string"
+              },
+              "subject": {
+                "type": "string"
+              },
+              "validFrom": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "validTo": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "daysRemaining": {
+                "type": "integer"
+              },
+              "host": {
+                "type": "string"
+              }
             }
           },
           "timeoutSeconds": {
@@ -13203,7 +13582,18 @@
             "additionalProperties": {
               "type": "boolean"
             },
-            "description": "Warning-only notifications by kind, for example `{ \"heartbeat_late\": true }` (heartbeat monitors: a ping is late but inside the grace period). Warnings notify the monitor's channels and never open an incident. Kinds that do not apply to the monitor type are dropped. See /docs/app/communicate/alerts#warnings."
+            "description": "Warning-only notifications by kind, for example `{ \"heartbeat_late\": true }`. Warnings notify the monitor's channels and never open an incident. Kinds: `heartbeat_late` (heartbeat, off by default); `mcp_tools_changed`, `mcp_slow` (mcp_server); `ai_slow_first_token`, `ai_model_changed`, `ai_tokens_high` (http_request with the AI endpoint preset); `agent_run_failed` (synthetic_test on an agent test). All but `heartbeat_late` are on by default; an unset kind uses its default. Kinds that do not apply to the monitor type are dropped. See /docs/app/communicate/alerts#warnings.",
+            "propertyNames": {
+              "enum": [
+                "heartbeat_late",
+                "mcp_tools_changed",
+                "mcp_slow",
+                "ai_slow_first_token",
+                "ai_model_changed",
+                "ai_tokens_high",
+                "agent_run_failed"
+              ]
+            }
           }
         }
       },

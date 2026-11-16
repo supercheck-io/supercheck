@@ -32,7 +32,7 @@ flowchart LR
     class F complete
 ```
 
-`@supercheck/agent-test` is the small library every agent test imports. It is Playwright's `test` and `expect` plus an `agent` fixture that connects to your agent, sends messages, repeats checks and grades answers. It is installed in the Supercheck runner, so there is nothing to install yourself. The Playground editor shows its types and autocompletes it.
+`@supercheck/agent-test` is the small library every agent test imports. It is Playwright's `test` and `expect` plus an `agent` fixture that connects to your agent, sends messages, repeats checks and grades answers. It is available in the editor and in cloud runs, so there is nothing to install yourself. The Playground editor shows its types and autocompletes it.
 
 ## Templates
 
@@ -97,7 +97,7 @@ The run page shows an **Agent results** card with the pass rate, attempts, token
 - **Tools are only those the agent reports.** For `openai` they are the `tool_calls` the agent returns; for `a2a`, what the task history exposes. A black-box HTTP agent reports none.
 - **A run lasts at most 5 minutes**, and in a job that limit is shared by every test in the job. Keep agent tests in their own job. Inside a run, one test may take at most 4 minutes, and one `repeat()` at most 200 seconds. Each `send()` times out after `timeoutMs`.
 - **You pay for the calls.** Calls to your agent and to your judge model are billed by their provider, not by Supercheck. AI grading uses your own judge endpoint and key (`agent.judge`); it does not use Supercheck AI credits.
-- **Public addresses only.** The test runs in the same sandbox as other tests: an agent on a private or internal address is unreachable. Expose it on a public URL.
+- **Public addresses only.** Cloud runs reach public addresses only: an agent on a private or internal address is unreachable. Expose it on a public URL.
 - **Remote only.** `supercheck test run --local` and `job run --local` refuse agent tests.
 
 ## Watch an agent with a synthetic monitor

@@ -302,6 +302,81 @@ paths:
         `reached: 0` when its target was removed) and failed pages (`kind:
         page_failed`, `preset`, `status`, `fallback`), with provider ids and
         types only."
+  /api/sre/incidents/{id}/postmortem:
+    get:
+      operationId: getSreIncidentPostmortem
+      summary: Get an incident post-mortem
+      tags:
+        - AI SRE
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: "The post-mortem: `postmortem` (`sections`, `generatedAt`,
+            `updatedAt`) and `markdown`, both null until one is written"
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - success
+                  - postmortem
+                  - markdown
+                properties:
+                  success:
+                    type: boolean
+                  postmortem:
+                    type:
+                      - object
+                      - "null"
+                    properties:
+                      sections:
+                        type: object
+                        description: Section text by key; a missing or empty key has no text yet.
+                        properties:
+                          summary:
+                            type: string
+                          impact:
+                            type: string
+                          timeline:
+                            type: string
+                          root_cause:
+                            type: string
+                          contributing_factors:
+                            type: string
+                          follow_ups:
+                            type: string
+                        additionalProperties: false
+                      generatedAt:
+                        type:
+                          - string
+                          - "null"
+                        format: date-time
+                      updatedAt:
+                        type:
+                          - string
+                          - "null"
+                        format: date-time
+                  markdown:
+                    type:
+                      - string
+                      - "null"
+                    description: The post-mortem as Markdown, or null when there is none.
+        "400":
+          description: Invalid incident ID
+        "401":
+          description: Authentication required
+        "403":
+          description: Insufficient permission
+        "404":
+          description: Incident not found in the active project
+      description: Read-only. Sections are `summary`, `impact`, `timeline`,
+        `root_cause`, `contributing_factors` and `follow_ups`.
   /api/sre/incidents/{id}/resolve:
     post:
       operationId: resolveSreIncident
@@ -3123,7 +3198,24 @@ paths:
                     - teams
                 config:
                   type: object
-                  description: Provider-specific configuration (e.g. `webhookUrl` for Slack)
+                  description: Provider-specific configuration (e.g. `webhookUrl` for Slack). For
+                    webhooks, `preset` names the paging service; send the full
+                    request settings with it.
+                  properties:
+                    preset:
+                      type: string
+                      enum:
+                        - custom
+                        - pagerduty
+                        - opsgenie
+                        - jsm_ops
+                        - splunk_on_call
+                        - better_stack
+                        - incident_io
+                      description: "Webhook only. Names the paging service the channel is for. It does
+                        not fill the request: send `method`, `headers` and
+                        `bodyTemplate` too, or create the channel in the app,
+                        which fills them from the preset."
               required:
                 - name
                 - type
@@ -3185,6 +3277,23 @@ paths:
                   type: string
                 config:
                   type: object
+                  properties:
+                    preset:
+                      type: string
+                      enum:
+                        - custom
+                        - pagerduty
+                        - opsgenie
+                        - jsm_ops
+                        - splunk_on_call
+                        - better_stack
+                        - incident_io
+                      description: "Webhook only. Names the paging service the channel is for. It does
+                        not fill the request: send `method`, `headers` and
+                        `bodyTemplate` too, or create the channel in the app,
+                        which fills them from the preset."
+                  description: Provider-specific configuration. For webhooks, `preset` names the
+                    paging service; send the full request settings with it.
               required:
                 - name
                 - type
@@ -3238,6 +3347,7 @@ paths:
                     - teams
                 config:
                   type: object
+                  description: Provider-specific configuration
               required:
                 - type
                 - config
@@ -7555,6 +7665,8 @@ paths:
                 until:
                   type: string
                   format: date-time
+      description: The new end must be later than the current end (use the end action
+        to finish early) and in the future.
   /api/maintenance-windows/{id}/cancel:
     post:
       operationId: cancelMaintenanceWindow
@@ -7942,7 +8054,7 @@ components:
           type: object
           description: Agent test results, present only for runs of agent tests. Numbers,
             tool names and clipped failure messages; prompts and replies are not
-            included.
+            included. Returned by GET /api/runs/{runId} only.
           properties:
             tests:
               type: array
@@ -8008,6 +8120,10 @@ components:
           type: string
           format: uuid
           nullable: true
+        isAgentRun:
+          type: boolean
+          description: True when the run's test, or a test in its job, is an agent test.
+            Returned by GET /api/runs/{runId} only.
     RunPermissionsResponse:
       type: object
       properties:
@@ -9464,10 +9580,24 @@ components:
           additionalProperties:
             type: boolean
           description: "Warning-only notifications by kind, for example `{
-            \"heartbeat_late\": true }` (heartbeat monitors: a ping is late but
-            inside the grace period). Warnings notify the monitor's channels and
-            never open an incident. Kinds that do not apply to the monitor type
-            are dropped. See /docs/app/communicate/alerts#warnings."
+            \"heartbeat_late\": true }`. Warnings notify the monitor's channels
+            and never open an incident. Kinds: `heartbeat_late` (heartbeat, off
+            by default); `mcp_tools_changed`, `mcp_slow` (mcp_server);
+            `ai_slow_first_token`, `ai_model_changed`, `ai_tokens_high`
+            (http_request with the AI endpoint preset); `agent_run_failed`
+            (synthetic_test on an agent test). All but `heartbeat_late` are on
+            by default; an unset kind uses its default. Kinds that do not apply
+            to the monitor type are dropped. See
+            /docs/app/communicate/alerts#warnings."
+          propertyNames:
+            enum:
+              - heartbeat_late
+              - mcp_tools_changed
+              - mcp_slow
+              - ai_slow_first_token
+              - ai_model_changed
+              - ai_tokens_high
+              - agent_run_failed
     MonitorResultDetails:
       type: object
       properties:

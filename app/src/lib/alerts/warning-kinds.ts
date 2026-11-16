@@ -28,7 +28,7 @@ export const WARNING_KINDS = {
     monitorTypes: ["http_request"],
     aiEndpointOnly: true,
     label: "Slow first token",
-    help: "Notify when the first token is slower than Warn first token (ms) for 3 checks in a row. Sends nothing until that limit is set.",
+    help: "Notify when the first token is slower than the \"Warn when first token is slower than (ms)\" limit for 3 checks in a row. Sends nothing until that limit is set.",
     defaultOn: true,
   },
   ai_model_changed: {
@@ -42,7 +42,7 @@ export const WARNING_KINDS = {
     monitorTypes: ["http_request"],
     aiEndpointOnly: true,
     label: "Tokens high",
-    help: "Notify when a reply uses more tokens than Warn total tokens. Sends nothing until that limit is set.",
+    help: "Notify when a reply uses more tokens than the \"Warn when a call uses more tokens than\" limit. Sends nothing until that limit is set.",
     defaultOn: true,
   },
   agent_run_failed: {

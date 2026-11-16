@@ -120,6 +120,11 @@ describe("incident write tools", () => {
     expect(resolveIncident).toHaveBeenCalledWith({ organizationId: "o", projectId: "p", userId: "u" }, id, "fixed");
     expect(out).toEqual({ incidentNumber: 7, changed: true });
   });
+  it("refuses to resolve an incident of another organization or project: the service sees only this connection's scope", async () => {
+    resolveIncident.mockResolvedValue({ ok: false, code: "not_found", error: "Incident not found" });
+    await expect(tools().get("resolve_incident")!.run({ id, resolutionSummary: "fixed" })).rejects.toMatchObject({ code: "not_found" });
+    expect(resolveIncident).toHaveBeenCalledWith({ organizationId: "o", projectId: "p", userId: "u" }, id, "fixed");
+  });
   it("surfaces service refusals as typed failures", async () => {
     acknowledgeIncident.mockResolvedValue({ ok: false, code: "not_found", error: "Incident not found" });
     await expect(tools().get("acknowledge_incident")!.run({ id })).rejects.toMatchObject({ code: "not_found" });
@@ -277,6 +282,11 @@ describe("maintenance window tools", () => {
       "mcp",
     );
     expect(out).toEqual({ id, state: "scheduled", occurrenceStartsAt: "2026-11-20T01:00:00.000Z", occurrenceEndsAt: "2026-11-20T02:30:00.000Z" });
+  });
+  it("end refuses a window of another organization or project: the core sees only this connection's scope", async () => {
+    mockWindows.endMaintenanceWindow.mockResolvedValue({ ok: false, code: "not_found", error: "Maintenance window not found" });
+    await expect(tools().get("end_maintenance_window")!.run({ id })).rejects.toMatchObject({ code: "not_found" });
+    expect(mockWindows.endMaintenanceWindow).toHaveBeenCalledWith({ userId: "u", organizationId: "o", orgPendingDeletion: false, project: { id: "p", userRole: "project_editor" } }, id, "mcp");
   });
   it("end, extend and cancel call the core and surface its failures", async () => {
     mockWindows.endMaintenanceWindow.mockResolvedValue(view);

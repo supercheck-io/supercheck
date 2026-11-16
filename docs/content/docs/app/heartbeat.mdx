@@ -97,14 +97,14 @@ supercheck heartbeat ping "$URL" --start  # job started
 supercheck heartbeat ping "$URL" --fail   # job failed
 ```
 
-`heartbeat ping` retries `429`, `503` and network errors up to 3 times within about 60 seconds, and exits `0` when the server accepts it, `4` on an HTTP error (for example `429`), `5` after a 10-second timeout and `1` when it cannot connect. It never prints the token in its errors.
+`heartbeat ping` retries transient errors and uses exit codes you can check in your script. See [CLI commands](/docs/cli/commands#monitors).
 
 ## Late and down
 
-- **Late:** the interval has passed and the grace period has not. The monitor shows a **Late** badge and stays up; uptime is not affected. If **Ping is late** is turned on under **Warnings** in the alert settings, your channels get one warning per late period. Warnings never open an incident.
+- **Late:** the interval has passed and the grace period has not. The monitor shows a **Late** badge and stays up; uptime is not affected. **Ping is late** is an optional [warning](/docs/app/communicate/alerts#warnings).
 - **Down:** the grace period has ended without a ping, or the job sent `/fail`. A failure alert is sent and a sev2 incident opens (you can change the severity or turn incidents off in the alert settings). The next successful ping recovers the monitor and resolves the incident, unless someone acknowledged it.
 
-Heartbeat failure, recovery and warning alerts are not sent while a scheduled maintenance window covers the monitor, as for other monitors.
+Alerts are held back during [maintenance windows](/docs/app/monitor#maintenance-windows).
 
 ## Status pages
 
