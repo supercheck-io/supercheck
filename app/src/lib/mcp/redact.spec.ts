@@ -1,5 +1,5 @@
 /** @jest-environment node */
-import { safeTarget, safeText } from "./redact";
+import { safeJson, safeTarget, safeText } from "./redact";
 
 describe("safeTarget", () => {
   it("keeps only scheme and host of http(s) URLs", () => {
@@ -27,20 +27,25 @@ describe("safeText", () => {
     expect(safeText("https://hooks.slack.com/triggers/T1/2/SLACK-secret https://outlook.office.com/webhook/OUTLOOK-secret")).not.toMatch(/SLACK-secret|OUTLOOK-secret/);
   });
   it("keeps the closing quote of an Authorization header inside JSON", () => {
-    const out = safeText(JSON.stringify({ headers: "Authorization: Bearer abc123" }))!;
+    const out = safeJson({ headers: "Authorization: Bearer abc123" });
     expect(out).not.toContain("abc123");
     expect(() => JSON.parse(out)).not.toThrow();
     expect(safeText('Authorization: Bearer "abc123"')).not.toContain("abc123");
     expect(safeText("Authorization: Basic 'dXNlcjpwdw=='")).not.toContain("dXNlcjpwdw");
     // Event data reaches the redactor as JSON text, so a quoted value arrives with escaped quotes.
-    const escaped = safeText(JSON.stringify({ note: 'Authorization: Bearer "abc123"' }))!;
+    const escaped = safeJson({ note: 'Authorization: Bearer "abc123"' });
     expect(escaped).not.toContain("abc123");
     expect(() => JSON.parse(escaped)).not.toThrow();
     const digest = 'Authorization: Digest username="alice", realm="r", response="deadbeef", nc=00000001';
     expect(safeText(digest)).not.toMatch(/alice|deadbeef|00000001/);
-    const digestJson = safeText(JSON.stringify({ note: digest }))!;
+    const digestJson = safeJson({ note: digest });
     expect(digestJson).not.toMatch(/alice|deadbeef/);
     expect(() => JSON.parse(digestJson)).not.toThrow();
+    const escapedQuote = 'Authorization: Digest username="ali\\"ce", response="0123456789abcdef0123456789abcdef"';
+    expect(safeText(escapedQuote)).not.toContain("0123456789abcdef");
+    const escapedJson = safeJson({ note: escapedQuote });
+    expect(escapedJson).not.toContain("0123456789abcdef");
+    expect(JSON.parse(escapedJson)).toEqual({ note: "Authorization: Digest [REDACTED]" });
   });
   it("stays fast on long whitespace after an auth scheme", () => {
     const started = Date.now();

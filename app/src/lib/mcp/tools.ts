@@ -39,7 +39,7 @@ import { UNTRUSTED } from "./config";
 import { McpToolFailure, registerSreTools, type ToolRegistrar } from "./sre-tools";
 import { getDisplayStatus } from "@/lib/sre/incident-status-display";
 import { storedRootCause } from "@/lib/sre/evidence-brief-summary";
-import { safeTarget, safeText } from "./redact";
+import { safeJson, safeTarget, safeText } from "./redact";
 import { incidentsEnabled } from "@/lib/incident-settings";
 import { getNotificationPolicy } from "@/lib/sre/notification-policy";
 import { sanitizeAgentSummary } from "@/lib/agent-test/run-summary";
@@ -372,7 +372,7 @@ export function registerMcpTools(server: McpServer, ctx: McpCallContext): void {
     return { events: events.map((e) => ({
       id: e.id, eventType: e.eventType, actorType: e.actorType, actorUserId: e.actorUserId, createdAt: iso(e.createdAt),
       // Investigation evidence (reports, tool calls, findings) is never returned over MCP; the event type still shows it happened.
-      data: e.eventData && !EVIDENCE_EVENT_TYPES.has(e.eventType) ? safeText(JSON.stringify(e.eventData), 1000) : null,
+      data: e.eventData && !EVIDENCE_EVENT_TYPES.has(e.eventType) ? safeJson(e.eventData, 1000) : null,
     })) };
   });
 

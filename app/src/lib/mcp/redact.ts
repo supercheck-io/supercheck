@@ -3,17 +3,12 @@ import { redactConnectorText } from "@/lib/sre/connectors/output-sanitizer";
 const MAX_FIELD_CHARS = 4 * 1024;
 
 
-/** One Digest parameter: key=value, the value quoted, JSON-escaped-quoted or bare. */
-const DIGEST_PARAM = String.raw`[A-Za-z-]+=(?:\\"(?:[^"\\\n]|\\[^"])*\\"|"[^"\n]*"|[^\s,"\\]+)`;
-
 /** Extra patterns the shared connector redactor does not cover. */
 const EXTRA_PATTERNS: [RegExp, string][] = [
   [/\b[a-z][a-z0-9+.-]*:\/\/[^\s/@:]+:[^\s/@]+@/gi, "[REDACTED_URL_CREDENTIALS]@"],
-  // Digest carries comma-separated key=value parameters (quoted raw or JSON-escaped); redact them all.
-  // Separators are either "," (with optional spaces) or spaces alone, never both optional, so long whitespace cannot backtrack.
-  [new RegExp(String.raw`\b(authorization|proxy-authorization)\s*[:=]\s*digest\s+${DIGEST_PARAM}(?:\s*,\s*${DIGEST_PARAM}|\s+${DIGEST_PARAM})*`, "gi"), "$1: Digest [REDACTED]"],
-  // The value stops at a quote so a header inside JSON text keeps its closing quote.
-  [/\b(authorization|proxy-authorization)\s*[:=]\s*(basic|bearer|digest)\s+(?:\\"(?:[^"\\\n]|\\[^"])*\\"|"[^"\n]*"|'[^'\n]*'|[^\s"'\\]+)/gi, "$1: [REDACTED]"],
+  // Digest parameters are quoted strings that may hold escaped quotes, so the rest of the line is masked.
+  [/\b(authorization|proxy-authorization)\s*[:=]\s*digest\s[^\r\n]*/gi, "$1: Digest [REDACTED]"],
+  [/\b(authorization|proxy-authorization)\s*[:=]\s*(basic|bearer)\s+(?:"[^"\n]*"|'[^'\n]*'|\S+)/gi, "$1: [REDACTED]"],
   // Chat webhook URLs carry their secret in the path (Discord, Microsoft Teams, Telegram bot token).
   [/\bhttps?:\/\/(?:[a-z0-9-]+\.)*discord(?:app)?\.com\/api\/(?:v\d+\/)?webhooks\/[^\s"'<>]+/gi, "[REDACTED_WEBHOOK_URL]"],
   [/\bhttps?:\/\/[a-z0-9.-]+\.(?:webhook\.office\.com|logic\.azure\.com|powerplatform\.com)(?::\d+)?\/[^\s"'<>]+/gi, "[REDACTED_WEBHOOK_URL]"],
@@ -39,6 +34,20 @@ export function safeText(value: string | null | undefined, max = MAX_FIELD_CHARS
   if (!value) return null;
   const redacted = redactExtra(redactConnectorText(value));
   return redacted.length > max ? `${redacted.slice(0, max)}… [truncated]` : redacted;
+}
+
+/**
+ * Free-form JSON as redacted text. Each string is redacted before encoding, so the patterns never meet JSON escapes
+ * and the result parses unless it is cut at `max`.
+ */
+export function safeJson(value: unknown, max = MAX_FIELD_CHARS): string {
+  const redact = (node: unknown): unknown =>
+    typeof node === "string" ? redactExtra(redactConnectorText(node))
+      : Array.isArray(node) ? node.map(redact)
+      : node && typeof node === "object" ? Object.fromEntries(Object.entries(node).map(([k, v]) => [k, redact(v)]))
+      : node;
+  const text = JSON.stringify(redact(value));
+  return text.length > max ? `${text.slice(0, max)}… [truncated]` : text;
 }
 
 /**
