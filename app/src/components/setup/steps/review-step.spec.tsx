@@ -89,6 +89,14 @@ describe("ReviewStep", () => {
     expect(stopRef.current).toBeNull();
   });
 
+  it("starts a fresh run after a stop (a lost lock taken back)", async () => {
+    const heartbeat = jest.fn(async () => true);
+    const stopRef = { current: null as (() => Promise<void>) | null };
+    setup({ heartbeat, stopRef });
+    await stopRef.current!();
+    fireEvent.click(screen.getByRole("button", { name: "Create 6 items" }));
+    await waitFor(() => expect(heartbeat).toHaveBeenCalled());
+  });
 
   it("lists what is already saved, what will be created and what was skipped", () => {
     setup();

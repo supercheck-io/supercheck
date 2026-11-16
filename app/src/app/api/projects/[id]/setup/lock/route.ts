@@ -21,7 +21,7 @@ export async function POST(request: NextRequest, { params }: Params) {
     if (guard instanceof NextResponse) return guard;
     const raw = await readJsonBody(request);
     if (raw instanceof NextResponse) return raw;
-    const body = (raw.body ?? {}) as { takeover?: unknown; reclaim?: unknown; lockToken?: unknown };
+    const body = (raw.body ?? {}) as { takeover?: unknown; reclaim?: unknown; force?: unknown; lockToken?: unknown };
     const takeover = body.takeover === true;
     const lockToken = tokenOf(body);
     if (lockToken === false) return NextResponse.json({ error: "Invalid lock token" }, { status: 400 });
@@ -31,7 +31,7 @@ export async function POST(request: NextRequest, { params }: Params) {
       return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 });
     }
     const previous = takeover ? (await getSetupState(ctx.organizationId, ctx.project.id, userId)).lock : null;
-    const result = await claimLock(ctx.organizationId, ctx.project.id, userId, lockToken, takeover, body.reclaim === true);
+    const result = await claimLock(ctx.organizationId, ctx.project.id, userId, lockToken, takeover, body.reclaim === true, body.reclaim === true && body.force === true);
     if (result.kind === "locked") return NextResponse.json({ error: "locked", lock: result.lock }, { status: 423 });
     if (takeover && previous && !previous.mine) {
       await logAuditEvent({

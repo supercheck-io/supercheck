@@ -87,7 +87,7 @@ describe("POST claim / heartbeat", () => {
     const res = await POST(req("POST"), params);
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ lock });
-    expect(claimLock).toHaveBeenCalledWith(ORG, PROJECT, "u1", null, false, false);
+    expect(claimLock).toHaveBeenCalledWith(ORG, PROJECT, "u1", null, false, false, false);
   });
   it("423 when another user holds it", async () => {
     const other = { ...lock, userId: "u2", mine: false };
@@ -99,7 +99,7 @@ describe("POST claim / heartbeat", () => {
   it("uses the effective (impersonated) user", async () => {
     (requireAuth as jest.Mock).mockResolvedValue({ userId: "eff" });
     await POST(req("POST"), params);
-    expect(claimLock).toHaveBeenCalledWith(ORG, PROJECT, "eff", null, false, false);
+    expect(claimLock).toHaveBeenCalledWith(ORG, PROJECT, "eff", null, false, false, false);
   });
   it("500 on failure", async () => {
     jest.spyOn(console, "error").mockImplementation(() => {});
@@ -119,7 +119,7 @@ describe("POST takeover", () => {
   it("takes over and audits the previous holder id", async () => {
     const res = await POST(req("POST", {}, { takeover: true }), params);
     expect(res.status).toBe(200);
-    expect(claimLock).toHaveBeenCalledWith(ORG, PROJECT, "u1", null, true, false);
+    expect(claimLock).toHaveBeenCalledWith(ORG, PROJECT, "u1", null, true, false, false);
     expect(logAuditEvent).toHaveBeenCalledWith(expect.objectContaining({ action: "project_setup.lock_taken_over", metadata: { previousHolderId: "u2" } }));
   });
   it("does not audit when nobody held the lock", async () => {
@@ -129,7 +129,7 @@ describe("POST takeover", () => {
   });
   it("a plain POST ignores a non-true takeover flag", async () => {
     await POST(req("POST", {}, { takeover: "yes" }), params);
-    expect(claimLock).toHaveBeenCalledWith(ORG, PROJECT, "u1", null, false, false);
+    expect(claimLock).toHaveBeenCalledWith(ORG, PROJECT, "u1", null, false, false, false);
   });
 });
 
@@ -138,11 +138,23 @@ const TAB = "33333333-3333-4333-8333-333333333333";
 describe("per-tab lock token", () => {
   it("POST passes the token to claimLock, with and without takeover", async () => {
     await POST(req("POST", {}, { lockToken: TAB }), params);
-    expect(claimLock).toHaveBeenCalledWith(ORG, PROJECT, "u1", TAB, false, false);
+    expect(claimLock).toHaveBeenCalledWith(ORG, PROJECT, "u1", TAB, false, false, false);
     await POST(req("POST", {}, { lockToken: TAB, takeover: true }), params);
-    expect(claimLock).toHaveBeenCalledWith(ORG, PROJECT, "u1", TAB, true, false);
+    expect(claimLock).toHaveBeenCalledWith(ORG, PROJECT, "u1", TAB, true, false, false);
     await POST(req("POST", {}, { lockToken: TAB, reclaim: true }), params);
-    expect(claimLock).toHaveBeenCalledWith(ORG, PROJECT, "u1", TAB, false, true);
+    expect(claimLock).toHaveBeenCalledWith(ORG, PROJECT, "u1", TAB, false, true, false);
+  });
+  it("passes force only together with reclaim", async () => {
+    await POST(req("POST", {}, { lockToken: TAB, reclaim: true, force: true }), params);
+    expect(claimLock).toHaveBeenCalledWith(ORG, PROJECT, "u1", TAB, false, true, true);
+    await POST(req("POST", {}, { lockToken: TAB, force: true }), params);
+    expect(claimLock).toHaveBeenLastCalledWith(ORG, PROJECT, "u1", TAB, false, false, false);
+  });
+  it("423 carries sameUser when the user's own tab holds the lock", async () => {
+    (claimLock as jest.Mock).mockResolvedValue({ kind: "locked", lock: { userId: "u1", userName: "Me", lockedAt: "t", mine: false, sameUser: true } });
+    const res = await POST(req("POST", {}, { lockToken: TAB, reclaim: true }), params);
+    expect(res.status).toBe(423);
+    expect((await res.json()).lock.sameUser).toBe(true);
   });
   it("DELETE releases only that tab's lock", async () => {
     await DELETE(req("DELETE", {}, { lockToken: TAB }), params);

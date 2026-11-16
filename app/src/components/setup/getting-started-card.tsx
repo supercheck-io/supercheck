@@ -86,15 +86,11 @@ export function GettingStartedCard({ checklist, status, canEdit, projectId, onDi
 }
 
 /**
- * Dashboard slot (D15): the card replaces the empty state until setup is completed or
- * dismissed. Anything else, including an error or the flag being off, shows `fallback`.
+ * Dashboard slot (D15). Same rule as the sidebar: the card shows while setup is in progress, or not started on
+ * an empty project (the setup response's `projectEmpty`), so existing projects are not nagged after an upgrade.
+ * Anything else, including an error or the flag being off, shows `fallback`. `dashboardHasData` only skips the skeleton.
  */
-/**
- * On an empty project the card replaces the empty state until setup is completed or dismissed.
- * On a project that already has data it shows only while setup is in progress, so existing
- * projects are not nagged after an upgrade (`onlyInProgress`).
- */
-export function DashboardGettingStarted({ fallback, onlyInProgress = false }: { fallback: ReactNode; onlyInProgress?: boolean }) {
+export function DashboardGettingStarted({ fallback, dashboardHasData = false }: { fallback: ReactNode; dashboardHasData?: boolean }) {
   const { setupFeatures } = useAppConfig();
   const project = useProjectContextSafe()?.currentProject ?? null;
   const queryClient = useQueryClient();
@@ -102,11 +98,10 @@ export function DashboardGettingStarted({ fallback, onlyInProgress = false }: { 
   const query = useProjectSetup(setupFeatures.setup ? project?.id : null);
 
   if (!setupFeatures.setup || !project) return <>{fallback}</>;
-  if (query.isPending) return onlyInProgress ? <>{fallback}</> : <Skeleton className="m-4 h-48" data-testid="getting-started-skeleton" />;
+  if (query.isPending) return dashboardHasData ? <>{fallback}</> : <Skeleton className="m-4 h-48" data-testid="getting-started-skeleton" />;
   if (query.isError || !query.data) return <>{fallback}</>;
-  const { state, checklist, permissions } = query.data;
-  if (state.status === "completed" || state.status === "dismissed") return <>{fallback}</>;
-  if (onlyInProgress && state.status !== "in_progress") return <>{fallback}</>;
+  const { state, checklist, permissions, projectEmpty } = query.data;
+  if (!(state.status === "in_progress" || (state.status === "not_started" && projectEmpty))) return <>{fallback}</>;
 
   const dismiss = async () => {
     // A second click while the first is in flight would send a stale expectedUpdatedAt and show a false error.

@@ -36,6 +36,24 @@ function failureMessage(error: unknown): string | null {
   return details.length > 0 ? details[0] : (failure.message ?? null);
 }
 
+const RATE_LIMIT_RETRIES = 3;
+const RETRY_AFTER_CAP_S = 30;
+/** Rapid recordCreated calls within this window share one save. */
+const RECORD_COALESCE_MS = 50;
+
+/** PUT, waiting out a 429 for its Retry-After (capped) up to three times; nothing was written, so the same body is safe to resend. */
+async function putWithRateLimitRetry(projectId: string, body: SetupUpdateRequest) {
+  for (let retry = 0; ; retry++) {
+    try {
+      return await updateProjectSetup(projectId, body);
+    } catch (error) {
+      const failure = error as { status?: number; retryAfter?: number };
+      if (failure.status !== 429 || retry >= RATE_LIMIT_RETRIES) throw error;
+      await new Promise((resolve) => setTimeout(resolve, Math.min(failure.retryAfter ?? 1, RETRY_AFTER_CAP_S) * 1000));
+    }
+  }
+}
+
 /**
  * Local copy of the setup state with debounced, serialized autosave. Writes carry
  * `expectedUpdatedAt`; on a 409 the server state replaces the local one and the user is told.
@@ -69,7 +87,7 @@ export function useSetupSession(projectId: string, initial: SetupStateDto, lockT
         for (const key of keys) (body as Record<string, unknown>)[key] = latest.current[key];
         setSaveState("saving");
         try {
-          const res = await updateProjectSetup(projectId, body);
+          const res = await putWithRateLimitRetry(projectId, body);
           updatedAt.current = res.state.updatedAt;
           lastSaveOk.current = true;
           setSaveError(null);
@@ -124,10 +142,18 @@ export function useSetupSession(projectId: string, initial: SetupStateDto, lockT
   );
 
   /** Persist an id into draft.created right away (used by the create runner). */
+  const pendingRecord = useRef<Promise<boolean> | null>(null);
   const recordCreated = useCallback(
     async (key: string, id: string) => {
       patch({ draft: { ...latest.current.draft, created: { ...latest.current.draft.created, [key]: id } } });
-      await flush();
+      // Calls inside the window share one PUT, so a burst of created items stays under the write limit.
+      pendingRecord.current ??= new Promise<boolean>((resolve) =>
+        setTimeout(() => {
+          pendingRecord.current = null;
+          void flush().then(resolve);
+        }, RECORD_COALESCE_MS),
+      );
+      await pendingRecord.current;
       // Rejecting shows the item as failed to record instead of silently succeeding.
       if (!lastSaveOk.current) throw new Error("Created, but your progress could not be saved. Check your connection and retry.");
     },
@@ -140,17 +166,17 @@ export function useSetupSession(projectId: string, initial: SetupStateDto, lockT
   return { ...state, saveState, saveError, patch, patchDraft, flush, recordCreated, getCreated };
 }
 
-/** Take the lock on mount, heartbeat every 60 s, release on unmount. Another holder makes it read-only. */
+/** Take the lock on mount (silently only from an idle tab of the same user), heartbeat every 60 s, release on unmount. Another holder makes it read-only. */
 export function useSetupLock(projectId: string, enabled: boolean, initialHolder: SetupLockInfo | null, lockToken: string) {
   const [holder, setHolder] = useState<SetupLockInfo | null>(initialHolder && !initialHolder.mine ? initialHolder : null);
   const held = useRef(false);
   const url = `/api/projects/${projectId}/setup/lock`;
   // The token identifies this tab: two tabs of the same user must not both hold the lock.
   const post = useCallback(
-    (takeover = false, reclaim = false): RequestInit => ({
+    (takeover = false, reclaim = false, force = false): RequestInit => ({
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ lockToken, ...(takeover ? { takeover: true } : {}), ...(reclaim ? { reclaim: true } : {}) }),
+      body: JSON.stringify({ lockToken, ...(takeover ? { takeover: true } : {}), ...(reclaim ? { reclaim: true } : {}), ...(force ? { force: true } : {}) }),
     }),
     [lockToken],
   );
@@ -161,7 +187,7 @@ export function useSetupLock(projectId: string, enabled: boolean, initialHolder:
 
   const claim = useCallback(
     async (takeover: boolean) => {
-      const res = await fetch(url, post(takeover));
+      const res = await fetch(url, takeover ? post(true) : post(false, true, true));
       if (res.ok) {
         held.current = true;
         setHolder(null);
@@ -233,5 +259,14 @@ export function useSetupLock(projectId: string, enabled: boolean, initialHolder:
     }
   }, [claim]);
 
-  return { holder, readOnly: holder !== null, takeOver, heartbeat };
+  /** "Use this tab instead": explicit reclaim from the user's own other tab; that tab turns read-only on its next heartbeat. */
+  const useHere = useCallback(async () => {
+    try {
+      return await claim(false);
+    } catch {
+      return false;
+    }
+  }, [claim]);
+
+  return { holder, readOnly: holder !== null, takeOver, useHere, heartbeat };
 }

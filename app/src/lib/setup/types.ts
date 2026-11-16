@@ -10,6 +10,8 @@ export interface SetupLockInfo {
   userId: string;
   userName: string | null;
   lockedAt: string;
+  /** True when the lock belongs to the caller's user, whichever tab holds it. */
+  sameUser?: boolean;
   /** True when the caller holds the lock. */
   mine: boolean;
 }

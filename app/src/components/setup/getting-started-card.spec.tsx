@@ -73,15 +73,25 @@ describe("DashboardGettingStarted", () => {
   });
 
   it("on a project with data shows only while setup is in progress, with no skeleton", async () => {
-    reply(makeResponse({}, { status: "not_started" }));
-    const first = render(<DashboardGettingStarted onlyInProgress fallback={fallback} />, { wrapper: createWrapper().Wrapper });
+    reply({ ...makeResponse({}, { status: "not_started" }), projectEmpty: false });
+    const first = render(<DashboardGettingStarted dashboardHasData fallback={fallback} />, { wrapper: createWrapper().Wrapper });
     expect(screen.queryByTestId("getting-started-skeleton")).toBeNull();
     expect(await screen.findByText("Empty state")).toBeTruthy();
     expect(screen.queryByTestId("getting-started-card")).toBeNull();
     first.unmount();
 
     reply(makeResponse({}, { status: "in_progress" }));
-    render(<DashboardGettingStarted onlyInProgress fallback={fallback} />, { wrapper: createWrapper().Wrapper });
+    render(<DashboardGettingStarted dashboardHasData fallback={fallback} />, { wrapper: createWrapper().Wrapper });
+    expect(await screen.findByTestId("getting-started-card")).toBeTruthy();
+  });
+
+  it("follows the sidebar rule: not started shows the card only when the project is empty", async () => {
+    reply({ ...makeResponse({}, { status: "not_started" }), projectEmpty: false });
+    const first = render(<DashboardGettingStarted fallback={fallback} />, { wrapper: createWrapper().Wrapper });
+    expect(await screen.findByText("Empty state")).toBeTruthy();
+    first.unmount();
+    reply({ ...makeResponse({}, { status: "not_started" }), projectEmpty: true });
+    render(<DashboardGettingStarted dashboardHasData fallback={fallback} />, { wrapper: createWrapper().Wrapper });
     expect(await screen.findByTestId("getting-started-card")).toBeTruthy();
   });
 

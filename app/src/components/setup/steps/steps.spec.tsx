@@ -479,6 +479,17 @@ describe("review fixes in the steps", () => {
     expect(screen.getByText(/too long or not valid/)).toBeTruthy();
   });
 
+  it("refuses a page that would push the draft past 32 KB", () => {
+    const long = (i: number) => ({ url: `https://app.example.com/${String(i).padStart(2, "0")}${"a".repeat(2000)}`, name: `p${i}` });
+    const pages = Array.from({ length: 16 }, (_, i) => long(i));
+    const d = drafting({ app: { url: "https://app.example.com/" }, monitors: { pages } });
+    render(<MonitorsStep {...makeStepProps({ patchDraft: d.patchDraft, draft: d.get() })} />);
+    fireEvent.change(screen.getByLabelText("Add a page path"), { target: { value: "/zz" } });
+    fireEvent.click(screen.getByRole("button", { name: "Add page" }));
+    expect(d.get().monitors?.pages).toHaveLength(16);
+    expect(screen.getByText(/more than setup can save/)).toBeTruthy();
+  });
+
   it("rejects reserved secret names, http MCP URLs and keeps api-version on the AI URL", () => {
     const d = drafting({ monitors: { pages: [] } });
     render(<MonitorsStep {...makeStepProps({ patchDraft: d.patchDraft, draft: d.get() })} />);

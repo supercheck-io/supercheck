@@ -95,6 +95,10 @@ export function SetupWizard({ response, persona, userEmail }: WizardProps) {
     [persona, setupFeatures],
   );
   const readOnly = !response.permissions.canEdit || lock.readOnly;
+  // A lost lock (another tab or person took it) stops a running Create through the same cancel path as leaving.
+  useEffect(() => {
+    if (lock.readOnly) void stopCreate.current?.();
+  }, [lock.readOnly]);
   // A read-only viewer can still look around, but nothing may be written, so the step stays local.
   const [localStep, setLocalStep] = useState<SetupStepKey | null>(null);
   const currentStep = readOnly ? (localStep ?? session.currentStep) : session.currentStep;
@@ -160,7 +164,21 @@ export function SetupWizard({ response, persona, userEmail }: WizardProps) {
 
   return (
     <div className="space-y-4" data-testid="setup-wizard">
-      {lock.holder ? (
+      {lock.holder?.sameUser ? (
+        <Alert variant="warning" data-testid="setup-other-tab">
+          <p className="text-sm font-semibold">Setup is open in another tab</p>
+          <p className="text-sm">Only one tab can run setup at a time, so nothing is created twice. You can look around here, but nothing can be changed.</p>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="mt-2"
+            onClick={async () => (await lock.useHere()) || toast.error("Could not switch to this tab. Try again.")}
+          >
+            Use this tab instead
+          </Button>
+        </Alert>
+      ) : lock.holder ? (
         <Alert variant="warning" data-testid="setup-locked">
           <p className="text-sm font-semibold">Setup is already running</p>
           <p className="text-sm">

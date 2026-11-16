@@ -127,6 +127,8 @@ export function ReviewStep({ response, features, permissions, draft, skipped, re
 
   const start = async () => {
     setRunning(true);
+    // A lost lock aborts the run; taking the lock back must let a new run start.
+    if (controller.current.signal.aborted) controller.current = new AbortController();
     const run = runAll(items, { ...deps, signal: controller.current.signal }, update);
     activeRun.current = run;
     await run;
@@ -138,6 +140,7 @@ export function ReviewStep({ response, features, permissions, draft, skipped, re
     // One Retry at a time: two at once would race on the same lookups and ids.
     if (retrying) return;
     setRetrying(true);
+    if (controller.current.signal.aborted) controller.current = new AbortController();
     try {
       const run = retryWithDependents(item, items, { ...deps, signal: controller.current.signal }, update, (key) => results[key]?.status === "skipped");
       activeRun.current = run;

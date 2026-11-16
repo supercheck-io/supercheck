@@ -21,6 +21,7 @@ type Call = { url: string; method: string; body?: Record<string, unknown>; keepa
 let calls: Call[];
 let lockStatus: number;
 let lockGate: Promise<void> | null;
+let lockSameUser = false;
 let putHandler: (call: Call) => { status: number; body: unknown };
 
 const fetchMock = jest.fn(async (url: string, init?: { method?: string; body?: string; keepalive?: boolean }) => {
@@ -30,8 +31,8 @@ const fetchMock = jest.fn(async (url: string, init?: { method?: string; body?: s
   if (url.endsWith("/setup/lock")) {
     if (call.method === "DELETE") return reply(204, {});
     if (lockGate) await lockGate;
-    return lockStatus === 423 && !call.body?.takeover
-      ? reply(423, { error: "locked", lock: { userId: "u2", userName: "Priya Shah", lockedAt: new Date(Date.now() - 6 * 60_000).toISOString(), mine: false } })
+    return lockStatus === 423 && !call.body?.takeover && !call.body?.force
+      ? reply(423, { error: "locked", lock: lockSameUser ? { userId: "u1", userName: "Me", lockedAt: new Date().toISOString(), mine: false, sameUser: true } : { userId: "u2", userName: "Priya Shah", lockedAt: new Date(Date.now() - 6 * 60_000).toISOString(), mine: false } })
       : reply(200, { lock: { userId: "u1", userName: "Me", lockedAt: new Date().toISOString(), mine: true } });
   }
   if (call.method === "PUT") {
@@ -44,6 +45,7 @@ const fetchMock = jest.fn(async (url: string, init?: { method?: string; body?: s
 beforeEach(() => {
   calls = [];
   lockStatus = 200;
+  lockSameUser = false;
   lockGate = null;
   push.mockReset();
   toast.error.mockReset();
@@ -243,6 +245,18 @@ describe("lock", () => {
     expect(screen.getByText(/Priya Shah started it 6 minutes ago/)).toBeTruthy();
     expect(screen.getByLabelText("App URL")).toBeDisabled();
     expect(screen.getByRole("button", { name: "Skip this step" })).toBeDisabled();
+  });
+
+  it("says setup is open in another tab and reclaims explicitly with Use this tab instead", async () => {
+    lockStatus = 423;
+    lockSameUser = true;
+    renderWizard(makeResponse({}, { status: "in_progress" }));
+    expect(await screen.findByText("Setup is open in another tab")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Take over" })).toBeNull();
+    expect(screen.getByLabelText("App URL")).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "Use this tab instead" }));
+    await waitFor(() => expect(screen.queryByTestId("setup-other-tab")).toBeNull());
+    expect(calls.some((c) => c.method === "POST" && c.body?.reclaim === true && c.body?.force === true)).toBe(true);
   });
 
   it("releases a lock whose claim finished after the wizard unmounted", async () => {
