@@ -233,6 +233,52 @@ describe('setup scan processor', () => {
     expect(r).toMatchObject({ reachable: false, error: 'blocked_private' });
   });
 
+  it('flags a page whose request ended on a different path, such as a login page', async () => {
+    const r = await scan((c) => {
+      const path = new URL(String(c.url)).pathname;
+      if (path === '/')
+        return {
+          status: 200,
+          data: page('Home', ['/account', '/pricing', '/docs/']),
+        };
+      if (path === '/account')
+        return { status: 302, headers: { location: '/login' } };
+      if (path === '/login') return { status: 200, data: page('Sign in') };
+      return { status: 200, data: page('Other') };
+    }).result;
+    const byPath = Object.fromEntries(r.pages.map((p) => [p.path, p]));
+    expect(byPath['/account']).toMatchObject({
+      redirected: true,
+      finalPath: '/login',
+      status: 200,
+    });
+    expect(byPath['/pricing'].redirected).toBeUndefined();
+    expect(byPath['/docs/'].redirected).toBeUndefined();
+  });
+
+  it('reads the certificate before crawling so a slow crawl cannot starve it', async () => {
+    const order: string[] = [];
+    const readCertificate = jest.fn().mockImplementation(async () => {
+      order.push('cert');
+      return {
+        certificate: {
+          valid_to: new Date(Date.now() + 86_400_000).toUTCString(),
+          issuer: { CN: 'CA' },
+        },
+        authorized: true,
+      };
+    });
+    await scan(
+      (c) => {
+        order.push(new URL(String(c.url)).pathname);
+        return { status: 200, data: page('x', ['/a']) };
+      },
+      { readCertificate },
+      'https://93.184.216.34/',
+    ).result;
+    expect(order).toEqual(['/', 'cert', '/a']);
+  });
+
   it('reads the certificate through a vetted lookup for https targets', async () => {
     const readCertificate = jest.fn().mockResolvedValue({
       certificate: {

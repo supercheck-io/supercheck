@@ -38,6 +38,7 @@ export function makeResponse(overrides: Partial<SetupResponse> = {}, state: Part
       canEdit: true,
       canUpdateProject: true,
       canConfigureConnectors: false,
+      canCreateServices: false,
       canInvite: true,
       canCreateTests: true,
       canCreateStatusPage: true,

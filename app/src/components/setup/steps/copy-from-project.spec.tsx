@@ -67,6 +67,14 @@ describe("CopyFromProject", () => {
     expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({ sourceProjectId: OTHER, allConnectors: true });
   });
 
+  it("shows item names, falling back to a numbered label", async () => {
+    fetchMock.mockReturnValue(json({ providers: [], connectors: [{ sourceId: "a", id: "c1", status: "copied", name: "GitHub (copied)" }, { sourceId: "b", status: "failed", error: "x" }] }));
+    renderIt("connectors");
+    fireEvent.click(pickSource("connectors"));
+    expect(await screen.findByText("GitHub (copied)")).toBeTruthy();
+    expect(screen.getByText("Connector 2")).toBeTruthy();
+  });
+
   it("says when the source has nothing to copy", async () => {
     fetchMock.mockReturnValue(json({ providers: [], connectors: [] }));
     renderIt();

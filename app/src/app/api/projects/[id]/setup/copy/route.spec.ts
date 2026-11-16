@@ -119,14 +119,14 @@ describe("guards", () => {
 });
 
 describe("copy", () => {
-  it("copies both kinds, audits each created item and the summary, returns no names or plaintext", async () => {
+  it("copies both kinds, audits each created item and the summary, returns names but no config or plaintext", async () => {
     const res = await POST(req({ ...both, providerIds: [PID, PID] }), params);
     expect(res.status).toBe(200);
     expect(copyProviders).toHaveBeenCalledWith(expect.objectContaining({ organizationId: ORG, sourceProjectId: SOURCE, targetProjectId: TARGET }), [PID]);
     expect(await res.json()).toEqual({
-      providers: [{ sourceId: PID, id: "np", status: "copied" }],
+      providers: [{ sourceId: PID, id: "np", status: "copied", name: "Slack", type: "slack" }],
       connectors: [
-        { sourceId: CID, id: "nc", status: "copied" },
+        { sourceId: CID, id: "nc", status: "copied", name: "Prom", type: "prometheus" },
         { sourceId: "x", status: "failed", error: "Connector not found in the source project" },
       ],
     });

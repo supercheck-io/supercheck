@@ -6,7 +6,9 @@ import { AiSreStep } from "./ai-sre-step";
 
 const mockCreate = jest.fn();
 const mockValidate = jest.fn();
+const mockList = jest.fn();
 jest.mock("@/actions/sre-connectors", () => ({
+  getSreConnectors: (...args: unknown[]) => mockList(...args),
   createSreConnector: (...args: unknown[]) => mockCreate(...args),
   validateSreConnector: (...args: unknown[]) => mockValidate(...args),
 }));
@@ -16,6 +18,7 @@ let activeProject: string;
 beforeEach(() => {
   mockCreate.mockReset();
   mockValidate.mockReset();
+  mockList.mockReset().mockResolvedValue({ success: true, connectors: [] });
   activeProject = PROJECT_ID;
   global.fetch = (async () => ({ ok: true, status: 200, json: async () => ({ project: { id: activeProject } }) })) as unknown as typeof fetch;
 });
@@ -29,10 +32,27 @@ function drafting(initial: SetupDraft = {}) {
 }
 const admin = () => {
   const response = makeResponse();
-  return { permissions: { ...response.permissions, canConfigureConnectors: true } };
+  return { permissions: { ...response.permissions, canConfigureConnectors: true, canCreateServices: true } };
 };
 const open = (name: RegExp) => fireEvent.click(screen.getByRole("button", { name }));
 const type = (label: string, value: string) => fireEvent.change(screen.getByLabelText(label), { target: { value } });
+
+describe("AiSreStep permissions", () => {
+  const props = (p: { canConfigureConnectors: boolean; canCreateServices: boolean }) =>
+    makeStepProps({ permissions: { ...makeResponse().permissions, ...p }, draft: { app: { url: "https://app.example.com" } } });
+  it("shows the service only with sre_service:create and the connectors only with sre_connector:configure", () => {
+    const { unmount } = render(<AiSreStep {...props({ canConfigureConnectors: true, canCreateServices: false })} />);
+    expect(screen.queryByLabelText(/Create a service named/)).toBeNull();
+    expect(screen.getByRole("group", { name: "Connector types" })).toBeTruthy();
+    unmount();
+    const second = render(<AiSreStep {...props({ canConfigureConnectors: false, canCreateServices: true })} />);
+    expect(screen.getByLabelText(/Create a service named app.example.com/)).toBeTruthy();
+    expect(screen.queryByRole("group", { name: "Connector types" })).toBeNull();
+    second.unmount();
+    render(<AiSreStep {...props({ canConfigureConnectors: false, canCreateServices: false })} />);
+    expect(screen.getByText(/Ask a project admin/)).toBeTruthy();
+  });
+});
 
 describe("AiSreStep", () => {
   it("a slow save keeps ids added meanwhile and does not close the form opened after it", async () => {
@@ -78,6 +98,32 @@ describe("AiSreStep", () => {
     expect(d.get().aiSre?.connectorIds).toEqual([CID]);
     expect(JSON.stringify(d.get())).not.toContain("ghp_secret_value");
     expect(screen.queryByLabelText("Access token")).toBeNull();
+  });
+
+  it("adopts a connector that already exists instead of creating a duplicate after a lost answer", async () => {
+    mockList.mockResolvedValue({ success: true, connectors: [{ id: CID, name: "GitHub", type: "github", status: "configured" }, { id: "x", name: "GitHub", type: "sentry", status: "configured" }] });
+    mockValidate.mockResolvedValue({ success: true, message: "ok", connector: { lastValidationStatus: "valid" } });
+    const d = drafting();
+    render(<AiSreStep {...makeStepProps({ ...admin(), patchDraft: d.patchDraft, draft: d.get() })} />);
+    open(/GitHub/);
+    type("Access token", "ghp_x");
+    fireEvent.click(screen.getByRole("button", { name: "Save and test" }));
+    expect(await screen.findByText(/GitHub: Connected/)).toBeTruthy();
+    expect(mockCreate).not.toHaveBeenCalled();
+    expect(mockValidate).toHaveBeenCalledWith({ id: CID }, PROJECT_ID);
+    expect(d.get().aiSre?.connectorIds).toEqual([CID]);
+  });
+
+  it("creates the connector when the lookup fails or finds only a disabled one", async () => {
+    mockList.mockRejectedValue(new Error("net"));
+    mockCreate.mockResolvedValue({ success: true, connector: { id: CID }, message: "ok" });
+    mockValidate.mockResolvedValue({ success: true, message: "ok", connector: { lastValidationStatus: "valid" } });
+    render(<AiSreStep {...makeStepProps({ ...admin() })} />);
+    open(/GitHub/);
+    type("Access token", "ghp_x");
+    fireEvent.click(screen.getByRole("button", { name: "Save and test" }));
+    await screen.findByText(/GitHub: Connected/);
+    expect(mockCreate).toHaveBeenCalledTimes(1);
   });
 
   it("sends both Datadog keys and an optional endpoint; Prometheus needs a URL and may skip the token", async () => {

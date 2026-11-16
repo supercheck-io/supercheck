@@ -36,6 +36,8 @@ export interface SetupPermissions {
   canUpdateProject: boolean;
   /** sre_connector:configure: AI SRE step. */
   canConfigureConnectors: boolean;
+  /** sre_service:create: the suggested service (the createSreService action checks it). */
+  canCreateServices: boolean;
   /** invitation:create */
   canInvite: boolean;
   /** test:create */
@@ -56,8 +58,8 @@ export interface SetupResponse {
   permissions: SetupPermissions;
   /** Monitors the org can still add; null = no cap (self-hosted / unlimited). */
   monitorsRemaining: number | null;
-  /** AI test suggestions need a paid plan: true on a cloud trial. Always false when self-hosted. */
-  aiTestsLocked: boolean;
+  /** AI test suggestions need a paid plan: true on a cloud trial, false when self-hosted. null = not computed (a write) or the plan lookup failed: the UI does not lock, the suggest route enforces the plan. */
+  aiTestsLocked: boolean | null;
   /** Shortest check interval (minutes) the org's plan allows; 1 when there is no trial restriction. */
   minIntervalMinutes: number;
   /** No monitors, tests, jobs or status pages yet. */

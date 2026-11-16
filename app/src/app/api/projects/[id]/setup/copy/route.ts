@@ -17,11 +17,8 @@ const bodySchema = z
   .strict();
 
 const HOUR_MS = 60 * 60_000;
-const strip = ({ name, type, ...rest }: CopyItemResult) => {
-  void name;
-  void type;
-  return rest;
-};
+// Names and types are not secret and tell the user which item was copied; configs and credentials never leave copy.ts.
+const strip = ({ sourceId, id, status, error, name, type }: CopyItemResult) => ({ sourceId, id, status, error, name, type });
 
 export async function POST(request: NextRequest, { params }: Params) {
   try {

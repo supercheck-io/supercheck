@@ -36,6 +36,9 @@ export function scanMatchesUrl(scan: ScanSummary | null, appUrl: string | null |
   }
 }
 
+/** Pages worth suggesting: not one whose request ended on a different path (a redirect to a login page, say). */
+export const suggestablePages = (scan: ScanSummary) => scan.pages.filter((p) => !p.redirected);
+
 /** `projectId` is sent as the expected project: the server answers 409 when the active project is another one. */
 export async function postJson<T = unknown>(url: string, body: unknown, projectId?: string, signal?: AbortSignal): Promise<{ ok: boolean; status: number; data: T }> {
   const res = await fetch(url, {

@@ -17,6 +17,7 @@ interface CopyItem {
   id?: string;
   status: "copied" | "adopted" | "failed";
   error?: string;
+  name?: string;
 }
 
 const NOUN: Record<Kind, { all: string; one: string }> = {
@@ -105,7 +106,7 @@ export function CopyFromProject({ kind, setupProjectId, disabled, onCopied }: { 
             {items.map((item, index) => (
               <li key={item.sourceId} className="flex flex-wrap items-center gap-3 px-4 py-2 text-sm">
                 <span className="min-w-0 flex-1">
-                  {noun.one} {index + 1}
+                  {item.name ?? `${noun.one} ${index + 1}`}
                   {item.error ? <span className="block text-xs text-failure">{item.error}</span> : null}
                 </span>
                 <TableBadge tone={STATUS[item.status].tone} compact>

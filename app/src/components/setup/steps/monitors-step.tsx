@@ -136,7 +136,7 @@ export function MonitorsStep({ response, draft, patchDraft, features, readOnly, 
   }, [hasStalePages, appUrl, scanOrigin, homeUrl, homeName, readOnly, monitors.pages, patchDraft]);
 
   // Scanned pages that loaded (2xx/3xx; status 0 means the fetch failed), at most 10; only the homepage starts ticked.
-  const scanned = (appUrl && scan ? scan.pages.filter((p) => p.status >= 200 && p.status < 400 && p.path !== "/").slice(0, 10) : [])
+  const scanned = (appUrl && scan ? scan.pages.filter((p) => !p.redirected && p.status >= 200 && p.status < 400 && p.path !== "/").slice(0, 10) : [])
     .map((p) => (scan ? pageFor(scan.finalUrl, p.path) : null))
     .filter((page): page is Page => page !== null);
   const aiPath = scan ? scan.pages.find((p) => p.status !== 0 && AI_PATH.test(p.path)) : undefined;

@@ -213,6 +213,9 @@ describe("scanFindings", () => {
     expect(row({ redirects: 0 }, "Redirects")).toMatchObject({ word: "None", detail: "No redirects" });
     expect(row({ redirects: 4 }, "Redirects")).toMatchObject({ tone: "warning", word: "Many" });
     expect(row({ reachable: false, status: null, responseMs: null }, "Reachable")).toMatchObject({ tone: "danger", detail: "No response" });
+    expect(row({ status: 302 }, "Reachable")).toMatchObject({ tone: "success", word: "Reachable" });
+    expect(row({ status: 404 }, "Reachable")).toMatchObject({ tone: "warning", word: "Error response", detail: expect.stringContaining("404") });
+    expect(row({ status: 503 }, "Reachable")).toMatchObject({ tone: "danger", word: "Server error" });
     expect(row({ pages: [] }, "Pages found")).toMatchObject({ tone: "neutral", word: "0" });
   });
 });

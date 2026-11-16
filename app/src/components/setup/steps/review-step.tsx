@@ -74,8 +74,8 @@ const STATUS_LABEL: Record<ItemResult["status"], string> = {
 
 export function ReviewStep({ response, features, permissions, draft, skipped, readOnly, recordCreated, getCreated, complete, completed, heartbeat, onActiveChange, stopRef }: ReviewStepProps) {
   const items = useMemo(
-    () => buildCreateItems(draft, { skipped, features, canUpdateProject: permissions.canUpdateProject, canCreateTests: permissions.canCreateTests, canConfigureConnectors: permissions.canConfigureConnectors, minIntervalMinutes: response.minIntervalMinutes }),
-    [draft, skipped, features, permissions.canUpdateProject, permissions.canCreateTests, permissions.canConfigureConnectors, response.minIntervalMinutes],
+    () => buildCreateItems(draft, { skipped, features, canUpdateProject: permissions.canUpdateProject, canCreateTests: permissions.canCreateTests, canCreateServices: permissions.canCreateServices, minIntervalMinutes: response.minIntervalMinutes }),
+    [draft, skipped, features, permissions.canUpdateProject, permissions.canCreateTests, permissions.canCreateServices, response.minIntervalMinutes],
   );
   const [results, setResults] = useState<Record<string, ItemResult>>({});
   const [running, setRunning] = useState(false);

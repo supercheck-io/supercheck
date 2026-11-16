@@ -8,7 +8,7 @@ import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { TableBadge, type TableBadgeTone } from "@/components/ui/table-badge";
-import { postJson, responseError, type StepProps } from "./step-types";
+import { postJson, responseError, scanMatchesUrl, suggestablePages, type StepProps } from "./step-types";
 
 interface Suggestion {
   title: string;
@@ -18,6 +18,7 @@ interface Suggestion {
 
 type Failure = { kind: "locked" | "unavailable" | "error"; message: string };
 
+const MAX_OPTIONS = 10;
 const PRIORITY_TONE: Record<string, TableBadgeTone> = { high: "danger", medium: "warning", low: "neutral" };
 
 function BetaCost() {
@@ -53,7 +54,11 @@ export function TestsStep({ response, features, permissions, draft, patchDraft, 
   const [loading, setLoading] = useState(false);
   const [failure, setFailure] = useState<Failure | null>(null);
 
-  const hasScan = Boolean(scan && scan.pages.length > 0);
+  // Only the scan that matches the app URL on screen may feed suggestions (the server also keeps an older one).
+  const matchedScan = scanMatchesUrl(scan, draft.app?.url) ? scan : null;
+  const suggestPages = matchedScan ? suggestablePages(matchedScan) : [];
+  const hasScan = suggestPages.length > 0;
+  const maxTicked = ticked.length >= MAX_OPTIONS;
   const locked = response.aiTestsLocked || failure?.kind === "locked";
 
   const setTicked = (next: Suggestion[]) =>
@@ -62,16 +67,17 @@ export function TestsStep({ response, features, permissions, draft, patchDraft, 
   const toggle = (item: Suggestion, on: boolean) => setTicked(on ? [...current, item] : current.filter((r) => r.title !== item.title));
 
   const suggest = async () => {
+    if (!matchedScan) return;
     setLoading(true);
     setFailure(null);
     try {
-      const res = await postJson<{ requirements?: Suggestion[]; code?: string; retryAt?: string }>(`/api/projects/${response.projectId}/setup/suggest-requirements`, {});
+      const res = await postJson<{ requirements?: Suggestion[]; code?: string; retryAt?: string }>(`/api/projects/${response.projectId}/setup/suggest-requirements`, { pages: suggestPages.map(({ path, title }) => ({ path, title })).slice(0, 50) });
       if (res.ok && res.data.requirements) {
         // One bounded set for display and for the draft: ticked ones stay, then the newest run, then older unticked ones.
         const tickedTitles = new Set(ticked.map((r) => r.title));
         const known = new Set(options.map((o) => o.title));
         const fresh = res.data.requirements.filter((r) => !known.has(r.title));
-        const next = [...options.filter((o) => tickedTitles.has(o.title)), ...fresh, ...options.filter((o) => !tickedTitles.has(o.title))].slice(0, 10);
+        const next = [...options.filter((o) => tickedTitles.has(o.title)), ...fresh, ...options.filter((o) => !tickedTitles.has(o.title))].slice(0, MAX_OPTIONS);
         setOptions(next);
         const priorities = ["low", "medium", "high"];
         const suggestions = next.map(({ title, description, priority }) => ({
@@ -87,6 +93,9 @@ export function TestsStep({ response, features, permissions, draft, patchDraft, 
       } else if (res.status === 429 && res.data.code === "daily_limit") {
         const when = res.data.retryAt ? new Date(res.data.retryAt).toLocaleString() : "tomorrow";
         setFailure({ kind: "error", message: `Suggestions run once per project per day. Try again after ${when}.` });
+      } else if (res.status === 502 && res.data.code === "unusable_output") {
+        const when = res.data.retryAt ? new Date(res.data.retryAt).toLocaleString() : "tomorrow";
+        setFailure({ kind: "error", message: `AI could not produce usable suggestions. No credit was used. Suggestions are available again ${when}; you can add requirements later from Requirements.` });
       } else if (res.status === 503) {
         setFailure({ kind: "unavailable", message: "AI suggestions are not available right now." });
       } else {
@@ -142,9 +151,10 @@ export function TestsStep({ response, features, permissions, draft, patchDraft, 
         </Alert>
       ) : (
         <div className="space-y-3">
-          {!hasScan ? <Alert variant="info">Scan your app in the first step to get suggestions. You can also add requirements later from Requirements.</Alert> : null}
+          {!hasScan ? <Alert variant="info">Scan your app first: scan the URL you entered in the first step to get suggestions. You can also add requirements later from Requirements.</Alert> : null}
           {failure ? <Alert variant="error">{failure.message}</Alert> : null}
-          <Button type="button" variant="outline" disabled={readOnly || loading || !hasScan} onClick={() => void suggest()}>
+          {maxTicked ? <p className="text-xs text-muted-foreground">You have ticked {MAX_OPTIONS} requirements. Untick some to ask for more suggestions.</p> : null}
+          <Button type="button" variant="outline" disabled={readOnly || loading || !hasScan || maxTicked} onClick={() => void suggest()}>
             <Sparkles aria-hidden="true" />
             {loading ? "Suggesting..." : options.length > 0 ? "Suggest more" : "Suggest requirements"}
           </Button>

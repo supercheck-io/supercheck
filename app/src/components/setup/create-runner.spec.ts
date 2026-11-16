@@ -427,7 +427,10 @@ describe("requirement and service items", () => {
     const only = (over: Partial<Parameters<typeof buildCreateItems>[1]>) => buildCreateItems(withBoth(), { skipped: [], features, canUpdateProject: true, ...over });
     expect(only({ skipped: ["tests", "aiSre"] })).toEqual([]);
     expect(only({ features: { ...features, aiTests: false, aiSre: false } })).toEqual([]);
-    expect(only({ canCreateTests: false, canConfigureConnectors: false })).toEqual([]);
+    expect(only({ canCreateTests: false, canCreateServices: false })).toEqual([]);
+    // The service is gated by sre_service:create, not by the connector permission.
+    expect(only({ canCreateServices: false }).map((i) => i.kind)).toEqual(["requirement", "requirement"]);
+    expect(only({ canCreateTests: false }).map((i) => i.kind)).toEqual(["service"]);
   });
 
   it("creates, records ids, and does not recreate on a re-run", async () => {

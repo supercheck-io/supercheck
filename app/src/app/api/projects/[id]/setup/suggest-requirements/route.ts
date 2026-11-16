@@ -150,7 +150,13 @@ export async function POST(request: NextRequest, { params }: Params) {
         .filter((r) => r.title.length > 0);
       if (cleaned.length === 0) {
         await credit.refund();
-        return NextResponse.json({ error: "AI could not produce suggestions. Try again." }, { status: 502 });
+        // The slot stays used when the model answered (keepClaim): say when suggestions are available again.
+        return NextResponse.json(
+          keepClaim
+            ? { error: "AI could not produce suggestions.", code: "unusable_output", retryAt: new Date(claim.claimedAt.getTime() + 24 * 60 * 60_000).toISOString() }
+            : { error: "AI could not produce suggestions. Try again." },
+          { status: 502 },
+        );
       }
 
       await logAuditEvent({

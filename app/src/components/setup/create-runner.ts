@@ -114,9 +114,10 @@ export interface BuildOptions {
   skipped: readonly SetupStepKey[];
   features: Pick<SetupFeatures, "repeatUntilAck" | "warningAlerts" | "heartbeat" | "aiEndpoint" | "mcpMonitor"> & Partial<Pick<SetupFeatures, "aiTests" | "aiSre">>;
   canUpdateProject: boolean;
-  /** test:create / sre_connector:configure; the server enforces them too. Default true. */
+  /** test:create; the server enforces it too. Default true. */
   canCreateTests?: boolean;
-  canConfigureConnectors?: boolean;
+  /** sre_service:create, which the createSreService action checks; default true. */
+  canCreateServices?: boolean;
   /** Shortest interval the org's plan allows (a trial rejects shorter ones); default 1. */
   minIntervalMinutes?: number;
 }
@@ -278,7 +279,7 @@ export function buildCreateItems(draft: SetupDraft, opts: BuildOptions): CreateI
       });
     }
   }
-  if (!skipped.includes("aiSre") && features.aiSre && opts.canConfigureConnectors !== false) {
+  if (!skipped.includes("aiSre") && features.aiSre && opts.canCreateServices !== false) {
     for (const service of draft.aiSre?.services ?? []) {
       items.push({ key: `service:${identity(service.name)}`, kind: "service", step: "aiSre", label: service.name, detail: "Service", payload: { name: service.name } });
     }

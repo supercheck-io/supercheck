@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { Radio } from "lucide-react";
 
-import { createSreConnector, validateSreConnector } from "@/actions/sre-connectors";
+import { createSreConnector, getSreConnectors, validateSreConnector } from "@/actions/sre-connectors";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -47,7 +47,7 @@ type Outcome = { state: "connected" | "rejected" | "saved"; text: string };
 
 const labelOf = (type: string) => SRE_CONNECTOR_CATALOG.find((c) => c.value === type)?.label ?? type;
 
-function ConnectorForm({ def, projectId, onSaved }: { def: (typeof CONNECTORS)[number]; projectId: string; onSaved: (id: string, outcome: Outcome) => void }) {
+function ConnectorForm({ def, projectId, knownIds, onSaved }: { def: (typeof CONNECTORS)[number]; projectId: string; knownIds: string[]; onSaved: (id: string, outcome: Outcome) => void }) {
   const [values, setValues] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -67,8 +67,14 @@ function ConnectorForm({ def, projectId, onSaved }: { def: (typeof CONNECTORS)[n
     const credentialValue = Object.fromEntries(def.fields.filter((f) => f.credential && values[f.key]?.trim()).map((f) => [f.key, values[f.key].trim()]));
     const hasCredential = Object.keys(credentialValue).length > 0;
     try {
+      // A save whose answer was lost (network drop) already exists: adopt it instead of creating a duplicate.
+      // Prefers one this setup recorded, else the same type and exact name in the project.
+      const existing = await getSreConnectors()
+        .then((r) => (r.success ? r.connectors.filter((c) => c.type === def.type && c.name === labelOf(def.type) && c.status !== "disabled") : []))
+        .catch(() => []);
+      const adopted = existing.find((c) => knownIds.includes(c.id)) ?? existing[0];
       // Saved right away (D8): the token never enters the setup draft.
-      const created = await createSreConnector({
+      const created = adopted ? { success: true as const, connector: { id: adopted.id } } : await createSreConnector({
         name: labelOf(def.type),
         type: def.type,
         endpointUrl: values.endpointUrl?.trim() ?? "",
@@ -139,7 +145,7 @@ export function AiSreStep({ response, permissions, draft, patchDraft, readOnly }
   const setAiSre = (next: { connectorIds?: string[]; services?: Array<{ name: string }> }) =>
     patchDraft((d) => ({ ...d, aiSre: { connectorIds: [], services: [], ...d.aiSre, ...next } }));
 
-  if (!permissions.canConfigureConnectors) {
+  if (!permissions.canConfigureConnectors && !permissions.canCreateServices) {
     return <Alert variant="info">Ask a project admin. Only project admins can connect tools for AI SRE.</Alert>;
   }
 
@@ -150,6 +156,8 @@ export function AiSreStep({ response, permissions, draft, patchDraft, readOnly }
 
   return (
     <div className="space-y-6">
+      {permissions.canConfigureConnectors ? (
+      <>
       <p className="text-sm text-muted-foreground">Connect the tools your team already uses, so AI SRE can look at deploys, errors and metrics when something breaks. Each one is saved and tested right away. Skip anything you do not use.</p>
 
       {outcomes.length > 0 || earlier > 0 ? (
@@ -197,6 +205,7 @@ export function AiSreStep({ response, permissions, draft, patchDraft, readOnly }
               key={open}
               def={CONNECTORS.find((c) => c.type === open)!}
               projectId={response.projectId}
+              knownIds={connectorIds}
               onSaved={(id, outcome) => {
                 const savedType = open;
                 setOutcomes((list) => [...list, { type: savedType, outcome }]);
@@ -224,6 +233,10 @@ export function AiSreStep({ response, permissions, draft, patchDraft, readOnly }
         </Button>
       </section>
 
+      </>
+      ) : null}
+
+      {permissions.canCreateServices ? (
       <section aria-labelledby="setup-services" className="space-y-2">
         <h3 id="setup-services" className="text-sm font-semibold">
           Services
@@ -248,6 +261,7 @@ export function AiSreStep({ response, permissions, draft, patchDraft, readOnly }
           Manage services
         </Link>
       </section>
+      ) : null}
     </div>
   );
 }

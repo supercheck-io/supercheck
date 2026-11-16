@@ -87,3 +87,11 @@ describe("setup scan queue helpers", () => {
     expect(await readScan("a")).toMatchObject({ status: "done", scannedAt: 4242 });
   });
 });
+
+describe("sanitizeScanResult redirect fields", () => {
+  it("keeps redirected and finalPath on a page and drops other keys", () => {
+    const base = { finalUrl: "https://a.com/", reachable: true, status: 200, redirects: 0, responseMs: 1, ssl: null };
+    const out = sanitizeScanResult({ ...base, pages: [{ path: "/account", status: 200, ms: 1, title: null, redirected: true, finalPath: "/login", x: 1 }] });
+    expect(out?.pages[0]).toEqual({ path: "/account", status: 200, ms: 1, title: null, redirected: true, finalPath: "/login" });
+  });
+});

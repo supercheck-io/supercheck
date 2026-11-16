@@ -63,7 +63,7 @@ afterEach(async () => {
   await client`DELETE FROM external_connectors`;
 });
 
-async function seedProvider(org: string, project: string, name: string) {
+async function seedProvider(org: string, project: string, name: string, url = webhook) {
   const [row] = await mockDatabase
     .insert(schema.notificationProviders)
     .values({
@@ -71,19 +71,21 @@ async function seedProvider(org: string, project: string, name: string) {
       projectId: project,
       name,
       type: "slack",
-      config: encryptNotificationProviderConfig({ webhookUrl: webhook }, project),
+      config: encryptNotificationProviderConfig({ webhookUrl: url }, project),
       createdByUserId: u1,
     })
     .returning();
   return row;
 }
 
-async function seedConnector(org: string, project: string, name: string) {
+// A public IP literal keeps the endpoint policy offline (no DNS).
+async function seedConnector(org: string, project: string, name: string, over: { endpoint?: string; token?: string; riskLevel?: "low" | "medium" | "high" } = {}) {
   const id = uuidv7();
   await mockDatabase.insert(schema.externalConnectors).values({
-    id, organizationId: org, projectId: project, name, type: "prometheus", config: { endpointUrl: "https://prom.example.com" },
+    id, organizationId: org, projectId: project, name, type: "prometheus", config: { endpointUrl: over.endpoint ?? "https://93.184.216.34" },
+    ...(over.riskLevel ? { riskLevel: over.riskLevel } : {}),
   });
-  const enc = encryptConnectorCredential({ token: "tok-secret" }, { organizationId: org, projectId: project, connectorId: id });
+  const enc = encryptConnectorCredential({ token: over.token ?? "tok-secret" }, { organizationId: org, projectId: project, connectorId: id });
   await mockDatabase.insert(schema.externalConnectorCredentials).values({ connectorId: id, credentialType: "api_key", ...enc });
   return id;
 }
@@ -105,6 +107,27 @@ describe("copyProviders", () => {
     const [res] = await copyProviders(scope, [src.id]);
     expect(res).toMatchObject({ status: "adopted", id: existing.id });
     expect(await mockDatabase.select().from(schema.notificationProviders).where(eq(schema.notificationProviders.projectId, projTgt))).toHaveLength(1);
+  });
+  it("does not adopt a same-name channel that points somewhere else: copies under a unique name, then adopts that copy", async () => {
+    const other = "https://hooks.slack.com/services/T111/B111/OTHERSECRET";
+    const src = await seedProvider(orgA, projSrc, "Slack ops");
+    const existing = await seedProvider(orgA, projTgt, "Slack ops", other);
+    const [first] = await copyProviders(scope, [src.id]);
+    expect(first).toMatchObject({ status: "copied", name: "Slack ops (copied)" });
+    expect(first.id).not.toBe(existing.id);
+    const [again] = await copyProviders(scope, [src.id]);
+    expect(again).toMatchObject({ status: "adopted", id: first.id, name: "Slack ops (copied)" });
+    await seedProvider(orgA, projTgt, "Slack ops (copied 2)", other);
+    await mockDatabase.update(schema.notificationProviders).set({ config: encryptNotificationProviderConfig({ webhookUrl: other }, projTgt) }).where(eq(schema.notificationProviders.id, first.id!));
+    const [third] = await copyProviders(scope, [src.id]);
+    expect(third).toMatchObject({ status: "copied", name: "Slack ops (copied 3)" });
+    expect(JSON.stringify([first, again, third])).not.toContain("SECRET");
+  });
+  it("fails a channel whose config no longer passes validation, leaving no row", async () => {
+    const src = await seedProvider(orgA, projSrc, "Bad hook", "https://evil.example.com/hook");
+    const [res] = await copyProviders(scope, [src.id]);
+    expect(res).toMatchObject({ status: "failed", error: "This channel's settings no longer pass validation" });
+    expect(await mockDatabase.select().from(schema.notificationProviders).where(eq(schema.notificationProviders.projectId, projTgt))).toHaveLength(0);
   });
   it("concurrent copies of the same provider create one row", async () => {
     const src = await seedProvider(orgA, projSrc, "Slack ops");
@@ -159,14 +182,44 @@ describe("copyConnectors", () => {
     const existing = await seedConnector(orgA, projTgt, "Prom");
     expect(await copyConnectors(scope, [src])).toEqual([{ sourceId: src, id: existing, status: "adopted", name: "Prom", type: "prometheus" }]);
   });
+  it("does not adopt a same-name connector with another endpoint or credential", async () => {
+    const src = await seedConnector(orgA, projSrc, "GitHub");
+    const diffEndpoint = await seedConnector(orgA, projTgt, "GitHub", { endpoint: "https://93.184.216.35" });
+    const [first] = await copyConnectors(scope, [src]);
+    expect(first).toMatchObject({ status: "copied", name: "GitHub (copied)" });
+    expect(first.id).not.toBe(diffEndpoint);
+    expect(await copyConnectors(scope, [src])).toEqual([{ sourceId: src, id: first.id, status: "adopted", name: "GitHub (copied)", type: "prometheus" }]);
+    const src2 = await seedConnector(orgA, projSrc, "Loki");
+    await seedConnector(orgA, projTgt, "Loki", { token: "different-token" });
+    expect((await copyConnectors(scope, [src2]))[0]).toMatchObject({ status: "copied", name: "Loki (copied)" });
+  });
+  it("keeps the source's risk level and read-only permissions", async () => {
+    const src = await seedConnector(orgA, projSrc, "Risky", { riskLevel: "high" });
+    const [res] = await copyConnectors(scope, [src]);
+    const [row] = await mockDatabase.select().from(schema.externalConnectors).where(eq(schema.externalConnectors.id, res.id!));
+    expect(row).toMatchObject({ riskLevel: "high", permissionLevel: "read", sideEffectLevel: "none" });
+  });
+  it("fails a connector whose endpoint the create policy refuses, or whose agent is disabled", async () => {
+    const priv = await seedConnector(orgA, projSrc, "Internal", { endpoint: "https://10.0.0.5" });
+    const [res] = await copyConnectors(scope, [priv]);
+    expect(res).toMatchObject({ status: "failed", error: "This connector's endpoint is not allowed in the target project" });
+    const agentId = uuidv7();
+    await client`INSERT INTO private_agents (id, organization_id, project_id, name, status) VALUES (${agentId}, ${orgA}, NULL, 'off', 'disabled')`;
+    const id = uuidv7();
+    await mockDatabase.insert(schema.externalConnectors).values({ id, organizationId: orgA, projectId: projSrc, name: "Agented off", type: "prometheus", privateAgentId: agentId });
+    expect((await copyConnectors(scope, [id]))[0]).toMatchObject({ status: "failed" });
+    expect(await mockDatabase.select().from(schema.externalConnectors).where(eq(schema.externalConnectors.projectId, projTgt))).toHaveLength(0);
+    await client`DELETE FROM external_connectors`;
+    await client`DELETE FROM private_agents WHERE id = ${agentId}`;
+  });
   it("rejects cross-org and wrong-project sources", async () => {
     const foreign = await seedConnector(orgB, projOther, "Foreign");
     const results = await copyConnectors(scope, [foreign]);
     expect(results[0].status).toBe("failed");
   });
-  it("copies a connector without credentials and keeps missing_credentials", async () => {
+  it("copies a connector that needs credentials but has none as missing_credentials, like a new one", async () => {
     const id = uuidv7();
-    await mockDatabase.insert(schema.externalConnectors).values({ id, organizationId: orgA, projectId: projSrc, name: "NoCred", type: "prometheus", status: "missing_credentials" });
+    await mockDatabase.insert(schema.externalConnectors).values({ id, organizationId: orgA, projectId: projSrc, name: "NoCred", type: "datadog", status: "valid" });
     const [res] = await copyConnectors(scope, [id]);
     expect(res.status).toBe("copied");
     const [row] = await mockDatabase.select().from(schema.externalConnectors).where(eq(schema.externalConnectors.id, res.id!));

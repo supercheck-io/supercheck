@@ -128,8 +128,9 @@ export function scanFindings(result: ScanSummary): Array<{ label: string; tone: 
   return [
     {
       label: "Reachable",
-      tone: result.reachable ? "success" : "danger",
-      word: result.reachable ? "Reachable" : "Not reachable",
+      // Reachable only for a 2xx/3xx answer: a 4xx/5xx homepage is a problem, so it shows the code in words.
+      tone: !result.reachable ? "danger" : result.status !== null && result.status >= 400 ? (result.status >= 500 ? "danger" : "warning") : "success",
+      word: !result.reachable ? "Not reachable" : result.status !== null && result.status >= 500 ? "Server error" : result.status !== null && result.status >= 400 ? "Error response" : "Reachable",
       detail: result.status === null ? "No response" : `${result.status} in ${ms(result.responseMs)}`,
     },
     {

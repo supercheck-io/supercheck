@@ -42,7 +42,15 @@ export interface SetupScanResult {
   redirects: number;
   responseMs: number | null;
   ssl: { validTo: string; daysRemaining: number; issuer: string } | null;
-  pages: { path: string; status: number; ms: number; title: string | null }[];
+  pages: {
+    path: string;
+    status: number;
+    ms: number;
+    title: string | null;
+    /** The request ended on a different path (e.g. a login page): not a page to suggest. */
+    redirected?: boolean;
+    finalPath?: string;
+  }[];
   blockedReason?: string;
   error?: SetupScanErrorCode;
 }
@@ -321,6 +329,8 @@ export async function processSetupScan(
     };
   }
 
+  // Read the certificate before crawling so a slow crawl cannot use up its time budget.
+  const ssl = await readSsl(home.finalUrl, deps, budget);
   const pages: SetupScanResult['pages'] = [
     {
       path: home.finalUrl.pathname,
@@ -345,6 +355,11 @@ export async function processSetupScan(
           status: page.status,
           ms: page.ms,
           title: extractTitle(page.html),
+          ...(page.finalUrl.origin !== target.origin ||
+          page.finalUrl.pathname.replace(/\/$/, '') !==
+            target.pathname.replace(/\/$/, '')
+            ? { redirected: true, finalPath: page.finalUrl.pathname }
+            : {}),
         };
       } catch {
         // A page that fails keeps status 0; the homepage result decides the scan outcome.
@@ -361,7 +376,7 @@ export async function processSetupScan(
     status: home.status,
     redirects: home.redirects,
     responseMs: home.ms,
-    ssl: await readSsl(home.finalUrl, deps, budget),
+    ssl,
     pages,
   };
   if (home.botProtected) result.error = 'bot_protection';

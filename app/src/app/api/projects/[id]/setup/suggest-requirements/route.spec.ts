@@ -182,7 +182,9 @@ describe("generation", () => {
     (generateText as jest.Mock).mockResolvedValue({ text: `SECRET-RAW ${text}`, usage: {} });
     const res = await POST(req(), params);
     expect(res.status).toBe(502);
-    expect(JSON.stringify(await res.json())).not.toContain("SECRET-RAW");
+    const body = await res.json();
+    expect(JSON.stringify(body)).not.toContain("SECRET-RAW");
+    expect(body).toMatchObject({ code: "unusable_output", retryAt: new Date(claim.claimedAt.getTime() + 86_400_000).toISOString() });
     expect(refund).toHaveBeenCalled();
     expect(releaseAiRun).not.toHaveBeenCalled();
     expect(logAuditEvent).not.toHaveBeenCalled();
@@ -198,7 +200,9 @@ expect((await res.json()).requirements).toEqual([{ title: "Pay an invoice", desc
 });
 it("502, refund and release when the provider throws", async () => {
     (generateText as jest.Mock).mockRejectedValue(new Error("provider down"));
-    expect((await POST(req(), params)).status).toBe(502);
+    const res = await POST(req(), params);
+    expect(res.status).toBe(502);
+    expect((await res.json()).code).toBeUndefined();
     expect(refund).toHaveBeenCalled();
     expect(releaseAiRun).toHaveBeenCalled();
   });

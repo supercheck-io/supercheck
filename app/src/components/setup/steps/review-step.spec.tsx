@@ -192,7 +192,7 @@ describe("ReviewStep requirements and services", () => {
   it("creates requirements and a service, then offers Generate test and the jobs link", async () => {
     const { props } = setup({
       skipped: [],
-      permissions: { ...makeStepProps().permissions, canConfigureConnectors: true },
+      permissions: { ...makeStepProps().permissions, canConfigureConnectors: true, canCreateServices: true },
       draft: { tests: { requirements: [{ title: "User can sign in", description: "d" }] }, aiSre: { connectorIds: [PROVIDER], services: [{ name: "app.example.com" }] } },
     });
     expect(screen.getByText("1 AI SRE connector")).toBeTruthy();

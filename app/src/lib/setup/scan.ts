@@ -22,6 +22,9 @@ const pageSchema = z.object({
   status: clampStatus,
   ms: z.number().min(0),
   title: z.string().max(120).nullable(),
+  // Set when the request for this page ended on a different path: such a page is not suggested.
+  redirected: z.boolean().optional(),
+  finalPath: z.string().max(300).startsWith("/").optional(),
 });
 const scanResultSchema = z.object({
   finalUrl: z.string().max(2048).transform((v) => stripUrl(v) ?? ""),

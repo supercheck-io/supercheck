@@ -6,6 +6,9 @@ import { FEATURES, makeResponse, makeStepProps, PROJECT_ID } from "../test-fixtu
 import { TestsStep } from "./tests-step";
 
 const scan: ScanSummary = { finalUrl: "https://app.example.com/", reachable: true, status: 200, redirects: 0, responseMs: 100, ssl: null, pages: [{ path: "/pricing", status: 200, ms: 1, title: null }] };
+// The scan on screen must match the app URL of the draft.
+const APP = { app: { url: "https://app.example.com" } };
+const mk = (o: Parameters<typeof makeStepProps>[0] = {}) => makeStepProps({ ...o, draft: { ...APP, ...o.draft } });
 const fetchMock = jest.fn();
 const json = (body: unknown, status = 200) => Promise.resolve({ ok: status < 400, status, json: async () => body });
 beforeEach(() => {
@@ -25,14 +28,14 @@ const SUGGESTIONS = { requirements: [{ title: "User can sign in", description: "
 
 describe("TestsStep", () => {
   it("shows Beta and the cost before anyone clicks Suggest", () => {
-    render(<TestsStep {...makeStepProps({ scan })} />);
+    render(<TestsStep {...mk({ scan })} />);
     expect(screen.getByText("Beta")).toBeTruthy();
     expect(screen.getByTestId("setup-tests-cost").textContent).toBe("Suggesting requirements uses 1 AI credit, once per project per day.");
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("is locked on a trial with an upgrade link and no Suggest button", () => {
-    render(<TestsStep {...makeStepProps({ scan, response: makeResponse({ aiTestsLocked: true }) })} />);
+    render(<TestsStep {...mk({ scan, response: makeResponse({ aiTestsLocked: true }) })} />);
     expect(screen.getByTestId("setup-tests-locked")).toBeTruthy();
     expect(screen.getByRole("link", { name: "Upgrade" }).getAttribute("href")).toBe("/billing");
     expect(screen.queryByRole("button", { name: /Suggest/ })).toBeNull();
@@ -40,7 +43,7 @@ describe("TestsStep", () => {
 
   it("locks after a 402 plan_required answer", async () => {
     fetchMock.mockReturnValue(json({ code: "plan_required" }, 402));
-    render(<TestsStep {...makeStepProps({ scan })} />);
+    render(<TestsStep {...mk({ scan })} />);
     suggest();
     expect(await screen.findByTestId("setup-tests-locked")).toBeTruthy();
     expect(fetchMock.mock.calls[0][0]).toBe(`/api/projects/${PROJECT_ID}/setup/suggest-requirements`);
@@ -49,36 +52,65 @@ describe("TestsStep", () => {
   it("needs a scan before it offers Suggest", () => {
     render(<TestsStep {...makeStepProps()} />);
     expect(screen.getByRole("button", { name: /Suggest/ })).toBeDisabled();
-    expect(screen.getByText(/Scan your app in the first step/)).toBeTruthy();
+    expect(screen.getByText(/Scan your app first/)).toBeTruthy();
+  });
+
+  it("sends the pages of the scan on screen and never a scan of another URL", async () => {
+    fetchMock.mockReturnValue(json(SUGGESTIONS));
+    const withRedirect: ScanSummary = { ...scan, pages: [...scan.pages, { path: "/account", status: 200, ms: 1, title: "Sign in", redirected: true, finalPath: "/login" }] };
+    render(<TestsStep {...mk({ scan: withRedirect })} />);
+    suggest();
+    await screen.findByText("User can sign in");
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({ pages: [{ path: "/pricing", title: null }] });
+    cleanup();
+    render(<TestsStep {...mk({ scan, draft: { app: { url: "https://other.test" } } })} />);
+    expect(screen.getByRole("button", { name: /Suggest/ })).toBeDisabled();
+    expect(screen.getByText(/Scan your app first/)).toBeTruthy();
+  });
+
+  it("tells the user a failed answer used no credit and when suggestions return", async () => {
+    fetchMock.mockReturnValue(json({ code: "unusable_output", retryAt: "2030-01-01T00:00:00.000Z" }, 502));
+    render(<TestsStep {...mk({ scan })} />);
+    suggest();
+    const text = (await screen.findByText(/No credit was used/)).textContent ?? "";
+    expect(text).toMatch(/available again/);
+    expect(text).not.toMatch(/Try again\./);
+  });
+
+  it("disables Suggest when ten requirements are ticked", () => {
+    const requirements = Array.from({ length: 10 }, (_, i) => ({ title: `R${i}` }));
+    render(<TestsStep {...mk({ scan, draft: { tests: { requirements } } })} />);
+    expect(screen.getByRole("button", { name: /Suggest/ })).toBeDisabled();
+    expect(screen.getByText(/Untick some/)).toBeTruthy();
   });
 
   it("lists suggestions unticked and writes only ticked ones to the draft", async () => {
     fetchMock.mockReturnValue(json(SUGGESTIONS));
     const d = drafting();
-    const { rerender } = render(<TestsStep {...makeStepProps({ scan, patchDraft: d.patchDraft, draft: d.get() })} />);
+    const { rerender } = render(<TestsStep {...mk({ scan, patchDraft: d.patchDraft, draft: d.get() })} />);
     suggest();
     await screen.findByText("User can sign in");
     expect(screen.getByLabelText(/User can sign in/)).not.toBeChecked();
     fireEvent.click(screen.getByLabelText(/User can sign in/));
     expect(d.get().tests?.requirements).toEqual([{ title: "User can sign in", description: "Happy path", priority: "high" }]);
-    rerender(<TestsStep {...makeStepProps({ scan, patchDraft: d.patchDraft, draft: d.get() })} />);
+    rerender(<TestsStep {...mk({ scan, patchDraft: d.patchDraft, draft: d.get() })} />);
     fireEvent.click(screen.getByLabelText(/User can pay/));
     expect(d.get().tests?.requirements).toEqual([{ title: "User can sign in", description: "Happy path", priority: "high" }, { title: "User can pay", priority: "medium" }]);
-    rerender(<TestsStep {...makeStepProps({ scan, patchDraft: d.patchDraft, draft: d.get() })} />);
+    rerender(<TestsStep {...mk({ scan, patchDraft: d.patchDraft, draft: d.get() })} />);
     fireEvent.click(screen.getByLabelText(/User can sign in/));
     expect(d.get().tests?.requirements).toEqual([{ title: "User can pay", priority: "medium" }]);
     expect(screen.getByRole("button", { name: "Suggest more" })).toBeTruthy();
   });
 
   it("keeps ticked requirements when the step is revisited", () => {
-    render(<TestsStep {...makeStepProps({ scan, draft: { tests: { requirements: [{ title: "Kept", description: "d" }] } } })} />);
+    render(<TestsStep {...mk({ scan, draft: { tests: { requirements: [{ title: "Kept", description: "d" }] } } })} />);
     expect(screen.getByLabelText(/Kept/)).toBeChecked();
   });
 
   it("saves every suggestion in the draft and restores the unticked ones on revisit", async () => {
     fetchMock.mockReturnValue(json(SUGGESTIONS));
     const d = drafting();
-    render(<TestsStep {...makeStepProps({ scan, patchDraft: d.patchDraft, draft: d.get() })} />);
+    render(<TestsStep {...mk({ scan, patchDraft: d.patchDraft, draft: d.get() })} />);
     suggest();
     await screen.findByText("User can sign in");
     expect(d.get().tests?.suggestions).toEqual([
@@ -87,7 +119,7 @@ describe("TestsStep", () => {
     ]);
     expect(d.get().tests?.requirements).toEqual([]);
     cleanup();
-    render(<TestsStep {...makeStepProps({ scan, patchDraft: d.patchDraft, draft: d.get() })} />);
+    render(<TestsStep {...mk({ scan, patchDraft: d.patchDraft, draft: d.get() })} />);
     expect(screen.getByLabelText(/User can pay/)).not.toBeChecked();
     fireEvent.click(screen.getByLabelText(/User can pay/));
     expect(d.get().tests?.suggestions).toHaveLength(2);
@@ -95,21 +127,21 @@ describe("TestsStep", () => {
 
   it("explains the daily limit with the retry time", async () => {
     fetchMock.mockReturnValue(json({ code: "daily_limit", retryAt: "2030-01-01T00:00:00.000Z" }, 429));
-    render(<TestsStep {...makeStepProps({ scan })} />);
+    render(<TestsStep {...mk({ scan })} />);
     suggest();
     expect((await screen.findByText(/once per project per day. Try again after/)).textContent).toMatch(/2030|2029/);
   });
 
   it("falls back to 'tomorrow' without a retry time", async () => {
     fetchMock.mockReturnValue(json({ code: "daily_limit" }, 429));
-    render(<TestsStep {...makeStepProps({ scan })} />);
+    render(<TestsStep {...mk({ scan })} />);
     suggest();
     expect(await screen.findByText(/Try again after tomorrow/)).toBeTruthy();
   });
 
   it("stops offering suggestions on 503 (no AI provider)", async () => {
     fetchMock.mockReturnValue(json({ error: "AI provider is not configured" }, 503));
-    render(<TestsStep {...makeStepProps({ scan })} />);
+    render(<TestsStep {...mk({ scan })} />);
     suggest();
     expect(await screen.findByTestId("setup-tests-unavailable")).toBeTruthy();
     expect(screen.queryByRole("button", { name: /Suggest/ })).toBeNull();
@@ -117,7 +149,7 @@ describe("TestsStep", () => {
 
   it("handles credits exhausted, other errors and network failures, and allows retry", async () => {
     fetchMock.mockReturnValueOnce(json({ code: "credits_exhausted" }, 402));
-    render(<TestsStep {...makeStepProps({ scan })} />);
+    render(<TestsStep {...mk({ scan })} />);
     suggest();
     expect(await screen.findByText(/AI credits are used up/)).toBeTruthy();
     fetchMock.mockReturnValueOnce(json({ error: "AI could not produce suggestions. Try again." }, 502));
@@ -134,7 +166,7 @@ describe("TestsStep", () => {
 
   it("de-duplicates repeated suggestions by title", async () => {
     fetchMock.mockReturnValue(json(SUGGESTIONS));
-    render(<TestsStep {...makeStepProps({ scan })} />);
+    render(<TestsStep {...mk({ scan })} />);
     suggest();
     await screen.findByText("User can sign in");
     suggest();
@@ -151,7 +183,7 @@ describe("TestsStep", () => {
   });
 
   it("hides the agent test card when its flag is off, and disables Suggest read-only", () => {
-    render(<TestsStep {...makeStepProps({ scan, readOnly: true, features: { ...FEATURES, agentTest: false } })} />);
+    render(<TestsStep {...mk({ scan, readOnly: true, features: { ...FEATURES, agentTest: false } })} />);
     expect(screen.queryByTestId("setup-card-agent-test")).toBeNull();
     expect(screen.getByRole("button", { name: /Suggest/ })).toBeDisabled();
   });

@@ -1,12 +1,22 @@
 import "server-only";
 
-import { and, eq, isNull, or, sql } from "drizzle-orm";
+import { and, eq, isNull, like, or, sql } from "drizzle-orm";
 import { v7 as uuidv7 } from "uuid";
 import { db } from "@/utils/db";
 import { notificationProviders } from "@/db/schema/notification";
 import { externalConnectorCredentials, externalConnectors, privateAgents } from "@/db/schema/sre";
 import { decryptNotificationProviderConfig, encryptNotificationProviderConfig } from "@/lib/notification-providers/crypto";
-import { decryptConnectorCredential, encryptConnectorCredential } from "@/lib/sre/connectors/credential-vault";
+import { normalizeProviderConfig, validateProviderConfig } from "@/lib/notification-providers/validation";
+import type { NotificationProviderType, PlainNotificationProviderConfig } from "@/db/schema";
+import {
+  assertEndpointAllowedForExecution,
+  connectorCredentialRequirementError,
+  connectorRequiresCredentials,
+  isPrivateAgentConnectorType,
+  type SreConnectorType,
+} from "@/lib/sre/connectors";
+import { decryptConnectorCredential, encryptConnectorCredential, type ConnectorCredentialValue } from "@/lib/sre/connectors/credential-vault";
+import { providerEndpointRequirementError } from "@/lib/sre/connectors/providers/provider-credentials";
 
 export type CopyStatus = "copied" | "adopted" | "failed";
 export type CopyItemResult = { sourceId: string; id?: string; status: CopyStatus; error?: string; name?: string; type?: string };
@@ -50,6 +60,34 @@ export async function listConnectorIds(scope: CopyScope): Promise<string[]> {
 const lockAdoptionKey = (tx: Pick<typeof db, "execute">, kind: string, scope: CopyScope, source: { type: string; name: string }) =>
   tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${JSON.stringify([kind, scope.organizationId, scope.targetProjectId, source.type, source.name])}))`);
 
+/** Key-order independent text of a value, for comparing two decrypted configs. Never logged or returned. */
+const canon = (value: unknown): string =>
+  JSON.stringify(value, (_key, v) =>
+    v && typeof v === "object" && !Array.isArray(v) ? Object.fromEntries(Object.entries(v).sort(([a], [b]) => (a < b ? -1 : 1))) : v,
+  );
+
+const escapeLike = (value: string) => value.replace(/[\\%_]/g, "\\$&");
+
+/**
+ * Picks where a copy goes in the target: a target item with the same name is adopted only when `same` says it holds
+ * the same settings. Otherwise the copy takes the first free "<name> (copied)", "<name> (copied 2)", ... name.
+ */
+async function resolveTarget<Row extends { name: string }>(
+  rows: Row[],
+  baseName: string,
+  same: (row: Row) => Promise<boolean>,
+): Promise<{ adopt: Row } | { name: string }> {
+  for (let i = 0; ; i++) {
+    const name = i === 0 ? baseName : i === 1 ? `${baseName} (copied)` : `${baseName} (copied ${i})`;
+    const row = rows.find((r) => r.name === name);
+    if (!row) return { name };
+    if (await same(row)) return { adopt: row };
+  }
+}
+
+const sameNameFilter = (column: typeof notificationProviders.name | typeof externalConnectors.name, name: string) =>
+  or(eq(column, name), like(column, `${escapeLike(name)} (copied%`));
+
 export function copyProviders(scope: CopyScope, ids: string[]): Promise<CopyItemResult[]> {
   const { organizationId, sourceProjectId, targetProjectId, userId } = scope;
   // Sequential on purpose: each item is its own transaction and the response keeps request order.
@@ -71,27 +109,40 @@ export function copyProviders(scope: CopyScope, ids: string[]): Promise<CopyItem
             .limit(1);
           if (!source) throw new CopyItemError("Provider not found in the source project");
           await lockAdoptionKey(tx, "provider", scope, source);
-          const [existing] = await tx
-            .select({ id: notificationProviders.id })
+          const plain = decryptNotificationProviderConfig(source.config, sourceProjectId);
+          const candidates = await tx
+            .select()
             .from(notificationProviders)
             .where(
               and(
                 eq(notificationProviders.organizationId, organizationId),
                 eq(notificationProviders.projectId, targetProjectId),
                 eq(notificationProviders.type, source.type),
-                eq(notificationProviders.name, source.name),
+                sameNameFilter(notificationProviders.name, source.name),
               ),
-            )
-            .limit(1);
-          if (existing) return { id: existing.id, status: "adopted" as const, name: source.name, type: source.type };
+            );
+          const target = await resolveTarget(candidates, source.name, async (row) => {
+            try {
+              return canon(decryptNotificationProviderConfig(row.config, targetProjectId)) === canon(plain);
+            } catch {
+              return false;
+            }
+          });
+          if ("adopt" in target) return { id: target.adopt.id, status: "adopted" as const, name: target.adopt.name, type: source.type };
+          // The same checks as creating a channel by hand (the message may echo input, so only a fixed reason is returned).
+          try {
+            validateProviderConfig(source.type as NotificationProviderType, plain as Record<string, unknown>);
+          } catch {
+            throw new CopyItemError("This channel's settings no longer pass validation");
+          }
           const config = encryptNotificationProviderConfig(
-            decryptNotificationProviderConfig(source.config, sourceProjectId),
+            normalizeProviderConfig(source.type as NotificationProviderType, plain as Record<string, unknown>) as PlainNotificationProviderConfig,
             targetProjectId,
           );
           const [created] = await tx
             .insert(notificationProviders)
             .values({
-              name: source.name,
+              name: target.name,
               type: source.type,
               config,
               isEnabled: source.isEnabled,
@@ -100,7 +151,7 @@ export function copyProviders(scope: CopyScope, ids: string[]): Promise<CopyItem
               createdByUserId: userId,
             })
             .returning({ id: notificationProviders.id });
-          return { id: created.id, status: "copied" as const, name: source.name, type: source.type };
+          return { id: created.id, status: "copied" as const, name: target.name, type: source.type };
         }),
       ),
     );
@@ -128,23 +179,55 @@ export function copyConnectors(scope: CopyScope, ids: string[]): Promise<CopyIte
             .limit(1);
           if (!source) throw new CopyItemError("Connector not found in the source project");
           await lockAdoptionKey(tx, "connector", scope, source);
-          const [existing] = await tx
-            .select({ id: externalConnectors.id })
+          const [credential] = await tx
+            .select()
+            .from(externalConnectorCredentials)
+            .where(eq(externalConnectorCredentials.connectorId, source.id))
+            .limit(1);
+          const plain = credential
+            ? decryptConnectorCredential(credential.encryptedCredential, { organizationId, projectId: sourceProjectId, connectorId: source.id })
+            : null;
+          const candidates = await tx
+            .select()
             .from(externalConnectors)
             .where(
               and(
                 eq(externalConnectors.organizationId, organizationId),
                 eq(externalConnectors.projectId, targetProjectId),
                 eq(externalConnectors.type, source.type),
-                eq(externalConnectors.name, source.name),
+                sameNameFilter(externalConnectors.name, source.name),
               ),
-            )
-            .limit(1);
-          if (existing) return { id: existing.id, status: "adopted" as const, name: source.name, type: source.type };
+            );
+          const target = await resolveTarget(candidates, source.name, async (row) => {
+            if (canon(row.config) !== canon(source.config) || row.privateAgentId !== source.privateAgentId) return false;
+            const [rowCredential] = await tx.select().from(externalConnectorCredentials).where(eq(externalConnectorCredentials.connectorId, row.id)).limit(1);
+            if (!rowCredential || !plain) return !rowCredential && !plain;
+            try {
+              const rowPlain = decryptConnectorCredential(rowCredential.encryptedCredential, { organizationId, projectId: targetProjectId, connectorId: row.id });
+              return rowCredential.credentialType === credential?.credentialType && canon(rowPlain) === canon(plain);
+            } catch {
+              return false;
+            }
+          });
+          if ("adopt" in target) return { id: target.adopt.id, status: "adopted" as const, name: target.adopt.name, type: source.type };
 
+          // The same checks as creating a connector by hand (createSreConnector).
+          const endpointUrl = (source.config as { endpointUrl?: unknown } | null)?.endpointUrl;
+          const endpoint = typeof endpointUrl === "string" ? endpointUrl : null;
+          if (source.privateAgentId && !isPrivateAgentConnectorType(source.type as SreConnectorType)) {
+            throw new CopyItemError("This connector type does not support a Private Agent");
+          }
+          if (providerEndpointRequirementError(source.type, endpoint) || connectorCredentialRequirementError(source.type, plain as ConnectorCredentialValue | null)) {
+            throw new CopyItemError("This connector's settings no longer pass validation");
+          }
+          try {
+            await assertEndpointAllowedForExecution(endpoint, Boolean(source.privateAgentId));
+          } catch {
+            throw new CopyItemError("This connector's endpoint is not allowed in the target project");
+          }
           if (source.privateAgentId) {
             const [agent] = await tx
-              .select({ id: privateAgents.id })
+              .select({ id: privateAgents.id, status: privateAgents.status, supportsSreConnectors: privateAgents.supportsSreConnectors })
               .from(privateAgents)
               .where(
                 and(
@@ -155,36 +238,28 @@ export function copyConnectors(scope: CopyScope, ids: string[]): Promise<CopyIte
               )
               .limit(1);
             if (!agent) throw new CopyItemError("The connector's private agent is not available in the target project");
+            if (agent.status === "disabled" || !agent.supportsSreConnectors) throw new CopyItemError("The connector's private agent is unavailable for connectors");
           }
 
-          const [credential] = await tx
-            .select()
-            .from(externalConnectorCredentials)
-            .where(eq(externalConnectorCredentials.connectorId, source.id))
-            .limit(1);
           const newId = uuidv7();
           await tx.insert(externalConnectors).values({
             id: newId,
             organizationId,
             projectId: targetProjectId,
             privateAgentId: source.privateAgentId,
-            name: source.name,
+            name: target.name,
             type: source.type,
             config: source.config,
             riskLevel: source.riskLevel,
             permissionLevel: "read",
             sideEffectLevel: "none",
-            status: credential ? "configured" : source.status === "missing_credentials" ? "missing_credentials" : "configured",
+            // Same rule as a newly created connector (not carried over from the source's validated status).
+            status: credential || !connectorRequiresCredentials(source.type as SreConnectorType) ? "configured" : "missing_credentials",
             defaultTimeWindowMinutes: source.defaultTimeWindowMinutes,
             outputLimits: source.outputLimits,
             createdByUserId: userId,
           });
-          if (credential) {
-            const plain = decryptConnectorCredential(credential.encryptedCredential, {
-              organizationId,
-              projectId: sourceProjectId,
-              connectorId: source.id,
-            });
+          if (credential && plain) {
             const encrypted = encryptConnectorCredential(plain, { organizationId, projectId: targetProjectId, connectorId: newId });
             await tx.insert(externalConnectorCredentials).values({
               connectorId: newId,
@@ -196,7 +271,7 @@ export function copyConnectors(scope: CopyScope, ids: string[]): Promise<CopyIte
               lastRotatedAt: new Date(),
             });
           }
-          return { id: newId, status: "copied" as const, name: source.name, type: source.type };
+          return { id: newId, status: "copied" as const, name: target.name, type: source.type };
         }),
       ),
     );
