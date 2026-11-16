@@ -41,6 +41,7 @@ export const COMMAND_NAV_SECTIONS: Array<{ heading: string; items: Array<{ id: N
       { id: "incidents", url: "/incidents" },
       { id: "copilot", url: "/copilot", gate: "investigate" },
       { id: "services", url: "/services", gate: "configure" },
+      { id: "projectSetup", url: "/setup" },
     ],
   },
   {

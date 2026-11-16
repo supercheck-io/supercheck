@@ -18,3 +18,12 @@ it("a search from a later page shows its match instead of an empty page", async 
   expect(await screen.findByText("Project 03")).toBeTruthy();
   expect(screen.queryByText(/No matching projects/i)).toBeNull();
 });
+
+it("offers Project setup in the row actions, linking to that project's setup", async () => {
+  render(<ProjectsTable projects={rows.slice(0, 2)} onCreateProject={jest.fn()} canManageProject />);
+  const trigger = await screen.findByRole("button", { name: "Open actions for Project 01" });
+  trigger.focus();
+  fireEvent.keyDown(trigger, { key: "Enter" });
+  const link = await screen.findByRole("menuitem", { name: "Project setup" });
+  expect(link).toHaveAttribute("href", "/setup?project=p1");
+});

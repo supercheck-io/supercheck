@@ -1,0 +1,224 @@
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+
+import { FEATURES, makeResponse, PROJECT_ID } from "./test-fixtures";
+import { createWrapper } from "./test-wrapper";
+import { SetupWizard } from "./wizard";
+
+const push = jest.fn();
+jest.mock("next/navigation", () => ({ useRouter: () => ({ push, replace: jest.fn() }) }));
+jest.mock("sonner", () => ({ toast: { success: jest.fn(), error: jest.fn() } }));
+jest.mock("@/hooks/use-app-config", () => ({ useAppConfig: jest.fn() }));
+jest.mock("@/actions/create-component", () => ({ createComponent: jest.fn() }));
+jest.mock("@/actions/create-status-page", () => ({ createStatusPage: jest.fn() }));
+jest.mock("@/actions/get-status-pages", () => ({ getStatusPages: jest.fn() }));
+jest.mock("@/actions/publish-status-page", () => ({ publishStatusPage: jest.fn() }));
+jest.mock("@/actions/notification-policy", () => ({ getProjectNotificationPolicy: jest.fn(), saveProjectNotificationPolicy: jest.fn() }));
+
+const { useAppConfig } = jest.requireMock("@/hooks/use-app-config") as { useAppConfig: jest.Mock };
+const { toast } = jest.requireMock("sonner") as { toast: { error: jest.Mock } };
+
+type Call = { url: string; method: string; body?: Record<string, unknown> };
+let calls: Call[];
+let lockStatus: number;
+let putHandler: (call: Call) => { status: number; body: unknown };
+
+const fetchMock = jest.fn(async (url: string, init?: { method?: string; body?: string }) => {
+  const call: Call = { url, method: init?.method ?? "GET", body: init?.body ? JSON.parse(init.body) : undefined };
+  calls.push(call);
+  const reply = (status: number, body: unknown) => ({ ok: status < 400, status, json: async () => body });
+  if (url.endsWith("/setup/lock")) {
+    if (call.method === "DELETE") return reply(204, {});
+    return lockStatus === 423
+      ? reply(423, { error: "locked", lock: { userId: "u2", userName: "Priya Shah", lockedAt: new Date(Date.now() - 6 * 60_000).toISOString(), mine: false } })
+      : reply(200, { lock: { userId: "u1", userName: "Me", lockedAt: new Date().toISOString(), mine: true } });
+  }
+  if (call.method === "PUT") {
+    const { status, body } = putHandler(call);
+    return reply(status, body);
+  }
+  return reply(200, {});
+});
+
+beforeEach(() => {
+  calls = [];
+  lockStatus = 200;
+  push.mockReset();
+  toast.error.mockReset();
+  fetchMock.mockClear();
+  global.fetch = fetchMock as unknown as typeof fetch;
+  useAppConfig.mockReturnValue({ setupFeatures: FEATURES });
+  let n = 0;
+  putHandler = (call) => ({ status: 200, body: makeResponse({}, { status: "in_progress", updatedAt: `t${++n}`, currentStep: (call.body?.currentStep as never) ?? null }) });
+});
+
+const puts = () => calls.filter((c) => c.method === "PUT");
+const renderWizard = (response = makeResponse(), persona: Parameters<typeof SetupWizard>[0]["persona"] = null) => {
+  const { Wrapper } = createWrapper();
+  return render(<SetupWizard response={response} persona={persona} userEmail="me@example.com" />, { wrapper: Wrapper });
+};
+const leaveAndFlush = async () => {
+  fireEvent.click(screen.getByRole("button", { name: "Exit setup" }));
+  expect(await screen.findByText("Leave setup?")).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: "Leave and resume later" }));
+};
+
+describe("step rail", () => {
+  it("lists the default order as a labelled nav with the current step marked", () => {
+    renderWizard();
+    const nav = screen.getByRole("navigation", { name: "Setup steps" });
+    expect(Array.from(nav.querySelectorAll("button")).map((b) => b.getAttribute("data-testid"))).toEqual([
+      "setup-step-app",
+      "setup-step-alerts",
+      "setup-step-monitors",
+      "setup-step-statusPage",
+      "setup-step-review",
+    ]);
+    expect(screen.getByTestId("setup-step-app").getAttribute("aria-current")).toBe("step");
+    expect(screen.getByText("Step 1 of 5")).toBeTruthy();
+  });
+
+  it("orders steps by persona and never renders tests or AI SRE in this PR, even with their flags on", () => {
+    useAppConfig.mockReturnValue({ setupFeatures: { ...FEATURES, aiTests: true, aiSre: true } });
+    renderWizard(makeResponse(), "developer");
+    const ids = Array.from(screen.getByRole("navigation", { name: "Setup steps" }).querySelectorAll("button")).map((b) => b.getAttribute("data-testid"));
+    expect(ids).toEqual(["setup-step-developer", "setup-step-app", "setup-step-monitors", "setup-step-alerts", "setup-step-statusPage", "setup-step-review"]);
+    expect(screen.getByText("npx supercheck login --json")).toBeTruthy();
+  });
+
+  it("shows the invite step first for the leader persona", () => {
+    renderWizard(makeResponse(), "leader");
+    expect(screen.getByTestId("setup-step-invite").getAttribute("aria-current")).toBe("step");
+  });
+
+  it("resumes at the saved step", () => {
+    renderWizard(makeResponse({}, { status: "in_progress", currentStep: "monitors" }));
+    expect(screen.getByTestId("setup-step-monitors").getAttribute("aria-current")).toBe("step");
+  });
+});
+
+describe("navigation and draft", () => {
+  it("Continue, Skip and Back move through steps and save the position and skipped steps", async () => {
+    renderWizard();
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+    expect(screen.getByTestId("setup-step-alerts").getAttribute("aria-current")).toBe("step");
+    fireEvent.click(screen.getByRole("button", { name: "Skip this step" }));
+    expect(screen.getByTestId("setup-step-monitors").getAttribute("aria-current")).toBe("step");
+    expect(screen.getByText("Skipped")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Back" }));
+    expect(screen.getByTestId("setup-step-alerts").getAttribute("aria-current")).toBe("step");
+    fireEvent.click(screen.getByTestId("setup-step-statusPage"));
+    expect(screen.getByTestId("setup-step-statusPage").getAttribute("aria-current")).toBe("step");
+
+    await leaveAndFlush();
+    await waitFor(() => expect(push).toHaveBeenCalledWith("/"));
+    const last = puts().at(-1)?.body;
+    expect(last).toMatchObject({ currentStep: "statusPage", skipped: ["alerts"] });
+    expect(puts()[0].url).toBe(`/api/projects/${PROJECT_ID}/setup`);
+  });
+
+  it("marks a not-started setup in progress and shows Draft saved", async () => {
+    renderWizard();
+    await leaveAndFlush();
+    await waitFor(() => expect(puts()).toHaveLength(1));
+    expect(puts()[0].body).toMatchObject({ status: "in_progress", expectedUpdatedAt: null });
+  });
+
+  it("continuing a skipped step clears its skipped mark", async () => {
+    renderWizard(makeResponse({}, { status: "in_progress", currentStep: "alerts", skipped: ["alerts"] }));
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+    await leaveAndFlush();
+    await waitFor(() => expect(puts().length).toBeGreaterThan(0));
+    expect(puts().at(-1)?.body?.skipped).toEqual([]);
+  });
+
+  it("autosaves after a pause and shows Draft saved", async () => {
+    jest.useFakeTimers();
+    try {
+      renderWizard(makeResponse({}, { status: "in_progress" }));
+      fireEvent.change(screen.getByLabelText("App URL"), { target: { value: "https://app.example.com/?x=1" } });
+      await act(async () => {
+        jest.advanceTimersByTime(900);
+      });
+      jest.useRealTimers();
+      expect(await screen.findByText("Draft saved")).toBeTruthy();
+      expect(puts()[0].body?.draft).toMatchObject({ app: { url: "https://app.example.com/" } });
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it("reloads the saved state and tells the user on a 409", async () => {
+    putHandler = () => ({ status: 409, body: { error: "conflict", state: makeResponse({}, { status: "in_progress", currentStep: "monitors", updatedAt: "server" }).state } });
+    renderWizard(makeResponse({}, { status: "in_progress" }));
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+    await leaveAndFlush();
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith(expect.stringContaining("changed somewhere else")));
+    expect(screen.getByTestId("setup-step-monitors").getAttribute("aria-current")).toBe("step");
+  });
+
+  it("keeps the change and offers a retry when saving fails", async () => {
+    putHandler = () => ({ status: 500, body: { error: "boom" } });
+    renderWizard(makeResponse({}, { status: "in_progress" }));
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+    await leaveAndFlush();
+    expect(await screen.findByText("Could not save the draft")).toBeTruthy();
+    putHandler = () => ({ status: 200, body: makeResponse({}, { updatedAt: "ok" }) });
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+    expect(await screen.findByText("Draft saved")).toBeTruthy();
+  });
+
+  it("keeps the dialog closed when the user keeps going", async () => {
+    renderWizard(makeResponse({}, { status: "in_progress" }));
+    fireEvent.click(screen.getByRole("button", { name: "Exit setup" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Keep going" }));
+    await waitFor(() => expect(screen.queryByText("Leave setup?")).toBeNull());
+    expect(push).not.toHaveBeenCalled();
+  });
+});
+
+describe("lock", () => {
+  it("takes the lock on enter and releases it on exit", async () => {
+    const view = renderWizard(makeResponse({}, { status: "in_progress" }));
+    await waitFor(() => expect(calls.some((c) => c.url.endsWith("/setup/lock") && c.method === "POST")).toBe(true));
+    view.unmount();
+    expect(calls.some((c) => c.url.endsWith("/setup/lock") && c.method === "DELETE")).toBe(true);
+  });
+
+  it("heartbeats every 60 seconds", async () => {
+    jest.useFakeTimers();
+    try {
+      renderWizard(makeResponse({}, { status: "in_progress" }));
+      await act(async () => {
+        jest.advanceTimersByTime(120_000);
+      });
+      expect(calls.filter((c) => c.url.endsWith("/setup/lock") && c.method === "POST").length).toBeGreaterThanOrEqual(3);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it("shows who holds the lock on a 423 and goes read-only", async () => {
+    lockStatus = 423;
+    renderWizard(makeResponse({}, { status: "in_progress" }));
+    expect(await screen.findByTestId("setup-locked")).toBeTruthy();
+    expect(screen.getByText("Setup is already running")).toBeTruthy();
+    expect(screen.getByText(/Priya Shah started it 6 minutes ago/)).toBeTruthy();
+    expect(screen.getByLabelText("App URL")).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Skip this step" })).toBeDisabled();
+  });
+
+  it("shows a lock already held by someone else before the first response", () => {
+    lockStatus = 423;
+    const lock = { userId: "u2", userName: null, lockedAt: new Date().toISOString(), mine: false };
+    renderWizard(makeResponse({}, { status: "in_progress", lock }));
+    expect(screen.getByText(/Someone started it just now/)).toBeTruthy();
+  });
+
+  it("is read-only without edit permission and never takes the lock", () => {
+    const base = makeResponse({}, { status: "in_progress" });
+    renderWizard({ ...base, permissions: { ...base.permissions, canEdit: false } });
+    expect(screen.getByText("You have view access. A project admin can finish setup.")).toBeTruthy();
+    expect(screen.getByLabelText("App URL")).toBeDisabled();
+    expect(calls).toHaveLength(0);
+  });
+});

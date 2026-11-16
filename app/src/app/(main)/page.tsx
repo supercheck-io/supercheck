@@ -46,6 +46,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { DashboardEmptyState } from "@/components/dashboard/dashboard-empty-state";
+import { DashboardGettingStarted } from "@/components/setup/getting-started-card";
 import { HealthInfo } from "@/components/dashboard/health-info";
 import { MetricCard } from "@/components/dashboard/metric-card";
 import { NeedsAttentionCard } from "@/components/dashboard/dashboard-panels";
@@ -549,14 +550,18 @@ function DashboardOverview({
 
   if (stats.runs === 0 && stats.monitors === 0 && k6.totalRuns === 0) {
     return (
-      <DashboardEmptyState
-        title="No Project Activity"
-        description="Your project dashboard is currently empty. Head over to the Quick Create section to set up your project resources."
-        icon={<SupercheckLogo className="h-16 w-16" />}
-        action={
-          <Button asChild>
-            <Link href="/create">Quick Create</Link>
-          </Button>
+      <DashboardGettingStarted
+        fallback={
+        <DashboardEmptyState
+          title="No Project Activity"
+          description="Your project dashboard is currently empty. Head over to the Quick Create section to set up your project resources."
+          icon={<SupercheckLogo className="h-16 w-16" />}
+          action={
+            <Button asChild>
+              <Link href="/create">Quick Create</Link>
+            </Button>
+          }
+        />
         }
       />
     );

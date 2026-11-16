@@ -13,7 +13,8 @@ import {
 import { DateCell } from "@/components/ui/table-cells";
 import { TruncatedTextWithTooltip } from "@/components/ui/truncated-text-with-tooltip";
 
-import { BellRing, Edit3, FolderOpen, MapPin, MoreHorizontal, RotateCcw, Trash2, Users } from "lucide-react";
+import Link from "next/link";
+import { BellRing, Edit3, FolderOpen, MapPin, MoreHorizontal, Rocket, RotateCcw, Trash2, Users } from "lucide-react";
 import { formatRestoreDeadline } from "./deleted-projects";
 import { toast } from "sonner";
 import { DataTableColumnHeader } from "@/components/tests/data-table-column-header";
@@ -239,6 +240,12 @@ export function createProjectColumns(
               <DropdownMenuItem onClick={() => onEditProject?.(project)}>
                 <Edit3 className="mr-2 h-3.5 w-3.5" />
                 Edit project
+              </DropdownMenuItem>
+              <DropdownMenuItem asChild>
+                <Link href={`/setup?project=${project.id}`}>
+                  <Rocket className="mr-2 h-3.5 w-3.5" />
+                  Project setup
+                </Link>
               </DropdownMenuItem>
               {onManageLocations && (
                 <DropdownMenuItem onClick={() => onManageLocations(project)}>

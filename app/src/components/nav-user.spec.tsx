@@ -41,6 +41,11 @@ describe("NavUser", () => {
     expect(screen.getByRole("dialog")).toBeInTheDocument();
   });
 
+  it("links Change persona to the setup welcome page", () => {
+    render(<NavUser />);
+    expect(screen.getByTestId("persona-menu-item")).toHaveAttribute("href", "/setup/welcome");
+  });
+
   it("no longer has separate Connected apps or Source code items", () => {
     mockMcpEnabled = true;
     render(<NavUser />);

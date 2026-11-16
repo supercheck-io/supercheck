@@ -1,7 +1,8 @@
 "use client";
 
 import * as React from "react";
-import { useSyncExternalStore } from "react";
+import { useContext, useSyncExternalStore } from "react";
+import { QueryClientContext } from "@tanstack/react-query";
 import {
   SquarePlus,
   BookOpenText,
@@ -18,7 +19,7 @@ import {
 import { PlaywrightLogo } from "@/components/logo/playwright-logo";
 import { K6Logo } from "@/components/logo/k6-logo";
 
-import { NavMain } from "@/components/nav-main";
+import { NavMain, type MenuItem } from "@/components/nav-main";
 import { ProjectSwitcher } from "@/components/project-switcher";
 import { ImpersonationCard } from "@/components/impersonation-card";
 import Link from "next/link";
@@ -36,6 +37,10 @@ import {
 import { useAdminStatus } from "@/hooks/use-admin-status";
 import { NAV } from "@/lib/nav-areas";
 import { createActionsFor, type CreateGroupId } from "@/lib/create-actions";
+import { useAppConfig } from "@/hooks/use-app-config";
+import { useProjectContextSafe } from "@/hooks/use-project-context";
+import { useProjectSetup, useUserPreferences } from "@/hooks/use-project-setup";
+import { sidebarLayout, type SidebarGroup as PersonaGroup, type UserPersona } from "@/lib/setup/persona";
 import { getReleaseVersionBadge } from "@/lib/release-metadata";
 
 // Internal: build-time value baked in by the release image build; not an operator setting.
@@ -167,7 +172,42 @@ const data = {
   ],
 };
 
-export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
+type SidebarProps = React.ComponentProps<typeof Sidebar>;
+
+/** Persona + setup progress. Absent (null) renders today's sidebar exactly. */
+interface SidebarPrefs {
+  persona: UserPersona | null;
+  setupBadge: string | null;
+}
+
+// Reads preferences only under a QueryClient, so the sidebar still renders without one.
+export function AppSidebar(props: SidebarProps) {
+  const hasQueryClient = useContext(QueryClientContext) !== undefined;
+  return hasQueryClient ? (
+    <AppSidebarWithPrefs {...props} />
+  ) : (
+    <AppSidebarView {...props} prefs={{ persona: null, setupBadge: null }} />
+  );
+}
+
+function AppSidebarWithPrefs(props: SidebarProps) {
+  const { data: preferences } = useUserPreferences();
+  const { setupFeatures } = useAppConfig();
+  const projectId = useProjectContextSafe()?.currentProject?.id ?? null;
+  const { data: setup } = useProjectSetup(setupFeatures.setup ? projectId : null);
+  const open = setup && setup.state.status !== "completed" && setup.state.status !== "dismissed";
+  return (
+    <AppSidebarView
+      {...props}
+      prefs={{
+        persona: preferences?.persona ?? null,
+        setupBadge: open ? `${setup.checklist.done}/${setup.checklist.total}` : null,
+      }}
+    />
+  );
+}
+
+function AppSidebarView({ prefs, ...props }: SidebarProps & { prefs: SidebarPrefs }) {
   // HYDRATION FIX: Track client mount state to prevent hydration errors
   // with synchronous localStorage restoration.
   // Server will return false, Client will return true after mounting.
@@ -226,6 +266,30 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     return baseSettings;
   }, [isAdmin, isOrgAdmin, isAdminStatusLoaded]);
 
+  const layout = sidebarLayout(prefs.persona);
+  const personaOn = prefs.persona !== null;
+  // With a persona set Dashboard moves to the top block so a folded group never hides it.
+  const respondItems = personaOn ? data.Respond.slice(1) : data.Respond;
+  const topItems: MenuItem[] = [
+    ...(personaOn
+      ? [{ title: NAV.dashboard.title, url: "/", icon: NAV.dashboard.icon, tone: NAV.dashboard.tone }]
+      : []),
+    ...(prefs.setupBadge
+      ? [{ title: NAV.projectSetup.title, url: "/setup", icon: NAV.projectSetup.icon, tone: NAV.projectSetup.tone, badge: prefs.setupBadge }]
+      : []),
+  ];
+  const fold = (group: PersonaGroup) => ({
+    collapsible: personaOn,
+    defaultOpen: layout.expanded === null || layout.expanded === group,
+  });
+  // Literal groupLabel strings stay in this order: the command palette spec reads them from source.
+  const groups: Record<PersonaGroup, React.ReactNode> = {
+    Respond: <NavMain key="Respond" groupLabel="Respond" items={respondItems} {...fold("Respond")} />,
+    Communicate: <NavMain key="Communicate" groupLabel="Communicate" items={data.Communicate} {...fold("Communicate")} />,
+    Automate: <NavMain key="Automate" groupLabel="Automate" items={data.Automate} {...fold("Automate")} />,
+    Monitor: <NavMain key="Monitor" groupLabel="Monitor" items={data.Monitor} {...fold("Monitor")} />,
+  };
+
   return (
     <Sidebar collapsible="icon" {...props}>
       <SidebarHeader className="group-data-[collapsible=icon]:px-0 border-t">
@@ -247,10 +311,8 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
             </SidebarMenuItem>
           </SidebarMenu>
         </SidebarGroup>
-        <NavMain groupLabel="Respond" items={data.Respond} />
-        <NavMain groupLabel="Communicate" items={data.Communicate} />
-        <NavMain groupLabel="Automate" items={data.Automate} />
-        <NavMain groupLabel="Monitor" items={data.Monitor} />
+        {topItems.length > 0 && <NavMain groupLabel="" items={topItems} />}
+        {layout.order.map((group) => groups[group])}
         {adminItems.length > 0 && (
           <NavMain groupLabel="Settings" items={adminItems} />
         )}

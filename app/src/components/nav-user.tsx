@@ -12,8 +12,9 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { UserAvatar } from "@/components/ui/user-cell";
 import { Skeleton } from "@/components/ui/skeleton";
+import Link from "next/link";
 import { useTheme } from "next-themes";
-import { Moon, Sun, User, UserCog, Monitor } from "lucide-react";
+import { Moon, Sun, User, UserCog, UserRoundPen, Monitor } from "lucide-react";
 import { AccountDialog } from "@/components/account/account-dialog";
 import { useProjectContextSafe, clearProjectsCache } from "@/hooks/use-project-context";
 import { resetChatwootSession } from "@/components/support/chatwoot-widget";
@@ -101,6 +102,9 @@ export function NavUser() {
         <DropdownMenuSeparator />
         <DropdownMenuItem onSelect={() => setAccountOpen(true)} data-testid="account-menu-item">
           <UserCog className="h-4 w-4 mr-2" />Account
+        </DropdownMenuItem>
+        <DropdownMenuItem asChild>
+          <Link href="/setup/welcome" data-testid="persona-menu-item"><UserRoundPen className="h-4 w-4 mr-2" />Change persona</Link>
         </DropdownMenuItem>
         <DropdownMenuItem onClick={handleLogout} data-testid="sign-out-button">Log out</DropdownMenuItem>
       </DropdownMenuContent>

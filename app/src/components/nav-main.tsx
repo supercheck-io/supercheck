@@ -104,14 +104,17 @@ export type MenuItem = {
 export function NavMain({
   groupLabel,
   items,
+  collapsible = false,
+  defaultOpen = true,
 }: {
   groupLabel: string;
   items: MenuItem[];
+  /** Makes the whole group foldable (persona sidebar). Off = today's static group. */
+  collapsible?: boolean;
+  defaultOpen?: boolean;
 }) {
   const pathname = usePathname() ?? "";
-  return (
-    <SidebarGroup>
-      <SidebarGroupLabel>{groupLabel}</SidebarGroupLabel>
+  const menu = (
       <SidebarMenu>
         {items.map((item) => (
           <Collapsible
@@ -229,6 +232,34 @@ export function NavMain({
           </Collapsible>
         ))}
       </SidebarMenu>
+  );
+
+  if (!collapsible) {
+    return (
+      <SidebarGroup>
+        <SidebarGroupLabel>{groupLabel}</SidebarGroupLabel>
+        {menu}
+      </SidebarGroup>
+    );
+  }
+
+  return (
+    <SidebarGroup>
+      <Collapsible defaultOpen={defaultOpen} className="group/group-collapsible">
+        <SidebarGroupLabel asChild>
+          <CollapsibleTrigger aria-label={`Toggle ${groupLabel}`} className="w-full cursor-pointer">
+            <span>{groupLabel}</span>
+            <ChevronRight className="ml-auto transition-transform duration-200 group-data-[state=open]/group-collapsible:rotate-90" />
+          </CollapsibleTrigger>
+        </SidebarGroupLabel>
+        {/* forceMount + icon override: the icon rail has no label to reopen the group, so items stay reachable. */}
+        <CollapsibleContent
+          forceMount
+          className="data-[state=closed]:hidden group-data-[collapsible=icon]:data-[state=closed]:block"
+        >
+          {menu}
+        </CollapsibleContent>
+      </Collapsible>
     </SidebarGroup>
   );
 }

@@ -1,0 +1,124 @@
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+
+import { makeStepProps, PROJECT_ID } from "../test-fixtures";
+import { ReviewStep, type ReviewStepProps } from "./review-step";
+
+jest.mock("@/actions/create-component", () => ({ createComponent: jest.fn(async () => ({ success: true, component: { id: "c1" } })) }));
+jest.mock("@/actions/create-status-page", () => ({ createStatusPage: jest.fn(async () => ({ success: true, statusPage: { id: "sp1" } })) }));
+jest.mock("@/actions/get-status-pages", () => ({ getStatusPages: jest.fn(async () => ({ success: true, statusPages: [{ id: "sp-old", name: "Old" }] })) }));
+jest.mock("@/actions/publish-status-page", () => ({ publishStatusPage: jest.fn(async () => ({ success: true })) }));
+jest.mock("@/actions/notification-policy", () => ({
+  getProjectNotificationPolicy: jest.fn(async () => ({ success: true, data: { policy: { channelIds: [], emailServiceOwnersOnSev12: false, renotifyMax: 3, escalateAfterMinutes: null, escalateChannelId: null, escalateUserId: null, autoInvestigateOnOpen: false } } })),
+  saveProjectNotificationPolicy: jest.fn(async () => ({ success: true })),
+}));
+
+const actions = {
+  createComponent: (jest.requireMock("@/actions/create-component") as { createComponent: jest.Mock }).createComponent,
+  save: (jest.requireMock("@/actions/notification-policy") as { saveProjectNotificationPolicy: jest.Mock }).saveProjectNotificationPolicy,
+};
+
+const PROVIDER = "00000000-0000-4000-8000-000000000001";
+const fetchMock = jest.fn();
+let monitorPost: (body: { type: string }) => { ok: boolean; status: number; json: () => Promise<unknown> };
+let seq = 0;
+
+beforeEach(() => {
+  seq = 0;
+  fetchMock.mockReset();
+  actions.createComponent.mockClear();
+  actions.save.mockClear();
+  monitorPost = (body) => ({ ok: true, status: 201, json: async () => ({ id: `m${++seq}`, ...(body.type === "heartbeat" ? { heartbeat: { pingUrl: "https://ping.example/secret" } } : {}) }) });
+  fetchMock.mockImplementation(async (url: string, init?: { method?: string; body?: string }) => {
+    if (url === "/api/context") return { ok: true, status: 200, json: async () => ({ project: { id: PROJECT_ID } }) };
+    if (url.startsWith("/api/monitors?")) return { ok: true, status: 200, json: async () => ({ data: [], pagination: { hasNextPage: false } }) };
+    if (url === "/api/monitors" && init?.method === "POST") return monitorPost(JSON.parse(init.body as string));
+    return { ok: false, status: 404, json: async () => ({}) };
+  });
+  global.fetch = fetchMock as unknown as typeof fetch;
+});
+
+function setup(over: Partial<ReviewStepProps> = {}) {
+  const created: Record<string, string> = {};
+  const props: ReviewStepProps = {
+    ...makeStepProps({
+      draft: {
+        app: { testAccountSecret: "SETUP_TEST_PASS" },
+        alerts: { providerIds: [PROVIDER], repeatUntilAck: { enabled: true, repeatMinutes: 10 } },
+        monitors: { pages: [{ url: "https://app.example.com/", name: "app.example.com" }], heartbeat: { name: "Nightly", frequencyMinutes: 60 } },
+        statusPage: { name: "Acme status", publish: true },
+      },
+    }),
+    skipped: ["tests" as const],
+    recordCreated: jest.fn(async (key: string, id: string) => void (created[key] = id)),
+    getCreated: () => created,
+    complete: jest.fn(async () => undefined),
+    completed: false,
+    ...over,
+  };
+  return { props, ...render(<ReviewStep {...props} />) };
+}
+
+describe("ReviewStep", () => {
+  it("lists what is already saved, what will be created and what was skipped", () => {
+    setup();
+    expect(screen.getByText("Already saved")).toBeTruthy();
+    expect(screen.getByText("1 alert channel")).toBeTruthy();
+    expect(screen.getByText("Test account secrets")).toBeTruthy();
+    expect(screen.getByText("Will be created")).toBeTruthy();
+    expect(screen.getByTestId("setup-create-item-0").textContent).toContain("app.example.com");
+    expect(screen.getByText(/Skipped: Requirements and tests/)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Create 6 items" })).toBeTruthy();
+  });
+
+  it("creates every item with per-item progress and shows the heartbeat ping URL once", async () => {
+    const { props } = setup();
+    fireEvent.click(screen.getByRole("button", { name: "Create 6 items" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Finish setup" })).toBeTruthy());
+    expect(screen.getByTestId("setup-ping-url").textContent).toContain("https://ping.example/secret");
+    expect(screen.getByRole("button", { name: "Copy ping URL" })).toBeTruthy();
+    expect(screen.getAllByText("Created").length).toBe(6);
+    expect(actions.createComponent).toHaveBeenCalledTimes(2);
+    expect(actions.save).toHaveBeenCalledWith(PROJECT_ID, expect.objectContaining({ renotifyUnackedMinutes: 10 }));
+    expect(JSON.stringify((props.recordCreated as jest.Mock).mock.calls)).not.toContain("ping.example");
+    fireEvent.click(screen.getByRole("button", { name: "Finish setup" }));
+    await waitFor(() => expect(props.complete).toHaveBeenCalled());
+  });
+
+  it("shows the error with Retry for a failed item and retries just that one", async () => {
+    monitorPost = () => ({ ok: false, status: 400, json: async () => ({ error: "Monitor limit reached" }) });
+    setup();
+    fireEvent.click(screen.getByRole("button", { name: "Create 6 items" }));
+    expect(await screen.findAllByText("Monitor limit reached")).toHaveLength(2);
+    expect(screen.getByText(/2 items failed/)).toBeTruthy();
+    monitorPost = () => ({ ok: true, status: 201, json: async () => ({ id: `m${++seq}` }) });
+    fireEvent.click(screen.getAllByRole("button", { name: "Retry" })[0]);
+    await waitFor(() => expect(screen.getAllByText("Monitor limit reached")).toHaveLength(1));
+  });
+
+  it("stops with a project-changed error", async () => {
+    fetchMock.mockImplementation(async (url: string) => (url === "/api/context" ? { ok: true, status: 200, json: async () => ({ project: { id: "other" } }) } : { ok: true, status: 200, json: async () => ({}) }));
+    setup();
+    fireEvent.click(screen.getByRole("button", { name: "Create 6 items" }));
+    expect(await screen.findByText("Project changed in another tab")).toBeTruthy();
+    expect(fetchMock.mock.calls.some(([, init]) => init?.method === "POST")).toBe(false);
+  });
+
+  it("offers Finish when nothing is left to create", () => {
+    setup({ ...makeStepProps({ draft: {} }), skipped: ["app", "alerts", "monitors", "statusPage"] });
+    expect(screen.getByText(/Nothing to create/)).toBeTruthy();
+    expect(screen.queryByText("Already saved")).toBeNull();
+    expect(screen.getByRole("button", { name: "Finish setup" })).toBeTruthy();
+  });
+
+  it("pluralises a single item and links to the dashboard when completed", () => {
+    setup({ ...makeStepProps({ draft: { monitors: { pages: [{ url: "https://a.example.com/", name: "a" }] } } }), completed: true });
+    expect(screen.getByText("Setup is finished.")).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Go to dashboard" }).getAttribute("href")).toBe("/");
+  });
+
+  it("disables Create for viewers with a reason", () => {
+    setup({ readOnly: true });
+    expect(screen.getByText(/You have view access/)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Create 6 items" })).toBeDisabled();
+  });
+});

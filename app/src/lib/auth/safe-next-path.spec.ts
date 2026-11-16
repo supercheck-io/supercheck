@@ -13,6 +13,9 @@ describe("sanitizeNextPath", () => {
     ["/org-admin", "/org-admin"],
     ["/switch-organization?org=01a1cc16-a6e5-7685-aaf1-5a7a3f714c3c", "/switch-organization?org=01a1cc16-a6e5-7685-aaf1-5a7a3f714c3c"],
     ["/device?code=BCDF-GHJK", "/device?code=BCDF-GHJK"],
+    ["/setup", "/setup"],
+    ["/setup/welcome", "/setup/welcome"],
+    ["/setup?project=01a1cc16-a6e5-7685-aaf1-5a7a3f714c3c", "/setup?project=01a1cc16-a6e5-7685-aaf1-5a7a3f714c3c"],
     [encodeURIComponent("/device?code=BCDF-GHJK"), "/device?code=BCDF-GHJK"],
   ])("accepts %s", (input, expected) => {
     expect(sanitizeNextPath(input)).toBe(expected);
@@ -31,6 +34,10 @@ describe("sanitizeNextPath", () => {
     "/device?code=%0d%0aSet-Cookie:x",
     "/dashboard",
     "/devices",
+    "/setup/other",
+    "/setup?project=x",
+    "/setup?project=01a1cc16-a6e5-7685-aaf1-5a7a3f714c3c&next=https://evil.example",
+    "/setup/welcome?x=1",
     "/device#frag",
     "/" + "a".repeat(80),
     "%E0%A4%A",

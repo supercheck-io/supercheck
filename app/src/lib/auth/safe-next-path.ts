@@ -2,9 +2,9 @@
  * Post-authentication continuation targets are restricted to an explicit
  * allowlist of local paths, so a crafted `?next=` can never become an open
  * redirect. Only the device-approval page, the organization admin page (re-sign-in before deleting an
- * organization), organization switching and the pre-filled monitor form may be resumed.
+ * organization), organization switching, project setup and the pre-filled monitor form may be resumed.
  */
-const DEVICE_PATH = /^\/(?:device(?:\?code=[A-Za-z0-9-]{1,16})?|org-admin|switch-organization\?org=[0-9a-fA-F-]{36})$/;
+const DEVICE_PATH = /^\/(?:device(?:\?code=[A-Za-z0-9-]{1,16})?|org-admin|switch-organization\?org=[0-9a-fA-F-]{36}|setup(?:\/welcome|\?project=[0-9a-fA-F-]{36})?)$/;
 
 /**
  * "Monitor this" from the free tools on supercheck.io: a pre-filled monitor form. Values stay

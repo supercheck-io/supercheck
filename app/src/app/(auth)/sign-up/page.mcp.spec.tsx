@@ -82,17 +82,17 @@ describe("sign-up page: connecting an MCP client (self-hosted, signed in straigh
     expect(callbackURL).not.toContain("authorize");
   });
 
-  it("goes to the dashboard as before when there is nothing to resume", async () => {
+  it("goes to project setup when there is nothing to resume", async () => {
     mockQuery.value = "";
     await signUpNewUser();
-    await waitFor(() => expect(push).toHaveBeenCalledWith("/"));
+    await waitFor(() => expect(push).toHaveBeenCalledWith("/setup"));
     expect(assign).not.toHaveBeenCalled();
   });
 
   it("ignores a query that is not a signed authorization request", async () => {
     mockQuery.value = "response_type=code&client_id=x";
     await signUpNewUser();
-    await waitFor(() => expect(push).toHaveBeenCalledWith("/"));
+    await waitFor(() => expect(push).toHaveBeenCalledWith("/setup"));
     expect(assign).not.toHaveBeenCalled();
   });
 });

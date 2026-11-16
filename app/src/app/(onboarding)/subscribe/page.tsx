@@ -1,8 +1,11 @@
 "use client";
 
 import { useOrganizations } from "@/hooks/use-organizations";
+import { hardNavigate } from "@/lib/auth/hard-navigate";
 import { currentNextPath } from "@/lib/auth/safe-next-path";
 import Link from "next/link";
+import { useProjectContextSafe } from "@/hooks/use-project-context";
+import { fetchProjectSetup } from "@/hooks/use-project-setup";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { formatOveragePrice } from "@/lib/billing/pricing-defaults";
@@ -71,12 +74,24 @@ interface PricingData {
   trial?: { durationDays: number; highlights: string[] };
 }
 
+/** A project nobody has set up yet opens its setup; any failure falls back to the dashboard. */
+async function defaultDestination(projectId: string | null): Promise<string> {
+  if (!projectId) return "/";
+  try {
+    const { state } = await fetchProjectSetup(projectId);
+    return state.status === "not_started" ? "/setup" : "/";
+  } catch {
+    return "/";
+  }
+}
+
 export default function SubscribePage() {
   const {
     activeOrganization,
     isPending: organizationLoading,
     isError: organizationError,
   } = useOrganizations();
+  const activeProjectId = useProjectContextSafe()?.currentProject?.id ?? null;
   const queryClient = useQueryClient();
   const organizationId = activeOrganization?.id;
   const {
@@ -477,12 +492,9 @@ export default function SubscribePage() {
             <Button asChild variant="outline" size="sm">
               <Link
                 href="/"
-                onClick={(event) => {
-                  const next = currentNextPath();
-                  if (next) {
-                    event.preventDefault();
-                    window.location.assign(next);
-                  }
+                onClick={async (event) => {
+                  event.preventDefault();
+                  hardNavigate(currentNextPath() ?? (await defaultDestination(activeProjectId)));
                 }}
               >
                 Continue with your trial
