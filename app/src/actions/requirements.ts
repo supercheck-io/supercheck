@@ -92,6 +92,32 @@ export type { CreateRequirementInput, UpdateRequirementInput };
 // TAG SYNC HELPERS
 // ============================================================================
 
+/**
+ * Setup lookup: only the requirements with these ids or exact titles (max 50 each), so the
+ * newest-500 cap of getRequirements cannot hide an older match.
+ */
+export async function findRequirementsForSetup(query: {
+  ids: string[];
+  titles: string[];
+}): Promise<{ success: boolean; requirements: Array<{ id: string; title: string }> }> {
+  const { userId, project, organizationId, orgPendingDeletion } = await requireProjectContext();
+  const canView = checkPermissionWithContext("requirement", "view", { userId, organizationId, orgPendingDeletion, project });
+  if (!canView) throw new Error("Insufficient permissions to view requirements");
+
+  const ids = [...new Set(query.ids)].filter((id) => z.string().uuid().safeParse(id).success).slice(0, 50);
+  const titles = [...new Set(query.titles)].slice(0, 50);
+  if (ids.length === 0 && titles.length === 0) return { success: true, requirements: [] };
+
+  const match = [ids.length ? inArray(requirements.id, ids) : undefined, titles.length ? inArray(requirements.title, titles) : undefined].filter(
+    (c) => c !== undefined
+  );
+  const rows = await db
+    .select({ id: requirements.id, title: requirements.title })
+    .from(requirements)
+    .where(and(eq(requirements.organizationId, organizationId), eq(requirements.projectId, project.id), or(...match)));
+  return { success: true, requirements: rows };
+}
+
 // ============================================================================
 // LIST REQUIREMENTS
 // ============================================================================

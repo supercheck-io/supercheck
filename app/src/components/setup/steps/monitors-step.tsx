@@ -95,9 +95,9 @@ export function MonitorsStep({ response, draft, patchDraft, features, readOnly, 
 
   // Scanned pages that loaded (2xx/3xx; status 0 means the fetch failed), at most 10; only the homepage starts ticked.
   const scanned = (appUrl && scan ? scan.pages.filter((p) => p.status >= 200 && p.status < 400 && p.path !== "/").slice(0, 10) : [])
-    .map((p) => (appUrl ? pageFor(appUrl, p.path) : null))
+    .map((p) => (scan ? pageFor(scan.finalUrl, p.path) : null))
     .filter((page): page is Page => page !== null);
-  const aiPath = appUrl ? scan?.pages.find((p) => AI_PATH.test(p.path)) : undefined;
+  const aiPath = scan ? scan.pages.find((p) => AI_PATH.test(p.path)) : undefined;
   const known = new Set([home?.url, ...scanned.map((page) => page.url)]);
   const extras = monitors.pages.filter((page) => !known.has(page.url));
   const suggestions = [...(home ? [home] : []), ...scanned, ...extras];
@@ -136,7 +136,7 @@ export function MonitorsStep({ response, draft, patchDraft, features, readOnly, 
   // AI endpoint
   const ai = monitors.aiEndpoint;
   const [aiOpen, setAiOpen] = useState(Boolean(ai) || Boolean(aiPath));
-  const [aiForm, setAiForm] = useState({ name: ai?.name ?? "AI endpoint", url: ai?.url ?? (aiPath && appUrl ? `${new URL(appUrl).origin}${aiPath.path}` : ""), model: ai?.model ?? "", secretKey: ai?.secretKey ?? "" });
+  const [aiForm, setAiForm] = useState({ name: ai?.name ?? "AI endpoint", url: ai?.url ?? (aiPath && scan ? `${new URL(scan.finalUrl).origin}${aiPath.path}` : ""), model: ai?.model ?? "", secretKey: ai?.secretKey ?? "" });
   const commitAi = (next: typeof aiForm) => {
     setAiForm(next);
     const url = stripUrl(next.url);

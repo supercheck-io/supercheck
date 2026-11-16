@@ -27,7 +27,10 @@ const hostOf = (url: string) => new URL(url).host.replace(/^www\./i, "").toLower
 export function scanMatchesUrl(scan: ScanSummary | null, appUrl: string | null | undefined): scan is ScanSummary {
   if (!scan || !appUrl) return false;
   try {
-    return hostOf(scan.finalUrl) === hostOf(appUrl);
+    const scanned = hostOf(scan.finalUrl);
+    const entered = hostOf(appUrl);
+    // A redirect within the same site (example.com -> app.example.com) still belongs to this URL.
+    return scanned === entered || scanned.endsWith(`.${entered}`) || entered.endsWith(`.${scanned}`);
   } catch {
     return false;
   }

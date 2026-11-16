@@ -463,6 +463,14 @@ describe("scan in the app and monitors steps", () => {
     expect(screen.getByLabelText("Endpoint URL")).toHaveValue("https://app.example.com/v1/chat/completions");
   });
 
+  it("builds suggestions and the AI endpoint URL from the scan's final origin after a redirect", () => {
+    const redirected = { ...scan, finalUrl: "https://www.example.com/", redirects: 1 };
+    render(<MonitorsStep {...makeStepProps({ scan: redirected, draft: { app: { url: "https://example.com/" }, monitors: { pages: [] } } })} />);
+    expect(screen.getByLabelText(/www.example.com\/pricing/)).toBeTruthy();
+    expect(screen.queryByLabelText(/^example.com\/pricing/)).toBeNull();
+    expect(screen.getByLabelText("Endpoint URL")).toHaveValue("https://www.example.com/v1/chat/completions");
+  });
+
   it("leaves the AI endpoint card closed without such a path", () => {
     render(<MonitorsStep {...makeStepProps({ scan: withScan, draft: { app: { url: "https://app.example.com/" } } })} />);
     expect(screen.queryByLabelText("Endpoint URL")).toBeNull();

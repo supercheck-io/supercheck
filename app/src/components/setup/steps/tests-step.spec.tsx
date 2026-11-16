@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 import type { SetupDraft } from "@/lib/setup/draft-schema";
 import type { ScanSummary } from "@/lib/setup/scan";
@@ -73,6 +73,24 @@ describe("TestsStep", () => {
   it("keeps ticked requirements when the step is revisited", () => {
     render(<TestsStep {...makeStepProps({ scan, draft: { tests: { requirements: [{ title: "Kept", description: "d" }] } } })} />);
     expect(screen.getByLabelText(/Kept/)).toBeChecked();
+  });
+
+  it("saves every suggestion in the draft and restores the unticked ones on revisit", async () => {
+    fetchMock.mockReturnValue(json(SUGGESTIONS));
+    const d = drafting();
+    render(<TestsStep {...makeStepProps({ scan, patchDraft: d.patchDraft, draft: d.get() })} />);
+    suggest();
+    await screen.findByText("User can sign in");
+    expect(d.get().tests?.suggestions).toEqual([
+      { title: "User can sign in", description: "Happy path", priority: "high" },
+      { title: "User can pay", priority: "medium" },
+    ]);
+    expect(d.get().tests?.requirements).toEqual([]);
+    cleanup();
+    render(<TestsStep {...makeStepProps({ scan, patchDraft: d.patchDraft, draft: d.get() })} />);
+    expect(screen.getByLabelText(/User can pay/)).not.toBeChecked();
+    fireEvent.click(screen.getByLabelText(/User can pay/));
+    expect(d.get().tests?.suggestions).toHaveLength(2);
   });
 
   it("explains the daily limit with the retry time", async () => {

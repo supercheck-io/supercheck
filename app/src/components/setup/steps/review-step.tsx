@@ -5,7 +5,7 @@ import Link from "next/link";
 import { CheckCircle2, Circle, Loader2, MinusCircle, XCircle } from "lucide-react";
 
 import { createComponent } from "@/actions/create-component";
-import { getRequirements, createRequirement } from "@/actions/requirements";
+import { findRequirementsForSetup, createRequirement } from "@/actions/requirements";
 import { createSreService, getSreServices } from "@/actions/sre-services";
 import { createStatusPage } from "@/actions/create-status-page";
 import { getProjectNotificationPolicy, saveProjectNotificationPolicy } from "@/actions/notification-policy";
@@ -95,10 +95,7 @@ export function ReviewStep({ response, features, permissions, draft, skipped, re
       createComponent({ ...data, status: "operational", showcase: true, onlyShowIfDegraded: false, position: 0, aggregationMethod: "worst_case", failureThreshold: 1 }),
     getPolicy: (projectId) => getProjectNotificationPolicy(projectId),
     savePolicy: (projectId, input) => saveProjectNotificationPolicy(projectId, input as Parameters<typeof saveProjectNotificationPolicy>[1]),
-    getRequirements: async () => {
-      const res = await getRequirements();
-      return { success: true, requirements: res.requirements.map((r) => ({ id: r.id, title: r.title })) };
-    },
+    findRequirements: (query) => findRequirementsForSetup(query),
     createRequirement: (data) => createRequirement(data),
     getServices: async () => {
       const res = await getSreServices();

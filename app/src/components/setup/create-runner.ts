@@ -62,7 +62,8 @@ export interface RunnerDeps {
   savePolicy: (projectId: string, input: Record<string, unknown>) => Promise<ActionResult>;
   /** Persist an id into draft.created; resolves once saved. */
   recordCreated: (key: string, id: string) => Promise<void>;
-  getRequirements: () => Promise<{ success: boolean; requirements: Array<{ id: string; title: string }> }>;
+  /** Only the recorded id and exact title: a full list is capped and would miss older requirements. */
+  findRequirements: (query: { ids: string[]; titles: string[] }) => Promise<{ success: boolean; requirements: Array<{ id: string; title: string }> }>;
   createRequirement: (data: { title: string; description?: string }) => Promise<{ id: string; success: boolean; error?: string }>;
   getServices: () => Promise<{ success: boolean; services: Array<{ id: string; name: string }> }>;
   createService: (data: { name: string }) => Promise<ActionResult & { service?: { id: string } }>;
@@ -72,7 +73,6 @@ export interface RunnerDeps {
 interface Lookup {
   monitors?: Array<{ id: string; type: string; target: string; name: string }>;
   statusPages?: Array<{ id: string; name: string }>;
-  requirements?: Array<{ id: string; title: string }>;
   services?: Array<{ id: string; name: string }>;
 }
 
@@ -281,27 +281,23 @@ async function listStatusPages(deps: RunnerDeps, lookup: Lookup) {
 
 async function createRequirementItem(item: CreateItem, deps: RunnerDeps, lookup: Lookup): Promise<ItemResult> {
   const created = deps.getCreated()[item.key];
-  if (!lookup.requirements) {
-    const res = await deps.getRequirements();
-    if (!res.success) throw new Error("Could not read requirements");
-    lookup.requirements = res.requirements;
-  }
-  const known = lookup.requirements;
+  const title = String(item.payload.title);
+  const res = await deps.findRequirements({ ids: created ? [created] : [], titles: [title] });
+  if (!res.success) throw new Error("Could not read requirements");
+  const known = res.requirements;
   if (created) {
     return known.some((r) => r.id === created)
       ? { status: "adopted", note: "Already created" }
       : { status: "skipped", note: "Deleted since it was created, so it was not recreated" };
   }
-  const title = String(item.payload.title);
   const natural = known.find((r) => r.title === title);
   if (natural) {
     await deps.recordCreated(item.key, natural.id);
     return { status: "adopted", note: "A requirement with this title already exists" };
   }
-  const res = await deps.createRequirement({ title, description: item.payload.description as string | undefined });
-  if (!res.success || !res.id) return { status: "failed", error: res.error ?? "Could not create the requirement" };
-  known.push({ id: res.id, title });
-  await deps.recordCreated(item.key, res.id);
+  const made = await deps.createRequirement({ title, description: item.payload.description as string | undefined });
+  if (!made.success || !made.id) return { status: "failed", error: made.error ?? "Could not create the requirement" };
+  await deps.recordCreated(item.key, made.id);
   return { status: "done" };
 }
 

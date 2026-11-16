@@ -45,7 +45,11 @@ function UpgradeLink({ children }: { children: string }) {
 export function TestsStep({ response, features, permissions, draft, patchDraft, readOnly, scan }: StepProps) {
   const ticked = draft.tests?.requirements ?? [];
   // Revisiting the step keeps the ticked ones, since a second suggestion run is limited to once a day.
-  const [options, setOptions] = useState<Suggestion[]>(() => ticked.map((r) => ({ title: r.title, description: r.description ?? "" })));
+  const [options, setOptions] = useState<Suggestion[]>(() => {
+    const saved: Suggestion[] = (draft.tests?.suggestions ?? []).map((s) => ({ ...s, description: s.description ?? "" }));
+    const known = new Set(saved.map((s) => s.title));
+    return [...saved, ...ticked.filter((r) => !known.has(r.title)).map((r) => ({ title: r.title, description: r.description ?? "" }))];
+  });
   const [loading, setLoading] = useState(false);
   const [failure, setFailure] = useState<Failure | null>(null);
 
@@ -53,7 +57,7 @@ export function TestsStep({ response, features, permissions, draft, patchDraft, 
   const locked = response.aiTestsLocked || failure?.kind === "locked";
 
   const setTicked = (next: Suggestion[]) =>
-    patchDraft((d) => ({ ...d, tests: { requirements: next.map(({ title, description }) => ({ title, ...(description ? { description } : {}) })) } }));
+    patchDraft((d) => ({ ...d, tests: { ...d.tests, requirements: next.map(({ title, description }) => ({ title, ...(description ? { description } : {}) })) } }));
   const current: Suggestion[] = ticked.map((r) => ({ title: r.title, description: r.description ?? "" }));
   const toggle = (item: Suggestion, on: boolean) => setTicked(on ? [...current, item] : current.filter((r) => r.title !== item.title));
 
@@ -64,7 +68,15 @@ export function TestsStep({ response, features, permissions, draft, patchDraft, 
       const res = await postJson<{ requirements?: Suggestion[]; code?: string; retryAt?: string }>(`/api/projects/${response.projectId}/setup/suggest-requirements`, {});
       if (res.ok && res.data.requirements) {
         const known = new Set(options.map((o) => o.title));
-        setOptions([...options, ...res.data.requirements.filter((r) => !known.has(r.title))]);
+        const next = [...options, ...res.data.requirements.filter((r) => !known.has(r.title))];
+        setOptions(next);
+        const priorities = ["low", "medium", "high"];
+        const suggestions = next.slice(0, 10).map(({ title, description, priority }) => ({
+          title: title.slice(0, 500),
+          ...(description ? { description: description.slice(0, 2000) } : {}),
+          ...(priority && priorities.includes(priority) ? { priority: priority as "low" | "medium" | "high" } : {}),
+        }));
+        patchDraft((d) => ({ ...d, tests: { requirements: [], ...d.tests, suggestions } }));
       } else if (res.status === 402 && res.data.code === "plan_required") {
         setFailure({ kind: "locked", message: "AI suggestions need a paid plan." });
       } else if (res.status === 402) {

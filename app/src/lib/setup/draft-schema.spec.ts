@@ -18,6 +18,14 @@ describe("parseSetupDraft", () => {
     expect(result).toEqual({ success: false, error: "Draft is larger than 32 KB" });
   });
 
+  it("accepts up to 10 strict suggestions with an optional priority", () => {
+    const item = (n: number) => ({ title: `t${n}`, description: "d", priority: "high" });
+    expect(parseSetupDraft({ tests: { requirements: [], suggestions: Array.from({ length: 10 }, (_, i) => item(i)) } }).success).toBe(true);
+    expect(parseSetupDraft({ tests: { suggestions: Array.from({ length: 11 }, (_, i) => item(i)) } }).success).toBe(false);
+    expect(parseSetupDraft({ tests: { suggestions: [{ title: "t", priority: "urgent" }] } }).success).toBe(false);
+    expect(parseSetupDraft({ tests: { suggestions: [{ title: "t", extra: 1 }] } }).success).toBe(false);
+  });
+
   it("rejects non-serializable input", () => {
     const cyclic: Record<string, unknown> = {};
     cyclic.self = cyclic;

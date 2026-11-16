@@ -65,6 +65,7 @@ import { logAuditEvent } from "@/lib/audit-logger";
 
 import {
   getRequirements,
+  findRequirementsForSetup,
   createRequirement,
   updateRequirement,
   deleteRequirement,
@@ -170,6 +171,31 @@ describe("Requirements Server Actions", () => {
           organizationId: testOrgId,
           project: expect.objectContaining({ id: testProjectId }),
         });
+      });
+    });
+
+    describe("findRequirementsForSetup", () => {
+      it("requires view permission", async () => {
+        mockCheckPermissionWithContext.mockReturnValue(false);
+        await expect(findRequirementsForSetup({ ids: [], titles: ["a"] })).rejects.toThrow("Insufficient permissions to view requirements");
+      });
+
+      it("skips the query without ids or titles", async () => {
+        expect(await findRequirementsForSetup({ ids: ["not-a-uuid"], titles: [] })).toEqual({ success: true, requirements: [] });
+        expect(mockDb.select).not.toHaveBeenCalled();
+      });
+
+      it("queries only those ids/titles, scoped to the org and project, capped at 50 each", async () => {
+        const where = jest.fn(() => Promise.resolve([{ id: testRequirementId, title: "Old one" }]));
+        (mockDb.select as jest.Mock).mockImplementationOnce(() => ({ from: () => ({ where }) }));
+        const titles = Array.from({ length: 60 }, (_, i) => `t${i}`);
+        const result = await findRequirementsForSetup({ ids: [testRequirementId], titles });
+        expect(result).toEqual({ success: true, requirements: [{ id: testRequirementId, title: "Old one" }] });
+        const { sql, params } = new PgDialect().sqlToQuery((where.mock.calls[0] as unknown[])[0] as SQL);
+        expect(sql).toContain('"organization_id"');
+        expect(sql).toContain('"project_id"');
+        expect(params).toEqual(expect.arrayContaining([testOrgId, testProjectId, testRequirementId, "t49"]));
+        expect(params).not.toContain("t50");
       });
     });
 

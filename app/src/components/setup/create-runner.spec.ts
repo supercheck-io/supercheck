@@ -30,7 +30,7 @@ function makeDeps(overrides: Partial<RunnerDeps> = {}, existing: Array<Record<st
     getComponents: jest.fn(async () => ({ success: true, components: [] })),
     getPolicy: jest.fn(async () => ({ success: true, data: { policy: { channelIds: ["x"], emailServiceOwnersOnSev12: true, renotifyUnackedMinutes: null, renotifyRepeatMinutes: null, renotifyMax: 4, escalateAfterMinutes: 30, escalateChannelId: null, escalateUserId: null, autoInvestigateOnOpen: false } } })),
     savePolicy: jest.fn(async () => ({ success: true })),
-    getRequirements: jest.fn(async () => ({ success: true, requirements: [] as Array<{ id: string; title: string }> })),
+    findRequirements: jest.fn(async () => ({ success: true, requirements: [] as Array<{ id: string; title: string }> })),
     createRequirement: jest.fn(async () => ({ id: "r-new", success: true })),
     getServices: jest.fn(async () => ({ success: true, services: [] as Array<{ id: string; name: string }> })),
     createService: jest.fn(async () => ({ success: true, service: { id: "s-new" } })),
@@ -404,7 +404,7 @@ describe("requirement and service items", () => {
     expect(deps.createRequirement).toHaveBeenCalledTimes(2);
     expect(deps.createRequirement).toHaveBeenCalledWith({ title: "User can sign in", description: "Happy path" });
     expect(Object.values(created)).toEqual(expect.arrayContaining(["r-new", "s-new"]));
-    (deps.getRequirements as jest.Mock).mockResolvedValue({ success: true, requirements: [{ id: "r-new", title: "x" }] });
+    (deps.findRequirements as jest.Mock).mockResolvedValue({ success: true, requirements: [{ id: "r-new", title: "x" }] });
     (deps.getServices as jest.Mock).mockResolvedValue({ success: true, services: [{ id: "s-new", name: "app.example.com" }] });
     await runAll(items(), deps, (k, r) => (results[k] = r));
     expect(deps.createRequirement).toHaveBeenCalledTimes(2);
@@ -414,7 +414,7 @@ describe("requirement and service items", () => {
 
   it("adopts an existing requirement and service by exact title / name", async () => {
     const { deps, created } = makeDeps({
-      getRequirements: jest.fn(async () => ({ success: true, requirements: [{ id: "r-1", title: "User can sign in" }] })),
+      findRequirements: jest.fn(async () => ({ success: true, requirements: [{ id: "r-1", title: "User can sign in" }] })),
       getServices: jest.fn(async () => ({ success: true, services: [{ id: "s-1", name: "app.example.com" }] })),
     });
     const list = items();
@@ -432,7 +432,7 @@ describe("requirement and service items", () => {
     await runAll(first, deps, () => undefined);
     const [signIn, logOut] = [first[0].key, first[1].key];
     expect(created).toMatchObject({ [signIn]: "r-in", [logOut]: "r-out" });
-    (deps.getRequirements as jest.Mock).mockResolvedValue({ success: true, requirements: [{ id: "r-in", title: "Sign in" }, { id: "r-out", title: "Log out" }] });
+    (deps.findRequirements as jest.Mock).mockResolvedValue({ success: true, requirements: [{ id: "r-in", title: "Sign in" }, { id: "r-out", title: "Log out" }] });
     const second = build(["Pricing", "Log out", "Sign in"]);
     const results: Record<string, ItemResult> = {};
     await runAll(second, deps, (k, r) => (results[k] = r));
@@ -442,6 +442,17 @@ describe("requirement and service items", () => {
     expect(results[second[0].key].status).toBe("done");
     expect(created[second[0].key]).toBe("r-new");
     expect(build(["Sign in", "Sign in"])).toHaveLength(1);
+  });
+
+  it("looks requirements up by the recorded id and exact title, so older ones are still found", async () => {
+    const { deps, created } = makeDeps({ findRequirements: jest.fn(async () => ({ success: true, requirements: [{ id: "r-old", title: "User can sign in" }] })) });
+    const list = items();
+    expect((await runItem(list[0], deps)).status).toBe("adopted");
+    expect(deps.findRequirements).toHaveBeenCalledWith({ ids: [], titles: ["User can sign in"] });
+    created[list[0].key] = "r-old";
+    expect((await runItem(list[0], deps)).status).toBe("adopted");
+    expect(deps.findRequirements).toHaveBeenLastCalledWith({ ids: ["r-old"], titles: ["User can sign in"] });
+    expect(deps.createRequirement).not.toHaveBeenCalled();
   });
 
   it("skips an item that was created and then deleted", async () => {
@@ -466,7 +477,7 @@ describe("requirement and service items", () => {
 
   it("reports unreadable lookups as failures", async () => {
     const { deps } = makeDeps({
-      getRequirements: jest.fn(async () => ({ success: false, requirements: [] })),
+      findRequirements: jest.fn(async () => ({ success: false, requirements: [] })),
       getServices: jest.fn(async () => ({ success: false, services: [] })),
     });
     const list = items();

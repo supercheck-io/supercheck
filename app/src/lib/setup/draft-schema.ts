@@ -87,12 +87,16 @@ const statusPageStep = z
   })
   .strict();
 
+const requirementItem = { title: z.string().trim().min(1).max(500), description: z.string().max(2000).optional() };
+
 const testsStep = z
   .object({
-    requirements: z
-      .array(z.object({ title: z.string().trim().min(1).max(500), description: z.string().max(2000).optional() }).strict())
-      .max(50)
-      .default([]),
+    requirements: z.array(z.object(requirementItem).strict()).max(50).default([]),
+    /** The AI suggestions, ticked or not: a run costs a credit and a daily slot, so leaving the step must not lose them. */
+    suggestions: z
+      .array(z.object({ ...requirementItem, priority: z.enum(["low", "medium", "high"]).optional() }).strict())
+      .max(10)
+      .optional(),
   })
   .strict();
 

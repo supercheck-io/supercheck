@@ -14,7 +14,7 @@ jest.mock("@/actions/notification-policy", () => ({
 }));
 
 jest.mock("@/actions/requirements", () => ({
-  getRequirements: jest.fn(async () => ({ requirements: [] })),
+  findRequirementsForSetup: jest.fn(async () => ({ success: true, requirements: [] })),
   createRequirement: jest.fn(async () => ({ id: "req-1", success: true })),
 }));
 jest.mock("@/actions/sre-services", () => ({
