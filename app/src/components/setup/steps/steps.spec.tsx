@@ -491,6 +491,17 @@ describe("review fixes in the steps", () => {
     expect(d.get().monitors?.pages.map((p) => p.url)).toEqual(["https://new.example.com/", "https://new.example.com/pricing"]);
   });
 
+  it("rewrites stale pages once and does not patch again on re-render", () => {
+    const d = drafting({ app: { url: "https://new.example.com/" }, monitors: { pages: [home] } });
+    const patch = jest.fn(d.patchDraft);
+    const view = () => <MonitorsStep {...makeStepProps({ patchDraft: patch, draft: d.get() })} />;
+    const { rerender } = render(view());
+    expect(d.get().monitors?.pages.map((p) => p.url)).toEqual(["https://new.example.com/"]);
+    const calls = patch.mock.calls.length;
+    rerender(view());
+    expect(patch).toHaveBeenCalledTimes(calls);
+  });
+
   it("makes every card input read-only on a read-only tab and states the cap copy truthfully", () => {
     const draft = { app: { url: "https://app.example.com/" }, monitors: { pages: [home], heartbeat: { name: "hb", frequencyMinutes: 5 }, aiEndpoint: { name: "AI", url: "https://a.example.com/v1", model: "m", secretKey: "OPENAI_KEY" }, mcpMonitor: { name: "MCP", url: "https://m.example.com/mcp" } } };
     render(<MonitorsStep {...makeStepProps({ readOnly: true, draft, response: makeResponse({ monitorsRemaining: 1 }) })} />);

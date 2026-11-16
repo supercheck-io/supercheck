@@ -477,6 +477,35 @@ describe("review fixes", () => {
     expect(kept.deps.savePolicy).toHaveBeenCalledWith(PROJECT, expect.objectContaining({ channelIds: ["x"] }));
   });
 
+  it("stops after a 429 wait when the lock was lost, without posting again", async () => {
+    const heartbeat = jest.fn().mockResolvedValueOnce(true).mockResolvedValue(false);
+    const run = makeDeps({ sleep: async () => undefined, heartbeat });
+    const base = run.deps.fetchJson;
+    run.deps.fetchJson = jest.fn(async (url, init) => (url === "/api/monitors" && init?.method === "POST" ? { ok: false, status: 429, data: {} } : base(url, init)));
+    const [item] = build(draft());
+    expect(await runItem(item, run.deps)).toMatchObject({ status: "failed", error: TAKEN_OVER_ERROR });
+    expect((run.deps.fetchJson as jest.Mock).mock.calls.filter(([u, i]) => u === "/api/monitors" && i?.method === "POST")).toHaveLength(1);
+  });
+
+  it("repeat reminders: drops deleted channels and retries once, noting when none remain", async () => {
+    const d = draft({ alerts: { providerIds: [PROVIDER], repeatUntilAck: { enabled: true, repeatMinutes: 10 } } });
+    const repeat = build(d).find((i) => i.kind === "repeat") as CreateItem;
+    const empty = { ...(await makeDeps().deps.getPolicy("p")).data!.policy, channelIds: [] };
+    const run = (live: Array<{ id: string }>) => {
+      const m = makeDeps({
+        getPolicy: jest.fn(async () => ({ success: true, data: { policy: empty } })) as never,
+        savePolicy: jest.fn(async (_p: string, v: Record<string, unknown>) => ((v.channelIds as string[]).length ? { success: false, error: "Some channels do not belong to this project" } : { success: true })),
+      });
+      const base = m.deps.fetchJson;
+      m.deps.fetchJson = jest.fn(async (url, init) => (url === "/api/notification-providers" ? ok(live) : base(url, init)));
+      return m;
+    };
+    const none = run([]);
+    expect(await runItem(repeat, none.deps)).toMatchObject({ status: "done", note: "Reminders have no channel: add one under Notifications" });
+    expect(none.deps.savePolicy).toHaveBeenCalledTimes(2);
+    expect(none.deps.savePolicy).toHaveBeenLastCalledWith(PROJECT, expect.objectContaining({ channelIds: [] }));
+  });
+
   it("waits out a 429 with Retry-After (capped) and retries the same item", async () => {
     const sleeps: number[] = [];
     const notes: Array<string | undefined> = [];

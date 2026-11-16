@@ -113,14 +113,17 @@ export function MonitorsStep({ response, draft, patchDraft, features, readOnly }
   const appOrigin = appUrl ? new URL(appUrl).origin : null;
   const hasStalePages = Boolean(appOrigin) && monitors.pages.some((page) => new URL(page.url).origin !== appOrigin);
   useEffect(() => {
-    if (!hasStalePages || !appUrl || !home || readOnly) return;
-    const moved = monitors.pages.map((page) => {
+    if (!hasStalePages || !appUrl || !homeUrl || !homeName || readOnly) return;
+    const origin = new URL(appUrl).origin;
+    const moved = monitors.pages.flatMap((page) => {
       const parsed = new URL(page.url);
-      if (parsed.origin === new URL(appUrl).origin) return page;
-      return parsed.pathname === "/" ? home : (pageFor(appUrl, parsed.pathname) ?? page);
+      if (parsed.origin === origin) return [page];
+      // A page that cannot move to the new origin is dropped, so the effect cannot see it as stale again.
+      const next = parsed.pathname === "/" ? { url: homeUrl, name: homeName } : pageFor(appUrl, parsed.pathname);
+      return next ? [next] : [];
     });
     patchDraft((d) => ({ ...d, monitors: { ...d.monitors, pages: moved.filter((p, i) => moved.findIndex((q) => q.url === p.url) === i) } }));
-  }, [hasStalePages, appUrl, home, readOnly, monitors.pages, patchDraft]);
+  }, [hasStalePages, appUrl, homeUrl, homeName, readOnly, monitors.pages, patchDraft]);
 
   const extras = monitors.pages.filter((page) => page.url !== home?.url);
   const suggestions = [...(home ? [home] : []), ...extras];
