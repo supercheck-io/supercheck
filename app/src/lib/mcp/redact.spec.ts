@@ -23,11 +23,15 @@ describe("safeText", () => {
   it("redacts Discord, Teams and Telegram webhook secrets", () => {
     const out = safeText("https://discord.com/api/webhooks/123/AbC-secret https://acme.webhook.office.com/webhookb2/abc/IncomingWebhook/def https://api.telegram.org/bot123456789:AAHdqTcvCH1vGWJxfSeofSAs0K5PALDsaw/sendMessage")!;
     expect(out).not.toMatch(/AbC-secret|IncomingWebhook\/def|AAHdqTcv/);
+    expect(safeText("https://discord.com/api/v10/webhooks/123/V10-secret")).not.toContain("V10-secret");
+    expect(safeText("https://hooks.slack.com/triggers/T1/2/SLACK-secret https://outlook.office.com/webhook/OUTLOOK-secret")).not.toMatch(/SLACK-secret|OUTLOOK-secret/);
   });
   it("keeps the closing quote of an Authorization header inside JSON", () => {
     const out = safeText(JSON.stringify({ headers: "Authorization: Bearer abc123" }))!;
     expect(out).not.toContain("abc123");
     expect(() => JSON.parse(out)).not.toThrow();
+    expect(safeText('Authorization: Bearer "abc123"')).not.toContain("abc123");
+    expect(safeText("Authorization: Basic 'dXNlcjpwdw=='")).not.toContain("dXNlcjpwdw");
   });
   it("truncates long text", () => {
     expect(safeText("x".repeat(5000))!.endsWith("[truncated]")).toBe(true);

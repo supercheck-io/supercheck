@@ -45,7 +45,7 @@ function parseMonthDay(day?: string) {
 
 /** A strict ISO 8601 date-time; without an offset it is local time. Rejects dates that would roll over (2026-02-30). */
 export function parseInstant(value: string): string {
-  const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2})(?:\.\d{1,3})?)?(Z|[+-]\d{2}:\d{2})?$/.exec(value.trim())
+  const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2})(?:\.\d{1,3})?)?(Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)?$/.exec(value.trim())
   const [y, mo, d, h, mi, s] = (m ?? []).slice(1, 7).map((part) => Number(part ?? 0))
   const realDay = m && new Date(Date.UTC(y!, mo! - 1, d!)).getUTCDate() === d && mo! >= 1 && mo! <= 12
   if (!m || !realDay || h! > 23 || mi! > 59 || s! > 59) {

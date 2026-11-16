@@ -3,10 +3,9 @@ import { db } from "@/utils/db";
 import {
   notificationProviders,
   notificationProvidersInsertSchema,
-  alertHistory,
   type PlainNotificationProviderConfig,
 } from "@/db/schema";
-import { desc, eq, and, sql, inArray } from "drizzle-orm";
+import { desc, eq, and } from "drizzle-orm";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { requireAuthContext, isAuthError, authErrorStatus } from "@/lib/auth-context";
 import { logAuditEvent } from "@/lib/audit-logger";

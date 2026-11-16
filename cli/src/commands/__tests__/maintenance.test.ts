@@ -125,7 +125,7 @@ describe('maintenance CLI', () => {
     expect(mockPost).toHaveBeenCalledTimes(3)
     await expect(run('extend', id(9))).rejects.toThrow('exactly one')
     await expect(run('extend', id(9), '--by', '1h', '--to', '2026-11-20T04:00:00Z')).rejects.toThrow('exactly one')
-    for (const bad of ['soon', '2', '2026-11-20', 'Nov 20 2026', '2026-02-30T04:00', '2026-13-01T04:00', '2026-11-20T24:00']) {
+    for (const bad of ['soon', '2', '2026-11-20', 'Nov 20 2026', '2026-02-30T04:00', '2026-13-01T04:00', '2026-11-20T24:00', '2026-11-20T04:00+99:99']) {
       await expect(run('extend', id(9), '--to', bad)).rejects.toThrow('ISO 8601')
     }
     expect(mockPost).toHaveBeenCalledTimes(3)

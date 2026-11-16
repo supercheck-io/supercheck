@@ -7,11 +7,13 @@ const MAX_FIELD_CHARS = 4 * 1024;
 const EXTRA_PATTERNS: [RegExp, string][] = [
   [/\b[a-z][a-z0-9+.-]*:\/\/[^\s/@:]+:[^\s/@]+@/gi, "[REDACTED_URL_CREDENTIALS]@"],
   // The value stops at a quote so a header inside JSON text keeps its closing quote.
-  [/\b(authorization|proxy-authorization)\s*[:=]\s*(basic|bearer|digest)\s+[^\s"']+/gi, "$1: [REDACTED]"],
+  [/\b(authorization|proxy-authorization)\s*[:=]\s*(basic|bearer|digest)\s+(?:"[^"\n]*"|'[^'\n]*'|[^\s"']+)/gi, "$1: [REDACTED]"],
   // Chat webhook URLs carry their secret in the path (Discord, Microsoft Teams, Telegram bot token).
-  [/\bhttps?:\/\/(?:[a-z0-9-]+\.)*discord(?:app)?\.com\/api\/webhooks\/[^\s"'<>]+/gi, "[REDACTED_WEBHOOK_URL]"],
+  [/\bhttps?:\/\/(?:[a-z0-9-]+\.)*discord(?:app)?\.com\/api\/(?:v\d+\/)?webhooks\/[^\s"'<>]+/gi, "[REDACTED_WEBHOOK_URL]"],
   [/\bhttps?:\/\/[a-z0-9.-]+\.(?:webhook\.office\.com|logic\.azure\.com|powerplatform\.com)(?::\d+)?\/[^\s"'<>]+/gi, "[REDACTED_WEBHOOK_URL]"],
   [/\bbot\d{5,}:[A-Za-z0-9_-]{20,}/g, "bot[REDACTED]"],
+  [/\bhttps?:\/\/hooks\.slack\.com\/(?:workflows|triggers)\/[^\s"'<>]+/gi, "[REDACTED_WEBHOOK_URL]"],
+  [/\bhttps?:\/\/outlook\.office(?:365)?\.com\/webhook\/[^\s"'<>]+/gi, "[REDACTED_WEBHOOK_URL]"],
   [/\b(set-cookie|cookie)\s*:\s*[^\r\n]+/gi, "$1: [REDACTED]"],
   [/\b(?:sk|rk|pk)_(?:live|test)_[A-Za-z0-9]{8,}/g, "[REDACTED_KEY]"],
   // Supercheck's own credentials: CLI and recorder keys (sck_live_, sck_test_), trigger keys (sck_trigger_), and job keys.
