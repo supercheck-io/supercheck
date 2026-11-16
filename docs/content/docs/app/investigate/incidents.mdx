@@ -149,6 +149,8 @@ The **Timeline** lists the key moments in UTC, named as in the Activity feed: wh
 | **Regenerate / Export** | **Regenerate draft** replaces the text after you confirm. The download button (**Export Markdown**) next to it saves a `.md` file |
 | **Limits** | Five drafts per person per incident per hour. Drafting needs permission to update incidents; people with view access can read and export |
 
+Read the post-mortem outside the app with `supercheck incident postmortem <id>` or `GET /api/sre/incidents/{id}/postmortem`.
+
 Review the draft before sharing it. The **Activity** feed and resolution summary remain the record of what happened.
 
 ## Reference
@@ -157,7 +159,7 @@ Review the draft before sharing it. The **Activity** feed and resolution summary
 
 <Accordion title="How Alerts Become Incidents" id="how-alerts-become-incidents">
 
-When a monitor or job alert fires (alerts enabled, a channel attached, outside a maintenance window), Supercheck opens an incident for it. This needs only `SRE_ENABLED` (on by default), not an AI provider, and happens even if the alert delivery fails.
+When a monitor or job alert fires (alerts enabled, a channel attached, outside a maintenance window), Supercheck opens an incident for it. This needs no AI provider, and happens even if the alert delivery fails.
 
 **Monitors need no channel for incidents.** With **Open an incident when this alerts** on, a monitor opens, updates and resolves incidents even when it has no notification channel, and a monitor with alerts turned off can still open incidents if you switch that option on (it is off by default when alerts are off). The monitor sends no alert in those cases. The incident itself can still notify people: an assignee or service owner may receive incident emails, as for any incident. Jobs still open incidents from their delivered alerts.
 
@@ -168,13 +170,13 @@ When a monitor or job alert fires (alerts enabled, a channel attached, outside a
 | **One incident per source** | While an incident for a monitor or job is open, further failures join it as linked alerts. If the check fails again after a *recovered* note, the **Activity** feed shows **Failure returned** and the next recovery is noted again |
 | **Severity** | *Auto* derives SEV1 to SEV4 from the alert; a fixed level in the check's settings overrides it |
 | **Auto-resolve** | On recovery, an unacknowledged incident resolves itself with a note, even if recovery alerts are off. An acknowledged one stays open, gets a *recovered* note, and its participants are emailed. Applies to monitor-down and job failed or timed-out alerts; SSL-expiry incidents stay open until someone resolves them |
-| **Safety sweep** | Every minute the app also checks for two lost signals. An open, unacknowledged, automatically opened incident that last alerted within the past two days, and whose monitor is up again (or whose job's latest run passed) after the incident's last alert is resolved as above, if **Resolve automatically** is on and the check's recovery threshold is 1; a longer threshold is left to the recovery signal from the worker, since the streak cannot be proven from stored state. An incident whose only automatic AI triage run was lost to an app restart (marked failed as stale) is triaged once more, within two days of opening, through the same gates as the first run: automation flag, AI configuration, billing and the organization's run limit. It never retries a second time. Older stuck incidents are left for their owners, so a long outage does not send a burst of resolved notices. Triage retries respect the organization's daily AI token limit. A project that turned on automatic investigation retries under that policy even when `SRE_AUTOMATION_ENABLED` is off, because the flag gates only instance-wide triage. Incidents created by hand are never touched. Only one app replica runs each sweep |
+| **Safety sweep** | Every minute, Supercheck also resolves or re-triages incidents that missed a recovery or triage signal, so a restart does not leave one stuck. Incidents created by hand are never touched |
 | **Reopen** | A new failure within 30 minutes of an automatic resolution reopens the same incident. Reopening keeps the previous resolution summary. For monitor-down and job failed or timed-out alerts only, **Open incident** from delivery history follows the same rules: it joins the source's open incident or reopens a recently auto-resolved one instead of creating a duplicate. An alert older than 30 minutes only joins an open incident and never reopens one. Changing a resolved incident's status in **Edit** also reopens it and clears its acknowledgement |
 
 Control this per check under **Alert Settings → Incidents**: **Open an incident when this alerts**, **Severity**, and **Resolve automatically on recovery if nobody acknowledged it** (both toggles on by default).
 
 <Callout type="info">
-AI triage is separate and optional. Triage that starts by itself from an alert runs only when an administrator enables it (`SRE_AUTOMATION_ENABLED`) and an AI provider is configured. That setting gates only alert-triggered triage: running triage manually from an incident needs only `SRE_ENABLED` and an AI provider.
+AI triage is separate and optional. Triage that starts by itself from an alert runs only when an administrator enables it and an AI provider is configured. Running triage manually from an incident needs only an AI provider.
 </Callout>
 
 </Accordion>
@@ -216,7 +218,7 @@ Each project has one **Default policy**, edited from **Organization → Projects
 | **Escalate if still unacknowledged** | Once, after the chosen minutes (5 to 1,440), to one channel **or** one project member (by email). A paging service cannot be the target. If the channel or member was removed or lost access, the timeline records that nobody was escalated to, and the settings dialog says so; other settings can still be saved |
 | **Investigate new incidents automatically** | Off by default because full investigations count toward your AI SRE investigation allowance. SEV1 and SEV2 get a full investigation, SEV3 and SEV4 a quick triage, through the same plan and usage limits as starting one by hand. Only incidents opened after you turn it on are covered, and automatic runs use stored evidence, not live sources. A manual run of another type doesn't block the automatic one. A failed automatic run is tried again on a later trigger, up to three attempts. It doesn't start while three runs are already in progress in the organization |
 
-Reminders and escalation stop when someone acknowledges or resolves the incident, or lowers its severity (raising it does not restart them). A reopen starts the schedule again. They wait while a scheduled status-page maintenance covers the incident's monitor and resume after it, and each organization gets at most 30 reminders and, separately, 30 escalations per hour, so a flapping monitor cannot flood channels and reminders never hold back an escalation. A send that fails everywhere is retried after 2, 4, 8 and 16 minutes; after five failures it is given up and the timeline says so. Every reminder and escalation is recorded on the incident timeline with the channels it reached. The CLI reads and changes these settings with `supercheck incident policy get` and `supercheck incident policy set`; the MCP tool `get_incident_policy` reads them.
+Reminders and escalation stop when someone acknowledges or resolves the incident, or lowers its severity (raising it does not restart them). A reopen starts the schedule again. They wait during [maintenance windows](/docs/app/monitor#maintenance-windows). Every reminder and escalation, and any send that fails everywhere, is recorded on the incident timeline. The CLI reads and changes these settings with `supercheck incident policy get` and `supercheck incident policy set`; the MCP tool `get_incident_policy` reads them.
 
 Email, Slack, Teams, Discord, Telegram and plain webhook channels are supported; paging services (webhooks with a preset or body template) are skipped for incident messages, reminders and escalation, because monitor and job alerts already page them. Each message names the incident, severity and service and links to it, without raw evidence, logs, credentials or AI conclusions. Recovery and reopen emails reach each person at most once every 10 minutes, so a flapping check does not flood inboxes.
 
@@ -252,7 +254,7 @@ Select **Trends** in the queue to see metrics for the last 30 days.
 
 </Accordion>
 
-<Accordion title="Rate limits and trial allowance" id="trial-allowance">
+<Accordion title="Rate limits" id="trial-allowance">
 
 Limits apply per person and incident, and exceeding one returns `429` with a retry delay.
 
@@ -265,7 +267,6 @@ Limits apply per person and incident, and exceeding one returns `429` with a ret
 
 Only one investigation or triage run can be active per incident (`409` otherwise).
 
-On the free trial, AI triage is limited to 20 runs and investigations to the trial's included number. A run that fails does not count against either. Copilot chat and evidence briefs need a paid plan.
 
 </Accordion>
 
