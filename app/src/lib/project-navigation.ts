@@ -9,7 +9,9 @@ export function reloadProjectContext(clearProjects: () => void, pathname = "/") 
   clearProjects();
   clearQueryCache();
   const destination = new URL("/", window.location.origin);
-  destination.pathname = pathname;
+  const [path, search = ""] = pathname.split("?");
+  destination.pathname = path;
+  destination.search = search;
   window.location.replace(destination);
 }
 

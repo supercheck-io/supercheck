@@ -6,6 +6,7 @@
   "defaultOpen": true,
   "pages": [
     "welcome",
+    "project-setup",
     "---Respond---",
     "communicate/dashboard",
     "investigate",

@@ -26,6 +26,9 @@ interface InviteData {
  * Self-hosted mode: Open registration — anyone can create an account with email/password.
  * This allows self-hosted deployments behind corporate proxies to work without OAuth.
  */
+// New accounts land on project setup unless an allow-listed continuation says otherwise.
+const DEFAULT_SIGN_UP_NEXT = "/setup";
+
 export default function SignUpPage() {
   return (
     <Suspense
@@ -148,9 +151,7 @@ function SignUpPageContent() {
       password,
       callbackURL: inviteToken
         ? `/sign-in?verified=true&invite=${encodeURIComponent(inviteToken)}`
-        : nextPath
-          ? `/sign-in?verified=true&next=${encodeURIComponent(nextPath)}`
-          : "/sign-in?verified=true",
+        : `/sign-in?verified=true&next=${encodeURIComponent(nextPath ?? DEFAULT_SIGN_UP_NEXT)}`,
       fetchOptions: {
         headers: signUpHeaders,
       },
@@ -287,10 +288,11 @@ function SignUpPageContent() {
         const acceptResult = await acceptResponse.json();
 
         if (acceptResponse.ok && acceptResult.success) {
-          // Success - redirect directly to dashboard
+          // Success - continue to the persona question
           console.log(`✅ Auto-accepted invitation to ${acceptResult.data?.organizationName}`);
           announceProjectChange();
-          reloadProjectContext(clearProjectsCache);
+          // Invited members answer the persona question only (setup spec D18).
+          reloadProjectContext(clearProjectsCache, "/setup/welcome");
           return;
         } else {
           console.warn("Could not auto-accept invitation:", acceptResult.error);
@@ -311,7 +313,7 @@ function SignUpPageContent() {
     }
 
     // Default: redirect to dashboard (or an allowlisted continuation such as /device)
-    router.push(nextPath ?? "/");
+    router.push(nextPath ?? DEFAULT_SIGN_UP_NEXT);
     setIsLoading(false);
   };
 

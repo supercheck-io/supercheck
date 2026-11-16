@@ -20,7 +20,7 @@ interface ProjectContextState {
   projects: ProjectContext[];
   loading: boolean;
   error: string | null;
-  switchProject: (projectId: string) => Promise<boolean>;
+  switchProject: (projectId: string, destination?: string) => Promise<boolean>;
   refreshProjects: () => Promise<void>;
   projectId: string | null;
   projectName: string | null;
@@ -143,7 +143,7 @@ export function useProjectContextState(
     }
   }, []);
 
-  const switchProject = useCallback(async (projectId: string): Promise<boolean> => {
+  const switchProject = useCallback(async (projectId: string, destination?: string): Promise<boolean> => {
     try {
       const response = await fetch(`/api/projects/switch`, {
         method: 'POST',
@@ -163,7 +163,7 @@ export function useProjectContextState(
           sessionStorage.setItem('projectSwitchSuccess', data.project.name);
         } catch { /* A successful server switch must survive disabled storage. */ }
         announceProjectChange();
-        reloadProjectContext(clearProjectsCache);
+        reloadProjectContext(clearProjectsCache, destination);
         return true;
       } else {
         throw new Error(data.error || 'Failed to switch project');

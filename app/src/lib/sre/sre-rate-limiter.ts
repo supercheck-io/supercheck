@@ -334,3 +334,14 @@ export async function checkSreAlertHistoryWriteRateLimit(
 ): Promise<SreRateLimitResult> {
   return checkSreRateLimit(`alert-history-write:${userId}`, 60, 60 * 1000);
 }
+
+/** Neutral name for the shared Redis sliding-window core (fails closed: `unavailable` when Redis is down). */
+export { checkSreRateLimit as checkSlidingWindowRateLimit };
+
+/** Project setup (onboarding) limits, per user per minute. Fail closed like the core. */
+export const checkSetupReadRateLimit = (userId: string) => checkSreRateLimit(`setup-read:${userId}`, 120, 60 * 1000);
+export const checkSetupWriteRateLimit = (userId: string) => checkSreRateLimit(`setup-write:${userId}`, 60, 60 * 1000);
+export const checkSetupLockRateLimit = (userId: string) => checkSreRateLimit(`setup-lock:${userId}`, 12, 60 * 1000);
+/** Release has its own, generous budget so a spent claim budget never leaves a lock stuck. */
+export const checkSetupReleaseRateLimit = (userId: string) => checkSreRateLimit(`setup-release:${userId}`, 120, 60 * 1000);
+export const checkSetupPersonaRateLimit = (userId: string) => checkSreRateLimit(`setup-persona:${userId}`, 20, 60 * 1000);

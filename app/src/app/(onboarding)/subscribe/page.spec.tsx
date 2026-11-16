@@ -5,6 +5,13 @@ import { useOrganizations } from "@/hooks/use-organizations";
 import { toast } from "sonner";
 import SubscribePage from "./page";
 
+const assign = jest.fn();
+jest.mock("@/lib/auth/hard-navigate", () => ({ hardNavigate: (url: string) => assign(url) }));
+let mockProjectId: string | null = null;
+jest.mock("@/hooks/use-project-context", () => ({
+  useProjectContextSafe: () => (mockProjectId ? { currentProject: { id: mockProjectId } } : null),
+}));
+
 jest.mock("@/hooks/use-organizations", () => ({ useOrganizations: jest.fn() }));
 
 const pricing = {
@@ -421,6 +428,52 @@ describe("signup plan selection", () => {
       expect(
         screen.getByRole("button", { name: "Continue with Plus" }),
       ).toBeEnabled();
+    });
+
+    describe("Continue with your trial destination", () => {
+      beforeEach(() => {
+        assign.mockReset();
+        withTrial({ active: true, expiresAt: "2026-11-15T00:00:00.000Z", daysRemaining: 6 });
+      });
+      afterEach(() => {
+        mockProjectId = null;
+      });
+      const setupStatus = (status: string | Error) =>
+        mockFetch.mockImplementation(async (url: string) => {
+          if (url !== "/api/projects/p1/setup") return { ok: true, json: async () => pricing };
+          if (status instanceof Error) throw status;
+          return { ok: true, json: async () => ({ state: { status } }) };
+        });
+      const clickContinue = async () => {
+        await openPage();
+        fireEvent.click(screen.getByRole("link", { name: /Continue with your trial/ }));
+      };
+
+      it("opens setup for a project that has not started it", async () => {
+        mockProjectId = "p1";
+        setupStatus("not_started");
+        await clickContinue();
+        await waitFor(() => expect(assign).toHaveBeenCalledWith("/setup"));
+      });
+
+      it.each(["in_progress", "completed"])("stays on the dashboard when setup is %s", async (status) => {
+        mockProjectId = "p1";
+        setupStatus(status);
+        await clickContinue();
+        await waitFor(() => expect(assign).toHaveBeenCalledWith("/"));
+      });
+
+      it("falls back to the dashboard on error or without a project", async () => {
+        mockProjectId = "p1";
+        setupStatus(new Error("boom"));
+        await clickContinue();
+        await waitFor(() => expect(assign).toHaveBeenCalledWith("/"));
+        cleanup();
+        assign.mockClear();
+        mockProjectId = null;
+        await clickContinue();
+        await waitFor(() => expect(assign).toHaveBeenCalledWith("/"));
+      });
     });
 
     it("explains what happened to an organization whose trial ended, and that nothing was deleted", async () => {

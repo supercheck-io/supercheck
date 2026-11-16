@@ -1,6 +1,6 @@
 import {
   BellRing, Boxes, Cable, CalendarClock, ChartColumn, ClipboardList, Code, Globe, History,
-  RadioTower, ShieldCheck, Siren, Sparkles, SquareLibrary, Tally4, Target, UserCog, Variable,
+  RadioTower, Rocket, ShieldCheck, Siren, Sparkles, SquareLibrary, Tally4, Target, UserCog, Variable,
   type LucideIcon,
 } from "lucide-react";
 
@@ -30,6 +30,7 @@ export const NAV = {
   runs: { title: "Runs", icon: ClipboardList, tone: "automate" },
   variables: { title: "Variables", icon: Variable, tone: "automate" },
   monitors: { title: "Monitors", icon: Globe, tone: "monitor" },
+  projectSetup: { title: "Project setup", icon: Rocket, tone: "organization" },
   organization: { title: "Organization", icon: UserCog, tone: "organization" },
   superAdmin: { title: "Super Admin", icon: ShieldCheck, tone: "superadmin" },
 } satisfies Record<string, NavEntry>;

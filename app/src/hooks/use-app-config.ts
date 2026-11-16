@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { SETUP_FEATURES, type SetupFeatures } from "@/lib/setup/features";
 
 export interface AppConfig {
   hosting: {
@@ -14,6 +15,7 @@ export interface AppConfig {
     allowedEmailDomains: string[];
   };
   mcp?: { enabled: boolean };
+  setup?: SetupFeatures;
   demoMode: boolean;
   showCommunityLinks: boolean;
   limits: {
@@ -28,6 +30,9 @@ export interface AppConfig {
   };
 }
 
+// AI steps stay hidden until the server says a provider is configured
+const DEFAULT_SETUP_FEATURES: SetupFeatures = { ...SETUP_FEATURES, aiTests: false, aiSre: false };
+
 const DEFAULT_CONFIG: AppConfig = {
   hosting: { selfHosted: false, cloudHosted: true },
   authProviders: {
@@ -39,6 +44,7 @@ const DEFAULT_CONFIG: AppConfig = {
     allowedEmailDomains: [],
   },
   mcp: { enabled: false },
+  setup: DEFAULT_SETUP_FEATURES,
   demoMode: false,
   showCommunityLinks: false,
   limits: {
@@ -92,6 +98,7 @@ export function useAppConfig() {
     isCloudHosted: effectiveConfig.hosting?.cloudHosted ?? true,
     isMcpEnabled: effectiveConfig.mcp?.enabled ?? false,
     isDemoMode: effectiveConfig.demoMode ?? false,
+    setupFeatures: effectiveConfig.setup ?? DEFAULT_SETUP_FEATURES,
     showCommunityLinks: effectiveConfig.showCommunityLinks ?? false,
     isGithubEnabled: effectiveConfig.authProviders?.github?.enabled ?? false,
     isGoogleEnabled: effectiveConfig.authProviders?.google?.enabled ?? false,

@@ -10,6 +10,7 @@ import type { FormValues } from "./monitor-form";
 import type { MonitorFormData } from "@/lib/input-sanitizer";
 import { z } from "zod";
 import { FORBIDDEN_KEY_HEADERS } from "@/lib/monitor-validation";
+import { AI_WARN_FIRST_TOKEN_DEFAULT_MS } from "@/lib/alerts/warning-kinds";
 
 const intInRange = (value: string | undefined, min: number, max: number) =>
   value === undefined || value.trim() === "" || (/^\d+$/.test(value.trim()) && Number(value) >= min && Number(value) <= max);
@@ -255,7 +256,7 @@ export function AiEndpointFields({ form, projectId, locationCount }: AiEndpointF
             <FormItem>
               <FormLabel>Warn when first token is slower than (ms)</FormLabel>
               <FormControl>
-                <Input inputMode="numeric" placeholder="Optional, e.g. 3000" data-testid="ai-warn-first-token" {...field} value={field.value ?? ""} />
+                <Input inputMode="numeric" placeholder={`Optional, e.g. ${AI_WARN_FIRST_TOKEN_DEFAULT_MS}`} data-testid="ai-warn-first-token" {...field} value={field.value ?? ""} />
               </FormControl>
               <FormMessage />
             </FormItem>

@@ -23,6 +23,8 @@ import { useAppConfig } from "@/hooks/use-app-config";
 import { clearProjectsCache } from "@/hooks/use-project-context";
 import { announceProjectChange, reloadProjectContext } from "@/lib/project-navigation";
 
+const INVITEE_LANDING_PATH = "/setup/welcome";
+
 interface InvitationData {
   organizationName: string;
   email?: string;
@@ -97,9 +99,9 @@ export default function InvitePage({
       if (data.success) {
         announceProjectChange();
         setAccepted(data.data);
-        // Redirect to dashboard after 3 seconds
+        // An invitee picks a persona first, then lands on the dashboard (after 3 seconds)
         setTimeout(() => {
-          reloadProjectContext(clearProjectsCache);
+          reloadProjectContext(clearProjectsCache, INVITEE_LANDING_PATH);
         }, 3000);
       } else {
         if (data.code === "EMAIL_NOT_VERIFIED") {
@@ -233,7 +235,7 @@ export default function InvitePage({
           </div>
 
           <Field>
-            <Button onClick={() => reloadProjectContext(clearProjectsCache)} className="w-full">
+            <Button onClick={() => reloadProjectContext(clearProjectsCache, INVITEE_LANDING_PATH)} className="w-full">
               Go to Dashboard
               <ArrowRight className="ml-2 h-4 w-4" />
             </Button>

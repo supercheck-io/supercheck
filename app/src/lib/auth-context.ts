@@ -67,15 +67,24 @@ export class AuthError extends Error {
   }
 }
 
+/** project-context throws this when the expected-project header names a project that is not active. By code, not instanceof, so specs that mock project-context still work. */
+function isProjectMismatch(error: unknown): boolean {
+  return error instanceof Error && (error as { code?: unknown }).code === "PROJECT_MISMATCH";
+}
+
 /** HTTP status for an auth failure: 403 for scope denials, otherwise 401. */
-export function authErrorStatus(error: unknown): 401 | 403 {
+export function authErrorStatus(error: unknown): 401 | 403 | 409 {
+  if (isProjectMismatch(error)) return 409;
   return error instanceof AuthError ? error.status : 401;
 }
 
 /** Standard JSON response for an auth failure, preserving 401 vs 403. */
 export function authErrorResponse(error: unknown): NextResponse {
   return NextResponse.json(
-    { error: error instanceof Error ? error.message : "Authentication required" },
+    {
+      error: error instanceof Error ? error.message : "Authentication required",
+      ...(isProjectMismatch(error) ? { code: "PROJECT_MISMATCH" } : {}),
+    },
     { status: authErrorStatus(error) },
   );
 }
@@ -86,7 +95,7 @@ export function authErrorResponse(error: unknown): NextResponse {
  * message patterns from the session-based auth flow.
  */
 export function isAuthError(error: unknown): boolean {
-  if (error instanceof AuthError) return true;
+  if (error instanceof AuthError || isProjectMismatch(error)) return true;
   if (error instanceof Error) {
     const msg = error.message.toLowerCase();
     return (

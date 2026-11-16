@@ -1,3 +1,4 @@
+import { SETUP_FEATURES } from "@/lib/setup/features";
 import { renderHook } from "@testing-library/react";
 import { useStatusPageDetail, useStatusPages } from "./use-status-pages";
 import { useAppConfig } from "./use-app-config";
@@ -110,6 +111,7 @@ function makeAppConfig(overrides: Partial<ReturnType<typeof useAppConfig>> = {})
     isCloudHosted: true,
     isMcpEnabled: false,
     isDemoMode: false,
+    setupFeatures: SETUP_FEATURES,
     showCommunityLinks: false,
     isGithubEnabled: false,
     isGoogleEnabled: false,

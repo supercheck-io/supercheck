@@ -658,7 +658,7 @@ function OrgAdminDashboardContent() {
     }
   };
 
-  const handleCreateProject = async (formData?: CreateProjectFormData) => {
+  const handleCreateProject = async (formData?: CreateProjectFormData, openSetup = false) => {
     const projectData = formData || {
       name: newProject.name.trim(),
       description: newProject.description.trim(),
@@ -704,6 +704,8 @@ function OrgAdminDashboardContent() {
         });
         invalidateProjects();
         invalidateStats();
+        // The setup page switches the active project to the one in the query.
+        if (openSetup && data.data?.id) router.push(`/setup?project=${encodeURIComponent(data.data.id)}`);
       } else {
         toast.error(data.error || "Failed to create project");
       }
@@ -999,6 +1001,19 @@ function OrgAdminDashboardContent() {
                     "Create Project"
                   )}
                 </Button>
+                {canCreateProjects(normalizeRole(currentUserRole)) && (
+                  <Button
+                    variant="outline"
+                    onClick={() => handleCreateProject(undefined, true)}
+                    disabled={
+                      creatingProject ||
+                      !newProject.name.trim() ||
+                      !newProject.description.trim()
+                    }
+                  >
+                    Create and set up
+                  </Button>
+                )}
               </DialogFooter>
             </DialogContent>
           </Dialog>
