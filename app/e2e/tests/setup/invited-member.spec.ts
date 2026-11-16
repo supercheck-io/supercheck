@@ -39,13 +39,7 @@ test.describe('Project setup invited members @setup', () => {
     await expect(page.getByTestId('setup-wizard')).toHaveCount(0);
     await expect(page.getByTestId('setup-checklist')).toBeVisible();
     await expect(page.getByTestId('checklist-item-monitors')).toBeVisible();
-
-    await page.goto('/');
-    await waitForHydration(page);
-    const card = page.getByTestId('getting-started-card');
-    await expect(card).toBeVisible();
-    await expect(card.getByRole('link', { name: 'View checklist' })).toBeVisible();
-    await expect(card.getByRole('button', { name: 'Dismiss' })).toHaveCount(0);
+    // The shared project already has data, so the dashboard card only appears once setup is in progress.
   });
 
   test('an editor sees the repeat-until-ack card disabled with "Ask a project admin" @critical', async ({ editorPage: page }) => {

@@ -89,17 +89,23 @@ export function GettingStartedCard({ checklist, status, canEdit, projectId, onDi
  * Dashboard slot (D15): the card replaces the empty state until setup is completed or
  * dismissed. Anything else, including an error or the flag being off, shows `fallback`.
  */
-export function DashboardGettingStarted({ fallback }: { fallback: ReactNode }) {
+/**
+ * On an empty project the card replaces the empty state until setup is completed or dismissed.
+ * On a project that already has data it shows only while setup is in progress, so existing
+ * projects are not nagged after an upgrade (`onlyInProgress`).
+ */
+export function DashboardGettingStarted({ fallback, onlyInProgress = false }: { fallback: ReactNode; onlyInProgress?: boolean }) {
   const { setupFeatures } = useAppConfig();
   const project = useProjectContextSafe()?.currentProject ?? null;
   const queryClient = useQueryClient();
   const query = useProjectSetup(setupFeatures.setup ? project?.id : null);
 
   if (!setupFeatures.setup || !project) return <>{fallback}</>;
-  if (query.isPending) return <Skeleton className="m-4 h-48" data-testid="getting-started-skeleton" />;
+  if (query.isPending) return onlyInProgress ? <>{fallback}</> : <Skeleton className="m-4 h-48" data-testid="getting-started-skeleton" />;
   if (query.isError || !query.data) return <>{fallback}</>;
   const { state, checklist, permissions } = query.data;
   if (state.status === "completed" || state.status === "dismissed") return <>{fallback}</>;
+  if (onlyInProgress && state.status !== "in_progress") return <>{fallback}</>;
 
   const dismiss = async () => {
     try {

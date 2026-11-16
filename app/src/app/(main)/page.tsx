@@ -574,6 +574,7 @@ function DashboardOverview({
 
   return (
     <div className="mt-4 space-y-4 lg:flex lg:min-h-0 lg:flex-1 lg:flex-col">
+      <DashboardGettingStarted onlyInProgress fallback={null} />
       {/* KPI row */}
       <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6">
         <MetricCard
