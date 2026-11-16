@@ -18,7 +18,8 @@ export type FreshCreator = {
  * as on any local self-hosted app; the accounts are throwaway and live in that app's database.
  */
 export async function signUpFreshCreator(browser: Browser, baseURL: string, label: string): Promise<FreshCreator> {
-  const context = await browser.newContext({ baseURL });
+  // Playwright applies the project's signed-in storageState to new contexts; start signed out.
+  const context = await browser.newContext({ baseURL, storageState: { cookies: [], origins: [] } });
   const page = await context.newPage();
   const email = `setup-${label}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}@example.com`;
   const signUp = new SignUpPage(page);

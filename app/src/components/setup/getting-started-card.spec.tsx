@@ -72,6 +72,19 @@ describe("DashboardGettingStarted", () => {
     expect(await screen.findByText("Empty state")).toBeTruthy();
   });
 
+  it("on a project with data shows only while setup is in progress, with no skeleton", async () => {
+    reply(makeResponse({}, { status: "not_started" }));
+    const first = render(<DashboardGettingStarted onlyInProgress fallback={fallback} />, { wrapper: createWrapper().Wrapper });
+    expect(screen.queryByTestId("getting-started-skeleton")).toBeNull();
+    expect(await screen.findByText("Empty state")).toBeTruthy();
+    expect(screen.queryByTestId("getting-started-card")).toBeNull();
+    first.unmount();
+
+    reply(makeResponse({}, { status: "in_progress" }));
+    render(<DashboardGettingStarted onlyInProgress fallback={fallback} />, { wrapper: createWrapper().Wrapper });
+    expect(await screen.findByTestId("getting-started-card")).toBeTruthy();
+  });
+
   it("keeps the empty state when the flag is off, with no project, or on error", async () => {
     const { Wrapper } = createWrapper();
     useAppConfig.mockReturnValue({ setupFeatures: { ...FEATURES, setup: false } });
