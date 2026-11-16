@@ -137,6 +137,31 @@ describe("useSetupSession recordCreated", () => {
   });
 });
 
+describe("useSetupSession adoptServerVersion and 409 merge", () => {
+  const T1 = "2026-01-01T00:00:00.000Z";
+  const T2 = "2026-01-01T00:01:00.000Z";
+  it("sends the adopted version with the next save and ignores an older one", async () => {
+    fetchMock.mockResolvedValue(reply(200, makeResponse({}, { updatedAt: T2 })));
+    const { result } = setup();
+    act(() => result.current.adoptServerVersion(T1));
+    act(() => result.current.adoptServerVersion("2025-01-01T00:00:00.000Z"));
+    act(() => result.current.patchDraft((d) => ({ ...d, tests: { requirements: [{ title: "Ticked" }] } })));
+    await act(async () => { await result.current.flush(); });
+    expect(puts()[0].expectedUpdatedAt).toBe(T1);
+  });
+  it("keeps local ticked requirements over the server copy on a 409", async () => {
+    const server = makeResponse({}, { updatedAt: T2, draft: { tests: { requirements: [], suggestions: [{ title: "S" }] } } });
+    fetchMock.mockResolvedValueOnce(reply(409, { error: "conflict", state: server.state }));
+    fetchMock.mockResolvedValueOnce(reply(200, makeResponse({}, { updatedAt: "t3" })));
+    const { result } = setup();
+    act(() => result.current.patchDraft((d) => ({ ...d, tests: { requirements: [{ title: "Ticked" }] } })));
+    await act(async () => { await result.current.flush(); });
+    expect(result.current.draft.tests?.requirements).toEqual([{ title: "Ticked" }]);
+    expect(result.current.draft.tests?.suggestions).toEqual([{ title: "S" }]);
+    expect(puts()[1].draft.tests.requirements).toEqual([{ title: "Ticked" }]);
+  });
+});
+
 describe("useSetupSession 409 with server-saved suggestions", () => {
   const sug = [{ title: "Login works" }];
   it("keeps the server's tests.suggestions and stays quiet when the tab already holds them", async () => {

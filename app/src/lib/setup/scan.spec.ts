@@ -30,9 +30,9 @@ describe("setup scan queue helpers", () => {
     expect(add).toHaveBeenCalledWith("scan", { url: "https://x.test/" }, { jobId: id });
   });
 
-  it("keeps an ssl_invalid error with its certificate details", () => {
-    const clean = sanitizeScanResult({ ...good, reachable: false, status: null, pages: [], error: "ssl_invalid", ssl: { ...good.ssl, daysRemaining: -3 } });
-    expect(clean).toMatchObject({ error: "ssl_invalid", ssl: { daysRemaining: -3 } });
+  it("keeps an ssl_invalid error with its reason", () => {
+    const clean = sanitizeScanResult({ ...good, reachable: false, status: null, pages: [], error: "ssl_invalid", ssl: null, sslReason: "CERT_HAS_EXPIRED" });
+    expect(clean).toMatchObject({ error: "ssl_invalid", ssl: null, sslReason: "CERT_HAS_EXPIRED" });
   });
 
   it("sanitizes: strips unknown keys (bodies, headers) and rejects malformed data", () => {

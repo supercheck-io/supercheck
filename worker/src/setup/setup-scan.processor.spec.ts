@@ -261,11 +261,9 @@ describe('setup scan processor', () => {
     const readCertificate = jest.fn().mockImplementation(async () => {
       order.push('cert');
       return {
-        certificate: {
-          valid_to: new Date(Date.now() + 86_400_000).toUTCString(),
-          issuer: { CN: 'CA' },
-        },
-        authorized: true,
+        validTo: new Date(Date.now() + 86_400_000).toISOString(),
+        daysRemaining: 1,
+        issuer: 'CA',
       };
     });
     await scan(
@@ -281,11 +279,9 @@ describe('setup scan processor', () => {
 
   it('reads the certificate through a vetted lookup for https targets', async () => {
     const readCertificate = jest.fn().mockResolvedValue({
-      certificate: {
-        valid_to: new Date(Date.now() + 10 * 86_400_000).toUTCString(),
-        issuer: { CN: 'Test CA' },
-      },
-      authorized: true,
+      validTo: new Date(Date.now() + 10 * 86_400_000).toISOString(),
+      daysRemaining: 10,
+      issuer: 'Test CA',
     });
     const r = await scan(
       () => ({ status: 200, data: page('Secure') }),
@@ -296,7 +292,7 @@ describe('setup scan processor', () => {
       issuer: 'Test CA',
       daysRemaining: expect.any(Number),
     });
-    expect(r.ssl?.daysRemaining).toBeGreaterThanOrEqual(9);
+    expect(r.ssl?.daysRemaining).toBe(10);
     const args = readCertificate.mock.calls[0][0];
     expect(args).toMatchObject({ hostname: '93.184.216.34', port: 443 });
     // The lookup only yields the vetted address.
@@ -308,15 +304,10 @@ describe('setup scan processor', () => {
     expect(addr).toEqual([{ address: '93.184.216.34', family: 4 }]);
   });
 
-  it('reports an expired certificate as ssl_invalid with its details', async () => {
-    const validTo = new Date(Date.now() - 5 * 86_400_000);
-    const readCertificate = jest.fn().mockResolvedValue({
-      certificate: {
-        valid_to: validTo.toUTCString(),
-        issuer: { CN: 'Test CA' },
-      },
-      authorized: false,
-    });
+  it('reports an invalid certificate as ssl_invalid with the reason and no date', async () => {
+    const readCertificate = jest
+      .fn()
+      .mockResolvedValue({ invalid: true, reason: 'CERT_HAS_EXPIRED' });
     const r = await scan(
       () => {
         throw new AxiosError('certificate has expired', 'CERT_HAS_EXPIRED');
@@ -324,20 +315,19 @@ describe('setup scan processor', () => {
       { readCertificate },
       'https://93.184.216.34/',
     ).result;
-    expect(r).toMatchObject({ reachable: false, error: 'ssl_invalid' });
-    expect(r.ssl).toMatchObject({ issuer: 'Test CA' });
-    expect(r.ssl?.daysRemaining).toBeLessThan(0);
+    expect(r).toMatchObject({
+      reachable: false,
+      error: 'ssl_invalid',
+      ssl: null,
+      sslReason: 'CERT_HAS_EXPIRED',
+    });
     expect(readCertificate).toHaveBeenCalledTimes(1);
   });
 
   it('reads the certificate of the redirect target that failed, not the origin it started from', async () => {
-    const readCertificate = jest.fn().mockResolvedValue({
-      certificate: {
-        valid_to: new Date(Date.now() - 5 * 86_400_000).toUTCString(),
-        issuer: { CN: 'Other CA' },
-      },
-      authorized: false,
-    });
+    const readCertificate = jest
+      .fn()
+      .mockResolvedValue({ invalid: true, reason: 'CERT_HAS_EXPIRED' });
     let calls = 0;
     const r = await scan(
       () => {
@@ -352,10 +342,7 @@ describe('setup scan processor', () => {
       { readCertificate },
       'https://93.184.216.34/',
     ).result;
-    expect(r).toMatchObject({
-      error: 'ssl_invalid',
-      ssl: { issuer: 'Other CA' },
-    });
+    expect(r).toMatchObject({ error: 'ssl_invalid', ssl: null });
     expect(readCertificate).toHaveBeenCalledTimes(1);
     expect(readCertificate.mock.calls[0][0]).toMatchObject({
       hostname: '93.184.216.35',
@@ -370,7 +357,11 @@ describe('setup scan processor', () => {
       { readCertificate: jest.fn().mockRejectedValue(new Error('tls')) },
       'https://93.184.216.34/',
     ).result;
-    expect(r).toMatchObject({ error: 'ssl_invalid', ssl: null });
+    expect(r).toMatchObject({
+      error: 'ssl_invalid',
+      ssl: null,
+      sslReason: 'DEPTH_ZERO_SELF_SIGNED_CERT',
+    });
   });
 
   it('returns ssl null when the certificate cannot be read', async () => {
@@ -383,7 +374,7 @@ describe('setup scan processor', () => {
     expect(failed.ssl).toBeNull();
     const noDate = jest
       .fn()
-      .mockResolvedValue({ certificate: {}, authorized: false });
+      .mockResolvedValue({ invalid: true, reason: 'CERT_HAS_EXPIRED' });
     const undated = await scan(
       () => ({ status: 200 }),
       { readCertificate: noDate },
@@ -428,6 +419,9 @@ describe('setup scan processor', () => {
       120,
     );
     expect(extractTitle('<title>  </title>')).toBeNull();
+    expect(extractTitle('<title>&amp;lt;b&amp;gt; &lt;i&gt;</title>')).toBe(
+      '&lt;b&gt; <i>',
+    );
     expect(extractTitle('no title')).toBeNull();
     expect(extractTitle('<title>a\u0000<b>b</b></title>')).toBe('a b');
   });

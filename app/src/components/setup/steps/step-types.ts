@@ -11,6 +11,8 @@ export interface StepProps {
   permissions: SetupResponse["permissions"];
   draft: SetupDraft;
   patchDraft: (fn: (draft: SetupDraft) => SetupDraft) => void;
+  /** Adopt the updated_at of a server-side draft write (AI suggestions) so the next autosave does not conflict. */
+  adoptServerVersion?: (updatedAt: string) => void;
   /** Sets the explicit "I don't need a status page" flag (counts as done on the checklist). */
   setStatusPageOptOut: (optOut: boolean) => void;
   /** Another user holds the lock, or the caller cannot edit. */

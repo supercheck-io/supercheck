@@ -351,17 +351,19 @@ export type SetupSuggestion = NonNullable<NonNullable<SetupDraft["tests"]>["sugg
 /**
  * Saves AI suggestions into draft.tests.suggestions in one jsonb update, leaving every other draft key alone, so a
  * tab that reloads mid-request still finds them. Bumps updated_at: a client holding an older draft gets a 409 and
- * adopts this one instead of overwriting it. Throws when the items fail the draft schema.
+ * adopts this one instead of overwriting it. Throws when the items fail the draft schema. Returns the new updated_at so the caller's session can adopt it.
  */
-export async function saveSuggestions(organizationId: string, projectId: string, suggestions: SetupSuggestion[]): Promise<void> {
+export async function saveSuggestions(organizationId: string, projectId: string, suggestions: SetupSuggestion[]): Promise<string | null> {
   const parsed = parseSetupDraft({ tests: { requirements: [], suggestions } });
   if (!parsed.success) throw new Error(parsed.error);
   const valid = JSON.stringify(parsed.data.tests?.suggestions ?? []);
-  await db
+  const [row] = await db
     .update(projectSetupState)
     .set({
       draft: sql`jsonb_set(${projectSetupState.draft}, '{tests}', coalesce(${projectSetupState.draft}->'tests', '{"requirements":[]}'::jsonb) || jsonb_build_object('suggestions', ${valid}::jsonb), true)`,
       updatedAt: sql`clock_timestamp()`,
     })
-    .where(and(eq(projectSetupState.organizationId, organizationId), eq(projectSetupState.projectId, projectId)));
+    .where(and(eq(projectSetupState.organizationId, organizationId), eq(projectSetupState.projectId, projectId)))
+    .returning({ updatedAt: projectSetupState.updatedAt });
+  return row ? row.updatedAt.toISOString() : null;
 }

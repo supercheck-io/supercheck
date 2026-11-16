@@ -479,10 +479,10 @@ describe("scan in the app and monitors steps", () => {
     const props = () => makeStepProps({ scan: withScan, patchDraft: d.patchDraft, draft: d.get() });
     const { rerender } = render(<MonitorsStep {...props()} />);
     rerender(<MonitorsStep {...props()} />);
-    expect(screen.getByLabelText(/app.example.com\/pricing/)).not.toBeChecked();
+    expect(screen.getByLabelText(/app\.example\.com\/pricing/)).not.toBeChecked();
     expect(screen.queryByLabelText(/broken/)).toBeNull();
-    expect(screen.getByLabelText(/^app.example.com\s*Website/)).toBeChecked();
-    fireEvent.click(screen.getByLabelText(/app.example.com\/pricing/));
+    expect(screen.getByLabelText(/^app\.example\.com\s*Website/)).toBeChecked();
+    fireEvent.click(screen.getByLabelText(/app\.example\.com\/pricing/));
     expect(d.get().monitors?.pages.map((p) => p.url)).toContain("https://app.example.com/pricing");
     expect(screen.getByLabelText("Add a page path")).toBeTruthy();
   });
@@ -490,7 +490,7 @@ describe("scan in the app and monitors steps", () => {
   it("monitors step ignores failed pages (status 0) and a scan of another host", () => {
     const failed = { ...scan, pages: [...scan.pages, { path: "/timed-out", status: 0, ms: 0, title: null }] };
     const view = render(<MonitorsStep {...makeStepProps({ scan: failed, draft: { app: { url: "https://app.example.com/" }, monitors: { pages: [] } } })} />);
-    expect(screen.getByLabelText(/app.example.com\/pricing/)).toBeTruthy();
+    expect(screen.getByLabelText(/app\.example\.com\/pricing/)).toBeTruthy();
     expect(screen.queryByLabelText(/timed-out/)).toBeNull();
     view.unmount();
     render(<MonitorsStep {...makeStepProps({ scan: failed, draft: { app: { url: "https://other.example/" }, monitors: { pages: [] } } })} />);
@@ -512,12 +512,12 @@ describe("scan in the app and monitors steps", () => {
   it("builds suggestions and the AI endpoint URL from the scan's final origin after a redirect", () => {
     const crossDomain = { ...scan, finalUrl: "https://other.example.net/", redirects: 1 };
     const { unmount } = render(<MonitorsStep {...makeStepProps({ scan: crossDomain, draft: { app: { url: "https://example.com/", scannedUrl: "https://example.com/" }, monitors: { pages: [] } } })} />);
-    expect(screen.getByLabelText(/other.example.net\/pricing/)).toBeTruthy();
+    expect(screen.getByLabelText(/other\.example\.net\/pricing/)).toBeTruthy();
     unmount();
     const redirected = { ...scan, finalUrl: "https://www.example.com/", redirects: 1 };
     render(<MonitorsStep {...makeStepProps({ scan: redirected, draft: { app: { url: "https://example.com/" }, monitors: { pages: [] } } })} />);
-    expect(screen.getByLabelText(/www.example.com\/pricing/)).toBeTruthy();
-    expect(screen.queryByLabelText(/^example.com\/pricing/)).toBeNull();
+    expect(screen.getByLabelText(/www\.example\.com\/pricing/)).toBeTruthy();
+    expect(screen.queryByLabelText(/^example\.com\/pricing/)).toBeNull();
     expect(screen.getByLabelText("Endpoint URL")).toHaveValue("https://www.example.com/v1/chat/completions");
   });
 

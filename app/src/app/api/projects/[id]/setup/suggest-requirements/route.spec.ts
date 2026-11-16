@@ -154,6 +154,8 @@ describe("generation", () => {
     const res = await POST(req(), params);
     expect(res.status).toBe(200);
     expect(saveSuggestions).toHaveBeenCalledWith(ORG, PROJECT, [{ title: "Login works", description: "d", priority: "high" }]);
+    (saveSuggestions as jest.Mock).mockResolvedValueOnce("2026-01-01T00:00:00.000Z");
+    expect((await (await POST(req(), params)).json()).updatedAt).toBe("2026-01-01T00:00:00.000Z");
     (saveSuggestions as jest.Mock).mockRejectedValueOnce(new Error("db down"));
     const failed = await POST(req(), params);
     expect(failed.status).toBe(200);

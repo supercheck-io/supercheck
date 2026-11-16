@@ -102,6 +102,15 @@ describe("TestsStep", () => {
     expect(screen.getByRole("button", { name: "Suggest more" })).toBeTruthy();
   });
 
+  it("passes the server's new version to the session after saved suggestions", async () => {
+    fetchMock.mockReturnValue(json({ ...SUGGESTIONS, updatedAt: "2026-01-01T00:00:00.000Z" }));
+    const adoptServerVersion = jest.fn();
+    render(<TestsStep {...mk({ scan, adoptServerVersion })} />);
+    suggest();
+    await screen.findByText("User can sign in");
+    expect(adoptServerVersion).toHaveBeenCalledWith("2026-01-01T00:00:00.000Z");
+  });
+
   it("keeps ticked requirements when the step is revisited", () => {
     render(<TestsStep {...mk({ scan, draft: { tests: { requirements: [{ title: "Kept", description: "d" }] } } })} />);
     expect(screen.getByLabelText(/Kept/)).toBeChecked();

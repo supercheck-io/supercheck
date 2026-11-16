@@ -7,7 +7,11 @@ import {
   requestPinnedMonitorTarget,
   vettedLookup,
 } from '../common/utils/pinned-monitor-request';
-import { readPeerCertificate } from '../common/utils/tls-certificate';
+import {
+  readCertificate,
+  TLS_CERT_ERROR,
+  type CertificateReading,
+} from './tls-certificate';
 import { allowInternalMonitorTargets } from '../common/utils/url-validator';
 import {
   MonitorRedirectError,
@@ -52,6 +56,8 @@ export interface SetupScanResult {
     finalPath?: string;
   }[];
   blockedReason?: string;
+  /** TLS verification error code (e.g. CERT_HAS_EXPIRED) when error is ssl_invalid. */
+  sslReason?: string;
   error?: SetupScanErrorCode;
 }
 
@@ -59,13 +65,13 @@ export interface SetupScanDeps {
   execute: (
     config: AxiosRequestConfig<unknown>,
   ) => Promise<AxiosResponse<unknown>>;
-  readCertificate: typeof readPeerCertificate;
+  readCertificate: typeof readCertificate;
   allowInternalTargets: () => boolean;
 }
 
 const defaultDeps: SetupScanDeps = {
   execute: (config) => axios.request(config),
-  readCertificate: readPeerCertificate,
+  readCertificate,
   allowInternalTargets: allowInternalMonitorTargets,
 };
 
@@ -83,10 +89,10 @@ function cleanText(raw: string): string {
   return (
     raw
       .replace(/<[^>]*>/g, ' ')
-      .replace(/&amp;/gi, '&')
       .replace(/&lt;/gi, '<')
       .replace(/&gt;/gi, '>')
       .replace(/&quot;|&#39;|&apos;/gi, "'")
+      .replace(/&amp;/gi, '&') // last, so "&amp;lt;" stays "&lt;"
       // eslint-disable-next-line no-control-regex
       .replace(/[\u0000-\u001f\u007f]/g, ' ')
       .replace(/\s+/g, ' ')
@@ -144,20 +150,17 @@ class ScanFailure extends Error {
   constructor(
     readonly code: SetupScanErrorCode,
     readonly blockedReason?: string,
+    readonly sslReason?: string,
   ) {
     super(code);
   }
 }
 
-/** Node/OpenSSL codes for a certificate that fails verification (expired, self-signed, wrong host, ...). */
-const TLS_CERT_ERROR =
-  /^(CERT_|DEPTH_ZERO_SELF_SIGNED_CERT|SELF_SIGNED_CERT|UNABLE_TO_(VERIFY_LEAF_SIGNATURE|GET_ISSUER_CERT)|ERR_TLS_CERT_ALTNAME_INVALID)/;
-
 function classify(error: unknown): ScanFailure {
   const message = error instanceof Error ? error.message : '';
   const tlsCode = (error as { code?: unknown } | null)?.code;
   if (typeof tlsCode === 'string' && TLS_CERT_ERROR.test(tlsCode)) {
-    return new ScanFailure('ssl_invalid');
+    return new ScanFailure('ssl_invalid', undefined, tlsCode);
   }
   if (message.includes(BLOCKED_MESSAGE)) {
     return new ScanFailure('blocked_private', 'private_or_reserved_address');
@@ -258,11 +261,17 @@ async function fetchPage(
   };
 }
 
+const invalidReason = (
+  reading: CertificateReading | null,
+  fallback?: string,
+): string | undefined =>
+  reading && 'invalid' in reading ? reading.reason : fallback;
+
 async function readSsl(
   url: URL,
   deps: SetupScanDeps,
   budget: AbortSignal,
-): Promise<SetupScanResult['ssl']> {
+): Promise<CertificateReading | null> {
   // An already-aborted budget never fires its listener, so skip the read outright.
   if (url.protocol !== 'https:' || budget.aborted) return null;
   try {
@@ -284,13 +293,7 @@ async function readSsl(
         }),
       ),
     ]);
-    const validTo = new Date(info.certificate?.valid_to);
-    if (Number.isNaN(validTo.getTime())) return null;
-    return {
-      validTo: validTo.toISOString(),
-      daysRemaining: Math.ceil((validTo.getTime() - Date.now()) / 86_400_000),
-      issuer: String(info.certificate.issuer?.CN ?? 'Unknown').slice(0, 120),
-    };
+    return info;
   } catch {
     return null;
   }
@@ -325,17 +328,21 @@ export async function processSetupScan(
     const failure = error instanceof ScanFailure ? error : classify(error);
     return {
       ...emptyResult(startOrigin, failure.code),
-      // The request refused the certificate; the unverified read still reports its expiry date.
-      ssl:
-        failure.code === 'ssl_invalid'
-          ? await readSsl(failure.url ?? start, deps, budget)
-          : null,
+      ssl: null,
       blockedReason: failure.blockedReason,
+      sslReason:
+        failure.code === 'ssl_invalid'
+          ? invalidReason(
+              await readSsl(failure.url ?? start, deps, budget),
+              failure.sslReason,
+            )
+          : undefined,
     };
   }
 
   // Read the certificate before crawling so a slow crawl cannot use up its time budget.
-  const ssl = await readSsl(home.finalUrl, deps, budget);
+  const reading = await readSsl(home.finalUrl, deps, budget);
+  const ssl = reading && !('invalid' in reading) ? reading : null;
   const pages: SetupScanResult['pages'] = [
     {
       path: home.finalUrl.pathname,

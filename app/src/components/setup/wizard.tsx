@@ -135,6 +135,7 @@ export function SetupWizard({ response, persona, userEmail }: WizardProps) {
     draft: session.draft,
     // A read-only tab never writes, whatever a step calls.
     patchDraft: readOnly ? () => undefined : session.patchDraft,
+    adoptServerVersion: session.adoptServerVersion,
     setStatusPageOptOut: (optOut) => !readOnly && session.patch({ statusPageOptOut: optOut }),
     readOnly,
     userEmail,

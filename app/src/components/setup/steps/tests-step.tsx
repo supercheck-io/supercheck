@@ -43,7 +43,7 @@ function UpgradeLink({ children }: { children: string }) {
   );
 }
 
-export function TestsStep({ response, features, permissions, draft, patchDraft, readOnly, scan }: StepProps) {
+export function TestsStep({ response, features, permissions, draft, patchDraft, adoptServerVersion, readOnly, scan }: StepProps) {
   const ticked = draft.tests?.requirements ?? [];
   // Revisiting the step keeps the ticked ones, since a second suggestion run is limited to once a day.
   const [options, setOptions] = useState<Suggestion[]>(() => {
@@ -76,7 +76,7 @@ export function TestsStep({ response, features, permissions, draft, patchDraft, 
     setLoading(true);
     setFailure(null);
     try {
-      const res = await postJson<{ requirements?: Suggestion[]; code?: string; retryAt?: string }>(`/api/projects/${response.projectId}/setup/suggest-requirements`, { pages: suggestPages.map(({ path, title }) => ({ path, title })).slice(0, 50) });
+      const res = await postJson<{ requirements?: Suggestion[]; updatedAt?: string; code?: string; retryAt?: string }>(`/api/projects/${response.projectId}/setup/suggest-requirements`, { pages: suggestPages.map(({ path, title }) => ({ path, title })).slice(0, 50) });
       if (res.ok && res.data.requirements) {
         // One bounded set for display and for the draft: ticked ones stay, then the newest run, then older unticked ones.
         const { ticked: nowTicked, options: nowOptions } = latest.current;
@@ -91,6 +91,8 @@ export function TestsStep({ response, features, permissions, draft, patchDraft, 
           ...(description ? { description: description.slice(0, 2000) } : {}),
           ...(priority && priorities.includes(priority) ? { priority: priority as "low" | "medium" | "high" } : {}),
         }));
+        // The server saved these and bumped the draft version: adopt it, or the next autosave conflicts.
+        if (res.data.updatedAt) adoptServerVersion?.(res.data.updatedAt);
         patchDraft((d) => ({ ...d, tests: { requirements: [], ...d.tests, suggestions } }));
       } else if (res.status === 402 && res.data.code === "plan_required") {
         setFailure({ kind: "locked", message: "AI suggestions need a paid plan." });

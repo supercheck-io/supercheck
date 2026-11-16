@@ -221,13 +221,13 @@ describe("scanFindings", () => {
 });
 
 describe("invalid certificate", () => {
-  it("names the certificate expiry date", () => {
-    render(<ScanFindings result={result({ reachable: false, status: null, pages: [], error: "ssl_invalid", ssl: { validTo: "2026-03-04T00:00:00.000Z", daysRemaining: -257, issuer: "R3" } })} />);
-    expect(screen.getByText("The SSL certificate is invalid or expired (2026-03-04).")).toBeTruthy();
+  it("names the reason in words", () => {
+    render(<ScanFindings result={result({ reachable: false, status: null, pages: [], error: "ssl_invalid", ssl: null, sslReason: "DEPTH_ZERO_SELF_SIGNED_CERT" })} />);
+    expect(screen.getByText("The SSL certificate is invalid or expired (self-signed).")).toBeTruthy();
   });
 
   it("falls back to the plain message without certificate details", () => {
-    render(<ScanFindings result={result({ reachable: false, status: null, pages: [], error: "ssl_invalid", ssl: null })} />);
+    render(<ScanFindings result={result({ reachable: false, status: null, pages: [], error: "ssl_invalid", ssl: null, sslReason: "SOMETHING_ELSE" })} />);
     expect(screen.getByText("The SSL certificate is invalid or expired.")).toBeTruthy();
   });
 });

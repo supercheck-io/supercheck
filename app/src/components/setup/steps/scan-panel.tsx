@@ -31,6 +31,17 @@ const SCAN_ERRORS: Record<NonNullable<ScanSummary["error"]> | "timeout" | "unava
   failed: "The scan failed. Try again, or continue without it.",
 };
 
+const SSL_REASONS: Record<string, string> = {
+  CERT_HAS_EXPIRED: "expired",
+  CERT_NOT_YET_VALID: "not yet valid",
+  DEPTH_ZERO_SELF_SIGNED_CERT: "self-signed",
+  SELF_SIGNED_CERT_IN_CHAIN: "self-signed",
+  ERR_TLS_CERT_ALTNAME_INVALID: "wrong host name",
+  UNABLE_TO_VERIFY_LEAF_SIGNATURE: "untrusted issuer",
+  UNABLE_TO_GET_ISSUER_CERT: "untrusted issuer",
+  UNABLE_TO_GET_ISSUER_CERT_LOCALLY: "untrusted issuer",
+};
+
 /** Starts a scan and polls it every 2 s until it finishes, 5 min pass, or the component unmounts. */
 export function useScan(projectId: string, onResult: (result: ScanSummary, url: string) => void) {
   const [phase, setPhase] = useState<ScanPhase>({ kind: "idle" });
@@ -162,10 +173,8 @@ export function scanFindings(result: ScanSummary): Array<{ label: string; tone: 
 
 export function ScanFindings({ result }: { result: ScanSummary }) {
   if (result.error) {
-    const expiry = result.error === "ssl_invalid" ? Date.parse(result.ssl?.validTo ?? "") : NaN;
-    const message = Number.isNaN(expiry)
-      ? SCAN_ERRORS[result.error]
-      : `The SSL certificate is invalid or expired (${new Date(expiry).toISOString().slice(0, 10)}).`;
+    const reason = result.error === "ssl_invalid" ? SSL_REASONS[result.sslReason ?? ""] : undefined;
+    const message = reason ? `The SSL certificate is invalid or expired (${reason}).` : SCAN_ERRORS[result.error];
     return <Alert variant="error">{message}</Alert>;
   }
   return (

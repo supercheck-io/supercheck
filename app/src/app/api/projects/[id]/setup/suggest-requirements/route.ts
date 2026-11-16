@@ -160,8 +160,9 @@ export async function POST(request: NextRequest, { params }: Params) {
       }
 
       // Saved before replying, so a tab that reloads mid-request still finds the suggestions it paid for.
+      let updatedAt: string | null = null;
       try {
-        await saveSuggestions(organizationId, projectId, cleaned);
+        updatedAt = await saveSuggestions(organizationId, projectId, cleaned);
       } catch (error) {
         console.error("[Setup suggest] Saving suggestions failed:", error instanceof Error ? error.name : "unknown");
       }
@@ -175,7 +176,8 @@ export async function POST(request: NextRequest, { params }: Params) {
         metadata: { count: cleaned.length, aiModel: getActualModelName() },
         success: true,
       });
-      return NextResponse.json({ requirements: cleaned });
+      // updatedAt lets the client's autosave carry the new version instead of 409ing on the write above.
+      return NextResponse.json({ requirements: cleaned, ...(updatedAt ? { updatedAt } : {}) });
     } finally {
       if (!keepClaim) await releaseAiRun(organizationId, projectId, claim);
     }
