@@ -34,3 +34,11 @@ test('a different skip inside an env-gated describe still fails', async () => {
   r.onTestEnd(tc('x @high', [{ type: ENV_GATED, description: 'needs a stub' }, { type: 'fixme', description: 'flaky' }]), { status: 'skipped' });
   assert.deepEqual(await quiet(() => r.onEnd({})), { status: 'failed' });
 });
+
+test('the gate skip does not hide a fixme or another skip on the same test', async () => {
+  for (const extra of [{ type: 'fixme', description: 'flaky' }, { type: 'skip', description: 'other' }]) {
+    const r = new PrioritySkipReporter();
+    r.onTestEnd(tc('x @critical', [{ type: ENV_GATED, description: 'g' }, { type: 'skip', description: 'g' }, extra]), { status: 'skipped' });
+    assert.deepEqual(await quiet(() => r.onEnd({})), { status: 'failed' });
+  }
+});

@@ -20,7 +20,8 @@ export default class PrioritySkipReporter implements Reporter {
     if (result.status === 'skipped' && /@(critical|high)\b/.test(title)) {
       // Exempt only the gate's own skip: any other skip (fixme, a new reason) still fails.
       const gate = test.annotations.find((a) => a.type === ENV_GATED);
-      const gatedSkip = gate && test.annotations.some((a) => a.type === 'skip' && a.description === gate.description);
+      const skips = test.annotations.filter((a) => a.type === 'skip' || a.type === 'fixme');
+      const gatedSkip = gate && skips.length > 0 && skips.every((a) => a.type === 'skip' && a.description === gate.description);
       (gatedSkip ? this.envGated : this.skipped).push(title);
     }
   }

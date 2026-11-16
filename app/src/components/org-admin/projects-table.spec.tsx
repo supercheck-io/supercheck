@@ -27,8 +27,10 @@ it("an open row menu survives a parent re-render with new handler functions", as
   fireEvent.pointerDown(trigger, { button: 0, ctrlKey: false });
   fireEvent.keyDown(trigger, { key: "Enter" });
   expect(await screen.findByRole("menuitem", { name: "Edit project" })).toBeTruthy();
-  rerender(<ProjectsTable {...props(edit)} />); // a fresh lambda, as the org-admin page passes on every render
+  const nextEdit = jest.fn();
+  rerender(<ProjectsTable {...props(nextEdit)} />); // a fresh lambda, as the org-admin page passes on every render
   const item = screen.getByRole("menuitem", { name: "Edit project" });
   fireEvent.click(item);
-  expect(edit).toHaveBeenCalledWith(expect.objectContaining({ id: "p1" }));
+  expect(nextEdit).toHaveBeenCalledWith(expect.objectContaining({ id: "p1" })); // the latest handler, not a stale one
+  expect(edit).not.toHaveBeenCalled();
 });
