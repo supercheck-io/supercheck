@@ -12,13 +12,13 @@ jest.mock("@/lib/rbac/middleware", () => ({
   resolveProjectPermissionContext: jest.fn(),
   checkPermissionWithContext: jest.fn(),
 }));
-jest.mock("@/lib/sre/sre-rate-limiter", () => ({ checkSetupLockRateLimit: jest.fn() }));
+jest.mock("@/lib/sre/sre-rate-limiter", () => ({ checkSetupLockRateLimit: jest.fn(), checkSetupReleaseRateLimit: jest.fn() }));
 jest.mock("@/lib/audit-logger", () => ({ logAuditEvent: jest.fn() }));
 jest.mock("@/lib/setup/setup-state", () => ({ claimLock: jest.fn(), releaseLock: jest.fn(), getSetupState: jest.fn() }));
 
 import { DELETE, POST } from "./route";
 import { requireAuth, resolveProjectPermissionContext, checkPermissionWithContext } from "@/lib/rbac/middleware";
-import { checkSetupLockRateLimit } from "@/lib/sre/sre-rate-limiter";
+import { checkSetupLockRateLimit, checkSetupReleaseRateLimit } from "@/lib/sre/sre-rate-limiter";
 import { claimLock, getSetupState, releaseLock } from "@/lib/setup/setup-state";
 import { logAuditEvent } from "@/lib/audit-logger";
 
@@ -36,14 +36,20 @@ beforeEach(() => {
   (resolveProjectPermissionContext as jest.Mock).mockResolvedValue(ctx);
   (checkPermissionWithContext as jest.Mock).mockReturnValue(true);
   (checkSetupLockRateLimit as jest.Mock).mockResolvedValue({ allowed: true, remaining: 1 });
+  (checkSetupReleaseRateLimit as jest.Mock).mockResolvedValue({ allowed: true, remaining: 1 });
   (claimLock as jest.Mock).mockResolvedValue({ kind: "ok", lock });
 });
 
-describe("DELETE is not rate limited", () => {
+describe("DELETE has its own release budget", () => {
   it("releases even when the claim budget is spent", async () => {
     (checkSetupLockRateLimit as jest.Mock).mockResolvedValue({ allowed: false, remaining: 0, resetTime: Date.now() + 5000 });
     expect((await DELETE(req("DELETE", {}, { lockToken: TAB }), params)).status).toBe(204);
     expect(releaseLock).toHaveBeenCalled();
+  });
+  it("is refused with 429 once the release budget is spent", async () => {
+    (checkSetupReleaseRateLimit as jest.Mock).mockResolvedValue({ allowed: false, remaining: 0, resetTime: Date.now() + 5000 });
+    expect((await DELETE(req("DELETE", {}, { lockToken: TAB }), params)).status).toBe(429);
+    expect(releaseLock).not.toHaveBeenCalled();
   });
 });
 

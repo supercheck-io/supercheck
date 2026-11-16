@@ -56,17 +56,12 @@ interface SavedProvider {
 
 const REPEAT_OPTIONS = [5, 10, 15, 30, 60];
 
-/** A name that tells channels apart in the list. Never includes a token, chat id or webhook path: email addresses and webhook hosts only. */
+/**
+ * A name that tells channels apart in the list. Only email addresses: webhook URLs (including the host, which some
+ * services make secret per tenant), tokens and chat ids never go into a name, because names are shown to viewers.
+ */
 export function channelName(channel: { type: ChannelType; label: string }, values: Record<string, string>): string {
-  let detail = "setup";
-  if (channel.type === "email") detail = values.emails?.split(",")[0]?.trim() || detail;
-  if (channel.type === "webhook") {
-    try {
-      detail = new URL(values.url ?? "").host || detail;
-    } catch {
-      // keep "setup"
-    }
-  }
+  const detail = channel.type === "email" ? values.emails?.split(",")[0]?.trim() || "setup" : "setup";
   return `${channel.label} – ${detail}`.slice(0, 100);
 }
 
