@@ -167,6 +167,7 @@ jobs:
       # and traces are disabled in app/e2e/playwright.config.ts for the same
       # reason.
       - name: Upload Playwright report
+        id: report
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         if: always()
         with:
@@ -178,6 +179,8 @@ jobs:
         if: always()
         env:
           TEST_FILTER: ${{ inputs.test_filter }}
+          TESTS_OUTCOME: ${{ steps.e2e-tests.outcome }}
+          REPORT_URL: ${{ steps.report.outputs.artifact-url }}
         run: |
           {
             echo "## 🎭 Full E2E Test Results"
@@ -202,8 +205,8 @@ jobs:
               echo "| ⏱️ Duration | ${DURATION_MIN}m |"
               echo ""
 
-              if [ "${{ steps.e2e-tests.outcome }}" == "failure" ]; then
-                echo "> ⚠️ **Some tests failed.** Download the playwright-report-full artifact for details."
+              if [ "$TESTS_OUTCOME" == "failure" ]; then
+                echo "> ⚠️ **Some tests failed.** Open the [Playwright report](${REPORT_URL:-#artifacts}) for details."
               else
                 echo "> ✅ **All tests passed!**"
               fi
@@ -214,10 +217,12 @@ jobs:
 
       - name: Enforce E2E result integrity
         if: always()
+        env:
+          TESTS_OUTCOME: ${{ steps.e2e-tests.outcome }}
         run: |
           set -Eeuo pipefail
 
-          if [ "${{ steps.e2e-tests.outcome }}" != "success" ]; then
+          if [ "$TESTS_OUTCOME" != "success" ]; then
             echo "::error::E2E tests failed. Check the playwright-report-full artifact for details."
             exit 1
           fi

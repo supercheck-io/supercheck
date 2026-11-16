@@ -133,3 +133,20 @@ jobs:
           SUPERCHECK_URL: ${{ inputs.supercheck-url }}
           SUPERCHECK_TRIGGER_KEY: ${{ secrets.SUPERCHECK_TRIGGER_KEY }}
           SUPERCHECK_TOKEN: ${{ secrets.SUPERCHECK_TOKEN }}
+
+      - name: Write summary
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        env:
+          JOB_ID: ${{ inputs.job-id }}
+          RUN_ID: ${{ steps.trigger.outputs.run-id }}
+          RUN_STATUS: ${{ steps.trigger.outputs.status }}
+          OUTCOME: ${{ steps.trigger.outcome }}
+        run: |
+          {
+            if [ "$OUTCOME" = "success" ]; then echo "## ✅ Supercheck job"; else echo "## ❌ Supercheck job"; fi
+            echo ""
+            echo "- **Job:** \`$JOB_ID\`"
+            echo "- **Run:** \`${RUN_ID:-not started}\`"
+            if [ -n "$RUN_STATUS" ]; then echo "- **Status:** $RUN_STATUS"; fi
+          } >> "$GITHUB_STEP_SUMMARY"

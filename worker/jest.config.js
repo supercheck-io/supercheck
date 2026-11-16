@@ -8,6 +8,8 @@ module.exports = {
   },
   collectCoverageFrom: ['**/*.(t|j)s', '!**/*.spec.ts', '!**/node_modules/**'],
   coverageDirectory: '../coverage',
+  // Jest defaults plus json-summary, which feeds the CI job summary.
+  coverageReporters: ['clover', 'json', 'lcov', 'text', 'json-summary'],
   testEnvironment: 'node',
   moduleNameMapper: {
     '^src/(.*)$': '<rootDir>/$1',
