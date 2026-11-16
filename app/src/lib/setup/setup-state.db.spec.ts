@@ -202,6 +202,12 @@ describe("locks", () => {
     expect(await updateSetupState(orgA, projA, u1, { currentStep: "app" }, null, tabB)).toMatchObject({ kind: "locked" });
     expect(await updateSetupState(orgA, projA, u1, { currentStep: "app" }, null, null)).toMatchObject({ kind: "locked" });
     expect((await updateSetupState(orgA, projA, u1, { currentStep: "app" }, null, tabA)).kind).toBe("ok");
+    // A fresh tab of the same user (reclaim) takes the lock; the older tab then loses its heartbeat.
+    expect((await claimLock(orgA, projA, u1, tabB, false, true)).kind).toBe("ok");
+    expect((await claimLock(orgA, projA, u1, tabA)).kind).toBe("locked");
+    // Reclaim never steals from another user.
+    expect((await claimLock(orgA, projA, u2, randomUUID(), false, true)).kind).toBe("locked");
+    await claimLock(orgA, projA, u1, tabA, false, true);
     // The other tab's release (pagehide) does not free the holder's lock.
     await releaseLock(orgA, projA, u1, tabB);
     expect((await getSetupState(orgA, projA, u1)).lock).not.toBeNull();

@@ -57,21 +57,36 @@ jobs:
 
       - name: Lint
         working-directory: ${{ matrix.package }}
+        env:
+          PACKAGE: ${{ matrix.package }}
         run: |
-          if [ "${{ matrix.package }}" = "app" ]; then
+          if [ "$PACKAGE" = "app" ]; then
             npm run lint
           else
             npm run lint:check
           fi
 
       - name: Test with coverage gates
+        id: tests
         timeout-minutes: 15
         working-directory: ${{ matrix.package }}
-        run: npm run test:cov -- --runInBand
+        run: >-
+          npm run test:cov -- --runInBand
+          --json --outputFile="$RUNNER_TEMP/jest.json" --reporters=default --reporters=github-actions
         env:
           NODE_ENV: test
           EXECUTION_USAGE_TEST_DATABASE_URL: ${{ matrix.package == 'worker' && 'postgresql://postgres@localhost:5432/execution_usage_test' || '' }}
           MONITOR_CYCLE_TEST_DATABASE_URL: ${{ matrix.package == 'worker' && 'postgresql://postgres@localhost:5432/postgres' || '' }}
+
+      - name: Write test summary
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        run: node .github/scripts/jest-summary.mjs
+        env:
+          SUMMARY_TITLE: Release certification (${{ matrix.package }})
+          JEST_RESULTS: ${{ runner.temp }}/jest.json
+          COVERAGE_SUMMARY: ${{ matrix.package }}/coverage/coverage-summary.json
+          TEST_OUTCOME: ${{ steps.tests.outcome }}
 
       - name: Database integration tests
         working-directory: ${{ matrix.package }}
@@ -82,8 +97,10 @@ jobs:
 
       - name: Build shipped toolchain
         working-directory: ${{ matrix.package }}
+        env:
+          PACKAGE: ${{ matrix.package }}
         run: |
-          if [ "${{ matrix.package }}" = "app" ]; then
+          if [ "$PACKAGE" = "app" ]; then
             SKIP_ENV_VALIDATION=true npm run build:webpack
           else
             npm run build

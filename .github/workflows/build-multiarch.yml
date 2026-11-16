@@ -199,24 +199,6 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Check registry access
-        env:
-          CUSTOM_VERSION: ${{ github.event.inputs.version }}
-          EVENT_NAME: ${{ github.event_name }}
-          EVENT_REF: ${{ github.ref }}
-          EVENT_REPOSITORY: ${{ github.repository }}
-          EVENT_USER: ${{ github.actor }}
-          PUSH_LATEST: ${{ github.event.inputs.push_latest }}
-        run: |
-          echo "Testing registry access..."
-          echo "Registry: $REGISTRY"
-          echo "Username: $EVENT_USER"
-          echo "Repository: $EVENT_REPOSITORY"
-          echo "Event: $EVENT_NAME"
-          echo "Ref: $EVENT_REF"
-          echo "Custom Version: $CUSTOM_VERSION"
-          echo "Push Latest: $PUSH_LATEST"
-
       - name: Extract app metadata
         id: app-meta
         uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
@@ -375,17 +357,34 @@ jobs:
           cosign sign --yes "$REGISTRY/$IMAGE_NAME/app@$APP_DIGEST"
           cosign sign --yes "$REGISTRY/$IMAGE_NAME/worker@$WORKER_DIGEST"
 
-      - name: Output image names
+      - name: Write summary
+        continue-on-error: true
         env:
+          IMAGE_TAG: ${{ steps.app-meta.outputs.version }}
+          APP_DIGEST: ${{ steps.build-app.outputs.digest }}
+          WORKER_DIGEST: ${{ steps.build-worker.outputs.digest }}
           APP_TAGS: ${{ steps.app-meta.outputs.tags }}
-          WORKER_TAGS: ${{ steps.worker-meta.outputs.tags }}
         run: |
-          echo "App image: $REGISTRY/$IMAGE_NAME/app"
-          echo "Worker image: $REGISTRY/$IMAGE_NAME/worker"
-          echo "App tags:"
-          echo "$APP_TAGS"
-          echo "Worker tags:"
-          echo "$WORKER_TAGS"
+          {
+            echo "## Images for \`$IMAGE_TAG\` (signed)"
+            echo ""
+            echo "| Image | Digest |"
+            echo "| --- | --- |"
+            echo "| [\`$REGISTRY/$IMAGE_NAME/app\`](https://github.com/$GITHUB_REPOSITORY/pkgs/container/supercheck%2Fapp) | \`$APP_DIGEST\` |"
+            echo "| [\`$REGISTRY/$IMAGE_NAME/worker\`](https://github.com/$GITHUB_REPOSITORY/pkgs/container/supercheck%2Fworker) | \`$WORKER_DIGEST\` |"
+            echo ""
+            tags=""
+            while IFS= read -r tag; do [ -n "$tag" ] && tags+=" \`${tag##*:}\`"; done <<<"$APP_TAGS"
+            echo "**Tags:**$tags"
+            echo ""
+            echo "Verify a signature:"
+            echo ""
+            echo '```sh'
+            echo "cosign verify $REGISTRY/$IMAGE_NAME/app@$APP_DIGEST \\"
+            echo "  --certificate-identity-regexp '^https://github.com/$GITHUB_REPOSITORY/' \\"
+            echo "  --certificate-oidc-issuer https://token.actions.githubusercontent.com"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
 
   deploy-demo:
     name: Deploy Demo Environment
@@ -527,6 +526,14 @@ jobs:
 
           echo "::error::Public demo did not serve healthy build ${EXPECTED_BUILD_SHA} within five minutes"
           exit 1
+
+      - name: Write summary
+        if: success()
+        continue-on-error: true
+        env:
+          IMAGE_TAG: ${{ needs.build-and-push.outputs.image_tag }}
+        run: |
+          echo "## 🚀 Demo serves \`$IMAGE_TAG\` ([$E2E_BASE_URL]($E2E_BASE_URL), build \`${GITHUB_SHA:0:12}\`)" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Remove SSH credentials
         if: always()

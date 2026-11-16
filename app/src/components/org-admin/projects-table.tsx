@@ -3,7 +3,7 @@
 import * as React from "react";
 import { AdminDataTable } from "@/components/admin/admin-data-table";
 import { ProjectTableToolbar } from "./project-table-toolbar";
-import { createProjectColumns, type Project } from "./project-columns";
+import { createProjectColumns, type Project, type ProjectActions } from "./project-columns";
 
 interface ProjectsTableProps {
   projects: Project[];
@@ -23,7 +23,8 @@ interface ProjectsTableProps {
 
 
 export function ProjectsTable({ projects, onCreateProject, onEditProject, onManageLocations, onManageIncidentPolicy, onDeleteProject, onRestoreProject, restoringIds, canCreateProjects = false, canManageProject = false }: ProjectsTableProps) {
-  const columns = React.useMemo(() => createProjectColumns(onEditProject, canManageProject, onManageLocations, onManageIncidentPolicy, onDeleteProject, onRestoreProject, restoringIds), [onEditProject, canManageProject, onManageLocations, onManageIncidentPolicy, onDeleteProject, onRestoreProject, restoringIds]);
+  // Stable defs: new ones remount every cell, which would close an open row menu on any parent re-render.
+  const columns = React.useMemo(() => createProjectColumns(), []);
 
    
   const CustomToolbar = React.useCallback(({ table }: { table: any }) => (
@@ -38,6 +39,7 @@ export function ProjectsTable({ projects, onCreateProject, onEditProject, onMana
       itemName="projects"
       meta={{
         globalFilterColumns: ["name", "description"],
+        projectActions: { onEditProject, canManageProject, onManageLocations, onManageIncidentPolicy, onDeleteProject, onRestoreProject, restoringIds } satisfies ProjectActions,
       }}
     />
   );

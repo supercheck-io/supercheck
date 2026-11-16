@@ -113,7 +113,20 @@ jobs:
         run: npm run lint
 
       - name: Run tests
-        run: npm run test:cov -- --maxWorkers=2
+        id: tests
+        run: >-
+          npm run test:cov -- --maxWorkers=2
+          --json --outputFile="$RUNNER_TEMP/jest-cli.json" --reporters=default --reporters=github-actions
+
+      - name: Write test summary
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        run: node ../.github/scripts/jest-summary.mjs
+        env:
+          SUMMARY_TITLE: CLI unit tests
+          JEST_RESULTS: ${{ runner.temp }}/jest-cli.json
+          COVERAGE_SUMMARY: coverage/coverage-summary.json
+          TEST_OUTCOME: ${{ steps.tests.outcome }}
 
       - name: Build
         run: npm run build
@@ -170,15 +183,20 @@ jobs:
 
       - name: Publish (dry run)
         if: inputs.dry-run == true
-        run: npm publish --dry-run --tag ${{ steps.npm-tag.outputs.tag }}
+        env:
+          NPM_TAG: ${{ steps.npm-tag.outputs.tag }}
+        run: npm publish --dry-run --tag "$NPM_TAG"
 
       - name: Publish to npm
         if: inputs.dry-run != true
-        run: npm publish --provenance --access public --tag ${{ steps.npm-tag.outputs.tag }}
+        env:
+          NPM_TAG: ${{ steps.npm-tag.outputs.tag }}
+        run: npm publish --provenance --access public --tag "$NPM_TAG"
 
       - name: Summary
         env:
           DRY_RUN: ${{ inputs.dry-run }}
+          NPM_TAG: ${{ steps.npm-tag.outputs.tag }}
         run: |
           PKG_VERSION=$(node -p "require('./package.json').version")
           {
@@ -188,8 +206,12 @@ jobs:
               echo "### Published @supercheck/cli@$PKG_VERSION"
             fi
             echo ""
-            echo "- **npm tag:** \`${{ steps.npm-tag.outputs.tag }}\`"
-            echo "- **Registry:** https://www.npmjs.com/package/@supercheck/cli"
+            echo "- **npm tag:** \`$NPM_TAG\`"
+            if [[ "$DRY_RUN" == "true" ]]; then
+              echo "- **Package:** https://www.npmjs.com/package/@supercheck/cli"
+            else
+              echo "- **Package:** https://www.npmjs.com/package/@supercheck/cli/v/$PKG_VERSION"
+            fi
           } >> "$GITHUB_STEP_SUMMARY"
 
   release:

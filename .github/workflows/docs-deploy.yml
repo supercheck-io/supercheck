@@ -58,18 +58,22 @@ jobs:
         run: npm ci --prefer-offline --no-audit
 
       - name: Test OpenAPI sync
+        id: openapi
         working-directory: docs
         run: npm run test:openapi
 
       - name: Check the pricing page trial copy comes from the plan catalog
+        id: trial
         working-directory: docs
         run: npm run test:trial-docs
 
       - name: Build static site
+        id: build
         working-directory: docs
         run: npm run build
 
       - name: Verify rendered API pages
+        id: rendered
         working-directory: docs
         run: npm run test:rendered-api
 
@@ -79,17 +83,31 @@ jobs:
 
       # Default build: no tools API configured, so pages show the methodology only.
       - name: Free tools pages (unconfigured)
+        id: tools_off
         working-directory: docs
         run: npx playwright test -c e2e/playwright.config.ts
 
       # The checks API and Turnstile are mocked in the browser; these values are placeholders.
       - name: Free tools pages (configured)
+        id: tools_on
         working-directory: docs
         env:
           NEXT_PUBLIC_CHECKS_API_URL: https://tools-api.test
           NEXT_PUBLIC_TOOLS_TURNSTILE_SITE_KEY: test-site-key
           E2E_TOOLS: configured
         run: npx next build && npx playwright test -c e2e/playwright.config.ts
+
+      - name: Write summary
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        run: >-
+          .github/scripts/checks-summary.sh "Docs validation"
+          "OpenAPI sync=${{ steps.openapi.outcome }}"
+          "Pricing trial copy=${{ steps.trial.outcome }}"
+          "Static build=${{ steps.build.outcome }}"
+          "Rendered API pages=${{ steps.rendered.outcome }}"
+          "Free tools pages, unconfigured=${{ steps.tools_off.outcome }}"
+          "Free tools pages, configured=${{ steps.tools_on.outcome }}"
 
   deploy-docs:
     name: Build and Deploy Docs
@@ -126,9 +144,21 @@ jobs:
         run: npm run build
 
       - name: Deploy to Cloudflare Pages
+        id: deploy
         uses: cloudflare/wrangler-action@9acf94ace14e7dc412b076f2c5c20b8ce93c79cd # v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           workingDirectory: docs
           command: pages deploy out --project-name=supercheck --branch=main --commit-dirty=true
+
+      - name: Write summary
+        continue-on-error: true
+        env:
+          DEPLOYMENT_URL: ${{ steps.deploy.outputs.deployment-url }}
+        run: |
+          if [ -n "$DEPLOYMENT_URL" ]; then
+            echo "## 🚀 Docs deployed: [$DEPLOYMENT_URL]($DEPLOYMENT_URL)" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "## 🚀 Docs deployed to Cloudflare Pages" >> "$GITHUB_STEP_SUMMARY"
+          fi

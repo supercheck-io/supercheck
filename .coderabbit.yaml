@@ -13,13 +13,24 @@ reviews:
   poem: false
   in_progress_fortune: false
   collapse_walkthrough: true
+  # Keep the walkthrough to the summary and findings.
+  sequence_diagrams: false
+  estimate_code_review_effort: false
+  related_issues: false
+  related_prs: false
+  suggested_labels: false
+  suggested_reviewers: false
   auto_review:
     enabled: true
     drafts: false
     # One review per PR (on open). The OSS plan's hourly limit is shared by every
-    # PR from one author, so per-push and stacked-branch reviews exhaust it.
+    # PR from one author, so per-push reviews exhaust it.
     # Comment "@coderabbitai review" to re-review after changes.
     auto_incremental_review: false
+    # Stacked PRs (base is another feature branch) get their one review on open too;
+    # otherwise their code is only reviewed again inside the parent PR.
+    base_branches:
+      - ".*"
     ignore_usernames:
       - "dependabot[bot]"
     ignore_title_keywords:
@@ -33,6 +44,10 @@ reviews:
     - "!**/out/**"
     - "!**/coverage/**"
     - "!**/graphify-out/**"
+    # Vendored and generated files: no review value, and they use up the review's file budget.
+    - "!recorder/playwright/**"
+    - "!**/package-lock.json"
+    - "!app/src/db/migrations/meta/**"
   pre_merge_checks:
     docstrings:
       mode: "off"

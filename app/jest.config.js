@@ -43,6 +43,8 @@ const customJestConfig = {
     "!src/**/*.spec.{ts,tsx}",
   ],
   coverageDirectory: "coverage",
+  // Jest defaults plus json-summary, which feeds the CI job summary.
+  coverageReporters: ["clover", "json", "lcov", "text", "json-summary"],
   coverageThreshold: {
     global: {
       branches: 22,

@@ -52,6 +52,8 @@ const config = {
     '!src/bin/**',
   ],
   coverageDirectory: 'coverage',
+  // Jest defaults plus json-summary, which feeds the CI job summary.
+  coverageReporters: ['clover', 'json', 'lcov', 'text', 'json-summary'],
   coverageThreshold: {
     global: {
       branches: 40,

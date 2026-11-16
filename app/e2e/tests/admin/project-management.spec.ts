@@ -1,4 +1,5 @@
 import { test, expect } from "../../fixtures";
+import { waitForHydration } from "../../utils/hydration";
 
 type Project = {
   id: string;
@@ -45,6 +46,7 @@ test.describe("Organization project administration @admin @projects @critical", 
     });
 
     await orgOwnerPage.goto("/org-admin", { waitUntil: "domcontentloaded" });
+    await waitForHydration(orgOwnerPage);
     await expect(
       orgOwnerPage.getByRole("heading", { name: "Organization" }),
     ).toBeVisible();

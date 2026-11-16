@@ -27,3 +27,19 @@ it("offers Project setup in the row actions, linking to that project's setup", a
   const link = await screen.findByRole("menuitem", { name: "Project setup" });
   expect(link).toHaveAttribute("href", "/setup?project=p1");
 });
+
+it("an open row menu survives a parent re-render with new handler functions", async () => {
+  const props = (edit: jest.Mock) => ({ projects: rows.slice(1, 2), onCreateProject: jest.fn(), canManageProject: true, onEditProject: (p: Project) => edit(p) });
+  const edit = jest.fn();
+  const { rerender } = render(<ProjectsTable {...props(edit)} />);
+  const trigger = await screen.findByRole("button", { name: /^Open actions for/ });
+  fireEvent.pointerDown(trigger, { button: 0, ctrlKey: false });
+  fireEvent.keyDown(trigger, { key: "Enter" });
+  expect(await screen.findByRole("menuitem", { name: "Edit project" })).toBeTruthy();
+  const nextEdit = jest.fn();
+  rerender(<ProjectsTable {...props(nextEdit)} />); // a fresh lambda, as the org-admin page passes on every render
+  const item = screen.getByRole("menuitem", { name: "Edit project" });
+  fireEvent.click(item);
+  expect(nextEdit).toHaveBeenCalledWith(expect.objectContaining({ id: "p1" })); // the latest handler, not a stale one
+  expect(edit).not.toHaveBeenCalled();
+});
