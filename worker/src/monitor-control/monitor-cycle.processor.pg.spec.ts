@@ -211,8 +211,11 @@ suite('MonitorCycleProcessor (PostgreSQL)', () => {
 
   describe('review hardening', () => {
     it('keeps retention caught up when more than one batch is eligible', async () => {
+      // Dated from t0, not the wall clock: the tick below runs at a fixed time.
+      const daysBefore = (days: number) =>
+        new Date(t0.getTime() - days * 86_400_000).toISOString();
       await client`INSERT INTO monitor_cycles (id, monitor_id, scheduled_for, deadline_at, expected_locations, strategy, threshold, status, closed_at, closed_by, result_status, notified_at)
-        SELECT 'old-' || g, ${monitorId}::uuid, now() at time zone 'utc' - interval '40 days', now() at time zone 'utc' - interval '40 days', '["eu"]'::jsonb, 'all', 100, 'closed', now() at time zone 'utc' - interval '39 days', 'deadline', 'down', now() at time zone 'utc'
+        SELECT 'old-' || g, ${monitorId}::uuid, ${daysBefore(40)}::timestamptz, ${daysBefore(40)}::timestamptz, '["eu"]'::jsonb, 'all', 100, 'closed', ${daysBefore(39)}::timestamptz, 'deadline', 'down', ${t0.toISOString()}::timestamptz
         FROM generate_series(1, 1200) g`;
       // Later than every earlier tick in this file: sweeps are rate-limited to every 10 minutes.
       await processor.tick(new Date(deadline.getTime() + 86_400_000));
