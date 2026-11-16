@@ -2,7 +2,6 @@ import { Injectable, Logger } from '@nestjs/common';
 import { isSelfHostedEnvironment } from '../common/runtime-mode';
 import { HttpService } from '@nestjs/axios'; // Import HttpService
 import { AxiosError, AxiosRequestConfig, Method } from 'axios'; // Import Method from axios
-import * as tls from 'tls';
 import { randomUUID } from 'node:crypto';
 import { evaluateCycleWarnings } from './monitor-cycle-warnings';
 import { completeAiModel } from './ai-endpoint-warnings';
@@ -75,6 +74,7 @@ import {
 } from '../common/utils/pinned-monitor-request';
 import type { LookupFunction } from 'node:net';
 import { allowInternalMonitorTargets } from '../common/utils/url-validator';
+import { readPeerCertificate } from '../common/utils/tls-certificate';
 import {
   AI_ENDPOINT_DEFAULT_TIMEOUT_SECONDS,
   executeAiEndpointCheck,
@@ -2361,7 +2361,6 @@ export class MonitorService {
     let responseTimeMs: number | undefined;
 
     try {
-      const tls = await import('tls');
       const { URL } = await import('url');
 
       // Parse target to extract hostname and port
@@ -2390,58 +2389,11 @@ export class MonitorService {
         allowInternalMonitorTargets(),
       );
 
-      const certificateInfo = await new Promise<{
-        certificate: tls.DetailedPeerCertificate;
-        authorized: boolean;
-        authorizationError?: Error;
-      }>((resolve, reject) => {
-        let isResolved = false;
-
-        const socket = tls.connect(
-          {
-            host: hostname,
-            lookup, // Node's default autoSelectFamily falls back across the vetted addresses
-            port: port,
-            rejectUnauthorized: false, // Allow connection to inspect invalid/expired certificates
-            servername: hostname, // SNI support for proper certificate validation
-            secureProtocol: 'TLS_method', // Use modern TLS
-            // Don't set socket timeout here to avoid dual timeout issue
-          },
-          () => {
-            if (!isResolved) {
-              isResolved = true;
-              const cert = socket.getPeerCertificate(true);
-              const authorized = socket.authorized;
-              const authorizationError = socket.authorizationError;
-
-              clearTimeout(timeoutHandle);
-              socket.destroy();
-              resolve({
-                certificate: cert,
-                authorized,
-                authorizationError,
-              });
-            }
-          },
-        );
-
-        // Single timeout mechanism to avoid conflicts
-        const timeoutHandle = setTimeout(() => {
-          if (!isResolved) {
-            isResolved = true;
-            socket.destroy();
-            reject(new Error(`SSL connection timeout after ${timeout}ms`));
-          }
-        }, timeout);
-
-        socket.on('error', (error) => {
-          if (!isResolved) {
-            isResolved = true;
-            clearTimeout(timeoutHandle);
-            socket.destroy();
-            reject(error instanceof Error ? error : new Error(String(error)));
-          }
-        });
+      const certificateInfo = await readPeerCertificate({
+        hostname,
+        port,
+        lookup,
+        timeoutMs: timeout,
       });
 
       const endTime = process.hrtime.bigint();

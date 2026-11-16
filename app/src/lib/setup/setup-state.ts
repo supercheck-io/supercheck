@@ -240,3 +240,65 @@ export async function setUserPersona(userId: string, persona: UserPersona | null
     .onConflictDoUpdate({ target: userPreferences.userId, set: { persona, updatedAt: sql`now()` } });
   return { persona, seen: true };
 }
+
+const AI_RUN_INTERVAL_MS = 24 * 60 * 60_000;
+
+export type AiRunClaim =
+  | { kind: "claimed"; claimedAt: Date; previous: Date | null }
+  | { kind: "daily_limit"; retryAt: Date };
+
+/** Atomically takes the once-per-day AI slot (D10); the single upsert is the claim, so parallel calls cannot both win. */
+export async function claimAiRun(organizationId: string, projectId: string): Promise<AiRunClaim> {
+  const [before] = await db
+    .select({ at: projectSetupState.lastAiRunAt })
+    .from(projectSetupState)
+    .where(and(eq(projectSetupState.organizationId, organizationId), eq(projectSetupState.projectId, projectId)))
+    .limit(1);
+  const previous = before?.at ?? null;
+  const claimedAt = new Date();
+  const won = await db
+    .insert(projectSetupState)
+    .values({ organizationId, projectId, lastAiRunAt: claimedAt, updatedAt: NEVER_WRITTEN })
+    .onConflictDoUpdate({
+      target: projectSetupState.projectId,
+      set: { lastAiRunAt: claimedAt },
+      setWhere: and(
+        eq(projectSetupState.organizationId, organizationId),
+        sql`(${projectSetupState.lastAiRunAt} IS NULL OR ${projectSetupState.lastAiRunAt} < now() - interval '1 day')`,
+      ),
+    })
+    .returning({ id: projectSetupState.id });
+  if (won.length > 0) return { kind: "claimed", claimedAt, previous };
+  const [now] = await db
+    .select({ at: projectSetupState.lastAiRunAt })
+    .from(projectSetupState)
+    .where(and(eq(projectSetupState.organizationId, organizationId), eq(projectSetupState.projectId, projectId)))
+    .limit(1);
+  return { kind: "daily_limit", retryAt: new Date((now?.at ?? claimedAt).getTime() + AI_RUN_INTERVAL_MS) };
+}
+
+/** Restores the pre-claim value after a failed AI call, only if nobody re-claimed since. */
+export async function releaseAiRun(organizationId: string, projectId: string, claim: { claimedAt: Date; previous: Date | null }): Promise<void> {
+  await db
+    .update(projectSetupState)
+    .set({ lastAiRunAt: claim.previous })
+    .where(
+      and(
+        eq(projectSetupState.organizationId, organizationId),
+        eq(projectSetupState.projectId, projectId),
+        eq(projectSetupState.lastAiRunAt, claim.claimedAt),
+      ),
+    );
+}
+
+/** Stores the sanitized last scan summary. Leaves updated_at alone: that is the draft's version, not the scan's. */
+export async function saveScanResult(organizationId: string, projectId: string, scanResult: Record<string, unknown>): Promise<void> {
+  await db
+    .insert(projectSetupState)
+    .values({ organizationId, projectId, scanResult, updatedAt: NEVER_WRITTEN })
+    .onConflictDoUpdate({
+      target: projectSetupState.projectId,
+      set: { scanResult },
+      setWhere: eq(projectSetupState.organizationId, organizationId),
+    });
+}
