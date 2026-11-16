@@ -108,10 +108,13 @@ describe('maintenance CLI', () => {
   it('extends until a date and needs exactly one of --by or --until', async () => {
     mockPost.mockResolvedValue({ data: { window: { id: id(9) } } })
     await run('extend', id(9), '--until', '2026-11-20T04:00:00Z')
-    expect(mockPost).toHaveBeenCalledWith(`/api/maintenance-windows/${id(9)}/extend`, { until: '2026-11-20T04:00:00Z' }, { retries: 0 })
+    expect(mockPost).toHaveBeenCalledWith(`/api/maintenance-windows/${id(9)}/extend`, { until: '2026-11-20T04:00:00.000Z' }, { retries: 0 })
     await expect(run('extend', id(9))).rejects.toThrow('exactly one')
     await expect(run('extend', id(9), '--by', '1h', '--until', '2026-11-20T04:00:00Z')).rejects.toThrow('exactly one')
     await expect(run('extend', id(9), '--until', 'soon')).rejects.toThrow('ISO 8601')
+    // No offset means the user's local time, sent to the server as UTC.
+    await run('extend', id(9), '--until', '2026-11-20T04:00')
+    expect(mockPost).toHaveBeenLastCalledWith(expect.any(String), { until: new Date('2026-11-20T04:00').toISOString() }, { retries: 0 })
   })
 
   it('updates only the fields passed and rejects an empty update', async () => {

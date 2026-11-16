@@ -5,6 +5,7 @@ const mockPost = jest.fn<(...args: unknown[]) => Promise<{ data: unknown }>>()
 const mockPatch = jest.fn<(...args: unknown[]) => Promise<{ data: unknown }>>()
 const mockOutput = jest.fn<(...args: unknown[]) => void>()
 const mockOutputDetail = jest.fn<(...args: unknown[]) => void>()
+const mockFormat = jest.fn(() => 'json')
 const mockSuccess = jest.fn<(...args: unknown[]) => void>()
 const mockWarn = jest.fn<(...args: unknown[]) => void>()
 
@@ -14,7 +15,7 @@ jest.unstable_mockModule('../../api/authenticated-client.js', () => ({
 jest.unstable_mockModule('../../output/formatter.js', () => ({
   output: mockOutput,
   outputDetail: mockOutputDetail,
-  getOutputFormat: () => 'json',
+  getOutputFormat: () => mockFormat(),
 }))
 jest.unstable_mockModule('../../utils/logger.js', () => ({
   logger: { info: jest.fn(), success: mockSuccess, warn: mockWarn, error: jest.fn(), newline: jest.fn(), header: jest.fn() },
@@ -32,6 +33,7 @@ const run = (...args: string[]) => incidentCommand.parseAsync(['node', 'incident
 describe('incident create', () => {
   beforeEach(() => {
     jest.resetAllMocks()
+    mockFormat.mockReturnValue('json')
     // Commander keeps option values between parses; start each test from the defaults.
     const create = incidentCommand.commands.find((command) => command.name() === 'create')!
     for (const option of create.options) create.setOptionValue(option.attributeName(), option.defaultValue)
@@ -111,6 +113,7 @@ describe('incident resources and postmortem', () => {
   const runSub = (...args: string[]) => incidentCommand.parseAsync(['node', 'incident', ...args])
   beforeEach(() => {
     jest.resetAllMocks()
+    mockFormat.mockReturnValue('json')
     for (const name of ['resources', 'postmortem']) {
       const command = incidentCommand.commands.find((c) => c.name() === name)!
       for (const option of command.options) command.setOptionValue(option.attributeName(), option.defaultValue)
@@ -141,5 +144,15 @@ describe('incident resources and postmortem', () => {
     await runSub('postmortem', id(9))
     expect(mockGet).toHaveBeenCalledWith(`/api/sre/incidents/${id(9)}/postmortem`)
     expect(mockOutputDetail).toHaveBeenCalledWith(body)
+  })
+
+  it('prints the markdown without terminal escapes in table mode', async () => {
+    mockFormat.mockReturnValue('table')
+    const write = jest.spyOn(process.stdout, 'write').mockImplementation(() => true)
+    mockGet.mockResolvedValueOnce({ data: { success: true, postmortem: {}, markdown: '# PM\n\u001b]8;;https://evil\u0007click\u001b[0m\tok' } })
+    await runSub('postmortem', id(9))
+    expect(write).toHaveBeenCalledWith('# PM\n]8;;https://evilclick[0m\tok\n')
+    write.mockRestore()
+    mockFormat.mockReturnValue('json')
   })
 })

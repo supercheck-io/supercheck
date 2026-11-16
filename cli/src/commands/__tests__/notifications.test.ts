@@ -25,6 +25,7 @@ jest.unstable_mockModule('../../output/formatter.js', () => ({
   output: mockOutput,
   outputDetail: mockOutputDetail,
   outputMutation: mockOutputMutation,
+  getOutputFormat: () => 'json',
 }))
 
 jest.unstable_mockModule('../../utils/logger.js', () => ({

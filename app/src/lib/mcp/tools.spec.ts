@@ -400,6 +400,14 @@ describe("MCP tools", () => {
     expect((res.structuredContent.channels as { preset: unknown }[])[0].preset).toBeNull();
   });
 
+  it("list_notification_channels returns null for a stored preset that is not a known id", async () => {
+    queue.push([{ id: id(1), name: "Pager", type: "webhook", isEnabled: true, config: {} }]);
+    decryptConfig.mockReturnValue({ preset: { evil: "x" } });
+    loadProviderHealth.mockResolvedValue(new Map());
+    const res = await handlers.get("list_notification_channels")!({});
+    expect((res.structuredContent.channels as { preset: unknown }[])[0].preset).toBeNull();
+  });
+
   it("list_maintenance_windows passes the serviceId filter to the shared query", async () => {
     queue.push([]);
     const res = await handlers.get("list_maintenance_windows")!({ serviceId: id(5) });

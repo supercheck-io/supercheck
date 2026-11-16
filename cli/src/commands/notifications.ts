@@ -1,7 +1,7 @@
 import { Command } from 'commander'
 import { createAuthenticatedClient } from '../api/authenticated-client.js'
 import { logger } from '../utils/logger.js'
-import { output, outputDetail, outputMutation } from '../output/formatter.js'
+import { getOutputFormat, output, outputDetail, outputMutation } from '../output/formatter.js'
 import { CLIError, ExitCode } from '../utils/errors.js'
 import { withSpinner } from '../utils/spinner.js'
 
@@ -237,7 +237,7 @@ notificationCommand
 
     if (data.success) {
       logger.success(data.message ?? 'Test notification sent successfully')
-      outputDetail(data)
+      if (getOutputFormat() !== 'table') outputDetail(data)
     } else {
       throw new CLIError(data.error ?? 'Test notification failed', ExitCode.GeneralError)
     }

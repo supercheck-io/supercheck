@@ -177,11 +177,11 @@ maintenanceCommand.command('end <id>').description('End an active window now; al
 maintenanceCommand.command('extend <id>')
   .description('Extend an active window')
   .option('--by <duration>', 'How much longer: minutes, or 30m, 1h')
-  .option('--until <iso>', 'New end, an ISO 8601 date-time such as 2026-11-20T04:00:00Z')
+  .option('--until <iso>', 'New end, an ISO 8601 date-time such as 2026-11-20T04:00:00Z (no offset means your local time)')
   .action((id: string, options: { by?: string; until?: string }) => {
     if (Boolean(options.by) === Boolean(options.until)) throw new CLIError('Pass exactly one of --by or --until.', ExitCode.ConfigError)
     if (options.until && Number.isNaN(Date.parse(options.until))) throw new CLIError(`"${options.until}" is not an ISO 8601 date-time.`, ExitCode.ConfigError)
-    return lifecycle(id, 'extend', options.by ? { byMinutes: parseDuration(options.by) } : { until: options.until }, 'Maintenance window extended')
+    return lifecycle(id, 'extend', options.by ? { byMinutes: parseDuration(options.by) } : { until: new Date(options.until as string).toISOString() }, 'Maintenance window extended')
   })
 
 maintenanceCommand.command('cancel <id>').description('Cancel a scheduled window, or the rest of a recurring one').action((id: string) => lifecycle(id, 'cancel', {}, 'Maintenance window cancelled'))
