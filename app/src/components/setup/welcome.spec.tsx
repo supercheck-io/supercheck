@@ -25,6 +25,17 @@ describe("Welcome", () => {
     expect(screen.getByRole("button", { name: /Start setup/ })).toBeDisabled();
   });
 
+  it("lets an invited member go to the dashboard without picking (no persona, like Skip)", async () => {
+    respond({ persona: null, seen: true });
+    const onDone = jest.fn();
+    const { Wrapper } = createWrapper();
+    render(<Welcome mode="member" projectName="Web App" onDone={onDone} />, { wrapper: Wrapper });
+    expect(screen.getAllByRole("radio").every((r) => !(r as HTMLInputElement).checked && r.getAttribute("aria-checked") !== "true")).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "Go to dashboard" }));
+    await waitFor(() => expect(onDone).toHaveBeenCalled());
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({ persona: null });
+  });
+
   it("saves the picked persona and continues", async () => {
     respond({ persona: "qa", seen: true });
     const onDone = jest.fn();

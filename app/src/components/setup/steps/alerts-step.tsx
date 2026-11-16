@@ -1,8 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Hash, Mail, MessageCircle, Send, Users, Webhook, type LucideIcon } from "lucide-react";
 
+import { getNotificationProviderConfig } from "@/components/alerts/data";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -25,28 +25,26 @@ interface FieldDef {
   help?: string;
 }
 
-const CHANNELS: Array<{ type: ChannelType; label: string; icon: LucideIcon; summary: string; fields: FieldDef[] }> = [
-  { type: "email", label: "Email", icon: Mail, summary: "Comma-separated addresses", fields: [{ key: "emails", label: "Email addresses", type: "text" }] },
+const CHANNELS: Array<{ type: ChannelType; label: string; summary: string; fields: FieldDef[] }> = [
+  { type: "email", label: "Email", summary: "Comma-separated addresses", fields: [{ key: "emails", label: "Email addresses", type: "text" }] },
   {
     type: "slack",
     label: "Slack",
-    icon: Hash,
     summary: "Incoming webhook",
     fields: [{ key: "webhookUrl", label: "Incoming webhook URL", type: "url", placeholder: "https://hooks.slack.com/services/...", help: "Create it in Slack under Apps, Incoming Webhooks, and pick the channel there." }],
   },
-  { type: "teams", label: "Microsoft Teams", icon: Users, summary: "Incoming webhook", fields: [{ key: "teamsWebhookUrl", label: "Incoming webhook URL", type: "url" }] },
-  { type: "discord", label: "Discord", icon: MessageCircle, summary: "Webhook URL", fields: [{ key: "discordWebhookUrl", label: "Webhook URL", type: "url" }] },
+  { type: "teams", label: "Microsoft Teams", summary: "Incoming webhook", fields: [{ key: "teamsWebhookUrl", label: "Incoming webhook URL", type: "url" }] },
+  { type: "discord", label: "Discord", summary: "Webhook URL", fields: [{ key: "discordWebhookUrl", label: "Webhook URL", type: "url" }] },
   {
     type: "telegram",
     label: "Telegram",
-    icon: Send,
     summary: "Bot token and chat",
     fields: [
       { key: "botToken", label: "Bot token", type: "password" },
       { key: "chatId", label: "Chat ID" },
     ],
   },
-  { type: "webhook", label: "Webhook", icon: Webhook, summary: "Any HTTPS endpoint", fields: [{ key: "url", label: "Endpoint URL", type: "url", help: "Must be public HTTPS." }] },
+  { type: "webhook", label: "Webhook", summary: "Any HTTPS endpoint", fields: [{ key: "url", label: "Endpoint URL", type: "url", help: "Must be public HTTPS." }] },
 ];
 
 const PLACEHOLDER = /REPLACE_WITH_[A-Z0-9_]+/g;
@@ -158,7 +156,7 @@ function ChannelForm({
   };
 
   return (
-    <div className="space-y-3 rounded-lg border p-4" data-testid={`setup-channel-form-${channel.type}`}>
+    <div className="space-y-3 rounded-xl border p-4" data-testid={`setup-channel-form-${channel.type}`}>
       {channel.type === "webhook" ? (
         <div className="space-y-1.5">
           <Label htmlFor="setup-webhook-preset">Service</Label>
@@ -276,23 +274,27 @@ export function AlertsStep({ response, draft, patchDraft, features, permissions,
         <Alert variant="info">You have {SETUP_LIMITS.maxChannels} channels, the most setup keeps. Add more later from Notifications.</Alert>
       ) : !readOnly && permissions.canCreateNotification ? (
         <section aria-label="Add a channel" className="space-y-3">
-          <div role="group" aria-label="Channel types" className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-            {CHANNELS.map((channel) => (
+          <div role="group" aria-label="Channel types" className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {CHANNELS.map((channel) => {
+              // Same provider icon and brand colour as the Notifications page and Quick Create.
+              const provider = getNotificationProviderConfig(channel.type);
+              return (
               <Button
                 key={channel.type}
                 type="button"
                 variant="outline"
                 aria-pressed={open === channel.type}
-                className="h-auto justify-start gap-3 whitespace-normal px-3 py-2 text-left"
+                className="h-auto min-h-[64px] justify-start gap-3 whitespace-normal rounded-xl border-border/60 p-4 text-left aria-pressed:border-primary aria-pressed:bg-accent"
                 onClick={() => setOpen(open === channel.type ? null : channel.type)}
               >
-                <channel.icon aria-hidden="true" />
+                <provider.icon size={20} className={`shrink-0 ${provider.color}`} aria-hidden="true" />
                 <span className="min-w-0">
                   <span className="block text-sm font-medium">{channel.label}</span>
                   <span className="block text-xs font-normal text-muted-foreground">{channel.summary}</span>
                 </span>
               </Button>
-            ))}
+              );
+            })}
           </div>
           {open ? <ChannelForm key={open} projectId={response.projectId} channel={CHANNELS.find((c) => c.type === open)!} defaultEmail={userEmail} onSaved={onSaved} /> : null}
         </section>

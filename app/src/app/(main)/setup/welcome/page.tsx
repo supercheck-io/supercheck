@@ -13,7 +13,7 @@ export default async function SetupWelcomePage({ searchParams }: { searchParams:
     <div>
       <PageBreadcrumbs items={breadcrumbs} />
       <Card className="shadow-sm m-4">
-        <CardContent>
+        <CardContent className="p-6">
           <WelcomePage change={change} />
         </CardContent>
       </Card>
