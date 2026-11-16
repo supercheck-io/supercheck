@@ -29,8 +29,13 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   deterministic-sre-eval:
+    name: SRE Eval Gate
     timeout-minutes: 15
     runs-on: ubuntu-latest
     defaults:
@@ -53,4 +58,10 @@ jobs:
         run: npm ci
 
       - name: Run SRE eval release gate
+        id: eval
         run: npm run test:sre-eval:release
+
+      - name: Write summary
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        run: ../.github/scripts/checks-summary.sh "SRE eval gate" "Deterministic SRE eval=${{ steps.eval.outcome }}"

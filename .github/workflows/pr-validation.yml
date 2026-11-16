@@ -53,7 +53,7 @@ jobs:
           fi
           # --no-renames counts both sides of a move, so the package losing a file is checked too.
           changed="$(git diff --no-renames --name-only "${BASE_SHA}...${HEAD_SHA}")"
-          shared='^(\.github/workflows/pr-validation\.yml|\.nvmrc)$'
+          shared='^(\.github/workflows/pr-validation\.yml|\.github/scripts/jest-summary\.mjs|\.nvmrc)$'
           # area NAME PATTERN [FILES]: true when any changed file matches.
           area() {
             if grep -qE "$shared|$2" <<< "${3-$changed}"; then echo "$1=true"; else echo "$1=false"; fi
@@ -64,7 +64,15 @@ jobs:
             area cli '^cli/'
             area e2e '^app/e2e/'
             area tools '^tools-api/'
-          } | tee -a "$GITHUB_OUTPUT"
+          } | tee -a "$GITHUB_OUTPUT" | {
+            echo "## Changed areas"
+            echo ""
+            echo "| Area | Checks run |"
+            echo "| --- | --- |"
+            while IFS='=' read -r name value; do
+              if [ "$value" = "true" ]; then echo "| $name | ✅ yes |"; else echo "| $name | ⏭️ skipped (no change) |"; fi
+            done
+          } >> "$GITHUB_STEP_SUMMARY"
 
   migration-safety:
     name: Migration Safety
@@ -119,6 +127,8 @@ jobs:
           if [ "${#immutable_changes[@]}" -gt 0 ]; then
             echo "::error::Existing SQL migrations are immutable; add a new migration instead."
             printf ' - %s\n' "${immutable_changes[@]}"
+            printf '## ❌ Migration safety\n\nExisting SQL migrations were changed; add a new migration instead.\n\n' >> "$GITHUB_STEP_SUMMARY"
+            printf -- "- \`%s\`\n" "${immutable_changes[@]}" >> "$GITHUB_STEP_SUMMARY"
             exit 1
           fi
 
@@ -127,10 +137,13 @@ jobs:
 
           if [ "${#migrations[@]}" -eq 0 ]; then
             echo "No new migrations."
+            printf '## ✅ Migration safety\n\nNo new migrations; the journal matches the migration files.\n' >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
 
           node app/scripts/check-migration-safety.js "${migrations[@]}"
+          printf '## ✅ Migration safety\n\nNew migrations are append-only and non-destructive:\n\n' >> "$GITHUB_STEP_SUMMARY"
+          printf -- "- \`%s\`\n" "${migrations[@]}" >> "$GITHUB_STEP_SUMMARY"
 
   app-quality-checks:
     name: App Quality Checks
@@ -196,11 +209,14 @@ jobs:
         run: npm run lint -- --max-warnings 0
 
       - name: Run tests
+        id: tests
         working-directory: ./app
         shell: bash
         run: |
           set -o pipefail
-          npm run test:cov -- --maxWorkers=2 --cacheDirectory=.jest-cache 2>&1 | tee "$RUNNER_TEMP/jest-app.log"
+          npm run test:cov -- --maxWorkers=2 --cacheDirectory=.jest-cache \
+            --json --outputFile="$RUNNER_TEMP/jest-app.json" --reporters=default --reporters=github-actions \
+            2>&1 | tee "$RUNNER_TEMP/jest-app.log"
           if grep -qE "A worker process has failed to exit gracefully|Jest did not exit" "$RUNNER_TEMP/jest-app.log"; then
             echo "::error::Jest reported a leaked handle (app): a spec left a client/timer open. Release certification runs in-band and would hang."
             exit 1
@@ -210,12 +226,24 @@ jobs:
           TEST_REDIS_URL: redis://localhost:6381
 
       - name: Upload coverage
+        id: coverage
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         if: ${{ !cancelled() }}
         with:
           name: app-coverage
           path: app/coverage
           retention-days: 7
+
+      - name: Write test summary
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        run: node .github/scripts/jest-summary.mjs
+        env:
+          SUMMARY_TITLE: App unit tests
+          JEST_RESULTS: ${{ runner.temp }}/jest-app.json
+          COVERAGE_SUMMARY: app/coverage/coverage-summary.json
+          TEST_OUTCOME: ${{ steps.tests.outcome }}
+          ARTIFACT_URL: ${{ steps.coverage.outputs.artifact-url }}
 
       - name: Run database integration tests
         working-directory: ./app
@@ -294,11 +322,14 @@ jobs:
         run: npm run lint:check
 
       - name: Run tests
+        id: tests
         working-directory: ./worker
         shell: bash
         run: |
           set -o pipefail
-          npm run test:cov -- --maxWorkers=2 --cacheDirectory=.jest-cache 2>&1 | tee "$RUNNER_TEMP/jest-worker.log"
+          npm run test:cov -- --maxWorkers=2 --cacheDirectory=.jest-cache \
+            --json --outputFile="$RUNNER_TEMP/jest-worker.json" --reporters=default --reporters=github-actions \
+            2>&1 | tee "$RUNNER_TEMP/jest-worker.log"
           if grep -qE "A worker process has failed to exit gracefully|Jest did not exit" "$RUNNER_TEMP/jest-worker.log"; then
             echo "::error::Jest reported a leaked handle (worker): a spec left a client/timer open. Release certification runs in-band and would hang."
             exit 1
@@ -328,12 +359,24 @@ jobs:
           TEST_REDIS_URL: redis://localhost:6379
 
       - name: Upload coverage
+        id: coverage
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         if: ${{ !cancelled() }}
         with:
           name: worker-coverage
           path: worker/coverage
           retention-days: 7
+
+      - name: Write test summary
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        run: node .github/scripts/jest-summary.mjs
+        env:
+          SUMMARY_TITLE: Worker unit tests
+          JEST_RESULTS: ${{ runner.temp }}/jest-worker.json
+          COVERAGE_SUMMARY: worker/coverage/coverage-summary.json
+          TEST_OUTCOME: ${{ steps.tests.outcome }}
+          ARTIFACT_URL: ${{ steps.coverage.outputs.artifact-url }}
 
       - name: Build check
         working-directory: ./worker
@@ -372,16 +415,31 @@ jobs:
         run: npm run lint
 
       - name: Run tests
+        id: tests
         working-directory: ./cli
-        run: npm run test:cov -- --maxWorkers=2
+        run: >-
+          npm run test:cov -- --maxWorkers=2
+          --json --outputFile="$RUNNER_TEMP/jest-cli.json" --reporters=default --reporters=github-actions
 
       - name: Upload coverage
+        id: coverage
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         if: ${{ !cancelled() }}
         with:
           name: cli-coverage
           path: cli/coverage
           retention-days: 7
+
+      - name: Write test summary
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        run: node .github/scripts/jest-summary.mjs
+        env:
+          SUMMARY_TITLE: CLI unit tests
+          JEST_RESULTS: ${{ runner.temp }}/jest-cli.json
+          COVERAGE_SUMMARY: cli/coverage/coverage-summary.json
+          TEST_OUTCOME: ${{ steps.tests.outcome }}
+          ARTIFACT_URL: ${{ steps.coverage.outputs.artifact-url }}
 
       - name: Build package
         working-directory: ./cli
@@ -458,7 +516,13 @@ jobs:
 
       - name: Verify Playwright discovery
         working-directory: ./app/e2e
-        run: npx playwright test --list
+        shell: bash
+        run: |
+          set -o pipefail
+          npx playwright test --list | tee "$RUNNER_TEMP/e2e-list.txt"
+          # Playwright ends the listing with "Total: N tests in M files".
+          printf '## ✅ E2E suite\n\nTypes check and Playwright discovers the suite: %s\n' \
+            "$(grep -E '^Total: ' "$RUNNER_TEMP/e2e-list.txt" | tail -1 || echo 'see the job log')" >> "$GITHUB_STEP_SUMMARY"
 
   deploy-validation:
     name: Deploy Validation
@@ -471,13 +535,22 @@ jobs:
         with:
           persist-credentials: false
 
+      # The reporter test imports a .ts file, which needs Node's built-in type stripping.
+      - name: Setup Node.js
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
       - name: Verify licenses and distribution notices
+        id: licenses
         run: node .github/scripts/check-licenses.mjs
 
-      - name: Test PR screenshot publisher
-        run: node --test .github/scripts/pr-screenshots.test.mjs app/e2e/scripts/mock-ai.test.mjs
+      - name: Test CI scripts
+        id: scripts
+        run: node --test .github/scripts/pr-screenshots.test.mjs .github/scripts/jest-summary.test.mjs app/e2e/scripts/mock-ai.test.mjs app/e2e/reporters/priority-skip-reporter.test.mjs
 
       - name: Validate Compose files and deploy scripts
+        id: compose
         run: ./deploy/docker/validate.sh
 
       - name: Ensure ShellCheck
@@ -488,6 +561,7 @@ jobs:
           fi
 
       - name: ShellCheck deploy and CI scripts
+        id: shellcheck
         run: |
           shellcheck \
             deploy/docker/*.sh \
@@ -495,8 +569,9 @@ jobs:
             app/scripts/*.sh
 
       - name: Lint GitHub Actions workflows
+        id: actionlint
         run: |
-          ACTIONLINT_VERSION="1.7.7"
+          ACTIONLINT_VERSION="1.7.12"
           base="https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}"
           tarball="actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
           # Abort only stalled transfers (<1 KB/s for 30s) so slow but progressing downloads finish.
@@ -510,6 +585,7 @@ jobs:
           /tmp/actionlint .github/workflows/*.yml
 
       - name: Lint Dockerfiles
+        id: hadolint
         run: |
           HADOLINT_VERSION="2.15.1"
           base="https://github.com/hadolint/hadolint/releases/download/v${HADOLINT_VERSION}"
@@ -527,6 +603,18 @@ jobs:
             exit 0
           fi
           /tmp/hadolint-linux-x86_64 "${dockerfiles[@]}"
+
+      - name: Write summary
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        run: >-
+          .github/scripts/checks-summary.sh "Deploy validation"
+          "Licenses and notices=${{ steps.licenses.outcome }}"
+          "CI script tests=${{ steps.scripts.outcome }}"
+          "Compose files and deploy scripts=${{ steps.compose.outcome }}"
+          "ShellCheck=${{ steps.shellcheck.outcome }}"
+          "actionlint=${{ steps.actionlint.outcome }}"
+          "hadolint=${{ steps.hadolint.outcome }}"
 
   summary:
     name: Quality Checks Summary
@@ -564,3 +652,33 @@ jobs:
             exit 1
           fi
           echo "✅ All quality checks passed"
+
+      # One table that links every job, so nobody has to open each job to find the failure.
+      - name: Write run summary
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -o pipefail
+          # shellcheck disable=SC2016 # jq program, not shell
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/attempts/$GITHUB_RUN_ATTEMPT/jobs?per_page=100" --jq '
+            def dur: if .started_at and .completed_at
+              then ((.completed_at | fromdate) - (.started_at | fromdate)) as $s
+                | if $s < 60 then "\($s)s" else "\($s / 60 | floor)m \($s % 60)s" end
+              else "–" end;
+            .jobs[]
+            | select(.name != "Quality Checks Summary")
+            | "| [\(.name)](\(.html_url)) | \(
+                { success: "✅ passed", failure: "❌ failed", cancelled: "🚫 cancelled",
+                  skipped: "⏭️ skipped (no change)", timed_out: "⏱️ timed out" }[.conclusion // ""]
+                // "⏳ \(.status)") | \(dur) |"' > "$RUNNER_TEMP/jobs.md"
+          {
+            echo "## Quality checks"
+            echo ""
+            echo "| Job | Result | Duration |"
+            echo "| --- | --- | ---: |"
+            cat "$RUNNER_TEMP/jobs.md"
+            echo ""
+            echo "Open a job for its test counts, coverage and failing tests."
+          } >> "$GITHUB_STEP_SUMMARY"
