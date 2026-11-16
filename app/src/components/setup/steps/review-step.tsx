@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type MutableRefObject } from "react";
 import Link from "next/link";
 import { CheckCircle2, Circle, Loader2, MinusCircle, XCircle } from "lucide-react";
 
@@ -40,6 +40,10 @@ export interface ReviewStepProps extends StepProps {
   completed: boolean;
   /** Re-claims the setup lock; false when someone took over. */
   heartbeat?: () => Promise<boolean>;
+  /** Reports whether items are being created, so the Leave dialog can say so. */
+  onActiveChange?: (active: boolean) => void;
+  /** Filled with a function that cancels the run and resolves once the in-flight item has settled. */
+  stopRef?: MutableRefObject<(() => Promise<void>) | null>;
 }
 
 function StatusIcon({ status }: { status: ItemResult["status"] }) {
@@ -68,7 +72,7 @@ const STATUS_LABEL: Record<ItemResult["status"], string> = {
   failed: "Failed",
 };
 
-export function ReviewStep({ response, features, permissions, draft, skipped, readOnly, recordCreated, getCreated, complete, completed, heartbeat }: ReviewStepProps) {
+export function ReviewStep({ response, features, permissions, draft, skipped, readOnly, recordCreated, getCreated, complete, completed, heartbeat, onActiveChange, stopRef }: ReviewStepProps) {
   const items = useMemo(
     () => buildCreateItems(draft, { skipped, features, canUpdateProject: permissions.canUpdateProject, canCreateTests: permissions.canCreateTests, canConfigureConnectors: permissions.canConfigureConnectors, minIntervalMinutes: response.minIntervalMinutes }),
     [draft, skipped, features, permissions.canUpdateProject, permissions.canCreateTests, permissions.canConfigureConnectors, response.minIntervalMinutes],
@@ -78,6 +82,26 @@ export function ReviewStep({ response, features, permissions, draft, skipped, re
   const [finished, setFinished] = useState(false);
   const [retrying, setRetrying] = useState(false);
   const [finishFailed, setFinishFailed] = useState(false);
+
+  const controller = useRef(new AbortController());
+  const activeRun = useRef<Promise<unknown>>(Promise.resolve());
+  useEffect(() => {
+    // A dev double-mount runs cleanup (abort) first, so start from a fresh controller.
+    if (controller.current.signal.aborted) controller.current = new AbortController();
+    if (stopRef) {
+      stopRef.current = async () => {
+        controller.current.abort();
+        await activeRun.current.catch(() => undefined);
+      };
+    }
+    return () => {
+      controller.current.abort();
+      if (stopRef) stopRef.current = null;
+    };
+  }, [stopRef]);
+  const active = running || retrying;
+  useEffect(() => onActiveChange?.(active), [active, onActiveChange]);
+  useEffect(() => () => onActiveChange?.(false), [onActiveChange]);
 
   const deps: RunnerDeps = {
     setupProjectId: response.projectId,
@@ -112,7 +136,9 @@ export function ReviewStep({ response, features, permissions, draft, skipped, re
 
   const start = async () => {
     setRunning(true);
-    await runAll(items, deps, update);
+    const run = runAll(items, { ...deps, signal: controller.current.signal }, update);
+    activeRun.current = run;
+    await run;
     setRunning(false);
     setFinished(true);
   };
@@ -122,7 +148,9 @@ export function ReviewStep({ response, features, permissions, draft, skipped, re
     if (retrying) return;
     setRetrying(true);
     try {
-      await retryWithDependents(item, items, deps, update, (key) => results[key]?.status === "skipped");
+      const run = retryWithDependents(item, items, { ...deps, signal: controller.current.signal }, update, (key) => results[key]?.status === "skipped");
+      activeRun.current = run;
+      await run;
     } finally {
       setRetrying(false);
     }

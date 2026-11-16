@@ -89,6 +89,24 @@ describe("AlertsStep", () => {
     expect(JSON.stringify(d.get())).not.toContain("me@example.com");
   });
 
+  it("asks for the preset's credentials, refuses Save and Test until filled, and substitutes them", async () => {
+    fetchMock.mockImplementation((url: string, init?: { method?: string; body?: string }) => (init?.method === "POST" ? json({ id: PROVIDER }, 201) : json({})));
+    render(<AlertsStep {...makeStepProps({ userEmail: null })} />);
+    fireEvent.click(screen.getByRole("button", { name: /^Webhook/ }));
+    pick("Service", /PagerDuty/);
+    fireEvent.change(screen.getByLabelText("Endpoint URL"), { target: { value: "https://events.pagerduty.com/v2/enqueue" } });
+    const save = screen.getByRole("button", { name: "Save channel" }) as HTMLButtonElement;
+    expect(save.disabled).toBe(true);
+    expect((screen.getByRole("button", { name: "Send test" }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.change(screen.getByLabelText("Pagerduty Routing Key"), { target: { value: 'k"ey' } });
+    expect(save.disabled).toBe(false);
+    fireEvent.click(save);
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    const sent = fetchMock.mock.calls[0][1].body as string;
+    expect(sent).not.toContain("REPLACE_WITH");
+    expect(JSON.parse(JSON.parse(sent).config.bodyTemplate).routing_key).toBe('k"ey');
+  });
+
   it("refuses to save a channel when another tab switched the active project", async () => {
     activeProject = "22222222-2222-4222-8222-222222222222";
     render(<AlertsStep {...makeStepProps()} />);
@@ -126,6 +144,7 @@ describe("AlertsStep", () => {
     fireEvent.click(screen.getByRole("button", { name: /^Webhook/ }));
     pick("Service", /pagerduty/i);
     fireEvent.change(screen.getByLabelText("Endpoint URL"), { target: { value: "https://events.pagerduty.com/v2/enqueue" } });
+    fireEvent.change(screen.getByLabelText("Pagerduty Routing Key"), { target: { value: "key" } });
     fireEvent.click(screen.getByRole("button", { name: "Save channel" }));
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
     expect(JSON.parse(fetchMock.mock.calls[0][1].body).config).toMatchObject({ preset: "pagerduty", method: "POST" });

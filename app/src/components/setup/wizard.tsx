@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, type ComponentType } from "react";
+import { useEffect, useMemo, useRef, useState, type ComponentType } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Bell, FlaskConical, Globe, ListChecks, Radar, Tally4, Terminal, UserPlus, type LucideIcon } from "lucide-react";
@@ -86,6 +86,9 @@ export function SetupWizard({ response, persona, userEmail }: WizardProps) {
   const [scan, setScan] = useState<ScanSummary | null>(response.state.scanResult as ScanSummary | null);
   const [leaveError, setLeaveError] = useState(false);
   const [dismissing, setDismissing] = useState(false);
+  // Review reports a running Create here; stop waits for the in-flight item to settle.
+  const [creating, setCreating] = useState(false);
+  const stopCreate = useRef<(() => Promise<void>) | null>(null);
 
   const steps = useMemo(
     () =>
@@ -135,6 +138,8 @@ export function SetupWizard({ response, persona, userEmail }: WizardProps) {
 
   const leave = async () => {
     setLeaveError(false);
+    // Stop first, so no item or lock claim happens after the lock is released on leaving.
+    await stopCreate.current?.();
     // Leaving with an unsaved draft would lose it, so stay and say so.
     if (!(await session.flush())) {
       setLeaveError(true);
@@ -257,6 +262,8 @@ export function SetupWizard({ response, persona, userEmail }: WizardProps) {
               recordCreated={session.recordCreated}
               getCreated={session.getCreated}
               heartbeat={lock.heartbeat}
+              onActiveChange={setCreating}
+              stopRef={stopCreate}
               completed={session.status === "completed"}
               complete={async () => {
                 session.patch({ status: "completed" });
@@ -290,7 +297,9 @@ export function SetupWizard({ response, persona, userEmail }: WizardProps) {
           <DialogHeader>
             <DialogTitle>Leave setup?</DialogTitle>
             <DialogDescription>
-              {Object.keys(session.getCreated()).length > 0
+              {creating
+                ? "Items are still being created. Stop and leave cancels the rest after the current item finishes; what was created stays in your project and you can resume from Project setup in the sidebar."
+                : Object.keys(session.getCreated()).length > 0
                 ? "Items already created stay in your project, and your choices are saved as a draft. You can resume from Project setup in the sidebar."
                 : "Your choices are saved as a draft. Nothing has been created yet. You can resume from Project setup in the sidebar."}
             </DialogDescription>
@@ -301,17 +310,24 @@ export function SetupWizard({ response, persona, userEmail }: WizardProps) {
               Keep going
             </Button>
             {session.saveState === "error" ? (
-              <Button type="button" variant="outline" onClick={() => router.push("/")}>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={async () => {
+                  await stopCreate.current?.();
+                  router.push("/");
+                }}
+              >
                 Leave without saving
               </Button>
             ) : null}
             {!readOnly ? (
-              <Button type="button" variant="ghost" disabled={dismissing} onClick={dismiss}>
+              <Button type="button" variant="ghost" disabled={dismissing || creating} onClick={dismiss}>
                 Dismiss setup
               </Button>
             ) : null}
             <Button type="button" disabled={dismissing} onClick={leave}>
-              Leave and resume later
+              {creating ? "Stop and leave" : "Leave and resume later"}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -43,6 +43,7 @@ const MAX_RATE_LIMIT_WAIT_SECONDS = 60;
 const MAX_RATE_LIMIT_RETRIES = 2;
 // Exact text of the server error in lib/sre/notification-policy.ts.
 const CHANNEL_NOT_IN_PROJECT = "Some channels do not belong to this project";
+export const CANCELLED_ERROR = "Setup was stopped";
 export const TAKEN_OVER_ERROR = "Another person took over setup";
 /** Sent with every REST write so the server can refuse it when the active project is no longer this one. */
 export const PROJECT_HEADER = "x-supercheck-project-id";
@@ -77,6 +78,8 @@ export interface RunnerDeps {
   getServices: () => Promise<{ success: boolean; services: Array<{ id: string; name: string }> }>;
   createService: (data: { name: string }) => Promise<ActionResult & { service?: { id: string } }>;
   getCreated: () => Record<string, string>;
+  /** Aborted when the user leaves: no item starts and no heartbeat or lock claim happens after it. */
+  signal?: AbortSignal;
   /** Test seam for the rate-limit wait. */
   sleep?: (ms: number) => Promise<void>;
 }
@@ -107,10 +110,21 @@ function identity(value: string): string {
   return `${lane(0)}${lane(1)}`;
 }
 
-function hash(value: string): string {
-  let h = 5381;
-  for (let i = 0; i < value.length; i++) h = ((h << 5) + h + value.charCodeAt(i)) >>> 0;
-  return h.toString(36);
+// Two independent cyrb53 lanes (~106 bits) so distinct URLs (/Ab vs /BA) never share a key.
+function identity(value: string): string {
+  const lane = (seed: number) => {
+    let h1 = 0xdeadbeef ^ seed;
+    let h2 = 0x41c6ce57 ^ seed;
+    for (let i = 0; i < value.length; i++) {
+      const c = value.charCodeAt(i);
+      h1 = Math.imul(h1 ^ c, 2654435761);
+      h2 = Math.imul(h2 ^ c, 1597334677);
+    }
+    h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+    h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+    return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(36);
+  };
+  return `${lane(0)}${lane(0x9e3779b9)}`;
 }
 
 export interface BuildOptions {
@@ -162,7 +176,7 @@ export function buildCreateItems(draft: SetupDraft, opts: BuildOptions): CreateI
       const homepage = new URL(page.url).pathname === "/";
       const kind: ItemKind = homepage ? "website" : "http_request";
       items.push({
-        key: `monitor:${kind}:${hash(page.url)}`,
+        key: `monitor:${kind}:${identity(page.url)}`,
         kind,
         step: "monitors",
         label: page.name,
@@ -185,7 +199,7 @@ export function buildCreateItems(draft: SetupDraft, opts: BuildOptions): CreateI
     if (heartbeat) {
       const beatEvery = Math.max(heartbeat.frequencyMinutes, minInterval);
       items.push({
-        key: `monitor:heartbeat:${hash(heartbeat.name)}`,
+        key: `monitor:heartbeat:${identity(heartbeat.name)}`,
         kind: "heartbeat",
         step: "monitors",
         label: heartbeat.name,
@@ -199,7 +213,7 @@ export function buildCreateItems(draft: SetupDraft, opts: BuildOptions): CreateI
     const ai = features.aiEndpoint ? draft.monitors?.aiEndpoint : undefined;
     if (ai) {
       items.push({
-        key: `monitor:ai_endpoint:${hash(ai.url)}`,
+        key: `monitor:ai_endpoint:${identity(ai.url)}`,
         kind: "ai_endpoint",
         step: "monitors",
         label: ai.name,
@@ -213,7 +227,7 @@ export function buildCreateItems(draft: SetupDraft, opts: BuildOptions): CreateI
     const mcp = features.mcpMonitor ? draft.monitors?.mcpMonitor : undefined;
     if (mcp) {
       items.push({
-        key: `monitor:mcp_server:${hash(mcp.url)}`,
+        key: `monitor:mcp_server:${identity(mcp.url)}`,
         kind: "mcp_server",
         step: "monitors",
         label: mcp.name,
@@ -407,6 +421,7 @@ async function createMonitor(item: CreateItem, deps: RunnerDeps, lookup: Lookup,
     progress?.({ status: "running", note: RATE_LIMIT_NOTE });
     await (deps.sleep ?? ((ms) => new Promise<void>((resolve) => setTimeout(resolve, ms))))(seconds * 1000);
     progress?.({ status: "running", note: undefined });
+    if (deps.signal?.aborted) return { status: "failed", error: CANCELLED_ERROR };
     // The wait can outlast the lock, so ask directly (not the throttled wrapper) before writing again.
     if (deps.heartbeat && !(await deps.heartbeat())) return { status: "failed", error: TAKEN_OVER_ERROR };
     res = await projectFetch(deps, "/api/monitors", { method: "POST", body: item.payload });
@@ -545,6 +560,7 @@ export async function runItem(item: CreateItem, deps: RunnerDeps, lookup: Lookup
   if (inFlight.has(guard)) return { status: "running" };
   inFlight.add(guard);
   try {
+    if (deps.signal?.aborted) return { status: "failed", error: CANCELLED_ERROR };
     // A takeover by another person must stop this run before it writes anything more.
     if (deps.heartbeat && !(await throttledHeartbeat(deps.heartbeat))) return { status: "failed", error: TAKEN_OVER_ERROR };
     const changed = await ensureProject(deps);
@@ -562,7 +578,7 @@ export async function runItem(item: CreateItem, deps: RunnerDeps, lookup: Lookup
   }
 }
 
-const STOPPING_ERRORS = [PROJECT_CHANGED_ERROR, TAKEN_OVER_ERROR];
+const STOPPING_ERRORS = [PROJECT_CHANGED_ERROR, TAKEN_OVER_ERROR, CANCELLED_ERROR];
 
 /** Run items in order. Stops at "Project changed in another tab" or a lock takeover; other failures (including a network error) do not stop the run. */
 export async function runAll(
@@ -574,6 +590,7 @@ export async function runAll(
   const lookup: Lookup = {};
   for (const item of items) {
     if (!shouldRun(item.key)) continue;
+    if (deps.signal?.aborted) return;
     onUpdate(item.key, { status: "running", error: undefined, note: undefined });
     const result = await runItem(item, deps, lookup, (partial) => onUpdate(item.key, { status: "running", ...partial }));
     // A duplicate run reports "running" and the run that owns the item delivers the final result.

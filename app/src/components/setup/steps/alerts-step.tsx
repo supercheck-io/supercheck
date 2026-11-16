@@ -49,6 +49,30 @@ const CHANNELS: Array<{ type: ChannelType; label: string; icon: LucideIcon; summ
   { type: "webhook", label: "Webhook", icon: Webhook, summary: "Any HTTPS endpoint", fields: [{ key: "url", label: "Endpoint URL", type: "url", help: "Must be public HTTPS." }] },
 ];
 
+const PLACEHOLDER = /REPLACE_WITH_[A-Z0-9_]+/g;
+
+/** Credential placeholders (REPLACE_WITH_...) a webhook preset carries in its headers or body. */
+export function presetPlaceholders(presetId: string): string[] {
+  const preset = getWebhookPreset(presetId);
+  if (!preset) return [];
+  return [...new Set(`${JSON.stringify(preset.config.headers ?? {})}${preset.config.bodyTemplate ?? ""}`.match(PLACEHOLDER) ?? [])];
+}
+
+function placeholderLabel(token: string): string {
+  const words = token.replace("REPLACE_WITH_", "").toLowerCase().split("_");
+  return words.map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
+}
+
+/** The preset config with each placeholder swapped for the user's value (JSON-escaped inside the body). */
+export function fillPreset(config: { headers?: Record<string, string>; bodyTemplate?: string }, creds: Record<string, string>) {
+  const fill = (text: string, escape: boolean) =>
+    Object.entries(creds).reduce((out, [token, value]) => out.split(token).join(escape ? JSON.stringify(value.trim()).slice(1, -1) : value.trim()), text);
+  return {
+    headers: Object.fromEntries(Object.entries(config.headers ?? {}).map(([k, v]) => [k, fill(v, false)])),
+    bodyTemplate: fill(config.bodyTemplate ?? "", true),
+  };
+}
+
 interface SavedProvider {
   id: string;
   name: string;
@@ -79,6 +103,8 @@ function ChannelForm({
 }) {
   const [values, setValues] = useState<Record<string, string>>(channel.type === "email" && defaultEmail ? { emails: defaultEmail } : {});
   const [presetId, setPresetId] = useState("custom");
+  const [creds, setCreds] = useState<Record<string, string>>({});
+  const tokens = channel.type === "webhook" ? presetPlaceholders(presetId) : [];
   const [busy, setBusy] = useState<"test" | "save" | null>(null);
   const [result, setResult] = useState<{ ok: boolean; text: string } | null>(null);
 
@@ -86,12 +112,15 @@ function ChannelForm({
     const base: Record<string, unknown> = { ...values };
     if (channel.type === "webhook") {
       const preset = getWebhookPreset(presetId);
-      if (preset) Object.assign(base, { preset: preset.id, ...preset.config });
+      if (preset) Object.assign(base, { preset: preset.id, ...preset.config, ...fillPreset(preset.config, creds) });
     }
     return base;
-  }, [values, channel.type, presetId]);
+  }, [values, channel.type, presetId, creds]);
 
-  const missing = channel.fields.some((field) => !values[field.key]?.trim());
+  const missing =
+    channel.fields.some((field) => !values[field.key]?.trim()) ||
+    tokens.some((token) => !creds[token]?.trim()) ||
+    JSON.stringify(config()).includes("REPLACE_WITH");
 
   const test = async () => {
     setBusy("test");
@@ -133,7 +162,13 @@ function ChannelForm({
       {channel.type === "webhook" ? (
         <div className="space-y-1.5">
           <Label htmlFor="setup-webhook-preset">Service</Label>
-          <Select value={presetId} onValueChange={setPresetId}>
+          <Select
+            value={presetId}
+            onValueChange={(id) => {
+              setPresetId(id);
+              setCreds({});
+            }}
+          >
             <SelectTrigger id="setup-webhook-preset" className="w-full">
               <SelectValue />
             </SelectTrigger>
@@ -160,6 +195,19 @@ function ChannelForm({
             onChange={(event) => setValues((v) => ({ ...v, [field.key]: event.target.value }))}
           />
           {field.help ? <p className="text-xs text-muted-foreground">{field.help}</p> : null}
+        </div>
+      ))}
+      {tokens.map((token) => (
+        <div key={token} className="space-y-1.5">
+          <Label htmlFor={`setup-webhook-${token}`}>{placeholderLabel(token)}</Label>
+          <Input
+            id={`setup-webhook-${token}`}
+            type="password"
+            autoComplete="off"
+            value={creds[token] ?? ""}
+            onChange={(event) => setCreds((c) => ({ ...c, [token]: event.target.value }))}
+          />
+          {getWebhookPreset(presetId)?.secretHint ? <p className="text-xs text-muted-foreground">{getWebhookPreset(presetId)?.secretHint}</p> : null}
         </div>
       ))}
       {result ? <Alert variant={result.ok ? "success" : "error"}>{result.text}</Alert> : null}
