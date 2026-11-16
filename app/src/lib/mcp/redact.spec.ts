@@ -32,6 +32,10 @@ describe("safeText", () => {
     expect(() => JSON.parse(out)).not.toThrow();
     expect(safeText('Authorization: Bearer "abc123"')).not.toContain("abc123");
     expect(safeText("Authorization: Basic 'dXNlcjpwdw=='")).not.toContain("dXNlcjpwdw");
+    // Event data reaches the redactor as JSON text, so a quoted value arrives with escaped quotes.
+    const escaped = safeText(JSON.stringify({ note: 'Authorization: Bearer "abc123"' }))!;
+    expect(escaped).not.toContain("abc123");
+    expect(() => JSON.parse(escaped)).not.toThrow();
   });
   it("truncates long text", () => {
     expect(safeText("x".repeat(5000))!.endsWith("[truncated]")).toBe(true);

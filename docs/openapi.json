@@ -480,11 +480,17 @@
                           "additionalProperties": false
                         },
                         "generatedAt": {
-                          "type": "string",
+                          "type": [
+                            "string",
+                            "null"
+                          ],
                           "format": "date-time"
                         },
                         "updatedAt": {
-                          "type": "string",
+                          "type": [
+                            "string",
+                            "null"
+                          ],
                           "format": "date-time"
                         }
                       }
