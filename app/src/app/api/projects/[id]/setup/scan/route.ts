@@ -91,7 +91,7 @@ export async function GET(request: NextRequest, { params }: Params) {
     if (!scan) return NextResponse.json({ error: "Scan not found" }, { status: 404 });
     // Only a caller who could have started the scan stores it, and a failed scan never replaces a good one.
     const canScan = checkPermissionWithContext("monitor", "create", ctx);
-    if (scan.status === "done" && canScan && scan.result.reachable && !scan.result.error) await saveScanResult(ctx.organizationId, projectId, scan.result);
+    if (scan.status === "done" && canScan && scan.result.reachable && !scan.result.error) await saveScanResult(ctx.organizationId, projectId, scan.result, scan.scannedAt);
     return NextResponse.json(scan);
   } catch (error) {
     if (error instanceof ExecutionQueueError) return queueUnavailable();

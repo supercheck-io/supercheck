@@ -71,18 +71,21 @@ export async function enqueueScan(projectId: string, url: string): Promise<strin
 
 export type ScanStatus =
   | { status: "queued" | "running" | "failed" | "unavailable" }
-  | { status: "done"; result: ScanSummary };
+  | { status: "done"; result: ScanSummary; scannedAt: number };
 
 /** Reads one scan job; null when it does not exist (expired after an hour, or never created). */
 export async function readScan(scanId: string): Promise<ScanStatus | null> {
   await assertExecutionQueueReady();
-  const job = await (await getScanQueue()).getJob(scanId);
+  const scanQueue = await getScanQueue();
+  let job = await scanQueue.getJob(scanId);
   if (!job) return null;
   const state = await job.getState();
   switch (state) {
     case "completed": {
+      // getState() does not refresh the job: a scan that finished after getJob still shows no return value.
+      if (job.returnvalue == null) job = (await scanQueue.getJob(scanId)) ?? job;
       const result = sanitizeScanResult(job.returnvalue);
-      return result ? { status: "done", result } : { status: "failed" };
+      return result ? { status: "done", result, scannedAt: job.finishedOn ?? job.timestamp } : { status: "failed" };
     }
     case "failed":
       return { status: "failed" };
@@ -91,7 +94,7 @@ export async function readScan(scanId: string): Promise<ScanStatus | null> {
     default: {
       // Waiting is only "unavailable" when nobody consumes the queue; a busy worker keeps it queued.
       const stale = state === "waiting" && Date.now() - job.timestamp > SCAN_PICKUP_TIMEOUT_MS;
-      return { status: stale && (await (await getScanQueue()).getWorkersCount()) === 0 ? "unavailable" : "queued" };
+      return { status: stale && (await scanQueue.getWorkersCount()) === 0 ? "unavailable" : "queued" };
     }
   }
 }

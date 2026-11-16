@@ -18,6 +18,8 @@ import { SetupChecklist } from "./setup-checklist";
 import { Welcome } from "./welcome";
 import { SetupWizard } from "./wizard";
 
+const PROJECT_RETRIES = 15;
+const PROJECT_RETRY_MS = 2000;
 const CREATOR_ROLES = ["org_owner", "org_admin"];
 
 export function SetupSkeleton() {
@@ -52,7 +54,7 @@ export function SetupPage() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const projectParam = useSearchParams().get("project");
-  const { currentProject, switchProject, loading: projectLoading } = useProjectContext();
+  const { currentProject, switchProject, refreshProjects, loading: projectLoading } = useProjectContext();
   const session = useSession();
   const [switchFailed, setSwitchFailed] = useState(false);
   // Bumped by Retry so the switch effect runs again.
@@ -68,6 +70,19 @@ export function SetupPage() {
       .then((ok) => !ok && setSwitchFailed(true))
       .catch(() => setSwitchFailed(true));
   }, [needsSwitch, projectParam, switchProject, switchAttempt]);
+
+  // Sign-up provisions the default project asynchronously, so a fresh account can land here before it exists:
+  // ask again a few times instead of showing the skeleton for good.
+  const noProject = !projectLoading && !projectParam && !currentProject;
+  useEffect(() => {
+    if (!noProject) return;
+    let tries = 0;
+    const timer = setInterval(() => {
+      if (++tries > PROJECT_RETRIES) return clearInterval(timer);
+      void refreshProjects();
+    }, PROJECT_RETRY_MS);
+    return () => clearInterval(timer);
+  }, [noProject, refreshProjects]);
 
   const projectId = needsSwitch ? null : (projectParam ?? currentProject?.id ?? null);
   const setup = useProjectSetup(projectId);

@@ -90,6 +90,23 @@ interface Lookup {
   services?: Array<{ id: string; name: string }>;
 }
 
+/** 106-bit identity (two cyrb53 lanes): the 32-bit `hash` collides on near-equal titles such as "Check Ab" / "Check BA". */
+function identity(value: string): string {
+  const lane = (seed: number) => {
+    let h1 = 0xdeadbeef ^ seed;
+    let h2 = 0x41c6ce57 ^ seed;
+    for (let i = 0; i < value.length; i++) {
+      const ch = value.charCodeAt(i);
+      h1 = Math.imul(h1 ^ ch, 2654435761);
+      h2 = Math.imul(h2 ^ ch, 1597334677);
+    }
+    h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+    h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+    return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(36);
+  };
+  return `${lane(0)}${lane(1)}`;
+}
+
 function hash(value: string): string {
   let h = 5381;
   for (let i = 0; i < value.length; i++) h = ((h << 5) + h + value.charCodeAt(i)) >>> 0;
@@ -252,7 +269,7 @@ export function buildCreateItems(draft: SetupDraft, opts: BuildOptions): CreateI
   if (!skipped.includes("tests") && features.aiTests && opts.canCreateTests !== false) {
     // Keyed by title, not position, so reordering or unticking on a re-run keeps each id with its own title.
     for (const requirement of draft.tests?.requirements ?? []) {
-      const key = `requirement:${hash(requirement.title)}`;
+      const key = `requirement:${identity(requirement.title)}`;
       if (items.some((item) => item.key === key)) continue;
       items.push({
         key,
@@ -266,7 +283,7 @@ export function buildCreateItems(draft: SetupDraft, opts: BuildOptions): CreateI
   }
   if (!skipped.includes("aiSre") && features.aiSre && opts.canConfigureConnectors !== false) {
     for (const service of draft.aiSre?.services ?? []) {
-      items.push({ key: `service:${hash(service.name)}`, kind: "service", step: "aiSre", label: service.name, detail: "Service", payload: { name: service.name } });
+      items.push({ key: `service:${identity(service.name)}`, kind: "service", step: "aiSre", label: service.name, detail: "Service", payload: { name: service.name } });
     }
   }
   return items;

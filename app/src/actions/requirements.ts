@@ -18,7 +18,7 @@ import { db } from "@/utils/db";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import crypto from "crypto";
-import { requireProjectContext } from "@/lib/project-context";
+import { PROJECT_MISMATCH_MESSAGE, requireProjectContext } from "@/lib/project-context";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { logAuditEvent } from "@/lib/audit-logger";
 import {
@@ -99,8 +99,10 @@ export type { CreateRequirementInput, UpdateRequirementInput };
 export async function findRequirementsForSetup(query: {
   ids: string[];
   titles: string[];
-}): Promise<{ success: boolean; requirements: Array<{ id: string; title: string }> }> {
+}, expectedProjectId?: string): Promise<{ success: boolean; requirements: Array<{ id: string; title: string }> }> {
   const { userId, project, organizationId, orgPendingDeletion } = await requireProjectContext();
+  // Setup passes its project: another tab may have switched the active one since.
+  if (expectedProjectId && expectedProjectId !== project.id) throw new Error(PROJECT_MISMATCH_MESSAGE);
   const canView = checkPermissionWithContext("requirement", "view", { userId, organizationId, orgPendingDeletion, project });
   if (!canView) throw new Error("Insufficient permissions to view requirements");
 
@@ -307,10 +309,12 @@ function readableError(error: unknown): string {
  * Create a new requirement
  */
 export async function createRequirement(
-  data: CreateRequirementInput
+  data: CreateRequirementInput,
+  expectedProjectId?: string
 ): Promise<{ id: string; success: boolean; error?: string }> {
   try {
     const { userId, project, organizationId, orgPendingDeletion } = await requireProjectContext();
+    if (expectedProjectId && expectedProjectId !== project.id) return { id: "", success: false, error: PROJECT_MISMATCH_MESSAGE };
 
     // Check create permission (optimized - reuses context)
     const canCreate = checkPermissionWithContext("requirement", "create", {

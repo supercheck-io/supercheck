@@ -284,6 +284,38 @@ describe('setup scan processor', () => {
     expect(readCertificate).toHaveBeenCalledTimes(1);
   });
 
+  it('reads the certificate of the redirect target that failed, not the origin it started from', async () => {
+    const readCertificate = jest.fn().mockResolvedValue({
+      certificate: {
+        valid_to: new Date(Date.now() - 5 * 86_400_000).toUTCString(),
+        issuer: { CN: 'Other CA' },
+      },
+      authorized: false,
+    });
+    let calls = 0;
+    const r = await scan(
+      () => {
+        if (++calls === 1) {
+          return {
+            status: 302,
+            headers: { location: 'https://93.184.216.35/' },
+          };
+        }
+        throw new AxiosError('certificate has expired', 'CERT_HAS_EXPIRED');
+      },
+      { readCertificate },
+      'https://93.184.216.34/',
+    ).result;
+    expect(r).toMatchObject({
+      error: 'ssl_invalid',
+      ssl: { issuer: 'Other CA' },
+    });
+    expect(readCertificate).toHaveBeenCalledTimes(1);
+    expect(readCertificate.mock.calls[0][0]).toMatchObject({
+      hostname: '93.184.216.35',
+    });
+  });
+
   it('keeps ssl_invalid when the certificate itself cannot be read', async () => {
     const r = await scan(
       () => {

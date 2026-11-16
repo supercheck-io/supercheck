@@ -139,17 +139,20 @@ export async function POST(request: NextRequest, { params }: Params) {
       }
       // A provider or transport failure (no text) frees the slot; a model that answered keeps it.
       keepClaim = text !== null;
-      const requirements = text === null ? null : parseModelOutput(text);
-      if (!requirements) {
+      const parsed = text === null ? null : parseModelOutput(text);
+      // A title that is empty once sanitized would make an invalid draft entry: drop it.
+      const cleaned = (parsed ?? [])
+        .map((r) => ({
+          title: AISecurityService.sanitizeTextOutput(r.title).trim(),
+          description: AISecurityService.sanitizeTextOutput(r.description),
+          priority: r.priority,
+        }))
+        .filter((r) => r.title.length > 0);
+      if (cleaned.length === 0) {
         await credit.refund();
         return NextResponse.json({ error: "AI could not produce suggestions. Try again." }, { status: 502 });
       }
 
-      const cleaned = requirements.map((r) => ({
-        title: AISecurityService.sanitizeTextOutput(r.title),
-        description: AISecurityService.sanitizeTextOutput(r.description),
-        priority: r.priority,
-      }));
       await logAuditEvent({
         userId,
         organizationId,

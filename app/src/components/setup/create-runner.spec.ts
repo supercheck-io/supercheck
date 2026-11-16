@@ -410,6 +410,12 @@ describe("requirement and service items", () => {
   });
   const items = () => buildCreateItems(withBoth(), { skipped: [], features, canUpdateProject: true });
 
+  it("keys near-equal titles apart (a 32-bit hash collides on Check Ab / Check BA)", () => {
+    const two = buildCreateItems({ tests: { requirements: [{ title: "Check Ab" }, { title: "Check BA" }] } }, { skipped: [], features, canUpdateProject: true });
+    expect(two).toHaveLength(2);
+    expect(two[0].key).not.toBe(two[1].key);
+  });
+
   it("builds requirement:<title hash> and service items, honouring skips, flags and permissions", () => {
     expect(items().map((i) => [i.key.split(":")[0], i.kind, i.step])).toEqual([
       ["requirement", "requirement", "tests"],

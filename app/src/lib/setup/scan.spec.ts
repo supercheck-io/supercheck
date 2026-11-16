@@ -81,5 +81,9 @@ describe("setup scan queue helpers", () => {
     expect(await readScan("a")).toMatchObject({ status: "done", result: { reachable: true } });
     getJob.mockResolvedValueOnce(job("completed", { returnvalue: { nope: 1 } }));
     expect(await readScan("a")).toEqual({ status: "failed" });
+    // The worker finished between getJob and getState: the first read has no return value, a reload does.
+    getJob.mockResolvedValueOnce(job("completed", { returnvalue: null }));
+    getJob.mockResolvedValueOnce(job("completed", { returnvalue: good, finishedOn: 4242 }));
+    expect(await readScan("a")).toMatchObject({ status: "done", scannedAt: 4242 });
   });
 });

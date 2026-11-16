@@ -1,6 +1,6 @@
 import "server-only";
 
-import { and, eq, isNull, or } from "drizzle-orm";
+import { and, eq, isNull, or, sql } from "drizzle-orm";
 import { v7 as uuidv7 } from "uuid";
 import { db } from "@/utils/db";
 import { notificationProviders } from "@/db/schema/notification";
@@ -46,6 +46,10 @@ export async function listConnectorIds(scope: CopyScope): Promise<string[]> {
   return rows.map((row) => row.id);
 }
 
+/** Serializes concurrent copies of the same item into one target project: neither table has a unique key on it. */
+const lockAdoptionKey = (tx: Pick<typeof db, "execute">, kind: string, scope: CopyScope, source: { type: string; name: string }) =>
+  tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${JSON.stringify([kind, scope.organizationId, scope.targetProjectId, source.type, source.name])}))`);
+
 export function copyProviders(scope: CopyScope, ids: string[]): Promise<CopyItemResult[]> {
   const { organizationId, sourceProjectId, targetProjectId, userId } = scope;
   // Sequential on purpose: each item is its own transaction and the response keeps request order.
@@ -66,6 +70,7 @@ export function copyProviders(scope: CopyScope, ids: string[]): Promise<CopyItem
             )
             .limit(1);
           if (!source) throw new CopyItemError("Provider not found in the source project");
+          await lockAdoptionKey(tx, "provider", scope, source);
           const [existing] = await tx
             .select({ id: notificationProviders.id })
             .from(notificationProviders)
@@ -122,6 +127,7 @@ export function copyConnectors(scope: CopyScope, ids: string[]): Promise<CopyIte
             )
             .limit(1);
           if (!source) throw new CopyItemError("Connector not found in the source project");
+          await lockAdoptionKey(tx, "connector", scope, source);
           const [existing] = await tx
             .select({ id: externalConnectors.id })
             .from(externalConnectors)

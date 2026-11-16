@@ -172,5 +172,8 @@ describe("ReviewStep requirements and services", () => {
     expect(screen.getByRole("link", { name: "Generate test for User can sign in" }).getAttribute("href")).toBe("/playground?scriptType=browser&requirementId=req-1");
     expect(screen.getByRole("link", { name: "Create a scheduled job or CI key" }).getAttribute("href")).toBe("/jobs/create");
     expect(props.recordCreated).toHaveBeenCalledWith(expect.stringMatching(/^requirement:[0-9a-z]+$/), "req-1");
+// Writes carry the setup project so a tab switch cannot send them to another project.
+expect(jest.requireMock("@/actions/requirements").createRequirement).toHaveBeenCalledWith({ title: "User can sign in", description: "d" }, PROJECT_ID);
+expect(jest.requireMock("@/actions/sre-services").createSreService).toHaveBeenCalledWith({ name: "app.example.com" }, PROJECT_ID);
   });
 });

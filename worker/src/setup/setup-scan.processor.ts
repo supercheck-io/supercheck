@@ -125,6 +125,9 @@ interface FetchedPage {
 }
 
 class ScanFailure extends Error {
+  /** The address the failing request went to: after a redirect, not the one the scan started from. */
+  url?: URL;
+
   constructor(
     readonly code: SetupScanErrorCode,
     readonly blockedReason?: string,
@@ -214,7 +217,11 @@ async function fetchPage(
         ? (error.request as { res?: { statusCode?: number } } | undefined)?.res
             ?.statusCode
         : undefined;
-    if (!sawStatus) throw classify(error);
+    if (!sawStatus) {
+      const failure = classify(error);
+      failure.url = lastUrl;
+      throw failure;
+    }
     // Body over the cap: the server answered, we just do not read the page.
     status = sawStatus;
     overLimit = true;
@@ -308,7 +315,7 @@ export async function processSetupScan(
       // The request refused the certificate; the unverified read still reports its expiry date.
       ssl:
         failure.code === 'ssl_invalid'
-          ? await readSsl(start, deps, budget)
+          ? await readSsl(failure.url ?? start, deps, budget)
           : null,
       blockedReason: failure.blockedReason,
     };

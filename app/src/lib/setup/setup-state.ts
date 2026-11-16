@@ -273,34 +273,36 @@ export type AiRunClaim =
   | { kind: "claimed"; claimedAt: Date; previous: Date | null }
   | { kind: "daily_limit"; retryAt: Date };
 
-/** Atomically takes the once-per-day AI slot (D10); the single upsert is the claim, so parallel calls cannot both win. */
+/**
+ * Atomically takes the once-per-day AI slot (D10). A transaction-scoped advisory lock per project makes the
+ * read of the rollback value and the claim one step, so a release landing between them cannot leak a stale value.
+ * The transaction ends before the AI call.
+ */
 export async function claimAiRun(organizationId: string, projectId: string): Promise<AiRunClaim> {
-  const [before] = await db
-    .select({ at: projectSetupState.lastAiRunAt })
-    .from(projectSetupState)
-    .where(and(eq(projectSetupState.organizationId, organizationId), eq(projectSetupState.projectId, projectId)))
-    .limit(1);
-  const previous = before?.at ?? null;
-  const claimedAt = new Date();
-  const won = await db
-    .insert(projectSetupState)
-    .values({ organizationId, projectId, lastAiRunAt: claimedAt, updatedAt: NEVER_WRITTEN })
-    .onConflictDoUpdate({
-      target: projectSetupState.projectId,
-      set: { lastAiRunAt: claimedAt },
-      setWhere: and(
-        eq(projectSetupState.organizationId, organizationId),
-        sql`(${projectSetupState.lastAiRunAt} IS NULL OR ${projectSetupState.lastAiRunAt} < now() - interval '1 day')`,
-      ),
-    })
-    .returning({ id: projectSetupState.id });
-  if (won.length > 0) return { kind: "claimed", claimedAt, previous };
-  const [now] = await db
-    .select({ at: projectSetupState.lastAiRunAt })
-    .from(projectSetupState)
-    .where(and(eq(projectSetupState.organizationId, organizationId), eq(projectSetupState.projectId, projectId)))
-    .limit(1);
-  return { kind: "daily_limit", retryAt: new Date((now?.at ?? claimedAt).getTime() + AI_RUN_INTERVAL_MS) };
+  return db.transaction(async (tx) => {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`setup-ai-run:${projectId}`}))`);
+    const [before] = await tx
+      .select({ at: projectSetupState.lastAiRunAt })
+      .from(projectSetupState)
+      .where(and(eq(projectSetupState.organizationId, organizationId), eq(projectSetupState.projectId, projectId)))
+      .limit(1);
+    const previous = before?.at ?? null;
+    const claimedAt = new Date();
+    const won = await tx
+      .insert(projectSetupState)
+      .values({ organizationId, projectId, lastAiRunAt: claimedAt, updatedAt: NEVER_WRITTEN })
+      .onConflictDoUpdate({
+        target: projectSetupState.projectId,
+        set: { lastAiRunAt: claimedAt },
+        setWhere: and(
+          eq(projectSetupState.organizationId, organizationId),
+          sql`(${projectSetupState.lastAiRunAt} IS NULL OR ${projectSetupState.lastAiRunAt} < now() - interval '1 day')`,
+        ),
+      })
+      .returning({ id: projectSetupState.id });
+    if (won.length > 0) return { kind: "claimed" as const, claimedAt, previous };
+    return { kind: "daily_limit" as const, retryAt: new Date((previous ?? claimedAt).getTime() + AI_RUN_INTERVAL_MS) };
+  });
 }
 
 /** Restores the pre-claim value after a failed AI call, only if nobody re-claimed since. */
@@ -317,14 +319,20 @@ export async function releaseAiRun(organizationId: string, projectId: string, cl
     );
 }
 
-/** Stores the sanitized last scan summary. Leaves updated_at alone: that is the draft's version, not the scan's. */
-export async function saveScanResult(organizationId: string, projectId: string, scanResult: Record<string, unknown>): Promise<void> {
+/**
+ * Stores the sanitized last scan summary. Leaves updated_at alone: that is the draft's version, not the scan's.
+ * `scannedAt` orders scans: a read of an older scan never replaces a newer stored one.
+ */
+export async function saveScanResult(organizationId: string, projectId: string, scanResult: Record<string, unknown>, scannedAt: number): Promise<void> {
   await db
     .insert(projectSetupState)
-    .values({ organizationId, projectId, scanResult, updatedAt: NEVER_WRITTEN })
+    .values({ organizationId, projectId, scanResult: { ...scanResult, scannedAt }, updatedAt: NEVER_WRITTEN })
     .onConflictDoUpdate({
       target: projectSetupState.projectId,
-      set: { scanResult },
-      setWhere: eq(projectSetupState.organizationId, organizationId),
+      set: { scanResult: { ...scanResult, scannedAt } },
+      setWhere: and(
+        eq(projectSetupState.organizationId, organizationId),
+        sql`(${projectSetupState.scanResult}->>'scannedAt' IS NULL OR (${projectSetupState.scanResult}->>'scannedAt')::numeric <= ${scannedAt})`,
+      ),
     });
 }

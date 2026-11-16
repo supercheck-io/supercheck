@@ -67,11 +67,14 @@ export function TestsStep({ response, features, permissions, draft, patchDraft, 
     try {
       const res = await postJson<{ requirements?: Suggestion[]; code?: string; retryAt?: string }>(`/api/projects/${response.projectId}/setup/suggest-requirements`, {});
       if (res.ok && res.data.requirements) {
+        // One bounded set for display and for the draft: ticked ones stay, then the newest run, then older unticked ones.
+        const tickedTitles = new Set(ticked.map((r) => r.title));
         const known = new Set(options.map((o) => o.title));
-        const next = [...options, ...res.data.requirements.filter((r) => !known.has(r.title))];
+        const fresh = res.data.requirements.filter((r) => !known.has(r.title));
+        const next = [...options.filter((o) => tickedTitles.has(o.title)), ...fresh, ...options.filter((o) => !tickedTitles.has(o.title))].slice(0, 10);
         setOptions(next);
         const priorities = ["low", "medium", "high"];
-        const suggestions = next.slice(0, 10).map(({ title, description, priority }) => ({
+        const suggestions = next.map(({ title, description, priority }) => ({
           title: title.slice(0, 500),
           ...(description ? { description: description.slice(0, 2000) } : {}),
           ...(priority && priorities.includes(priority) ? { priority: priority as "low" | "medium" | "high" } : {}),

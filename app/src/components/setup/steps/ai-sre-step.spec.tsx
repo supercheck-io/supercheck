@@ -35,6 +35,26 @@ const open = (name: RegExp) => fireEvent.click(screen.getByRole("button", { name
 const type = (label: string, value: string) => fireEvent.change(screen.getByLabelText(label), { target: { value } });
 
 describe("AiSreStep", () => {
+  it("a slow save keeps ids added meanwhile and does not close the form opened after it", async () => {
+    let finish: (v: unknown) => void = () => {};
+    mockCreate.mockReturnValue(new Promise((resolve) => { finish = resolve; }));
+    mockValidate.mockResolvedValue({ success: true, connector: { lastValidationStatus: "valid" } });
+    const OTHER = "00000000-0000-4000-8000-0000000000c2";
+    const d = drafting({ aiSre: { connectorIds: [OTHER], services: [] } });
+    render(<AiSreStep {...makeStepProps({ ...admin(), patchDraft: d.patchDraft, draft: d.get() })} />);
+    open(/GitHub/);
+    type("Access token", "ghp_x");
+    fireEvent.click(screen.getByRole("button", { name: "Save and test" }));
+    await waitFor(() => expect(mockCreate).toHaveBeenCalled());
+    open(/Sentry/);
+    // Another connector lands in the draft while the first save is still running.
+    d.patchDraft((x) => ({ ...x, aiSre: { services: [], ...x.aiSre, connectorIds: [OTHER, "00000000-0000-4000-8000-0000000000c3"] } }));
+    finish({ success: true, connector: { id: CID } });
+    await waitFor(() => expect(d.get().aiSre?.connectorIds).toContain(CID));
+    expect(d.get().aiSre?.connectorIds).toEqual([OTHER, "00000000-0000-4000-8000-0000000000c3", CID]);
+    expect(screen.getByTestId("setup-connector-form-sentry")).toBeTruthy();
+  });
+
   it("shows Ask a project admin without sre_connector:configure", () => {
     render(<AiSreStep {...makeStepProps()} />);
     expect(screen.getByText(/Ask a project admin/)).toBeTruthy();

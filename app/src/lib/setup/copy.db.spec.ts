@@ -15,7 +15,7 @@ jest.mock("@/utils/db", () => ({ get db() { return mockDatabase; } }));
 
 jest.mock("@/lib/middleware/plan-enforcement", () => ({ countPlanMonitors: jest.fn(), checkMonitorLimit: jest.fn() }));
 
-import { claimAiRun, releaseAiRun } from "./setup-state";
+import { claimAiRun, releaseAiRun, saveScanResult } from "./setup-state";
 import { copyConnectors, copyProviders } from "./copy";
 import { decryptNotificationProviderConfig, encryptNotificationProviderConfig } from "@/lib/notification-providers/crypto";
 import { decryptConnectorCredential, encryptConnectorCredential } from "@/lib/sre/connectors/credential-vault";
@@ -106,6 +106,12 @@ describe("copyProviders", () => {
     expect(res).toMatchObject({ status: "adopted", id: existing.id });
     expect(await mockDatabase.select().from(schema.notificationProviders).where(eq(schema.notificationProviders.projectId, projTgt))).toHaveLength(1);
   });
+  it("concurrent copies of the same provider create one row", async () => {
+    const src = await seedProvider(orgA, projSrc, "Slack ops");
+    const results = await Promise.all([copyProviders(scope, [src.id]), copyProviders(scope, [src.id]), copyProviders(scope, [src.id])]);
+    expect(results.flat().map((r) => r.status).sort()).toEqual(["adopted", "adopted", "copied"]);
+    expect(await mockDatabase.select().from(schema.notificationProviders).where(eq(schema.notificationProviders.projectId, projTgt))).toHaveLength(1);
+  });
   it("fails for a source in another org or another project, without copying", async () => {
     const foreign = await seedProvider(orgB, projOther, "Foreign");
     const wrongProject = await seedProvider(orgA, projTgt, "Not in source");
@@ -141,6 +147,12 @@ describe("copyConnectors", () => {
     expect(cred.encryptionKeyContext).toBe(`sre_connector:${orgA}:${projTgt}:${res.id}`);
     const [row] = await mockDatabase.select().from(schema.externalConnectors).where(eq(schema.externalConnectors.id, res.id!));
     expect(row).toMatchObject({ projectId: projTgt, permissionLevel: "read", sideEffectLevel: "none", status: "configured" });
+  });
+  it("concurrent copies of the same connector create one row", async () => {
+    const src = await seedConnector(orgA, projSrc, "Prom");
+    const results = await Promise.all([copyConnectors(scope, [src]), copyConnectors(scope, [src])]);
+    expect(results.flat().map((r) => r.status).sort()).toEqual(["adopted", "copied"]);
+    expect(await mockDatabase.select().from(schema.externalConnectors).where(eq(schema.externalConnectors.projectId, projTgt))).toHaveLength(1);
   });
   it("adopts a same type+name connector", async () => {
     const src = await seedConnector(orgA, projSrc, "Prom");
@@ -205,6 +217,15 @@ describe("AI daily claim", () => {
     const [row] = await client`SELECT last_ai_run_at FROM project_setup_state WHERE project_id = ${projSrc}`;
     expect(new Date(row.last_ai_run_at).getTime()).toBe(old.getTime());
     expect((await claimAiRun(orgA, projSrc)).kind).toBe("claimed");
+  });
+  it("an older scan never replaces a newer stored summary", async () => {
+    const result = (finalUrl: string) => ({ finalUrl, reachable: true, pages: [] });
+    const stored = async () => (await client`SELECT scan_result FROM project_setup_state WHERE project_id = ${projSrc}`)[0].scan_result.finalUrl;
+    await saveScanResult(orgA, projSrc, result("https://b.test/"), 200);
+    await saveScanResult(orgA, projSrc, result("https://a.test/"), 100);
+    expect(await stored()).toBe("https://b.test/");
+    await saveScanResult(orgA, projSrc, result("https://c.test/"), 300);
+    expect(await stored()).toBe("https://c.test/");
   });
   it("a claim from another org cannot take the slot", async () => {
     await client`INSERT INTO project_setup_state (id, organization_id, project_id) VALUES (${uuidv7()}, ${orgA}, ${projSrc})`;

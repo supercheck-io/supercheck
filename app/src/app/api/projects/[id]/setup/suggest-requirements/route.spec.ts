@@ -187,7 +187,16 @@ describe("generation", () => {
     expect(releaseAiRun).not.toHaveBeenCalled();
     expect(logAuditEvent).not.toHaveBeenCalled();
   });
-  it("502, refund and release when the provider throws", async () => {
+  it("drops suggestions whose title is empty after sanitizing", async () => {
+(generateText as jest.Mock).mockResolvedValue({
+text: JSON.stringify({ requirements: [{ title: "   ", description: "x", priority: "low" }, { title: "Pay an invoice", description: "y", priority: "high" }] }),
+usage: {},
+});
+const res = await POST(req(), params);
+expect(res.status).toBe(200);
+expect((await res.json()).requirements).toEqual([{ title: "Pay an invoice", description: "y", priority: "high" }]);
+});
+it("502, refund and release when the provider throws", async () => {
     (generateText as jest.Mock).mockRejectedValue(new Error("provider down"));
     expect((await POST(req(), params)).status).toBe(502);
     expect(refund).toHaveBeenCalled();

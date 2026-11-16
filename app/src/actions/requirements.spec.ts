@@ -175,6 +175,10 @@ describe("Requirements Server Actions", () => {
     });
 
     describe("findRequirementsForSetup", () => {
+      it("refuses a lookup when the active project is not the expected setup project", async () => {
+        await expect(findRequirementsForSetup({ ids: [], titles: ["a"] }, "other-project")).rejects.toThrow();
+        expect(mockDb.select).not.toHaveBeenCalled();
+      });
       it("requires view permission", async () => {
         mockCheckPermissionWithContext.mockReturnValue(false);
         await expect(findRequirementsForSetup({ ids: [], titles: ["a"] })).rejects.toThrow("Insufficient permissions to view requirements");
@@ -200,6 +204,11 @@ describe("Requirements Server Actions", () => {
     });
 
     describe("createRequirement", () => {
+      it("refuses a write when the active project is not the expected setup project", async () => {
+        const result = await createRequirement({ title: "T", priority: "medium" } as never, "other-project");
+        expect(result).toMatchObject({ success: false });
+        expect(mockDb.insert).not.toHaveBeenCalled();
+      });
       it("should require create permission", async () => {
         mockCheckPermissionWithContext.mockReturnValue(false);
 

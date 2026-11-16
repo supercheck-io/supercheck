@@ -496,6 +496,15 @@ describe("scan in the app and monitors steps", () => {
     expect(screen.getByLabelText("Endpoint URL")).toHaveValue("https://www.example.com/v1/chat/completions");
   });
 
+  it("does not suggest an AI endpoint from a models path or a failed request", () => {
+    const only = (page: { path: string; status: number }) => ({ ...withScan, pages: [{ ...page, ms: 1, title: null }] });
+    for (const page of [{ path: "/v1/models", status: 200 }, { path: "/v1/chat/completions", status: 0 }]) {
+      const view = render(<MonitorsStep {...makeStepProps({ scan: only(page), draft: { app: { url: "https://app.example.com/" } } })} />);
+      expect(screen.queryByTestId("setup-card-ai-endpoint")?.textContent ?? "").not.toContain("found an OpenAI-compatible path");
+      view.unmount();
+    }
+  });
+
   it("leaves the AI endpoint card closed without such a path", () => {
     render(<MonitorsStep {...makeStepProps({ scan: withScan, draft: { app: { url: "https://app.example.com/" } } })} />);
     expect(screen.queryByLabelText("Endpoint URL")).toBeNull();

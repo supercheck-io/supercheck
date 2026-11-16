@@ -172,10 +172,10 @@ describe("GET setup/scan", () => {
 
   it("stores the sanitized summary in the project's setup state when done", async () => {
     const result = { finalUrl: "https://x.test/", reachable: true, pages: [] };
-    (readScan as jest.Mock).mockResolvedValue({ status: "done", result });
+    (readScan as jest.Mock).mockResolvedValue({ status: "done", result, scannedAt: 1234 });
     const res = await GET(get(SCAN_ID), params());
-    expect(await res.json()).toEqual({ status: "done", result });
-    expect(saveScanResult).toHaveBeenCalledWith(ORG, PROJECT, result);
+    expect(await res.json()).toEqual({ status: "done", result, scannedAt: 1234 });
+    expect(saveScanResult).toHaveBeenCalledWith(ORG, PROJECT, result, 1234);
   });
 
   it("does not store a failed scan, or one read by a viewer", async () => {

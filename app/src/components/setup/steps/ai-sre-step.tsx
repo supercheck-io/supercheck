@@ -143,7 +143,9 @@ export function AiSreStep({ response, permissions, draft, patchDraft, readOnly }
     return <Alert variant="info">Ask a project admin. Only project admins can connect tools for AI SRE.</Alert>;
   }
 
-  const addIds = (ids: string[]) => setAiSre({ connectorIds: [...new Set([...connectorIds, ...ids])].slice(0, 20) });
+  // Merged inside patchDraft so a delayed callback never overwrites ids added since it started.
+  const addIds = (ids: string[]) =>
+    patchDraft((d) => ({ ...d, aiSre: { services: [], ...d.aiSre, connectorIds: [...new Set([...(d.aiSre?.connectorIds ?? []), ...ids])].slice(0, 20) } }));
   const earlier = connectorIds.length - outcomes.length;
 
   return (
@@ -196,9 +198,11 @@ export function AiSreStep({ response, permissions, draft, patchDraft, readOnly }
               def={CONNECTORS.find((c) => c.type === open)!}
               projectId={response.projectId}
               onSaved={(id, outcome) => {
-                setOutcomes((list) => [...list, { type: open, outcome }]);
+                const savedType = open;
+                setOutcomes((list) => [...list, { type: savedType, outcome }]);
                 addIds([id]);
-                setOpen(null);
+                // A save that finishes after the user opened another form must not close that one.
+                setOpen((current) => (current === savedType ? null : current));
               }}
             />
           ) : null}

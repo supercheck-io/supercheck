@@ -79,6 +79,31 @@ describe("scan polling", () => {
     expect(fetchMock.mock.calls.length).toBe(before);
   });
 
+  it("enforces the cap while a request hangs, and aborts it", async () => {
+    let signal: AbortSignal | undefined;
+    fetchMock.mockImplementation((_u: string, init?: { signal?: AbortSignal }) => {
+      signal = init?.signal;
+      return new Promise(() => {});
+    });
+    setup();
+    await click();
+    await flush(SCAN_MAX_MS - 1);
+    expect(screen.getByText("Scanning...")).toBeTruthy();
+    await flush(1);
+    expect(screen.getByText(/took too long/)).toBeTruthy();
+    expect(signal?.aborted).toBe(true);
+  });
+
+  it("keeps a finished scan visible when the site redirects to another domain", async () => {
+    fetchMock.mockImplementation((_u: string, init?: { method?: string }) =>
+      init?.method === "POST" ? json({ scanId: "s" }, 202) : json({ status: "done", result: result({ finalUrl: "https://other.example.net/" }) }),
+    );
+    setup();
+    await click();
+    await flush(SCAN_POLL_MS);
+    screen.getByTestId("setup-scan-findings");
+  });
+
   it("stops polling on unmount", async () => {
     fetchMock.mockImplementation((_u: string, init?: { method?: string }) => (init?.method === "POST" ? json({ scanId: "s" }, 202) : json({ status: "running" })));
     const { unmount } = setup();

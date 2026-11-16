@@ -17,7 +17,7 @@ export const SCAN_MAX_MS = 300_000;
 export type ScanPhase =
   | { kind: "idle" }
   | { kind: "scanning" }
-  | { kind: "done"; result: ScanSummary }
+  | { kind: "done"; result: ScanSummary; url?: string }
   | { kind: "error"; message: string };
 
 const SCAN_ERRORS: Record<NonNullable<ScanSummary["error"]> | "timeout" | "unavailable" | "failed", string> = {
@@ -36,27 +36,48 @@ export function useScan(projectId: string, onResult: (result: ScanSummary) => vo
   const [phase, setPhase] = useState<ScanPhase>({ kind: "idle" });
   const alive = useRef(true);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const deadline = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const controller = useRef<AbortController | null>(null);
   const run = useRef(0);
+
+  const stopRun = useCallback(() => {
+    if (timer.current) clearTimeout(timer.current);
+    if (deadline.current) clearTimeout(deadline.current);
+    controller.current?.abort();
+  }, []);
 
   useEffect(() => {
     alive.current = true;
     return () => {
       alive.current = false;
-      if (timer.current) clearTimeout(timer.current);
+      stopRun();
     };
-  }, []);
+  }, [stopRun]);
 
   const start = useCallback(
     async (url: string) => {
       const id = ++run.current;
       const current = () => alive.current && run.current === id;
-      if (timer.current) clearTimeout(timer.current);
+      stopRun();
+      const abort = new AbortController();
+      controller.current = abort;
+      // Independent of the requests, so a hung POST or poll cannot keep the panel scanning past the cap.
+      deadline.current = setTimeout(() => {
+        if (!current()) return;
+        run.current++;
+        abort.abort();
+        setPhase({ kind: "error", message: SCAN_ERRORS.timeout });
+      }, SCAN_MAX_MS);
       setPhase({ kind: "scanning" });
-      const fail = (message: string) => current() && setPhase({ kind: "error", message });
+      const fail = (message: string) => {
+        if (!current()) return;
+        stopRun();
+        setPhase({ kind: "error", message });
+      };
       const base = `/api/projects/${projectId}/setup/scan`;
       let res;
       try {
-        res = await postJson<{ scanId?: string; details?: unknown }>(base, { url });
+        res = await postJson<{ scanId?: string; details?: unknown }>(base, { url }, undefined, abort.signal);
       } catch {
         return fail(SCAN_ERRORS.unavailable);
       }
@@ -68,14 +89,12 @@ export function useScan(projectId: string, onResult: (result: ScanSummary) => vo
         if (res.status === 400 && res.data.details) return fail(SCAN_ERRORS.blocked_private);
         return fail(responseError(res.data, SCAN_ERRORS.failed));
       }
-      const startedAt = Date.now();
       const poll = async () => {
         if (!current()) return;
-        if (Date.now() - startedAt >= SCAN_MAX_MS) return fail(SCAN_ERRORS.timeout);
         let body: { status?: string; result?: ScanSummary } = {};
         let ok = false;
         try {
-          const polled = await fetchJson(`${base}?scanId=${encodeURIComponent(scanId)}`);
+          const polled = await fetchJson(`${base}?scanId=${encodeURIComponent(scanId)}`, { signal: abort.signal });
           ok = polled.ok;
           body = polled.data as typeof body;
         } catch {
@@ -84,7 +103,8 @@ export function useScan(projectId: string, onResult: (result: ScanSummary) => vo
         if (!current()) return;
         if (!ok) return fail(SCAN_ERRORS.unavailable);
         if (body.status === "done" && body.result) {
-          setPhase({ kind: "done", result: body.result });
+          stopRun();
+          setPhase({ kind: "done", result: body.result, url });
           onResult(body.result);
           return;
         }
@@ -94,7 +114,7 @@ export function useScan(projectId: string, onResult: (result: ScanSummary) => vo
       };
       timer.current = setTimeout(poll, SCAN_POLL_MS);
     },
-    [projectId, onResult],
+    [projectId, onResult, stopRun],
   );
 
   return { phase, start };
@@ -176,8 +196,10 @@ export function ScanFindings({ result }: { result: ScanSummary }) {
 export function ScanPanel({ projectId, url, disabled, onResult, initial }: { projectId: string; url: string | null; disabled: boolean; onResult: (result: ScanSummary) => void; initial: ScanSummary | null }) {
   const { phase, start } = useScan(projectId, onResult);
   const current: ScanPhase = phase.kind === "idle" && initial ? { kind: "done", result: initial } : phase;
-  // A finished scan belongs to the address it ran against; hide it once the URL points elsewhere.
-  const shown: ScanPhase = current.kind === "done" && !scanMatchesUrl(current.result, url) ? { kind: "idle" } : current;
+  // A finished scan belongs to the address it ran against; hide it once the URL points elsewhere. A run is compared
+  // with the URL it was submitted for (a redirect to another domain changes finalUrl); a stored scan, by its final host.
+  const matches = current.kind === "done" && (current.url !== undefined ? current.url === url : scanMatchesUrl(current.result, url));
+  const shown: ScanPhase = current.kind === "done" && !matches ? { kind: "idle" } : current;
   const scanning = phase.kind === "scanning";
   return (
     <section aria-labelledby="setup-scan" className="space-y-3" data-testid="setup-scan">

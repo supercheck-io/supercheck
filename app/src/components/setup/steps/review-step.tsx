@@ -97,13 +97,13 @@ export function ReviewStep({ response, features, permissions, draft, skipped, re
       createComponent({ ...data, status: "operational", showcase: true, onlyShowIfDegraded: false, position: 0, aggregationMethod: "worst_case", failureThreshold: 1 }),
     getPolicy: (projectId) => getProjectNotificationPolicy(projectId),
     savePolicy: (projectId, input) => saveProjectNotificationPolicy(projectId, input as Parameters<typeof saveProjectNotificationPolicy>[1]),
-    findRequirements: (query) => findRequirementsForSetup(query),
-    createRequirement: (data) => createRequirement(data),
+    findRequirements: (query) => findRequirementsForSetup(query, response.projectId),
+    createRequirement: (data) => createRequirement(data, response.projectId),
     getServices: async () => {
       const res = await getSreServices();
       return { success: res.success, services: res.services.map((x) => ({ id: x.id, name: x.name })) };
     },
-    createService: (data) => createSreService(data as Parameters<typeof createSreService>[0]) as ReturnType<RunnerDeps["createService"]>,
+    createService: (data) => createSreService(data as Parameters<typeof createSreService>[0], response.projectId) as ReturnType<RunnerDeps["createService"]>,
     recordCreated,
     getCreated,
   };

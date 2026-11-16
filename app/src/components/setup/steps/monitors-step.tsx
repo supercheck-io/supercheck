@@ -93,8 +93,8 @@ function Field({ id, label, help, error, ...props }: { id: string; label: string
   );
 }
 
-/** A path the scan found that looks like an OpenAI-compatible API. */
-const AI_PATH = /^\/v1\/(chat\/completions|models)\/?$/;
+/** A path the scan found that accepts the streamed chat-completions request the AI check sends. */
+const AI_PATH = /^\/v1\/chat\/completions\/?$/;
 
 export function MonitorsStep({ response, draft, patchDraft, features, readOnly, scan: storedScan }: StepProps) {
   const appUrl = draft.app?.url;
@@ -139,7 +139,7 @@ export function MonitorsStep({ response, draft, patchDraft, features, readOnly, 
   const scanned = (appUrl && scan ? scan.pages.filter((p) => p.status >= 200 && p.status < 400 && p.path !== "/").slice(0, 10) : [])
     .map((p) => (scan ? pageFor(scan.finalUrl, p.path) : null))
     .filter((page): page is Page => page !== null);
-  const aiPath = scan ? scan.pages.find((p) => AI_PATH.test(p.path)) : undefined;
+  const aiPath = scan ? scan.pages.find((p) => p.status !== 0 && AI_PATH.test(p.path)) : undefined;
   const known = new Set([home?.url, ...scanned.map((page) => page.url)]);
   const extras = monitors.pages.filter((page) => !known.has(page.url));
   const suggestions = [...(home ? [home] : []), ...scanned, ...extras];
