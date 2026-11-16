@@ -18,7 +18,7 @@ import {
   useChatRuntime,
 } from "@assistant-ui/react-ai-sdk";
 import {
-  Bot,
+  Sparkles,
   ChevronDown,
   Loader2,
   PencilLine,
@@ -254,7 +254,7 @@ function AssistantMessage() {
       aria-label="Copilot message"
     >
       <div aria-hidden="true" className={ASSISTANT_AVATAR}>
-        <Bot className="h-4 w-4" />
+        <Sparkles className="h-4 w-4" />
       </div>
       <div className="min-w-0 flex-1 rounded-2xl border bg-background px-4 py-3 text-sm leading-6 shadow-sm">
         <div className="mb-2 flex flex-wrap items-center gap-2">
@@ -343,7 +343,7 @@ function AssistantThinking() {
         className="mx-auto flex w-full max-w-4xl gap-3"
       >
         <div aria-hidden="true" className={ASSISTANT_AVATAR}>
-          <Bot className="h-4 w-4" />
+          <Sparkles className="h-4 w-4" />
         </div>
         <div className="flex-1 rounded-2xl border border-dashed bg-muted/30 px-4 py-3 text-sm leading-6">
           <div className="flex flex-wrap items-center gap-2">
@@ -374,7 +374,7 @@ function EmptyThread({
       <div className="flex w-full min-w-0 flex-col">
         <div className="mx-auto flex w-full min-h-[inherit] max-w-2xl flex-col justify-center p-3">
           <DashboardEmptyState
-            icon={<IconTile icon={Bot} tone="violet" className="size-14 rounded-xl [&_svg]:size-7" />}
+            icon={<IconTile icon={Sparkles} tone="violet" className="size-14 rounded-xl [&_svg]:size-7" />}
             title={
               incidentId
                 ? "Ask about this incident"

@@ -38,8 +38,8 @@ export function buildSummary(
       ? 1
       : 0;
   const repeatFailures = repeats.flatMap((r) => r.failures);
-  const costs = state.sends.flatMap((s) =>
-    s.cost === undefined ? [] : [s.cost],
+  const costs = [...state.sends.map((s) => s.cost), state.judgeCost].filter(
+    (c): c is number => c !== undefined,
   );
   const durations = state.sends.map((s) => s.durationMs);
   return {

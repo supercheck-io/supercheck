@@ -98,6 +98,62 @@ describe('agent.repeat', () => {
     await jest.advanceTimersByTimeAsync(1);
   });
 
+  it('stops an attempt cut by the budget from sending again, so no call is billed after the repeat', async () => {
+    jest.useFakeTimers();
+    const state = newState();
+    const agent = createAgent(state);
+    // Port 9 refuses connections: a send that reached fetch would fail with a different error.
+    const bot = agent.connect({
+      kind: 'http',
+      url: 'http://127.0.0.1:9',
+      body: (m) => ({ m }),
+      reply: 'text',
+    });
+    let late!: Promise<unknown>;
+    const done = agent.repeat(1, async () => {
+      await new Promise((r) => setTimeout(r, 250_000));
+      late = bot.send('too late');
+      await late;
+    });
+    await jest.advanceTimersByTimeAsync(260_000);
+    expect((await done).failures).toEqual([
+      { attempt: 1, message: 'not finished: time budget used' },
+    ]);
+    await expect(late).rejects.toThrow('not sent: time budget used');
+    expect(state.sends).toEqual([
+      expect.objectContaining({
+        attempt: 1,
+        error: 'not sent: time budget used',
+      }),
+    ]);
+  });
+
+  it('also stops a nested attempt once its outer attempt ran out of budget', async () => {
+    jest.useFakeTimers();
+    const agent = createAgent(newState());
+    const bot = agent.connect({
+      kind: 'http',
+      url: 'http://127.0.0.1:9',
+      body: (m) => ({ m }),
+      reply: 'text',
+    });
+    let inner!: Promise<{ failures: { message: string }[] }>;
+    const done = agent.repeat(1, async () => {
+      await new Promise((r) => setTimeout(r, 150_000));
+      // The inner repeat gets a fresh 200 s budget, but its parent expires at 200 s.
+      inner = agent.repeat(1, async () => {
+        await new Promise((r) => setTimeout(r, 100_000));
+        await bot.send('nested');
+      });
+      await inner;
+    });
+    await jest.advanceTimersByTimeAsync(260_000);
+    await done;
+    expect((await inner).failures[0].message).toBe(
+      'not sent: time budget used',
+    );
+  });
+
   it('records partial counts before the repeat ends, so an aborted test still reports them', async () => {
     const state = newState();
     const agent = createAgent(state);
@@ -191,6 +247,27 @@ describe('agent.judge', () => {
     expect(state.judgeTokens).toBe(7);
     expect(state.sends).toEqual([]); // judge calls are not agent sends
     expect(state.secrets).toContain('judge-key');
+  });
+
+  it('adds a judge cost when the judge reports one', async () => {
+    const state = newState();
+    reply = (res) => {
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(
+        JSON.stringify({
+          choices: [{ message: { content: '{"pass": true}' } }],
+          usage: { total_tokens: 3, cost: 0.02 },
+        }),
+      );
+    };
+    const agent = createAgent(state);
+    await agent.judge('x', 'r', { url, model: 'j' });
+    await agent.judge('x', 'r', { url, model: 'j' });
+    expect(state.judgeCost).toBeCloseTo(0.04);
+    reply = answer('{"pass": true}');
+    const noCost = newState();
+    await createAgent(noCost).judge('x', 'r', { url, model: 'j' });
+    expect(noCost.judgeCost).toBeUndefined();
   });
 
   it('rejects a credential too short to redact, before any request', async () => {

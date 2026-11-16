@@ -25,6 +25,8 @@ export interface SentRecord {
 export interface AgentState {
   sends: SentRecord[];
   judgeTokens: number;
+  /** Set only when a judge reply reports a cost. */
+  judgeCost?: number;
   repeats: AgentRepeatResult[];
   /** Keys and header values seen by connect/judge; removed from the summary. */
   secrets: string[];
@@ -41,9 +43,18 @@ export const newState = (): AgentState => ({
 const message = (e: unknown) =>
   stripVTControlCharacters(e instanceof Error ? e.message : String(e));
 
+/** One repeat() attempt. `expired` turns true when the budget cut it short; a nested attempt sees its parent's. */
+interface Attempt {
+  n: number;
+  parent?: Attempt;
+  expired: boolean;
+}
+const isExpired = (a: Attempt | undefined): boolean =>
+  a !== undefined && (a.expired || isExpired(a.parent));
+
 export function createAgent(state: AgentState): Agent {
   // Concurrent attempts each see their own number, so a transcript line knows its attempt.
-  const attemptOf = new AsyncLocalStorage<number>();
+  const attemptOf = new AsyncLocalStorage<Attempt>();
 
   return {
     connect(options) {
@@ -52,8 +63,12 @@ export function createAgent(state: AgentState): Agent {
       const client = createClient(options);
       return {
         async send(prompt, sendOptions) {
-          const base = { attempt: attemptOf.getStore() ?? 0, prompt };
+          const current = attemptOf.getStore();
+          const base = { attempt: current?.n ?? 0, prompt };
           try {
+            // An attempt cut by the budget keeps running in the background; stop it calling (and billing) the agent.
+            if (isExpired(current))
+              throw new Error('not sent: time budget used');
             const r = await client.send(prompt, sendOptions);
             state.sends.push({
               ...base,
@@ -118,17 +133,22 @@ export function createAgent(state: AgentState): Agent {
             continue;
           }
           let timer: NodeJS.Timeout | undefined;
-          const attemptRun = attemptOf.run(attempt, async () => fn());
+          const ctx: Attempt = {
+            n: attempt,
+            parent: attemptOf.getStore(),
+            expired: false,
+          };
+          const attemptRun = attemptOf.run(ctx, async () => fn());
           // If the budget wins the race, the attempt keeps running; its late rejection must not escape.
           attemptRun.catch(() => undefined);
           try {
             await Promise.race([
               attemptRun,
               new Promise<never>((_, reject) => {
-                timer = setTimeout(
-                  () => reject(new Error('not finished: time budget used')),
-                  remaining,
-                );
+                timer = setTimeout(() => {
+                  ctx.expired = true;
+                  reject(new Error('not finished: time budget used'));
+                }, remaining);
                 // The budget only bounds attempts; it must never keep the process alive.
                 timer.unref();
               }),
@@ -159,6 +179,8 @@ export function createAgent(state: AgentState): Agent {
         { role: 'user', content: `Rubric:\n${rubric}\n\nText:\n${text}` },
       ]);
       state.judgeTokens += r.usage.totalTokens;
+      if (r.usage.cost !== undefined)
+        state.judgeCost = (state.judgeCost ?? 0) + r.usage.cost;
       const fail = (reason: string): AgentJudgeResult => ({
         pass: false,
         reason,

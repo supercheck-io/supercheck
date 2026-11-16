@@ -101,6 +101,16 @@ describe('buildSummary', () => {
     expect(failed).not.toHaveProperty('cost');
     expect(failed.transcript[0].reply).toBe('error: HTTP 500');
   });
+
+  it('adds the judge cost to the agent cost, and reports it alone when sends have none', () => {
+    expect(buildSummary('t', { ...base, judgeCost: 2 }, true).cost).toBe(17);
+    const judgeOnly = buildSummary(
+      't',
+      { ...newState(), judgeCost: 0.25 },
+      true,
+    );
+    expect(judgeOnly.cost).toBe(0.25);
+  });
 });
 
 describe('redactedJson (C6)', () => {
