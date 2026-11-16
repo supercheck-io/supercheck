@@ -16,7 +16,7 @@
       }
     ]
   },
-  "ignorePatterns": "**/node_modules/**\n**/dist/**\n**/.next/**\n**/out/**\n**/coverage/**\n**/graphify-out/**\nrecorder/playwright/**\n**/package-lock.json",
+  "ignorePatterns": "**/node_modules/**\n**/dist/**\n**/.next/**\n**/out/**\n**/coverage/**\n**/graphify-out/**\nrecorder/playwright/**\n**/package-lock.json\napp/src/db/migrations/meta/**",
   "autoReview": [
     "open"
   ],
