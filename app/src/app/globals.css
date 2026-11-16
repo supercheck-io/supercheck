@@ -43,7 +43,7 @@
   --failure-strong: oklch(0.505 0.213 27.518);
   /* Product areas (DESIGN.md): icon chips, eyebrows and active nav icons only, never status. 700 shades for AA text. */
   --automate: oklch(0.5 0.134 242.749);
-  --monitor: oklch(0.52 0.11 182);
+  --monitor: oklch(0.52 0.2 262);
   --respond: oklch(0.553 0.195 38.402);
   --communicate: oklch(0.511 0.262 276.966);
   --ai: oklch(0.541 0.281 293.009);
@@ -112,7 +112,7 @@
   --warning-strong: var(--warning);
   --failure-strong: var(--failure);
   --automate: oklch(0.746 0.16 232.661);
-  --monitor: oklch(0.76 0.13 178);
+  --monitor: oklch(0.72 0.17 258);
   --respond: oklch(0.75 0.183 55.934);
   --communicate: oklch(0.673 0.182 276.935);
   --ai: oklch(0.702 0.183 293.541);

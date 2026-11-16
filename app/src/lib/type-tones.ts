@@ -12,8 +12,8 @@ export type TypeTone = (typeof TYPE_TONES)[number];
 
 export const TYPE_TONE = {
   test: { browser: "sky", api: "teal", database: "cyan", custom: "blue", performance: "purple", agent: "purple" },
-  // Monitors never repeat a tone: one hue sweep, aqua to rose, in Create menu order, so the list reads as one family.
-  monitor: { http_request: "aqua", website: "cyan", ping_host: "sky", port_check: "blue", synthetic_test: "purple", mcp_server: "orchid", ai_endpoint: "fuchsia", heartbeat: "rose" },
+  // Monitors never repeat a tone, and none uses blue (the Monitors area colour).
+  monitor: { http_request: "aqua", website: "cyan", ping_host: "sky", port_check: "teal", synthetic_test: "purple", mcp_server: "orchid", ai_endpoint: "fuchsia", heartbeat: "rose" },
   // A job runs a test engine, so it shares the tone of that test type.
   job: { playwright: "sky", k6: "purple" },
   variable: { variable: "stone", secret: "violet", file: "indigo" },

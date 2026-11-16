@@ -71,7 +71,8 @@ export function heartbeatSummary(monitor: HeartbeatMonitorLike & { type: string 
     lastPingAt: state.lastPingAt ?? null,
     lastPingKind: state.lastPingKind ?? null,
     lastStartAt: state.lastStartAt ?? null,
-    nextExpectedAt: heartbeatNextExpectedAt(monitor)?.toISOString() ?? null,
+    // Never pinged stays pending and never alerts, so there is no deadline to report (anchor + interval would be a false "overdue").
+    nextExpectedAt: state.lastPingAt ? (heartbeatNextExpectedAt(monitor)?.toISOString() ?? null) : null,
     graceMinutes: heartbeatGraceMinutes(monitor),
   };
 }

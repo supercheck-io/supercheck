@@ -28,7 +28,7 @@ describe("HeartbeatPingHistory", () => {
     );
     const rows = screen.getAllByTestId("heartbeat-ping-row");
     expect(rows.map((r) => r.getAttribute("data-kind"))).toEqual(["ping", "fail", "missed"]);
-    expect(within(rows[0]).getByText("Ping")).toBeInTheDocument();
+    expect(within(rows[0]).getByText("OK")).toBeInTheDocument();
     expect(within(rows[0]).getByText("4 min 08 s")).toBeInTheDocument();
     expect(within(rows[0]).getByText("curl/8.7.1")).toBeInTheDocument();
     expect(within(rows[1]).getByText("Failed")).toBeInTheDocument();

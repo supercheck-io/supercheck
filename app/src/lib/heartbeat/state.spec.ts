@@ -83,5 +83,7 @@ describe("heartbeatSummary", () => {
       graceMinutes: 12,
     });
     expect(heartbeatSummary(monitor({ heartbeatState: null, createdAt: null }))).toMatchObject({ lastPingAt: null, lastPingKind: null, lastStartAt: null, nextExpectedAt: null });
+    // Never pinged but created earlier: anchor + interval would read as overdue, yet it stays pending
+    expect(heartbeatSummary(monitor({ status: "pending", heartbeatState: null, createdAt: "2026-01-01T08:00:00.000Z" }))).toMatchObject({ state: "pending", nextExpectedAt: null });
   });
 });

@@ -1,5 +1,6 @@
 "use client";
 
+import type * as React from "react";
 import { format } from "date-fns";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -20,7 +21,7 @@ export type HeartbeatResultRow = {
 type PingKind = "ping" | "fail" | "missed";
 
 const RESULT: Record<PingKind, { label: string; tone: TableBadgeTone }> = {
-  ping: { label: "Ping", tone: "success" },
+  ping: { label: "OK", tone: "success" },
   fail: { label: "Failed", tone: "danger" },
   missed: { label: "Missed", tone: "danger" },
 };
@@ -43,6 +44,8 @@ interface HeartbeatPingHistoryProps {
   totalPages: number;
   total: number;
   onPageChange: (page: number) => void;
+  /** Ref of the <tbody>, so the page size can fit the viewport (useFitPageSize). */
+  bodyRef?: React.Ref<HTMLTableSectionElement>;
 }
 
 export function HeartbeatPingHistory({
@@ -54,9 +57,10 @@ export function HeartbeatPingHistory({
   totalPages,
   total,
   onPageChange,
+  bodyRef,
 }: HeartbeatPingHistoryProps) {
   return (
-    <Card className="flex h-full flex-col shadow-sm" data-testid="heartbeat-ping-history">
+    <Card className="flex h-full min-h-0 flex-col overflow-hidden shadow-sm" data-testid="heartbeat-ping-history">
       <CardHeader className="flex-shrink-0">
         <CardTitle className="text-lg font-semibold">Ping history</CardTitle>
         {!error && results.length > 0 && (
@@ -65,7 +69,7 @@ export function HeartbeatPingHistory({
           </CardDescription>
         )}
       </CardHeader>
-      <CardContent className="flex flex-1 flex-col p-0">
+      <CardContent className="flex min-h-0 flex-1 flex-col p-0">
         {error ? (
           <Alert variant="error" className="mx-6 mb-6 w-auto">
             <AlertDescription className="flex flex-wrap items-center gap-2">
@@ -99,7 +103,7 @@ export function HeartbeatPingHistory({
                   <TableHead scope="col" className="px-4 text-xs font-medium text-muted-foreground whitespace-nowrap">Client</TableHead>
                 </TableRow>
               </TableHeader>
-              <TableBody>
+              <TableBody ref={bodyRef}>
                 {results.map((row) => {
                   const { kind, userAgent } = heartbeatResultKind(row);
                   const duration = formatRunDuration(row.responseTimeMs);
