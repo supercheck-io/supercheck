@@ -16,6 +16,10 @@ export const getProjectSetupSummaryQueryKey = (projectId: string | null | undefi
   [...getProjectSetupQueryKey(projectId), "summary"] as const;
 export const USER_PREFERENCES_QUERY_KEY = ["user-preferences"] as const;
 
+// Setup state and the persona flag decide where /setup sends the user. The saved query cache is written on a
+// throttle, so a reload right after a write restored the old value and bounced between /setup, /setup/welcome and "/".
+const MEMORY_ONLY = { persist: false } as const;
+
 async function readJson<T>(response: Response): Promise<T> {
   const body = await response.json().catch(() => ({}));
   if (!response.ok) {
@@ -61,6 +65,7 @@ export function useProjectSetup(projectId: string | null | undefined) {
     enabled: Boolean(projectId),
     staleTime: 30_000,
     retry: 1,
+    meta: MEMORY_ONLY,
   });
 }
 
@@ -72,6 +77,7 @@ export function useProjectSetupSummary(projectId: string | null | undefined) {
     enabled: Boolean(projectId),
     staleTime: 30_000,
     retry: 1,
+    meta: MEMORY_ONLY,
   });
 }
 
@@ -85,6 +91,7 @@ export function useUserPreferences() {
     queryFn: fetchUserPreferences,
     staleTime: 5 * 60_000,
     retry: 1,
+    meta: MEMORY_ONLY,
   });
 }
 

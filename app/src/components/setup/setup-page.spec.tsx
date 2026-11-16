@@ -39,7 +39,8 @@ const fetchMock = jest.fn(async (url: string, init?: { method?: string }) => {
   return reply(404, {});
 });
 
-const project = (role = "org_owner", id = PROJECT_ID) => ({ currentProject: { id, name: "Web App", userRole: role, organizationName: "Acme" }, switchProject, loading: false });
+const refreshProjects = jest.fn();
+const project = (role = "org_owner", id = PROJECT_ID) => ({ currentProject: { id, name: "Web App", userRole: role, organizationName: "Acme" }, switchProject, refreshProjects, loading: false });
 
 beforeEach(() => {
   search = "";
@@ -84,9 +85,21 @@ describe("SetupPage view selection", () => {
     await waitFor(() => expect(replace).toHaveBeenCalledWith("/setup/welcome"));
   });
 
+  it("asks for the project again while a fresh account has none yet", () => {
+    jest.useFakeTimers();
+    refreshProjects.mockClear();
+    useProjectContext.mockReturnValue({ currentProject: null, switchProject, refreshProjects, loading: false });
+    renderPage();
+    act(() => {
+      jest.advanceTimersByTime(4100);
+    });
+    expect(refreshProjects).toHaveBeenCalledTimes(2);
+    jest.useRealTimers();
+  });
+
   it("does not send a fresh creator to the member welcome while the project is still loading", async () => {
     prefsBody = { persona: null, seen: false };
-    useProjectContext.mockReturnValue({ currentProject: null, switchProject, loading: false });
+    useProjectContext.mockReturnValue({ currentProject: null, switchProject, refreshProjects, loading: false });
     const { rerender } = renderPage();
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/me/preferences", expect.anything()));
     await act(async () => undefined);
