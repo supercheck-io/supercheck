@@ -26,6 +26,7 @@ import {
   endMaintenanceWindow,
   extendMaintenanceWindow,
   getMaintenanceWindow,
+  linkStatusPagePost,
   listMaintenanceWindows,
   updateMaintenanceWindow,
 } from "./windows";
@@ -198,7 +199,7 @@ describe("window lifecycle (M10, AC12)", () => {
     expect(await extendMaintenanceWindow(actor, series.window.id, { byMinutes: toNextStart - 10 })).toMatchObject({ ok: true });
   });
 
-  it("links a published post and advances the window's version, so earlier reads cannot change the post", async () => {
+  it("publishes through create: links the post, advances the version, returns the stored window, refuses MCP", async () => {
     const [page] = await client`INSERT INTO status_pages (id, organization_id, project_id, name, subdomain) VALUES (uuidv7(), ${org}, ${project}, 'S5', ${`s${randomUUID().slice(0, 8)}`}) RETURNING id`;
     const [component] = await client`INSERT INTO status_page_components (id, status_page_id, name) VALUES (uuidv7(), ${page!.id}, 'C') RETURNING id`;
     const created = await createMaintenanceWindow(admin, oneOff(120, 60, { statusPages: [{ statusPageId: page!.id, componentIds: [component!.id] }] }), "api");
@@ -206,10 +207,32 @@ describe("window lifecycle (M10, AC12)", () => {
     expect(created).not.toHaveProperty("warning");
     const [row] = await client`SELECT created_at, updated_at FROM maintenance_windows WHERE id = ${created.window.id}`;
     expect(new Date(row!.updated_at).getTime()).toBeGreaterThan(new Date(row!.created_at).getTime());
+    expect(created.window.updatedAt.getTime()).toBe(new Date(row!.updated_at).getTime());
     const [linked] = await client`SELECT status FROM incidents WHERE maintenance_window_id = ${created.window.id}`;
     expect(linked!.status).toBe("scheduled");
     // MCP is refused for a window on a status page.
     expect(await cancelMaintenanceWindow(admin, created.window.id, "mcp")).toMatchObject({ ok: false, code: "conflict" });
+  });
+
+  it("an MCP cancel that read the window before its post was linked gets a conflict and leaves the post alone", async () => {
+    const created = await createMaintenanceWindow(admin, oneOff(120), "api");
+    if (!created.ok) throw new Error(created.error);
+    const [page] = await client`INSERT INTO status_pages (id, organization_id, project_id, name, subdomain) VALUES (uuidv7(), ${org}, ${project}, 'S6', ${`s${randomUUID().slice(0, 8)}`}) RETURNING id`;
+    const [post] = await client`INSERT INTO incidents (id, status_page_id, name, status, impact, scheduled_for, scheduled_until)
+      VALUES (uuidv7(), ${page!.id}, 'm', 'scheduled', 'minor', now() + interval '2 hours', now() + interval '3 hours') RETURNING id`;
+    let cancel: ReturnType<typeof cancelMaintenanceWindow> | undefined;
+    await mockDatabase.transaction(async (tx) => {
+      const occurrence = { startsAt: created.window.occurrenceStartsAt!, endsAt: created.window.occurrenceEndsAt! };
+      expect(await linkStatusPagePost(tx as never, created.window.id, post!.id, occurrence)).toBe(true);
+      // Not committed yet: the cancel reads the window as not on a status page, then waits on the row lock.
+      cancel = cancelMaintenanceWindow(admin, created.window.id, "mcp");
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    });
+    expect(await cancel).toMatchObject({ ok: false, code: "conflict" });
+    const [after] = await client`SELECT status, maintenance_window_id FROM incidents WHERE id = ${post!.id}`;
+    expect(after).toMatchObject({ status: "scheduled", maintenance_window_id: created.window.id });
+    const [window] = await client`SELECT cancelled_at FROM maintenance_windows WHERE id = ${created.window.id}`;
+    expect(window!.cancelled_at).toBeNull();
   });
 
   it("always moves the version forward, even when the stored one is not older than the clock", async () => {

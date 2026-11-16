@@ -288,29 +288,13 @@ export async function createMaintenanceWindow(
       warning = "status_page_failed";
       continue;
     }
-    // Someone may have cancelled, ended or rescheduled the window while the post was being created: link the
-    // post only to the window as it was published, under its row lock; otherwise take the stale post down.
-    const linked = await db.transaction(async (tx) => {
-      const [live] = await tx.select({ id: maintenanceWindows.id }).from(maintenanceWindows).where(and(
-        eq(maintenanceWindows.id, created.id),
-        isNull(maintenanceWindows.cancelledAt),
-        isNull(maintenanceWindows.completedAt),
-        eq(maintenanceWindows.occurrenceStartsAt, occurrence.startsAt),
-        eq(maintenanceWindows.occurrenceEndsAt, occurrence.endsAt),
-      )).for("update");
-      const now = new Date();
-      await tx.update(statusPageIncidents)
-        .set(live ? { maintenanceWindowId: created.id } : { maintenanceWindowId: created.id, status: "resolved", resolvedAt: now, updatedAt: now })
-        .where(eq(statusPageIncidents.id, posted.incident.id));
-      // Linking is a change to the window: a request that read it before (and checked it was not on a status
-      // page, as MCP does) now fails its updated_at guard instead of touching the public post.
-      if (live) await tx.update(maintenanceWindows).set({ updatedAt: nextVersion }).where(eq(maintenanceWindows.id, created.id));
-      return Boolean(live);
-    });
+    const linked = await db.transaction((tx) => linkStatusPagePost(tx, created.id, posted.incident.id, occurrence));
     if (!linked) warning = "status_page_failed";
   }
   await audit(actor, "maintenance_window_created", created.id, { source, scope: data.scope, recurrence: data.recurrence, targets: targets.length, statusPages: data.statusPages.length });
-  return { ok: true, window: (await toViews([created]))[0]!, ...(warning ? { warning } : {}) };
+  // Re-read: linking a post advances the version, and the response must carry the stored one.
+  const [stored] = data.statusPages.length ? await db.select().from(maintenanceWindows).where(eq(maintenanceWindows.id, created.id)).limit(1) : [created];
+  return { ok: true, window: (await toViews([stored ?? created]))[0]!, ...(warning ? { warning } : {}) };
 }
 
 async function loadForWrite(actor: StatusPageIncidentActor, id: string, permission: "update" | "delete", source: WindowSource) {
@@ -361,6 +345,33 @@ function unchanged(row: WindowRow) {
  * millisecond, so the updated_at guard in unchanged() always rejects a read taken before the write.
  */
 const nextVersion = sql`greatest(now(), date_trunc('milliseconds', ${maintenanceWindows.updatedAt}) + interval '1 millisecond')`;
+
+/**
+ * Links a just-created status-page post to its window, under the window's row lock. Someone may have cancelled,
+ * ended or rescheduled the window while the post was being created: then the stale post is taken down instead.
+ * Linking is a change to the window: a request that read it before (and checked it was not on a status page,
+ * as MCP does) fails its updated_at guard instead of touching the public post. Returns whether it linked.
+ */
+export async function linkStatusPagePost(
+  tx: Pick<typeof db, "select" | "update">,
+  windowId: string,
+  incidentId: string,
+  occurrence: Occurrence,
+): Promise<boolean> {
+  const [live] = await tx.select({ id: maintenanceWindows.id }).from(maintenanceWindows).where(and(
+    eq(maintenanceWindows.id, windowId),
+    isNull(maintenanceWindows.cancelledAt),
+    isNull(maintenanceWindows.completedAt),
+    eq(maintenanceWindows.occurrenceStartsAt, occurrence.startsAt),
+    eq(maintenanceWindows.occurrenceEndsAt, occurrence.endsAt),
+  )).for("update");
+  const now = new Date();
+  await tx.update(statusPageIncidents)
+    .set(live ? { maintenanceWindowId: windowId } : { maintenanceWindowId: windowId, status: "resolved", resolvedAt: now, updatedAt: now })
+    .where(eq(statusPageIncidents.id, incidentId));
+  if (live) await tx.update(maintenanceWindows).set({ updatedAt: nextVersion }).where(eq(maintenanceWindows.id, windowId));
+  return Boolean(live);
+}
 
 const CHANGED = { ok: false as const, code: "conflict" as const, error: "The window changed meanwhile. Reload and try again." };
 
@@ -574,11 +585,14 @@ export async function advanceMaintenanceWindows(now = new Date()): Promise<numbe
     isNull(maintenanceWindows.completedAt),
     or(lte(maintenanceWindows.occurrenceEndsAt, new Date(now.getTime() - ADVANCE_GRACE_MS)), isNull(maintenanceWindows.occurrenceEndsAt)),
   )).limit(500);
+  let advanced = 0;
   for (const row of due) {
     const next = row.recurrence === "once" ? null : nextOccurrence(scheduleOf(row), row.occurrenceEndsAt && row.occurrenceEndsAt > now ? row.occurrenceEndsAt : now, row.occurrenceStartsAt);
-    await db.update(maintenanceWindows).set(
+    const moved = await db.update(maintenanceWindows).set(
       next ? { occurrenceStartsAt: next.startsAt, occurrenceEndsAt: next.endsAt, updatedAt: nextVersion } : { completedAt: now, updatedAt: nextVersion },
-    ).where(unchanged(row));
+    ).where(unchanged(row)).returning({ id: maintenanceWindows.id });
+    // A window changed meanwhile (edited, ended, cancelled) is left as it is; only real moves count.
+    if (moved.length) advanced += 1;
   }
-  return due.length;
+  return advanced;
 }
