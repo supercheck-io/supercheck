@@ -541,7 +541,7 @@ jobs:
 
       - name: Test CI scripts
         id: scripts
-        run: node --test .github/scripts/pr-screenshots.test.mjs .github/scripts/jest-summary.test.mjs app/e2e/scripts/mock-ai.test.mjs
+        run: node --test .github/scripts/pr-screenshots.test.mjs .github/scripts/jest-summary.test.mjs app/e2e/scripts/mock-ai.test.mjs app/e2e/reporters/priority-skip-reporter.test.mjs
 
       - name: Validate Compose files and deploy scripts
         id: compose

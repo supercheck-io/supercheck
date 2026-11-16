@@ -18,3 +18,17 @@ it("a search from a later page shows its match instead of an empty page", async 
   expect(await screen.findByText("Project 03")).toBeTruthy();
   expect(screen.queryByText(/No matching projects/i)).toBeNull();
 });
+
+it("an open row menu survives a parent re-render with new handler functions", async () => {
+  const props = (edit: jest.Mock) => ({ projects: rows.slice(1, 2), onCreateProject: jest.fn(), canManageProject: true, onEditProject: (p: Project) => edit(p) });
+  const edit = jest.fn();
+  const { rerender } = render(<ProjectsTable {...props(edit)} />);
+  const trigger = await screen.findByRole("button", { name: /^Open actions for/ });
+  fireEvent.pointerDown(trigger, { button: 0, ctrlKey: false });
+  fireEvent.keyDown(trigger, { key: "Enter" });
+  expect(await screen.findByRole("menuitem", { name: "Edit project" })).toBeTruthy();
+  rerender(<ProjectsTable {...props(edit)} />); // a fresh lambda, as the org-admin page passes on every render
+  const item = screen.getByRole("menuitem", { name: "Edit project" });
+  fireEvent.click(item);
+  expect(edit).toHaveBeenCalledWith(expect.objectContaining({ id: "p1" }));
+});

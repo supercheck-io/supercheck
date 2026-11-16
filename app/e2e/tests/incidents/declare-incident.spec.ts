@@ -30,9 +30,9 @@ test.describe('Declare an incident @incidents', () => {
       page.on('console', (m) => { if (m.type() === 'error' || m.type() === 'warning') console.log('DIAG console', m.type(), m.text().slice(0, 300)); });
       page.on('framenavigated', (f) => { if (f === page.mainFrame()) console.log('DIAG nav', new URL(f.url()).pathname + new URL(f.url()).search); });
       await page.getByText('Declare incident', { exact: true }).click();
-      await page.waitForTimeout(10_000);
-      console.log('DIAG url after 10s', new URL(page.url()).pathname + new URL(page.url()).search);
-      await page.waitForURL(/\/incidents\?new=1/);
+      const t0 = Date.now();
+      console.log('DIAG clicked');
+      await page.waitForURL(/\/incidents\?new=1/).then(() => console.log('DIAG waitForURL ok', Date.now() - t0), (e) => { console.log('DIAG waitForURL timeout, url', new URL(page.url()).pathname); throw e; });
       const dialog = page.getByRole('dialog', { name: 'Declare incident' });
       await expect(dialog).toBeVisible();
       const title = `E2E declared ${Date.now()}`;
