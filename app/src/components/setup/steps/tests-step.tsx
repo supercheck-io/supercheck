@@ -13,7 +13,7 @@ import { postJson, responseError, type StepProps } from "./step-types";
 interface Suggestion {
   title: string;
   description: string;
-  priority?: string;
+  priority?: "low" | "medium" | "high";
 }
 
 type Failure = { kind: "locked" | "unavailable" | "error"; message: string };
@@ -48,7 +48,7 @@ export function TestsStep({ response, features, permissions, draft, patchDraft, 
   const [options, setOptions] = useState<Suggestion[]>(() => {
     const saved: Suggestion[] = (draft.tests?.suggestions ?? []).map((s) => ({ ...s, description: s.description ?? "" }));
     const known = new Set(saved.map((s) => s.title));
-    return [...saved, ...ticked.filter((r) => !known.has(r.title)).map((r) => ({ title: r.title, description: r.description ?? "" }))];
+    return [...saved, ...ticked.filter((r) => !known.has(r.title)).map((r) => ({ title: r.title, description: r.description ?? "", priority: r.priority }))];
   });
   const [loading, setLoading] = useState(false);
   const [failure, setFailure] = useState<Failure | null>(null);
@@ -57,8 +57,8 @@ export function TestsStep({ response, features, permissions, draft, patchDraft, 
   const locked = response.aiTestsLocked || failure?.kind === "locked";
 
   const setTicked = (next: Suggestion[]) =>
-    patchDraft((d) => ({ ...d, tests: { ...d.tests, requirements: next.map(({ title, description }) => ({ title, ...(description ? { description } : {}) })) } }));
-  const current: Suggestion[] = ticked.map((r) => ({ title: r.title, description: r.description ?? "" }));
+    patchDraft((d) => ({ ...d, tests: { ...d.tests, requirements: next.map(({ title, description, priority }) => ({ title, ...(description ? { description } : {}), ...(priority ? { priority } : {}) })) } }));
+  const current: Suggestion[] = ticked.map((r) => ({ title: r.title, description: r.description ?? "", priority: r.priority }));
   const toggle = (item: Suggestion, on: boolean) => setTicked(on ? [...current, item] : current.filter((r) => r.title !== item.title));
 
   const suggest = async () => {

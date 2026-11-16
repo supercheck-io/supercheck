@@ -15,12 +15,12 @@ export async function getSreConnectorSetupOptions() {
   return service.getSreConnectorSetupOptions();
 }
 
-export async function createSreConnector(input: Parameters<typeof service.createSreConnector>[0]) {
-  return service.createSreConnector(input);
+export async function createSreConnector(input: Parameters<typeof service.createSreConnector>[0], expectedProjectId?: string) {
+  return service.createSreConnector(input, expectedProjectId);
 }
 
-export async function validateSreConnector(input: Parameters<typeof service.validateSreConnector>[0]) {
-  return service.validateSreConnector(input);
+export async function validateSreConnector(input: Parameters<typeof service.validateSreConnector>[0], expectedProjectId?: string) {
+  return service.validateSreConnector(input, expectedProjectId);
 }
 
 export async function rotateSreConnectorCredential(input: Parameters<typeof service.rotateSreConnectorCredential>[0]) {

@@ -39,7 +39,7 @@ jest.mock("@/utils/db", () => {
   };
 });
 
-import { validateSreConnector } from "./sre-connectors";
+import { createSreConnector, validateSreConnector } from "./sre-connectors";
 
 describe("validateSreConnector with a row of a removed type", () => {
   it("blocks it without sending a request", async () => {
@@ -99,5 +99,21 @@ describe("validateSreConnector DNS failures", () => {
     await validateSreConnector({ id: "018f0000-0000-7000-8000-000000000004" });
     const persisted = mockSet.mock.calls.find(([v]) => v.lastValidationStatus)?.[0];
     expect(persisted).toMatchObject({ lastValidationStatus: "unreachable", lastValidationError: "Could not resolve host nope.example.com" });
+  });
+});
+
+describe("expectedProjectId guard", () => {
+  it("refuses validate and create for another project before any lookup or write", async () => {
+    mockFindConnector.mockClear();
+    mockSet.mockClear();
+    const v = await validateSreConnector({ id: "018f0000-0000-7000-8000-000000000004" }, "other-project");
+    expect(v.success).toBe(false);
+    const c = await createSreConnector(
+      { name: "GH", type: "github", endpointUrl: "https://api.github.com", riskLevel: "low", serviceIds: [], defaultTimeWindowMinutes: 60, outputLimits: { maxRows: 100, maxBytes: 1_048_576, maxSeconds: 10 } },
+      "other-project",
+    );
+    expect(c.success).toBe(false);
+    expect(mockFindConnector).not.toHaveBeenCalled();
+    expect(mockSet).not.toHaveBeenCalled();
   });
 });

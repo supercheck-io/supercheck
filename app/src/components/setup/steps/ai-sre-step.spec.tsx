@@ -72,9 +72,9 @@ describe("AiSreStep", () => {
     type("Access token", "ghp_secret_value");
     fireEvent.click(save);
     expect(await screen.findByText(/GitHub: Connected/)).toBeTruthy();
-    expect(mockCreate).toHaveBeenCalledWith(expect.objectContaining({ name: "GitHub", type: "github", riskLevel: "low", credential: { credentialType: "api_key", value: { secret: "ghp_secret_value" } } }));
+    expect(mockCreate).toHaveBeenCalledWith(expect.objectContaining({ name: "GitHub", type: "github", riskLevel: "low", credential: { credentialType: "api_key", value: { secret: "ghp_secret_value" } } }), PROJECT_ID);
     expect(mockCreate.mock.invocationCallOrder[0]).toBeLessThan(mockValidate.mock.invocationCallOrder[0]);
-    expect(mockValidate).toHaveBeenCalledWith({ id: CID });
+    expect(mockValidate).toHaveBeenCalledWith({ id: CID }, PROJECT_ID);
     expect(d.get().aiSre?.connectorIds).toEqual([CID]);
     expect(JSON.stringify(d.get())).not.toContain("ghp_secret_value");
     expect(screen.queryByLabelText("Access token")).toBeNull();

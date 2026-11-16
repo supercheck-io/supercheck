@@ -73,7 +73,7 @@ export interface RunnerDeps {
   recordCreated: (key: string, id: string) => Promise<void>;
   /** Only the recorded id and exact title: a full list is capped and would miss older requirements. */
   findRequirements: (query: { ids: string[]; titles: string[] }) => Promise<{ success: boolean; requirements: Array<{ id: string; title: string }> }>;
-  createRequirement: (data: { title: string; description?: string }) => Promise<{ id: string; success: boolean; error?: string }>;
+  createRequirement: (data: { title: string; description?: string; priority?: "low" | "medium" | "high" }) => Promise<{ id: string; success: boolean; error?: string }>;
   getServices: () => Promise<{ success: boolean; services: Array<{ id: string; name: string }> }>;
   createService: (data: { name: string }) => Promise<ActionResult & { service?: { id: string } }>;
   getCreated: () => Record<string, string>;
@@ -277,7 +277,7 @@ export function buildCreateItems(draft: SetupDraft, opts: BuildOptions): CreateI
         step: "tests",
         label: requirement.title,
         detail: requirement.description,
-        payload: { title: requirement.title, ...(requirement.description ? { description: requirement.description } : {}) },
+        payload: { title: requirement.title, ...(requirement.description ? { description: requirement.description } : {}), ...(requirement.priority ? { priority: requirement.priority } : {}) },
       });
     }
   }
@@ -330,7 +330,7 @@ async function createRequirementItem(item: CreateItem, deps: RunnerDeps, lookup:
     await deps.recordCreated(item.key, natural.id);
     return { status: "adopted", note: "A requirement with this title already exists" };
   }
-  const made = await deps.createRequirement({ title, description: item.payload.description as string | undefined });
+  const made = await deps.createRequirement({ title, description: item.payload.description as string | undefined, priority: item.payload.priority as "low" | "medium" | "high" | undefined });
   if (!made.success || !made.id) return { status: "failed", error: made.error ?? "Could not create the requirement" };
   await deps.recordCreated(item.key, made.id);
   return { status: "done" };

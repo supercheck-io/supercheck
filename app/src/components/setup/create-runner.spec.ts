@@ -436,7 +436,7 @@ describe("requirement and service items", () => {
     await runAll(items(), deps, (k, r) => (results[k] = r));
     expect(Object.values(results).map((r) => r.status)).toEqual(["done", "done", "done"]);
     expect(deps.createRequirement).toHaveBeenCalledTimes(2);
-    expect(deps.createRequirement).toHaveBeenCalledWith({ title: "User can sign in", description: "Happy path" });
+    expect(deps.createRequirement).toHaveBeenCalledWith({ title: "User can sign in", description: "Happy path", priority: undefined });
     expect(Object.values(created)).toEqual(expect.arrayContaining(["r-new", "s-new"]));
     (deps.findRequirements as jest.Mock).mockResolvedValue({ success: true, requirements: [{ id: "r-new", title: "x" }] });
     (deps.getServices as jest.Mock).mockResolvedValue({ success: true, services: [{ id: "s-new", name: "app.example.com" }] });
@@ -444,6 +444,13 @@ describe("requirement and service items", () => {
     expect(deps.createRequirement).toHaveBeenCalledTimes(2);
     expect(deps.createService).toHaveBeenCalledTimes(1);
     expect(results[items()[0].key].status).toBe("adopted");
+  });
+
+  it("sends the requirement priority to createRequirement", async () => {
+    const { deps } = makeDeps();
+    const list = buildCreateItems({ tests: { requirements: [{ title: "Pay", priority: "high" }] } }, { skipped: [], features, canUpdateProject: true });
+    await runAll(list, deps, () => undefined);
+    expect(deps.createRequirement).toHaveBeenCalledWith({ title: "Pay", description: undefined, priority: "high" });
   });
 
   it("adopts an existing requirement and service by exact title / name", async () => {

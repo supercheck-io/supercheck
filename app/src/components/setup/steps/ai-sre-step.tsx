@@ -77,7 +77,7 @@ function ConnectorForm({ def, projectId, onSaved }: { def: (typeof CONNECTORS)[n
         defaultTimeWindowMinutes: 60,
         outputLimits: { maxRows: 100, maxBytes: 1_048_576, maxSeconds: 10 },
         credential: hasCredential ? { credentialType: "api_key", value: credentialValue } : undefined,
-      });
+      }, projectId);
       const id = created.success ? created.connector?.id : undefined;
       if (!created.success || !id) {
         setError(created.success ? "The connector was saved but could not be read back." : created.error);
@@ -88,7 +88,7 @@ function ConnectorForm({ def, projectId, onSaved }: { def: (typeof CONNECTORS)[n
       // The id is recorded whatever the test does, so a retry never creates a duplicate connector.
       let outcome: Outcome;
       try {
-        const checked = await validateSreConnector({ id });
+        const checked = await validateSreConnector({ id }, projectId);
         // The action reports success even when the check failed: only the stored status says the token works.
         outcome =
           checked.success && checked.connector?.lastValidationStatus === "valid"

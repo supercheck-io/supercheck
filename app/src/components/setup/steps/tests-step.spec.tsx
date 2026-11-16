@@ -60,13 +60,13 @@ describe("TestsStep", () => {
     await screen.findByText("User can sign in");
     expect(screen.getByLabelText(/User can sign in/)).not.toBeChecked();
     fireEvent.click(screen.getByLabelText(/User can sign in/));
-    expect(d.get().tests?.requirements).toEqual([{ title: "User can sign in", description: "Happy path" }]);
+    expect(d.get().tests?.requirements).toEqual([{ title: "User can sign in", description: "Happy path", priority: "high" }]);
     rerender(<TestsStep {...makeStepProps({ scan, patchDraft: d.patchDraft, draft: d.get() })} />);
     fireEvent.click(screen.getByLabelText(/User can pay/));
-    expect(d.get().tests?.requirements).toEqual([{ title: "User can sign in", description: "Happy path" }, { title: "User can pay" }]);
+    expect(d.get().tests?.requirements).toEqual([{ title: "User can sign in", description: "Happy path", priority: "high" }, { title: "User can pay", priority: "medium" }]);
     rerender(<TestsStep {...makeStepProps({ scan, patchDraft: d.patchDraft, draft: d.get() })} />);
     fireEvent.click(screen.getByLabelText(/User can sign in/));
-    expect(d.get().tests?.requirements).toEqual([{ title: "User can pay" }]);
+    expect(d.get().tests?.requirements).toEqual([{ title: "User can pay", priority: "medium" }]);
     expect(screen.getByRole("button", { name: "Suggest more" })).toBeTruthy();
   });
 

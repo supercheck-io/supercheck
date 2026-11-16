@@ -15,6 +15,7 @@ import {
 } from "@/db/schema";
 import { logAuditEvent } from "@/lib/audit-logger";
 import {
+  PROJECT_MISMATCH_MESSAGE,
   requireProjectContext,
   type ProjectAuthContext,
 } from "@/lib/project-context";
@@ -886,6 +887,7 @@ export async function getSreConnectorSetupOptions(
 
 export async function createSreConnector(
   input: z.infer<typeof createConnectorSchema>,
+  expectedProjectId?: string,
 ): Promise<SreConnectorActionResult> {
   try {
     const parsed = createConnectorSchema.safeParse(input);
@@ -898,6 +900,7 @@ export async function createSreConnector(
     }
 
     const { userId, organizationId, orgPendingDeletion, project } = await requireProjectContext();
+    if (expectedProjectId && expectedProjectId !== project.id) return { success: false, error: PROJECT_MISMATCH_MESSAGE };
     const canConfigure = checkPermissionWithContext(
       "sre_connector",
       "configure",
@@ -1119,6 +1122,7 @@ export async function createSreConnector(
 
 export async function validateSreConnector(
   input: z.infer<typeof validateConnectorSchema>,
+  expectedProjectId?: string,
 ): Promise<SreConnectorActionResult> {
   const startedAt = Date.now();
 
@@ -1129,6 +1133,7 @@ export async function validateSreConnector(
     }
 
     const { userId, organizationId, orgPendingDeletion, project } = await requireProjectContext();
+    if (expectedProjectId && expectedProjectId !== project.id) return { success: false, error: PROJECT_MISMATCH_MESSAGE };
     const canConfigure = checkPermissionWithContext(
       "sre_connector",
       "configure",
