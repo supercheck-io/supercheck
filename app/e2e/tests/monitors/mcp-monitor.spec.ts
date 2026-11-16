@@ -3,6 +3,7 @@ import { test } from '../../fixtures';
 import { createProjectSecret, deleteMonitor, deleteProjectSecret } from '../../utils/test-data';
 import { waitForHydration } from '../../utils/hydration';
 import { startMcpStub, STUB_TOOLS } from '../../utils/mcp-stub-server';
+import { ENV_GATED } from '../../reporters/priority-skip-reporter';
 
 // The worker, not the browser, calls the server, so the stub must be reachable from the worker.
 // Set E2E_MCP_STUB_HOST to the stub's address as the worker sees it (for example host.docker.internal), and run the app
@@ -10,7 +11,7 @@ import { startMcpStub, STUB_TOOLS } from '../../utils/mcp-stub-server';
 const stubHost = process.env.E2E_MCP_STUB_HOST;
 const SKIP_REASON = 'Set E2E_MCP_STUB_HOST (and ALLOW_INTERNAL_TARGETS=true on the app and worker) to reach the stub MCP server';
 
-test.describe('MCP monitor @monitors', () => {
+test.describe('MCP monitor @monitors', { annotation: { type: ENV_GATED, description: SKIP_REASON } }, () => {
   test.skip(!stubHost, SKIP_REASON);
 
   async function fillAndSave(page: Page, opts: { name: string; url: string; secretKey: string }) {

@@ -3,6 +3,7 @@ import { test } from '../../fixtures';
 import { createTest, deleteTest } from '../../utils/test-data';
 import { waitForHydration } from '../../utils/hydration';
 import { startAgentStub } from '../../utils/agent-stub-server';
+import { ENV_GATED } from '../../reporters/priority-skip-reporter';
 
 // The worker, not the browser, calls the agent, so the stub must be reachable from the worker. Set
 // E2E_AGENT_STUB_URL to the host the worker sees (for example http://host.docker.internal), without a port, and
@@ -46,7 +47,7 @@ test.describe('Agent test @tests', () => {
     await expect(page.getByRole('button', { name: 'Run', exact: true })).toBeVisible({ timeout: 30_000 });
   });
 
-  test.describe('against a stub agent', () => {
+  test.describe('against a stub agent', { annotation: { type: ENV_GATED, description: SKIP_REASON } }, () => {
     test.skip(!stubUrl, SKIP_REASON);
 
     test('shows pass rate and tools on the run page @critical @positive', async ({ projectAdminPage: page, cleanup }) => {
