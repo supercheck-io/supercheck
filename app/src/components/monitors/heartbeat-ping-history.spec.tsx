@@ -1,6 +1,6 @@
 import React from "react";
 import { fireEvent, render, screen, within } from "@testing-library/react";
-import { HeartbeatPingHistory, heartbeatResultKind, type HeartbeatResultRow } from "./heartbeat-ping-history";
+import { HeartbeatPingHistory, heartbeatResultKind, rowsThatFit, type HeartbeatResultRow } from "./heartbeat-ping-history";
 import { HeartbeatStateBadge, heartbeatStateLabel } from "./heartbeat-state-badge";
 
 const row = (id: string, isUp: boolean, details?: Record<string, unknown>, responseTimeMs: number | null = null): HeartbeatResultRow => ({
@@ -82,5 +82,17 @@ describe("HeartbeatStateBadge", () => {
   it("uses the warning tone for Late", () => {
     render(<HeartbeatStateBadge state="late" />);
     expect(screen.getByTestId("heartbeat-state-badge").className).toMatch(/amber/);
+  });
+});
+
+describe("rowsThatFit", () => {
+  it("reserves the header and pager and clamps to 5..50 rows", () => {
+    // 40 header + 58 pager leave 410px: 10 rows of 41px.
+    expect(rowsThatFit(508, 41)).toBe(10);
+    expect(rowsThatFit(508, 41)).toBe(rowsThatFit(508, 41));
+    expect(rowsThatFit(120, 41)).toBe(5);
+    expect(rowsThatFit(10_000, 41)).toBe(50);
+    expect(rowsThatFit(0)).toBe(5);
+    expect(rowsThatFit(Number.NaN)).toBe(5);
   });
 });

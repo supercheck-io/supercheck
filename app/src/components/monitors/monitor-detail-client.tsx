@@ -101,7 +101,6 @@ import { HeartbeatPingHistory } from "./heartbeat-ping-history";
 import { HeartbeatStateBadge } from "./heartbeat-state-badge";
 import { formatHeartbeatMinutes, formatPingAgo, formatPingDue, formatRunDuration } from "./heartbeat-format";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { useFitPageSize } from "@/hooks/use-fit-page-size";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 export interface MonitorResultItem {
@@ -271,8 +270,9 @@ export function MonitorDetailClient({
     "all"
   );
   const isHeartbeatMonitor = initialMonitor.type === "heartbeat";
-  // A heartbeat's ping history fills the viewport (no page scrollbar); other types keep 10 rows.
-  const { bodyRef: historyBodyRef, pageSize: resultsPerPage } = useFitPageSize(isHeartbeatMonitor ? undefined : 10);
+  // A heartbeat's ping history pages to the rows that fit its panel on desktop; everything else keeps 10 rows.
+  const [fitRows, setFitRows] = useState(10);
+  const resultsPerPage = isHeartbeatMonitor ? fitRows : 10;
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
@@ -1306,7 +1306,7 @@ export function MonitorDetailClient({
                     totalPages={totalPages}
                     total={totalResultsCount}
                     onPageChange={setCurrentPage}
-                    bodyRef={historyBodyRef}
+                    onFitRows={isNotificationView ? undefined : setFitRows}
                   />
                 </div>
               )}

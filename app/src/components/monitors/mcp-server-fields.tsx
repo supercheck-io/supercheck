@@ -179,6 +179,13 @@ export function McpServerFields({ form, projectId }: McpServerFieldsProps) {
   const { errors } = form.formState;
   const toolHasError = Boolean(errors.mcpConfig_toolName || errors.mcpConfig_toolArgs || errors.mcpConfig_toolExpect);
   const advancedHasError = Boolean(errors.mcpConfig_slowMs || errors.mcpConfig_timeoutSeconds || errors.mcpConfig_protocol);
+  // Open a section when it gets an error, then leave it to the user, so fixing the value never closes it mid-typing.
+  const [prevErrors, setPrevErrors] = useState({ tool: toolHasError, advanced: advancedHasError });
+  if (prevErrors.tool !== toolHasError || prevErrors.advanced !== advancedHasError) {
+    setPrevErrors({ tool: toolHasError, advanced: advancedHasError });
+    if (toolHasError) setToolOpen(true);
+    if (advancedHasError) setAdvancedOpen(true);
+  }
 
   return (
     <div className="space-y-4" data-testid="mcp-server-fields">
@@ -253,7 +260,7 @@ export function McpServerFields({ form, projectId }: McpServerFieldsProps) {
         <OptionalSection
           title="Call a tool"
           description="Pick a read-only tool. It runs on every check."
-          open={toolOpen || toolHasError}
+          open={toolOpen}
           onOpenChange={setToolOpen}
         >
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -302,7 +309,7 @@ export function McpServerFields({ form, projectId }: McpServerFieldsProps) {
         <OptionalSection
           title="Advanced"
           description="Timeout, slow-check warning and protocol version."
-          open={advancedOpen || advancedHasError}
+          open={advancedOpen}
           onOpenChange={setAdvancedOpen}
           testId="mcp-advanced-toggle"
         >

@@ -1,6 +1,6 @@
 "use client";
 
-import type * as React from "react";
+import { useEffect, useRef } from "react";
 import { format } from "date-fns";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -9,6 +9,19 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { TableBadge, type TableBadgeTone } from "@/components/ui/table-badge";
 import { formatRunDuration } from "./heartbeat-format";
+
+// Table header (h-10) and pager row heights, and the row height used before a row exists.
+const HEAD_PX = 40;
+const NAV_PX = 58;
+const ROW_PX = 41;
+const MIN_ROWS = 5;
+const MAX_ROWS = 50;
+
+/** Rows that fit a fixed-height panel: the header and the pager are always reserved, so the size never oscillates. */
+export function rowsThatFit(panelPx: number, rowPx = ROW_PX): number {
+  if (!(panelPx > 0) || !(rowPx > 0)) return MIN_ROWS;
+  return Math.min(MAX_ROWS, Math.max(MIN_ROWS, Math.floor((panelPx - HEAD_PX - NAV_PX) / rowPx)));
+}
 
 export type HeartbeatResultRow = {
   id: string;
@@ -44,8 +57,11 @@ interface HeartbeatPingHistoryProps {
   totalPages: number;
   total: number;
   onPageChange: (page: number) => void;
-  /** Ref of the <tbody>, so the page size can fit the viewport (useFitPageSize). */
-  bodyRef?: React.Ref<HTMLTableSectionElement>;
+  /**
+   * Called with the rows that fit the panel's own height (desktop only). The panel is a fixed-height
+   * flex child, so it is measured directly; useFitPageSize measures the page and would shrink forever here.
+   */
+  onFitRows?: (rows: number) => void;
 }
 
 export function HeartbeatPingHistory({
@@ -57,8 +73,24 @@ export function HeartbeatPingHistory({
   totalPages,
   total,
   onPageChange,
-  bodyRef,
+  onFitRows,
 }: HeartbeatPingHistoryProps) {
+  const panelRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const panel = panelRef.current;
+    if (!onFitRows || !panel || typeof ResizeObserver === "undefined" || typeof window.matchMedia !== "function") return;
+    const desktop = window.matchMedia("(min-width: 1024px)");
+    const measure = () => {
+      if (!desktop.matches) return;
+      const row = panel.querySelector<HTMLElement>('[data-testid="heartbeat-ping-row"]');
+      onFitRows(rowsThatFit(panel.clientHeight, row?.offsetHeight || ROW_PX));
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(panel);
+    return () => observer.disconnect();
+  }, [onFitRows]);
+
   return (
     <Card className="flex h-full min-h-0 flex-col overflow-hidden shadow-sm" data-testid="heartbeat-ping-history">
       <CardHeader className="flex-shrink-0">
@@ -69,7 +101,7 @@ export function HeartbeatPingHistory({
           </CardDescription>
         )}
       </CardHeader>
-      <CardContent className="flex min-h-0 flex-1 flex-col p-0">
+      <CardContent ref={panelRef} className="flex min-h-0 flex-1 flex-col p-0">
         {error ? (
           <Alert variant="error" className="mx-6 mb-6 w-auto">
             <AlertDescription className="flex flex-wrap items-center gap-2">
@@ -103,7 +135,7 @@ export function HeartbeatPingHistory({
                   <TableHead scope="col" className="px-4 text-xs font-medium text-muted-foreground whitespace-nowrap">Client</TableHead>
                 </TableRow>
               </TableHeader>
-              <TableBody ref={bodyRef}>
+              <TableBody>
                 {results.map((row) => {
                   const { kind, userAgent } = heartbeatResultKind(row);
                   const duration = formatRunDuration(row.responseTimeMs);
