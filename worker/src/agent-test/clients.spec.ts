@@ -1,7 +1,8 @@
 import * as http from 'http';
 import type { AddressInfo } from 'net';
 import { createAgent, newState } from './agent';
-import { createClient, redact } from './clients';
+import { getDefaultAutoSelectFamilyAttemptTimeout } from 'net';
+import { CONNECT_ATTEMPT_MS, createClient, redact } from './clients';
 
 type Handler = (
   req: http.IncomingMessage,
@@ -57,6 +58,12 @@ const rpcReply = (
     );
   } else json(res, JSON.parse(msg));
 };
+
+it('gives each address of a far-away agent 2 s to connect, not the 250 ms Node default', () => {
+  expect(getDefaultAutoSelectFamilyAttemptTimeout()).toBeGreaterThanOrEqual(
+    CONNECT_ATTEMPT_MS,
+  );
+});
 
 describe('openai client', () => {
   it('returns text, tool calls and usage, and sends key, model, system and history', async () => {
