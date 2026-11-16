@@ -128,6 +128,36 @@ describe("ReviewStep", () => {
     expect(screen.getByTestId("setup-create-item-0").textContent).toContain("Created");
   });
 
+  it("disables Continue creating while a Retry is running", async () => {
+    const gates: Array<() => void> = [];
+    const wait = () => new Promise<void>((resolve) => gates.push(resolve));
+    let posts = 0;
+    fetchMock.mockImplementation(async (url: string, init?: { method?: string; body?: string }) => {
+      if (url === "/api/context") return { ok: true, status: 200, json: async () => ({ project: { id: PROJECT_ID } }) };
+      if (url.startsWith("/api/monitors?")) return { ok: true, status: 200, json: async () => ({ data: [], pagination: { hasNextPage: false } }) };
+      if (url === "/api/monitors" && init?.method === "POST") {
+        const n = ++posts;
+        if (n === 1) return { ok: false, status: 400, json: async () => ({ error: "Monitor limit reached" }) };
+        if (n <= 3) await wait();
+        return { ok: true, status: 201, json: async () => ({ id: `m${n}` }) };
+      }
+      return { ok: false, status: 404, json: async () => ({}) };
+    });
+    const stopRef = { current: null as (() => Promise<void>) | null };
+    setup({ stopRef });
+    fireEvent.click(screen.getByRole("button", { name: "Create 6 items" }));
+    await waitFor(() => expect(gates).toHaveLength(1));
+    const stopped = stopRef.current!();
+    gates[0]();
+    await stopped;
+    await screen.findByRole("button", { name: "Continue creating" });
+    fireEvent.click(screen.getByRole("button", { name: "Retry app.example.com" }));
+    await waitFor(() => expect(gates).toHaveLength(2));
+    expect((screen.getByRole("button", { name: /Creating|Continue creating/ }) as HTMLButtonElement).disabled).toBe(true);
+    gates[1]();
+    await waitFor(() => expect((screen.getByRole("button", { name: "Continue creating" }) as HTMLButtonElement).disabled).toBe(false));
+  });
+
   it("starts a fresh run after a stop (a lost lock taken back)", async () => {
     const heartbeat = jest.fn(async () => true);
     const stopRef = { current: null as (() => Promise<void>) | null };
