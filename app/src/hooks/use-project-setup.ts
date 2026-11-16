@@ -25,8 +25,9 @@ async function readJson<T>(response: Response): Promise<T> {
   if (!response.ok) {
     const error = new Error(
       (body as { error?: string }).error ?? `Request failed (${response.status})`,
-    ) as Error & { status?: number; body?: unknown };
+    ) as Error & { status?: number; body?: unknown; retryAfter?: number };
     error.status = response.status;
+    error.retryAfter = Number(response.headers?.get("Retry-After")) || undefined;
     error.body = body;
     throw error;
   }

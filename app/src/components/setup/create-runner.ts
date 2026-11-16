@@ -138,9 +138,11 @@ export function buildCreateItems(draft: SetupDraft, opts: BuildOptions): CreateI
   const minInterval = opts.minIntervalMinutes ?? 1;
   const frequencyMinutes = Math.max(draft.monitors?.frequencyMinutes ?? 5, minInterval);
 
+  // These kinds send nothing until their limit is set, and setup sets none, so they stay off.
+  const needsLimit = new Set<string>(["ai_tokens_high", "mcp_slow"]);
   const alertConfig = (type: string, extra: { ssl?: boolean; aiEndpoint?: boolean } = {}) => {
     if (providerIds.length === 0) return undefined;
-    const kinds = warnings ? warningKindsForMonitorType(type, { aiEndpoint: extra.aiEndpoint }) : [];
+    const kinds = warnings ? warningKindsForMonitorType(type, { aiEndpoint: extra.aiEndpoint }).filter((kind) => !needsLimit.has(kind)) : [];
     return {
       enabled: true,
       notificationProviders: providerIds,

@@ -202,9 +202,19 @@ describe("locks", () => {
     expect(await updateSetupState(orgA, projA, u1, { currentStep: "app" }, null, tabB)).toMatchObject({ kind: "locked" });
     expect(await updateSetupState(orgA, projA, u1, { currentStep: "app" }, null, null)).toMatchObject({ kind: "locked" });
     expect((await updateSetupState(orgA, projA, u1, { currentStep: "app" }, null, tabA)).kind).toBe("ok");
-    // A fresh tab of the same user (reclaim) takes the lock; the older tab then loses its heartbeat.
+    // A fresh tab of the same user cannot reclaim while the holder's heartbeat is recent: 423 with sameUser.
+    const refused = await claimLock(orgA, projA, u1, tabB, false, true);
+    expect(refused).toMatchObject({ kind: "locked", lock: { userId: u1, sameUser: true, mine: false } });
+    expect((await claimLock(orgA, projA, u1, tabA)).kind).toBe("ok");
+    // 1 minute old: still protected. 3 minutes old (no heartbeat for over 2 minutes): reclaimed silently.
+    await client`UPDATE project_setup_state SET locked_at = now() - interval '1 minute'`;
+    expect((await claimLock(orgA, projA, u1, tabB, false, true)).kind).toBe("locked");
+    await client`UPDATE project_setup_state SET locked_at = now() - interval '3 minutes'`;
     expect((await claimLock(orgA, projA, u1, tabB, false, true)).kind).toBe("ok");
     expect((await claimLock(orgA, projA, u1, tabA)).kind).toBe("locked");
+    // An explicit force ("Use this tab instead") takes a live lock from the user's own tab.
+    expect((await claimLock(orgA, projA, u1, tabA, false, true, true)).kind).toBe("ok");
+    expect((await claimLock(orgA, projA, u1, tabB)).kind).toBe("locked");
     // Reclaim never steals from another user.
     expect((await claimLock(orgA, projA, u2, randomUUID(), false, true)).kind).toBe("locked");
     await claimLock(orgA, projA, u1, tabA, false, true);

@@ -85,6 +85,9 @@ describe("buildCreateItems", () => {
     expect((ai.payload as { alertConfig: { warnings: object } }).alertConfig.warnings).toEqual(expect.objectContaining({ ai_model_changed: true }));
     expect(mcp.payload).toMatchObject({ type: "mcp_server", config: { mcp: { auth: { type: "bearer", secretKey: "MCP_TOKEN" } } } });
     expect((mcp.payload as { alertConfig: { warnings: object } }).alertConfig.warnings).not.toHaveProperty("heartbeat_late");
+    // Kinds with no limit set by setup would never fire, so they are not switched on.
+    expect((ai.payload as { alertConfig: { warnings: object } }).alertConfig.warnings).not.toHaveProperty("ai_tokens_high");
+    expect((mcp.payload as { alertConfig: { warnings: object } }).alertConfig.warnings).not.toHaveProperty("mcp_slow");
   });
 
   it("uses no MCP auth without a secret and drops cards whose flag is off", () => {

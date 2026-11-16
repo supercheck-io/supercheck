@@ -14,6 +14,8 @@ import type { SetupLockInfo, SetupStateDto, SetupUpdateRequest, UserPreferencesD
 /** A lock not refreshed for this long is treated as released (heartbeat is every 60 s). */
 export const SETUP_LOCK_TTL_MINUTES = 15;
 const LOCK_TTL_MS = SETUP_LOCK_TTL_MINUTES * 60_000;
+/** A same-user tab opening fresh takes the lock silently only when the holder's last heartbeat is older than this. */
+export const SETUP_LOCK_RECLAIM_MINUTES = 2;
 const LOCK_EXPIRED = sql`${projectSetupState.lockedAt} < now() - make_interval(mins => ${SETUP_LOCK_TTL_MINUTES})`;
 
 type Row = typeof projectSetupState.$inferSelect;
@@ -38,6 +40,7 @@ function lockOf(row: Row, userName: string | null, me: string, token?: string | 
     userId: row.lockedByUserId,
     userName,
     lockedAt: row.lockedAt.toISOString(),
+    sameUser: row.lockedByUserId === me,
     mine: row.lockedByUserId === me && (token === undefined || (row.lockToken ?? null) === (token ?? null)),
   };
 }
@@ -175,8 +178,10 @@ export async function claimLock(
   userId: string,
   lockToken: string | null,
   takeover = false,
-  // A tab opening fresh takes over its own user's older tab lock; heartbeats (no reclaim) keep the per-tab check, so tabs never steal back and forth.
+  // A tab opening fresh takes over its own user's idle tab lock (no heartbeat for 2 min); heartbeats (no reclaim) keep the per-tab check, so tabs never steal back and forth.
   reclaim = false,
+  // With reclaim: take the lock from the user's own tab even while it is live ("Use this tab instead").
+  force = false,
 ): Promise<LockResult> {
   const now = new Date();
   const claimed = await db
@@ -190,7 +195,7 @@ export async function claimLock(
         takeover
           ? undefined
           : reclaim
-            ? sql`(${projectSetupState.lockedByUserId} IS NULL OR ${LOCK_EXPIRED} OR ${projectSetupState.lockedByUserId} = ${userId})`
+            ? sql`(${holderOrFree(userId, lockToken)} OR (${projectSetupState.lockedByUserId} = ${userId} AND (${force}::boolean OR ${projectSetupState.lockedAt} < now() - make_interval(mins => ${SETUP_LOCK_RECLAIM_MINUTES}))))`
             : holderOrFree(userId, lockToken),
       ),
     })

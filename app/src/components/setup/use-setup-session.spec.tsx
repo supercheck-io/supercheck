@@ -10,7 +10,7 @@ const ID_A = "00000000-0000-4000-8000-00000000000a";
 const TAB = "00000000-0000-4000-8000-0000000000aa";
 const ID_B = "00000000-0000-4000-8000-00000000000b";
 const fetchMock = jest.fn();
-const reply = (status: number, body: unknown) => ({ ok: status < 400, status, json: async () => body });
+const reply = (status: number, body: unknown, headers: Record<string, string> = {}) => ({ ok: status < 400, status, json: async () => body, headers: { get: (name: string) => headers[name] ?? null } });
 const puts = () => fetchMock.mock.calls.filter(([, init]) => init?.method === "PUT").map(([, init]) => JSON.parse(init.body));
 
 beforeEach(() => {
@@ -51,6 +51,43 @@ describe("useSetupSession recordCreated", () => {
     expect(sent[1].expectedUpdatedAt).toBe("t-server");
     expect(sent[1].draft.created).toEqual({ "monitor:a": ID_A, "monitor:other": ID_B });
     expect(result.current.getCreated()).toEqual({ "monitor:a": ID_A, "monitor:other": ID_B });
+  });
+
+  it("coalesces rapid calls into one PUT", async () => {
+    fetchMock.mockResolvedValue(reply(200, makeResponse({}, { updatedAt: "t1" })));
+    const { result } = setup();
+    await act(async () => {
+      await Promise.all([result.current.recordCreated("monitor:a", ID_A), result.current.recordCreated("monitor:b", ID_B)]);
+    });
+    expect(puts()).toHaveLength(1);
+    expect(puts()[0].draft.created).toEqual({ "monitor:a": ID_A, "monitor:b": ID_B });
+  });
+
+  it("retries a 429 after Retry-After, at most three times", async () => {
+    jest.useFakeTimers();
+    try {
+      fetchMock.mockResolvedValueOnce(reply(429, { error: "Too many requests" }, { "Retry-After": "7" }));
+      fetchMock.mockResolvedValueOnce(reply(200, makeResponse({}, { updatedAt: "t1" })));
+      const { result } = setup();
+      act(() => result.current.patch({ currentStep: "alerts" }));
+      let ok: Promise<boolean> = Promise.resolve(false);
+      act(() => { ok = result.current.flush(); });
+      await act(async () => { await jest.advanceTimersByTimeAsync(6_000); });
+      expect(puts()).toHaveLength(1);
+      await act(async () => { await jest.advanceTimersByTimeAsync(1_000); });
+      expect(await ok).toBe(true);
+      expect(puts()).toHaveLength(2);
+
+      fetchMock.mockReset();
+      fetchMock.mockResolvedValue(reply(429, { error: "Too many requests" }, { "Retry-After": "120" }));
+      act(() => result.current.patch({ currentStep: "monitors" }));
+      act(() => { ok = result.current.flush(); });
+      await act(async () => { await jest.advanceTimersByTimeAsync(3 * 30_000); });
+      expect(await ok).toBe(false);
+      expect(fetchMock).toHaveBeenCalledTimes(4);
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   it("rejects when the write did not persist, so the runner shows the item as failed", async () => {

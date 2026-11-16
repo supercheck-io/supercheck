@@ -11,6 +11,7 @@ import { Switch } from "@/components/ui/switch";
 import { AI_ENDPOINT_DEFAULT_URL } from "@/components/monitors/ai-endpoint-fields";
 import {
   AI_ENDPOINT_QUERY_ALLOWLIST,
+  MAX_DRAFT_BYTES,
   SETUP_LIMITS,
   aiEndpointUrlSchema,
   mcpUrlSchema,
@@ -157,8 +158,15 @@ export function MonitorsStep({ response, draft, patchDraft, features, readOnly, 
   const remaining = response.monitorsRemaining;
   const overCap = remaining !== null && planned > remaining;
 
-  const togglePage = (page: Page, on: boolean) =>
+  // The server refuses a draft over 32 KB, so check the encoded size before adding a page.
+  const tooBig = (pages: Page[]) => new TextEncoder().encode(JSON.stringify({ ...draft, monitors: { ...monitors, pages } })).length > MAX_DRAFT_BYTES;
+  const SIZE_MESSAGE = "These pages add up to more than setup can save. Remove a page or use shorter paths.";
+
+  const togglePage = (page: Page, on: boolean) => {
+    if (on && tooBig([...monitors.pages, page])) return setPathError(SIZE_MESSAGE);
+    setPathError(null);
     setMonitors({ pages: on ? [...monitors.pages, page] : monitors.pages.filter((p) => p.url !== page.url) });
+  };
 
   const addPath = () => {
     const page = appUrl && path.trim() ? pageFor(appUrl, path) : null;
@@ -166,6 +174,7 @@ export function MonitorsStep({ response, draft, patchDraft, features, readOnly, 
     const rejected = pageError(page);
     if (rejected) return setPathError(`That path is too long or not valid: ${rejected}`);
     if (!selected.has(page.url) && pagesFull) return setPathError(`You can add up to ${SETUP_LIMITS.maxPages} pages.`);
+    if (!selected.has(page.url) && tooBig([...monitors.pages, page])) return setPathError(SIZE_MESSAGE);
     setPathError(null);
     setPath("");
     if (!selected.has(page.url)) setMonitors({ pages: [...monitors.pages, page] });
