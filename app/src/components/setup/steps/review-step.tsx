@@ -127,16 +127,23 @@ export function ReviewStep({ response, features, permissions, draft, skipped, re
     getCreated,
   };
 
-  const update = (key: string, result: ItemResult) => setResults((r) => ({ ...r, [key]: { ...r[key], ...result, pingUrl: result.pingUrl ?? r[key]?.pingUrl } }));
+  // Latest results for async runs; the render-time `results` closure is stale after the first await.
+  const latest = useRef(results);
+  const update = (key: string, result: ItemResult) => {
+    const r = latest.current;
+    latest.current = { ...r, [key]: { ...r[key], ...result, pingUrl: result.pingUrl ?? r[key]?.pingUrl } };
+    setResults(latest.current);
+  };
 
   const start = async () => {
+    if (active) return;
     setRunning(true);
     setCancelled(false);
     // A lost lock aborts the run; taking the lock back must let a new run start.
     if (controller.current.signal.aborted) controller.current = new AbortController();
     const { signal } = controller.current;
     // Done and adopted items keep their recorded ids; a continue only reruns the rest.
-    const run = runAll(items, { ...deps, signal }, update, (key) => results[key]?.status !== "done" && results[key]?.status !== "adopted");
+    const run = runAll(items, { ...deps, signal }, update, (key) => latest.current[key]?.status !== "done" && latest.current[key]?.status !== "adopted");
     activeRun.current = run;
     await run;
     setRunning(false);
@@ -146,11 +153,11 @@ export function ReviewStep({ response, features, permissions, draft, skipped, re
 
   const retry = async (item: CreateItem) => {
     // One Retry at a time: two at once would race on the same lookups and ids.
-    if (retrying) return;
+    if (active) return;
     setRetrying(true);
     if (controller.current.signal.aborted) controller.current = new AbortController();
     try {
-      const run = retryWithDependents(item, items, { ...deps, signal: controller.current.signal }, update, (key) => results[key]?.status === "skipped");
+      const run = retryWithDependents(item, items, { ...deps, signal: controller.current.signal }, update, (key) => latest.current[key]?.status === "skipped");
       activeRun.current = run;
       await run;
     } finally {
@@ -219,7 +226,7 @@ export function ReviewStep({ response, features, permissions, draft, skipped, re
                     {STATUS_LABEL[result.status]}
                   </TableBadge>
                   {result.status === "failed" ? (
-                    <Button type="button" size="sm" variant="outline" aria-label={`Retry ${item.label}`} disabled={running || retrying || readOnly || waitSeconds > 0} onClick={() => retry(item)}>
+                    <Button type="button" size="sm" variant="outline" aria-label={`Retry ${item.label}`} disabled={active || readOnly || waitSeconds > 0} onClick={() => retry(item)}>
                       Retry
                     </Button>
                   ) : null}
@@ -256,7 +263,7 @@ export function ReviewStep({ response, features, permissions, draft, skipped, re
       ) : (
         <div className="flex flex-wrap gap-2">
           {!finished && items.length > 0 ? (
-            <Button type="button" disabled={running || readOnly || waitSeconds > 0} onClick={start}>
+            <Button type="button" disabled={active || readOnly || waitSeconds > 0} onClick={start}>
               {running ? "Creating..." : cancelled ? "Continue creating" : `Create ${items.length} item${items.length === 1 ? "" : "s"}`}
             </Button>
           ) : (
