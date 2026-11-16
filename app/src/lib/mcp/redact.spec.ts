@@ -42,6 +42,11 @@ describe("safeText", () => {
     expect(digestJson).not.toMatch(/alice|deadbeef/);
     expect(() => JSON.parse(digestJson)).not.toThrow();
   });
+  it("stays fast on long whitespace after an auth scheme", () => {
+    const started = Date.now();
+    for (const scheme of ["Digest", "Bearer", "Basic"]) safeText(`Authorization: ${scheme} ${" ".repeat(3500)}!`);
+    expect(Date.now() - started).toBeLessThan(200);
+  });
   it("truncates long text", () => {
     expect(safeText("x".repeat(5000))!.endsWith("[truncated]")).toBe(true);
   });

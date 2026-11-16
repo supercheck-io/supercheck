@@ -3,11 +3,15 @@ import { redactConnectorText } from "@/lib/sre/connectors/output-sanitizer";
 const MAX_FIELD_CHARS = 4 * 1024;
 
 
+/** One Digest parameter: key=value, the value quoted, JSON-escaped-quoted or bare. */
+const DIGEST_PARAM = String.raw`[A-Za-z-]+=(?:\\"(?:[^"\\\n]|\\[^"])*\\"|"[^"\n]*"|[^\s,"\\]+)`;
+
 /** Extra patterns the shared connector redactor does not cover. */
 const EXTRA_PATTERNS: [RegExp, string][] = [
   [/\b[a-z][a-z0-9+.-]*:\/\/[^\s/@:]+:[^\s/@]+@/gi, "[REDACTED_URL_CREDENTIALS]@"],
   // Digest carries comma-separated key=value parameters (quoted raw or JSON-escaped); redact them all.
-  [/\b(authorization|proxy-authorization)\s*[:=]\s*digest\s+(?:\s*,?\s*[A-Za-z-]+=(?:\\"(?:[^"\\\n]|\\[^"])*\\"|"[^"\n]*"|[^\s,"\\]+))+/gi, "$1: Digest [REDACTED]"],
+  // Separators are either "," (with optional spaces) or spaces alone, never both optional, so long whitespace cannot backtrack.
+  [new RegExp(String.raw`\b(authorization|proxy-authorization)\s*[:=]\s*digest\s+${DIGEST_PARAM}(?:\s*,\s*${DIGEST_PARAM}|\s+${DIGEST_PARAM})*`, "gi"), "$1: Digest [REDACTED]"],
   // The value stops at a quote so a header inside JSON text keeps its closing quote.
   [/\b(authorization|proxy-authorization)\s*[:=]\s*(basic|bearer|digest)\s+(?:\\"(?:[^"\\\n]|\\[^"])*\\"|"[^"\n]*"|'[^'\n]*'|[^\s"'\\]+)/gi, "$1: [REDACTED]"],
   // Chat webhook URLs carry their secret in the path (Discord, Microsoft Teams, Telegram bot token).
