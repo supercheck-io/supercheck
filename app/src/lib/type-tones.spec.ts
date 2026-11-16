@@ -33,7 +33,7 @@ describe("type tones", () => {
       expect(dark).toContain(`--type-${tone}: oklch(${d});`);
     }
     expect(Object.values(TYPE_TONE.test)).toEqual(["sky", "teal", "cyan", "blue", "purple", "purple"]);
-    expect(Object.values(TYPE_TONE.monitor)).toEqual(["teal", "sky", "cyan", "blue", "purple", "magenta", "orchid"]);
+    expect(Object.values(TYPE_TONE.monitor)).toEqual(["teal", "sky", "cyan", "blue", "purple", "teal", "purple"]);
     expect(TYPE_TONE.job).toEqual({ playwright: "sky", k6: "purple" });
   });
 
@@ -44,16 +44,11 @@ describe("type tones", () => {
     const others = [TYPE_TONE.variable, TYPE_TONE.sre, TYPE_TONE.admin].flatMap((g) => Object.values(g));
     expect(new Set(others).size).toBe(others.length);
     for (const tone of others) expect(shared.has(tone)).toBe(false);
-    // Monitors share the test tones, except Heartbeat and MCP, which have no test counterpart.
-    const { heartbeat, mcp_server, ...testLike } = TYPE_TONE.monitor;
-    for (const tone of Object.values(testLike)) expect(shared.has(tone)).toBe(true);
-    for (const tone of [heartbeat, mcp_server]) {
-      expect(shared.has(tone)).toBe(false);
-      expect(others).not.toContain(tone);
-    }
-    expect(others).not.toContain(heartbeat);
+    // Every monitor reuses a test tone; MCP takes the Agent test's.
+    for (const tone of Object.values(TYPE_TONE.monitor)) expect(shared.has(tone)).toBe(true);
+    expect(TYPE_TONE.monitor.mcp_server).toBe(TYPE_TONE.test.agent);
     // No tone is defined without a user.
-    const used = new Set<string>([...shared, ...others, heartbeat, mcp_server]);
+    const used = new Set<string>([...shared, ...others]);
     expect([...TYPE_TONES].filter((t) => !used.has(t))).toEqual([]);
   });
 

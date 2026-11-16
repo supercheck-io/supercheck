@@ -1,7 +1,7 @@
 ---
 title: Heartbeat Monitors
 description: Alert when a cron job, backup or scheduled agent stops checking in
-icon: HeartPulse
+icon: Activity
 ---
 
 A heartbeat monitor watches work that runs on its own schedule: cron jobs, backups, queue workers, scheduled AI agents. Supercheck does not call your service. Your job calls a secret **ping URL** when it finishes, and the monitor goes down when the ping does not arrive on time.

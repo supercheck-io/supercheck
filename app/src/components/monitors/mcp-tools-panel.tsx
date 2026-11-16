@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { format } from "date-fns";
-import { AlertCircle, ChevronRight, Plug } from "lucide-react";
+import { AlertCircle, ChevronRight, Server } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { TableBadge } from "@/components/ui/table-badge";
@@ -100,7 +100,7 @@ export function McpToolsPanel({ baseline, changes, pending = false, failure, now
     <Card className="shadow-sm" data-testid="mcp-tools-panel">
       <CardHeader className="pb-2">
         <CardTitle className="flex items-center gap-2 text-lg font-semibold">
-          <Plug className="h-4 w-4 text-type-orchid" aria-hidden />
+          <Server className="h-4 w-4 text-type-purple" aria-hidden />
           Tools
           {baseline && (
             <span className="text-sm font-normal text-muted-foreground" data-testid="mcp-tool-count">
