@@ -108,53 +108,61 @@ export async function POST(request: NextRequest, { params }: Params) {
         { status: 429, headers: { "Retry-After": String(Math.max(1, Math.ceil((claim.retryAt.getTime() - Date.now()) / 1000))) } },
       );
     }
-    const credit = await reserveAICredit(organizationId, "ai_create");
-    if (!credit.allowed) {
-      await releaseAiRun(organizationId, projectId, claim);
-      return NextResponse.json({ error: credit.reason || "AI credits exhausted", code: "credits_exhausted" }, { status: 402 });
-    }
-
-    let requirements: z.infer<typeof outputSchema>["requirements"] | null = null;
+    // The daily slot is released on every exit except one where the model answered (S2: a client-chosen page set
+    // that yields unparseable output must not buy unlimited free calls), so a throw below cannot leak the claim.
+    let keepClaim = false;
     try {
-      const config = getServiceConfiguration();
-      const { text, usage } = await generateText({
-        model: getProviderModel(),
-        prompt: buildPrompt(pages),
-        ...getProviderGenerationOptions({ temperature: 0.3 }),
-        maxRetries: config.maxRetries,
-        abortSignal: AbortSignal.timeout(config.timeout),
-      });
-      const u = usage as { inputTokens?: number; outputTokens?: number; totalTokens?: number };
-      try {
-        await aiRateLimiter.checkAndTrackTokens(organizationId, u.totalTokens ?? (u.inputTokens ?? 0) + (u.outputTokens ?? 0));
-      } catch (trackError) {
-        console.error("[Setup suggest] Token tracking failed:", trackError);
+      const credit = await reserveAICredit(organizationId, "ai_create");
+      if (!credit.allowed) {
+        return NextResponse.json({ error: credit.reason || "AI credits exhausted", code: "credits_exhausted" }, { status: 402 });
       }
-      requirements = parseModelOutput(text);
-    } catch (error) {
-      console.error("[Setup suggest] AI call failed:", error instanceof Error ? error.name : "unknown");
-    }
-    if (!requirements) {
-      await credit.refund();
-      await releaseAiRun(organizationId, projectId, claim);
-      return NextResponse.json({ error: "AI could not produce suggestions. Try again." }, { status: 502 });
-    }
 
-    const cleaned = requirements.map((r) => ({
-      title: AISecurityService.sanitizeTextOutput(r.title),
-      description: AISecurityService.sanitizeTextOutput(r.description),
-      priority: r.priority,
-    }));
-    await logAuditEvent({
-      userId,
-      organizationId,
-      action: "project_setup.requirements_suggested",
-      resource: "project_setup",
-      resourceId: projectId,
-      metadata: { count: cleaned.length, aiModel: getActualModelName() },
-      success: true,
-    });
-    return NextResponse.json({ requirements: cleaned });
+      let text: string | null = null;
+      try {
+        const config = getServiceConfiguration();
+        const generated = await generateText({
+          model: getProviderModel(),
+          prompt: buildPrompt(pages),
+          ...getProviderGenerationOptions({ temperature: 0.3 }),
+          maxRetries: config.maxRetries,
+          abortSignal: AbortSignal.timeout(config.timeout),
+        });
+        text = generated.text;
+        const u = generated.usage as { inputTokens?: number; outputTokens?: number; totalTokens?: number };
+        try {
+          await aiRateLimiter.checkAndTrackTokens(organizationId, u.totalTokens ?? (u.inputTokens ?? 0) + (u.outputTokens ?? 0));
+        } catch (trackError) {
+          console.error("[Setup suggest] Token tracking failed:", trackError);
+        }
+      } catch (error) {
+        console.error("[Setup suggest] AI call failed:", error instanceof Error ? error.name : "unknown");
+      }
+      // A provider or transport failure (no text) frees the slot; a model that answered keeps it.
+      keepClaim = text !== null;
+      const requirements = text === null ? null : parseModelOutput(text);
+      if (!requirements) {
+        await credit.refund();
+        return NextResponse.json({ error: "AI could not produce suggestions. Try again." }, { status: 502 });
+      }
+
+      const cleaned = requirements.map((r) => ({
+        title: AISecurityService.sanitizeTextOutput(r.title),
+        description: AISecurityService.sanitizeTextOutput(r.description),
+        priority: r.priority,
+      }));
+      await logAuditEvent({
+        userId,
+        organizationId,
+        action: "project_setup.requirements_suggested",
+        resource: "project_setup",
+        resourceId: projectId,
+        metadata: { count: cleaned.length, aiModel: getActualModelName() },
+        success: true,
+      });
+      return NextResponse.json({ requirements: cleaned });
+    } finally {
+      if (!keepClaim) await releaseAiRun(organizationId, projectId, claim);
+    }
   } catch (error) {
     console.error("Error suggesting setup requirements:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });

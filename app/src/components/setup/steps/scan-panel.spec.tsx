@@ -68,7 +68,7 @@ describe("scan polling", () => {
     expect(fetchMock.mock.calls[0][0]).toBe(`/api/projects/${PID}/setup/scan`);
   });
 
-  it("stops after 90 s with a timeout message", async () => {
+  it("stops after the 5 min cap with a timeout message", async () => {
     fetchMock.mockImplementation((_u: string, init?: { method?: string }) => (init?.method === "POST" ? json({ scanId: "s" }, 202) : json({ status: "running" })));
     setup();
     await click();
@@ -146,9 +146,19 @@ describe("scan polling", () => {
   it("is disabled without a URL, read-only, or while scanning; shows a stored result", async () => {
     const { rerender } = setup({ url: null });
     expect(screen.getByRole("button", { name: "Scan" })).toBeDisabled();
-    rerender(<ScanPanel projectId={PID} url="https://a.example" disabled onResult={jest.fn()} initial={result()} />);
+    rerender(<ScanPanel projectId={PID} url="https://app.example.com" disabled onResult={jest.fn()} initial={result()} />);
     expect(screen.getByRole("button", { name: "Scan again" })).toBeDisabled();
     expect(screen.getByTestId("setup-scan-findings")).toBeTruthy();
+  });
+});
+
+describe("scan tied to the URL", () => {
+  it("hides a stored scan once the URL points at another host", () => {
+    const { rerender } = render(<ScanPanel projectId={PID} url="https://app.example.com" disabled={false} onResult={jest.fn()} initial={result()} />);
+    expect(screen.getByTestId("setup-scan-findings")).toBeTruthy();
+    rerender(<ScanPanel projectId={PID} url="https://other.example" disabled={false} onResult={jest.fn()} initial={result()} />);
+    expect(screen.queryByTestId("setup-scan-findings")).toBeNull();
+    expect(screen.getByRole("button", { name: "Scan" })).toBeTruthy();
   });
 });
 

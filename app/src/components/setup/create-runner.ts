@@ -226,16 +226,19 @@ export function buildCreateItems(draft: SetupDraft, opts: BuildOptions): CreateI
   }
 
   if (!skipped.includes("tests") && features.aiTests && opts.canCreateTests !== false) {
-    (draft.tests?.requirements ?? []).forEach((requirement, n) =>
+    // Keyed by title, not position, so reordering or unticking on a re-run keeps each id with its own title.
+    for (const requirement of draft.tests?.requirements ?? []) {
+      const key = `requirement:${hash(requirement.title)}`;
+      if (items.some((item) => item.key === key)) continue;
       items.push({
-        key: `requirement:${n}`,
+        key,
         kind: "requirement",
         step: "tests",
         label: requirement.title,
         detail: requirement.description,
         payload: { title: requirement.title, ...(requirement.description ? { description: requirement.description } : {}) },
-      }),
-    );
+      });
+    }
   }
   if (!skipped.includes("aiSre") && features.aiSre && opts.canConfigureConnectors !== false) {
     for (const service of draft.aiSre?.services ?? []) {

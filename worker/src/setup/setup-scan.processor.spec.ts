@@ -281,6 +281,37 @@ describe('setup scan processor', () => {
     expect(undated.ssl).toBeNull();
   });
 
+  it('skips over-long paths and off-host `//` paths', async () => {
+    const long = '/' + 'a'.repeat(300);
+    const html = page('t', ['/ok', long, '/.//evil.com/x']);
+    expect(extractLinks(html, new URL(HOME))).toEqual(['/ok']);
+    const { result, calls } = scan(() => ({ status: 200, data: html }));
+    const r = await result;
+    expect(r.pages.map((p) => p.path)).toEqual(['/', '/ok']);
+    expect(calls.every((c) => String(c.url).startsWith(HOME))).toBe(true);
+  });
+
+  it('skips the certificate read once the budget has aborted', async () => {
+    const budget = new AbortController();
+    const real = AbortSignal.timeout.bind(AbortSignal);
+    jest
+      .spyOn(AbortSignal, 'timeout')
+      .mockImplementation((ms: number) =>
+        ms === SCAN_LIMITS.totalBudgetMs ? budget.signal : real(ms),
+      );
+    const readCertificate = jest.fn();
+    const r = await scan(
+      () => {
+        budget.abort();
+        return { status: 200, data: page('t', ['/a']) };
+      },
+      { readCertificate },
+      'https://93.184.216.34/',
+    ).result;
+    expect(r.ssl).toBeNull();
+    expect(readCertificate).not.toHaveBeenCalled();
+  });
+
   it('extracts titles safely', () => {
     expect(extractTitle('<title>' + 'a'.repeat(300) + '</title>')).toHaveLength(
       120,

@@ -92,6 +92,20 @@ describe("AiSreStep", () => {
     expect(d.get().aiSre?.connectorIds).toEqual([CID]);
   });
 
+  it("keeps the id and says it could not test when validation throws", async () => {
+    mockCreate.mockResolvedValue({ success: true, connector: { id: CID }, message: "ok" });
+    mockValidate.mockRejectedValue(new Error("network"));
+    const d = drafting();
+    render(<AiSreStep {...makeStepProps({ ...admin(), patchDraft: d.patchDraft, draft: d.get() })} />);
+    open(/Sentry/);
+    type("Auth token", "tok");
+    fireEvent.click(screen.getByRole("button", { name: "Save and test" }));
+    expect(await screen.findByText("Sentry: Saved, not tested")).toBeTruthy();
+    expect(screen.getByText(/Saved, but could not test it/)).toBeTruthy();
+    expect(d.get().aiSre?.connectorIds).toEqual([CID]);
+    expect(mockCreate).toHaveBeenCalledTimes(1);
+  });
+
   it("shows a save error and does not validate or record anything", async () => {
     mockCreate.mockResolvedValue({ success: false, error: "Insufficient permissions" });
     const d = drafting();

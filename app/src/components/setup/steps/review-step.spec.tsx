@@ -154,6 +154,6 @@ describe("ReviewStep requirements and services", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: "Finish setup" })).toBeTruthy());
     expect(screen.getByRole("link", { name: "Generate test for User can sign in" }).getAttribute("href")).toBe("/playground?scriptType=browser&requirementId=req-1");
     expect(screen.getByRole("link", { name: "Create a scheduled job or CI key" }).getAttribute("href")).toBe("/jobs/create");
-    expect(props.recordCreated).toHaveBeenCalledWith("requirement:0", "req-1");
+    expect(props.recordCreated).toHaveBeenCalledWith(expect.stringMatching(/^requirement:[0-9a-z]+$/), "req-1");
   });
 });

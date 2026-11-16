@@ -389,6 +389,16 @@ describe("scan in the app and monitors steps", () => {
     expect(screen.getByLabelText("Add a page path")).toBeTruthy();
   });
 
+  it("monitors step ignores failed pages (status 0) and a scan of another host", () => {
+    const failed = { ...scan, pages: [...scan.pages, { path: "/timed-out", status: 0, ms: 0, title: null }] };
+    const view = render(<MonitorsStep {...makeStepProps({ scan: failed, draft: { app: { url: "https://app.example.com/" }, monitors: { pages: [] } } })} />);
+    expect(screen.getByLabelText(/app.example.com\/pricing/)).toBeTruthy();
+    expect(screen.queryByLabelText(/timed-out/)).toBeNull();
+    view.unmount();
+    render(<MonitorsStep {...makeStepProps({ scan: failed, draft: { app: { url: "https://other.example/" }, monitors: { pages: [] } } })} />);
+    expect(screen.queryByLabelText(/pricing/)).toBeNull();
+  });
+
   it("monitors step caps scanned suggestions at 10", () => {
     const many = { ...scan, pages: Array.from({ length: 15 }, (_, i) => ({ path: `/p${i}`, status: 200, ms: 1, title: null })) };
     render(<MonitorsStep {...makeStepProps({ scan: many, draft: { app: { url: "https://app.example.com/" }, monitors: { pages: [{ url: "https://app.example.com/", name: "app.example.com" }] } } })} />);

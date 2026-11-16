@@ -5,6 +5,7 @@ import { ExecutionQueueError } from "@/lib/execution-errors";
 import { validateMonitorTargetAddress } from "@/lib/monitor-target-policy";
 import { SubscriptionAccessDeniedError, subscriptionService } from "@/lib/services/subscription-service";
 import { checkSetupReadRateLimit, checkSetupWriteRateLimit, checkSlidingWindowRateLimit } from "@/lib/sre/sre-rate-limiter";
+import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { stripUrl } from "@/lib/setup/draft-schema";
 import { guardProject, rateLimitResponse } from "@/lib/setup/route-guard";
 import { enqueueScan, readScan, scanIdPrefix } from "@/lib/setup/scan";
@@ -88,7 +89,9 @@ export async function GET(request: NextRequest, { params }: Params) {
     }
     const scan = await readScan(scanId);
     if (!scan) return NextResponse.json({ error: "Scan not found" }, { status: 404 });
-    if (scan.status === "done") await saveScanResult(ctx.organizationId, projectId, scan.result);
+    // Only a caller who could have started the scan stores it, and a failed scan never replaces a good one.
+    const canScan = checkPermissionWithContext("monitor", "create", ctx);
+    if (scan.status === "done" && canScan && scan.result.reachable && !scan.result.error) await saveScanResult(ctx.organizationId, projectId, scan.result);
     return NextResponse.json(scan);
   } catch (error) {
     if (error instanceof ExecutionQueueError) return queueUnavailable();

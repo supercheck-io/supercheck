@@ -178,6 +178,20 @@ describe("GET setup/scan", () => {
     expect(saveScanResult).toHaveBeenCalledWith(ORG, PROJECT, result);
   });
 
+  it("does not store a failed scan, or one read by a viewer", async () => {
+    const failed = { finalUrl: "https://x.test/", reachable: false, pages: [], error: "unreachable" };
+    (readScan as jest.Mock).mockResolvedValue({ status: "done", result: failed });
+    expect(await (await GET(get(SCAN_ID), params())).json()).toEqual({ status: "done", result: failed });
+    expect(saveScanResult).not.toHaveBeenCalled();
+
+    const good = { finalUrl: "https://x.test/", reachable: true, pages: [] };
+    (readScan as jest.Mock).mockResolvedValue({ status: "done", result: good });
+    (checkPermissionWithContext as jest.Mock).mockImplementation((resource: string) => resource === "project");
+    const res = await GET(get(SCAN_ID), params());
+    expect(await res.json()).toEqual({ status: "done", result: good });
+    expect(saveScanResult).not.toHaveBeenCalled();
+  });
+
   it("404s a scanId from another project, a missing id and an expired job", async () => {
     expect((await GET(get(`setup-scan:${OTHER}:aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa`), params())).status).toBe(404);
     expect((await GET(get(`monitor-us:${PROJECT}:x`), params())).status).toBe(404);

@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { stripUrl, type SetupDraft } from "@/lib/setup/draft-schema";
-import type { StepProps } from "./step-types";
+import { scanMatchesUrl, type StepProps } from "./step-types";
 
 const INTERVALS = [1, 5, 10, 15, 30, 60];
 const SECRET_NAME = /^[A-Z][A-Z0-9_]{3,19}$/;
@@ -76,8 +76,9 @@ function Field({ id, label, help, error, ...props }: { id: string; label: string
 /** A path the scan found that looks like an OpenAI-compatible API. */
 const AI_PATH = /^\/v1\/(chat\/completions|models)\/?$/;
 
-export function MonitorsStep({ response, draft, patchDraft, features, readOnly, scan }: StepProps) {
+export function MonitorsStep({ response, draft, patchDraft, features, readOnly, scan: storedScan }: StepProps) {
   const appUrl = draft.app?.url;
+  const scan = scanMatchesUrl(storedScan, appUrl) ? storedScan : null;
   const monitors: MonitorsDraft = draft.monitors ?? { pages: [] };
   const setMonitors = (next: Partial<MonitorsDraft>) => patchDraft((d) => ({ ...d, monitors: { pages: [], ...d.monitors, ...next } }));
 
@@ -92,8 +93,8 @@ export function MonitorsStep({ response, draft, patchDraft, features, readOnly, 
     }
   }, [untouched, homeUrl, homeName, readOnly, patchDraft]);
 
-  // Scanned pages that loaded (status < 400), at most 10; only the homepage starts ticked.
-  const scanned = (appUrl && scan ? scan.pages.filter((p) => p.status < 400 && p.path !== "/").slice(0, 10) : [])
+  // Scanned pages that loaded (2xx/3xx; status 0 means the fetch failed), at most 10; only the homepage starts ticked.
+  const scanned = (appUrl && scan ? scan.pages.filter((p) => p.status >= 200 && p.status < 400 && p.path !== "/").slice(0, 10) : [])
     .map((p) => (appUrl ? pageFor(appUrl, p.path) : null))
     .filter((page): page is Page => page !== null);
   const aiPath = appUrl ? scan?.pages.find((p) => AI_PATH.test(p.path)) : undefined;

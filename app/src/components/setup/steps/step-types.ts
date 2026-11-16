@@ -21,6 +21,18 @@ export interface StepProps {
   setScan: (scan: ScanSummary) => void;
 }
 
+const hostOf = (url: string) => new URL(url).host.replace(/^www\./i, "").toLowerCase();
+
+/** A scan only describes the site it ran against: ignore it once the app URL points somewhere else. */
+export function scanMatchesUrl(scan: ScanSummary | null, appUrl: string | null | undefined): scan is ScanSummary {
+  if (!scan || !appUrl) return false;
+  try {
+    return hostOf(scan.finalUrl) === hostOf(appUrl);
+  } catch {
+    return false;
+  }
+}
+
 export async function postJson<T = unknown>(url: string, body: unknown): Promise<{ ok: boolean; status: number; data: T }> {
   const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
   const data = (await res.json().catch(() => ({}))) as T;

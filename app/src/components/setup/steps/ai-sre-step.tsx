@@ -85,13 +85,17 @@ function ConnectorForm({ def, projectId, onSaved }: { def: (typeof CONNECTORS)[n
         return;
       }
       setValues({});
-      const checked = await validateSreConnector({ id });
-      onSaved(
-        id,
-        checked.success
+      // The id is recorded whatever the test does, so a retry never creates a duplicate connector.
+      let outcome: Outcome;
+      try {
+        const checked = await validateSreConnector({ id });
+        outcome = checked.success
           ? { state: "connected", text: "Connected" }
-          : { state: "rejected", text: `Saved, but the token was rejected. ${checked.error} Update it from the connector page.` },
-      );
+          : { state: "rejected", text: `Saved, but the token was rejected. ${checked.error} Update it from the connector page.` };
+      } catch {
+        outcome = { state: "saved", text: "Saved, but could not test it. Test it from the connector page." };
+      }
+      onSaved(id, outcome);
     } catch {
       setError("Could not save the connector. Try again.");
     }
@@ -123,6 +127,7 @@ function ConnectorForm({ def, projectId, onSaved }: { def: (typeof CONNECTORS)[n
 }
 
 export function AiSreStep({ response, permissions, draft, patchDraft, readOnly }: StepProps) {
+  // Accepted check-then-act: permissions are read once at load; the server actions re-check them on every call.
   const connectorIds = draft.aiSre?.connectorIds ?? [];
   const services = draft.aiSre?.services ?? [];
   const [open, setOpen] = useState<ConnectorType | null>(null);
@@ -150,13 +155,13 @@ export function AiSreStep({ response, permissions, draft, patchDraft, readOnly }
             {outcomes.map(({ type, outcome }, i) => (
               <li key={`${type}-${i}`} data-testid={`setup-connector-result-${type}`}>
                 <TableBadge tone={outcome.state === "connected" ? "success" : "warning"}>
-                  {labelOf(type)}: {outcome.state === "connected" ? "Connected" : "Saved, token rejected"}
+                  {labelOf(type)}: {outcome.state === "connected" ? "Connected" : outcome.state === "saved" ? "Saved, not tested" : "Saved, token rejected"}
                 </TableBadge>
               </li>
             ))}
             {earlier > 0 ? <li className="text-xs text-muted-foreground">{earlier} saved earlier</li> : null}
           </ul>
-          {outcomes.filter((o) => o.outcome.state === "rejected").map(({ type, outcome }, i) => (
+          {outcomes.filter((o) => o.outcome.state !== "connected").map(({ type, outcome }, i) => (
             <Alert key={`${type}-${i}`} variant="warning">
               {labelOf(type)}: {outcome.text}
             </Alert>

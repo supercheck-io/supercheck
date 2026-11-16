@@ -362,13 +362,13 @@ describe("requirement and service items", () => {
   });
   const items = () => buildCreateItems(withBoth(), { skipped: [], features, canUpdateProject: true });
 
-  it("builds requirement:<n> and service items, honouring skips, flags and permissions", () => {
+  it("builds requirement:<title hash> and service items, honouring skips, flags and permissions", () => {
     expect(items().map((i) => [i.key.split(":")[0], i.kind, i.step])).toEqual([
       ["requirement", "requirement", "tests"],
       ["requirement", "requirement", "tests"],
       ["service", "service", "aiSre"],
     ]);
-    expect(items()[0].key).toBe("requirement:0");
+    expect(items()[0].key).toMatch(/^requirement:[0-9a-z]+$/);
     expect(items()[1].payload).toEqual({ title: "User can log out" });
     const only = (over: Partial<Parameters<typeof buildCreateItems>[1]>) => buildCreateItems(withBoth(), { skipped: [], features, canUpdateProject: true, ...over });
     expect(only({ skipped: ["tests", "aiSre"] })).toEqual([]);
@@ -389,7 +389,7 @@ describe("requirement and service items", () => {
     await runAll(items(), deps, (k, r) => (results[k] = r));
     expect(deps.createRequirement).toHaveBeenCalledTimes(2);
     expect(deps.createService).toHaveBeenCalledTimes(1);
-    expect(results["requirement:0"].status).toBe("adopted");
+    expect(results[items()[0].key].status).toBe("adopted");
   });
 
   it("adopts an existing requirement and service by exact title / name", async () => {
@@ -400,15 +400,34 @@ describe("requirement and service items", () => {
     const list = items();
     expect((await runItem(list[0], deps)).status).toBe("adopted");
     expect((await runItem(list[2], deps)).status).toBe("adopted");
-    expect(created).toMatchObject({ "requirement:0": "r-1", [list[2].key]: "s-1" });
+    expect(created).toMatchObject({ [list[0].key]: "r-1", [list[2].key]: "s-1" });
     expect(deps.createRequirement).not.toHaveBeenCalled();
     expect(deps.createService).not.toHaveBeenCalled();
+  });
+
+  it("keeps ids with their titles when the list is reordered or trimmed on a re-run", async () => {
+    const { deps, created } = makeDeps({ createRequirement: jest.fn().mockResolvedValueOnce({ id: "r-in", success: true }).mockResolvedValueOnce({ id: "r-out", success: true }).mockResolvedValue({ id: "r-new", success: true }) });
+    const build = (titles: string[]) => buildCreateItems({ tests: { requirements: titles.map((title) => ({ title })) } }, { skipped: [], features, canUpdateProject: true });
+    const first = build(["Sign in", "Log out"]);
+    await runAll(first, deps, () => undefined);
+    const [signIn, logOut] = [first[0].key, first[1].key];
+    expect(created).toMatchObject({ [signIn]: "r-in", [logOut]: "r-out" });
+    (deps.getRequirements as jest.Mock).mockResolvedValue({ success: true, requirements: [{ id: "r-in", title: "Sign in" }, { id: "r-out", title: "Log out" }] });
+    const second = build(["Pricing", "Log out", "Sign in"]);
+    const results: Record<string, ItemResult> = {};
+    await runAll(second, deps, (k, r) => (results[k] = r));
+    expect(results[signIn].status).toBe("adopted");
+    expect(results[logOut].status).toBe("adopted");
+    expect(second[0].key).not.toBe(signIn);
+    expect(results[second[0].key].status).toBe("done");
+    expect(created[second[0].key]).toBe("r-new");
+    expect(build(["Sign in", "Sign in"])).toHaveLength(1);
   });
 
   it("skips an item that was created and then deleted", async () => {
     const { deps, created } = makeDeps();
     const list = items();
-    created["requirement:0"] = "gone";
+    created[list[0].key] = "gone";
     created[list[2].key] = "gone";
     expect((await runItem(list[0], deps)).status).toBe("skipped");
     expect((await runItem(list[2], deps)).status).toBe("skipped");

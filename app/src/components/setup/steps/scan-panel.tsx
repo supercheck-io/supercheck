@@ -8,10 +8,11 @@ import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { TableBadge, type TableBadgeTone } from "@/components/ui/table-badge";
 import type { ScanSummary } from "@/lib/setup/scan";
-import { fetchJson, postJson, responseError } from "./step-types";
+import { fetchJson, postJson, responseError, scanMatchesUrl } from "./step-types";
 
 export const SCAN_POLL_MS = 2000;
-export const SCAN_MAX_MS = 90_000;
+// Longer than the 60 s scan budget: a scan can wait in the queue behind others before it runs.
+export const SCAN_MAX_MS = 300_000;
 
 export type ScanPhase =
   | { kind: "idle" }
@@ -29,7 +30,7 @@ const SCAN_ERRORS: Record<NonNullable<ScanSummary["error"]> | "timeout" | "unava
   failed: "The scan failed. Try again, or continue without it.",
 };
 
-/** Starts a scan and polls it every 2 s until it finishes, 90 s pass, or the component unmounts. */
+/** Starts a scan and polls it every 2 s until it finishes, 5 min pass, or the component unmounts. */
 export function useScan(projectId: string, onResult: (result: ScanSummary) => void) {
   const [phase, setPhase] = useState<ScanPhase>({ kind: "idle" });
   const alive = useRef(true);
@@ -167,7 +168,9 @@ export function ScanFindings({ result }: { result: ScanSummary }) {
 
 export function ScanPanel({ projectId, url, disabled, onResult, initial }: { projectId: string; url: string | null; disabled: boolean; onResult: (result: ScanSummary) => void; initial: ScanSummary | null }) {
   const { phase, start } = useScan(projectId, onResult);
-  const shown: ScanPhase = phase.kind === "idle" && initial ? { kind: "done", result: initial } : phase;
+  const current: ScanPhase = phase.kind === "idle" && initial ? { kind: "done", result: initial } : phase;
+  // A finished scan belongs to the address it ran against; hide it once the URL points elsewhere.
+  const shown: ScanPhase = current.kind === "done" && !scanMatchesUrl(current.result, url) ? { kind: "idle" } : current;
   const scanning = phase.kind === "scanning";
   return (
     <section aria-labelledby="setup-scan" className="space-y-3" data-testid="setup-scan">

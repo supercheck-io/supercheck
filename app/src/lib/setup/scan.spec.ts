@@ -1,7 +1,8 @@
 /** @jest-environment node */
 const add = jest.fn();
 const getJob = jest.fn();
-jest.mock("bullmq", () => ({ Queue: jest.fn().mockImplementation(() => ({ add, getJob, on: jest.fn() })) }));
+const getWorkersCount = jest.fn();
+jest.mock("bullmq", () => ({ Queue: jest.fn().mockImplementation(() => ({ add, getJob, getWorkersCount, on: jest.fn() })) }));
 jest.mock("@/lib/queue", () => ({
   assertExecutionQueueReady: jest.fn().mockResolvedValue(undefined),
   getRedisConnection: jest.fn().mockResolvedValue({}),
@@ -34,8 +35,20 @@ describe("setup scan queue helpers", () => {
     expect(clean?.finalUrl).toBe("https://x.test/path");
     expect(JSON.stringify(clean)).not.toMatch(/html|headers|body/);
     expect(sanitizeScanResult({ ...good, pages: Array.from({ length: 21 }, () => good.pages[0]) })).toBeNull();
-    expect(sanitizeScanResult({ ...good, pages: [{ ...good.pages[0], title: "x".repeat(121) }] })).toBeNull();
     expect(sanitizeScanResult(null)).toBeNull();
+  });
+
+  it("keeps good pages when one is out of range, and clamps odd status codes", () => {
+    const pages = [
+      good.pages[0],
+      { ...good.pages[0], path: `/${"a".repeat(300)}` },
+      { ...good.pages[0], title: "x".repeat(121) },
+      { ...good.pages[0], path: "/linkedin", status: 999 },
+      { ...good.pages[0], path: "/huge", status: 1500 },
+    ];
+    const clean = sanitizeScanResult({ ...good, status: 999, pages });
+    expect(clean?.status).toBe(999);
+    expect(clean?.pages.map((p) => [p.path, p.status])).toEqual([["/a", 200], ["/linkedin", 999], ["/huge", 999]]);
   });
 
   it("maps job states", async () => {
@@ -46,8 +59,17 @@ describe("setup scan queue helpers", () => {
     expect(await readScan("a")).toEqual({ status: "running" });
     getJob.mockResolvedValueOnce(job("waiting"));
     expect(await readScan("a")).toEqual({ status: "queued" });
-    getJob.mockResolvedValueOnce(job("waiting", { timestamp: Date.now() - SCAN_PICKUP_TIMEOUT_MS - 1 }));
+    const stale = { timestamp: Date.now() - SCAN_PICKUP_TIMEOUT_MS - 1 };
+    getWorkersCount.mockResolvedValueOnce(0);
+    getJob.mockResolvedValueOnce(job("waiting", stale));
     expect(await readScan("a")).toEqual({ status: "unavailable" });
+    // A worker is consuming the queue but busy: still queued.
+    getWorkersCount.mockResolvedValueOnce(2);
+    getJob.mockResolvedValueOnce(job("waiting", stale));
+    expect(await readScan("a")).toEqual({ status: "queued" });
+    // Only "waiting" jobs can be unavailable.
+    getJob.mockResolvedValueOnce(job("delayed", stale));
+    expect(await readScan("a")).toEqual({ status: "queued" });
     getJob.mockResolvedValueOnce(job("failed"));
     expect(await readScan("a")).toEqual({ status: "failed" });
     getJob.mockResolvedValueOnce(job("completed", { returnvalue: good }));

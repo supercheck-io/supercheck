@@ -178,13 +178,13 @@ describe("generation", () => {
     ["non-JSON", "not json at all"],
     ["bad shape", JSON.stringify({ requirements: [{ title: "", priority: "urgent" }] })],
     ["broken JSON", "{ nope }"],
-  ])("502 without echoing raw text on %s, refund and release", async (_n, text) => {
+  ])("502 without echoing raw text on %s, refund but keep the daily claim", async (_n, text) => {
     (generateText as jest.Mock).mockResolvedValue({ text: `SECRET-RAW ${text}`, usage: {} });
     const res = await POST(req(), params);
     expect(res.status).toBe(502);
     expect(JSON.stringify(await res.json())).not.toContain("SECRET-RAW");
     expect(refund).toHaveBeenCalled();
-    expect(releaseAiRun).toHaveBeenCalledWith(ORG, PROJECT, claim);
+    expect(releaseAiRun).not.toHaveBeenCalled();
     expect(logAuditEvent).not.toHaveBeenCalled();
   });
   it("502, refund and release when the provider throws", async () => {
@@ -192,6 +192,18 @@ describe("generation", () => {
     expect((await POST(req(), params)).status).toBe(502);
     expect(refund).toHaveBeenCalled();
     expect(releaseAiRun).toHaveBeenCalled();
+  });
+  it("releases the claim when reserving the credit or refunding throws, or the credit is denied", async () => {
+    jest.spyOn(console, "error").mockImplementation(() => undefined);
+    (reserveAICredit as jest.Mock).mockRejectedValue(new Error("redis"));
+    expect((await POST(req(), params)).status).toBe(500);
+    expect(releaseAiRun).toHaveBeenCalledWith(ORG, PROJECT, claim);
+
+    jest.clearAllMocks();
+    (reserveAICredit as jest.Mock).mockResolvedValue({ allowed: true, refund: jest.fn().mockRejectedValue(new Error("refund")) });
+    (generateText as jest.Mock).mockRejectedValue(new Error("provider down"));
+    expect((await POST(req(), params)).status).toBe(500);
+    expect(releaseAiRun).toHaveBeenCalledWith(ORG, PROJECT, claim);
   });
   it("500 on an unexpected failure", async () => {
     (getSetupState as jest.Mock).mockRejectedValue(new Error("db"));

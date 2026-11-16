@@ -66,6 +66,8 @@ const BOT_MARKERS =
   /just a moment|cf-chl|challenge-platform|captcha|attention required|access denied|checking your browser/i;
 const BLOCKED_MESSAGE = 'Access to private or reserved networks is not allowed';
 
+const MAX_PATH_LENGTH = 300;
+
 const originAndPath = (url: URL): string => `${url.origin}${url.pathname}`;
 
 function cleanText(raw: string): string {
@@ -103,6 +105,9 @@ export function extractLinks(html: string, base: URL): string[] {
     if (url.protocol !== 'http:' && url.protocol !== 'https:') continue;
     if (url.origin !== base.origin || ASSET_PATH.test(url.pathname)) continue;
     if (url.pathname === base.pathname) continue;
+    // `//host/x` would resolve off-host when joined to the origin later; very long paths are dropped.
+    if (url.pathname.startsWith('//') || url.pathname.length > MAX_PATH_LENGTH)
+      continue;
     found.add(url.pathname);
     if (found.size >= SCAN_LIMITS.maxCandidateLinks) break;
   }
@@ -229,18 +234,21 @@ async function readSsl(
   deps: SetupScanDeps,
   budget: AbortSignal,
 ): Promise<SetupScanResult['ssl']> {
-  if (url.protocol !== 'https:') return null;
+  // An already-aborted budget never fires its listener, so skip the read outright.
+  if (url.protocol !== 'https:' || budget.aborted) return null;
   try {
     const hostname = url.hostname.replace(/^\[|\]$/g, '');
-    const lookup = await vettedLookup(hostname, deps.allowInternalTargets());
-    const timeoutMs = SCAN_LIMITS.requestTimeoutMs;
-    const info = await Promise.race([
-      deps.readCertificate({
+    const read = (async () => {
+      const lookup = await vettedLookup(hostname, deps.allowInternalTargets());
+      return deps.readCertificate({
         hostname,
         port: Number(url.port) || 443,
         lookup,
-        timeoutMs,
-      }),
+        timeoutMs: SCAN_LIMITS.requestTimeoutMs,
+      });
+    })();
+    const info = await Promise.race([
+      read,
       new Promise<never>((_resolve, reject) =>
         budget.addEventListener('abort', () => reject(new Error('budget')), {
           once: true,
@@ -305,14 +313,12 @@ export async function processSetupScan(
     while (!budget.aborted && pages.length < SCAN_LIMITS.maxPages) {
       const path = queue.shift();
       if (path === undefined) return;
+      const target = new URL(path, home.finalUrl);
+      if (target.origin !== home.finalUrl.origin) continue;
       // Slot is claimed before the request so concurrent workers cannot exceed the cap.
       const slot = pages.push({ path, status: 0, ms: 0, title: null }) - 1;
       try {
-        const page = await fetchPage(
-          new URL(path, home.finalUrl),
-          deps,
-          budget,
-        );
+        const page = await fetchPage(target, deps, budget);
         pages[slot] = {
           path,
           status: page.status,
