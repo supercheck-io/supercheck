@@ -36,6 +36,11 @@ describe("safeText", () => {
     const escaped = safeText(JSON.stringify({ note: 'Authorization: Bearer "abc123"' }))!;
     expect(escaped).not.toContain("abc123");
     expect(() => JSON.parse(escaped)).not.toThrow();
+    const digest = 'Authorization: Digest username="alice", realm="r", response="deadbeef", nc=00000001';
+    expect(safeText(digest)).not.toMatch(/alice|deadbeef|00000001/);
+    const digestJson = safeText(JSON.stringify({ note: digest }))!;
+    expect(digestJson).not.toMatch(/alice|deadbeef/);
+    expect(() => JSON.parse(digestJson)).not.toThrow();
   });
   it("truncates long text", () => {
     expect(safeText("x".repeat(5000))!.endsWith("[truncated]")).toBe(true);

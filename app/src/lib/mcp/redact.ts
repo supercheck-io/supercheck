@@ -6,6 +6,8 @@ const MAX_FIELD_CHARS = 4 * 1024;
 /** Extra patterns the shared connector redactor does not cover. */
 const EXTRA_PATTERNS: [RegExp, string][] = [
   [/\b[a-z][a-z0-9+.-]*:\/\/[^\s/@:]+:[^\s/@]+@/gi, "[REDACTED_URL_CREDENTIALS]@"],
+  // Digest carries comma-separated key=value parameters (quoted raw or JSON-escaped); redact them all.
+  [/\b(authorization|proxy-authorization)\s*[:=]\s*digest\s+(?:\s*,?\s*[A-Za-z-]+=(?:\\"(?:[^"\\\n]|\\[^"])*\\"|"[^"\n]*"|[^\s,"\\]+))+/gi, "$1: Digest [REDACTED]"],
   // The value stops at a quote so a header inside JSON text keeps its closing quote.
   [/\b(authorization|proxy-authorization)\s*[:=]\s*(basic|bearer|digest)\s+(?:\\"(?:[^"\\\n]|\\[^"])*\\"|"[^"\n]*"|'[^'\n]*'|[^\s"'\\]+)/gi, "$1: [REDACTED]"],
   // Chat webhook URLs carry their secret in the path (Discord, Microsoft Teams, Telegram bot token).
