@@ -24,7 +24,7 @@ const CREATOR_ROLES = ["org_owner", "org_admin"];
 
 export function SetupSkeleton() {
   return (
-    <div className="space-y-4" data-testid="setup-skeleton" aria-busy="true">
+    <div className="space-y-6" data-testid="setup-skeleton" aria-busy="true">
       <Skeleton className="h-10 w-64" />
       <Skeleton className="h-64 w-full" />
     </div>

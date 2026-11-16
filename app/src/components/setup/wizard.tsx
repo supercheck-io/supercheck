@@ -3,13 +3,16 @@
 import { useEffect, useMemo, useRef, useState, type ComponentType } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Bell, Globe, ListChecks, Tally4, Terminal, UserPlus, type LucideIcon } from "lucide-react";
+import { CheckCircle2, CircleCheckBig, Terminal, type LucideIcon } from "lucide-react";
 
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { PageHeader } from "@/components/shared/page-header";
 import { IconChip, type IconTone } from "@/components/ui/icon-chip";
 import { useAppConfig } from "@/hooks/use-app-config";
+import { NAV } from "@/lib/nav-areas";
+import { ADMIN_TYPES, TYPE_TONE } from "@/lib/type-tones";
 import { cn } from "@/lib/utils";
 import type { SetupFeature } from "@/lib/setup/features";
 import { stepOrder, type SetupStepKey, type UserPersona } from "@/lib/setup/persona";
@@ -37,13 +40,13 @@ interface StepMeta {
  * turns on the flag named in STEP_FLAG.
  */
 const STEP_META: Partial<Record<SetupStepKey, StepMeta>> = {
-  developer: { title: "Set up from your terminal", sub: "CLI and coding agents", icon: Terminal, tone: "zinc" },
-  invite: { title: "Invite your team first?", sub: "Bring people in", icon: UserPlus, tone: "lime" },
-  app: { title: "Your app", sub: "URL and test account", icon: Globe, tone: "monitor" },
-  alerts: { title: "Alerts", sub: "Where we tell you", icon: Bell, tone: "communicate" },
-  monitors: { title: "Monitors", sub: "Uptime and SSL", icon: Globe, tone: "monitor" },
-  statusPage: { title: "Status page", sub: "Tell your users", icon: Tally4, tone: "statuspage" },
-  review: { title: "Review and create", sub: "Create everything", icon: ListChecks, tone: "slate" },
+  developer: { title: "Set up from your terminal", sub: "CLI and coding agents", icon: Terminal, tone: TYPE_TONE.admin.cliToken },
+  invite: { title: "Invite your team first?", sub: "Bring people in", icon: ADMIN_TYPES.member.icon, tone: TYPE_TONE.admin.member },
+  app: { title: "Your app", sub: "URL and test account", icon: NAV.monitors.icon, tone: NAV.monitors.tone },
+  alerts: { title: "Alerts", sub: "Where we tell you", icon: NAV.notifications.icon, tone: NAV.notifications.tone },
+  monitors: { title: "Monitors", sub: "Uptime and SSL", icon: NAV.monitors.icon, tone: NAV.monitors.tone },
+  statusPage: { title: "Status page", sub: "Tell your users", icon: NAV.statusPages.icon, tone: NAV.statusPages.tone },
+  review: { title: "Review and create", sub: "Create everything", icon: CircleCheckBig, tone: NAV.projectSetup.tone },
 };
 
 const STEP_FLAG: Partial<Record<SetupStepKey, SetupFeature>> = {
@@ -163,7 +166,7 @@ export function SetupWizard({ response, persona, userEmail }: WizardProps) {
   };
 
   return (
-    <div className="space-y-4" data-testid="setup-wizard">
+    <div className="space-y-6" data-testid="setup-wizard">
       {lock.holder?.sameUser ? (
         <Alert variant="warning" data-testid="setup-other-tab">
           <p className="text-sm font-semibold">Setup is open in another tab</p>
@@ -199,54 +202,59 @@ export function SetupWizard({ response, persona, userEmail }: WizardProps) {
       ) : null}
       {!response.permissions.canEdit ? <Alert variant="info">You have view access. A project admin can finish setup.</Alert> : null}
 
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-sm text-muted-foreground" aria-live="polite" data-testid="setup-save-state">
-          {session.saveState === "saving" ? "Saving..." : session.saveState === "saved" ? "Draft saved" : session.saveState === "error" ? `Could not save the draft${session.saveError ? `: ${session.saveError}` : ""}` : ""}
-          {session.saveState === "error" ? (
-            <Button type="button" variant="link" size="sm" onClick={() => void session.flush()}>
-              Try again
+      <PageHeader
+        title={`Set up ${response.projectName}`}
+        description="Answer a few questions and we create the basics. Each step can be skipped."
+        icon={NAV.projectSetup.icon}
+        tone={NAV.projectSetup.tone}
+        actions={
+          <>
+            <p className="text-sm text-muted-foreground" aria-live="polite" data-testid="setup-save-state">
+              {session.saveState === "saving" ? "Saving..." : session.saveState === "saved" ? "Draft saved" : session.saveState === "error" ? `Could not save the draft${session.saveError ? `: ${session.saveError}` : ""}` : ""}
+              {session.saveState === "error" ? (
+                <Button type="button" variant="link" size="sm" onClick={() => void session.flush()}>
+                  Try again
+                </Button>
+              ) : null}
+            </p>
+            <Button type="button" variant="outline" onClick={() => setLeaving(true)}>
+              Exit setup
             </Button>
-          ) : null}
-        </p>
-        <Button type="button" variant="ghost" size="sm" onClick={() => setLeaving(true)}>
-          Exit setup
-        </Button>
-      </div>
+          </>
+        }
+      />
 
       <div className="grid gap-6 min-[900px]:grid-cols-[14rem_minmax(0,1fr)]">
         <nav aria-label="Setup steps">
-          <ol className="flex gap-2 overflow-x-auto pb-1 min-[900px]:flex-col min-[900px]:overflow-visible">
+          <ol className="flex flex-wrap gap-1 min-[900px]:flex-col">
             {steps.map((stepKey, i) => {
               const m = STEP_META[stepKey] as StepMeta;
               const skippedStep = session.skipped.includes(stepKey);
               const done = i < index && !skippedStep;
               const current = i === index;
               return (
-                <li key={stepKey} className="shrink-0">
+                <li key={stepKey}>
                   <button
                     type="button"
                     data-testid={`setup-step-${stepKey}`}
                     aria-current={current ? "step" : undefined}
                     onClick={() => goTo(stepKey)}
                     className={cn(
-                      "flex w-full items-center gap-3 rounded-md px-3 py-2 text-left text-sm outline-none transition-colors hover:bg-accent focus-visible:ring-[3px] focus-visible:ring-ring/50",
+                      "flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-sm outline-none transition-colors hover:bg-accent focus-visible:ring-[3px] focus-visible:ring-ring/50",
                       current && "bg-accent font-medium",
                     )}
                   >
-                    <span
-                      className={cn(
-                        "flex size-6 shrink-0 items-center justify-center rounded-full border text-xs tabular-nums",
-                        done && "border-success bg-success/10 text-success",
-                        skippedStep && "border-dashed text-muted-foreground",
-                        current && "border-primary bg-primary text-primary-foreground",
-                      )}
-                    >
-                      {done ? "✓" : i + 1}
-                    </span>
-                    <span className="min-w-0 whitespace-nowrap min-[900px]:whitespace-normal">
+                    <IconChip icon={m.icon} tone={m.tone} size="sm" />
+                    <span className="min-w-0">
                       {m.title}
                       {skippedStep ? <span className="block text-xs font-normal text-muted-foreground">Skipped</span> : null}
                     </span>
+                    {done ? (
+                      <>
+                        <CheckCircle2 className="ml-auto size-4 shrink-0 text-success" aria-hidden="true" />
+                        <span className="sr-only">(done)</span>
+                      </>
+                    ) : null}
                   </button>
                 </li>
               );
@@ -254,11 +262,11 @@ export function SetupWizard({ response, persona, userEmail }: WizardProps) {
           </ol>
         </nav>
 
-        <section aria-labelledby="setup-step-title" className="min-w-0 space-y-6">
+        <section aria-labelledby="setup-step-title" className="min-w-0 space-y-6 min-[900px]:border-l min-[900px]:pl-6">
           <div className="flex items-start gap-3">
             <IconChip icon={meta.icon} tone={meta.tone} size="md" className="mt-0.5" />
             <div className="min-w-0">
-              <h2 id="setup-step-title" className="text-lg font-semibold">
+              <h2 id="setup-step-title" className="text-base font-semibold">
                 {meta.title}
               </h2>
               <p className="text-xs text-muted-foreground">

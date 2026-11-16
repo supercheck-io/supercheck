@@ -1,13 +1,17 @@
 "use client";
 
 import { useEffect, useState, type ReactNode } from "react";
+import { Activity, Plug, Sparkles, type LucideIcon } from "lucide-react";
+
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { IconChip, type IconTone } from "@/components/ui/icon-chip";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import { TYPE_TONE } from "@/lib/type-tones";
 import { AI_ENDPOINT_DEFAULT_URL } from "@/components/monitors/ai-endpoint-fields";
 import {
   AI_ENDPOINT_QUERY_ALLOWLIST,
@@ -53,6 +57,8 @@ const fieldError = (schema: Parameters<typeof schemaError>[0], value: string) =>
 
 function OptionalCard({
   id,
+  icon,
+  tone,
   title,
   description,
   enabled,
@@ -61,6 +67,8 @@ function OptionalCard({
   children,
 }: {
   id: string;
+  icon: LucideIcon;
+  tone: IconTone;
   title: string;
   description: string;
   enabled: boolean;
@@ -69,13 +77,16 @@ function OptionalCard({
   children: ReactNode;
 }) {
   return (
-    <section className="rounded-lg border p-4" data-testid={`setup-card-${id}`}>
+    <section className="rounded-xl border p-4" data-testid={`setup-card-${id}`}>
       <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <Label htmlFor={`setup-${id}-toggle`} className="text-sm font-semibold">
-            {title}
-          </Label>
-          <p className="text-xs text-muted-foreground">{description}</p>
+        <div className="flex min-w-0 items-start gap-3">
+          <IconChip icon={icon} tone={tone} size="md" />
+          <div className="min-w-0">
+            <Label htmlFor={`setup-${id}-toggle`} className="text-sm font-semibold">
+              {title}
+            </Label>
+            <p className="text-xs text-muted-foreground">{description}</p>
+          </div>
         </div>
         <Switch id={`setup-${id}-toggle`} checked={enabled} disabled={disabled} onCheckedChange={onToggle} />
       </div>
@@ -279,6 +290,8 @@ export function MonitorsStep({ response, draft, patchDraft, features, readOnly }
       {features.heartbeat ? (
         <OptionalCard
           id="heartbeat"
+          icon={Activity}
+          tone={TYPE_TONE.monitor.heartbeat}
           title="Have a cron job or worker? Add a heartbeat"
           description="It pings a URL when it runs. You are alerted when a ping is missing."
           enabled={hbOpen}
@@ -297,6 +310,8 @@ export function MonitorsStep({ response, draft, patchDraft, features, readOnly }
       {features.aiEndpoint ? (
         <OptionalCard
           id="ai-endpoint"
+          icon={Sparkles}
+          tone="ai"
           title="Monitor an AI endpoint"
           description="Checks an OpenAI-compatible endpoint with a small streaming request."
           enabled={aiOpen}
@@ -325,6 +340,8 @@ export function MonitorsStep({ response, draft, patchDraft, features, readOnly }
       {features.mcpMonitor ? (
         <OptionalCard
           id="mcp"
+          icon={Plug}
+          tone={TYPE_TONE.monitor.mcp_server}
           title="Monitor an MCP server"
           description="Checks that the server answers and lists its tools."
           enabled={mcpOpen}

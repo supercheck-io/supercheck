@@ -3,7 +3,6 @@
 import { useState, type ReactNode } from "react";
 import Link from "next/link";
 import { useQueryClient } from "@tanstack/react-query";
-import { CheckCircle2, Circle } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -11,11 +10,13 @@ import { Card, CardContent } from "@/components/ui/card";
 import { IconChip } from "@/components/ui/icon-chip";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
+import { TableBadge } from "@/components/ui/table-badge";
 import { useAppConfig } from "@/hooks/use-app-config";
 import { useProjectContextSafe } from "@/hooks/use-project-context";
 import { getProjectSetupQueryKey, setProjectSetupData, updateProjectSetup, useProjectSetup } from "@/hooks/use-project-setup";
 import { NAV } from "@/lib/nav-areas";
 import type { Checklist } from "@/lib/setup/checklist";
+import { CHECKLIST_ICONS } from "./setup-checklist";
 import type { ProjectSetupStatus } from "@/db/schema/project-setup";
 
 interface GettingStartedCardProps {
@@ -33,7 +34,7 @@ export function GettingStartedCard({ checklist, status, canEdit, projectId, onDi
   const started = status === "in_progress" || done > 0;
   return (
     <Card className="shadow-sm" data-testid="getting-started-card">
-      <CardContent className="space-y-4">
+      <CardContent className="space-y-4 p-6">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="flex min-w-0 items-start gap-3">
             <IconChip icon={NAV.projectSetup.icon} tone={NAV.projectSetup.tone} size="md" className="mt-0.5" />
@@ -67,14 +68,11 @@ export function GettingStartedCard({ checklist, status, canEdit, projectId, onDi
             <li key={item.key}>
               <Link
                 href={item.href}
-                className="flex items-center gap-2 rounded-md border px-3 py-2 text-sm transition-colors hover:bg-accent"
+                className="flex items-center gap-3 rounded-lg border px-3 py-2.5 text-sm transition-colors hover:bg-accent"
               >
-                {item.done ? (
-                  <CheckCircle2 className="size-4 shrink-0 text-success" aria-hidden="true" />
-                ) : (
-                  <Circle className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-                )}
-                <span className="min-w-0 truncate">{item.title}</span>
+                {CHECKLIST_ICONS[item.key] ? <IconChip icon={CHECKLIST_ICONS[item.key].icon} tone={CHECKLIST_ICONS[item.key].tone} size="sm" /> : null}
+                <span className="min-w-0 flex-1 truncate">{item.title}</span>
+                {item.done ? <TableBadge tone="success" compact aria-hidden="true">Done</TableBadge> : null}
                 <span className="sr-only">{item.done ? "(done)" : "(not done)"}</span>
               </Link>
             </li>

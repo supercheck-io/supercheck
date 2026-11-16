@@ -13,7 +13,7 @@ export default function ProjectSetupPage() {
     <div>
       <PageBreadcrumbs items={breadcrumbs} />
       <Card className="shadow-sm m-4">
-        <CardContent>
+        <CardContent className="p-6">
           <Suspense fallback={<SetupSkeleton />}>
             <SetupPage />
           </Suspense>
