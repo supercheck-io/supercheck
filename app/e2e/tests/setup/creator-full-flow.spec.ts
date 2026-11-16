@@ -1,6 +1,7 @@
 import { expect, test, type BrowserContext, type Page } from '@playwright/test';
 
 import { waitForHydration } from '../../utils/hydration';
+import { captureFixturePage } from '../../fixtures/checkpoint.fixture';
 import {
   chooseProfile,
   expectStep,
@@ -21,6 +22,11 @@ test.describe('Project setup creator flow @setup', () => {
     const creator = await signUpFreshCreator(browser, baseURL ?? '', 'creator');
     context = creator.context;
     page = creator.page;
+  });
+
+  // The creator's page is not a fixture, so save its frame when the test fails.
+  test.afterEach(async () => {
+    if (page && test.info().status !== test.info().expectedStatus) await captureFixturePage(page, 'creatorPage');
   });
 
   test.afterAll(async () => {
