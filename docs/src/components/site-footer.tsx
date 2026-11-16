@@ -164,6 +164,11 @@ export function SiteFooter({
                                 Terms
                             </Link>
                         </li>
+                        <li>
+                            <Link href="/security" className="hover:text-fd-foreground transition-colors">
+                                Security
+                            </Link>
+                        </li>
                         {socialLinks.map((social, idx) => (
                             <li key={idx}>
                                 <a

@@ -20,7 +20,7 @@ const sources = {
   'bot page': read('../src/app/tools/bot/page.tsx'),
 };
 // Site routes outside the docs that marketing pages may link to.
-const siteRoutes = new Set(['/', '/pricing', '/privacy', '/terms', '/tools', '/tools/bot']);
+const siteRoutes = new Set(['/', '/pricing', '/privacy', '/security', '/terms', '/tools', '/tools/bot']);
 
 const slug = (heading) =>
   heading.toLowerCase().replace(/[`*]/g, '').replace(/[^a-z0-9 -]/g, '').trim().replace(/\s+/g, '-');
