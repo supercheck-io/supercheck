@@ -8,7 +8,7 @@ import {
   EthernetPort,
   ChevronsLeftRightEllipsis,
   ArrowLeftRight,
-  Server,
+  Plug,
   Activity,
 } from "lucide-react";
 import { typeText } from "@/lib/type-tones";
@@ -93,7 +93,7 @@ export const monitorTypes = [
   {
     label: "MCP Monitor",
     value: "mcp_server",
-    icon: Server,
+    icon: Plug,
     color: typeText("monitor", "mcp_server"),
     description: "Check an MCP server and its tools",
   },

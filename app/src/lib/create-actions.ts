@@ -1,5 +1,5 @@
 import {
-  ArrowLeftRight, CalendarClock, Chrome, ChevronsLeftRightEllipsis, Database, EthernetPort, Activity, LaptopMinimal, Server, SquareFunction, Bot,
+  ArrowLeftRight, CalendarClock, Chrome, ChevronsLeftRightEllipsis, Database, EthernetPort, Activity, LaptopMinimal, Plug, SquareFunction, Bot,
   type LucideIcon,
 } from "lucide-react";
 import type { ComponentType } from "react";
@@ -111,7 +111,7 @@ export const CREATE_ACTIONS: CreateAction[] = [
   monitor("ping_host", "Ping Monitor", ChevronsLeftRightEllipsis),
   monitor("port_check", "Port Monitor", EthernetPort),
   monitor("synthetic_test", "Synthetic Monitor", PlaywrightLogo, true),
-  monitor("mcp_server", "MCP Monitor", Server),
+  monitor("mcp_server", "MCP Monitor", Plug),
   monitor("heartbeat", "Heartbeat Monitor", Activity),
 
   {
