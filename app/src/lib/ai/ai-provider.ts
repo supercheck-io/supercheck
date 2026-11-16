@@ -75,6 +75,16 @@ export interface AIGenerationOptions {
  * This is a shared utility used by all AI features to ensure consistent
  * validation before making AI requests.
  */
+/** True when the selected AI provider has its credentials (self-hosted may run without AI, D19). */
+export function isAIProviderConfigured(): boolean {
+  try {
+    validateAIConfiguration();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function validateAIConfiguration(): void {
   const provider = getAIProvider();
 

@@ -419,6 +419,25 @@ export async function switchProject(
   }
 }
 
+/** The expected-project header refused: the active project is no longer the one the caller started with. */
+export const PROJECT_MISMATCH_MESSAGE = "Project changed in another tab";
+export class ProjectMismatchError extends Error {
+  readonly code = "PROJECT_MISMATCH";
+  constructor() {
+    super(PROJECT_MISMATCH_MESSAGE);
+    this.name = "ProjectMismatchError";
+  }
+}
+
+/**
+ * A client that wrote against a specific project (project setup) sends `x-supercheck-project-id`.
+ * When the session's active project differs, another tab switched it, so the write is refused
+ * instead of landing in the wrong project. Absent header = no check.
+ */
+function assertExpectedProject(expectedProjectId: string | null, activeProjectId: string) {
+  if (expectedProjectId && expectedProjectId !== activeProjectId) throw new ProjectMismatchError();
+}
+
 /**
  * Require project context middleware for API routes
  */
@@ -460,6 +479,7 @@ export async function requireProjectContext(): Promise<ProjectAuthContext> {
         );
      }
      
+     assertExpectedProject(headersList.get("x-supercheck-project-id"), slowProject.id);
      const userId = ctx.userId; // unified auth handles impersonation
      
      return {
@@ -483,6 +503,7 @@ export async function requireProjectContext(): Promise<ProjectAuthContext> {
   if (!effectiveRole) {
     throw new Error("Access denied: You do not have a valid role for this project.");
   }
+  assertExpectedProject(headersList.get("x-supercheck-project-id"), ctx.projectId);
 
   return {
     userId: ctx.userId,

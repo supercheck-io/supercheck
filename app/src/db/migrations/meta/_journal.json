@@ -603,6 +603,13 @@
       "when": 1794777153290,
       "tag": "0085_agent_test",
       "breakpoints": true
+    },
+    {
+      "idx": 86,
+      "version": "7",
+      "when": 1794829348843,
+      "tag": "0086_project_setup",
+      "breakpoints": true
     }
   ]
 }

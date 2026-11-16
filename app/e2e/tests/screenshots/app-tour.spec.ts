@@ -35,6 +35,8 @@ test.describe('public pages', () => {
  */
 // `path` can look an id up through the API for records the seed SQL created.
 const PAGES: Array<{ route: string; name: string; path?: (s: Seed, api: APIRequestContext) => string | Promise<string>; dark?: boolean }> = [
+  { route: '/setup', name: 'project-setup', dark: true },
+  { route: '/setup/welcome', name: 'project-setup-welcome', dark: true },
   // Old URLs that redirect to a tab are toured at the tab itself.
   { route: '/', name: 'dashboard', dark: true },
   { route: '/connected-apps', name: 'connected-apps' },

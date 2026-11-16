@@ -66,6 +66,7 @@ The sidebar marks the current page with its active state, and the active icon ta
 Rules for chips:
 - One chip per page title and at most one per card header. Rows in tables and form fields get no chips.
 - A chip is decorative (`aria-hidden`). The text next to it carries the meaning.
+- Project setup (`NAV.projectSetup`) takes the `organization` tone. Its checklist rows, wizard steps and persona cards reuse the destination's `NAV` icon and tone (`CHECKLIST_ICONS` in `components/setup/setup-checklist.tsx`); alert channels reuse `getNotificationProviderConfig`.
 
 ## 5. Layout
 

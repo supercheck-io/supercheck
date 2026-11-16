@@ -21,6 +21,7 @@ jest.mock("@/lib/auth-context", () => ({
   requireAuthContext: jest.fn(async () => ({ userId: "u", organizationId: "org-1", project: { id: "project-1", name: "P" }, isCliAuth: false })),
   isAuthError: jest.fn(() => false),
   authErrorStatus: jest.fn(() => 401),
+  authErrorResponse: jest.fn((error: Error) => jest.requireActual("next/server").NextResponse.json({ error: error.message }, { status: 401 })),
 }));
 jest.mock("@/lib/session-security", () => ({ checkMonitorApiRateLimit: jest.fn(async () => ({ allowed: true })) }));
 jest.mock("@/lib/services/subscription-service", () => ({

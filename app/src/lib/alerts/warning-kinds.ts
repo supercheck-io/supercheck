@@ -58,6 +58,9 @@ export const WARNING_KINDS = {
   { monitorTypes: readonly MonitorType[]; aiEndpointOnly?: true; agentTestOnly?: true; label: string; help: string; defaultOn: boolean }
 >;
 
+/** Default "Warn when first token is slower than" for an AI endpoint; the monitor form shows it as its example. */
+export const AI_WARN_FIRST_TOKEN_DEFAULT_MS = 3000;
+
 export type WarningKind = keyof typeof WARNING_KINDS;
 
 export function isWarningKind(kind: string): kind is WarningKind {

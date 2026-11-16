@@ -1,3 +1,4 @@
+import { SETUP_FEATURES } from "@/lib/setup/features";
 import { render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { SubscriptionGuard, hasProductAccess, canBrowseProduct } from "./subscription-guard";
@@ -58,6 +59,7 @@ function makeAppConfig(
     isCloudHosted: true,
     isMcpEnabled: false,
     isDemoMode: false,
+    setupFeatures: SETUP_FEATURES,
     showCommunityLinks: false,
     isGithubEnabled: false,
     isGoogleEnabled: false,

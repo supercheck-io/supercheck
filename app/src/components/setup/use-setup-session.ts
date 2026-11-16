@@ -1,0 +1,293 @@
+"use client";
+
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
+
+import { setProjectSetupData, updateProjectSetup } from "@/hooks/use-project-setup";
+import type { SetupDraft } from "@/lib/setup/draft-schema";
+import type { SetupStepKey } from "@/lib/setup/persona";
+import type { SetupLockInfo, SetupStateDto, SetupUpdateRequest } from "@/lib/setup/types";
+
+type Tracked = {
+  draft: SetupDraft;
+  skipped: SetupStepKey[];
+  currentStep: SetupStepKey | null;
+  statusPageOptOut: boolean;
+  status: SetupStateDto["status"];
+};
+type TrackedKey = keyof Tracked;
+
+export type SaveState = "idle" | "saving" | "saved" | "error";
+
+const fromState = (s: SetupStateDto): Tracked => ({
+  draft: s.draft,
+  skipped: s.skipped,
+  currentStep: s.currentStep,
+  statusPageOptOut: s.statusPageOptOut,
+  status: s.status,
+});
+
+/** "pages.0.url: Must be an http(s) URL" style text from the server's 400, else null (a network failure has no reason to show). */
+function failureMessage(error: unknown): string | null {
+  const failure = error as { status?: number; message?: string; body?: { details?: unknown } };
+  if (!failure.status) return null;
+  const details = Array.isArray(failure.body?.details) ? failure.body.details.filter((d): d is string => typeof d === "string") : [];
+  return details.length > 0 ? details[0] : (failure.message ?? null);
+}
+
+const RATE_LIMIT_RETRIES = 3;
+const RETRY_AFTER_CAP_S = 30;
+/** Rapid recordCreated calls within this window share one save. */
+const RECORD_COALESCE_MS = 50;
+/** Just past the runner's 30 s ownership-check gap, so a forced-out tab has stopped before this one creates. */
+const RECLAIM_WAIT_MS = 35_000;
+
+/** PUT, waiting out a 429 for its Retry-After (capped) up to three times; nothing was written, so the same body is safe to resend. */
+async function putWithRateLimitRetry(projectId: string, body: SetupUpdateRequest) {
+  for (let retry = 0; ; retry++) {
+    try {
+      return await updateProjectSetup(projectId, body);
+    } catch (error) {
+      const failure = error as { status?: number; retryAfter?: number };
+      if (failure.status !== 429 || retry >= RATE_LIMIT_RETRIES) throw error;
+      await new Promise((resolve) => setTimeout(resolve, Math.min(failure.retryAfter ?? 1, RETRY_AFTER_CAP_S) * 1000));
+    }
+  }
+}
+
+/**
+ * Local copy of the setup state with debounced, serialized autosave. Writes carry
+ * `expectedUpdatedAt`; on a 409 the server state replaces the local one and the user is told.
+ */
+export function useSetupSession(projectId: string, initial: SetupStateDto, lockToken?: string, debounceMs = 800) {
+  const queryClient = useQueryClient();
+  const [state, setState] = useState<Tracked>(() => fromState(initial));
+  const latest = useRef(state);
+  const updatedAt = useRef(initial.updatedAt);
+  const dirty = useRef(new Set<TrackedKey>());
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const chain = useRef<Promise<void>>(Promise.resolve());
+  const [saveState, setSaveState] = useState<SaveState>("idle");
+  /** The server's own reason for the last failed save, shown next to "Could not save the draft". */
+  const [saveError, setSaveError] = useState<string | null>(null);
+
+  /** Whether the last save attempt persisted everything that was dirty. */
+  const lastSaveOk = useRef(true);
+
+  /** Resolves true when everything dirty was persisted. */
+  const flush = useCallback((): Promise<boolean> => {
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = null;
+    // Each flush reports its own outcome, so a caller is never told about a later save.
+    const run = chain.current.then(async (): Promise<boolean> => {
+      // A second attempt only follows a 409 whose merge left local created ids to re-save.
+      for (let attempt = 0; attempt < 2; attempt++) {
+        if (dirty.current.size === 0) return lastSaveOk.current;
+        const keys = [...dirty.current];
+        dirty.current.clear();
+        const body: SetupUpdateRequest = { expectedUpdatedAt: updatedAt.current, lockToken };
+        for (const key of keys) (body as Record<string, unknown>)[key] = latest.current[key];
+        setSaveState("saving");
+        try {
+          const res = await putWithRateLimitRetry(projectId, body);
+          updatedAt.current = res.state.updatedAt;
+          lastSaveOk.current = true;
+          setSaveError(null);
+          setSaveState("saved");
+          setProjectSetupData(queryClient, projectId, res);
+          return true;
+        } catch (error) {
+          const failure = error as { status?: number; body?: { state?: SetupStateDto } };
+          if (!(failure.status === 409 && failure.body?.state)) {
+            for (const key of keys) dirty.current.add(key);
+            lastSaveOk.current = false;
+            setSaveError(failureMessage(error));
+            setSaveState("error");
+            return false;
+          }
+          const server = failure.body.state;
+          // Ids this tab created must survive the reload, or a re-run would create them again.
+          const local = latest.current.draft.created ?? {};
+          const unsaved = Object.entries(local).some(([key, id]) => server.draft.created?.[key] !== id);
+          latest.current = fromState({ ...server, draft: { ...server.draft, created: { ...server.draft.created, ...local } } });
+          updatedAt.current = server.updatedAt;
+          setState(latest.current);
+          toast.error("Setup was changed somewhere else. Your view was reloaded with the saved version.");
+          if (!unsaved) {
+            lastSaveOk.current = true;
+            setSaveState("idle");
+            return true;
+          }
+          dirty.current.add("draft");
+        }
+      }
+      lastSaveOk.current = false;
+      setSaveState("error");
+      return false;
+    });
+    chain.current = run.then(() => undefined);
+    return run;
+  }, [projectId, queryClient, lockToken]);
+
+  const patch = useCallback(
+    (partial: Partial<Tracked>) => {
+      latest.current = { ...latest.current, ...partial };
+      setState(latest.current);
+      for (const key of Object.keys(partial) as TrackedKey[]) dirty.current.add(key);
+      if (timer.current) clearTimeout(timer.current);
+      timer.current = setTimeout(() => void flush(), debounceMs);
+    },
+    [debounceMs, flush],
+  );
+
+  const patchDraft = useCallback(
+    (fn: (draft: SetupDraft) => SetupDraft) => patch({ draft: fn(latest.current.draft) }),
+    [patch],
+  );
+
+  /** Persist an id into draft.created right away (used by the create runner). */
+  const pendingRecord = useRef<Promise<boolean> | null>(null);
+  const recordCreated = useCallback(
+    async (key: string, id: string) => {
+      patch({ draft: { ...latest.current.draft, created: { ...latest.current.draft.created, [key]: id } } });
+      // Calls inside the window share one PUT, so a burst of created items stays under the write limit.
+      // Each call waits on the save it joined, not on a later save's outcome.
+      const saved = (pendingRecord.current ??= new Promise<boolean>((resolve) =>
+        setTimeout(() => {
+          pendingRecord.current = null;
+          void flush().then(resolve);
+        }, RECORD_COALESCE_MS),
+      ));
+      // Rejecting shows the item as failed to record instead of silently succeeding.
+      if (!(await saved)) throw new Error("Created, but your progress could not be saved. Check your connection and retry.");
+    },
+    [patch, flush],
+  );
+  const getCreated = useCallback(() => latest.current.draft.created ?? {}, []);
+
+  useEffect(() => () => void flush(), [flush]);
+
+  return { ...state, saveState, saveError, patch, patchDraft, flush, recordCreated, getCreated };
+}
+
+/** Take the lock on mount (silently only from an idle tab of the same user), heartbeat every 60 s, release on unmount. Another holder makes it read-only. */
+export function useSetupLock(projectId: string, enabled: boolean, initialHolder: SetupLockInfo | null, lockToken: string) {
+  const [holder, setHolder] = useState<SetupLockInfo | null>(initialHolder && !initialHolder.mine ? initialHolder : null);
+  const held = useRef(false);
+  // The other tab only notices a forced reclaim at its next throttled ownership check (30 s in create-runner).
+  const [reclaimUntil, setReclaimUntil] = useState(0);
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (reclaimUntil <= Date.now()) return;
+    const tick = setInterval(() => {
+      setNow(Date.now());
+      if (Date.now() >= reclaimUntil) clearInterval(tick);
+    }, 1000);
+    return () => clearInterval(tick);
+  }, [reclaimUntil]);
+  const url = `/api/projects/${projectId}/setup/lock`;
+  // The token identifies this tab: two tabs of the same user must not both hold the lock.
+  const post = useCallback(
+    (takeover = false, reclaim = false, force = false): RequestInit => ({
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ lockToken, ...(takeover ? { takeover: true } : {}), ...(reclaim ? { reclaim: true } : {}), ...(force ? { force: true } : {}) }),
+    }),
+    [lockToken],
+  );
+  const drop = useMemo<RequestInit>(
+    () => ({ method: "DELETE", keepalive: true, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ lockToken }) }),
+    [lockToken],
+  );
+
+  const claim = useCallback(
+    async (takeover: boolean) => {
+      const res = await fetch(url, takeover ? post(true) : post(false, true, true));
+      if (res.ok) {
+        held.current = true;
+        setHolder(null);
+        if (!takeover) {
+          setNow(Date.now());
+          setReclaimUntil(Date.now() + RECLAIM_WAIT_MS);
+        }
+      }
+      return res.ok;
+    },
+    [url, post],
+  );
+
+  useEffect(() => {
+    if (!enabled) return;
+    let cancelled = false;
+    const release = () => {
+      if (held.current) void fetch(url, drop).catch(() => undefined);
+      held.current = false;
+    };
+    const take = async (first = false) => {
+      try {
+        const res = await fetch(url, post(false, first));
+        if (cancelled) {
+          // Unmounted while the claim was in flight: it still took the lock, so give it back.
+          if (res.ok) void fetch(url, drop).catch(() => undefined);
+          return;
+        }
+        if (res.status === 423) {
+          const body = (await res.json().catch(() => ({}))) as { lock?: SetupLockInfo };
+          held.current = false;
+          setHolder(body.lock ?? { userId: "", userName: null, lockedAt: new Date().toISOString(), mine: false });
+        } else if (res.ok) {
+          held.current = true;
+          setHolder(null);
+        }
+      } catch {
+        // A missed heartbeat is retried on the next tick; the lock expires only after 15 minutes.
+      }
+    };
+    void take(true);
+    const interval = setInterval(() => void take(), 60_000);
+    // Closing the tab never runs the unmount cleanup reliably, so release on pagehide too.
+    window.addEventListener("pagehide", release);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+      window.removeEventListener("pagehide", release);
+      release();
+    };
+  }, [url, enabled, post, drop]);
+
+  /** Re-claim before a long action writes more; false only when another tab or person holds the lock now. */
+  const heartbeat = useCallback(async () => {
+    try {
+      const res = await fetch(url, post());
+      if (res.status !== 423) return true;
+      const body = (await res.json().catch(() => ({}))) as { lock?: SetupLockInfo };
+      held.current = false;
+      setHolder(body.lock ?? { userId: "", userName: null, lockedAt: new Date().toISOString(), mine: false });
+      return false;
+    } catch {
+      return true; // offline: the item's own request fails and reports it
+    }
+  }, [url, post]);
+
+  /** Needs project:update on the server; the previous holder turns read-only on their next heartbeat. */
+  const takeOver = useCallback(async () => {
+    try {
+      return await claim(true);
+    } catch {
+      return false;
+    }
+  }, [claim]);
+
+  /** "Use this tab instead": explicit reclaim from the user's own other tab; that tab turns read-only on its next heartbeat. */
+  const useHere = useCallback(async () => {
+    try {
+      return await claim(false);
+    } catch {
+      return false;
+    }
+  }, [claim]);
+
+  const reclaimWaitSeconds = Math.max(0, Math.ceil((reclaimUntil - now) / 1000));
+  return { holder, readOnly: holder !== null, takeOver, useHere, heartbeat, reclaimWaitSeconds };
+}
