@@ -31,9 +31,16 @@ export async function signUpFreshCreator(browser: Browser, baseURL: string, labe
     email = `setup-${label}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}@example.com`;
     await signUp.navigate();
     await waitForHydration(page);
-    const answered = page.waitForResponse((r) => r.url().includes('/api/auth/sign-up/email') && r.request().method() === 'POST');
+    const answered = page
+      .waitForResponse((r) => r.url().includes('/api/auth/sign-up/email') && r.request().method() === 'POST', { timeout: 30_000 })
+      .catch(() => null);
     await signUp.signUpWithEmail(`Setup ${label}`, email, generateTestPassword());
     const res = await answered;
+    // A submit dropped before the form was ready sends no request: load the form again and retry.
+    if (!res) {
+      expect(attempt, 'sign-up never sent its request').toBeLessThan(3);
+      continue;
+    }
     if (res.status() !== 429) {
       expect(res.ok(), `sign-up answered ${res.status()}`).toBe(true);
       break;
