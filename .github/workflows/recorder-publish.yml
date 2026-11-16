@@ -64,6 +64,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
 
       # Release tags must be annotated and signed by a key listed in
       # main's .github/release-allowed-signers. The signers file is read
@@ -134,10 +136,12 @@ jobs:
 
       - name: Verify release tag matches extension version
         if: startsWith(github.ref, 'refs/tags/')
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
         run: |
           tag_version="${GITHUB_REF_NAME#recorder-v}"
-          if [ "$tag_version" != "${{ steps.version.outputs.version }}" ]; then
-            echo "::error::Tag '${GITHUB_REF_NAME}' does not match extension version '${{ steps.version.outputs.version }}'. Bump recorder/examples/recorder-crx/public/manifest.json first."
+          if [ "$tag_version" != "$VERSION" ]; then
+            echo "::error::Tag '${GITHUB_REF_NAME}' does not match extension version '$VERSION'. Bump recorder/examples/recorder-crx/public/manifest.json first."
             exit 1
           fi
 
@@ -150,20 +154,37 @@ jobs:
           NODE_OPTIONS: "--max-old-space-size=4096"
 
       - name: Package extension
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
         run: |
           for file in LICENSE NOTICE playwright/LICENSE playwright/NOTICE; do
             cmp "$file" "examples/recorder-crx/dist/$file"
           done
           cd examples/recorder-crx/dist
-          zip -r "../supercheck-recorder-v${{ steps.version.outputs.version }}.zip" .
+          zip -r "../supercheck-recorder-v${VERSION}.zip" .
 
       - name: Upload package artifact
+        id: package
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: supercheck-recorder
           path: recorder/examples/recorder-crx/supercheck-recorder-v${{ steps.version.outputs.version }}.zip
           if-no-files-found: error
           retention-days: 14
+
+      - name: Write summary
+        continue-on-error: true
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          PACKAGE_URL: ${{ steps.package.outputs.artifact-url }}
+          DRY_RUN: ${{ inputs.dry-run }}
+        run: |
+          {
+            echo "## Supercheck Recorder v$VERSION"
+            echo ""
+            echo "- **Package:** [supercheck-recorder-v$VERSION.zip]($PACKAGE_URL)"
+            if [ "$DRY_RUN" = "true" ]; then echo "- **Mode:** dry run; nothing is submitted or released"; fi
+          } >> "$GITHUB_STEP_SUMMARY"
 
   publish:
     name: Publish to browser stores
@@ -177,6 +198,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
 
       - name: Download package artifact
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
@@ -245,3 +268,8 @@ jobs:
             --latest=false
         env:
           GH_TOKEN: ${{ github.token }}
+
+      - name: Write summary
+        continue-on-error: true
+        run: |
+          echo "## Released [${GITHUB_REF_NAME}](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/releases/tag/${GITHUB_REF_NAME})" >> "$GITHUB_STEP_SUMMARY"

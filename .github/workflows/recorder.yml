@@ -51,15 +51,27 @@ jobs:
         run: npm ci --prefer-offline --no-audit
 
       - name: Build recorder and extension
+        id: build
         run: npm run build
         env:
           NODE_OPTIONS: "--max-old-space-size=4096"
 
       - name: Run unit tests
+        id: unit
         run: npm run test:unit
 
       - name: Typecheck recorder source
+        id: typecheck
         run: npm run typecheck
+
+      - name: Write summary
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        run: >-
+          ../.github/scripts/checks-summary.sh "Recorder"
+          "Build=${{ steps.build.outcome }}"
+          "Unit tests=${{ steps.unit.outcome }}"
+          "Type check=${{ steps.typecheck.outcome }}"
 
   browser-tests:
     name: Browser Tests
@@ -93,9 +105,11 @@ jobs:
         run: npm run test:install
 
       - name: Run browser tests
+        id: browser
         run: xvfb-run --auto-servernum --server-args="-screen 0 1280x960x24" -- npm run test:browser
 
       - name: Upload browser report
+        id: report
         if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
@@ -105,3 +119,12 @@ jobs:
             recorder/tests/test-results/
           if-no-files-found: ignore
           retention-days: 5
+
+      - name: Write summary
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        env:
+          REPORT_URL: ${{ steps.report.outputs.artifact-url }}
+        run: |
+          ../.github/scripts/checks-summary.sh "Recorder browser tests" "Browser tests=${{ steps.browser.outcome }}"
+          if [ -n "$REPORT_URL" ]; then echo "📦 [Download the Playwright report]($REPORT_URL)" >> "$GITHUB_STEP_SUMMARY"; fi
