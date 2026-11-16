@@ -51,6 +51,7 @@ const UNFILTERED_OK: Record<string, string> = {
   "app/api/tests/[id]/execute/route.ts": "playground runs have no job",
   "actions/create-job.ts": "inserts and updates the job it is creating",
   "app/api/notification-providers/route.ts": "last-used date of a channel from alert_history; reads no monitor or job",
+  "lib/notification-providers/channel-health.ts": "delivery health of a channel from alert_history; reads no monitor or job",
   "lib/job-execution-utils.ts": "loads the tests of a job its caller already resolved through the helper",
   "lib/monitor-cycles.ts": "cycle bookkeeping by cycle id; reads no monitor",
   "lib/monitor-result-filters.ts": "SQL predicate over monitor_results columns; runs no query",
