@@ -128,6 +128,20 @@ describe('agent.repeat', () => {
     ]);
   });
 
+  it('does not call the judge from an attempt cut by the budget', async () => {
+    jest.useFakeTimers();
+    const agent = createAgent(newState());
+    let late!: Promise<unknown>;
+    const done = agent.repeat(1, async () => {
+      await new Promise((r) => setTimeout(r, 250_000));
+      late = agent.judge('x', 'r', { url: 'http://127.0.0.1:9', model: 'j' });
+      await late;
+    });
+    await jest.advanceTimersByTimeAsync(260_000);
+    await done;
+    await expect(late).rejects.toThrow('not judged: time budget used');
+  });
+
   it('also stops a nested attempt once its outer attempt ran out of budget', async () => {
     jest.useFakeTimers();
     const agent = createAgent(newState());

@@ -13,7 +13,7 @@ import type {
 } from './types';
 
 // Node tries each address of a host for only 250 ms by default, so an agent more than ~250 ms away
-// fails with ETIMEDOUT although curl reaches it. Only agent test processes load this module.
+// fails with ETIMEDOUT although curl reaches it. The setting is process-wide; only agent test processes load this module.
 export const CONNECT_ATTEMPT_MS = 2_000;
 if (getDefaultAutoSelectFamilyAttemptTimeout() < CONNECT_ATTEMPT_MS)
   setDefaultAutoSelectFamilyAttemptTimeout(CONNECT_ATTEMPT_MS);

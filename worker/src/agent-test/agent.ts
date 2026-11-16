@@ -169,6 +169,9 @@ export function createAgent(state: AgentState): Agent {
 
     async judge(text, rubric, options) {
       validateOptions({ kind: 'openai', ...options }, 'agent.judge');
+      // Like send(): an attempt cut by the budget must not call (and bill) the judge either.
+      if (isExpired(attemptOf.getStore()))
+        throw new Error('not judged: time budget used');
       state.secrets.push(...secretsOf(options));
       const r = await chatCompletion(options, [
         {

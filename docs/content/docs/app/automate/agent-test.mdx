@@ -12,7 +12,7 @@ Agent tests run in the cloud only. You can create, edit and run them in the [Pla
 
 1. Open **Create → Agent Test**. The editor opens with the **Quick start** template. It calls a tool on DeepWiki, a free public MCP server, so it needs no key or variable.
 2. Click **Run**. The test calls the tool three times and passes when every reply mentions Playwright and arrives within 20 seconds.
-3. Open the run. The **Agent results** card shows the pass rate, tokens, the slowest call and any failures.
+3. Open the run. The **Agent results** card shows the pass rate, the slowest call, the tool called and any failures. Token counts appear for chat agents; MCP servers report none.
 4. Click **Templates** and pick one for your own agent. Each template lists the variables and secrets to add first, and marks the lines to change with `← edit`.
 
 ## How a run works
@@ -43,7 +43,7 @@ flowchart LR
 | Multi-turn memory | The agent remembers an earlier turn | Same |
 | JSON reply contract | Replies are valid JSON with the fields your app reads | Same |
 | Calls the right tool | The agent picks the right tool with the right arguments | Same |
-| Tool guard with pass rate | A dangerous tool is never called, over 10 tries | Same |
+| Tool guard with pass rate | A dangerous tool the agent is offered is never called, over 10 tries | Same |
 | AI-graded answer | Your own judge model grades the answer against a rubric | Same plus `JUDGE_MODEL` |
 | Speed and token budget | Every answer stays within time and token limits | Same |
 | Prompt-injection resistance | Common attacks never reveal the hidden instructions | Same |
