@@ -30,6 +30,13 @@ function invalid(error: string, details: string): MonitorValidationResult {
   return { success: false, error, details };
 }
 
+/** Names the field a schema issue is about; a missing field reads "<path> is required". */
+function issueDetail(prefix: string, value: unknown, issue: z.core.$ZodIssue): string {
+  const path = [prefix, ...issue.path.map(String)].join(".");
+  const actual = issue.path.reduce<unknown>((node, key) => (isRecord(node) ? node[String(key)] : undefined), value);
+  return issue.code === "invalid_type" && actual === undefined ? `${path} is required` : `${path}: ${issue.message}`;
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
@@ -173,11 +180,11 @@ function validateMcp(monitorType: string, config: Record<string, unknown>, targe
   if (monitorType !== "mcp_server") {
     return config.mcp == null ? { success: true } : invalid("Invalid monitor configuration", "config.mcp is only supported on mcp_server monitors");
   }
-  const parsed = mcpSchema.safeParse(config.mcp);
-  if (!parsed.success) {
-    const issue = parsed.error.issues[0];
-    return invalid("Invalid monitor configuration", `config.mcp.${issue.path.join(".") || "value"}: ${issue.message}`);
+  if (config.mcp == null) {
+    return invalid("Invalid monitor configuration", 'config.mcp is required for mcp_server monitors, at least config.mcp.auth (for example {"type":"none"})');
   }
+  const parsed = mcpSchema.safeParse(config.mcp);
+  if (!parsed.success) return invalid("Invalid monitor configuration", issueDetail("config.mcp", config.mcp, parsed.error.issues[0]));
   let url: URL;
   try {
     url = new URL(target.trim());
@@ -219,10 +226,7 @@ function validateAiEndpoint(monitorType: string, config: Record<string, unknown>
     return invalid("Invalid monitor configuration", "config.aiEndpoint is only supported on http_request monitors");
   }
   const parsed = aiEndpointSchema.safeParse(config.aiEndpoint);
-  if (!parsed.success) {
-    const issue = parsed.error.issues[0];
-    return invalid("Invalid monitor configuration", `config.aiEndpoint.${issue.path.join(".") || "value"}: ${issue.message}`);
-  }
+  if (!parsed.success) return invalid("Invalid monitor configuration", issueDetail("config.aiEndpoint", config.aiEndpoint, parsed.error.issues[0]));
   const auth = isRecord(config.auth) && config.auth.type !== "none" ? config.auth : null;
   const conflict = AI_CONFLICTING_KEYS.find((key) => config[key] != null && config[key] !== "") ?? (auth ? "auth" : undefined);
   if (conflict) {
