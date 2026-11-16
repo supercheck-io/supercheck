@@ -36,6 +36,9 @@ export interface CreateItem {
 }
 
 export const PROJECT_CHANGED_ERROR = "Project changed in another tab";
+export const TAKEN_OVER_ERROR = "Another person took over setup";
+/** Sent with every REST write so the server can refuse it when the active project is no longer this one. */
+export const PROJECT_HEADER = "x-supercheck-project-id";
 
 interface FetchResult {
   ok: boolean;
@@ -47,7 +50,10 @@ type ActionResult = { success: boolean; message?: string; error?: string; [key: 
 
 export interface RunnerDeps {
   setupProjectId: string;
-  fetchJson: (url: string, init?: { method?: string; body?: unknown }) => Promise<FetchResult>;
+  fetchJson: (url: string, init?: { method?: string; body?: unknown; headers?: Record<string, string> }) => Promise<FetchResult>;
+  /** Re-claims the setup lock with this tab's token; false when another tab or person holds it now. */
+  heartbeat?: () => Promise<boolean>;
+  getComponents: (statusPageId: string) => Promise<{ success: boolean; components: Array<{ id: string; name: string; monitorIds: string[] }> }>;
   getStatusPages: () => Promise<{ success: boolean; statusPages: Array<{ id: string; name: string }> }>;
   createStatusPage: (data: { name: string }) => Promise<ActionResult & { statusPage?: { id: string } }>;
   publishStatusPage: (id: string) => Promise<ActionResult>;
@@ -218,11 +224,14 @@ export function buildCreateItems(draft: SetupDraft, opts: BuildOptions): CreateI
   return items;
 }
 
+const projectFetch = (deps: RunnerDeps, url: string, init: { method?: string; body?: unknown } = {}) =>
+  deps.fetchJson(url, { ...init, headers: { [PROJECT_HEADER]: deps.setupProjectId } });
+
 async function listMonitors(deps: RunnerDeps, lookup: Lookup) {
   if (lookup.monitors) return lookup.monitors;
   const all: NonNullable<Lookup["monitors"]> = [];
   for (let page = 1; page <= 20; page++) {
-    const res = await deps.fetchJson(`/api/monitors?limit=100&page=${page}`);
+    const res = await projectFetch(deps, `/api/monitors?limit=100&page=${page}`);
     if (!res.ok) throw new Error(errorText(res.data, "Could not read monitors"));
     const body = res.data as { data?: typeof all; pagination?: { hasNextPage?: boolean } };
     all.push(...(body.data ?? []));
@@ -270,7 +279,7 @@ async function createMonitor(item: CreateItem, deps: RunnerDeps, lookup: Lookup)
     await deps.recordCreated(item.key, natural.id);
     return { status: "adopted", note: "A matching monitor already exists" };
   }
-  const res = await deps.fetchJson("/api/monitors", { method: "POST", body: item.payload });
+  const res = await projectFetch(deps, "/api/monitors", { method: "POST", body: item.payload });
   if (!res.ok) return { status: "failed", error: errorText(res.data, "Could not create the monitor") };
   const body = res.data as { id: string; heartbeat?: { pingUrl?: string } };
   lookup.monitors?.push({ id: body.id, type: payload.type, target: payload.target, name: payload.name });
@@ -329,7 +338,15 @@ async function createComponentItem(item: CreateItem, deps: RunnerDeps, lookup: L
   // A monitor or page deleted since it was created can never succeed, so it is not a failure.
   if (!(await listMonitors(deps, lookup)).some((m) => m.id === monitorId)) return { status: "skipped", note: "The monitor was deleted" };
   if (!(await listStatusPages(deps, lookup)).some((p) => p.id === statusPageId)) return { status: "skipped", note: "The status page was deleted" };
-  const res = await deps.createComponent({ statusPageId, name: String(item.payload.name), monitorIds: [monitorId] });
+  const name = String(item.payload.name);
+  const existing = await deps.getComponents(statusPageId);
+  if (!existing.success) return { status: "failed", error: "Could not read the status page components" };
+  const natural = existing.components.find((c) => c.name === name || c.monitorIds.includes(monitorId));
+  if (natural) {
+    await deps.recordCreated(item.key, natural.id);
+    return { status: "adopted", note: "A matching component already exists" };
+  }
+  const res = await deps.createComponent({ statusPageId, name, monitorIds: [monitorId] });
   const component = res.component as { id?: string } | undefined;
   if (!res.success) return { status: "failed", error: res.message ?? "Could not create the component" };
   await deps.recordCreated(item.key, component?.id ?? statusPageId);
@@ -362,6 +379,8 @@ async function saveRepeat(item: CreateItem, deps: RunnerDeps): Promise<ItemResul
 /** Run one item. Never throws: a failure becomes `{ status: "failed" }`. */
 export async function runItem(item: CreateItem, deps: RunnerDeps, lookup: Lookup = {}): Promise<ItemResult> {
   try {
+    // A takeover by another person must stop this run before it writes anything more.
+    if (deps.heartbeat && !(await deps.heartbeat())) return { status: "failed", error: TAKEN_OVER_ERROR };
     const changed = await ensureProject(deps);
     if (changed) return { status: "failed", error: changed };
     if (isMonitorKind(item.kind)) return await createMonitor(item, deps, lookup);
@@ -373,7 +392,9 @@ export async function runItem(item: CreateItem, deps: RunnerDeps, lookup: Lookup
   }
 }
 
-/** Run items in order. Stops at "Project changed in another tab"; other failures do not stop the run. */
+const STOPPING_ERRORS = [PROJECT_CHANGED_ERROR, TAKEN_OVER_ERROR];
+
+/** Run items in order. Stops at "Project changed in another tab" or a lock takeover; other failures do not stop the run. */
 export async function runAll(
   items: CreateItem[],
   deps: RunnerDeps,
@@ -386,6 +407,33 @@ export async function runAll(
     onUpdate(item.key, { status: "running" });
     const result = await runItem(item, deps, lookup);
     onUpdate(item.key, result);
-    if (result.error === PROJECT_CHANGED_ERROR) return;
+    if (result.error && STOPPING_ERRORS.includes(result.error)) return;
+  }
+}
+
+/**
+ * Retry one item. When a monitor or the status page succeeds, the components that were skipped
+ * because it had failed are run again, so one Retry heals the whole chain.
+ */
+export async function retryWithDependents(
+  item: CreateItem,
+  items: CreateItem[],
+  deps: RunnerDeps,
+  onUpdate: (key: string, result: ItemResult) => void,
+  isSkipped: (key: string) => boolean,
+): Promise<void> {
+  const lookup: Lookup = {};
+  onUpdate(item.key, { status: "running", error: undefined });
+  const result = await runItem(item, deps, lookup);
+  onUpdate(item.key, result);
+  if (result.status !== "done" && result.status !== "adopted") return;
+  const dependents = items.filter(
+    (other) => other.kind === "component" && isSkipped(other.key) && (item.kind === "status_page" || other.monitorKey === item.key),
+  );
+  for (const dependent of dependents) {
+    onUpdate(dependent.key, { status: "running", error: undefined, note: undefined });
+    const next = await runItem(dependent, deps, lookup);
+    onUpdate(dependent.key, { ...next, note: next.note });
+    if (next.error && STOPPING_ERRORS.includes(next.error)) return;
   }
 }

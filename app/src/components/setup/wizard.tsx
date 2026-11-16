@@ -75,9 +75,12 @@ interface WizardProps {
 export function SetupWizard({ response, persona, userEmail }: WizardProps) {
   const router = useRouter();
   const { setupFeatures } = useAppConfig();
-  const session = useSetupSession(response.projectId, response.state);
-  const lock = useSetupLock(response.projectId, response.permissions.canEdit, response.state.lock);
+  // One token per mounted wizard (per tab), kept in memory only.
+  const [lockToken] = useState(() => crypto.randomUUID());
+  const session = useSetupSession(response.projectId, response.state, lockToken);
+  const lock = useSetupLock(response.projectId, response.permissions.canEdit, response.state.lock, lockToken);
   const [leaving, setLeaving] = useState(false);
+  const [leaveError, setLeaveError] = useState(false);
 
   const steps = useMemo(
     () =>
@@ -123,7 +126,12 @@ export function SetupWizard({ response, persona, userEmail }: WizardProps) {
   const Body = STEP_COMPONENTS[key];
 
   const leave = async () => {
-    await session.flush();
+    setLeaveError(false);
+    // Leaving with an unsaved draft would lose it, so stay and say so.
+    if (!(await session.flush())) {
+      setLeaveError(true);
+      return;
+    }
     router.push("/");
   };
 
@@ -224,6 +232,7 @@ export function SetupWizard({ response, persona, userEmail }: WizardProps) {
               skipped={session.skipped}
               recordCreated={session.recordCreated}
               getCreated={session.getCreated}
+              heartbeat={lock.heartbeat}
               completed={session.status === "completed"}
               complete={async () => {
                 session.patch({ status: "completed" });
@@ -262,6 +271,7 @@ export function SetupWizard({ response, persona, userEmail }: WizardProps) {
                 : "Your choices are saved as a draft. Nothing has been created yet. You can resume from Project setup in the sidebar."}
             </DialogDescription>
           </DialogHeader>
+          {leaveError ? <Alert variant="error">Your draft could not be saved, so setup was not closed. Check your connection and try again.</Alert> : null}
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => setLeaving(false)}>
               Keep going

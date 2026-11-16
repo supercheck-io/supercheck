@@ -15,7 +15,7 @@ import { db } from "@/utils/db";
 import { projectVariables } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
-import { requireAuthContext, isAuthError, authErrorStatus } from "@/lib/auth-context";
+import { requireAuthContext, isAuthError, authErrorResponse } from "@/lib/auth-context";
 import { encryptValue } from "@/lib/encryption";
 import { logAuditEvent } from "@/lib/audit-logger";
 import { createVariableSchema } from "@/lib/validations/variable";
@@ -48,10 +48,7 @@ export async function GET() {
     return NextResponse.json(processedVariables);
   } catch (error) {
     if (isAuthError(error)) {
-      return NextResponse.json(
-        { error: error instanceof Error ? error.message : "Authentication required" },
-        { status: authErrorStatus(error) }
-      );
+      return authErrorResponse(error);
     }
     console.error("Error fetching variables:", error);
     return NextResponse.json(
@@ -152,10 +149,7 @@ export async function POST(request: NextRequest) {
     );
   } catch (error) {
     if (isAuthError(error)) {
-      return NextResponse.json(
-        { error: error instanceof Error ? error.message : "Authentication required" },
-        { status: authErrorStatus(error) }
-      );
+      return authErrorResponse(error);
     }
     // A concurrent create of the same key loses the race at the unique index.
     const cause = (error as { cause?: { code?: unknown } } | null)?.cause;

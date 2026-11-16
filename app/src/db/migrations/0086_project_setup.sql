@@ -9,6 +9,7 @@ CREATE TABLE "project_setup_state" (
 	"status_page_opt_out" boolean DEFAULT false NOT NULL,
 	"locked_by_user_id" uuid,
 	"locked_at" timestamp with time zone,
+	"lock_token" uuid,
 	"last_ai_run_at" timestamp with time zone,
 	"scan_result" jsonb,
 	"completed_at" timestamp with time zone,

@@ -24,6 +24,8 @@ test.describe('Project setup accessibility @setup', () => {
   });
 
   test.afterAll(async () => {
+    // beforeAll can fail before the page exists.
+    if (!page) return;
     await purgeCreatedItems(page.request);
     await context.close();
   });

@@ -1,6 +1,6 @@
 import type { SetupDraft } from "@/lib/setup/draft-schema";
 import { SETUP_FEATURES } from "@/lib/setup/features";
-import { buildCreateItems, runAll, runItem, PROJECT_CHANGED_ERROR, type CreateItem, type ItemResult, type RunnerDeps } from "./create-runner";
+import { buildCreateItems, runAll, runItem, retryWithDependents, PROJECT_CHANGED_ERROR, PROJECT_HEADER, TAKEN_OVER_ERROR, type CreateItem, type ItemResult, type RunnerDeps } from "./create-runner";
 
 const PROJECT = "p-1";
 const PROVIDER = "00000000-0000-4000-8000-000000000001";
@@ -27,6 +27,7 @@ function makeDeps(overrides: Partial<RunnerDeps> = {}, existing: Array<Record<st
     createStatusPage: jest.fn(async () => ({ success: true, statusPage: { id: "sp-1" } })),
     publishStatusPage: jest.fn(async () => ({ success: true })),
     createComponent: jest.fn(async () => ({ success: true, component: { id: "c-1" } })),
+    getComponents: jest.fn(async () => ({ success: true, components: [] })),
     getPolicy: jest.fn(async () => ({ success: true, data: { policy: { channelIds: ["x"], emailServiceOwnersOnSev12: true, renotifyUnackedMinutes: null, renotifyRepeatMinutes: null, renotifyMax: 4, escalateAfterMinutes: 30, escalateChannelId: null, escalateUserId: null, autoInvestigateOnOpen: false } } })),
     savePolicy: jest.fn(async () => ({ success: true })),
     recordCreated: jest.fn(async (key: string, id: string) => {
@@ -156,6 +157,25 @@ describe("runAll", () => {
     expect(results[items[0].key]).toMatchObject({ status: "failed", error: "Invalid: bad target" });
     expect(results[items[1].key].status).toBe("done");
     expect((await runItem(items[0], deps)).status).toBe("done");
+  });
+
+  it("sends the setup project with every REST call so the server can refuse a switched project", async () => {
+    const { deps, calls } = makeDeps();
+    await runAll(build(draft()), deps, () => undefined);
+    const rest = calls.filter((c) => c.url.startsWith("/api/monitors"));
+    expect(rest.length).toBeGreaterThan(0);
+    for (const call of rest) expect((call as { headers?: Record<string, string> }).headers).toEqual({ [PROJECT_HEADER]: PROJECT });
+  });
+
+  it("re-claims the lock before each item and stops when another person took over", async () => {
+    const heartbeat = jest.fn().mockResolvedValueOnce(true).mockResolvedValue(false);
+    const { deps } = makeDeps({ heartbeat });
+    const results: Record<string, ItemResult> = {};
+    await runAll(build(draft()), deps, (k, r) => (results[k] = r));
+    expect(heartbeat).toHaveBeenCalledTimes(2);
+    expect(Object.values(results).map((r) => r.status)).toEqual(["done", "failed"]);
+    expect(Object.values(results)[1].error).toBe(TAKEN_OVER_ERROR);
+    expect((deps.fetchJson as jest.Mock).mock.calls.filter(([, i]) => i?.method === "POST")).toHaveLength(1);
   });
 
   it("honours shouldRun", async () => {
@@ -348,5 +368,60 @@ describe("status page, components and repeat policy", () => {
     const { deps } = makeDeps({ getPolicy: jest.fn().mockRejectedValue("boom") });
     const repeat = build(spDraft()).find((i) => i.kind === "repeat") as CreateItem;
     expect((await runItem(repeat, deps)).error).toBe("Something went wrong");
+  });
+});
+
+describe("components: adoption and retry chain", () => {
+  const spDraft = () => draft({ statusPage: { name: "Acme status", publish: false } });
+  const monitors = [{ id: "m-1", type: "website", target: "t", name: "n" }];
+  const ready = (over: Partial<RunnerDeps> = {}) => {
+    const run = makeDeps({ getStatusPages: jest.fn(async () => ({ success: true, statusPages: [{ id: "sp-1", name: "x" }] })), ...over }, monitors);
+    run.created.statuspage = "sp-1";
+    return run;
+  };
+
+  it("adopts a component with the same name or the same monitor instead of creating a second one", async () => {
+    const comp = build(spDraft()).find((i) => i.kind === "component") as CreateItem;
+    const byName = ready({ getComponents: jest.fn(async () => ({ success: true, components: [{ id: "c-old", name: "app.example.com", monitorIds: [] }] })) });
+    byName.created[comp.monitorKey as string] = "m-1";
+    expect(await runItem(comp, byName.deps)).toMatchObject({ status: "adopted" });
+    expect(byName.created[comp.key]).toBe("c-old");
+    const byMonitor = ready({ getComponents: jest.fn(async () => ({ success: true, components: [{ id: "c-2", name: "other", monitorIds: ["m-1"] }] })) });
+    byMonitor.created[comp.monitorKey as string] = "m-1";
+    expect((await runItem(comp, byMonitor.deps)).status).toBe("adopted");
+    expect(byName.deps.createComponent).not.toHaveBeenCalled();
+    expect(byMonitor.deps.createComponent).not.toHaveBeenCalled();
+  });
+
+  it("fails without creating when the component list cannot be read", async () => {
+    const comp = build(spDraft()).find((i) => i.kind === "component") as CreateItem;
+    const run = ready({ getComponents: jest.fn(async () => ({ success: false, components: [] })) });
+    run.created[comp.monitorKey as string] = "m-1";
+    expect((await runItem(comp, run.deps)).status).toBe("failed");
+    expect(run.deps.createComponent).not.toHaveBeenCalled();
+  });
+
+  it("a successful Retry of a monitor re-runs the components that were skipped because it failed", async () => {
+    const items = build(spDraft());
+    const monitor = items[0];
+    const comp = items.find((i) => i.monitorKey === monitor.key) as CreateItem;
+    const run = makeDeps({ getStatusPages: jest.fn(async () => ({ success: true, statusPages: [{ id: "sp-1", name: "x" }] })) });
+    run.created.statuspage = "sp-1";
+    const base = run.deps.fetchJson;
+    run.deps.fetchJson = jest.fn(async (url, init) => (url === "/api/monitors" && init?.method === "POST" ? { ok: true, status: 200, data: { id: "m-new" } } : base(url, init)));
+    const results: Record<string, ItemResult> = { [comp.key]: { status: "skipped", note: "The monitor was not created" } };
+    await retryWithDependents(monitor, items, run.deps, (k, r) => (results[k] = r), (k) => results[k]?.status === "skipped");
+    expect(results[monitor.key].status).toBe("done");
+    expect(results[comp.key].status).toBe("done");
+    expect(run.deps.createComponent).toHaveBeenCalledWith({ statusPageId: "sp-1", name: "app.example.com", monitorIds: ["m-new"] });
+  });
+
+  it("does not touch dependents when the Retry fails", async () => {
+    const items = build(spDraft());
+    const run = makeDeps({}, []);
+    run.deps.fetchJson = jest.fn(async (url) => (url === "/api/context" ? ok({ project: { id: "other" } }) : ok({})));
+    const seen: string[] = [];
+    await retryWithDependents(items[0], items, run.deps, (k) => seen.push(k), () => true);
+    expect(new Set(seen)).toEqual(new Set([items[0].key]));
   });
 });

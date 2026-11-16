@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
@@ -32,7 +32,7 @@ const fromState = (s: SetupStateDto): Tracked => ({
  * Local copy of the setup state with debounced, serialized autosave. Writes carry
  * `expectedUpdatedAt`; on a 409 the server state replaces the local one and the user is told.
  */
-export function useSetupSession(projectId: string, initial: SetupStateDto, debounceMs = 800) {
+export function useSetupSession(projectId: string, initial: SetupStateDto, lockToken?: string, debounceMs = 800) {
   const queryClient = useQueryClient();
   const [state, setState] = useState<Tracked>(() => fromState(initial));
   const latest = useRef(state);
@@ -45,7 +45,8 @@ export function useSetupSession(projectId: string, initial: SetupStateDto, debou
   /** Whether the last save attempt persisted everything that was dirty. */
   const lastSaveOk = useRef(true);
 
-  const flush = useCallback((): Promise<void> => {
+  /** Resolves true when everything dirty was persisted. */
+  const flush = useCallback((): Promise<boolean> => {
     if (timer.current) clearTimeout(timer.current);
     timer.current = null;
     chain.current = chain.current.then(async () => {
@@ -54,7 +55,7 @@ export function useSetupSession(projectId: string, initial: SetupStateDto, debou
         if (dirty.current.size === 0) return;
         const keys = [...dirty.current];
         dirty.current.clear();
-        const body: SetupUpdateRequest = { expectedUpdatedAt: updatedAt.current };
+        const body: SetupUpdateRequest = { expectedUpdatedAt: updatedAt.current, lockToken };
         for (const key of keys) (body as Record<string, unknown>)[key] = latest.current[key];
         setSaveState("saving");
         try {
@@ -91,8 +92,8 @@ export function useSetupSession(projectId: string, initial: SetupStateDto, debou
       lastSaveOk.current = false;
       setSaveState("error");
     });
-    return chain.current;
-  }, [projectId, queryClient]);
+    return chain.current.then(() => lastSaveOk.current);
+  }, [projectId, queryClient, lockToken]);
 
   const patch = useCallback(
     (partial: Partial<Tracked>) => {
@@ -128,36 +129,45 @@ export function useSetupSession(projectId: string, initial: SetupStateDto, debou
 }
 
 /** Take the lock on mount, heartbeat every 60 s, release on unmount. Another holder makes it read-only. */
-export function useSetupLock(projectId: string, enabled: boolean, initialHolder: SetupLockInfo | null) {
+export function useSetupLock(projectId: string, enabled: boolean, initialHolder: SetupLockInfo | null, lockToken: string) {
   const [holder, setHolder] = useState<SetupLockInfo | null>(initialHolder && !initialHolder.mine ? initialHolder : null);
   const held = useRef(false);
   const url = `/api/projects/${projectId}/setup/lock`;
+  // The token identifies this tab: two tabs of the same user must not both hold the lock.
+  const post = useCallback(
+    (takeover = false): RequestInit => ({ method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ lockToken, ...(takeover ? { takeover: true } : {}) }) }),
+    [lockToken],
+  );
+  const drop = useMemo<RequestInit>(
+    () => ({ method: "DELETE", keepalive: true, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ lockToken }) }),
+    [lockToken],
+  );
 
   const claim = useCallback(
     async (takeover: boolean) => {
-      const res = await fetch(url, takeover ? { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ takeover: true }) } : { method: "POST" });
+      const res = await fetch(url, post(takeover));
       if (res.ok) {
         held.current = true;
         setHolder(null);
       }
       return res.ok;
     },
-    [url],
+    [url, post],
   );
 
   useEffect(() => {
     if (!enabled) return;
     let cancelled = false;
     const release = () => {
-      if (held.current) void fetch(url, { method: "DELETE", keepalive: true }).catch(() => undefined);
+      if (held.current) void fetch(url, drop).catch(() => undefined);
       held.current = false;
     };
     const take = async () => {
       try {
-        const res = await fetch(url, { method: "POST" });
+        const res = await fetch(url, post());
         if (cancelled) {
           // Unmounted while the claim was in flight: it still took the lock, so give it back.
-          if (res.ok) void fetch(url, { method: "DELETE", keepalive: true }).catch(() => undefined);
+          if (res.ok) void fetch(url, drop).catch(() => undefined);
           return;
         }
         if (res.status === 423) {
@@ -182,7 +192,21 @@ export function useSetupLock(projectId: string, enabled: boolean, initialHolder:
       window.removeEventListener("pagehide", release);
       release();
     };
-  }, [url, enabled]);
+  }, [url, enabled, post, drop]);
+
+  /** Re-claim before a long action writes more; false only when another tab or person holds the lock now. */
+  const heartbeat = useCallback(async () => {
+    try {
+      const res = await fetch(url, post());
+      if (res.status !== 423) return true;
+      const body = (await res.json().catch(() => ({}))) as { lock?: SetupLockInfo };
+      held.current = false;
+      setHolder(body.lock ?? { userId: "", userName: null, lockedAt: new Date().toISOString(), mine: false });
+      return false;
+    } catch {
+      return true; // offline: the item's own request fails and reports it
+    }
+  }, [url, post]);
 
   /** Needs project:update on the server; the previous holder turns read-only on their next heartbeat. */
   const takeOver = useCallback(async () => {
@@ -193,5 +217,5 @@ export function useSetupLock(projectId: string, enabled: boolean, initialHolder:
     }
   }, [claim]);
 
-  return { holder, readOnly: holder !== null, takeOver };
+  return { holder, readOnly: holder !== null, takeOver, heartbeat };
 }

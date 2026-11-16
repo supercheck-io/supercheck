@@ -1,5 +1,5 @@
 {
-  "id": "8ba67eff-ec5b-4257-a6b0-d6be015f4705",
+  "id": "eddefaf8-5bec-4477-ba9e-920161428d42",
   "prevId": "0d885752-ea74-48b2-a0e8-6a61c55d0fa7",
   "version": "7",
   "dialect": "postgresql",
@@ -23790,6 +23790,12 @@
         "locked_at": {
           "name": "locked_at",
           "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "lock_token": {
+          "name": "lock_token",
+          "type": "uuid",
           "primaryKey": false,
           "notNull": false
         },

@@ -56,6 +56,8 @@ export const projectSetupState = pgTable(
       onDelete: "set null",
     }),
     lockedAt: timestamp("locked_at", { withTimezone: true }),
+    /** Per-tab token of the lock holder, so two tabs of one user cannot both write. */
+    lockToken: uuid("lock_token"),
     lastAiRunAt: timestamp("last_ai_run_at", { withTimezone: true }),
     scanResult: jsonb("scan_result").$type<Record<string, unknown>>(),
     completedAt: timestamp("completed_at", { withTimezone: true }),

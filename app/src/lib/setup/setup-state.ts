@@ -22,18 +22,27 @@ type Row = typeof projectSetupState.$inferSelect;
 const NEVER_WRITTEN = new Date(0);
 const neverWritten = (row: Row): boolean => row.updatedAt.getTime() === 0;
 
-function lockOf(row: Row, userName: string | null, me: string): SetupLockInfo | null {
+/** SQL: the stored per-tab token equals `token`; a request with no token only matches a lock stored without one. */
+const tokenMatches = (token: string | null | undefined) =>
+  token ? sql`${projectSetupState.lockToken} = ${token}` : sql`${projectSetupState.lockToken} IS NULL`;
+
+/** SQL: no live lock, or the caller's own tab holds it. */
+const holderOrFree = (userId: string, token: string | null | undefined) =>
+  sql`(${projectSetupState.lockedByUserId} IS NULL OR ${LOCK_EXPIRED} OR (${projectSetupState.lockedByUserId} = ${userId} AND ${tokenMatches(token)}))`;
+
+/** `token` undefined = a read with no tab identity (GET): any tab of the holder counts as mine. */
+function lockOf(row: Row, userName: string | null, me: string, token?: string | null): SetupLockInfo | null {
   if (!row.lockedByUserId || !row.lockedAt) return null;
   if (Date.now() - row.lockedAt.getTime() > LOCK_TTL_MS) return null;
   return {
     userId: row.lockedByUserId,
     userName,
     lockedAt: row.lockedAt.toISOString(),
-    mine: row.lockedByUserId === me,
+    mine: row.lockedByUserId === me && (token === undefined || (row.lockToken ?? null) === (token ?? null)),
   };
 }
 
-function toDto(row: Row | undefined, userName: string | null, me: string): SetupStateDto {
+function toDto(row: Row | undefined, userName: string | null, me: string, token?: string | null): SetupStateDto {
   if (!row) {
     return {
       status: "not_started",
@@ -55,7 +64,7 @@ function toDto(row: Row | undefined, userName: string | null, me: string): Setup
     draft: row.draft as SetupDraft,
     skipped: row.skipped as SetupStepKey[],
     statusPageOptOut: row.statusPageOptOut,
-    lock: lockOf(row, userName, me),
+    lock: lockOf(row, userName, me, token),
     lastAiRunAt: row.lastAiRunAt?.toISOString() ?? null,
     scanResult: row.scanResult ?? null,
     completedAt: row.completedAt?.toISOString() ?? null,
@@ -95,6 +104,7 @@ export async function updateSetupState(
   userId: string,
   patch: Omit<SetupUpdateRequest, "expectedUpdatedAt">,
   expectedUpdatedAt: string | null | undefined,
+  lockToken: string | null = null,
 ): Promise<UpdateSetupResult> {
   const set: Partial<typeof projectSetupState.$inferInsert> = {};
   if (patch.draft !== undefined) {
@@ -113,7 +123,7 @@ export async function updateSetupState(
     if (!(same && patch.status === "completed")) set.completedAt = patch.status === "completed" ? new Date() : null;
     if (!(same && patch.status === "dismissed")) set.dismissedAt = patch.status === "dismissed" ? new Date() : null;
   }
-  const blockedBy = existing && lockOf(existing, lockerName, userId);
+  const blockedBy = existing && lockOf(existing, lockerName, userId, lockToken);
   if (blockedBy && !blockedBy.mine) return { kind: "locked", lock: blockedBy };
   const previousStatus = existing?.status ?? "not_started";
 
@@ -140,7 +150,7 @@ export async function updateSetupState(
           eq(projectSetupState.organizationId, organizationId),
           eq(projectSetupState.projectId, projectId),
           stale,
-          sql`(${projectSetupState.lockedByUserId} IS NULL OR ${projectSetupState.lockedByUserId} = ${userId} OR ${LOCK_EXPIRED})`,
+          holderOrFree(userId, lockToken),
         ),
       )
       .returning({ id: projectSetupState.id });
@@ -149,7 +159,7 @@ export async function updateSetupState(
 
   const after = await loadRow(organizationId, projectId);
   if (!wrote) {
-    const lock = after.row && lockOf(after.row, after.lockerName, userId);
+    const lock = after.row && lockOf(after.row, after.lockerName, userId, lockToken);
     if (lock && !lock.mine) return { kind: "locked", lock };
     return { kind: "conflict", state: toDto(after.row, after.lockerName, userId) };
   }
@@ -159,41 +169,46 @@ export async function updateSetupState(
 export type LockResult = { kind: "ok"; lock: SetupLockInfo } | { kind: "locked"; lock: SetupLockInfo };
 
 /** Take or heartbeat the lock in one atomic upsert. Does not touch updated_at (that is the draft's version). */
-export async function claimLock(organizationId: string, projectId: string, userId: string, takeover = false): Promise<LockResult> {
+export async function claimLock(
+  organizationId: string,
+  projectId: string,
+  userId: string,
+  lockToken: string | null,
+  takeover = false,
+): Promise<LockResult> {
   const now = new Date();
   const claimed = await db
     .insert(projectSetupState)
-    .values({ organizationId, projectId, lockedByUserId: userId, lockedAt: now, updatedAt: NEVER_WRITTEN })
+    .values({ organizationId, projectId, lockedByUserId: userId, lockedAt: now, lockToken, updatedAt: NEVER_WRITTEN })
     .onConflictDoUpdate({
       target: projectSetupState.projectId,
-      set: { lockedByUserId: userId, lockedAt: sql`now()` },
+      set: { lockedByUserId: userId, lockedAt: sql`now()`, lockToken },
       setWhere: and(
         eq(projectSetupState.organizationId, organizationId),
-        takeover
-          ? undefined
-          : sql`(${projectSetupState.lockedByUserId} IS NULL OR ${projectSetupState.lockedByUserId} = ${userId} OR ${LOCK_EXPIRED})`,
+        takeover ? undefined : holderOrFree(userId, lockToken),
       ),
     })
     .returning({ id: projectSetupState.id });
 
   const { row, lockerName } = await loadRow(organizationId, projectId);
-  const lock = row && lockOf(row, lockerName, userId);
+  const lock = row && lockOf(row, lockerName, userId, lockToken);
   if (claimed.length > 0 && lock) return { kind: "ok", lock };
   if (lock) return { kind: "locked", lock };
   // Row vanished or lock expired between the statements: the caller can simply retry.
   return { kind: "locked", lock: { userId: "", userName: null, lockedAt: new Date(0).toISOString(), mine: false } };
 }
 
-/** Clears only the caller's own lock. */
-export async function releaseLock(organizationId: string, projectId: string, userId: string): Promise<void> {
+/** Clears only the lock held by the caller's own tab. */
+export async function releaseLock(organizationId: string, projectId: string, userId: string, lockToken: string | null): Promise<void> {
   await db
     .update(projectSetupState)
-    .set({ lockedByUserId: null, lockedAt: null })
+    .set({ lockedByUserId: null, lockedAt: null, lockToken: null })
     .where(
       and(
         eq(projectSetupState.organizationId, organizationId),
         eq(projectSetupState.projectId, projectId),
         eq(projectSetupState.lockedByUserId, userId),
+        tokenMatches(lockToken),
       ),
     );
 }

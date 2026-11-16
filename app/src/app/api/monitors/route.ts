@@ -12,7 +12,7 @@ import {
 } from "@/db/schema";
 import { eq, desc, and, sql, inArray, ne } from "drizzle-orm";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
-import { requireAuthContext, isAuthError, authErrorStatus } from "@/lib/auth-context";
+import { requireAuthContext, isAuthError, authErrorResponse } from "@/lib/auth-context";
 import { isUuid } from "@/lib/uuid";
 import {
   insertMonitorRecord,
@@ -217,13 +217,7 @@ export async function GET(request: Request) {
     }
   } catch (error) {
     if (isAuthError(error)) {
-      return NextResponse.json(
-        {
-          error:
-            error instanceof Error ? error.message : "Authentication required",
-        },
-        { status: authErrorStatus(error) },
-      );
+      return authErrorResponse(error);
     }
     logger.error({ err: error }, "Error fetching monitors");
     return NextResponse.json(
@@ -671,13 +665,7 @@ export async function POST(req: NextRequest) {
     );
   } catch (error) {
     if (isAuthError(error)) {
-      return NextResponse.json(
-        {
-          error:
-            error instanceof Error ? error.message : "Authentication required",
-        },
-        { status: authErrorStatus(error) },
-      );
+      return authErrorResponse(error);
     }
     if (error instanceof SubscriptionAccessDeniedError) {
       return NextResponse.json(
@@ -1068,13 +1056,7 @@ export async function PUT(req: NextRequest) {
     return NextResponse.json(monitorForResponse(updatedMonitor));
   } catch (error) {
     if (isAuthError(error)) {
-      return NextResponse.json(
-        {
-          error:
-            error instanceof Error ? error.message : "Authentication required",
-        },
-        { status: authErrorStatus(error) },
-      );
+      return authErrorResponse(error);
     }
     logger.error({ err: error }, "Error updating monitor");
     return NextResponse.json(

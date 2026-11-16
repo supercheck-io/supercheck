@@ -8,7 +8,7 @@ import {
 } from "@/db/schema";
 import { desc, eq, and, sql, inArray } from "drizzle-orm";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
-import { requireAuthContext, isAuthError, authErrorStatus } from "@/lib/auth-context";
+import { requireAuthContext, isAuthError, authErrorResponse } from "@/lib/auth-context";
 import { logAuditEvent } from "@/lib/audit-logger";
 import {
   decryptNotificationProviderConfig,
@@ -120,10 +120,7 @@ export async function GET() {
     return NextResponse.json(enhancedProviders);
   } catch (error) {
     if (isAuthError(error)) {
-      return NextResponse.json(
-        { error: error instanceof Error ? error.message : "Authentication required" },
-        { status: authErrorStatus(error) }
-      );
+      return authErrorResponse(error);
     }
     console.error("Error fetching notification providers:", error);
     return NextResponse.json(
@@ -284,10 +281,7 @@ export async function POST(req: NextRequest) {
     );
   } catch (error) {
     if (isAuthError(error)) {
-      return NextResponse.json(
-        { error: error instanceof Error ? error.message : "Authentication required" },
-        { status: authErrorStatus(error) }
-      );
+      return authErrorResponse(error);
     }
     console.error("Error creating notification provider:", error);
     return NextResponse.json(

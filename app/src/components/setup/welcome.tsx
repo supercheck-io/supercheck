@@ -13,7 +13,9 @@ import { PERSONA_OPTIONS, isUserPersona, type UserPersona } from "@/lib/setup/pe
 
 interface WelcomeProps {
   /** creator: Start setup / Skip. member: persona only, Go to dashboard / Skip. */
-  mode: "creator" | "member";
+  mode: "creator" | "member" | "change";
+  /** change: the persona already saved, preselected. */
+  initialPersona?: UserPersona | null;
   projectName: string;
   organizationName?: string | null;
   /** Called after the persona (or its skip) is saved. */
@@ -21,8 +23,8 @@ interface WelcomeProps {
 }
 
 /** The one persona question (D13). Saving also marks it as seen, so it is shown once per user. */
-export function Welcome({ mode, projectName, organizationName, onDone }: WelcomeProps) {
-  const [persona, setPersona] = useState<UserPersona | null>(null);
+export function Welcome({ mode, projectName, organizationName, initialPersona = null, onDone }: WelcomeProps) {
+  const [persona, setPersona] = useState<UserPersona | null>(initialPersona);
   const save = useSavePersona();
 
   const submit = (value: UserPersona | null) =>
@@ -34,11 +36,15 @@ export function Welcome({ mode, projectName, organizationName, onDone }: Welcome
   const title =
     mode === "creator"
       ? "Welcome to Supercheck"
-      : `You joined ${organizationName || "the organization"}. What will you mostly do here?`;
+      : mode === "change"
+        ? "Change your persona"
+        : `You joined ${organizationName || "the organization"}. What will you mostly do here?`;
   const description =
     mode === "creator"
       ? `Let's set up ${projectName}. What will you mostly do here?`
-      : "This orders the sidebar for you. Nothing is hidden; change it any time from your user menu.";
+      : mode === "change"
+        ? "This orders the sidebar and the setup steps for you. Nothing is hidden."
+        : "This orders the sidebar for you. Nothing is hidden; change it any time from your user menu.";
 
   return (
     <div className="mx-auto w-full max-w-3xl space-y-6" data-testid="setup-welcome">
@@ -83,12 +89,18 @@ export function Welcome({ mode, projectName, organizationName, onDone }: Welcome
           </Button>
         ) : (
           <Button disabled={!persona || save.isPending} onClick={() => persona && submit(persona)}>
-            Go to dashboard
+            {mode === "change" ? "Save" : "Go to dashboard"}
           </Button>
         )}
-        <Button variant="ghost" disabled={save.isPending} onClick={() => submit(null)}>
-          Skip
-        </Button>
+        {mode === "change" ? (
+          <Button variant="ghost" disabled={save.isPending} onClick={onDone}>
+            Cancel
+          </Button>
+        ) : (
+          <Button variant="ghost" disabled={save.isPending} onClick={() => submit(null)}>
+            Skip
+          </Button>
+        )}
       </div>
     </div>
   );

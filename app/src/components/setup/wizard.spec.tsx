@@ -165,6 +165,9 @@ describe("navigation and draft", () => {
     fireEvent.click(screen.getByRole("button", { name: "Continue" }));
     await leaveAndFlush();
     expect(await screen.findByText("Could not save the draft")).toBeTruthy();
+    // Leaving would lose the draft: the dialog stays open with the reason and nothing navigates.
+    expect(await screen.findByText(/Your draft could not be saved/)).toBeTruthy();
+    expect(push).not.toHaveBeenCalled();
     putHandler = () => ({ status: 200, body: makeResponse({}, { updatedAt: "ok" }) });
     fireEvent.click(screen.getByRole("button", { name: "Try again" }));
     expect(await screen.findByText("Draft saved")).toBeTruthy();
@@ -193,6 +196,20 @@ describe("lock", () => {
     await waitFor(() => expect(calls.some((c) => c.url.endsWith("/setup/lock") && c.method === "POST")).toBe(true));
     view.unmount();
     expect(calls.some((c) => c.url.endsWith("/setup/lock") && c.method === "DELETE")).toBe(true);
+  });
+
+  it("sends one per-tab token on the lock claim, the draft saves and the release", async () => {
+    const view = renderWizard(makeResponse({}, { status: "in_progress" }));
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+    await leaveAndFlush();
+    await waitFor(() => expect(push).toHaveBeenCalledWith("/"));
+    view.unmount();
+    const tokens = new Set(
+      calls.filter((c) => c.url.endsWith("/setup/lock") || c.method === "PUT").map((c) => c.body?.lockToken),
+    );
+    expect(tokens.size).toBe(1);
+    expect([...tokens][0]).toMatch(/^[0-9a-f-]{36}$/);
+    expect(calls.some((c) => c.method === "DELETE" && c.body?.lockToken === [...tokens][0])).toBe(true);
   });
 
   it("heartbeats every 60 seconds", async () => {

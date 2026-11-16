@@ -7,6 +7,7 @@ import { CheckCircle2, Circle, Loader2, MinusCircle, XCircle } from "lucide-reac
 import { createComponent } from "@/actions/create-component";
 import { createStatusPage } from "@/actions/create-status-page";
 import { getProjectNotificationPolicy, saveProjectNotificationPolicy } from "@/actions/notification-policy";
+import { getComponents } from "@/actions/get-components";
 import { getStatusPages } from "@/actions/get-status-pages";
 import { publishStatusPage } from "@/actions/publish-status-page";
 import { Alert } from "@/components/ui/alert";
@@ -14,7 +15,7 @@ import { Button } from "@/components/ui/button";
 import { TableBadge } from "@/components/ui/table-badge";
 import type { SetupStepKey } from "@/lib/setup/persona";
 import { CopyValueButton } from "../copy-value-button";
-import { buildCreateItems, runAll, runItem, type CreateItem, type ItemResult, type RunnerDeps } from "../create-runner";
+import { buildCreateItems, runAll, retryWithDependents, type CreateItem, type ItemResult, type RunnerDeps } from "../create-runner";
 import { fetchJson, type StepProps } from "./step-types";
 
 const STEP_TITLES: Partial<Record<SetupStepKey, string>> = {
@@ -35,6 +36,8 @@ export interface ReviewStepProps extends StepProps {
   /** Mark setup completed (PUT status). */
   complete: () => Promise<void>;
   completed: boolean;
+  /** Re-claims the setup lock; false when someone took over. */
+  heartbeat?: () => Promise<boolean>;
 }
 
 function StatusIcon({ status }: { status: ItemResult["status"] }) {
@@ -63,7 +66,7 @@ const STATUS_LABEL: Record<ItemResult["status"], string> = {
   failed: "Failed",
 };
 
-export function ReviewStep({ response, features, permissions, draft, skipped, readOnly, recordCreated, getCreated, complete, completed }: ReviewStepProps) {
+export function ReviewStep({ response, features, permissions, draft, skipped, readOnly, recordCreated, getCreated, complete, completed, heartbeat }: ReviewStepProps) {
   const items = useMemo(
     () => buildCreateItems(draft, { skipped, features, canUpdateProject: permissions.canUpdateProject }),
     [draft, skipped, features, permissions.canUpdateProject],
@@ -75,6 +78,11 @@ export function ReviewStep({ response, features, permissions, draft, skipped, re
   const deps: RunnerDeps = {
     setupProjectId: response.projectId,
     fetchJson,
+    heartbeat,
+    getComponents: async (statusPageId) => {
+      const res = await getComponents(statusPageId);
+      return { success: res.success, components: res.success ? res.components.map((c) => ({ id: c.id, name: c.name, monitorIds: c.monitorIds })) : [] };
+    },
     getStatusPages: async () => {
       const res = await getStatusPages();
       return { success: res.success, statusPages: res.success ? res.statusPages.map((p) => ({ id: p.id, name: p.name })) : [] };
@@ -99,9 +107,7 @@ export function ReviewStep({ response, features, permissions, draft, skipped, re
   };
 
   const retry = async (item: CreateItem) => {
-    update(item.key, { status: "running", error: undefined });
-    const result = await runItem(item, deps);
-    update(item.key, result);
+    await retryWithDependents(item, items, deps, update, (key) => results[key]?.status === "skipped");
   };
 
   const finish = async () => {

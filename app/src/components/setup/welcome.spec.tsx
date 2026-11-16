@@ -59,6 +59,24 @@ describe("Welcome", () => {
     await waitFor(() => expect(onDone).toHaveBeenCalled());
   });
 
+  it("change mode preselects the saved persona, saves a new one and cancels without saving", async () => {
+    respond({ persona: "qa", seen: true });
+    const onDone = jest.fn();
+    const { Wrapper } = createWrapper();
+    render(<Welcome mode="change" initialPersona="sre" projectName="Web App" onDone={onDone} />, { wrapper: Wrapper });
+    expect(screen.getByText("Change your persona")).toBeTruthy();
+    expect(screen.getByRole("radio", { name: /Keep production up/ })).toBeChecked();
+    fireEvent.click(screen.getByRole("radio", { name: /Test my app/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(onDone).toHaveBeenCalled());
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({ persona: "qa" });
+    onDone.mockClear();
+    fetchMock.mockClear();
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(onDone).toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it("falls back to a generic organization name and tells the user when saving fails", async () => {
     respond({ error: "nope" }, 500);
     const onDone = jest.fn();

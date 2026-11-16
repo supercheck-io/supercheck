@@ -62,7 +62,9 @@ export function SetupPage() {
   const prefs = useUserPreferences();
 
   const isCreator = CREATOR_ROLES.includes(currentProject?.userRole ?? "");
-  const unseenMember = prefs.data && !prefs.data.seen && !isCreator;
+  // Wait for the project: a fresh creator's role is unknown until it loads, and guessing "member" would
+  // send them to the member welcome (no Start setup) for good.
+  const unseenMember = prefs.data && !prefs.data.seen && Boolean(currentProject) && !isCreator;
   useEffect(() => {
     if (unseenMember) router.replace("/setup/welcome");
   }, [unseenMember, router]);

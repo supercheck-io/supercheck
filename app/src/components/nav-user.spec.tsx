@@ -43,7 +43,7 @@ describe("NavUser", () => {
 
   it("links Change persona to the setup welcome page", () => {
     render(<NavUser />);
-    expect(screen.getByTestId("persona-menu-item")).toHaveAttribute("href", "/setup/welcome");
+    expect(screen.getByTestId("persona-menu-item")).toHaveAttribute("href", "/setup/welcome?change=1");
   });
 
   it("no longer has separate Connected apps or Source code items", () => {

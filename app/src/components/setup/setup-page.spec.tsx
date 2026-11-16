@@ -84,6 +84,19 @@ describe("SetupPage view selection", () => {
     await waitFor(() => expect(replace).toHaveBeenCalledWith("/setup/welcome"));
   });
 
+  it("does not send a fresh creator to the member welcome while the project is still loading", async () => {
+    prefsBody = { persona: null, seen: false };
+    useProjectContext.mockReturnValue({ currentProject: null, switchProject, loading: false });
+    const { rerender } = renderPage();
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/me/preferences", expect.anything()));
+    await act(async () => undefined);
+    expect(replace).not.toHaveBeenCalled();
+    useProjectContext.mockReturnValue(project());
+    rerender(<SetupPage />);
+    expect(await screen.findByRole("button", { name: /Start setup/ })).toBeTruthy();
+    expect(replace).not.toHaveBeenCalled();
+  });
+
   it("offers the wizard to an invited editor on a not-started project instead of opening it", async () => {
     useProjectContext.mockReturnValue(project("project_editor"));
     renderPage();

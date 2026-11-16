@@ -123,6 +123,31 @@ describe("requireProjectContext", () => {
   );
 });
 
+describe("requireProjectContext expected-project header", () => {
+  const unified = { isValid: true, userId: "user-1", projectId: "project-a", projectName: "A", organizationId: "org-1", organizationRole: "org_owner", projectRole: null };
+  const withHeaders = (values: Record<string, string>) =>
+    mockHeaders.mockResolvedValue({ get: jest.fn((name: string) => values[name] ?? null) });
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockGetCachedAuthSession.mockResolvedValue({ session: { token: "session-token" }, user: { id: "user-1" } });
+    mockGetUnifiedAuthContext.mockResolvedValue(unified);
+  });
+
+  it("accepts the request when the expected project is the active one", async () => {
+    withHeaders({ "x-supercheck-project-id": "project-a" });
+    await expect(requireProjectContext()).resolves.toMatchObject({ project: { id: "project-a" } });
+  });
+
+  it("accepts the request when no expected project is sent", async () => {
+    withHeaders({});
+    await expect(requireProjectContext()).resolves.toMatchObject({ project: { id: "project-a" } });
+  });
+
+  it("refuses the request with PROJECT_MISMATCH when the active project is another one", async () => {
+    withHeaders({ "x-supercheck-project-id": "project-b" });
+    await expect(requireProjectContext()).rejects.toMatchObject({ message: "Project changed in another tab", code: "PROJECT_MISMATCH" });
+  });
+});
 
 describe("default project recovery", () => {
   const set = jest.fn();

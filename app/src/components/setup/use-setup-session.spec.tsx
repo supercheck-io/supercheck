@@ -7,6 +7,7 @@ import { useSetupSession } from "./use-setup-session";
 jest.mock("sonner", () => ({ toast: { success: jest.fn(), error: jest.fn() } }));
 
 const ID_A = "00000000-0000-4000-8000-00000000000a";
+const TAB = "00000000-0000-4000-8000-0000000000aa";
 const ID_B = "00000000-0000-4000-8000-00000000000b";
 const fetchMock = jest.fn();
 const reply = (status: number, body: unknown) => ({ ok: status < 400, status, json: async () => body });
@@ -19,8 +20,24 @@ beforeEach(() => {
 
 const setup = () => {
   const initial = makeResponse({}, { status: "in_progress", updatedAt: "t0" }).state;
-  return renderHook(() => useSetupSession(PROJECT_ID, initial, 10), { wrapper: createWrapper().Wrapper });
+  return renderHook(() => useSetupSession(PROJECT_ID, initial, TAB, 10), { wrapper: createWrapper().Wrapper });
 };
+
+describe("useSetupSession flush", () => {
+  it("resolves true when saved and false when the write failed, and sends the tab token", async () => {
+    fetchMock.mockResolvedValueOnce(reply(500, { error: "boom" }));
+    fetchMock.mockResolvedValueOnce(reply(200, makeResponse({}, { updatedAt: "t1" })));
+    const { result } = setup();
+    act(() => result.current.patch({ currentStep: "alerts" }));
+    let first = true;
+    await act(async () => { first = await result.current.flush(); });
+    expect(first).toBe(false);
+    let second = false;
+    await act(async () => { second = await result.current.flush(); });
+    expect(second).toBe(true);
+    expect(puts().every((body) => body.lockToken === TAB)).toBe(true);
+  });
+});
 
 describe("useSetupSession recordCreated", () => {
   it("keeps a locally created id through a 409 and re-saves it on the server version", async () => {
