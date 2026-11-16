@@ -22,7 +22,16 @@ test.describe('Declare an incident @incidents', () => {
       await page.goto('/create', { waitUntil: 'domcontentloaded' });
       await waitForHydration(page);
       await page.getByRole('heading', { name: 'Respond to an incident' }).waitFor();
+      // DIAG (temporary): which side stalls the Quick Create navigation.
+      page.on('request', (r) => { if (/incidents|_rsc/.test(r.url())) console.log('DIAG req', r.method(), new URL(r.url()).pathname + new URL(r.url()).search.replace(/_rsc=[^&]+/, '_rsc')); });
+      page.on('response', (r) => { if (/incidents|_rsc/.test(r.url())) console.log('DIAG res', r.status(), new URL(r.url()).pathname); });
+      page.on('requestfailed', (r) => console.log('DIAG failed', new URL(r.url()).pathname, r.failure()?.errorText));
+      page.on('pageerror', (e) => console.log('DIAG pageerror', e.message.slice(0, 300)));
+      page.on('console', (m) => { if (m.type() === 'error' || m.type() === 'warning') console.log('DIAG console', m.type(), m.text().slice(0, 300)); });
+      page.on('framenavigated', (f) => { if (f === page.mainFrame()) console.log('DIAG nav', new URL(f.url()).pathname + new URL(f.url()).search); });
       await page.getByText('Declare incident', { exact: true }).click();
+      await page.waitForTimeout(10_000);
+      console.log('DIAG url after 10s', new URL(page.url()).pathname + new URL(page.url()).search);
       await page.waitForURL(/\/incidents\?new=1/);
       const dialog = page.getByRole('dialog', { name: 'Declare incident' });
       await expect(dialog).toBeVisible();
