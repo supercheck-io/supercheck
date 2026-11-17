@@ -79,7 +79,7 @@ The CLI is versioned separately; see [cli/CHANGELOG.md](cli/CHANGELOG.md). Prere
 
 ### Removed
 
-- Opsgenie alert channel and AI SRE connector (Atlassian has ended Opsgenie sign-ups).
+- Opsgenie alert channel and AI SRE connector (Atlassian has ended Opsgenie sign-ups)). Switch any existing Opsgenie channel to the Jira Service Management preset or a custom webhook, and delete any Opsgenie connector.
 - The unused `type: "file"` attachment option on `POST /api/sre/chat` (it now returns `400`) and the `S3_SRE_ATTACHMENTS_BUCKET_NAME` setting. Nothing could upload to that bucket. You can delete an empty `sre-chat-attachments` bucket.
 
 ### Deprecated
