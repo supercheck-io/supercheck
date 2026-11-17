@@ -52,7 +52,7 @@ jest.mock("next/headers", () => ({
 
 jest.mock("./permissions", () => ({
   hasPermission: jest.fn().mockReturnValue(true),
-  PENDING_DELETION_ALLOWED_ACTIONS: new Set(["view", "view_secrets", "export"]),
+  PENDING_DELETION_ALLOWED_ACTIONS: new Set(["view", "export"]),
   Role: {
     SUPER_ADMIN: "SUPER_ADMIN",
     ORG_OWNER: "ORG_OWNER",

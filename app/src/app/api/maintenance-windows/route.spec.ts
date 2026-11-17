@@ -66,6 +66,20 @@ describe("maintenance window routes", () => {
     expect((await DELETE(req("DELETE"), params())).status).toBe(200);
   });
 
+  it("answers 402 for a lapsed organization on create, update and extend, and still ends or cancels (200)", async () => {
+    mockRequireAuthContext.mockResolvedValue(ctx("project_editor"));
+    const lapsed = { ok: false, code: "subscription_required", error: "Active subscription required." };
+    mockCore.createMaintenanceWindow.mockResolvedValueOnce(lapsed);
+    mockCore.updateMaintenanceWindow.mockResolvedValueOnce(lapsed);
+    mockCore.extendMaintenanceWindow.mockResolvedValueOnce(lapsed);
+    for (const res of [await POST(req("POST", { title: "x" })), await PATCH(req("PATCH", { title: "y" }), params()), await EXTEND(req("POST", { byMinutes: 30 }), params())]) {
+      expect(res.status).toBe(402);
+      expect(await res.json()).toEqual({ error: "Active subscription required.", code: "subscription_required" });
+    }
+    expect((await END(req("POST"), params())).status).toBe(200);
+    expect((await CANCEL(req("POST"), params())).status).toBe(200);
+  });
+
   it("validates ids, filters and bodies", async () => {
     mockRequireAuthContext.mockResolvedValue(ctx("project_editor"));
     expect((await GET(req("GET", undefined, "https://app.example.com/api/maintenance-windows?state=bogus"))).status).toBe(400);

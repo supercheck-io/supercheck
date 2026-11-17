@@ -104,6 +104,10 @@ export async function withRouteCheck<T>(run: () => Promise<T>): Promise<T> {
     if (error instanceof ApiRequestError && error.statusCode === 404 && !hasJsonError) {
       throw new CLIError('This command requires a newer Supercheck server. Upgrade the server and try again.', ExitCode.ApiError)
     }
+    // A 402 carries the server's own words (plan required); show them as the message, keeping the body for the error code.
+    if (error instanceof ApiRequestError && error.statusCode === 402 && hasJsonError) {
+      throw new ApiRequestError((body as { error: string }).error, 402, body)
+    }
     throw error
   }
 }

@@ -345,6 +345,31 @@
           "401": {
             "description": "Not authenticated"
           },
+          "402": {
+            "description": "Declaring an incident needs a paid plan or an active trial (Supercheck Cloud only). Reading, acknowledging and resolving stay available. Body: `{ error, code: \"subscription_required\" }`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "subscription_required"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error",
+                    "code"
+                  ]
+                }
+              }
+            }
+          },
           "403": {
             "description": "Insufficient permission, or the organization is pending deletion"
           },
@@ -2812,6 +2837,32 @@
               }
             }
           },
+          "202": {
+            "description": "Run marked for cancellation, but Redis is unavailable so the stop signal was not sent: no worker starts the run, but one already executing keeps running. Retry once Redis is back.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "runId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "signalSent": {
+                      "type": "boolean",
+                      "const": false
+                    }
+                  }
+                }
+              }
+            }
+          },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
           },
@@ -2875,7 +2926,7 @@
                 "agent"
               ]
             },
-            "description": "Filter by test type. Aliases: `playwright` → `browser`, `k6` → `performance`"
+            "description": "Filter by test type. Aliases: `playwright` → `browser`, `k6` → `performance`. Matching ignores case and surrounding spaces; an unknown type returns 400."
           },
           {
             "name": "priority",
@@ -2921,7 +2972,7 @@
             "$ref": "#/components/responses/Unauthorized"
           },
           "400": {
-            "description": "Invalid priority filter",
+            "description": "Invalid priority or type filter",
             "content": {
               "application/json": {
                 "schema": {
@@ -10182,6 +10233,31 @@
           "401": {
             "description": "Not authenticated"
           },
+          "402": {
+            "description": "Declaring maintenance needs a paid plan or an active trial (Supercheck Cloud only). Ending, cancelling and reading stay available. Body: `{ error, code: \"subscription_required\" }`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "subscription_required"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error",
+                    "code"
+                  ]
+                }
+              }
+            }
+          },
           "403": {
             "description": "Insufficient permission, or the organization is pending deletion"
           },
@@ -10582,6 +10658,31 @@
           "401": {
             "description": "Not authenticated"
           },
+          "402": {
+            "description": "Changing a window needs a paid plan or an active trial (Supercheck Cloud only). Ending, cancelling and deleting stay available. Body: `{ error, code: \"subscription_required\" }`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "subscription_required"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error",
+                    "code"
+                  ]
+                }
+              }
+            }
+          },
           "403": {
             "description": "Insufficient permission, or the organization is pending deletion"
           },
@@ -10947,6 +11048,31 @@
           },
           "401": {
             "description": "Not authenticated"
+          },
+          "402": {
+            "description": "Extending a window needs a paid plan or an active trial (Supercheck Cloud only). Ending and cancelling stay available. Body: `{ error, code: \"subscription_required\" }`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "subscription_required"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error",
+                    "code"
+                  ]
+                }
+              }
+            }
           },
           "403": {
             "description": "Insufficient permission, or the organization is pending deletion"

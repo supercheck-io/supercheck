@@ -30,6 +30,8 @@ export interface AgentState {
   repeats: AgentRepeatResult[];
   /** Keys and header values seen by connect/judge; removed from the summary. */
   secrets: string[];
+  /** Epoch ms by which repeat() must stop, so the run ends before Playwright's global timeout drops the summary. */
+  deadlineAt?: number;
 }
 
 export const newState = (): AgentState => ({
@@ -102,7 +104,10 @@ export function createAgent(state: AgentState): Agent {
         throw new RangeError(
           'agent.repeat: concurrency must be an integer from 1 to 5',
         );
-      const deadline = Date.now() + REPEAT_BUDGET_MS;
+      const deadline = Math.min(
+        Date.now() + REPEAT_BUDGET_MS,
+        state.deadlineAt ?? Infinity,
+      );
       // A nested repeat runs inside an attempt that is already counted, so only the top level is recorded.
       const topLevel = attemptOf.getStore() === undefined;
       const failures: AgentRepeatResult['failures'] = [];

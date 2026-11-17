@@ -687,6 +687,61 @@ describe("Execution route regressions", () => {
     );
   });
 
+  describe("POST /api/test testType", () => {
+    const post = (body: Record<string, unknown>) =>
+      executePlaygroundTest(
+        new NextRequest("http://localhost/api/test", {
+          method: "POST",
+          body: JSON.stringify({ script: "test('smoke', async () => {})", ...body }),
+          headers: { "content-type": "application/json", origin: "http://localhost" },
+        }),
+      );
+    beforeEach(() => {
+      mockDb.insert.mockReturnValue({
+        values: jest.fn().mockReturnValue({
+          returning: jest.fn().mockResolvedValue([{ id: "run-typed" }]),
+        }),
+      });
+      mockDb.update.mockReturnValue({
+        set: jest.fn().mockReturnValue({ where: jest.fn().mockResolvedValue(undefined) }),
+      });
+      mockAddTestToQueue.mockResolvedValue({ runId: "run-typed", status: "queued", position: 1 });
+      mockAddK6TestToQueue.mockResolvedValue({ runId: "run-typed", status: "queued", position: 1 });
+    });
+
+    it("rejects an unknown type with 400 before creating or queueing a run", async () => {
+      const response = await post({ testType: "smoke" });
+      expect(response.status).toBe(400);
+      expect(mockDb.insert).not.toHaveBeenCalled();
+      expect(mockAddTestToQueue).not.toHaveBeenCalled();
+      expect(mockAddK6TestToQueue).not.toHaveBeenCalled();
+    });
+
+    it("queues \" Agent \" as an agent task, validated as agent", async () => {
+      const response = await post({ testType: " Agent " });
+      expect(response.status).toBe(200);
+      expect(mockPlaywrightValidationService.validateCode).toHaveBeenCalledWith(
+        expect.any(String),
+        { selectedTestType: "agent" },
+      );
+      expect(mockAddTestToQueue).toHaveBeenCalledWith(expect.objectContaining({ testType: "agent" }));
+    });
+
+    it("passes the canonical type to the k6 validator, and an omitted type still runs a k6 script", async () => {
+      mockIsK6Script.mockReturnValue(true);
+      expect((await post({ testType: " K6 " })).status).toBe(200);
+      expect(mockValidateK6Script).toHaveBeenCalledWith(expect.any(String), {
+        selectedTestType: "performance",
+      });
+      expect((await post({})).status).toBe(200);
+      expect(mockValidateK6Script).toHaveBeenLastCalledWith(expect.any(String), {
+        selectedTestType: undefined,
+      });
+      expect(mockAddK6TestToQueue).toHaveBeenCalledTimes(2);
+      expect(mockAddTestToQueue).not.toHaveBeenCalled();
+    });
+  });
+
   it("POST /api/tests/[id]/execute finalizes the run when queue admission fails", async () => {
     mockDb.query.tests.findFirst.mockResolvedValue({
       id: "b6c7d749-56f1-509f-96c4-8234bc8c0244",

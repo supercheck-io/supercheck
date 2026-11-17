@@ -173,6 +173,9 @@ runCommand
       () => client.post<Record<string, unknown>>(`/api/runs/${encodeURIComponent(id)}/cancel`),
     )
     outputDetail(data)
+    // Marked, but the stop signal could not be sent (Redis down): a run already executing keeps going, so scripts must retry.
+    if (data.signalSent === false)
+      throw new CLIError(String(data.message ?? 'Cancellation not confirmed; retry'), ExitCode.ApiError)
   })
 
 runCommand.command('wait <id>')

@@ -86,3 +86,14 @@ it("rejects oversized chunked bodies that carry no Content-Length", async () => 
   );
   expect(response.status).toBe(413);
 });
+
+it.each(["agents", "bogus", 5])("refuses the invalid test type %j with 400", async (testType) => {
+  const response = await POST(
+    new NextRequest("http://localhost/api/validate-script", {
+      method: "POST",
+      body: JSON.stringify({ testType, script: "console.log(1)" }),
+    }),
+  );
+  expect(response.status).toBe(400);
+  expect((await response.json()).error).toContain("Invalid test type");
+});

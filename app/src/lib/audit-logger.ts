@@ -54,7 +54,8 @@ type AuditExecutor = Pick<typeof db, "insert">;
 export async function logAuditEvent(
   event: AuditEvent,
   executor: AuditExecutor = db,
-  options: { strict?: boolean } = {}
+  // Pass `actor` when inside a transaction that waits on a lock: the lookup may need its own pool connection.
+  options: { strict?: boolean; actor?: Awaited<ReturnType<typeof getAuditActor>> } = {}
 ): Promise<void> {
   try {
     // Get request context if available (skip if outside request scope)
@@ -75,7 +76,7 @@ export async function logAuditEvent(
       userAgent = event.userAgent || "system";
     }
 
-    const actor = await getAuditActor(event.userId);
+    const actor = options.actor ?? (await getAuditActor(event.userId));
 
     // Prepare audit log entry according to schema
     const auditEntry = {

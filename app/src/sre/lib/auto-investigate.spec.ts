@@ -65,6 +65,9 @@ jest.mock("@/utils/db", () => ({
   },
 }));
 
+const lapsedWriteBlock = jest.fn();
+jest.mock("@/lib/sre/lapsed-org-gate", () => ({ lapsedWriteBlock: (...a: unknown[]) => lapsedWriteBlock(...a) }));
+
 import { maybeAutoInvestigateOnOpen } from "./auto-investigate";
 
 const input = { organizationId: "org-1", projectId: "p1", incidentId: "i1", userId: null };
@@ -76,6 +79,7 @@ beforeEach(() => {
   orgRunning = 0;
   lateRunRows = null;
   sreEnabled.mockReturnValue(true);
+  lapsedWriteBlock.mockResolvedValue(null);
   policy.mockResolvedValue({ autoInvestigateOnOpen: true });
   incidentRows = [{ severity: "sev1", status: "triggered" }];
   validate.mockReturnValue(undefined);
@@ -90,6 +94,14 @@ beforeEach(() => {
 it("does nothing unless the project switched it on", async () => {
   policy.mockResolvedValue({ autoInvestigateOnOpen: false });
   expect(await maybeAutoInvestigateOnOpen(input)).toEqual({ handled: false, reason: "disabled" });
+  expect(start).not.toHaveBeenCalled();
+  expect(triage).not.toHaveBeenCalled();
+});
+
+it("does not start an investigation or triage for a lapsed organization", async () => {
+  lapsedWriteBlock.mockResolvedValue({ ok: false, code: "subscription_required", error: "Active subscription required." });
+  expect(await maybeAutoInvestigateOnOpen(input)).toEqual({ handled: false, reason: "subscription_required" });
+  expect(lapsedWriteBlock).toHaveBeenCalledWith("org-1");
   expect(start).not.toHaveBeenCalled();
   expect(triage).not.toHaveBeenCalled();
 });

@@ -149,12 +149,24 @@ describe("cancellation drain", () => {
     expect(set).not.toHaveBeenCalledWith(expect.objectContaining({ status: "error" }));
     expect(await response.json()).toMatchObject({ queueRemoved: false, message: "Cancellation requested; waiting for execution to stop" });
   });
-  it("rejects a cancellation when the worker signal cannot be persisted", async () => {
+  it("still marks the run when the worker signal cannot be persisted, and says a retry is needed to stop it", async () => {
     (setCancellationSignal as jest.Mock).mockRejectedValueOnce(new Error("Redis unavailable"));
     const response = await cancel();
-    expect(response.status).toBe(503);
-    expect(set).not.toHaveBeenCalled();
+    expect(response.status).toBe(202);
+    expect(set).toHaveBeenCalledWith({ errorDetails: "Cancellation requested by user" });
+    // A live job may still exist, so the run is not finalized on a guess.
+    expect(set).not.toHaveBeenCalledWith(expect.objectContaining({ status: "error" }));
     expect(getQueues).not.toHaveBeenCalled();
+    expect(await response.json()).toMatchObject({ success: true, signalSent: false, message: expect.stringContaining("retry") });
+    expect(logAuditEvent).toHaveBeenCalledWith(expect.objectContaining({ metadata: expect.objectContaining({ signalSent: false, cancellationComplete: false }) }));
+  });
+  it("sends the signal on a retry once Redis is back, although the run already carries the marker", async () => {
+    Object.assign(run, { runErrorDetails: "Cancellation requested by user" });
+    (getQueues as jest.Mock).mockResolvedValue({ playwrightQueues: { global: { getJob: async () => ({ id: "4f87e7cf-200f-5ec1-8ce4-3edcb1590232", getState: async () => "active", remove: async () => { throw new Error("Job is locked"); } }) } }, k6Queues: {} });
+    const response = await cancel();
+    delete (run as Record<string, unknown>).runErrorDetails;
+    expect(response.status).toBe(200);
+    expect(setCancellationSignal).toHaveBeenCalledWith("4f87e7cf-200f-5ec1-8ce4-3edcb1590232");
   });
   it("finalizes the first cancel of a run that no queue holds, since nothing will ever finish it", async () => {
     // The run is "running" in the database but its job is in neither BullMQ nor the capacity queue (it was
@@ -293,13 +305,16 @@ describe("cancellation drain", () => {
       expect(set).not.toHaveBeenCalledWith(expect.objectContaining({ status: "error" }));
       expect(await response.json()).toMatchObject({ message: "Cancellation requested; waiting for execution to stop" });
     });
-    it("answers a retryable 503 without signaling or touching the run when Redis is down", async () => {
+    it("marks the run without signaling, and without a second Redis wait, when Redis is down", async () => {
       (assertExecutionQueueReady as jest.Mock).mockRejectedValueOnce(new Error("queue_unavailable"));
       const response = await cancel();
-      expect(response.status).toBe(503);
+      expect(response.status).toBe(202);
       expect(setCancellationSignal).not.toHaveBeenCalled();
-      expect(markerSet).not.toHaveBeenCalled();
+      expect(markerSet).toHaveBeenCalledWith({ errorDetails: "Cancellation requested by user" });
+      expect(assertExecutionQueueReady).toHaveBeenCalledTimes(1);
       expect(getQueues).not.toHaveBeenCalled();
+      expect(set).not.toHaveBeenCalledWith(expect.objectContaining({ status: "error" }));
+      expect(await response.json()).toMatchObject({ signalSent: false });
     });
     it("skips the queues fast when Redis drops after the signal, still answering 200 with the DB marker", async () => {
       (assertExecutionQueueReady as jest.Mock)
