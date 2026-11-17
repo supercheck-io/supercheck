@@ -421,9 +421,8 @@ const isPlainObject = (value: unknown): value is Record<string, unknown> => !!va
 const hasNull = (value: unknown): boolean => value === null || (typeof value === 'object' && Object.values(value as object).some(hasNull))
 // The server's merge skips these keys at any depth, so they could never be stored.
 const RESERVED_KEYS = new Set(['__proto__', 'constructor', 'prototype'])
-const hasReservedKey = (value: unknown): boolean => Array.isArray(value)
-  ? value.some(hasReservedKey)
-  : isPlainObject(value) && Object.keys(value).some((key) => RESERVED_KEYS.has(key) || hasReservedKey(value[key]))
+// Arrays are exempt: the server stores them whole, so keys inside them are kept as sent.
+const hasReservedKey = (value: unknown): boolean => isPlainObject(value) && Object.keys(value).some((key) => RESERVED_KEYS.has(key) || hasReservedKey(value[key]))
 /** A JSON merge patch that turns `previous` into exactly `next`: the server merges nested objects, so stale keys are nulled at every level. */
 export function replacementPatch(previous: Record<string, unknown>, next: Record<string, unknown>): Record<string, unknown> {
   const patch: Record<string, unknown> = Object.fromEntries(Object.keys(previous).filter((key) => !Object.hasOwn(next, key)).map((key) => [key, null]))
