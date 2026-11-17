@@ -166,6 +166,12 @@ export async function POST(request: NextRequest, { params }: Params) {
       } catch (error) {
         console.error("[Setup suggest] Saving suggestions failed:", error instanceof Error ? error.name : "unknown");
       }
+      if (!updatedAt) {
+        // Unsaved suggestions are lost on reload: give back the credit and the daily slot (finally releases it).
+        keepClaim = false;
+        await credit.refund();
+        return NextResponse.json({ error: "AI could not produce suggestions. Try again." }, { status: 502 });
+      }
 
       await logAuditEvent({
         userId,
@@ -177,7 +183,7 @@ export async function POST(request: NextRequest, { params }: Params) {
         success: true,
       });
       // updatedAt lets the client's autosave carry the new version instead of 409ing on the write above.
-      return NextResponse.json({ requirements: cleaned, ...(updatedAt ? { updatedAt } : {}) });
+      return NextResponse.json({ requirements: cleaned, updatedAt });
     } finally {
       if (!keepClaim) await releaseAiRun(organizationId, projectId, claim);
     }

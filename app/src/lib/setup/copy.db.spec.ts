@@ -13,10 +13,16 @@ import { v7 as uuidv7 } from "uuid";
 let mockDatabase: ReturnType<typeof drizzle<typeof schema>>;
 jest.mock("@/utils/db", () => ({ get db() { return mockDatabase; } }));
 
+// Real audit writes, wrapped so a test can make one fail.
+jest.mock("@/lib/audit-logger", () => {
+  const actual = jest.requireActual("@/lib/audit-logger");
+  return { ...actual, logAuditEvent: jest.fn(actual.logAuditEvent) };
+});
 jest.mock("@/lib/middleware/plan-enforcement", () => ({ countPlanMonitors: jest.fn(), checkMonitorLimit: jest.fn() }));
 
 import { claimAiRun, releaseAiRun, saveScanResult } from "./setup-state";
 import { copyConnectors, copyProviders } from "./copy";
+import { logAuditEvent } from "@/lib/audit-logger";
 import { decryptNotificationProviderConfig, encryptNotificationProviderConfig } from "@/lib/notification-providers/crypto";
 import { decryptConnectorCredential, encryptConnectorCredential } from "@/lib/sre/connectors/credential-vault";
 
@@ -61,7 +67,10 @@ afterAll(async () => {
 afterEach(async () => {
   await client`DELETE FROM notification_providers`;
   await client`DELETE FROM external_connectors`;
+  await client`DELETE FROM audit_logs`;
 });
+
+const auditRows = (resourceId: string) => client`SELECT action, details FROM audit_logs WHERE details->>'resourceId' = ${resourceId}`;
 
 async function seedProvider(org: string, project: string, name: string, url = webhook) {
   const [row] = await mockDatabase
@@ -195,6 +204,40 @@ describe("copyProviders", () => {
       .returning();
     const [res] = await copyProviders(scope, [bad.id]);
     expect(res).toEqual({ sourceId: bad.id, status: "failed", error: "Could not copy this item" });
+  });
+});
+
+describe("copy audit", () => {
+  it("writes each created item's audit entry with the copy, and none for an adopted one", async () => {
+    const src = await seedProvider(orgA, projSrc, "Audited");
+    const [copied] = await copyProviders(scope, [src.id]);
+    expect(copied.status).toBe("copied");
+    const rows = await auditRows(copied.id!);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ action: "notification_provider_created", details: { metadata: { projectId: projTgt, copiedFromProjectId: projSrc } } });
+    expect(JSON.stringify(rows[0].details)).not.toContain("SECRETVALUE");
+
+    const [adopted] = await copyProviders(scope, [src.id]);
+    expect(adopted.status).toBe("adopted");
+    expect(await auditRows(adopted.id!)).toHaveLength(1);
+  });
+  it("a failed audit write rolls the copy back: no row exists without its audit entry", async () => {
+    const src = await seedProvider(orgA, projSrc, "Rollback");
+    (logAuditEvent as jest.Mock).mockRejectedValueOnce(new Error("audit down"));
+    const [res] = await copyProviders(scope, [src.id]);
+    expect(res.status).toBe("failed");
+    const rows = await mockDatabase.select().from(schema.notificationProviders).where(eq(schema.notificationProviders.projectId, projTgt));
+    expect(rows).toHaveLength(0);
+  });
+  it("audits a copied connector in the same transaction", async () => {
+    (logAuditEvent as jest.Mock).mockRejectedValueOnce(new Error("audit down"));
+    const srcId = await seedConnector(orgA, projSrc, "Prom audited");
+    const [failed] = await copyConnectors(scope, [srcId]);
+    expect(failed.status).toBe("failed");
+    expect(await mockDatabase.select().from(schema.externalConnectors).where(eq(schema.externalConnectors.projectId, projTgt))).toHaveLength(0);
+    const [copied] = await copyConnectors(scope, [srcId]);
+    expect(copied.status).toBe("copied");
+    expect((await auditRows(copied.id!)).map((r) => r.action)).toEqual(["sre_connector_created"]);
   });
 });
 

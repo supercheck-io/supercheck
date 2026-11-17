@@ -3,6 +3,7 @@ import "server-only";
 import { and, eq, isNull, like, or, sql } from "drizzle-orm";
 import { v7 as uuidv7 } from "uuid";
 import { db } from "@/utils/db";
+import { logAuditEvent } from "@/lib/audit-logger";
 import { notificationProviders } from "@/db/schema/notification";
 import { externalConnectorCredentials, externalConnectors, privateAgents } from "@/db/schema/sre";
 import { decryptNotificationProviderConfig, encryptNotificationProviderConfig } from "@/lib/notification-providers/crypto";
@@ -172,6 +173,20 @@ export function copyProviders(scope: CopyScope, ids: string[]): Promise<CopyItem
               createdByUserId: userId,
             })
             .returning({ id: notificationProviders.id });
+          // In the copy's transaction (strict), so a copied channel never exists without its audit entry.
+          await logAuditEvent(
+            {
+              userId,
+              organizationId,
+              action: "notification_provider_created",
+              resource: "notification_provider",
+              resourceId: created.id,
+              metadata: { providerName: target.name, providerType: source.type, projectId: targetProjectId, copiedFromProjectId: sourceProjectId },
+              success: true,
+            },
+            tx,
+            { strict: true },
+          );
           return { id: created.id, status: "copied" as const, name: target.name, type: source.type };
         }),
       ),
@@ -301,6 +316,19 @@ export function copyConnectors(scope: CopyScope, ids: string[]): Promise<CopyIte
               lastRotatedAt: new Date(),
             });
           }
+          await logAuditEvent(
+            {
+              userId,
+              organizationId,
+              action: "sre_connector_created",
+              resource: "sre_connector",
+              resourceId: newId,
+              metadata: { projectId: targetProjectId, connectorType: source.type, copiedFromProjectId: sourceProjectId },
+              success: true,
+            },
+            tx,
+            { strict: true },
+          );
           return { id: newId, status: "copied" as const, name: target.name, type: source.type };
         }),
       ),

@@ -56,6 +56,7 @@ const req = (body: unknown = {}, headers: Record<string, string> = {}) =>
 const claim = { kind: "claimed", claimedAt: new Date(), previous: null };
 const good = JSON.stringify({ requirements: [{ title: "Login works", description: "d", priority: "high" }] });
 const refund = jest.fn();
+const SAVED_AT = "2026-01-01T00:00:00.000Z";
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -70,6 +71,7 @@ beforeEach(() => {
   (reserveAICredit as jest.Mock).mockResolvedValue({ allowed: true, refund });
   (getSetupState as jest.Mock).mockResolvedValue({ scanResult: { pages: [{ path: "/a", title: "Stored" }] } });
   (generateText as jest.Mock).mockResolvedValue({ text: `here: ${good}`, usage: { totalTokens: 5 } });
+  (saveSuggestions as jest.Mock).mockResolvedValue(SAVED_AT);
 });
 
 describe("guards", () => {
@@ -142,7 +144,7 @@ describe("generation", () => {
   it("returns suggestions from the stored scan, tracks tokens and audits the count only", async () => {
     const res = await POST(req(), params);
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ requirements: [{ title: "Login works", description: "d", priority: "high" }] });
+    expect(await res.json()).toEqual({ requirements: [{ title: "Login works", description: "d", priority: "high" }], updatedAt: SAVED_AT });
     expect(reserveAICredit).toHaveBeenCalledWith(ORG, "ai_create");
     expect(aiRateLimiter.checkAndTrackTokens).toHaveBeenCalled();
     expect(logAuditEvent).toHaveBeenCalledWith(
@@ -150,16 +152,26 @@ describe("generation", () => {
     );
     expect((generateText as jest.Mock).mock.calls[0][0].prompt).toContain("Stored");
   });
-  it("persists the sanitized suggestions before replying, and still returns 200 when saving throws", async () => {
+  it("persists the sanitized suggestions before replying and returns their version", async () => {
     const res = await POST(req(), params);
     expect(res.status).toBe(200);
     expect(saveSuggestions).toHaveBeenCalledWith(ORG, PROJECT, [{ title: "Login works", description: "d", priority: "high" }]);
-    (saveSuggestions as jest.Mock).mockResolvedValueOnce("2026-01-01T00:00:00.000Z");
-    expect((await (await POST(req(), params)).json()).updatedAt).toBe("2026-01-01T00:00:00.000Z");
-    (saveSuggestions as jest.Mock).mockRejectedValueOnce(new Error("db down"));
-    const failed = await POST(req(), params);
-    expect(failed.status).toBe(200);
-    expect(await failed.json()).toEqual({ requirements: [{ title: "Login works", description: "d", priority: "high" }] });
+    expect((await res.json()).updatedAt).toBe(SAVED_AT);
+    expect(refund).not.toHaveBeenCalled();
+    expect(releaseAiRun).not.toHaveBeenCalled();
+  });
+  it.each([
+    ["throws", () => (saveSuggestions as jest.Mock).mockRejectedValueOnce(new Error("db down"))],
+    ["finds no row", () => (saveSuggestions as jest.Mock).mockResolvedValueOnce(null)],
+  ])("502, refund and release the daily slot when saving %s", async (_n, arrange) => {
+    arrange();
+    const res = await POST(req(), params);
+    expect(res.status).toBe(502);
+    const body = await res.json();
+    expect(body).toEqual({ error: "AI could not produce suggestions. Try again." });
+    expect(refund).toHaveBeenCalledTimes(1);
+    expect(releaseAiRun).toHaveBeenCalledWith(ORG, PROJECT, claim);
+    expect(logAuditEvent).not.toHaveBeenCalled();
   });
   it("uses a stored scan whose pages have no title (scanner stores null)", async () => {
     (getSetupState as jest.Mock).mockResolvedValue({ scanResult: { pages: [{ path: "/pricing", status: 200, ms: 5, title: null }] } });
