@@ -369,8 +369,8 @@ export interface PermissionContext {
   orgPendingDeletion?: boolean;
 }
 
-/** Actions that stay allowed while an organization is pending deletion: reading and exporting. */
-export const PENDING_DELETION_ALLOWED_ACTIONS: ReadonlySet<string> = new Set(["view", "view_secrets", "export"]);
+/** Actions that stay allowed while an organization is pending deletion: reading and exporting; secrets stay hidden. */
+export const PENDING_DELETION_ALLOWED_ACTIONS: ReadonlySet<string> = new Set(["view", "export"]);
 
 // Check if user has permission in context
 export function hasPermission(

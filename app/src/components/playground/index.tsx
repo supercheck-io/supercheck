@@ -1238,6 +1238,13 @@ const Playground: React.FC<PlaygroundProps> = ({
 
       const data = await response.json();
 
+      // Marked, but the stop signal could not reach the worker (Redis down): the run may still be executing.
+      if (data.signalSent === false) {
+        toast.warning("Cancellation not confirmed", { description: data.message });
+        setIsCancelling(false);
+        return;
+      }
+
       if (data.success) {
         toast.success("Run cancelled", {
           description: "The execution has been cancelled successfully",

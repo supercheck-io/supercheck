@@ -218,6 +218,16 @@ it("removes the new monitor when it cannot be scheduled, so a retry does not dup
   expect(dbDeleteWhere).toHaveBeenCalledTimes(1);
 });
 
+it("answers a retryable 503 and removes the new monitor when Redis is down", async () => {
+  const { scheduleCreatedMonitor } = jest.requireMock("@/lib/monitor-service") as { scheduleCreatedMonitor: jest.Mock };
+  const { ExecutionQueueError } = jest.requireActual("@/lib/execution-errors");
+  insertWithinPlanLimit.mockResolvedValue({ ok: true, row: { newMonitor: { id: "new-monitor" }, enabled: true } });
+  scheduleCreatedMonitor.mockRejectedValue(new ExecutionQueueError("queue_unavailable", "Execution queue is temporarily unavailable"));
+  const res = await post({ enabled: false, notificationProviders: [] });
+  expect(res.status).toBe(503);
+  expect(dbDeleteWhere).toHaveBeenCalledTimes(1);
+});
+
 it("rejects a synthetic monitor that runs more often than every 5 minutes", async () => {
   const res = await POST(
     new NextRequest("http://localhost/api/monitors", {

@@ -14,6 +14,9 @@ import {
   validateTestScript,
   validateScriptTypeMatch,
   normalizeTestType,
+  parseTestType,
+  isTestTypeOmitted,
+  INVALID_TEST_TYPE_MESSAGE,
 } from "@/lib/script-type-validator";
 import {
   decodeStoredTestScript,
@@ -187,11 +190,13 @@ export async function PUT(
       );
     }
 
+    if (!isTestTypeOmitted(body.type) && !parseTestType(body.type)) {
+      return NextResponse.json({ error: INVALID_TEST_TYPE_MESSAGE }, { status: 400 });
+    }
     // Normalize type if provided
-    const resolvedType =
-      body.type !== undefined
-        ? normalizeTestType(body.type)
-        : existingTest.type;
+    const resolvedType = isTestTypeOmitted(body.type)
+      ? existingTest.type
+      : normalizeTestType(body.type);
     // A row saved before type values were constrained cannot be updated until it gets an allowed type.
     if (!(TEST_TYPE_VALUES as readonly string[]).includes(resolvedType)) {
       return NextResponse.json(

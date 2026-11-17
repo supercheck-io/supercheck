@@ -83,6 +83,32 @@ describe('agent.repeat', () => {
     expect(r.passRate).toBe(0.25);
   });
 
+  it('stops at a run deadline shorter than the 200 s budget (a short trial run)', async () => {
+    jest.useFakeTimers();
+    const state = newState();
+    state.deadlineAt = Date.now() + 50_000;
+    const done = createAgent(state).repeat(3, async () => {
+      await new Promise((r) => setTimeout(r, 30_000));
+    });
+    await jest.advanceTimersByTimeAsync(60_000);
+    const r = await done;
+    // attempt 1 ends at 30 s; attempt 2 is cut at the 50 s deadline; 3 never starts
+    expect(r.passed).toBe(1);
+    expect(r.failures).toEqual([
+      { attempt: 2, message: 'not finished: time budget used' },
+      { attempt: 3, message: 'not run: time budget used' },
+    ]);
+  });
+
+  it('runs nothing when the run deadline has already passed', async () => {
+    const state = newState();
+    state.deadlineAt = Date.now() - 1;
+    const fn = jest.fn();
+    const r = await createAgent(state).repeat(2, fn);
+    expect(fn).not.toHaveBeenCalled();
+    expect(r.failed).toBe(2);
+  });
+
   it('returns even when an attempt never settles, and ignores its late rejection', async () => {
     jest.useFakeTimers();
     let reject!: (e: Error) => void;

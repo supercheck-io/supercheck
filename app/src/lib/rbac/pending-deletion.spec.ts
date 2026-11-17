@@ -5,8 +5,8 @@ const ROLES = [Role.SUPER_ADMIN, Role.ORG_OWNER, Role.ORG_ADMIN, Role.PROJECT_AD
 const context = (role: Role, orgPendingDeletion: boolean) => ({ userId: "u", role, organizationId: "o", projectId: "p", assignedProjectIds: ["p"], orgPendingDeletion });
 
 describe("pending organization deletion in the permission layer", () => {
-  it("lets exactly view, view_secrets and export through", () => {
-    expect([...PENDING_DELETION_ALLOWED_ACTIONS].sort()).toEqual(["export", "view", "view_secrets"]);
+  it("lets exactly view and export through; secrets stay hidden", () => {
+    expect([...PENDING_DELETION_ALLOWED_ACTIONS].sort()).toEqual(["export", "view"]);
   });
 
   it.each(ROLES)("%s: every non-read action on every resource is denied while pending", (role) => {
@@ -28,7 +28,14 @@ describe("pending organization deletion in the permission layer", () => {
     expect(hasPermission(context(Role.ORG_OWNER, true), "test", "view")).toBe(true);
     expect(hasPermission(context(Role.PROJECT_VIEWER, true), "run", "view")).toBe(true);
     expect(hasPermission(context(Role.ORG_ADMIN, true), "run", "export")).toBe(true);
-    expect(hasPermission(context(Role.PROJECT_VIEWER, true), "variable", "view_secrets")).toBe(hasPermission(context(Role.PROJECT_VIEWER, false), "variable", "view_secrets"));
+  });
+
+  it.each(ROLES)("%s: view_secrets is denied while pending (and export is not), as before otherwise", (role) => {
+    expect(hasPermission(context(role, true), "variable", "view_secrets")).toBe(false);
+    expect(hasPermission(context(role, true), "variable", "view")).toBe(hasPermission(context(role, false), "variable", "view"));
+    expect(hasPermission(context(role, true), "run", "export")).toBe(hasPermission(context(role, false), "run", "export"));
+    // super admin is not exempt, and a healthy organization still reveals secrets to roles that may
+    expect(hasPermission(context(role, false), "variable", "view_secrets")).toBe(role !== Role.PROJECT_VIEWER);
   });
 
   it("blocks invitations, API keys and member changes while pending, and allows them otherwise", () => {

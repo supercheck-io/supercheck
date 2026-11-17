@@ -13,6 +13,23 @@ const TRANSCRIPT_ENTRIES = 20;
 const TOOL_NAMES = 50;
 const FAILURES = 5;
 const FAILURE_CLIP = 200;
+// Time left after repeat() for the test to end and the fixture to write the summary before the global timeout.
+export const RUN_END_MARGIN_MS = 15_000;
+
+/**
+ * When repeat() must stop: Playwright's global timeout (a limited run's reserved time, at most 300 s) cuts the run
+ * without fixture teardown, so no summary would be written.
+ * shortcut: counts from this worker process's start, which is after the runner's and resets when a job restarts its
+ * worker after a failed test; the margin covers the first, a run-start time from the runner would fix the second.
+ */
+export function runDeadlineAt(
+  globalTimeoutMs: number,
+  processStartedAt = performance.timeOrigin,
+): number | undefined {
+  return globalTimeoutMs > 0
+    ? processStartedAt + globalTimeoutMs - RUN_END_MARGIN_MS
+    : undefined;
+}
 
 // Redact first: a key cut at the clip boundary would otherwise survive in part.
 const clip = (text: string, max: number, secrets: string[]) => {
@@ -94,6 +111,7 @@ export const test = base.extend<{ agent: Agent }>({
         '@supercheck/agent-test runs only in agent tests: set the test type to Agent',
       );
     const state = newState();
+    state.deadlineAt = runDeadlineAt(testInfo.config.globalTimeout);
     await use(createAgent(state));
     if (testInfo.status === 'skipped') return;
     // After the test body: the summary must never fail the test, and needs no secret to be known to Supercheck.

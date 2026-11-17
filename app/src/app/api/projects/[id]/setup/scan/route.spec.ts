@@ -114,9 +114,43 @@ describe("POST setup/scan", () => {
     expect((await POST(post({ url: "ftp://93.184.216.34/" }), params())).status).toBe(400);
     expect((await POST(post({ url: "not a url" }), params())).status).toBe(400);
     expect((await POST(post({ url: "http://93.184.216.34/", extra: 1 }), params())).status).toBe(400);
-    expect((await POST(post("{nope"), params())).status).toBe(400);
+    const bad = await POST(post("{nope"), params());
+    expect(bad.status).toBe(400);
+    expect(await bad.json()).toEqual({ error: "Invalid JSON" });
+    expect(await (await POST(post(""), params())).json()).toEqual({ error: "Invalid JSON" });
+    expect(await (await POST(post({ url: "not a url" }), params())).json()).toEqual({ error: "A valid http(s) URL is required" });
     expect((await POST(post({ url: "http://93.184.216.34/" + "a".repeat(9000) }), params())).status).toBe(413);
     expect(enqueueScan).not.toHaveBeenCalled();
+  });
+
+  it("413s on the declared Content-Length before reading the body", async () => {
+    const req = post({ url: "http://93.184.216.34/" }, { "content-length": String(8 * 1024 + 1) });
+    expect((await POST(req, params())).status).toBe(413);
+    expect(req.bodyUsed).toBe(false);
+    expect(enqueueScan).not.toHaveBeenCalled();
+  });
+
+  it("413s a chunked body with no Content-Length once the stream passes the cap", async () => {
+    const chunk = new TextEncoder().encode("a".repeat(4096));
+    let pulls = 0;
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        // Endless stream: the cap must stop reading, not the end of input.
+        pulls += 1;
+        controller.enqueue(chunk);
+      },
+    });
+    const req = new NextRequest(`http://localhost/api/projects/${PROJECT}/setup/scan`, { method: "POST", body, duplex: "half" } as ConstructorParameters<typeof NextRequest>[1]);
+    expect((await POST(req, params())).status).toBe(413);
+    expect(pulls).toBeLessThan(10);
+    expect(enqueueScan).not.toHaveBeenCalled();
+  });
+
+  it("accepts a body exactly at the 8 KB cap", async () => {
+    const base = JSON.stringify({ url: "http://93.184.216.34/" });
+    const padded = base.slice(0, -1) + " ".repeat(8 * 1024 - base.length) + "}";
+    expect(new TextEncoder().encode(padded).length).toBe(8 * 1024);
+    expect((await POST(post(padded), params())).status).toBe(202);
   });
 
   it("returns 429 when the project or org limit is hit, without queueing", async () => {
