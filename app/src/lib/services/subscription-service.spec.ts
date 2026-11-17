@@ -312,17 +312,19 @@ describe("SubscriptionService", () => {
           expect(result.plan).toBe("plus");
         });
 
-        it("should return plus plan limits for unsubscribed users (display)", async () => {
-          mockDbQueryOrgFindFirst.mockResolvedValue({
-            ...mockOrganization,
-            subscriptionPlan: null,
-            subscriptionStatus: "none",
-            polarCustomerId: null,
-          });
+        it.each([
+          ["never subscribed", { subscriptionPlan: null, subscriptionStatus: "none" }],
+          ["canceled and expired", { subscriptionStatus: "canceled", subscriptionEndsAt: new Date(Date.now() - 86_400_000) }],
+        ])("should return blocked limits for a lapsed organization (%s)", async (_case, fields) => {
+          mockDbQueryOrgFindFirst.mockResolvedValue({ ...mockOrganization, ...fields, polarCustomerId: null });
 
           const result = await service.getOrganizationPlanSafe(testOrgId);
 
-          expect(result.plan).toBe("plus");
+          expect(result.id).toBe("blocked");
+          expect(result.maxMonitors).toBe(0);
+          expect(result.playwrightMinutesIncluded).toBe(0);
+          // Display only: enforcement still rejects the same organization.
+          await expect(service.getOrganizationPlan(testOrgId)).rejects.toThrow("No active subscription");
         });
       });
 

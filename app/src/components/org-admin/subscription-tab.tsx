@@ -293,7 +293,8 @@ export function SubscriptionTab({ currentUserRole }: SubscriptionTabProps) {
     : null;
 
   // Check if hard stop is active
-  const isHardStopActive = spending?.hardStopEnabled && spending?.isAtLimit;
+  // An ended subscription has no allowances, so its counters are not overage spend.
+  const isHardStopActive = hasSubscription && spending?.hardStopEnabled && spending?.isAtLimit;
 
   // Calculate current period estimate using API-provided pricing
   // basePriceCents comes from the API (the plan price in cents, from the plan catalog)
