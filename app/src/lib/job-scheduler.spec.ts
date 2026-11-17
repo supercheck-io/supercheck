@@ -282,6 +282,15 @@ describe("Job Scheduler", () => {
         expect(mockQueueAdd).not.toHaveBeenCalled();
       });
 
+      it("keeps a registered schedule when storing nextRunAt fails", async () => {
+        mockDbModule.update.mockReturnValueOnce({
+          set: jest.fn().mockReturnThis(),
+          where: jest.fn().mockRejectedValue(new Error("db blip")),
+        });
+        await expect(scheduleJob({ name: "Test Job", cron: "0 * * * *", jobId: testJobId })).resolves.toBe(testJobId);
+        expect(mockQueueAdd).toHaveBeenCalled();
+      });
+
       it("should throw error when job not found", async () => {
         const selectChain = {
           from: jest.fn().mockReturnThis(),
