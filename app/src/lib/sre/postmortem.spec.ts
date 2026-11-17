@@ -224,7 +224,7 @@ describe("toStoredPostmortem / postmortemToMarkdown", () => {
       ]);
     });
     it("names linked alerts and the declaring user from refs (P1, P4)", () => {
-      const refs = { users: { "11111111-1111-4111-8111-111111111111": "Priya" }, alerts: { "22222222-2222-4222-8222-222222222222": "Checkout 5xx" } };
+      const refs = { users: { "11111111-1111-4111-8111-111111111111": "Priya" }, alerts: { "22222222-2222-4222-8222-222222222222": "Checkout 5xx" }, providers: {} };
       const labels = postmortemTimeline([
         { at: at(1), eventType: "state_change", eventData: { state: "manual_incident_created", createdByUserId: "11111111-1111-4111-8111-111111111111", summary: "Users report errors" } },
         { at: at(2), eventType: "state_change", eventData: { state: "alert_correlated", alertEventId: "22222222-2222-4222-8222-222222222222" } },

@@ -29,7 +29,7 @@ beforeEach(() => {
 });
 
 describe("describeTimelineEvent before and after detail", () => {
-  const refs = { users: { u1: "Ada", u2: "Grace" }, alerts: { a1: "API latency high" } };
+  const refs = { users: { u1: "Ada", u2: "Grace" }, alerts: { a1: "API latency high" }, providers: {} };
 
   it("shows old and new values for an edit", () => {
     const event = { eventType: "state_change", eventData: { state: "incident_updated", previous: { title: "A", severity: "sev3", status: "investigating" }, current: { title: "B", severity: "sev1", status: "investigating" } } };

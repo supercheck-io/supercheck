@@ -21,6 +21,12 @@ jest.mock("@/lib/sre/postmortem", () => ({
   generatePostmortemDraft: (...a: unknown[]) => generate(...a),
 }));
 
+let refsOverride: unknown = null;
+jest.mock("@/lib/sre/timeline-refs", () => {
+  const actual = jest.requireActual("@/lib/sre/timeline-refs");
+  return { loadTimelineRefs: (...a: unknown[]) => (refsOverride ? Promise.resolve(refsOverride) : actual.loadTimelineRefs(...a)) };
+});
+
 const queue: unknown[][] = [];
 const wheres: unknown[] = [];
 const updates: unknown[] = [];
@@ -106,6 +112,21 @@ describe("generateSrePostmortem timeline", () => {
     expect(labels).toEqual(["created", "AI finding: bad deploy", "Resolved: rolled back", "created"]);
     // A wide window (newest 150, oldest 50), because curation drops many rows afterwards.
     expect(limits).toEqual(expect.arrayContaining([150, 50]));
+  });
+});
+
+describe("generateSrePostmortem channel names", () => {
+  afterEach(() => { refsOverride = null; });
+
+  it("keeps notification channel names out of the draft context (it goes to the model)", async () => {
+    const providerId = "018f0000-0000-7000-8000-0000000000f1";
+    refsOverride = { users: {}, alerts: {}, providers: { [providerId]: "#ops-alerts" } };
+    const rows = [{ id: "e1", at: new Date("2026-10-01T10:01:00Z"), eventType: "notification", data: { kind: "escalation", channels: [{ providerId, type: "slack", ok: true }], emailed: 0, reached: 1 } }];
+    queue.push([resolved], rows, rows, [{ count: 1 }], [], []);
+    await generateSrePostmortem({ incidentId });
+    const labels = (generate.mock.calls[0][0] as { timeline: { label: string }[] }).timeline.map((e) => e.label);
+    expect(labels).toEqual(["Escalated: Sent to 1 channel"]);
+    expect(JSON.stringify(generate.mock.calls[0][0])).not.toContain("#ops-alerts");
   });
 });
 
