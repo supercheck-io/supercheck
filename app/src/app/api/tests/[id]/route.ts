@@ -10,7 +10,7 @@ import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { requireAuthContext, isAuthError, authErrorStatus } from "@/lib/auth-context";
 import { logAuditEvent } from "@/lib/audit-logger";
 import { assertAgentTestSwitchRunnable, thrownStatusResponse } from "@/lib/monitor-write";
-import { requireSameOriginRequest, requireSessionSameOrigin } from "@/lib/security/same-origin";
+import { requireSessionSameOrigin } from "@/lib/security/same-origin";
 import {
   validateTestScript,
   validateScriptTypeMatch,
@@ -125,11 +125,8 @@ export async function PUT(
     }
 
     if (!isUuid(testId)) return NextResponse.json({ error: "Test not found" }, { status: 404 });
-    // Browser sessions only: CLI and API-key callers send no Origin header.
-    if (!context.isCliAuth) {
-      const originError = requireSameOriginRequest(request);
-      if (originError) return originError;
-    }
+    const originError = requireSessionSameOrigin(request, context.isCliAuth);
+    if (originError) return originError;
     const read = await readJsonBody(request, MAX_SCRIPT_BODY_BYTES);
     if (read instanceof NextResponse) return read;
     const body = read.body;

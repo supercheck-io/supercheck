@@ -24,6 +24,9 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string; variableId: string }> }
 ) {
+  // Before the limiter, so a cross-site page cannot spend this IP's slots. The CLI sends no Origin, so it passes.
+  const originError = requireSessionSameOrigin(request);
+  if (originError) return originError;
   return rateLimitedHandler(request, async (req, _rateLimitCtx) => {
     let projectId: string | undefined;
     let variableId: string | undefined;
@@ -35,8 +38,6 @@ export async function POST(
       // requireAuth() so that CLI Bearer-token requests are supported.
       let isCliAuth: boolean;
       ({ userId, isCliAuth } = await requireUserAuthContext((await params).id));
-      const originError = requireSessionSameOrigin(request, isCliAuth);
-      if (originError) return originError;
 
       const resolvedParams = await params;
       projectId = resolvedParams.id;
