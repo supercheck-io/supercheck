@@ -160,6 +160,7 @@ export async function createJob(data: CreateJobData) {
 
       // If a cronSchedule is provided, set up the schedule
       let scheduledJobId = null;
+      let scheduleWarning: string | undefined;
       if (
         validatedData.cronSchedule &&
         validatedData.cronSchedule.trim() !== ""
@@ -172,16 +173,21 @@ export async function createJob(data: CreateJobData) {
             retryLimit: 3,
           });
 
-          // Update the job with the scheduler ID
+          // Best-effort: the repeatable is registered; the init sync rewrites a missed id.
           await db
             .update(jobs)
             .set({ scheduledJobId })
-            .where(eq(jobs.id, jobId));
+            .where(eq(jobs.id, jobId))
+            .catch((error) => console.error("Failed to store the scheduler ID:", error));
 
           console.log(`Job ${jobId} scheduled with ID ${scheduledJobId}`);
         } catch (scheduleError) {
           console.error("Failed to schedule job:", scheduleError);
-          // Continue anyway - the job exists but without scheduling
+          // The job exists and can be run manually, but nothing will run it on schedule.
+          scheduleWarning = "Job created, but its schedule could not be registered.";
+          nextRunAt = null;
+          await db.update(jobs).set({ nextRunAt: null }).where(eq(jobs.id, jobId))
+            .catch((error) => console.error("Failed to clear nextRunAt:", error));
         }
       }
 
@@ -225,6 +231,7 @@ export async function createJob(data: CreateJobData) {
           createdByUserId: userId,
           jobType: validatedData.jobType,
         },
+        ...(scheduleWarning ? { warning: scheduleWarning } : {}),
       };
     } catch (dbError) {
       console.error("Database error:", dbError);

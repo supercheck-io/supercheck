@@ -85,6 +85,8 @@ it("suspends revoked and period-ended organizations once, and restores them on r
     expect(await pageStatus(page.id)).toBe("archived");
   }
   expect(deleteScheduledMonitor).toHaveBeenCalledWith("sched-1");
+  // Still paused after the Redis delete, so nothing is rescheduled.
+  expect(scheduleMonitor).not.toHaveBeenCalled();
 
   // Idempotent: a second run finds nothing to do.
   expect(await suspendLapsedOrganizations({ now: NOW })).toMatchObject({ organizations: 0, monitorsPaused: 0 });
@@ -132,6 +134,42 @@ it("does not unschedule a monitor that a resubscribe resumed after the pause com
   expect(deleteScheduledMonitor).not.toHaveBeenCalled();
   const [row] = await mockDatabase.select().from(schema.monitors).where(eq(schema.monitors.id, monitor.id));
   expect(row).toMatchObject({ status: "pending", scheduledJobId: "sched-new" });
+});
+
+it("suspends a canceled organization with no end date", async () => {
+  const { monitor } = await seed({ status: "canceled" });
+  await suspendLapsedOrganizations({ now: NOW });
+  expect(await monitorStatus(monitor.id)).toBe("paused");
+});
+
+it("reschedules a monitor resumed between the unschedule write and the Redis delete", async () => {
+  const { org, monitor } = await seed({ status: "none" });
+  deleteScheduledMonitor.mockImplementationOnce(async () => true); // legacy sched-1 delete
+  deleteScheduledMonitor.mockImplementationOnce(async () => {
+    await mockDatabase.update(schema.organization).set({ subscriptionStatus: "active" }).where(eq(schema.organization.id, org.id));
+    await restoreTrialSuspensions(org.id);
+    scheduleMonitor.mockClear();
+    scheduleMonitor.mockResolvedValueOnce("sched-race");
+    return true;
+  });
+  await suspendLapsedOrganizations({ now: NOW });
+  expect(scheduleMonitor).toHaveBeenCalledWith(expect.objectContaining({ monitorId: monitor.id }));
+  const [row] = await mockDatabase.select().from(schema.monitors).where(eq(schema.monitors.id, monitor.id));
+  expect(row).toMatchObject({ status: "pending", scheduledJobId: "sched-race" });
+});
+
+it("does not reschedule a monitor deleted between the resume and the re-read", async () => {
+  const { org, monitor } = await seed({ status: "none" });
+  deleteScheduledMonitor.mockImplementationOnce(async () => true); // legacy sched-1 delete
+  deleteScheduledMonitor.mockImplementationOnce(async () => {
+    await mockDatabase.update(schema.organization).set({ subscriptionStatus: "active" }).where(eq(schema.organization.id, org.id));
+    await restoreTrialSuspensions(org.id);
+    await mockDatabase.update(schema.monitors).set({ deletingAt: new Date() }).where(eq(schema.monitors.id, monitor.id));
+    scheduleMonitor.mockClear();
+    return true;
+  });
+  await suspendLapsedOrganizations({ now: NOW });
+  expect(scheduleMonitor).not.toHaveBeenCalled();
 });
 
 it("keeps draining batches past 50 organizations", async () => {
