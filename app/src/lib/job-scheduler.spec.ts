@@ -394,6 +394,19 @@ describe("Job Scheduler", () => {
     });
 
     describe("Negative Cases", () => {
+      it("returns false fast without touching the queue when Redis is not ready", async () => {
+        mockQueuesModule.assertExecutionQueueReady.mockRejectedValueOnce(new Error("queue_unavailable"));
+        await expect(deleteScheduledJob(testJobId)).resolves.toBe(false);
+        expect(mockQueuesModule.getQueues).not.toHaveBeenCalled();
+        expect(mockQueueRemoveRepeatableByKey).not.toHaveBeenCalled();
+      });
+
+      it("rethrows the outage when the caller asks to retry", async () => {
+        mockQueuesModule.assertExecutionQueueReady.mockRejectedValueOnce(new Error("queue_unavailable"));
+        await expect(deleteScheduledJob(testJobId, { throwOnError: true })).rejects.toThrow("queue_unavailable");
+        expect(mockQueuesModule.getQueues).not.toHaveBeenCalled();
+      });
+
       it("should return false when job not found", async () => {
         mockQueueGetRepeatableJobs.mockResolvedValue([]);
 

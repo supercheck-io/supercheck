@@ -465,7 +465,8 @@ export async function updateJob(data: UpdateJobData, contextOverride?: UpdateJob
       if (
         newSchedule &&
         newSchedule.trim() !== "" &&
-        (!previousSchedule || previousSchedule !== newSchedule)
+        // No scheduler ID means an earlier registration failed: a save retries it.
+        (!previousSchedule || previousSchedule !== newSchedule || !previousSchedulerId)
       ) {
         try {
           scheduledJobId = await scheduleJob({
@@ -478,16 +479,24 @@ export async function updateJob(data: UpdateJobData, contextOverride?: UpdateJob
           console.log(`Created new job scheduler: ${scheduledJobId}`);
 
           // Update the job with the new scheduler ID
+          // Best-effort: the repeatable is registered; the init sync rewrites a missed id.
           await dbInstance
             .update(jobs)
             .set({ scheduledJobId })
-            .where(eq(jobs.id, validatedData.jobId));
+            .where(eq(jobs.id, validatedData.jobId))
+            .catch((error) => console.error("Failed to store the scheduler ID:", error));
         } catch (scheduleError) {
           console.error(`Failed to schedule job:`, scheduleError);
           // The job is saved, but nothing will run it: say so and drop the next run time it cannot honour.
           scheduleWarning = "Job saved, but its schedule could not be registered. Save it again to retry.";
           nextRunAt = null;
-          await dbInstance.update(jobs).set({ nextRunAt: null }).where(eq(jobs.id, validatedData.jobId));
+          scheduledJobId = null;
+          // Clearing the ID makes the next save re-register (scheduleJob also drops any stale repeatable).
+          await dbInstance
+            .update(jobs)
+            .set({ nextRunAt: null, scheduledJobId: null })
+            .where(eq(jobs.id, validatedData.jobId))
+            .catch((error) => console.error("Failed to clear the schedule fields:", error));
         }
       } else if (
         newSchedule &&
