@@ -38,7 +38,7 @@ export async function POST(request: NextRequest) {
     if (!isCronJob) {
       const auth = await requireUserAuthContext();
       await requireAdmin(auth.userId);
-      const originError = requireSessionSameOrigin(request);
+      const originError = requireSessionSameOrigin(request, auth.isCliAuth);
       if (originError) return originError;
     }
 

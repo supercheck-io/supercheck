@@ -68,6 +68,13 @@ describe("invitation privacy and acceptance", () => {
     (isOrgPendingDeletion as jest.Mock).mockResolvedValue(false);
   });
 
+  it("refuses a cross-origin accept even when a bearer header is also sent", async () => {
+    const headers = { origin: "https://evil.example", authorization: "Bearer sck_live_x" };
+    const res = await POST(new NextRequest("http://localhost/api/invite/11111111-1111-4111-8111-111111111111", { method: "POST", headers }), context);
+    expect(res.status).toBe(403);
+    expect(getCurrentUser).not.toHaveBeenCalled();
+  });
+
   it("rejects malformed invitation IDs without querying PostgreSQL", async () => {
     const invalid = { params: Promise.resolve({ token: "not-a-uuid" }) };
     expect((await GET(new NextRequest("http://localhost/api/invite/not-a-uuid"), invalid)).status).toBe(400);

@@ -112,8 +112,9 @@ export async function POST(
     // Try to get current user, but don't require authentication
     let currentUser;
     try {
-      const authCtx = await requireUserAuthContext();
-      const originError = requireSessionSameOrigin(request, authCtx.isCliAuth);
+      await requireUserAuthContext();
+      // Acceptance acts on the cookie user, so no CLI exemption: a bearer header must not skip this check.
+      const originError = requireSessionSameOrigin(request);
       if (originError) return originError;
       currentUser = await getCurrentUser();
     } catch (authError) {
