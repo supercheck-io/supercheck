@@ -28,7 +28,7 @@ jest.mock("@/lib/rbac/middleware", () => ({
 jest.mock("@/lib/audit-logger", () => ({ logAuditEvent: jest.fn(async () => undefined) }));
 jest.mock("@/lib/monitor-aggregation-service", () => ({ monitorAggregationService: {} }));
 jest.mock("@/lib/rbac/super-admin", () => ({ isSuperAdmin: async () => false }));
-jest.mock("@/lib/queue", () => ({ getCapacityQueues: async () => ({}) }));
+jest.mock("@/lib/queue", () => ({ assertExecutionQueueReady: async () => undefined, getCapacityQueues: async () => ({}) }));
 jest.mock("@/lib/capacity-manager", () => ({ getCapacityManager: () => ({}) }));
 jest.mock("@/lib/cancellation-service", () => ({ RUN_CANCELLATION_MARKER: "Cancellation requested by user", setCancellationSignal: jest.fn() }));
 

@@ -44,7 +44,7 @@ jest.mock("@/utils/db", () => {
   };
 });
 jest.mock("@/lib/monitor-aggregation-service", () => ({ monitorAggregationService: {} }));
-jest.mock("./queue", () => ({ getQueues: jest.fn() }));
+jest.mock("./queue", () => ({ assertExecutionQueueReady: jest.fn(), getQueues: jest.fn() }));
 jest.mock("./scheduler/job-scheduler", () => ({ processScheduledJob: jest.fn() }));
 
 import { getQueues } from "./queue";

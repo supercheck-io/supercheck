@@ -28,6 +28,7 @@ const mockRedisClient = {
 };
 
 const mockQueuesModule = {
+  assertExecutionQueueReady: jest.fn().mockResolvedValue(undefined),
   getQueues: jest.fn().mockResolvedValue({
     jobSchedulerQueue: {
       add: mockQueueAdd,
@@ -52,6 +53,7 @@ const mockDbModule = {
 };
 
 jest.mock("./queue", () => ({
+  assertExecutionQueueReady: () => mockQueuesModule.assertExecutionQueueReady(),
   getQueues: () => mockQueuesModule.getQueues(),
 }));
 
@@ -271,6 +273,15 @@ describe("Job Scheduler", () => {
     });
 
     describe("Negative Cases", () => {
+      it("rejects fast without touching the queue when Redis is not ready", async () => {
+        mockQueuesModule.assertExecutionQueueReady.mockRejectedValueOnce(new Error("queue_unavailable"));
+        await expect(scheduleJob({ name: "Test Job", cron: "0 * * * *", jobId: testJobId })).rejects.toThrow("queue_unavailable");
+        expect(mockQueuesModule.getQueues).not.toHaveBeenCalled();
+        expect(mockQueueGetRepeatableJobs).not.toHaveBeenCalled();
+        expect(mockQueueRemoveRepeatableByKey).not.toHaveBeenCalled();
+        expect(mockQueueAdd).not.toHaveBeenCalled();
+      });
+
       it("should throw error when job not found", async () => {
         const selectChain = {
           from: jest.fn().mockReturnThis(),
@@ -411,6 +422,69 @@ describe("Job Scheduler", () => {
         expect(mockRedisClient.eval).toHaveBeenCalledWith(expect.any(String), 1, "job:scheduler:init:lock", token);
       });
 
+      describe("lock renewal", () => {
+        // The list query awaits .where(); scheduleJob's lookup chains .where().limit(1).
+        const twoJobs = () =>
+          mockDbModule.select.mockReturnValue({
+            from: jest.fn().mockReturnThis(),
+            where: jest.fn(() =>
+              Object.assign(Promise.resolve([mockJob, { ...mockJob, id: "job-2" }]), {
+                limit: jest.fn().mockResolvedValue([mockJob]),
+              }),
+            ),
+          });
+        const renewCalls = () =>
+          mockRedisClient.eval.mock.calls.filter(([script]) => String(script).includes("expire"));
+        beforeEach(() => jest.useFakeTimers());
+        afterEach(() => jest.useRealTimers());
+
+        // Holds the first job's queue add open so the 30 s heartbeat fires mid-sync.
+        function holdFirstAdd() {
+          let release!: () => void;
+          mockQueueAdd.mockImplementationOnce(
+            () => new Promise((resolve) => { release = () => resolve({ id: "queue-job-id" }); }),
+          );
+          return () => release();
+        }
+
+        it("extends the lock while still the owner and keeps going", async () => {
+          twoJobs();
+          const release = holdFirstAdd();
+          const pending = initializeJobSchedulers();
+          await jest.advanceTimersByTimeAsync(30_000);
+          release();
+          const result = await pending;
+
+          const token = mockRedisClient.set.mock.calls[0][1];
+          expect(result).toEqual({ success: true, initialized: 2, failed: 0 });
+          expect(mockQueueAdd).toHaveBeenCalledTimes(2);
+          expect(renewCalls()).toEqual([[expect.any(String), 1, "job:scheduler:init:lock", token, 120]]);
+          expect(jest.getTimerCount()).toBe(0); // heartbeat stopped
+        });
+
+        it("does not renew a sync that finishes inside the first interval", async () => {
+          twoJobs();
+          await expect(initializeJobSchedulers()).resolves.toEqual({ success: true, initialized: 2, failed: 0 });
+          expect(renewCalls()).toHaveLength(0);
+          expect(jest.getTimerCount()).toBe(0);
+        });
+
+        it("stops and counts the rest as failed once another replica holds the lock", async () => {
+          twoJobs();
+          const release = holdFirstAdd();
+          mockRedisClient.eval.mockResolvedValueOnce(0); // first eval is the heartbeat renewal
+          const pending = initializeJobSchedulers();
+          await jest.advanceTimersByTimeAsync(30_000);
+          release();
+          const result = await pending;
+
+          expect(renewCalls()).toHaveLength(1);
+          expect(result).toEqual({ success: false, initialized: 1, failed: 1 });
+          expect(mockQueueAdd).toHaveBeenCalledTimes(1);
+          expect(jest.getTimerCount()).toBe(0);
+        });
+      });
+
       it("cleans orphaned repeatables only while holding the lock", async () => {
         emptySelect();
         mockRedisClient.set.mockResolvedValue(null);
@@ -492,6 +566,7 @@ describe("Job Scheduler", () => {
 
         expect(result.success).toBe(false);
         expect(result.error).toBeDefined();
+        expect(jest.getTimerCount()).toBe(0); // each attempt's lock heartbeat is cleared
 
         jest.useRealTimers();
       });
