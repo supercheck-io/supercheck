@@ -1,5 +1,6 @@
-import { DashboardEmptyState } from "@/components/dashboard/dashboard-empty-state";
 "use client";
+
+import { DashboardEmptyState } from "@/components/dashboard/dashboard-empty-state";
 
 import React, { useState, useEffect, useCallback } from "react";
 import { Button, buttonVariants } from "@/components/ui/button";
