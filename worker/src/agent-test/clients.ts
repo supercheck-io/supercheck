@@ -224,6 +224,8 @@ async function post(
   const secrets = secretsOf(options);
   let res: Response;
   let text: string;
+  // Read before the body, so an MCP initialize whose reply fails to arrive still closes the session it opened.
+  let sessionId: string | null = null;
   try {
     res = await fetch(url, {
       method: 'POST',
@@ -248,7 +250,7 @@ async function post(
         `${kind} agent endpoint redirected (HTTP ${res.status}) to ${redact(res.headers.get('location') ?? 'nowhere', secrets).slice(0, 200)}; use the final URL`,
       );
     }
-    const sessionId = res.headers.get('mcp-session-id');
+    sessionId = res.headers.get('mcp-session-id');
     text = await readReply(
       res.body,
       rpcId !== undefined &&
@@ -256,23 +258,22 @@ async function post(
         (res.headers.get('content-type') ?? '').includes('text/event-stream')
         ? rpcId
         : undefined,
-    ).catch((err: unknown) => {
-      // Lets an MCP initialize that fails here still close the session it opened.
-      if (err instanceof ReplyTooLargeError) err.sessionId = sessionId;
-      throw err;
-    });
+    );
   } catch (error) {
     const e = error as Error & { cause?: { code?: string } };
     if (e.message.startsWith(`${kind} agent endpoint redirected`)) throw e;
     if (e instanceof ReplyTooLargeError)
       throw Object.assign(new Error(`${kind} agent reply exceeded 5 MiB`), {
-        sessionId: e.sessionId,
+        sessionId,
       });
     const why =
       e.name === 'TimeoutError' || e.name === 'AbortError'
         ? `timed out after ${timeoutMs}ms`
         : (e.cause?.code ?? e.message);
-    throw new Error(`${kind} agent request failed: ${redact(why, secrets)}`);
+    throw Object.assign(
+      new Error(`${kind} agent request failed: ${redact(why, secrets)}`),
+      { sessionId },
+    );
   }
   if (!res.ok)
     throw Object.assign(
@@ -285,9 +286,7 @@ async function post(
 }
 
 export const MAX_REPLY_BYTES = 5 * 1024 * 1024;
-class ReplyTooLargeError extends Error {
-  sessionId: string | null = null;
-}
+class ReplyTooLargeError extends Error {}
 
 /** Reads a reply body, at most MAX_REPLY_BYTES. With an rpcId (an SSE reply), stops once a complete event carries it. */
 async function readReply(

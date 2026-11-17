@@ -695,6 +695,24 @@ it('closes the session when the initialize reply is over the size cap', async ()
   expect(seen[1].headers['mcp-session-id']).toBe('sess-big');
 });
 
+it('closes the session when the initialize reply body times out', async () => {
+  handler = (_r, _b, res) => {
+    res.writeHead(200, {
+      'content-type': 'application/json',
+      'mcp-session-id': 'sess-slow',
+    });
+    res.write('{"jsonrpc":'); // never ended
+  };
+  await expect(
+    connect({ kind: 'mcp', url, tool: 'ask', timeoutMs: 300 }).send('x'),
+  ).rejects.toThrow('timed out');
+  expect(seen.map((s) => s.body?.method ?? 'DELETE')).toEqual([
+    'initialize',
+    'DELETE',
+  ]);
+  expect(seen[1].headers['mcp-session-id']).toBe('sess-slow');
+});
+
 it('finds the SSE reply after one large event arrives in small chunks', async () => {
   handler = (_r, body, res) => {
     if (body?.method !== 'tools/call') {
