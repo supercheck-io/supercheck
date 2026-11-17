@@ -1,5 +1,5 @@
 // The security header methodology, printed so a grade can be reproduced by hand.
-// Must match tools-api/src/grade.ts.
+// Must match tools/src/grade.ts.
 const RULES: [string, string, string][] = [
   ["Content-Security-Policy", "Missing (report-only counts as missing)", "−25"],
   ["", "script-src (or script-src-elem / script-src-attr) allows 'unsafe-inline' without a nonce or hash, data:, * or http:", "−20"],
