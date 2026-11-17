@@ -35,7 +35,7 @@ describe("monitorForResponse (B7)", () => {
   it("anchors only heartbeat rows, as an expression on the stored value", () => {
     const { sql } = new PgDialect().sqlToQuery(HEARTBEAT_ANCHOR_ON_RESUME);
     expect(sql).toContain(`CASE WHEN "monitors"."type" = 'heartbeat'`);
-    expect(sql).toContain(`coalesce("monitors"."heartbeat_state", '{}'::jsonb) || jsonb_build_object('anchorAt', to_jsonb(now()))`);
+    expect(sql).toContain(`(coalesce("monitors"."heartbeat_state", '{}'::jsonb) - 'missHeld') || jsonb_build_object('anchorAt', to_jsonb(now()))`);
     expect(sql).toContain(`ELSE "monitors"."heartbeat_state" END`);
   });
 });

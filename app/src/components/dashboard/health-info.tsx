@@ -14,7 +14,7 @@ export const HEALTH_INFO = {
     "Execution queue at capacity: running executions have reached the running capacity",
     `Execution queue nearing capacity: running executions are at ${Math.round(T.queueNearCapacityRatio * 100)}% or more of capacity`,
     `Backlog: more than ${T.queuedBacklog} queued runs waiting (more than ${T.queuedBacklogHigh} is high severity)`,
-    "Only monitors currently down count; paused, pending, maintenance and error monitors do not",
+    "Only monitors currently down count, including one inside a maintenance window; paused, pending and error monitors do not",
   ],
   ariaLabel: "Learn how project status is calculated",
 };

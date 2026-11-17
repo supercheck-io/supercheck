@@ -13,6 +13,7 @@ import { sreBillingErrorMessage } from "@/lib/sre/billing-error-messages";
 import { withSreTriageAdmission, SreInvestigationBillingError } from "@/lib/sre/investigation-billing";
 import { notifyIncidentEvent } from "@/lib/sre/incident-notifier";
 import { createLogger } from "@/lib/logger/index";
+import { logAuditEvent } from "@/lib/audit-logger";
 
 const triageLogger = createLogger({ module: "sre-triage-runner" }) as {
   error: (data: unknown, message?: string) => void;
@@ -138,6 +139,15 @@ export async function startSreIncidentTriage(input: RunSreIncidentTriageInput): 
     throw error;
   }
 
+  await logAuditEvent({
+    userId: input.userId ?? undefined,
+    organizationId: input.organizationId,
+    action: "sre_triage_started",
+    resource: "sre_incident",
+    resourceId: incident.id,
+    metadata: { projectId: input.projectId, investigationRunId: run.id, origin: input.origin ?? "manual" },
+    success: true,
+  });
   return { success: true, investigationRunId: run.id, run, incident, startedAt };
 }
 

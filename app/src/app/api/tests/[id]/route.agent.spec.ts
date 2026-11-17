@@ -47,8 +47,8 @@ const ctx = (role: string, extra: Record<string, unknown> = {}) => ({
   project: { id: "p1", name: "P", userRole: role },
   ...extra,
 });
-const put = () =>
-  PUT(new NextRequest(`http://localhost/api/tests/${ID}`, { method: "PUT", body: JSON.stringify({ type: "agent" }), headers: { "content-type": "application/json" } }), {
+const put = (type: unknown = "agent") =>
+  PUT(new NextRequest(`http://localhost/api/tests/${ID}`, { method: "PUT", body: JSON.stringify({ type }), headers: { "content-type": "application/json" } }), {
     params: Promise.resolve({ id: ID }),
   });
 
@@ -62,6 +62,22 @@ describe("PUT /api/tests/[id] with type agent", () => {
   it("stores the agent type for an editor", async () => {
     requireAuthContext.mockResolvedValue(ctx("project_editor"));
     expect((await put()).status).toBe(200);
+    expect(set).toHaveBeenCalledWith(expect.objectContaining({ type: "agent" }));
+  });
+
+  it("stores \" Agent \" as agent, and refuses an invalid type with 400 without writing", async () => {
+    requireAuthContext.mockResolvedValue(ctx("project_editor"));
+    expect((await put(" Agent ")).status).toBe(200);
+    expect(set).toHaveBeenCalledWith(expect.objectContaining({ type: "agent" }));
+    set.mockClear();
+    expect((await put("agents")).status).toBe(400);
+    expect(set).not.toHaveBeenCalled();
+  });
+
+  it.each([null, ""])("keeps the stored type when type is %j", async (type) => {
+    requireAuthContext.mockResolvedValue(ctx("project_editor"));
+    findFirst.mockResolvedValue({ ...stored, type: "agent" });
+    expect((await put(type)).status).toBe(200);
     expect(set).toHaveBeenCalledWith(expect.objectContaining({ type: "agent" }));
   });
 

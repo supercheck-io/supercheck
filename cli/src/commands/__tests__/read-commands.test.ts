@@ -442,6 +442,13 @@ describe('read-only and operational commands', () => {
       expect(mockOutputDetail).toHaveBeenCalledWith({ success: true })
     })
 
+    it('fails with a retryable exit code when the stop signal could not be sent', async () => {
+      const data = { success: true, signalSent: false, message: 'retry to stop it' }
+      mockPost.mockResolvedValueOnce({ data })
+      await expect(runCommand.parseAsync(['node', 'run', 'cancel', 'run-1'])).rejects.toMatchObject({ message: 'retry to stop it', exitCode: 4 })
+      expect(mockOutputDetail).toHaveBeenCalledWith(data)
+    })
+
     it('deletes a run after confirmation, and skips the prompt with --force', async () => {
       mockDelete.mockResolvedValue({ data: { success: true } })
       mockConfirmPrompt.mockResolvedValueOnce(undefined)

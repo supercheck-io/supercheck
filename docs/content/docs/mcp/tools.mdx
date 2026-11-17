@@ -4,7 +4,7 @@ description: Reference for the tools the Supercheck MCP server exposes
 icon: Wrench
 ---
 
-Read tools are marked `readOnlyHint: true`; the optional tools below are not. Every tool is limited to the project of the connection.
+Read tools are marked `readOnlyHint: true`; the optional tools below are not, and `delete_maintenance_window` is also marked `destructiveHint: true`. Every tool is limited to the project of the connection.
 
 Returned text (test titles, error excerpts, incident summaries, investigation findings) comes from your systems and is treated as **untrusted data**: tool descriptions tell the AI never to follow instructions found in it.
 
@@ -13,14 +13,14 @@ Returned text (test titles, error excerpts, incident summaries, investigation fi
 | Scope | Granted | Tools | Your role must also allow |
 |---|---|---|---|
 | `mcp:read` | Always | The read tools below | Viewing that resource type |
-| `mcp:incidents:write` | Optional | `create_incident`, `assign_incident`, `acknowledge_incident`, `resolve_incident`, and the maintenance window tools | Creating or updating incidents; updating monitors for maintenance windows |
+| `mcp:incidents:write` | Optional | `create_incident`, `assign_incident`, `acknowledge_incident`, `resolve_incident`, `update_incident_resources`, and the maintenance window tools | Creating or updating incidents; updating monitors for maintenance windows (deleting monitors for `delete_maintenance_window`) |
 | `mcp:sre` | Optional | `triage_incident`, `investigate_incident`, `generate_incident_brief` | Investigating incidents (completed full investigations count toward the AI SRE investigation allowance) |
 
 ## Read tools
 
 | Tool | Needs permission to view | Arguments | Returns |
 |---|---|---|---|
-| `get_context` | project | none | The connected project, your role and the scopes this connection holds |
+| `get_context` | project | none | The connected project, your role, the scopes this connection holds, and `organization.pendingDeletion` (when `true` the organization is scheduled for deletion: reads work, writes return `org_pending_deletion`) |
 | `list_tests` | tests | `limit`, `cursor`, `type`, `priority`, `search` | `id`, `title`, `type`, `priority`, `updatedAt` (no scripts) |
 | `get_test` | tests | `id` | Metadata and description for one test (no script) |
 | `list_jobs` | jobs | `limit`, `cursor` | `id`, `name`, `jobType`, `status`, `cronSchedule`, `lastRunAt`, `nextRunAt` (no alert settings) |
@@ -38,6 +38,7 @@ Returned text (test titles, error excerpts, incident summaries, investigation fi
 | `list_variables` | variables | `limit`, `cursor` | `key`, `type`, `isSecret`, `description`, `updatedAt`. Never values |
 | `list_incidents` | incidents | `limit`, `cursor`, `status`, `severity`, `assignee` | `number`, `title`, `severity`, `status`, `statusLabel`, `createdAt`, `resolvedAt`, `assigneeUserId`, `commanderUserId`, `acknowledgedAt`, `acknowledgedByUserId`, `mitigatedAt` |
 | `list_maintenance_windows` | monitors | `state` (`active`, `scheduled`, `past`), `monitorId`, `serviceId` | `id`, `title`, `state`, `scope`, `recurrence`, `timezone`, `occurrenceStartsAt`, `occurrenceEndsAt`, `targets` |
+| `get_maintenance_window` | monitors | `id` | One window: `title`, `description`, `state`, `scope`, `recurrence`, `timezone`, `startsOn`, `endsOn`, `localStartTime`, `durationMinutes`, `weekdays`, `monthDay`, current occurrence, `targets` and `onStatusPage` |
 | `get_incident` | incidents | `id` | One incident with `statusLabel`, its root-cause summary, `postmortem` (`sections`, `generatedAt`, `updatedAt`; `null` until written), resolution summary, assignment and acknowledgement, and `alertCount` (the opening alert plus repeats while the incident stayed open) and `lastAlertAt` |
 | `get_incident_timeline` | incidents | `incidentId` | The newest 500 events, oldest first: `id`, `eventType`, `actorType`, `actorUserId`, `createdAt`, `data` (payload as redacted JSON text) |
 | `list_notification_channels` | notifications | `limit`, `cursor` | `id`, `name`, `type`, `preset` (webhooks only), `enabled`, `health`. Never the configuration, URLs or credentials |
@@ -58,9 +59,12 @@ Registered only when the connection holds the scope. Calls are recorded in the a
 | `end_maintenance_window` | `mcp:incidents:write` | update monitors | `id` | Ends an active window now. Refused for a window on a status page |
 | `extend_maintenance_window` | `mcp:incidents:write` | update monitors | `id`, `byMinutes` | Extends an active window. Refused for a window on a status page |
 | `cancel_maintenance_window` | `mcp:incidents:write` | update monitors | `id` | Cancels a scheduled window or the rest of a series. Refused for a window on a status page |
+| `update_maintenance_window` | `mcp:incidents:write` | update monitors | `id` plus any of the `create_maintenance_window` fields | Edits future occurrences; `serviceIds` or `monitorIds` replace the targets. An active one-off window cannot be rescheduled. Refused for a window on a status page |
+| `delete_maintenance_window` | `mcp:incidents:write` (like the other maintenance tools) | delete monitors | `id` | Deletes a window that is not active. Refused (`conflict`) while it is posted on a status page: cancel it first |
 | `assign_incident` | `mcp:incidents:write` | update incidents | `id`, `assigneeUserId` (or `null` to unassign), `role` (`assignee` or `commander`) | Assigns the incident or sets its commander |
 | `acknowledge_incident` | `mcp:incidents:write` | update incidents | `id` | Acknowledges it, claiming it for you if unassigned |
 | `resolve_incident` | `mcp:incidents:write` | update incidents | `id`, `resolutionSummary` (up to 2000 characters) | Resolves it with a summary |
+| `update_incident_resources` | `mcp:incidents:write` | update incidents | `id`, `addServiceIds`, `addMonitorIds`, `removeServiceIds`, `removeMonitorIds` | Changes the services and monitors the incident affects, like `supercheck incident resources`. Refused for a resolved incident |
 | `triage_incident` | `mcp:sre` | investigate incidents | `incidentId` | Starts AI triage |
 | `investigate_incident` | `mcp:sre` | investigate incidents | `incidentId`, `useLiveConnectors`, `guidance` | Starts a full investigation. Live connectors also need connector investigate permission |
 | `generate_incident_brief` | `mcp:sre` | investigate incidents | `incidentId` | Generates an evidence brief |
@@ -80,8 +84,10 @@ List tools accept `limit` (1 to 50, default 20) and `cursor`. When more results 
 | `forbidden` | Your role cannot view this kind of resource |
 | `not_found` | No such item in the connected project |
 | `internal_error` | The request failed; try again |
-| `rate_limited`, `daily_limit`, `subscription_required`, `unavailable`, `feature_disabled` | An `mcp:sre` start was refused by the same limits and plan checks as the dashboard |
-| `invalid`, `conflict` | An incident write was refused (for example an assignee who cannot act on incidents) |
+| `rate_limited`, `daily_limit`, `unavailable`, `feature_disabled` | An `mcp:sre` start was refused by the same limits as the dashboard |
+| `subscription_required` | Needs a paid plan or an active trial (Supercheck Cloud): an `mcp:sre` start, `create_incident`, `create_maintenance_window`, `update_maintenance_window` and `extend_maintenance_window`. Ending and cancelling windows, acknowledging and resolving incidents still work |
+| `invalid`, `conflict` | An incident or maintenance write was refused (for example an assignee who cannot act on incidents, or a window on a status page) |
+| `org_pending_deletion` | The organization is scheduled for deletion and is read-only. Read tools keep working; the owner can cancel the deletion in the app. `get_context` reports it as `organization.pendingDeletion` |
 
 Invalid arguments (an `id` that is not a UUID, or a `limit` outside 1 to 50) return a validation error. Connection-level problems return HTTP errors instead, each as a JSON-RPC error with the code in `error.data.code`: `400` (`parse_error` when the body is not JSON, `invalid_request` for an empty batch or an `initialize` inside a batch, `batch_too_large` over 20 calls, `invalid_params` for a bad `initialize` request), `401` (`invalid_token` when the token is expired or invalid, with `error="invalid_token"` in `WWW-Authenticate`: sign in again; `unauthorized` when no credentials were sent), `403` (`access_denied` when access was removed or the request is refused, or `invalid_request_origin`), `404` (MCP is off), `405` (only POST is accepted; `Allow: POST`), `406` (`not_acceptable` when `Accept` lacks `application/json` and `text/event-stream`), `408` (`request_timeout` when the body was not received in time), `413` (request over 1 MB), `429` (`rate_limited` or `too_many_concurrent_requests`, with `Retry-After`), `500` (`server_error`), `503` (`rate_limiter_unavailable` or `server_unavailable`, with `Retry-After` when the server can say when to retry).
 
@@ -97,7 +103,7 @@ Results AI SRE already produced (hypotheses, confidence, recommendations) are re
 </Accordion>
 <Accordion title="Not available" id="not-available">
 
-Creating, editing or deleting tests, monitors, jobs and variables, test scripts, variable values, monitor credentials and request settings, notification channel settings, status page subscribers, run reports and artifact files, and investigation evidence and tool calls. Use the [CLI](/docs/cli/commands) for authoring and deploys.
+Creating, editing or deleting tests, monitors, jobs and variables, changing the incident policy, writing post-mortems, test scripts, variable values, monitor credentials and request settings, notification channel settings, status page subscribers, run reports and artifact files, and investigation evidence and tool calls. Use the [CLI](/docs/cli/commands) for authoring and deploys.
 
 </Accordion>
 </Accordions>

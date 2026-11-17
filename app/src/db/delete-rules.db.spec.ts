@@ -123,6 +123,14 @@ describe("foreign key delete rules", () => {
     expect(await count("session", `user_id = '${userId}'`)).toBe(0);
   });
 
+  it("every foreign key to monitors cascades, so deleting a monitor that failed to schedule leaves no channel, tag or alert rows", async () => {
+    const rows = await sql`
+      SELECT c.conrelid::regclass::text AS tbl, c.confdeltype FROM pg_constraint c
+      WHERE c.contype = 'f' AND c.confrelid = 'monitors'::regclass`;
+    expect(rows.map((r) => r.tbl)).toEqual(expect.arrayContaining(["monitor_notification_settings", "monitor_tags", "alerts"]));
+    expect(rows.filter((r) => r.confdeltype !== "c").map((r) => r.tbl)).toEqual([]);
+  });
+
   it("no created_by_user_id foreign key is left on NO ACTION or RESTRICT", async () => {
     const rows = await sql`
       SELECT c.conrelid::regclass::text AS tbl, c.confdeltype FROM pg_constraint c

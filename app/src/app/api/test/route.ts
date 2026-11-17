@@ -8,7 +8,7 @@ import {
   K6ExecutionTask,
   TestExecutionTask,
 } from "@/lib/queue";
-import { normalizeTestType } from "@/lib/script-type-validator";
+import { INVALID_TEST_TYPE_MESSAGE, isTestTypeOmitted, parseTestType } from "@/lib/script-type-validator";
 import { playwrightValidationService } from "@/lib/playwright-validator";
 import { requireAuthContext, isAuthError, authErrorStatus } from "@/lib/auth-context";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
@@ -90,6 +90,11 @@ export async function POST(request: NextRequest) {
     const code = typeof data.script === "string" ? data.script : "";
     const requestedLocation = typeof data.location === "string" ? data.location : undefined;
 
+    const requestedType = isTestTypeOmitted(data.testType) ? undefined : parseTestType(data.testType);
+    if (!isTestTypeOmitted(data.testType) && !requestedType) {
+      return NextResponse.json({ error: INVALID_TEST_TYPE_MESSAGE }, { status: 400 });
+    }
+
     if (!code.trim()) {
       return NextResponse.json(
         { error: "No script provided" },
@@ -108,7 +113,7 @@ export async function POST(request: NextRequest) {
     console.log("Validating script before queuing...");
     try {
       const validationResult = playwrightValidationService.validateCode(code, {
-        selectedTestType: data.testType,
+        selectedTestType: requestedType,
       });
       
       if (!validationResult.valid) {
@@ -138,7 +143,7 @@ export async function POST(request: NextRequest) {
 
     // Detect if this is a k6 performance test
     const isPerformanceTest = isK6Script(code);
-    const isAgentTest = !isPerformanceTest && normalizeTestType(data.testType) === "agent";
+    const isAgentTest = !isPerformanceTest && requestedType === "agent";
     const testType = isPerformanceTest ? "performance" : isAgentTest ? "agent" : "browser";
 
     let executionLocation: K6Location | undefined;
@@ -178,7 +183,7 @@ export async function POST(request: NextRequest) {
     // Validate k6 script if it's a performance test
     if (isPerformanceTest) {
         const k6Validation = validateK6Script(code, {
-          selectedTestType: data.testType,
+          selectedTestType: requestedType,
         });
       if (!k6Validation.valid) {
         return NextResponse.json({

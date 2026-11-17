@@ -343,7 +343,7 @@ Nine key metrics are displayed prominently below the header. Response times are 
 
 | Metric | Description |
 |--------|-------------|
-| **Status** | Current monitor status (Up, Down, Paused, Pending, Error). Maintenance is reserved: monitors keep checking during a scheduled maintenance window |
+| **Status** | Current monitor status (Up, Down, Paused, Pending, Error). A **Maintenance** badge appears next to it while a maintenance window covers the monitor |
 | **Interval** | How frequently checks run (e.g., 5m, 15m) |
 | **Resp Time** | Latest response time from the most recent check |
 | **Uptime** (Last 24 hours) | Percentage of successful checks in the last 24 hours. A multi-location check counts once, as up or down by the monitor's location rule, not once per region |
@@ -414,12 +414,12 @@ Schedule a maintenance window before planned work so nobody is paged for expecte
 
 During a window:
 
-- Checks keep running and results are stored, marked as maintenance in the results table.
-- No alerts are sent, no incidents open, and reminders for open incidents opened by alerts wait until the window ends. Incidents declared by a person still page.
+- Checks keep running and results are stored, marked as maintenance in the results table. The monitors list shows a **Maintenance** badge next to the real status (Up or Down).
+- No alerts are sent, no incidents open (a failure is judged by when it fired, so one from just before the window still opens its incident), and reminders for open incidents opened by alerts wait until the window ends. Incidents declared by a person still page, but a failure inside the window is not added to them as a related alert.
 - Uptime on monitor pages, the dashboard and status pages leaves those checks out.
 - Failures do not count toward the alert threshold. A monitor that is still down after the window alerts once it has failed its threshold again; a monitor that recovers during the window recovers normally, without a notification.
 
-**End now** stops the active occurrence at once (a recurring window moves to its next one), **Extend** adds time, **Cancel** stops a scheduled window or the rest of a series, and **Delete** removes a window that is not active. A status-page maintenance follows: it ends, moves or is resolved as cancelled. Changing a window that is on a status page also needs status page update permission, and such a window must be cancelled before it can be deleted. Scheduling needs monitor update permission; deleting needs monitor delete permission. A project can have 100 upcoming or active windows.
+**End now** stops the active occurrence at once (a recurring window moves to its next one), **Extend** adds time, **Cancel** stops a scheduled window or the rest of a series, and **Delete** removes a window that is not active. A status-page maintenance follows: it ends, moves or is resolved as cancelled. Changing a window that is on a status page also needs status page update permission, and such a window must be cancelled before it can be deleted. Scheduling needs monitor update permission; deleting needs monitor delete permission. A project can have 100 upcoming or active windows. On Supercheck Cloud, scheduling, changing and extending a window need a paid plan or an active trial; an organization without one can still view, end and cancel windows (the API answers `402` with `subscription_required`).
 
 The app moves each window to its next occurrence. If the app is down when an occurrence would start, that occurrence starts late: alerting is never muted past a window's end.
 

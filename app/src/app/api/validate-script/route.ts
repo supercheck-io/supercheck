@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { MAX_SCRIPT_LENGTH } from "@/lib/validations/common";
 import {
-  normalizeTestType,
+  INVALID_TEST_TYPE_MESSAGE,
+  isTestTypeOmitted,
+  parseTestType,
   validateTestScript,
 } from "@/lib/script-type-validator";
 import { isK6Script } from "@/lib/k6-validator";
@@ -85,10 +87,11 @@ export async function POST(request: NextRequest) {
       );
     }
     const script = data.script;
-    const requestedType =
-      "testType" in data && typeof data.testType === "string"
-        ? normalizeTestType(data.testType)
-        : undefined;
+    const rawType = "testType" in data ? data.testType : undefined;
+    const requestedType = isTestTypeOmitted(rawType) ? undefined : parseTestType(rawType);
+    if (!isTestTypeOmitted(rawType) && !requestedType) {
+      return NextResponse.json({ error: INVALID_TEST_TYPE_MESSAGE }, { status: 400 });
+    }
 
     if (typeof script === "string" && script.length > MAX_SCRIPT_LENGTH) {
       return NextResponse.json(

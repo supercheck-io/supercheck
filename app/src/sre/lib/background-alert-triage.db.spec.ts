@@ -406,6 +406,28 @@ it("respects the monitor's incident settings", async () => {
   expect(await states(row.id)).toContain("recovered");
 });
 
+it("drops a monitor failure that fired inside a maintenance window, judged at its fire time", async () => {
+  // Project-wide window from minute 2 until after now, so every alert below is processed while it is active.
+  await client`INSERT INTO maintenance_windows (id, organization_id, project_id, title, scope, recurrence, timezone, local_start_time, duration_minutes, starts_on, occurrence_starts_at, occurrence_ends_at)
+    VALUES (uuidv7(), ${orgId}, ${projectId}, 'Deploy', 'project', 'once', 'UTC', '00:00', 60, '2026-01-01', ${minutes(2).toISOString()}::timestamptz, now() + interval '10 minutes')`;
+
+  expect(await alert("monitor_failure", minutes(5))).toMatchObject({ success: true, skipped: true, reason: "in_maintenance" });
+  expect(await incidents()).toHaveLength(0);
+  expect(await mockDatabase.select().from(schema.sreAlertEvents).where(eq(schema.sreAlertEvents.organizationId, orgId))).toHaveLength(0);
+
+  // Fired before the window opened and handled late: still opens its incident.
+  await alert("monitor_failure", minutes(0));
+  expect(await incidents()).toMatchObject([{ status: "triggered" }]);
+
+  // A recovery inside the window still resolves it.
+  await alert("monitor_recovery", minutes(8));
+  expect(await incidents()).toMatchObject([{ status: "resolved" }]);
+
+  // Job failures are not covered by monitor maintenance.
+  await alert("job_failed", minutes(9), { job: true });
+  expect(await incidents()).toHaveLength(2);
+});
+
 it("opens and auto-resolves job incidents", async () => {
   await alert("job_failed", minutes(0), { job: true });
   await alert("job_success", minutes(30), { job: true });

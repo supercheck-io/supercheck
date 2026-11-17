@@ -59,7 +59,7 @@ describe("MCP tools", () => {
   it("registers the read-only tool set", () => {
     expect([...handlers.keys()].sort()).toEqual(
       [
-        "get_context", "get_incident", "get_incident_policy", "get_incident_timeline", "get_investigation", "get_job", "get_monitor", "get_requirement", "get_run", "get_service", "get_status_page", "get_test",
+        "get_context", "get_incident", "get_incident_policy", "get_incident_timeline", "get_investigation", "get_job", "get_maintenance_window", "get_monitor", "get_requirement", "get_run", "get_service", "get_status_page", "get_test",
         "list_incidents", "list_investigations", "list_jobs", "list_maintenance_windows", "list_notification_channels", "list_monitors", "list_requirements", "list_runs", "list_services", "list_status_pages", "list_tests", "list_variables",
         "prepare_local_authoring",
       ].sort(),
@@ -302,6 +302,9 @@ describe("MCP tools", () => {
 
   it("list_tests accepts the agent type", async () => {
     expect(schemas.get("list_tests")!.type.safeParse("agent").success).toBe(true);
+    const parsed = (schemas.get("list_tests")!.type as unknown as { safeParse: (v: unknown) => { success: boolean; data?: unknown } });
+    expect(parsed.safeParse(" Agent ").data).toBe("agent");
+    expect(parsed.safeParse("agents").success).toBe(false);
     queue.push([]);
     await handlers.get("list_tests")!({ limit: 5, type: "agent" });
     expect(lastWhere().params).toContain("agent");

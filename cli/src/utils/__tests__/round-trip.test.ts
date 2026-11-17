@@ -139,6 +139,47 @@ describe('pull -> buildLocalResources -> reconcile', () => {
   })
 })
 
+describe('monitors-as-code round trip: AI endpoint and MCP monitors', () => {
+  const AI_ID = '019a0000-0000-7000-8000-0000000000e1'
+  const MCP_ID = '019a0000-0000-7000-8000-0000000000e2'
+  const checkMonitors = [
+    {
+      id: AI_ID, name: 'Chat API', type: 'http_request', target: 'https://api.example.com/v1/chat/completions', frequencyMinutes: 5, enabled: true, tags: [],
+      config: { timeoutSeconds: 60, aiEndpoint: { model: 'gpt-4o-mini', secretKey: 'OPENAI_KEY', maxTokens: 64, warnFirstTokenMs: 2000 }, aiEndpointState: { lastServedModel: 'gpt-4o-mini-2024-07-18' } },
+    },
+    {
+      id: MCP_ID, name: 'Docs MCP', type: 'mcp_server', target: 'https://mcp.example.com/mcp', frequencyMinutes: 5, enabled: true, tags: [],
+      config: { timeoutSeconds: 30, mcp: { auth: { type: 'header', secretKey: 'MCP_TOKEN', headerName: 'X-Api-Key' }, requiredTools: ['search'], toolCall: { name: 'search', arguments: { q: 'ping' } }, slowMs: 3000 }, mcpState: { lastCycleKey: 'c1' } },
+    },
+  ]
+  const client = {
+    getBaseUrl: () => 'https://example.com',
+    get: async (path: string) => path === '/api/monitors' ? page(checkMonitors)
+      : path === '/api/variables' || path === '/api/tags' || path === '/api/notification-providers' ? { data: [] }
+      : page([]),
+  } as unknown as ApiClient
+  const localFrom = (monitors: unknown[]) => {
+    const config = supercheckConfigSchema.parse({ schemaVersion: '1.0', project: { organization: 'org', project: 'project' }, monitors })
+    return buildLocalResources(config, dir)
+  }
+
+  it('pulls both types and diffs them as unchanged, so deploy sends nothing', async () => {
+    const changes = reconcile(localFrom(buildMonitorDefinitions(checkMonitors as never)), await fetchRemoteResources(client))
+    expect(changes.map((c) => [c.name, c.action])).toEqual([['Chat API', 'no-change'], ['Docs MCP', 'no-change']])
+  })
+
+  it('shows an edited aiEndpoint or mcp field as an update, which deploy then sends', async () => {
+    const pulled = buildMonitorDefinitions(checkMonitors as never) as Array<{ config: Record<string, Record<string, unknown>> }>
+    pulled[0].config.aiEndpoint.model = 'gpt-4.1-mini'
+    pulled[1].config.mcp.requiredTools = ['search', 'fetch']
+    const changes = reconcile(localFrom(pulled), await fetchRemoteResources(client))
+    expect(changes.map((c) => c.action)).toEqual(['update', 'update'])
+    expect(changes[0].details?.join('\n')).toContain('aiEndpoint')
+    expect(changes[1].details?.join('\n')).toContain('mcp')
+    expect((changes[0].local?.definition.config as { aiEndpoint: { model: string } }).aiEndpoint.model).toBe('gpt-4.1-mini')
+  })
+})
+
 describe('tag casing', () => {
   it('compares requirement, test and monitor tags case-insensitively', () => {
     const resource = (type: 'requirement' | 'test' | 'monitor', local: string[], remote: string[]) =>

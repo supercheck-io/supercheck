@@ -117,3 +117,13 @@ describe("validateSchedule", () => {
     expect(validateSchedule({ ...base, recurrence: "monthly", monthDay: -1 })).toEqual({});
   });
 });
+
+describe("validateSchedule with cleared fields (REST and MCP updates share it)", () => {
+  it("refuses a weekly window with no weekdays and a monthly window with no day", () => {
+    expect(validateSchedule({ ...base, recurrence: "weekly", weekdays: null })).toHaveProperty("weekdays");
+    expect(validateSchedule({ ...base, recurrence: "monthly", monthDay: null })).toHaveProperty("monthDay");
+  });
+  it("accepts a cleared end date", () => {
+    expect(validateSchedule({ ...base, recurrence: "daily", endsOn: null })).toEqual({});
+  });
+});
