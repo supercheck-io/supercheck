@@ -20,7 +20,6 @@ import {
   TrendingUp,
   XCircle,
   AlertCircle,
-  Wrench,
   X,
   Shield,
   Bell,
@@ -81,6 +80,7 @@ import { SupercheckLogo } from "@/components/logo/supercheck-logo";
 import { Home } from "lucide-react";
 import { maskUrlPassword } from "@/lib/mask-url-password";
 import { TruncatedTextWithTooltip } from "@/components/ui/truncated-text-with-tooltip";
+import { MonitorStatusIndicator } from "./monitor-status-indicator";
 import {
   isMonitoringLocation,
   buildLocationMetadataMap,
@@ -1553,8 +1553,8 @@ export function MonitorDetailClient({
                                 <span className="inline-flex items-center gap-1">
                                   <SimpleStatusIcon isUp={result.isUp} />
                                   {result.inMaintenance && (
-                                    <span title="Checked during maintenance: no alert, not counted in uptime" className="inline-flex">
-                                      <Wrench role="img" aria-label="Checked during maintenance" className="h-3.5 w-3.5 text-muted-foreground" />
+                                    <span title="Checked during maintenance: no alert, not counted in uptime" data-testid="result-maintenance-badge">
+                                      <MonitorStatusIndicator status="maintenance" monitorId={monitor.id} />
                                     </span>
                                   )}
                                 </span>

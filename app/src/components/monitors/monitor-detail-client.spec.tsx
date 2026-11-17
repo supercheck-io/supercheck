@@ -92,6 +92,21 @@ it("keeps check result cells on one line with an ellipsis", async () => {
   }
 });
 
+it("badges a check made during maintenance in the results table", async () => {
+  const row = (id: string, inMaintenance: boolean) => ({
+    id, monitorId: "m1", checkedAt: new Date().toISOString(), isUp: false, responseTimeMs: 10, location: null, details: null, inMaintenance,
+  });
+  mockResults = [row("r1", true), row("r2", false)];
+  try {
+    render(<MonitorDetailClient monitor={monitor} />);
+    const badges = await screen.findAllByTestId("result-maintenance-badge");
+    expect(badges).toHaveLength(1);
+    expect(badges[0]).toHaveTextContent("Maintenance");
+  } finally {
+    mockResults = [];
+  }
+});
+
 it("invalidates the dashboard and the single-monitor cache after pausing", async () => {
   global.fetch = jest.fn().mockResolvedValue({ ok: true, json: async () => ({}) }) as never;
   render(<MonitorDetailClient monitor={monitor} />);
