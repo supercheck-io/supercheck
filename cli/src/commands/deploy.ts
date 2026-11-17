@@ -518,6 +518,7 @@ export const deployCommand = new Command('deploy')
         // The one-time ping URL never goes into machine output (CI logs); table mode prints it once below.
         const recorded: Record<string, unknown> = { action: change.action, type: change.type, name: change.name, id: result.id ?? change.id, ...result }
         delete recorded.pingUrl
+        if (result.pingUrl) recorded.pingUrlHidden = true
         results.push(recorded)
 
         if (result.success) {

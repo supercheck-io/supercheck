@@ -63,7 +63,7 @@ describe('deploy heartbeat monitors', () => {
     await deployCommand.parseAsync(['node', 'deploy', '--force'])
     const stdout = output.mock.calls.map(([text]) => String(text)).join('\n')
     expect(stdout).not.toMatch(/hb_[0-9a-f]{32}/)
-    if (format === 'json') expect(JSON.parse(String(output.mock.calls.at(-1)?.[0])).results).toEqual([expect.objectContaining({ action: 'create', type: 'monitor', id: M1 })])
+    if (format === 'json') expect(JSON.parse(String(output.mock.calls.at(-1)?.[0])).results).toEqual([expect.objectContaining({ action: 'create', type: 'monitor', id: M1, pingUrlHidden: true })])
     // Straight to stderr: --json and --quiet silence logger warnings.
     expect(stderr.mock.calls.flat().join('')).toContain(`supercheck monitor heartbeat-url ${M1}`)
   })

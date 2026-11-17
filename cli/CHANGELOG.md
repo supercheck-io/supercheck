@@ -6,7 +6,7 @@ Notable changes to `@supercheck/cli`. The format follows [Keep a Changelog](http
 
 ### Changed
 
-- **Breaking for scripts:** `monitor create --type heartbeat` and `deploy` no longer put a new heartbeat's ping URL in `--json` or `--quiet` output, which often lands in CI logs, so `heartbeat.pingUrl` and `results[].pingUrl` are gone. They say on stderr how to show it: `supercheck monitor heartbeat-url <id>`. Table output still prints it once.
+- **Breaking for scripts:** `monitor create --type heartbeat` and `deploy` no longer put a new heartbeat's ping URL in `--json` or `--quiet` output, which often lands in CI logs, so `heartbeat.pingUrl` and `results[].pingUrl` are gone (a deploy result has `pingUrlHidden: true` instead). They say on stderr how to show it: `supercheck monitor heartbeat-url <id>`. Table output still prints it once.
 
 ## [0.6.0] - 2026-11-16
 
