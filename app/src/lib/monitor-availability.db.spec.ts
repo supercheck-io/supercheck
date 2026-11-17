@@ -23,8 +23,20 @@ let projectId: string;
 
 const H = 3_600_000;
 const D = 24 * H;
-const midnight = Math.floor(Date.now() / D) * D;
-const hourStart = Math.floor(Date.now() / H) * H;
+// One frozen instant (the latest hh:30 UTC) for the whole file: the aggregator reads `new Date()` itself,
+// so a run that crossed an hour or day boundary used to move its window away from these constants.
+const t0 = Math.floor((Date.now() - H / 2) / H) * H + H / 2;
+const midnight = Math.floor(t0 / D) * D;
+const hourStart = Math.floor(t0 / H) * H;
+
+// Fake only Date; real timers keep the postgres driver and child processes working.
+beforeAll(() => {
+  jest.useFakeTimers({
+    now: t0,
+    doNotFake: ["setTimeout", "setInterval", "setImmediate", "clearTimeout", "clearInterval", "clearImmediate", "nextTick", "queueMicrotask", "performance", "hrtime"],
+  });
+});
+afterAll(() => jest.useRealTimers());
 
 beforeAll(async () => {
   if (!process.env.TEST_DATABASE_URL) throw new Error("TEST_DATABASE_URL required");

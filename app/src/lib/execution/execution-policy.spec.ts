@@ -260,9 +260,11 @@ describe("trial workload admission", () => {
   });
   it("keeps a resolution across consecutive 5-second queue passes, so promotion does not re-resolve every tick", async () => {
     jest.mocked(isPolarEnabled).mockReturnValue(false);
-    jest.mocked(db.query.executionEntitlements.findFirst).mockResolvedValue(trial as never);
-    const now = jest.spyOn(Date, "now");
     const start = Date.now();
+    // Pin the clock and trial expiry to one instant so a slow worker cannot shift the cache window.
+    jest.mocked(db.query.executionEntitlements.findFirst).mockResolvedValue({ ...trial, expiresAt: new Date(start + 120_000) } as never);
+    const now = jest.spyOn(Date, "now");
+    now.mockReturnValue(start);
     try {
       await getExecutionPolicy("org");
       for (const pass of [5_000, 10_000, 15_000, 25_000]) {

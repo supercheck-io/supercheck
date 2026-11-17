@@ -30,7 +30,8 @@ function idOf(body: unknown): string {
 async function createService(page: Page, name: string, environment: string): Promise<void> {
   await page.goto('/services');
   await waitForHydration(page);
-  await page.getByTestId('add-service-btn').click();
+  // CI has seen two matches while /services loads; both open the same dialog.
+  await page.getByTestId('add-service-btn').first().click();
   const dialog = page.getByRole('dialog', { name: /add service/i });
   await dialog.getByLabel('Title *').fill(name);
   await dialog.getByLabel('Environment').fill(environment);

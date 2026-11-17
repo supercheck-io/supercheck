@@ -1,3 +1,4 @@
+/** @jest-environment node */
 jest.mock("@/lib/billing/usage-sync-lease", () => ({
   withUsageSyncLease: jest.fn(async (run) => run(() => {})),
 }));
@@ -8,7 +9,6 @@ import { sql } from "drizzle-orm";
 import { withUsageSyncLease } from "@/lib/billing/usage-sync-lease";
 import { reconcilePolarSubscriptions } from "./subscription-reconciliation";
 import { failStuckSreInvestigationRuns, reconcileUnbilledSreInvestigations } from "@/lib/sre/investigation-billing";
-/** @jest-environment node */
 
 jest.mock("@/utils/db", () => ({
   db: {
