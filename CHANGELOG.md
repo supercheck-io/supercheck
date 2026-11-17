@@ -54,6 +54,8 @@ The CLI is versioned separately; see [cli/CHANGELOG.md](cli/CHANGELOG.md). Prere
 
 ### Changed
 
+- **Lapsed organizations (Cloud).** An organization with no paid plan and no active trial can no longer declare incidents or create, change or extend maintenance windows, and an incident it opens does not start an automatic AI investigation. Over the API this answers `402` with `code: "subscription_required"`; the MCP tools `create_incident`, `create_maintenance_window` and `extend_maintenance_window` fail with `subscription_required`, and the CLI prints the server's message. Viewing, acknowledging and resolving incidents and ending or cancelling windows still work. Self-hosted installations are not affected.
+- **Secrets are hidden while an organization is pending deletion.** The reveal action is refused with `ORG_PENDING_DELETION` for every role, super admins included; viewing and exporting still work.
 - Status-page scheduled maintenance now also stops failure counting and is left out of uptime, the same as maintenance windows.
 - `DELETE /api/organizations/{id}` schedules the deletion instead of deleting. The body is now `{ "confirmName": "<organization name>" }` (the old `confirmOrganizationId` is no longer accepted), and it answers `403` with code `REAUTH_REQUIRED` when the session is older than a few minutes. The synchronous teardown path is removed. `DELETE /api/projects/{id}` is a soft delete.
 - Deleting a monitor or job resolves its open incidents (acknowledged ones too) with a system note on the timeline; no notification is sent. A k6 run of a job deleted while it ran reports that the job was deleted instead of a user cancellation.

@@ -10,6 +10,7 @@ import { getDefaultAssigneeId, isAssignableUser } from "@/lib/sre/incident-lifec
 import { notifyIncidentEvent } from "@/lib/sre/incident-notifier";
 import { addIncidentResources, liveResourceKeys, MAX_INCIDENT_RESOURCES, resolveIncidentResources } from "@/lib/sre/incident-resources";
 import { watchIncident } from "@/lib/sre/incident-watchers";
+import { lapsedWriteBlock, type SubscriptionRequiredResult } from "@/lib/sre/lapsed-org-gate";
 import { checkSreIncidentCreateRateLimit } from "@/lib/sre/sre-rate-limiter";
 import { createStatusPageIncident, findStatusPageTargetError, type StatusPageIncidentActor } from "@/lib/status-page-incident-core";
 import { maybeAutoInvestigateOnOpen } from "@/sre/lib/auto-investigate";
@@ -71,7 +72,8 @@ export type ManualIncidentResult =
     }
   | { ok: false; code: "invalid"; error: string; fieldErrors?: Record<string, string[]> }
   | { ok: false; code: "forbidden" | "not_found"; error: string }
-  | { ok: false; code: "rate_limited"; error: string; retryAfterSeconds: number };
+  | { ok: false; code: "rate_limited"; error: string; retryAfterSeconds: number }
+  | SubscriptionRequiredResult;
 
 /**
  * Declares an incident by hand. The one path for the UI, the API (and through it the CLI) and MCP:
@@ -95,6 +97,9 @@ export async function createManualIncident(
   if (!can("sre_incident", "create") || (data.statusPage && (!can("status_page", "update") || !can("sre_incident", "view")))) {
     return { ok: false, code: "forbidden", error: "Insufficient permissions to create incidents" };
   }
+
+  const lapsed = await lapsedWriteBlock(organizationId);
+  if (lapsed) return lapsed;
 
   const scope = { organizationId, projectId };
   const resources = await resolveIncidentResources(db, scope, {

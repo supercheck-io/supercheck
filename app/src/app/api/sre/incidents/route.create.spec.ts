@@ -48,6 +48,14 @@ describe("POST /api/sre/incidents", () => {
     expect(mockCreate).toHaveBeenCalledWith(expect.anything(), expect.anything(), "cli");
   });
 
+  it("answers 402 with the plan message and code for a lapsed organization", async () => {
+    mockRequireAuthContext.mockResolvedValue(context("project_editor"));
+    mockCreate.mockResolvedValue({ ok: false, code: "subscription_required", error: "Active subscription required." });
+    const res = await POST(post({ title: "Down" }));
+    expect(res.status).toBe(402);
+    expect(await res.json()).toEqual({ error: "Active subscription required.", code: "subscription_required" });
+  });
+
   it("denies a project_viewer with 403 before the core runs", async () => {
     mockRequireAuthContext.mockResolvedValue(context("project_viewer"));
     const res = await POST(post({ title: "Down" }));

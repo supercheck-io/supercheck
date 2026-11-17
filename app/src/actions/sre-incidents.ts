@@ -76,6 +76,7 @@ import { notifyIncidentEvent } from "@/lib/sre/incident-notifier";
 import { checkSreIncidentUpdateRateLimit } from "@/lib/sre/sre-rate-limiter";
 import { isWatchingIncident, watchIncident } from "@/lib/sre/incident-watchers";
 import { maybeAutoInvestigateOnOpen } from "@/sre/lib/auto-investigate";
+import { lapsedWriteBlock } from "@/lib/sre/lapsed-org-gate";
 import { createManualIncident, type ManualIncidentInput } from "@/lib/sre/manual-incident";
 import { listIncidentResources, type IncidentResourceView } from "@/lib/sre/incident-resources";
 import { listMyFeedbackForRun, type MyFeedback } from "@/lib/sre/investigation-feedback";
@@ -1524,6 +1525,10 @@ export async function createSreIncidentFromAlert(
     if (!canCreate) {
       return await permissionDeniedResult(organizationId, "Insufficient permissions to create SRE incidents");
     }
+
+    // Same plan check as declaring an incident by hand.
+    const lapsed = await lapsedWriteBlock(organizationId);
+    if (lapsed) return { success: false, error: lapsed.error };
 
     const [alert] = await db
       .select({

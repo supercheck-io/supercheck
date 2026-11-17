@@ -1,5 +1,5 @@
 /** @jest-environment node */
-import { NextRequest } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 
 const mockResolve = jest.fn();
 const mockImpersonated = jest.fn();
@@ -15,6 +15,8 @@ jest.mock("@/lib/auth-context", () => ({
   isAuthError: () => false,
   authErrorStatus: () => 401,
 }));
+const mockDenied = jest.fn(async (_org: string, message: string) => NextResponse.json({ error: message, code: "ORG_PENDING_DELETION" }, { status: 403 }));
+jest.mock("@/lib/deletion/org-state", () => ({ permissionDeniedResponse: (...a: [string, string]) => mockDenied(...a) }));
 jest.mock("@/lib/audit-logger", () => ({ logAuditEvent: jest.fn() }));
 jest.mock("@/lib/encryption", () => ({ decryptValue: jest.fn(() => "plaintext") }));
 const mockRows = jest.fn();
@@ -25,6 +27,8 @@ jest.mock("drizzle-orm", () => ({ eq: jest.fn(), and: jest.fn() }));
 import { POST } from "./route";
 import { logAuditEvent } from "@/lib/audit-logger";
 import { requireUserAuthContext } from "@/lib/auth-context";
+import { checkPermissionWithContext } from "@/lib/rbac/middleware";
+import { hasPermission, Role } from "@/lib/rbac/permissions";
 
 const PROJECT = "93ce4a2e-7846-5b60-b753-1ab3563f0fce";
 const VARIABLE = "0c11ab1e-7460-5139-b3b8-920f69f95082";
@@ -70,5 +74,19 @@ describe("POST /api/projects/[id]/variables/[variableId]/decrypt", () => {
     mockImpersonated.mockResolvedValue(true);
     (requireUserAuthContext as jest.Mock).mockResolvedValueOnce({ userId: "sa-1", isCliAuth: true });
     expect((await call()).status).toBe(200);
+  });
+
+  it("refuses to reveal while the organization is pending deletion, with the ORG_PENDING_DELETION answer", async () => {
+    const ctx = { userId: "sa-1", organizationId: "org-1", orgPendingDeletion: true, project: { id: PROJECT, userRole: "org_owner" } };
+    mockResolve.mockResolvedValue(ctx);
+    // The real permission table decides: view_secrets is no longer allowed while pending.
+    (checkPermissionWithContext as jest.Mock).mockImplementationOnce((resource, action) =>
+      hasPermission({ userId: "sa-1", role: Role.ORG_OWNER, orgPendingDeletion: ctx.orgPendingDeletion }, resource, action));
+    const res = await call();
+    expect(res.status).toBe(403);
+    expect((await res.json()).code).toBe("ORG_PENDING_DELETION");
+    expect(mockDenied).toHaveBeenCalledWith("org-1", expect.any(String));
+    expect(mockRows).not.toHaveBeenCalled();
+    expect(logAuditEvent).toHaveBeenCalledWith(expect.objectContaining({ action: "secret_decrypt_unauthorized", success: false }));
   });
 });

@@ -3,6 +3,8 @@ jest.mock("@/utils/db", () => ({ db: { transaction: jest.fn(), insert: jest.fn()
 jest.mock("@/lib/audit-logger", () => ({ logAuditEvent: jest.fn() }));
 jest.mock("@/lib/sre/incident-lifecycle", () => ({ getDefaultAssigneeId: jest.fn(), isAssignableUser: jest.fn() }));
 jest.mock("@/lib/sre/incident-notifier", () => ({ notifyIncidentEvent: jest.fn().mockResolvedValue(true) }));
+const lapsedWriteBlock = jest.fn();
+jest.mock("@/lib/sre/lapsed-org-gate", () => ({ lapsedWriteBlock: (...a: unknown[]) => lapsedWriteBlock(...a) }));
 jest.mock("@/lib/sre/incident-watchers", () => ({ watchIncident: jest.fn() }));
 jest.mock("@/lib/sre/sre-rate-limiter", () => ({ checkSreIncidentCreateRateLimit: jest.fn() }));
 jest.mock("@/lib/status-page-incident-core", () => ({ createStatusPageIncident: jest.fn(), findStatusPageTargetError: jest.fn() }));
@@ -55,6 +57,7 @@ function mockTransaction(incidentNumber = 7) {
 beforeEach(() => {
   jest.clearAllMocks();
   mockTransaction();
+  lapsedWriteBlock.mockResolvedValue(null);
   jest.mocked(checkSreIncidentCreateRateLimit).mockResolvedValue({ allowed: true, remaining: 9 });
   jest.mocked(resolveIncidentResources).mockResolvedValue([]);
   jest.mocked(getDefaultAssigneeId).mockResolvedValue(null);
@@ -63,6 +66,15 @@ beforeEach(() => {
 });
 
 describe("createManualIncident", () => {
+  it("refuses a lapsed organization before writing, notifying or investigating", async () => {
+    const blocked = { ok: false, code: "subscription_required", error: "Active subscription required." };
+    lapsedWriteBlock.mockResolvedValue(blocked);
+    await expect(createManualIncident(actor(), { title: "Down" }, "api")).resolves.toEqual(blocked);
+    expect(lapsedWriteBlock).toHaveBeenCalledWith(id(2));
+    expect(db.transaction).not.toHaveBeenCalled();
+    expect(maybeAutoInvestigateOnOpen).not.toHaveBeenCalled();
+  });
+
   it("declares an incident with the same lifecycle: number, watcher, timeline, audit, notify, auto-investigate", async () => {
     const result = await createManualIncident(actor(), { title: " Checkout down ", severity: "sev2", summary: "Users see 500s" }, "api");
     expect(result).toEqual({ ok: true, incident: { id: id(9), incidentNumber: 7, title: "Checkout down" } });

@@ -32,7 +32,7 @@ Some errors include additional context:
 | `201` | Created | Resource created successfully |
 | `400` | Bad Request | Fix the request body or parameters |
 | `401` | Unauthorized | Credentials are missing, invalid, expired or revoked. Check the token |
-| `402` | Subscription required | Supercheck Cloud only: the organization needs an active subscription for this action (for example resuming a monitor after a trial ended) |
+| `402` | Subscription required | Supercheck Cloud only: the organization needs an active subscription for this action (for example resuming a monitor after a trial ended, declaring an incident, or scheduling, changing or extending a maintenance window). The body is `{ error, code }` with `code: "subscription_required"` |
 | `403` | Forbidden | Authenticated but not permitted: RBAC role, project scope, or browser-only operation. Admin-only (`/api/admin/*`) endpoints return `401` when signed out and `403` for non-admins |
 | `404` | Not Found | Verify the resource ID exists. A resource in an organization you do not belong to also returns `404`, the same as a missing ID |
 | `409` | Conflict | Duplicate resource (e.g. token name) |

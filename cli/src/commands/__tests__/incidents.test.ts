@@ -100,6 +100,11 @@ describe('incident create', () => {
     mockPost.mockRejectedValueOnce(limited)
     await expect(run('--title', 'x')).rejects.toBe(limited)
   })
+  it('shows the server 402 message and keeps its code when the plan has lapsed', async () => {
+    const message = 'Active subscription required. Visit /billing to subscribe to Plus or Pro.'
+    mockPost.mockRejectedValueOnce(new ApiRequestError('API request failed: POST /api/sre/incidents → 402', 402, { error: message, code: 'subscription_required' }))
+    await expect(run('--title', 'x')).rejects.toMatchObject({ message, statusCode: 402, responseBody: { code: 'subscription_required' } })
+  })
   it('fetches the service list once for several service names (I7)', async () => {
     mockGet.mockResolvedValueOnce({ data: { services: [{ id: id(4), name: 'Checkout' }, { id: id(5), name: 'Search' }, { id: id(6), name: 'Auth' }] } })
     mockPost.mockResolvedValueOnce({ data: { success: true, incident: { id: id(9), incidentNumber: 1 } } })
