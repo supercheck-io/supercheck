@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 
-import { MaintenanceWindowsPanel, MonitorMaintenanceBar, ServiceMaintenanceAction } from "./maintenance-windows-panel";
+import { maintenanceEndLabel, MaintenanceWindowsPanel, MonitorMaintenanceBar, ServiceMaintenanceAction } from "./maintenance-windows-panel";
 
 const mockReplace = jest.fn();
 let mockSearch = "";
@@ -134,8 +134,18 @@ describe("monitor and service actions", () => {
     const end = (h: number) => new Date(Date.UTC(2026, 10, 20, h, 0)).toISOString();
     mockWindows = { data: [win({ id: "w-1", occurrenceEndsAt: end(11) }), win({ id: "w-2", occurrenceEndsAt: end(13) })] };
     render(<MonitorMaintenanceBar monitorId="m-1" />);
-    const latest = new Date(end(13)).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+    const latest = maintenanceEndLabel(new Date(end(13)), "UTC");
     expect(screen.getByTestId("maintenance-banner")).toHaveTextContent(`In maintenance until ${latest}`);
+  });
+
+  it("shows the end date, time and the window's timezone", () => {
+    const end = new Date(Date.UTC(2026, 10, 22, 13, 30));
+    const options = { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", timeZoneName: "short" } as const;
+    expect(maintenanceEndLabel(end, "Europe/Berlin")).toBe(end.toLocaleString(undefined, { ...options, timeZone: "Europe/Berlin" }));
+    expect(maintenanceEndLabel(end, "Europe/Berlin")).not.toBe(maintenanceEndLabel(end, "UTC"));
+    expect(maintenanceEndLabel(end, "UTC")).toMatch(/22/);
+    // A bad zone name never throws; it falls back to the viewer's zone.
+    expect(maintenanceEndLabel(end, "Not/AZone")).toBe(end.toLocaleString(undefined, options));
   });
 
   it("renders nothing for a viewer when no window is active", () => {

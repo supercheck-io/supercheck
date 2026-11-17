@@ -65,6 +65,7 @@ import {
 import type { AlertConfig } from "@/db/schema";
 import { loadCreators } from "@/lib/creators";
 import { MONITOR_READ_COLUMNS, monitorForResponse } from "@/lib/monitor-response";
+import { monitorsInMaintenance } from "@/lib/maintenance/predicate";
 import { buildHeartbeatPingUrl } from "@/lib/heartbeat/token";
 
 import { permissionDeniedResponse } from "@/lib/deletion/org-state";
@@ -166,6 +167,7 @@ export async function GET(request: Request) {
       const totalPages = Math.ceil(total / limit);
       const tagsByMonitor = await loadMonitorTags(monitorsList.map((m) => m.id));
       const creatorOf = await loadCreators(monitorsList.map((m) => m.createdByUserId));
+      const inMaintenance = await monitorsInMaintenance(monitorsList.map((m) => m.id), new Date());
 
       return NextResponse.json({
         data: monitorsList.map((monitor) => ({
@@ -173,6 +175,7 @@ export async function GET(request: Request) {
           config: monitorConfigForRead(monitor.config, canUpdateMonitors),
           target: monitorTargetForRead(monitor.target, canUpdateMonitors),
           tags: tagsByMonitor.get(monitor.id) ?? [],
+          inMaintenance: inMaintenance.has(monitor.id),
           ...creatorOf(monitor.createdByUserId),
         })),
         pagination: {
@@ -196,6 +199,7 @@ export async function GET(request: Request) {
         .limit(DEFAULT_LIMIT);
       const tagsByMonitor = await loadMonitorTags(monitorsList.map((m) => m.id));
       const creatorOf = await loadCreators(monitorsList.map((m) => m.createdByUserId));
+      const inMaintenance = await monitorsInMaintenance(monitorsList.map((m) => m.id), new Date());
 
       // Return standardized response format for React Query hooks
       return NextResponse.json({
@@ -204,6 +208,7 @@ export async function GET(request: Request) {
           config: monitorConfigForRead(monitor.config, canUpdateMonitors),
           target: monitorTargetForRead(monitor.target, canUpdateMonitors),
           tags: tagsByMonitor.get(monitor.id) ?? [],
+          inMaintenance: inMaintenance.has(monitor.id),
           ...creatorOf(monitor.createdByUserId),
         })),
         pagination: {

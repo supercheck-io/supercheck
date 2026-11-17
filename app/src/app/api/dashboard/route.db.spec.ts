@@ -5,6 +5,7 @@ import { promisify } from "node:util";
 import path from "node:path";
 import postgres from "postgres";
 import { drizzle } from "drizzle-orm/postgres-js";
+import { eq } from "drizzle-orm";
 import * as schema from "@/db/schema";
 
 let mockDatabase: ReturnType<typeof drizzle<typeof schema>>;
@@ -159,6 +160,22 @@ it("keeps a 0 ms response time and computes uptime over every monitor with check
   expect(monitors.uptime).toBeCloseTo(33.33, 1);
   expect(monitors.responseTime.min).toBe(0);
   expect(monitors.responseTime.max).toBe(0);
+});
+
+it("counts monitors under an active maintenance window while their status stays real", async () => {
+  expect((await (await GET()).json()).monitors.maintenance).toBe(0);
+  const [monitor] = await mockDatabase.select({ id: schema.monitors.id })
+    .from(schema.monitors).where(eq(schema.monitors.projectId, mockContext.project.id)).limit(1);
+  const [window] = await mockDatabase.insert(schema.maintenanceWindows).values({
+    organizationId: mockContext.organizationId, projectId: mockContext.project.id, title: "Deploy", scope: "monitors", recurrence: "once",
+    timezone: "UTC", localStartTime: "00:00", durationMinutes: 60, startsOn: "2026-01-01",
+    occurrenceStartsAt: new Date(Date.now() - 60_000), occurrenceEndsAt: new Date(Date.now() + 3_600_000),
+  }).returning();
+  await mockDatabase.insert(schema.maintenanceWindowTargets).values({ windowId: window.id, targetType: "monitor", targetId: monitor.id });
+  const { monitors } = await (await GET()).json();
+  expect(monitors.maintenance).toBe(1);
+  expect(monitors.up + monitors.paused).toBe(2);
+  await mockDatabase.delete(schema.maintenanceWindows).where(eq(schema.maintenanceWindows.id, window.id));
 });
 
 it("reports null uptime when the project has no checks", async () => {

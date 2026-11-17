@@ -10,6 +10,8 @@ jest.mock("@/sre/lib/feature-gates", () => ({
 }));
 jest.mock("@/lib/sre/sre-daily-token-limit", () => ({ sreDailyTokenLimitResponse: jest.fn().mockResolvedValue(null) }));
 jest.mock("@/lib/audit-logger", () => ({ logAuditEvent: jest.fn() }));
+// Maintenance timing is covered against a real database in background-alert-triage.db.spec.ts.
+jest.mock("@/lib/maintenance/predicate", () => ({ isMonitorInMaintenance: jest.fn(async () => false) }));
 const mockLogInfo = jest.fn();
 const mockLogError = jest.fn();
 jest.mock("@/lib/logger/index", () => ({ createLogger: () => ({ warn: (...a: unknown[]) => mockLogInfo(...a), error: (...a: unknown[]) => mockLogError(...a) }) }));

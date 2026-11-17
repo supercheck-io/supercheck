@@ -245,6 +245,17 @@ export function MaintenanceWindowsPanel({ tabs }: { tabs?: ReactNode } = {}) {
   );
 }
 
+/** "Nov 18, 14:30 CET" in the window's own timezone, so a multi-day window is not read as ending today. */
+export function maintenanceEndLabel(end: Date, timeZone: string): string {
+  const options = { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", timeZoneName: "short" } as const;
+  try {
+    return end.toLocaleString(undefined, { ...options, timeZone });
+  } catch {
+    // An unknown zone name (stored before validation) falls back to the viewer's zone, still labelled.
+    return end.toLocaleString(undefined, options);
+  }
+}
+
 /** "In maintenance until 14:30" on a monitor page while a window covers it, plus a prefilled Schedule action. */
 export function MonitorMaintenanceBar({ monitorId }: { monitorId: string }) {
   const { currentProject } = useProjectContext();
@@ -261,7 +272,7 @@ export function MonitorMaintenanceBar({ monitorId }: { monitorId: string }) {
     <div className="flex flex-wrap items-center gap-2">
       {current && (
         <Badge variant="secondary" role="status" data-testid="maintenance-banner">
-          In maintenance until {current.occurrenceEndsAt ? new Date(current.occurrenceEndsAt).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" }) : "-"}
+          In maintenance until {current.occurrenceEndsAt ? maintenanceEndLabel(new Date(current.occurrenceEndsAt), current.timezone) : "-"}
         </Badge>
       )}
       {canWrite && (

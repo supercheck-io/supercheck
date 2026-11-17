@@ -20,6 +20,7 @@ import {
   TrendingUp,
   XCircle,
   AlertCircle,
+  Wrench,
   X,
   Shield,
   Bell,
@@ -111,6 +112,8 @@ export interface MonitorResultItem {
   details?: DBMonitorResultDetailsType | null;
   isUp: boolean;
   isStatusChange: boolean;
+  /** Checked inside a maintenance window: muted and left out of uptime. */
+  inMaintenance?: boolean;
   testExecutionId?: string | null;
   testReportS3Url?: string | null;
   location?: MonitoringLocation | string | null;
@@ -1547,7 +1550,14 @@ export function MonitorDetailClient({
                           return (
                             <tr key={result.id} className="hover:bg-muted/25">
                               <td className="px-4 py-[11.5px] whitespace-nowrap text-sm">
-                                <SimpleStatusIcon isUp={result.isUp} />
+                                <span className="inline-flex items-center gap-1">
+                                  <SimpleStatusIcon isUp={result.isUp} />
+                                  {result.inMaintenance && (
+                                    <span title="Checked during maintenance: no alert, not counted in uptime" className="inline-flex">
+                                      <Wrench role="img" aria-label="Checked during maintenance" className="h-3.5 w-3.5 text-muted-foreground" />
+                                    </span>
+                                  )}
+                                </span>
                               </td>
                               {/* Cells stay on one line; long values end in an ellipsis and show in full on hover. */}
                               <td className="px-4 py-[11.5px] overflow-hidden text-sm text-muted-foreground">

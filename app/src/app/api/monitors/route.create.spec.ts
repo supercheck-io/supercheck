@@ -14,6 +14,8 @@ import { NextRequest } from "next/server";
 
 const dbSelect = jest.fn();
 const dbDeleteWhere = jest.fn();
+const mockInMaintenance = jest.fn(async (): Promise<Set<string>> => new Set());
+jest.mock("@/lib/maintenance/predicate", () => ({ monitorsInMaintenance: () => mockInMaintenance() }));
 jest.mock("@/utils/db", () => ({
   db: { select: (...a: unknown[]) => dbSelect(...a), delete: () => ({ where: (...a: unknown[]) => dbDeleteWhere(...a) }), transaction: jest.fn() },
 }));
@@ -765,6 +767,11 @@ describe("heartbeat monitors (B6, B7)", () => {
     const res = await GET(new Request("http://localhost/api/monitors"));
     const body = await res.json();
     expect(body.data[0].heartbeat).toMatchObject({ state: "pending", graceMinutes: 12 });
+    expect(body.data[0].inMaintenance).toBe(false);
     expect(JSON.stringify(body)).not.toMatch(/heartbeatToken|stored-hash|stored-cipher|heartbeatState/);
+    mockInMaintenance.mockResolvedValueOnce(new Set([row.id]));
+    tagQuery = false;
+    const covered = await (await GET(new Request("http://localhost/api/monitors"))).json();
+    expect(covered.data[0].inMaintenance).toBe(true);
   });
 });

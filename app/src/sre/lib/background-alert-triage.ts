@@ -46,6 +46,7 @@ import { linkStatusPageIncidentsToSreIncident } from "@/lib/status-page-reconcil
 import { notifyIncidentEvent, type IncidentFallback } from "@/lib/sre/incident-notifier";
 import { watchIncident } from "@/lib/sre/incident-watchers";
 import { findOpenIncidentListingMonitor } from "@/lib/sre/incident-resources";
+import { isMonitorInMaintenance } from "@/lib/maintenance/predicate";
 import { maybeAutoInvestigateOnOpen } from "@/sre/lib/auto-investigate";
 import { completeSreIncidentTriage, startSreIncidentTriage } from "@/sre/lib/triage-runner";
 import { db } from "@/utils/db";
@@ -112,6 +113,7 @@ export type SreBackgroundAlertTriageResult =
         | "incident_disabled"
         | "recovery_handled"
         | "recovered_before_triage"
+        | "in_maintenance"
         | "ai_disabled"
         | "ai_not_configured"
         | "daily_limit"
@@ -385,6 +387,12 @@ async function createOrGetIncidentForAlertHistory(alertHistoryId: string, failur
       discriminator: alertKey,
     });
     return { skipped: true as const, reason: "recovery_handled" as const };
+  }
+
+  // A failure that fired inside a maintenance window is muted, even when it reaches us late or bypassed the worker's
+  // mute. Judged at firedAt, so a failure from just before the window still opens its incident.
+  if (sourceType === "monitor" && (await isMonitorInMaintenance(sourceId, firedAt))) {
+    return { skipped: true as const, reason: "in_maintenance" as const };
   }
 
   // Incidents off means this monitor never opens one; a person can still list it on a declared incident, and then

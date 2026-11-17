@@ -17,7 +17,7 @@ jest.mock("next/cache", () => ({ revalidatePath: jest.fn() }));
 // Permission checks stay real; only the auth module, which reads the database at import, is stubbed.
 jest.mock("@/utils/auth", () => ({ auth: {} }));
 
-import { isIncidentPagingSuppressed, isMonitorInMaintenance } from "./predicate";
+import { isIncidentPagingSuppressed, isMonitorInMaintenance, monitorsInMaintenance } from "./predicate";
 import {
   advanceMaintenanceWindows,
   cancelMaintenanceWindow,
@@ -105,6 +105,12 @@ describe("isMonitorInMaintenance (M5)", () => {
     if (!created.ok) return;
     await client`UPDATE maintenance_windows SET cancelled_at = now() WHERE id = ${created.window.id}`;
     expect(await isMonitorInMaintenance(monA, now)).toBe(false);
+  });
+
+  it("monitorsInMaintenance returns the covered ids of a list in one query", async () => {
+    expect(await monitorsInMaintenance([], new Date())).toEqual(new Set());
+    expect((await createMaintenanceWindow(actor, oneOff(-5), "api")).ok).toBe(true);
+    expect(await monitorsInMaintenance([monA, monB, monOther], new Date())).toEqual(new Set([monA]));
   });
 
   it("project scope covers every monitor in the project and none elsewhere", async () => {
