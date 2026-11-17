@@ -79,8 +79,12 @@ describe("POST /api/projects/[id]/variables/[variableId]/decrypt", () => {
     expect(mockRows).not.toHaveBeenCalled();
     // Refused before the per-IP limiter counts it, so a cross-site page cannot use up a victim's slots.
     expect(mockSlot).not.toHaveBeenCalled();
+    // Any Authorization header (a junk bearer, Basic) is refused the same way from a foreign origin.
+    expect((await cross({ authorization: "Basic x" })).status).toBe(403);
+    expect(mockSlot).not.toHaveBeenCalled();
+    // The CLI sends a bearer token and no Origin.
     (requireUserAuthContext as jest.Mock).mockResolvedValueOnce({ userId: "sa-1", isCliAuth: true });
-    expect((await cross({ authorization: "Bearer sck_live_x" })).status).toBe(200);
+    expect((await call()).status).toBe(200);
   });
 
   it("does not apply the browser impersonation check to CLI tokens", async () => {
