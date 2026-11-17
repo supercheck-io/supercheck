@@ -191,7 +191,7 @@ export function AiSreStep({ response, permissions, draft, patchDraft, readOnly }
   const earlier = connectorIds.length - outcomes.length;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       {permissions.canConfigureConnectors ? (
       <>
       <p className="text-sm text-muted-foreground">Connect the tools your team already uses, so AI SRE can look at deploys, errors and metrics when something breaks. Each one is saved and tested right away. Skip anything you do not use.</p>
@@ -220,20 +220,20 @@ export function AiSreStep({ response, permissions, draft, patchDraft, readOnly }
 
       {!readOnly ? (
         <section aria-label="Connect a tool" className="space-y-3">
-          <div role="group" aria-label="Connector types" className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <div role="group" aria-label="Connector types" className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
             {CONNECTORS.map(({ type }) => (
               <Button
                 key={type}
                 type="button"
                 variant="outline"
                 aria-pressed={open === type}
-                className="h-auto min-h-[64px] justify-start gap-3 whitespace-normal rounded-xl border-border/60 p-4 text-left aria-pressed:border-primary aria-pressed:bg-accent"
+                className="h-auto min-h-12 min-w-0 justify-start gap-2 whitespace-normal rounded-lg border-border/60 px-3 py-2 text-left aria-pressed:border-primary aria-pressed:bg-accent"
                 onClick={() => setOpen(open === type ? null : type)}
               >
                 <ConnectorTypeIcon type={type} className="size-5 shrink-0" />
                 <span className="min-w-0">
-                  <span className="block text-sm font-medium">{labelOf(type)}</span>
-                  <span className="block text-xs font-normal text-muted-foreground">{SRE_CONNECTOR_CATALOG.find((c) => c.value === type)?.description}</span>
+                  <span className="block truncate text-sm font-medium">{labelOf(type)}</span>
+                  <span className="block truncate text-xs font-normal text-muted-foreground">{SRE_CONNECTOR_CATALOG.find((c) => c.value === type)?.description}</span>
                 </span>
               </Button>
             ))}

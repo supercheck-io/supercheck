@@ -13,6 +13,7 @@ describe("Connected apps page", () => {
     expect(screen.getByRole("navigation")).toHaveTextContent("Home / Connected apps");
     expect(screen.getByText(/AI agents and other apps you have allowed to read a project over MCP/i)).toBeInTheDocument();
     expect(screen.getByText("apps list")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1, name: "Connected apps" })).toBeInTheDocument();
   });
 
   it("is rendered per request, not prerendered", () => {

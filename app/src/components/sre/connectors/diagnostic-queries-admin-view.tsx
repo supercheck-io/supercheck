@@ -213,7 +213,7 @@ export function DiagnosticQueriesAdminView({
   if (loadError) {
     return (
       <DashboardEmptyState
-        className="min-h-[240px]"
+        className="min-h-[420px]"
         title="Saved queries unavailable"
         description={loadError}
         icon={<SquareLibrary className="h-10 w-10" />}
@@ -233,7 +233,7 @@ export function DiagnosticQueriesAdminView({
         </div>
       ) : queries.length === 0 ? (
         <DashboardEmptyState
-          className="min-h-[240px]"
+          className="min-h-[420px]"
           title="No saved queries"
           description="Save a read-only query for a question your team repeats, such as service error rate or recent error logs."
           icon={<SquareLibrary className="h-10 w-10" />}

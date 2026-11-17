@@ -10,10 +10,10 @@ export default function ProjectSetupPage() {
     { label: "Project setup", isCurrentPage: true },
   ];
   return (
-    <div>
+    <div className="lg:flex lg:min-h-0 lg:flex-1 lg:flex-col">
       <PageBreadcrumbs items={breadcrumbs} />
-      <Card className="shadow-sm m-4">
-        <CardContent className="p-6">
+      <Card className="shadow-sm m-4 lg:flex lg:min-h-0 lg:flex-1 lg:flex-col">
+        <CardContent className="p-6 lg:flex lg:min-h-0 lg:flex-1 lg:flex-col">
           <Suspense fallback={<SetupSkeleton />}>
             <SetupPage />
           </Suspense>

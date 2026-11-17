@@ -258,9 +258,10 @@ export function PlaywrightAnalyticsTab({
     if (!data || data.runs.length === 0) {
         return (
             <DashboardEmptyState
+                className="min-h-[420px]"
                 title="No Playwright analytics yet"
                 description="Analytics require completed job runs. Run a Playwright job to start tracking test results and trends."
-                icon={<PlaywrightLogo width={64} height={64} />}
+                icon={<PlaywrightLogo width={40} height={40} />}
                 action={
                     <Button asChild>
                         <Link href="/jobs">View Jobs</Link>

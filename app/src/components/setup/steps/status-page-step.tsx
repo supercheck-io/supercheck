@@ -28,7 +28,7 @@ export function StatusPageStep({ response, draft, patchDraft, setStatusPageOptOu
   }, [untouched, disabled, defaultName, patchDraft]);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       {!permissions.canCreateStatusPage ? <Alert variant="info">You do not have permission to create status pages. Ask a project admin.</Alert> : null}
 
       <div className="flex items-start justify-between gap-3 rounded-lg border p-4">

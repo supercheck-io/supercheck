@@ -18,10 +18,10 @@ export function AlertHistoryPanel({
     <div className="h-full flex-1 flex-col md:flex">
       {alertHistory.length === 0 && !isLoading ? (
         <DashboardEmptyState
-          className="min-h-[360px]"
+          className="min-h-[420px]"
           title="No notifications sent yet"
           description="Alert notifications sent for your monitors and jobs will be listed here"
-          icon={<BellRing className="h-12 w-12" />}
+          icon={<BellRing className="h-10 w-10" />}
         />
       ) : (
         <DataTable columns={columns} data={alertHistory} isLoading={isLoading} />

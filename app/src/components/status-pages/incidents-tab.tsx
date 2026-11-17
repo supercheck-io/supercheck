@@ -1,3 +1,4 @@
+import { DashboardEmptyState } from "@/components/dashboard/dashboard-empty-state";
 "use client";
 
 import Link from "next/link";
@@ -348,6 +349,7 @@ export function IncidentsTab({
             Post status updates to tell your users about service disruptions
           </CardDescription>
         </div>
+        {incidents.length > 0 && (
         <Button
           onClick={() => setIsCreateDialogOpen(true)}
           disabled={components.length === 0 || !canUpdate}
@@ -363,6 +365,7 @@ export function IncidentsTab({
           <Plus className="h-4 w-4 mr-2" />
           New status update
         </Button>
+        )}
       </CardHeader>
       <CardContent className="pt-0">
         {components.length === 0 && (
@@ -375,34 +378,32 @@ export function IncidentsTab({
         )}
 
         {incidents.length === 0 ? (
-          <div className="text-center py-12 border-2 border-dashed rounded-lg bg-muted/20">
-            <div className="inline-flex items-center justify-center w-14 h-14 rounded-full bg-success/10 mb-4">
-              <CheckCircle2 className="h-7 w-7 text-success" />
-            </div>
-            <h4 className="text-base font-semibold mb-1">
-              No status updates posted
-            </h4>
-            <p className="text-sm text-muted-foreground mb-4 max-w-sm mx-auto">
-              {components.length === 0
+          <DashboardEmptyState
+            className="min-h-[420px]"
+            icon={<CheckCircle2 className="h-10 w-10" />}
+            title="No status updates posted"
+            description={
+              components.length === 0
                 ? "Create components first, then post status updates to communicate service disruptions"
-                : "Post status updates to communicate service disruptions to your users"}
-            </p>
-            {components.length > 0 && (
-              <Button
-                onClick={() => setIsCreateDialogOpen(true)}
-                size="sm"
-                disabled={!canUpdate}
-                title={
-                  !canUpdate
-                    ? "You don't have permission to create status updates"
-                    : undefined
-                }
-              >
-                <Plus className="h-4 w-4 mr-2" />
-                Create First Incident
-              </Button>
-            )}
-          </div>
+                : "Post status updates to communicate service disruptions to your users"
+            }
+            action={
+              components.length > 0 ? (
+                <Button
+                  onClick={() => setIsCreateDialogOpen(true)}
+                  disabled={!canUpdate}
+                  title={
+                    !canUpdate
+                      ? "You don't have permission to create status updates"
+                      : undefined
+                  }
+                >
+                  <Plus className="h-4 w-4 mr-2" />
+                  New status update
+                </Button>
+              ) : undefined
+            }
+          />
         ) : (
           <>
             <div className="border rounded-lg overflow-x-auto">

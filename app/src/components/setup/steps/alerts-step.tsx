@@ -253,7 +253,7 @@ export function AlertsStep({ response, draft, patchDraft, features, permissions,
     patchDraft((d) => ({ ...d, alerts: { providerIds: [], ...d.alerts, repeatUntilAck: next } }));
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <p className="text-sm text-muted-foreground">Pick where we tell you when something breaks. Each channel is saved right away, the same way as on the Notifications page.</p>
 
       {saved.length > 0 || providerIds.length > 0 ? (
@@ -274,7 +274,7 @@ export function AlertsStep({ response, draft, patchDraft, features, permissions,
         <Alert variant="info">You have {SETUP_LIMITS.maxChannels} channels, the most setup keeps. Add more later from Notifications.</Alert>
       ) : !readOnly && permissions.canCreateNotification ? (
         <section aria-label="Add a channel" className="space-y-3">
-          <div role="group" aria-label="Channel types" className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <div role="group" aria-label="Channel types" className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
             {CHANNELS.map((channel) => {
               // Same provider icon and brand colour as the Notifications page and Quick Create.
               const provider = getNotificationProviderConfig(channel.type);
@@ -284,13 +284,13 @@ export function AlertsStep({ response, draft, patchDraft, features, permissions,
                 type="button"
                 variant="outline"
                 aria-pressed={open === channel.type}
-                className="h-auto min-h-[64px] justify-start gap-3 whitespace-normal rounded-xl border-border/60 p-4 text-left aria-pressed:border-primary aria-pressed:bg-accent"
+                className="h-auto min-h-12 min-w-0 justify-start gap-2 whitespace-normal rounded-lg border-border/60 px-3 py-2 text-left aria-pressed:border-primary aria-pressed:bg-accent"
                 onClick={() => setOpen(open === channel.type ? null : channel.type)}
               >
-                <provider.icon size={20} className={`shrink-0 ${provider.color}`} aria-hidden="true" />
+                <provider.icon size={18} className={`shrink-0 ${provider.color}`} aria-hidden="true" />
                 <span className="min-w-0">
-                  <span className="block text-sm font-medium">{channel.label}</span>
-                  <span className="block text-xs font-normal text-muted-foreground">{channel.summary}</span>
+                  <span className="block truncate text-sm font-medium">{channel.label}</span>
+                  <span className="block truncate text-xs font-normal text-muted-foreground">{channel.summary}</span>
                 </span>
               </Button>
               );
@@ -314,6 +314,7 @@ export function AlertsStep({ response, draft, patchDraft, features, permissions,
         />
       ) : null}
 
+      <div className="grid items-start gap-4 lg:grid-cols-2">
       {features.repeatUntilAck ? (
         <section className="rounded-xl border p-4" data-testid="setup-card-repeat">
           <div className="flex items-start justify-between gap-3">
@@ -380,6 +381,7 @@ export function AlertsStep({ response, draft, patchDraft, features, permissions,
           </div>
         </section>
       ) : null}
+      </div>
     </div>
   );
 }

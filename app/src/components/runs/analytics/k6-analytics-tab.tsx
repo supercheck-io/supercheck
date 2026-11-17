@@ -560,9 +560,10 @@ export function K6AnalyticsTab({
     if (!data || data.runs.length === 0) {
         return (
             <DashboardEmptyState
+                className="min-h-[420px]"
                 title="No k6 analytics yet"
                 description="Analytics require completed job runs. Run a k6 job to start tracking performance metrics and trends."
-                icon={<K6Logo size={64} />}
+                icon={<K6Logo size={40} />}
                 action={
                     <Button asChild>
                         <Link href="/jobs">View Jobs</Link>

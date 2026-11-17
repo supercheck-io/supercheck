@@ -556,12 +556,14 @@ export function CliTokensTable() {
                 </a>
               </p>
               <Dialog open={createOpen} onOpenChange={(open) => (open ? handleCreateOpen() : handleCreateClose())}>
-                <DialogTrigger asChild>
-                  <Button>
-                    <Plus className="h-4 w-4 mr-2" />
-                    Create Token
-                  </Button>
-                </DialogTrigger>
+                {(isLoading || tokens.length > 0) && (
+                  <DialogTrigger asChild>
+                    <Button>
+                      <Plus className="h-4 w-4 mr-2" />
+                      Create token
+                    </Button>
+                  </DialogTrigger>
+                )}
                 <DialogContent className="sm:max-w-md">
                   {createdToken ? (
                     <>
@@ -772,7 +774,7 @@ export function CliTokensTable() {
                                 Creating...
                               </>
                             ) : (
-                              "Create Token"
+                              "Create token"
                             )}
                           </Button>
                         </div>
@@ -790,10 +792,16 @@ export function CliTokensTable() {
               </div>
             ) : tokens.length === 0 ? (
               <DashboardEmptyState
-                className="min-h-[240px]"
+                className="min-h-[420px]"
                 title="No CLI tokens yet"
-                description="Use Create Token to start with CLI and CI/CD access."
+                description="Create a token to give the CLI and CI/CD pipelines access to this project."
                 icon={<Key className="h-10 w-10" />}
+                action={
+                  <Button onClick={handleCreateOpen}>
+                    <Plus className="h-4 w-4 mr-2" />
+                    Create token
+                  </Button>
+                }
               />
             ) : (
               <AdminDataTable

@@ -1,5 +1,5 @@
 import {
-  BellRing, Boxes, Cable, CalendarClock, ChartColumn, ClipboardList, Code, Globe, History,
+  BellRing, Blocks, Boxes, Cable, CalendarClock, ChartColumn, ClipboardList, Code, Globe, History,
   RadioTower, Rocket, ShieldCheck, Siren, Sparkles, SquareLibrary, Tally4, Target, UserCog, Variable,
   type LucideIcon,
 } from "lucide-react";
@@ -33,6 +33,8 @@ export const NAV = {
   projectSetup: { title: "Project setup", icon: Rocket, tone: "organization" },
   organization: { title: "Organization", icon: UserCog, tone: "organization" },
   superAdmin: { title: "Super Admin", icon: ShieldCheck, tone: "superadmin" },
+  // Account setting (MCP OAuth clients), so slate like other settings.
+  connectedApps: { title: "Connected apps", icon: Blocks, tone: "slate" },
 } satisfies Record<string, NavEntry>;
 
 // Static class strings so Tailwind can see them.

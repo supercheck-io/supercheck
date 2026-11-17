@@ -324,7 +324,7 @@ export function SreIncidentsList({
   if (loadError) {
     return (
       <DashboardEmptyState
-        className="min-h-[260px]"
+        className="min-h-[420px]"
         title="Incidents unavailable"
         description={loadError}
         icon={<Siren className="h-10 w-10" />}
