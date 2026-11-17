@@ -173,6 +173,16 @@ describe("generation", () => {
     expect(releaseAiRun).toHaveBeenCalledWith(ORG, PROJECT, claim);
     expect(logAuditEvent).not.toHaveBeenCalled();
   });
+  it("output over the draft's byte cap (CJK) is unusable: refund but keep the daily slot, never saved", async () => {
+    const requirements = Array.from({ length: 10 }, (_, i) => ({ title: `${i}${"要".repeat(199)}`, description: "検".repeat(1000), priority: "high" }));
+    (generateText as jest.Mock).mockResolvedValue({ text: JSON.stringify({ requirements }), usage: {} });
+    const res = await POST(req(), params);
+    expect(res.status).toBe(502);
+    expect((await res.json()).code).toBe("unusable_output");
+    expect(saveSuggestions).not.toHaveBeenCalled();
+    expect(refund).toHaveBeenCalled();
+    expect(releaseAiRun).not.toHaveBeenCalled();
+  });
   it("uses a stored scan whose pages have no title (scanner stores null)", async () => {
     (getSetupState as jest.Mock).mockResolvedValue({ scanResult: { pages: [{ path: "/pricing", status: 200, ms: 5, title: null }] } });
     expect((await POST(req(), params)).status).toBe(200);

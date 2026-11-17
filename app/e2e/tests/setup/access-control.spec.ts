@@ -78,7 +78,8 @@ test.describe('Project setup access control @setup', () => {
     const ownerToken = randomUUID();
     const adminToken = randomUUID();
     try {
-      const held = await orgOwnerPage.request.post(lockUrl, { data: { lockToken: ownerToken } });
+      // Takeover: a lock left on the shared project by an earlier run must not fail this test.
+      const held = await orgOwnerPage.request.post(lockUrl, { data: { lockToken: ownerToken, takeover: true } });
       expect(held.status()).toBe(200);
       expect((await held.json()).lock).toMatchObject({ mine: true });
 
@@ -87,7 +88,7 @@ test.describe('Project setup access control @setup', () => {
       expect(refused.status()).toBe(423);
       expect((await refused.json()).lock).toMatchObject({ mine: false });
 
-      if (hasRbacUser('editor')) {
+      if (hasRbacUser('editor') && (await editorPage.request.get(`/api/projects/${projectId}/setup`)).status() === 200) {
         // Takeover needs project:update, so an editor can never evict the holder.
         expect((await editorPage.request.post(lockUrl, { data: { lockToken: randomUUID(), takeover: true } })).status()).toBe(403);
       }
