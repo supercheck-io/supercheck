@@ -269,12 +269,10 @@ function AppSidebarView({ prefs, ...props }: SidebarProps & { prefs: SidebarPref
 
   const layout = sidebarLayout(prefs.persona);
   const personaOn = prefs.persona !== null;
-  // With a persona set Dashboard moves to the top block so a folded group never hides it.
-  const respondItems = personaOn ? data.Respond.slice(1) : data.Respond;
+  // Dashboard is the home page, not a Respond tool: it always sits in the top block, above every group.
+  const respondItems = data.Respond.slice(1);
   const topItems: MenuItem[] = [
-    ...(personaOn
-      ? [{ title: NAV.dashboard.title, url: "/", icon: NAV.dashboard.icon, tone: NAV.dashboard.tone }]
-      : []),
+    { title: NAV.dashboard.title, url: "/", icon: NAV.dashboard.icon, tone: NAV.dashboard.tone },
     ...(prefs.setupBadge
       ? [{ title: NAV.projectSetup.title, url: "/setup", icon: NAV.projectSetup.icon, tone: NAV.projectSetup.tone, badge: prefs.setupBadge }]
       : []),
@@ -312,7 +310,7 @@ function AppSidebarView({ prefs, ...props }: SidebarProps & { prefs: SidebarPref
             </SidebarMenuItem>
           </SidebarMenu>
         </SidebarGroup>
-        {topItems.length > 0 && <NavMain groupLabel="" items={topItems} />}
+        <NavMain groupLabel="" items={topItems} />
         {layout.order.map((group) => groups[group])}
         {adminItems.length > 0 && (
           <NavMain groupLabel="Settings" items={adminItems} />

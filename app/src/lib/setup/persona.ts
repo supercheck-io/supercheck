@@ -91,3 +91,16 @@ const PERSONA_SIDEBAR: Record<UserPersona, SidebarLayout> = {
 export function sidebarLayout(persona: UserPersona | null | undefined): SidebarLayout {
   return persona ? PERSONA_SIDEBAR[persona] : { order: [...SIDEBAR_GROUPS], expanded: null };
 }
+
+/** Short step names for the persona previews (the wizard shows its own longer titles). */
+export const SETUP_STEP_SHORT_LABEL: Record<SetupStepKey, string> = {
+  developer: "Terminal",
+  invite: "Invite team",
+  app: "Your app",
+  alerts: "Alerts",
+  monitors: "Monitors",
+  statusPage: "Status page",
+  tests: "Requirements",
+  aiSre: "AI SRE",
+  review: "Review",
+};

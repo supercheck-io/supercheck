@@ -15,11 +15,11 @@ beforeEach(() => {
 const respond = (body: unknown, status = 200) => fetchMock.mockResolvedValue({ ok: status < 400, status, json: async () => body });
 
 describe("Welcome", () => {
-  it("renders the four personas as a radio group and keeps Start setup off until one is picked", () => {
+  it("renders the four personas and Show everything as a radio group and keeps Start setup off until one is picked", () => {
     const { Wrapper } = createWrapper();
     render(<Welcome mode="creator" projectName="Web App" onDone={jest.fn()} />, { wrapper: Wrapper });
     expect(screen.getByRole("radiogroup")).toBeTruthy();
-    expect(screen.getAllByRole("radio").map((r) => r.id)).toEqual(["persona-sre", "persona-qa", "persona-developer", "persona-leader"]);
+    expect(screen.getAllByRole("radio").map((r) => r.id)).toEqual(["persona-sre", "persona-qa", "persona-developer", "persona-leader", "persona-default"]);
     expect(screen.getByText("Keep production up")).toBeTruthy();
     expect(screen.getByText("Let's set up Web App. What will you mostly do here?")).toBeTruthy();
     expect(screen.getByRole("button", { name: /Start setup/ })).toBeDisabled();
@@ -81,9 +81,10 @@ describe("Welcome", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(onDone).toHaveBeenCalled());
     expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({ persona: "qa" });
-    // "No preference" clears a saved persona.
+    // "Show everything" clears a saved persona.
     fetchMock.mockClear();
-    fireEvent.click(screen.getByRole("button", { name: "No preference" }));
+    fireEvent.click(screen.getByRole("radio", { name: /Show everything/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(onDone).toHaveBeenCalledTimes(2));
     expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({ persona: null });
     onDone.mockClear();
@@ -91,6 +92,16 @@ describe("Welcome", () => {
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     expect(onDone).toHaveBeenCalled();
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("change mode with no saved persona preselects Show everything, and each card previews the sidebar and setup order", () => {
+    const { Wrapper } = createWrapper();
+    render(<Welcome mode="change" projectName="Web App" onDone={jest.fn()} />, { wrapper: Wrapper });
+    expect(screen.getByRole("radio", { name: /Show everything/ })).toBeChecked();
+    expect(screen.queryByRole("button", { name: "No preference" })).toBeNull();
+    const sre = screen.getByRole("radio", { name: /Keep production up/ }).closest("label")!;
+    expect(sre).toHaveTextContent("SidebarRespondMonitorCommunicateAutomate");
+    expect(sre).toHaveTextContent("Setup startsYour app → Alerts → Monitors");
   });
 
   it("falls back to a generic organization name and tells the user when saving fails", async () => {
