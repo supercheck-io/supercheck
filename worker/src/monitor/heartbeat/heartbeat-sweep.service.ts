@@ -12,6 +12,7 @@ import { UsageTrackerService } from '../../execution/services/usage-tracker.serv
 import { getErrorMessage } from '../../common/validation';
 import { MonitorService } from '../monitor.service';
 import { MonitorAlertService } from '../services/monitor-alert.service';
+import { isMonitorInMaintenance } from '../maintenance';
 import type { MonitorExecutionResult } from '../types/monitor-result.type';
 
 /** Written by the app's 60 s tick (app/src/lib/sre/incident-renotify.ts, EX 150): the ping route is alive. */
@@ -53,7 +54,9 @@ export type HeartbeatFinish = {
   lateEpisodeKey?: string;
   deadlineShiftedFor?: string;
   deadlineShiftMs?: number;
-  /** A new ping ends the late episode and any deadline shift. */
+  /** The missed row just written fell in maintenance (its alert was held); false clears it. */
+  missHeld?: boolean;
+  /** A new ping ends the late episode, any deadline shift and a held miss. */
   newPing?: boolean;
 };
 
@@ -115,6 +118,8 @@ export function decideHeartbeat(
   >,
   now: number,
   ingest: IngestStatus,
+  /** The last missed row was held by a maintenance window that has ended: record the next miss now, not an interval later. */
+  heldMissReleased = false,
 ): HeartbeatDecision {
   const state = monitor.heartbeatState ?? {};
   const pingSeq = state.pingSeq ?? 0;
@@ -199,8 +204,12 @@ export function decideHeartbeat(
 
   if (now > deadline) {
     const lastMissedAt = toMs(state.lastMissedAt);
-    // One missed row per interval.
-    if (lastMissedAt !== null && now - lastMissedAt < intervalMs)
+    // One missed row per interval, unless the last one's alert was held by maintenance that is over.
+    if (
+      lastMissedAt !== null &&
+      now - lastMissedAt < intervalMs &&
+      !heldMissReleased
+    )
       return { finish };
     finish.lastMissedAt = new Date(now).toISOString();
     return {
@@ -349,6 +358,7 @@ export class HeartbeatSweepService implements OnModuleInit, OnModuleDestroy {
             AND ((c.status = 'up' AND ${hs}->>'lateEpisodeKey' IS NULL)
               OR (now() > ${last} + (c.frequency_minutes + ${grace}) * interval '1 minute' + ${shift}
                 AND (${hs}->>'lastMissedAt' IS NULL
+                  OR ${hs}->>'missHeld' = 'true'
                   OR (${hs}->>'lastMissedAt')::timestamptz <= now() - c.frequency_minutes * interval '1 minute'))))`
       : sql``;
     const monitors = schema.monitors;
@@ -384,7 +394,22 @@ export class HeartbeatSweepService implements OnModuleInit, OnModuleDestroy {
     ingest: IngestStatus,
   ): Promise<void> {
     try {
-      const decision = decideHeartbeat(monitor, now, ingest);
+      // Only a held miss with no new ping needs the maintenance lookup (a ping clears the marker), so most monitors cost no extra query.
+      const hs = monitor.heartbeatState;
+      const heldMissReleased =
+        hs?.missHeld === true &&
+        (hs.pingSeq ?? 0) <= (hs.evaluatedSeq ?? 0) &&
+        (await this.inMaintenance(monitor.id, new Date(now))) === false;
+      const decision = decideHeartbeat(monitor, now, ingest, heldMissReleased);
+      // A held miss still inside its window keeps its 3-minute lease, so it is not re-claimed every tick
+      // and cannot fill every claim batch ahead of other monitors' pings and misses.
+      if (
+        monitor.heartbeatState?.missHeld === true &&
+        !heldMissReleased &&
+        !decision.result &&
+        !decision.lateEpisodeKey
+      )
+        return;
       if (decision.result || decision.lateEpisodeKey) {
         const billing = await this.usageTrackerService.shouldBlockExecution(
           monitor.organizationId ?? '',
@@ -469,6 +494,13 @@ export class HeartbeatSweepService implements OnModuleInit, OnModuleDestroy {
           },
         };
         await this.monitorService.recordExternalResult(monitor, result);
+        // The alert service holds a miss observed in maintenance; remember it so the end of the window
+        // re-checks at once instead of up to one interval later (a day, for a daily job).
+        if (kind === 'missed')
+          // An unknown answer counts as held: a re-check after the window costs at most one extra
+          // missed row (the alert counters send no second alert), never an interval of silence.
+          decision.finish.missHeld =
+            (await this.inMaintenance(monitor.id, checkedAt)) !== false;
       }
       if (decision.lateEpisodeKey) {
         await this.monitorAlertService.sendWarning(
@@ -485,6 +517,18 @@ export class HeartbeatSweepService implements OnModuleInit, OnModuleDestroy {
         `Heartbeat evaluation failed for monitor ${monitor.id}: ${getErrorMessage(error)}`,
       );
     }
+  }
+
+  /** null when the lookup failed: a held miss keeps its lease and retries, and a new miss is marked held. */
+  private inMaintenance(monitorId: string, at: Date): Promise<boolean | null> {
+    return isMonitorInMaintenance(this.dbService.db, monitorId, at).catch(
+      (error: unknown) => {
+        this.logger.warn(
+          `Maintenance check failed for heartbeat ${monitorId}: ${getErrorMessage(error)}`,
+        );
+        return null;
+      },
+    );
   }
 
   private async hasResultAt(monitorId: string, checkedAt: Date) {
@@ -548,7 +592,8 @@ export class HeartbeatSweepService implements OnModuleInit, OnModuleDestroy {
     // Only our own lease is released: an expired one may already belong to another worker.
     let base = sql`(CASE WHEN ${current}->>'leaseUntil' = ${lease}::text THEN ${current} - 'leaseUntil' ELSE ${current} END)`;
     if (finish.newPing)
-      base = sql`(${base} - 'lateEpisodeKey' - 'deadlineShiftMs')`;
+      base = sql`(${base} - 'lateEpisodeKey' - 'deadlineShiftMs' - 'missHeld')`;
+    if (finish.missHeld === false) base = sql`(${base} - 'missHeld')`;
     await this.dbService.db
       .update(monitors)
       .set({
@@ -560,7 +605,8 @@ export class HeartbeatSweepService implements OnModuleInit, OnModuleDestroy {
           'lastMissedAt', ${finish.lastMissedAt ?? null}::text,
           'lateEpisodeKey', ${finish.lateEpisodeKey ?? null}::text,
           'deadlineShiftedFor', ${finish.deadlineShiftedFor ?? null}::text,
-          'deadlineShiftMs', ${finish.deadlineShiftMs ?? null}::bigint
+          'deadlineShiftMs', ${finish.deadlineShiftMs ?? null}::bigint,
+          'missHeld', CASE WHEN ${finish.missHeld === true}::boolean THEN true END
         ))`,
       })
       .where(eq(monitors.id, monitor.id));

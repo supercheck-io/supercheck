@@ -1,6 +1,7 @@
 /** @jest-environment node */
 
 jest.mock("@/utils/db", () => ({ db: { select: jest.fn(), insert: jest.fn(), update: jest.fn() } }));
+jest.mock("@/lib/audit-logger", () => ({ logAuditEvent: jest.fn() }));
 jest.mock("@/lib/ai/ai-provider", () => ({ getActualModelName: () => "test-model" }));
 jest.mock("@/sre/lib/agent-runner", () => ({ runSreAgent: jest.fn() }));
 jest.mock("@/sre/tools/evidence-tools", () => ({ createSreEvidenceTools: jest.fn() }));
@@ -53,6 +54,7 @@ describe("incident triage admission", () => {
     withSreTriageAdmission.mockRejectedValue(new SreInvestigationBillingError("Your trial includes 20 AI triage runs and they are used. Subscribe to continue.", "trial_limit"));
     await expect(runSreIncidentTriage(input)).resolves.toMatchObject({ success: false, status: 402 });
     expect(db.insert).not.toHaveBeenCalled();
+    expect(jest.requireMock("@/lib/audit-logger").logAuditEvent).not.toHaveBeenCalled();
     expect(runSreAgent).not.toHaveBeenCalled();
   });
 
@@ -60,6 +62,13 @@ describe("incident triage admission", () => {
     (db.insert as jest.Mock).mockReturnValue({ values: () => ({ returning: async () => [{ id: "run-1" }] }) });
     await expect(startSreIncidentTriage(input)).resolves.toMatchObject({ success: true, investigationRunId: "run-1" });
     expect(runSreAgent).not.toHaveBeenCalled();
+    expect(jest.requireMock("@/lib/audit-logger").logAuditEvent).toHaveBeenCalledWith(expect.objectContaining({
+      action: "sre_triage_started",
+      resource: "sre_incident",
+      resourceId: input.incidentId,
+      metadata: expect.objectContaining({ investigationRunId: "run-1", origin: "manual" }),
+      success: true,
+    }));
   });
 
   it("records the tier the run was admitted under", async () => {

@@ -72,28 +72,7 @@ export async function POST(request: NextRequest, { params }: Params) {
     const providers = await copyProviders(scope, providerIds);
     const connectors = await copyConnectors(scope, connectorIds);
 
-    for (const item of providers.filter((i) => i.status === "copied")) {
-      await logAuditEvent({
-        userId,
-        organizationId: target.organizationId,
-        action: "notification_provider_created",
-        resource: "notification_provider",
-        resourceId: item.id,
-        metadata: { providerName: item.name, providerType: item.type, projectId: target.project.id, copiedFromProjectId: sourceProjectId },
-        success: true,
-      });
-    }
-    for (const item of connectors.filter((i) => i.status === "copied")) {
-      await logAuditEvent({
-        userId,
-        organizationId: target.organizationId,
-        action: "sre_connector_created",
-        resource: "sre_connector",
-        resourceId: item.id,
-        metadata: { projectId: target.project.id, connectorType: item.type, copiedFromProjectId: sourceProjectId },
-        success: true,
-      });
-    }
+    // Per-item audit entries are written inside each copy transaction (copy.ts).
     await logAuditEvent({
       userId,
       organizationId: target.organizationId,

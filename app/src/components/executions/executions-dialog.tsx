@@ -127,6 +127,9 @@ export function ExecutionsDialog({
         } else {
           throw new Error("Failed to cancel execution");
         }
+      } else if (res.status === 202) {
+        // Marked, but the stop signal could not reach the worker (Redis down): the run may still be executing.
+        toast.warning("Cancellation not confirmed", { description: (await res.json()).message });
       } else {
         toast.success("Execution cancelled successfully");
       }

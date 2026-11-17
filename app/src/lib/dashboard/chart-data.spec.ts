@@ -64,6 +64,10 @@ describe("buildMonitorStatusBuckets", () => {
     ]);
   });
 
+  it("has no Maintenance bucket, which would overlap Up and Down", () => {
+    expect(buildMonitorStatusBuckets({ up: 2, down: 1, maintenance: 1 }).map((x) => x.name)).toEqual(["Up", "Down"]);
+  });
+
   it("returns nothing when all zero", () => {
     expect(buildMonitorStatusBuckets({})).toEqual([]);
   });

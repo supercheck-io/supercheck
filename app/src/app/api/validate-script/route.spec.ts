@@ -98,3 +98,14 @@ it("refuses a cross-origin cookie request before spending the rate limit, but no
   requireAuthContext.mockResolvedValueOnce({ userId: "user-1", isCliAuth: true });
   expect((await cross()).status).not.toBe(403);
 });
+
+it.each(["agents", "bogus", 5])("refuses the invalid test type %j with 400", async (testType) => {
+  const response = await POST(
+    new NextRequest("http://localhost/api/validate-script", {
+      method: "POST",
+      body: JSON.stringify({ testType, script: "console.log(1)" }),
+    }),
+  );
+  expect(response.status).toBe(400);
+  expect((await response.json()).error).toContain("Invalid test type");
+});

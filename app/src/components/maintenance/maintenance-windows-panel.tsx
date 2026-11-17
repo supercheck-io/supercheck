@@ -17,9 +17,10 @@ import { DataTableFacetedFilter } from "@/components/ui/data-table-faceted-filte
 import { DataTable } from "@/components/sre/data-table/data-table";
 import { PageHeader } from "@/components/shared/page-header";
 import { DashboardEmptyState } from "@/components/dashboard/dashboard-empty-state";
-import { NAV } from "@/lib/nav-areas";
+import { AREA_TEXT, NAV } from "@/lib/nav-areas";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ListErrorState } from "@/components/shared/list-states";
+import { MONITORS_QUERY_KEY } from "@/hooks/use-monitors";
 import { MAINTENANCE_QUERY_KEY, useMaintenanceWindows, windowAction, type MaintenanceWindowItem } from "@/hooks/use-maintenance-windows";
 import { useProjectContext } from "@/hooks/use-project-context";
 import { checkRolePermissionsClient } from "@/lib/rbac/permissions-client";
@@ -143,6 +144,8 @@ export function MaintenanceWindowsPanel({ tabs }: { tabs?: ReactNode } = {}) {
       await windowAction(window.id, action, body);
       toast.success({ end: "Maintenance ended", extend: "Maintenance extended by 30 minutes", cancel: "Maintenance cancelled", delete: "Maintenance window deleted" }[action]);
       await queryClient.invalidateQueries({ queryKey: [...MAINTENANCE_QUERY_KEY, projectId] });
+      // The monitors list carries the inMaintenance badge.
+      await queryClient.invalidateQueries({ queryKey: MONITORS_QUERY_KEY });
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Action failed");
     } finally {
@@ -245,6 +248,17 @@ export function MaintenanceWindowsPanel({ tabs }: { tabs?: ReactNode } = {}) {
   );
 }
 
+/** "Nov 18, 14:30 CET" in the window's own timezone, so a multi-day window is not read as ending today. */
+export function maintenanceEndLabel(end: Date, timeZone: string): string {
+  const options = { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", timeZoneName: "short" } as const;
+  try {
+    return end.toLocaleString(undefined, { ...options, timeZone });
+  } catch {
+    // An unknown zone name (stored before validation) falls back to the viewer's zone, and says so.
+    return `${end.toLocaleString(undefined, options)} (your time)`;
+  }
+}
+
 /** "In maintenance until 14:30" on a monitor page while a window covers it, plus a prefilled Schedule action. */
 export function MonitorMaintenanceBar({ monitorId }: { monitorId: string }) {
   const { currentProject } = useProjectContext();
@@ -261,12 +275,12 @@ export function MonitorMaintenanceBar({ monitorId }: { monitorId: string }) {
     <div className="flex flex-wrap items-center gap-2">
       {current && (
         <Badge variant="secondary" role="status" data-testid="maintenance-banner">
-          In maintenance until {current.occurrenceEndsAt ? new Date(current.occurrenceEndsAt).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" }) : "-"}
+          In maintenance until {current.occurrenceEndsAt ? maintenanceEndLabel(new Date(current.occurrenceEndsAt), current.timezone) : "-"}
         </Badge>
       )}
       {canWrite && (
-        <Button type="button" size="sm" variant="outline" onClick={() => setOpen(true)}>
-          <CalendarClock className="h-4 w-4" />
+        <Button type="button" size="sm" variant="outline" className="h-8" onClick={() => setOpen(true)}>
+          <CalendarClock className={`h-4 w-4 ${AREA_TEXT[NAV.monitors.tone]}`} />
           Schedule maintenance
         </Button>
       )}
@@ -284,7 +298,7 @@ export function ServiceMaintenanceAction({ serviceId }: { serviceId: string }) {
   return (
     <>
       <Button type="button" size="sm" variant="outline" className="h-8" onClick={() => setOpen(true)}>
-        <CalendarClock className="h-4 w-4" />
+        <CalendarClock className={`h-4 w-4 ${AREA_TEXT[NAV.monitors.tone]}`} />
         Schedule maintenance
       </Button>
       {open && <MaintenanceWindowDialog open onOpenChange={setOpen} defaults={{ serviceId }} />}

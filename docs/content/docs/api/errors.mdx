@@ -32,7 +32,7 @@ Some errors include additional context:
 | `201` | Created | Resource created successfully |
 | `400` | Bad Request | Fix the request body or parameters |
 | `401` | Unauthorized | Credentials are missing, invalid, expired or revoked. Check the token |
-| `402` | Subscription required | Supercheck Cloud only: the organization needs an active subscription for this action (for example resuming a monitor after a trial ended) |
+| `402` | Subscription required | Supercheck Cloud only: the organization needs an active subscription for this action (for example resuming a monitor after a trial ended, declaring an incident, or scheduling, changing or extending a maintenance window). The body is `{ error, code }` with `code: "subscription_required"` |
 | `403` | Forbidden | Authenticated but not permitted: RBAC role, project scope, or browser-only operation. Admin-only (`/api/admin/*`) endpoints return `401` when signed out and `403` for non-admins |
 | `404` | Not Found | Verify the resource ID exists. A resource in an organization you do not belong to also returns `404`, the same as a missing ID |
 | `409` | Conflict | Duplicate resource (e.g. token name) |
@@ -120,6 +120,17 @@ HTTP/1.1 403 Forbidden
 ```
 
 **Fix:** The CLI token inherits the creating user's RBAC role and is limited to one project. Ask an org admin to adjust your role, or use a token for the right project. Organization administration needs a browser session.
+
+### Organization Pending Deletion
+
+```
+HTTP/1.1 403 Forbidden
+{"error": "This organization is scheduled for deletion and is read-only. The owner can cancel the deletion.", "code": "ORG_PENDING_DELETION"}
+```
+
+The organization is scheduled for deletion. During the grace window reads keep working and every write returns this error, for any role. Only members see the code; anyone else gets the usual `403` or `404`. The CLI shows the code under `Details` (`details.code` with `--json`), and MCP write tools return `org_pending_deletion` (MCP `get_context` reports `organization.pendingDeletion`).
+
+**Fix:** The organization owner can cancel the deletion in the dashboard (organization settings). Otherwise export what you need before the window ends.
 
 ### Resource Not Found
 

@@ -140,16 +140,19 @@ export const columns: ColumnDef<Monitor>[] = [
         | "paused"
         | "pending"
         | "maintenance";
+      const indicator = <MonitorStatusIndicator status={statusValue} monitorId={row.original.id} />;
+      // Status stays the real up/down during a window; the second pill says alerts are muted.
+      if (!row.original.inMaintenance || statusValue === "maintenance") return indicator;
       return (
-        <MonitorStatusIndicator
-          status={statusValue}
-          monitorId={row.original.id}
-        />
+        <div className="flex flex-wrap items-center gap-1">
+          {indicator}
+          <MonitorStatusIndicator status="maintenance" monitorId={row.original.id} />
+        </div>
       );
     },
-    filterFn: (row, id, value) => {
-      return value.includes(row.getValue(id));
-    },
+    // "Maintenance" matches a monitor a window covers now; its status stays the real up/down.
+    filterFn: (row, id, value) =>
+      value.includes(row.getValue(id)) || (value.includes("maintenance") && row.original.inMaintenance === true),
   },
   {
     accessorKey: "frequencyMinutes",

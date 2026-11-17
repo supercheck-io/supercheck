@@ -20,6 +20,7 @@ import { useAllMonitors } from "@/hooks/use-all-monitors";
 import { useProjectContext } from "@/hooks/use-project-context";
 import { useStatusPageDetail, useStatusPages } from "@/hooks/use-status-pages";
 import { checkRolePermissionsClient } from "@/lib/rbac/permissions-client";
+import { MONITORS_QUERY_KEY } from "@/hooks/use-monitors";
 import { MAINTENANCE_QUERY_KEY } from "@/hooks/use-maintenance-windows";
 
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -113,6 +114,8 @@ export function MaintenanceWindowDialog({ open, onOpenChange, defaults }: { open
       if (body.warning === "status_page_failed") toast.warning("Maintenance scheduled, but posting it to the status page failed");
       else toast.success("Maintenance scheduled");
       await queryClient.invalidateQueries({ queryKey: [...MAINTENANCE_QUERY_KEY, projectId] });
+      // The monitors list carries the inMaintenance badge.
+      await queryClient.invalidateQueries({ queryKey: MONITORS_QUERY_KEY });
       onOpenChange(false);
     } catch {
       toast.error("Could not reach the server. Your draft is kept; try again.");

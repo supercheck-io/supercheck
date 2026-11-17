@@ -28,7 +28,7 @@ Only the title and severity are needed; everything else is optional and can chan
 | **Commander** | A project editor or admin; gets the incident emails |
 | **Post to a status page** | Also posts a public incident on the chosen components with an impact and a first message (needs status page permission). Subscribers are emailed only if **Notify subscribers** is on. If the public post fails, the incident is still created, the Activity feed records it, and you can post again from the status page's **Status updates** tab |
 
-A declared incident gets the same number sequence, Activity entries, notifications through the project's Default policy, reminders and automatic investigation as one opened by an alert. Declaring is limited to 10 per minute per person and 60 per hour per organization.
+A declared incident gets the same number sequence, Activity entries, notifications through the project's Default policy, reminders and automatic investigation as one opened by an alert. Declaring is limited to 10 per minute per person and 60 per hour per organization. On Supercheck Cloud, an organization with no paid plan and no active trial cannot declare incidents (`402`, `subscription_required`), and an incident it opens does not start an automatic investigation.
 
 ## Incident Queue
 
@@ -190,7 +190,7 @@ AI triage is separate and optional. Triage that starts by itself from an alert r
 | **Acknowledge** | Stamps who acknowledged and when. If the incident is unassigned, the acknowledger becomes the assignee. A resolved incident can't be acknowledged. |
 | **Commander** | Optional single incident commander, set from the **Properties** panel or **Add commander** |
 
-Assignments, acknowledgements, status changes, and resolution all appear in the **Activity** feed and in the audit log.
+Assignments, acknowledgements, status changes, and resolution all appear in the **Activity** feed and in the audit log. Starting an AI triage or investigation, and generating or saving a post-mortem, are recorded in the audit log too.
 
 </Accordion>
 

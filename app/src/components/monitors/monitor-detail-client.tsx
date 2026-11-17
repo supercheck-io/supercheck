@@ -20,6 +20,7 @@ import {
   TrendingUp,
   XCircle,
   AlertCircle,
+  Wrench,
   X,
   Shield,
   Bell,
@@ -80,6 +81,7 @@ import { SupercheckLogo } from "@/components/logo/supercheck-logo";
 import { Home } from "lucide-react";
 import { maskUrlPassword } from "@/lib/mask-url-password";
 import { TruncatedTextWithTooltip } from "@/components/ui/truncated-text-with-tooltip";
+import { TableBadge } from "@/components/ui/table-badge";
 import {
   isMonitoringLocation,
   buildLocationMetadataMap,
@@ -111,6 +113,8 @@ export interface MonitorResultItem {
   details?: DBMonitorResultDetailsType | null;
   isUp: boolean;
   isStatusChange: boolean;
+  /** Checked inside a maintenance window: muted and left out of uptime. */
+  inMaintenance?: boolean;
   testExecutionId?: string | null;
   testReportS3Url?: string | null;
   location?: MonitoringLocation | string | null;
@@ -889,15 +893,6 @@ export function MonitorDetailClient({
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
-              {monitor.status === "paused" && (
-                <div className="flex items-center px-2 py-1 bg-warning/10 border border-warning/30 rounded-md">
-                  <AlertCircle className="h-4 w-4 text-warning mr-1" />
-                  <span className="text-xs text-warning">
-                    Monitoring paused
-                  </span>
-                </div>
-              )}
-
               {/* Alert Status Indicators */}
               <div className="flex items-center gap-1 ml-1 mr-1">
                 {/* Main Alert Status */}
@@ -1033,9 +1028,9 @@ export function MonitorDetailClient({
                     }
                   >
                     {monitor.status === "paused" ? (
-                      <Play className="mr-2 h-4 w-4" />
+                      <Play className="mr-2 h-4 w-4 text-success" />
                     ) : (
-                      <Pause className="mr-2 h-4 w-4" />
+                      <Pause className="mr-2 h-4 w-4 text-warning" />
                     )}
                     {monitor.status === "paused" ? "Resume" : "Pause"}
                   </Button>
@@ -1087,8 +1082,8 @@ export function MonitorDetailClient({
                           : "Insufficient permissions to delete monitors"
                     }
                   >
-                    <Trash2 className={isHeartbeat ? "h-4 w-4" : "h-4 w-4 mr-1"} />
-                    <span className={isHeartbeat ? "sr-only" : "hidden sm:inline"}>Delete</span>
+                    <Trash2 className="h-4 w-4 mr-1" />
+                    <span className="hidden sm:inline">Delete</span>
                   </Button>
 
                   <AIMonitorAnalyzeButton
@@ -1227,66 +1222,62 @@ export function MonitorDetailClient({
         </div>
 
         {isHeartbeat ? (
-          <div className="flex min-h-0 flex-1 flex-col gap-4" data-testid="heartbeat-layout">
-            {showHeartbeatSetup && (
-              <HeartbeatPingUrlPanel
-                monitorId={monitor.id}
-                canManage={permissionsReady && canEditMonitor}
-                pending={heartbeat?.state === "pending"}
+          <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 lg:grid-cols-2 lg:grid-rows-1" data-testid="heartbeat-layout">
+            {/* Setup and availability stack on the left; the ping history owns the right column's full height. */}
+            <div className="flex min-h-0 flex-col gap-4 lg:overflow-y-auto">
+              {showHeartbeatSetup && (
+                <HeartbeatPingUrlPanel
+                  monitorId={monitor.id}
+                  canManage={permissionsReady && canEditMonitor}
+                  pending={heartbeat?.state === "pending"}
+                />
+              )}
+              <AvailabilityBarChart
+                data={availabilityTimelineData}
+                headerActions={
+                  availableLocations.length > 1 ? (
+                    <LocationFilterDropdown
+                      selectedLocation={selectedLocation}
+                      availableLocations={availableLocations}
+                      onLocationChange={setSelectedLocation}
+                      className="w-[200px]"
+                    />
+                  ) : undefined
+                }
+                footer={
+                  hasRunDurations ? undefined : (
+                    <span data-testid="heartbeat-run-duration-hint">
+                      Call <span className="font-mono">/start</span> when the job begins to record how long it runs.
+                    </span>
+                  )
+                }
               />
-            )}
-            <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 lg:grid-cols-2 lg:grid-rows-1">
-              <div className="flex min-h-0 flex-col gap-4 lg:h-full">
-                <div className="min-h-0 flex-1">
-                  <AvailabilityBarChart
-                    fill
-                    data={availabilityTimelineData}
-                    headerActions={
-                      availableLocations.length > 1 ? (
-                        <LocationFilterDropdown
-                          selectedLocation={selectedLocation}
-                          availableLocations={availableLocations}
-                          onLocationChange={setSelectedLocation}
-                          className="w-[200px]"
-                        />
-                      ) : undefined
-                    }
-                    footer={
-                      hasRunDurations ? undefined : (
-                        <span data-testid="heartbeat-run-duration-hint">
-                          Call <span className="font-mono">/start</span> when the job begins to record how long it runs.
-                        </span>
-                      )
-                    }
+              {hasRunDurations && (
+                // Auto-height wrapper so the card's h-full does not stretch it to the column height.
+                <div>
+                  <ResponseTimeBarChart
+                    data={responseTimeData}
+                    title="Run duration"
+                    empty={{
+                      description: "Time between a /start ping and the ping that finishes the run.",
+                      heading: "No run durations yet",
+                      hint: "Call /start when the job begins to record how long it runs.",
+                    }}
                   />
                 </div>
-                {hasRunDurations && (
-                  <div className="min-h-0 flex-1">
-                    <ResponseTimeBarChart
-                      fill
-                      data={responseTimeData}
-                      title="Run duration"
-                      empty={{
-                        description: "Time between a /start ping and the ping that finishes the run.",
-                        heading: "No run durations yet",
-                        hint: "Call /start when the job begins to record how long it runs.",
-                      }}
-                    />
-                  </div>
-                )}
-              </div>
-              <HeartbeatPingHistory
-                results={paginatedTableResults}
-                isLoading={isLoadingResults}
-                error={resultsError}
-                onRetry={() => void refetchResults()}
-                page={currentPage}
-                totalPages={totalPages}
-                total={totalResultsCount}
-                onPageChange={setCurrentPage}
-                onFitRows={isNotificationView ? undefined : setFitRows}
-              />
+              )}
             </div>
+            <HeartbeatPingHistory
+              results={paginatedTableResults}
+              isLoading={isLoadingResults}
+              error={resultsError}
+              onRetry={() => void refetchResults()}
+              page={currentPage}
+              totalPages={totalPages}
+              total={totalResultsCount}
+              onPageChange={setCurrentPage}
+              onFitRows={isNotificationView ? undefined : setFitRows}
+            />
           </div>
         ) : (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -1399,7 +1390,7 @@ export function MonitorDetailClient({
                 <div className="w-full">
                   <table className={`w-full ${aiEndpoint ? "min-w-[850px]" : isMcp || showPassRate ? "min-w-[740px]" : "min-w-[640px]"} table-fixed divide-y divide-border`}>
                     <colgroup>
-                      <col className="w-[64px]" />
+                      <col className="w-[96px]" />
                       <col className="w-[192px]" />
                       <col className="w-[136px]" />
                       <col className="w-[124px]" />
@@ -1547,7 +1538,23 @@ export function MonitorDetailClient({
                           return (
                             <tr key={result.id} className="hover:bg-muted/25">
                               <td className="px-4 py-[11.5px] whitespace-nowrap text-sm">
-                                <SimpleStatusIcon isUp={result.isUp} />
+                                <span className="inline-flex items-center gap-1">
+                                  <SimpleStatusIcon isUp={result.isUp} />
+                                  {result.inMaintenance && (
+                                    // Icon-only: the column is narrow. The label is in aria-label and the tooltip.
+                                    <TableBadge
+                                      tone="purple"
+                                      compact
+                                      className="px-1.5"
+                                      title="Checked during maintenance: no alert, not counted in uptime"
+                                      role="img"
+                                      aria-label="Checked during maintenance"
+                                      data-testid="result-maintenance-badge"
+                                    >
+                                      <Wrench aria-hidden="true" className="h-3.5 w-3.5" />
+                                    </TableBadge>
+                                  )}
+                                </span>
                               </td>
                               {/* Cells stay on one line; long values end in an ellipsis and show in full on hover. */}
                               <td className="px-4 py-[11.5px] overflow-hidden text-sm text-muted-foreground">

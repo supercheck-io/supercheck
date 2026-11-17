@@ -2,7 +2,13 @@ import * as http from 'http';
 import type { AddressInfo } from 'net';
 import { createAgent, newState } from './agent';
 import { getDefaultAutoSelectFamilyAttemptTimeout } from 'net';
-import { CONNECT_ATTEMPT_MS, createClient, redact } from './clients';
+import {
+  CONNECT_ATTEMPT_MS,
+  createClient,
+  encodedForms,
+  MAX_REPLY_BYTES,
+  redact,
+} from './clients';
 
 type Handler = (
   req: http.IncomingMessage,
@@ -486,6 +492,14 @@ it('redacts secrets from text', () => {
   );
 });
 
+it('redacts secrets that contain regex characters, literally', () => {
+  const secret = 'p.a$s(w)*[d]|\\';
+  expect(redact(`x ${secret} pXa$s(w)*[d]|\\ y`, [secret])).toBe(
+    'x [REDACTED] pXa$s(w)*[d]|\\ y',
+  );
+  expect(redact('no secrets here', [])).toBe('no secrets here');
+});
+
 it('createClient still refuses an unknown kind', async () => {
   await expect(
     createClient({ kind: 'nope' } as never).send('x'),
@@ -588,4 +602,159 @@ describe('openai reply shapes', () => {
     expect(r.text).toBe('a\nb');
     expect(r.usage.totalTokens).toBe(7);
   });
+});
+
+describe('redirects and reply size', () => {
+  const bot = () =>
+    createClient({
+      kind: 'openai',
+      url,
+      model: 'm',
+      headers: { 'x-tenant': 'tenant-secret' },
+    });
+
+  it('refuses a redirect instead of following it (it could point at a private address)', async () => {
+    handler = (_r, _b, res) => {
+      res.writeHead(307, { location: 'http://169.254.169.254/latest' });
+      res.end();
+    };
+    await expect(bot().send('x')).rejects.toThrow(
+      'openai agent endpoint redirected (HTTP 307) to http://169.254.169.254/latest; use the final URL',
+    );
+    expect(seen).toHaveLength(1);
+  });
+
+  it('refuses a reply larger than the cap', async () => {
+    handler = (_r, _b, res) => {
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end('x'.repeat(MAX_REPLY_BYTES + 1));
+    };
+    await expect(bot().send('x')).rejects.toThrow(
+      'openai agent reply exceeded 5 MiB',
+    );
+  });
+});
+
+describe('encodedForms', () => {
+  it('covers URL, JSON and base64 at every byte offset, and drops forms under 4 chars', () => {
+    const forms = encodedForms('a b/c"d');
+    expect(forms).toEqual(
+      expect.arrayContaining([
+        'a b/c"d',
+        'a%20b%2Fc%22d',
+        'a+b%2Fc%22d',
+        'a b/c\\"d',
+      ]),
+    );
+    for (const prefix of ['', 'u', 'us', 'usr'])
+      expect(
+        forms.some((f) =>
+          Buffer.from(`${prefix}a b/c"d`).toString('base64').includes(f),
+        ),
+      ).toBe(true);
+    expect(encodedForms('abcd').every((f) => f.length >= 4)).toBe(true);
+  });
+});
+
+it('also covers the escaped JSON forms other servers write (PHP "\\/", Go and Python "\\u00xx")', () => {
+  const forms = encodedForms('a/b&c<é>');
+  expect(forms).toContain('a\\/b&c<é>');
+  expect(forms).toContain('a/b\\u0026c\\u003c\\u00e9\\u003e');
+});
+
+it('redacts each JSON escape style on its own (non-ASCII only, HTML only)', () => {
+  const secret = 'a&b<é>';
+  const text = `${'a&b<\\u00e9>'} ${'a\\u0026b\\u003cé\\u003e'}`;
+  expect(redact(text, [secret])).toBe('[REDACTED] [REDACTED]');
+});
+
+it('redacts the union of overlapping secrets, not just the first match', () => {
+  expect(redact('xabcdefghijklmnopx', ['abcd', 'cdefghijklmnop'])).toBe(
+    'x[REDACTED]x',
+  );
+  expect(redact('abcd-cdefghijklmnop', ['abcd', 'cdefghijklmnop'])).toBe(
+    '[REDACTED]-[REDACTED]',
+  );
+});
+
+it('closes the session when the initialize reply is over the size cap', async () => {
+  handler = (_r, _b, res) => {
+    res.writeHead(200, {
+      'content-type': 'application/json',
+      'mcp-session-id': 'sess-big',
+    });
+    res.end('x'.repeat(MAX_REPLY_BYTES + 1));
+  };
+  await expect(
+    connect({ kind: 'mcp', url, tool: 'ask' }).send('x'),
+  ).rejects.toThrow('mcp agent reply exceeded 5 MiB');
+  expect(seen.map((s) => s.body?.method ?? 'DELETE')).toEqual([
+    'initialize',
+    'DELETE',
+  ]);
+  expect(seen[1].headers['mcp-session-id']).toBe('sess-big');
+});
+
+it('closes the session when the initialize reply body times out', async () => {
+  handler = (_r, _b, res) => {
+    res.writeHead(200, {
+      'content-type': 'application/json',
+      'mcp-session-id': 'sess-slow',
+    });
+    res.write('{"jsonrpc":'); // never ended
+  };
+  await expect(
+    connect({ kind: 'mcp', url, tool: 'ask', timeoutMs: 300 }).send('x'),
+  ).rejects.toThrow('timed out');
+  expect(seen.map((s) => s.body?.method ?? 'DELETE')).toEqual([
+    'initialize',
+    'DELETE',
+  ]);
+  expect(seen[1].headers['mcp-session-id']).toBe('sess-slow');
+});
+
+it('finds the SSE reply after one large event arrives in small chunks', async () => {
+  handler = (_r, body, res) => {
+    if (body?.method !== 'tools/call') {
+      res.writeHead(200, { 'content-type': 'application/json' });
+      return res.end(
+        JSON.stringify({ jsonrpc: '2.0', id: body?.id ?? 0, result: {} }),
+      );
+    }
+    res.writeHead(200, { 'content-type': 'text/event-stream' });
+    const msg = `data: ${JSON.stringify({ jsonrpc: '2.0', id: body.id, result: { content: [{ type: 'text', text: 'y'.repeat(200_000) }] } })}\r\n\r\n`;
+    let i = 0;
+    const tick = () => {
+      if (i >= msg.length) return; // stream left open: the reply must be found at its delimiter
+      res.write(msg.slice(i, (i += 1000)));
+      setImmediate(tick);
+    };
+    tick();
+  };
+  const r = await connect({
+    kind: 'mcp',
+    url,
+    tool: 'ask',
+    timeoutMs: 10000,
+  }).send('m');
+  expect(r.text).toHaveLength(200_000);
+});
+
+it('finds the SSE reply after many unrelated events arrive in small chunks', async () => {
+  handler = (_r, body, res) => {
+    if (body?.method !== 'tools/call') {
+      res.writeHead(200, { 'content-type': 'application/json' });
+      return res.end(
+        JSON.stringify({ jsonrpc: '2.0', id: body?.id ?? 0, result: {} }),
+      );
+    }
+    res.writeHead(200, { 'content-type': 'text/event-stream' });
+    for (let i = 0; i < 200; i++) res.write(`data: {"id":${1000 + i}}\n\n`);
+    res.write(
+      `data: ${JSON.stringify({ jsonrpc: '2.0', id: 2, result: { content: [{ type: 'text', text: 'done' }] } })}\n\n`,
+    );
+    // the server keeps the stream open; the client must stop at its reply
+  };
+  const bot = createClient({ kind: 'mcp', url, tool: 'ask' } as never);
+  await expect(bot.send('x')).resolves.toMatchObject({ text: 'done' });
 });

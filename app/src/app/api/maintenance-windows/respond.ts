@@ -14,6 +14,7 @@ export async function windowResponse<T extends object>(organizationId: string, r
   if (result.code === "rate_limited") {
     return NextResponse.json({ error: result.error }, { status: 429, headers: { "Retry-After": String(result.retryAfterSeconds) } });
   }
+  if (result.code === "subscription_required") return NextResponse.json({ error: result.error, code: result.code }, { status: 402 });
   const code = { invalid: 400, not_found: 404, conflict: 409 }[result.code];
   return NextResponse.json({ error: result.error, ...("fieldErrors" in result && result.fieldErrors ? { fieldErrors: result.fieldErrors } : {}) }, { status: code });
 }

@@ -8,6 +8,7 @@ type Executor = Pick<typeof db, "execute">;
  * SQL that is true while a maintenance window, or a status-page scheduled maintenance, covers the monitor whose id
  * `monitorId` names at `at`. Windows match on their stored current occurrence only and never after its end. Same
  * rule as worker/src/monitor/maintenance.ts: keep them in step.
+ * `monitorId` must not reference an outer table aliased `m`, `w`, `t`, `r`, `scm`, `ic` or `i`: inner aliases would shadow it.
  */
 export function monitorInMaintenanceSql(monitorId: SQL, at: Date): SQL {
   const iso = at.toISOString();
@@ -44,6 +45,18 @@ function firstFlag(result: unknown): boolean {
 
 export async function isMonitorInMaintenance(monitorId: string, at: Date, executor: Executor = db): Promise<boolean> {
   return firstFlag(await executor.execute(sql`SELECT ${monitorInMaintenanceSql(sql`${monitorId}::uuid`, at)} AS held`));
+}
+
+/** The ids among `monitorIds` that maintenance covers at `at`, in one query (the badge on monitor lists). */
+export async function monitorsInMaintenance(monitorIds: string[], at: Date, executor: Executor = db): Promise<Set<string>> {
+  if (monitorIds.length === 0) return new Set();
+  const result = await executor.execute(sql`
+    SELECT listed.id FROM monitors listed
+    WHERE listed.id IN (${sql.join(monitorIds.map((id) => sql`${id}::uuid`), sql`, `)})
+      AND ${monitorInMaintenanceSql(sql`listed.id`, at)}
+  `);
+  const rows = (Array.isArray(result) ? result : (result as { rows?: unknown[] }).rows) ?? [];
+  return new Set(rows.map((row) => (row as { id: string }).id));
 }
 
 /**

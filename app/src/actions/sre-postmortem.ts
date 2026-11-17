@@ -12,6 +12,7 @@ import {
   sreServices,
 } from "@/db/schema";
 import { requireSreSubscription } from "@/app/api/sre/_auth";
+import { logAuditEvent } from "@/lib/audit-logger";
 import { createLogger } from "@/lib/logger/index";
 import { requireProjectContext } from "@/lib/project-context";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
@@ -206,6 +207,15 @@ export async function generateSrePostmortem(
           eq(sreIncidents.projectId, auth.projectId),
         ),
       );
+    await logAuditEvent({
+      userId: auth.userId,
+      organizationId: auth.organizationId,
+      action: "sre_postmortem_generated",
+      resource: "sre_incident",
+      resourceId: incident.id,
+      metadata: { projectId: auth.projectId, incidentNumber: incident.incidentNumber, source: draft.source },
+      success: true,
+    });
     revalidatePath(`/incidents/${incident.id}`);
     return { success: true, postmortem, source: draft.source };
   } catch (error) {
@@ -239,6 +249,15 @@ export async function saveSrePostmortem(
           eq(sreIncidents.projectId, auth.projectId),
         ),
       );
+    await logAuditEvent({
+      userId: auth.userId,
+      organizationId: auth.organizationId,
+      action: "sre_postmortem_saved",
+      resource: "sre_incident",
+      resourceId: incident.id,
+      metadata: { projectId: auth.projectId, incidentNumber: incident.incidentNumber },
+      success: true,
+    });
     revalidatePath(`/incidents/${incident.id}`);
     return { success: true, postmortem };
   } catch (error) {

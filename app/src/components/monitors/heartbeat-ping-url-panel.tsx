@@ -140,7 +140,7 @@ export function HeartbeatPingUrlPanel({ monitorId, canManage, pending = false }:
 
   return (
     <Card className="shrink-0 shadow-sm" data-testid="heartbeat-ping-url-panel">
-      <CardContent className="grid gap-4 p-4 lg:grid-cols-2">
+      <CardContent className="grid gap-4 p-4">
         <div className="min-w-0 space-y-2">
           <div className="flex min-h-8 flex-wrap items-center justify-between gap-2">
             <h2 className="flex items-center gap-2 text-sm font-semibold">
@@ -209,7 +209,7 @@ export function HeartbeatPingUrlPanel({ monitorId, canManage, pending = false }:
           ))}
         </Tabs>
 
-        <p className="text-xs text-muted-foreground lg:col-span-2">
+        <p className="text-xs text-muted-foreground">
           {pending && (
             <span role="status" className="mr-2 inline-flex items-center gap-1.5 font-medium text-foreground" data-testid="heartbeat-waiting">
               <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground" aria-hidden="true" />

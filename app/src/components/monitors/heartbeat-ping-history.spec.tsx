@@ -48,7 +48,7 @@ describe("HeartbeatPingHistory", () => {
     const { rerender } = render(<HeartbeatPingHistory {...props} results={[]} isLoading />);
     expect(screen.getByLabelText("Loading ping history")).toBeInTheDocument();
     rerender(<HeartbeatPingHistory {...props} results={[]} />);
-    expect(screen.getByTestId("heartbeat-ping-history-empty")).toHaveTextContent("No pings yet");
+    expect(screen.getByTestId("heartbeat-ping-history-empty")).toHaveTextContent("No Ping Data");
     rerender(<HeartbeatPingHistory {...props} results={[]} error={new Error("x")} onRetry={onRetry} />);
     fireEvent.click(screen.getByRole("button", { name: "Try again" }));
     expect(onRetry).toHaveBeenCalled();

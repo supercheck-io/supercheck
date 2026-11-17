@@ -1,6 +1,7 @@
 import { Command } from 'commander'
 import { createAuthenticatedClient } from '../api/authenticated-client.js'
 import { logger } from '../utils/logger.js'
+import { PING_URL_HIDDEN } from '../utils/redact.js'
 import { getOutputFormat, output, outputDetail, outputMutation, outputPagination } from '../output/formatter.js'
 import type { PaginatedResponse } from '../api/client.js'
 import { parseBooleanStrict, parseIntStrict } from '../utils/number.js'
@@ -346,7 +347,15 @@ monitorCommand
       }
       const { data } = await withSpinner('Creating monitor', () => client.post<Record<string, unknown>>('/api/monitors', body))
       logger.success(`Monitor "${options.name}" created (${data.id})`)
-      outputWithPingUrl(data, (data.heartbeat as Record<string, unknown> | undefined)?.pingUrl)
+      const pingUrl = (data.heartbeat as Record<string, unknown> | undefined)?.pingUrl
+      if (getOutputFormat() === 'table') { outputWithPingUrl(data, pingUrl); return }
+      // Machine output lands in CI logs, so the secret stays out of it; the audited reveal command prints it on request.
+      const heartbeat = data.heartbeat && typeof data.heartbeat === 'object' ? { ...(data.heartbeat as Record<string, unknown>) } : undefined
+      if (heartbeat) delete heartbeat.pingUrl
+      const rest: Record<string, unknown> = { ...data, ...(heartbeat ? { heartbeat } : {}) }
+      delete rest.pingUrl
+      outputDetail(rest)
+      if (typeof pingUrl === 'string') process.stderr.write(`${PING_URL_HIDDEN(String(data.id))}\n`)
       return
     }
     if (options.every !== undefined || options.grace !== undefined) throw new CLIError('--every and --grace apply only to --type heartbeat.', ExitCode.ConfigError)
@@ -417,6 +426,94 @@ monitorCommand
     outputDetail(data)
   })
 
+const isPlainObject = (value: unknown): value is Record<string, unknown> => !!value && typeof value === 'object' && !Array.isArray(value)
+const hasNull = (value: unknown): boolean => value === null || (typeof value === 'object' && Object.values(value as object).some(hasNull))
+// The server's merge skips these keys at any depth, so they could never be stored.
+const RESERVED_KEYS = new Set(['__proto__', 'constructor', 'prototype'])
+// Arrays are exempt: the server stores them whole, so keys inside them are kept as sent.
+const hasReservedKey = (value: unknown): boolean => isPlainObject(value) && Object.keys(value).some((key) => RESERVED_KEYS.has(key) || hasReservedKey(value[key]))
+/** A JSON merge patch that turns `previous` into exactly `next`: the server merges nested objects, so stale keys are nulled at every level. */
+export function replacementPatch(previous: Record<string, unknown>, next: Record<string, unknown>): Record<string, unknown> {
+  const patch: Record<string, unknown> = Object.fromEntries(Object.keys(previous).filter((key) => !Object.hasOwn(next, key)).map((key) => [key, null]))
+  for (const [key, value] of Object.entries(next)) {
+    patch[key] = isPlainObject(value) && isPlainObject(previous[key]) ? replacementPatch(previous[key], value) : value
+  }
+  return patch
+}
+
+type ExistingMonitor = { type?: string; config?: { aiEndpoint?: Record<string, unknown>; mcp?: { auth?: { type?: string }; toolCall?: { name?: string; arguments?: Record<string, unknown> } } } }
+const UPDATE_CHECK_FLAGS = ['model', 'secret', 'keyHeader', 'prompt', 'expect', 'maxTokens', 'firstTokenTimeout', 'warnFirstTokenMs', 'warnTokens', 'header', 'protocol', 'requireTool', 'callTool', 'callArgs', 'slowMs'] as const
+type UpdateCheckOptions = { [K in (typeof UPDATE_CHECK_FLAGS)[number]]?: K extends 'requireTool' ? string[] : string }
+
+/**
+ * `monitor update` flags for AI endpoint and MCP monitors, as a merge patch of `config`: only the fields given change.
+ * Each flag must fit the monitor it updates, so a typo cannot silently become a no-op.
+ */
+export function buildCheckConfigPatch(options: UpdateCheckOptions, existing: ExistingMonitor): Record<string, unknown> {
+  const given = UPDATE_CHECK_FLAGS.filter((key) => options[key] !== undefined)
+  if (given.length === 0) return {}
+  if (existing.type === 'mcp_server') {
+    const stray = given.find((key) => (AI_PRESET_ONLY as readonly string[]).includes(key) && key !== 'secret' && key !== 'expect')
+    if (stray) throw new CLIError(`${flagName(stray)} applies only to AI endpoint monitors.`, ExitCode.ConfigError)
+    const mcp: Record<string, unknown> = {}
+    const authType = existing.config?.mcp?.auth?.type
+    if (options.header !== undefined && options.secret === undefined && authType !== 'bearer' && authType !== 'header') {
+      throw new CLIError('--header requires --secret: this monitor has no stored login yet.', ExitCode.ConfigError)
+    }
+    // --secret alone keeps the current auth style: a header monitor keeps its header name.
+    if (options.secret !== undefined) mcp.auth = options.header !== undefined
+      ? { type: 'header', secretKey: options.secret, headerName: options.header }
+      : authType === 'header' ? { type: 'header', secretKey: options.secret } : { type: 'bearer', secretKey: options.secret }
+    else if (options.header !== undefined) mcp.auth = { type: 'header', headerName: options.header }
+    if (options.protocol !== undefined) {
+      if (!['auto', '2025', '2026'].includes(options.protocol)) throw new CLIError('--protocol must be auto, 2025 or 2026 for mcp_server.', ExitCode.ConfigError)
+      mcp.protocol = options.protocol
+    }
+    if (options.requireTool !== undefined) mcp.requiredTools = options.requireTool
+    if (options.slowMs !== undefined) mcp.slowMs = parseIntStrict(options.slowMs, '--slow-ms', { min: 100, max: 60000 })
+    const toolCall: Record<string, unknown> = {}
+    const previousCall = existing.config?.mcp?.toolCall
+    if ((options.expect !== undefined || options.callArgs !== undefined) && options.callTool === undefined && !previousCall?.name) {
+      throw new CLIError('--call-args and --expect require --call-tool.', ExitCode.ConfigError)
+    }
+    if (options.callTool !== undefined) {
+      toolCall.name = options.callTool
+      // A different tool does not inherit the previous tool's arguments or expected text.
+      if (options.callTool !== previousCall?.name) Object.assign(toolCall, { arguments: null, expectText: null })
+    }
+    if (options.expect !== undefined) toolCall.expectText = options.expect
+    if (options.callArgs !== undefined) {
+      let args: unknown
+      try { args = JSON.parse(options.callArgs) } catch { args = undefined }
+      if (!isPlainObject(args)) throw new CLIError('--call-args must be a JSON object.', ExitCode.ConfigError)
+      if (hasNull(args)) throw new CLIError('--call-args cannot contain null values.', ExitCode.ConfigError)
+      if (hasReservedKey(args)) throw new CLIError('--call-args cannot use the keys __proto__, constructor or prototype.', ExitCode.ConfigError)
+      toolCall.arguments = replacementPatch(isPlainObject(previousCall?.arguments) ? previousCall.arguments : {}, args)
+    }
+    if (Object.keys(toolCall).length > 0) mcp.toolCall = toolCall
+    return { mcp }
+  }
+  if (!existing.config?.aiEndpoint) {
+    throw new CLIError(`${flagName(given[0])} applies only to AI endpoint and MCP server monitors; this monitor is neither.`, ExitCode.ConfigError)
+  }
+  const stray = given.find((key) => !(AI_PRESET_ONLY as readonly string[]).includes(key))
+  if (stray) throw new CLIError(`${flagName(stray)} applies only to MCP server monitors.`, ExitCode.ConfigError)
+  const aiEndpoint: Record<string, unknown> = {}
+  if (options.model !== undefined) {
+    if (!options.model.trim()) throw new CLIError('--model cannot be empty.', ExitCode.ConfigError)
+    aiEndpoint.model = options.model.trim()
+  }
+  if (options.secret !== undefined) aiEndpoint.secretKey = options.secret
+  if (options.keyHeader !== undefined) aiEndpoint.keyHeader = options.keyHeader
+  if (options.prompt !== undefined) aiEndpoint.prompt = options.prompt
+  if (options.expect !== undefined) aiEndpoint.expectText = options.expect
+  if (options.maxTokens !== undefined) aiEndpoint.maxTokens = parseIntStrict(options.maxTokens, '--max-tokens', { min: 1, max: 512 })
+  if (options.firstTokenTimeout !== undefined) aiEndpoint.firstTokenTimeoutMs = parseIntStrict(options.firstTokenTimeout, '--first-token-timeout', { min: 500, max: 60000 })
+  if (options.warnFirstTokenMs !== undefined) aiEndpoint.warnFirstTokenMs = parseIntStrict(options.warnFirstTokenMs, '--warn-first-token-ms', { min: 100, max: 60000 })
+  if (options.warnTokens !== undefined) aiEndpoint.warnTotalTokens = parseIntStrict(options.warnTokens, '--warn-tokens', { min: 1, max: 1000000 })
+  return { aiEndpoint }
+}
+
 monitorCommand
   .command('update <id>')
   .description('Update a monitor')
@@ -429,15 +526,33 @@ monitorCommand
   .option('--timeout <seconds>', 'Request timeout in seconds')
   .option('--method <method>', 'HTTP method (GET, POST, PUT, DELETE, PATCH, HEAD, OPTIONS)')
   .option('--active <boolean>', 'Enable or disable monitor (true/false)')
+  .option('--model <model>', 'Model name (AI endpoint monitor)')
+  .option('--secret <name>', 'Project secret that holds the API key (AI endpoint) or the login (mcp_server)')
+  .option('--key-header <header>', 'Header for the key (AI endpoint; Authorization sends Bearer <key>)')
+  .option('--prompt <text>', 'Prompt to send (AI endpoint)')
+  .option('--expect <text>', 'Text the reply must contain (AI endpoint) or the --call-tool result must contain (mcp_server)')
+  .option('--max-tokens <n>', 'Token limit for the reply, 1-512 (AI endpoint)')
+  .option('--first-token-timeout <ms>', 'Slower first token fails the check, 500-60000 ms (AI endpoint)')
+  .option('--warn-first-token-ms <ms>', 'Warn when the first token is slower than this for 3 checks in a row, 100-60000 ms (AI endpoint)')
+  .option('--warn-tokens <n>', 'Warn when a reply uses more than this many tokens (AI endpoint)')
+  .option('--header <name>', 'Send the secret in this header instead of as a bearer token (mcp_server)')
+  .option('--protocol <protocol>', 'MCP protocol: auto, 2025 or 2026 (mcp_server)')
+  .option('--require-tool <name>', 'Tool the server must list; repeat for several, replaces the list (mcp_server)', collect)
+  .option('--call-tool <name>', 'Call this tool on every check; pick a read-only one (mcp_server)')
+  .option('--call-args <json>', 'JSON object of arguments for the tool call, replaces the previous ones (mcp_server)')
+  .option('--slow-ms <ms>', 'Warn when a check is slower than this for 3 checks in a row, 100-60000 ms (mcp_server)')
   .option('--dry-run', 'Show what would be sent without updating')
-  .action(async (id: string, options: { name?: string; url?: string; intervalMinutes?: string; interval?: string; every?: string; grace?: string; timeout?: string; method?: string; active?: string; dryRun?: boolean }) => {
+  .action(async (id: string, options: { name?: string; url?: string; intervalMinutes?: string; interval?: string; every?: string; grace?: string; timeout?: string; method?: string; active?: string; dryRun?: boolean } & UpdateCheckOptions) => {
     const client = createAuthenticatedClient()
 
     const body: Record<string, unknown> = {}
     if (options.name !== undefined) body.name = options.name
+    const needsExisting = options.url !== undefined || UPDATE_CHECK_FLAGS.some((key) => options[key] !== undefined)
+    const existing = needsExisting
+      ? (await client.get<ExistingMonitor>(`/api/monitors/${encodeURIComponent(id)}`)).data
+      : undefined
     if (options.url !== undefined) {
-      const { data: existing } = await client.get<{ type?: string }>(`/api/monitors/${encodeURIComponent(id)}`)
-      validateMonitorTarget(options.url, existing.type)
+      validateMonitorTarget(options.url, existing?.type)
       body.target = options.url
     }
     if (options.interval !== undefined) {
@@ -461,10 +576,11 @@ monitorCommand
     if (options.timeout !== undefined) config.timeoutSeconds = parseIntStrict(options.timeout, '--timeout', { min: 1, max: 3600 })
     if (options.method !== undefined) config.method = normalizeHttpMethod(options.method)
     if (options.grace !== undefined) config.heartbeat = { graceMinutes: parseDurationMinutes(options.grace, '--grace', HEARTBEAT_MAX_GRACE_MINUTES) }
+    if (existing) Object.assign(config, buildCheckConfigPatch(options, existing))
     if (Object.keys(config).length > 0) body.config = config
 
     if (Object.keys(body).length === 0) {
-      throw new CLIError('No fields to update. Use --name, --url, --interval-minutes, --every, --grace, --timeout, --method, or --active.', ExitCode.ConfigError)
+      throw new CLIError('No fields to update. Use --name, --url, --interval-minutes, --every, --grace, --timeout, --method, --active, or an AI endpoint or MCP monitor option.', ExitCode.ConfigError)
     }
 
     if (options.dryRun) {

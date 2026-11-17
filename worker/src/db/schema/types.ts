@@ -299,6 +299,8 @@ export type HeartbeatState = {
   lastMissedAt?: string;
   deadlineShiftedFor?: string;
   deadlineShiftMs?: number;
+  /** The last missed row's alert was held by maintenance; the end of the window re-checks at once. */
+  missHeld?: boolean;
 };
 
 // Alert types

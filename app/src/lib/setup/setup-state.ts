@@ -239,14 +239,14 @@ export async function getChecklistCounts(organizationId: string, projectId: stri
       (SELECT count(*)::int FROM jobs j WHERE j.organization_id = ${o} AND j.project_id = ${p} AND ${liveJob("j")}) AS "jobs",
       (
         (SELECT count(*)::int FROM external_connectors c WHERE c.organization_id = ${o} AND c.project_id = ${p} AND c.status IN ('configured', 'valid'))
-        + (SELECT count(*)::int FROM private_agents a WHERE a.organization_id = ${o} AND (a.project_id = ${p} OR a.project_id IS NULL) AND a.status <> 'disabled')
+        + (SELECT count(*)::int FROM private_agents a WHERE a.organization_id = ${o} AND (a.project_id = ${p} OR a.project_id IS NULL) AND a.supports_sre_connectors AND a.status <> 'disabled')
       ) AS "connectorsOrAgents",
       (SELECT count(*)::int FROM sre_services s WHERE s.organization_id = ${o} AND s.project_id = ${p} AND s.status <> 'merged') AS "services",
       (
         (SELECT count(*)::int FROM member mb WHERE mb.organization_id = ${o})
         + (SELECT count(*)::int FROM invitation i WHERE i.organization_id = ${o} AND i.status = 'pending' AND i.expires_at > now())
       ) AS "membersAndInvites",
-      (SELECT count(*)::int FROM apikey k WHERE k.project_id = ${p} AND k.job_id IS NULL AND COALESCE(k.enabled, true) AND (k.expires_at IS NULL OR k.expires_at > now())) AS "cliTokens",
+      (SELECT count(*)::int FROM apikey k JOIN projects kp ON kp.id = k.project_id AND kp.organization_id = ${o} WHERE k.project_id = ${p} AND k.job_id IS NULL AND COALESCE(k.enabled, true) AND (k.expires_at IS NULL OR k.expires_at > now())) AS "cliTokens",
       0 AS "pushDevices"
   `);
   return rows[0] as SetupCounts;

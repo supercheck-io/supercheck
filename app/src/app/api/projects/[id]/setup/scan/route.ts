@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { logAuditEvent } from "@/lib/audit-logger";
+import { readCappedJson } from "@/lib/http/read-capped-json";
 import { ExecutionQueueError } from "@/lib/execution-errors";
 import { validateMonitorTargetAddress } from "@/lib/monitor-target-policy";
 import { SubscriptionAccessDeniedError, subscriptionService } from "@/lib/services/subscription-service";
@@ -26,17 +27,12 @@ export async function POST(request: NextRequest, { params }: Params) {
     const { userId, ctx } = guard;
     const projectId = ctx.project.id;
 
-    const text = await request.text();
-    if (new TextEncoder().encode(text).length > MAX_SCAN_BODY_BYTES) {
-      return NextResponse.json({ error: "Request body too large" }, { status: 413 });
-    }
-    let json: unknown;
-    try {
-      json = JSON.parse(text);
-    } catch {
-      return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
-    }
-    const parsed = bodySchema.safeParse(json);
+    // Capped on the declared length and on the stream, so an oversized body is never read into memory.
+    const read = await readCappedJson(request, MAX_SCAN_BODY_BYTES);
+    if (read.tooLarge) return NextResponse.json({ error: "Request body too large" }, { status: 413 });
+    // readCappedJson gives undefined for an empty body and null for an unparseable one.
+    if (read.data == null) return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+    const parsed = bodySchema.safeParse(read.data);
     const target = parsed.success ? stripUrl(parsed.data.url) : null;
     if (!target) return NextResponse.json({ error: "A valid http(s) URL is required" }, { status: 400 });
 

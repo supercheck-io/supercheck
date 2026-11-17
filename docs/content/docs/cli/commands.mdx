@@ -485,7 +485,7 @@ Extracting requirements from an uploaded document (PDF, DOCX, Markdown or TXT) w
 | `monitor results <monitor-id>` | Recent check results | `--page` (1), `--limit` (20) |
 | `monitor stats <monitor-id>` | Performance statistics | — |
 | `monitor create` | Create a monitor | `--name` (required), `--url`, `--type`, `--test-id`, `--port`, `--protocol`, `--interval-minutes`, `--every`, `--grace`, `--timeout`, `--method`, `--preset`, `--model`, `--secret`, `--key-header`, `--prompt`, `--expect`, `--max-tokens`, `--first-token-timeout`, `--warn-first-token-ms`, `--warn-tokens`, `--header`, `--require-tool`, `--call-tool`, `--call-args`, `--slow-ms`, `--dry-run` |
-| `monitor update <monitor-id>` | Update a monitor | `--name`, `--url`, `--interval-minutes`, `--every`, `--grace`, `--timeout`, `--method`, `--active`, `--dry-run` |
+| `monitor update <monitor-id>` | Update a monitor | `--name`, `--url`, `--interval-minutes`, `--every`, `--grace`, `--timeout`, `--method`, `--active`, AI endpoint and MCP monitor options, `--dry-run` |
 | `monitor delete <monitor-id>` | Delete with confirmation | `--force` |
 | `monitor heartbeat-url <monitor-id>` | Show a heartbeat monitor's ping URL, or replace it | `--rotate`, `--force` |
 | `heartbeat ping <url>` | Send one ping from a cron job or script; no login needed | `--start`, `--fail` |
@@ -517,7 +517,7 @@ supercheck monitor delete <monitor-id> --force
 
 `--timeout` must not exceed `--interval-minutes` × 60.
 
-For heartbeat monitors, `monitor list` shows the heartbeat state (`pending`, `up`, `late`, `down`, `paused`), the interval with its grace period and the last ping; `monitor get` and `--json` include a `heartbeat` object with `state`, `lastPingAt`, `lastPingKind`, `lastStartAt`, `nextExpectedAt` and `graceMinutes`. The ping URL is never part of these outputs. `monitor create` prints it once (`heartbeat.pingUrl` with `--json`), and `monitor heartbeat-url` shows it again (`--quiet` prints only the URL). `--rotate` issues a new URL and the old one stops working at once; it asks for confirmation unless you pass `--force`.
+For heartbeat monitors, `monitor list` shows the heartbeat state (`pending`, `up`, `late`, `down`, `paused`), the interval with its grace period and the last ping; `monitor get` and `--json` include a `heartbeat` object with `state`, `lastPingAt`, `lastPingKind`, `lastStartAt`, `nextExpectedAt` and `graceMinutes`. The ping URL is never part of these outputs. `monitor create` prints it once (not with `--json` or `--quiet`), and `monitor heartbeat-url` shows it again (`--quiet` prints only the URL). `--rotate` issues a new URL and the old one stops working at once; it asks for confirmation unless you pass `--force`.
 
 `heartbeat ping` validates that the URL path ends in `/api/heartbeat/hb_…` (an app served under a sub-path, such as `https://example.com/supercheck/api/heartbeat/hb_…`, works) and sends the ping (`/start` with `--start`, `/fail` with `--fail`) with a 10-second timeout per request. It retries `429`, `503`, network errors and timeouts up to 3 times, waiting as long as the server's `Retry-After` asks (at most 30 seconds) or else 1, 2 and 4 seconds, and gives up within about 60 seconds; other HTTP errors are not retried. It exits `0` on a 2xx answer, `4` on another HTTP status, `5` on timeout and `1` when it cannot connect. The ping endpoint answers `200` even for an unknown or rotated URL, so check that the monitor turns **Up** after you wire it in. See [Heartbeat Monitors](/docs/app/heartbeat).
 
@@ -557,7 +557,7 @@ For heartbeat monitors, `monitor list` shows the heartbeat state (`pending`, `up
 | `--slow-ms` | No | — | `mcp_server`: warn when a check is slower than this for 3 checks in a row (100-60000) |
 | `--dry-run` | No | — | Preview what would be sent without creating |
 
-`monitor update` accepts `--name`, `--url`, `--interval-minutes` (1–1440), `--every` and `--grace` (heartbeat), `--timeout` (1-3600), `--method`, `--active` (`true` or `false` to enable or disable) and `--dry-run`.
+`monitor update` accepts `--name`, `--url`, `--interval-minutes` (1–1440), `--every` and `--grace` (heartbeat), `--timeout` (1-3600), `--method`, `--active` (`true` or `false` to enable or disable) and `--dry-run`. For an AI endpoint monitor it also accepts the preset options of `monitor create` (`--model`, `--secret`, `--key-header`, `--prompt`, `--expect`, `--max-tokens`, `--first-token-timeout`, `--warn-first-token-ms`, `--warn-tokens`); for an MCP server monitor `--secret`, `--header`, `--protocol`, `--require-tool` (replaces the list), `--call-tool` (a different tool starts with no arguments or expected text), `--call-args` (replaces the arguments; no `null` values), `--expect` and `--slow-ms`. Only the options you pass change, and an option that does not fit the monitor is refused.
 
 </Accordion>
 </Accordions>
@@ -682,7 +682,9 @@ supercheck audit --search "deploy"
 | `project list` | List projects visible to the token | — |
 | `project members [projectId]` | List members and roles of a project (default: the current one) | — |
 
-Changing members, invitations and project creation rejects CLI tokens and is available in the dashboard only. Tokens are project-scoped, so `project list` shows only the token's project.
+Changing members, invitations and project creation rejects CLI tokens and is available in the dashboard only. So are deleting, restoring and cancelling the deletion of an organization or project: these need an interactive browser session and CLI tokens receive `403`. Tokens are project-scoped, so `project list` shows only the token's project.
+
+While an organization is scheduled for deletion it is read-only. Reads keep working, and every write fails with `403` and code `ORG_PENDING_DELETION`. The CLI exits `4` and prints the server's answer under `Details`; with `--json` the error is `PERMISSION_DENIED` and `details.code` is `ORG_PENDING_DELETION`. The owner can cancel the deletion in the dashboard.
 
 ---
 

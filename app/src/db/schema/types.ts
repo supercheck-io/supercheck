@@ -269,6 +269,8 @@ export type HeartbeatState = {
   lastMissedAt?: string;
   deadlineShiftedFor?: string;
   deadlineShiftMs?: number;
+  /** The last missed row's alert was held by maintenance (worker-owned). */
+  missHeld?: boolean;
 };
 
 // Alert types

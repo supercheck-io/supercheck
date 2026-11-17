@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { format } from "date-fns";
-import { ChevronsLeft, ChevronsRight } from "lucide-react";
+import { ChevronsLeft, ChevronsRight, HeartPulse } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -96,11 +96,11 @@ export function HeartbeatPingHistory({
     <Card className="flex h-full min-h-0 flex-col overflow-hidden shadow-sm" data-testid="heartbeat-ping-history">
       <CardHeader className="flex-shrink-0">
         <CardTitle className="text-lg font-semibold">Ping history</CardTitle>
-        {!error && results.length > 0 && (
-          <CardDescription>
-            Showing {results.length} of {total} recent {total === 1 ? "ping" : "pings"}.
-          </CardDescription>
-        )}
+        <CardDescription>
+          {!error && results.length > 0
+            ? `Showing ${results.length} of ${total} recent ${total === 1 ? "ping" : "pings"}.`
+            : "Pings, failures and missed runs for this monitor."}
+        </CardDescription>
       </CardHeader>
       <CardContent ref={panelRef} className="flex min-h-0 flex-1 flex-col p-0">
         {error ? (
@@ -121,9 +121,14 @@ export function HeartbeatPingHistory({
             <Skeleton className="h-4 w-3/5" />
           </div>
         ) : results.length === 0 ? (
-          <div className="flex flex-1 flex-col items-center justify-center py-8 text-center" data-testid="heartbeat-ping-history-empty">
-            <p className="text-sm font-medium">No pings yet</p>
-            <p className="text-xs text-muted-foreground">Pings, failures and missed runs appear here.</p>
+          <div className="flex flex-1 flex-col items-center justify-center space-y-3 py-8 text-center" data-testid="heartbeat-ping-history-empty">
+            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-muted/50">
+              <HeartPulse className="h-8 w-8 text-muted-foreground" aria-hidden="true" />
+            </div>
+            <div>
+              <p className="font-medium text-muted-foreground">No Ping Data</p>
+              <p className="mt-1 text-sm text-muted-foreground">Pings will appear here after the first one arrives.</p>
+            </div>
           </div>
         ) : (
           <div className="min-h-0 w-full flex-1 overflow-x-auto">

@@ -9,7 +9,7 @@ import {
   MonitorStatus as DBMonitorStatus,
   AlertConfig,
 } from "@/db/schema";
-import { MonitorJobData, addMonitorExecutionJobToQueue } from "@/lib/queue";
+import { MonitorJobData, addMonitorExecutionJobToQueue, assertExecutionQueueReady } from "@/lib/queue";
 import {
   scheduleMonitor,
   deleteScheduledMonitor,
@@ -122,6 +122,9 @@ export async function scheduleCreatedMonitor(
     };
     let schedulerId: string | undefined;
     try {
+      // Redis down: answer 503 within ~2 s (the caller deletes the row) instead of hanging in the offline queue.
+      // Heartbeats never reach here, so they can still be created without Redis.
+      await assertExecutionQueueReady();
       schedulerId = await scheduleMonitor({
         monitorId: newMonitor.id,
         frequencyMinutes: newMonitor.frequencyMinutes,

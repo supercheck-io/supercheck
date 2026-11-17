@@ -14,6 +14,8 @@ import { NextRequest } from "next/server";
 
 const dbSelect = jest.fn();
 const dbDeleteWhere = jest.fn();
+const mockInMaintenance = jest.fn(async (): Promise<Set<string>> => new Set());
+jest.mock("@/lib/maintenance/predicate", () => ({ monitorsInMaintenance: () => mockInMaintenance() }));
 jest.mock("@/utils/db", () => ({
   db: { select: (...a: unknown[]) => dbSelect(...a), delete: () => ({ where: (...a: unknown[]) => dbDeleteWhere(...a) }), transaction: jest.fn() },
 }));
@@ -213,6 +215,16 @@ it("removes the new monitor when it cannot be scheduled, so a retry does not dup
   scheduleCreatedMonitor.mockRejectedValue(new Error("redis down"));
   const res = await post({ enabled: false, notificationProviders: [] });
   expect(res.status).toBe(500);
+  expect(dbDeleteWhere).toHaveBeenCalledTimes(1);
+});
+
+it("answers a retryable 503 and removes the new monitor when Redis is down", async () => {
+  const { scheduleCreatedMonitor } = jest.requireMock("@/lib/monitor-service") as { scheduleCreatedMonitor: jest.Mock };
+  const { ExecutionQueueError } = jest.requireActual("@/lib/execution-errors");
+  insertWithinPlanLimit.mockResolvedValue({ ok: true, row: { newMonitor: { id: "new-monitor" }, enabled: true } });
+  scheduleCreatedMonitor.mockRejectedValue(new ExecutionQueueError("queue_unavailable", "Execution queue is temporarily unavailable"));
+  const res = await post({ enabled: false, notificationProviders: [] });
+  expect(res.status).toBe(503);
   expect(dbDeleteWhere).toHaveBeenCalledTimes(1);
 });
 
@@ -765,7 +777,12 @@ describe("heartbeat monitors (B6, B7)", () => {
     const res = await GET(new Request("http://localhost/api/monitors"));
     const body = await res.json();
     expect(body.data[0].heartbeat).toMatchObject({ state: "pending", graceMinutes: 12 });
+    expect(body.data[0].inMaintenance).toBe(false);
     expect(JSON.stringify(body)).not.toMatch(/heartbeatToken|stored-hash|stored-cipher|heartbeatState/);
+    mockInMaintenance.mockResolvedValueOnce(new Set([row.id]));
+    tagQuery = false;
+    const covered = await (await GET(new Request("http://localhost/api/monitors"))).json();
+    expect(covered.data[0].inMaintenance).toBe(true);
   });
 });
 
