@@ -115,3 +115,13 @@ describe("denied callers", () => {
     expect(hasPermissionForUser).toHaveBeenCalledWith("admin-1", "project", "manage_members", expect.objectContaining({ organizationId: "org-1" }));
   });
 });
+
+it("refuses an oversize member body with 413 before parsing, for POST and PUT", async () => {
+  const H = jest.requireActual("@/lib/security/request-hardening.spec-helpers") as typeof import("@/lib/security/request-hardening.spec-helpers");
+  const url = "/api/projects/93ce4a2e-7846-5b60-b753-1ab3563f0fce/members";
+  const params = { params: Promise.resolve({ id: "93ce4a2e-7846-5b60-b753-1ab3563f0fce" }) };
+  expect((await POST(H.streamedOversizeRequest(url, "POST", 20_000), params)).status).toBe(413);
+  (db.select as jest.Mock).mockReset().mockReturnValueOnce(rows([{ organizationId: "org-1" }]));
+  expect((await PUT(H.declaredOversizeRequest(url, "PUT", 20_000), params)).status).toBe(413);
+  expect(insert).not.toHaveBeenCalled();
+});

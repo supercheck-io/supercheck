@@ -278,31 +278,6 @@ class SupercheckApiClient {
       ? { valid: true }
       : { valid: false, reason: 'server_error' };
   }
-
-  /**
-   * Generate an API key for the extension (called from Supercheck app)
-   */
-  async generateExtensionApiKey(instanceUrl: string, sessionToken: string): Promise<{ apiKey: string; user: UserInfo }> {
-    const response = await fetch(`${instanceUrl}/api/extension/auth`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${sessionToken}`,
-      },
-      body: JSON.stringify({
-        name: 'Supercheck Recorder Extension',
-        extensionVersion: chrome.runtime.getManifest().version,
-      }),
-    });
-
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({}));
-      throw new ApiError(response.status, error.message || 'Failed to generate API key');
-    }
-
-    const data = await response.json();
-    return data.data;
-  }
 }
 
 // Singleton instance

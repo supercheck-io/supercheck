@@ -37,3 +37,17 @@ describe("requireSessionSameOrigin", () => {
     expect(requireSessionSameOrigin(req({ origin: "https://evil.example" }), true)).toBeNull();
   });
 });
+
+describe("behind a proxy", () => {
+  // Standalone Next builds request.url from its own bind address, not the public host.
+  const internal = (headers: Record<string, string>) => new NextRequest("http://0.0.0.0:3000/api/x", { method: "POST", headers });
+  it("accepts the origin the browser addressed through Host or X-Forwarded-Host/Proto", () => {
+    expect(requireSameOriginRequest(internal({ origin: "http://checks.example.com", host: "checks.example.com" }))).toBeNull();
+    expect(requireSameOriginRequest(internal({ origin: "https://checks.example.com", "x-forwarded-host": "checks.example.com, proxy.internal", "x-forwarded-proto": "https" }))).toBeNull();
+  });
+  it("still refuses an origin that is not the addressed host", () => {
+    expect(requireSameOriginRequest(internal({ origin: "https://evil.example", host: "checks.example.com" }))?.status).toBe(403);
+    expect(requireSameOriginRequest(internal({ origin: "http://checks.example.com", "x-forwarded-host": "checks.example.com", "x-forwarded-proto": "https" }))?.status).toBe(403);
+    expect(requireSameOriginRequest(internal({ origin: "javascript://checks.example.com", host: "checks.example.com", "x-forwarded-proto": "javascript" }))?.status).toBe(403);
+  });
+});

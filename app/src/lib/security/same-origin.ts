@@ -10,10 +10,25 @@ function parseOrigin(value: string | null | undefined) {
   }
 }
 
+/**
+ * The origin the browser addressed. A browser cannot set Host, and a cross-site page cannot send
+ * X-Forwarded-* (the CORS preflight allows only Authorization, Content-Type and Accept), so comparing
+ * Origin to it is the standard CSRF check. It keeps installs behind a proxy working when APP_URL is
+ * unset or differs from the address users browse.
+ */
+function addressedOrigin(request: Request) {
+  const first = (value: string | null) => value?.split(",")[0]?.trim() || null;
+  const host = first(request.headers.get("x-forwarded-host")) ?? first(request.headers.get("host"));
+  if (!host) return null;
+  const proto = first(request.headers.get("x-forwarded-proto")) ?? new URL(request.url).protocol.replace(":", "");
+  return proto === "http" || proto === "https" ? parseOrigin(`${proto}://${host}`) : null;
+}
+
 function configuredRequestOrigins(request: Request) {
   return new Set(
     [
       new URL(request.url).origin,
+      addressedOrigin(request),
       parseOrigin(process.env.APP_URL),
       parseOrigin(process.env.NEXT_PUBLIC_APP_URL),
       parseOrigin(process.env.BETTER_AUTH_URL),
