@@ -24,7 +24,8 @@ export async function readCappedJson(
   // An empty body is `undefined` (callers may default it); unparseable JSON is `null`.
   if (received === 0) return { tooLarge: false, data: undefined };
   try {
-    return { tooLarge: false, data: JSON.parse(Buffer.concat(chunks).toString("utf8")) };
+    // TextDecoder drops a UTF-8 byte-order mark, as Request.json() does.
+    return { tooLarge: false, data: JSON.parse(new TextDecoder().decode(Buffer.concat(chunks))) };
   } catch {
     return { tooLarge: false, data: null };
   }

@@ -23,4 +23,9 @@ describe("readJsonBody", () => {
     expect(((await readJsonBody(bad, 1024)) as NextResponse).status).toBe(400);
     expect(((await readJsonBody(new Request("http://localhost/x", { method: "POST" }), 1024)) as NextResponse).status).toBe(400);
   });
+
+  it("accepts a body that starts with a UTF-8 byte-order mark", async () => {
+    const res = await readJsonBody(new Request("http://localhost/x", { method: "POST", body: "\uFEFF{\"a\":1}" }), 1024);
+    expect(res).toEqual({ body: { a: 1 } });
+  });
 });
