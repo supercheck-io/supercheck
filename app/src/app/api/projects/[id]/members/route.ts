@@ -7,6 +7,10 @@ import { member, projects, projectMembers, user } from '@/db/schema';
 import { eq, and, ne } from 'drizzle-orm';
 import { projectRoleExceedsOrgRole } from '@/lib/rbac/effective-project-role';
 import { logAuditEvent } from '@/lib/audit-logger';
+import { requireSessionSameOrigin } from "@/lib/security/same-origin";
+import { readJsonBody } from "@/lib/http/read-capped-json";
+
+const MAX_MEMBER_BODY_BYTES = 16 * 1024;
 
 const ROLE_ABOVE_ORG_ROLE_MESSAGE = "This role is higher than the member's organization role. Change their organization role first.";
 
@@ -103,6 +107,8 @@ export async function POST(
   const resolvedParams = await params;
   try {
     const { userId, isCliAuth } = await requireUserAuthContext((await params).id);
+    const originError = requireSessionSameOrigin(request, isCliAuth);
+    if (originError) return originError;
     if (isCliAuth) {
       return NextResponse.json({ error: "Organization administration requires an interactive browser session; CLI tokens are project-scoped" }, { status: 403 });
     }
@@ -131,12 +137,9 @@ export async function POST(
       return await forbiddenOrNotFound(userId, organizationId, 'Insufficient permissions to add members', 'Project not found');
     }
     
-    let body;
-    try {
-      body = await request.json();
-    } catch {
-      return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
-    }
+    const read = await readJsonBody(request, MAX_MEMBER_BODY_BYTES);
+    if (read instanceof NextResponse) return read;
+    const body = read.body;
     const { userId: targetUserId, role = 'project_viewer' } = body;
     
     if (typeof targetUserId !== 'string' || !isUuid(targetUserId)) {
@@ -237,6 +240,8 @@ export async function PUT(
   const resolvedParams = await params;
   try {
     const { userId, isCliAuth } = await requireUserAuthContext((await params).id);
+    const originError = requireSessionSameOrigin(request, isCliAuth);
+    if (originError) return originError;
     if (isCliAuth) {
       return NextResponse.json({ error: "Organization administration requires an interactive browser session; CLI tokens are project-scoped" }, { status: 403 });
     }
@@ -265,12 +270,9 @@ export async function PUT(
       return await forbiddenOrNotFound(userId, organizationId, 'Insufficient permissions to manage members', 'Project not found');
     }
     
-    let body;
-    try {
-      body = await request.json();
-    } catch {
-      return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
-    }
+    const read = await readJsonBody(request, MAX_MEMBER_BODY_BYTES);
+    if (read instanceof NextResponse) return read;
+    const body = read.body;
     const { userId: targetUserId, role } = body;
     
     if (typeof targetUserId !== 'string' || !isUuid(targetUserId) || !role) {
@@ -354,6 +356,8 @@ export async function DELETE(
   const resolvedParams = await params;
   try {
     const { userId, isCliAuth } = await requireUserAuthContext((await params).id);
+    const originError = requireSessionSameOrigin(request, isCliAuth);
+    if (originError) return originError;
     if (isCliAuth) {
       return NextResponse.json({ error: "Organization administration requires an interactive browser session; CLI tokens are project-scoped" }, { status: 403 });
     }

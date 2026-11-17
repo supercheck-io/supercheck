@@ -22,6 +22,7 @@ import { pruneAvatars } from '@/lib/user-avatar';
 import { readOrgPendingOn } from '@/lib/deletion/org-state';
 import { OrganizationMembershipChangedError, requestOrganizationDeletion, soleMemberOrganizations } from '@/lib/deletion/organization';
 import { isImpersonatedSession } from '@/lib/rbac/middleware';
+import { requireSessionSameOrigin } from "@/lib/security/same-origin";
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = await params;
@@ -71,6 +72,8 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
   const resolvedParams = await params;
   try {
     await requireAdmin();
+    const originError = requireSessionSameOrigin(request);
+    if (originError) return originError;
     const currentAdmin = await getCurrentUser();
     if (!currentAdmin) throw new Error('Authentication required');
 
@@ -169,6 +172,8 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
   const deletedOrganizationIds: string[] = [];
   try {
     await requireAdmin();
+    const originError = requireSessionSameOrigin(request);
+    if (originError) return originError;
 
     // Prevent self-deletion
     const currentAdmin = await getCurrentUser();
@@ -343,6 +348,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   const resolvedParams = await params;
   try {
     await requireAdmin();
+    const originError = requireSessionSameOrigin(request);
+    if (originError) return originError;
     
     let body;
     try {

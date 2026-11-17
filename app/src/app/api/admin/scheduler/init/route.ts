@@ -3,11 +3,14 @@ import { requireAdmin } from '@/lib/admin';
 import { adminDeniedResponse } from '@/lib/admin-errors';
 import { initializeJobSchedulers } from '@/lib/job-scheduler';
 import { initializeMonitorSchedulers } from '@/lib/monitor-scheduler';
+import { requireSessionSameOrigin } from "@/lib/security/same-origin";
 
 export async function POST(request: Request) {
   try {
     // Require super admin privileges for scheduler management (security fix)
     await requireAdmin();
+    const originError = requireSessionSameOrigin(request);
+    if (originError) return originError;
 
     const { searchParams } = new URL(request.url);
     const type = searchParams.get('type'); // 'jobs', 'monitors', or 'all'

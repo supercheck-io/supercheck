@@ -71,6 +71,10 @@ import {
 import type { LocationConfig, MonitorConfig } from "@/db/schema";
 
 import { permissionDeniedResponse } from "@/lib/deletion/org-state";
+import { requireSessionSameOrigin } from "@/lib/security/same-origin";
+import { readJsonBody } from "@/lib/http/read-capped-json";
+
+const MAX_BODY_BYTES = 1024 * 1024;
 const logger = createLogger({ module: "monitor-detail-api" }) as {
   debug: (data: unknown, msg?: string) => void;
   info: (data: unknown, msg?: string) => void;
@@ -198,6 +202,8 @@ export async function PUT(
 
   try {
     const authCtx = await requireAuthContext();
+    const originError = requireSessionSameOrigin(request, authCtx.isCliAuth);
+    if (originError) return originError;
     const userId = authCtx.userId;
 
     // Permission first: an unauthorised caller must not get validation detail or learn whether the monitor exists.
@@ -207,11 +213,9 @@ export async function PUT(
     }
 
     let rawData;
-    try {
-      rawData = await request.json();
-    } catch {
-      return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
-    }
+    const read = await readJsonBody(request, MAX_BODY_BYTES);
+    if (read instanceof NextResponse) return read;
+    rawData = read.body;
     const validationResult = monitorWritableSchema.safeParse(rawData);
 
     if (!validationResult.success) {
@@ -650,6 +654,8 @@ export async function PATCH(
 
   try {
     const authCtx = await requireAuthContext();
+    const originError = requireSessionSameOrigin(request, authCtx.isCliAuth);
+    if (originError) return originError;
     const userId = authCtx.userId;
 
     // Permission first: an unauthorised caller must not get validation detail or learn whether the monitor exists.
@@ -659,11 +665,9 @@ export async function PATCH(
     }
 
     let rawData;
-    try {
-      rawData = await request.json();
-    } catch {
-      return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
-    }
+    const read = await readJsonBody(request, MAX_BODY_BYTES);
+    if (read instanceof NextResponse) return read;
+    rawData = read.body;
 
     if (!isUuid(id)) return NextResponse.json({ error: "Monitor not found" }, { status: 404 });
 
@@ -924,12 +928,14 @@ export async function PATCH(
  * Mirrors the logic from the deleteMonitor server action.
  */
 export async function DELETE(
-  _request: Request,
+  request: Request,
   routeContext: { params: Promise<{ id: string }> },
 ) {
   try {
     const { id } = await routeContext.params;
     const context = await requireAuthContext();
+    const originError = requireSessionSameOrigin(request, context.isCliAuth);
+    if (originError) return originError;
     if (!checkPermissionWithContext("monitor", "delete", context)) {
       return await permissionDeniedResponse(context.organizationId, "Insufficient permissions");
     }

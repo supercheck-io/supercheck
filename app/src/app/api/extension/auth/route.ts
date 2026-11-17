@@ -1,3 +1,4 @@
+import { requireSessionSameOrigin } from "@/lib/security/same-origin";
 import { NextRequest, NextResponse } from "next/server";
 import { isCredentialOwnerActive } from "@/lib/security/credential-owner";
 import type { InferAPI } from "better-auth";
@@ -177,6 +178,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // The dashboard calls this from the app itself; the recorder only uses x-api-key DELETE.
+    const originError = requireSessionSameOrigin(request);
+    if (originError) return originError;
+
     const authContext = await requireAuthContext();
     if (!checkPermissionWithContext("apiKey", "create", authContext)) {
       return NextResponse.json(
@@ -326,6 +331,8 @@ export async function DELETE(request: NextRequest) {
         { status: 401 }
       );
     }
+    const originError = requireSessionSameOrigin(request);
+    if (originError) return originError;
 
     const userId = session.user.id;
 

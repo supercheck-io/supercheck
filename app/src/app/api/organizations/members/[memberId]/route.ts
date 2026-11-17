@@ -12,6 +12,7 @@ import { cancelPendingInvitesByInviter } from '@/lib/security/cancel-pending-inv
 import { updateMemberSchema } from '@/lib/validations/member';
 
 import { isOrgPendingDeletion, pendingDeletionResponse, permissionDeniedResponse } from "@/lib/deletion/org-state";
+import { requireSessionSameOrigin } from "@/lib/security/same-origin";
 export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ memberId: string }> }
@@ -19,6 +20,8 @@ export async function PUT(
   const resolvedParams = await params;
   try {
     const { userId, organizationId, isCliAuth } = await requireUserAuthContext();
+    const originError = requireSessionSameOrigin(request, isCliAuth);
+    if (originError) return originError;
     if (await isOrgPendingDeletion(organizationId, { fresh: true })) return pendingDeletionResponse();
     if (isCliAuth) {
       return NextResponse.json({ error: "Organization administration requires an interactive browser session; CLI tokens are project-scoped" }, { status: 403 });
@@ -360,6 +363,8 @@ export async function DELETE(
   const resolvedParams = await params;
   try {
     const { userId: currentUserId, organizationId: delOrgId, isCliAuth } = await requireUserAuthContext();
+    const originError = requireSessionSameOrigin(request, isCliAuth);
+    if (originError) return originError;
     if (await isOrgPendingDeletion(delOrgId, { fresh: true })) return pendingDeletionResponse();
     if (isCliAuth) {
       return NextResponse.json({ error: "Organization administration requires an interactive browser session; CLI tokens are project-scoped" }, { status: 403 });

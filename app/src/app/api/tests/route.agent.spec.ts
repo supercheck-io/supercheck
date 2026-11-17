@@ -90,3 +90,12 @@ describe("POST /api/tests with type agent", () => {
     expect(values).toHaveBeenCalledWith(expect.objectContaining({ type: "browser" }));
   });
 });
+
+it("refuses an oversize body with 413 before writing", async () => {
+  const H = jest.requireActual("@/lib/security/request-hardening.spec-helpers") as typeof import("@/lib/security/request-hardening.spec-helpers");
+  const { MAX_SCRIPT_BODY_BYTES } = jest.requireActual("@/lib/validations/common") as typeof import("@/lib/validations/common");
+  requireAuthContext.mockResolvedValue(ctx("project_editor", { isCliAuth: true }));
+  expect((await POST(H.streamedOversizeRequest("/api/tests", "POST", MAX_SCRIPT_BODY_BYTES))).status).toBe(413);
+  expect((await POST(H.declaredOversizeRequest("/api/tests", "POST", MAX_SCRIPT_BODY_BYTES + 1))).status).toBe(413);
+  expect(values).not.toHaveBeenCalled();
+});

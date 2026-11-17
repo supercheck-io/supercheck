@@ -13,6 +13,7 @@ import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { headers } from "next/headers";
 import { logAuditEvent } from "@/lib/audit-logger";
 import { subscriptionService } from "@/lib/services/subscription-service";
+import { requireSessionSameOrigin } from "@/lib/security/same-origin";
 
 export async function POST(request: NextRequest) {
   let refundCredit: (() => Promise<void>) | undefined;
@@ -115,6 +116,8 @@ export async function POST(request: NextRequest) {
     const userId = authResult.user.id;
     // Generated tests are for saving, so spending a credit needs create access in the active project.
     const authContext = await requireAuthContext();
+    const originError = requireSessionSameOrigin(request, authContext.isCliAuth);
+    if (originError) return originError;
     if (!checkPermissionWithContext("test", "create", authContext)) {
       return NextResponse.json(
         { success: false, reason: "forbidden", message: "You do not have permission to create tests." },

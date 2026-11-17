@@ -5,6 +5,7 @@ import { permissionDeniedResponse } from "@/lib/deletion/org-state";
 import { readCappedJson } from "@/lib/http/read-capped-json";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { getNotificationPolicy, saveNotificationPolicy } from "@/lib/sre/notification-policy";
+import { requireSessionSameOrigin } from "@/lib/security/same-origin";
 
 const MAX_BODY_BYTES = 8_192;
 
@@ -27,6 +28,8 @@ export async function GET() {
 export async function PUT(req: NextRequest) {
   try {
     const context = await requireAuthContext();
+    const originError = requireSessionSameOrigin(req, context.isCliAuth);
+    if (originError) return originError;
     if (!checkPermissionWithContext("project", "update", context)) {
       return await permissionDeniedResponse(context.organizationId, "Insufficient permissions to update the notification policy");
     }

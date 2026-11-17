@@ -23,6 +23,7 @@ import { reserveAICredit } from "@/lib/ai/ai-credit-reservation";
 import { headers } from "next/headers";
 import { logAuditEvent } from "@/lib/audit-logger";
 import { resolveRunArtifact } from "@/lib/ai/run-artifact";
+import { requireSessionSameOrigin } from "@/lib/security/same-origin";
 
 // Minimum stack trace length to consider as useful for error analysis
 const MINIMUM_USEFUL_STACKTRACE_LENGTH = 50;
@@ -55,6 +56,8 @@ export async function POST(request: NextRequest) {
 
     // Step 2: Authentication and authorization
     const session = await AuthService.validateUserAccess(request, testId);
+    const originError = requireSessionSameOrigin(request);
+    if (originError) return originError;
     if (!(await AuthService.canAccessTestReport(session, testId, testType, "update"))) {
       return NextResponse.json({ error: "Test report not found" }, { status: 404 });
     }

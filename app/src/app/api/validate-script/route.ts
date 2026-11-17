@@ -1,3 +1,4 @@
+import { requireSessionSameOrigin } from "@/lib/security/same-origin";
 import { NextRequest, NextResponse } from "next/server";
 import { MAX_SCRIPT_LENGTH } from "@/lib/validations/common";
 import {
@@ -14,8 +15,9 @@ export async function POST(request: NextRequest) {
   try {
     // SECURITY: Require authentication to prevent abuse (DoS via expensive validation)
     let userId: string;
+    let isCliAuth: boolean;
     try {
-      ({ userId } = await requireAuthContext());
+      ({ userId, isCliAuth } = await requireAuthContext());
     } catch (error) {
       if (isAuthError(error)) {
         return NextResponse.json(
@@ -30,6 +32,10 @@ export async function POST(request: NextRequest) {
       }
       throw error;
     }
+
+    // A cross-site page must not spend the user's validation budget.
+    const originError = requireSessionSameOrigin(request, isCliAuth);
+    if (originError) return originError;
 
     const rateLimit = await checkAdminRateLimit(
       userId,

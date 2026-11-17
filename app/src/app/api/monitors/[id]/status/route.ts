@@ -13,6 +13,10 @@ import { logAuditEvent } from "@/lib/audit-logger";
 import { assertAgentMonitorRunnable, thrownStatusResponse } from "@/lib/monitor-write";
 import { reconcileMonitorSchedule } from "@/lib/monitor-schedule-reconcile";
 import { createLogger } from "@/lib/logger/index";
+import { requireSessionSameOrigin } from "@/lib/security/same-origin";
+import { readJsonBody } from "@/lib/http/read-capped-json";
+
+const MAX_BODY_BYTES = 16 * 1024;
 
 const logger = createLogger({ module: "monitor-status-api" }) as {
   debug: (data: unknown, msg?: string) => void;
@@ -30,12 +34,12 @@ export async function PATCH(
 
   try {
     const { userId, projectId: tokenProjectId, isCliAuth } = await requireUserAuthContext();
+    const originError = requireSessionSameOrigin(request, isCliAuth);
+    if (originError) return originError;
     let data;
-    try {
-      data = await request.json();
-    } catch {
-      return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
-    }
+    const read = await readJsonBody(request, MAX_BODY_BYTES);
+    if (read instanceof NextResponse) return read;
+    data = read.body;
     const { status } = data;
 
     if (!status || !["up", "down", "paused", "pending"].includes(status)) {

@@ -1,3 +1,4 @@
+import { requireSessionSameOrigin } from "@/lib/security/same-origin";
 import { isUuid } from "@/lib/uuid";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/utils/db";
@@ -34,6 +35,8 @@ export async function POST(
       // requireAuth() so that CLI Bearer-token requests are supported.
       let isCliAuth: boolean;
       ({ userId, isCliAuth } = await requireUserAuthContext((await params).id));
+      const originError = requireSessionSameOrigin(request, isCliAuth);
+      if (originError) return originError;
 
       const resolvedParams = await params;
       projectId = resolvedParams.id;

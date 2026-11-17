@@ -12,6 +12,7 @@ import { isAgentRun } from "@/lib/agent-test/run-is-agent";
 import { sanitizeAgentSummary } from "@/lib/agent-test/run-summary";
 
 import { permissionDeniedResponse } from "@/lib/deletion/org-state";
+import { requireSessionSameOrigin } from "@/lib/security/same-origin";
 // Get run handler - scoped to current project
 export async function GET(
   request: Request,
@@ -124,12 +125,14 @@ export async function GET(
 
 // Delete run handler
 export async function DELETE(
-  _request: Request,
+  request: Request,
   routeContext: { params: Promise<{ runId: string }> },
 ) {
   try {
     const { runId } = await routeContext.params;
     const context = await requireAuthContext();
+    const originError = requireSessionSameOrigin(request, context.isCliAuth);
+    if (originError) return originError;
     if (!checkPermissionWithContext("run", "delete", context)) {
       return await permissionDeniedResponse(context.organizationId, "Insufficient permissions");
     }

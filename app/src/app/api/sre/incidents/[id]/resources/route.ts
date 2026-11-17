@@ -10,6 +10,9 @@ import { permissionDeniedResponse } from "@/lib/deletion/org-state";
 import { createLogger } from "@/lib/logger/index";
 import { updateIncidentResources } from "@/lib/sre/manual-incident";
 import { requireSreApiPermissions, requireSreIncidentUpdateRateLimit, requireSreSameOriginRequest } from "../../../_auth";
+import { readJsonBody } from "@/lib/http/read-capped-json";
+
+const MAX_BODY_BYTES = 256 * 1024;
 
 const logger = createLogger({ module: "sre-incident-resources-api" }) as { error: (data: unknown, message?: string) => void };
 
@@ -23,11 +26,9 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   const parsedId = z.string().uuid().transform((id) => id.toLowerCase()).safeParse((await params).id);
   if (!parsedId.success) return NextResponse.json({ error: "Invalid incident ID" }, { status: 400 });
   let body: unknown;
-  try {
-    body = await request.json();
-  } catch {
-    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
-  }
+  const read = await readJsonBody(request, MAX_BODY_BYTES);
+  if (read instanceof NextResponse) return read;
+  body = read.body;
   try {
     const limited = await requireSreIncidentUpdateRateLimit(auth.context.userId, parsedId.data);
     if (limited) return limited;

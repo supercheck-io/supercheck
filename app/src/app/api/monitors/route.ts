@@ -69,6 +69,10 @@ import { monitorsInMaintenance } from "@/lib/maintenance/predicate";
 import { buildHeartbeatPingUrl } from "@/lib/heartbeat/token";
 
 import { permissionDeniedResponse } from "@/lib/deletion/org-state";
+import { requireSessionSameOrigin } from "@/lib/security/same-origin";
+import { readJsonBody } from "@/lib/http/read-capped-json";
+
+const MAX_BODY_BYTES = 1024 * 1024;
 const logger = createLogger({ module: "monitors-api" }) as {
   debug: (data: unknown, msg?: string) => void;
   info: (data: unknown, msg?: string) => void;
@@ -235,6 +239,8 @@ export async function GET(request: Request) {
 export async function POST(req: NextRequest) {
   try {
     const authCtx = await requireAuthContext();
+    const originError = requireSessionSameOrigin(req, authCtx.isCliAuth);
+    if (originError) return originError;
     const { userId, project, organizationId } = authCtx;
 
     // Authorize before rate limiting or billing checks, so a viewer gets 403 rather than 429/402.
@@ -269,11 +275,9 @@ export async function POST(req: NextRequest) {
     await subscriptionService.requireValidPolarCustomer(organizationId);
 
     let rawData;
-    try {
-      rawData = await req.json();
-    } catch {
-      return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
-    }
+    const read = await readJsonBody(req, MAX_BODY_BYTES);
+    if (read instanceof NextResponse) return read;
+    rawData = read.body;
     logger.debug(
       { type: rawData.type, name: rawData.name },
       "[MONITOR_CREATE] Raw data received",
@@ -695,6 +699,8 @@ export async function POST(req: NextRequest) {
 export async function PUT(req: NextRequest) {
   try {
     const putCtx = await requireAuthContext();
+    const originError = requireSessionSameOrigin(req, putCtx.isCliAuth);
+    if (originError) return originError;
     const { userId, project, organizationId } = putCtx;
 
     // Permission before existence, and the same action as PUT /api/monitors/[id], so a 404 never leaks to a caller who may not update.
@@ -703,11 +709,9 @@ export async function PUT(req: NextRequest) {
     }
 
     let rawData;
-    try {
-      rawData = await req.json();
-    } catch {
-      return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
-    }
+    const read = await readJsonBody(req, MAX_BODY_BYTES);
+    if (read instanceof NextResponse) return read;
+    rawData = read.body;
     const { id, ...updateData } = rawData;
 
     if (!id) {

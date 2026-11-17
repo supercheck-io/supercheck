@@ -11,6 +11,7 @@ import {
 } from "@/lib/status-pages/service";
 
 import { permissionDeniedResponse } from "@/lib/deletion/org-state";
+import { requireSessionSameOrigin } from "@/lib/security/same-origin";
 const idsSchema = z.object({
   id: z.string().uuid("Invalid status page ID format"),
   componentId: z.string().uuid("Invalid component ID format"),
@@ -32,6 +33,8 @@ export async function PUT(request: NextRequest, context: RouteContext) {
     }
 
     const authCtx = await requireAuthContext();
+    const originError = requireSessionSameOrigin(request, authCtx.isCliAuth);
+    if (originError) return originError;
     if (!checkPermissionWithContext("status_page", "update", authCtx)) {
       return await permissionDeniedResponse(authCtx.organizationId, "Insufficient permissions to update components");
     }
@@ -85,7 +88,7 @@ export async function PUT(request: NextRequest, context: RouteContext) {
 }
 
 /** DELETE /api/status-pages/[id]/components/[componentId] - deletes a component. */
-export async function DELETE(_request: NextRequest, context: RouteContext) {
+export async function DELETE(request: NextRequest, context: RouteContext) {
   try {
     const ids = idsSchema.safeParse(await context.params);
     if (!ids.success) {
@@ -96,6 +99,8 @@ export async function DELETE(_request: NextRequest, context: RouteContext) {
     }
 
     const authCtx = await requireAuthContext();
+    const originError = requireSessionSameOrigin(request, authCtx.isCliAuth);
+    if (originError) return originError;
     // Mirrors the dashboard action, which requires the delete permission.
     if (!checkPermissionWithContext("status_page", "delete", authCtx)) {
       return await permissionDeniedResponse(authCtx.organizationId, "Insufficient permissions to delete components");

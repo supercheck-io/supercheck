@@ -11,11 +11,17 @@ import {
   testTelegramConnection,
   testWebhookConnection,
 } from "@/lib/notification-providers/connection-test";
+import { requireSessionSameOrigin } from "@/lib/security/same-origin";
+import { readJsonBody } from "@/lib/http/read-capped-json";
+
+const MAX_BODY_BYTES = 256 * 1024;
 
 export async function POST(req: NextRequest) {
   try {
     // Require authentication and project context
     const context = await requireAuthContext();
+    const originError = requireSessionSameOrigin(req, context.isCliAuth);
+    if (originError) return originError;
 
     // PERFORMANCE: Use checkPermissionWithContext to avoid duplicate DB queries
     const canCreate = checkPermissionWithContext("notification", "create", context);
@@ -31,11 +37,9 @@ export async function POST(req: NextRequest) {
     }
 
     let rawBody: unknown;
-    try {
-      rawBody = await req.json();
-    } catch {
-      return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
-    }
+    const read = await readJsonBody(req, MAX_BODY_BYTES);
+    if (read instanceof NextResponse) return read;
+    rawBody = read.body;
     const { type, config } = (rawBody ?? {}) as Record<string, any>;
     // A missing or non-object config would otherwise surface as a raw TypeError from a provider tester.
     if (!config || typeof config !== "object" || Array.isArray(config)) {

@@ -785,3 +785,36 @@ describe("heartbeat monitors (B6, B7)", () => {
     expect(covered.data[0].inMaintenance).toBe(true);
   });
 });
+
+describe("cross-origin and body-size guards", () => {
+  const { jsonRequest, declaredOversizeRequest, streamedOversizeRequest, SAME_ORIGIN, CROSS_ORIGIN } =
+    jest.requireActual("@/lib/security/request-hardening.spec-helpers") as typeof import("@/lib/security/request-hardening.spec-helpers");
+  // A private target fails validation, which proves the request got past both guards.
+  const body = { name: "m", type: "http_request", target: "http://169.254.169.254/latest" };
+
+  it("refuses a cross-origin cookie session with 403", async () => {
+    const res = await POST(jsonRequest("/api/monitors", "POST", body, { origin: CROSS_ORIGIN }));
+    expect(res.status).toBe(403);
+    expect(insertWithinPlanLimit).not.toHaveBeenCalled();
+  });
+
+  it("accepts a same-origin cookie session", async () => {
+    const res = await POST(jsonRequest("/api/monitors", "POST", body, { origin: SAME_ORIGIN }));
+    expect((await res.json()).error).toBe("Invalid monitor target");
+  });
+
+  it("does not apply the origin check to a CLI bearer token", async () => {
+    const { requireAuthContext } = jest.requireMock("@/lib/auth-context") as { requireAuthContext: jest.Mock };
+    requireAuthContext.mockResolvedValueOnce({ userId: "u", organizationId: "org-1", project: { id: "project-1", name: "P" }, isCliAuth: true });
+    const res = await POST(jsonRequest("/api/monitors", "POST", body, { origin: CROSS_ORIGIN, authorization: "Bearer sck_live_x" }));
+    expect((await res.json()).error).toBe("Invalid monitor target");
+  });
+
+  it.each([
+    ["declared", declaredOversizeRequest],
+    ["streamed", streamedOversizeRequest],
+  ])("refuses a %s body over 1 MiB with 413", async (_kind, make) => {
+    const res = await POST(make("/api/monitors", "POST", 1024 * 1024 + 1));
+    expect(res.status).toBe(413);
+  });
+});

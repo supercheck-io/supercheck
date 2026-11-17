@@ -7,6 +7,7 @@ import { getCurrentUser } from "@/lib/session";
 import { isImpersonatedSession } from "@/lib/rbac/middleware";
 import { checkAdminRateLimit } from "@/lib/session-security";
 import { purgeOrganizationNow } from "@/lib/deletion/organization";
+import { requireSessionSameOrigin } from "@/lib/security/same-origin";
 
 const bodySchema = z.object({ reason: z.string().trim().min(10).max(500), confirmOrganizationId: z.string().uuid() });
 
@@ -19,6 +20,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   const { id } = await params;
   try {
     await requireAdmin();
+    const originError = requireSessionSameOrigin(request);
+    if (originError) return originError;
     const admin = await getCurrentUser();
     if (!admin) throw new Error("Authentication required");
     if (await isImpersonatedSession()) return NextResponse.json({ success: false, error: "Stop impersonating before purging organizations" }, { status: 403 });

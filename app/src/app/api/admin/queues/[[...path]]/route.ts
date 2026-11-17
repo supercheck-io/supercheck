@@ -1,3 +1,4 @@
+import { requireSessionSameOrigin } from "@/lib/security/same-origin";
 import { createBullBoard } from "@bull-board/api";
 import { BullMQAdapter } from "@bull-board/api/bullMQAdapter";
 import { Queue } from "bullmq";
@@ -471,6 +472,11 @@ async function handleRequest(
     }
     if (user.role !== Role.SUPER_ADMIN) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+    // Queue actions (retry, clean, pause) are cookie-session writes.
+    if (request.method !== "GET" && request.method !== "HEAD") {
+      const originError = requireSessionSameOrigin(request);
+      if (originError) return originError;
     }
   } catch (error) {
     console.error("[Bull-Board] Auth error:", error);

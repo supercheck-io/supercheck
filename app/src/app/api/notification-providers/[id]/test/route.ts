@@ -28,6 +28,7 @@ import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { fetchChannelWebhookEndpoint } from "@/lib/sre/connectors/pinned-fetch";
 import { isUuid } from "@/lib/uuid";
 import { db } from "@/utils/db";
+import { requireSessionSameOrigin } from "@/lib/security/same-origin";
 
 const bodySchema = z.object({ action: z.enum(["trigger", "resolve"]).default("trigger") }).strict();
 const MAX_BODY_BYTES = 1_024;
@@ -57,6 +58,8 @@ export async function POST(req: NextRequest, context: { params: Promise<{ id: st
   try {
     const { id } = await context.params;
     const auth = await requireAuthContext();
+    const originError = requireSessionSameOrigin(req, auth.isCliAuth);
+    if (originError) return originError;
     if (!checkPermissionWithContext("notification", "update", auth)) {
       return await permissionDeniedResponse(auth.organizationId, "Insufficient permissions to test notification providers");
     }

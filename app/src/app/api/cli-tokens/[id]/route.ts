@@ -11,6 +11,10 @@ import { MAX_CLI_TOKENS_PER_PROJECT, countUsableCliKeys, lockProjectForKeyIssuan
 import { createLogger } from "@/lib/logger/pino-config";
 
 import { permissionDeniedResponse } from "@/lib/deletion/org-state";
+import { requireSessionSameOrigin } from "@/lib/security/same-origin";
+import { readJsonBody } from "@/lib/http/read-capped-json";
+
+const MAX_BODY_BYTES = 16 * 1024;
 const logger = createLogger({ module: "cli-tokens" });
 
 const updateCliTokenSchema = z.object({
@@ -34,6 +38,8 @@ export async function PATCH(
   try {
     const { id: tokenId } = await params;
     const context = await requireAuthContext();
+    const originError = requireSessionSameOrigin(request, context.isCliAuth);
+    if (originError) return originError;
 
     const canUpdate = checkPermissionWithContext("apiKey", "update", context);
     if (!canUpdate) {
@@ -41,14 +47,9 @@ export async function PATCH(
     }
 
     let body;
-    try {
-      body = await request.json();
-    } catch {
-      return NextResponse.json(
-        { error: "Invalid JSON in request body" },
-        { status: 400 }
-      );
-    }
+    const read = await readJsonBody(request, MAX_BODY_BYTES);
+    if (read instanceof NextResponse) return read;
+    body = read.body;
 
     const validation = updateCliTokenSchema.safeParse(body);
     if (!validation.success) {
@@ -177,12 +178,14 @@ export async function PATCH(
  * DELETE /api/cli-tokens/[id] — Revoke (permanently delete) a CLI token
  */
 export async function DELETE(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const { id: tokenId } = await params;
     const context = await requireAuthContext();
+    const originError = requireSessionSameOrigin(request, context.isCliAuth);
+    if (originError) return originError;
 
     const canDelete = checkPermissionWithContext("apiKey", "delete", context);
     if (!canDelete) {

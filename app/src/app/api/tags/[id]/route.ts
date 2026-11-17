@@ -9,6 +9,7 @@ import { requireAuthContext, isAuthError, authErrorStatus } from '@/lib/auth-con
 import { createLogger } from '@/lib/logger/index';
 
 import { permissionDeniedResponse } from "@/lib/deletion/org-state";
+import { requireSessionSameOrigin } from "@/lib/security/same-origin";
 const logger = createLogger({ module: 'tags' }) as {
   debug: (data: unknown, msg?: string) => void;
   info: (data: unknown, msg?: string) => void;
@@ -22,6 +23,8 @@ export async function DELETE(
 ) {
   try {
     const context = await requireAuthContext();
+    const originError = requireSessionSameOrigin(request, context.isCliAuth);
+    if (originError) return originError;
     const { project, organizationId } = context;
 
     const resolvedParams = await params;
@@ -189,6 +192,8 @@ export async function PUT(
 ) {
   try {
     const context = await requireAuthContext();
+    const originError = requireSessionSameOrigin(request, context.isCliAuth);
+    if (originError) return originError;
     const { project, organizationId } = context;
 
     // Check permission to update tags

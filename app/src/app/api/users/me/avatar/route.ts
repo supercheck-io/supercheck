@@ -11,6 +11,7 @@ import {
   AVATAR_MAX_BYTES, avatarPath, avatarVersionOf, deleteAvatar, detectAvatarType, newAvatarVersion, pruneAvatars, putAvatar,
 } from "@/lib/user-avatar";
 import { isAvatarPreset } from "@/lib/avatar-presets";
+import { requireSessionSameOrigin } from "@/lib/security/same-origin";
 
 const err = (error: string, status: number, extra?: HeadersInit) =>
   NextResponse.json({ error }, { status, headers: extra });
@@ -42,6 +43,8 @@ async function setImage(image: string | null) {
 export async function POST(request: NextRequest) {
   const s = await currentSession();
   if (s.error) return s.error;
+  const originError = requireSessionSameOrigin(request);
+  if (originError) return originError;
   const limited = await rateLimited(s.userId, "avatar-upload", "Too many uploads. Try again later.");
   if (limited) return limited;
 
@@ -104,6 +107,8 @@ async function replaceUpload(userId: string, image: string | null) {
 export async function PUT(request: NextRequest) {
   const s = await currentSession();
   if (s.error) return s.error;
+  const originError = requireSessionSameOrigin(request);
+  if (originError) return originError;
   const limited = await rateLimited(s.userId, "avatar-preset", "Too many changes. Try again later.");
   if (limited) return limited;
   // The body is a short JSON object; refuse anything larger before buffering it.
@@ -115,8 +120,10 @@ export async function PUT(request: NextRequest) {
   return replaceUpload(s.userId, preset);
 }
 
-export async function DELETE() {
+export async function DELETE(request: Request) {
   const s = await currentSession();
   if (s.error) return s.error;
+  const originError = requireSessionSameOrigin(request);
+  if (originError) return originError;
   return replaceUpload(s.userId, null);
 }

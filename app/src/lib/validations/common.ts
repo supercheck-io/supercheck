@@ -35,6 +35,8 @@ export const cronExpressionSchema = z
 
 /** Upper bound for user-supplied test/job scripts (characters). */
 export const MAX_SCRIPT_LENGTH = 1_000_000;
+/** Byte cap for a JSON body carrying one script: every character may be a 6-byte `\u` escape, plus room for the other fields. */
+export const MAX_SCRIPT_BODY_BYTES = MAX_SCRIPT_LENGTH * 6 + 64 * 1024;
 export const MAX_DESCRIPTION_LENGTH = 1000;
 
 export const TEST_PRIORITIES = ["low", "medium", "high"] as const;

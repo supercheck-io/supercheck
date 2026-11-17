@@ -69,6 +69,17 @@ describe("POST /api/projects/[id]/variables/[variableId]/decrypt", () => {
     expect(logAuditEvent).toHaveBeenCalledWith(expect.objectContaining({ action: "secret_decrypt_impersonation_blocked", success: false }));
   });
 
+  it("refuses a cross-origin cookie request before reading the secret, but not a CLI token", async () => {
+    mockResolve.mockResolvedValue({ userId: "sa-1", organizationId: "org-1", project: { id: PROJECT, userRole: "org_owner" } });
+    const cross = () => POST(new NextRequest("http://localhost/x", { method: "POST", headers: { origin: "https://evil.example" } }), {
+      params: Promise.resolve({ id: PROJECT, variableId: VARIABLE }),
+    });
+    expect((await cross()).status).toBe(403);
+    expect(mockRows).not.toHaveBeenCalled();
+    (requireUserAuthContext as jest.Mock).mockResolvedValueOnce({ userId: "sa-1", isCliAuth: true });
+    expect((await cross()).status).toBe(200);
+  });
+
   it("does not apply the browser impersonation check to CLI tokens", async () => {
     mockResolve.mockResolvedValue({ userId: "sa-1", organizationId: "org-1", project: { id: PROJECT, userRole: "org_owner" } });
     mockImpersonated.mockResolvedValue(true);

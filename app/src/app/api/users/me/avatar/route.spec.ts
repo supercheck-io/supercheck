@@ -130,7 +130,7 @@ describe("DELETE /api/users/me/avatar", () => {
     jest.resetAllMocks();
     mockGetSession.mockResolvedValue({ user: { id: "u1" }, session: {} });
     mockLimit.mockResolvedValue([{ image: "https://avatars.githubusercontent.com/u/1" }]);
-    const res = await DELETE();
+    const res = await DELETE(new NextRequest("http://localhost/api/users/me/avatar", { method: "DELETE" }));
     expect(res.status).toBe(200);
     expect(mockUpdateUser).toHaveBeenCalledWith(expect.objectContaining({ body: { image: null } }));
     expect(mockDelete).not.toHaveBeenCalled();

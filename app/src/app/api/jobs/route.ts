@@ -32,6 +32,7 @@ import { randomUUID } from "crypto";
 import { loadCreators } from "@/lib/creators";
 
 import { permissionDeniedResponse } from "@/lib/deletion/org-state";
+import { requireSessionSameOrigin } from "@/lib/security/same-origin";
 /** A non-numeric or absurdly large value (?limit=abc, ?page=1e20) would otherwise reach Postgres and fail the request with a 500. */
 function integerParam(value: string | null, fallback: number): number {
   const parsed = Number.parseInt(value ?? "", 10);
@@ -338,6 +339,8 @@ export async function POST(request: NextRequest) {
 
     // Regular job creation - use project context
     const context = await requireAuthContext();
+    const originError = requireSessionSameOrigin(request, context.isCliAuth);
+    if (originError) return originError;
     const { userId, project, organizationId } = context;
     let jobData: JobData;
     try {
@@ -713,6 +716,8 @@ export async function PUT(request: Request) {
 
     // Get current project context (includes auth verification)
     const context = await requireAuthContext();
+    const originError = requireSessionSameOrigin(request, context.isCliAuth);
+    if (originError) return originError;
     const { project, organizationId } = context;
 
     if (!isUuid(targetJobId)) {

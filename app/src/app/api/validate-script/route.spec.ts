@@ -87,6 +87,18 @@ it("rejects oversized chunked bodies that carry no Content-Length", async () => 
   expect(response.status).toBe(413);
 });
 
+it("refuses a cross-origin cookie request before spending the rate limit, but not a CLI token", async () => {
+  const cross = () => POST(new NextRequest("http://localhost/api/validate-script", {
+    method: "POST", headers: { origin: "https://evil.example" }, body: JSON.stringify({ script: "const a = 1;" }),
+  }));
+  const calls = jest.mocked(checkAdminRateLimit).mock.calls.length;
+  expect((await cross()).status).toBe(403);
+  expect(jest.mocked(checkAdminRateLimit).mock.calls.length).toBe(calls);
+  const { requireAuthContext } = jest.requireMock("@/lib/auth-context") as { requireAuthContext: jest.Mock };
+  requireAuthContext.mockResolvedValueOnce({ userId: "user-1", isCliAuth: true });
+  expect((await cross()).status).not.toBe(403);
+});
+
 it.each(["agents", "bogus", 5])("refuses the invalid test type %j with 400", async (testType) => {
   const response = await POST(
     new NextRequest("http://localhost/api/validate-script", {

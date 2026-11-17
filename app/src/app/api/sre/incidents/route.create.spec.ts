@@ -105,3 +105,23 @@ describe("POST /api/sre/incidents", () => {
     expect((await POST(post({ title: "x" }))).status).toBe(500);
   });
 });
+
+describe("POST /api/sre/incidents origin and body-size guards", () => {
+  const { jsonRequest, declaredOversizeRequest, streamedOversizeRequest, SAME_ORIGIN } =
+    jest.requireActual("@/lib/security/request-hardening.spec-helpers") as typeof import("@/lib/security/request-hardening.spec-helpers");
+
+  it("accepts a same-origin cookie session and a CLI bearer token that sends no Origin", async () => {
+    mockRequireAuthContext.mockResolvedValue(context("project_editor"));
+    expect((await POST(jsonRequest("/api/sre/incidents", "POST", { title: "Down" }, { origin: SAME_ORIGIN }))).status).toBe(201);
+    expect((await POST(jsonRequest("/api/sre/incidents", "POST", { title: "Down" }, { authorization: "Bearer sck_live_x" }))).status).toBe(201);
+  });
+
+  it.each([["declared", declaredOversizeRequest], ["streamed", streamedOversizeRequest]])(
+    "refuses a %s body over 256 KB with 413",
+    async (_kind, make) => {
+      mockRequireAuthContext.mockResolvedValue(context("project_editor"));
+      expect((await POST(make("/api/sre/incidents", "POST", 256 * 1024 + 1))).status).toBe(413);
+      expect(mockCreate).not.toHaveBeenCalled();
+    },
+  );
+});

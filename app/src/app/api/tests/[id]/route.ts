@@ -1,7 +1,8 @@
 import { liveJob, liveMonitor } from "@/lib/deletion/visibility";
 import { NextRequest, NextResponse } from "next/server";
 import { isInvalidUuidError, isUuid } from "@/lib/uuid";
-import { isTestPriority, MAX_SCRIPT_LENGTH, MAX_DESCRIPTION_LENGTH } from "@/lib/validations/common";
+import { isTestPriority, MAX_SCRIPT_BODY_BYTES, MAX_SCRIPT_LENGTH, MAX_DESCRIPTION_LENGTH } from "@/lib/validations/common";
+import { readJsonBody } from "@/lib/http/read-capped-json";
 import { db } from "@/utils/db";
 import { tests, jobTests, jobs, monitors, TEST_TYPE_VALUES } from "@/db/schema";
 import { eq, and, count, sql } from "drizzle-orm";
@@ -9,7 +10,7 @@ import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { requireAuthContext, isAuthError, authErrorStatus } from "@/lib/auth-context";
 import { logAuditEvent } from "@/lib/audit-logger";
 import { assertAgentTestSwitchRunnable, thrownStatusResponse } from "@/lib/monitor-write";
-import { requireSameOriginRequest } from "@/lib/security/same-origin";
+import { requireSameOriginRequest, requireSessionSameOrigin } from "@/lib/security/same-origin";
 import {
   validateTestScript,
   validateScriptTypeMatch,
@@ -129,12 +130,9 @@ export async function PUT(
       const originError = requireSameOriginRequest(request);
       if (originError) return originError;
     }
-    let body;
-    try {
-      body = await request.json();
-    } catch {
-      return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
-    }
+    const read = await readJsonBody(request, MAX_SCRIPT_BODY_BYTES);
+    if (read instanceof NextResponse) return read;
+    const body = read.body;
     if (!body || typeof body !== "object" || Array.isArray(body)) {
       return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
     }
@@ -296,12 +294,14 @@ export async function PATCH(
  * Deletes a test. Blocks if the test is referenced by jobs or synthetic monitors.
  */
 export async function DELETE(
-  _request: NextRequest,
+  request: NextRequest,
   routeContext: { params: Promise<{ id: string }> },
 ) {
   try {
     const { id } = await routeContext.params;
     const context = await requireAuthContext();
+    const originError = requireSessionSameOrigin(request, context.isCliAuth);
+    if (originError) return originError;
     const { project, organizationId } = context;
 
     const canDelete = checkPermissionWithContext("test", "delete", context);

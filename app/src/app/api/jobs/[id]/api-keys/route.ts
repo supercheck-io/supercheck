@@ -13,6 +13,7 @@ import { capExpiryToCliToken, clampExpiry } from "@/lib/auth/cli-token-expiry";
 import crypto from "crypto";
 
 import { permissionDeniedResponse } from "@/lib/deletion/org-state";
+import { requireSessionSameOrigin } from "@/lib/security/same-origin";
 const logger = createLogger({ module: 'api-keys' });
 
 // Validation schemas
@@ -129,6 +130,8 @@ export async function POST(
 ) {
   try {
     const authCtx = await requireAuthContext();
+    const originError = requireSessionSameOrigin(request, authCtx.isCliAuth);
+    if (originError) return originError;
     const { id: jobId } = await params;
 
     // Validate UUID format

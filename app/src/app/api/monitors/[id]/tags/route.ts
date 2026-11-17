@@ -10,6 +10,10 @@ import { logAuditEvent } from "@/lib/audit-logger";
 import { MAX_TAGS_PER_ENTITY, TagLimitError, tagPatchSchema } from "@/lib/tag-patch";
 
 import { permissionDeniedResponse } from "@/lib/deletion/org-state";
+import { requireSessionSameOrigin } from "@/lib/security/same-origin";
+import { readJsonBody } from "@/lib/http/read-capped-json";
+
+const MAX_BODY_BYTES = 16 * 1024;
 type RouteParams = { params: Promise<{ id: string }> };
 
 const MAX_TAGS_PER_MONITOR = MAX_TAGS_PER_ENTITY;
@@ -73,6 +77,8 @@ export async function GET(_request: NextRequest, { params }: RouteParams) {
 export async function POST(request: NextRequest, { params }: RouteParams) {
   try {
     const context = await requireAuthContext();
+    const originError = requireSessionSameOrigin(request, context.isCliAuth);
+    if (originError) return originError;
     const { project, organizationId } = context;
 
     if (!checkPermissionWithContext("monitor", "update", context)) {
@@ -83,11 +89,9 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     if (!isUuid(monitorId)) return notFound();
 
     let body: { tagIds?: unknown } | null;
-    try {
-      body = await request.json();
-    } catch {
-      return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
-    }
+    const read = await readJsonBody(request, MAX_BODY_BYTES);
+    if (read instanceof NextResponse) return read;
+    body = read.body;
     const tagIds = body?.tagIds;
 
     if (!Array.isArray(tagIds)) {
@@ -175,6 +179,8 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 export async function PATCH(request: NextRequest, { params }: RouteParams) {
   try {
     const context = await requireAuthContext();
+    const originError = requireSessionSameOrigin(request, context.isCliAuth);
+    if (originError) return originError;
     const { project, organizationId } = context;
 
     if (!checkPermissionWithContext("monitor", "update", context)) {
@@ -185,11 +191,9 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     if (!isUuid(monitorId)) return notFound();
 
     let raw: unknown;
-    try {
-      raw = await request.json();
-    } catch {
-      return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
-    }
+    const read = await readJsonBody(request, MAX_BODY_BYTES);
+    if (read instanceof NextResponse) return read;
+    raw = read.body;
     const parsed = tagPatchSchema.safeParse(raw);
     if (!parsed.success) {
       return NextResponse.json({ error: "Invalid request body: add/remove must be arrays of tag UUIDs" }, { status: 400 });
@@ -274,6 +278,8 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
 export async function DELETE(request: NextRequest, { params }: RouteParams) {
   try {
     const context = await requireAuthContext();
+    const originError = requireSessionSameOrigin(request, context.isCliAuth);
+    if (originError) return originError;
     const { project, organizationId } = context;
 
     if (!checkPermissionWithContext("monitor", "update", context)) {
@@ -284,11 +290,9 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
     if (!isUuid(monitorId)) return notFound();
 
     let body: { tagId?: unknown } | null;
-    try {
-      body = await request.json();
-    } catch {
-      return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
-    }
+    const read = await readJsonBody(request, MAX_BODY_BYTES);
+    if (read instanceof NextResponse) return read;
+    body = read.body;
     const tagId = body?.tagId;
     if (typeof tagId !== "string" || !isUuid(tagId)) {
       return NextResponse.json({ error: "Tag ID is required" }, { status: 400 });

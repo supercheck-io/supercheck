@@ -14,6 +14,7 @@ import { eq, and, ne } from "drizzle-orm";
 import { logAuditEvent } from "@/lib/audit-logger";
 import { isImpersonatedSession } from "@/lib/rbac/middleware";
 import { createLogger } from "@/lib/logger/pino-config";
+import { requireSessionSameOrigin } from "@/lib/security/same-origin";
 
 const logger = createLogger({ module: "invalidate-sessions" });
 
@@ -44,6 +45,8 @@ export async function POST(request: NextRequest) {
         { status: 401 }
       );
     }
+    const originError = requireSessionSameOrigin(request);
+    if (originError) return originError;
 
     // An impersonating super admin must not act on the impersonated user's sessions.
     if (await isImpersonatedSession()) {

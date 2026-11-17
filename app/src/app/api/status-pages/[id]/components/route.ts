@@ -11,6 +11,7 @@ import {
 } from "@/lib/status-pages/service";
 
 import { permissionDeniedResponse } from "@/lib/deletion/org-state";
+import { requireSessionSameOrigin } from "@/lib/security/same-origin";
 const uuidSchema = z.string().uuid("Invalid status page ID format");
 
 type RouteContext = { params: Promise<{ id: string }> };
@@ -69,6 +70,8 @@ export async function POST(request: NextRequest, context: RouteContext) {
     }
 
     const authCtx = await requireAuthContext();
+    const originError = requireSessionSameOrigin(request, authCtx.isCliAuth);
+    if (originError) return originError;
     if (!checkPermissionWithContext("status_page", "update", authCtx)) {
       return await permissionDeniedResponse(authCtx.organizationId, "Insufficient permissions to create components");
     }

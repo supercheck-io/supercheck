@@ -23,6 +23,10 @@ import { loadCreators } from "@/lib/creators";
 import { loadProviderHealth } from "@/lib/notification-providers/channel-health";
 
 import { permissionDeniedResponse } from "@/lib/deletion/org-state";
+import { requireSessionSameOrigin } from "@/lib/security/same-origin";
+import { readJsonBody } from "@/lib/http/read-capped-json";
+
+const MAX_BODY_BYTES = 256 * 1024;
 const MAX_PROVIDER_NAME_LENGTH = 255;
 const MAX_PROVIDER_CONFIG_LENGTH = 20_000;
 
@@ -107,14 +111,14 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   try {
     const context = await requireAuthContext();
+    const originError = requireSessionSameOrigin(req, context.isCliAuth);
+    if (originError) return originError;
     const { userId, project, organizationId } = context;
 
     let rawData;
-    try {
-      rawData = await req.json();
-    } catch {
-      return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
-    }
+    const read = await readJsonBody(req, MAX_BODY_BYTES);
+    if (read instanceof NextResponse) return read;
+    rawData = read.body;
 
     // Use current project and organization context
     const targetProjectId = project.id;

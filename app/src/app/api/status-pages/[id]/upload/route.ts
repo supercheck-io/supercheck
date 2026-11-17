@@ -11,6 +11,7 @@ import { isOrgPendingDeletionError, pendingDeletionResponse } from "@/lib/deleti
 import { v4 as uuidv4 } from "uuid";
 import { sniffImageType } from "@/lib/image-sniff";
 import { apiKeyRateLimiter, createRateLimitHeaders } from "@/lib/api-key-rate-limiter";
+import { requireSessionSameOrigin } from "@/lib/security/same-origin";
 
 // S3 Configuration
 const s3Client = new S3Client({
@@ -53,7 +54,9 @@ export async function POST(request: Request, context: RouteContext) {
     const statusPageId = params.id;
 
     // Check authentication and permissions
-    const { organizationId, project, userId } = await requireAuthContext();
+    const { organizationId, project, userId, isCliAuth } = await requireAuthContext();
+    const originError = requireSessionSameOrigin(request, isCliAuth);
+    if (originError) return originError;
     await requirePermissions(
       { status_page: ["update"] },
       { organizationId, projectId: project.id }

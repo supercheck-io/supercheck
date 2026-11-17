@@ -31,6 +31,7 @@ import {
 import { deleteStatusPageWithLinks } from "@/lib/resource-deletion/linked-records";
 
 import { permissionDeniedResponse } from "@/lib/deletion/org-state";
+import { requireSessionSameOrigin } from "@/lib/security/same-origin";
 // UUID validation schema
 const uuidSchema = z.string().uuid("Invalid status page ID format");
 
@@ -247,7 +248,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
  * Deletes a status page. DB cascade handles related components and monitors.
  */
 export async function DELETE(
-  _request: NextRequest,
+  request: NextRequest,
   context: RouteContext
 ) {
   try {
@@ -262,6 +263,8 @@ export async function DELETE(
     }
 
     const authCtx = await requireAuthContext();
+    const originError = requireSessionSameOrigin(request, authCtx.isCliAuth);
+    if (originError) return originError;
     const { userId, project, organizationId } = authCtx;
 
     const canDelete = checkPermissionWithContext("status_page", "delete", authCtx);
@@ -335,6 +338,8 @@ export async function PUT(request: NextRequest, context: RouteContext) {
     }
 
     const authCtx = await requireAuthContext();
+    const originError = requireSessionSameOrigin(request, authCtx.isCliAuth);
+    if (originError) return originError;
 
     if (!checkPermissionWithContext("status_page", "update", authCtx)) {
       return await permissionDeniedResponse(authCtx.organizationId, "Insufficient permissions to update status pages");

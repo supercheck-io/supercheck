@@ -14,8 +14,9 @@ jest.mock("@/utils/db", () => ({
     }),
   },
 }));
+const mockAuth = jest.fn();
 jest.mock("@/lib/auth-context", () => ({
-  requireAuthContext: async () => ({ userId: id, organizationId: id, project: { id, name: "P" } }),
+  requireAuthContext: () => mockAuth(),
   isAuthError: () => false,
 }));
 jest.mock("@/lib/rbac/middleware", () => ({ checkPermissionWithContext: () => true }));
@@ -31,7 +32,10 @@ const post = (body: unknown) =>
   POST(new NextRequest("https://example.com/api/notification-providers", { method: "POST", body: JSON.stringify(body) }));
 const webhook = { url: "https://example.com/hook" };
 
-beforeEach(() => mockValues.mockClear());
+beforeEach(() => {
+  mockValues.mockClear();
+  mockAuth.mockResolvedValue({ userId: id, organizationId: id, project: { id, name: "P" }, isCliAuth: false });
+});
 
 describe("POST /api/notification-providers validation", () => {
   it.each([[{}], [{ name: "   " }], [{ name: 42 }]])("rejects a missing or blank name %j", async (extra) => {
@@ -76,4 +80,30 @@ describe("POST /api/notification-providers validation", () => {
     expect((await post({ type: "email", name: "Mail", config: { emails } })).status).toBe(400);
     expect(mockValues).not.toHaveBeenCalled();
   });
+});
+
+describe("POST /api/notification-providers cross-origin and body-size guards", () => {
+  const { jsonRequest, declaredOversizeRequest, streamedOversizeRequest, SAME_ORIGIN, CROSS_ORIGIN } =
+    jest.requireActual("@/lib/security/request-hardening.spec-helpers") as typeof import("@/lib/security/request-hardening.spec-helpers");
+  const body = { type: "webhook", name: "Hook", config: webhook };
+  const url = "/api/notification-providers";
+
+  it("refuses a cross-origin cookie session with 403", async () => {
+    expect((await POST(jsonRequest(url, "POST", body, { origin: CROSS_ORIGIN }))).status).toBe(403);
+    expect(mockValues).not.toHaveBeenCalled();
+  });
+
+  it("creates for a same-origin cookie session and for a CLI bearer token from anywhere", async () => {
+    expect((await POST(jsonRequest(url, "POST", body, { origin: SAME_ORIGIN }))).status).toBe(201);
+    mockAuth.mockResolvedValueOnce({ userId: id, organizationId: id, project: { id, name: "P" }, isCliAuth: true });
+    expect((await POST(jsonRequest(url, "POST", body, { origin: CROSS_ORIGIN, authorization: "Bearer sck_live_x" }))).status).toBe(201);
+  });
+
+  it.each([["declared", declaredOversizeRequest], ["streamed", streamedOversizeRequest]])(
+    "refuses a %s body over 256 KB with 413",
+    async (_kind, make) => {
+      expect((await POST(make(url, "POST", 256 * 1024 + 1))).status).toBe(413);
+      expect(mockValues).not.toHaveBeenCalled();
+    },
+  );
 });

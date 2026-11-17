@@ -10,6 +10,7 @@ import { withPlanLimitLock } from "@/lib/middleware/plan-limit-lock";
 import { effectiveMemberLimit } from "@/lib/billing/member-seats";
 import { isCloudHosted, isPolarEnabled } from '@/lib/feature-flags';
 import { isOrgPendingDeletion, pendingDeletionResponse, readOrgPendingOn } from "@/lib/deletion/org-state";
+import { requireSessionSameOrigin } from "@/lib/security/same-origin";
 
 export async function GET(
   request: NextRequest,
@@ -112,6 +113,9 @@ export async function POST(
     let currentUser;
     try {
       await requireUserAuthContext();
+      // Acceptance acts on the cookie user, so no CLI exemption: a bearer header must not skip this check.
+      const originError = requireSessionSameOrigin(request);
+      if (originError) return originError;
       currentUser = await getCurrentUser();
     } catch (authError) {
       // Authenticated but not permitted (403) must not look like "sign in first"

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getDataLifecycleService } from '@/lib/data-lifecycle-service';
 import { requireAdmin } from '@/lib/admin';
 import { adminDeniedResponse } from '@/lib/admin-errors';
+import { requireSessionSameOrigin } from "@/lib/security/same-origin";
 
 /**
  * GET /api/admin/playground-cleanup - Get playground cleanup status
@@ -52,10 +53,12 @@ export async function GET() {
 /**
  * POST /api/admin/playground-cleanup - Trigger manual cleanup
  */
-export async function POST() {
+export async function POST(request: Request) {
   try {
     // Require super admin privileges (security fix - was previously unprotected)
     await requireAdmin();
+    const originError = requireSessionSameOrigin(request);
+    if (originError) return originError;
     
     const lifecycleService = getDataLifecycleService();
 

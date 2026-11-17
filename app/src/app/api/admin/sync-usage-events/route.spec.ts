@@ -41,3 +41,12 @@ it("preserves admin-session fallback", async () => {
   expect((await post("incorrect")).status).toBe(200);
   expect(requireAdmin).toHaveBeenCalledWith("admin-user");
 });
+
+it("refuses a cross-origin admin cookie session but not a CLI token", async () => {
+  const fromEvil = (auth: object) => {
+    (requireUserAuthContext as jest.Mock).mockResolvedValue(auth);
+    return POST(new NextRequest("http://localhost/api/admin/sync-usage-events", { method: "POST", headers: { origin: "https://evil.example" } }));
+  };
+  expect((await fromEvil({ userId: "admin-user", isCliAuth: false })).status).toBe(403);
+  expect((await fromEvil({ userId: "admin-user", isCliAuth: true })).status).toBe(200);
+});

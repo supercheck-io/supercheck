@@ -30,8 +30,8 @@ export async function POST(request: NextRequest, { params }: Params) {
     // Capped on the declared length and on the stream, so an oversized body is never read into memory.
     const read = await readCappedJson(request, MAX_SCAN_BODY_BYTES);
     if (read.tooLarge) return NextResponse.json({ error: "Request body too large" }, { status: 413 });
-    // readCappedJson gives null for an empty or unparseable body.
-    if (read.data === null) return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+    // readCappedJson gives undefined for an empty body and null for an unparseable one.
+    if (read.data == null) return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
     const parsed = bodySchema.safeParse(read.data);
     const target = parsed.success ? stripUrl(parsed.data.url) : null;
     if (!target) return NextResponse.json({ error: "A valid http(s) URL is required" }, { status: 400 });

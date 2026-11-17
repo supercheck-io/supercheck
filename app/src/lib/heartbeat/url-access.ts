@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextResponse, type NextRequest } from "next/server";
 import { and, eq } from "drizzle-orm";
 import { db } from "@/utils/db";
 import { monitors } from "@/db/schema";
@@ -11,6 +11,7 @@ import { logAuditEvent } from "@/lib/audit-logger";
 import { createLogger } from "@/lib/logger/index";
 import { isUuid } from "@/lib/uuid";
 import { buildHeartbeatPingUrl, createHeartbeatTokenColumns, decryptHeartbeatToken } from "./token";
+import { requireSessionSameOrigin } from "@/lib/security/same-origin";
 
 const logger = createLogger({ module: "heartbeat-url" }) as { error: (data: unknown, msg?: string) => void };
 
@@ -27,10 +28,15 @@ const NOT_FOUND = () => NextResponse.json({ error: "Monitor not found" }, { stat
  * above only (monitor:update), per-user rate limit, audited without the token, never cached, and refused
  * while a super admin impersonates (the URL would outlive the impersonation, like a revealed secret).
  */
-export async function handleHeartbeatUrl(id: string, requestOrigin: string, mode: keyof typeof MODES): Promise<NextResponse> {
+export async function handleHeartbeatUrl(id: string, request: NextRequest, mode: keyof typeof MODES): Promise<NextResponse> {
+  const requestOrigin = request.nextUrl.origin;
   const { limit, operation, action } = MODES[mode];
   try {
     const ctx = await requireAuthContext();
+    if (mode === "rotate") {
+      const originError = requireSessionSameOrigin(request, ctx.isCliAuth);
+      if (originError) return originError;
+    }
     if (!checkPermissionWithContext("monitor", "update", ctx)) {
       return await permissionDeniedResponse(ctx.organizationId, "Insufficient permissions");
     }
