@@ -103,6 +103,7 @@ export async function POST(request: NextRequest) {
     const result = await createManualIncident(auth.context, body as never, source);
     if (!result.ok) {
       if (result.code === "forbidden") return permissionDeniedResponse(auth.context.organizationId, "Insufficient permissions to create incidents");
+      if (result.code === "subscription_required") return NextResponse.json({ error: result.error, code: result.code }, { status: 402 });
       if (result.code === "rate_limited") {
         return NextResponse.json({ error: result.error }, { status: 429, headers: { "Retry-After": String(result.retryAfterSeconds) } });
       }

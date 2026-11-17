@@ -259,7 +259,7 @@ describe("create_incident", () => {
       "mcp",
     );
   });
-  it.each(["rate_limited", "not_found", "invalid", "forbidden"])("passes a %s core result through as a tool failure", async (code) => {
+  it.each(["rate_limited", "not_found", "invalid", "forbidden", "subscription_required"])("passes a %s core result through as a tool failure", async (code) => {
     createManualIncident.mockResolvedValue({ ok: false, code, error: "nope" });
     await expect(tools().get("create_incident")!.run({ title: "t", affectedServiceIds: [], affectedMonitorIds: [] })).rejects.toMatchObject({ code });
   });
@@ -282,6 +282,13 @@ describe("maintenance window tools", () => {
       "mcp",
     );
     expect(out).toEqual({ id, state: "scheduled", occurrenceStartsAt: "2026-11-20T01:00:00.000Z", occurrenceEndsAt: "2026-11-20T02:30:00.000Z" });
+  });
+  it("create and extend surface subscription_required for a lapsed organization; end and cancel have no such gate", async () => {
+    const lapsed = { ok: false, code: "subscription_required", error: "Active subscription required." };
+    mockWindows.createMaintenanceWindow.mockResolvedValue(lapsed);
+    await expect(tools().get("create_maintenance_window")!.run({ title: "Deploy", scope: "project", serviceIds: [], monitorIds: [], recurrence: "once", timezone: "UTC", startsOn: "2026-11-20", localStartTime: "01:00", durationMinutes: 90 })).rejects.toMatchObject({ code: "subscription_required", message: "Active subscription required." });
+    mockWindows.extendMaintenanceWindow.mockResolvedValue(lapsed);
+    await expect(tools().get("extend_maintenance_window")!.run({ id, byMinutes: 30 })).rejects.toMatchObject({ code: "subscription_required" });
   });
   it("end refuses a window of another organization or project: the core sees only this connection's scope", async () => {
     mockWindows.endMaintenanceWindow.mockResolvedValue({ ok: false, code: "not_found", error: "Maintenance window not found" });

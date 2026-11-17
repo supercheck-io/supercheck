@@ -4,6 +4,10 @@ Notable changes to `@supercheck/cli`. The format follows [Keep a Changelog](http
 
 ## [Unreleased]
 
+### Changed
+
+- A `402` from the server (for example `incident create` or `maintenance create` on an organization with no plan or trial) now shows the server's own message instead of the generic request failure.
+
 ## [0.6.0] - 2026-11-16
 
 This release adds heartbeat and MCP monitors, the AI endpoint preset, agent tests, incident declaration, reminders and escalation, maintenance windows and post-mortems.
