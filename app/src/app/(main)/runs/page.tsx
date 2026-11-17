@@ -12,7 +12,7 @@ export default async function RunsPage() {
   return (
     <div>
       <PageBreadcrumbs items={breadcrumbs} />
-      <Card className="shadow-sm m-4">
+      <Card className="m-4 shadow-sm">
         <CardContent className="p-6">
           <Suspense fallback={null}>
             <RunsViewTabs />

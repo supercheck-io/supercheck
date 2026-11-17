@@ -13,7 +13,7 @@ test.describe('Status-page incident lifecycle @status-pages @incidents', () => {
 
     await page.goto(`/status-pages/${statusPage.id}`);
     await page.getByRole('tab', { name: 'Components', exact: true }).click();
-    await page.getByRole('button', { name: 'Add Component', exact: true }).click();
+    await page.getByRole('button', { name: /^add component$/i }).click();
     const componentDialog = page.getByRole('dialog', { name: 'Add Component' });
     await componentDialog.getByLabel('Title *').fill(componentName);
     await componentDialog.getByLabel('Description').fill('Isolated E2E status-page component');

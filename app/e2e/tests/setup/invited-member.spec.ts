@@ -18,7 +18,7 @@ async function openSetup(page: Page): Promise<void> {
   await expect(welcome.or(checklist)).toBeVisible({ timeout: 30_000 });
   if (await welcome.isVisible()) {
     await expect(page).toHaveURL(/\/setup\/welcome/);
-    await expect(welcome.getByRole('radio')).toHaveCount(4);
+    await expect(welcome.getByRole("radio")).toHaveCount(5); // four personas + Default
     await expect(welcome.getByRole('button', { name: 'Go to dashboard' })).toBeVisible();
     await expect(page.getByTestId('setup-wizard')).toHaveCount(0);
     await welcome.getByRole('button', { name: 'Skip' }).click();

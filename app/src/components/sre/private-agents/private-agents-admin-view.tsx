@@ -125,7 +125,7 @@ export function PrivateAgentsAdminView({
     return (
       <DashboardEmptyState
         className="min-h-[420px]"
-        title="Private Agents unavailable"
+        title="Private agents unavailable"
         description={loadError}
         icon={<RadioTower className="h-10 w-10" />}
       />
@@ -137,7 +137,7 @@ export function PrivateAgentsAdminView({
       {agents.length === 0 ? (
         <DashboardEmptyState
           className="min-h-[420px]"
-          title="No Private Agents registered"
+          title="No private agents registered"
           description="Register a Private Agent to run connectors inside your private network without exposing it."
           icon={<KeyRound className="h-10 w-10" />}
           action={

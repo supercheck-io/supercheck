@@ -3,9 +3,9 @@
 import { useState } from "react";
 import type { UseFormReturn } from "react-hook-form";
 import { z } from "zod";
-import { ChevronRight, X } from "lucide-react";
+import { X } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { OptionalSection } from "./optional-section";
 import { FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -173,6 +173,19 @@ interface McpServerFieldsProps {
 export function McpServerFields({ form, projectId }: McpServerFieldsProps) {
   const authType = form.watch("mcpConfig_authType") ?? "none";
   const [advancedOpen, setAdvancedOpen] = useState(false);
+  // Closed by default so the form fits without scrolling; an edit with a tool call opens it.
+  const [toolOpen, setToolOpen] = useState(() => Boolean(form.getValues("mcpConfig_toolName")));
+  // A submit error inside "Call a tool" keeps the section open so the message is visible.
+  const { errors } = form.formState;
+  const toolHasError = Boolean(errors.mcpConfig_toolName || errors.mcpConfig_toolArgs || errors.mcpConfig_toolExpect);
+  const advancedHasError = Boolean(errors.mcpConfig_slowMs || errors.mcpConfig_timeoutSeconds || errors.mcpConfig_protocol);
+  // Open a section when it gets an error, then leave it to the user, so fixing the value never closes it mid-typing.
+  const [prevErrors, setPrevErrors] = useState({ tool: toolHasError, advanced: advancedHasError });
+  if (prevErrors.tool !== toolHasError || prevErrors.advanced !== advancedHasError) {
+    setPrevErrors({ tool: toolHasError, advanced: advancedHasError });
+    if (toolHasError) setToolOpen(true);
+    if (advancedHasError) setAdvancedOpen(true);
+  }
 
   return (
     <div className="space-y-4" data-testid="mcp-server-fields">
@@ -242,118 +255,119 @@ export function McpServerFields({ form, projectId }: McpServerFieldsProps) {
         )}
       />
 
-      <div className="space-y-3 rounded-md border p-4">
-        <div>
-          <p className="text-sm font-medium">Call a tool</p>
-          <p className="text-xs text-muted-foreground">Optional. Pick a read-only tool. It runs on every check.</p>
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <FormField
-            control={form.control}
-            name="mcpConfig_toolName"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Tool name</FormLabel>
-                <FormControl>
-                  <Input placeholder="search_docs" data-testid="mcp-tool-name" {...field} value={field.value ?? ""} />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-          <FormField
-            control={form.control}
-            name="mcpConfig_toolExpect"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Result must contain</FormLabel>
-                <FormControl>
-                  <Input placeholder="Optional, not case sensitive" data-testid="mcp-tool-expect" {...field} value={field.value ?? ""} />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-        </div>
-        <FormField
-          control={form.control}
-          name="mcpConfig_toolArgs"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Arguments (JSON)</FormLabel>
-              <FormControl>
-                <Textarea rows={3} className="font-mono" placeholder='{"query": "ping"}' data-testid="mcp-tool-args" {...field} value={field.value ?? ""} />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <FormField
-          control={form.control}
-          name="mcpConfig_slowMs"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Slow after (ms)</FormLabel>
-              <FormControl>
-                <Input inputMode="numeric" placeholder="Optional, e.g. 2000" data-testid="mcp-slow-ms" {...field} value={field.value ?? ""} />
-              </FormControl>
-              <p className="text-xs text-muted-foreground">Warns when a check is slower than this three times in a row.</p>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-        <FormField
-          control={form.control}
-          name="mcpConfig_timeoutSeconds"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Timeout (seconds)</FormLabel>
-              <FormControl>
-                <Input inputMode="numeric" placeholder={MCP_DEFAULT_TIMEOUT} data-testid="mcp-timeout" {...field} value={field.value ?? ""} />
-              </FormControl>
-              <p className="text-xs text-muted-foreground">From 5 to 60. Default 30.</p>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-      </div>
-
-      <Collapsible open={advancedOpen} onOpenChange={setAdvancedOpen}>
-        <CollapsibleTrigger asChild>
-          <Button type="button" variant="ghost" size="sm" className="-ml-2 gap-1" data-testid="mcp-advanced-toggle">
-            <ChevronRight className={`h-4 w-4 transition-transform ${advancedOpen ? "rotate-90" : ""}`} />
-            Advanced
-          </Button>
-        </CollapsibleTrigger>
-        <CollapsibleContent className="pt-2">
-          <FormField
-            control={form.control}
-            name="mcpConfig_protocol"
-            render={({ field }) => (
-              <FormItem className="max-w-sm">
-                <FormLabel>Protocol</FormLabel>
-                <Select value={field.value ?? "auto"} onValueChange={field.onChange}>
+      {/* Optional settings sit side by side and start closed, like the HTTP form's Authentication and Validation. */}
+      <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-2">
+        <OptionalSection
+          title="Call a tool"
+          description="Pick a read-only tool. It runs on every check."
+          open={toolOpen}
+          onOpenChange={setToolOpen}
+        >
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <FormField
+              control={form.control}
+              name="mcpConfig_toolName"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Tool name</FormLabel>
                   <FormControl>
-                    <SelectTrigger className="w-full" data-testid="mcp-protocol">
-                      <SelectValue />
-                    </SelectTrigger>
+                    <Input placeholder="search_docs" data-testid="mcp-tool-name" {...field} value={field.value ?? ""} />
                   </FormControl>
-                  <SelectContent>
-                    <SelectItem value="auto">Auto</SelectItem>
-                    <SelectItem value="2025">2025 handshake</SelectItem>
-                    <SelectItem value="2026">2026 stateless</SelectItem>
-                  </SelectContent>
-                </Select>
-                <p className="text-xs text-muted-foreground">Auto detects the version the server speaks.</p>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="mcpConfig_toolExpect"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Result must contain</FormLabel>
+                  <FormControl>
+                    <Input placeholder="Optional, not case sensitive" data-testid="mcp-tool-expect" {...field} value={field.value ?? ""} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          </div>
+          <FormField
+            control={form.control}
+            name="mcpConfig_toolArgs"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Arguments (JSON)</FormLabel>
+                <FormControl>
+                  <Textarea rows={3} className="font-mono" placeholder='{"query": "ping"}' data-testid="mcp-tool-args" {...field} value={field.value ?? ""} />
+                </FormControl>
                 <FormMessage />
               </FormItem>
             )}
           />
-        </CollapsibleContent>
-      </Collapsible>
+        </OptionalSection>
+
+        <OptionalSection
+          title="Advanced"
+          description="Timeout, slow-check warning and protocol version."
+          open={advancedOpen}
+          onOpenChange={setAdvancedOpen}
+          testId="mcp-advanced-toggle"
+        >
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <FormField
+                control={form.control}
+                name="mcpConfig_slowMs"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Slow after (ms)</FormLabel>
+                    <FormControl>
+                      <Input inputMode="numeric" placeholder="Optional, e.g. 2000" data-testid="mcp-slow-ms" {...field} value={field.value ?? ""} />
+                    </FormControl>
+                    <p className="text-xs text-muted-foreground">Warns when a check is slower than this three times in a row.</p>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="mcpConfig_timeoutSeconds"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Timeout (seconds)</FormLabel>
+                    <FormControl>
+                      <Input inputMode="numeric" placeholder={MCP_DEFAULT_TIMEOUT} data-testid="mcp-timeout" {...field} value={field.value ?? ""} />
+                    </FormControl>
+                    <p className="text-xs text-muted-foreground">From 5 to 60. Default 30.</p>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            <FormField
+              control={form.control}
+              name="mcpConfig_protocol"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Protocol</FormLabel>
+                  <Select value={field.value ?? "auto"} onValueChange={field.onChange}>
+                    <FormControl>
+                      <SelectTrigger className="w-full" data-testid="mcp-protocol">
+                        <SelectValue />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      <SelectItem value="auto">Auto</SelectItem>
+                      <SelectItem value="2025">2025 handshake</SelectItem>
+                      <SelectItem value="2026">2026 stateless</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">Auto detects the version the server speaks.</p>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          </div>
+        </OptionalSection>
+      </div>
     </div>
   );
 }

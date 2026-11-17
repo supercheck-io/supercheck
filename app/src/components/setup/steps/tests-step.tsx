@@ -132,7 +132,7 @@ export function TestsStep({ response, features, permissions, draft, patchDraft, 
 
   if (!permissions.canCreateTests) {
     return (
-      <div className="space-y-6">
+      <div className="space-y-4">
         <Alert variant="info">Ask a project admin. Only people who can create tests can suggest requirements here.</Alert>
         {agentCard}
       </div>
@@ -140,7 +140,7 @@ export function TestsStep({ response, features, permissions, draft, patchDraft, 
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <div className="space-y-2">
         <BetaCost />
         <p className="text-sm text-muted-foreground">AI reads your scan and suggests the key user journeys as requirements. Tick the ones you want. Review creates them; then each one can generate a test.</p>
@@ -170,7 +170,7 @@ export function TestsStep({ response, features, permissions, draft, patchDraft, 
       )}
 
       {options.length > 0 ? (
-        <ul className="divide-y rounded-xl border" aria-label="Suggested requirements">
+        <ul className="max-h-64 divide-y overflow-y-auto rounded-xl border" aria-label="Suggested requirements">
           {options.map((option, index) => (
             <li key={option.title} className="flex items-start gap-3 px-4 py-3">
               <Checkbox

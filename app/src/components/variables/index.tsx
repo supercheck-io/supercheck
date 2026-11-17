@@ -8,6 +8,14 @@ import { useProjectContext } from "@/hooks/use-project-context";
 import { Variable } from "./schema";
 import { ListErrorState } from "@/components/shared/list-states";
 import { toast } from "sonner";
+import { Plus } from "lucide-react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Button } from "@/components/ui/button";
+import { PageHeader } from "@/components/shared/page-header";
+import { DashboardEmptyState } from "@/components/dashboard/dashboard-empty-state";
+import { NAV } from "@/lib/nav-areas";
+import { VariableDialog } from "./variable-dialog";
+import { VariablesHelp } from "./variables-help";
 
 // Type for variable data as returned from API (before transformation)
 interface VariableApiResponse {
@@ -45,6 +53,45 @@ export default function Variables() {
   const [editDialogState, setEditDialogState] = useState<{ [key: string]: boolean }>({});
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const { projectId: currentProjectId, loading: projectLoading } = useProjectContext();
+  const searchParams = useSearchParams();
+  const router = useRouter();
+
+  // The Add variable dialog opens from `?create=true` (and `?type=`) as well as the button.
+  const [dialogOpen, setDialogOpen] = useState(
+    () => searchParams.get("create") === "true"
+  );
+  // Set while we close the dialog ourselves, so the URL change does not reopen it.
+  const closingRef = useRef(false);
+  const initialOpenHandled = useRef(false);
+  const urlType = searchParams.get("type");
+  const defaultType = (urlType === "secret" || urlType === "file") ? urlType : undefined;
+
+  const handleDialogOpenChange = (open: boolean) => {
+    if (!open) {
+      closingRef.current = true;
+      const params = new URLSearchParams(searchParams.toString());
+      params.delete("create");
+      params.delete("type");
+      router.replace(params.toString() ? `/variables?${params.toString()}` : "/variables", { scroll: false });
+    }
+    setDialogOpen(open);
+  };
+
+  useEffect(() => {
+    // The initial open is handled by the useState initializer.
+    if (!initialOpenHandled.current) {
+      initialOpenHandled.current = true;
+      return;
+    }
+    if (closingRef.current) {
+      closingRef.current = false;
+      return;
+    }
+    if (searchParams.get("create") === "true" && !dialogOpen) {
+      // Defer to avoid synchronous setState in the effect body
+      setTimeout(() => setDialogOpen(true), 0);
+    }
+  }, [searchParams, dialogOpen]);
 
   // Hydration-safe mounted state - prevents mismatch between server and client
   // Server returns false, client returns true after hydration
@@ -202,7 +249,7 @@ export default function Variables() {
   // Don't render until component is mounted (prevents hydration mismatch)
   if (!isMounted) {
     return (
-      <div className="flex h-full flex-col p-2 mt-6">
+      <div className="space-y-4">
         <DataTableSkeleton columns={5} rows={2} />
       </div>
     );
@@ -218,9 +265,38 @@ export default function Variables() {
     );
   }
 
+  const canAdd = canManage || canCreateEdit;
+  const isEmpty = !isLoading && variables.length === 0;
+  const addButton = currentProjectId ? (
+    <Button onClick={() => setDialogOpen(true)} disabled={!canAdd}>
+      <Plus className="mr-2 h-4 w-4" />
+      Add variable
+    </Button>
+  ) : null;
+
   return (
-    <>
-      <div className="flex h-full flex-col p-2 mt-6">
+    <div className="space-y-4">
+      <PageHeader
+        title="Variables"
+        icon={NAV.variables.icon}
+        tone={NAV.variables.tone}
+        titleAdornment={<VariablesHelp />}
+        description="Manage configuration values, secrets and file datasets"
+        actions={isEmpty ? undefined : addButton}
+      />
+      {isEmpty ? (
+        <DashboardEmptyState
+          className="min-h-[420px]"
+          title="No variables yet"
+          description={
+            canAdd
+              ? "Add a variable, secret or file to use in your Playwright and k6 scripts."
+              : "No variables have been added to this project yet. Ask a project editor or administrator to add one."
+          }
+          icon={<NAV.variables.icon className="h-10 w-10" />}
+          action={addButton}
+        />
+      ) : (
         <DataTable
           key={refreshTrigger}
           columns={columns}
@@ -241,8 +317,20 @@ export default function Variables() {
             setEditDialogState: handleSetEditDialogState,
           }}
         />
-      </div>
-
-    </>
+      )}
+      {currentProjectId && canAdd && (
+        <VariableDialog
+          open={dialogOpen}
+          onOpenChange={handleDialogOpenChange}
+          projectId={currentProjectId}
+          onSuccess={() => {
+            handleSuccess();
+            handleDialogOpenChange(false);
+          }}
+          defaultIsSecret={defaultType === "secret"}
+          defaultType={defaultType}
+        />
+      )}
+    </div>
   );
 }

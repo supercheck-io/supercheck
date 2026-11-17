@@ -1,6 +1,6 @@
 import React from "react";
 import { fireEvent, render, screen, within } from "@testing-library/react";
-import { HeartbeatPingHistory, heartbeatResultKind, type HeartbeatResultRow } from "./heartbeat-ping-history";
+import { HeartbeatPingHistory, heartbeatResultKind, rowsThatFit, type HeartbeatResultRow } from "./heartbeat-ping-history";
 import { HeartbeatStateBadge, heartbeatStateLabel } from "./heartbeat-state-badge";
 
 const row = (id: string, isUp: boolean, details?: Record<string, unknown>, responseTimeMs: number | null = null): HeartbeatResultRow => ({
@@ -28,14 +28,14 @@ describe("HeartbeatPingHistory", () => {
     );
     const rows = screen.getAllByTestId("heartbeat-ping-row");
     expect(rows.map((r) => r.getAttribute("data-kind"))).toEqual(["ping", "fail", "missed"]);
-    expect(within(rows[0]).getByText("Ping")).toBeInTheDocument();
+    expect(within(rows[0]).getByText("OK")).toBeInTheDocument();
     expect(within(rows[0]).getByText("4 min 08 s")).toBeInTheDocument();
     expect(within(rows[0]).getByText("curl/8.7.1")).toBeInTheDocument();
     expect(within(rows[1]).getByText("Failed")).toBeInTheDocument();
     expect(within(rows[1]).getByText("12 s")).toBeInTheDocument();
     expect(within(rows[2]).getByText("Missed")).toBeInTheDocument();
     expect(within(rows[2]).getByText("No ping before the grace period ended")).toBeInTheDocument();
-    expect(screen.getByText("Total 3 entries")).toBeInTheDocument();
+    expect(screen.getByText("Showing 3 of 3 recent pings.")).toBeInTheDocument();
   });
 
   it("falls back to up/down for rows without heartbeat details", () => {
@@ -57,7 +57,7 @@ describe("HeartbeatPingHistory", () => {
   it("pages through the history", () => {
     const onPageChange = jest.fn();
     render(<HeartbeatPingHistory {...props} results={[row("a", true)]} total={1} page={2} totalPages={3} onPageChange={onPageChange} />);
-    expect(screen.getByText("Total 1 entry")).toBeInTheDocument();
+    expect(screen.getByText("Showing 1 of 1 recent ping.")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Previous page" }));
     fireEvent.click(screen.getByRole("button", { name: "Next page" }));
     expect(onPageChange.mock.calls).toEqual([[1], [3]]);
@@ -82,5 +82,17 @@ describe("HeartbeatStateBadge", () => {
   it("uses the warning tone for Late", () => {
     render(<HeartbeatStateBadge state="late" />);
     expect(screen.getByTestId("heartbeat-state-badge").className).toMatch(/amber/);
+  });
+});
+
+describe("rowsThatFit", () => {
+  it("reserves the header and pager and clamps to 5..50 rows", () => {
+    // 40 header + 58 pager leave 410px: 10 rows of 41px.
+    expect(rowsThatFit(508, 41)).toBe(10);
+    expect(rowsThatFit(508, 41)).toBe(rowsThatFit(508, 41));
+    expect(rowsThatFit(120, 41)).toBe(5);
+    expect(rowsThatFit(10_000, 41)).toBe(50);
+    expect(rowsThatFit(0)).toBe(5);
+    expect(rowsThatFit(Number.NaN)).toBe(5);
   });
 });

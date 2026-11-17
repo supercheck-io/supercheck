@@ -33,6 +33,8 @@ const ICON_TONE: Record<IconTone, string> = {
 const SIZE = {
   sm: { box: "size-6 rounded-md", icon: "size-3.5" },
   md: { box: "size-8 rounded-lg", icon: "size-4" },
+  // Selection cards (persona picker), sized like the Create page icons.
+  lg: { box: "size-12 rounded-xl", icon: "size-6" },
 } as const;
 
 /** A small tinted square holding an icon; marks a page, section or event type. Decorative only. */

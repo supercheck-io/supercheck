@@ -93,7 +93,7 @@ test.describe("Heartbeat monitor @monitors @heartbeat", () => {
     expect(await ping.text()).toBe("OK");
     await expectHeartbeatState(page, body.id, "up");
     await expect(page.getByTestId("heartbeat-ping-row").first()).toHaveAttribute("data-kind", "ping");
-    await expect(byTestId(page, "heartbeat-stat-last-ping")).not.toHaveText(/—/);
+    await expect(byTestId(page, "heartbeat-stat-last-ping")).toHaveText(/Last ping/);
 
     // /fail turns it Down at once (no grace) and opens an incident.
     const fail = await request.post(`${pingUrl}/fail`);

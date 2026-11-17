@@ -136,17 +136,17 @@ At most **3 failure alerts** go out per failure streak, for monitors and jobs. T
 
 Warnings tell your channels about a problem that is not an outage yet. They never open or resolve an incident, are never sent to paging services (PagerDuty, Opsgenie, Jira Service Management, Splunk On-Call, Better Stack, incident.io) and are not counted toward failure or recovery thresholds. They are held back during [maintenance windows](/docs/app/monitor#maintenance-windows).
 
-Turn them on or off per monitor under **Warnings** in the alert settings. Only the warnings that apply to the monitor are listed; the AI endpoint warnings appear only for the AI endpoint preset. **Ping is late** is off until you turn it on. The MCP and AI endpoint warnings are on, but the slow and token warnings send nothing until you set their limit.
+Turn them on or off per monitor under **Warnings** in the alert settings. Only the warnings that apply to the monitor are listed; the AI endpoint warnings appear only for AI Endpoint Monitors. **Ping is late** is off until you turn it on. The MCP and AI endpoint warnings are on, but the slow and token warnings send nothing until you set their limit.
 
 | Warning | Monitor type | Sent when |
 |---|---|---|
 | **Ping is late** | Heartbeat | A ping has not arrived on time, but the grace period has not ended. Sent once per late period. If the grace period ends without a ping, the monitor goes down and the normal failure alert follows |
 | **Tools changed** (`mcp_tools_changed`) | MCP | The server's tool list, a tool description or an input schema changed since the last check. Sent once per change |
 | **MCP slow** (`mcp_slow`) | MCP | Checks were slower than **Slow after (ms)** for 3 checks in a row. Sent once per slow stretch |
-| **Slow first token** (`ai_slow_first_token`) | HTTP, AI endpoint preset | The first token was slower than **Warn when first token is slower than (ms)** for 3 checks in a row. Sent once per slow stretch |
-| **Model changed** (`ai_model_changed`) | HTTP, AI endpoint preset | The reply came from a different model than the last check. Sent once per new model |
+| **Slow first token** (`ai_slow_first_token`) | AI Endpoint | The first token was slower than **Warn when first token is slower than (ms)** for 3 checks in a row. Sent once per slow stretch |
+| **Model changed** (`ai_model_changed`) | AI Endpoint | The reply came from a different model than the last check. Sent once per new model |
 | **Single failed agent run** (`agent_run_failed`) | Synthetic, agent test | A run of an agent test failed but the failure threshold is not reached yet. On by default. Sent once per failed streak; the incident follows when the threshold is reached |
-| **Tokens high** (`ai_tokens_high`) | HTTP, AI endpoint preset | A reply used more tokens than **Warn when a call uses more tokens than**. Sent once per stretch |
+| **Tokens high** (`ai_tokens_high`) | AI Endpoint | A reply used more tokens than **Warn when a call uses more tokens than**. Sent once per stretch |
 
 A warning shows as **Warning** in delivery history. Email subjects start with "Warning:", and every message says "This is a warning. No incident was opened." Custom webhooks receive `type: "monitor_warning"`, `severity: "warning"`, `warningKind` (for example `heartbeat_late`), action `trigger` and the dedup key `warning:<monitor id>:<kind>`.
 

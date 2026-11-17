@@ -39,7 +39,7 @@ test.describe('Project setup accessibility @setup', () => {
     await expect.poll(() => page.evaluate(() => document.documentElement.classList.contains('dark'))).toBe(true);
 
     await expectNoHorizontalScroll(page);
-    await chooseProfile(page, 'Keep production up');
+    await chooseProfile(page, 'SRE and platform');
     await expectNoHorizontalScroll(page);
 
     const rail = page.getByRole('navigation', { name: 'Setup steps' });

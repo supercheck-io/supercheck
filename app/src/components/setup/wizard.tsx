@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState, type ComponentType } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { AppWindow, CheckCircle2, CircleCheckBig, Terminal, type LucideIcon } from "lucide-react";
+import { CheckCircle2, CircleCheckBig, Terminal, type LucideIcon } from "lucide-react";
 
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -12,7 +12,7 @@ import { PageHeader } from "@/components/shared/page-header";
 import { IconChip, type IconTone } from "@/components/ui/icon-chip";
 import { useAppConfig } from "@/hooks/use-app-config";
 import { NAV } from "@/lib/nav-areas";
-import { ADMIN_TYPES, TYPE_TONE } from "@/lib/type-tones";
+import { ADMIN_TYPES, MONITOR_ICON, TYPE_TONE } from "@/lib/type-tones";
 import { cn } from "@/lib/utils";
 import type { SetupFeature } from "@/lib/setup/features";
 import { stepOrder, type SetupStepKey, type UserPersona } from "@/lib/setup/persona";
@@ -41,7 +41,8 @@ interface StepMeta {
 const STEP_META: Partial<Record<SetupStepKey, StepMeta>> = {
   developer: { title: "Set up from your terminal", sub: "CLI and coding agents", icon: Terminal, tone: TYPE_TONE.admin.cliToken },
   invite: { title: "Invite your team first?", sub: "Bring people in", icon: ADMIN_TYPES.member.icon, tone: TYPE_TONE.admin.member },
-  app: { title: "Your app", sub: "URL and test account", icon: AppWindow, tone: NAV.monitors.tone },
+  // The app is the website the other steps check, so it wears the Website monitor type (not the Monitors area).
+  app: { title: "Your app", sub: "URL and test account", icon: MONITOR_ICON.website, tone: TYPE_TONE.monitor.website },
   alerts: { title: "Alerts", sub: "Where we tell you", icon: NAV.notifications.icon, tone: NAV.notifications.tone },
   monitors: { title: "Monitors", sub: "Uptime and SSL", icon: NAV.monitors.icon, tone: NAV.monitors.tone },
   statusPage: { title: "Status page", sub: "Tell your users", icon: NAV.statusPages.icon, tone: NAV.statusPages.tone },
@@ -173,7 +174,7 @@ export function SetupWizard({ response, persona, userEmail }: WizardProps) {
   };
 
   return (
-    <div className="space-y-6" data-testid="setup-wizard">
+    <div className="flex flex-col gap-4 lg:min-h-0 lg:flex-1" data-fit-viewport data-testid="setup-wizard">
       {lock.holder?.sameUser ? (
         <Alert variant="warning" data-testid="setup-other-tab">
           <p className="text-sm font-semibold">Setup is open in another tab</p>
@@ -210,6 +211,7 @@ export function SetupWizard({ response, persona, userEmail }: WizardProps) {
       {!response.permissions.canEdit ? <Alert variant="info">You have view access. A project admin can finish setup.</Alert> : null}
 
       <PageHeader
+        className="shrink-0"
         title={`Set up ${response.projectName}`}
         description="Answer a few questions and we create the basics. Each step can be skipped."
         icon={NAV.projectSetup.icon}
@@ -231,9 +233,9 @@ export function SetupWizard({ response, persona, userEmail }: WizardProps) {
         }
       />
 
-      <div className="grid gap-6 min-[900px]:grid-cols-[14rem_minmax(0,1fr)]">
-        <nav aria-label="Setup steps">
-          <ol className="flex flex-wrap gap-1 min-[900px]:flex-col">
+      <div className="flex flex-col gap-4 lg:min-h-0 lg:flex-1 lg:flex-row lg:gap-6">
+        <nav aria-label="Setup steps" className="lg:w-64 lg:shrink-0 lg:overflow-y-auto">
+          <ol className="flex flex-wrap gap-1 lg:flex-col">
             {steps.map((stepKey, i) => {
               const m = STEP_META[stepKey] as StepMeta;
               const skippedStep = session.skipped.includes(stepKey);
@@ -247,12 +249,12 @@ export function SetupWizard({ response, persona, userEmail }: WizardProps) {
                     aria-current={current ? "step" : undefined}
                     onClick={() => goTo(stepKey)}
                     className={cn(
-                      "flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-sm outline-none transition-colors hover:bg-accent focus-visible:ring-[3px] focus-visible:ring-ring/50",
+                      "flex w-full items-center gap-2 whitespace-nowrap rounded-md px-2 py-2 text-left text-sm outline-none transition-colors hover:bg-accent focus-visible:ring-[3px] focus-visible:ring-ring/50",
                       current && "bg-accent font-medium",
                     )}
                   >
                     <IconChip icon={m.icon} tone={m.tone} size="sm" />
-                    <span className="min-w-0">
+                    <span className="min-w-0 truncate" title={m.title}>
                       {m.title}
                       {skippedStep ? <span className="block text-xs font-normal text-muted-foreground">Skipped</span> : null}
                     </span>
@@ -269,8 +271,8 @@ export function SetupWizard({ response, persona, userEmail }: WizardProps) {
           </ol>
         </nav>
 
-        <section aria-labelledby="setup-step-title" className="min-w-0 space-y-6 min-[900px]:border-l min-[900px]:pl-6">
-          <div className="flex items-start gap-3">
+        <section aria-labelledby="setup-step-title" className="flex min-w-0 flex-col gap-4 lg:min-h-0 lg:flex-1 lg:border-l lg:pl-6">
+          <div className="flex shrink-0 items-start gap-3">
             <IconChip icon={meta.icon} tone={meta.tone} size="md" className="mt-0.5" />
             <div className="min-w-0">
               <h2 id="setup-step-title" className="text-base font-semibold">
@@ -282,6 +284,8 @@ export function SetupWizard({ response, persona, userEmail }: WizardProps) {
             </div>
           </div>
 
+          {/* Same-size panel on desktop: the body takes the leftover height; long lists scroll inside their own box. */}
+          <div className="lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
           {key === "review" ? (
             <ReviewStep
               {...stepProps}
@@ -301,8 +305,9 @@ export function SetupWizard({ response, persona, userEmail }: WizardProps) {
           ) : Body ? (
             <Body {...stepProps} />
           ) : null}
+          </div>
 
-          <div className="flex flex-wrap items-center justify-between gap-2 border-t pt-4">
+          <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-t pt-4">
             <Button type="button" variant="outline" disabled={index === 0} onClick={() => go(index - 1, "back")}>
               Back
             </Button>

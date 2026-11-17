@@ -9,7 +9,7 @@ import {
 import { MonitorFormSkeleton } from "@/components/monitors/monitor-form-skeleton";
 import { Monitor } from "@/components/monitors/schema";
 import { PageBreadcrumbs } from "@/components/page-breadcrumbs";
-import { monitorTypes } from "@/components/monitors/data";
+import { displayMonitorType, monitorTypes } from "@/components/monitors/data";
 import { mcpFormValues } from "@/components/monitors/mcp-server-fields";
 import { heartbeatFormValues } from "@/components/monitors/heartbeat-format";
 import { heartbeatGraceMinutes } from "@/lib/heartbeat/state";
@@ -199,7 +199,7 @@ export default function EditMonitorPage({
   ];
 
   // Get monitor type info for the title
-  const monitorTypeInfo = monitorTypes.find((t) => t.value === formType);
+  const monitorTypeInfo = monitorTypes.find((t) => t.value === displayMonitorType({ type: formType, config: monitor.config }));
 
   // Keep the stored interval exactly; the form adds it as an option when it is not a preset
   const formInterval = String(

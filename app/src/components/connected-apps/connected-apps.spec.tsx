@@ -40,7 +40,7 @@ describe("ConnectedApps", () => {
   it("explains an empty list, a disabled server and a load failure", async () => {
     fetchMock.mockResolvedValueOnce(json(200, { connections: [] }));
     const { unmount } = render(<ConnectedApps />);
-    expect(await screen.findByText(/no apps are connected/i)).toBeInTheDocument();
+    expect(await screen.findByText("No connected apps")).toBeInTheDocument();
     unmount();
 
     fetchMock.mockResolvedValueOnce(json(404, { error: "not_found" }));
@@ -53,7 +53,7 @@ describe("ConnectedApps", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent(/could not load/i);
     fetchMock.mockResolvedValueOnce(json(200, { connections: [] }));
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
-    expect(await screen.findByText(/no apps are connected/i)).toBeInTheDocument();
+    expect(await screen.findByText("No connected apps")).toBeInTheDocument();
   });
 
   it("shows the load error, and recovers on retry, when the request itself fails", async () => {
@@ -81,7 +81,7 @@ describe("ConnectedApps", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: "Disconnect" }));
     await waitFor(() => expect(toastSuccess).toHaveBeenCalledWith("Disconnected Agent Co"));
     expect(fetchMock.mock.calls[1]).toEqual(["/api/oauth/mcp/connections/c-1", { method: "DELETE" }]);
-    expect(await screen.findByText(/no apps are connected/i)).toBeInTheDocument();
+    expect(await screen.findByText("No connected apps")).toBeInTheDocument();
   });
 
   it("keeps the connection listed and says so when disconnecting fails", async () => {

@@ -19,14 +19,17 @@ export function MonitorsPageTabs() {
     params.delete("new");
     router.replace(params.size ? `${pathname}?${params}` : pathname, { scroll: false });
   };
+  // Each tab renders the PageHeader (title, these tabs, its create action) so the empty state can hide the action.
+  const tabs = (
+    <TabsList>
+      <TabsTrigger value="monitors">Monitors</TabsTrigger>
+      <TabsTrigger value="maintenance">Maintenance</TabsTrigger>
+    </TabsList>
+  );
   return (
-    <Tabs value={tab} onValueChange={select} className="space-y-4">
-      <TabsList>
-        <TabsTrigger value="monitors">Monitors</TabsTrigger>
-        <TabsTrigger value="maintenance">Maintenance</TabsTrigger>
-      </TabsList>
-      <TabsContent value="monitors"><MonitorsList /></TabsContent>
-      <TabsContent value="maintenance"><MaintenanceWindowsPanel /></TabsContent>
+    <Tabs value={tab} onValueChange={select} activationMode="manual">
+      <TabsContent value="monitors" className="mt-0"><MonitorsList tabs={tabs} /></TabsContent>
+      <TabsContent value="maintenance" className="mt-0"><MaintenanceWindowsPanel tabs={tabs} /></TabsContent>
     </Tabs>
   );
 }

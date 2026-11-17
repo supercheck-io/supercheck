@@ -50,6 +50,10 @@ interface ResponseTimeBarChartProps {
   showFirstToken?: boolean;
   /** Card title; a heartbeat calls it "Run duration". */
   title?: string;
+  /** Replaces the default empty-state copy (a heartbeat has no duration until /start is called). */
+  empty?: { description: string; heading: string; hint: string };
+  /** Fill the parent's height (no 335px floor); the chart grows with it. Used by the heartbeat page. */
+  fill?: boolean;
 }
 
 interface TooltipProps {
@@ -115,7 +119,7 @@ const CustomTooltip = ({ active, payload, label }: TooltipProps) => {
   return null;
 };
 
-export function ResponseTimeBarChart({ data, showFirstToken = false, title = "Response Time" }: ResponseTimeBarChartProps) {
+export function ResponseTimeBarChart({ data, showFirstToken = false, title = "Response Time", empty, fill = false }: ResponseTimeBarChartProps) {
   const [visiblePoints, setVisiblePoints] = React.useState(0);
 
   // Input validation
@@ -186,11 +190,11 @@ export function ResponseTimeBarChart({ data, showFirstToken = false, title = "Re
 
   if (!validatedData || validatedData.length === 0) {
     return (
-      <Card className="shadow-sm flex flex-col min-h-[335px]">
+      <Card className={fill ? "flex h-full min-h-0 flex-col shadow-sm" : "shadow-sm flex flex-col min-h-[335px]"}>
         <CardHeader className="pb-4">
           <CardTitle className="text-lg font-semibold">{title}</CardTitle>
           <CardDescription className="text-sm">
-            Performance metrics will appear here once monitoring begins.
+            {empty?.description ?? "Performance metrics will appear here once monitoring begins."}
           </CardDescription>
         </CardHeader>
         <CardContent className="flex items-center justify-center flex-1">
@@ -212,10 +216,10 @@ export function ResponseTimeBarChart({ data, showFirstToken = false, title = "Re
             </div>
             <div>
               <p className="text-muted-foreground font-medium">
-                No Response Data
+                {empty?.heading ?? "No Response Data"}
               </p>
               <p className="text-sm text-muted-foreground mt-1">
-                Response time data will be displayed here after the first check.
+                {empty?.hint ?? "Response time data will be displayed here after the first check."}
               </p>
             </div>
           </div>
@@ -232,11 +236,11 @@ export function ResponseTimeBarChart({ data, showFirstToken = false, title = "Re
   if (allResponseTimes.length === 0) {
     // If no valid response times at all
     return (
-      <Card className="shadow-sm flex flex-col min-h-[335px]">
+      <Card className={fill ? "flex h-full min-h-0 flex-col shadow-sm" : "shadow-sm flex flex-col min-h-[335px]"}>
         <CardHeader className="pb-4">
           <CardTitle className="text-lg font-semibold">{title}</CardTitle>
           <CardDescription className="text-sm">
-            No response data available
+            {empty?.description ?? "No response data available"}
           </CardDescription>
         </CardHeader>
         <CardContent className="flex items-center justify-center flex-1">
@@ -258,10 +262,10 @@ export function ResponseTimeBarChart({ data, showFirstToken = false, title = "Re
             </div>
             <div>
               <p className="text-muted-foreground font-medium">
-                No Response Data
+                {empty?.heading ?? "No Response Data"}
               </p>
               <p className="text-sm text-muted-foreground mt-1">
-                No response time data available.
+                {empty?.hint ?? "No response time data available."}
               </p>
             </div>
           </div>
@@ -280,7 +284,7 @@ export function ResponseTimeBarChart({ data, showFirstToken = false, title = "Re
   const yAxisDomain = [yAxisMin, maxValue + padding];
 
   return (
-    <Card className="h-full flex flex-col shadow-sm min-h-[335px]">
+    <Card className={fill ? "flex h-full min-h-0 flex-col shadow-sm" : "h-full flex flex-col shadow-sm min-h-[335px]"}>
       <CardHeader className="pb-3">
         <CardTitle className="text-lg font-semibold">{title}</CardTitle>
         <CardDescription className="text-sm">
@@ -288,8 +292,8 @@ export function ResponseTimeBarChart({ data, showFirstToken = false, title = "Re
           {showFirstToken ? ". Solid: total time. Dashed: first token." : ""}
         </CardDescription>
       </CardHeader>
-      <CardContent className="p-3 pl-0 pr-8 flex-1">
-        <ChartContainer config={chartConfig} className="w-full h-[310px]">
+      <CardContent className={fill ? "min-h-[120px] flex-1 p-3 pl-0 pr-8" : "p-3 pl-0 pr-8 flex-1"}>
+        <ChartContainer config={chartConfig} className={fill ? "h-full w-full" : "w-full h-[310px]"}>
           <ResponsiveContainer width="100%" height="100%">
             <LineChart
               data={processedData}

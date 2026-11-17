@@ -1,4 +1,7 @@
-import { Braces, FileText, FolderOpen, KeyRound, Lock, UserPlus, type LucideIcon } from "lucide-react";
+import {
+  ArrowLeftRight, BrainCircuit, Braces, ChevronsLeftRightEllipsis, EthernetPort, FileText, FolderOpen, HeartPulse, KeyRound, LaptopMinimal, Lock, Plug, UserPlus,
+  type LucideIcon,
+} from "lucide-react";
 
 /**
  * Single registry for the colour of a TYPE (test, monitor, job, variable, AI SRE setup, admin setup).
@@ -7,18 +10,30 @@ import { Braces, FileText, FolderOpen, KeyRound, Lock, UserPlus, type LucideIcon
  * Tests and monitors reuse the five original colours on purpose (API test and HTTP monitor are both teal).
  * Brand marks (Playwright, k6, Chrome) keep their own colours; their type tone tints the chip and text around them.
  */
-export const TYPE_TONES = ["sky", "teal", "cyan", "blue", "purple", "indigo", "violet", "cobalt", "slate", "zinc", "stone", "lime", "clay", "olive"] as const;
+export const TYPE_TONES = ["sky", "teal", "cyan", "blue", "purple", "indigo", "violet", "cobalt", "slate", "zinc", "stone", "lime", "clay", "olive", "aqua", "orchid", "fuchsia", "rose"] as const;
 export type TypeTone = (typeof TYPE_TONES)[number];
 
 export const TYPE_TONE = {
   test: { browser: "sky", api: "teal", database: "cyan", custom: "blue", performance: "purple", agent: "purple" },
-  monitor: { http_request: "teal", website: "sky", ping_host: "cyan", port_check: "blue", synthetic_test: "purple", heartbeat: "teal", mcp_server: "purple" },
+  // Monitors never repeat a tone, and none uses blue (the Monitors area colour).
+  monitor: { http_request: "aqua", website: "cyan", ping_host: "sky", port_check: "teal", synthetic_test: "purple", mcp_server: "orchid", ai_endpoint: "fuchsia", heartbeat: "rose" },
   // A job runs a test engine, so it shares the tone of that test type.
   job: { playwright: "sky", k6: "purple" },
   variable: { variable: "stone", secret: "violet", file: "indigo" },
   sre: { service: "cobalt", integration: "clay", privateAgent: "olive" },
   admin: { project: "slate", member: "lime", cliToken: "zinc" },
 } as const satisfies Record<string, Record<string, TypeTone>>;
+
+/** Icon of each monitor type (Synthetic uses the Playwright logo, set where it renders). Read it everywhere a monitor type is shown. */
+export const MONITOR_ICON = {
+  http_request: ArrowLeftRight,
+  website: LaptopMinimal,
+  ping_host: ChevronsLeftRightEllipsis,
+  port_check: EthernetPort,
+  mcp_server: Plug,
+  ai_endpoint: BrainCircuit,
+  heartbeat: HeartPulse,
+} as const satisfies Record<string, LucideIcon>;
 
 type Group = keyof typeof TYPE_TONE;
 type Key<G extends Group> = keyof (typeof TYPE_TONE)[G] & string;
@@ -39,6 +54,10 @@ export const TYPE_TEXT: Record<TypeTone, string> = {
   lime: "text-type-lime",
   clay: "text-type-clay",
   olive: "text-type-olive",
+  aqua: "text-type-aqua",
+  orchid: "text-type-orchid",
+  fuchsia: "text-type-fuchsia",
+  rose: "text-type-rose",
 };
 
 /** Same colour with `!`, for sidebar and command items whose button sets the svg colour. */
@@ -57,6 +76,10 @@ export const TYPE_TEXT_FORCE: Record<TypeTone, string> = {
   lime: "!text-type-lime",
   clay: "!text-type-clay",
   olive: "!text-type-olive",
+  aqua: "!text-type-aqua",
+  orchid: "!text-type-orchid",
+  fuchsia: "!text-type-fuchsia",
+  rose: "!text-type-rose",
 };
 
 /** Tinted square for IconChip (same 10% fill as the area chips). */
@@ -75,6 +98,10 @@ export const TYPE_CHIP: Record<TypeTone, string> = {
   lime: "bg-type-lime/10 text-type-lime",
   clay: "bg-type-clay/10 text-type-clay",
   olive: "bg-type-olive/10 text-type-olive",
+  aqua: "bg-type-aqua/10 text-type-aqua",
+  orchid: "bg-type-orchid/10 text-type-orchid",
+  fuchsia: "bg-type-fuchsia/10 text-type-fuchsia",
+  rose: "bg-type-rose/10 text-type-rose",
 };
 
 /** Active sidebar icon colour. */
@@ -93,6 +120,10 @@ export const TYPE_ACTIVE_ICON: Record<TypeTone, string> = {
   lime: "[&[data-active=true]>svg]:text-type-lime",
   clay: "[&[data-active=true]>svg]:text-type-clay",
   olive: "[&[data-active=true]>svg]:text-type-olive",
+  aqua: "[&[data-active=true]>svg]:text-type-aqua",
+  orchid: "[&[data-active=true]>svg]:text-type-orchid",
+  fuchsia: "[&[data-active=true]>svg]:text-type-fuchsia",
+  rose: "[&[data-active=true]>svg]:text-type-rose",
 };
 
 /** Hover border for picker cards. */
@@ -111,6 +142,10 @@ export const TYPE_HOVER_BORDER: Record<TypeTone, string> = {
   lime: "hover:border-type-lime/50",
   clay: "hover:border-type-clay/50",
   olive: "hover:border-type-olive/50",
+  aqua: "hover:border-type-aqua/50",
+  orchid: "hover:border-type-orchid/50",
+  fuchsia: "hover:border-type-fuchsia/50",
+  rose: "hover:border-type-rose/50",
 };
 
 export const typeTone = <G extends Group>(group: G, key: Key<G>): TypeTone =>

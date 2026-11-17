@@ -1,4 +1,4 @@
-import { draftForHandoff, monitorPrefill } from "./monitor-prefill";
+import { draftForHandoff, draftForUiType, monitorPrefill } from "./monitor-prefill";
 
 const q = (s: string) => new URLSearchParams(s);
 
@@ -39,5 +39,17 @@ describe("draftForHandoff", () => {
     expect(draftForHandoff(draft, null)).toBe(draft);
     expect(draftForHandoff(draft, "https://old.example/")).toBe(draft);
     expect(draftForHandoff(undefined, "https://new.example/")).toBeUndefined();
+  });
+});
+
+describe("draftForUiType", () => {
+  it("keeps a draft only for the same UI type", () => {
+    const http: { target: string; preset?: string } = { target: "https://a.example/" };
+    const ai = { target: "https://api.example/v1/chat/completions", preset: "ai_endpoint" };
+    expect(draftForUiType(http, false)).toBe(http);
+    expect(draftForUiType(ai, true)).toBe(ai);
+    expect(draftForUiType(http, true)).toBeUndefined();
+    expect(draftForUiType(ai, false)).toBeUndefined();
+    expect(draftForUiType(undefined, true)).toBeUndefined();
   });
 });

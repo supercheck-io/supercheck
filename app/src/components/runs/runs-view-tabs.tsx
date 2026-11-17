@@ -2,7 +2,7 @@
 
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { ClipboardList } from "lucide-react";
-import { IconChip } from "@/components/ui/icon-chip";
+import { PageHeader } from "@/components/shared/page-header";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Runs } from "@/components/runs";
 import { K6AnalyticsView } from "@/components/runs/analytics/k6-analytics-view";
@@ -32,31 +32,28 @@ export function RunsViewTabs() {
 
   return (
     <Tabs value={view} onValueChange={handleViewChange} className="space-y-4">
-      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-        <div className="flex min-w-0 items-start gap-3">
-          <IconChip icon={NAV.runs.icon} tone={NAV.runs.tone} size="md" className="mt-0.5" />
-          <div>
-            <h1 className="text-2xl font-semibold">Runs</h1>
-            <p className="text-muted-foreground text-sm">
-              Job run history, with k6 and Playwright analytics.
-            </p>
-          </div>
-        </div>
-        <TabsList className="self-start md:self-auto">
-          <TabsTrigger value="all" className="gap-2">
-            <ClipboardList className="h-4 w-4" />
-            All runs
-          </TabsTrigger>
-          <TabsTrigger value="k6" className="gap-2">
-            <K6Logo className="h-4 w-4" />
-            Performance (k6)
-          </TabsTrigger>
-          <TabsTrigger value="playwright" className="gap-2">
-            <PlaywrightLogo className="h-4 w-4" />
-            Browser (Playwright)
-          </TabsTrigger>
-        </TabsList>
-      </div>
+      <PageHeader
+        title="Runs"
+        icon={NAV.runs.icon}
+        tone={NAV.runs.tone}
+        description="Job run history, with k6 and Playwright analytics."
+        actions={
+          <TabsList>
+            <TabsTrigger value="all" className="gap-2">
+              <ClipboardList className="h-4 w-4" />
+              All runs
+            </TabsTrigger>
+            <TabsTrigger value="k6" className="gap-2">
+              <K6Logo className="h-4 w-4" />
+              Performance (k6)
+            </TabsTrigger>
+            <TabsTrigger value="playwright" className="gap-2">
+              <PlaywrightLogo className="h-4 w-4" />
+              Browser (Playwright)
+            </TabsTrigger>
+          </TabsList>
+        }
+      />
       <TabsContent value="all">
         <Runs />
       </TabsContent>

@@ -1,5 +1,6 @@
 "use client";
 
+import { DashboardEmptyState } from "@/components/dashboard/dashboard-empty-state";
 import { DeliveryHistory } from "./delivery-history";
 import React, { useState, useEffect, useCallback } from "react";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -467,19 +468,16 @@ export function SubscribersTab({ statusPageId, canUpdate }: SubscribersTabProps)
 
         {/* Subscribers Table */}
         {sortedSubscribers.length === 0 ? (
-          <div className="text-center py-12 border-2 border-dashed rounded-lg bg-muted/20">
-            <div className="inline-flex items-center justify-center w-14 h-14 rounded-full bg-muted mb-4">
-              <Mail className="h-7 w-7 text-muted-foreground" />
-            </div>
-            <h4 className="text-base font-semibold mb-1">
-              {searchQuery ? "No subscribers found" : "No subscribers yet"}
-            </h4>
-            <p className="text-sm text-muted-foreground max-w-sm mx-auto">
-              {searchQuery
+          <DashboardEmptyState
+            className="min-h-[420px]"
+            icon={<Mail className="h-10 w-10" />}
+            title={searchQuery ? "No subscribers found" : "No subscribers yet"}
+            description={
+              searchQuery
                 ? "Try a different search query"
-                : "Subscribers will appear here once users sign up for notifications"}
-            </p>
-          </div>
+                : "Subscribers will appear here once users sign up for notifications"
+            }
+          />
         ) : (
           <>
             <div className="border rounded-lg overflow-x-auto">

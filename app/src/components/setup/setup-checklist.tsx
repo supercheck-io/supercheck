@@ -1,11 +1,11 @@
 import Link from "next/link";
-import { Activity, ExternalLink, Smartphone, type LucideIcon } from "lucide-react";
+import { ExternalLink, Smartphone, type LucideIcon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { IconChip, type IconTone } from "@/components/ui/icon-chip";
 import { TableBadge } from "@/components/ui/table-badge";
 import { NAV } from "@/lib/nav-areas";
-import { ADMIN_TYPES, TYPE_TONE } from "@/lib/type-tones";
+import { ADMIN_TYPES, MONITOR_ICON, TYPE_TONE } from "@/lib/type-tones";
 import { CHECKLIST_GROUP_TITLES, type Checklist, type ChecklistGroup } from "@/lib/setup/checklist";
 
 const GROUPS: ChecklistGroup[] = ["watch", "prove", "fix", "team"];
@@ -14,7 +14,7 @@ const GROUPS: ChecklistGroup[] = ["watch", "prove", "fix", "team"];
 export const CHECKLIST_ICONS: Record<string, { icon: LucideIcon; tone: IconTone }> = {
   monitors: NAV.monitors,
   alerts: NAV.notifications,
-  heartbeat: { icon: Activity, tone: TYPE_TONE.monitor.heartbeat },
+  heartbeat: { icon: MONITOR_ICON.heartbeat, tone: TYPE_TONE.monitor.heartbeat },
   statusPage: NAV.statusPages,
   requirements: NAV.requirements,
   tests: NAV.tests,

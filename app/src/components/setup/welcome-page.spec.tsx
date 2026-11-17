@@ -27,8 +27,8 @@ describe("WelcomePage", () => {
   it("change mode opens for a user who already answered, with the saved persona selected", async () => {
     const { Wrapper } = createWrapper();
     render(<WelcomePage change />, { wrapper: Wrapper });
-    expect(await screen.findByText("Change your persona")).toBeTruthy();
-    expect(screen.getByRole("radio", { name: /Keep production up/ })).toBeChecked();
+    expect(await screen.findByText("Choose your focus")).toBeTruthy();
+    expect(screen.getByRole("radio", { name: /SRE and platform/ })).toBeChecked();
     expect(replace).not.toHaveBeenCalled();
   });
 });

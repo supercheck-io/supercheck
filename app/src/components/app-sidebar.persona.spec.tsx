@@ -67,9 +67,11 @@ describe("AppSidebar persona layout", () => {
   it("renders today's sidebar with no persona", () => {
     renderSidebar();
     expect(labels()).toEqual(["Respond", "Communicate", "Automate", "Monitor"]);
-    expect(screen.getByTestId("group-Respond").textContent).toMatch(/^DashboardIncidents/);
+    // Dashboard sits above the groups with or without a persona.
+    expect(screen.getAllByTestId("group-ungrouped")[0]).toHaveTextContent("Dashboard");
+    expect(screen.getByTestId("group-Respond").textContent).toMatch(/^Incidents/);
     expect(screen.getByTestId("group-Respond")).toHaveAttribute("data-collapsible", "false");
-    expect(screen.getAllByTestId("group-ungrouped")).toHaveLength(1); // Docs only
+    expect(screen.getAllByTestId("group-ungrouped")).toHaveLength(2); // Dashboard on top, Docs at the bottom
   });
 
   it("keeps Dashboard visible outside the folded groups when a persona is set", () => {

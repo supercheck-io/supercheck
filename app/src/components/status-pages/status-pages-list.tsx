@@ -2,13 +2,8 @@
 
 import { ListCapNote, ListErrorState } from "@/components/shared/list-states";
 import React, { useState, useEffect, useRef, useSyncExternalStore } from "react";
-import {
-  Card,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import { IconChip } from "@/components/ui/icon-chip";
+import { Card } from "@/components/ui/card";
+import { PageHeader } from "@/components/shared/page-header";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -17,7 +12,6 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog";
 import {
   AlertDialog,
@@ -321,7 +315,7 @@ export default function StatusPagesList() {
         return {
           variant: "secondary" as const,
           className:
-            "bg-gray-100 text-gray-600 hover:bg-gray-100 dark:bg-gray-800 dark:text-gray-400",
+            "bg-muted text-muted-foreground hover:bg-muted",
           icon: Circle,
           label: "Draft",
         };
@@ -337,7 +331,7 @@ export default function StatusPagesList() {
         return {
           variant: "secondary" as const,
           className:
-            "bg-gray-100 text-gray-600 hover:bg-gray-100 dark:bg-gray-800 dark:text-gray-400",
+            "bg-muted text-muted-foreground hover:bg-muted",
           icon: Circle,
           label: status,
         };
@@ -352,112 +346,102 @@ export default function StatusPagesList() {
     );
   }
 
+  const createButton = (
+    <Button
+      onClick={() => setIsCreateDialogOpen(true)}
+      disabled={!canCreate}
+      data-testid="create-status-page-button"
+    >
+      <Plus className="h-4 w-4 mr-2" />
+      Create status page
+    </Button>
+  );
+  const isEmpty = statusPages.length === 0 && !error;
+
   return (
-    <div className="p-6 max-h-[calc(100vh-130px)] flex flex-col">
-      <CardHeader className="px-0 pt-0 shrink-0">
-        <div className="flex items-center justify-between">
-          <div className="flex min-w-0 items-start gap-3">
-            <IconChip icon={NAV.statusPages.icon} tone={NAV.statusPages.tone} size="md" className="mt-0.5" />
-            <div>
-              <CardTitle className="text-2xl font-semibold">
-                Status Pages
-              </CardTitle>
-              <CardDescription>
-                Create and manage public status pages for your services
-              </CardDescription>
-            </div>
-          </div>
-          <Dialog
-            open={isCreateDialogOpen}
-            onOpenChange={handleCreateDialogChange}
-          >
-            <DialogTrigger asChild>
-              <Button disabled={!canCreate} data-testid="create-status-page-button">
-                <Plus className="h-4 w-4 mr-2" />
-                Create Status Page
-              </Button>
-            </DialogTrigger>
-            <DialogContent
-              className="w-[calc(100vw-2rem)] max-h-[90vh] overflow-y-auto sm:max-w-xl"
-              onOpenAutoFocus={(event) => {
-                // Start on the name field, not the first info button.
-                event.preventDefault();
-                document.getElementById("name")?.focus();
+    <div className="space-y-4">
+      <PageHeader
+        title="Status Pages"
+        icon={NAV.statusPages.icon}
+        tone={NAV.statusPages.tone}
+        description="Create and manage public status pages for your services"
+        actions={isEmpty ? undefined : createButton}
+      />
+      <Dialog
+        open={isCreateDialogOpen}
+        onOpenChange={handleCreateDialogChange}
+      >
+        <DialogContent
+          className="w-[calc(100vw-2rem)] max-h-[90vh] overflow-y-auto sm:max-w-xl"
+          onOpenAutoFocus={(event) => {
+            // Start on the name field, not the first info button.
+            event.preventDefault();
+            document.getElementById("name")?.focus();
+          }}
+        >
+          <DialogHeader>
+            <DialogTitle>Create Status Page</DialogTitle>
+            <DialogDescription>
+              Set up a new public status page for your services
+            </DialogDescription>
+          </DialogHeader>
+          <CreateStatusPageForm
+            onSuccess={handleCreateSuccess}
+            onCancel={() => handleCreateDialogChange(false)}
+          />
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog
+        open={isDeleteDialogOpen}
+        onOpenChange={setIsDeleteDialogOpen}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Status Page</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete &quot;{deletingPage?.name}
+              &quot;?
+              <br />
+              <br />
+              <strong>Warning:</strong> This will permanently delete the
+              status page, all incidents, components, and subscribers. This
+              action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel
+              onClick={() => {
+                setIsDeleteDialogOpen(false);
+                setDeletingPage(null);
               }}
             >
-              <DialogHeader>
-                <DialogTitle>Create Status Page</DialogTitle>
-                <DialogDescription>
-                  Set up a new public status page for your services
-                </DialogDescription>
-              </DialogHeader>
-              <CreateStatusPageForm
-                onSuccess={handleCreateSuccess}
-                onCancel={() => handleCreateDialogChange(false)}
-              />
-            </DialogContent>
-          </Dialog>
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmDelete}
+              className={buttonVariants({ variant: "destructive" })}
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
-          <AlertDialog
-            open={isDeleteDialogOpen}
-            onOpenChange={setIsDeleteDialogOpen}
-          >
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle>Delete Status Page</AlertDialogTitle>
-                <AlertDialogDescription>
-                  Are you sure you want to delete &quot;{deletingPage?.name}
-                  &quot;?
-                  <br />
-                  <br />
-                  <strong>Warning:</strong> This will permanently delete the
-                  status page, all incidents, components, and subscribers. This
-                  action cannot be undone.
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel
-                  onClick={() => {
-                    setIsDeleteDialogOpen(false);
-                    setDeletingPage(null);
-                  }}
-                >
-                  Cancel
-                </AlertDialogCancel>
-                <AlertDialogAction
-                  onClick={confirmDelete}
-                  className={buttonVariants({ variant: "destructive" })}
-                >
-                  Delete
-                </AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
-        </div>
-      </CardHeader>
-
-      <div className="flex-1 overflow-y-auto min-h-0">
+      <div>
         <ListCapNote count={statusPages.length} cap={STATUS_PAGES_LIST_CAP} />
         {error && statusPages.length === 0 ? (
           <ListErrorState title="Failed to fetch status pages" error={error} onRetry={() => refetch()} />
         ) : statusPages.length === 0 ? (
           <DashboardEmptyState
+            className="min-h-[420px]"
             title="No status pages yet"
             description="Create your first status page to communicate service status with your users"
-            icon={<Tally4 className="h-12 w-12 text-success" />}
-            action={
-              <Button
-                onClick={() => setIsCreateDialogOpen(true)}
-                disabled={!canCreate}
-                size="lg"
-              >
-                <Plus className="mr-2 h-4 w-4" />
-                Create Your First Status Page
-              </Button>
-            }
+            icon={<Tally4 className="h-10 w-10" />}
+            action={createButton}
           />
         ) : (
-          <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-3 mt-6 pb-4">
+          <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-3 pb-4">
             {statusPages.map((page) => {
               const statusConfig = getStatusConfig(page.status);
               const StatusIcon = statusConfig.icon;

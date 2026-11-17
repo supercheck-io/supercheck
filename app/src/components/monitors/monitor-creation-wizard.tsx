@@ -3,7 +3,7 @@
 import { monitorTypes } from "@/components/monitors/data";
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { MonitorForm } from "./monitor-form";
-import { draftForHandoff } from "./monitor-prefill";
+import { draftForHandoff, draftForUiType } from "./monitor-prefill";
 import { channelsOptional } from "@/lib/incident-settings";
 import { AlertSettings } from "@/components/alerts/alert-settings";
 import { LocationConfigSection } from "./location-config-section";
@@ -47,6 +47,8 @@ export function MonitorCreationWizard() {
   const stepFromUrl = searchParams?.get("wizardStep") as WizardStep | null;
   // A heartbeat runs nowhere: no location step, and its alert defaults differ (spec 4.5).
   const isHeartbeat = searchParams?.get("type") === "heartbeat";
+  // The AI Endpoint Monitor is a UI type only: it is saved as an http_request monitor with the AI preset.
+  const isAiEndpoint = searchParams?.get("type") === "ai_endpoint";
   // Alert defaults differ by type (heartbeat pins sev2), so a draft for one type never seeds another.
   const alertDraftKey = `${STORAGE_KEYS.ALERT}:${searchParams?.get("type") || "http_request"}`;
   const { maxMonitorNotificationChannels } = useAppConfig();
@@ -68,7 +70,10 @@ export function MonitorCreationWizard() {
       if (saved) {
         try {
           // An explicit hand-off ("Monitor this") wins over an older draft for another target.
-          const draft = draftForHandoff(JSON.parse(saved), searchParams?.get("url"));
+          const handoff = draftForHandoff(JSON.parse(saved), searchParams?.get("url"));
+          // AI Endpoint and HTTP share the stored type; drop a draft made for the other one.
+          const wantsAi = searchParams?.get("type") === "ai_endpoint";
+          const draft = draftForUiType(handoff, wantsAi);
           if (!draft) sessionStorage.removeItem(STORAGE_KEYS.MONITOR_DATA);
           return draft;
         } catch {
@@ -135,15 +140,18 @@ export function MonitorCreationWizard() {
     };
   }, [isHeartbeat, alertDraftKey]);
 
-  const [currentStep, setCurrentStep] = useState<WizardStep>(
-    stepFromUrl || "monitor"
-  );
-  const [monitorData, setMonitorData] = useState<FormValues | undefined>(
-    getInitialMonitorData
-  );
-  const [apiData, setApiData] = useState<Record<string, unknown> | undefined>(
-    getInitialApiData
-  );
+  // Restore the monitor draft and its API payload together: when the draft is dropped (another UI type
+  // or another hand-off target), its payload goes too and the wizard starts at the monitor step.
+  const [initialDraft] = useState(() => {
+    const monitor = getInitialMonitorData();
+    if (!monitor && typeof window !== "undefined") sessionStorage.removeItem(STORAGE_KEYS.API_DATA);
+    return { monitor, api: monitor ? getInitialApiData() : undefined };
+  });
+  // Same initial step on server and client (sessionStorage is client-only); Create sends a step
+  // without a restored payload back to the monitor step.
+  const [currentStep, setCurrentStep] = useState<WizardStep>(stepFromUrl || "monitor");
+  const [monitorData, setMonitorData] = useState<FormValues | undefined>(initialDraft.monitor);
+  const [apiData, setApiData] = useState<Record<string, unknown> | undefined>(initialDraft.api);
   const [locationConfig, setLocationConfig] = useState<LocationConfig>(
     getInitialLocationConfig
   );
@@ -267,7 +275,7 @@ export function MonitorCreationWizard() {
     : "http_request";
   // Same label as the monitor type picker and breadcrumbs (e.g. "HTTP Monitor")
   const typeTitle =
-    monitorTypes.find((monitorType) => monitorType.value === type)?.label ??
+    monitorTypes.find((monitorType) => monitorType.value === (isAiEndpoint ? "ai_endpoint" : type))?.label ??
     "Monitor";
 
   // Don't clear monitor data when URL changes - preserve form state
@@ -399,6 +407,15 @@ export function MonitorCreationWizard() {
       }
     }
 
+    if (!apiData) {
+      // The restored draft was dropped (other UI type or hand-off): never post another monitor's payload.
+      toast.error("Fill in the monitor details first");
+      isCreatingRef.current = false;
+      setIsCreating(false);
+      setCurrentStep("monitor");
+      return;
+    }
+
     try {
       // Include location config in the monitor config
       const configWithLocation = {
@@ -469,6 +486,7 @@ export function MonitorCreationWizard() {
           hideAlerts={true}
           nextStepLabel={hasMultipleLocations && !isHeartbeat ? "Next: Location Settings" : "Next: Alert Settings"}
           monitorType={type as MonitorType}
+          aiEndpoint={isAiEndpoint}
           title={typeTitle}
           description="Configure a new uptime monitor"
           // Pass monitorData to preserve state when navigating back

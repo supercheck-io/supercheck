@@ -128,3 +128,13 @@ it("does not reuse settings from an earlier opening when the next load fails", a
   typeName("Acme");
   expect(confirmButton()).toBeDisabled();
 });
+
+it("opens from a menu in controlled mode without rendering its own trigger", async () => {
+  fetchMock.mockResolvedValueOnce(info());
+  const onOpenChange = jest.fn();
+  render(<DeleteOrganizationButton organizationId="org-1" organizationName="Acme" open onOpenChange={onOpenChange} />);
+  expect(screen.queryByRole("button", { name: "Delete organization" })).toBeNull();
+  await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/organizations/org-1/deletion"));
+  fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+  expect(onOpenChange).toHaveBeenCalledWith(false);
+});

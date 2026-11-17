@@ -21,8 +21,8 @@ export default async function IncidentsPage({
   return (
     <div>
       <PageBreadcrumbs items={breadcrumbs} />
-      <Card className="m-4 min-w-0 overflow-hidden shadow-sm transition-shadow duration-200 hover:shadow-md">
-        <CardContent>
+      <Card className="m-4 min-w-0 overflow-hidden shadow-sm">
+        <CardContent className="p-6">
           <Suspense fallback={null}>
             <SreIncidentsPageClient />
           </Suspense>

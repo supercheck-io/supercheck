@@ -34,7 +34,16 @@ import {
   Pencil,
   RadioTower,
   Cable,
+  MoreHorizontal,
+  Trash2,
 } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
 import { AuditLogsTable } from "@/components/admin/audit-logs-table";
 import { CliTokensTable } from "@/components/admin/cli-tokens-table";
@@ -377,6 +386,9 @@ function OrgAdminDashboardContent() {
   })), [orgProjects]);
 
   const [showInviteDialog, setShowInviteDialog] = useState(false);
+  const [showDeleteOrgDialog, setShowDeleteOrgDialog] = useState(false);
+  // A new key per opening remounts the delete dialog, so it never shows a stale deletion check.
+  const [deleteOrgKey, setDeleteOrgKey] = useState(0);
   const [inviting, setInviting] = useState(false);
   const [showCreateProjectDialog, setShowCreateProjectDialog] = useState(false);
   const [showEditProjectDialog, setShowEditProjectDialog] = useState(false);
@@ -831,6 +843,7 @@ function OrgAdminDashboardContent() {
   const userCanRenameOrg = canManageOrganization(
     normalizeRole(currentUserRole),
   );
+  const isOrgOwner = normalizeRole(currentUserRole) === "org_owner";
 
   return (
     <div>
@@ -851,23 +864,51 @@ function OrgAdminDashboardContent() {
                 <Building2 className="mr-1.5 h-3.5 w-3.5 shrink-0" />
                 <span className="truncate">{orgDetails.name}</span>
               </TableBadge>
-              {userCanRenameOrg && (
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-7 w-7 shrink-0"
-                  onClick={() => {
-                    setNewOrgName(orgDetails.name);
-                    setShowRenameOrgDialog(true);
-                  }}
-                  title="Rename organization"
-                  aria-label="Rename organization"
-                >
-                  <Pencil className="h-3.5 w-3.5" />
-                </Button>
+              {(userCanRenameOrg || isOrgOwner) && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" aria-label="Organization actions">
+                      <MoreHorizontal className="h-4 w-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start">
+                    {userCanRenameOrg && (
+                      <DropdownMenuItem
+                        onSelect={() => {
+                          setNewOrgName(orgDetails.name);
+                          setShowRenameOrgDialog(true);
+                        }}
+                      >
+                        <Pencil className="mr-2 h-4 w-4" />
+                        Rename organization
+                      </DropdownMenuItem>
+                    )}
+                    {isOrgOwner && (
+                      <>
+                        {userCanRenameOrg && <DropdownMenuSeparator />}
+                        <DropdownMenuItem
+                          className="text-destructive focus:text-destructive"
+                          onSelect={() => {
+                            setDeleteOrgKey((k) => k + 1);
+                            setShowDeleteOrgDialog(true);
+                          }}
+                        >
+                          <Trash2 className="mr-2 h-4 w-4" />
+                          Delete organization
+                        </DropdownMenuItem>
+                      </>
+                    )}
+                  </DropdownMenuContent>
+                </DropdownMenu>
               )}
-              {normalizeRole(currentUserRole) === "org_owner" && (
-                <DeleteOrganizationButton organizationId={orgDetails.id} organizationName={orgDetails.name} />
+              {isOrgOwner && (
+                <DeleteOrganizationButton
+                  key={deleteOrgKey}
+                  organizationId={orgDetails.id}
+                  organizationName={orgDetails.name}
+                  open={showDeleteOrgDialog}
+                  onOpenChange={setShowDeleteOrgDialog}
+                />
               )}
             </span>
           }

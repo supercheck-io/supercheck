@@ -237,7 +237,8 @@ export function NavMain({
   if (!collapsible) {
     return (
       <SidebarGroup>
-        <SidebarGroupLabel>{groupLabel}</SidebarGroupLabel>
+        {/* An unlabelled group (Dashboard under Quick Create, the footer links) gets no empty 32px label row. */}
+        {groupLabel ? <SidebarGroupLabel>{groupLabel}</SidebarGroupLabel> : null}
         {menu}
       </SidebarGroup>
     );

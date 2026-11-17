@@ -1,5 +1,7 @@
 "use client";
 
+import { DashboardEmptyState } from "@/components/dashboard/dashboard-empty-state";
+
 import React, { useState, useEffect, useCallback } from "react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import {
@@ -407,7 +409,7 @@ export function ComponentsTab({
           </div>
           <Button disabled size="sm">
             <Plus className="h-4 w-4 mr-2" />
-            Add Component
+            Add component
           </Button>
         </CardHeader>
         <CardContent className="pt-0">
@@ -457,6 +459,7 @@ export function ComponentsTab({
               automatically track status.
             </CardDescription>
           </div>
+          {components.length > 0 && (
           <Button
             onClick={handleAddComponent}
             disabled={!canUpdate}
@@ -466,36 +469,32 @@ export function ComponentsTab({
             }
           >
             <Plus className="h-4 w-4 mr-2" />
-            Add Component
+            Add component
           </Button>
+          )}
         </CardHeader>
         <CardContent className="pt-0">
           {components.length === 0 ? (
-            <div className="text-center py-12 border-2 border-dashed rounded-lg bg-muted/20">
-              <div className="inline-flex items-center justify-center w-14 h-14 rounded-full bg-blue-100 dark:bg-blue-900/50 mb-4">
-                <Layers className="h-7 w-7 text-blue-600 dark:text-blue-400" />
-              </div>
-              <h4 className="text-base font-semibold mb-1">
-                No components yet
-              </h4>
-              <p className="text-sm text-muted-foreground mb-4 max-w-sm mx-auto">
-                Add components to represent the different parts of your service
-                and track their status
-              </p>
-              <Button
-                onClick={handleAddComponent}
-                disabled={!canUpdate}
-                size="sm"
-                title={
-                  !canUpdate
-                    ? "You don't have permission to add components"
-                    : ""
-                }
-              >
-                <Plus className="h-4 w-4 mr-2" />
-                Add Your First Component
-              </Button>
-            </div>
+            <DashboardEmptyState
+              className="min-h-[420px]"
+              icon={<Layers className="h-10 w-10" />}
+              title="No components yet"
+              description="Add components to represent the different parts of your service and track their status"
+              action={
+                <Button
+                  onClick={handleAddComponent}
+                  disabled={!canUpdate}
+                  title={
+                    !canUpdate
+                      ? "You don't have permission to add components"
+                      : ""
+                  }
+                >
+                  <Plus className="h-4 w-4 mr-2" />
+                  Add component
+                </Button>
+              }
+            />
           ) : (
             <>
               <div className="border rounded-lg overflow-x-auto">

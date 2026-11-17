@@ -52,13 +52,12 @@ function IncidentsTab() {
 
 export function SreIncidentsPageClient() {
   return (
-    <div className="mt-6 w-full max-w-full space-y-4 p-2">
+    <div className="w-full max-w-full space-y-4">
       <PageHeader
         title="Incidents"
         icon={NAV.incidents.icon}
         tone={NAV.incidents.tone}
         description="Track, investigate, and resolve operational incidents."
-        className="-mt-2"
         actions={
           <div
             className="flex flex-wrap items-center gap-2"

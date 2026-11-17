@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Radio } from "lucide-react";
+import { IconChip } from "@/components/ui/icon-chip";
+import { NAV } from "@/lib/nav-areas";
 
 import { createSreConnector, getSreConnectors, rotateSreConnectorCredential, validateSreConnector } from "@/actions/sre-connectors";
 import { Alert } from "@/components/ui/alert";
@@ -44,6 +45,9 @@ const CONNECTORS: Array<{ type: ConnectorType; fields: FieldDef[] }> = [
   { type: "grafana", fields: [{ key: "endpointUrl", label: "Grafana URL", credential: false, required: true }, { key: "secret", label: "Service account token (optional)", credential: true, secret: true }] },
   { type: "prometheus", fields: [{ key: "endpointUrl", label: "Prometheus URL", credential: false, required: true }, { key: "secret", label: "Bearer token (optional)", credential: true, secret: true }] },
 ];
+
+/** Addable connectors that have no inline form here; the tile names them and opens Integrations. */
+const MORE_TOOLS = SRE_CONNECTOR_CATALOG.filter((c) => c.addable && !CONNECTORS.some((d) => d.type === c.value)).map((c) => c.label);
 
 type Outcome = { state: "connected" | "rejected" | "saved"; text: string };
 
@@ -191,7 +195,7 @@ export function AiSreStep({ response, permissions, draft, patchDraft, readOnly }
   const earlier = connectorIds.length - outcomes.length;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       {permissions.canConfigureConnectors ? (
       <>
       <p className="text-sm text-muted-foreground">Connect the tools your team already uses, so AI SRE can look at deploys, errors and metrics when something breaks. Each one is saved and tested right away. Skip anything you do not use.</p>
@@ -220,23 +224,39 @@ export function AiSreStep({ response, permissions, draft, patchDraft, readOnly }
 
       {!readOnly ? (
         <section aria-label="Connect a tool" className="space-y-3">
-          <div role="group" aria-label="Connector types" className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <div role="group" aria-label="Connector types" className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
             {CONNECTORS.map(({ type }) => (
               <Button
                 key={type}
                 type="button"
                 variant="outline"
                 aria-pressed={open === type}
-                className="h-auto min-h-[64px] justify-start gap-3 whitespace-normal rounded-xl border-border/60 p-4 text-left aria-pressed:border-primary aria-pressed:bg-accent"
+                className="h-auto min-h-12 min-w-0 justify-start gap-2 whitespace-normal rounded-lg border-border/60 px-3 py-2 text-left aria-pressed:border-primary aria-pressed:bg-accent"
                 onClick={() => setOpen(open === type ? null : type)}
               >
                 <ConnectorTypeIcon type={type} className="size-5 shrink-0" />
                 <span className="min-w-0">
-                  <span className="block text-sm font-medium">{labelOf(type)}</span>
-                  <span className="block text-xs font-normal text-muted-foreground">{SRE_CONNECTOR_CATALOG.find((c) => c.value === type)?.description}</span>
+                  <span className="block truncate text-sm font-medium">{labelOf(type)}</span>
+                  <span className="block truncate text-xs font-normal text-muted-foreground">{SRE_CONNECTOR_CATALOG.find((c) => c.value === type)?.description}</span>
                 </span>
               </Button>
             ))}
+            {/* The rest of the catalog (Kubernetes, Loki, PagerDuty, ...) lives in Integrations; setup keeps its place. */}
+            <Button
+              asChild
+              variant="outline"
+              className="h-auto min-h-12 min-w-0 justify-start gap-2 whitespace-normal rounded-lg border-dashed border-border/60 px-3 py-2 text-left"
+            >
+              <Link href="/org-admin?tab=integrations" data-testid="setup-more-connectors">
+                <NAV.integrations.icon className="size-5 shrink-0 text-muted-foreground" aria-hidden="true" />
+                <span className="min-w-0">
+                  <span className="block truncate text-sm font-medium">{MORE_TOOLS.length} more tools</span>
+                  <span className="block truncate text-xs font-normal text-muted-foreground" title={MORE_TOOLS.join(", ")}>
+                    {MORE_TOOLS.join(", ")}
+                  </span>
+                </span>
+              </Link>
+            </Button>
           </div>
           {open ? (
             <ConnectorForm
@@ -260,7 +280,7 @@ export function AiSreStep({ response, permissions, draft, patchDraft, readOnly }
 
       <section className="flex flex-wrap items-center justify-between gap-3 rounded-xl border p-4" data-testid="setup-card-private-agent">
         <div className="flex min-w-0 items-start gap-3">
-          <Radio className="mt-0.5 size-5 shrink-0 text-ai" aria-hidden="true" />
+          <IconChip icon={NAV.privateAgents.icon} tone={NAV.privateAgents.tone} size="sm" />
           <div>
             <h3 className="text-sm font-semibold">Tools inside a private network?</h3>
             <p className="text-xs text-muted-foreground">A private agent reaches Kubernetes, internal Prometheus and similar tools. Register it in organization settings.</p>

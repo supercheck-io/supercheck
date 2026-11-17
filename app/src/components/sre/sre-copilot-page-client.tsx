@@ -62,7 +62,8 @@ export function SreCopilotPageClient({
     return (
       <CopilotGateShell>
         <DashboardEmptyState
-          icon={<Sparkles className="h-12 w-12" />}
+          className="min-h-[420px]"
+          icon={<Sparkles className="h-10 w-10" />}
           title="Copilot needs a paid plan"
           description="Copilot chat is not part of the free trial. Subscribe to ask questions about incidents and evidence."
           action={
@@ -79,7 +80,8 @@ export function SreCopilotPageClient({
     return (
       <CopilotGateShell>
         <DashboardEmptyState
-          icon={<ShieldCheck className="h-12 w-12" />}
+          className="min-h-[420px]"
+          icon={<ShieldCheck className="h-10 w-10" />}
           title="Read-only access"
           description="Copilot chat requires investigation permission. You can still review incidents, evidence, and saved reports in this project."
         />

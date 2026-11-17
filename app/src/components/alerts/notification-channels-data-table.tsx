@@ -195,6 +195,7 @@ export function NotificationChannelsDataTable<TData, TValue>({
                   key={row.id}
                   data-state={row.getIsSelected() && "selected"}
                   className={cn(
+                    "h-[53px]",
                     onRowClick ? "hover:bg-muted cursor-pointer" : ""
                   )}
                   onClick={(e) => handleRowClick(e, row)}

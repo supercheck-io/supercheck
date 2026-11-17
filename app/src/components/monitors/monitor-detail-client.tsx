@@ -40,7 +40,7 @@ import {
   CardTitle,
   CardDescription,
 } from "@/components/ui/card";
-import { monitorStatuses, monitorTypes } from "@/components/monitors/data";
+import { displayMonitorType, monitorStatuses, monitorTypes } from "@/components/monitors/data";
 import { Monitor } from "./schema";
 import {
   formatDistanceToNow,
@@ -99,7 +99,8 @@ import { useLocationMetadata } from "@/hooks/use-locations";
 import { HeartbeatPingUrlPanel } from "./heartbeat-ping-url-panel";
 import { HeartbeatPingHistory } from "./heartbeat-ping-history";
 import { HeartbeatStateBadge } from "./heartbeat-state-badge";
-import { formatRunDuration, heartbeatScheduleLabel } from "./heartbeat-format";
+import { formatHeartbeatMinutes, formatPingAgo, formatPingDue, formatRunDuration } from "./heartbeat-format";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 export interface MonitorResultItem {
   id: string;
@@ -177,25 +178,57 @@ function MetricGroup({
   );
 }
 
+/** Header fact with the full timestamp in a tooltip. */
+function HeartbeatFact({ text, tooltip, testId }: { text: string; tooltip?: string; testId: string }) {
+  if (!tooltip) return <span data-testid={testId}>{text}</span>;
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span
+          tabIndex={0}
+          data-testid={testId}
+          className="rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          {text}
+        </span>
+      </TooltipTrigger>
+      <TooltipContent>{tooltip}</TooltipContent>
+    </Tooltip>
+  );
+}
+
 function MetricStat({
   icon,
   label,
   value,
   testId,
+  tooltip,
 }: {
   icon: React.ReactNode;
   label: string;
   value: string | null;
   testId?: string;
+  /** Full text on hover or focus; replaces the native title. */
+  tooltip?: string;
 }) {
+  const text = value ?? <span className="text-muted-foreground">—</span>;
   return (
-    <div className="min-w-0" data-testid={testId} title={value ?? undefined}>
+    <div className="min-w-0" data-testid={testId} title={tooltip ? undefined : value ?? undefined}>
       <div className="flex items-center gap-1.5 text-[13px] font-medium text-muted-foreground">
         {icon}
         <span className="truncate">{label}</span>
       </div>
       <div className="mt-1 truncate text-xl font-semibold">
-        {value ?? <span className="text-muted-foreground">—</span>}
+        {tooltip && value ? (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span tabIndex={0} className="rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{text}</span>
+            </TooltipTrigger>
+            <TooltipContent>{tooltip}</TooltipContent>
+          </Tooltip>
+        ) : (
+          text
+        )}
       </div>
     </div>
   );
@@ -235,7 +268,10 @@ export function MonitorDetailClient({
   const [selectedLocation, setSelectedLocation] = useState<"all" | string>(
     "all"
   );
-  const resultsPerPage = 10;
+  const isHeartbeatMonitor = initialMonitor.type === "heartbeat";
+  // A heartbeat's ping history pages to the rows that fit its panel on desktop; everything else keeps 10 rows.
+  const [fitRows, setFitRows] = useState(10);
+  const resultsPerPage = isHeartbeatMonitor ? fitRows : 10;
 
   // React Query hooks for data fetching with caching
   const { stats: monitorStats } = useMonitorStats(monitor.id, selectedLocation);
@@ -525,7 +561,7 @@ export function MonitorDetailClient({
   const statusInfo = monitorStatuses.find(
     (s) => s.value === currentActualStatus
   );
-  const monitorTypeInfo = monitorTypes.find((t) => t.value === monitor.type);
+  const monitorTypeInfo = monitorTypes.find((t) => t.value === displayMonitorType(monitor));
 
   const currentResponseTime =
     latestResult &&
@@ -538,9 +574,19 @@ export function MonitorDetailClient({
   const heartbeat = monitor.type === "heartbeat" ? monitor.heartbeat : undefined;
   const isHeartbeat = monitor.type === "heartbeat";
   // The latest run only: a ping without /start has no duration, and an older run's must not stand in for it.
+  const hasRunDurations = responseTimeData.some((d) => d.time !== null);
   const lastRunDuration = formatRunDuration(monitor.recentResults?.[0]?.responseTimeMs);
-  const hasRunDuration = responseTimeData.some((point) => typeof point.time === "number");
-
+  // Never pinged: stays pending and never alerts, so there is no deadline to show
+  const neverPinged = Boolean(heartbeat && !heartbeat.lastPingAt);
+  const showHeartbeatSetup = isHeartbeat && !isNotificationView;
+  // Relative ping times ("8h ago", "in 52m") tick every 30 s while a heartbeat is open.
+  const [clockNow, setClockNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!isHeartbeat) return;
+    const id = window.setInterval(() => setClockNow(Date.now()), 30_000);
+    return () => window.clearInterval(id);
+  }, [isHeartbeat]);
+  
   // AI endpoint preset: extra stats from the latest check; a plain HTTP monitor shows none of this
   const aiEndpoint = monitor.config?.aiEndpoint as { model?: string } | undefined;
   const latestAi = aiEndpoint ? aiDetails(latestResult) : undefined;
@@ -686,6 +732,11 @@ export function MonitorDetailClient({
     setCurrentPage(1);
   }, [selectedDate, selectedLocation]);
 
+  // A larger fitted page size can leave the current page past the end
+  useEffect(() => {
+    if (totalPages > 0 && currentPage > totalPages) setCurrentPage(totalPages);
+  }, [totalPages, currentPage]);
+
   const clearDateFilter = () => {
     setSelectedDate(undefined);
     setIsCalendarOpen(false);
@@ -693,7 +744,7 @@ export function MonitorDetailClient({
 
   return (
     <>
-      <div className="h-full">
+      <div className={showHeartbeatSetup ? "flex min-h-0 flex-1 flex-col" : "h-full"}>
         {/* Logo, breadcrumbs, and user nav for notification view */}
         {isNotificationView && (
           <div className="flex items-center justify-between mb-4">
@@ -723,7 +774,7 @@ export function MonitorDetailClient({
         )}
 
         {/* Status and Type Header */}
-        <div className="border rounded-lg p-2 mb-4 shadow-sm bg-card" data-testid="monitor-detail-header">
+        <div className="border rounded-lg p-4 mb-4 shadow-sm bg-card shrink-0" data-testid="monitor-detail-header">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="flex min-w-0 items-center gap-3">
               {!isNotificationView && (
@@ -748,16 +799,47 @@ export function MonitorDetailClient({
                     ? monitor.name.slice(0, 40) + "..."
                     : monitor.name}
                 </h1>
-                <div className="flex items-center gap-2">
+                <div className={isHeartbeat ? "flex flex-wrap items-center gap-x-2 gap-y-1" : "flex items-center gap-2"}>
                   {heartbeat && <HeartbeatStateBadge state={heartbeat.state} />}
                   <div
-                    className="text-sm text-muted-foreground truncate max-w-md"
-                    title={maskUrlPassword(monitor.url) ?? undefined}
+                    className={isHeartbeat ? "flex flex-wrap items-center gap-x-1.5 text-sm text-muted-foreground" : "text-sm text-muted-foreground truncate max-w-md"}
+                    title={isHeartbeat ? undefined : maskUrlPassword(monitor.url) ?? undefined}
                   >
-                    {isHeartbeat ? (
-                      <span data-testid="monitor-heartbeat-subtitle">
-                        Heartbeat · {heartbeatScheduleLabel(monitor.frequencyMinutes, heartbeat?.graceMinutes ?? 0)}
-                      </span>
+                    {isHeartbeat && heartbeat ? (
+                      <>
+                        <span data-testid="monitor-heartbeat-subtitle">
+                          Every {formatHeartbeatMinutes(monitor.frequencyMinutes)} · grace {formatHeartbeatMinutes(heartbeat.graceMinutes)}
+                        </span>
+                        <span aria-hidden="true">·</span>
+                        <HeartbeatFact
+                          testId="heartbeat-stat-last-ping"
+                          text={heartbeat.lastPingAt ? `Last ping ${formatPingAgo(new Date(heartbeat.lastPingAt), clockNow)}` : "No pings yet"}
+                          tooltip={heartbeat.lastPingAt ? format(new Date(heartbeat.lastPingAt), "MMM d, yyyy HH:mm:ss") : undefined}
+                        />
+                        {heartbeat.state === "paused" ? (
+                          <>
+                            <span aria-hidden="true">·</span>
+                            <span data-testid="heartbeat-stat-next">Paused</span>
+                          </>
+                        ) : (
+                          !neverPinged && heartbeat.nextExpectedAt && (
+                            <>
+                              <span aria-hidden="true">·</span>
+                              <HeartbeatFact
+                                testId="heartbeat-stat-next"
+                                text={`Next ping ${formatPingDue(new Date(heartbeat.nextExpectedAt), clockNow)}`}
+                                tooltip={format(new Date(heartbeat.nextExpectedAt), "MMM d, yyyy HH:mm:ss")}
+                              />
+                            </>
+                          )
+                        )}
+                        {lastRunDuration && (
+                          <>
+                            <span aria-hidden="true">·</span>
+                            <span data-testid="heartbeat-stat-duration">Last run {lastRunDuration}</span>
+                          </>
+                        )}
+                      </>
                     ) : aiEndpoint ? (
                       <span data-testid="monitor-ai-subtitle">
                         {aiHost}
@@ -1005,8 +1087,8 @@ export function MonitorDetailClient({
                           : "Insufficient permissions to delete monitors"
                     }
                   >
-                    <Trash2 className="h-4 w-4 mr-1" />
-                    <span className="hidden sm:inline">Delete</span>
+                    <Trash2 className={isHeartbeat ? "h-4 w-4" : "h-4 w-4 mr-1"} />
+                    <span className={isHeartbeat ? "sr-only" : "hidden sm:inline"}>Delete</span>
                   </Button>
 
                   <AIMonitorAnalyzeButton
@@ -1030,30 +1112,9 @@ export function MonitorDetailClient({
             </div>
           </div>
 
-          {/* Metric groups: current state, last 24 hours, last 30 days */}
-          <div className="mt-4 mx-3 grid grid-cols-[repeat(auto-fit,minmax(330px,1fr))] gap-3 pb-4">
-            {heartbeat ? (
-              <MetricGroup title="Heartbeat">
-                <MetricStat
-                  icon={<Clock className="h-4 w-4 text-muted-foreground" />}
-                  label="Last ping"
-                  testId="heartbeat-stat-last-ping"
-                  value={heartbeat.lastPingAt ? formatDateTime(heartbeat.lastPingAt) : null}
-                />
-                <MetricStat
-                  icon={<CalendarIcon className="h-4 w-4 text-muted-foreground" />}
-                  label="Next expected by"
-                  testId="heartbeat-stat-next"
-                  value={heartbeat.state === "paused" || !heartbeat.nextExpectedAt ? null : formatDateTime(heartbeat.nextExpectedAt)}
-                />
-                <MetricStat
-                  icon={<Activity className="h-4 w-4 text-muted-foreground" />}
-                  label="Last run duration"
-                  testId="heartbeat-stat-duration"
-                  value={lastRunDuration}
-                />
-              </MetricGroup>
-            ) : (
+          {/* Metric groups: current state, last 24 hours, last 30 days. A heartbeat keeps its facts in the subtitle. */}
+          {!isHeartbeat && (
+          <div className="mt-4 grid grid-cols-[repeat(auto-fit,minmax(330px,1fr))] gap-3">
             <MetricGroup title="Current">
               <MetricStat
                 icon={<StatusHeaderIcon status={currentActualStatus} />}
@@ -1079,7 +1140,6 @@ export function MonitorDetailClient({
                 value={currentResponseTime === "N/A" ? null : currentResponseTime}
               />
             </MetricGroup>
-            )}
 
             {aiEndpoint && (
               <MetricGroup title="AI endpoint">
@@ -1163,18 +1223,72 @@ export function MonitorDetailClient({
               />
             </MetricGroup>
           </div>
+          )}
         </div>
 
-        {isHeartbeat && !isNotificationView && (
-          <div className="mb-4">
-            <HeartbeatPingUrlPanel
-              monitorId={monitor.id}
-              canManage={permissionsReady && canEditMonitor}
-              pending={heartbeat?.state === "pending"}
-            />
+        {isHeartbeat ? (
+          <div className="flex min-h-0 flex-1 flex-col gap-4" data-testid="heartbeat-layout">
+            {showHeartbeatSetup && (
+              <HeartbeatPingUrlPanel
+                monitorId={monitor.id}
+                canManage={permissionsReady && canEditMonitor}
+                pending={heartbeat?.state === "pending"}
+              />
+            )}
+            <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 lg:grid-cols-2 lg:grid-rows-1">
+              <div className="flex min-h-0 flex-col gap-4 lg:h-full">
+                <div className="min-h-0 flex-1">
+                  <AvailabilityBarChart
+                    fill
+                    data={availabilityTimelineData}
+                    headerActions={
+                      availableLocations.length > 1 ? (
+                        <LocationFilterDropdown
+                          selectedLocation={selectedLocation}
+                          availableLocations={availableLocations}
+                          onLocationChange={setSelectedLocation}
+                          className="w-[200px]"
+                        />
+                      ) : undefined
+                    }
+                    footer={
+                      hasRunDurations ? undefined : (
+                        <span data-testid="heartbeat-run-duration-hint">
+                          Call <span className="font-mono">/start</span> when the job begins to record how long it runs.
+                        </span>
+                      )
+                    }
+                  />
+                </div>
+                {hasRunDurations && (
+                  <div className="min-h-0 flex-1">
+                    <ResponseTimeBarChart
+                      fill
+                      data={responseTimeData}
+                      title="Run duration"
+                      empty={{
+                        description: "Time between a /start ping and the ping that finishes the run.",
+                        heading: "No run durations yet",
+                        hint: "Call /start when the job begins to record how long it runs.",
+                      }}
+                    />
+                  </div>
+                )}
+              </div>
+              <HeartbeatPingHistory
+                results={paginatedTableResults}
+                isLoading={isLoadingResults}
+                error={resultsError}
+                onRetry={() => void refetchResults()}
+                page={currentPage}
+                totalPages={totalPages}
+                total={totalResultsCount}
+                onPageChange={setCurrentPage}
+                onFitRows={isNotificationView ? undefined : setFitRows}
+              />
+            </div>
           </div>
-        )}
-
+        ) : (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           {/* For all monitors, show charts and results in two columns */}
           <div className="flex flex-col gap-4">
@@ -1195,15 +1309,12 @@ export function MonitorDetailClient({
             </div>
 
             {/* Response Time Chart; a heartbeat has a duration only when its job calls /start */}
-            {(!isHeartbeat || hasRunDuration) && (
-              <div>
-                <ResponseTimeBarChart
-                  data={responseTimeData}
-                  showFirstToken={Boolean(aiEndpoint)}
-                  title={isHeartbeat ? "Run duration" : undefined}
-                />
-              </div>
-            )}
+            <div>
+              <ResponseTimeBarChart
+                data={responseTimeData}
+                showFirstToken={Boolean(aiEndpoint)}
+              />
+            </div>
 
             {isMcp && (
               <McpToolsPanel
@@ -1215,18 +1326,7 @@ export function MonitorDetailClient({
             )}
           </div>
 
-          {isHeartbeat ? (
-            <HeartbeatPingHistory
-              results={paginatedTableResults}
-              isLoading={isLoadingResults}
-              error={resultsError}
-              onRetry={() => void refetchResults()}
-              page={currentPage}
-              totalPages={totalPages}
-              total={totalResultsCount}
-              onPageChange={setCurrentPage}
-            />
-          ) : (
+          {(
           <Card className="shadow-sm flex flex-col">
             <CardHeader className="flex-shrink-0">
               <div className="flex items-center justify-between">
@@ -1652,6 +1752,7 @@ export function MonitorDetailClient({
           </Card>
           )}
         </div>
+        )}
 
         <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
           <AlertDialogContent>

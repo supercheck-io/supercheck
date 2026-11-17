@@ -1,5 +1,6 @@
 "use client";
 
+import { DashboardEmptyState } from "@/components/dashboard/dashboard-empty-state";
 import React, { useEffect, useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -552,18 +553,12 @@ export function StatusPageDetail({
 
                 return uniqueMonitorIds.length;
               })() === 0 ? (
-                <div className="text-center py-12 border-2 border-dashed rounded-lg bg-muted/20">
-                  <div className="inline-flex items-center justify-center w-14 h-14 rounded-full bg-muted mb-4">
-                    <Activity className="h-7 w-7 text-muted-foreground" />
-                  </div>
-                  <h4 className="text-base font-semibold mb-1">
-                    No monitors linked yet
-                  </h4>
-                  <p className="text-sm text-muted-foreground max-w-sm mx-auto">
-                    Link monitors to components in the Components tab to track
-                    their status
-                  </p>
-                </div>
+                <DashboardEmptyState
+                  className="min-h-[420px]"
+                  icon={<Activity className="h-10 w-10" />}
+                  title="No monitors linked yet"
+                  description="Link monitors to components in the Components tab to track their status"
+                />
               ) : (
                 <div className="overflow-x-auto">
                   <DataTable

@@ -1,14 +1,23 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
+import type { ColumnDef } from "@tanstack/react-table";
 import { useQueryClient } from "@tanstack/react-query";
-import { CalendarClock, Plus } from "lucide-react";
+import { CalendarClock, MoreHorizontal, Plus, Search } from "lucide-react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { Input } from "@/components/ui/input";
+import { TableBadge, type TableBadgeTone } from "@/components/ui/table-badge";
+import { DataTableFacetedFilter } from "@/components/ui/data-table-faceted-filter";
+import { DataTable } from "@/components/sre/data-table/data-table";
+import { PageHeader } from "@/components/shared/page-header";
+import { DashboardEmptyState } from "@/components/dashboard/dashboard-empty-state";
+import { NAV } from "@/lib/nav-areas";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ListErrorState } from "@/components/shared/list-states";
 import { MAINTENANCE_QUERY_KEY, useMaintenanceWindows, windowAction, type MaintenanceWindowItem } from "@/hooks/use-maintenance-windows";
@@ -21,8 +30,89 @@ const SCOPE_LABEL = (w: MaintenanceWindowItem) =>
   w.scope === "project" ? "Whole project" : `${w.targets.length} ${w.scope === "services" ? "service" : "monitor"}${w.targets.length === 1 ? "" : "s"}`;
 const when = (value: string | null) => (value ? new Date(value).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }) : "-");
 
-/** The Maintenance tab: Active, Upcoming and Past windows, with the actions the role allows. */
-export function MaintenanceWindowsPanel() {
+const EXPLAINER = "During a window, monitors keep running but send no alerts, open no incidents and are left out of uptime.";
+const STATE_BADGE: Record<MaintenanceWindowItem["state"], { label: string; tone: TableBadgeTone }> = {
+  active: { label: "In progress", tone: "purple" },
+  scheduled: { label: "Scheduled", tone: "info" },
+  completed: { label: "Completed", tone: "neutral" },
+  cancelled: { label: "Cancelled", tone: "slate" },
+};
+// Live windows first, then upcoming, then past; the API order is kept within each group.
+const STATE_RANK: Record<MaintenanceWindowItem["state"], number> = { active: 0, scheduled: 1, completed: 2, cancelled: 2 };
+const byState = (rows: MaintenanceWindowItem[]) => [...rows].sort((a, b) => STATE_RANK[a.state] - STATE_RANK[b.state]);
+const STATUS_OPTIONS = Object.entries(STATE_BADGE).map(([value, { label }]) => ({ value, label }));
+
+type WindowRunner = (window: MaintenanceWindowItem, action: "end" | "extend" | "cancel" | "delete", body?: unknown) => Promise<void>;
+type TableMeta = { canWrite: boolean; canDelete: boolean; busy: string | null; run: WindowRunner; confirm: (window: MaintenanceWindowItem, action: "cancel" | "delete") => void };
+
+function RowActions({ window, meta }: { window: MaintenanceWindowItem; meta: TableMeta }) {
+  const canCancel = meta.canWrite && (window.state === "scheduled" || (window.state === "active" && window.recurrence !== "once"));
+  const canEnd = meta.canWrite && window.state === "active";
+  const canRemove = meta.canDelete && window.state !== "active";
+  if (!canEnd && !canCancel && !canRemove) return null;
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="ghost" className="flex h-8 w-8 p-0 data-[state=open]:bg-muted" aria-label={`Actions for ${window.title}`} disabled={meta.busy === window.id}>
+          <MoreHorizontal className="h-4 w-4" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-[160px]">
+        {canEnd && <DropdownMenuItem onClick={() => void meta.run(window, "extend", { byMinutes: 30 })}>Extend 30 min</DropdownMenuItem>}
+        {canEnd && <DropdownMenuItem onClick={() => void meta.run(window, "end")}>End now</DropdownMenuItem>}
+        {canCancel && <DropdownMenuItem onClick={() => meta.confirm(window, "cancel")}>Cancel</DropdownMenuItem>}
+        {canRemove && (canEnd || canCancel) && <DropdownMenuSeparator />}
+        {canRemove && <DropdownMenuItem className="text-destructive" onClick={() => meta.confirm(window, "delete")}>Delete</DropdownMenuItem>}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+const columns: ColumnDef<MaintenanceWindowItem>[] = [
+  {
+    accessorKey: "title",
+    header: "Title",
+    cell: ({ row }) => (
+      <div className="flex min-w-0 flex-wrap items-center gap-2" data-testid="maintenance-row">
+        <span className="truncate font-medium">{row.original.title}</span>
+        {row.original.statusPageIncidentIds.length > 0 && <TableBadge tone="info" compact>On status page</TableBadge>}
+      </div>
+    ),
+  },
+  {
+    id: "state",
+    accessorFn: (w) => w.state,
+    header: "Status",
+    cell: ({ row }) => <TableBadge tone={STATE_BADGE[row.original.state].tone}>{STATE_BADGE[row.original.state].label}</TableBadge>,
+    filterFn: (row, id, value: string[]) => value.includes(row.getValue(id)),
+  },
+  {
+    id: "window",
+    accessorFn: (w) => w.occurrenceStartsAt ?? "",
+    header: "Window",
+    cell: ({ row }) => (
+      <span className="whitespace-nowrap text-sm tabular-nums">
+        {when(row.original.occurrenceStartsAt)} to {when(row.original.occurrenceEndsAt)}
+      </span>
+    ),
+  },
+  { id: "repeats", accessorFn: (w) => REPEAT_LABEL[w.recurrence], header: "Repeats" },
+  { id: "scope", accessorFn: SCOPE_LABEL, header: "Scope" },
+  { accessorKey: "timezone", header: "Timezone" },
+  {
+    id: "actions",
+    header: () => <span className="sr-only">Actions</span>,
+    enableSorting: false,
+    cell: ({ row, table }) => (
+      <div className="flex justify-end">
+        <RowActions window={row.original} meta={table.options.meta as unknown as TableMeta} />
+      </div>
+    ),
+  },
+];
+
+/** The Maintenance tab: every window in one table, with the actions the role allows. `tabs` is the page's tab switcher. */
+export function MaintenanceWindowsPanel({ tabs }: { tabs?: ReactNode } = {}) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -47,7 +137,7 @@ export function MaintenanceWindowsPanel() {
     }
   };
 
-  const run = async (window: MaintenanceWindowItem, action: "end" | "extend" | "cancel" | "delete", body?: unknown) => {
+  const run: WindowRunner = async (window, action, body) => {
     setBusy(window.id);
     try {
       await windowAction(window.id, action, body);
@@ -60,23 +150,29 @@ export function MaintenanceWindowsPanel() {
     }
   };
 
-  const groups: Array<{ title: string; items: MaintenanceWindowItem[] }> = [
-    { title: "Active", items: (windows.data ?? []).filter((w) => w.state === "active") },
-    { title: "Upcoming", items: (windows.data ?? []).filter((w) => w.state === "scheduled") },
-    { title: "Past", items: (windows.data ?? []).filter((w) => w.state === "completed" || w.state === "cancelled") },
-  ];
+  const isEmpty = Boolean(windows.data && windows.data.length === 0);
+  const sortedWindows = useMemo(() => byState(windows.data ?? []), [windows.data]);
+  const scheduleButton = canWrite ? (
+    <Button type="button" onClick={() => setEditorOpen(true)}>
+      <Plus className="mr-2 h-4 w-4" />
+      Schedule maintenance
+    </Button>
+  ) : null;
 
   return (
     <div className="space-y-4" data-testid="maintenance-panel">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="text-sm text-muted-foreground">During a window, monitors keep running but send no alerts, open no incidents and are left out of uptime.</p>
-        {canWrite && (
-          <Button type="button" className="h-8" onClick={() => setEditorOpen(true)}>
-            <Plus className="h-4 w-4" />
-            Schedule maintenance
-          </Button>
-        )}
-      </div>
+      <PageHeader
+        title="Monitors"
+        icon={NAV.monitors.icon}
+        tone={NAV.monitors.tone}
+        description={isEmpty ? undefined : EXPLAINER}
+        actions={
+          <>
+            {tabs}
+            {!isEmpty && scheduleButton}
+          </>
+        }
+      />
       {windows.isLoading && (
         <div className="space-y-2" aria-busy="true" aria-label="Loading maintenance windows">
           <Skeleton className="h-16 w-full" />
@@ -84,50 +180,48 @@ export function MaintenanceWindowsPanel() {
         </div>
       )}
       {windows.error && <ListErrorState title="Maintenance windows could not be loaded" error={windows.error} onRetry={() => void windows.refetch()} />}
-      {windows.data && windows.data.length === 0 && (
-        <div className="flex flex-col items-center gap-2 rounded-md border border-dashed p-8 text-center">
-          <CalendarClock className="h-6 w-6 text-muted-foreground" aria-hidden />
-          <p className="font-medium">No maintenance scheduled</p>
-          <p className="max-w-md text-sm text-muted-foreground">Schedule a window before a planned deploy or upgrade so nobody is paged for expected downtime.</p>
-        </div>
+      {isEmpty && (
+        <DashboardEmptyState
+          className="min-h-[420px]"
+          title="No maintenance scheduled"
+          description={`${EXPLAINER} Schedule a window before a planned deploy or upgrade so nobody is paged for expected downtime.`}
+          icon={<CalendarClock className="h-10 w-10" />}
+          action={scheduleButton ?? undefined}
+        />
       )}
-      {windows.data && windows.data.length > 0 &&
-        groups.filter((group) => group.items.length > 0).map((group) => (
-          <section key={group.title} aria-labelledby={`mw-group-${group.title}`} className="space-y-2">
-            <h3 id={`mw-group-${group.title}`} className="text-sm font-semibold">{group.title}</h3>
-            <ul className="divide-y rounded-md border">
-              {group.items.map((window) => (
-                <li key={window.id} className="flex flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center sm:justify-between" data-testid="maintenance-row">
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="truncate font-medium">{window.title}</span>
-                      {window.state === "active" && <Badge variant="secondary">In progress</Badge>}
-                      {window.state === "cancelled" && <Badge variant="outline">Cancelled</Badge>}
-                      {window.statusPageIncidentIds.length > 0 && <Badge variant="outline">On status page</Badge>}
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      {when(window.occurrenceStartsAt)} to {when(window.occurrenceEndsAt)} · {REPEAT_LABEL[window.recurrence]} · {SCOPE_LABEL(window)} · {window.timezone}
-                    </p>
-                  </div>
-                  <div className="flex shrink-0 flex-wrap gap-2">
-                    {canWrite && window.state === "active" && (
-                      <>
-                        <Button size="sm" variant="outline" disabled={busy === window.id} onClick={() => void run(window, "extend", { byMinutes: 30 })}>Extend 30 min</Button>
-                        <Button size="sm" variant="outline" disabled={busy === window.id} onClick={() => void run(window, "end")}>End now</Button>
-                      </>
-                    )}
-                    {canWrite && (window.state === "scheduled" || (window.state === "active" && window.recurrence !== "once")) && (
-                      <Button size="sm" variant="outline" disabled={busy === window.id} onClick={() => setConfirm({ window, action: "cancel" })}>Cancel</Button>
-                    )}
-                    {canDelete && window.state !== "active" && (
-                      <Button size="sm" variant="outline" disabled={busy === window.id} onClick={() => setConfirm({ window, action: "delete" })}>Delete</Button>
-                    )}
-                  </div>
-                </li>
-              ))}
-            </ul>
-          </section>
-        ))}
+      {windows.data && windows.data.length > 0 && (
+        <DataTable
+          columns={columns}
+          data={sortedWindows}
+          entityLabel="maintenance windows"
+          emptyMessage="No maintenance windows match."
+          initialColumnVisibility={{}}
+          meta={{
+            globalFilterColumns: ["title", "scope", "timezone"],
+            canWrite,
+            canDelete,
+            busy,
+            run,
+            confirm: (window: MaintenanceWindowItem, action: "cancel" | "delete") => setConfirm({ window, action }),
+          }}
+          renderToolbar={(table) => (
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="relative">
+                <Search className="absolute left-2 top-2 h-4 w-4 text-muted-foreground" aria-hidden />
+                <Input
+                  placeholder="Search maintenance..."
+                  aria-label="Search maintenance windows"
+                  value={(table.getState().globalFilter as string) ?? ""}
+                  onChange={(event) => table.setGlobalFilter(event.target.value)}
+                  className="h-8 w-[300px] pl-8"
+                  data-testid="maintenance-search"
+                />
+              </div>
+              {table.getColumn("state") && <DataTableFacetedFilter column={table.getColumn("state")} title="Status" options={STATUS_OPTIONS} />}
+            </div>
+          )}
+        />
+      )}
       {editorOpen && <MaintenanceWindowDialog open onOpenChange={setEditorOpen} />}
       <AlertDialog open={confirm !== null} onOpenChange={(next) => !next && setConfirm(null)}>
         <AlertDialogContent>

@@ -41,7 +41,7 @@ describe("NavUser", () => {
     expect(screen.getByRole("dialog")).toBeInTheDocument();
   });
 
-  it("links Change persona to the setup welcome page", () => {
+  it("links Change focus to the setup welcome page", () => {
     render(<NavUser />);
     expect(screen.getByTestId("persona-menu-item")).toHaveAttribute("href", "/setup/welcome?change=1");
   });

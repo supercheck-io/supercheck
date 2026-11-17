@@ -30,6 +30,12 @@ const win = (extra: Record<string, unknown>) => ({
   occurrenceStartsAt: "2026-11-20T01:00:00Z", occurrenceEndsAt: "2026-11-20T02:30:00Z", targets: [{ type: "monitor", id: "m-1" }], statusPageIncidentIds: [], ...extra,
 });
 
+const openMenu = async (title: string) => {
+  const trigger = await screen.findByRole("button", { name: `Actions for ${title}` });
+  fireEvent.pointerDown(trigger, { button: 0, ctrlKey: false });
+  fireEvent.keyDown(trigger, { key: "Enter" });
+};
+
 beforeEach(() => {
   jest.clearAllMocks();
   mockRole = "project_editor";
@@ -51,37 +57,60 @@ describe("MaintenanceWindowsPanel", () => {
     expect(screen.getByText("No maintenance scheduled")).toBeInTheDocument();
   });
 
-  it("groups windows and offers end and extend for an active one", async () => {
+  it("lists windows as a table with status badges and a row menu", async () => {
     mockWindows = { data: [win({}), win({ id: "w-2", title: "Next", state: "scheduled" }), win({ id: "w-3", title: "Old", state: "completed" })] };
     render(<MaintenanceWindowsPanel />);
-    expect(screen.getByRole("heading", { name: "Active" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Upcoming" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Past" })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "End now" }));
+    expect(screen.getAllByTestId("maintenance-row")).toHaveLength(3);
+    expect(screen.getByText("In progress")).toBeInTheDocument();
+    expect(screen.getByText("Scheduled")).toBeInTheDocument();
+    expect(screen.getByText("Completed")).toBeInTheDocument();
+    await openMenu("DB upgrade");
+    fireEvent.click(await screen.findByRole("menuitem", { name: "End now" }));
     await waitFor(() => expect(mockAction).toHaveBeenCalledWith("w-1", "end", undefined));
-    await waitFor(() => expect(screen.getByRole("button", { name: "Extend 30 min" })).toBeEnabled());
-    fireEvent.click(screen.getByRole("button", { name: "Extend 30 min" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Actions for DB upgrade" })).toBeEnabled());
+    await openMenu("DB upgrade");
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Extend 30 min" }));
     await waitFor(() => expect(mockAction).toHaveBeenCalledWith("w-1", "extend", { byMinutes: 30 }));
     expect(mockInvalidate).toHaveBeenCalled();
+  });
+
+  it("puts live windows first, then upcoming, then past", () => {
+    mockWindows = { data: [win({ id: "w-3", title: "Old", state: "completed" }), win({ id: "w-2", title: "Next", state: "scheduled" }), win({ title: "Live" })] };
+    render(<MaintenanceWindowsPanel />);
+    const rows = screen.getAllByTestId("maintenance-row").map((r) => r.textContent ?? "");
+    expect(rows.map((t) => ["Live", "Next", "Old"].find((name) => t.includes(name)))).toEqual(["Live", "Next", "Old"]);
   });
 
   it("confirms before cancelling", async () => {
     mockWindows = { data: [win({ state: "scheduled" })] };
     render(<MaintenanceWindowsPanel />);
-    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    await openMenu("DB upgrade");
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Cancel" }));
     fireEvent.click(await screen.findByRole("button", { name: "Cancel window" }));
     await waitFor(() => expect(mockAction).toHaveBeenCalledWith("w-1", "cancel", undefined));
   });
 
-  it("hides write actions from viewers and delete from editors", () => {
+  it("hides write actions from viewers and delete from editors", async () => {
     mockWindows = { data: [win({ state: "scheduled" })] };
     const { unmount } = render(<MaintenanceWindowsPanel />);
-    expect(screen.queryByRole("button", { name: "Delete" })).not.toBeInTheDocument();
+    await openMenu("DB upgrade");
+    expect(await screen.findByRole("menuitem", { name: "Cancel" })).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "Delete" })).not.toBeInTheDocument();
     unmount();
     mockRole = "project_viewer";
     render(<MaintenanceWindowsPanel />);
     expect(screen.queryByRole("button", { name: /schedule maintenance/i })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Cancel" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /actions for/i })).not.toBeInTheDocument();
+  });
+
+  it("shows the schedule action in the header only when windows exist", () => {
+    mockWindows = { data: [win({})] };
+    const { rerender } = render(<MaintenanceWindowsPanel />);
+    expect(screen.getAllByRole("button", { name: /schedule maintenance/i })).toHaveLength(1);
+    mockWindows = { data: [] };
+    rerender(<MaintenanceWindowsPanel />);
+    expect(screen.getAllByRole("button", { name: /schedule maintenance/i })).toHaveLength(1);
+    expect(screen.getByText("No maintenance scheduled")).toBeInTheDocument();
   });
 
   it("opens the editor from ?new=1 and clears it on close", () => {

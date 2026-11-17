@@ -17,7 +17,7 @@ test.describe('Status-page component lifecycle @status-pages @components', () =>
 
     await page.goto(`/status-pages/${statusPage.id}`);
     await page.getByRole('tab', { name: 'Components', exact: true }).click();
-    await page.getByRole('button', { name: 'Add Component', exact: true }).click();
+    await page.getByRole('button', { name: /^add component$/i }).click();
 
     const createDialog = page.getByRole('dialog', { name: 'Add Component' });
     await createDialog.getByLabel('Title *').fill(originalName);

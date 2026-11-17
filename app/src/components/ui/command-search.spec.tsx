@@ -76,7 +76,8 @@ describe("command palette", () => {
     for (const hidden of ["Super Admin", "Organization", "Copilot", "Services", "Integrations", "Project", "Member", "CLI Token", "Service", "Private Agent"]) {
       expect(titles).not.toContain(hidden);
     }
-    expect(groups.map((g) => g.heading)).not.toContain("Settings");
+    // Settings keeps only Project setup, which every member can open.
+    expect(groups.find((g) => g.heading === "Settings")?.items.map((i) => i.title)).toEqual(["Project setup"]);
     expect(groups.map((g) => g.heading)).not.toContain("Configure AI SRE");
     expect(titles).toContain("Browser Test");
   });

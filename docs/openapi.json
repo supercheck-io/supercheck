@@ -15269,7 +15269,7 @@
               "null"
             ],
             "format": "date-time",
-            "description": "When the next ping is due (last ping, creation or resume, plus the interval)."
+            "description": "When the next ping is due (last ping or resume, plus the interval). Null until the first ping."
           },
           "graceMinutes": {
             "type": "integer",

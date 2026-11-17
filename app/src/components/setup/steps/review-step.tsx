@@ -191,7 +191,7 @@ export function ReviewStep({ response, features, permissions, draft, skipped, re
   const skippedAlertsWithChannels = skipped.includes("alerts") && savedChannels > 0 && items.some((item) => item.step === "monitors");
 
   return (
-    <div className="space-y-6" data-testid="setup-review">
+    <div className="space-y-4" data-testid="setup-review">
       {readOnly ? <Alert variant="info">You have view access. Ask a project admin to create these items.</Alert> : null}
       {waitSeconds > 0 ? <Alert variant="info" data-testid="setup-reclaim-wait">Waiting for the other tab to stop… {waitSeconds}s</Alert> : null}
 
@@ -222,7 +222,7 @@ export function ReviewStep({ response, features, permissions, draft, skipped, re
         {items.length === 0 ? (
           <p className="text-sm text-muted-foreground">Nothing to create, every step was skipped. You can still finish and use the checklist later.</p>
         ) : (
-          <ul className="divide-y rounded-lg border">
+          <ul className="max-h-56 divide-y overflow-y-auto rounded-lg border">
             {items.map((item, index) => {
               const result = results[item.key] ?? { status: "pending" as const };
               return (

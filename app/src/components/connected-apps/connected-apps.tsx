@@ -3,6 +3,10 @@
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { DashboardEmptyState } from "@/components/dashboard/dashboard-empty-state";
+import { ListErrorState } from "@/components/shared/list-states";
+import { SupercheckLoading } from "@/components/shared/supercheck-loading";
+import { NAV } from "@/lib/nav-areas";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -36,7 +40,10 @@ function formatDate(value: string | null): string {
   return Number.isNaN(date.getTime()) ? "Unknown" : date.toLocaleString();
 }
 
-export function ConnectedApps() {
+/** `page` fills the Connected apps page; `panel` is the compact version in the account dialog. */
+export function ConnectedApps({ variant = "panel" }: { variant?: "page" | "panel" }) {
+  const emptyClass = variant === "page" ? "min-h-[420px]" : "min-h-[220px]";
+  const EmptyIcon = NAV.connectedApps.icon;
   const [state, setState] = useState<State>({ status: "loading" });
   const [pending, setPending] = useState<Connection | null>(null);
   const [disconnecting, setDisconnecting] = useState(false);
@@ -73,24 +80,38 @@ export function ConnectedApps() {
   }
 
   if (state.status === "loading") {
-    return <p className="text-sm text-muted-foreground">Loading…</p>;
-  }
-  if (state.status === "disabled") {
-    return <p className="text-sm text-muted-foreground">Connecting apps is not enabled on this server.</p>;
-  }
-  if (state.status === "error") {
     return (
-      <div className="space-y-2">
-        <p role="alert" className="text-sm text-destructive">Could not load your connected apps.</p>
-        <Button variant="outline" size="sm" onClick={() => void load()}>Retry</Button>
+      <div className={`flex items-center justify-center ${emptyClass}`}>
+        <SupercheckLoading size="md" message="Loading connected apps..." />
       </div>
     );
   }
+  if (state.status === "disabled") {
+    return (
+      <DashboardEmptyState
+        className={emptyClass}
+        title="Connected apps are off"
+        description="Connecting apps is not enabled on this server. An administrator can turn on the MCP server to let AI agents read a project."
+        icon={<EmptyIcon className="h-10 w-10" />}
+      />
+    );
+  }
+  if (state.status === "error") {
+    return <ListErrorState title="Could not load your connected apps" onRetry={() => void load()} />;
+  }
   if (!state.connections.length) {
     return (
-      <p className="text-sm text-muted-foreground">
-        No apps are connected. Add Supercheck as an MCP server in your AI tool and approve it here when asked.
-      </p>
+      <DashboardEmptyState
+        className={emptyClass}
+        title="No connected apps"
+        description="Add Supercheck as an MCP server in your AI tool and approve it here when asked."
+        icon={<EmptyIcon className="h-10 w-10" />}
+        action={
+          <Button asChild variant="outline">
+            <a href="https://supercheck.io/docs/mcp" target="_blank" rel="noreferrer">Set up MCP</a>
+          </Button>
+        }
+      />
     );
   }
 

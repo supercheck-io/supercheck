@@ -15,12 +15,12 @@ beforeEach(() => {
 const respond = (body: unknown, status = 200) => fetchMock.mockResolvedValue({ ok: status < 400, status, json: async () => body });
 
 describe("Welcome", () => {
-  it("renders the four personas as a radio group and keeps Start setup off until one is picked", () => {
+  it("renders the four personas and Default as a radio group and keeps Start setup off until one is picked", () => {
     const { Wrapper } = createWrapper();
     render(<Welcome mode="creator" projectName="Web App" onDone={jest.fn()} />, { wrapper: Wrapper });
     expect(screen.getByRole("radiogroup")).toBeTruthy();
-    expect(screen.getAllByRole("radio").map((r) => r.id)).toEqual(["persona-sre", "persona-qa", "persona-developer", "persona-leader"]);
-    expect(screen.getByText("Keep production up")).toBeTruthy();
+    expect(screen.getAllByRole("radio").map((r) => r.id)).toEqual(["persona-developer", "persona-sre", "persona-qa", "persona-leader", "persona-default"]);
+    expect(screen.getByText("SRE and platform")).toBeTruthy();
     expect(screen.getByText("Let's set up Web App. What will you mostly do here?")).toBeTruthy();
     expect(screen.getByRole("button", { name: /Start setup/ })).toBeDisabled();
   });
@@ -41,7 +41,7 @@ describe("Welcome", () => {
     const onDone = jest.fn();
     const { Wrapper, client } = createWrapper();
     render(<Welcome mode="creator" projectName="Web App" onDone={onDone} />, { wrapper: Wrapper });
-    fireEvent.click(screen.getByRole("radio", { name: /Test my app/ }));
+    fireEvent.click(screen.getByRole("radio", { name: /QA engineers/ }));
     fireEvent.click(screen.getByRole("button", { name: /Start setup/ }));
     await waitFor(() => expect(onDone).toHaveBeenCalled());
     expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({ persona: "qa" });
@@ -65,7 +65,7 @@ describe("Welcome", () => {
     render(<Welcome mode="member" projectName="Web App" organizationName="Acme" onDone={onDone} />, { wrapper: Wrapper });
     expect(screen.getByText("You joined Acme. What will you mostly do here?")).toBeTruthy();
     expect(screen.queryByRole("button", { name: /Start setup/ })).toBeNull();
-    fireEvent.click(screen.getByRole("radio", { name: /Keep production up/ }));
+    fireEvent.click(screen.getByRole("radio", { name: /SRE and platform/ }));
     fireEvent.click(screen.getByRole("button", { name: "Go to dashboard" }));
     await waitFor(() => expect(onDone).toHaveBeenCalled());
   });
@@ -75,15 +75,16 @@ describe("Welcome", () => {
     const onDone = jest.fn();
     const { Wrapper } = createWrapper();
     render(<Welcome mode="change" initialPersona="sre" projectName="Web App" onDone={onDone} />, { wrapper: Wrapper });
-    expect(screen.getByText("Change your persona")).toBeTruthy();
-    expect(screen.getByRole("radio", { name: /Keep production up/ })).toBeChecked();
-    fireEvent.click(screen.getByRole("radio", { name: /Test my app/ }));
+    expect(screen.getByText("Choose your focus")).toBeTruthy();
+    expect(screen.getByRole("radio", { name: /SRE and platform/ })).toBeChecked();
+    fireEvent.click(screen.getByRole("radio", { name: /QA engineers/ }));
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(onDone).toHaveBeenCalled());
     expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({ persona: "qa" });
-    // "No preference" clears a saved persona.
+    // "Default" clears a saved persona.
     fetchMock.mockClear();
-    fireEvent.click(screen.getByRole("button", { name: "No preference" }));
+    fireEvent.click(screen.getByRole("radio", { name: /A bit of everything/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(onDone).toHaveBeenCalledTimes(2));
     expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({ persona: null });
     onDone.mockClear();
@@ -91,6 +92,34 @@ describe("Welcome", () => {
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     expect(onDone).toHaveBeenCalled();
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("change mode with no saved persona preselects Default, and each card previews the sidebar and setup order", () => {
+    const { Wrapper } = createWrapper();
+    render(<Welcome mode="change" projectName="Web App" onDone={jest.fn()} />, { wrapper: Wrapper });
+    expect(screen.getByRole("radio", { name: /A bit of everything/ })).toBeChecked();
+    expect(screen.queryByRole("button", { name: "No preference" })).toBeNull();
+    const sre = screen.getByRole("radio", { name: /SRE and platform/ }).closest("label")!;
+    expect(sre).toHaveTextContent("SidebarRespond(open)MonitorCommunicateAutomate");
+    expect(sre).toHaveTextContent("Setup starts with1Your app2Alerts3Monitors");
+  });
+
+  it("previews a picked card in the sidebar's cached preferences and restores them on Cancel or leaving", () => {
+    const onDone = jest.fn();
+    const { Wrapper, client } = createWrapper();
+    client.setQueryData(["user-preferences"], { persona: "sre", seen: true });
+    const { unmount } = render(<Welcome mode="change" initialPersona="sre" projectName="Web App" onDone={onDone} />, { wrapper: Wrapper });
+    fireEvent.click(screen.getByRole("radio", { name: /QA engineers/ }));
+    expect(client.getQueryData(["user-preferences"])).toEqual({ persona: "qa", seen: true });
+    fireEvent.click(screen.getByRole("radio", { name: /A bit of everything/ }));
+    expect(client.getQueryData(["user-preferences"])).toEqual({ persona: null, seen: true });
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(client.getQueryData(["user-preferences"])).toEqual({ persona: "sre", seen: true });
+    expect(fetchMock).not.toHaveBeenCalled();
+    // Leaving the page without saving also restores it.
+    fireEvent.click(screen.getByRole("radio", { name: /Engineering leaders/ }));
+    unmount();
+    expect(client.getQueryData(["user-preferences"])).toEqual({ persona: "sre", seen: true });
   });
 
   it("falls back to a generic organization name and tells the user when saving fails", async () => {

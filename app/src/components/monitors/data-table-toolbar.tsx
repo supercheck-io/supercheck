@@ -1,19 +1,12 @@
 import type { Table } from "@tanstack/react-table";
-import { PlusIcon, Search, X } from "lucide-react";
+import { Search, X } from "lucide-react";
 
-import { IconChip } from "@/components/ui/icon-chip";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { DataTableViewOptions } from "@/components/monitors/data-table-view-options";
-import { useRouter } from "next/navigation";
 
 import { monitorStatuses, monitorTypes } from "@/components/monitors/data";
 
 import { DataTableFacetedFilter } from "./data-table-faceted-filter";
-import { useProjectContext } from "@/hooks/use-project-context";
-import { normalizeRole } from "@/lib/rbac/role-normalizer";
-import { canCreateMonitors } from "@/lib/rbac/client-permissions";
-import { NAV } from "@/lib/nav-areas";
 
 interface DataTableToolbarProps<TData> {
   table: Table<TData>;
@@ -23,23 +16,8 @@ export function DataTableToolbar<TData>({
   table,
 }: DataTableToolbarProps<TData>) {
 
-  const router = useRouter();
-  const { currentProject } = useProjectContext();
-
-  const userCanCreateMonitors = currentProject?.userRole ? canCreateMonitors(normalizeRole(currentProject.userRole)) : false;
-
   return (
-    <div className="flex flex-wrap items-center justify-between gap-2 mb-4 -mt-2">
-      <div className="flex items-start gap-3">
-        <IconChip icon={NAV.monitors.icon} tone={NAV.monitors.tone} size="md" className="mt-0.5" />
-        <div className="flex flex-col">
-          <h2 className="text-2xl font-semibold">Monitors</h2>
-          <p className="text-muted-foreground text-sm">
-            Manage uptime monitors and their configurations
-          </p>
-        </div>
-      </div>
-
+    <div className="flex flex-wrap items-center gap-2">
       <div className="flex flex-wrap items-center gap-2">
         <div className="relative">
           <Search className="absolute left-2 top-2 h-4 w-4 text-muted-foreground" />
@@ -91,14 +69,6 @@ export function DataTableToolbar<TData>({
         )} */}
 
         <DataTableViewOptions table={table} />
-        <Button
-          onClick={() => router.push("/monitors/create")}
-          disabled={!userCanCreateMonitors}
-          data-testid="create-monitor-button"
-        >
-          <PlusIcon className="h-4 w-4 mr-2" />
-          Create Monitor
-        </Button>
       </div>
     </div>
   );

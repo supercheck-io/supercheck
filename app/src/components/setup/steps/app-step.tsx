@@ -89,7 +89,8 @@ export function AppStep({ response, draft, patchDraft, readOnly, scan, setScan }
   const savedSecret = draft.app?.testAccountSecret;
 
   return (
-    <div className="space-y-6">
+    <div className="grid items-start gap-4 lg:grid-cols-2">
+      <div className="space-y-4">
       <div className="space-y-2">
         <Label htmlFor="setup-app-url">App URL</Label>
         <Input
@@ -111,6 +112,7 @@ export function AppStep({ response, draft, patchDraft, readOnly, scan, setScan }
       </div>
 
       <ScanPanel projectId={response.projectId} url={stripped} disabled={readOnly || invalid} onResult={(result, scanned) => { setScan(result); patchDraft((d) => ({ ...d, app: { ...d.app, scannedUrl: scanned } })); }} initial={scan} initialUrl={draft.app?.scannedUrl} />
+      </div>
 
       <fieldset className="space-y-3 rounded-xl border p-4" disabled={readOnly}>
         <legend className="px-1 text-sm font-semibold">

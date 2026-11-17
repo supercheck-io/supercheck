@@ -7,7 +7,7 @@ import { UUIDField } from "@/components/ui/uuid-field";
 import { toast } from "sonner";
 
 import { MonitorStatusIndicator } from "./monitor-status-indicator";
-import { monitorTypes } from "./data";
+import { displayMonitorType, monitorTypes } from "./data";
 import { maskUrlPassword } from "@/lib/mask-url-password";
 import { heartbeatGraceMinutes } from "@/lib/heartbeat/state";
 import { heartbeatScheduleLabel } from "./heartbeat-format";
@@ -15,7 +15,6 @@ import { formatDurationMinutes } from "@/lib/date-utils";
 import { TruncatedTextWithTooltip } from "@/components/ui/truncated-text-with-tooltip";
 import { createdByColumn } from "@/components/ui/created-by-column";
 import { DateCell } from "@/components/ui/table-cells";
-import { TableBadge } from "@/components/ui/table-badge";
 
 // Type definition for the extended meta object used in this table
 interface MonitorTableMeta {
@@ -71,11 +70,6 @@ export const columns: ColumnDef<Monitor>[] = [
             maxWidth="160px"
             maxLength={20}
           />
-          {row.original.config?.aiEndpoint && (
-            <TableBadge tone="neutral" compact className="shrink-0" data-testid="monitor-ai-badge">
-              AI endpoint
-            </TableBadge>
-          )}
         </div>
       );
     },
@@ -109,8 +103,8 @@ export const columns: ColumnDef<Monitor>[] = [
     },
   },
   {
-    accessorKey: "type",
     id: "type",
+    accessorFn: (row) => displayMonitorType(row),
     header: ({ column }) => (
       <DataTableColumnHeader column={column} title="Type" />
     ),

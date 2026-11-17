@@ -8,7 +8,13 @@ jest.mock("@tanstack/react-query", () => ({
   useQueryClient: () => ({ invalidateQueries }),
   useIsRestoring: () => false,
 }));
-jest.mock("next/navigation", () => ({ useRouter: () => ({ push: jest.fn(), refresh: jest.fn() }) }));
+const mockReplace = jest.fn();
+let mockSearch = "";
+jest.mock("next/navigation", () => ({
+  useRouter: () => ({ push: jest.fn(), refresh: jest.fn(), replace: mockReplace }),
+  usePathname: () => "/monitors/hb1",
+  useSearchParams: () => new URLSearchParams(mockSearch),
+}));
 jest.mock("sonner", () => ({ toast: { success: jest.fn(), error: jest.fn() } }));
 jest.mock("@/actions/delete-monitor", () => ({ deleteMonitor: jest.fn() }));
 jest.mock("@/hooks/use-app-config", () => ({ useAppConfig: () => ({ recentMonitorResultsLimit: 10 }) }));
@@ -36,7 +42,7 @@ jest.mock("@/components/monitors/response-time-line-chart", () => ({
   },
 }));
 jest.mock("./AvailabilityBarChart", () => ({
-  AvailabilityBarChart: ({ headerActions }: { headerActions?: React.ReactNode }) => <>{headerActions}</>,
+  AvailabilityBarChart: ({ headerActions, footer }: { headerActions?: React.ReactNode; footer?: React.ReactNode }) => <>{headerActions}{footer}</>,
 }));
 jest.mock("./location-filter-dropdown", () => ({
   LocationFilterDropdown: (props: { availableLocations: string[] }) => {
@@ -230,47 +236,82 @@ describe("heartbeat monitor detail", () => {
 
   beforeEach(() => {
     chartProps = null;
+    mockSearch = "";
+    mockReplace.mockClear();
     global.fetch = jest.fn() as never;
   });
+
+  const pinged = (extra: Record<string, unknown> = {}) => ({
+    lastPingAt: new Date(Date.now() - 60_000).toISOString(),
+    nextExpectedAt: new Date(Date.now() + 3_540_000).toISOString(),
+    ...extra,
+  });
+  const runRow = { id: "r1", monitorId: "hb1", checkedAt: new Date(Date.now() - 60_000).toISOString(), isUp: true, responseTimeMs: 248_000, location: "local", details: { heartbeat: { kind: "ping" } } };
 
   it.each(["up", "late", "down", "pending", "paused"])("shows the %s badge and the schedule, not a target", (state) => {
     render(<MonitorDetailClient monitor={heartbeatMonitor(state)} />);
     expect(screen.getByTestId("heartbeat-state-badge")).toHaveAttribute("data-state", state);
-    expect(screen.getByTestId("monitor-heartbeat-subtitle")).toHaveTextContent("Heartbeat · Every 1 h, grace 10 min");
+    expect(screen.getByTestId("monitor-heartbeat-subtitle")).toHaveTextContent("Every 1 h · grace 10 min");
   });
 
-  it("shows the ping URL panel, the waiting state and the ping history instead of check results", async () => {
+  it("has no metric cards", () => {
+    render(<MonitorDetailClient monitor={heartbeatMonitor("up", pinged())} />);
+    for (const label of ["Uptime", "Avg run", "P95 run", "Last 24 hours", "Last 30 days"]) {
+      expect(screen.queryByText(label)).toBeNull();
+    }
+  });
+
+  it("shows the URL panel, waiting note and both empty cards for a never-pinged monitor", async () => {
     render(<MonitorDetailClient monitor={heartbeatMonitor("pending")} />);
+    expect(screen.queryByRole("tab", { name: "Setup" })).toBeNull();
     expect(screen.getByTestId("heartbeat-ping-url-panel")).toBeInTheDocument();
     expect(screen.getByTestId("heartbeat-waiting")).toHaveTextContent("Waiting for the first ping");
     expect(screen.getByTestId("heartbeat-ping-history")).toBeInTheDocument();
-    expect(screen.queryByText("Recent Check Results")).toBeNull();
-    // Editors get the reveal controls once permissions are known.
+    expect(screen.getByTestId("heartbeat-ping-history-empty")).toBeInTheDocument();
     expect(await screen.findByRole("button", { name: "Reveal" })).toBeInTheDocument();
-    // No run duration recorded: the chart is not shown.
+  });
+
+  it("shows the URL panel and ping history together once pinged, with no tabs", () => {
+    render(<MonitorDetailClient monitor={heartbeatMonitor("up", pinged())} />);
+    expect(screen.queryByRole("tab", { name: "Overview" })).toBeNull();
+    expect(screen.getByTestId("heartbeat-ping-url-panel")).toBeInTheDocument();
+    expect(screen.getByTestId("heartbeat-ping-history")).toBeInTheDocument();
+    expect(screen.queryByTestId("heartbeat-waiting")).toBeNull();
+  });
+
+  it("shows last ping, next ping and last run duration in the header", () => {
+    render(<MonitorDetailClient monitor={heartbeatMonitor("up", pinged(), [runRow])} />);
+    expect(screen.getByTestId("heartbeat-stat-last-ping")).toHaveTextContent("Last ping 1m ago");
+    expect(screen.getByTestId("heartbeat-stat-next")).toHaveTextContent(/^Next ping in 5[89]m$/);
+    expect(screen.getByTestId("heartbeat-stat-duration")).toHaveTextContent("Last run 4 min 08 s");
+  });
+
+  it("charts run duration only when durations exist, else shows a one-line hint", () => {
+    const { unmount } = render(<MonitorDetailClient monitor={heartbeatMonitor("up", pinged())} />);
     expect(chartProps).toBeNull();
-  });
-
-  it("shows last ping, next expected and last run duration, and titles the chart Run duration", () => {
-    const now = Date.now();
-    render(
-      <MonitorDetailClient
-        monitor={heartbeatMonitor(
-          "up",
-          { lastPingAt: new Date(now - 60_000).toISOString(), nextExpectedAt: new Date(now + 3_540_000).toISOString() },
-          [{ id: "r1", monitorId: "hb1", checkedAt: new Date(now - 60_000).toISOString(), isUp: true, responseTimeMs: 248_000, location: "local", details: { heartbeat: { kind: "ping" } } }],
-        )}
-      />,
-    );
-    expect(screen.getByTestId("heartbeat-stat-last-ping")).toHaveTextContent("1 minute ago");
-    expect(screen.getByTestId("heartbeat-stat-next")).toHaveTextContent("in about 1 hour");
-    expect(screen.getByTestId("heartbeat-stat-duration")).toHaveTextContent("4 min 08 s");
+    expect(screen.getByTestId("heartbeat-run-duration-hint")).toBeInTheDocument();
+    unmount();
+    render(<MonitorDetailClient monitor={heartbeatMonitor("up", pinged(), [runRow])} />);
     expect(chartProps).toMatchObject({ title: "Run duration" });
+    expect(screen.queryByTestId("heartbeat-run-duration-hint")).toBeNull();
   });
 
-  it("hides the next expected time while paused", () => {
-    render(<MonitorDetailClient monitor={heartbeatMonitor("paused", { nextExpectedAt: new Date().toISOString() })} />);
-    expect(screen.getByTestId("heartbeat-stat-next")).toHaveTextContent("—");
+  it("shows Paused instead of a deadline while paused", () => {
+    render(<MonitorDetailClient monitor={heartbeatMonitor("paused", pinged())} />);
+    expect(screen.getByTestId("heartbeat-stat-next")).toHaveTextContent("Paused");
+  });
+
+  it("omits the next ping before the first ping, whatever the summary holds", () => {
+    render(<MonitorDetailClient monitor={heartbeatMonitor("pending", { nextExpectedAt: new Date(Date.now() - 60_000).toISOString() })} />);
+    expect(screen.getByTestId("heartbeat-stat-last-ping")).toHaveTextContent("No pings yet");
+    expect(screen.queryByTestId("heartbeat-stat-next")).toBeNull();
+    expect(screen.queryByTestId("heartbeat-stat-duration")).toBeNull();
+  });
+
+  it("shows overdue when down", () => {
+    render(<MonitorDetailClient monitor={heartbeatMonitor("down", pinged({ lastPingAt: new Date(Date.now() - 3 * 3_600_000).toISOString(), nextExpectedAt: new Date(Date.now() - 3 * 60_000).toISOString() }))} />);
+    expect(screen.getByTestId("heartbeat-stat-last-ping")).toHaveTextContent("Last ping 3h ago");
+    expect(screen.getByTestId("heartbeat-stat-next")).toHaveTextContent("Next ping overdue 3m");
   });
 });
 

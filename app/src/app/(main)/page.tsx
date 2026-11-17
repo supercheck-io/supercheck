@@ -7,7 +7,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { IconChip } from "@/components/ui/icon-chip";
+import { PageHeader } from "@/components/shared/page-header";
 import { Button } from "@/components/ui/button";
 import {
   ChartContainer,
@@ -261,8 +261,8 @@ export default function Home() {
       <div className="overflow-hidden">
         <PageBreadcrumbs items={breadcrumbs} />
         <Card className="shadow-sm m-4">
-          <CardContent className="p-6 overflow-hidden">
-            <div className="flex items-center justify-between mb-3">
+          <CardContent className="space-y-4 overflow-hidden p-6">
+            <div className="flex items-center justify-between">
               <div>
                 <Skeleton className="h-7 w-56 mb-2" />
                 <Skeleton className="h-4 w-96" />
@@ -274,9 +274,9 @@ export default function Home() {
             </div>
 
             {/* Overview Content - matches main UI structure */}
-            <div className="space-y-4 mt-4">
+            <div className="space-y-4">
               {/* Key Metrics Grid - 6 cards per row */}
-              <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 mb-4">
+              <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6">
                 {Array.from({ length: 6 }).map((_, i) => (
                   <Card key={i} className="relative overflow-hidden">
                     <CardContent className="p-5">
@@ -293,7 +293,7 @@ export default function Home() {
               </div>
 
               {/* Top Row Charts - 3 charts per row */}
-              <div className="grid gap-4 lg:grid-cols-3 mb-4">
+              <div className="grid gap-4 lg:grid-cols-3">
                 {Array.from({ length: 3 }).map((_, i) => (
                   <Card key={i} className="h-full">
                     <CardHeader className="pb-2 px-4 pt-4">
@@ -400,109 +400,106 @@ export default function Home() {
     <div data-fit-viewport className="overflow-hidden lg:flex lg:min-h-[560px] lg:flex-1 lg:flex-col">
       <PageBreadcrumbs items={breadcrumbs} />
       <Card className="shadow-sm m-4 lg:flex lg:min-h-0 lg:flex-1 lg:flex-col">
-        <CardContent className="p-6 overflow-hidden lg:flex lg:min-h-0 lg:flex-1 lg:flex-col">
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex min-w-0 items-start gap-3">
-              <IconChip icon={NAV.dashboard.icon} tone={NAV.dashboard.tone} size="md" className="mt-0.5" />
-              <div>
-                <h1 className="text-2xl font-semibold">Project Dashboard</h1>
-                <p className="text-muted-foreground text-sm">
-                  Overview of project&apos;s health, and key insights.
-                </p>
-              </div>
-            </div>
-            <div className="flex items-center gap-1.5">
-            <HealthInfo />
-            <Popover>
-              <PopoverTrigger asChild>
-                <button
-                  type="button"
-                  aria-label="View system status details"
-                  className={cn(
-                    "flex items-center gap-2 px-3 py-1.5 rounded-full border transition-colors duration-200",
-                    "cursor-pointer",
-                    dashboardData.system.healthy
-                      ? "bg-success/10 border-success/30 hover:bg-success/20 hover:border-success/50"
-                      : "bg-failure/10 border-failure/30 hover:bg-failure/20 hover:border-failure/50"
-                  )}
-                >
-                  <div
-                    className={cn(
-                      "h-2.5 w-2.5 rounded-full",
-                      dashboardData.system.healthy
-                        ? "bg-success"
-                        : "bg-failure"
-                    )}
-                  />
-                  <span
-                    className={cn(
-                      "text-sm font-medium",
-                      dashboardData.system.healthy
-                        ? "text-success"
-                        : "text-failure"
-                    )}
-                  >
-                    {dashboardData.system.healthy
-                      ? "Operational"
-                      : "Issues Detected"}
-                  </span>
-                  <ChevronDown className={cn(
-                    "h-3.5 w-3.5 transition-colors",
-                    dashboardData.system.healthy
-                      ? "text-success"
-                      : "text-failure"
-                  )} />
-                </button>
-              </PopoverTrigger>
-              <PopoverContent className="w-80 p-0" align="end">
-                <div className="p-4 space-y-3">
-                  <div className="flex items-center gap-2">
-                    <div
-                      className={cn(
-                        "h-3 w-3 rounded-full",
-                        dashboardData.system.healthy
-                          ? "bg-success"
-                          : "bg-failure"
-                      )}
-                    />
-                    <h4 className="font-semibold leading-none">
-                      {dashboardData.system.healthy
-                        ? "System Status: Healthy"
-                        : "System Issues Detected"}
-                    </h4>
-                  </div>
-                  {dashboardData.system.healthy ? (
-                    <p className="text-sm text-muted-foreground">
-                      All systems are operational. No issues detected.
-                    </p>
-                  ) : (
-                    <div className="space-y-2">
-                      {(dashboardData.system.issues ?? []).map((issue, i) => (
+        <CardContent className="space-y-4 overflow-hidden p-6 lg:flex lg:min-h-0 lg:flex-1 lg:flex-col">
+          <PageHeader
+            title="Project Dashboard"
+            description="Overview of project's health, and key insights."
+            icon={NAV.dashboard.icon}
+            tone={NAV.dashboard.tone}
+            actions={
+              <div className="flex items-center gap-1.5">
+                  <HealthInfo />
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <button
+                        type="button"
+                        aria-label="View system status details"
+                        className={cn(
+                          "flex items-center gap-2 px-3 py-1.5 rounded-full border transition-colors duration-200",
+                          "cursor-pointer",
+                          dashboardData.system.healthy
+                            ? "bg-success/10 border-success/30 hover:bg-success/20 hover:border-success/50"
+                            : "bg-failure/10 border-failure/30 hover:bg-failure/20 hover:border-failure/50"
+                        )}
+                      >
                         <div
-                          key={i}
-                          className="flex items-start gap-2 text-sm"
+                          className={cn(
+                            "h-2.5 w-2.5 rounded-full",
+                            dashboardData.system.healthy
+                              ? "bg-success"
+                              : "bg-failure"
+                          )}
+                        />
+                        <span
+                          className={cn(
+                            "text-sm font-medium",
+                            dashboardData.system.healthy
+                              ? "text-success"
+                              : "text-failure"
+                          )}
                         >
+                          {dashboardData.system.healthy
+                            ? "Operational"
+                            : "Issues Detected"}
+                        </span>
+                        <ChevronDown className={cn(
+                          "h-3.5 w-3.5 transition-colors",
+                          dashboardData.system.healthy
+                            ? "text-success"
+                            : "text-failure"
+                        )} />
+                      </button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-80 p-0" align="end">
+                      <div className="p-4 space-y-3">
+                        <div className="flex items-center gap-2">
                           <div
                             className={cn(
-                              "mt-1 h-2 w-2 rounded-full flex-shrink-0",
-                              issue.severity === "critical" ||
-                                issue.severity === "high"
-                                ? "bg-failure"
-                                : "bg-warning"
+                              "h-3 w-3 rounded-full",
+                              dashboardData.system.healthy
+                                ? "bg-success"
+                                : "bg-failure"
                             )}
                           />
-                          <span className="text-muted-foreground">
-                            {issue.message}
-                          </span>
+                          <h4 className="font-semibold leading-none">
+                            {dashboardData.system.healthy
+                              ? "System Status: Healthy"
+                              : "System Issues Detected"}
+                          </h4>
                         </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </PopoverContent>
-            </Popover>
-            </div>
-          </div>
+                        {dashboardData.system.healthy ? (
+                          <p className="text-sm text-muted-foreground">
+                            All systems are operational. No issues detected.
+                          </p>
+                        ) : (
+                          <div className="space-y-2">
+                            {(dashboardData.system.issues ?? []).map((issue, i) => (
+                              <div
+                                key={i}
+                                className="flex items-start gap-2 text-sm"
+                              >
+                                <div
+                                  className={cn(
+                                    "mt-1 h-2 w-2 rounded-full flex-shrink-0",
+                                    issue.severity === "critical" ||
+                                      issue.severity === "high"
+                                      ? "bg-failure"
+                                      : "bg-warning"
+                                  )}
+                                />
+                                <span className="text-muted-foreground">
+                                  {issue.message}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </PopoverContent>
+                  </Popover>
+              </div>
+            }
+          />
 
           <DashboardOverview
             dashboardData={dashboardData}
@@ -573,7 +570,7 @@ function DashboardOverview({
   );
 
   return (
-    <div className="mt-4 space-y-4 lg:flex lg:min-h-0 lg:flex-1 lg:flex-col">
+    <div className="space-y-4 lg:flex lg:min-h-0 lg:flex-1 lg:flex-col">
       <DashboardGettingStarted dashboardHasData fallback={null} />
       {/* KPI row */}
       <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6">

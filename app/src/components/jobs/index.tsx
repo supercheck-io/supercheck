@@ -12,8 +12,12 @@ import {
 } from "@/components/ui/sheet";
 import { jobStatuses } from "./data";
 import { Job, Test } from "./schema";
-import { CalendarIcon, ClockIcon, TimerIcon, Edit, Trash2 } from "lucide-react";
+import { CalendarIcon, ClockIcon, TimerIcon, Edit, Trash2, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { PageHeader } from "@/components/shared/page-header";
+import { DashboardEmptyState } from "@/components/dashboard/dashboard-empty-state";
+import { useJobPermissions } from "@/hooks/use-rbac-permissions";
+import { NAV } from "@/lib/nav-areas";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Dialog,
@@ -124,6 +128,7 @@ function toLocalJob(job: ApiJob): Job {
 
 export default function Jobs() {
   const router = useRouter();
+  const { canCreateJob } = useJobPermissions();
   const searchParams = useSearchParams();
   const [selectedJobOverride, setSelectedJobOverride] = useState<Job | null>(null);
   const [isEditTestDialogOpen, setIsEditTestDialogOpen] = useState(false);
@@ -349,7 +354,7 @@ export default function Jobs() {
   // Don't render until mounted and cache is restored
   if (!isMounted || isRestoring) {
     return (
-      <div className="flex h-full flex-col space-y-4 p-2 mt-6 w-full max-w-full overflow-x-hidden">
+      <div className="space-y-4">
         <DataTableSkeleton columns={6} rows={3} />
       </div>
     );
@@ -359,23 +364,52 @@ export default function Jobs() {
     return <ListErrorState title="Failed to fetch jobs" error={error} onRetry={() => refetch()} />;
   }
 
+  const isEmpty = !isLoading && jobs.length === 0;
+  const createButton = (
+    <Button
+      onClick={() => router.push("/jobs/create")}
+      disabled={!canCreateJob}
+      data-testid="create-job-button"
+    >
+      <Plus className="h-4 w-4 mr-2" />
+      Create job
+    </Button>
+  );
+
   return (
-    <div className="flex h-full flex-col space-y-4 p-2 mt-6 w-full max-w-full overflow-x-hidden">
-      <ListCapNote count={jobs.length} cap={JOBS_LIST_CAP} />
-      <DataTable
-        data={jobs}
-        columns={columns}
-        isLoading={isLoading}
-        onRowClick={(row) => {
-          handleJobSelect(row.original);
-        }}
-        meta={{
-          // The row action has already deleted the job; deleting again would 404 and toast a failure.
-          onDeleteJob: (jobId: string) => {
-            if (selectedJob && selectedJob.id === jobId) handleJobSheetClose();
-          },
-        }}
+    <div className="w-full max-w-full space-y-4 overflow-x-hidden">
+      <PageHeader
+        title="Jobs"
+        icon={NAV.jobs.icon}
+        tone={NAV.jobs.tone}
+        description="Manage jobs and their configurations"
+        actions={isEmpty ? undefined : createButton}
       />
+      <ListCapNote count={jobs.length} cap={JOBS_LIST_CAP} />
+      {isEmpty ? (
+        <DashboardEmptyState
+          className="min-h-[420px]"
+          title="No jobs yet"
+          description="Create a job to run your tests on a schedule, from CI/CD or on demand."
+          icon={<NAV.jobs.icon className="h-10 w-10" />}
+          action={createButton}
+        />
+      ) : (
+        <DataTable
+          data={jobs}
+          columns={columns}
+          isLoading={isLoading}
+          onRowClick={(row) => {
+            handleJobSelect(row.original);
+          }}
+          meta={{
+            // The row action has already deleted the job; deleting again would 404 and toast a failure.
+            onDeleteJob: (jobId: string) => {
+              if (selectedJob && selectedJob.id === jobId) handleJobSheetClose();
+            },
+          }}
+        />
+      )}
 
       <Sheet open={isSheetOpen} onOpenChange={(open) => {
         if (!open) {

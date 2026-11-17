@@ -4,7 +4,7 @@ import React, { useEffect, useState } from "react";
 import { Copy, Eye, Link2, Loader2, RotateCw } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -46,6 +46,8 @@ export function pingSnippets(url: string) {
   };
 }
 
+type SnippetKey = keyof ReturnType<typeof pingSnippets>;
+
 async function requestPingUrl(monitorId: string, rotate: boolean): Promise<string> {
   const response = await fetch(`/api/monitors/${monitorId}/heartbeat-url${rotate ? "/rotate" : ""}`, {
     method: rotate ? "POST" : "GET",
@@ -75,6 +77,7 @@ export function HeartbeatPingUrlPanel({ monitorId, canManage, pending = false }:
   const [busy, setBusy] = useState<"reveal" | "copy" | "rotate" | null>(null);
   const [error, setError] = useState<{ message: string; retry: () => void } | null>(null);
   const [confirmRotate, setConfirmRotate] = useState(false);
+  const [snippetTab, setSnippetTab] = useState<SnippetKey>("curl");
 
   useEffect(() => {
     setOrigin(window.location.origin);
@@ -121,69 +124,84 @@ export function HeartbeatPingUrlPanel({ monitorId, canManage, pending = false }:
     if (await load("rotate")) toast.success("Ping URL rotated. Update your job with the new URL.");
   }
 
+  async function copySnippet() {
+    const url = pingUrl ?? (await load("copy"));
+    if (!url) return;
+    try {
+      await navigator.clipboard.writeText(pingSnippets(url)[snippetTab]);
+      toast.success("Command copied");
+    } catch {
+      toast.error("Could not copy. Reveal the URL and copy it by hand.");
+    }
+  }
+
+  const spin = (action: "reveal" | "copy" | "rotate", icon: React.ReactNode) =>
+    busy === action ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : icon;
+
   return (
-    <Card className="shadow-sm" data-testid="heartbeat-ping-url-panel">
-      <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2 space-y-0">
-        <CardTitle className="flex items-center gap-2 text-lg font-semibold">
-          <Link2 className="h-5 w-5 text-muted-foreground" aria-hidden="true" />
-          Ping URL
-        </CardTitle>
-        {canManage && (
-          <div className="flex flex-wrap items-center gap-2">
-            {!pingUrl && (
-              <Button variant="outline" size="sm" onClick={() => void load("reveal")} disabled={busy !== null} data-testid="heartbeat-reveal">
-                {busy === "reveal" ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Eye className="mr-1 h-4 w-4" />}
-                Reveal
+    <Card className="shrink-0 shadow-sm" data-testid="heartbeat-ping-url-panel">
+      <CardContent className="grid gap-4 p-4 lg:grid-cols-2">
+        <div className="min-w-0 space-y-2">
+          <div className="flex min-h-8 flex-wrap items-center justify-between gap-2">
+            <h2 className="flex items-center gap-2 text-sm font-semibold">
+              <Link2 className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+              Ping URL
+            </h2>
+            {canManage && (
+              <div className="flex flex-wrap items-center gap-1">
+                {!pingUrl && (
+                  <Button variant="outline" size="sm" className="h-8" onClick={() => void load("reveal")} disabled={busy !== null} data-testid="heartbeat-reveal">
+                    {spin("reveal", <Eye className="mr-1 h-4 w-4" />)}
+                    Reveal
+                  </Button>
+                )}
+                <Button variant="outline" size="sm" className="h-8" onClick={() => void copy()} disabled={busy !== null} data-testid="heartbeat-copy">
+                  {spin("copy", <Copy className="mr-1 h-4 w-4" />)}
+                  Copy
+                </Button>
+                <Button variant="ghost" size="sm" className="h-8" onClick={() => setConfirmRotate(true)} disabled={busy !== null} data-testid="heartbeat-rotate">
+                  {spin("rotate", <RotateCw className="mr-1 h-4 w-4" />)}
+                  Rotate URL
+                </Button>
+              </div>
+            )}
+          </div>
+          {!pingUrl && <span className="sr-only">Ping URL hidden.</span>}
+          <code
+            className="block break-all rounded-md border bg-muted/40 px-3 py-2 font-mono text-xs"
+            aria-hidden={pingUrl ? undefined : true}
+            data-testid="heartbeat-ping-url"
+            data-revealed={pingUrl ? "true" : "false"}
+          >
+            {shownUrl}
+          </code>
+          {error && (
+            <Alert variant="error" data-testid="heartbeat-ping-url-error">
+              <AlertDescription className="flex flex-wrap items-center gap-2">
+                {error.message}
+                <Button variant="ghost" size="sm" onClick={error.retry}>
+                  Try again
+                </Button>
+              </AlertDescription>
+            </Alert>
+          )}
+        </div>
+
+        <Tabs value={snippetTab} onValueChange={(v) => setSnippetTab(v as SnippetKey)} className="min-w-0 gap-2">
+          <div className="flex min-h-8 items-center justify-between gap-2">
+            <TabsList aria-label="Ping snippets" className="h-8">
+              <TabsTrigger value="curl">curl</TabsTrigger>
+              <TabsTrigger value="cron">cron</TabsTrigger>
+              <TabsTrigger value="cli">CLI</TabsTrigger>
+            </TabsList>
+            {canManage && (
+              <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => void copySnippet()} disabled={busy !== null} aria-label="Copy command" data-testid="heartbeat-snippet-copy">
+                <Copy className="h-4 w-4" />
               </Button>
             )}
-            <Button variant="outline" size="sm" onClick={() => void copy()} disabled={busy !== null} data-testid="heartbeat-copy">
-              {busy === "copy" ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Copy className="mr-1 h-4 w-4" />}
-              Copy
-            </Button>
-            <Button variant="ghost" size="sm" onClick={() => setConfirmRotate(true)} disabled={busy !== null} data-testid="heartbeat-rotate">
-              {busy === "rotate" ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <RotateCw className="mr-1 h-4 w-4" />}
-              Rotate URL
-            </Button>
           </div>
-        )}
-      </CardHeader>
-      <CardContent className="space-y-4">
-        {!pingUrl && <span className="sr-only">Ping URL hidden.</span>}
-        <code
-          className="block break-all rounded-md border bg-muted/40 px-3 py-2 font-mono text-sm"
-          aria-hidden={pingUrl ? undefined : true}
-          data-testid="heartbeat-ping-url"
-          data-revealed={pingUrl ? "true" : "false"}
-        >
-          {shownUrl}
-        </code>
-
-        {error && (
-          <Alert variant="error" data-testid="heartbeat-ping-url-error">
-            <AlertDescription className="flex flex-wrap items-center gap-2">
-              {error.message}
-              <Button variant="ghost" size="sm" onClick={error.retry}>
-                Try again
-              </Button>
-            </AlertDescription>
-          </Alert>
-        )}
-
-        {pending && (
-          <div role="status" className="rounded-md border border-dashed p-3 text-sm" data-testid="heartbeat-waiting">
-            <p className="font-medium">Waiting for the first ping</p>
-            <p className="text-muted-foreground">Run the command below from your job. The monitor turns Up when the first ping arrives.</p>
-          </div>
-        )}
-
-        <Tabs defaultValue="curl">
-          <TabsList aria-label="Ping snippets">
-            <TabsTrigger value="curl">curl</TabsTrigger>
-            <TabsTrigger value="cron">cron</TabsTrigger>
-            <TabsTrigger value="cli">CLI</TabsTrigger>
-          </TabsList>
-          {(Object.keys(snippets) as Array<keyof typeof snippets>).map((key) => (
-            <TabsContent key={key} value={key}>
+          {(Object.keys(snippets) as SnippetKey[]).map((key) => (
+            <TabsContent key={key} value={key} className="mt-0">
               <pre className="overflow-x-auto whitespace-pre-wrap break-all rounded-md border bg-muted/40 px-3 py-2 font-mono text-xs" data-testid={`heartbeat-snippet-${key}`}>
                 {snippets[key]}
               </pre>
@@ -191,24 +209,24 @@ export function HeartbeatPingUrlPanel({ monitorId, canManage, pending = false }:
           ))}
         </Tabs>
 
-        <div className="space-y-1 text-xs text-muted-foreground">
-          <p>
-            Optional: call <span className="font-mono">/start</span> when the job begins to record how long it ran.
-          </p>
-          <p>
-            Call <span className="font-mono">/fail</span> to report a failure straight away. GET, POST and HEAD all work.
-          </p>
-          <p>
-            <a
-              href="https://supercheck.io/docs/app/heartbeat"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="underline underline-offset-2 hover:text-foreground"
-            >
-              Heartbeat docs
-            </a>
-          </p>
-        </div>
+        <p className="text-xs text-muted-foreground lg:col-span-2">
+          {pending && (
+            <span role="status" className="mr-2 inline-flex items-center gap-1.5 font-medium text-foreground" data-testid="heartbeat-waiting">
+              <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground" aria-hidden="true" />
+              Waiting for the first ping. The monitor turns Up when it arrives.
+            </span>
+          )}
+          Optional: call <span className="font-mono">/start</span> when the job begins to record how long it ran, or{" "}
+          <span className="font-mono">/fail</span> to report a failure straight away. GET, POST and HEAD all work.{" "}
+          <a
+            href="https://supercheck.io/docs/app/heartbeat"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="underline underline-offset-2 hover:text-foreground"
+          >
+            Heartbeat docs
+          </a>
+        </p>
       </CardContent>
 
       <AlertDialog open={confirmRotate} onOpenChange={setConfirmRotate}>

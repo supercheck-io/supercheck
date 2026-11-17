@@ -8,7 +8,7 @@
   --color-fd-primary: hsl(220, 90%, 56%);
   /* Product areas, same values as app/src/app/globals.css (700 shades, WCAG AA on cards). Chips, eyebrows and icons only. */
   --automate: oklch(0.5 0.134 242.749);
-  --monitor: oklch(0.511 0.096 186.391);
+  --monitor: oklch(0.52 0.2 262);
   --respond: oklch(0.553 0.195 38.402);
   --communicate: oklch(0.525 0.223 3.958);
   --ai: oklch(0.541 0.281 293.009);
@@ -21,7 +21,7 @@
 .dark {
   --color-fd-primary: hsl(220, 90%, 66%);
   --automate: oklch(0.746 0.16 232.661);
-  --monitor: oklch(0.777 0.152 181.912);
+  --monitor: oklch(0.72 0.17 258);
   --respond: oklch(0.75 0.183 55.934);
   --communicate: oklch(0.718 0.202 349.761);
   --ai: oklch(0.702 0.183 293.541);

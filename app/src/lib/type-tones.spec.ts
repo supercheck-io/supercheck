@@ -3,7 +3,8 @@ import { join } from "node:path";
 
 import { monitorTypes } from "@/components/monitors/data";
 import { types as testTypes } from "@/components/tests/data";
-import { TYPE_CHIP, TYPE_TEXT, TYPE_TEXT_FORCE, TYPE_TONE, TYPE_TONES, typeText } from "./type-tones";
+import { CREATE_ACTIONS } from "./create-actions";
+import { MONITOR_ICON, TYPE_CHIP, TYPE_TEXT, TYPE_TEXT_FORCE, TYPE_TONE, TYPE_TONES, typeText } from "./type-tones";
 
 const SRC = join(__dirname, "..");
 const css = readFileSync(join(SRC, "app/globals.css"), "utf8");
@@ -33,7 +34,7 @@ describe("type tones", () => {
       expect(dark).toContain(`--type-${tone}: oklch(${d});`);
     }
     expect(Object.values(TYPE_TONE.test)).toEqual(["sky", "teal", "cyan", "blue", "purple", "purple"]);
-    expect(Object.values(TYPE_TONE.monitor)).toEqual(["teal", "sky", "cyan", "blue", "purple", "teal", "purple"]);
+    expect(Object.values(TYPE_TONE.monitor)).toEqual(["aqua", "cyan", "sky", "teal", "purple", "orchid", "fuchsia", "rose"]);
     expect(TYPE_TONE.job).toEqual({ playwright: "sky", k6: "purple" });
   });
 
@@ -41,12 +42,14 @@ describe("type tones", () => {
     const shared = new Set<string>(Object.values(TYPE_TONE.test));
     // The two non-functional tests share purple; Performance stands apart by its k6 logo.
     expect(TYPE_TONE.test.agent).toBe(TYPE_TONE.test.performance);
+    // Monitors never repeat a tone among themselves; they may share one with a test.
+    const monitors = Object.values(TYPE_TONE.monitor);
+    expect(new Set(monitors).size).toBe(monitors.length);
+    expect(monitors).not.toContain("blue");
+    for (const tone of monitors) shared.add(tone);
     const others = [TYPE_TONE.variable, TYPE_TONE.sre, TYPE_TONE.admin].flatMap((g) => Object.values(g));
     expect(new Set(others).size).toBe(others.length);
     for (const tone of others) expect(shared.has(tone)).toBe(false);
-    // Every monitor reuses a test tone; MCP takes the Agent test's.
-    for (const tone of Object.values(TYPE_TONE.monitor)) expect(shared.has(tone)).toBe(true);
-    expect(TYPE_TONE.monitor.mcp_server).toBe(TYPE_TONE.test.agent);
     // No tone is defined without a user.
     const used = new Set<string>([...shared, ...others]);
     expect([...TYPE_TONES].filter((t) => !used.has(t))).toEqual([]);
@@ -63,6 +66,13 @@ describe("type tones", () => {
   it("feeds the test and monitor type lists from the registry", () => {
     for (const t of testTypes) expect(t.color).toBe(typeText("test", t.value as keyof typeof TYPE_TONE.test));
     for (const t of monitorTypes) expect(t.color).toBe(typeText("monitor", t.value as keyof typeof TYPE_TONE.monitor));
+  });
+
+  it("uses one icon per monitor type in the type list and the Create menu", () => {
+    for (const [type, icon] of Object.entries(MONITOR_ICON)) {
+      expect(monitorTypes.find((t) => t.value === type)?.icon).toBe(icon);
+      expect(CREATE_ACTIONS.find((a) => a.id === `monitor-${type}`)?.icon).toBe(icon);
+    }
   });
 
   it("keeps ad-hoc colours out of the type surfaces", () => {
