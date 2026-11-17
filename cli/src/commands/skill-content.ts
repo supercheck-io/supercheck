@@ -78,7 +78,7 @@ Supercheck runs Playwright and k6 tests locally and in the cloud. The CLI is the
 \`supercheck skills onboarding\` | \`authoring\` | \`local\` | \`sync\` | \`configure\` | \`execute\` | \`ci\` | \`ship\` | \`safety\` | \`investigate\`
 
 ## Cron jobs and scheduled agents
-A heartbeat monitor alerts when a job stops checking in: \`supercheck monitor create --name <name> --type heartbeat --every 1h --grace 10m\` prints its secret ping URL once (\`supercheck monitor heartbeat-url <id>\` shows it again). The job ends with \`supercheck heartbeat ping <url>\` on success, or \`--fail\` on error. Details: \`supercheck skills configure\`.
+A heartbeat monitor alerts when a job stops checking in: \`supercheck monitor create --name <name> --type heartbeat --every 1h --grace 10m\` prints its secret ping URL once in table output (\`supercheck monitor heartbeat-url <id>\` shows it, also with \`--json\`). The job ends with \`supercheck heartbeat ping <url>\` on success, or \`--fail\` on error. Details: \`supercheck skills configure\`.
 
 ## Rules
 - Local work needs no account. Cloud writes need the user's authorization and an active plan (\`supercheck plan --json\`).

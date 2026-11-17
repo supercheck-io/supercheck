@@ -352,7 +352,9 @@ monitorCommand
       // Machine output lands in CI logs, so the secret stays out of it; the audited reveal command prints it on request.
       const heartbeat = data.heartbeat && typeof data.heartbeat === 'object' ? { ...(data.heartbeat as Record<string, unknown>) } : undefined
       if (heartbeat) delete heartbeat.pingUrl
-      outputDetail({ ...data, ...(heartbeat ? { heartbeat } : {}) })
+      const rest: Record<string, unknown> = { ...data, ...(heartbeat ? { heartbeat } : {}) }
+      delete rest.pingUrl
+      outputDetail(rest)
       if (typeof pingUrl === 'string') process.stderr.write(`${PING_URL_HIDDEN(String(data.id))}\n`)
       return
     }
