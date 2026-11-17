@@ -11,8 +11,24 @@ const listText = (parts: string[]) => (parts.length > 1 ? `${parts.slice(0, -1).
 
 /** Who a reminder or escalation reached: channel names when known (else counts), never addresses. */
 function reachedText(data: Record<string, unknown>, refs?: Pick<SreIncidentTimelineRefs, "providers">) {
-  const reached = Array.isArray(data.channels) ? (data.channels as Channel[]).filter((channel) => channel?.ok === true) : [];
-  const names = refs ? reached.flatMap((channel) => (typeof channel.providerId === "string" && refs.providers[channel.providerId]) || []) : [];
+  const seen = new Set<string>();
+  // A channel listed twice counts once.
+  const reached = Array.isArray(data.channels)
+    ? (data.channels as Channel[]).filter((channel) => {
+        if (channel?.ok !== true) return false;
+        if (typeof channel.providerId !== "string") return true;
+        if (seen.has(channel.providerId)) return false;
+        seen.add(channel.providerId);
+        return true;
+      })
+    : [];
+  // Own keys only, so an id such as "constructor" never resolves to an Object.prototype member.
+  const nameOf = (id: unknown) => (refs && typeof id === "string" && Object.hasOwn(refs.providers, id) ? refs.providers[id] : null);
+  // Quote a name that contains a comma so the list still reads as separate channels.
+  const names = reached.flatMap((channel) => {
+    const name = nameOf(channel.providerId);
+    return name ? [name.includes(",") ? `"${name}"` : name] : [];
+  });
   // A deleted channel has no name; it still counts towards "and N more".
   const more = reached.length - Math.min(names.length, NAMED_CHANNELS);
   const channels = names.length

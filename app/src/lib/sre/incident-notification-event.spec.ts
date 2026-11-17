@@ -34,6 +34,17 @@ describe("describeNotificationEvent", () => {
     expect(describeNotificationEvent({ kind: "reminder", channels: channels("p1"), emailed: 0 }).body).toBe("Sent to 1 channel");
   });
 
+  it("ignores inherited keys, lists a repeated channel once, and quotes names with commas", () => {
+    const providers = { p1: "#ops", p2: "Ops, EU" };
+    const channel = (providerId: string) => ({ providerId, type: "slack", ok: true });
+    expect(describeNotificationEvent({ kind: "reminder", channels: [channel("constructor"), channel("__proto__")], emailed: 0 }, { providers }).body).toBe("Sent to 2 channels");
+    expect(describeNotificationEvent({ kind: "reminder", channels: [channel("p1"), channel("p1")], emailed: 0 }, { providers }).body).toBe("Sent to #ops");
+    expect(describeNotificationEvent({ kind: "escalation", channels: [channel("p1"), channel("p1")], emailed: 0, reached: 2 }).body).toBe("Sent to 1 channel");
+    expect(describeNotificationEvent({ kind: "reminder", channels: [channel("p2"), channel("p1")], emailed: 0 }, { providers }).body).toBe('Sent to "Ops, EU" and #ops');
+    // Non-string ids are never de-duplicated.
+    expect(describeNotificationEvent({ kind: "reminder", channels: [{ providerId: 1, ok: true }, { providerId: 1, ok: true }], emailed: 0 }, { providers }).body).toBe("Sent to 2 channels");
+  });
+
   it("names a failed page with the vendor, status and fallback", () => {
     expect(describeNotificationEvent({ kind: "page_failed", preset: "pagerduty", status: 503, fallback: "policy_channels" })).toEqual({
       title: "PagerDuty page failed (HTTP 503)",
