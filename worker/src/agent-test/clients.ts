@@ -53,10 +53,60 @@ export function secretsOf(options: AgentCommonOptions): string[] {
   ];
 }
 
+let projectSecretsRaw: string | undefined;
+let projectSecretsCache: string[] = [];
+
+/** Every project secret, as the worker hands them to the run: what getSecret() can return, wherever the script puts it. */
+export function projectSecrets(): string[] {
+  const raw = process.env.SUPERCHECK_SECRETS_B64;
+  if (raw !== projectSecretsRaw) {
+    projectSecretsRaw = raw;
+    try {
+      projectSecretsCache = Object.values(
+        (JSON.parse(Buffer.from(raw ?? '', 'base64').toString('utf8')) ??
+          {}) as Record<string, unknown>,
+      ).filter((v): v is string => typeof v === 'string');
+    } catch {
+      projectSecretsCache = [];
+    }
+  }
+  return projectSecretsCache;
+}
+
+/** A secret as an agent may echo it: raw, URL-, JSON- and base64-encoded (at each byte offset, so `user:secret` Basic auth is caught too). */
+export function encodedForms(secret: string): string[] {
+  const url = encodeURIComponent(secret);
+  const forms = [
+    secret,
+    url,
+    url.replace(/%20/g, '+'),
+    encodeURI(secret),
+    JSON.stringify(secret).slice(1, -1),
+  ];
+  const bytes = Buffer.from(secret, 'utf8');
+  for (let pad = 0; pad < 3; pad++) {
+    // Only the base64 characters made purely of the secret's bits, whatever comes before or after it.
+    const b64 = Buffer.concat([Buffer.alloc(pad), bytes]).toString('base64');
+    const core = b64.slice(
+      Math.ceil((pad * 8) / 6),
+      Math.floor(((pad + bytes.length) * 8) / 6),
+    );
+    forms.push(core, core.replace(/\+/g, '-').replace(/\//g, '_'));
+  }
+  return forms.filter((f) => f.length >= MIN_SECRET);
+}
+
+/** Removes the given secrets and every project secret, in each encoded form. */
 export function redact(text: string, secrets: string[]): string {
+  const forms = [
+    ...new Set(
+      [...secrets, ...projectSecrets()]
+        .filter((s) => s.length >= MIN_SECRET)
+        .flatMap(encodedForms),
+    ),
+  ].sort((a, b) => b.length - a.length);
   let out = text;
-  for (const s of [...secrets].sort((a, b) => b.length - a.length))
-    out = out.split(s).join('[REDACTED]');
+  for (const s of forms) out = out.split(s).join('[REDACTED]');
   return out;
 }
 
@@ -148,21 +198,32 @@ async function post(
         extraHeaders,
       ),
       body: JSON.stringify(body),
+      // Never followed: a redirect could point at a private address, and would carry custom credential headers
+      // to another host.
+      redirect: 'manual',
       signal: AbortSignal.timeout(
         deadlineAt === undefined
           ? timeoutMs
           : Math.max(deadlineAt - Date.now(), 1),
       ),
     });
-    text =
+    if (res.status >= 300 && res.status < 400) {
+      void res.body?.cancel().catch(() => undefined);
+      throw new Error(
+        `${kind} agent replied with a redirect (HTTP ${res.status}) to ${redact(res.headers.get('location') ?? 'nowhere', secrets).slice(0, 200)}; connect to the final URL instead`,
+      );
+    }
+    text = await readReply(
+      res.body,
       rpcId !== undefined &&
-      res.ok &&
-      res.body &&
-      (res.headers.get('content-type') ?? '').includes('text/event-stream')
-        ? await readSseUntil(res.body, rpcId)
-        : await res.text();
+        res.ok &&
+        (res.headers.get('content-type') ?? '').includes('text/event-stream')
+        ? rpcId
+        : undefined,
+    );
   } catch (error) {
     const e = error as Error & { cause?: { code?: string } };
+    if (e.message.startsWith(`${kind} agent replied with a redirect`)) throw e;
     const why =
       e.name === 'TimeoutError' || e.name === 'AbortError'
         ? `timed out after ${timeoutMs}ms`
@@ -179,21 +240,29 @@ async function post(
   return { status: res.status, headers: res.headers, text };
 }
 
-/** Reads SSE until a complete event carries the given JSON-RPC id, then stops reading. */
-async function readSseUntil(
-  body: ReadableStream<Uint8Array>,
-  id: number,
+export const MAX_REPLY_BYTES = 5 * 1024 * 1024;
+
+/** Reads a reply body, at most MAX_REPLY_BYTES. With an rpcId (an SSE reply), stops once a complete event carries it. */
+async function readReply(
+  body: ReadableStream<Uint8Array> | null,
+  rpcId?: number,
 ): Promise<string> {
+  if (!body) return '';
   const reader = body.getReader();
   const decoder = new TextDecoder();
   let text = '';
+  let bytes = 0;
   try {
     for (;;) {
       const { done, value } = await reader.read();
       if (done) return text + decoder.decode();
+      bytes += value.byteLength;
+      if (bytes > MAX_REPLY_BYTES)
+        throw new Error(`reply is larger than ${MAX_REPLY_BYTES} bytes`);
       text += decoder.decode(value, { stream: true });
+      if (rpcId === undefined) continue;
       const complete = text.split(/\r?\n\r?\n/).slice(0, -1);
-      if (complete.some((block) => sseEventId(block) === id)) return text;
+      if (complete.some((block) => sseEventId(block) === rpcId)) return text;
     }
   } finally {
     void reader.cancel().catch(() => undefined);
@@ -511,6 +580,7 @@ async function mcpSend(
       await fetch(options.url, {
         method: 'DELETE',
         headers,
+        redirect: 'manual',
         signal: AbortSignal.timeout(5_000),
       }).catch(() => undefined);
     }

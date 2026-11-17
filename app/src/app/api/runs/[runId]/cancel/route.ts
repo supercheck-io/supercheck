@@ -212,19 +212,19 @@ export async function POST(
 
     // STEP 1: Set cancellation signal in Redis for the worker to detect
     // This must happen BEFORE any queue operations to ensure worker sees it
+    // Without Redis the run is still marked below, as when a queue lookup fails: no worker admits a marked run,
+    // but one already executing cannot be told to stop, so the caller is asked to retry once Redis is back.
+    let signalSent = true;
     try {
-      // Rides out a failover, then fails fast with a retryable 503 instead of hanging in the offline queue.
+      // Rides out a failover, then fails fast instead of hanging in the offline queue.
       await assertExecutionQueueReady();
       await setCancellationSignal(runId);
       logger.info({ runId }, "Cancellation signal set in Redis");
     } catch (signalError) {
+      signalSent = false;
       logger.error(
         { error: signalError, runId },
-        "Failed to persist cancellation signal"
-      );
-      return NextResponse.json(
-        { error: "Could not request cancellation; please retry" },
-        { status: 503 }
+        "Failed to persist cancellation signal; marking the run only"
       );
     }
 
@@ -263,6 +263,8 @@ export async function POST(
     // (capacity or active-execution deferral) may still have a live execution behind it.
     let removedJobNeverStarted = false;
     try {
+      // Redis already failed for the signal: skip a second wait, the catch below still cancels in the DB.
+      if (!signalSent) throw new Error("Redis unavailable");
       // Fail fast when Redis is down; the catch below still cancels in the DB.
       await assertExecutionQueueReady();
       // Include disabled regions that still hold running work, which the plain queue list no longer shows.
@@ -488,9 +490,20 @@ export async function POST(
         jobType,
         queueRemoved,
         isPlaygroundRun,
+        signalSent,
       },
       success: true,
     });
+
+    if (!signalSent)
+      return NextResponse.json({
+        success: true,
+        message: "Run marked for cancellation, but the stop signal could not be sent; retry to stop a run that is already executing",
+        runId,
+        queueRemoved,
+        jobType,
+        signalSent,
+      }, { status: 202 });
 
     return NextResponse.json({
       success: true,

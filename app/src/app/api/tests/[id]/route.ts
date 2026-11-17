@@ -14,6 +14,9 @@ import {
   validateTestScript,
   validateScriptTypeMatch,
   normalizeTestType,
+  parseTestType,
+  isTestTypeOmitted,
+  INVALID_TEST_TYPE_MESSAGE,
 } from "@/lib/script-type-validator";
 import {
   decodeStoredTestScript,
@@ -187,6 +190,9 @@ export async function PUT(
       );
     }
 
+    if (!isTestTypeOmitted(body.type) && !parseTestType(body.type)) {
+      return NextResponse.json({ error: INVALID_TEST_TYPE_MESSAGE }, { status: 400 });
+    }
     // Normalize type if provided
     const resolvedType =
       body.type !== undefined

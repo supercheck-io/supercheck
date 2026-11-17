@@ -2,7 +2,13 @@ import * as http from 'http';
 import type { AddressInfo } from 'net';
 import { createAgent, newState } from './agent';
 import { getDefaultAutoSelectFamilyAttemptTimeout } from 'net';
-import { CONNECT_ATTEMPT_MS, createClient, redact } from './clients';
+import {
+  CONNECT_ATTEMPT_MS,
+  createClient,
+  encodedForms,
+  MAX_REPLY_BYTES,
+  redact,
+} from './clients';
 
 type Handler = (
   req: http.IncomingMessage,
@@ -587,5 +593,57 @@ describe('openai reply shapes', () => {
     const r = await bot().send('x');
     expect(r.text).toBe('a\nb');
     expect(r.usage.totalTokens).toBe(7);
+  });
+});
+
+describe('redirects and reply size', () => {
+  const bot = () =>
+    createClient({
+      kind: 'openai',
+      url,
+      model: 'm',
+      headers: { 'x-tenant': 'tenant-secret' },
+    });
+
+  it('refuses a redirect instead of following it (it could point at a private address)', async () => {
+    handler = (_r, _b, res) => {
+      res.writeHead(307, { location: 'http://169.254.169.254/latest' });
+      res.end();
+    };
+    await expect(bot().send('x')).rejects.toThrow(
+      'openai agent replied with a redirect (HTTP 307) to http://169.254.169.254/latest',
+    );
+    expect(seen).toHaveLength(1);
+  });
+
+  it('refuses a reply larger than the cap', async () => {
+    handler = (_r, _b, res) => {
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end('x'.repeat(MAX_REPLY_BYTES + 1));
+    };
+    await expect(bot().send('x')).rejects.toThrow(
+      `openai agent request failed: reply is larger than ${MAX_REPLY_BYTES} bytes`,
+    );
+  });
+});
+
+describe('encodedForms', () => {
+  it('covers URL, JSON and base64 at every byte offset, and drops forms under 4 chars', () => {
+    const forms = encodedForms('a b/c"d');
+    expect(forms).toEqual(
+      expect.arrayContaining([
+        'a b/c"d',
+        'a%20b%2Fc%22d',
+        'a+b%2Fc%22d',
+        'a b/c\\"d',
+      ]),
+    );
+    for (const prefix of ['', 'u', 'us', 'usr'])
+      expect(
+        forms.some((f) =>
+          Buffer.from(`${prefix}a b/c"d`).toString('base64').includes(f),
+        ),
+      ).toBe(true);
+    expect(encodedForms('abcd').every((f) => f.length >= 4)).toBe(true);
   });
 });

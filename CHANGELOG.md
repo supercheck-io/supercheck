@@ -54,6 +54,9 @@ The CLI is versioned separately; see [cli/CHANGELOG.md](cli/CHANGELOG.md). Prere
 
 ### Changed
 
+- **Agent tests are harder to leak from.** Every project secret is now redacted from agent results and report transcripts, wherever the script used it (headers, URL, request body, prompt) and also when the agent echoes it URL- or base64-encoded. Agent requests no longer follow redirects, and a reply over 5 MiB fails the request. `repeat()` stops in time for a short (trial) run to still save its Agent results.
+- **Invalid test types are refused.** Creating, updating, validating, listing or running a test with an unknown type now returns `400` instead of saving a browser test. Case and surrounding spaces are ignored (`" Agent "` is `agent`), in the API, CLI and MCP.
+- **Cancel works while Redis is down.** The run is marked cancelled, so no worker starts it, and the request answers `202` with `signalSent: false`; retry once Redis is back to stop a run that is already executing.
 - Status-page scheduled maintenance now also stops failure counting and is left out of uptime, the same as maintenance windows.
 - `DELETE /api/organizations/{id}` schedules the deletion instead of deleting. The body is now `{ "confirmName": "<organization name>" }` (the old `confirmOrganizationId` is no longer accepted), and it answers `403` with code `REAUTH_REQUIRED` when the session is older than a few minutes. The synchronous teardown path is removed. `DELETE /api/projects/{id}` is a soft delete.
 - Deleting a monitor or job resolves its open incidents (acknowledged ones too) with a system note on the timeline; no notification is sent. A k6 run of a job deleted while it ran reports that the job was deleted instead of a user cancellation.

@@ -1933,6 +1933,25 @@ paths:
                   runId:
                     type: string
                     format: uuid
+        "202":
+          description: "Run marked for cancellation, but Redis is unavailable so the stop
+            signal was not sent: no worker starts the run, but one already
+            executing keeps running. Retry once Redis is back."
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+                  runId:
+                    type: string
+                    format: uuid
+                  signalSent:
+                    type: boolean
+                    const: false
         "401":
           $ref: "#/components/responses/Unauthorized"
         "404":
