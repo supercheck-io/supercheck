@@ -414,6 +414,24 @@ describe("restoreTrialSuspensions", () => {
     expect(wheres[1]).toContain(`"projects"."id" = "status_pages"."project_id" AND "projects"."status" = 'deleted'`);
   });
 
+  it("deletes only the suspension records it read", async () => {
+    const { PgDialect } = await import("drizzle-orm/pg-core");
+    const { database, tx } = buildRestore([
+      { id: "s1", resourceType: "monitor", resourceId: "m1" },
+      { id: "s2", resourceType: "status_page", resourceId: "p1" },
+    ] as never);
+    const deleted: Array<{ sql: string; params: unknown[] }> = [];
+    (tx.delete as jest.Mock).mockImplementation(() => ({
+      where: async (condition: import("drizzle-orm").SQL) => {
+        deleted.push(new PgDialect().sqlToQuery(condition));
+      },
+    }));
+    await restoreTrialSuspensions("org", database);
+    expect(deleted).toHaveLength(1);
+    expect(deleted[0].sql).toBe(`"trial_suspensions"."id" in ($1, $2)`);
+    expect(deleted[0].params).toEqual(["s1", "s2"]);
+  });
+
   it("does nothing for an organization with no suspended resources", async () => {
     const { database, tx } = buildRestore([]);
     await expect(restoreTrialSuspensions("org", database)).resolves.toEqual({

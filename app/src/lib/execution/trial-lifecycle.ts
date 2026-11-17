@@ -27,7 +27,7 @@ const DRAIN_BUDGET_MS = 20_000;
  */
 export async function unscheduleMonitors(
   monitorRows: Array<{ id: string; scheduledJobId: string | null }>,
-  database: Pick<typeof db, "update">,
+  database: Pick<typeof db, "select" | "update">,
 ): Promise<void> {
   if (!monitorRows.length) return;
   const { deleteScheduledMonitor } = await import("@/lib/monitor-scheduler");
@@ -44,6 +44,12 @@ export async function unscheduleMonitors(
       // scheduleMonitor keys the repeatable by monitor id; a legacy scheduledJobId may differ.
       if (row.scheduledJobId && row.scheduledJobId !== row.id) await deleteScheduledMonitor(row.scheduledJobId);
       await deleteScheduledMonitor(row.id);
+      // A resume that landed between the null write and the Redis delete lost its fresh schedule.
+      const [current] = await database
+        .select({ status: monitors.status })
+        .from(monitors)
+        .where(eq(monitors.id, row.id));
+      if (current && current.status !== "paused") await rescheduleMonitors([row.id], database);
     } catch (error) {
       console.error(`Failed to unschedule monitor ${row.id}:`, error);
     }
@@ -63,7 +69,8 @@ async function rescheduleMonitors(
   const rows = await database
     .select()
     .from(monitors)
-    .where(inArray(monitors.id, monitorIds));
+    // A monitor paused again, or moved to a deleted project, since it was resumed stays unscheduled.
+    .where(and(inArray(monitors.id, monitorIds), ne(monitors.status, "paused"), notInDeletedProject(monitors.projectId)));
   for (const monitor of rows) {
     if (monitor.type === "heartbeat" || !monitor.frequencyMinutes || monitor.frequencyMinutes <= 0) continue;
     try {
@@ -297,7 +304,11 @@ export async function suspendLapsedOrganizations(
           isNotNull(organization.polarCustomerId),
           or(
             eq(organization.subscriptionStatus, "none"),
-            and(eq(organization.subscriptionStatus, "canceled"), lte(organization.subscriptionEndsAt, now)),
+            // A canceled subscription with no end date has no access (hasPaidAccess), so it lapses too.
+            and(
+              eq(organization.subscriptionStatus, "canceled"),
+              or(isNull(organization.subscriptionEndsAt), lte(organization.subscriptionEndsAt, now)),
+            ),
           ),
           // Trial organizations are handled by endExpiredTrials once their trial is over.
           notExists(
