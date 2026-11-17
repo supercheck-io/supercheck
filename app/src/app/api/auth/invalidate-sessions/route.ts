@@ -34,8 +34,6 @@ const logger = createLogger({ module: "invalidate-sessions" });
  */
 export async function POST(request: NextRequest) {
   try {
-    const originError = requireSessionSameOrigin(request);
-    if (originError) return originError;
     // Get current session
     const authSession = await auth.api.getSession({
       headers: await headers(),
@@ -47,6 +45,8 @@ export async function POST(request: NextRequest) {
         { status: 401 }
       );
     }
+    const originError = requireSessionSameOrigin(request);
+    if (originError) return originError;
 
     // An impersonating super admin must not act on the impersonated user's sessions.
     if (await isImpersonatedSession()) {

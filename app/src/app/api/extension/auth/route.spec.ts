@@ -172,6 +172,17 @@ describe("Extension auth route", () => {
     expect(mockAuth.api.createApiKey).not.toHaveBeenCalled();
   });
 
+  it("refuses a cross-origin session request to mint or revoke recorder keys", async () => {
+    mockAuth.api.getSession.mockResolvedValue({ user: { id: "user-1" } });
+    const cross = { origin: "https://evil.example" };
+    const mint = await POST(new NextRequest("http://localhost/api/extension/auth", { method: "POST", headers: { "content-type": "application/json", ...cross }, body: "{}" }));
+    expect(mint.status).toBe(403);
+    expect(mockAuth.api.createApiKey).not.toHaveBeenCalled();
+    const revoke = await DELETE(new NextRequest("http://localhost/api/extension/auth", { method: "DELETE", headers: cross }));
+    expect(revoke.status).toBe(403);
+    expect(mockAuth.api.updateApiKey).not.toHaveBeenCalled();
+  });
+
   it("forbids a viewer from creating a recorder API key", async () => {
     mockAuth.api.getSession.mockResolvedValue({ user: { id: "viewer-1" } });
     mockCanCreateKey.mockReturnValue(false);

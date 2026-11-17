@@ -33,7 +33,7 @@ jest.mock("@/utils/db", () => ({
 const assertAgentTestSwitchRunnable = jest.fn();
 jest.mock("@/lib/monitor-write", () => ({ ...jest.requireActual("@/lib/monitor-write"), assertAgentTestSwitchRunnable: (...a: unknown[]) => assertAgentTestSwitchRunnable(...a) }));
 
-import { PUT } from "./route";
+import { DELETE, PUT } from "./route";
 import { ExecutionQueueError } from "@/lib/execution-errors";
 import { AuthError } from "@/lib/auth-context";
 
@@ -104,5 +104,22 @@ describe("PUT /api/tests/[id] with type agent", () => {
   it("answers 401 when unauthenticated", async () => {
     requireAuthContext.mockRejectedValue(new AuthError("Authentication required"));
     expect((await put()).status).toBe(401);
+  });
+});
+
+describe("DELETE origin check", () => {
+  const del = (origin: string) =>
+    DELETE(new NextRequest(`http://localhost/api/tests/${ID}`, { method: "DELETE", headers: { origin } }), { params: Promise.resolve({ id: ID }) });
+  it("refuses a cross-origin cookie request before any permission or data check", async () => {
+    requireAuthContext.mockResolvedValue(ctx("project_admin", { isCliAuth: false }));
+    const res = await del("https://evil.example");
+    expect(res.status).toBe(403);
+    expect((await res.json()).error).toMatch(/Cross-origin/i);
+  });
+  it("lets a CLI token through the origin check to the permission check", async () => {
+    requireAuthContext.mockResolvedValue(ctx("project_viewer"));
+    const res = await del("https://evil.example");
+    expect(res.status).toBe(403);
+    expect((await res.json()).error).toBe("Insufficient permissions to delete tests");
   });
 });

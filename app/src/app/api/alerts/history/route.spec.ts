@@ -60,6 +60,32 @@ describe("POST /api/alerts/history", () => {
     });
   });
 
+  describe("request hardening", () => {
+    const H = jest.requireActual("@/lib/security/request-hardening.spec-helpers") as typeof import("@/lib/security/request-hardening.spec-helpers");
+    const valid = { type: "monitor_recovery", message: "up", target: "https://example.com", targetType: "monitor", provider: "slack", status: "sent", monitorId: MONITOR_ID };
+    it("refuses a cross-origin cookie request before writing", async () => {
+      const values = mockInsert();
+      const res = await POST(H.jsonRequest("/api/alerts/history", "POST", valid, { origin: H.CROSS_ORIGIN }));
+      expect(res.status).toBe(403);
+      expect(values).not.toHaveBeenCalled();
+    });
+    it("accepts a same-origin cookie request and a cross-origin CLI token", async () => {
+      mockSourceLookup([{ id: MONITOR_ID }]);
+      mockInsert();
+      expect((await POST(H.jsonRequest("/api/alerts/history", "POST", valid, { origin: H.SAME_ORIGIN }))).status).toBe(200);
+      requireAuthContext.mockResolvedValue({ userId: "u1", organizationId: "org-a", project: { id: "project-a", name: "A", organizationId: "org-a", userRole: "project_editor" }, isCliAuth: true });
+      mockSourceLookup([{ id: MONITOR_ID }]);
+      expect((await POST(H.jsonRequest("/api/alerts/history", "POST", valid, { origin: H.CROSS_ORIGIN }))).status).toBe(200);
+    });
+    it("refuses an oversize body with 413, declared or streamed, and a non-object body with 400", async () => {
+      const values = mockInsert();
+      expect((await POST(H.declaredOversizeRequest("/api/alerts/history", "POST", 70_000))).status).toBe(413);
+      expect((await POST(H.streamedOversizeRequest("/api/alerts/history", "POST", 70_000))).status).toBe(413);
+      expect((await POST(H.jsonRequest("/api/alerts/history", "POST", [1]))).status).toBe(400);
+      expect(values).not.toHaveBeenCalled();
+    });
+  });
+
   it("rejects a monitor outside the caller's project without writing or opening an incident", async () => {
     mockSourceLookup([]);
     const values = mockInsert();

@@ -50,12 +50,12 @@ export async function guardProject(
 ): Promise<{ userId: string; ctx: ProjectPermissionContext } | NextResponse> {
   const bearer = rejectBearer(request);
   if (bearer) return bearer;
+  const userId = await sessionUserId();
+  if (userId instanceof NextResponse) return userId;
   if (request.method !== "GET") {
     const originError = requireSessionSameOrigin(request);
     if (originError) return originError;
   }
-  const userId = await sessionUserId();
-  if (userId instanceof NextResponse) return userId;
   if (!isUuid(rawId)) return NextResponse.json({ error: "Project not found" }, { status: 404 });
   const ctx = await resolveProjectPermissionContext(userId, rawId);
   if (!ctx) return NextResponse.json({ error: "Project not found" }, { status: 404 });

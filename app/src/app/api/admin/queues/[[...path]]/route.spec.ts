@@ -208,6 +208,15 @@ describe("Bull Board replica state", () => {
   });
 
   it.each([["POST", POST], ["PUT", PUT], ["PATCH", PATCH], ["DELETE", DELETE]] as const)(
+    "refuses a cross-origin %s from a super admin before touching a queue", async (method, handler) => {
+      mockGetCurrentUser.mockResolvedValue({ id: "admin", role: "super_admin" });
+      const response = await handler(new NextRequest("http://localhost/api/admin/queues/api/queues", { method, headers: { origin: "https://evil.example" } }), { params: Promise.resolve({ path: ["api", "queues"] }) });
+      expect(response.status).toBe(403);
+      expect(mockGetQueues).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([["POST", POST], ["PUT", PUT], ["PATCH", PATCH], ["DELETE", DELETE]] as const)(
     "authenticates %s before initialization", async (method, handler) => {
       mockGetCurrentUser.mockResolvedValue({ role: "org_owner" });
       const response = await handler(new NextRequest("http://localhost/api/admin/queues/api/queues", { method }), { params: Promise.resolve({ path: ["api", "queues"] }) });

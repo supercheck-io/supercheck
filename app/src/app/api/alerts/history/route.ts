@@ -1,3 +1,5 @@
+import { readJsonBody } from "@/lib/http/read-capped-json";
+import { requireSessionSameOrigin } from "@/lib/security/same-origin";
 import { NextResponse, NextRequest } from "next/server";
 import { db } from "@/utils/db";
 import { alertHistory, jobs, monitors, type AlertDeliveryMetadata } from "@/db/schema";
@@ -268,6 +270,8 @@ async function alertHistoryDeliveryMetadataColumnExists(
   return value === true || value === "true" || value === 1;
 }
 
+const MAX_ALERT_BODY_BYTES = 64 * 1024;
+
 export async function POST(request: NextRequest) {
   try {
     // Require authentication and project context
@@ -293,16 +297,20 @@ export async function POST(request: NextRequest) {
       checkPermissionWithContext('monitor', 'manage', projectContext) &&
       checkPermissionWithContext('sre_incident', 'update', projectContext);
 
+    const originError = requireSessionSameOrigin(request, projectContext.isCliAuth);
+    if (originError) return originError;
+
     if (!canManage) {
       return await permissionDeniedResponse(projectContext.organizationId, 'Insufficient permissions to create alert history');
     }
 
-    let body;
-    try {
-      body = await request.json();
-    } catch {
+    const read = await readJsonBody(request, MAX_ALERT_BODY_BYTES);
+    if (read instanceof NextResponse) return read;
+    if (!read.body || typeof read.body !== "object" || Array.isArray(read.body)) {
       return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
     }
+    // Every field is checked below before it is stored.
+    const body = read.body as typeof alertHistory.$inferInsert;
     const dbInstance = db;
     
     // Validate required fields
@@ -336,7 +344,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Validate status
-    if (!['sent', 'failed', 'pending'].includes(body.status)) {
+    if (!['sent', 'failed', 'pending'].includes(body.status ?? '')) {
       return NextResponse.json(
         { error: "Invalid status" },
         { status: 400 }

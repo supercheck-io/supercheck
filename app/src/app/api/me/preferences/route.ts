@@ -28,10 +28,10 @@ export async function PUT(request: NextRequest) {
   try {
     const bearer = rejectBearer(request);
     if (bearer) return bearer;
-    const originError = requireSessionSameOrigin(request);
-    if (originError) return originError;
     const userId = await sessionUserId();
     if (userId instanceof NextResponse) return userId;
+    const originError = requireSessionSameOrigin(request);
+    if (originError) return originError;
     const limited = rateLimitResponse(await checkSetupPersonaRateLimit(userId));
     if (limited) return limited;
     const raw = await readJsonBody(request);

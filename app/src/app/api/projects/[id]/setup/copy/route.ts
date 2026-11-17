@@ -25,10 +25,10 @@ export async function POST(request: NextRequest, { params }: Params) {
   try {
     const bearer = rejectBearer(request);
     if (bearer) return bearer;
-    const originError = requireSessionSameOrigin(request);
-    if (originError) return originError;
     const userId = await sessionUserId();
     if (userId instanceof NextResponse) return userId;
+    const originError = requireSessionSameOrigin(request);
+    if (originError) return originError;
     const rawId = (await params).id;
     if (!isUuid(rawId)) return NextResponse.json({ error: "Project not found" }, { status: 404 });
 

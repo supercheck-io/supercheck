@@ -9,8 +9,6 @@ import { requireSessionSameOrigin } from "@/lib/security/same-origin";
 
 export async function POST(request: Request) {
   try {
-    const originError = requireSessionSameOrigin(request);
-    if (originError) return originError;
     // Get current session
     const sessionData = await auth.api.getSession({
       headers: await headers(),
@@ -22,6 +20,8 @@ export async function POST(request: Request) {
         { status: 401 }
       );
     }
+    const originError = requireSessionSameOrigin(request);
+    if (originError) return originError;
 
     // Get current session data to find original user
     const [currentSession] = await db

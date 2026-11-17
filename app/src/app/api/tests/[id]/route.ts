@@ -9,7 +9,7 @@ import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { requireAuthContext, isAuthError, authErrorStatus } from "@/lib/auth-context";
 import { logAuditEvent } from "@/lib/audit-logger";
 import { assertAgentTestSwitchRunnable, thrownStatusResponse } from "@/lib/monitor-write";
-import { requireSameOriginRequest } from "@/lib/security/same-origin";
+import { requireSameOriginRequest, requireSessionSameOrigin } from "@/lib/security/same-origin";
 import {
   validateTestScript,
   validateScriptTypeMatch,
@@ -291,12 +291,14 @@ export async function PATCH(
  * Deletes a test. Blocks if the test is referenced by jobs or synthetic monitors.
  */
 export async function DELETE(
-  _request: NextRequest,
+  request: NextRequest,
   routeContext: { params: Promise<{ id: string }> },
 ) {
   try {
     const { id } = await routeContext.params;
     const context = await requireAuthContext();
+    const originError = requireSessionSameOrigin(request, context.isCliAuth);
+    if (originError) return originError;
     const { project, organizationId } = context;
 
     const canDelete = checkPermissionWithContext("test", "delete", context);
