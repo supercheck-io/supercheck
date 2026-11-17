@@ -43,7 +43,7 @@ From the CLI:
 supercheck monitor create --name "Nightly backup" --type heartbeat --every 1d --grace 1h
 ```
 
-The CLI prints the ping URL once (`heartbeat.pingUrl` with `--json`). Durations accept `m`, `h` and `d`.
+The CLI prints the ping URL once. With `--json` or `--quiet` it leaves the URL out, so it never lands in CI logs; run `supercheck monitor heartbeat-url <id>` to show it. Durations accept `m`, `h` and `d`.
 
 ## The ping URL
 
@@ -104,7 +104,7 @@ supercheck heartbeat ping "$URL" --fail   # job failed
 - **Late:** the interval has passed and the grace period has not. The monitor shows a **Late** badge and stays up; uptime is not affected. **Ping is late** is an optional [warning](/docs/app/communicate/alerts#warnings).
 - **Down:** the grace period has ended without a ping, or the job sent `/fail`. A failure alert is sent and a sev2 incident opens (you can change the severity or turn incidents off in the alert settings). The next successful ping recovers the monitor and resolves the incident, unless someone acknowledged it.
 
-Alerts are held back during [maintenance windows](/docs/app/monitor#maintenance-windows).
+Alerts are held back during [maintenance windows](/docs/app/monitor#maintenance-windows). If the job is still missing when the window ends, the failure alert goes out within about 3 minutes.
 
 ## Status pages
 

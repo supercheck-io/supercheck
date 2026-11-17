@@ -86,16 +86,16 @@ export function validateScriptTypeMatch(
 }
 
 /**
- * Normalizes a raw type string to a valid TestType.
- * Returns the normalized type or defaults to "browser" for unknown values.
+ * Parses a raw type string, ignoring case and surrounding whitespace.
+ * Returns undefined for anything that is not a test type or alias.
  *
  * Alias mappings:
  * - "playwright" → "browser"
  * - "k6" → "performance"
  * - "load" → "performance"
  */
-export function normalizeTestType(value: unknown): TestType {
-  if (typeof value !== "string") return "browser";
+export function parseTestType(value: unknown): TestType | undefined {
+  if (typeof value !== "string") return undefined;
   const normalized = value.trim().toLowerCase();
   if (normalized === "playwright") return "browser";
   if (normalized === "k6") return "performance";
@@ -110,8 +110,20 @@ export function normalizeTestType(value: unknown): TestType {
   ) {
     return normalized;
   }
-  return "browser";
+  return undefined;
 }
+
+/** Like parseTestType, but defaults to "browser" for unknown values. */
+export function normalizeTestType(value: unknown): TestType {
+  return parseTestType(value) ?? "browser";
+}
+
+/** Not sent: the caller's default applies. Anything else must be a valid type. */
+export const isTestTypeOmitted = (value: unknown) =>
+  value === undefined || value === null || value === "";
+
+export const INVALID_TEST_TYPE_MESSAGE =
+  "Invalid test type. Expected one of: browser, performance, api, database, custom, agent.";
 
 /**
  * Checks if a test type is compatible with a given job type.

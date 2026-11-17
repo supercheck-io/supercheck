@@ -5,6 +5,7 @@ import { posix } from 'node:path'
 import { createAuthenticatedClient } from '../api/authenticated-client.js'
 import { loadConfig } from '../config/loader.js'
 import { logger } from '../utils/logger.js'
+import { PING_URL_HIDDEN } from '../utils/redact.js'
 import {
   reconcile,
   formatChangePlan,
@@ -514,11 +515,16 @@ export const deployCommand = new Command('deploy')
         const color = change.action === 'create' ? pc.green : change.action === 'update' ? pc.yellow : pc.red
 
         const result = await applyChange(client, change, { state, deleteMissing: options.delete === true })
-        results.push({ action: change.action, type: change.type, name: change.name, id: result.id ?? change.id, ...result })
+        // The one-time ping URL never goes into machine output (CI logs); table mode prints it once below.
+        const recorded: Record<string, unknown> = { action: change.action, type: change.type, name: change.name, id: result.id ?? change.id, ...result }
+        delete recorded.pingUrl
+        if (result.pingUrl) recorded.pingUrlHidden = true
+        results.push(recorded)
 
         if (result.success) {
           logger.info(color(`  ${actionLabel} ${change.type}/${change.name} ✓`))
           if (result.pingUrl && getOutputFormat() === 'table') logger.output(`    Ping URL (shown only now): ${result.pingUrl}`, { redact: false })
+          else if (result.pingUrl) process.stderr.write(`${change.type}/${change.name}: ${PING_URL_HIDDEN(String(result.id))}\n`)
           succeeded++
         } else {
           logger.error(`  ${actionLabel} ${change.type}/${change.name} ✗ ${result.error}`)

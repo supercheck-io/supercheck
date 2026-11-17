@@ -15,6 +15,7 @@ jest.mock('@/components/page-breadcrumbs', () => ({ PageBreadcrumbs: () => null 
 jest.mock('@/lib/monitor-service', () => ({}));
 jest.mock('@/lib/monitor-scheduler', () => ({}));
 jest.mock('@/lib/audit-logger', () => ({ logAuditEvent: jest.fn() }));
+jest.mock('@/lib/maintenance/predicate', () => ({ monitorsInMaintenance: jest.fn(async () => new Set()) }));
 jest.mock('@/lib/middleware/plan-enforcement', () => ({}));
 jest.mock('@/lib/middleware/plan-limit-lock', () => ({}));
 jest.mock('@/lib/services/subscription-service', () => ({}));

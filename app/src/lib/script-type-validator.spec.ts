@@ -3,6 +3,8 @@ import {
   validateScriptTypeMatch,
   validateTestScript,
   normalizeTestType,
+  parseTestType,
+  isTestTypeOmitted,
   isTestTypeCompatibleWithJobType,
   getJobTestTypeMismatchError,
 } from "./script-type-validator";
@@ -96,6 +98,21 @@ test('homepage has title', async ({ page }) => {
     expect(validateScriptTypeMatch("", "browser").valid).toBe(true);
     expect(validateScriptTypeMatch("", "performance").valid).toBe(true);
     expect(validateScriptTypeMatch("  ", "browser").valid).toBe(true);
+  });
+});
+
+describe("parseTestType", () => {
+  it("accepts case and whitespace variants and aliases", () => {
+    expect(parseTestType(" Agent ")).toBe("agent");
+    expect(parseTestType("AGENT")).toBe("agent");
+    expect(parseTestType("K6")).toBe("performance");
+  });
+  it("returns undefined for anything else, instead of browser", () => {
+    for (const v of ["agents", "", "bogus", 1, null, undefined]) expect(parseTestType(v)).toBeUndefined();
+  });
+  it("treats only undefined, null and empty string as omitted", () => {
+    expect([undefined, null, ""].every(isTestTypeOmitted)).toBe(true);
+    expect(isTestTypeOmitted(" ")).toBe(false);
   });
 });
 

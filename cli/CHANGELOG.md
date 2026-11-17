@@ -9,6 +9,12 @@ Notable changes to `@supercheck/cli`. The format follows [Keep a Changelog](http
 - `monitor update` takes the AI endpoint options of `monitor create` (`--model`, `--secret`, `--key-header`, `--prompt`, `--expect`, `--max-tokens`, `--first-token-timeout`, `--warn-first-token-ms`, `--warn-tokens`) and the MCP monitor options (`--secret`, `--header`, `--protocol`, `--require-tool`, `--call-tool`, `--call-args`, `--expect`, `--slow-ms`). Only the options you pass change; an option that does not fit the monitor is refused.
 - `skills safety` explains `ORG_PENDING_DELETION` and that organization and project deletion need a browser session.
 
+### Changed
+
+- **Breaking for scripts:** `monitor create --type heartbeat` and `deploy` no longer put a new heartbeat's ping URL in `--json` or `--quiet` output, which often lands in CI logs, so `heartbeat.pingUrl` and `results[].pingUrl` are gone (a deploy result has `pingUrlHidden: true` instead). They say on stderr how to show it: `supercheck monitor heartbeat-url <id>`. Table output still prints it once.
+- **`run cancel` exits 4 when the run may still be executing.** If the server could not send the stop signal (it answers `signalSent: false`), the command prints the response and exits with code 4 so scripts retry.
+- A `402` from the server (for example `incident create` or `maintenance create` on an organization with no plan or trial) now shows the server's own message instead of the generic request failure.
+
 ## [0.6.0] - 2026-11-16
 
 This release adds heartbeat and MCP monitors, the AI endpoint preset, agent tests, incident declaration, reminders and escalation, maintenance windows and post-mortems.

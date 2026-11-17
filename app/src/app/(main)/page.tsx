@@ -626,7 +626,7 @@ function DashboardOverview({
               : undefined
           }
           emptyMessage="No monitors set up"
-          caption={monitors.down > 0 ? `${monitors.down} down` : "up now"}
+          caption={`${monitors.down > 0 ? `${monitors.down} down` : "up now"}${monitors.maintenance > 0 ? ` · ${monitors.maintenance} in maintenance` : ""}`}
         />
         <MetricCard
           testId="metric-browser-minutes"

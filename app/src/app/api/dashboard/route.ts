@@ -20,6 +20,7 @@ import { excludeSyntheticResults } from "@/lib/monitor-result-filters";
 import { getRowCountsByPeriod } from "@/lib/monitor-availability";
 import { buildSystemIssues } from "@/lib/dashboard/system-health";
 import { FAILED_RUN_STATUSES } from "@/lib/dashboard/run-outcomes";
+import { monitorInMaintenanceSql } from "@/lib/maintenance/predicate";
 
 export async function GET() {
   try {
@@ -76,7 +77,9 @@ export async function GET() {
         down: sql<number>`COALESCE(count(*) filter (where ${monitors.status} = 'down'), 0)`.mapWith(Number),
         paused: sql<number>`COALESCE(count(*) filter (where ${monitors.status} = 'paused'), 0)`.mapWith(Number),
         pending: sql<number>`COALESCE(count(*) filter (where ${monitors.status} = 'pending'), 0)`.mapWith(Number),
-        maintenance: sql<number>`COALESCE(count(*) filter (where ${monitors.status} = 'maintenance'), 0)`.mapWith(Number),
+        // Status keeps the real up/down during a window, so the count comes from the maintenance predicate.
+        // The predicate's own aliases (m, w, t, r, scm, ic, i) must not be used for monitors here.
+        maintenance: sql<number>`COALESCE(count(*) filter (where ${monitorInMaintenanceSql(sql`${monitors.id}`, new Date())}), 0)`.mapWith(Number),
         error: sql<number>`COALESCE(count(*) filter (where ${monitors.status} = 'error'), 0)`.mapWith(Number),
       }).from(monitors)
         .where(monitorBaseCondition),

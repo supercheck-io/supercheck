@@ -279,6 +279,13 @@ describe('decideHeartbeat', () => {
     ).toBe('missed');
   });
 
+  it('records the next miss at once when the last one was held by maintenance that has ended', () => {
+    const recent = new Date(T0 - 30 * MIN).toISOString();
+    const held = pinged(200, { lastMissedAt: recent, missHeld: true });
+    expect(decideHeartbeat(held, T0, UP)).toEqual({ finish: {} });
+    expect(decideHeartbeat(held, T0, UP, true).result?.kind).toBe('missed');
+  });
+
   it('counts the deadline from the newer of the last ping and the resume anchor', () => {
     const resumed = pinged(500, {
       anchorAt: new Date(T0 - 10 * MIN).toISOString(),
@@ -545,6 +552,48 @@ describe('HeartbeatSweepService.sweep', () => {
       }),
     );
     expect(ctx.finishWhere).toHaveBeenCalledTimes(1);
+  });
+
+  it('marks a miss held when the maintenance lookup fails, so the end of a window is re-checked', async () => {
+    const ctx = withClaim([claimed(pinged(80))]);
+    const sweep = ctx.sweep as unknown as Record<string, jest.Mock>;
+    jest
+      .spyOn(ctx.sweep as never, 'inMaintenance')
+      .mockResolvedValue(null as never);
+    const finish = jest.spyOn(ctx.sweep as never, 'finish');
+    await ctx.sweep.sweep();
+    expect(ctx.monitors.recordExternalResult).toHaveBeenCalledTimes(1);
+    expect(finish.mock.calls[0][1]).toMatchObject({ missHeld: true });
+    expect(sweep.inMaintenance).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the lease of a held miss while its window lasts or the lookup fails', async () => {
+    for (const answer of [true, null]) {
+      const recent = new Date(T0 - 30 * MIN).toISOString();
+      const ctx = withClaim([
+        claimed(pinged(200, { lastMissedAt: recent, missHeld: true })),
+      ]);
+      jest
+        .spyOn(ctx.sweep as never, 'inMaintenance')
+        .mockResolvedValue(answer as never);
+      await ctx.sweep.sweep();
+      expect(ctx.monitors.recordExternalResult).not.toHaveBeenCalled();
+      expect(ctx.finishWhere).not.toHaveBeenCalled();
+    }
+  });
+
+  it('skips the maintenance lookup for a held miss when a new ping will clear it', async () => {
+    const recent = new Date(T0 - 30 * MIN).toISOString();
+    const ctx = withClaim([
+      claimed(pinged(1, { lastMissedAt: recent, missHeld: true, pingSeq: 4 })),
+    ]);
+    const lookup = jest.spyOn(ctx.sweep as never, 'inMaintenance');
+    await ctx.sweep.sweep();
+    expect(lookup).not.toHaveBeenCalled();
+    expect(ctx.monitors.recordExternalResult).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ isUp: true }),
+    );
   });
 
   it('skips the result and does not finish when the lease was lost mid-batch', async () => {

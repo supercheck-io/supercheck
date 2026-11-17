@@ -90,6 +90,7 @@ export type MonitorStatusCounts = Partial<
   Record<"up" | "down" | "paused" | "pending" | "maintenance" | "error", number>
 >;
 
+// No Maintenance bucket: a monitor in a window keeps its real status, so the count would overlap Up/Down.
 export const MONITOR_STATUS_META: Array<{
   key: keyof MonitorStatusCounts;
   name: string;
@@ -98,7 +99,6 @@ export const MONITOR_STATUS_META: Array<{
   { key: "up", name: "Up", color: "var(--success)" },
   { key: "down", name: "Down", color: "var(--failure)" },
   { key: "error", name: "Error", color: "var(--warning)" },
-  { key: "maintenance", name: "Maintenance", color: "var(--chart-1)" },
   { key: "pending", name: "Pending", color: "var(--chart-3)" },
   { key: "paused", name: "Paused", color: "var(--muted-foreground)" },
 ];

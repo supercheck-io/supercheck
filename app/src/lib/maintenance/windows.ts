@@ -11,6 +11,7 @@ import {
 import { logAuditEvent } from "@/lib/audit-logger";
 import { createLogger } from "@/lib/logger/index";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
+import { lapsedWriteBlock, type SubscriptionRequiredResult } from "@/lib/sre/lapsed-org-gate";
 import { resolveIncidentResources } from "@/lib/sre/incident-resources";
 import { checkMaintenanceWriteRateLimit } from "@/lib/sre/sre-rate-limiter";
 import { createStatusPageIncident, findStatusPageTargetError, type StatusPageIncidentActor } from "@/lib/status-page-incident-core";
@@ -78,7 +79,8 @@ export type WindowResult<T> =
   | { ok: true } & T
   | { ok: false; code: "invalid"; error: string; fieldErrors?: Record<string, string> }
   | { ok: false; code: "forbidden" | "not_found" | "conflict"; error: string }
-  | { ok: false; code: "rate_limited"; error: string; retryAfterSeconds: number };
+  | { ok: false; code: "rate_limited"; error: string; retryAfterSeconds: number }
+| SubscriptionRequiredResult;
 
 export function windowState(row: Pick<WindowRow, "recurrence" | "cancelledAt" | "completedAt" | "occurrenceStartsAt" | "occurrenceEndsAt">, now = new Date()): WindowState {
   if (row.cancelledAt) return "cancelled";
@@ -219,6 +221,8 @@ export async function createMaintenanceWindow(
   if (!can(actor, "monitor", "update") || (data.statusPages.length > 0 && !can(actor, "status_page", "update"))) {
     return { ok: false, code: "forbidden", error: "Insufficient permissions to schedule maintenance" };
   }
+  const lapsed = await lapsedWriteBlock(actor.organizationId);
+  if (lapsed) return lapsed;
   const schedule: WindowSchedule = { ...data, weekdays: data.recurrence === "weekly" ? data.weekdays : null, monthDay: data.recurrence === "monthly" ? data.monthDay : null };
   const fieldErrors = validateSchedule(schedule);
   if (Object.keys(fieldErrors).length) return { ok: false, code: "invalid", error: Object.values(fieldErrors)[0]!, fieldErrors };
@@ -396,6 +400,8 @@ export async function updateMaintenanceWindow(
   if (!parsed.success) return { ok: false, code: "invalid", error: parsed.error.issues[0]?.message ?? "Invalid maintenance window" };
   const loaded = await loadForWrite(actor, id, "update", source);
   if ("error" in loaded) return loaded.error!;
+  const lapsed = await lapsedWriteBlock(actor.organizationId);
+  if (lapsed) return lapsed;
   const { row } = loaded;
   const now = new Date();
   const state = windowState(row, now);
@@ -490,6 +496,8 @@ export async function extendMaintenanceWindow(
   if (!parsed.success) return { ok: false, code: "invalid", error: "Pass byMinutes or until" };
   const loaded = await loadForWrite(actor, id, "update", source);
   if ("error" in loaded) return loaded.error!;
+  const lapsed = await lapsedWriteBlock(actor.organizationId);
+  if (lapsed) return lapsed;
   const { row } = loaded;
   const now = new Date();
   if (windowState(row, now) !== "active") return { ok: false, code: "conflict", error: "Only an active window can be extended" };

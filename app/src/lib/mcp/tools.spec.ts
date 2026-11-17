@@ -302,6 +302,9 @@ describe("MCP tools", () => {
 
   it("list_tests accepts the agent type", async () => {
     expect(schemas.get("list_tests")!.type.safeParse("agent").success).toBe(true);
+    const parsed = (schemas.get("list_tests")!.type as unknown as { safeParse: (v: unknown) => { success: boolean; data?: unknown } });
+    expect(parsed.safeParse(" Agent ").data).toBe("agent");
+    expect(parsed.safeParse("agents").success).toBe(false);
     queue.push([]);
     await handlers.get("list_tests")!({ limit: 5, type: "agent" });
     expect(lastWhere().params).toContain("agent");

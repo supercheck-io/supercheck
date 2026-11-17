@@ -119,7 +119,7 @@ describe("guards", () => {
 });
 
 describe("copy", () => {
-  it("copies both kinds, audits each created item and the summary, returns names but no config or plaintext", async () => {
+  it("copies both kinds, audits the summary (items are audited in the copy transaction), returns names but no config or plaintext", async () => {
     const res = await POST(req({ ...both, providerIds: [PID, PID] }), params);
     expect(res.status).toBe(200);
     expect(copyProviders).toHaveBeenCalledWith(expect.objectContaining({ organizationId: ORG, sourceProjectId: SOURCE, targetProjectId: TARGET }), [PID]);
@@ -131,10 +131,10 @@ describe("copy", () => {
       ],
     });
     const actions = (logAuditEvent as jest.Mock).mock.calls.map((c) => c[0].action);
-    expect(actions).toEqual(["notification_provider_created", "sre_connector_created", "project_setup.copied"]);
-    expect((logAuditEvent as jest.Mock).mock.calls[2][0].metadata).toEqual({ providers: 1, connectors: 1 });
+    expect(actions).toEqual(["project_setup.copied"]);
+    expect((logAuditEvent as jest.Mock).mock.calls[0][0].metadata).toEqual({ providers: 1, connectors: 1 });
   });
-  it("adopted and failed items are not audited as created", async () => {
+  it("adopted and failed items are not counted as copied", async () => {
     (copyProviders as jest.Mock).mockResolvedValue([{ sourceId: PID, id: "np", status: "adopted" }]);
     (copyConnectors as jest.Mock).mockResolvedValue([]);
     await POST(req({ sourceProjectId: SOURCE, providerIds: [PID] }), params);

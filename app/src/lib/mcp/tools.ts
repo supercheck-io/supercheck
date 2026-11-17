@@ -202,7 +202,7 @@ export function registerMcpTools(server: McpServer, ctx: McpCallContext): void {
   });
 
   tool("list_tests", "List tests in the project (no scripts)." + UNTRUSTED, "test",
-    { ...page, type: z.enum(TEST_TYPES).optional(), priority: z.enum(TEST_PRIORITIES).optional(), search: z.string().trim().min(1).max(100).optional().describe("case-insensitive title match") },
+    { ...page, type: z.preprocess((v) => (typeof v === "string" ? v.trim().toLowerCase() : v), z.enum(TEST_TYPES)).optional(), priority: z.enum(TEST_PRIORITIES).optional(), search: z.string().trim().min(1).max(100).optional().describe("case-insensitive title match") },
     async ({ limit, cursor, type, priority, search }) => {
     const rows = await db
       .select({ id: tests.id, title: tests.title, type: tests.type, priority: tests.priority, updatedAt: tests.updatedAt })

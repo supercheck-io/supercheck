@@ -10,6 +10,8 @@ jest.mock("@/sre/lib/feature-gates", () => ({
 }));
 jest.mock("@/lib/sre/sre-daily-token-limit", () => ({ sreDailyTokenLimitResponse: jest.fn().mockResolvedValue(null) }));
 jest.mock("@/lib/audit-logger", () => ({ logAuditEvent: jest.fn() }));
+// Maintenance timing is covered against a real database in background-alert-triage.db.spec.ts.
+jest.mock("@/lib/maintenance/predicate", () => ({ isMonitorInMaintenance: jest.fn(async () => false) }));
 const mockLogInfo = jest.fn();
 const mockLogError = jest.fn();
 jest.mock("@/lib/logger/index", () => ({ createLogger: () => ({ warn: (...a: unknown[]) => mockLogInfo(...a), error: (...a: unknown[]) => mockLogError(...a) }) }));
@@ -344,6 +346,13 @@ describe("processSreBackgroundAlertTriageJob", () => {
       expect(await processSreBackgroundAlertTriageJob(JOB)).toEqual({ success: true, skipped: true, reason: "incident_disabled" });
       expect(mockDb.transaction).toBeDefined();
       expect(tx.insert).not.toHaveBeenCalled();
+    });
+
+    it("keeps the incident_disabled reason when that monitor is also inside a maintenance window", async () => {
+      const { isMonitorInMaintenance } = jest.requireMock("@/lib/maintenance/predicate");
+      selectQueue.push([alertRow({ monitorAlertConfig: { incidentEnabled: false } })]);
+      expect(await processSreBackgroundAlertTriageJob(JOB)).toEqual({ success: true, skipped: true, reason: "incident_disabled" });
+      expect(isMonitorInMaintenance).not.toHaveBeenCalled();
     });
 
     it("links open status-page incidents for a new monitor incident, not for jobs", async () => {

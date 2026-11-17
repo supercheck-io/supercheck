@@ -1,6 +1,7 @@
 import { Command } from 'commander'
 import { createAuthenticatedClient } from '../api/authenticated-client.js'
 import { logger } from '../utils/logger.js'
+import { PING_URL_HIDDEN } from '../utils/redact.js'
 import { getOutputFormat, output, outputDetail, outputMutation, outputPagination } from '../output/formatter.js'
 import type { PaginatedResponse } from '../api/client.js'
 import { parseBooleanStrict, parseIntStrict } from '../utils/number.js'
@@ -346,7 +347,15 @@ monitorCommand
       }
       const { data } = await withSpinner('Creating monitor', () => client.post<Record<string, unknown>>('/api/monitors', body))
       logger.success(`Monitor "${options.name}" created (${data.id})`)
-      outputWithPingUrl(data, (data.heartbeat as Record<string, unknown> | undefined)?.pingUrl)
+      const pingUrl = (data.heartbeat as Record<string, unknown> | undefined)?.pingUrl
+      if (getOutputFormat() === 'table') { outputWithPingUrl(data, pingUrl); return }
+      // Machine output lands in CI logs, so the secret stays out of it; the audited reveal command prints it on request.
+      const heartbeat = data.heartbeat && typeof data.heartbeat === 'object' ? { ...(data.heartbeat as Record<string, unknown>) } : undefined
+      if (heartbeat) delete heartbeat.pingUrl
+      const rest: Record<string, unknown> = { ...data, ...(heartbeat ? { heartbeat } : {}) }
+      delete rest.pingUrl
+      outputDetail(rest)
+      if (typeof pingUrl === 'string') process.stderr.write(`${PING_URL_HIDDEN(String(data.id))}\n`)
       return
     }
     if (options.every !== undefined || options.grace !== undefined) throw new CLIError('--every and --grace apply only to --type heartbeat.', ExitCode.ConfigError)

@@ -5,6 +5,8 @@ const monitorTypes = new Set(['http_request', 'website', 'ping_host', 'port_chec
 let reveal = false
 export function canRevealSecrets(): boolean { return reveal }
 export function setRevealSecrets(value: boolean): void { reveal = value }
+/** Written straight to stderr (log levels silence warnings under --json/--quiet) instead of putting a new heartbeat's ping URL into --json/--quiet output, which often ends up in CI logs. */
+export const PING_URL_HIDDEN = (id: string) => `Ping URL not included in machine output. Show it with: supercheck monitor heartbeat-url ${id}`
 // Heartbeat ping tokens (hb_ + 32 hex) are masked everywhere except a `pingUrl` field the server returned on purpose.
 const cliTokens = (text: string) => text.replace(/(?:sck_(?:live|test|trigger)_|job_)[a-zA-Z0-9]{12,}/g, '[REDACTED]').replace(/\bhb_[0-9a-f]{32}\b/gi, 'hb_[REDACTED]')
 function maskUrl(raw: string): string {

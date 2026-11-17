@@ -84,7 +84,8 @@ List tools accept `limit` (1 to 50, default 20) and `cursor`. When more results 
 | `forbidden` | Your role cannot view this kind of resource |
 | `not_found` | No such item in the connected project |
 | `internal_error` | The request failed; try again |
-| `rate_limited`, `daily_limit`, `subscription_required`, `unavailable`, `feature_disabled` | An `mcp:sre` start was refused by the same limits and plan checks as the dashboard |
+| `rate_limited`, `daily_limit`, `unavailable`, `feature_disabled` | An `mcp:sre` start was refused by the same limits as the dashboard |
+| `subscription_required` | Needs a paid plan or an active trial (Supercheck Cloud): an `mcp:sre` start, `create_incident`, `create_maintenance_window`, `update_maintenance_window` and `extend_maintenance_window`. Ending and cancelling windows, acknowledging and resolving incidents still work |
 | `invalid`, `conflict` | An incident or maintenance write was refused (for example an assignee who cannot act on incidents, or a window on a status page) |
 | `org_pending_deletion` | The organization is scheduled for deletion and is read-only. Read tools keep working; the owner can cancel the deletion in the app. `get_context` reports it as `organization.pendingDeletion` |
 

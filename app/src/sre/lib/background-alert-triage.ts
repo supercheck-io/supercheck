@@ -46,6 +46,7 @@ import { linkStatusPageIncidentsToSreIncident } from "@/lib/status-page-reconcil
 import { notifyIncidentEvent, type IncidentFallback } from "@/lib/sre/incident-notifier";
 import { watchIncident } from "@/lib/sre/incident-watchers";
 import { findOpenIncidentListingMonitor } from "@/lib/sre/incident-resources";
+import { isMonitorInMaintenance } from "@/lib/maintenance/predicate";
 import { maybeAutoInvestigateOnOpen } from "@/sre/lib/auto-investigate";
 import { completeSreIncidentTriage, startSreIncidentTriage } from "@/sre/lib/triage-runner";
 import { db } from "@/utils/db";
@@ -112,6 +113,7 @@ export type SreBackgroundAlertTriageResult =
         | "incident_disabled"
         | "recovery_handled"
         | "recovered_before_triage"
+        | "in_maintenance"
         | "ai_disabled"
         | "ai_not_configured"
         | "daily_limit"
@@ -394,6 +396,13 @@ async function createOrGetIncidentForAlertHistory(alertHistoryId: string, failur
     !(sourceType === "monitor" && (await findOpenIncidentListingMonitor(db, { organizationId, projectId, monitorId: sourceId })))
   ) {
     return { skipped: true as const, reason: "incident_disabled" as const };
+  }
+
+  // A failure that fired inside a maintenance window is muted here too, behind the worker's own mute. Judged at firedAt,
+  // so a failure from just before the window still opens its incident. Only a window's current occurrence counts: once
+  // a recurring window is ended or a series cancelled, its earlier instants are no longer covered.
+  if (sourceType === "monitor" && (await isMonitorInMaintenance(sourceId, firedAt))) {
+    return { skipped: true as const, reason: "in_maintenance" as const };
   }
 
   const severity =

@@ -35,5 +35,5 @@ export function monitorForResponse<T extends MonitorRowLike>(monitor: T) {
  * never a read-modify-write, so a concurrent ping or sweep is not lost.
  */
 export const HEARTBEAT_ANCHOR_ON_RESUME = sql`CASE WHEN ${monitors.type} = 'heartbeat'
-  THEN coalesce(${monitors.heartbeatState}, '{}'::jsonb) || jsonb_build_object('anchorAt', to_jsonb(now()))
+  THEN (coalesce(${monitors.heartbeatState}, '{}'::jsonb) - 'missHeld') || jsonb_build_object('anchorAt', to_jsonb(now()))
   ELSE ${monitors.heartbeatState} END`;

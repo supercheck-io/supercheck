@@ -1,6 +1,8 @@
 /** @jest-environment node */
 
 jest.mock("@/lib/sre/manual-incident", () => ({ createManualIncident: jest.fn() }));
+const lapsedWriteBlock = jest.fn();
+jest.mock("@/lib/sre/lapsed-org-gate", () => ({ lapsedWriteBlock: (...a: unknown[]) => lapsedWriteBlock(...a) }));
 jest.mock("next/cache", () => ({ revalidatePath: jest.fn() }));
 jest.mock("@/utils/db", () => ({
   db: { select: jest.fn(), transaction: jest.fn(), query: {
@@ -363,6 +365,18 @@ describe("getSreIncidents scope and cap", () => {
 });
 
 describe("createSreIncidentFromAlert severity", () => {
+  beforeEach(() => lapsedWriteBlock.mockResolvedValue(null));
+  it("refuses a lapsed organization before reading the alert", async () => {
+    jest.mocked(requireProjectContext).mockResolvedValue({
+      userId: "user-1", organizationId: "org-1", orgPendingDeletion: false,
+      project: { id: "project-1", name: "Prod", organizationId: "org-1", isDefault: true, userRole: "project_editor" },
+    });
+    jest.mocked(checkPermissionWithContext).mockReturnValue(true);
+    lapsedWriteBlock.mockResolvedValue({ ok: false, code: "subscription_required", error: "Active subscription required." });
+    (db.select as jest.Mock).mockClear();
+    await expect(createSreIncidentFromAlert({ alertHistoryId: "00000000-0000-4000-8000-000000000009" })).resolves.toEqual({ success: false, error: "Active subscription required." });
+    expect(db.select).not.toHaveBeenCalled();
+  });
   it("honours the monitor's configured incident severity", async () => {
     jest.mocked(requireProjectContext).mockResolvedValue({
       userId: "user-1", organizationId: "org-1", orgPendingDeletion: false,
@@ -394,6 +408,7 @@ describe("createSreIncidentFromAlert severity", () => {
 });
 
 describe("createSreIncidentFromAlert join/reopen rules", () => {
+  beforeEach(() => lapsedWriteBlock.mockResolvedValue(null));
   const arrange = (sentAt = new Date()) => {
     jest.mocked(announceSystemTransition).mockClear();
     jest.mocked(reopenRecentlyAutoResolved).mockClear();

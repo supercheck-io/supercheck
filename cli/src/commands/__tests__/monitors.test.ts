@@ -10,6 +10,7 @@ const mockPatch = jest.fn<(...args: unknown[]) => Promise<{ data: unknown }>>()
 const stdout: string[] = []
 jest.spyOn(process.stdout, 'write').mockImplementation((chunk: string | Uint8Array) => { stdout.push(String(chunk).replace(/\n$/, '')); return true })
 jest.spyOn(console, 'error').mockImplementation(() => undefined)
+const stderr = jest.spyOn(process.stderr, 'write').mockImplementation(() => true)
 
 jest.unstable_mockModule('../../api/authenticated-client.js', () => ({
   createAuthenticatedClient: () => ({ get: mockGet, post: mockPost, patch: mockPatch }),
@@ -33,6 +34,7 @@ const format = (value: 'table' | 'json' | 'quiet') => { setOutputFormat(value); 
 
 beforeEach(() => {
   stdout.length = 0
+  stderr.mockClear()
   mockGet.mockReset(); mockPost.mockReset(); mockPatch.mockReset()
   reset(monitorCommand)
   format('table')
@@ -70,11 +72,13 @@ describe('monitor create --type heartbeat', () => {
     expect(stdout.join('\n').split(PING_URL)).toHaveLength(2)
   })
 
-  it('returns heartbeat.pingUrl in --json', async () => {
-    format('json')
+  it.each(['json', 'quiet'] as const)('keeps the ping URL out of %s output and says how to reveal it', async (value) => {
+    format(value)
     mockPost.mockResolvedValue({ data: { id: MONITOR_ID, type: 'heartbeat', heartbeat: { pingUrl: PING_URL, state: 'pending' } } })
     await run('create', '--name', 'Nightly', '--type', 'heartbeat', '--every', '1h')
-    expect(json()).toMatchObject({ id: MONITOR_ID, heartbeat: { pingUrl: PING_URL, state: 'pending' } })
+    expect(stdout.join('\n')).not.toMatch(/hb_[0-9a-f]{32}/)
+    if (value === 'json') expect(json()).toEqual({ id: MONITOR_ID, type: 'heartbeat', heartbeat: { state: 'pending' } })
+    expect(stderr.mock.calls.flat().join('\n')).toContain(`supercheck monitor heartbeat-url ${MONITOR_ID}`)
   })
 
   it.each([
