@@ -286,6 +286,8 @@ suite('heartbeat sweep (PostgreSQL)', () => {
       evaluatedSeq: 1,
     });
     expect(monitor.heartbeatState?.leaseUntil).toBeUndefined();
+    // finish() strips nulls, so an unheld state carries no `missHeld` key at all.
+    expect(monitor.heartbeatState).not.toHaveProperty('missHeld');
     expect(sent).toEqual([]);
   });
 
@@ -298,6 +300,9 @@ suite('heartbeat sweep (PostgreSQL)', () => {
     expect(rows[0]).toMatchObject({ status: 'down', isUp: false });
     expect(rows[0].details).toMatchObject({ heartbeat: { kind: 'missed' } });
     expect((await monitorRow(id)).status).toBe('down');
+    expect((await monitorRow(id)).heartbeatState).not.toHaveProperty(
+      'missHeld',
+    );
     // Failure alerts reach every channel, preset ones included; triage gets the rows (the app opens the sev2).
     expect(sent.sort()).toEqual(
       [
