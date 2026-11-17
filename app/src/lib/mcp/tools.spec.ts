@@ -1,6 +1,6 @@
+/** @jest-environment node */
 const assertCanView = jest.fn();
 jest.mock("./context", () => ({ ...jest.requireActual("./context"), assertCanView: (...args: unknown[]) => assertCanView(...args) }));
-/** @jest-environment node */
 const queue: unknown[] = [];
 const calls: unknown[] = [];
 function chain(): unknown {

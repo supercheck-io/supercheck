@@ -44,7 +44,7 @@ test.describe("AI SRE service catalog @aisre @critical", () => {
 
       await page.goto("/services", { waitUntil: "load" });
       await waitForHydration(page);
-      await page.getByTestId("add-service-btn").click();
+      await page.getByTestId("add-service-btn").filter({ visible: true }).click();
       const dialog = page.getByRole("dialog", { name: "Add service" });
       await expect(dialog).toBeVisible();
       await dialog.getByLabel("Title *").fill(name);

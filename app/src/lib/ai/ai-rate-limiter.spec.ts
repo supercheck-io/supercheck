@@ -1,3 +1,5 @@
+// Pin cloud limits so a developer's app/.env (SELF_HOSTED=true) cannot flip them.
+process.env.SELF_HOSTED = "false";
 jest.mock("@/lib/queue", () => ({ getRedisConnection: jest.fn() }));
 jest.mock("@/lib/logger", () => ({ createLogger: () => ({ error: jest.fn(), warn: jest.fn() }) }));
 import { getRedisConnection } from "@/lib/queue";
