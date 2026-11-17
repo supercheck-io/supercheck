@@ -389,8 +389,9 @@ async function createOrGetIncidentForAlertHistory(alertHistoryId: string, failur
     return { skipped: true as const, reason: "recovery_handled" as const };
   }
 
-  // A failure that fired inside a maintenance window is muted, even when it reaches us late or bypassed the worker's
-  // mute. Judged at firedAt, so a failure from just before the window still opens its incident.
+  // A failure that fired inside a maintenance window is muted here too, behind the worker's own mute. Judged at firedAt,
+  // so a failure from just before the window still opens its incident. Only a window's current occurrence counts: once
+  // a recurring window is ended or a series cancelled, its earlier instants are no longer covered.
   if (sourceType === "monitor" && (await isMonitorInMaintenance(sourceId, firedAt))) {
     return { skipped: true as const, reason: "in_maintenance" as const };
   }
