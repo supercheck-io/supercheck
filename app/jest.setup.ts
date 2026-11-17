@@ -35,6 +35,7 @@ if (typeof globalThis.TransformStream === 'undefined') {
 }
 
 // jsdom does not expose Node's structuredClone; better-auth's mcp plugin calls it at import.
+// shortcut: v8 round-trip clones plain data only (no DOM objects, no transfer, results from Node's realm); fine for config objects, use a real clone if a test needs more.
 if (typeof globalThis.structuredClone === 'undefined') {
   Object.defineProperty(globalThis, 'structuredClone', {
     value: (<T>(value: T): T => deserialize(serialize(value))) as typeof globalThis.structuredClone,

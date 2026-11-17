@@ -25,6 +25,7 @@ const H = 3_600_000;
 const D = 24 * H;
 // One frozen instant (the latest hh:30 UTC) for the whole file: the aggregator reads `new Date()` itself,
 // so a run that crossed an hour or day boundary used to move its window away from these constants.
+// Postgres now()/defaultNow() is not frozen and runs up to 1 h ahead of t0: give any timestamp a query depends on explicitly.
 const t0 = Math.floor((Date.now() - H / 2) / H) * H + H / 2;
 const midnight = Math.floor(t0 / D) * D;
 const hourStart = Math.floor(t0 / H) * H;

@@ -30,8 +30,8 @@ function idOf(body: unknown): string {
 async function createService(page: Page, name: string, environment: string): Promise<void> {
   await page.goto('/services');
   await waitForHydration(page);
-  // CI has seen two matches while /services loads; both open the same dialog.
-  await page.getByTestId('add-service-btn').first().click();
+  // CI has seen a hidden second copy of this button (outside the accessibility tree); click the visible one.
+  await page.getByTestId('add-service-btn').filter({ visible: true }).click();
   const dialog = page.getByRole('dialog', { name: /add service/i });
   await dialog.getByLabel('Title *').fill(name);
   await dialog.getByLabel('Environment').fill(environment);
