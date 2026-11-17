@@ -29,7 +29,7 @@ test.describe('Paging channels @alerts @channels', () => {
     await page.getByRole('button', { name: 'Create channel' }).first().click();
     const dialog = page.getByRole('dialog');
     await dialog.getByTestId('channel-type-select').click();
-    await expect(page.getByRole('option', { name: /Opsgenie.*Ends April 5, 2027/ })).toBeVisible();
+    await expect(page.getByRole('option', { name: /Opsgenie/ })).toHaveCount(0);
     await page.getByRole('option', { name: 'PagerDuty', exact: true }).click();
     await expect(dialog.getByTestId('one-way-paging-note')).toContainText('does not change the Supercheck incident');
     await dialog.getByLabel('Title', { exact: true }).fill(name);

@@ -407,34 +407,6 @@ const guides: Record<string, ConnectorQueryGuide> = {
       },
     ],
   },
-  opsgenie: {
-    label: "Opsgenie",
-    queryLabel: "Alert query",
-    queryPlaceholder: "status:open AND priority:P1",
-    endpointPlaceholder: "https://api.opsgenie.com",
-    setupHint:
-      "Use the Opsgenie Alert API endpoint. Results are sorted newest first and restricted to the selected time window.",
-    credentialHint:
-      "Use an API key from a read-only integration that can list alerts but cannot create or change them.",
-    examples: [
-      {
-        label: "Open critical alerts",
-        query: "status:open AND priority:P1",
-        description: "Find open P1 alerts during the incident window.",
-      },
-      {
-        label: "Service alerts",
-        query: "status:open AND tag:checkout",
-        description: "Find active alerts tagged for the affected service.",
-      },
-    ],
-    docs: [
-      {
-        label: "Opsgenie Alert API",
-        href: "https://docs.opsgenie.com/docs/alert-api",
-      },
-    ],
-  },
   jira: {
     label: "Jira",
     queryLabel: "JQL",

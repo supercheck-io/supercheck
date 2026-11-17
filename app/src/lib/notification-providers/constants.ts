@@ -49,7 +49,6 @@ export function getTeamsWebhookDomainError(): string {
 /** Short vendor names for paging presets (channel picker, list, incident timeline). */
 export const PAGING_SERVICE_NAMES: Record<string, string> = {
   pagerduty: "PagerDuty",
-  opsgenie: "Opsgenie",
   jsm_ops: "Jira Service Management",
   splunk_on_call: "Splunk On-Call",
   better_stack: "Better Stack",

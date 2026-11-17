@@ -1277,7 +1277,7 @@ describe('MonitorAlertService', () => {
               {
                 id: 'pager',
                 type: 'webhook',
-                config: { url: 'x', preset: 'opsgenie' },
+                config: { url: 'x', preset: 'jsm_ops' },
               },
             ],
           }),

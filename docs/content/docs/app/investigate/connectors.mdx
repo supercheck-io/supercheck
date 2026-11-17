@@ -24,7 +24,7 @@ Choose one of these in **Add connector**.
 | **Cloud and orchestration** | <Brand name="kubernetes" /> |
 | **Error tracking** | <Brand name="sentry" /> |
 | **Code and deployments** | <Brands names={["github", "gitlab"]} /> |
-| **Incident management** | <Brands names={["pagerduty", "opsgenie"]} /> |
+| **Incident management** | <Brands names={["pagerduty"]} /> |
 | **Tickets and knowledge** | <Brands names={["jira", "confluence", "notion"]} /> |
 | **Custom tools** | <Brand name="mcp" label="MCP servers in your network (Private Agent only)" /> |
 
@@ -55,7 +55,7 @@ flowchart TB
 | An API reachable only inside your network | **Private Agent** | [Set up an agent with Docker Compose](/docs/app/deployment/private-agent), then select it when adding the connector |
 | An internal API reachable from your self-hosted instance | **Direct** or **Private Agent** | Use Direct if your instance can reach it. Otherwise deploy an agent in that network |
 
-Private Agent mode supports GitHub, Kubernetes, Prometheus, Grafana, Sentry, Datadog, Loki, Elasticsearch / OpenSearch, Tempo, AWS CloudWatch, Jaeger, New Relic, Splunk, Google Cloud, Azure Monitor, Jira, Confluence, and MCP servers. GitLab, PagerDuty, Opsgenie, and Notion support **Direct** only.
+Private Agent mode supports GitHub, Kubernetes, Prometheus, Grafana, Sentry, Datadog, Loki, Elasticsearch / OpenSearch, Tempo, AWS CloudWatch, Jaeger, New Relic, Splunk, Google Cloud, Azure Monitor, Jira, Confluence, and MCP servers. GitLab, PagerDuty and Notion support **Direct** only.
 
 <Accordions>
 <Accordion title="Endpoint rules by mode" id="endpoint-rules">
@@ -167,7 +167,6 @@ Each provider uses its own read-only query language.
 |---|---|
 | **GitLab** | `project:acme/checkout deploy` |
 | **PagerDuty** | `status:triggered service:checkout` |
-| **Opsgenie** | `status:open AND priority:P1` |
 | **Prometheus** | PromQL, such as `sum(rate(http_requests_total{status=~"5.."}[5m]))` |
 | **Loki** | LogQL with a stream selector, such as `{service="checkout"} \|= "error"` |
 | **Kubernetes** | `*` or a verified label selector, with an explicit namespace |

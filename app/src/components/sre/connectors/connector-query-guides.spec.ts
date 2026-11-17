@@ -32,16 +32,12 @@ describe("connector query guides", () => {
   it("documents executable GitLab and incident-management queries", () => {
     const gitlab = getConnectorQueryGuide("gitlab");
     const pagerduty = getConnectorQueryGuide("pagerduty");
-    const opsgenie = getConnectorQueryGuide("opsgenie");
 
     expect(gitlab.examples[0]?.query).toContain("project:acme/checkout");
     expect(gitlab.docs?.map((doc) => doc.href)).toContain(
       "https://docs.gitlab.com/api/commits/",
     );
     expect(pagerduty.credentialHint).toContain("incidents.read");
-    expect(opsgenie.docs?.map((doc) => doc.href)).toContain(
-      "https://docs.opsgenie.com/docs/alert-api",
-    );
   });
 
   it("provides knowledge and ticketing setup references", () => {

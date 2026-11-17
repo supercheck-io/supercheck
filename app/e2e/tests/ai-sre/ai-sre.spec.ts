@@ -340,7 +340,6 @@ test.describe("AI SRE connector catalog @aisre @connectors @critical", () => {
       "Grafana Tempo",
       "AWS CloudWatch",
       "PagerDuty",
-      "Opsgenie",
       "Splunk",
       "New Relic",
       "Jaeger",

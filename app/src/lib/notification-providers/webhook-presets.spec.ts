@@ -50,19 +50,18 @@ describe("webhook-presets", () => {
   });
 
   it("exposes provider-specific auth hints without embedding real secrets", () => {
-    const opsgenie = getWebhookPreset("opsgenie");
+    const jsm = getWebhookPreset("jsm_ops");
 
-    expect(opsgenie?.secretHint).toContain("Authorization");
-    expect(opsgenie?.config.headers?.Authorization).toContain("REPLACE_WITH");
+    expect(jsm?.secretHint).toContain("Authorization");
+    expect(jsm?.config.headers?.Authorization).toContain("REPLACE_WITH");
   });
 
-  it("ships Jira Service Management with the Opsgenie payload and GenieKey auth", () => {
+  it("ships Jira Service Management with the alias payload and GenieKey auth", () => {
     const jsm = getWebhookPreset("jsm_ops");
-    const opsgenie = getWebhookPreset("opsgenie");
     expect(jsm?.endpointPlaceholder).toBe("https://api.atlassian.com/jsm/ops/integration/v2/alerts");
     expect(jsm?.config.headers?.Authorization).toMatch(/^GenieKey REPLACE_WITH_/);
-    expect(jsm?.config.bodyTemplate).toBe(opsgenie?.config.bodyTemplate);
-    expect(opsgenie?.endsAt).toBe("April 5, 2027");
+    expect(JSON.parse(jsm!.config.bodyTemplate!).alias).toBe("{{dedupKey}}");
+    expect(getWebhookPreset("opsgenie")).toBeUndefined();
   });
 
   it("adds an Open in Supercheck link to new PagerDuty channels", () => {

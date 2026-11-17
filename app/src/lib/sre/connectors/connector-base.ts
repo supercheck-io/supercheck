@@ -20,7 +20,6 @@ export type ConnectorType =
   | "confluence"
   | "notion"
   | "pagerduty"
-  | "opsgenie"
   | "jira"
   | "mcp"
   | "supercheck_native";

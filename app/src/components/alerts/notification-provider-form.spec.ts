@@ -73,7 +73,7 @@ describe("getSaveErrorMessage", () => {
 
 describe("nextPresetUrl", () => {
   const pagerduty = { id: "pagerduty", endpointPlaceholder: "https://events.pagerduty.com/v2/enqueue" };
-  const opsgenie = { id: "opsgenie", endpointPlaceholder: "https://api.opsgenie.com/v2/alerts" };
+  const jsm = { id: "jsm_ops", endpointPlaceholder: "https://api.atlassian.com/jsm/ops/integration/v2/alerts" };
   const splunk = { id: "splunk_on_call", endpointPlaceholder: "https://alert.victorops.com/integrations/generic/20131114/alert/<api_key>/<routing_key>" };
 
   it("fills an empty endpoint with the preset's fixed URL", () => {
@@ -81,12 +81,12 @@ describe("nextPresetUrl", () => {
   });
 
   it("replaces the old service's endpoint when switching paging services, so the new key never goes to the old service", () => {
-    expect(nextPresetUrl("pagerduty", "opsgenie", pagerduty.endpointPlaceholder, opsgenie)).toBe(opsgenie.endpointPlaceholder);
-    expect(nextPresetUrl("opsgenie", "splunk_on_call", "https://api.eu.opsgenie.com/v2/alerts", splunk)).toBe("");
+    expect(nextPresetUrl("pagerduty", "jsm_ops", pagerduty.endpointPlaceholder, jsm)).toBe(jsm.endpointPlaceholder);
+    expect(nextPresetUrl("jsm_ops", "splunk_on_call", "https://api.atlassian.com/jsm/ops/integration/v2/alerts", splunk)).toBe("");
   });
 
   it("keeps a custom endpoint when choosing a preset from a custom webhook, or reselecting the same one", () => {
-    expect(nextPresetUrl("custom", "opsgenie", "https://api.eu.opsgenie.com/v2/alerts", opsgenie)).toBeUndefined();
-    expect(nextPresetUrl("opsgenie", "opsgenie", "https://api.eu.opsgenie.com/v2/alerts", opsgenie)).toBeUndefined();
+    expect(nextPresetUrl("custom", "jsm_ops", "https://api.atlassian.com/jsm/ops/integration/v2/alerts", jsm)).toBeUndefined();
+    expect(nextPresetUrl("jsm_ops", "jsm_ops", "https://api.atlassian.com/jsm/ops/integration/v2/alerts", jsm)).toBeUndefined();
   });
 });

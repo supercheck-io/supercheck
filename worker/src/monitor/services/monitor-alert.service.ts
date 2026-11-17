@@ -951,7 +951,7 @@ export class MonitorAlertService {
       );
       return { delivered: false, suppressed: true };
     }
-    // Preset channels (PagerDuty, Opsgenie, ...) page people: warnings never go there.
+    // Preset channels (PagerDuty, ...) page people: warnings never go there.
     const providers = this.decryptProviders(
       await this.monitorProviders(monitor.id),
     ).filter(

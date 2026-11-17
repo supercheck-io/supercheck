@@ -6,7 +6,6 @@
 
 export const PAGING_PRESETS = [
   "pagerduty",
-  "opsgenie",
   "jsm_ops",
   "splunk_on_call",
   "better_stack",
@@ -53,7 +52,7 @@ export function presetOverrides(
 }
 
 /**
- * Opsgenie and JSM close an alert with a separate call by alias; a second create would only add a note.
+ * JSM closes an alert with a separate call by alias; a second create would only add a note.
  * Returns null for presets that resolve with the normal templated request.
  */
 export function presetResolveRequest(
@@ -62,7 +61,7 @@ export function presetResolveRequest(
   dedupKey: string,
   title: string,
 ): { url: string; method: "POST"; body: string } | null {
-  if (preset !== "opsgenie" && preset !== "jsm_ops") return null;
+  if (preset !== "jsm_ops") return null;
   const base = new URL(configuredUrl);
   const url = new URL(base.href);
   url.search = "";

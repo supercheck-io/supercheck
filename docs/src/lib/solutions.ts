@@ -181,7 +181,7 @@ claude mcp add --transport http supercheck \\
         body: "Alerts open incidents automatically; run a read-only investigation. Findings link back to the evidence, and you decide what to change.",
         bullets: [
           "Prometheus, Grafana, Loki, Tempo, AWS CloudWatch, Elasticsearch and OpenSearch",
-          "Kubernetes, Sentry, Datadog, GitHub, GitLab, PagerDuty and Opsgenie",
+          "Kubernetes, Sentry, Datadog, GitHub, GitLab and PagerDuty",
           "Private Agent reaches systems inside your network without inbound access",
         ],
         href: "/docs/app/investigate/incidents",

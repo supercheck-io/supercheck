@@ -402,7 +402,6 @@ export type PlainNotificationProviderConfig = {
   preset?:
     | 'custom'
     | 'pagerduty'
-    | 'opsgenie'
     | 'jsm_ops'
     | 'splunk_on_call'
     | 'better_stack'
