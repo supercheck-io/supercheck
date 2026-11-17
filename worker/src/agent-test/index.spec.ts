@@ -10,9 +10,15 @@ jest.mock('@playwright/test', () => ({
   expect: () => undefined,
 }));
 
-import { buildSummary, redactedJson, test as fixtures } from './index';
+import {
+  buildSummary,
+  redactedJson,
+  runDeadlineAt,
+  RUN_END_MARGIN_MS,
+  test as fixtures,
+} from './index';
 import { newState } from './agent';
-import { secretsOf } from './clients';
+import { redact, secretsOf } from './clients';
 
 const fixture = (
   fixtures as unknown as {
@@ -209,7 +215,19 @@ describe('agent fixture', () => {
         res.writeHead(200, { 'content-type': 'application/json' });
         res.end(
           JSON.stringify({
-            text: `you sent ${req.headers.authorization} and ${String(req.headers['x-token'])}`,
+            text: req.url?.startsWith('/echo')
+              ? // echoes the whole request, plain and encoded, the way a careless agent or proxy might
+                [
+                  raw,
+                  String(req.headers['x-tenant']),
+                  req.url,
+                  Buffer.from(raw).toString('base64'),
+                  Buffer.from(
+                    `user:${String(req.headers['x-tenant'])}`,
+                  ).toString('base64'),
+                  encodeURIComponent(raw),
+                ].join(' | ')
+              : `you sent ${req.headers.authorization} and ${String(req.headers['x-token'])}`,
             secret: 'k-from-literal',
           }),
         );
@@ -231,6 +249,7 @@ describe('agent fixture', () => {
     title: 'my test',
     titlePath: ['a.agent.spec.ts', 'suite', 'my test'],
     project: { name: 'agent' },
+    config: { globalTimeout: 300_000 },
     errors,
     status,
     outputPath: (name: string) => join(dir, name),
@@ -347,5 +366,66 @@ describe('agent fixture', () => {
       passed: 0,
       passRate: 0,
     });
+  });
+
+  it('redacts every project secret wherever the script put it: body, custom header, query, prompt, encoded echoes', async () => {
+    const secret = 'proj-secret-7Q';
+    const before = process.env.SUPERCHECK_SECRETS_B64;
+    process.env.SUPERCHECK_SECRETS_B64 = Buffer.from(
+      JSON.stringify({ AGENT_TOKEN: secret, SHORT: 'abc' }),
+    ).toString('base64');
+    try {
+      await run(
+        info('failed', jest.fn(), [{ message: `expected ${secret}` }]),
+        async () => undefined,
+      );
+      expect(await summaryText()).not.toContain(secret);
+      await fixture(
+        {},
+        async (agent) => {
+          // getSecret() values in places the fixture cannot know are credentials
+          const bot = agent.connect({
+            kind: 'http',
+            url: `${url}/echo?tenant=${secret}`,
+            headers: { 'X-Tenant': secret },
+            body: (m: string) => ({ m, auth: secret }),
+            reply: 'text',
+          });
+          await agent.repeat(1, async () => {
+            await bot.send(`system: use ${secret}`);
+            throw new Error(`agent leaked ${secret}`);
+          });
+        },
+        info('failed', jest.fn()),
+      );
+      const text = await summaryText();
+      const summary = JSON.parse(text);
+      for (const form of [
+        secret,
+        encodeURIComponent(secret),
+        Buffer.from(secret).toString('base64').replace(/=+$/, ''),
+      ])
+        expect(text).not.toContain(form);
+      // A user:secret Basic credential hides the secret at a byte offset inside the base64.
+      expect(text).not.toContain(
+        Buffer.from(`user:${secret}`).toString('base64').slice(8, 20),
+      );
+      expect(summary.transcript[0].prompt).toBe('system: use [REDACTED]');
+      expect(summary.failures[0].message).toBe('agent leaked [REDACTED]');
+      // shorter than 4 characters: never redacted, as it would blank ordinary text
+      expect(redact('abc stays', [])).toBe('abc stays');
+    } finally {
+      if (before === undefined) delete process.env.SUPERCHECK_SECRETS_B64;
+      else process.env.SUPERCHECK_SECRETS_B64 = before;
+    }
+  });
+});
+
+describe('runDeadlineAt', () => {
+  it('ends repeat() a margin before the global timeout, counted from process start', () => {
+    expect(runDeadlineAt(60_000, 1_000)).toBe(61_000 - RUN_END_MARGIN_MS);
+  });
+  it('has no deadline when the global timeout is off', () => {
+    expect(runDeadlineAt(0, 1_000)).toBeUndefined();
   });
 });

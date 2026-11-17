@@ -2837,6 +2837,32 @@
               }
             }
           },
+          "202": {
+            "description": "Run marked for cancellation, but Redis is unavailable so the stop signal was not sent: no worker starts the run, but one already executing keeps running. Retry once Redis is back.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "runId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "signalSent": {
+                      "type": "boolean",
+                      "const": false
+                    }
+                  }
+                }
+              }
+            }
+          },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
           },
@@ -2900,7 +2926,7 @@
                 "agent"
               ]
             },
-            "description": "Filter by test type. Aliases: `playwright` → `browser`, `k6` → `performance`"
+            "description": "Filter by test type. Aliases: `playwright` → `browser`, `k6` → `performance`. Matching ignores case and surrounding spaces; an unknown type returns 400."
           },
           {
             "name": "priority",
@@ -2946,7 +2972,7 @@
             "$ref": "#/components/responses/Unauthorized"
           },
           "400": {
-            "description": "Invalid priority filter",
+            "description": "Invalid priority or type filter",
             "content": {
               "application/json": {
                 "schema": {

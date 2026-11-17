@@ -229,7 +229,10 @@ describe('script type validation helpers', () => {
     expect(normalizeTestTypeForApi('k6')).toBe('performance')
     expect(normalizeTestTypeForApi('load')).toBe('performance')
     expect(normalizeTestTypeForApi('api')).toBe('api')
+    expect(normalizeTestTypeForApi(' Agent ')).toBe('agent')
+    expect(normalizeTestTypeForApi('AGENT')).toBe('agent')
     expect(normalizeTestTypeForApi('unknown')).toBeUndefined()
+    expect(normalizeTestTypeForApi('agents')).toBeUndefined()
   })
 })
 

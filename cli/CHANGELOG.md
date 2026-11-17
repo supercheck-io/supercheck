@@ -6,6 +6,7 @@ Notable changes to `@supercheck/cli`. The format follows [Keep a Changelog](http
 
 ### Changed
 
+- **`run cancel` exits 4 when the run may still be executing.** If the server could not send the stop signal (it answers `signalSent: false`), the command prints the response and exits with code 4 so scripts retry.
 - A `402` from the server (for example `incident create` or `maintenance create` on an organization with no plan or trial) now shows the server's own message instead of the generic request failure.
 
 ## [0.6.0] - 2026-11-16

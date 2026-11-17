@@ -7,7 +7,7 @@ import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { requireAuthContext, isAuthError, authErrorStatus } from "@/lib/auth-context";
 import { subscriptionService, SubscriptionAccessDeniedError } from "@/lib/services/subscription-service";
 import type { TestType } from "@/db/schema/types";
-import { validateTestScript, normalizeTestType } from "@/lib/script-type-validator";
+import { validateTestScript, normalizeTestType, parseTestType, isTestTypeOmitted, INVALID_TEST_TYPE_MESSAGE } from "@/lib/script-type-validator";
 import { decodeStoredTestScript, encodeStoredTestScript } from "@/lib/test-script";
 import { loadCreators } from "@/lib/creators";
 
@@ -86,8 +86,11 @@ export async function GET(request: NextRequest) {
 
     // Add type filter if provided
     if (typeFilter.trim()) {
-      // Cast to TestType - the API will just return empty results for invalid types
-      whereConditions.push(eq(tests.type, typeFilter.trim() as TestType));
+      const filterType = parseTestType(typeFilter);
+      if (!filterType) {
+        return NextResponse.json({ error: INVALID_TEST_TYPE_MESSAGE }, { status: 400 });
+      }
+      whereConditions.push(eq(tests.type, filterType));
     }
 
     if (isTestPriority(priorityFilter)) {
@@ -271,6 +274,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    if (!isTestTypeOmitted(type) && !parseTestType(type)) {
+      return NextResponse.json({ error: INVALID_TEST_TYPE_MESSAGE }, { status: 400 });
+    }
     const resolvedType: TestType = normalizeTestType(type);
 
     // Validate script-type compatibility if a script is provided

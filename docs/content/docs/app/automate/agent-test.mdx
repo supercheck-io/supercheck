@@ -86,11 +86,11 @@ Pass keys in yourself with `getSecret` and URLs with `getVariable`; nothing is a
 |---|---|
 | `agent.connect(options)` | Returns a client. `kind: "openai"`: chat completions at `url` (`model`, optional `system`, `tools`). `kind: "http"`: `POST url` with `body(message)` and `reply: "json.path"`. `kind: "a2a"`: A2A 1.0 `SendMessage` over JSON-RPC (`legacy: true` sends the 0.3 `message/send`). `kind: "mcp"`: calls one tool of an MCP server, with the message as the named argument. Common options: `apiKey`, `headers`, `timeoutMs` (default 30,000, max 120,000) |
 | `client.send(message, { conversation? })` | One turn. Returns `{ text, json?, toolCalls: [{ name, arguments }], toolNames, usage: { promptTokens, completionTokens, totalTokens, cost? }, durationMs, raw }` |
-| `agent.repeat(n, fn, { concurrency? })` | Runs `fn` n times (1 to 20, concurrency 1 to 5, default 1). A throw inside `fn` is one failed attempt. It has a 200-second budget: when that is used up it starts no further attempt and counts each one left as failed with the message "not run: time budget used". Returns `{ attempts, passed, failed, passRate, failures: [{ attempt, message }] }`. It does not throw; assert on `passRate` |
+| `agent.repeat(n, fn, { concurrency? })` | Runs `fn` n times (1 to 20, concurrency 1 to 5, default 1). A throw inside `fn` is one failed attempt. It has a 200-second budget, shorter when less run time is left: when that is used up it starts no further attempt and counts each one left as failed with the message "not run: time budget used". Returns `{ attempts, passed, failed, passRate, failures: [{ attempt, message }] }`. It does not throw; assert on `passRate` |
 | `agent.judge(text, rubric, { url, apiKey, model })` | Asks your own OpenAI-compatible model to grade the text against the rubric. Returns `{ pass, reason }` |
 | `expect` | Playwright's `expect`, unchanged |
 
-The run page shows an **Agent results** card with the pass rate, attempts, tokens, slowest attempt, tools called and the failures. Failure messages are clipped to 200 characters and may quote the agent's reply. Prompts and replies are left out of the run record, the API and MCP, but the saved Playwright report keeps the full transcript (with your API key and credential headers redacted), like any other report content.
+The run page shows an **Agent results** card with the pass rate, attempts, tokens, slowest attempt, tools called and the failures. Failure messages are clipped to 200 characters and may quote the agent's reply. Prompts and replies are left out of the run record, the API and MCP, but the saved Playwright report keeps the full transcript (with your project secrets, API key and credential headers redacted, also when the agent echoes them URL- or base64-encoded; values under 4 characters are not redacted, and a common value such as `true` also blanks matching ordinary text), like any other report content.
 
 ## Limits
 
@@ -98,6 +98,8 @@ The run page shows an **Agent results** card with the pass rate, attempts, token
 - **A run lasts at most 5 minutes**, and in a job that limit is shared by every test in the job. Keep agent tests in their own job. Inside a run, one test may take at most 4 minutes, and one `repeat()` at most 200 seconds. Each `send()` times out after `timeoutMs`.
 - **You pay for the calls.** Calls to your agent and to your judge model are billed by their provider, not by Supercheck. AI grading uses your own judge endpoint and key (`agent.judge`); it does not use Supercheck AI credits.
 - **Public addresses only.** Cloud runs reach public addresses only: an agent on a private or internal address is unreachable. Expose it on a public URL.
+- **No redirects.** A request that gets a redirect (HTTP 3xx) fails and names the target, so it cannot reach an internal address or carry your headers to another host. Connect to the final URL.
+- **Replies up to 5 MiB.** A larger reply fails the request.
 - **Remote only.** `supercheck test run --local` and `job run --local` refuse agent tests.
 
 ## Watch an agent with a synthetic monitor

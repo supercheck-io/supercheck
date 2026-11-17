@@ -53,11 +53,96 @@ export function secretsOf(options: AgentCommonOptions): string[] {
   ];
 }
 
+let projectSecretsRaw: string | undefined;
+let projectSecretsCache: string[] = [];
+
+/** Every project secret, as the worker hands them to the run: what getSecret() can return, wherever the script puts it. */
+export function projectSecrets(): string[] {
+  const raw = process.env.SUPERCHECK_SECRETS_B64;
+  if (raw !== projectSecretsRaw) {
+    projectSecretsRaw = raw;
+    try {
+      projectSecretsCache = Object.values(
+        (JSON.parse(Buffer.from(raw ?? '', 'base64').toString('utf8')) ??
+          {}) as Record<string, unknown>,
+      ).filter((v): v is string => typeof v === 'string');
+    } catch {
+      projectSecretsCache = [];
+    }
+  }
+  return projectSecretsCache;
+}
+
+/** A secret as an agent may echo it: raw, URL-, JSON- and base64-encoded (at each byte offset, so `user:secret` Basic auth is caught too). */
+export function encodedForms(secret: string): string[] {
+  const url = encodeURIComponent(secret);
+  const json = JSON.stringify(secret).slice(1, -1);
+  const forms = [
+    secret,
+    url,
+    url.replace(/%20/g, '+'),
+    encodeURI(secret),
+    json,
+    // PHP escapes "/"; Go and Python (ensure_ascii) write &, <, > or non-ASCII as \u00xx.
+    json.replace(/\//g, '\\/'),
+    ...[/[^\x20-\x7e]|[&<>]/g, /[^\x20-\x7e]/g, /[&<>]/g].map((re) =>
+      json.replace(
+        re,
+        (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, '0')}`,
+      ),
+    ),
+  ];
+  const bytes = Buffer.from(secret, 'utf8');
+  for (let pad = 0; pad < 3; pad++) {
+    // Only the base64 characters made purely of the secret's bits, whatever comes before or after it.
+    const b64 = Buffer.concat([Buffer.alloc(pad), bytes]).toString('base64');
+    const core = b64.slice(
+      Math.ceil((pad * 8) / 6),
+      Math.floor(((pad + bytes.length) * 8) / 6),
+    );
+    forms.push(core, core.replace(/\+/g, '-').replace(/\//g, '_'));
+  }
+  return forms.filter((f) => f.length >= MIN_SECRET);
+}
+
+const redactors = new Map<string, RegExp | null>();
+
+/** Removes the given secrets and every project secret, in each encoded form. */
 export function redact(text: string, secrets: string[]): string {
-  let out = text;
-  for (const s of [...secrets].sort((a, b) => b.length - a.length))
-    out = out.split(s).join('[REDACTED]');
-  return out;
+  const all = [...secrets, ...projectSecrets()].filter(
+    (s) => s.length >= MIN_SECRET,
+  );
+  const key = JSON.stringify(all);
+  let re = redactors.get(key);
+  if (re === undefined) {
+    const forms = [...new Set(all.flatMap(encodedForms))].sort(
+      (a, b) => b.length - a.length,
+    );
+    // A lookahead finds the longest form starting at every position, so overlapping secrets are all caught.
+    re = forms.length
+      ? new RegExp(
+          `(?=(${forms.map((f) => f.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')}))`,
+          'g',
+        )
+      : null;
+    // shortcut: cleared rather than LRU, as a run uses a handful of secret sets.
+    if (redactors.size >= 64) redactors.clear();
+    redactors.set(key, re);
+  }
+  if (!re) return text;
+  let out = '';
+  let start = -1;
+  let end = -1;
+  for (const m of text.matchAll(re)) {
+    if (m.index > end) {
+      if (end > start) out += '[REDACTED]';
+      out += text.slice(Math.max(end, 0), m.index);
+      start = m.index;
+    }
+    end = Math.max(end, m.index + m[1].length);
+  }
+  if (end > start) out += '[REDACTED]';
+  return out + text.slice(Math.max(end, 0));
 }
 
 const timeoutOf = (options: AgentCommonOptions) =>
@@ -139,6 +224,8 @@ async function post(
   const secrets = secretsOf(options);
   let res: Response;
   let text: string;
+  // Read before the body, so an MCP initialize whose reply fails to arrive still closes the session it opened.
+  let sessionId: string | null = null;
   try {
     res = await fetch(url, {
       method: 'POST',
@@ -148,26 +235,45 @@ async function post(
         extraHeaders,
       ),
       body: JSON.stringify(body),
+      // Never followed: a redirect could point at a private address, and would carry custom credential headers
+      // to another host.
+      redirect: 'manual',
       signal: AbortSignal.timeout(
         deadlineAt === undefined
           ? timeoutMs
           : Math.max(deadlineAt - Date.now(), 1),
       ),
     });
-    text =
+    if (res.status >= 300 && res.status < 400) {
+      void res.body?.cancel().catch(() => undefined);
+      throw new Error(
+        `${kind} agent endpoint redirected (HTTP ${res.status}) to ${redact(res.headers.get('location') ?? 'nowhere', secrets).slice(0, 200)}; use the final URL`,
+      );
+    }
+    sessionId = res.headers.get('mcp-session-id');
+    text = await readReply(
+      res.body,
       rpcId !== undefined &&
-      res.ok &&
-      res.body &&
-      (res.headers.get('content-type') ?? '').includes('text/event-stream')
-        ? await readSseUntil(res.body, rpcId)
-        : await res.text();
+        res.ok &&
+        (res.headers.get('content-type') ?? '').includes('text/event-stream')
+        ? rpcId
+        : undefined,
+    );
   } catch (error) {
     const e = error as Error & { cause?: { code?: string } };
+    if (e.message.startsWith(`${kind} agent endpoint redirected`)) throw e;
+    if (e instanceof ReplyTooLargeError)
+      throw Object.assign(new Error(`${kind} agent reply exceeded 5 MiB`), {
+        sessionId,
+      });
     const why =
       e.name === 'TimeoutError' || e.name === 'AbortError'
         ? `timed out after ${timeoutMs}ms`
         : (e.cause?.code ?? e.message);
-    throw new Error(`${kind} agent request failed: ${redact(why, secrets)}`);
+    throw Object.assign(
+      new Error(`${kind} agent request failed: ${redact(why, secrets)}`),
+      { sessionId },
+    );
   }
   if (!res.ok)
     throw Object.assign(
@@ -179,21 +285,39 @@ async function post(
   return { status: res.status, headers: res.headers, text };
 }
 
-/** Reads SSE until a complete event carries the given JSON-RPC id, then stops reading. */
-async function readSseUntil(
-  body: ReadableStream<Uint8Array>,
-  id: number,
+export const MAX_REPLY_BYTES = 5 * 1024 * 1024;
+class ReplyTooLargeError extends Error {}
+
+/** Reads a reply body, at most MAX_REPLY_BYTES. With an rpcId (an SSE reply), stops once a complete event carries it. */
+async function readReply(
+  body: ReadableStream<Uint8Array> | null,
+  rpcId?: number,
 ): Promise<string> {
+  if (!body) return '';
   const reader = body.getReader();
   const decoder = new TextDecoder();
   let text = '';
+  let bytes = 0;
+  // Start of the first SSE event not yet complete, and where the next delimiter search resumes: each event is
+  // parsed once and each byte searched about once, however the event is split into chunks.
+  let eventStart = 0;
+  let searchFrom = 0;
+  const delimiter = /\r?\n\r?\n/g;
   try {
     for (;;) {
       const { done, value } = await reader.read();
       if (done) return text + decoder.decode();
+      bytes += value.byteLength;
+      if (bytes > MAX_REPLY_BYTES) throw new ReplyTooLargeError();
       text += decoder.decode(value, { stream: true });
-      const complete = text.split(/\r?\n\r?\n/).slice(0, -1);
-      if (complete.some((block) => sseEventId(block) === id)) return text;
+      if (rpcId === undefined) continue;
+      delimiter.lastIndex = searchFrom;
+      for (let m: RegExpExecArray | null; (m = delimiter.exec(text));) {
+        if (sseEventId(text.slice(eventStart, m.index)) === rpcId) return text;
+        eventStart = m.index + m[0].length;
+      }
+      // A delimiter split across chunks is at most 4 characters, so 3 are searched again.
+      searchFrom = Math.max(eventStart, text.length - 3);
     }
   } finally {
     void reader.cancel().catch(() => undefined);
@@ -511,6 +635,7 @@ async function mcpSend(
       await fetch(options.url, {
         method: 'DELETE',
         headers,
+        redirect: 'manual',
         signal: AbortSignal.timeout(5_000),
       }).catch(() => undefined);
     }
