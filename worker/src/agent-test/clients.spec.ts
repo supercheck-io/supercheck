@@ -647,3 +647,28 @@ describe('encodedForms', () => {
     expect(encodedForms('abcd').every((f) => f.length >= 4)).toBe(true);
   });
 });
+
+it('also covers the escaped JSON forms other servers write (PHP "\\/", Go and Python "\\u00xx")', () => {
+  const forms = encodedForms('a/b&c<é>');
+  expect(forms).toContain('a\\/b&c<é>');
+  expect(forms).toContain('a/b\\u0026c\\u003c\\u00e9\\u003e');
+});
+
+it('finds the SSE reply after many unrelated events arrive in small chunks', async () => {
+  handler = (_r, body, res) => {
+    if (body?.method !== 'tools/call') {
+      res.writeHead(200, { 'content-type': 'application/json' });
+      return res.end(
+        JSON.stringify({ jsonrpc: '2.0', id: body?.id ?? 0, result: {} }),
+      );
+    }
+    res.writeHead(200, { 'content-type': 'text/event-stream' });
+    for (let i = 0; i < 200; i++) res.write(`data: {"id":${1000 + i}}\n\n`);
+    res.write(
+      `data: ${JSON.stringify({ jsonrpc: '2.0', id: 2, result: { content: [{ type: 'text', text: 'done' }] } })}\n\n`,
+    );
+    // the server keeps the stream open; the client must stop at its reply
+  };
+  const bot = createClient({ kind: 'mcp', url, tool: 'ask' } as never);
+  await expect(bot.send('x')).resolves.toMatchObject({ text: 'done' });
+});

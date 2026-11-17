@@ -76,12 +76,19 @@ export function projectSecrets(): string[] {
 /** A secret as an agent may echo it: raw, URL-, JSON- and base64-encoded (at each byte offset, so `user:secret` Basic auth is caught too). */
 export function encodedForms(secret: string): string[] {
   const url = encodeURIComponent(secret);
+  const json = JSON.stringify(secret).slice(1, -1);
   const forms = [
     secret,
     url,
     url.replace(/%20/g, '+'),
     encodeURI(secret),
-    JSON.stringify(secret).slice(1, -1),
+    json,
+    // PHP escapes "/"; Go and Python (ensure_ascii) write &, <, > or non-ASCII as \u00xx.
+    json.replace(/\//g, '\\/'),
+    json.replace(
+      /[^\x20-\x7e]|[&<>]/g,
+      (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, '0')}`,
+    ),
   ];
   const bytes = Buffer.from(secret, 'utf8');
   for (let pad = 0; pad < 3; pad++) {
@@ -252,6 +259,8 @@ async function readReply(
   const decoder = new TextDecoder();
   let text = '';
   let bytes = 0;
+  // Start of the first SSE event not yet complete: each event is parsed once, not again on every chunk.
+  let scanned = 0;
   try {
     for (;;) {
       const { done, value } = await reader.read();
@@ -261,8 +270,10 @@ async function readReply(
         throw new Error(`reply is larger than ${MAX_REPLY_BYTES} bytes`);
       text += decoder.decode(value, { stream: true });
       if (rpcId === undefined) continue;
-      const complete = text.split(/\r?\n\r?\n/).slice(0, -1);
-      if (complete.some((block) => sseEventId(block) === rpcId)) return text;
+      const blocks = text.slice(scanned).split(/\r?\n\r?\n/);
+      const pending = blocks.pop() ?? '';
+      if (blocks.some((block) => sseEventId(block) === rpcId)) return text;
+      scanned = text.length - pending.length;
     }
   } finally {
     void reader.cancel().catch(() => undefined);

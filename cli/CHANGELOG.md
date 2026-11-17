@@ -4,6 +4,10 @@ Notable changes to `@supercheck/cli`. The format follows [Keep a Changelog](http
 
 ## [Unreleased]
 
+### Changed
+
+- **`run cancel` exits 4 when the run may still be executing.** If the server could not send the stop signal (it answers `signalSent: false`), the command prints the response and exits with code 4 so scripts retry.
+
 ## [0.6.0] - 2026-11-16
 
 This release adds heartbeat and MCP monitors, the AI endpoint preset, agent tests, incident declaration, reminders and escalation, maintenance windows and post-mortems.

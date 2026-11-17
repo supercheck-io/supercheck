@@ -74,6 +74,13 @@ describe("PUT /api/tests/[id] with type agent", () => {
     expect(set).not.toHaveBeenCalled();
   });
 
+  it.each([null, ""])("keeps the stored type when type is %j", async (type) => {
+    requireAuthContext.mockResolvedValue(ctx("project_editor"));
+    findFirst.mockResolvedValue({ ...stored, type: "agent" });
+    expect((await put(type)).status).toBe(200);
+    expect(set).toHaveBeenCalledWith(expect.objectContaining({ type: "agent" }));
+  });
+
   it("refuses the switch with 503 AGENT_WORKERS_PENDING while its monitors' workers are pending, writing nothing", async () => {
     requireAuthContext.mockResolvedValue(ctx("project_editor"));
     assertAgentTestSwitchRunnable.mockRejectedValue(new ExecutionQueueError("agent_workers_pending", "pending"));
