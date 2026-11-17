@@ -14,7 +14,7 @@ test.describe('Status page publishing and management @status-pages @high', () =>
     await page.goto(`/status-pages/${created.id}`, { waitUntil: 'domcontentloaded' });
 
     await page.getByRole('tab', { name: 'Components', exact: true }).click();
-    await page.getByRole('button', { name: 'Add Component', exact: true }).click();
+    await page.getByRole('button', { name: /^add component$/i }).click();
     const componentDialog = page.getByRole('dialog', { name: 'Add Component' });
     await componentDialog.getByLabel('Title *').fill(`E2E public component ${Date.now()}`);
     await componentDialog.getByRole('button', { name: 'Add Component', exact: true }).click();

@@ -409,7 +409,7 @@ export function ComponentsTab({
           </div>
           <Button disabled size="sm">
             <Plus className="h-4 w-4 mr-2" />
-            Add Component
+            Add component
           </Button>
         </CardHeader>
         <CardContent className="pt-0">
@@ -469,7 +469,7 @@ export function ComponentsTab({
             }
           >
             <Plus className="h-4 w-4 mr-2" />
-            Add Component
+            Add component
           </Button>
           )}
         </CardHeader>
