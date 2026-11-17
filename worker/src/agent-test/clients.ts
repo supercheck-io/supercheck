@@ -85,9 +85,11 @@ export function encodedForms(secret: string): string[] {
     json,
     // PHP escapes "/"; Go and Python (ensure_ascii) write &, <, > or non-ASCII as \u00xx.
     json.replace(/\//g, '\\/'),
-    json.replace(
-      /[^\x20-\x7e]|[&<>]/g,
-      (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, '0')}`,
+    ...[/[^\x20-\x7e]|[&<>]/g, /[^\x20-\x7e]/g, /[&<>]/g].map((re) =>
+      json.replace(
+        re,
+        (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, '0')}`,
+      ),
     ),
   ];
   const bytes = Buffer.from(secret, 'utf8');
@@ -116,18 +118,31 @@ export function redact(text: string, secrets: string[]): string {
     const forms = [...new Set(all.flatMap(encodedForms))].sort(
       (a, b) => b.length - a.length,
     );
+    // A lookahead finds the longest form starting at every position, so overlapping secrets are all caught.
     re = forms.length
       ? new RegExp(
-          forms.map((f) => f.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|'),
+          `(?=(${forms.map((f) => f.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')}))`,
           'g',
         )
       : null;
-    // shortcut: matches leftmost, so a shorter form that overlaps the start of a longer one wins; fine while
-    // secrets do not overlap each other. Cache cleared rather than LRU, as a run uses a handful of secret sets.
+    // shortcut: cleared rather than LRU, as a run uses a handful of secret sets.
     if (redactors.size >= 64) redactors.clear();
     redactors.set(key, re);
   }
-  return re ? text.replace(re, '[REDACTED]') : text;
+  if (!re) return text;
+  let out = '';
+  let start = -1;
+  let end = -1;
+  for (const m of text.matchAll(re)) {
+    if (m.index > end) {
+      if (end > start) out += '[REDACTED]';
+      out += text.slice(Math.max(end, 0), m.index);
+      start = m.index;
+    }
+    end = Math.max(end, m.index + m[1].length);
+  }
+  if (end > start) out += '[REDACTED]';
+  return out + text.slice(Math.max(end, 0));
 }
 
 const timeoutOf = (options: AgentCommonOptions) =>
@@ -233,6 +248,7 @@ async function post(
         `${kind} agent endpoint redirected (HTTP ${res.status}) to ${redact(res.headers.get('location') ?? 'nowhere', secrets).slice(0, 200)}; use the final URL`,
       );
     }
+    const sessionId = res.headers.get('mcp-session-id');
     text = await readReply(
       res.body,
       rpcId !== undefined &&
@@ -240,12 +256,18 @@ async function post(
         (res.headers.get('content-type') ?? '').includes('text/event-stream')
         ? rpcId
         : undefined,
-    );
+    ).catch((err: unknown) => {
+      // Lets an MCP initialize that fails here still close the session it opened.
+      if (err instanceof ReplyTooLargeError) err.sessionId = sessionId;
+      throw err;
+    });
   } catch (error) {
     const e = error as Error & { cause?: { code?: string } };
     if (e.message.startsWith(`${kind} agent endpoint redirected`)) throw e;
     if (e instanceof ReplyTooLargeError)
-      throw new Error(`${kind} agent reply exceeded 5 MiB`);
+      throw Object.assign(new Error(`${kind} agent reply exceeded 5 MiB`), {
+        sessionId: e.sessionId,
+      });
     const why =
       e.name === 'TimeoutError' || e.name === 'AbortError'
         ? `timed out after ${timeoutMs}ms`
@@ -263,7 +285,9 @@ async function post(
 }
 
 export const MAX_REPLY_BYTES = 5 * 1024 * 1024;
-class ReplyTooLargeError extends Error {}
+class ReplyTooLargeError extends Error {
+  sessionId: string | null = null;
+}
 
 /** Reads a reply body, at most MAX_REPLY_BYTES. With an rpcId (an SSE reply), stops once a complete event carries it. */
 async function readReply(
@@ -275,8 +299,11 @@ async function readReply(
   const decoder = new TextDecoder();
   let text = '';
   let bytes = 0;
-  // Start of the first SSE event not yet complete: each event is parsed once, not again on every chunk.
-  let scanned = 0;
+  // Start of the first SSE event not yet complete, and where the next delimiter search resumes: each event is
+  // parsed once and each byte searched about once, however the event is split into chunks.
+  let eventStart = 0;
+  let searchFrom = 0;
+  const delimiter = /\r?\n\r?\n/g;
   try {
     for (;;) {
       const { done, value } = await reader.read();
@@ -285,10 +312,13 @@ async function readReply(
       if (bytes > MAX_REPLY_BYTES) throw new ReplyTooLargeError();
       text += decoder.decode(value, { stream: true });
       if (rpcId === undefined) continue;
-      const blocks = text.slice(scanned).split(/\r?\n\r?\n/);
-      const pending = blocks.pop() ?? '';
-      if (blocks.some((block) => sseEventId(block) === rpcId)) return text;
-      scanned = text.length - pending.length;
+      delimiter.lastIndex = searchFrom;
+      for (let m; (m = delimiter.exec(text));) {
+        if (sseEventId(text.slice(eventStart, m.index)) === rpcId) return text;
+        eventStart = m.index + m[0].length;
+      }
+      // A delimiter split across chunks is at most 4 characters, so 3 are searched again.
+      searchFrom = Math.max(eventStart, text.length - 3);
     }
   } finally {
     void reader.cancel().catch(() => undefined);

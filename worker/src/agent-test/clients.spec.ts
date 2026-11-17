@@ -662,6 +662,66 @@ it('also covers the escaped JSON forms other servers write (PHP "\\/", Go and Py
   expect(forms).toContain('a/b\\u0026c\\u003c\\u00e9\\u003e');
 });
 
+it('redacts each JSON escape style on its own (non-ASCII only, HTML only)', () => {
+  const secret = 'a&b<é>';
+  const text = `${'a&b<\\u00e9>'} ${'a\\u0026b\\u003cé\\u003e'}`;
+  expect(redact(text, [secret])).toBe('[REDACTED] [REDACTED]');
+});
+
+it('redacts the union of overlapping secrets, not just the first match', () => {
+  expect(redact('xabcdefghijklmnopx', ['abcd', 'cdefghijklmnop'])).toBe(
+    'x[REDACTED]x',
+  );
+  expect(redact('abcd-cdefghijklmnop', ['abcd', 'cdefghijklmnop'])).toBe(
+    '[REDACTED]-[REDACTED]',
+  );
+});
+
+it('closes the session when the initialize reply is over the size cap', async () => {
+  handler = (_r, _b, res) => {
+    res.writeHead(200, {
+      'content-type': 'application/json',
+      'mcp-session-id': 'sess-big',
+    });
+    res.end('x'.repeat(MAX_REPLY_BYTES + 1));
+  };
+  await expect(
+    connect({ kind: 'mcp', url, tool: 'ask' }).send('x'),
+  ).rejects.toThrow('mcp agent reply exceeded 5 MiB');
+  expect(seen.map((s) => s.body?.method ?? 'DELETE')).toEqual([
+    'initialize',
+    'DELETE',
+  ]);
+  expect(seen[1].headers['mcp-session-id']).toBe('sess-big');
+});
+
+it('finds the SSE reply after one large event arrives in small chunks', async () => {
+  handler = (_r, body, res) => {
+    if (body?.method !== 'tools/call') {
+      res.writeHead(200, { 'content-type': 'application/json' });
+      return res.end(
+        JSON.stringify({ jsonrpc: '2.0', id: body?.id ?? 0, result: {} }),
+      );
+    }
+    res.writeHead(200, { 'content-type': 'text/event-stream' });
+    const msg = `data: ${JSON.stringify({ jsonrpc: '2.0', id: body.id, result: { content: [{ type: 'text', text: 'y'.repeat(200_000) }] } })}\r\n\r\n`;
+    let i = 0;
+    const tick = () => {
+      if (i >= msg.length) return; // stream left open: the reply must be found at its delimiter
+      res.write(msg.slice(i, (i += 1000)));
+      setImmediate(tick);
+    };
+    tick();
+  };
+  const r = await connect({
+    kind: 'mcp',
+    url,
+    tool: 'ask',
+    timeoutMs: 10000,
+  }).send('m');
+  expect(r.text).toHaveLength(200_000);
+});
+
 it('finds the SSE reply after many unrelated events arrive in small chunks', async () => {
   handler = (_r, body, res) => {
     if (body?.method !== 'tools/call') {
