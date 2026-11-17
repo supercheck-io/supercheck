@@ -8,7 +8,7 @@ jest.mock("@/utils/db", () => ({
 jest.mock("@/lib/monitor-schedule-reconcile", () => ({ reconcileMonitorSchedule: jest.fn().mockResolvedValue(undefined) }));
 // The SQL merge of worker keys is covered in monitor-write.spec.ts and monitor-service.db.spec.ts; here the written config is inspected as an object.
 jest.mock("@/lib/monitor-write", () => ({ ...jest.requireActual("@/lib/monitor-write"), configKeepingWorkerKeys: (config: unknown) => config, assertAgentMonitorRunnable: jest.fn() }));
-jest.mock("@/lib/queue", () => ({ addMonitorExecutionJobToQueue: jest.fn() }));
+jest.mock("@/lib/queue", () => ({ addMonitorExecutionJobToQueue: jest.fn(), assertExecutionQueueReady: jest.fn() }));
 jest.mock("@/lib/monitor-scheduler", () => ({
   scheduleMonitor: jest.fn(),
   deleteScheduledMonitor: jest.fn(),
@@ -222,6 +222,21 @@ describe("updateMonitorHandler write safety", () => {
     (scheduleMonitor as jest.Mock).mockRejectedValue(new Error("redis down"));
     (db.update as jest.Mock).mockReturnValue(chain({}));
     await expect(scheduleCreatedMonitor({ ...existing, frequencyMinutes: 5 } as never, true)).rejects.toThrow("redis down");
+  });
+
+  it("fails fast without touching the scheduler when Redis is not ready", async () => {
+    const { assertExecutionQueueReady } = jest.requireMock("@/lib/queue") as { assertExecutionQueueReady: jest.Mock };
+    const { ExecutionQueueError } = jest.requireActual("@/lib/execution-errors");
+    assertExecutionQueueReady.mockRejectedValueOnce(new ExecutionQueueError("queue_unavailable", "Execution queue is temporarily unavailable"));
+    await expect(scheduleCreatedMonitor({ ...existing, frequencyMinutes: 5 } as never, true)).rejects.toThrow("temporarily unavailable");
+    expect(scheduleMonitor).not.toHaveBeenCalled();
+  });
+
+  it("creates a heartbeat without checking Redis: it is never scheduled", async () => {
+    const { assertExecutionQueueReady } = jest.requireMock("@/lib/queue") as { assertExecutionQueueReady: jest.Mock };
+    await scheduleCreatedMonitor({ ...existing, type: "heartbeat", frequencyMinutes: 60 } as never, true);
+    expect(assertExecutionQueueReady).not.toHaveBeenCalled();
+    expect(scheduleMonitor).not.toHaveBeenCalled();
   });
 
   it("removes the queued repeatable job when recording its id fails after create", async () => {
