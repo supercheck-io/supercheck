@@ -13,19 +13,22 @@ import { NAV } from "@/lib/nav-areas";
 import { PERSONA_OPTIONS, SETUP_STEP_SHORT_LABEL, isUserPersona, sidebarLayout, stepOrder, type UserPersona } from "@/lib/setup/persona";
 import { ADMIN_TYPES, TYPE_TONE } from "@/lib/type-tones";
 
-/** Each persona wears the icon and tone of the area it starts in, from the same registries as the sidebar. */
-const PERSONA_ICON: Record<UserPersona, { icon: LucideIcon; tone: IconTone }> = {
-  sre: { icon: NAV.monitors.icon, tone: NAV.monitors.tone },
-  qa: { icon: NAV.tests.icon, tone: NAV.tests.tone },
-  developer: { icon: Terminal, tone: TYPE_TONE.admin.cliToken },
-  leader: { icon: ADMIN_TYPES.member.icon, tone: TYPE_TONE.admin.member },
+/** Each persona's icon is the area it starts in (same icons as the sidebar); this page shows them all in one neutral tone. */
+const PERSONA_ICON: Record<UserPersona, LucideIcon> = {
+  sre: NAV.monitors.icon,
+  qa: NAV.tests.icon,
+  developer: Terminal,
+  leader: ADMIN_TYPES.member.icon,
 };
+
+const NEUTRAL_TONE: IconTone = TYPE_TONE.admin.cliToken;
 
 /** "default" is the no-persona choice, shown as a card instead of a separate button. */
 type Choice = UserPersona | "default";
 const OPTIONS: Array<{ id: Choice; title: string; description: string; icon: LucideIcon; tone: IconTone }> = [
-  ...PERSONA_OPTIONS.map((o) => ({ ...o, ...PERSONA_ICON[o.id] })),
-  { id: "default", title: "Default", description: "Every group open, setup in the usual order. Good if you do a bit of everything.", icon: LayoutGrid, tone: "slate" },
+  // One neutral tone (the CLI card's) on this page: the cards are choices, not product areas.
+  ...PERSONA_OPTIONS.map((o) => ({ ...o, icon: PERSONA_ICON[o.id], tone: NEUTRAL_TONE })),
+  { id: "default", title: "Default", description: "Every group open, setup in the usual order. Good if you do a bit of everything.", icon: LayoutGrid, tone: NEUTRAL_TONE },
 ];
 const toPersona = (choice: Choice | null): UserPersona | null => (choice && choice !== "default" ? choice : null);
 
