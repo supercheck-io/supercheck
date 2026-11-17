@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { LayoutGrid, Rocket, Terminal, type LucideIcon } from "lucide-react";
+import { ChevronDown, ChevronRight, LayoutGrid, Rocket, Terminal, type LucideIcon } from "lucide-react";
 import { toast } from "sonner";
 
 import { PageHeader } from "@/components/shared/page-header";
@@ -25,35 +25,45 @@ const PERSONA_ICON: Record<UserPersona, { icon: LucideIcon; tone: IconTone }> = 
 type Choice = UserPersona | "default";
 const OPTIONS: Array<{ id: Choice; title: string; description: string; icon: LucideIcon; tone: IconTone }> = [
   ...PERSONA_OPTIONS.map((o) => ({ ...o, ...PERSONA_ICON[o.id] })),
-  { id: "default", title: "Show everything", description: "The standard layout, every group open. Pick this if you do a bit of everything.", icon: LayoutGrid, tone: "slate" },
+  { id: "default", title: "Default", description: "Every group open, setup in the usual order. Good if you do a bit of everything.", icon: LayoutGrid, tone: "slate" },
 ];
 const toPersona = (choice: Choice | null): UserPersona | null => (choice && choice !== "default" ? choice : null);
 
-/** What a choice changes: the sidebar order (with the group that opens) and the first setup steps. */
+/** What a choice changes, drawn like the sidebar: groups in order (▾ open, ▸ folded) and the first setup steps. */
 function ChoicePreview({ choice }: { choice: Choice }) {
   const persona = toPersona(choice);
   const layout = sidebarLayout(persona);
   const steps = stepOrder(persona).slice(0, 3);
   return (
-    <span className="mt-3 block space-y-1.5 border-t pt-3 text-xs text-muted-foreground">
-      <span className="flex flex-wrap items-center gap-1">
-        <span className="w-20 shrink-0">Sidebar</span>
-        {layout.order.map((group) => (
-          <span
-            key={group}
-            className={
-              layout.expanded === group
-                ? "rounded bg-primary/10 px-1.5 py-0.5 font-medium text-foreground"
-                : "rounded bg-muted px-1.5 py-0.5"
-            }
-          >
-            {group}
-          </span>
-        ))}
+    <span className="mt-5 grid grid-cols-2 gap-4 border-t pt-4 text-xs">
+      <span className="block">
+        <span className="mb-2 block font-medium text-muted-foreground">Sidebar</span>
+        <span className="block space-y-1">
+          {layout.order.map((group) => {
+            const isOpen = layout.expanded === null || layout.expanded === group;
+            const Chevron = isOpen ? ChevronDown : ChevronRight;
+            return (
+              <span key={group} className={`flex items-center gap-1.5 ${isOpen ? "text-foreground" : "text-muted-foreground"}`}>
+                <Chevron className="size-3.5 shrink-0" aria-hidden="true" />
+                {group}
+                {isOpen ? <span className="sr-only">(open)</span> : null}
+              </span>
+            );
+          })}
+        </span>
       </span>
-      <span className="flex flex-wrap items-center gap-1">
-        <span className="w-20 shrink-0">Setup starts</span>
-        <span className="text-foreground">{steps.map((s) => SETUP_STEP_SHORT_LABEL[s]).join(" → ")}</span>
+      <span className="block">
+        <span className="mb-2 block font-medium text-muted-foreground">Setup starts with</span>
+        <span className="block space-y-1">
+          {steps.map((step, index) => (
+            <span key={step} className="flex items-center gap-1.5 text-foreground">
+              <span className="flex size-4 shrink-0 items-center justify-center rounded-full bg-muted text-[10px] tabular-nums text-muted-foreground">
+                {index + 1}
+              </span>
+              {SETUP_STEP_SHORT_LABEL[step]}
+            </span>
+          ))}
+        </span>
       </span>
     </span>
   );
@@ -72,7 +82,7 @@ interface WelcomeProps {
 
 /** The one persona question (D13). Saving also marks it as seen, so it is shown once per user. */
 export function Welcome({ mode, projectName, organizationName, initialPersona = null, onDone }: WelcomeProps) {
-  // Change mode always has a current choice: the saved persona, or "Show everything" when there is none.
+  // Change mode always has a current choice: the saved persona, or Default when there is none.
   const [choice, setChoice] = useState<Choice | null>(mode === "change" ? initialPersona ?? "default" : null);
   const save = useSavePersona();
 
@@ -117,21 +127,25 @@ export function Welcome({ mode, projectName, organizationName, initialPersona = 
         aria-label="What will you mostly do here?"
         value={choice ?? ""}
         onValueChange={(value) => (value === "default" || isUserPersona(value)) && setChoice(value)}
-        className="grid-cols-1 gap-3 md:grid-cols-2"
+        className="grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3"
       >
         {OPTIONS.map((option) => (
           <label
             key={option.id}
             htmlFor={`persona-${option.id}`}
-            className={`flex cursor-pointer items-start gap-3 rounded-xl border border-border/60 bg-card p-4 transition-colors hover:border-primary/70 has-[button[data-state=checked]]:border-primary has-[button[data-state=checked]]:bg-accent has-[button:focus-visible]:ring-2 has-[button:focus-visible]:ring-ring ${option.id === "default" ? "md:col-span-2" : ""}`}
+            className="flex h-full cursor-pointer flex-col rounded-xl border border-border/60 bg-card p-6 transition-all hover:border-primary/70 hover:shadow-md has-[button[data-state=checked]]:border-primary has-[button[data-state=checked]]:bg-accent has-[button:focus-visible]:ring-2 has-[button:focus-visible]:ring-ring"
           >
-            <IconChip icon={option.icon} tone={option.tone} size="md" />
-            <span className="min-w-0 flex-1">
-              <span className="block text-sm font-semibold">{option.title}</span>
-              <span className="mt-0.5 block text-xs text-muted-foreground">{option.description}</span>
+            <span className="flex items-start gap-4">
+              <IconChip icon={option.icon} tone={option.tone} size="lg" />
+              <span className="min-w-0 flex-1">
+                <span className="block text-base font-semibold leading-tight">{option.title}</span>
+                <span className="mt-2 block text-sm leading-relaxed text-muted-foreground">{option.description}</span>
+              </span>
+              <RadioGroupItem id={`persona-${option.id}`} value={option.id} className="mt-1" />
+            </span>
+            <span className="mt-auto block">
               <ChoicePreview choice={option.id} />
             </span>
-            <RadioGroupItem id={`persona-${option.id}`} value={option.id} className="mt-1" />
           </label>
         ))}
       </RadioGroup>

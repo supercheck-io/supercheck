@@ -15,7 +15,7 @@ beforeEach(() => {
 const respond = (body: unknown, status = 200) => fetchMock.mockResolvedValue({ ok: status < 400, status, json: async () => body });
 
 describe("Welcome", () => {
-  it("renders the four personas and Show everything as a radio group and keeps Start setup off until one is picked", () => {
+  it("renders the four personas and Default as a radio group and keeps Start setup off until one is picked", () => {
     const { Wrapper } = createWrapper();
     render(<Welcome mode="creator" projectName="Web App" onDone={jest.fn()} />, { wrapper: Wrapper });
     expect(screen.getByRole("radiogroup")).toBeTruthy();
@@ -81,9 +81,9 @@ describe("Welcome", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(onDone).toHaveBeenCalled());
     expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({ persona: "qa" });
-    // "Show everything" clears a saved persona.
+    // "Default" clears a saved persona.
     fetchMock.mockClear();
-    fireEvent.click(screen.getByRole("radio", { name: /Show everything/ }));
+    fireEvent.click(screen.getByRole("radio", { name: /^Default/ }));
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(onDone).toHaveBeenCalledTimes(2));
     expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({ persona: null });
@@ -94,14 +94,14 @@ describe("Welcome", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("change mode with no saved persona preselects Show everything, and each card previews the sidebar and setup order", () => {
+  it("change mode with no saved persona preselects Default, and each card previews the sidebar and setup order", () => {
     const { Wrapper } = createWrapper();
     render(<Welcome mode="change" projectName="Web App" onDone={jest.fn()} />, { wrapper: Wrapper });
-    expect(screen.getByRole("radio", { name: /Show everything/ })).toBeChecked();
+    expect(screen.getByRole("radio", { name: /^Default/ })).toBeChecked();
     expect(screen.queryByRole("button", { name: "No preference" })).toBeNull();
     const sre = screen.getByRole("radio", { name: /Keep production up/ }).closest("label")!;
-    expect(sre).toHaveTextContent("SidebarRespondMonitorCommunicateAutomate");
-    expect(sre).toHaveTextContent("Setup startsYour app → Alerts → Monitors");
+    expect(sre).toHaveTextContent("SidebarRespond(open)MonitorCommunicateAutomate");
+    expect(sre).toHaveTextContent("Setup starts with1Your app2Alerts3Monitors");
   });
 
   it("falls back to a generic organization name and tells the user when saving fails", async () => {
