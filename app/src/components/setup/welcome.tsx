@@ -30,7 +30,7 @@ type Choice = UserPersona | "default";
 const OPTIONS: Array<{ id: Choice; title: string; description: string; icon: LucideIcon; tone: IconTone }> = [
   // One neutral tone (the CLI card's) on this page: the cards are choices, not product areas.
   ...PERSONA_OPTIONS.map((o) => ({ ...o, icon: PERSONA_ICON[o.id], tone: NEUTRAL_TONE })),
-  { id: "default", title: "Default", description: "Every group open, setup in the usual order. Good if you do a bit of everything.", icon: LayoutGrid, tone: NEUTRAL_TONE },
+  { id: "default", title: "A bit of everything", description: "The standard layout: every sidebar group open and setup in the usual order.", icon: LayoutGrid, tone: NEUTRAL_TONE },
 ];
 const toPersona = (choice: Choice | null): UserPersona | null => (choice && choice !== "default" ? choice : null);
 
@@ -87,7 +87,7 @@ interface WelcomeProps {
 
 /** The one persona question (D13). Saving also marks it as seen, so it is shown once per user. */
 export function Welcome({ mode, projectName, organizationName, initialPersona = null, onDone }: WelcomeProps) {
-  // Change mode always has a current choice: the saved persona, or Default when there is none.
+  // Change mode always has a current choice: the saved persona, or "A bit of everything" when there is none.
   const [choice, setChoice] = useState<Choice | null>(mode === "change" ? initialPersona ?? "default" : null);
   const save = useSavePersona();
 
@@ -125,7 +125,7 @@ export function Welcome({ mode, projectName, organizationName, initialPersona = 
     mode === "creator"
       ? "Welcome to Supercheck"
       : mode === "change"
-        ? "Change your persona"
+        ? "Choose your focus"
         : `You joined ${organizationName || "the organization"}. What will you mostly do here?`;
   const description =
     mode === "creator"

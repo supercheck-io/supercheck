@@ -36,7 +36,7 @@ test.describe('Project setup skip and resume @setup', () => {
   });
 
   test('skipped Alerts and Status page stay open on the checklist and the wizard resumes at the same step @critical', async () => {
-    await chooseProfile(page, 'Keep production up');
+    await chooseProfile(page, 'SRE and platform');
 
     await expectStep(page, 'app');
     await next(page);

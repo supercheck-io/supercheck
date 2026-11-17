@@ -35,7 +35,7 @@ test.describe('Project setup create failure @setup', () => {
   });
 
   test('a failed monitor shows its error and Retry, the other item stays created, Retry succeeds without duplicates @critical', async () => {
-    await chooseProfile(page, 'Keep production up');
+    await chooseProfile(page, 'SRE and platform');
     await expectStep(page, 'app');
     await wizard(page).getByLabel('App URL').fill('https://example.com');
     await next(page);

@@ -13,7 +13,7 @@ import {
   wizard,
 } from '../../utils/setup-test-data';
 
-// The wizard order for "Keep production up": App, Alerts, Monitors, (AI SRE), Status page, (Requirements and tests), Review and create.
+// The wizard order for "SRE and platform": App, Alerts, Monitors, (AI SRE), Status page, (Requirements and tests), Review and create.
 test.describe('Project setup creator flow @setup', () => {
   let context: BrowserContext;
   let page: Page;
@@ -38,7 +38,7 @@ test.describe('Project setup creator flow @setup', () => {
 
   test('persona, app URL, email channel, monitors and status page create, then the dashboard card ticks @critical', async () => {
     await expect(page).toHaveURL(/\/setup/);
-    await chooseProfile(page, 'Keep production up');
+    await chooseProfile(page, 'SRE and platform');
 
     await expectStep(page, 'app');
     await wizard(page).getByLabel('App URL').fill('https://example.com');

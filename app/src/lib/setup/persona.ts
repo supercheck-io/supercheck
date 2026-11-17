@@ -2,32 +2,33 @@ import { USER_PERSONAS, type UserPersona } from "@/db/schema/project-setup";
 
 export { USER_PERSONAS, type UserPersona };
 
+/** Titles match the "By role" solutions on the website (site-nav.ts), in the same order; the line says what the choice changes. */
 export const PERSONA_OPTIONS: ReadonlyArray<{
   id: UserPersona;
   title: string;
   description: string;
 }> = [
   {
+    id: "developer",
+    title: "Developers",
+    description: "Ship tests and monitors with your code. Starts with the CLI and the coding-agent recipe.",
+  },
+  {
     id: "sre",
-    title: "Keep production up",
-    description: "Monitors, alerts, incidents and AI SRE first.",
+    title: "SRE and platform",
+    description: "Catch outages, find the cause, update users. Starts with monitors, alerts and incidents.",
   },
   {
     id: "qa",
-    title: "Test my app",
-    description: "Requirements, tests and scheduled runs first.",
-  },
-  {
-    id: "developer",
-    title: "Build with code and agents",
-    description: "CLI, monitors-as-code and the coding-agent recipe first.",
+    title: "QA engineers",
+    description: "Playwright and k6 suites that run on a schedule. Starts with requirements and tests.",
   },
   {
     id: "leader",
-    title: "Lead a team",
-    description: "Invite your team, then set up the basics.",
+    title: "Engineering leaders",
+    description: "Coverage, access and audit trail in one view. Starts by inviting your team.",
   },
-];
+]
 
 export function isUserPersona(value: unknown): value is UserPersona {
   return typeof value === "string" && (USER_PERSONAS as readonly string[]).includes(value);
