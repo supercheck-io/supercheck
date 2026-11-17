@@ -69,8 +69,16 @@ async function rescheduleMonitors(
   const rows = await database
     .select()
     .from(monitors)
-    // A monitor paused again, or moved to a deleted project, since it was resumed stays unscheduled.
-    .where(and(inArray(monitors.id, monitorIds), ne(monitors.status, "paused"), notInDeletedProject(monitors.projectId)));
+    // Same gate as the scheduler's repair sweep: a monitor paused, disabled or deleted since it was resumed stays unscheduled.
+    .where(
+      and(
+        inArray(monitors.id, monitorIds),
+        ne(monitors.status, "paused"),
+        eq(monitors.enabled, true),
+        liveMonitor(),
+        notInDeletedProject(monitors.projectId),
+      ),
+    );
   for (const monitor of rows) {
     if (monitor.type === "heartbeat" || !monitor.frequencyMinutes || monitor.frequencyMinutes <= 0) continue;
     try {
@@ -395,6 +403,9 @@ export async function restoreTrialSuspensions(
             and(
               inArray(monitors.id, monitorIds),
               eq(monitors.status, "paused"),
+              // A monitor the user disabled or is deleting stays paused rather than pending with no schedule.
+              eq(monitors.enabled, true),
+              liveMonitor(),
               // A project deleted while suspended stays stopped.
               notInDeletedProject(monitors.projectId),
             ),

@@ -158,6 +158,20 @@ it("reschedules a monitor resumed between the unschedule write and the Redis del
   expect(row).toMatchObject({ status: "pending", scheduledJobId: "sched-race" });
 });
 
+it("does not reschedule a monitor deleted between the resume and the re-read", async () => {
+  const { org, monitor } = await seed({ status: "none" });
+  deleteScheduledMonitor.mockImplementationOnce(async () => true); // legacy sched-1 delete
+  deleteScheduledMonitor.mockImplementationOnce(async () => {
+    await mockDatabase.update(schema.organization).set({ subscriptionStatus: "active" }).where(eq(schema.organization.id, org.id));
+    await restoreTrialSuspensions(org.id);
+    await mockDatabase.update(schema.monitors).set({ deletingAt: new Date() }).where(eq(schema.monitors.id, monitor.id));
+    scheduleMonitor.mockClear();
+    return true;
+  });
+  await suspendLapsedOrganizations({ now: NOW });
+  expect(scheduleMonitor).not.toHaveBeenCalled();
+});
+
 it("keeps draining batches past 50 organizations", async () => {
   const orgs = [];
   for (let i = 0; i < 52; i++) orgs.push(await seed({ status: "none" }));

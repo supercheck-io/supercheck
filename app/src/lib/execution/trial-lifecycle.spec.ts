@@ -411,6 +411,8 @@ describe("restoreTrialSuspensions", () => {
     await restoreTrialSuspensions("org", database);
     expect(wheres).toHaveLength(2);
     expect(wheres[0]).toContain(`"projects"."id" = "monitors"."project_id" AND "projects"."status" = 'deleted'`);
+    expect(wheres[0]).toContain(`"monitors"."enabled" = $`);
+    expect(wheres[0]).toContain(`"monitors"."deleting_at" is null`);
     expect(wheres[1]).toContain(`"projects"."id" = "status_pages"."project_id" AND "projects"."status" = 'deleted'`);
   });
 
