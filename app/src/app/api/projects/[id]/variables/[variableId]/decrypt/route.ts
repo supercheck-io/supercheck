@@ -24,6 +24,11 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string; variableId: string }> }
 ) {
+  // A cross-site page cannot send a bearer token, so refuse its cookie request before it spends this IP's slots.
+  if (!request.headers.has("authorization")) {
+    const originError = requireSessionSameOrigin(request);
+    if (originError) return originError;
+  }
   return rateLimitedHandler(request, async (req, _rateLimitCtx) => {
     let projectId: string | undefined;
     let variableId: string | undefined;
