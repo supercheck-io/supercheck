@@ -348,6 +348,13 @@ describe("processSreBackgroundAlertTriageJob", () => {
       expect(tx.insert).not.toHaveBeenCalled();
     });
 
+    it("keeps the incident_disabled reason when that monitor is also inside a maintenance window", async () => {
+      const { isMonitorInMaintenance } = jest.requireMock("@/lib/maintenance/predicate");
+      selectQueue.push([alertRow({ monitorAlertConfig: { incidentEnabled: false } })]);
+      expect(await processSreBackgroundAlertTriageJob(JOB)).toEqual({ success: true, skipped: true, reason: "incident_disabled" });
+      expect(isMonitorInMaintenance).not.toHaveBeenCalled();
+    });
+
     it("links open status-page incidents for a new monitor incident, not for jobs", async () => {
       selectQueue.push([alertRow()]);
       freshIncidentQueue();

@@ -389,13 +389,6 @@ async function createOrGetIncidentForAlertHistory(alertHistoryId: string, failur
     return { skipped: true as const, reason: "recovery_handled" as const };
   }
 
-  // A failure that fired inside a maintenance window is muted here too, behind the worker's own mute. Judged at firedAt,
-  // so a failure from just before the window still opens its incident. Only a window's current occurrence counts: once
-  // a recurring window is ended or a series cancelled, its earlier instants are no longer covered.
-  if (sourceType === "monitor" && (await isMonitorInMaintenance(sourceId, firedAt))) {
-    return { skipped: true as const, reason: "in_maintenance" as const };
-  }
-
   // Incidents off means this monitor never opens one; a person can still list it on a declared incident, and then
   // its alert joins that incident (below) instead of being dropped.
   if (
@@ -403,6 +396,13 @@ async function createOrGetIncidentForAlertHistory(alertHistoryId: string, failur
     !(sourceType === "monitor" && (await findOpenIncidentListingMonitor(db, { organizationId, projectId, monitorId: sourceId })))
   ) {
     return { skipped: true as const, reason: "incident_disabled" as const };
+  }
+
+  // A failure that fired inside a maintenance window is muted here too, behind the worker's own mute. Judged at firedAt,
+  // so a failure from just before the window still opens its incident. Only a window's current occurrence counts: once
+  // a recurring window is ended or a series cancelled, its earlier instants are no longer covered.
+  if (sourceType === "monitor" && (await isMonitorInMaintenance(sourceId, firedAt))) {
+    return { skipped: true as const, reason: "in_maintenance" as const };
   }
 
   const severity =

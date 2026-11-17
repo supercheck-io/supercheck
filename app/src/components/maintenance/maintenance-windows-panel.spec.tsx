@@ -145,7 +145,7 @@ describe("monitor and service actions", () => {
     expect(maintenanceEndLabel(end, "Europe/Berlin")).not.toBe(maintenanceEndLabel(end, "UTC"));
     expect(maintenanceEndLabel(end, "UTC")).toMatch(/22/);
     // A bad zone name never throws; it falls back to the viewer's zone.
-    expect(maintenanceEndLabel(end, "Not/AZone")).toBe(end.toLocaleString(undefined, options));
+    expect(maintenanceEndLabel(end, "Not/AZone")).toBe(`${end.toLocaleString(undefined, options)} (your time)`);
   });
 
   it("renders nothing for a viewer when no window is active", () => {

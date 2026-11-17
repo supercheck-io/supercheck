@@ -254,8 +254,8 @@ export function maintenanceEndLabel(end: Date, timeZone: string): string {
   try {
     return end.toLocaleString(undefined, { ...options, timeZone });
   } catch {
-    // An unknown zone name (stored before validation) falls back to the viewer's zone, still labelled.
-    return end.toLocaleString(undefined, options);
+    // An unknown zone name (stored before validation) falls back to the viewer's zone, and says so.
+    return `${end.toLocaleString(undefined, options)} (your time)`;
   }
 }
 

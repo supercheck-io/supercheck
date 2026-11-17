@@ -78,6 +78,7 @@ export async function GET() {
         paused: sql<number>`COALESCE(count(*) filter (where ${monitors.status} = 'paused'), 0)`.mapWith(Number),
         pending: sql<number>`COALESCE(count(*) filter (where ${monitors.status} = 'pending'), 0)`.mapWith(Number),
         // Status keeps the real up/down during a window, so the count comes from the maintenance predicate.
+        // The predicate's own aliases (m, w, t, r, scm, ic, i) must not be used for monitors here.
         maintenance: sql<number>`COALESCE(count(*) filter (where ${monitorInMaintenanceSql(sql`${monitors.id}`, new Date())}), 0)`.mapWith(Number),
         error: sql<number>`COALESCE(count(*) filter (where ${monitors.status} = 'error'), 0)`.mapWith(Number),
       }).from(monitors)
