@@ -423,10 +423,15 @@ describe("Job Scheduler", () => {
       });
 
       describe("lock renewal", () => {
+        // The list query awaits .where(); scheduleJob's lookup chains .where().limit(1).
         const twoJobs = () =>
           mockDbModule.select.mockReturnValue({
             from: jest.fn().mockReturnThis(),
-            where: jest.fn().mockResolvedValue([mockJob, { ...mockJob, id: "job-2" }]),
+            where: jest.fn(() =>
+              Object.assign(Promise.resolve([mockJob, { ...mockJob, id: "job-2" }]), {
+                limit: jest.fn().mockResolvedValue([mockJob]),
+              }),
+            ),
           });
         const renewCalls = () =>
           mockRedisClient.eval.mock.calls.filter(([script]) => String(script).includes("expire"));
@@ -441,8 +446,10 @@ describe("Job Scheduler", () => {
 
         it("extends the lock while still the owner and keeps going", async () => {
           twoJobs();
-          await initializeJobSchedulers();
+          const result = await initializeJobSchedulers();
           const token = mockRedisClient.set.mock.calls[0][1];
+          expect(result).toEqual({ success: true, initialized: 2, failed: 0 });
+          expect(mockQueueAdd).toHaveBeenCalledTimes(2);
           expect(renewCalls()).toHaveLength(2);
           expect(renewCalls()[0]).toEqual([expect.any(String), 1, "job:scheduler:init:lock", token, 120]);
         });
