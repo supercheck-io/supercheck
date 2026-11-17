@@ -138,4 +138,19 @@ describe("current billing subscription display", () => {
     const body = await (await GET()).json();
     expect(body.usage.playwrightMinutes.percentage).toBe(99);
   });
+
+  it("reports no 100% usage for a lapsed organization with blocked limits", async () => {
+    (subscriptionService.getSubscriptionAccessStatus as jest.Mock).mockResolvedValue({ isActive: false, plan: null, status: "canceled", reason: "canceled_expired" });
+    (subscriptionService.getOrganizationPlanSafe as jest.Mock).mockResolvedValue({ id: "blocked", plan: "unlimited", maxMonitors: 0, maxStatusPages: 0, maxProjects: 0, maxTeamMembers: 0 });
+    (db.select as jest.Mock).mockReturnValue({ from: () => ({ where: async () => [{ count: 3 }] }) });
+    (subscriptionService.getUsageSafe as jest.Mock).mockResolvedValue({
+      playwrightMinutes: { used: 40, included: 0, overage: 40 }, k6VuMinutes: { used: 0, included: 0, overage: 0 },
+      aiCredits: { used: 2, included: 0, overage: 2 }, sreInvestigations: { used: 0, included: 0, overage: 0 },
+    });
+    const body = await (await GET()).json();
+    expect(body.subscription).toMatchObject({ plan: null, accessReason: "canceled_expired" });
+    for (const meter of Object.values(body.usage) as { percentage: number }[]) expect(meter.percentage).toBe(0);
+    for (const key of ["monitors", "statusPages", "projects", "teamMembers"]) expect(body.limits[key].percentage).toBe(0);
+  });
+
 });

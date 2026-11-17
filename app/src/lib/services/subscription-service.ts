@@ -519,7 +519,8 @@ export class SubscriptionService {
 
   /**
    * Get the subscription plan information for an organization (non-throwing version)
-   * Returns unlimited plan limits for unsubscribed cloud users (for display purposes)
+   * Returns blocked (zero) limits for a lapsed cloud organization, one with no
+   * active subscription and no active trial, so the UI shows an ended state
    * Use this for billing/current endpoint to show usage even without subscription
    * Validates Polar customer existence but doesn't auto-clear
    */
@@ -580,8 +581,8 @@ export class SubscriptionService {
     const trial = await getActiveTrial(organizationId);
     if (trial) return trialPlanLimits(trial);
 
-    // Return plus plan limits for display purposes (user will see what they'd get)
-    return this.getPlanLimits("plus");
+    // Lapsed: no paid access and no trial, so there are no allowances to show.
+    return this.getPlanLimits("blocked");
   }
 
   /**
