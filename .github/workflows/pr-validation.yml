@@ -63,7 +63,7 @@ jobs:
             area core '^((app|worker)/|deploy/docker/)' "$(grep -v '^app/e2e/' <<< "$changed" || true)"
             area cli '^cli/'
             area e2e '^app/e2e/'
-            area tools '^tools-api/'
+            area tools '^tools/'
           } | tee -a "$GITHUB_OUTPUT" | {
             echo "## Changed areas"
             echo ""
@@ -467,23 +467,23 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: "npm"
-          cache-dependency-path: tools-api/package-lock.json
+          cache-dependency-path: tools/package-lock.json
 
       - name: Install dependencies
-        working-directory: ./tools-api
+        working-directory: ./tools
         run: npm ci --prefer-offline --no-audit
 
       - name: Type check
-        working-directory: ./tools-api
+        working-directory: ./tools
         run: npm run typecheck
 
       # Runs in workerd via Miniflare; outbound fetches are mocked, so no secret is needed.
       - name: Run tests with coverage
-        working-directory: ./tools-api
+        working-directory: ./tools
         run: npm run test:cov
 
       - name: Bundle check
-        working-directory: ./tools-api
+        working-directory: ./tools
         run: npm run size
 
   e2e-quality-checks:

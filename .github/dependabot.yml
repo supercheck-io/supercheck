@@ -119,14 +119,14 @@ updates:
         update-types: ["version-update:semver-major"]
 
   - package-ecosystem: npm
-    directory: /tools-api
+    directory: /tools
     schedule:
       interval: monthly
     open-pull-requests-limit: 0
     cooldown:
       default-days: 7
     groups:
-      tools-api-minor-patch:
+      tools-minor-patch:
         update-types: ["minor", "patch"]
 
   # The recorder vendors upstream Playwright under recorder/playwright/**, which
