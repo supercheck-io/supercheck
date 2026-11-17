@@ -48,6 +48,8 @@ export const monitorSchema = z.object({
     nextExpectedAt: z.string().nullable(),
     graceMinutes: z.number(),
   }).optional(),
+  /** A maintenance window covers it right now; status keeps the real up/down. */
+  inMaintenance: z.boolean().optional(),
   lastCheckAt: z.string().nullable().optional(),
   lastStatusChangeAt: z.string().nullable().optional(),
   createdAt: z.string().optional(),

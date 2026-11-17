@@ -8603,6 +8603,10 @@ components:
           type: string
           format: date-time
           nullable: true
+        inMaintenance:
+          type: boolean
+          description: List responses only. True while a maintenance window covers the
+            monitor; status keeps the real up/down value.
         scheduledJobId:
           type: string
           nullable: true
@@ -8652,6 +8656,10 @@ components:
             - type: "null"
         isUp:
           type: boolean
+        inMaintenance:
+          type: boolean
+          description: "Checked inside a maintenance window: no alert was sent and the
+            check is left out of uptime."
         isStatusChange:
           type: boolean
         consecutiveFailureCount:

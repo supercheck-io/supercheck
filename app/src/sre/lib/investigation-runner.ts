@@ -49,6 +49,7 @@ import { findSimilarIncidents, similarIncidentPromptLines } from "@/lib/sre/simi
 import { SreDailyTokenLimitError } from "@/lib/sre/sre-daily-token-limit";
 import { failStaleSreInvestigationRunsForIncident, isActiveIncidentRunConflict } from "@/sre/lib/stale-run-recovery";
 import { insertSreRun, SreOrgConcurrencyError } from "@/sre/lib/run-insert";
+import { logAuditEvent } from "@/lib/audit-logger";
 
 const NATIVE_EVIDENCE_TIMEOUT_MS = 15_000;
 const NATIVE_EVIDENCE_FRESH_MS = 10 * 60 * 1000;
@@ -202,6 +203,15 @@ export async function startSreIncidentInvestigation(
     throw error;
   }
 
+  await logAuditEvent({
+    userId: input.userId ?? undefined,
+    organizationId: input.organizationId,
+    action: "sre_investigation_started",
+    resource: "sre_incident",
+    resourceId: incident.id,
+    metadata: { projectId: input.projectId, investigationRunId: run.id, origin: input.origin ?? "manual", liveConnectors: liveConnectorsEnabled },
+    success: true,
+  });
   return { success: true, investigationRunId: run.id, incident };
 }
 

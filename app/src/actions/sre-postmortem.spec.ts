@@ -10,6 +10,8 @@ jest.mock("@/lib/project-context", () => ({ requireProjectContext: jest.fn(async
 const perm = jest.fn();
 jest.mock("@/lib/rbac/middleware", () => ({ checkPermissionWithContext: (...a: unknown[]) => perm(...a) }));
 jest.mock("next/cache", () => ({ revalidatePath: jest.fn() }));
+const audit = jest.fn();
+jest.mock("@/lib/audit-logger", () => ({ logAuditEvent: (...a: unknown[]) => audit(...a) }));
 jest.mock("@/lib/logger/index", () => ({ createLogger: () => ({ error: jest.fn() }) }));
 const rate = jest.fn();
 jest.mock("@/lib/sre/sre-rate-limiter", () => ({ checkSrePostmortemRateLimit: (...a: unknown[]) => rate(...a) }));
@@ -72,6 +74,7 @@ describe("generateSrePostmortem", () => {
     perm.mockReturnValue(false);
     expect(await generateSrePostmortem({ incidentId })).toEqual({ success: false, error: expect.stringContaining("Insufficient permissions") });
     expect(rate).not.toHaveBeenCalled();
+    expect(audit).not.toHaveBeenCalled();
   });
 
   it("is tenancy scoped and rejects unknown incidents and unresolved incidents", async () => {
@@ -92,6 +95,11 @@ describe("generateSrePostmortem", () => {
     queue.push([resolved], [], [], [{ count: 0 }], []);
     const result = await generateSrePostmortem({ incidentId });
     expect(result).toMatchObject({ success: true, source: "template" });
+    expect(audit).toHaveBeenCalledTimes(1);
+    expect(audit).toHaveBeenCalledWith(expect.objectContaining({
+      userId: ctx.userId, organizationId: ctx.organizationId, action: "sre_postmortem_generated", resourceId: incidentId,
+      metadata: expect.objectContaining({ projectId: ctx.project.id, source: "template" }),
+    }));
     expect(updates[0]).toEqual(expect.objectContaining({ postmortem: expect.objectContaining({ generatedAt: expect.any(String) }) }));
   });
 });
@@ -186,6 +194,7 @@ describe("saveSrePostmortem", () => {
     queue.push([{ ...resolved, status: "triggered" }]);
     expect((await saveSrePostmortem({ incidentId, sections })).success).toBe(false);
     expect(updates).toHaveLength(0);
+    expect(audit).not.toHaveBeenCalled();
   });
 
   it("saves edited sections within the caller's tenancy", async () => {
@@ -195,5 +204,6 @@ describe("saveSrePostmortem", () => {
     expect(updates[0]).toEqual(expect.objectContaining({ postmortem: expect.objectContaining({ sections: expect.objectContaining({ follow_ups: "- a" }) }) }));
     const updateWhere = new PgDialect().sqlToQuery(wheres.at(-1) as never).params;
     expect(updateWhere).toEqual(expect.arrayContaining([incidentId, ctx.organizationId, ctx.project.id]));
+    expect(audit).toHaveBeenCalledWith(expect.objectContaining({ action: "sre_postmortem_saved", userId: ctx.userId, resourceId: incidentId }));
   });
 });

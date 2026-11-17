@@ -11,6 +11,7 @@ jest.mock("@/utils/db", () => ({
 jest.mock("@/lib/sre/incident-notifier", () => ({ notifyIncidentEvent: jest.fn() }));
 
 jest.mock("@/sre/lib/agent-runner", () => ({ ...jest.requireActual("@/sre/lib/agent-runner"), runSreAgent: jest.fn() }));
+jest.mock("@/lib/audit-logger", () => ({ logAuditEvent: jest.fn() }));
 jest.mock("@/lib/sre/investigation-billing", () => ({
   withSreInvestigationAdmission: jest.fn((_organizationId, createRun) => createRun(jest.requireMock("@/utils/db").db)),
   consumeSreInvestigationCredit: jest.fn(),
@@ -39,6 +40,7 @@ import {
 import { runSreAgent, SreAgentIncompleteResponseError } from "./agent-runner";
 import { consumeSreInvestigationCredit } from "@/lib/sre/investigation-billing";
 import { notifyIncidentEvent } from "@/lib/sre/incident-notifier";
+import { logAuditEvent } from "@/lib/audit-logger";
 
 const incident = {
   id: "018f0000-0000-7000-8000-000000000005",
@@ -105,6 +107,22 @@ describe("startSreIncidentInvestigation", () => {
     }));
     expect((db.update as jest.Mock).mock.invocationCallOrder[0])
       .toBeLessThan((db.insert as jest.Mock).mock.invocationCallOrder[0]);
+  });
+
+  it("audits a started investigation, and not a refused one", async () => {
+    (db.insert as jest.Mock).mockReturnValue({ values: () => ({ returning: async () => [{ id: "run-1" }] }) });
+    await expect(startSreIncidentInvestigation(input)).resolves.toMatchObject({ success: true, investigationRunId: "run-1" });
+    expect(logAuditEvent).toHaveBeenCalledWith(expect.objectContaining({
+      userId: input.userId,
+      organizationId: input.organizationId,
+      action: "sre_investigation_started",
+      resourceId: incident.id,
+      metadata: expect.objectContaining({ projectId: input.projectId, investigationRunId: "run-1", origin: "manual", liveConnectors: false }),
+    }));
+    jest.mocked(logAuditEvent).mockClear();
+    mockInsertFailure({ cause: { code: "23505", constraint_name: "sre_investigation_runs_active_incident_unique" } });
+    await startSreIncidentInvestigation(input);
+    expect(logAuditEvent).not.toHaveBeenCalled();
   });
 
   it("returns 409 when the database guard rejects a concurrent active run", async () => {
