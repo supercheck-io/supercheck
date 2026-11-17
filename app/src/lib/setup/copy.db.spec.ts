@@ -61,7 +61,10 @@ afterAll(async () => {
 afterEach(async () => {
   await client`DELETE FROM notification_providers`;
   await client`DELETE FROM external_connectors`;
+  await client`DELETE FROM audit_logs`;
 });
+
+const auditRows = (resourceId: string) => client`SELECT action, details FROM audit_logs WHERE details->>'resourceId' = ${resourceId}`;
 
 async function seedProvider(org: string, project: string, name: string, url = webhook) {
   const [row] = await mockDatabase
@@ -195,6 +198,43 @@ describe("copyProviders", () => {
       .returning();
     const [res] = await copyProviders(scope, [bad.id]);
     expect(res).toEqual({ sourceId: bad.id, status: "failed", error: "Could not copy this item" });
+  });
+});
+
+describe("copy audit", () => {
+  it("writes each created item's audit entry with the copy, and none for an adopted one", async () => {
+    const src = await seedProvider(orgA, projSrc, "Audited");
+    const [copied] = await copyProviders(scope, [src.id]);
+    expect(copied.status).toBe("copied");
+    const rows = await auditRows(copied.id!);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ action: "notification_provider_created", details: { metadata: { projectId: projTgt, copiedFromProjectId: projSrc } } });
+    expect(JSON.stringify(rows[0].details)).not.toContain("SECRETVALUE");
+
+    const [adopted] = await copyProviders(scope, [src.id]);
+    expect(adopted.status).toBe("adopted");
+    expect(await auditRows(adopted.id!)).toHaveLength(1);
+  });
+  it("a real audit insert failure rolls both copies back: no row exists without its audit entry", async () => {
+    const providerSrc = await seedProvider(orgA, projSrc, "Rollback");
+    const connectorSrc = await seedConnector(orgA, projSrc, "Prom audited");
+    // A real insert failure (not a mocked throw), so the test also fails if `strict` is dropped and the error is swallowed.
+    await client.unsafe(`CREATE FUNCTION reject_copy_audit() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'audit unavailable'; END $$`);
+    await client.unsafe(`CREATE TRIGGER reject_copy_audit BEFORE INSERT ON audit_logs FOR EACH ROW EXECUTE FUNCTION reject_copy_audit()`);
+    try {
+      expect((await copyProviders(scope, [providerSrc.id]))[0]).toMatchObject({ status: "failed", error: "Could not record the audit entry; nothing was copied" });
+      expect((await copyConnectors(scope, [connectorSrc]))[0]).toMatchObject({ status: "failed", error: "Could not record the audit entry; nothing was copied" });
+    } finally {
+      await client.unsafe(`DROP TRIGGER reject_copy_audit ON audit_logs`);
+      await client.unsafe(`DROP FUNCTION reject_copy_audit()`);
+    }
+    expect(await mockDatabase.select().from(schema.notificationProviders).where(eq(schema.notificationProviders.projectId, projTgt))).toHaveLength(0);
+    expect(await mockDatabase.select().from(schema.externalConnectors).where(eq(schema.externalConnectors.projectId, projTgt))).toHaveLength(0);
+
+    // Once audits work again the same copy succeeds and is audited.
+    const [copied] = await copyConnectors(scope, [connectorSrc]);
+    expect(copied.status).toBe("copied");
+    expect((await auditRows(copied.id!)).map((r) => r.action)).toEqual(["sre_connector_created"]);
   });
 });
 

@@ -300,13 +300,20 @@ describe("getChecklistCounts", () => {
     // A disabled and an expired CLI token do not count.
     await client`INSERT INTO apikey (id, user_id, project_id, key, enabled, created_at, updated_at) VALUES (${id()}, ${u1}, ${projA}, 'h4', false, now(), now())`;
     await client`INSERT INTO apikey (id, user_id, project_id, key, enabled, expires_at, created_at, updated_at) VALUES (${id()}, ${u1}, ${projA}, 'h5', true, now() - interval '1 day', now(), now())`;
+    // Agents usable for connectors here: this project's or org-wide. Runner-only, disabled and other projects' do not count.
+    await client`INSERT INTO private_agents (id, organization_id, project_id, name, status, supports_sre_connectors) VALUES
+      (${id()}, ${orgA}, NULL, 'org-wide', 'connected', true),
+      (${id()}, ${orgA}, NULL, 'runner-only', 'connected', false),
+      (${id()}, ${orgA}, ${projA}, 'disabled', 'disabled', true),
+      (${id()}, ${orgA}, ${projA2}, 'other project', 'connected', true),
+      (${id()}, ${orgB}, NULL, 'other org', 'connected', true)`;
 
     expect(await getChecklistCounts(orgA, projA)).toEqual({
       monitors: 2, heartbeatMonitors: 1, notificationProviders: 1, statusPages: 1, requirements: 0, tests: 1, jobs: 1,
-      connectorsOrAgents: 0, services: 1, membersAndInvites: 2, cliTokens: 1, pushDevices: 0,
+      connectorsOrAgents: 1, services: 1, membersAndInvites: 2, cliTokens: 1, pushDevices: 0,
     });
     // Wrong org for the project sees nothing project-scoped.
-    expect(await getChecklistCounts(orgB, projA)).toMatchObject({ monitors: 0, tests: 0, jobs: 0, services: 0, cliTokens: 1 });
+    expect(await getChecklistCounts(orgB, projA)).toMatchObject({ monitors: 0, tests: 0, jobs: 0, services: 0, connectorsOrAgents: 1, cliTokens: 0 });
   });
 });
 
