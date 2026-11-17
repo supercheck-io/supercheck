@@ -6,6 +6,7 @@ const ids = {
   incident: "018f0000-0000-7000-8000-0000000000d1",
   other: "018f0000-0000-7000-8000-0000000000e2",
   alert: "018f0000-0000-7000-8000-0000000000f3",
+  provider: "018f0000-0000-7000-8000-0000000000f4",
 };
 jest.mock("@/lib/project-context", () => ({
   requireProjectContext: async () => ({ userId: ids.user, organizationId: ids.org, project: { id: ids.project } }),
@@ -30,20 +31,23 @@ jest.mock("@/utils/db", () => ({ db: { select: (...a: unknown[]) => select(...a)
 
 import { getSreIncidentTimeline } from "./sre-incident-lifecycle";
 
-it("resolves user names and alert titles referenced by timeline events", async () => {
+it("resolves user names, alert titles and channel names referenced by timeline events", async () => {
   select
     .mockReturnValueOnce(selectRows([{ id: ids.incident }]))
     .mockReturnValueOnce(
       selectRows([
         { id: "e1", eventType: "state_change", eventData: { state: "assigned", previousAssigneeUserId: ids.other, assigneeUserId: ids.user } },
         { id: "e2", eventType: "state_change", eventData: { state: "alert_correlated", alertEventId: ids.alert } },
+        { id: "e3", eventType: "notification", eventData: { kind: "escalation", channels: [{ providerId: ids.provider, type: "slack", ok: true }], emailed: 0, reached: 1 } },
       ]),
     )
     .mockReturnValueOnce(selectRows([{ id: ids.user, name: "Ada" }, { id: ids.other, name: "Grace" }]))
-    .mockReturnValueOnce(selectRows([{ id: ids.alert, title: "API latency high" }]));
+    .mockReturnValueOnce(selectRows([{ id: ids.alert, title: "API latency high" }]))
+    .mockReturnValueOnce(selectRows([{ id: ids.provider, name: "#ops-alerts" }]));
   const result = await getSreIncidentTimeline(ids.incident);
   expect(result.success && result.refs).toEqual({
     users: { [ids.user]: "Ada", [ids.other]: "Grace" },
     alerts: { [ids.alert]: "API latency high" },
+    providers: { [ids.provider]: "#ops-alerts" },
   });
 });
