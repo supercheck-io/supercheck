@@ -152,7 +152,7 @@ export async function scheduleJob(
         .update(jobs)
         .set({ nextRunAt })
         .where(eq(jobs.id, options.jobId))
-        .catch((error) => console.error(`Failed to store nextRunAt for job ${options.jobId}:`, error));
+        .catch((error) => console.error("Failed to store nextRunAt for job", options.jobId, error));
     }
 
     // WORKER LOGIC IS NOW IN A DEDICATED WORKER SERVICE
