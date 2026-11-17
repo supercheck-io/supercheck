@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { DeclareIncidentDialog, type DeclareIncidentDefaults } from "@/components/sre/incidents/declare-incident-dialog";
 import { checkRolePermissionsClient } from "@/lib/rbac/permissions-client";
 import { useProjectContext } from "@/hooks/use-project-context";
+import { AREA_TEXT, NAV } from "@/lib/nav-areas";
 
 /**
  * "New incident" button (permission gated) plus the declare dialog. On the incidents page `?new=1`
@@ -55,7 +56,7 @@ export function NewIncidentAction({ defaults, variant = "page" }: { defaults?: D
           title={projectLoading ? "Loading permissions..." : undefined}
           onClick={() => setOpen(true)}
         >
-          {variant === "detail" ? <Siren className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
+          {variant === "detail" ? <Siren className={`h-4 w-4 ${AREA_TEXT[NAV.incidents.tone]}`} /> : <Plus className="h-4 w-4" />}
           {variant === "detail" ? "Declare incident" : "New incident"}
         </Button>
       )}

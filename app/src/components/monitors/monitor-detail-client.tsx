@@ -889,15 +889,6 @@ export function MonitorDetailClient({
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
-              {monitor.status === "paused" && (
-                <div className="flex items-center px-2 py-1 bg-warning/10 border border-warning/30 rounded-md">
-                  <AlertCircle className="h-4 w-4 text-warning mr-1" />
-                  <span className="text-xs text-warning">
-                    Monitoring paused
-                  </span>
-                </div>
-              )}
-
               {/* Alert Status Indicators */}
               <div className="flex items-center gap-1 ml-1 mr-1">
                 {/* Main Alert Status */}
@@ -1033,9 +1024,9 @@ export function MonitorDetailClient({
                     }
                   >
                     {monitor.status === "paused" ? (
-                      <Play className="mr-2 h-4 w-4" />
+                      <Play className="mr-2 h-4 w-4 text-success" />
                     ) : (
-                      <Pause className="mr-2 h-4 w-4" />
+                      <Pause className="mr-2 h-4 w-4 text-warning" />
                     )}
                     {monitor.status === "paused" ? "Resume" : "Pause"}
                   </Button>
@@ -1087,8 +1078,8 @@ export function MonitorDetailClient({
                           : "Insufficient permissions to delete monitors"
                     }
                   >
-                    <Trash2 className={isHeartbeat ? "h-4 w-4" : "h-4 w-4 mr-1"} />
-                    <span className={isHeartbeat ? "sr-only" : "hidden sm:inline"}>Delete</span>
+                    <Trash2 className="h-4 w-4 mr-1" />
+                    <span className="hidden sm:inline">Delete</span>
                   </Button>
 
                   <AIMonitorAnalyzeButton
@@ -1227,66 +1218,59 @@ export function MonitorDetailClient({
         </div>
 
         {isHeartbeat ? (
-          <div className="flex min-h-0 flex-1 flex-col gap-4" data-testid="heartbeat-layout">
-            {showHeartbeatSetup && (
-              <HeartbeatPingUrlPanel
-                monitorId={monitor.id}
-                canManage={permissionsReady && canEditMonitor}
-                pending={heartbeat?.state === "pending"}
-              />
-            )}
-            <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 lg:grid-cols-2 lg:grid-rows-1">
-              <div className="flex min-h-0 flex-col gap-4 lg:h-full">
-                <div className="min-h-0 flex-1">
-                  <AvailabilityBarChart
-                    fill
-                    data={availabilityTimelineData}
-                    headerActions={
-                      availableLocations.length > 1 ? (
-                        <LocationFilterDropdown
-                          selectedLocation={selectedLocation}
-                          availableLocations={availableLocations}
-                          onLocationChange={setSelectedLocation}
-                          className="w-[200px]"
-                        />
-                      ) : undefined
-                    }
-                    footer={
-                      hasRunDurations ? undefined : (
-                        <span data-testid="heartbeat-run-duration-hint">
-                          Call <span className="font-mono">/start</span> when the job begins to record how long it runs.
-                        </span>
-                      )
-                    }
-                  />
-                </div>
-                {hasRunDurations && (
-                  <div className="min-h-0 flex-1">
-                    <ResponseTimeBarChart
-                      fill
-                      data={responseTimeData}
-                      title="Run duration"
-                      empty={{
-                        description: "Time between a /start ping and the ping that finishes the run.",
-                        heading: "No run durations yet",
-                        hint: "Call /start when the job begins to record how long it runs.",
-                      }}
+          <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 lg:grid-cols-2 lg:grid-rows-1" data-testid="heartbeat-layout">
+            {/* Setup and availability stack on the left; the ping history owns the right column's full height. */}
+            <div className="flex min-h-0 flex-col gap-4 lg:overflow-y-auto">
+              {showHeartbeatSetup && (
+                <HeartbeatPingUrlPanel
+                  monitorId={monitor.id}
+                  canManage={permissionsReady && canEditMonitor}
+                  pending={heartbeat?.state === "pending"}
+                />
+              )}
+              <AvailabilityBarChart
+                data={availabilityTimelineData}
+                headerActions={
+                  availableLocations.length > 1 ? (
+                    <LocationFilterDropdown
+                      selectedLocation={selectedLocation}
+                      availableLocations={availableLocations}
+                      onLocationChange={setSelectedLocation}
+                      className="w-[200px]"
                     />
-                  </div>
-                )}
-              </div>
-              <HeartbeatPingHistory
-                results={paginatedTableResults}
-                isLoading={isLoadingResults}
-                error={resultsError}
-                onRetry={() => void refetchResults()}
-                page={currentPage}
-                totalPages={totalPages}
-                total={totalResultsCount}
-                onPageChange={setCurrentPage}
-                onFitRows={isNotificationView ? undefined : setFitRows}
+                  ) : undefined
+                }
+                footer={
+                  hasRunDurations ? undefined : (
+                    <span data-testid="heartbeat-run-duration-hint">
+                      Call <span className="font-mono">/start</span> when the job begins to record how long it runs.
+                    </span>
+                  )
+                }
               />
+              {hasRunDurations && (
+                <ResponseTimeBarChart
+                  data={responseTimeData}
+                  title="Run duration"
+                  empty={{
+                    description: "Time between a /start ping and the ping that finishes the run.",
+                    heading: "No run durations yet",
+                    hint: "Call /start when the job begins to record how long it runs.",
+                  }}
+                />
+              )}
             </div>
+            <HeartbeatPingHistory
+              results={paginatedTableResults}
+              isLoading={isLoadingResults}
+              error={resultsError}
+              onRetry={() => void refetchResults()}
+              page={currentPage}
+              totalPages={totalPages}
+              total={totalResultsCount}
+              onPageChange={setCurrentPage}
+              onFitRows={isNotificationView ? undefined : setFitRows}
+            />
           </div>
         ) : (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
