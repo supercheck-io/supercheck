@@ -55,6 +55,8 @@ test.describe('Maintenance windows @incidents', () => {
   });
 
   test('a failing monitor inside a window stores maintenance results and opens no incident @high @positive', async ({ projectAdminPage: page, cleanup }) => {
+    // The PR checkpoint run has no worker, so no check ever runs there.
+    test.skip(process.env.E2E_CHECKPOINTS === '1', 'Needs a worker to run checks');
     test.slow(); // Waits for the worker's first scheduled checks.
     const request = page.request;
     const name = `E2E muted ${Date.now()}`;

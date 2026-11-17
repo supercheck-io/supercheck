@@ -45,7 +45,7 @@ describe("MaintenanceWindowDialog", () => {
       title: "DB upgrade", scope: "monitors", targets: { serviceIds: [], monitorIds: ["m-1"] }, recurrence: "once",
       timezone: "Europe/Berlin", localStartTime: "02:00", durationMinutes: 90, startsOn: "2026-11-20", statusPages: [], notifySubscribers: false,
     });
-    expect(mockInvalidate).toHaveBeenCalled();
+    expect(mockInvalidate).toHaveBeenCalledWith({ queryKey: ["monitors"] });
   });
 
   it("shows server field errors next to the fields and stays open", async () => {

@@ -71,7 +71,7 @@ describe("MaintenanceWindowsPanel", () => {
     await openMenu("DB upgrade");
     fireEvent.click(await screen.findByRole("menuitem", { name: "Extend 30 min" }));
     await waitFor(() => expect(mockAction).toHaveBeenCalledWith("w-1", "extend", { byMinutes: 30 }));
-    expect(mockInvalidate).toHaveBeenCalled();
+    expect(mockInvalidate).toHaveBeenCalledWith({ queryKey: ["monitors"] });
   });
 
   it("puts live windows first, then upcoming, then past", () => {

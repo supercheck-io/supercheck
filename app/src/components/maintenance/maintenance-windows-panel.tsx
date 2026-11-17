@@ -20,6 +20,7 @@ import { DashboardEmptyState } from "@/components/dashboard/dashboard-empty-stat
 import { NAV } from "@/lib/nav-areas";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ListErrorState } from "@/components/shared/list-states";
+import { MONITORS_QUERY_KEY } from "@/hooks/use-monitors";
 import { MAINTENANCE_QUERY_KEY, useMaintenanceWindows, windowAction, type MaintenanceWindowItem } from "@/hooks/use-maintenance-windows";
 import { useProjectContext } from "@/hooks/use-project-context";
 import { checkRolePermissionsClient } from "@/lib/rbac/permissions-client";
@@ -143,6 +144,8 @@ export function MaintenanceWindowsPanel({ tabs }: { tabs?: ReactNode } = {}) {
       await windowAction(window.id, action, body);
       toast.success({ end: "Maintenance ended", extend: "Maintenance extended by 30 minutes", cancel: "Maintenance cancelled", delete: "Maintenance window deleted" }[action]);
       await queryClient.invalidateQueries({ queryKey: [...MAINTENANCE_QUERY_KEY, projectId] });
+      // The monitors list carries the inMaintenance badge.
+      await queryClient.invalidateQueries({ queryKey: MONITORS_QUERY_KEY });
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Action failed");
     } finally {
