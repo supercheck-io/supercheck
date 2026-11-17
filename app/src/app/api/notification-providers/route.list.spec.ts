@@ -8,7 +8,7 @@ const node = (rows: unknown[]) => {
   n.then = (resolve: (v: unknown[]) => unknown) => resolve(rows);
   return n;
 };
-jest.mock("@/utils/db", () => ({ db: { select: () => node(queue.shift() ?? []), selectDistinctOn: () => node(queue.shift() ?? []) } }));
+jest.mock("@/utils/db", () => ({ db: { select: () => node(queue.shift() ?? []), execute: async () => queue.shift() ?? [] } }));
 jest.mock("@/lib/auth-context", () => ({
   requireAuthContext: async () => ({ userId: "u", organizationId: "org-1", orgPendingDeletion: false, project: { id: "proj-1", userRole: "project_viewer" } }),
   isAuthError: () => false,

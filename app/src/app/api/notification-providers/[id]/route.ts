@@ -11,7 +11,7 @@ import {
   alertHistory,
   type PlainNotificationProviderConfig,
 } from "@/db/schema";
-import { eq, desc, and, count, sql } from "drizzle-orm";
+import { eq, and, count, sql } from "drizzle-orm";
 import { liveJob, liveMonitor } from "@/lib/deletion/visibility";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { requireAuthContext, isAuthError, authErrorStatus } from "@/lib/auth-context";
@@ -76,8 +76,9 @@ export async function GET(
     const lastAlert = await db
       .select({ sentAt: alertHistory.sentAt })
       .from(alertHistory)
-      .where(sql`alert_history.provider = ${provider.id}::text`)
-      .orderBy(desc(alertHistory.sentAt))
+      .where(sql`alert_history.provider = ${provider.id}::text and alert_history.sent_at is not null`)
+      // NULLS LAST matches alert_history_provider_sent_at_idx (see channel-health.ts).
+      .orderBy(sql`${alertHistory.sentAt} desc nulls last`)
       .limit(1);
 
     const enhancedProvider = {

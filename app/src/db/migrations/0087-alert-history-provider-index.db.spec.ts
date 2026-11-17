@@ -48,11 +48,11 @@ afterAll(async () => {
   }
 });
 
-it("builds (provider, sent_at DESC) outside the migration transaction and records the file once", async () => {
+it("builds (provider, sent_at DESC NULLS LAST) outside the migration transaction and records the file once", async () => {
   await migrate();
   expect(await indexState()).toEqual([true]);
   const [{ indexdef }] = await client<{ indexdef: string }[]>`SELECT indexdef FROM pg_indexes WHERE indexname = ${INDEX}`;
-  expect(indexdef).toContain("ON public.alert_history USING btree (provider, sent_at DESC)");
+  expect(indexdef).toContain("ON public.alert_history USING btree (provider, sent_at DESC NULLS LAST)");
   expect(await client`SELECT 1 FROM "__drizzle_migrations" WHERE hash = ${fileHash()}`).toHaveLength(1);
   const [{ count }] = await client<{ count: number }[]>`SELECT count(*)::int AS count FROM "__drizzle_migrations"`;
   await migrate(); // a second deploy is a no-op
