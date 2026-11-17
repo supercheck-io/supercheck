@@ -27,7 +27,7 @@ const k6Queue = fakeQueue();
 let rows: Record<string, unknown>[] = [];
 let lookup: Record<string, unknown>[] = [];
 
-jest.mock("./queue", () => ({ getQueues: async () => ({ jobSchedulerQueue: jobQueue, k6JobSchedulerQueue: k6Queue }) }));
+jest.mock("./queue", () => ({ assertExecutionQueueReady: async () => undefined, getQueues: async () => ({ jobSchedulerQueue: jobQueue, k6JobSchedulerQueue: k6Queue }) }));
 jest.mock("@/utils/db", () => ({
   db: {
     select: () => ({
