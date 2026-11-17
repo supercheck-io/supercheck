@@ -188,7 +188,8 @@ export async function deleteScheduledJob(
   options: { throwOnError?: boolean } = {}
 ): Promise<boolean> {
   try {
-    // Removing job scheduler
+    // Fail fast when Redis is down; a skipped removal is dropped at trigger time, which re-checks the DB.
+    await assertExecutionQueueReady();
 
     const { jobSchedulerQueue, k6JobSchedulerQueue } = await getQueues();
 
