@@ -421,7 +421,9 @@ const isPlainObject = (value: unknown): value is Record<string, unknown> => !!va
 const hasNull = (value: unknown): boolean => value === null || (typeof value === 'object' && Object.values(value as object).some(hasNull))
 // The server's merge skips these keys at any depth, so they could never be stored.
 const RESERVED_KEYS = new Set(['__proto__', 'constructor', 'prototype'])
-const hasReservedKey = (value: unknown): boolean => isPlainObject(value) && Object.keys(value).some((key) => RESERVED_KEYS.has(key) || hasReservedKey(value[key]))
+const hasReservedKey = (value: unknown): boolean => Array.isArray(value)
+  ? value.some(hasReservedKey)
+  : isPlainObject(value) && Object.keys(value).some((key) => RESERVED_KEYS.has(key) || hasReservedKey(value[key]))
 /** A JSON merge patch that turns `previous` into exactly `next`: the server merges nested objects, so stale keys are nulled at every level. */
 export function replacementPatch(previous: Record<string, unknown>, next: Record<string, unknown>): Record<string, unknown> {
   const patch: Record<string, unknown> = Object.fromEntries(Object.keys(previous).filter((key) => !Object.hasOwn(next, key)).map((key) => [key, null]))
@@ -448,7 +450,7 @@ export function buildCheckConfigPatch(options: UpdateCheckOptions, existing: Exi
     const mcp: Record<string, unknown> = {}
     const authType = existing.config?.mcp?.auth?.type
     if (options.header !== undefined && options.secret === undefined && authType !== 'bearer' && authType !== 'header') {
-      throw new CLIError('--header requires --secret.', ExitCode.ConfigError)
+      throw new CLIError('--header requires --secret: this monitor has no stored login yet.', ExitCode.ConfigError)
     }
     // --secret alone keeps the current auth style: a header monitor keeps its header name.
     if (options.secret !== undefined) mcp.auth = options.header !== undefined

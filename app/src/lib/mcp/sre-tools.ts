@@ -41,7 +41,8 @@ export type ToolRegistrar = <S extends z.ZodRawShape>(
   run: (args: z.output<z.ZodObject<S>>) => Promise<Record<string, unknown>>,
 ) => void;
 
-// Lowercase, so a differently cased id shares the same rate-limit bucket and row (as the REST routes do).
+// Lowercase every id argument (incident, window, service, monitor and user ids), so a differently cased id
+// shares the same rate-limit bucket and matches the same row, as the REST routes do.
 const idArg = z.string().uuid().transform((value) => value.toLowerCase());
 
 function retryMessage(limit: { unavailable?: boolean }, what: string) {
@@ -182,7 +183,7 @@ export function registerSreTools(tool: ToolRegistrar, ctx: McpCallContext): void
         const targets = serviceIds || monitorIds ? { serviceIds: serviceIds ?? [], monitorIds: monitorIds ?? [] } : undefined;
         return windowOut(await updateMaintenanceWindow(windowActor(), id, { ...input, ...(targets ? { targets } : {}) }, "mcp"));
       });
-    tool("delete_maintenance_window", "Delete a maintenance window that is not active. Refused while it is posted on a status page: cancel it first." + UNTRUSTED,
+    tool("delete_maintenance_window", "Delete a maintenance window that is not active. Needs the mcp:incidents:write scope, like the other maintenance tools, and permission to delete monitors. Refused while it is posted on a status page: cancel it first." + UNTRUSTED,
       { resource: "monitor", action: "delete", scope: MCP_INCIDENTS_WRITE_SCOPE, destructive: true },
       { id: idArg },
       async ({ id }) => {

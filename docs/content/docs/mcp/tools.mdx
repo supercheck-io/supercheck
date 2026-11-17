@@ -60,7 +60,7 @@ Registered only when the connection holds the scope. Calls are recorded in the a
 | `extend_maintenance_window` | `mcp:incidents:write` | update monitors | `id`, `byMinutes` | Extends an active window. Refused for a window on a status page |
 | `cancel_maintenance_window` | `mcp:incidents:write` | update monitors | `id` | Cancels a scheduled window or the rest of a series. Refused for a window on a status page |
 | `update_maintenance_window` | `mcp:incidents:write` | update monitors | `id` plus any of the `create_maintenance_window` fields | Edits future occurrences; `serviceIds` or `monitorIds` replace the targets. An active one-off window cannot be rescheduled. Refused for a window on a status page |
-| `delete_maintenance_window` | `mcp:incidents:write` | delete monitors | `id` | Deletes a window that is not active. Refused (`conflict`) while it is posted on a status page: cancel it first |
+| `delete_maintenance_window` | `mcp:incidents:write` (like the other maintenance tools) | delete monitors | `id` | Deletes a window that is not active. Refused (`conflict`) while it is posted on a status page: cancel it first |
 | `assign_incident` | `mcp:incidents:write` | update incidents | `id`, `assigneeUserId` (or `null` to unassign), `role` (`assignee` or `commander`) | Assigns the incident or sets its commander |
 | `acknowledge_incident` | `mcp:incidents:write` | update incidents | `id` | Acknowledges it, claiming it for you if unassigned |
 | `resolve_incident` | `mcp:incidents:write` | update incidents | `id`, `resolutionSummary` (up to 2000 characters) | Resolves it with a summary |
