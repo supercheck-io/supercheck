@@ -108,6 +108,7 @@ export const alertHistory = pgTable(
     // PERFORMANCE: Indexes for alert history queries
     sentAtIdx: index("alert_history_sent_at_idx").on(table.sentAt),
     jobIdIdx: index("alert_history_job_id_idx").on(table.jobId),
+    providerSentAtIdx: index("alert_history_provider_sent_at_idx").on(table.provider, table.sentAt.desc().nullsLast()),
     // One failure alert per run and provider: the claim that keeps concurrent or retried runs from re-sending.
     alertHistoryJobRunProviderUidx: uniqueIndex("alert_history_job_run_provider_uidx")
       .on(table.jobId, table.runId, table.provider)

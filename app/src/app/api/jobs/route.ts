@@ -644,12 +644,13 @@ export async function POST(request: NextRequest) {
           retryLimit: 3,
         });
 
-        // Update the job with the scheduler ID
+        // Best-effort: the repeatable is registered; the init sync rewrites a missed id.
         if (scheduledJobId) {
           await db
             .update(jobs)
             .set({ scheduledJobId })
-            .where(eq(jobs.id, jobId));
+            .where(eq(jobs.id, jobId))
+            .catch((error) => console.error("Failed to store the scheduler ID:", error));
         }
 
         console.log(`Job ${jobId} scheduled with scheduler ID ${scheduledJobId}`);
@@ -658,7 +659,8 @@ export async function POST(request: NextRequest) {
         // The job exists and can be run manually, but nothing will run it on schedule.
         scheduleWarning = "Job created, but its schedule could not be registered.";
         nextRunAt = null;
-        await db.update(jobs).set({ nextRunAt: null }).where(eq(jobs.id, jobId));
+        await db.update(jobs).set({ nextRunAt: null }).where(eq(jobs.id, jobId))
+          .catch((error) => console.error("Failed to clear nextRunAt:", error));
       }
     }
 
