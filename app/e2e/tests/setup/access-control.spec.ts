@@ -14,8 +14,9 @@ const setupCalls = (projectId: string) => [
   { method: 'POST', url: `/api/projects/${projectId}/setup/suggest-requirements`, data: {} },
 ];
 
-async function send(request: APIRequestContext, call: { method: string; url: string; data?: unknown }, headers: Record<string, string> = {}) {
-  return request.fetch(call.url, { method: call.method, data: call.data, headers });
+// Writes carry the app's Origin, so a same-origin check is never the reason for the status a test asserts.
+async function send(request: APIRequestContext, origin: string, call: { method: string; url: string; data?: unknown }, headers: Record<string, string> = {}) {
+  return request.fetch(call.url, { method: call.method, data: call.data, headers: { Origin: origin, ...headers } });
 }
 
 async function currentProjectId(page: Page): Promise<string> {
@@ -26,15 +27,16 @@ async function currentProjectId(page: Page): Promise<string> {
 
 test.describe('Project setup access control @setup', () => {
   test('setup routes answer 404 for a project in another organization @critical', async ({ browser, baseURL }) => {
+    const origin = new URL(baseURL!).origin;
     const a = await signUpFreshCreator(browser, baseURL!, 'xorg-a');
     const b = await signUpFreshCreator(browser, baseURL!, 'xorg-b');
     try {
       for (const call of setupCalls(b.projectId)) {
-        const res = await send(a.page.request, call);
+        const res = await send(a.page.request, origin, call);
         expect(res.status(), `${call.method} ${call.url}`).toBe(404);
       }
       // Copy from another org's project is "not found" too, never "forbidden".
-      const copy = await a.page.request.post(`/api/projects/${a.projectId}/setup/copy`, { data: { sourceProjectId: b.projectId, allProviders: true } });
+      const copy = await a.page.request.post(`/api/projects/${a.projectId}/setup/copy`, { data: { sourceProjectId: b.projectId, allProviders: true }, headers: { Origin: origin } });
       expect(copy.status()).toBe(404);
       // Owner B still reads its own project: the 404 is about A, not the project.
       expect((await b.page.request.get(`/api/projects/${b.projectId}/setup`)).status()).toBe(200);
@@ -54,11 +56,11 @@ test.describe('Project setup access control @setup', () => {
     try {
       const bearer = { Authorization: `Bearer ${token.key}` };
       for (const call of [...setupCalls(creator.projectId), { method: 'GET', url: '/api/me/preferences' }]) {
-        const alone = await send(signedOut.request, call, bearer);
+        const alone = await send(signedOut.request, origin, call, bearer);
         expect(alone.status(), `${call.method} ${call.url} (bearer only)`).toBe(401);
         expect(await alone.json()).toEqual({ error: 'Session authentication required' });
         // A valid session cookie does not make a bearer header acceptable.
-        expect((await send(creator.page.request, call, bearer)).status(), `${call.method} ${call.url} (bearer + cookie)`).toBe(401);
+        expect((await send(creator.page.request, origin, call, bearer)).status(), `${call.method} ${call.url} (bearer + cookie)`).toBe(401);
       }
       // The token itself is valid: the refusal is the setup routes' rule, not a bad credential.
       expect((await signedOut.request.get('/api/cli/project-config', { headers: bearer })).status()).toBe(200);

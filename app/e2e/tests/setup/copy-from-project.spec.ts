@@ -23,14 +23,15 @@ test.describe('Project setup copy from project @setup', () => {
     creator = await signUpFreshCreator(browser, baseURL!, 'copy');
     const { page } = creator;
     const target = creator.projectId;
+    const origin = new URL(baseURL!).origin;
 
     // A second project in the same organization, with one email channel to copy from.
-    const created = await page.request.post('/api/projects', { data: { name: `Copy source ${Date.now()}` } });
+    const created = await page.request.post('/api/projects', { data: { name: `Copy source ${Date.now()}` }, headers: { Origin: origin } });
     expect(created.status(), await created.text()).toBe(201);
     const source = ((await created.json()) as { data: { id: string; name: string } }).data;
     const channelName = `Ops email ${Date.now()}`;
     const channel = await page.request.post('/api/notification-providers', {
-      headers: { 'x-project-id': source.id },
+      headers: { 'x-project-id': source.id, Origin: origin },
       data: { type: 'email', config: { name: channelName, emails: 'ops@example.com' } },
     });
     expect(channel.ok(), await channel.text()).toBe(true);

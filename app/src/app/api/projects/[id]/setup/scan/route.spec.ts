@@ -121,9 +121,8 @@ describe("POST setup/scan", () => {
 
   it("413s on the declared Content-Length before reading the body", async () => {
     const req = post({ url: "http://93.184.216.34/" }, { "content-length": String(8 * 1024 + 1) });
-    const text = jest.spyOn(req, "text");
     expect((await POST(req, params())).status).toBe(413);
-    expect(text).not.toHaveBeenCalled();
+    expect(req.bodyUsed).toBe(false);
     expect(enqueueScan).not.toHaveBeenCalled();
   });
 
