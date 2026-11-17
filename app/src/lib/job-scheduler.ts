@@ -146,11 +146,13 @@ export async function scheduleJob(
       console.error(`Failed to calculate next run date: ${error}`);
     }
 
+    // Best-effort: the repeatable is live, so a failed display write must not report the schedule as failed.
     if (nextRunAt) {
       await db
         .update(jobs)
         .set({ nextRunAt })
-        .where(eq(jobs.id, options.jobId));
+        .where(eq(jobs.id, options.jobId))
+        .catch((error) => console.error("Failed to store nextRunAt for job", options.jobId, error));
     }
 
     // WORKER LOGIC IS NOW IN A DEDICATED WORKER SERVICE
