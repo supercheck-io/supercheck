@@ -188,7 +188,8 @@ export async function deleteScheduledJob(
   options: { throwOnError?: boolean } = {}
 ): Promise<boolean> {
   try {
-    // Fail fast when Redis is down; a skipped removal is dropped at trigger time, which re-checks the DB.
+    // Fail fast when Redis is down. A skipped removal is caught later: the tick drops a cleared or deleted
+    // schedule, and scheduleJob (next save or init sync) replaces a changed one.
     await assertExecutionQueueReady();
 
     const { jobSchedulerQueue, k6JobSchedulerQueue } = await getQueues();

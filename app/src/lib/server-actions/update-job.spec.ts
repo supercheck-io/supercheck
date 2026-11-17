@@ -138,6 +138,29 @@ describe("saving a job", () => {
     expect(result).toEqual(expect.objectContaining({ success: true }));
     expect((result as { job: { warning?: string; nextRunAt: string | null } }).job.warning).toEqual(expect.any(String));
     expect((result as { job: { nextRunAt: string | null } }).job.nextRunAt).toBeNull();
+    // Clearing the ID lets the next save of the same cron retry the registration.
+    expect(mockSet).toHaveBeenCalledWith({ nextRunAt: null, scheduledJobId: null });
+  });
+
+  it("retries registration on a save that keeps the cron when no scheduler ID is stored", async () => {
+    mockSelect
+      .mockReturnValueOnce(rows([{ id: input.jobId, jobType: "playwright", cronSchedule: input.cronSchedule, scheduledJobId: null, projectId: "project", organizationId: "org" }]))
+      .mockReturnValueOnce(rows([]))
+      .mockReturnValueOnce(rows([{ id: TEST_A, type: "browser" }]));
+    jest.mocked(scheduleJob).mockResolvedValueOnce(input.jobId);
+    const result = await updateJob({ ...input, tests: [{ id: TEST_A }] }, context);
+    expect(result).toEqual(expect.objectContaining({ success: true }));
+    expect(scheduleJob).toHaveBeenCalledWith(expect.objectContaining({ jobId: input.jobId, cron: input.cronSchedule }));
+  });
+
+  it("keeps a registered schedule untouched on a save that keeps the cron", async () => {
+    mockSelect
+      .mockReturnValueOnce(rows([{ id: input.jobId, jobType: "playwright", cronSchedule: input.cronSchedule, scheduledJobId: input.jobId, projectId: "project", organizationId: "org" }]))
+      .mockReturnValueOnce(rows([]))
+      .mockReturnValueOnce(rows([{ id: TEST_A, type: "browser" }]));
+    const result = await updateJob({ ...input, tests: [{ id: TEST_A }] }, context);
+    expect(result).toEqual(expect.objectContaining({ success: true }));
+    expect(scheduleJob).not.toHaveBeenCalled();
   });
 });
 
