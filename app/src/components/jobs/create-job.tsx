@@ -110,9 +110,13 @@ export function CreateJob({
 
       const response = await createJob(jobData);
       if (response.success) {
-        toast.success("Success", {
-          description: `Job \"${jobData.name}\" has been created.`,
-        });
+        if ("warning" in response && response.warning) {
+          toast.warning("Job created without a schedule", { description: response.warning });
+        } else {
+          toast.success("Success", {
+            description: `Job \"${jobData.name}\" has been created.`,
+          });
+        }
 
         // Invalidate Jobs cache to ensure fresh data on jobs page
         invalidateJobCaches(queryClient);

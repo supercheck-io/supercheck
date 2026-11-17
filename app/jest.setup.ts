@@ -4,6 +4,7 @@ import {
   WritableStream,
   TransformStream,
 } from 'node:stream/web';
+import { serialize, deserialize } from 'node:v8';
 
 // Polyfill TextEncoder/TextDecoder for Next.js compatibility
 global.TextEncoder = TextEncoder;
@@ -28,6 +29,16 @@ if (typeof globalThis.WritableStream === 'undefined') {
 if (typeof globalThis.TransformStream === 'undefined') {
   Object.defineProperty(globalThis, 'TransformStream', {
     value: TransformStream,
+    writable: true,
+    configurable: true,
+  });
+}
+
+// jsdom does not expose Node's structuredClone; better-auth's mcp plugin calls it at import.
+// shortcut: v8 round-trip clones plain data only (no DOM objects, no transfer, results from Node's realm); fine for config objects, use a real clone if a test needs more.
+if (typeof globalThis.structuredClone === 'undefined') {
+  Object.defineProperty(globalThis, 'structuredClone', {
+    value: (<T>(value: T): T => deserialize(serialize(value))) as typeof globalThis.structuredClone,
     writable: true,
     configurable: true,
   });

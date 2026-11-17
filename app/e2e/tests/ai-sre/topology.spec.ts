@@ -145,7 +145,7 @@ async function createService(page: Page, name: string): Promise<string> {
   const dialog = page.getByRole("dialog", { name: "Add service" });
   // The root hydration flag can precede this page's boundary; retry a click that landed early.
   await expect(async () => {
-    if (!(await dialog.isVisible())) await page.getByTestId("add-service-btn").click();
+    if (!(await dialog.isVisible())) await page.getByTestId("add-service-btn").filter({ visible: true }).click();
     await expect(dialog).toBeVisible({ timeout: 2_000 });
   }).toPass({ timeout: 15_000 });
   await dialog.getByLabel("Title *").fill(name);
