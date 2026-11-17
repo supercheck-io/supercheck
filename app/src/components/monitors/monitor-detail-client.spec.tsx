@@ -101,7 +101,7 @@ it("badges a check made during maintenance in the results table", async () => {
     render(<MonitorDetailClient monitor={monitor} />);
     const badges = await screen.findAllByTestId("result-maintenance-badge");
     expect(badges).toHaveLength(1);
-    expect(badges[0]).toHaveTextContent("Maintenance");
+    expect(badges[0]).toHaveAccessibleName("Checked during maintenance");
   } finally {
     mockResults = [];
   }

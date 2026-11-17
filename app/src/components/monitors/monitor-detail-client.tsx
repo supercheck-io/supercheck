@@ -20,6 +20,7 @@ import {
   TrendingUp,
   XCircle,
   AlertCircle,
+  Wrench,
   X,
   Shield,
   Bell,
@@ -80,7 +81,7 @@ import { SupercheckLogo } from "@/components/logo/supercheck-logo";
 import { Home } from "lucide-react";
 import { maskUrlPassword } from "@/lib/mask-url-password";
 import { TruncatedTextWithTooltip } from "@/components/ui/truncated-text-with-tooltip";
-import { MonitorStatusIndicator } from "./monitor-status-indicator";
+import { TableBadge } from "@/components/ui/table-badge";
 import {
   isMonitoringLocation,
   buildLocationMetadataMap,
@@ -1402,7 +1403,7 @@ export function MonitorDetailClient({
                 <div className="w-full">
                   <table className={`w-full ${aiEndpoint ? "min-w-[850px]" : isMcp || showPassRate ? "min-w-[740px]" : "min-w-[640px]"} table-fixed divide-y divide-border`}>
                     <colgroup>
-                      <col className="w-[64px]" />
+                      <col className="w-[96px]" />
                       <col className="w-[192px]" />
                       <col className="w-[136px]" />
                       <col className="w-[124px]" />
@@ -1553,9 +1554,18 @@ export function MonitorDetailClient({
                                 <span className="inline-flex items-center gap-1">
                                   <SimpleStatusIcon isUp={result.isUp} />
                                   {result.inMaintenance && (
-                                    <span title="Checked during maintenance: no alert, not counted in uptime" data-testid="result-maintenance-badge">
-                                      <MonitorStatusIndicator status="maintenance" monitorId={monitor.id} />
-                                    </span>
+                                    // Icon-only: the column is narrow. The label is in aria-label and the tooltip.
+                                    <TableBadge
+                                      tone="purple"
+                                      compact
+                                      className="px-1.5"
+                                      title="Checked during maintenance: no alert, not counted in uptime"
+                                      role="img"
+                                      aria-label="Checked during maintenance"
+                                      data-testid="result-maintenance-badge"
+                                    >
+                                      <Wrench aria-hidden="true" className="h-3.5 w-3.5" />
+                                    </TableBadge>
                                   )}
                                 </span>
                               </td>

@@ -1,6 +1,7 @@
 import { expect } from '@playwright/test';
 
 import { test } from '../../fixtures';
+import { NO_WORKER, NO_WORKER_REASON } from '../../fixtures/checkpoint.fixture';
 import { waitForHydration } from '../../utils/hydration';
 import { createMonitor, deleteMonitor } from '../../utils/test-data';
 
@@ -55,17 +56,28 @@ test.describe('Maintenance windows @incidents', () => {
   });
 
   test('a failing monitor inside a window stores maintenance results and opens no incident @high @positive', async ({ projectAdminPage: page, cleanup }) => {
-    // The PR checkpoint run has no worker, so no check ever runs there.
-    test.skip(process.env.E2E_CHECKPOINTS === '1', 'Needs a worker to run checks');
-    test.slow(); // Waits for the worker's first scheduled checks.
+    test.skip(NO_WORKER, NO_WORKER_REASON);
+    test.slow(); // Waits for two of the worker's scheduled checks.
     const request = page.request;
     const name = `E2E muted ${Date.now()}`;
-    // The window comes first, so no check of this monitor ever runs outside it.
+    // Created paused, so no check runs before the window covers it. Always fails (example.com never answers 418);
+    // incident-only alerts, so no channel is needed or notified.
+    const monitor = await createMonitor(request, {
+      name,
+      enabled: false,
+      frequencyMinutes: 1,
+      config: { expectedStatusCodes: '418' },
+      alertConfig: { enabled: true, notificationProviders: [], alertOnFailure: true, alertOnRecovery: true, failureThreshold: 1, recoveryThreshold: 1, incidentEnabled: true },
+    });
+    cleanup.add(`monitor ${monitor.id}`, () => deleteMonitor(request, monitor.id));
+
+    // Scoped to this monitor only, so it never mutes another test's monitors.
     const start = new Date(Date.now() - 60_000);
     const created = await request.post('/api/maintenance-windows', {
       data: {
         title: `E2E mute ${Date.now()}`,
-        scope: 'project',
+        scope: 'monitors',
+        targets: { monitorIds: [monitor.id] },
         recurrence: 'once',
         timezone: 'UTC',
         localStartTime: start.toISOString().slice(11, 16),
@@ -75,29 +87,24 @@ test.describe('Maintenance windows @incidents', () => {
     });
     expect(created.status(), await created.text()).toBe(201);
     const windowId = ((await created.json()) as { window: { id: string } }).window.id;
-
-    // Always fails (example.com never answers 418); incident-only alerts, so no channel is needed or notified.
-    const monitor = await createMonitor(request, {
-      name,
-      frequencyMinutes: 1,
-      config: { expectedStatusCodes: '418' },
-      alertConfig: { enabled: true, notificationProviders: [], alertOnFailure: true, alertOnRecovery: true, failureThreshold: 1, recoveryThreshold: 1, incidentEnabled: true },
-    });
-    // Delete the monitor before the window ends, so it never fails outside it.
     cleanup.add(`maintenance window ${windowId}`, async () => {
+      // The monitor goes first, so it never fails outside the window.
+      await deleteMonitor(request, monitor.id);
       await request.post(`/api/maintenance-windows/${windowId}/end`);
       const removed = await request.delete(`/api/maintenance-windows/${windowId}`);
       if (!removed.ok() && removed.status() !== 404) throw new Error(`Window cleanup failed: ${await removed.text()}`);
     });
-    cleanup.add(`monitor ${monitor.id}`, () => deleteMonitor(request, monitor.id));
 
+    const resumed = await request.patch(`/api/monitors/${monitor.id}/status`, { data: { status: 'pending' } });
+    expect(resumed.status(), await resumed.text()).toBe(200);
+
+    // Two failing checks inside the window: the second runs a full interval after the first, by which time the
+    // first failure has long been through triage. A muted failure leaves no record to wait on, by design.
     await expect(async () => {
       const results = (await (await request.get(`/api/monitors/${monitor.id}/results?limit=10`)).json()) as { data: Array<{ isUp: boolean; inMaintenance?: boolean }> };
-      expect(results.data.some((r) => !r.isUp && r.inMaintenance === true)).toBe(true);
-    }).toPass({ timeout: 240_000, intervals: [10_000] });
+      expect(results.data.filter((r) => !r.isUp && r.inMaintenance === true).length).toBeGreaterThanOrEqual(2);
+    }).toPass({ timeout: 300_000, intervals: [10_000] });
 
-    // Triage runs right after the failure; give it a moment, then no incident may name this monitor.
-    await page.waitForTimeout(15_000);
     const listed = (await (await request.get('/api/sre/incidents')).json()) as { incidents: Array<{ title: string }> };
     expect(listed.incidents.filter((incident) => incident.title.includes(name))).toEqual([]);
 
