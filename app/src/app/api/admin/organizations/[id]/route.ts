@@ -10,6 +10,7 @@ import { OrganizationMembershipChangedError, requestOrganizationDeletion } from 
 import { isImpersonatedSession } from '@/lib/rbac/middleware';
 import { checkAdminRateLimit } from '@/lib/session-security';
 import { eq, count } from 'drizzle-orm';
+import { requireSessionSameOrigin } from "@/lib/security/same-origin";
 
 export async function GET(
   request: NextRequest,
@@ -92,6 +93,8 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
   const resolvedParams = await params;
   try {
     await requireAdmin();
+    const originError = requireSessionSameOrigin(request);
+    if (originError) return originError;
     
     let body;
     try {
@@ -139,6 +142,8 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
   const resolvedParams = await params;
   try {
     await requireAdmin();
+    const originError = requireSessionSameOrigin(request);
+    if (originError) return originError;
     const admin = await getCurrentUser();
     if (!admin) throw new Error('Authentication required');
     if (await isImpersonatedSession()) {

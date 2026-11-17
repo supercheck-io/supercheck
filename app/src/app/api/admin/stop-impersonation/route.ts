@@ -5,9 +5,12 @@ import { auth } from '@/utils/auth';
 import { headers } from 'next/headers';
 import { eq } from 'drizzle-orm';
 import { logImpersonationEvent } from '@/lib/audit-logger';
+import { requireSessionSameOrigin } from "@/lib/security/same-origin";
 
-export async function POST() {
+export async function POST(request: Request) {
   try {
+    const originError = requireSessionSameOrigin(request);
+    if (originError) return originError;
     // Get current session
     const sessionData = await auth.api.getSession({
       headers: await headers(),

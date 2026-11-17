@@ -90,3 +90,26 @@ describe("maintenance window routes", () => {
     expect((await GET_ONE(req("GET"), params())).status).toBe(403);
   });
 });
+
+describe("maintenance window origin and body-size guards", () => {
+  const { jsonRequest, declaredOversizeRequest, streamedOversizeRequest, SAME_ORIGIN } =
+    jest.requireActual("@/lib/security/request-hardening.spec-helpers") as typeof import("@/lib/security/request-hardening.spec-helpers");
+
+  it("accepts a same-origin cookie session and a CLI bearer token that sends no Origin", async () => {
+    mockRequireAuthContext.mockResolvedValue(ctx("project_editor"));
+    expect((await POST(jsonRequest("/api/maintenance-windows", "POST", { title: "x" }, { origin: SAME_ORIGIN }))).status).toBe(201);
+    expect((await POST(jsonRequest("/api/maintenance-windows", "POST", { title: "x" }, { authorization: "Bearer sck_live_x" }))).status).toBe(201);
+  });
+
+  it.each([["declared", declaredOversizeRequest], ["streamed", streamedOversizeRequest]])(
+    "refuses a %s body over 256 KB with 413 on create and update",
+    async (_kind, make) => {
+      mockRequireAuthContext.mockResolvedValue(ctx("project_editor"));
+      expect((await POST(make("/api/maintenance-windows", "POST", 256 * 1024 + 1))).status).toBe(413);
+      expect((await PATCH(make(`/api/maintenance-windows/${id}`, "PATCH", 256 * 1024 + 1), params())).status).toBe(413);
+      expect(mockCore.createMaintenanceWindow).not.toHaveBeenCalled();
+      expect(mockCore.updateMaintenanceWindow).not.toHaveBeenCalled();
+    },
+  );
+});
+

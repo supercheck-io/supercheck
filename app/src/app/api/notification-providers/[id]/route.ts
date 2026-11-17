@@ -28,6 +28,10 @@ import {
 import type { NotificationProviderType } from "@/db/schema";
 
 import { permissionDeniedResponse } from "@/lib/deletion/org-state";
+import { requireSessionSameOrigin } from "@/lib/security/same-origin";
+import { readJsonBody } from "@/lib/http/read-capped-json";
+
+const MAX_BODY_BYTES = 256 * 1024;
 export async function GET(
   req: NextRequest,
   context: { params: Promise<{ id: string }> }
@@ -111,6 +115,8 @@ export async function PUT(
   try {
     const { id } = await context.params;
     const authContext = await requireAuthContext();
+    const originError = requireSessionSameOrigin(req, authContext.isCliAuth);
+    if (originError) return originError;
     const { userId, project, organizationId } = authContext;
 
     const canUpdate = checkPermissionWithContext("notification", "update", authContext);
@@ -139,11 +145,9 @@ export async function PUT(
     }
 
     let rawData;
-    try {
-      rawData = await req.json();
-    } catch {
-      return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
-    }
+    const read = await readJsonBody(req, MAX_BODY_BYTES);
+    if (read instanceof NextResponse) return read;
+    rawData = read.body;
     const transformedData = {
       ...rawData,
       name: rawData.name ?? existingProvider.name,
@@ -337,6 +341,8 @@ export async function DELETE(
   try {
     const { id } = await context.params;
     const authContext = await requireAuthContext();
+    const originError = requireSessionSameOrigin(req, authContext.isCliAuth);
+    if (originError) return originError;
     const { project, organizationId } = authContext;
 
     const canDelete = checkPermissionWithContext("notification", "delete", authContext);

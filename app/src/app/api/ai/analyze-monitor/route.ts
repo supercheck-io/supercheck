@@ -19,6 +19,7 @@ import { eq, desc, and, gte } from "drizzle-orm";
 import { getS3FileContentFromUrl, getS3FileContent } from "@/lib/s3-proxy";
 import { excludeSupersededSyntheticResults } from "@/lib/monitor-result-filters";
 import { MONITOR_READ_COLUMNS } from "@/lib/monitor-response";
+import { requireSessionSameOrigin } from "@/lib/security/same-origin";
 
 
 interface AnalyzeMonitorRequest {
@@ -155,6 +156,8 @@ export async function POST(request: NextRequest) {
     // membership), before any credit is spent or monitor data reaches the model.
     // Use the effective (impersonation-aware) user id, as the monitor pages do.
     const { userId: effectiveUserId } = await requireAuth();
+    const originError = requireSessionSameOrigin(request);
+    if (originError) return originError;
     const canViewMonitor =
       !!monitor.organizationId &&
       !!monitor.projectId &&

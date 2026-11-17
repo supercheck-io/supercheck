@@ -83,3 +83,26 @@ it("rejects invalid JSON and oversized bodies", async () => {
   expect((await put(JSON.stringify({ pad: "x".repeat(9000) }))).status).toBe(413);
   expect(saveNotificationPolicy).not.toHaveBeenCalled();
 });
+
+describe("PUT /api/notification-policy cross-origin and body-size guards", () => {
+  const { jsonRequest, streamedOversizeRequest, SAME_ORIGIN, CROSS_ORIGIN } =
+    jest.requireActual("@/lib/security/request-hardening.spec-helpers") as typeof import("@/lib/security/request-hardening.spec-helpers");
+
+  it("refuses a cross-origin cookie session with 403", async () => {
+    mockAuth = context("project_admin", { isCliAuth: false });
+    expect((await PUT(jsonRequest("/api/notification-policy", "PUT", stored, { origin: CROSS_ORIGIN }))).status).toBe(403);
+    expect(saveNotificationPolicy).not.toHaveBeenCalled();
+  });
+
+  it("saves for a same-origin cookie session and for a CLI bearer token from anywhere", async () => {
+    mockAuth = context("project_admin", { isCliAuth: false });
+    expect((await PUT(jsonRequest("/api/notification-policy", "PUT", stored, { origin: SAME_ORIGIN }))).status).toBe(200);
+    mockAuth = context("project_admin");
+    expect((await PUT(jsonRequest("/api/notification-policy", "PUT", stored, { origin: CROSS_ORIGIN, authorization: "Bearer sck_live_x" }))).status).toBe(200);
+  });
+
+  it("refuses a streamed body over the cap with 413", async () => {
+    expect((await PUT(streamedOversizeRequest("/api/notification-policy", "PUT", 9000))).status).toBe(413);
+    expect(saveNotificationPolicy).not.toHaveBeenCalled();
+  });
+});

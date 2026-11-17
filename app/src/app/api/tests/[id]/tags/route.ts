@@ -9,6 +9,7 @@ import { requireAuthContext, isAuthError, authErrorStatus } from '@/lib/auth-con
 import { logAuditEvent } from '@/lib/audit-logger';
 
 import { permissionDeniedResponse } from "@/lib/deletion/org-state";
+import { requireSessionSameOrigin } from "@/lib/security/same-origin";
 // A tag deleted after validation fails the insert with FK violation 23503 (drizzle wraps the driver error in `cause`).
 // Only the tag FK: a concurrently deleted test or monitor must not read as a missing tag.
 const isFkViolation = (e: unknown) =>
@@ -82,6 +83,8 @@ export async function POST(
 ) {
   try {
     const context = await requireAuthContext();
+    const originError = requireSessionSameOrigin(request, context.isCliAuth);
+    if (originError) return originError;
     const { project, organizationId } = context;
 
     // Check permission to update tests
@@ -219,6 +222,8 @@ export async function PATCH(
 ) {
   try {
     const context = await requireAuthContext();
+    const originError = requireSessionSameOrigin(request, context.isCliAuth);
+    if (originError) return originError;
     const { project, organizationId } = context;
 
     if (!checkPermissionWithContext('test', 'update', context)) {
@@ -329,6 +334,8 @@ export async function DELETE(
 ) {
   try {
     const context = await requireAuthContext();
+    const originError = requireSessionSameOrigin(request, context.isCliAuth);
+    if (originError) return originError;
     const { project, organizationId } = context;
 
     // Check permission to update tests

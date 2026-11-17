@@ -7,6 +7,7 @@ import { member, projects, projectMembers, user } from '@/db/schema';
 import { eq, and, ne } from 'drizzle-orm';
 import { projectRoleExceedsOrgRole } from '@/lib/rbac/effective-project-role';
 import { logAuditEvent } from '@/lib/audit-logger';
+import { requireSessionSameOrigin } from "@/lib/security/same-origin";
 
 const ROLE_ABOVE_ORG_ROLE_MESSAGE = "This role is higher than the member's organization role. Change their organization role first.";
 
@@ -103,6 +104,8 @@ export async function POST(
   const resolvedParams = await params;
   try {
     const { userId, isCliAuth } = await requireUserAuthContext((await params).id);
+    const originError = requireSessionSameOrigin(request, isCliAuth);
+    if (originError) return originError;
     if (isCliAuth) {
       return NextResponse.json({ error: "Organization administration requires an interactive browser session; CLI tokens are project-scoped" }, { status: 403 });
     }
@@ -237,6 +240,8 @@ export async function PUT(
   const resolvedParams = await params;
   try {
     const { userId, isCliAuth } = await requireUserAuthContext((await params).id);
+    const originError = requireSessionSameOrigin(request, isCliAuth);
+    if (originError) return originError;
     if (isCliAuth) {
       return NextResponse.json({ error: "Organization administration requires an interactive browser session; CLI tokens are project-scoped" }, { status: 403 });
     }
@@ -354,6 +359,8 @@ export async function DELETE(
   const resolvedParams = await params;
   try {
     const { userId, isCliAuth } = await requireUserAuthContext((await params).id);
+    const originError = requireSessionSameOrigin(request, isCliAuth);
+    if (originError) return originError;
     if (isCliAuth) {
       return NextResponse.json({ error: "Organization administration requires an interactive browser session; CLI tokens are project-scoped" }, { status: 403 });
     }

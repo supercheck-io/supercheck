@@ -168,3 +168,25 @@ describe("copy", () => {
     expect(JSON.stringify(await res.json())).not.toContain("secret-detail");
   });
 });
+
+describe("origin and body-size guards (setup routes are cookie-only)", () => {
+  const { declaredOversizeRequest, streamedOversizeRequest } =
+    jest.requireActual("@/lib/security/request-hardening.spec-helpers") as typeof import("@/lib/security/request-hardening.spec-helpers");
+  const url = `/api/projects/${TARGET}/setup/copy`;
+
+  it("403 for a cross-origin cookie session, 200 same-origin, 401 for any bearer", async () => {
+    expect((await POST(req(both, { origin: "https://evil.example" }), params)).status).toBe(403);
+    expect((await POST(req(both, { origin: "null" }), params)).status).toBe(403);
+    expect(copyProviders).not.toHaveBeenCalled();
+    expect((await POST(req(both, { origin: "http://localhost" }), params)).status).toBe(200);
+    expect((await POST(req(both, { origin: "http://localhost", authorization: "Bearer sck_live_x" }), params)).status).toBe(401);
+  });
+
+  it.each([["declared", declaredOversizeRequest], ["streamed", streamedOversizeRequest]])(
+    "413 for a %s body over 64 KB",
+    async (_kind, make) => {
+      expect((await POST(make(url, "POST", 64 * 1024 + 1), params)).status).toBe(413);
+      expect(copyProviders).not.toHaveBeenCalled();
+    },
+  );
+});

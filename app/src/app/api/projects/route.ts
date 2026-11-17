@@ -14,6 +14,7 @@ import {
   subscriptionService,
   SubscriptionAccessDeniedError,
 } from "@/lib/services/subscription-service";
+import { requireSessionSameOrigin } from "@/lib/security/same-origin";
 
 /**
  * GET /api/projects
@@ -108,6 +109,8 @@ function isUniqueViolation(error: unknown): boolean {
 export async function POST(request: NextRequest) {
   try {
     const { userId, organizationId: authOrgId, isCliAuth } = await requireUserAuthContext();
+    const originError = requireSessionSameOrigin(request, isCliAuth);
+    if (originError) return originError;
     if (isCliAuth) return NextResponse.json({ error: "Organization administration requires an interactive browser session; CLI tokens are project-scoped" }, { status: 403 });
 
     let body;

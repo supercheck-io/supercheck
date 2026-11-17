@@ -14,6 +14,7 @@ import { eq, and, ne } from "drizzle-orm";
 import { logAuditEvent } from "@/lib/audit-logger";
 import { isImpersonatedSession } from "@/lib/rbac/middleware";
 import { createLogger } from "@/lib/logger/pino-config";
+import { requireSessionSameOrigin } from "@/lib/security/same-origin";
 
 const logger = createLogger({ module: "invalidate-sessions" });
 
@@ -33,6 +34,8 @@ const logger = createLogger({ module: "invalidate-sessions" });
  */
 export async function POST(request: NextRequest) {
   try {
+    const originError = requireSessionSameOrigin(request);
+    if (originError) return originError;
     // Get current session
     const authSession = await auth.api.getSession({
       headers: await headers(),

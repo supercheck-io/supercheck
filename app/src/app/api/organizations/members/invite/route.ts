@@ -18,6 +18,7 @@ import { getRedisConnection } from "@/lib/queue";
 import { withRedisDeadline } from "@/lib/security/redis-deadline";
 
 import { isOrgPendingDeletion, pendingDeletionResponse, permissionDeniedResponse } from "@/lib/deletion/org-state";
+import { requireSessionSameOrigin } from "@/lib/security/same-origin";
 // Redis-based rate limiting for distributed/serverless environments
 const INVITE_RATE_LIMIT_KEY_PREFIX = "supercheck:invite:ratelimit";
 const configuredInviteRateLimitMax = Number.parseInt(
@@ -116,6 +117,8 @@ export async function POST(request: NextRequest) {
   try {
     const { userId, organizationId, isCliAuth } =
       await requireUserAuthContext();
+    const originError = requireSessionSameOrigin(request, isCliAuth);
+    if (originError) return originError;
     if (await isOrgPendingDeletion(organizationId, { fresh: true })) return pendingDeletionResponse();
     if (isCliAuth) {
       return NextResponse.json(

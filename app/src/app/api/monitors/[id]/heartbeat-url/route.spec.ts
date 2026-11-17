@@ -168,3 +168,18 @@ describe("POST heartbeat-url/rotate", () => {
     expect(mockSet).not.toHaveBeenCalled();
   });
 });
+
+describe("POST heartbeat-url/rotate cross-origin guard", () => {
+  const rotateFrom = (headers: Record<string, string>) =>
+    POST(new NextRequest(`https://app.test/api/monitors/${ID}/heartbeat-url/rotate`, { method: "POST", headers }), params(ID));
+
+  it("refuses a cross-origin cookie session and does not rate-limit or rotate", async () => {
+    expect((await rotateFrom({ origin: "https://evil.example" })).status).toBe(403);
+    expect(mockRateLimit).not.toHaveBeenCalled();
+  });
+
+  it("does not apply to a CLI bearer token", async () => {
+    mockContext.mockResolvedValue({ userId: "u1", organizationId: "o1", project: { id: PROJECT }, isCliAuth: true, orgPendingDeletion: false });
+    expect((await rotateFrom({ origin: "https://evil.example", authorization: "Bearer sck_live_x" })).status).toBe(200);
+  });
+});

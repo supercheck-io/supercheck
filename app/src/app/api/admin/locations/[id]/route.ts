@@ -9,6 +9,7 @@ import { invalidateLocationCache, LOCAL_LOCATION_CODE, shouldExcludeLocal } from
 import { updateLocationSchema } from "@/lib/validations/location";
 import { getRedisConnection, invalidateQueueMaps, queueLogger } from "@/lib/queue";
 import { invalidateQueueEventHub } from "@/lib/queue-event-hub";
+import { requireSessionSameOrigin } from "@/lib/security/same-origin";
 
 type RouteParams = { params: Promise<{ id: string }> };
 
@@ -65,6 +66,8 @@ async function countCapacityQueuedJobsForLocation(locationCode: string): Promise
 export async function PATCH(request: NextRequest, { params }: RouteParams) {
   try {
     await requireAdmin();
+    const originError = requireSessionSameOrigin(request);
+    if (originError) return originError;
     const { id } = await params;
 
     let body;
@@ -219,9 +222,11 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
 /**
  * DELETE /api/admin/locations/[id] — Delete a location (Super Admin)
  */
-export async function DELETE(_request: NextRequest, { params }: RouteParams) {
+export async function DELETE(request: NextRequest, { params }: RouteParams) {
   try {
     await requireAdmin();
+    const originError = requireSessionSameOrigin(request);
+    if (originError) return originError;
     const { id } = await params;
 
     // Check location exists

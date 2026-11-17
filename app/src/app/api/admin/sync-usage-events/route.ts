@@ -5,6 +5,7 @@ import { isPolarEnabled } from "@/lib/feature-flags";
 import { isAdminAccessDeniedError, requireAdmin } from "@/lib/admin";
 import { adminDeniedResponse } from "@/lib/admin-errors";
 import { isAuthError, requireUserAuthContext, authErrorStatus } from "@/lib/auth-context";
+import { requireSessionSameOrigin } from "@/lib/security/same-origin";
 
 /**
  * Sync pending usage events to Polar
@@ -37,6 +38,8 @@ export async function POST(request: NextRequest) {
     if (!isCronJob) {
       const auth = await requireUserAuthContext();
       await requireAdmin(auth.userId);
+      const originError = requireSessionSameOrigin(request);
+      if (originError) return originError;
     }
 
     if (!isPolarEnabled()) {

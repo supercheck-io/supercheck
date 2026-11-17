@@ -14,6 +14,10 @@ import {
 import { createLogger } from "@/lib/logger/pino-config";
 
 import { permissionDeniedResponse } from "@/lib/deletion/org-state";
+import { requireSessionSameOrigin } from "@/lib/security/same-origin";
+import { readJsonBody } from "@/lib/http/read-capped-json";
+
+const MAX_BODY_BYTES = 16 * 1024;
 const logger = createLogger({ module: "cli-tokens" });
 
 const createCliTokenSchema = z.object({
@@ -110,6 +114,8 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   try {
     const context = await requireAuthContext();
+    const originError = requireSessionSameOrigin(request, context.isCliAuth);
+    if (originError) return originError;
 
     const canCreate = checkPermissionWithContext("apiKey", "create", context);
     if (!canCreate) {
@@ -125,14 +131,9 @@ export async function POST(request: NextRequest) {
     }
 
     let requestBody;
-    try {
-      requestBody = await request.json();
-    } catch {
-      return NextResponse.json(
-        { error: "Invalid JSON in request body" },
-        { status: 400 }
-      );
-    }
+    const read = await readJsonBody(request, MAX_BODY_BYTES);
+    if (read instanceof NextResponse) return read;
+    requestBody = read.body;
 
     const validation = createCliTokenSchema.safeParse(requestBody);
     if (!validation.success) {

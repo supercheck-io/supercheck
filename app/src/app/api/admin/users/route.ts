@@ -8,6 +8,7 @@ import { eq } from 'drizzle-orm';
 import { isUuid } from '@/lib/uuid';
 import { getCurrentUser } from '@/lib/session';
 import { logAdminEvent } from '@/lib/audit-logger';
+import { requireSessionSameOrigin } from "@/lib/security/same-origin";
 
 export async function GET(request: NextRequest) {
   try {
@@ -42,6 +43,8 @@ export async function GET(request: NextRequest) {
 export async function PATCH(request: NextRequest) {
   try {
     await requireAdmin();
+    const originError = requireSessionSameOrigin(request);
+    if (originError) return originError;
     
     let body;
     try {

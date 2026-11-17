@@ -10,6 +10,9 @@ import { createManualIncident } from "@/lib/sre/manual-incident";
 import { db } from "@/utils/db";
 import { getDisplayStatus } from "@/lib/sre/incident-status-display";
 import { storedRootCause } from "@/lib/sre/evidence-brief-summary";
+import { readJsonBody } from "@/lib/http/read-capped-json";
+
+const MAX_BODY_BYTES = 256 * 1024;
 
 // One more row is fetched to tell the caller the list was cut.
 const INCIDENT_LIST_LIMIT = 500;
@@ -92,11 +95,9 @@ export async function POST(request: NextRequest) {
   const auth = await requireSreApiPermissions([{ resource: "sre_incident", action: "create" }]);
   if (!auth.success) return auth.response;
   let body: unknown;
-  try {
-    body = await request.json();
-  } catch {
-    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
-  }
+  const read = await readJsonBody(request, MAX_BODY_BYTES);
+  if (read instanceof NextResponse) return read;
+  body = read.body;
   try {
     // Audit detail only: the CLI identifies itself in its User-Agent.
     const source = request.headers.get("user-agent")?.startsWith("supercheck-cli/") ? "cli" : "api";

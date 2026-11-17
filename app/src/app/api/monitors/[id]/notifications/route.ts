@@ -12,6 +12,10 @@ import { hasPermissionForUser, forbiddenOrNotFound } from "@/lib/rbac/middleware
 import { requireUserAuthContext, isAuthError, authErrorStatus } from "@/lib/auth-context";
 import { AlertConfigConflictError, lockMonitorRow, mirrorProviderRowsToAlertConfig } from "@/lib/monitor-write";
 import { createLogger } from "@/lib/logger/index";
+import { requireSessionSameOrigin } from "@/lib/security/same-origin";
+import { readJsonBody } from "@/lib/http/read-capped-json";
+
+const MAX_BODY_BYTES = 16 * 1024;
 
 const logger = createLogger({ module: "monitor-notifications-api" }) as {
   debug: (data: unknown, msg?: string) => void;
@@ -113,6 +117,8 @@ export async function POST(
   try {
     // Require authentication (supports both Bearer tokens and session cookies)
     const { userId, projectId: tokenProjectId, isCliAuth } = await requireUserAuthContext();
+    const originError = requireSessionSameOrigin(request, isCliAuth);
+    if (originError) return originError;
 
     // Get monitor to check permissions
     if (!isUuid((await context.params).id)) return NextResponse.json({ error: "Monitor not found" }, { status: 404 });
@@ -140,11 +146,9 @@ export async function POST(
     }
 
     let rawBody: unknown;
-    try {
-      rawBody = await request.json();
-    } catch {
-      return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
-    }
+    const read = await readJsonBody(request, MAX_BODY_BYTES);
+    if (read instanceof NextResponse) return read;
+    rawBody = read.body;
     const { notificationProviderId } = rawBody as Record<string, any>;
 
     if (typeof notificationProviderId !== "string" || !isUuid(notificationProviderId)) {
@@ -253,6 +257,8 @@ export async function DELETE(
   try {
     // Require authentication (supports both Bearer tokens and session cookies)
     const { userId, projectId: tokenProjectId, isCliAuth } = await requireUserAuthContext();
+    const originError = requireSessionSameOrigin(request, isCliAuth);
+    if (originError) return originError;
 
     // Get monitor to check permissions
     if (!isUuid((await context.params).id)) return NextResponse.json({ error: "Monitor not found" }, { status: 404 });
@@ -280,11 +286,9 @@ export async function DELETE(
     }
 
     let rawBody: unknown;
-    try {
-      rawBody = await request.json();
-    } catch {
-      return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
-    }
+    const read = await readJsonBody(request, MAX_BODY_BYTES);
+    if (read instanceof NextResponse) return read;
+    rawBody = read.body;
     const { notificationProviderId } = rawBody as Record<string, any>;
 
     if (typeof notificationProviderId !== "string" || !isUuid(notificationProviderId)) {

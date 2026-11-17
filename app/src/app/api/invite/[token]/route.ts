@@ -10,6 +10,7 @@ import { withPlanLimitLock } from "@/lib/middleware/plan-limit-lock";
 import { effectiveMemberLimit } from "@/lib/billing/member-seats";
 import { isCloudHosted, isPolarEnabled } from '@/lib/feature-flags';
 import { isOrgPendingDeletion, pendingDeletionResponse, readOrgPendingOn } from "@/lib/deletion/org-state";
+import { requireSessionSameOrigin } from "@/lib/security/same-origin";
 
 export async function GET(
   request: NextRequest,
@@ -111,7 +112,9 @@ export async function POST(
     // Try to get current user, but don't require authentication
     let currentUser;
     try {
-      await requireUserAuthContext();
+      const authCtx = await requireUserAuthContext();
+      const originError = requireSessionSameOrigin(request, authCtx.isCliAuth);
+      if (originError) return originError;
       currentUser = await getCurrentUser();
     } catch (authError) {
       // Authenticated but not permitted (403) must not look like "sign in first"

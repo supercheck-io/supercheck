@@ -4,6 +4,7 @@ import { z } from "zod";
 import { createLogger } from "@/lib/logger/index";
 import { assignIncident } from "@/lib/sre/incident-lifecycle";
 import { requireSreApiPermissions, requireSreIncidentUpdateRateLimit, requireSreSameOriginRequest } from "../../../_auth";
+import { readJsonBody } from "@/lib/http/read-capped-json";
 
 // null unassigns. `role: "commander"` sets the optional incident commander instead of the assignee.
 const bodySchema = z.object({
@@ -20,7 +21,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   if (!auth.success) return auth.response;
   try {
     const parsedId = z.string().uuid().safeParse((await params).id);
-    const parsedBody = bodySchema.safeParse(await request.json().catch(() => null));
+    const read = await readJsonBody(request, 64 * 1024);
+    if (read instanceof NextResponse && read.status === 413) return read;
+    const parsedBody = bodySchema.safeParse(read instanceof NextResponse ? null : read.body);
     if (!parsedId.success || !parsedBody.success) {
       return NextResponse.json({ error: "A valid incident ID and assigneeUserId (or null) are required" }, { status: 400 });
     }

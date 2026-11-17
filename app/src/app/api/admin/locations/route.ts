@@ -12,6 +12,7 @@ import { invalidateQueueMaps, queueLogger } from "@/lib/queue";
 import { invalidateQueueEventHub } from "@/lib/queue-event-hub";
 import { getWorkerCountByLocation, getUnregisteredWorkerLocations } from "@/lib/worker-registry";
 import { createLocationSchema } from "@/lib/validations/location";
+import { requireSessionSameOrigin } from "@/lib/security/same-origin";
 
 export type LocationWithStatus = {
   id: string;
@@ -81,6 +82,8 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   try {
     await requireAdmin();
+    const originError = requireSessionSameOrigin(request);
+    if (originError) return originError;
 
     let body;
     try {

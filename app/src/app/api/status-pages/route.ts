@@ -17,6 +17,7 @@ import {
 } from "@/lib/status-page-domain";
 
 import { permissionDeniedResponse } from "@/lib/deletion/org-state";
+import { requireSessionSameOrigin } from "@/lib/security/same-origin";
 /**
  * GET /api/status-pages
  * Fetches status pages for the current project with standardized pagination format.
@@ -138,6 +139,8 @@ const createBodySchema = createStatusPageSchema.strict();
 export async function POST(request: NextRequest) {
   try {
     const authCtx = await requireAuthContext();
+    const originError = requireSessionSameOrigin(request, authCtx.isCliAuth);
+    if (originError) return originError;
 
     if (!checkPermissionWithContext("status_page", "create", authCtx)) {
       return await permissionDeniedResponse(authCtx.organizationId, "Insufficient permissions to create status pages");

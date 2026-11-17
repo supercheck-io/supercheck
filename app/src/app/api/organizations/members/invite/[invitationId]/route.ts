@@ -15,6 +15,7 @@ import { renderOrganizationInvitationEmail } from "@/lib/email-renderer";
 import { getRedisConnection } from "@/lib/queue";
 
 import { isOrgPendingDeletion, pendingDeletionResponse, permissionDeniedResponse } from "@/lib/deletion/org-state";
+import { requireSessionSameOrigin } from "@/lib/security/same-origin";
 // Rate limiting for resend operations (more restrictive than invite creation)
 const RESEND_RATE_LIMIT_KEY_PREFIX = "supercheck:invite:resend:ratelimit";
 const RESEND_RATE_LIMIT_MAX = 5; // Max 5 resends per hour per user
@@ -66,6 +67,8 @@ export async function DELETE(
   const resolvedParams = await params;
   try {
     const { userId, organizationId, isCliAuth } = await requireUserAuthContext();
+    const originError = requireSessionSameOrigin(request, isCliAuth);
+    if (originError) return originError;
     if (await isOrgPendingDeletion(organizationId, { fresh: true })) return pendingDeletionResponse();
     if (isCliAuth) {
       return NextResponse.json({ error: "Organization administration requires an interactive browser session; CLI tokens are project-scoped" }, { status: 403 });
@@ -183,6 +186,8 @@ export async function POST(
   const resolvedParams = await params;
   try {
     const { userId, organizationId, isCliAuth } = await requireUserAuthContext();
+    const originError = requireSessionSameOrigin(request, isCliAuth);
+    if (originError) return originError;
     if (await isOrgPendingDeletion(organizationId, { fresh: true })) return pendingDeletionResponse();
     if (isCliAuth) {
       return NextResponse.json({ error: "Organization administration requires an interactive browser session; CLI tokens are project-scoped" }, { status: 403 });

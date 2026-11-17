@@ -9,6 +9,7 @@ import { requireAuthContext, isAuthError, authErrorStatus } from "@/lib/auth-con
 import { z } from "zod";
 
 import { permissionDeniedResponse } from "@/lib/deletion/org-state";
+import { requireSessionSameOrigin } from "@/lib/security/same-origin";
 const updateKeySchema = z.object({
   enabled: z.boolean().optional(),
   name: z.string().trim().min(1).max(100).optional(),
@@ -21,6 +22,8 @@ export async function PATCH(
 ) {
   try {
     const authCtx = await requireAuthContext();
+    const originError = requireSessionSameOrigin(request, authCtx.isCliAuth);
+    if (originError) return originError;
     const { id: jobId, keyId } = await params;
 
     const canUpdate = checkPermissionWithContext("apiKey", "update", authCtx);
@@ -119,6 +122,8 @@ export async function DELETE(
 ) {
   try {
     const authCtx = await requireAuthContext();
+    const originError = requireSessionSameOrigin(request, authCtx.isCliAuth);
+    if (originError) return originError;
     const { id: jobId, keyId } = await params;
 
     const canDelete = checkPermissionWithContext("apiKey", "delete", authCtx);

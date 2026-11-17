@@ -16,6 +16,7 @@ import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { db } from "@/utils/db";
 import { runs, projects } from "@/db/schema";
 import { and, eq, inArray } from "drizzle-orm";
+import { requireSessionSameOrigin } from "@/lib/security/same-origin";
 
 // Interface for K6 run metrics
 interface K6RunMetrics {
@@ -117,6 +118,8 @@ export async function POST(request: NextRequest) {
       AuthService.validateUserAccess(request, compareRun.runId),
     ]);
     const authContext = await requireAuthContext();
+    const originError = requireSessionSameOrigin(request, authContext.isCliAuth);
+    if (originError) return originError;
 
     // Spends AI credits and sends run data to the model, so it needs the same level as AI fix (update), not view.
     if (!checkPermissionWithContext("test", "update", authContext)) {

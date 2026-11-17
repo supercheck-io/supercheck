@@ -12,6 +12,7 @@ import { loadCreators } from '@/lib/creators';
 import { logAuditEvent } from '@/lib/audit-logger';
 
 import { permissionDeniedResponse } from "@/lib/deletion/org-state";
+import { requireSessionSameOrigin } from "@/lib/security/same-origin";
 export async function GET(
   request: NextRequest,
   routeContext: { params: Promise<{ id: string }> }
@@ -158,6 +159,8 @@ export async function PATCH(
 
   try {
     const context = await requireAuthContext();
+    const originError = requireSessionSameOrigin(request, context.isCliAuth);
+    if (originError) return originError;
     const { userId, project, organizationId } = context;
 
     const canUpdate = checkPermissionWithContext("job", "update", context);
@@ -236,6 +239,8 @@ export async function PUT(
   const params = await routeContext.params;
   try {
     const context = await requireAuthContext();
+    const originError = requireSessionSameOrigin(request, context.isCliAuth);
+    if (originError) return originError;
 
     const canUpdate = checkPermissionWithContext("job", "update", context);
     if (!canUpdate) {
@@ -302,12 +307,14 @@ export async function PUT(
  * Mirrors the logic from the deleteJob server action.
  */
 export async function DELETE(
-  _request: Request,
+  request: Request,
   routeContext: { params: Promise<{ id: string }> },
 ) {
   try {
     const { id } = await routeContext.params;
     const context = await requireAuthContext();
+    const originError = requireSessionSameOrigin(request, context.isCliAuth);
+    if (originError) return originError;
     if (!checkPermissionWithContext("job", "delete", context)) {
       return await permissionDeniedResponse(context.organizationId, "Insufficient permissions");
     }

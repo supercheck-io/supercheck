@@ -13,6 +13,7 @@ import { getS3Client } from "@/lib/s3-proxy";
 import { PutObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3";
 import { z } from "zod";
 import { loadCreators } from "@/lib/creators";
+import { requireSessionSameOrigin } from "@/lib/security/same-origin";
 
 const FILE_VARIABLES_BUCKET = process.env.S3_PROJECT_DATA_FILES_BUCKET_NAME || "project-data-files";
 
@@ -111,7 +112,9 @@ export async function POST(
     const resolvedParams = await params;
     const projectId = resolvedParams.id;
 
-    const { userId } = await requireUserAuthContext((await params).id);
+    const { userId, isCliAuth } = await requireUserAuthContext((await params).id);
+    const originError = requireSessionSameOrigin(request, isCliAuth);
+    if (originError) return originError;
 
     // Resolve permission context (2-3 DB queries, replaces separate project + permission lookups)
     if (!isUuid((await params).id)) return NextResponse.json({ error: "Project not found" }, { status: 404 });

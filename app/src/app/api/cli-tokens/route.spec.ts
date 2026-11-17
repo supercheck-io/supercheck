@@ -186,3 +186,29 @@ describe("GET /api/cli-tokens", () => {
     expect((await GET()).status).toBe(403);
   });
 });
+
+describe("POST /api/cli-tokens cross-origin and body-size guards", () => {
+  const { jsonRequest, declaredOversizeRequest, streamedOversizeRequest, SAME_ORIGIN, CROSS_ORIGIN } =
+    jest.requireActual("@/lib/security/request-hardening.spec-helpers") as typeof import("@/lib/security/request-hardening.spec-helpers");
+  const body = { name: "CI" };
+
+  it("refuses a cross-origin cookie session with 403 before issuing", async () => {
+    expect((await POST(jsonRequest("/api/cli-tokens", "POST", body, { origin: CROSS_ORIGIN }))).status).toBe(403);
+    expect(mockIssue).not.toHaveBeenCalled();
+  });
+
+  it("issues for a same-origin cookie session and for a CLI bearer token from anywhere", async () => {
+    mockIssue.mockResolvedValue(created());
+    expect((await POST(jsonRequest("/api/cli-tokens", "POST", body, { origin: SAME_ORIGIN }))).status).toBe(201);
+    mockRequireAuth.mockResolvedValueOnce({ ...context, isCliAuth: true });
+    expect((await POST(jsonRequest("/api/cli-tokens", "POST", body, { origin: CROSS_ORIGIN, authorization: "Bearer sck_live_x" }))).status).toBe(201);
+  });
+
+  it.each([["declared", declaredOversizeRequest], ["streamed", streamedOversizeRequest]])(
+    "refuses a %s body over 16 KB with 413",
+    async (_kind, make) => {
+      expect((await POST(make("/api/cli-tokens", "POST", 16 * 1024 + 1))).status).toBe(413);
+      expect(mockIssue).not.toHaveBeenCalled();
+    },
+  );
+});

@@ -10,6 +10,7 @@ import { ProjectDeletionError, softDeleteProject } from '@/lib/deletion/project'
 import { eq, and, ne, count, isNotNull } from 'drizzle-orm';
 import { z } from 'zod';
 import { logAuditEvent } from '@/lib/audit-logger';
+import { requireSessionSameOrigin } from "@/lib/security/same-origin";
 
 // Status transitions are not editable here: DELETE owns soft-delete (project:delete, non-default).
 const updateProjectSchema = z
@@ -127,6 +128,8 @@ export async function PUT(
   const resolvedParams = await params;
   try {
     const { userId, isCliAuth } = await requireUserAuthContext((await params).id);
+    const originError = requireSessionSameOrigin(request, isCliAuth);
+    if (originError) return originError;
     if (isCliAuth) {
       return NextResponse.json({ error: "Organization administration requires an interactive browser session; CLI tokens are project-scoped" }, { status: 403 });
     }
@@ -225,12 +228,14 @@ export async function PUT(
  * Soft delete a project (org owners and admins); restorable for 7 days via POST /api/projects/[id]/restore
  */
 export async function DELETE(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const resolvedParams = await params;
   try {
     const { userId, isCliAuth } = await requireUserAuthContext((await params).id);
+    const originError = requireSessionSameOrigin(request, isCliAuth);
+    if (originError) return originError;
     if (isCliAuth) {
       return NextResponse.json({ error: "Organization administration requires an interactive browser session; CLI tokens are project-scoped" }, { status: 403 });
     }

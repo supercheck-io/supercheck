@@ -23,6 +23,7 @@ import { updateVariableSchema } from "@/lib/validations/variable";
 import { secretInUseMessage, breaksSecretRefs } from "@/lib/monitor-secret-usage";
 
 import { permissionDeniedResponse } from "@/lib/deletion/org-state";
+import { requireSessionSameOrigin } from "@/lib/security/same-origin";
 const FILE_VARIABLES_BUCKET = process.env.S3_PROJECT_DATA_FILES_BUCKET_NAME || "project-data-files";
 
 // Drizzle wraps driver errors; the Postgres code lives on `cause`.
@@ -93,6 +94,8 @@ export async function PUT(
   try {
     const { id: variableId } = await params;
     const context = await requireAuthContext();
+    const originError = requireSessionSameOrigin(request, context.isCliAuth);
+    if (originError) return originError;
 
     const canUpdate = checkPermissionWithContext("variable", "update", context);
     if (!canUpdate) {
@@ -274,12 +277,14 @@ export async function PUT(
 }
 
 export async function DELETE(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const { id: variableId } = await params;
     const context = await requireAuthContext();
+    const originError = requireSessionSameOrigin(request, context.isCliAuth);
+    if (originError) return originError;
 
     const canDelete = checkPermissionWithContext("variable", "delete", context);
     if (!canDelete) {

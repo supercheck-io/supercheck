@@ -23,6 +23,7 @@ import { containsPattern } from '@/lib/requirements/like';
 import { loadCreators } from "@/lib/creators";
 
 import { permissionDeniedResponse } from "@/lib/deletion/org-state";
+import { requireSessionSameOrigin } from "@/lib/security/same-origin";
 // The dashboard calls this endpoint without paging and paginates client-side, so the default stays 500.
 const DEFAULT_PAGE = 1;
 const DEFAULT_PAGE_SIZE = 500;
@@ -251,6 +252,8 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const context = await requireAuthContext();
+    const originError = requireSessionSameOrigin(request, context.isCliAuth);
+    if (originError) return originError;
 
     if (!checkPermissionWithContext('requirement', 'create', context)) {
       return await permissionDeniedResponse(context.organizationId, 'Insufficient permissions to create requirements');

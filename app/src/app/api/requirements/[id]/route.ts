@@ -11,6 +11,7 @@ import {
 } from "@/lib/requirements/service";
 
 import { permissionDeniedResponse } from "@/lib/deletion/org-state";
+import { requireSessionSameOrigin } from "@/lib/security/same-origin";
 type RouteParams = { params: Promise<{ id: string }> };
 
 const notFound = () =>
@@ -39,6 +40,8 @@ export async function GET(_request: NextRequest, { params }: RouteParams) {
 export async function PUT(request: NextRequest, { params }: RouteParams) {
   try {
     const context = await requireAuthContext();
+    const originError = requireSessionSameOrigin(request, context.isCliAuth);
+    if (originError) return originError;
     if (!checkPermissionWithContext("requirement", "update", context)) {
       return await permissionDeniedResponse(context.organizationId, "Insufficient permissions to update requirements");
     }
@@ -80,9 +83,11 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
   }
 }
 
-export async function DELETE(_request: NextRequest, { params }: RouteParams) {
+export async function DELETE(request: NextRequest, { params }: RouteParams) {
   try {
     const context = await requireAuthContext();
+    const originError = requireSessionSameOrigin(request, context.isCliAuth);
+    if (originError) return originError;
     if (!checkPermissionWithContext("requirement", "delete", context)) {
       return await permissionDeniedResponse(context.organizationId, "Insufficient permissions to delete requirements");
     }

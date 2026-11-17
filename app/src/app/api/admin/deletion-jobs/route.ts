@@ -9,6 +9,7 @@ import { logAdminEvent } from "@/lib/audit-logger";
 import { isUuid } from "@/lib/uuid";
 import { retryFailedDeletion } from "@/lib/deletion/jobs";
 import { triggerDeletion } from "@/lib/deletion/queue";
+import { requireSessionSameOrigin } from "@/lib/security/same-origin";
 
 /** Super admin: unfinished and failed background purges (ids and counters only; no tenant content). */
 export async function GET() {
@@ -32,6 +33,8 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   try {
     await requireAdmin();
+    const originError = requireSessionSameOrigin(request);
+    if (originError) return originError;
     const admin = await getCurrentUser();
     if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     const body = (await request.json().catch(() => null)) as { id?: unknown } | null;

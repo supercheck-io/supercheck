@@ -2,6 +2,8 @@ import { NextResponse, type NextRequest } from "next/server";
 import { requireAuth, resolveProjectPermissionContext, checkPermissionWithContext, type ProjectPermissionContext } from "@/lib/rbac/middleware";
 import { permissionDeniedResponse } from "@/lib/deletion/org-state";
 import { isUuid } from "@/lib/uuid";
+import { readCappedJson } from "@/lib/http/read-capped-json";
+import { requireSessionSameOrigin } from "@/lib/security/same-origin";
 import type { SreRateLimitResult } from "@/lib/sre/sre-rate-limiter";
 
 /** Setup routes are session-cookie only (spec D1): any bearer credential is refused before anything else. */
@@ -33,19 +35,10 @@ export const MAX_BODY_BYTES = 64 * 1024;
 
 /** Reads a JSON body under the 64 KB cap; returns a response on failure. */
 export async function readJsonBody(request: NextRequest): Promise<{ body: unknown } | NextResponse> {
-  // Reject on the declared length first so an oversized body is never read into memory.
-  if (Number(request.headers.get("content-length")) > MAX_BODY_BYTES) {
-    return NextResponse.json({ error: "Request body too large" }, { status: 413 });
-  }
-  const text = await request.text();
-  if (new TextEncoder().encode(text).length > MAX_BODY_BYTES) {
-    return NextResponse.json({ error: "Request body too large" }, { status: 413 });
-  }
-  try {
-    return { body: text ? JSON.parse(text) : {} };
-  } catch {
-    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
-  }
+  const read = await readCappedJson(request, MAX_BODY_BYTES);
+  if (read.tooLarge) return NextResponse.json({ error: "Request body too large" }, { status: 413 });
+  if (read.data === null) return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+  return { body: read.data ?? {} };
 }
 
 /** Auth + path project + one permission. Returns the context or the response to send. */
@@ -57,6 +50,10 @@ export async function guardProject(
 ): Promise<{ userId: string; ctx: ProjectPermissionContext } | NextResponse> {
   const bearer = rejectBearer(request);
   if (bearer) return bearer;
+  if (request.method !== "GET") {
+    const originError = requireSessionSameOrigin(request);
+    if (originError) return originError;
+  }
   const userId = await sessionUserId();
   if (userId instanceof NextResponse) return userId;
   if (!isUuid(rawId)) return NextResponse.json({ error: "Project not found" }, { status: 404 });

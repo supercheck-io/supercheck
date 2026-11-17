@@ -13,6 +13,7 @@ import { getS3Client } from "@/lib/s3-proxy";
 import { PutObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3";
 import { z } from "zod";
 import { secretInUseMessage, breaksSecretRefs } from "@/lib/monitor-secret-usage";
+import { requireSessionSameOrigin } from "@/lib/security/same-origin";
 
 const FILE_VARIABLES_BUCKET = process.env.S3_PROJECT_DATA_FILES_BUCKET_NAME || "project-data-files";
 
@@ -134,7 +135,9 @@ export async function PUT(
     const projectId = resolvedParams.id;
     const variableId = resolvedParams.variableId;
 
-    const { userId } = await requireUserAuthContext((await params).id);
+    const { userId, isCliAuth } = await requireUserAuthContext((await params).id);
+    const originError = requireSessionSameOrigin(request, isCliAuth);
+    if (originError) return originError;
 
     if (!isUuid((await params).id)) return NextResponse.json({ error: "Project not found" }, { status: 404 });
     const permCtx = await resolveProjectPermissionContext(userId, projectId);
@@ -370,7 +373,9 @@ export async function DELETE(
     const projectId = resolvedParams.id;
     const variableId = resolvedParams.variableId;
 
-    const { userId } = await requireUserAuthContext((await params).id);
+    const { userId, isCliAuth } = await requireUserAuthContext((await params).id);
+    const originError = requireSessionSameOrigin(request, isCliAuth);
+    if (originError) return originError;
 
     if (!isUuid((await params).id)) return NextResponse.json({ error: "Project not found" }, { status: 404 });
     const permCtx = await resolveProjectPermissionContext(userId, projectId);

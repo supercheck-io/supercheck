@@ -12,6 +12,7 @@ import { decodeStoredTestScript, encodeStoredTestScript } from "@/lib/test-scrip
 import { loadCreators } from "@/lib/creators";
 
 import { permissionDeniedResponse } from "@/lib/deletion/org-state";
+import { requireSessionSameOrigin } from "@/lib/security/same-origin";
 /**
  * GET /api/tests
  *
@@ -218,6 +219,8 @@ const MAX_TITLE_LENGTH = 255;
 export async function POST(request: NextRequest) {
   try {
     const context = await requireAuthContext();
+    const originError = requireSessionSameOrigin(request, context.isCliAuth);
+    if (originError) return originError;
 
     // SECURITY: Validate subscription before allowing test creation
     await subscriptionService.blockUntilSubscribed(context.organizationId);

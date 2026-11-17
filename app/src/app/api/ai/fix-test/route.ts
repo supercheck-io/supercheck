@@ -23,6 +23,7 @@ import { headers } from "next/headers";
 import { logAuditEvent } from "@/lib/audit-logger";
 import { subscriptionService } from "@/lib/services/subscription-service";
 import { resolveRunArtifact } from "@/lib/ai/run-artifact";
+import { requireSessionSameOrigin } from "@/lib/security/same-origin";
 
 // S3 Client configuration
 const s3Client = new S3Client({
@@ -52,6 +53,8 @@ export async function POST(request: NextRequest) {
 
     // Step 2: Authentication and authorization
     const session = await AuthService.validateUserAccess(request, testId);
+    const originError = requireSessionSameOrigin(request);
+    if (originError) return originError;
     if (!(await AuthService.canAccessTestReport(session, testId, testType, "update"))) {
       return NextResponse.json({ error: "Test report not found" }, { status: 404 });
     }

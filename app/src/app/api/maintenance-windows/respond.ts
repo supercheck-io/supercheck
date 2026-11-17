@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { permissionDeniedResponse } from "@/lib/deletion/org-state";
 import type { WindowResult } from "@/lib/maintenance/windows";
+import { readJsonBody } from "@/lib/http/read-capped-json";
 
 /** One mapping from a window result to an HTTP response, shared by every maintenance route. */
 export async function windowResponse<T extends object>(organizationId: string, result: WindowResult<T>, status = 200) {
@@ -17,12 +18,12 @@ export async function windowResponse<T extends object>(organizationId: string, r
   return NextResponse.json({ error: result.error, ...("fieldErrors" in result && result.fieldErrors ? { fieldErrors: result.fieldErrors } : {}) }, { status: code });
 }
 
+// Up to 500 monitor and 500 service ids plus status-page components fit well inside this.
+const MAX_BODY_BYTES = 256 * 1024;
+
 export async function readJson(request: Request): Promise<{ body: unknown } | { response: NextResponse }> {
-  try {
-    return { body: await request.json() };
-  } catch {
-    return { response: NextResponse.json({ error: "Invalid JSON body" }, { status: 400 }) };
-  }
+  const read = await readJsonBody(request, MAX_BODY_BYTES);
+  return read instanceof NextResponse ? { response: read } : read;
 }
 
 export const clientSource = (request: Request) => (request.headers.get("user-agent")?.startsWith("supercheck-cli/") ? "cli" : "api");

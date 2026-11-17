@@ -17,6 +17,7 @@ import { setCancellationSignal, RUN_CANCELLATION_MARKER } from "@/lib/cancellati
 import { logAuditEvent } from "@/lib/audit-logger";
 import { syncJobStatusFromRuns } from "@/lib/job-status-sync";
 import { getCapacityManager } from "@/lib/capacity-manager";
+import { requireSessionSameOrigin } from "@/lib/security/same-origin";
 
 const logger = createLogger({ module: "cancel-run-api" }) as {
   debug: (data: unknown, msg?: string) => void;
@@ -75,6 +76,8 @@ export async function POST(
 
     // Require authentication (supports both Bearer tokens and session cookies)
     const { userId, isCliAuth, project: tokenProject } = await requireAuthContext();
+    const originError = requireSessionSameOrigin(request, isCliAuth);
+    if (originError) return originError;
 
     logger.info({ runId, userId }, "Cancellation requested");
 

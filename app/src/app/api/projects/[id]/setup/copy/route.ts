@@ -7,6 +7,7 @@ import { checkSlidingWindowRateLimit } from "@/lib/sre/sre-rate-limiter";
 import { copyConnectors, copyProviders, listConnectorIds, listProviderIds, type CopyItemResult } from "@/lib/setup/copy";
 import { rateLimitResponse, readJsonBody, rejectBearer, sessionUserId } from "@/lib/setup/route-guard";
 import { isUuid } from "@/lib/uuid";
+import { requireSessionSameOrigin } from "@/lib/security/same-origin";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -24,6 +25,8 @@ export async function POST(request: NextRequest, { params }: Params) {
   try {
     const bearer = rejectBearer(request);
     if (bearer) return bearer;
+    const originError = requireSessionSameOrigin(request);
+    if (originError) return originError;
     const userId = await sessionUserId();
     if (userId instanceof NextResponse) return userId;
     const rawId = (await params).id;

@@ -29,6 +29,7 @@ import {
 import { createLogger } from "@/lib/logger/index";
 
 import { permissionDeniedResponse } from "@/lib/deletion/org-state";
+import { requireSessionSameOrigin } from "@/lib/security/same-origin";
 export const dynamic = "force-dynamic";
 
 const logger = createLogger({ module: "cli-project-config-deploy" }) as {
@@ -74,6 +75,8 @@ type CliProjectConfigApplyResult = {
 export async function POST(request: NextRequest) {
   try {
     const context = await requireAuthContext();
+    const originError = requireSessionSameOrigin(request, context.isCliAuth);
+    if (originError) return originError;
 
     const canUpdateNotifications = checkPermissionWithContext(
       "notification",

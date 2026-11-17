@@ -16,6 +16,7 @@ import { eq, and, sql, inArray } from "drizzle-orm";
 import { getS3FileContentFromUrl, getS3FileContent } from "@/lib/s3-proxy";
 import { requireAuthContext, authErrorStatus, AuthError } from "@/lib/auth-context";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
+import { requireSessionSameOrigin } from "@/lib/security/same-origin";
 
 
 interface AnalyzeJobRequest {
@@ -76,6 +77,8 @@ export async function POST(request: NextRequest) {
     // Step 2: Authentication and authorization
     const session = await AuthService.validateUserAccess(request, runId);
     const authContext = await requireAuthContext();
+    const originError = requireSessionSameOrigin(request, authContext.isCliAuth);
+    if (originError) return originError;
 
     // Spends AI credits and sends run data to the model, so it needs the same level as AI fix (update), not view.
     if (!checkPermissionWithContext("job", "update", authContext)) {
