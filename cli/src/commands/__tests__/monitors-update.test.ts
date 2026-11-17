@@ -75,6 +75,9 @@ describe('monitor update: AI endpoint and MCP options', () => {
     expect(replacementPatch({ toString: 'old', q: 'old' }, { q: 'new' })).toEqual({ toString: null, q: 'new' })
     expect(() => buildCheckConfigPatch({ callArgs: '{"cursor":null}' }, mcpMonitor)).toThrow('cannot contain null')
     expect(() => buildCheckConfigPatch({ callArgs: '{"a":{"b":null}}' }, mcpMonitor)).toThrow('cannot contain null')
+    for (const args of ['{"constructor":1}', '{"a":{"__proto__":{"x":1}}}', '{"a":{"b":{"prototype":1}}}']) {
+      expect(() => buildCheckConfigPatch({ callArgs: args }, mcpMonitor)).toThrow('__proto__, constructor or prototype')
+    }
   })
 
   it('refuses options that do not fit the monitor, before any write', async () => {

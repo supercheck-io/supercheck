@@ -419,6 +419,9 @@ monitorCommand
 
 const isPlainObject = (value: unknown): value is Record<string, unknown> => !!value && typeof value === 'object' && !Array.isArray(value)
 const hasNull = (value: unknown): boolean => value === null || (typeof value === 'object' && Object.values(value as object).some(hasNull))
+// The server's merge skips these keys at any depth, so they could never be stored.
+const RESERVED_KEYS = new Set(['__proto__', 'constructor', 'prototype'])
+const hasReservedKey = (value: unknown): boolean => isPlainObject(value) && Object.keys(value).some((key) => RESERVED_KEYS.has(key) || hasReservedKey(value[key]))
 /** A JSON merge patch that turns `previous` into exactly `next`: the server merges nested objects, so stale keys are nulled at every level. */
 export function replacementPatch(previous: Record<string, unknown>, next: Record<string, unknown>): Record<string, unknown> {
   const patch: Record<string, unknown> = Object.fromEntries(Object.keys(previous).filter((key) => !Object.hasOwn(next, key)).map((key) => [key, null]))
@@ -474,6 +477,7 @@ export function buildCheckConfigPatch(options: UpdateCheckOptions, existing: Exi
       try { args = JSON.parse(options.callArgs) } catch { args = undefined }
       if (!isPlainObject(args)) throw new CLIError('--call-args must be a JSON object.', ExitCode.ConfigError)
       if (hasNull(args)) throw new CLIError('--call-args cannot contain null values.', ExitCode.ConfigError)
+      if (hasReservedKey(args)) throw new CLIError('--call-args cannot use the keys __proto__, constructor or prototype.', ExitCode.ConfigError)
       toolCall.arguments = replacementPatch(isPlainObject(previousCall?.arguments) ? previousCall.arguments : {}, args)
     }
     if (Object.keys(toolCall).length > 0) mcp.toolCall = toolCall
