@@ -313,7 +313,7 @@ async function readReply(
       text += decoder.decode(value, { stream: true });
       if (rpcId === undefined) continue;
       delimiter.lastIndex = searchFrom;
-      for (let m; (m = delimiter.exec(text));) {
+      for (let m: RegExpExecArray | null; (m = delimiter.exec(text));) {
         if (sseEventId(text.slice(eventStart, m.index)) === rpcId) return text;
         eventStart = m.index + m[0].length;
       }
