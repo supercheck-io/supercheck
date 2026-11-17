@@ -18,7 +18,8 @@ export function resolveMonitorDetailStatus(
   recentResults: MonitorDetailResult[] | null | undefined,
   selectedLocation: "all" | string
 ): MonitorStatus {
-  if (selectedLocation === "all" || !recentResults || recentResults.length === 0) {
+  // Paused is the monitor's own state; a location's last result must not hide it.
+  if (monitorStatus === "paused" || selectedLocation === "all" || !recentResults || recentResults.length === 0) {
     return monitorStatus;
   }
 

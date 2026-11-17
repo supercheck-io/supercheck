@@ -17,7 +17,7 @@ import { DataTableFacetedFilter } from "@/components/ui/data-table-faceted-filte
 import { DataTable } from "@/components/sre/data-table/data-table";
 import { PageHeader } from "@/components/shared/page-header";
 import { DashboardEmptyState } from "@/components/dashboard/dashboard-empty-state";
-import { NAV } from "@/lib/nav-areas";
+import { AREA_TEXT, NAV } from "@/lib/nav-areas";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ListErrorState } from "@/components/shared/list-states";
 import { MONITORS_QUERY_KEY } from "@/hooks/use-monitors";
@@ -279,8 +279,8 @@ export function MonitorMaintenanceBar({ monitorId }: { monitorId: string }) {
         </Badge>
       )}
       {canWrite && (
-        <Button type="button" size="sm" variant="outline" onClick={() => setOpen(true)}>
-          <CalendarClock className="h-4 w-4" />
+        <Button type="button" size="sm" variant="outline" className="h-8" onClick={() => setOpen(true)}>
+          <CalendarClock className={`h-4 w-4 ${AREA_TEXT[NAV.monitors.tone]}`} />
           Schedule maintenance
         </Button>
       )}
@@ -298,7 +298,7 @@ export function ServiceMaintenanceAction({ serviceId }: { serviceId: string }) {
   return (
     <>
       <Button type="button" size="sm" variant="outline" className="h-8" onClick={() => setOpen(true)}>
-        <CalendarClock className="h-4 w-4" />
+        <CalendarClock className={`h-4 w-4 ${AREA_TEXT[NAV.monitors.tone]}`} />
         Schedule maintenance
       </Button>
       {open && <MaintenanceWindowDialog open onOpenChange={setOpen} defaults={{ serviceId }} />}

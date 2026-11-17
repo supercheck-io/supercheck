@@ -27,6 +27,10 @@ describe("resolveMonitorDetailStatus", () => {
     ).toBe("down");
   });
 
+  it("keeps a paused monitor paused when a region filter is active", () => {
+    expect(resolveMonitorDetailStatus("paused", [{ location: "eu-central", isUp: true }], "eu-central")).toBe("paused");
+  });
+
   it("falls back to the backend status when the selected location has no result", () => {
     expect(
       resolveMonitorDetailStatus(
