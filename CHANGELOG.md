@@ -80,6 +80,8 @@ The CLI is versioned separately; see [cli/CHANGELOG.md](cli/CHANGELOG.md). Prere
 
 ### Fixed
 
+- A heartbeat that missed its run during a maintenance window now alerts within about 3 minutes of the window ending, instead of up to one interval later (a day for a daily job).
+- Creating a scheduled monitor while Redis is down now fails within about 2 seconds with a retryable `503`, instead of hanging. Heartbeat monitors can still be created.
 - Creating an MCP monitor without `config.mcp` (or an AI endpoint preset without a model) now names the missing field.
 - Incident pages show the incident title in the browser tab.
 - Extending a maintenance window can no longer move its end earlier; use **End now** to finish early.

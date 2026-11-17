@@ -279,6 +279,13 @@ describe('decideHeartbeat', () => {
     ).toBe('missed');
   });
 
+  it('records the next miss at once when the last one was held by maintenance that has ended', () => {
+    const recent = new Date(T0 - 30 * MIN).toISOString();
+    const held = pinged(200, { lastMissedAt: recent, missHeld: true });
+    expect(decideHeartbeat(held, T0, UP)).toEqual({ finish: {} });
+    expect(decideHeartbeat(held, T0, UP, true).result?.kind).toBe('missed');
+  });
+
   it('counts the deadline from the newer of the last ping and the resume anchor', () => {
     const resumed = pinged(500, {
       anchorAt: new Date(T0 - 10 * MIN).toISOString(),

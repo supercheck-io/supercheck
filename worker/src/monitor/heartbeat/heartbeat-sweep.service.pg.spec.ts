@@ -395,6 +395,52 @@ suite('heartbeat sweep (PostgreSQL)', () => {
     expect(sent).toContain(`monitor_failure:${customProvider}`);
   });
 
+  it('a miss held by maintenance alerts as soon as the window ends, not one interval later', async () => {
+    const id = await seedHeartbeat({ pingAgoMin: 80 });
+    const window = (from: Date, to: Date) =>
+      client`INSERT INTO maintenance_windows (id, organization_id, project_id, title, scope, recurrence, timezone, local_start_time, duration_minutes, starts_on, occurrence_starts_at, occurrence_ends_at)
+        VALUES (uuidv7(), ${organizationId}, ${projectId}, 'Deploy', 'project', 'once', 'UTC', '10:00', 60, '2026-10-21',
+          ${from.toISOString()}::timestamptz, ${to.toISOString()}::timestamptz)`;
+    try {
+      await window(
+        new Date(Date.now() - 60 * 60_000),
+        new Date(Date.now() + 60 * 60_000),
+      );
+      await newSweep().sweep();
+      expect(await results(id)).toHaveLength(1);
+      expect(sent).toEqual([]);
+      expect((await monitorRow(id)).heartbeatState?.missHeld).toBe(true);
+
+      // Still inside the window: no second row, and the lease is kept so the row is not re-claimed every tick.
+      await setState(id, {
+        leaseUntil: new Date(Date.now() - 1000).toISOString(),
+      });
+      await newSweep().sweep();
+      expect(await results(id)).toHaveLength(1);
+      expect((await monitorRow(id)).heartbeatState?.leaseUntil).toBeDefined();
+      await setState(id, {
+        leaseUntil: new Date(Date.now() - 1000).toISOString(),
+      });
+
+      await client`UPDATE maintenance_windows SET occurrence_ends_at = now() - interval '1 second'`;
+      await newSweep().sweep();
+      const rows = await results(id);
+      expect(rows).toHaveLength(2);
+      expect(rows[1]).toMatchObject({
+        isUp: false,
+        consecutiveFailureCount: 1,
+      });
+      expect(sent).toContain(`monitor_failure:${customProvider}`);
+      expect((await monitorRow(id)).heartbeatState?.missHeld).toBeUndefined();
+
+      // Back to one missed row per interval.
+      await newSweep().sweep();
+      expect(await results(id)).toHaveLength(2);
+    } finally {
+      await client`DELETE FROM maintenance_windows`;
+    }
+  });
+
   /** /fail then ping, and an earlier attempt that stored the fail row and died before its status write. */
   async function partialFailThenPing() {
     const id = await seedHeartbeat({ pingAgoMin: 5 });

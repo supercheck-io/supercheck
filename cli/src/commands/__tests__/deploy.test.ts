@@ -7,6 +7,7 @@ const post = jest.fn<(path: string, body?: unknown) => Promise<{ data: unknown }
 const put = jest.fn<(path: string, body?: unknown) => Promise<{ data: unknown }>>(async () => ({ data: {} }))
 const record = jest.fn()
 const output = jest.fn()
+const stderr = jest.spyOn(process.stderr, 'write').mockImplementation(() => true)
 let remote: unknown[] = []
 let localId: string | undefined
 
@@ -39,7 +40,7 @@ const { deployCommand } = await import('../deploy.js')
 const { setOutputFormat } = await import('../../output/formatter.js')
 
 beforeEach(() => {
-  post.mockClear(); put.mockClear(); record.mockClear(); output.mockClear()
+  post.mockClear(); put.mockClear(); record.mockClear(); output.mockClear(); stderr.mockClear()
   remote = []
   localId = undefined
   setOutputFormat('table')
@@ -57,11 +58,14 @@ describe('deploy heartbeat monitors', () => {
     expect(JSON.stringify(record.mock.calls)).not.toContain(TOKEN)
   })
 
-  it('returns the ping URL in the --json results', async () => {
-    setOutputFormat('json')
+  it.each(['json', 'quiet'] as const)('keeps the ping URL out of %s output and says how to reveal it', async (format) => {
+    setOutputFormat(format)
     await deployCommand.parseAsync(['node', 'deploy', '--force'])
-    const result = JSON.parse(String(output.mock.calls.at(-1)?.[0]))
-    expect(result.results).toEqual([expect.objectContaining({ action: 'create', type: 'monitor', id: M1, pingUrl: PING_URL })])
+    const stdout = output.mock.calls.map(([text]) => String(text)).join('\n')
+    expect(stdout).not.toMatch(/hb_[0-9a-f]{32}/)
+    if (format === 'json') expect(JSON.parse(String(output.mock.calls.at(-1)?.[0])).results).toEqual([expect.objectContaining({ action: 'create', type: 'monitor', id: M1 })])
+    // Straight to stderr: --json and --quiet silence logger warnings.
+    expect(stderr.mock.calls.flat().join('')).toContain(`supercheck monitor heartbeat-url ${M1}`)
   })
 
   it('an update that drops an enabled warning sends it as false, so the next diff is clean', async () => {
