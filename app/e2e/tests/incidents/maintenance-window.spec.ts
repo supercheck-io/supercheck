@@ -98,8 +98,10 @@ test.describe('Maintenance windows @incidents', () => {
     const resumed = await request.patch(`/api/monitors/${monitor.id}/status`, { data: { status: 'pending' } });
     expect(resumed.status(), await resumed.text()).toBe(200);
 
-    // Two failing checks inside the window: the second runs a full interval after the first, by which time the
-    // first failure has long been through triage. A muted failure leaves no record to wait on, by design.
+    // Two failing checks inside the window: the second runs a full interval after the first, which normally gives the
+    // first failure ample time in triage. Best effort only: a muted failure leaves no record to wait on, by design, so
+    // a triage backlog could let the assertion below pass early. background-alert-triage.db.spec.ts proves the
+    // triage decision itself; this test proves the stored results, the badge and the end-to-end absence of an incident.
     await expect(async () => {
       const results = (await (await request.get(`/api/monitors/${monitor.id}/results?limit=10`)).json()) as { data: Array<{ isUp: boolean; inMaintenance?: boolean }> };
       expect(results.data.filter((r) => !r.isUp && r.inMaintenance === true).length).toBeGreaterThanOrEqual(2);
