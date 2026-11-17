@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { expect, type APIRequestContext, type Page } from '@playwright/test';
 
-import { test } from '../../fixtures';
+import { Role, test } from '../../fixtures';
 import { hasRbacUser } from '../../utils/env';
 import { signUpFreshCreator } from '../../utils/setup-test-data';
 
@@ -71,8 +71,11 @@ test.describe('Project setup access control @setup', () => {
     }
   });
 
-  test('a project admin takes over the setup lock from the owner; an editor cannot @critical', async ({ orgOwnerPage, projectAdminPage, editorPage }) => {
+  test('a project admin takes over the setup lock from the owner; an editor cannot @critical', async ({ orgOwnerPage, getPageForRole }) => {
+    // Role pages are opened only after their credentials are known to exist; the fixtures throw otherwise.
     test.skip(!hasRbacUser('projectAdmin'), 'E2E project admin credentials are not configured');
+    const projectAdminPage = await getPageForRole(Role.ProjectAdmin);
+    const editorPage = hasRbacUser('editor') ? await getPageForRole(Role.Editor) : null;
     const projectId = await currentProjectId(orgOwnerPage);
     const lockUrl = `/api/projects/${projectId}/setup/lock`;
     test.skip((await projectAdminPage.request.get(`/api/projects/${projectId}/setup`)).status() !== 200, 'Project admin is not a member of the shared project');
@@ -90,7 +93,7 @@ test.describe('Project setup access control @setup', () => {
       expect(refused.status()).toBe(423);
       expect((await refused.json()).lock).toMatchObject({ mine: false });
 
-      if (hasRbacUser('editor') && (await editorPage.request.get(`/api/projects/${projectId}/setup`)).status() === 200) {
+      if (editorPage && (await editorPage.request.get(`/api/projects/${projectId}/setup`)).status() === 200) {
         // Takeover needs project:update, so an editor can never evict the holder.
         expect((await editorPage.request.post(lockUrl, { data: { lockToken: randomUUID(), takeover: true } })).status()).toBe(403);
       }
