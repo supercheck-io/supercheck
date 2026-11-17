@@ -73,12 +73,14 @@ test.describe('Project setup access control @setup', () => {
 
   test('a project admin takes over the setup lock from the owner; an editor cannot @critical', async ({ orgOwnerPage, getPageForRole }) => {
     // Role pages are opened only after their credentials are known to exist; the fixtures throw otherwise.
-    test.skip(!hasRbacUser('projectAdmin'), 'E2E project admin credentials are not configured');
+    test.skip(!hasRbacUser('projectAdmin') || !hasRbacUser('editor'), 'E2E project admin and editor credentials are not configured');
     const projectAdminPage = await getPageForRole(Role.ProjectAdmin);
-    const editorPage = hasRbacUser('editor') ? await getPageForRole(Role.Editor) : null;
+    const editorPage = await getPageForRole(Role.Editor);
     const projectId = await currentProjectId(orgOwnerPage);
     const lockUrl = `/api/projects/${projectId}/setup/lock`;
-    test.skip((await projectAdminPage.request.get(`/api/projects/${projectId}/setup`)).status() !== 200, 'Project admin is not a member of the shared project');
+    // Both roles must be members of the shared project; anything else is a broken fixture, not a skip.
+    expect((await projectAdminPage.request.get(`/api/projects/${projectId}/setup`)).status(), 'project admin reads setup').toBe(200);
+    expect((await editorPage.request.get(`/api/projects/${projectId}/setup`)).status(), 'editor reads setup').toBe(200);
 
     const ownerToken = randomUUID();
     const adminToken = randomUUID();
@@ -93,10 +95,8 @@ test.describe('Project setup access control @setup', () => {
       expect(refused.status()).toBe(423);
       expect((await refused.json()).lock).toMatchObject({ mine: false });
 
-      if (editorPage && (await editorPage.request.get(`/api/projects/${projectId}/setup`)).status() === 200) {
-        // Takeover needs project:update, so an editor can never evict the holder.
-        expect((await editorPage.request.post(lockUrl, { data: { lockToken: randomUUID(), takeover: true } })).status()).toBe(403);
-      }
+      // Takeover needs project:update, so an editor can never evict the holder.
+      expect((await editorPage.request.post(lockUrl, { data: { lockToken: randomUUID(), takeover: true } })).status()).toBe(403);
 
       const taken = await projectAdminPage.request.post(lockUrl, { data: { lockToken: adminToken, takeover: true } });
       expect(taken.status()).toBe(200);

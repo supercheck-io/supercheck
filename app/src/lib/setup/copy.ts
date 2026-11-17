@@ -3,6 +3,7 @@ import "server-only";
 import { and, eq, isNull, like, or, sql } from "drizzle-orm";
 import { v7 as uuidv7 } from "uuid";
 import { db } from "@/utils/db";
+import { getAuditActor } from "@/lib/audit-actor";
 import { logAuditEvent } from "@/lib/audit-logger";
 import { notificationProviders } from "@/db/schema/notification";
 import { externalConnectorCredentials, externalConnectors, privateAgents } from "@/db/schema/sre";
@@ -101,8 +102,10 @@ async function resolveTarget<Row extends { name: string }>(
 const sameNameFilter = (column: typeof notificationProviders.name | typeof externalConnectors.name, name: string, maxLength: number) =>
   or(eq(column, name), like(column, `${escapeLike(name.slice(0, maxLength - SUFFIX_ROOM))}%(copied%`));
 
-export function copyProviders(scope: CopyScope, ids: string[]): Promise<CopyItemResult[]> {
+export async function copyProviders(scope: CopyScope, ids: string[]): Promise<CopyItemResult[]> {
   const { organizationId, sourceProjectId, targetProjectId, userId } = scope;
+  // Resolved before any transaction: a session lookup inside one would wait for a pool connection while holding the adoption lock.
+  const actor = await getAuditActor(userId);
   // Sequential on purpose: each item is its own transaction and the response keeps request order.
   return ids.reduce<Promise<CopyItemResult[]>>(async (acc, sourceId) => {
     const results = await acc;
@@ -185,7 +188,7 @@ export function copyProviders(scope: CopyScope, ids: string[]): Promise<CopyItem
               success: true,
             },
             tx,
-            { strict: true },
+            { strict: true, actor },
           );
           return { id: created.id, status: "copied" as const, name: target.name, type: source.type };
         }),
@@ -195,8 +198,10 @@ export function copyProviders(scope: CopyScope, ids: string[]): Promise<CopyItem
   }, Promise.resolve([]));
 }
 
-export function copyConnectors(scope: CopyScope, ids: string[]): Promise<CopyItemResult[]> {
+export async function copyConnectors(scope: CopyScope, ids: string[]): Promise<CopyItemResult[]> {
   const { organizationId, sourceProjectId, targetProjectId, userId } = scope;
+  // Resolved before any transaction: a session lookup inside one would wait for a pool connection while holding the adoption lock.
+  const actor = await getAuditActor(userId);
   return ids.reduce<Promise<CopyItemResult[]>>(async (acc, sourceId) => {
     const results = await acc;
     results.push(
@@ -327,7 +332,7 @@ export function copyConnectors(scope: CopyScope, ids: string[]): Promise<CopyIte
               success: true,
             },
             tx,
-            { strict: true },
+            { strict: true, actor },
           );
           return { id: newId, status: "copied" as const, name: target.name, type: source.type };
         }),

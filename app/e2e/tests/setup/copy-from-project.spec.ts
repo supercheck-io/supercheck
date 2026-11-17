@@ -8,15 +8,28 @@ type Provider = { id: string; name: string; type: string };
 
 test.describe('Project setup copy from project @setup', () => {
   let creator: FreshCreator | undefined;
+  let source: { id: string; name: string } | undefined;
+  let sourceChannelId: string | undefined;
 
   test.afterEach(async () => {
     if (creator && test.info().status !== test.info().expectedStatus) await captureFixturePage(creator.page, 'creatorPage');
   });
 
-  test.afterAll(async () => {
+  test.afterAll(async ({ baseURL }) => {
     if (!creator) return;
-    await purgeCreatedItems(creator.page.request);
-    await creator.context.close();
+    const { request } = creator.page;
+    const headers = { Origin: new URL(baseURL!).origin };
+    try {
+      await purgeCreatedItems(request);
+      // The second project and its channel are outside the purge, which covers the current project only.
+      if (source && sourceChannelId) {
+        const res = await request.delete(`/api/notification-providers/${sourceChannelId}`, { headers: { ...headers, 'x-project-id': source.id } });
+        expect([200, 204, 404]).toContain(res.status());
+      }
+      if (source) expect([200, 404]).toContain((await request.delete(`/api/projects/${source.id}`, { headers })).status());
+    } finally {
+      await creator.context.close();
+    }
   });
 
   test('copies an email channel from a second project into setup, then adopts it on a repeat @critical', async ({ browser, baseURL }) => {
@@ -28,13 +41,14 @@ test.describe('Project setup copy from project @setup', () => {
     // A second project in the same organization, with one email channel to copy from.
     const created = await page.request.post('/api/projects', { data: { name: `Copy source ${Date.now()}` }, headers: { Origin: origin } });
     expect(created.status(), await created.text()).toBe(201);
-    const source = ((await created.json()) as { data: { id: string; name: string } }).data;
+    source = ((await created.json()) as { data: { id: string; name: string } }).data;
     const channelName = `Ops email ${Date.now()}`;
     const channel = await page.request.post('/api/notification-providers', {
       headers: { 'x-project-id': source.id, Origin: origin },
       data: { type: 'email', config: { name: channelName, emails: 'ops@example.com' } },
     });
     expect(channel.ok(), await channel.text()).toBe(true);
+    sourceChannelId = ((await channel.json()) as { id: string }).id;
 
     // Load setup again so the project switcher knows the new project.
     await page.goto(`/setup?project=${target}`);
