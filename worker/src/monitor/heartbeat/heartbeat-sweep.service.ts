@@ -495,8 +495,10 @@ export class HeartbeatSweepService implements OnModuleInit, OnModuleDestroy {
         // The alert service holds a miss observed in maintenance; remember it so the end of the window
         // re-checks at once instead of up to one interval later (a day, for a daily job).
         if (kind === 'missed')
+          // An unknown answer counts as held: a re-check after the window costs at most one extra
+          // missed row (the alert counters send no second alert), never an interval of silence.
           decision.finish.missHeld =
-            (await this.inMaintenance(monitor.id, checkedAt)) === true;
+            (await this.inMaintenance(monitor.id, checkedAt)) !== false;
       }
       if (decision.lateEpisodeKey) {
         await this.monitorAlertService.sendWarning(
@@ -515,7 +517,7 @@ export class HeartbeatSweepService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  /** null when the lookup failed: a held miss then waits for the next sweep, and a new miss is not marked held. */
+  /** null when the lookup failed: a held miss keeps its lease and retries, and a new miss is marked held. */
   private inMaintenance(monitorId: string, at: Date): Promise<boolean | null> {
     return isMonitorInMaintenance(this.dbService.db, monitorId, at).catch(
       (error: unknown) => {
