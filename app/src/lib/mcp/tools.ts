@@ -161,7 +161,8 @@ export function registerMcpTools(server: McpServer, ctx: McpCallContext): void {
   const gatedTool: ToolRegistrar = (name, description, gate, shape, run) => {
     server.registerTool(
       name,
-      { description, inputSchema: shape, annotations: WRITE_ANNOTATIONS },
+      // Removing incident resources only unlinks them, so only a real delete is marked destructive.
+      { description, inputSchema: shape, annotations: gate.destructive ? { ...WRITE_ANNOTATIONS, destructiveHint: true } : WRITE_ANNOTATIONS },
       (async (args: never) => {
         const started = Date.now();
         let success = true;

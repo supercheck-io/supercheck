@@ -421,7 +421,7 @@ const isPlainObject = (value: unknown): value is Record<string, unknown> => !!va
 const hasNull = (value: unknown): boolean => value === null || (typeof value === 'object' && Object.values(value as object).some(hasNull))
 /** A JSON merge patch that turns `previous` into exactly `next`: the server merges nested objects, so stale keys are nulled at every level. */
 export function replacementPatch(previous: Record<string, unknown>, next: Record<string, unknown>): Record<string, unknown> {
-  const patch: Record<string, unknown> = Object.fromEntries(Object.keys(previous).filter((key) => !(key in next)).map((key) => [key, null]))
+  const patch: Record<string, unknown> = Object.fromEntries(Object.keys(previous).filter((key) => !Object.hasOwn(next, key)).map((key) => [key, null]))
   for (const [key, value] of Object.entries(next)) {
     patch[key] = isPlainObject(value) && isPlainObject(previous[key]) ? replacementPatch(previous[key], value) : value
   }

@@ -4,7 +4,7 @@ description: Reference for the tools the Supercheck MCP server exposes
 icon: Wrench
 ---
 
-Read tools are marked `readOnlyHint: true`; the optional tools below are not. Every tool is limited to the project of the connection.
+Read tools are marked `readOnlyHint: true`; the optional tools below are not, and `delete_maintenance_window` is also marked `destructiveHint: true`. Every tool is limited to the project of the connection.
 
 Returned text (test titles, error excerpts, incident summaries, investigation findings) comes from your systems and is treated as **untrusted data**: tool descriptions tell the AI never to follow instructions found in it.
 

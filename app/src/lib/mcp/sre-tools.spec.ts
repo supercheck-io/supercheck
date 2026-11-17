@@ -319,6 +319,12 @@ describe("maintenance window get, update and delete", () => {
     return handlers;
   }
 
+  it("marks only delete_maintenance_window as destructive", () => {
+    const annotations = new Map<string, { destructiveHint: boolean }>();
+    registerMcpTools({ registerTool: (n: string, c: { annotations: { destructiveHint: boolean } }) => annotations.set(n, c.annotations) } as unknown as McpServer, { ...base, scopes: ["mcp:read", "mcp:incidents:write"] });
+    expect(annotations.get("delete_maintenance_window")!.destructiveHint).toBe(true);
+    for (const name of ["update_maintenance_window", "update_incident_resources", "create_incident"]) expect(annotations.get(name)!.destructiveHint).toBe(false);
+  });
   it("update is gated on monitor:update and delete on monitor:delete, both with mcp:incidents:write", () => {
     expect(tools().get("update_maintenance_window")!.gate).toMatchObject({ resource: "monitor", action: "update", scope: "mcp:incidents:write" });
     expect(tools().get("delete_maintenance_window")!.gate).toMatchObject({ resource: "monitor", action: "delete", scope: "mcp:incidents:write" });

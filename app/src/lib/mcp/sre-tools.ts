@@ -32,7 +32,7 @@ export class McpToolFailure extends Error {
   }
 }
 
-type Gate = { resource: Parameters<typeof assertCan>[1]; action: string; scope: string };
+type Gate = { resource: Parameters<typeof assertCan>[1]; action: string; scope: string; destructive?: boolean };
 export type ToolRegistrar = <S extends z.ZodRawShape>(
   name: string,
   description: string,
@@ -183,7 +183,7 @@ export function registerSreTools(tool: ToolRegistrar, ctx: McpCallContext): void
         return windowOut(await updateMaintenanceWindow(windowActor(), id, { ...input, ...(targets ? { targets } : {}) }, "mcp"));
       });
     tool("delete_maintenance_window", "Delete a maintenance window that is not active. Refused while it is posted on a status page: cancel it first." + UNTRUSTED,
-      { resource: "monitor", action: "delete", scope: MCP_INCIDENTS_WRITE_SCOPE },
+      { resource: "monitor", action: "delete", scope: MCP_INCIDENTS_WRITE_SCOPE, destructive: true },
       { id: idArg },
       async ({ id }) => {
         const result = await deleteMaintenanceWindow(windowActor(), id, "mcp");

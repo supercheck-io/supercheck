@@ -72,6 +72,7 @@ describe('monitor update: AI endpoint and MCP options', () => {
     expect(replacementPatch({ filter: { status: 'open', team: 'a' }, page: 1 }, { filter: { team: 'x' }, tags: ['a'] }))
       .toEqual({ page: null, filter: { status: null, team: 'x' }, tags: ['a'] })
     expect(replacementPatch({ filter: { status: 'open' } }, { filter: 'all' })).toEqual({ filter: 'all' })
+    expect(replacementPatch({ toString: 'old', q: 'old' }, { q: 'new' })).toEqual({ toString: null, q: 'new' })
     expect(() => buildCheckConfigPatch({ callArgs: '{"cursor":null}' }, mcpMonitor)).toThrow('cannot contain null')
     expect(() => buildCheckConfigPatch({ callArgs: '{"a":{"b":null}}' }, mcpMonitor)).toThrow('cannot contain null')
   })
