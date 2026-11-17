@@ -124,7 +124,7 @@ To wait for the result with `job trigger --wait`, also supply a CLI token with a
 
 The CLI redacts known credential fields in output by default, including notification provider webhook URLs, Discord and Teams webhook credentials, and provider config headers. Monitor target URLs stay visible, while credential headers such as `Authorization` and `Cookie` are masked.
 
-Organization and billing administration, including member management and creating projects, require an interactive browser session. Project-scoped CLI tokens receive `403` for these operations, even when their owner is an organization administrator. Tokens still support scoped organization/project discovery, authentication context and authorized resource operations within their project.
+Organization and billing administration, including member management, creating projects, and deleting, restoring or cancelling the deletion of an organization or project, require an interactive browser session. Project-scoped CLI tokens receive `403` for these operations, even when their owner is an organization administrator. Tokens still support scoped organization/project discovery, authentication context and authorized resource operations within their project.
 
 <Accordions>
 <Accordion title="Repository trust and .env warnings" id="repository-trust">

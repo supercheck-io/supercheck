@@ -6,8 +6,8 @@ import { assertCanStartSreInvestigation, SreInvestigationBillingError, withSreTr
 import { sreBillingErrorMessage } from "@/lib/sre/billing-error-messages";
 import { checkSreDailyTokenLimit } from "@/lib/sre/sre-daily-token-limit";
 import { checkSreEvidenceBriefRateLimit, checkSreIncidentUpdateRateLimit, checkSreInvestigationRateLimit, checkSreTriageRateLimit } from "@/lib/sre/sre-rate-limiter";
-import { createManualIncident } from "@/lib/sre/manual-incident";
-import { cancelMaintenanceWindow, createMaintenanceWindow, endMaintenanceWindow, extendMaintenanceWindow } from "@/lib/maintenance/windows";
+import { createManualIncident, updateIncidentResources } from "@/lib/sre/manual-incident";
+import { cancelMaintenanceWindow, createMaintenanceWindow, deleteMaintenanceWindow, endMaintenanceWindow, extendMaintenanceWindow, updateMaintenanceWindow } from "@/lib/maintenance/windows";
 import { acknowledgeIncident, assignIncident, MAX_RESOLUTION_SUMMARY_LENGTH, resolveIncident } from "@/lib/sre/incident-lifecycle";
 import { investigationGuidanceSchema } from "@/lib/sre/feedback-note";
 import { generateEvidenceBrief } from "@/lib/sre/evidence-brief-generator";
@@ -41,7 +41,8 @@ export type ToolRegistrar = <S extends z.ZodRawShape>(
   run: (args: z.output<z.ZodObject<S>>) => Promise<Record<string, unknown>>,
 ) => void;
 
-const idArg = z.string().uuid();
+// Lowercase, so a differently cased id shares the same rate-limit bucket and row (as the REST routes do).
+const idArg = z.string().uuid().transform((value) => value.toLowerCase());
 
 function retryMessage(limit: { unavailable?: boolean }, what: string) {
   return limit.unavailable ? `${what} rate limiter is temporarily unavailable. Try again shortly.` : `${what} rate limit reached. Wait before starting another run.`;
@@ -160,6 +161,53 @@ export function registerSreTools(tool: ToolRegistrar, ctx: McpCallContext): void
       async ({ id, byMinutes }) => windowOut(await extendMaintenanceWindow(windowActor(), id, { byMinutes }, "mcp")));
     tool("cancel_maintenance_window", "Cancel a scheduled maintenance window, or the rest of a recurring one." + UNTRUSTED, windowWrite, { id: idArg },
       async ({ id }) => windowOut(await cancelMaintenanceWindow(windowActor(), id, "mcp")));
+    tool("update_maintenance_window", "Edit a scheduled or recurring maintenance window: title, scope, targets or schedule. Pass only the fields to change; edits apply to future occurrences. An active one-off window cannot be rescheduled: end or extend it instead. Refused for a window on a status page." + UNTRUSTED, windowWrite,
+      {
+        id: idArg,
+        title: z.string().trim().min(1).max(200).optional(),
+        description: z.string().trim().max(2000).nullish(),
+        scope: z.enum(["project", "services", "monitors"]).optional(),
+        serviceIds: z.array(idArg).max(500).optional().describe("With scope services: replaces the targets"),
+        monitorIds: z.array(idArg).max(500).optional().describe("With scope monitors: replaces the targets"),
+        recurrence: z.enum(["once", "daily", "weekly", "monthly"]).optional(),
+        timezone: z.string().trim().min(1).max(64).optional(),
+        startsOn: z.string().optional().describe("YYYY-MM-DD"),
+        localStartTime: z.string().optional().describe("HH:MM"),
+        durationMinutes: z.number().int().min(5).max(10080).optional(),
+        endsOn: z.string().nullish(),
+        weekdays: z.array(z.number().int().min(0).max(6)).nullish(),
+        monthDay: z.number().int().nullish(),
+      },
+      async ({ id, serviceIds, monitorIds, ...input }) => {
+        const targets = serviceIds || monitorIds ? { serviceIds: serviceIds ?? [], monitorIds: monitorIds ?? [] } : undefined;
+        return windowOut(await updateMaintenanceWindow(windowActor(), id, { ...input, ...(targets ? { targets } : {}) }, "mcp"));
+      });
+    tool("delete_maintenance_window", "Delete a maintenance window that is not active. Refused while it is posted on a status page: cancel it first." + UNTRUSTED,
+      { resource: "monitor", action: "delete", scope: MCP_INCIDENTS_WRITE_SCOPE },
+      { id: idArg },
+      async ({ id }) => {
+        const result = await deleteMaintenanceWindow(windowActor(), id, "mcp");
+        if (!result.ok) throw new McpToolFailure(result.code, result.error);
+        return { id, deleted: true };
+      });
+    tool("update_incident_resources", "Add or remove the services and monitors an incident affects. Their next alerts join this incident." + UNTRUSTED, write,
+      {
+        id: idArg,
+        addServiceIds: z.array(idArg).max(50).default([]),
+        addMonitorIds: z.array(idArg).max(50).default([]),
+        removeServiceIds: z.array(idArg).max(50).default([]),
+        removeMonitorIds: z.array(idArg).max(50).default([]),
+      },
+      async ({ id, addServiceIds, addMonitorIds, removeServiceIds, removeMonitorIds }) => {
+        const limit = await checkSreIncidentUpdateRateLimit(ctx.userId, id);
+        if (!limit.allowed) throw new McpToolFailure("rate_limited", "Too many incident updates. Try again shortly.");
+        const result = await updateIncidentResources(windowActor(), id, {
+          add: { serviceIds: addServiceIds, monitorIds: addMonitorIds },
+          remove: { serviceIds: removeServiceIds, monitorIds: removeMonitorIds },
+        });
+        if (!result.ok) throw new McpToolFailure(result.code, result.error);
+        return { id, added: result.added, removed: result.removed };
+      });
     tool("acknowledge_incident", "Acknowledge an incident. Claims it for you if it is unassigned." + UNTRUSTED, write, { id: idArg },
       ({ id }) => lifecycle(id, () => acknowledgeIncident(actor, id)));
     tool("resolve_incident", "Resolve an incident with a resolution summary." + UNTRUSTED, write,

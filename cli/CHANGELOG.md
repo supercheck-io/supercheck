@@ -4,6 +4,11 @@ Notable changes to `@supercheck/cli`. The format follows [Keep a Changelog](http
 
 ## [Unreleased]
 
+### Added
+
+- `monitor update` takes the AI endpoint options of `monitor create` (`--model`, `--secret`, `--key-header`, `--prompt`, `--expect`, `--max-tokens`, `--first-token-timeout`, `--warn-first-token-ms`, `--warn-tokens`) and the MCP monitor options (`--secret`, `--header`, `--protocol`, `--require-tool`, `--call-tool`, `--call-args`, `--expect`, `--slow-ms`). Only the options you pass change; an option that does not fit the monitor is refused.
+- `skills safety` explains `ORG_PENDING_DELETION` and that organization and project deletion need a browser session.
+
 ## [0.6.0] - 2026-11-16
 
 This release adds heartbeat and MCP monitors, the AI endpoint preset, agent tests, incident declaration, reminders and escalation, maintenance windows and post-mortems.
