@@ -85,9 +85,9 @@ export async function POST(request: NextRequest, { params }: Params) {
       return NextResponse.json({ error: "AI provider is not configured" }, { status: 503 });
     }
 
+    const stored = await getSetupState(organizationId, projectId, userId);
     let rawPages = parsedBody.data.pages;
     if (!rawPages) {
-      const stored = await getSetupState(organizationId, projectId, userId);
       const parsedStored = z.array(pageSchema).safeParse((stored.scanResult as { pages?: unknown } | null)?.pages);
       rawPages = parsedStored.success ? parsedStored.data.slice(0, MAX_PAGES) : [];
     }
@@ -149,9 +149,13 @@ export async function POST(request: NextRequest, { params }: Params) {
           priority: r.priority,
         }))
         .filter((r) => r.title.length > 0);
-      // The draft caps at 32 KB of UTF-8, which ten long CJK suggestions can pass: keep the leading ones that fit,
-      // so the save below cannot be forced to fail (that would refund and free the slot for unlimited runs).
-      while (cleaned.length > 0 && !parseSetupDraft({ tests: { requirements: [], suggestions: cleaned } }).success) cleaned.pop();
+      // The whole draft caps at 32 KB of UTF-8, which long CJK suggestions can pass. Keep the leading ones that fit in
+      // the stored draft even once every one is ticked (ticking copies it into requirements), so neither this save
+      // nor a later autosave fails; a forced save failure would otherwise refund and free the slot for unlimited runs.
+      const draft = stored.draft ?? {};
+      const fits = (s: typeof cleaned) =>
+        parseSetupDraft({ ...draft, tests: { ...draft.tests, requirements: [...(draft.tests?.requirements ?? []), ...s], suggestions: s } }).success;
+      while (cleaned.length > 0 && !fits(cleaned)) cleaned.pop();
       if (cleaned.length === 0) {
         await credit.refund();
         // The slot stays used when the model answered (keepClaim): say when suggestions are available again.

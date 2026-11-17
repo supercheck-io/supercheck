@@ -188,6 +188,19 @@ describe("generation", () => {
     expect(refund).not.toHaveBeenCalled();
     expect(releaseAiRun).not.toHaveBeenCalled();
   });
+  it("budgets suggestions against the stored draft, leaving room to tick every one", async () => {
+    const requirements = Array.from({ length: 3 }, (_, i) => ({ title: `${i}${"要".repeat(499)}`, description: "検".repeat(2000), priority: "low" as const }));
+    const draft = { app: { url: "https://example.com" }, tests: { requirements } };
+    (getSetupState as jest.Mock).mockResolvedValue({ scanResult: { pages: [{ path: "/a", title: "Stored" }] }, draft });
+    const long = Array.from({ length: 10 }, (_, i) => ({ title: `${i}${"要".repeat(199)}`, description: "検".repeat(1000), priority: "high" }));
+    (generateText as jest.Mock).mockResolvedValue({ text: JSON.stringify({ requirements: long }), usage: {} });
+    expect((await POST(req(), params)).status).toBe(200);
+    const saved = (saveSuggestions as jest.Mock).mock.calls[0][2];
+    const withTicked = (s: unknown[]) => ({ ...draft, tests: { requirements: [...requirements, ...s], suggestions: s } });
+    expect(saved.length).toBeGreaterThan(0);
+    expect(parseSetupDraft(withTicked(saved)).success).toBe(true);
+    expect(parseSetupDraft(withTicked(long.slice(0, saved.length + 1))).success).toBe(false);
+  });
   it("uses a stored scan whose pages have no title (scanner stores null)", async () => {
     (getSetupState as jest.Mock).mockResolvedValue({ scanResult: { pages: [{ path: "/pricing", status: 200, ms: 5, title: null }] } });
     expect((await POST(req(), params)).status).toBe(200);
@@ -210,7 +223,7 @@ describe("generation", () => {
     expect(prompt).not.toContain("\u0000");
     expect(prompt).not.toContain("<b>");
     expect(prompt).toContain("pay");
-    expect(getSetupState).not.toHaveBeenCalled();
+    expect(prompt).not.toContain("Stored");
   });
   it.each([
     ["non-JSON", "not json at all"],
