@@ -148,3 +148,13 @@ it("refuses an oversize PUT body with 413 before writing", async () => {
   expect(res.status).toBe(413);
   expect(set).not.toHaveBeenCalled();
 });
+
+it("lets a cookie PUT with no Origin or Referer through, like POST and DELETE, and refuses a cross-origin one", async () => {
+  requireAuthContext.mockResolvedValue(ctx("project_editor", { isCliAuth: false }));
+  const putWith = (headers: Record<string, string>) =>
+    PUT(new NextRequest(`http://localhost/api/tests/${ID}`, { method: "PUT", body: JSON.stringify({ title: "Bot" }), headers: { "content-type": "application/json", ...headers } }), { params: Promise.resolve({ id: ID }) });
+  expect((await putWith({})).status).toBe(200);
+  set.mockClear();
+  expect((await putWith({ origin: "https://evil.example" })).status).toBe(403);
+  expect(set).not.toHaveBeenCalled();
+});

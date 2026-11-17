@@ -3,12 +3,13 @@ import { NextRequest, NextResponse } from "next/server";
 
 const mockResolve = jest.fn();
 const mockImpersonated = jest.fn();
+const mockSlot = jest.fn();
 jest.mock("@/lib/rbac/middleware", () => ({
   isImpersonatedSession: () => mockImpersonated(),
   resolveProjectPermissionContext: (...a: unknown[]) => mockResolve(...a),
   checkPermissionWithContext: jest.fn(() => true),
   // Pass-through rate limiter.
-  withRateLimit: () => (req: NextRequest, handler: (r: NextRequest, c: unknown) => unknown) => handler(req, {}),
+  withRateLimit: () => (req: NextRequest, handler: (r: NextRequest, c: unknown) => unknown) => (mockSlot(), handler(req, {})),
 }));
 jest.mock("@/lib/auth-context", () => ({
   requireUserAuthContext: jest.fn().mockResolvedValue({ userId: "sa-1", isCliAuth: false }),
@@ -71,13 +72,19 @@ describe("POST /api/projects/[id]/variables/[variableId]/decrypt", () => {
 
   it("refuses a cross-origin cookie request before reading the secret, but not a CLI token", async () => {
     mockResolve.mockResolvedValue({ userId: "sa-1", organizationId: "org-1", project: { id: PROJECT, userRole: "org_owner" } });
-    const cross = () => POST(new NextRequest("http://localhost/x", { method: "POST", headers: { origin: "https://evil.example" } }), {
+    const cross = (headers: Record<string, string> = {}) => POST(new NextRequest("http://localhost/x", { method: "POST", headers: { origin: "https://evil.example", ...headers } }), {
       params: Promise.resolve({ id: PROJECT, variableId: VARIABLE }),
     });
     expect((await cross()).status).toBe(403);
     expect(mockRows).not.toHaveBeenCalled();
+    // Refused before the per-IP limiter counts it, so a cross-site page cannot use up a victim's slots.
+    expect(mockSlot).not.toHaveBeenCalled();
+    // Any Authorization header (a junk bearer, Basic) is refused the same way from a foreign origin.
+    expect((await cross({ authorization: "Basic x" })).status).toBe(403);
+    expect(mockSlot).not.toHaveBeenCalled();
+    // The CLI sends a bearer token and no Origin.
     (requireUserAuthContext as jest.Mock).mockResolvedValueOnce({ userId: "sa-1", isCliAuth: true });
-    expect((await cross()).status).toBe(200);
+    expect((await call()).status).toBe(200);
   });
 
   it("does not apply the browser impersonation check to CLI tokens", async () => {
