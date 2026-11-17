@@ -28,6 +28,7 @@ const mockRedisClient = {
 };
 
 const mockQueuesModule = {
+  assertExecutionQueueReady: jest.fn().mockResolvedValue(undefined),
   getQueues: jest.fn().mockResolvedValue({
     jobSchedulerQueue: {
       add: mockQueueAdd,
@@ -52,6 +53,7 @@ const mockDbModule = {
 };
 
 jest.mock("./queue", () => ({
+  assertExecutionQueueReady: () => mockQueuesModule.assertExecutionQueueReady(),
   getQueues: () => mockQueuesModule.getQueues(),
 }));
 
@@ -271,6 +273,15 @@ describe("Job Scheduler", () => {
     });
 
     describe("Negative Cases", () => {
+      it("rejects fast without touching the queue when Redis is not ready", async () => {
+        mockQueuesModule.assertExecutionQueueReady.mockRejectedValueOnce(new Error("queue_unavailable"));
+        await expect(scheduleJob({ name: "Test Job", cron: "0 * * * *", jobId: testJobId })).rejects.toThrow("queue_unavailable");
+        expect(mockQueuesModule.getQueues).not.toHaveBeenCalled();
+        expect(mockQueueGetRepeatableJobs).not.toHaveBeenCalled();
+        expect(mockQueueRemoveRepeatableByKey).not.toHaveBeenCalled();
+        expect(mockQueueAdd).not.toHaveBeenCalled();
+      });
+
       it("should throw error when job not found", async () => {
         const selectChain = {
           from: jest.fn().mockReturnThis(),
@@ -409,6 +420,42 @@ describe("Job Scheduler", () => {
         await initializeJobSchedulers();
         const token = mockRedisClient.set.mock.calls[0][1];
         expect(mockRedisClient.eval).toHaveBeenCalledWith(expect.any(String), 1, "job:scheduler:init:lock", token);
+      });
+
+      describe("lock renewal", () => {
+        const twoJobs = () =>
+          mockDbModule.select.mockReturnValue({
+            from: jest.fn().mockReturnThis(),
+            where: jest.fn().mockResolvedValue([mockJob, { ...mockJob, id: "job-2" }]),
+          });
+        const renewCalls = () =>
+          mockRedisClient.eval.mock.calls.filter(([script]) => String(script).includes("expire"));
+        let now: number;
+        let nowSpy: jest.SpyInstance;
+        beforeEach(() => {
+          now = 0;
+          // Every Date.now() call moves 31 s, so each loop iteration is due a renewal.
+          nowSpy = jest.spyOn(Date, "now").mockImplementation(() => (now += 31_000));
+        });
+        afterEach(() => nowSpy.mockRestore());
+
+        it("extends the lock while still the owner and keeps going", async () => {
+          twoJobs();
+          await initializeJobSchedulers();
+          const token = mockRedisClient.set.mock.calls[0][1];
+          expect(renewCalls()).toHaveLength(2);
+          expect(renewCalls()[0]).toEqual([expect.any(String), 1, "job:scheduler:init:lock", token, 120]);
+        });
+
+        it("stops and counts the rest as failed once the lock is lost", async () => {
+          twoJobs();
+          mockRedisClient.eval.mockResolvedValueOnce(0); // first eval is the renewal
+          const result = await initializeJobSchedulers();
+          expect(renewCalls()).toHaveLength(1);
+          expect(result).toEqual({ success: false, initialized: 0, failed: 2 });
+          expect(mockQueuesModule.assertExecutionQueueReady).not.toHaveBeenCalled();
+          expect(mockQueueAdd).not.toHaveBeenCalled();
+        });
       });
 
       it("cleans orphaned repeatables only while holding the lock", async () => {

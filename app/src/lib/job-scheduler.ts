@@ -7,7 +7,7 @@ import type { Redis } from "ioredis";
 import { db } from "@/utils/db";
 import { jobs } from "@/db/schema";
 import { eq, isNotNull, and } from "drizzle-orm";
-import { getQueues } from "./queue";
+import { assertExecutionQueueReady, getQueues } from "./queue";
 import { getNextRunDate } from "@/lib/cron-utils";
 import {
   createDataLifecycleService,
@@ -76,7 +76,8 @@ export async function scheduleJob(
   prefetched?: [RepeatableJob[], RepeatableJob[]]
 ): Promise<string> {
   try {
-    // Setting up scheduled job
+    // Fail fast instead of hanging in the offline queue when Redis is down; callers catch.
+    await assertExecutionQueueReady();
 
     // Get queues from central management
     const { jobSchedulerQueue, k6JobSchedulerQueue } = await getQueues();
@@ -246,6 +247,7 @@ export async function initializeJobSchedulers() {
       const lockToken = `${process.pid}:${randomUUID()}`;
       const lockResult = await redisClient.set(LOCK_KEY, lockToken, 'EX', LOCK_TTL_SECONDS, 'NX');
       const lockAcquired = !!lockResult;
+      const lockedAt = Date.now();
       
       if (!lockAcquired) {
         console.log('[JobScheduler] Another instance is initializing schedulers, skipping...');
@@ -281,7 +283,26 @@ export async function initializeJobSchedulers() {
           k6JobSchedulerQueue.getRepeatableJobs(),
         ]);
 
-        for (const job of jobsWithSchedules) {
+        const RENEW_EVERY_MS = 30_000;
+        let lockLost = false;
+        let lastRenewal = lockedAt;
+        for (const [index, job] of jobsWithSchedules.entries()) {
+          // The 120s lock outlives a normal sync, but a large install can exceed it: extend it while
+          // still the owner, and stop if another replica has taken over.
+          if (Date.now() - lastRenewal >= RENEW_EVERY_MS) {
+            const renewed = await redisClient.eval(
+              "if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('expire', KEYS[1], ARGV[2]) else return 0 end",
+              1, LOCK_KEY, lockToken, LOCK_TTL_SECONDS,
+            );
+            if (!renewed) {
+              const unprocessed = jobsWithSchedules.length - index;
+              console.error(`[JobScheduler] Init lock lost mid-sync; stopping with ${unprocessed} job(s) unscheduled so a newer sync owns the queue`);
+              failedCount += unprocessed;
+              lockLost = true;
+              break;
+            }
+            lastRenewal = Date.now();
+          }
           if (!job.cronSchedule) continue;
 
           try {
@@ -347,7 +368,7 @@ export async function initializeJobSchedulers() {
 
         // Consider initialization successful if at least some jobs were scheduled
         // or if there were no jobs to schedule
-        const success = initializedCount > 0 || (initializedCount === 0 && failedCount === 0);
+        const success = !lockLost && (initializedCount > 0 || (initializedCount === 0 && failedCount === 0));
         return {
           success,
           initialized: initializedCount,

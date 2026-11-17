@@ -57,6 +57,7 @@ describe("checkSreChatRateLimit", () => {
 
   it("fails closed and logs an alertable event when Redis transaction execution fails", async () => {
     mockGetRedisConnection.mockResolvedValueOnce({
+      status: "ready",
       eval: jest.fn().mockResolvedValueOnce(null),
     });
 
@@ -79,7 +80,7 @@ describe("checkSreChatRateLimit", () => {
 
   it("uses one atomic Redis script for admission and expiry", async () => {
     const evalCommand = jest.fn().mockResolvedValueOnce([1, 1, Date.now()]);
-    mockGetRedisConnection.mockResolvedValueOnce({ eval: evalCommand });
+    mockGetRedisConnection.mockResolvedValueOnce({ status: "ready", eval: evalCommand });
 
     const result = await checkSreChatRateLimit("user-atomic");
 
@@ -94,6 +95,7 @@ describe("checkSreChatRateLimit", () => {
   it("returns the atomic script reset time when the limit is reached", async () => {
     const oldest = Date.now() - 1_000;
     mockGetRedisConnection.mockResolvedValueOnce({
+      status: "ready",
       eval: jest.fn().mockResolvedValueOnce([0, 30, oldest]),
     });
 
@@ -102,6 +104,33 @@ describe("checkSreChatRateLimit", () => {
     expect(result.allowed).toBe(false);
     expect(result.remaining).toBe(0);
     expect(result.resetTime).toBe(oldest + 60_000);
+  });
+
+  it("fails closed without calling Redis when the client is not ready", async () => {
+    const evalCommand = jest.fn();
+    mockGetRedisConnection.mockResolvedValueOnce({ status: "reconnecting", eval: evalCommand });
+
+    const result = await checkSreChatRateLimit("user-reconnecting");
+
+    expect(result).toMatchObject({ allowed: false, unavailable: true });
+    expect(evalCommand).not.toHaveBeenCalled();
+  });
+
+  it("fails closed when Redis never answers instead of hanging the request", async () => {
+    jest.useFakeTimers();
+    try {
+      mockGetRedisConnection.mockResolvedValueOnce({
+        status: "ready",
+        eval: jest.fn(() => new Promise(() => {})),
+      });
+
+      const pending = checkSreChatRateLimit("user-hung");
+      await jest.advanceTimersByTimeAsync(2_000);
+
+      await expect(pending).resolves.toMatchObject({ allowed: false, unavailable: true });
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   it("fails closed and logs an alertable event when Redis throws", async () => {
@@ -133,6 +162,7 @@ describe("checkSreIncidentUpdateRateLimit", () => {
 
   it("allows writes under the limit", async () => {
     mockGetRedisConnection.mockResolvedValueOnce({
+      status: "ready",
       eval: jest.fn().mockResolvedValueOnce([1, 1, Date.now()]),
     });
     await expect(
@@ -143,7 +173,7 @@ describe("checkSreIncidentUpdateRateLimit", () => {
   it("limits at 30 writes per minute per user and incident", async () => {
     const oldest = Date.now() - 1_000;
     const evalCommand = jest.fn().mockResolvedValueOnce([0, 30, oldest]);
-    mockGetRedisConnection.mockResolvedValueOnce({ eval: evalCommand });
+    mockGetRedisConnection.mockResolvedValueOnce({ status: "ready", eval: evalCommand });
 
     const result = await checkSreIncidentUpdateRateLimit("user-1", "inc-1");
 

@@ -5,7 +5,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/utils/db";
 import { runs, jobs, member, projects } from "@/db/schema";
 import { eq, and, inArray } from "drizzle-orm";
-import { getCapacityQueues } from "@/lib/queue";
+import { assertExecutionQueueReady, getCapacityQueues } from "@/lib/queue";
 import { createLogger } from "@/lib/logger/index";
 import {
   canCancelRun,
@@ -261,6 +261,8 @@ export async function POST(
     // (capacity or active-execution deferral) may still have a live execution behind it.
     let removedJobNeverStarted = false;
     try {
+      // Fail fast when Redis is down; the catch below still cancels in the DB.
+      await assertExecutionQueueReady();
       // Include disabled regions that still hold running work, which the plain queue list no longer shows.
       const queues = await getCapacityQueues();
       // Job IDs are the run IDs. Direct lookup is O(1) and avoids scanning all

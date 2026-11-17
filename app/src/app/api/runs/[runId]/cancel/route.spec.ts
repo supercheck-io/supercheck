@@ -6,7 +6,7 @@ jest.mock("@/lib/auth-context", () => ({
   requireAuthContext: jest.fn().mockResolvedValue({ userId: "user-1" }),
   isAuthError: jest.fn(),
 }));
-jest.mock("@/lib/queue", () => ({ getCapacityQueues: jest.fn() }));
+jest.mock("@/lib/queue", () => ({ getCapacityQueues: jest.fn(), assertExecutionQueueReady: jest.fn() }));
 jest.mock("@/lib/cancellation-service", () => ({
   RUN_CANCELLATION_MARKER: "Cancellation requested by user",
   setCancellationSignal: jest.fn(),
@@ -21,7 +21,7 @@ import { setCancellationSignal } from "@/lib/cancellation-service";
 import { isSuperAdmin } from "@/lib/rbac/super-admin";
 import { requireAuthContext } from "@/lib/auth-context";
 import { canCancelRunInProject } from "@/lib/rbac/middleware";
-import { getCapacityQueues as getQueues } from "@/lib/queue";
+import { getCapacityQueues as getQueues, assertExecutionQueueReady } from "@/lib/queue";
 import { logAuditEvent } from "@/lib/audit-logger";
 import { getCapacityManager } from "@/lib/capacity-manager";
 import { POST } from "./route";
@@ -289,6 +289,15 @@ describe("cancellation drain", () => {
       (getQueues as jest.Mock).mockRejectedValue(new Error("redis down"));
       const response = await cancel();
       expect(response.status).toBe(200);
+      expect(set).toHaveBeenCalledWith({ errorDetails: "Cancellation requested by user" });
+      expect(set).not.toHaveBeenCalledWith(expect.objectContaining({ status: "error" }));
+      expect(await response.json()).toMatchObject({ message: "Cancellation requested; waiting for execution to stop" });
+    });
+    it("skips the queues fast when Redis is not ready, still answering 200 with the DB marker", async () => {
+      (assertExecutionQueueReady as jest.Mock).mockRejectedValueOnce(new Error("queue_unavailable"));
+      const response = await cancel();
+      expect(response.status).toBe(200);
+      expect(getQueues).not.toHaveBeenCalled();
       expect(set).toHaveBeenCalledWith({ errorDetails: "Cancellation requested by user" });
       expect(set).not.toHaveBeenCalledWith(expect.objectContaining({ status: "error" }));
       expect(await response.json()).toMatchObject({ message: "Cancellation requested; waiting for execution to stop" });

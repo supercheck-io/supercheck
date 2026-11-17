@@ -8,7 +8,7 @@ const mockAddRepeatable = jest.fn();
 const selectResults: unknown[][] = [];
 
 const queue = { getRepeatableJobs: () => mockRepeatables(), removeRepeatableByKey: (...a: unknown[]) => mockRemove(...a), client: Promise.resolve({ exists: (...a: unknown[]) => mockExists(...a), set: (...a: unknown[]) => mockSet(...a), eval: (...a: unknown[]) => mockEval(...a) }) };
-jest.mock("./queue", () => ({ getQueues: async () => ({ jobSchedulerQueue: queue, k6JobSchedulerQueue: { ...queue, getRepeatableJobs: async () => [] } }) }));
+jest.mock("./queue", () => ({ assertExecutionQueueReady: async () => undefined, getQueues: async () => ({ jobSchedulerQueue: queue, k6JobSchedulerQueue: { ...queue, getRepeatableJobs: async () => [] } }) }));
 
 /** A drizzle-like builder: every step returns itself, awaiting it yields the next queued select result. */
 function chain(result: unknown[]) {
