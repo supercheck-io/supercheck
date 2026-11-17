@@ -213,6 +213,8 @@ export async function POST(
     // STEP 1: Set cancellation signal in Redis for the worker to detect
     // This must happen BEFORE any queue operations to ensure worker sees it
     try {
+      // Rides out a failover, then fails fast with a retryable 503 instead of hanging in the offline queue.
+      await assertExecutionQueueReady();
       await setCancellationSignal(runId);
       logger.info({ runId }, "Cancellation signal set in Redis");
     } catch (signalError) {

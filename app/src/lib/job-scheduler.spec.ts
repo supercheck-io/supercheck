@@ -435,33 +435,53 @@ describe("Job Scheduler", () => {
           });
         const renewCalls = () =>
           mockRedisClient.eval.mock.calls.filter(([script]) => String(script).includes("expire"));
-        let now: number;
-        let nowSpy: jest.SpyInstance;
-        beforeEach(() => {
-          now = 0;
-          // Every Date.now() call moves 31 s, so each loop iteration is due a renewal.
-          nowSpy = jest.spyOn(Date, "now").mockImplementation(() => (now += 31_000));
-        });
-        afterEach(() => nowSpy.mockRestore());
+        beforeEach(() => jest.useFakeTimers());
+        afterEach(() => jest.useRealTimers());
+
+        // Holds the first job's queue add open so the 30 s heartbeat fires mid-sync.
+        function holdFirstAdd() {
+          let release!: () => void;
+          mockQueueAdd.mockImplementationOnce(
+            () => new Promise((resolve) => { release = () => resolve({ id: "queue-job-id" }); }),
+          );
+          return () => release();
+        }
 
         it("extends the lock while still the owner and keeps going", async () => {
           twoJobs();
-          const result = await initializeJobSchedulers();
+          const release = holdFirstAdd();
+          const pending = initializeJobSchedulers();
+          await jest.advanceTimersByTimeAsync(30_000);
+          release();
+          const result = await pending;
+
           const token = mockRedisClient.set.mock.calls[0][1];
           expect(result).toEqual({ success: true, initialized: 2, failed: 0 });
           expect(mockQueueAdd).toHaveBeenCalledTimes(2);
-          expect(renewCalls()).toHaveLength(2);
-          expect(renewCalls()[0]).toEqual([expect.any(String), 1, "job:scheduler:init:lock", token, 120]);
+          expect(renewCalls()).toEqual([[expect.any(String), 1, "job:scheduler:init:lock", token, 120]]);
+          expect(jest.getTimerCount()).toBe(0); // heartbeat stopped
         });
 
-        it("stops and counts the rest as failed once the lock is lost", async () => {
+        it("does not renew a sync that finishes inside the first interval", async () => {
           twoJobs();
-          mockRedisClient.eval.mockResolvedValueOnce(0); // first eval is the renewal
-          const result = await initializeJobSchedulers();
+          await expect(initializeJobSchedulers()).resolves.toEqual({ success: true, initialized: 2, failed: 0 });
+          expect(renewCalls()).toHaveLength(0);
+          expect(jest.getTimerCount()).toBe(0);
+        });
+
+        it("stops and counts the rest as failed once another replica holds the lock", async () => {
+          twoJobs();
+          const release = holdFirstAdd();
+          mockRedisClient.eval.mockResolvedValueOnce(0); // first eval is the heartbeat renewal
+          const pending = initializeJobSchedulers();
+          await jest.advanceTimersByTimeAsync(30_000);
+          release();
+          const result = await pending;
+
           expect(renewCalls()).toHaveLength(1);
-          expect(result).toEqual({ success: false, initialized: 0, failed: 2 });
-          expect(mockQueuesModule.assertExecutionQueueReady).not.toHaveBeenCalled();
-          expect(mockQueueAdd).not.toHaveBeenCalled();
+          expect(result).toEqual({ success: false, initialized: 1, failed: 1 });
+          expect(mockQueueAdd).toHaveBeenCalledTimes(1);
+          expect(jest.getTimerCount()).toBe(0);
         });
       });
 
@@ -546,6 +566,7 @@ describe("Job Scheduler", () => {
 
         expect(result.success).toBe(false);
         expect(result.error).toBeDefined();
+        expect(jest.getTimerCount()).toBe(0); // each attempt's lock heartbeat is cleared
 
         jest.useRealTimers();
       });

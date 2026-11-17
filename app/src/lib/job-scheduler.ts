@@ -233,7 +233,8 @@ export async function initializeJobSchedulers() {
   const maxRetries = 3;
   const baseRetryDelay = 2000; // 2 seconds, doubles each attempt
   const LOCK_KEY = 'job:scheduler:init:lock';
-  const LOCK_TTL_SECONDS = 120; // 2 minutes - enough time to initialize all schedulers
+  const LOCK_TTL_SECONDS = 120; // 2 minutes, extended by the heartbeat below while the sync runs
+  const LOCK_RENEW_MS = 30_000;
 
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
@@ -247,7 +248,6 @@ export async function initializeJobSchedulers() {
       const lockToken = `${process.pid}:${randomUUID()}`;
       const lockResult = await redisClient.set(LOCK_KEY, lockToken, 'EX', LOCK_TTL_SECONDS, 'NX');
       const lockAcquired = !!lockResult;
-      const lockedAt = Date.now();
       
       if (!lockAcquired) {
         console.log('[JobScheduler] Another instance is initializing schedulers, skipping...');
@@ -255,6 +255,20 @@ export async function initializeJobSchedulers() {
       }
       
       console.log('[JobScheduler] Lock acquired, initializing schedulers...');
+
+      // Heartbeat: keep the lease alive for the whole sync (cleanup, migration, scheduling, writes),
+      // and note when another replica has taken it so the loop stops.
+      let lockLost = false;
+      const heartbeat = setInterval(() => {
+        redisClient
+          .eval(
+            "if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('expire', KEYS[1], ARGV[2]) else return 0 end",
+            1, LOCK_KEY, lockToken, LOCK_TTL_SECONDS,
+          )
+          .then((renewed) => { if (!renewed) lockLost = true; })
+          .catch((error) => console.error('[JobScheduler] Init lock renewal failed:', error));
+      }, LOCK_RENEW_MS);
+      heartbeat.unref?.();
 
       // Use try-finally to ensure lock is always released
       try {
@@ -283,25 +297,12 @@ export async function initializeJobSchedulers() {
           k6JobSchedulerQueue.getRepeatableJobs(),
         ]);
 
-        const RENEW_EVERY_MS = 30_000;
-        let lockLost = false;
-        let lastRenewal = lockedAt;
         for (const [index, job] of jobsWithSchedules.entries()) {
-          // The 120s lock outlives a normal sync, but a large install can exceed it: extend it while
-          // still the owner, and stop if another replica has taken over.
-          if (Date.now() - lastRenewal >= RENEW_EVERY_MS) {
-            const renewed = await redisClient.eval(
-              "if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('expire', KEYS[1], ARGV[2]) else return 0 end",
-              1, LOCK_KEY, lockToken, LOCK_TTL_SECONDS,
-            );
-            if (!renewed) {
-              const unprocessed = jobsWithSchedules.length - index;
-              console.error(`[JobScheduler] Init lock lost mid-sync; stopping with ${unprocessed} job(s) unscheduled so a newer sync owns the queue`);
-              failedCount += unprocessed;
-              lockLost = true;
-              break;
-            }
-            lastRenewal = Date.now();
+          if (lockLost) {
+            const unprocessed = jobsWithSchedules.length - index;
+            console.error(`[JobScheduler] Init lock lost mid-sync; stopping with ${unprocessed} job(s) unscheduled so a newer sync owns the queue`);
+            failedCount += unprocessed;
+            break;
           }
           if (!job.cronSchedule) continue;
 
@@ -375,6 +376,7 @@ export async function initializeJobSchedulers() {
           failed: failedCount,
         };
       } finally {
+        clearInterval(heartbeat);
         // Always release the lock after we're done (success or error)
         try {
           // Delete only if we still own it; the TTL may have expired and another instance taken over.

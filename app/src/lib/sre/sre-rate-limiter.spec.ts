@@ -106,14 +106,46 @@ describe("checkSreChatRateLimit", () => {
     expect(result.resetTime).toBe(oldest + 60_000);
   });
 
-  it("fails closed without calling Redis when the client is not ready", async () => {
-    const evalCommand = jest.fn();
-    mockGetRedisConnection.mockResolvedValueOnce({ status: "reconnecting", eval: evalCommand });
+  // A client mid-reconnect: `ready` fires the listener registered by waitForRedisReady.
+  function reconnectingClient(evalCommand: jest.Mock) {
+    const listeners: Record<string, () => void> = {};
+    const client = {
+      status: "reconnecting",
+      eval: evalCommand,
+      once: (event: string, fn: () => void) => { listeners[event] = fn; },
+      off: jest.fn(),
+    };
+    const becomeReady = () => { client.status = "ready"; listeners.ready?.(); };
+    return { client, becomeReady };
+  }
 
-    const result = await checkSreChatRateLimit("user-reconnecting");
+  it("rides out a short failover and then counts the request", async () => {
+    const evalCommand = jest.fn().mockResolvedValueOnce([1, 1, Date.now()]);
+    const { client, becomeReady } = reconnectingClient(evalCommand);
+    mockGetRedisConnection.mockResolvedValueOnce(client);
 
-    expect(result).toMatchObject({ allowed: false, unavailable: true });
+    const pending = checkSreChatRateLimit("user-failover");
+    await new Promise((resolve) => setTimeout(resolve, 0));
     expect(evalCommand).not.toHaveBeenCalled();
+    becomeReady();
+
+    await expect(pending).resolves.toEqual({ allowed: true, remaining: 29 });
+  });
+
+  it("fails closed without calling Redis when the client stays down past the wait", async () => {
+    jest.useFakeTimers();
+    try {
+      const evalCommand = jest.fn();
+      mockGetRedisConnection.mockResolvedValueOnce(reconnectingClient(evalCommand).client);
+
+      const pending = checkSreChatRateLimit("user-reconnecting");
+      await jest.advanceTimersByTimeAsync(2_000);
+
+      await expect(pending).resolves.toMatchObject({ allowed: false, unavailable: true });
+      expect(evalCommand).not.toHaveBeenCalled();
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   it("fails closed when Redis never answers instead of hanging the request", async () => {

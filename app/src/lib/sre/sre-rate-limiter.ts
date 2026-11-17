@@ -13,6 +13,7 @@
 import crypto from "node:crypto";
 
 import { getRedisConnection } from "@/lib/queue";
+import { waitForRedisReady } from "@/lib/redis-ready";
 import { withRedisDeadline } from "@/lib/security/redis-deadline";
 import { createLogger } from "@/lib/logger/index";
 
@@ -95,7 +96,8 @@ async function checkSreRateLimit(
 ): Promise<SreRateLimitResult> {
   try {
     const redis = await getRedisConnection();
-    if (!redis) {
+    // A short wait rides out a failover or a cold client; an outage still fails fast below.
+    if (!redis || !(await waitForRedisReady(redis))) {
       logSreRateLimiterUnavailable(
         "warn",
         { key, reason: "redis_unavailable" },

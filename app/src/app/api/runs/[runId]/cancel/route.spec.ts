@@ -293,8 +293,18 @@ describe("cancellation drain", () => {
       expect(set).not.toHaveBeenCalledWith(expect.objectContaining({ status: "error" }));
       expect(await response.json()).toMatchObject({ message: "Cancellation requested; waiting for execution to stop" });
     });
-    it("skips the queues fast when Redis is not ready, still answering 200 with the DB marker", async () => {
+    it("answers a retryable 503 without signaling or touching the run when Redis is down", async () => {
       (assertExecutionQueueReady as jest.Mock).mockRejectedValueOnce(new Error("queue_unavailable"));
+      const response = await cancel();
+      expect(response.status).toBe(503);
+      expect(setCancellationSignal).not.toHaveBeenCalled();
+      expect(markerSet).not.toHaveBeenCalled();
+      expect(getQueues).not.toHaveBeenCalled();
+    });
+    it("skips the queues fast when Redis drops after the signal, still answering 200 with the DB marker", async () => {
+      (assertExecutionQueueReady as jest.Mock)
+        .mockResolvedValueOnce(undefined)
+        .mockRejectedValueOnce(new Error("queue_unavailable"));
       const response = await cancel();
       expect(response.status).toBe(200);
       expect(getQueues).not.toHaveBeenCalled();
