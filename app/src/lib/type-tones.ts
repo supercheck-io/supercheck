@@ -1,4 +1,7 @@
-import { Braces, FileText, FolderOpen, KeyRound, Lock, UserPlus, type LucideIcon } from "lucide-react";
+import {
+  ArrowLeftRight, BrainCircuit, Braces, ChevronsLeftRightEllipsis, EthernetPort, FileText, FolderOpen, HeartPulse, KeyRound, LaptopMinimal, Lock, Plug, UserPlus,
+  type LucideIcon,
+} from "lucide-react";
 
 /**
  * Single registry for the colour of a TYPE (test, monitor, job, variable, AI SRE setup, admin setup).
@@ -20,6 +23,17 @@ export const TYPE_TONE = {
   sre: { service: "cobalt", integration: "clay", privateAgent: "olive" },
   admin: { project: "slate", member: "lime", cliToken: "zinc" },
 } as const satisfies Record<string, Record<string, TypeTone>>;
+
+/** Icon of each monitor type (Synthetic uses the Playwright logo, set where it renders). Read it everywhere a monitor type is shown. */
+export const MONITOR_ICON = {
+  http_request: ArrowLeftRight,
+  website: LaptopMinimal,
+  ping_host: ChevronsLeftRightEllipsis,
+  port_check: EthernetPort,
+  mcp_server: Plug,
+  ai_endpoint: BrainCircuit,
+  heartbeat: HeartPulse,
+} as const satisfies Record<string, LucideIcon>;
 
 type Group = keyof typeof TYPE_TONE;
 type Key<G extends Group> = keyof (typeof TYPE_TONE)[G] & string;

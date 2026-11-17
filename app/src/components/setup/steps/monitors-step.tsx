@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, type ReactNode } from "react";
-import { BrainCircuit, HeartPulse, Plug, type LucideIcon } from "lucide-react";
+import { type LucideIcon } from "lucide-react";
 
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import { TYPE_TONE } from "@/lib/type-tones";
+import { MONITOR_ICON, TYPE_TONE } from "@/lib/type-tones";
 import { AI_ENDPOINT_DEFAULT_URL } from "@/components/monitors/ai-endpoint-fields";
 import {
   AI_ENDPOINT_QUERY_ALLOWLIST,
@@ -306,7 +306,7 @@ export function MonitorsStep({ response, draft, patchDraft, features, readOnly, 
       {features.heartbeat ? (
         <OptionalCard
           id="heartbeat"
-          icon={HeartPulse}
+          icon={MONITOR_ICON.heartbeat}
           tone={TYPE_TONE.monitor.heartbeat}
           title="Have a cron job or worker? Add a heartbeat"
           description="It pings a URL when it runs. You are alerted when a ping is missing."
@@ -326,7 +326,7 @@ export function MonitorsStep({ response, draft, patchDraft, features, readOnly, 
       {features.aiEndpoint ? (
         <OptionalCard
           id="ai-endpoint"
-          icon={BrainCircuit}
+          icon={MONITOR_ICON.ai_endpoint}
           tone={TYPE_TONE.monitor.ai_endpoint}
           title="Monitor an AI endpoint"
           description={aiPath ? "The scan found an OpenAI-compatible path on your app. Add a model and the secret holding its API key." : "Checks an OpenAI-compatible endpoint with a small streaming request."}
@@ -356,7 +356,7 @@ export function MonitorsStep({ response, draft, patchDraft, features, readOnly, 
       {features.mcpMonitor ? (
         <OptionalCard
           id="mcp"
-          icon={Plug}
+          icon={MONITOR_ICON.mcp_server}
           tone={TYPE_TONE.monitor.mcp_server}
           title="Monitor an MCP server"
           description="Checks that the server answers and lists its tools."

@@ -3,7 +3,8 @@ import { join } from "node:path";
 
 import { monitorTypes } from "@/components/monitors/data";
 import { types as testTypes } from "@/components/tests/data";
-import { TYPE_CHIP, TYPE_TEXT, TYPE_TEXT_FORCE, TYPE_TONE, TYPE_TONES, typeText } from "./type-tones";
+import { CREATE_ACTIONS } from "./create-actions";
+import { MONITOR_ICON, TYPE_CHIP, TYPE_TEXT, TYPE_TEXT_FORCE, TYPE_TONE, TYPE_TONES, typeText } from "./type-tones";
 
 const SRC = join(__dirname, "..");
 const css = readFileSync(join(SRC, "app/globals.css"), "utf8");
@@ -65,6 +66,13 @@ describe("type tones", () => {
   it("feeds the test and monitor type lists from the registry", () => {
     for (const t of testTypes) expect(t.color).toBe(typeText("test", t.value as keyof typeof TYPE_TONE.test));
     for (const t of monitorTypes) expect(t.color).toBe(typeText("monitor", t.value as keyof typeof TYPE_TONE.monitor));
+  });
+
+  it("uses one icon per monitor type in the type list and the Create menu", () => {
+    for (const [type, icon] of Object.entries(MONITOR_ICON)) {
+      expect(monitorTypes.find((t) => t.value === type)?.icon).toBe(icon);
+      expect(CREATE_ACTIONS.find((a) => a.id === `monitor-${type}`)?.icon).toBe(icon);
+    }
   });
 
   it("keeps ad-hoc colours out of the type surfaces", () => {

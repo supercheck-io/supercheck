@@ -1,18 +1,5 @@
-import {
-  CheckCircle,
-  Clock,
-  Pause,
-  RefreshCw,
-  XCircle,
-  LaptopMinimal,
-  EthernetPort,
-  ChevronsLeftRightEllipsis,
-  ArrowLeftRight,
-  Plug,
-  HeartPulse,
-  BrainCircuit,
-} from "lucide-react";
-import { typeText } from "@/lib/type-tones";
+import { CheckCircle, Clock, Pause, RefreshCw, XCircle } from "lucide-react";
+import { MONITOR_ICON, typeText } from "@/lib/type-tones";
 import { PlaywrightLogo } from "@/components/logo/playwright-logo";
 
 
@@ -59,28 +46,28 @@ export const monitorTypes = [
   {
     label: "HTTP Monitor",
     value: "http_request",
-    icon: ArrowLeftRight,
+    icon: MONITOR_ICON.http_request,
     color: typeText("monitor", "http_request"),
     description: "Check HTTP/S endpoints (availability, status, response time)",
   },
   {
     label: "Website Monitor",
     value: "website",
-    icon: LaptopMinimal,
+    icon: MONITOR_ICON.website,
     color: typeText("monitor", "website"),
     description: "Monitor website availability and performance with optional SSL certificate checking",
   },
   {
     label: "Ping Monitor",
     value: "ping_host",
-    icon: ChevronsLeftRightEllipsis,
+    icon: MONITOR_ICON.ping_host,
     color: typeText("monitor", "ping_host"),
     description: "Check host reachability over TCP on ports 443 and 80",
   },
   {
     label: "Port Monitor",
     value: "port_check",
-    icon: EthernetPort,
+    icon: MONITOR_ICON.port_check,
     color: typeText("monitor", "port_check"),
     description: "Check specific TCP or UDP port",
   },
@@ -94,21 +81,21 @@ export const monitorTypes = [
   {
     label: "MCP Monitor",
     value: "mcp_server",
-    icon: Plug,
+    icon: MONITOR_ICON.mcp_server,
     color: typeText("monitor", "mcp_server"),
     description: "Check an MCP server and its tools",
   },
   {
     label: "AI Endpoint Monitor",
     value: "ai_endpoint",
-    icon: BrainCircuit,
+    icon: MONITOR_ICON.ai_endpoint,
     color: typeText("monitor", "ai_endpoint"),
     description: "Check an OpenAI-compatible chat API answers correctly and fast",
   },
   {
     label: "Heartbeat Monitor",
     value: "heartbeat",
-    icon: HeartPulse,
+    icon: MONITOR_ICON.heartbeat,
     color: typeText("monitor", "heartbeat"),
     description: "Get alerted when a cron job, backup or scheduled agent stops checking in",
   },

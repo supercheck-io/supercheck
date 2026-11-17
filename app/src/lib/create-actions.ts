@@ -1,5 +1,5 @@
 import {
-  ArrowLeftRight, CalendarClock, Chrome, ChevronsLeftRightEllipsis, Database, EthernetPort, HeartPulse, LaptopMinimal, Plug, SquareFunction, Bot, BrainCircuit,
+  ArrowLeftRight, CalendarClock, Chrome, Database, SquareFunction, Bot,
   type LucideIcon,
 } from "lucide-react";
 import type { ComponentType } from "react";
@@ -8,7 +8,7 @@ import { K6Logo } from "@/components/logo/k6-logo";
 import { PlaywrightLogo } from "@/components/logo/playwright-logo";
 import { notificationProviders } from "@/components/alerts/data";
 import { AREA_TEXT, NAV } from "@/lib/nav-areas";
-import { ADMIN_TYPES, TYPE_TEXT, TYPE_TEXT_FORCE, VARIABLE_TYPES, typeTone, type TypeTone } from "@/lib/type-tones";
+import { ADMIN_TYPES, MONITOR_ICON, TYPE_TEXT, TYPE_TEXT_FORCE, VARIABLE_TYPES, typeTone, type TypeTone } from "@/lib/type-tones";
 
 /**
  * Every "create" destination, in Quick Create order. The sidebar Create menus and the Cmd+K Create
@@ -106,14 +106,14 @@ export const CREATE_ACTIONS: CreateAction[] = [
   { id: "admin-member", group: "admin", title: "Member", url: "/org-admin?tab=members", icon: ADMIN_TYPES.member.icon, ...typed(typeTone("admin", "member")), gate: "members" },
   { id: "admin-cli-token", group: "admin", title: "CLI Token", url: "/org-admin?tab=cli-tokens", icon: ADMIN_TYPES.cliToken.icon, ...typed(typeTone("admin", "cliToken")), gate: "cliTokens" },
 
-  monitor("http_request", "HTTP Monitor", ArrowLeftRight),
-  monitor("website", "Website Monitor", LaptopMinimal),
-  monitor("ping_host", "Ping Monitor", ChevronsLeftRightEllipsis),
-  monitor("port_check", "Port Monitor", EthernetPort),
+  monitor("http_request", "HTTP Monitor", MONITOR_ICON.http_request),
+  monitor("website", "Website Monitor", MONITOR_ICON.website),
+  monitor("ping_host", "Ping Monitor", MONITOR_ICON.ping_host),
+  monitor("port_check", "Port Monitor", MONITOR_ICON.port_check),
   monitor("synthetic_test", "Synthetic Monitor", PlaywrightLogo, true),
-  monitor("mcp_server", "MCP Monitor", Plug),
-  monitor("ai_endpoint", "AI Endpoint Monitor", BrainCircuit),
-  monitor("heartbeat", "Heartbeat Monitor", HeartPulse),
+  monitor("mcp_server", "MCP Monitor", MONITOR_ICON.mcp_server),
+  monitor("ai_endpoint", "AI Endpoint Monitor", MONITOR_ICON.ai_endpoint),
+  monitor("heartbeat", "Heartbeat Monitor", MONITOR_ICON.heartbeat),
 
   {
     id: "status-page", group: "statusPages", title: "Status Page", url: "/status-pages?create=true", icon: NAV.statusPages.icon,

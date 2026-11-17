@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState, type ComponentType } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { AppWindow, CheckCircle2, CircleCheckBig, Terminal, type LucideIcon } from "lucide-react";
+import { CheckCircle2, CircleCheckBig, Terminal, type LucideIcon } from "lucide-react";
 
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -12,7 +12,7 @@ import { PageHeader } from "@/components/shared/page-header";
 import { IconChip, type IconTone } from "@/components/ui/icon-chip";
 import { useAppConfig } from "@/hooks/use-app-config";
 import { NAV } from "@/lib/nav-areas";
-import { ADMIN_TYPES, TYPE_TONE } from "@/lib/type-tones";
+import { ADMIN_TYPES, MONITOR_ICON, TYPE_TONE } from "@/lib/type-tones";
 import { cn } from "@/lib/utils";
 import type { SetupFeature } from "@/lib/setup/features";
 import { stepOrder, type SetupStepKey, type UserPersona } from "@/lib/setup/persona";
@@ -41,7 +41,8 @@ interface StepMeta {
 const STEP_META: Partial<Record<SetupStepKey, StepMeta>> = {
   developer: { title: "Set up from your terminal", sub: "CLI and coding agents", icon: Terminal, tone: TYPE_TONE.admin.cliToken },
   invite: { title: "Invite your team first?", sub: "Bring people in", icon: ADMIN_TYPES.member.icon, tone: TYPE_TONE.admin.member },
-  app: { title: "Your app", sub: "URL and test account", icon: AppWindow, tone: NAV.monitors.tone },
+  // The app is the website the other steps check, so it wears the Website monitor type (not the Monitors area).
+  app: { title: "Your app", sub: "URL and test account", icon: MONITOR_ICON.website, tone: TYPE_TONE.monitor.website },
   alerts: { title: "Alerts", sub: "Where we tell you", icon: NAV.notifications.icon, tone: NAV.notifications.tone },
   monitors: { title: "Monitors", sub: "Uptime and SSL", icon: NAV.monitors.icon, tone: NAV.monitors.tone },
   statusPage: { title: "Status page", sub: "Tell your users", icon: NAV.statusPages.icon, tone: NAV.statusPages.tone },
