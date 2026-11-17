@@ -149,9 +149,10 @@ export async function POST(request: NextRequest, { params }: Params) {
           priority: r.priority,
         }))
         .filter((r) => r.title.length > 0);
-      // Output the draft would refuse (its 32 KB cap is in UTF-8 bytes, e.g. CJK text) is unusable output and keeps the
-      // slot, so a caller cannot force a save failure to get free runs. Only a DB failure below gives the slot back.
-      if (cleaned.length === 0 || !parseSetupDraft({ tests: { requirements: [], suggestions: cleaned } }).success) {
+      // The draft caps at 32 KB of UTF-8, which ten long CJK suggestions can pass: keep the leading ones that fit,
+      // so the save below cannot be forced to fail (that would refund and free the slot for unlimited runs).
+      while (cleaned.length > 0 && !parseSetupDraft({ tests: { requirements: [], suggestions: cleaned } }).success) cleaned.pop();
+      if (cleaned.length === 0) {
         await credit.refund();
         // The slot stays used when the model answered (keepClaim): say when suggestions are available again.
         return NextResponse.json(

@@ -28,6 +28,11 @@ export type CopyScope = { organizationId: string; sourceProjectId: string; targe
 /** Never carries plaintext or a driver message: only a fixed reason reaches the response. */
 class CopyItemError extends Error {}
 
+/** Thrown inside the copy's transaction, so the failed audit rolls the copy back and the caller is told why. */
+const auditFailed = (): never => {
+  throw new CopyItemError("Could not record the audit entry; nothing was copied");
+};
+
 async function runItem(sourceId: string, work: () => Promise<Omit<CopyItemResult, "sourceId">>): Promise<CopyItemResult> {
   try {
     return { sourceId, ...(await work()) };
@@ -189,7 +194,7 @@ export async function copyProviders(scope: CopyScope, ids: string[]): Promise<Co
             },
             tx,
             { strict: true, actor },
-          );
+          ).catch(auditFailed);
           return { id: created.id, status: "copied" as const, name: target.name, type: source.type };
         }),
       ),
@@ -333,7 +338,7 @@ export async function copyConnectors(scope: CopyScope, ids: string[]): Promise<C
             },
             tx,
             { strict: true, actor },
-          );
+          ).catch(auditFailed);
           return { id: newId, status: "copied" as const, name: target.name, type: source.type };
         }),
       ),

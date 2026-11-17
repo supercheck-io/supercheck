@@ -222,8 +222,8 @@ describe("copy audit", () => {
     await client.unsafe(`CREATE FUNCTION reject_copy_audit() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'audit unavailable'; END $$`);
     await client.unsafe(`CREATE TRIGGER reject_copy_audit BEFORE INSERT ON audit_logs FOR EACH ROW EXECUTE FUNCTION reject_copy_audit()`);
     try {
-      expect((await copyProviders(scope, [providerSrc.id]))[0]).toMatchObject({ status: "failed", error: "Could not copy this item" });
-      expect((await copyConnectors(scope, [connectorSrc]))[0]).toMatchObject({ status: "failed", error: "Could not copy this item" });
+      expect((await copyProviders(scope, [providerSrc.id]))[0]).toMatchObject({ status: "failed", error: "Could not record the audit entry; nothing was copied" });
+      expect((await copyConnectors(scope, [connectorSrc]))[0]).toMatchObject({ status: "failed", error: "Could not record the audit entry; nothing was copied" });
     } finally {
       await client.unsafe(`DROP TRIGGER reject_copy_audit ON audit_logs`);
       await client.unsafe(`DROP FUNCTION reject_copy_audit()`);

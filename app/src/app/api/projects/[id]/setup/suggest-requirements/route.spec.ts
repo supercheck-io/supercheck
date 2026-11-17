@@ -42,6 +42,7 @@ import { AuthService } from "@/lib/ai/ai-security";
 import { subscriptionService } from "@/lib/services/subscription-service";
 import { aiRateLimiter } from "@/lib/ai/ai-rate-limiter";
 import { claimAiRun, getSetupState, releaseAiRun, saveSuggestions } from "@/lib/setup/setup-state";
+import { parseSetupDraft } from "@/lib/setup/draft-schema";
 
 const PROJECT = "11111111-1111-4111-8111-111111111111";
 const ORG = "22222222-2222-4222-8222-222222222222";
@@ -173,14 +174,18 @@ describe("generation", () => {
     expect(releaseAiRun).toHaveBeenCalledWith(ORG, PROJECT, claim);
     expect(logAuditEvent).not.toHaveBeenCalled();
   });
-  it("output over the draft's byte cap (CJK) is unusable: refund but keep the daily slot, never saved", async () => {
+  it("output over the draft's byte cap (CJK) keeps the leading suggestions that fit and saves them", async () => {
     const requirements = Array.from({ length: 10 }, (_, i) => ({ title: `${i}${"要".repeat(199)}`, description: "検".repeat(1000), priority: "high" }));
     (generateText as jest.Mock).mockResolvedValue({ text: JSON.stringify({ requirements }), usage: {} });
     const res = await POST(req(), params);
-    expect(res.status).toBe(502);
-    expect((await res.json()).code).toBe("unusable_output");
-    expect(saveSuggestions).not.toHaveBeenCalled();
-    expect(refund).toHaveBeenCalled();
+    expect(res.status).toBe(200);
+    const saved = (saveSuggestions as jest.Mock).mock.calls[0][2] as { title: string }[];
+    expect(saved.length).toBeGreaterThan(0);
+    expect(saved.length).toBeLessThan(10);
+    expect(saved.map((s) => s.title[0])).toEqual(saved.map((_, i) => String(i)));
+    expect(parseSetupDraft({ tests: { requirements: [], suggestions: saved } }).success).toBe(true);
+    expect((await res.json()).requirements).toEqual(saved);
+    expect(refund).not.toHaveBeenCalled();
     expect(releaseAiRun).not.toHaveBeenCalled();
   });
   it("uses a stored scan whose pages have no title (scanner stores null)", async () => {

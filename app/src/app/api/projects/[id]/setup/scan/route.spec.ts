@@ -114,7 +114,11 @@ describe("POST setup/scan", () => {
     expect((await POST(post({ url: "ftp://93.184.216.34/" }), params())).status).toBe(400);
     expect((await POST(post({ url: "not a url" }), params())).status).toBe(400);
     expect((await POST(post({ url: "http://93.184.216.34/", extra: 1 }), params())).status).toBe(400);
-    expect((await POST(post("{nope"), params())).status).toBe(400);
+    const bad = await POST(post("{nope"), params());
+    expect(bad.status).toBe(400);
+    expect(await bad.json()).toEqual({ error: "Invalid JSON" });
+    expect(await (await POST(post(""), params())).json()).toEqual({ error: "Invalid JSON" });
+    expect(await (await POST(post({ url: "not a url" }), params())).json()).toEqual({ error: "A valid http(s) URL is required" });
     expect((await POST(post({ url: "http://93.184.216.34/" + "a".repeat(9000) }), params())).status).toBe(413);
     expect(enqueueScan).not.toHaveBeenCalled();
   });
