@@ -7057,7 +7057,7 @@
       "delete": {
         "operationId": "deleteProject",
         "summary": "Delete a project",
-        "description": "Organization owners and admins. Hides the project at once; POST /api/projects/{id}/restore brings it back within 7 days, after which it is purged. The default project cannot be deleted (400). Returns 403 with code ORG_PENDING_DELETION while the organization is pending deletion. Requires an interactive browser session; project-scoped CLI tokens receive 403.",
+        "description": "Organization owners and admins. Hides the project at once; restoreProject brings it back within 7 days, after which it is purged. The default project cannot be deleted (400). Returns 403 with code ORG_PENDING_DELETION while the organization is pending deletion. Requires an interactive browser session; project-scoped CLI tokens receive 403.",
         "tags": [
           "Organizations"
         ],
