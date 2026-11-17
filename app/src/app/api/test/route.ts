@@ -32,7 +32,8 @@ import {
   buildExecutionPolicyFailureResponse,
 } from "@/lib/execution-api-responses";
 import { requireSameOriginRequest } from "@/lib/security/same-origin";
-import { MAX_SCRIPT_LENGTH } from "@/lib/validations/common";
+import { MAX_SCRIPT_BODY_BYTES, MAX_SCRIPT_LENGTH } from "@/lib/validations/common";
+import { readJsonBody } from "@/lib/http/read-capped-json";
 
 import { isOrgPendingDeletion, pendingDeletionResponse, permissionDeniedResponse } from "@/lib/deletion/org-state";
 function buildReportProxyUrl(entityId: string): string {
@@ -76,12 +77,9 @@ export async function POST(request: NextRequest) {
     );
     if (rateLimitResponse) return rateLimitResponse;
 
-    let data;
-    try {
-      data = await request.json();
-    } catch {
-      return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
-    }
+    const read = await readJsonBody(request, MAX_SCRIPT_BODY_BYTES);
+    if (read instanceof NextResponse) return read;
+    const data = read.body;
 
     if (!data || typeof data !== "object" || Array.isArray(data)) {
       return NextResponse.json({ error: "Invalid request body" }, { status: 400 });

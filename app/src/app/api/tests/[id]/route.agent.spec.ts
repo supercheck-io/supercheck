@@ -139,3 +139,12 @@ describe("DELETE origin check", () => {
     expect((await res.json()).error).toBe("Insufficient permissions to delete tests");
   });
 });
+
+it("refuses an oversize PUT body with 413 before writing", async () => {
+  const H = jest.requireActual("@/lib/security/request-hardening.spec-helpers") as typeof import("@/lib/security/request-hardening.spec-helpers");
+  const { MAX_SCRIPT_BODY_BYTES } = jest.requireActual("@/lib/validations/common") as typeof import("@/lib/validations/common");
+  requireAuthContext.mockResolvedValue(ctx("project_editor"));
+  const res = await PUT(H.declaredOversizeRequest(`/api/tests/${ID}`, "PUT", MAX_SCRIPT_BODY_BYTES + 1), { params: Promise.resolve({ id: ID }) });
+  expect(res.status).toBe(413);
+  expect(set).not.toHaveBeenCalled();
+});

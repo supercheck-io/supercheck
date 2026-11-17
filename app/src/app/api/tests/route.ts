@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { isTestPriority, MAX_SCRIPT_LENGTH } from "@/lib/validations/common";
+import { isTestPriority, MAX_SCRIPT_BODY_BYTES, MAX_SCRIPT_LENGTH } from "@/lib/validations/common";
+import { readJsonBody } from "@/lib/http/read-capped-json";
 import { db } from "@/utils/db";
 import { tests, testTags, tags } from "@/db/schema";
 import { desc, eq, and, inArray, ilike, count } from "drizzle-orm";
@@ -237,12 +238,9 @@ export async function POST(request: NextRequest) {
       return await permissionDeniedResponse(context.organizationId, "Insufficient permissions to create tests");
     }
 
-    let body;
-    try {
-      body = await request.json();
-    } catch {
-      return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
-    }
+    const read = await readJsonBody(request, MAX_SCRIPT_BODY_BYTES);
+    if (read instanceof NextResponse) return read;
+    const body = read.body;
     if (!body || typeof body !== "object" || Array.isArray(body)) {
       return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
     }
