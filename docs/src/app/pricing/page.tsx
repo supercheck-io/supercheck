@@ -451,6 +451,7 @@ export default function PricingPage() {
                             </tbody>
                         ))}
                     </table>
+                    <p className="mt-6 text-sm text-fd-muted-foreground">A mobile app for alerts and incidents is coming.</p>
                 </section>
 
                 <section id="overage" aria-labelledby="overage-heading" className="mt-24 scroll-mt-20">
