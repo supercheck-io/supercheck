@@ -492,6 +492,14 @@ it('redacts secrets from text', () => {
   );
 });
 
+it('redacts secrets that contain regex characters, literally', () => {
+  const secret = 'p.a$s(w)*[d]|\\';
+  expect(redact(`x ${secret} pXa$s(w)*[d]|\\ y`, [secret])).toBe(
+    'x [REDACTED] pXa$s(w)*[d]|\\ y',
+  );
+  expect(redact('no secrets here', [])).toBe('no secrets here');
+});
+
 it('createClient still refuses an unknown kind', async () => {
   await expect(
     createClient({ kind: 'nope' } as never).send('x'),
@@ -611,7 +619,7 @@ describe('redirects and reply size', () => {
       res.end();
     };
     await expect(bot().send('x')).rejects.toThrow(
-      'openai agent replied with a redirect (HTTP 307) to http://169.254.169.254/latest',
+      'openai agent endpoint redirected (HTTP 307) to http://169.254.169.254/latest; use the final URL',
     );
     expect(seen).toHaveLength(1);
   });
@@ -622,7 +630,7 @@ describe('redirects and reply size', () => {
       res.end('x'.repeat(MAX_REPLY_BYTES + 1));
     };
     await expect(bot().send('x')).rejects.toThrow(
-      `openai agent request failed: reply is larger than ${MAX_REPLY_BYTES} bytes`,
+      'openai agent reply exceeded 5 MiB',
     );
   });
 });

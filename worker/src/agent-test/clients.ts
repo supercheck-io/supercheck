@@ -103,18 +103,31 @@ export function encodedForms(secret: string): string[] {
   return forms.filter((f) => f.length >= MIN_SECRET);
 }
 
+const redactors = new Map<string, RegExp | null>();
+
 /** Removes the given secrets and every project secret, in each encoded form. */
 export function redact(text: string, secrets: string[]): string {
-  const forms = [
-    ...new Set(
-      [...secrets, ...projectSecrets()]
-        .filter((s) => s.length >= MIN_SECRET)
-        .flatMap(encodedForms),
-    ),
-  ].sort((a, b) => b.length - a.length);
-  let out = text;
-  for (const s of forms) out = out.split(s).join('[REDACTED]');
-  return out;
+  const all = [...secrets, ...projectSecrets()].filter(
+    (s) => s.length >= MIN_SECRET,
+  );
+  const key = JSON.stringify(all);
+  let re = redactors.get(key);
+  if (re === undefined) {
+    const forms = [...new Set(all.flatMap(encodedForms))].sort(
+      (a, b) => b.length - a.length,
+    );
+    re = forms.length
+      ? new RegExp(
+          forms.map((f) => f.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|'),
+          'g',
+        )
+      : null;
+    // shortcut: matches leftmost, so a shorter form that overlaps the start of a longer one wins; fine while
+    // secrets do not overlap each other. Cache cleared rather than LRU, as a run uses a handful of secret sets.
+    if (redactors.size >= 64) redactors.clear();
+    redactors.set(key, re);
+  }
+  return re ? text.replace(re, '[REDACTED]') : text;
 }
 
 const timeoutOf = (options: AgentCommonOptions) =>
@@ -217,7 +230,7 @@ async function post(
     if (res.status >= 300 && res.status < 400) {
       void res.body?.cancel().catch(() => undefined);
       throw new Error(
-        `${kind} agent replied with a redirect (HTTP ${res.status}) to ${redact(res.headers.get('location') ?? 'nowhere', secrets).slice(0, 200)}; connect to the final URL instead`,
+        `${kind} agent endpoint redirected (HTTP ${res.status}) to ${redact(res.headers.get('location') ?? 'nowhere', secrets).slice(0, 200)}; use the final URL`,
       );
     }
     text = await readReply(
@@ -230,7 +243,9 @@ async function post(
     );
   } catch (error) {
     const e = error as Error & { cause?: { code?: string } };
-    if (e.message.startsWith(`${kind} agent replied with a redirect`)) throw e;
+    if (e.message.startsWith(`${kind} agent endpoint redirected`)) throw e;
+    if (e instanceof ReplyTooLargeError)
+      throw new Error(`${kind} agent reply exceeded 5 MiB`);
     const why =
       e.name === 'TimeoutError' || e.name === 'AbortError'
         ? `timed out after ${timeoutMs}ms`
@@ -248,6 +263,7 @@ async function post(
 }
 
 export const MAX_REPLY_BYTES = 5 * 1024 * 1024;
+class ReplyTooLargeError extends Error {}
 
 /** Reads a reply body, at most MAX_REPLY_BYTES. With an rpcId (an SSE reply), stops once a complete event carries it. */
 async function readReply(
@@ -266,8 +282,7 @@ async function readReply(
       const { done, value } = await reader.read();
       if (done) return text + decoder.decode();
       bytes += value.byteLength;
-      if (bytes > MAX_REPLY_BYTES)
-        throw new Error(`reply is larger than ${MAX_REPLY_BYTES} bytes`);
+      if (bytes > MAX_REPLY_BYTES) throw new ReplyTooLargeError();
       text += decoder.decode(value, { stream: true });
       if (rpcId === undefined) continue;
       const blocks = text.slice(scanned).split(/\r?\n\r?\n/);

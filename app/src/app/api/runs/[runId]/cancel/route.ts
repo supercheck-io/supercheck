@@ -491,6 +491,8 @@ export async function POST(
         queueRemoved,
         isPlaygroundRun,
         signalSent,
+        // false: marked only; the worker, a retry or the stalled-run sweep finishes it.
+        cancellationComplete,
       },
       success: true,
     });

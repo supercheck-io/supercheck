@@ -158,7 +158,7 @@ describe("cancellation drain", () => {
     expect(set).not.toHaveBeenCalledWith(expect.objectContaining({ status: "error" }));
     expect(getQueues).not.toHaveBeenCalled();
     expect(await response.json()).toMatchObject({ success: true, signalSent: false, message: expect.stringContaining("retry") });
-    expect(logAuditEvent).toHaveBeenCalledWith(expect.objectContaining({ metadata: expect.objectContaining({ signalSent: false }) }));
+    expect(logAuditEvent).toHaveBeenCalledWith(expect.objectContaining({ metadata: expect.objectContaining({ signalSent: false, cancellationComplete: false }) }));
   });
   it("sends the signal on a retry once Redis is back, although the run already carries the marker", async () => {
     Object.assign(run, { runErrorDetails: "Cancellation requested by user" });

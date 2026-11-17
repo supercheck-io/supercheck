@@ -2901,7 +2901,7 @@
                 "agent"
               ]
             },
-            "description": "Filter by test type. Aliases: `playwright` → `browser`, `k6` → `performance`"
+            "description": "Filter by test type. Aliases: `playwright` → `browser`, `k6` → `performance`. Matching ignores case and surrounding spaces; an unknown type returns 400."
           },
           {
             "name": "priority",
@@ -2947,7 +2947,7 @@
             "$ref": "#/components/responses/Unauthorized"
           },
           "400": {
-            "description": "Invalid priority filter",
+            "description": "Invalid priority or type filter",
             "content": {
               "application/json": {
                 "schema": {

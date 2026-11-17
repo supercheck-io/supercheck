@@ -1998,7 +1998,8 @@ paths:
               - custom
               - agent
           description: "Filter by test type. Aliases: `playwright` → `browser`, `k6` →
-            `performance`"
+            `performance`. Matching ignores case and surrounding spaces; an
+            unknown type returns 400."
         - name: priority
           in: query
           schema:
@@ -2023,7 +2024,7 @@ paths:
                         items:
                           $ref: "#/components/schemas/Test"
         "400":
-          description: Invalid priority filter
+          description: Invalid priority or type filter
           content:
             application/json:
               schema:
