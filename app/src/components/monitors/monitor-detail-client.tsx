@@ -1249,15 +1249,18 @@ export function MonitorDetailClient({
                 }
               />
               {hasRunDurations && (
-                <ResponseTimeBarChart
-                  data={responseTimeData}
-                  title="Run duration"
-                  empty={{
-                    description: "Time between a /start ping and the ping that finishes the run.",
-                    heading: "No run durations yet",
-                    hint: "Call /start when the job begins to record how long it runs.",
-                  }}
-                />
+                // Auto-height wrapper so the card's h-full does not stretch it to the column height.
+                <div>
+                  <ResponseTimeBarChart
+                    data={responseTimeData}
+                    title="Run duration"
+                    empty={{
+                      description: "Time between a /start ping and the ping that finishes the run.",
+                      heading: "No run durations yet",
+                      hint: "Call /start when the job begins to record how long it runs.",
+                    }}
+                  />
+                </div>
               )}
             </div>
             <HeartbeatPingHistory
