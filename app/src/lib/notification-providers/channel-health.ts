@@ -6,8 +6,6 @@ import { loadProviderTestHealth, newerHealth, providerHealth, type ProviderHealt
 
 /**
  * Health per channel (newest delivery in the last 7 days, or a newer test) and when it last sent an alert.
- * shortcut: alert_history has no index leading with provider, so this scans the provider rows by sent_at; add
- * (provider, sent_at DESC) in a no-transaction migration if the channel list gets slow.
  */
 export async function loadProviderHealth(providerIds: string[]): Promise<{ health: Map<string, ProviderHealth>; lastUsed: Map<string, Date> }> {
   if (providerIds.length === 0) return { health: new Map(), lastUsed: new Map() };
