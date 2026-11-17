@@ -16,6 +16,35 @@ describe("describeNotificationEvent", () => {
     expect(describeNotificationEvent({ kind: "escalation", reached: 0, channels: [], emailed: 0 })).toMatchObject({ title: "Escalation not sent", warning: true });
   });
 
+  it("names reached channels from refs, at most three, then \"and N more\"", () => {
+    const providers = { p1: "#ops-alerts", p2: "On-call", p3: "Pager", p4: "Ops email", p5: "Status" };
+    const channels = (...ids: string[]) => ids.map((providerId) => ({ providerId, type: "slack", ok: true }));
+    expect(describeNotificationEvent({ kind: "reminder", n: 2, of: 3, channels: [...channels("p1"), { providerId: "p2", ok: false }], emailed: 0 }, { providers })).toEqual({
+      title: "Reminder 2 of 3 sent",
+      body: "Sent to #ops-alerts",
+      warning: false,
+    });
+    expect(describeNotificationEvent({ kind: "escalation", channels: channels("p1", "p2"), emailed: 1, reached: 3 }, { providers }).body).toBe("Sent to #ops-alerts, On-call and 1 person by email");
+    expect(describeNotificationEvent({ kind: "escalation", channels: channels("p1", "p2", "p3", "p4", "p5"), emailed: 0, reached: 5 }, { providers }).body).toBe(
+      "Sent to #ops-alerts, On-call, Pager and 2 more",
+    );
+    // A deleted channel has no name but still counts; with no names at all, fall back to counts.
+    expect(describeNotificationEvent({ kind: "reminder", channels: channels("p1", "gone"), emailed: 2 }, { providers }).body).toBe("Sent to #ops-alerts, 1 more and 2 people by email");
+    expect(describeNotificationEvent({ kind: "reminder", channels: channels("gone", "also-gone"), emailed: 0 }, { providers }).body).toBe("Sent to 2 channels");
+    expect(describeNotificationEvent({ kind: "reminder", channels: channels("p1"), emailed: 0 }).body).toBe("Sent to 1 channel");
+  });
+
+  it("ignores inherited keys, lists a repeated channel once, and quotes names with commas", () => {
+    const providers = { p1: "#ops", p2: "Ops, EU" };
+    const channel = (providerId: string) => ({ providerId, type: "slack", ok: true });
+    expect(describeNotificationEvent({ kind: "reminder", channels: [channel("constructor"), channel("__proto__")], emailed: 0 }, { providers }).body).toBe("Sent to 2 channels");
+    expect(describeNotificationEvent({ kind: "reminder", channels: [channel("p1"), channel("p1")], emailed: 0 }, { providers }).body).toBe("Sent to #ops");
+    expect(describeNotificationEvent({ kind: "escalation", channels: [channel("p1"), channel("p1")], emailed: 0, reached: 2 }).body).toBe("Sent to 1 channel");
+    expect(describeNotificationEvent({ kind: "reminder", channels: [channel("p2"), channel("p1")], emailed: 0 }, { providers }).body).toBe('Sent to "Ops, EU" and #ops');
+    // Non-string ids are never de-duplicated.
+    expect(describeNotificationEvent({ kind: "reminder", channels: [{ providerId: 1, ok: true }, { providerId: 1, ok: true }], emailed: 0 }, { providers }).body).toBe("Sent to 2 channels");
+  });
+
   it("names a failed page with the vendor, status and fallback", () => {
     expect(describeNotificationEvent({ kind: "page_failed", preset: "pagerduty", status: 503, fallback: "policy_channels" })).toEqual({
       title: "PagerDuty page failed (HTTP 503)",

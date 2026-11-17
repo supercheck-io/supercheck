@@ -1,19 +1,50 @@
+import type { SreIncidentTimelineRefs } from "@/actions/sre-incident-lifecycle";
 import { PAGING_SERVICE_NAMES } from "@/lib/notification-providers/constants";
 
 type Channel = { providerId?: unknown; type?: unknown; ok?: unknown };
 
 const plural = (count: number, word: string) => `${count} ${word}${count === 1 ? "" : "s"}`;
 
-/** Who a reminder or escalation reached: counts only, never addresses. */
-function reachedText(data: Record<string, unknown>) {
-  const channels = Array.isArray(data.channels) ? (data.channels as Channel[]).filter((channel) => channel?.ok === true).length : 0;
+const NAMED_CHANNELS = 3;
+
+const listText = (parts: string[]) => (parts.length > 1 ? `${parts.slice(0, -1).join(", ")} and ${parts.at(-1)}` : (parts[0] ?? null));
+
+/** Who a reminder or escalation reached: channel names when known (else counts), never addresses. */
+function reachedText(data: Record<string, unknown>, refs?: Pick<SreIncidentTimelineRefs, "providers">) {
+  const seen = new Set<string>();
+  // A channel listed twice counts once.
+  const reached = Array.isArray(data.channels)
+    ? (data.channels as Channel[]).filter((channel) => {
+        if (channel?.ok !== true) return false;
+        if (typeof channel.providerId !== "string") return true;
+        if (seen.has(channel.providerId)) return false;
+        seen.add(channel.providerId);
+        return true;
+      })
+    : [];
+  // Own keys only, so an id such as "constructor" never resolves to an Object.prototype member.
+  const nameOf = (id: unknown) => (refs && typeof id === "string" && Object.hasOwn(refs.providers, id) ? refs.providers[id] : null);
+  // Quote a name that contains a comma so the list still reads as separate channels.
+  const names = reached.flatMap((channel) => {
+    const name = nameOf(channel.providerId);
+    return name ? [name.includes(",") ? `"${name}"` : name] : [];
+  });
+  // A deleted channel has no name; it still counts towards "and N more".
+  const more = reached.length - Math.min(names.length, NAMED_CHANNELS);
+  const channels = names.length
+    ? [...names.slice(0, NAMED_CHANNELS), ...(more > 0 ? [`${more} more`] : [])]
+    : reached.length > 0
+      ? [plural(reached.length, "channel")]
+      : [];
   const emailed = typeof data.emailed === "number" ? data.emailed : 0;
-  const parts = [channels > 0 ? plural(channels, "channel") : null, emailed > 0 ? `${emailed} ${emailed === 1 ? "person" : "people"} by email` : null].filter(Boolean);
-  return parts.length ? parts.join(" and ") : null;
+  return listText([...channels, ...(emailed > 0 ? [`${emailed} ${emailed === 1 ? "person" : "people"} by email`] : [])]);
 }
 
 /** Title and body for an incident timeline `notification` event (reminder, escalation, failed page). */
-export function describeNotificationEvent(data: Record<string, unknown>): { title: string; body: string | null; warning: boolean } {
+export function describeNotificationEvent(
+  data: Record<string, unknown>,
+  refs?: Pick<SreIncidentTimelineRefs, "providers">,
+): { title: string; body: string | null; warning: boolean } {
   // Given up after repeated failed sends: say so, rather than "sent" or "target removed".
   if (data.failed === true && (data.kind === "reminder" || data.kind === "escalation")) {
     const attempts = typeof data.attempts === "number" ? data.attempts : undefined;
@@ -27,11 +58,11 @@ export function describeNotificationEvent(data: Record<string, unknown>): { titl
   if (data.kind === "reminder") {
     const n = typeof data.n === "number" ? data.n : 1;
     const of = typeof data.of === "number" ? data.of : n;
-    const reached = reachedText(data);
+    const reached = reachedText(data, refs);
     return { title: `Reminder ${n} of ${of} sent`, body: reached ? `Sent to ${reached}` : "Nobody could be reached", warning: !reached };
   }
   if (data.kind === "escalation") {
-    const reached = reachedText(data);
+    const reached = reachedText(data, refs);
     return data.reached === 0 || !reached
       ? { title: "Escalation not sent", body: "The escalation target was removed or could not be reached", warning: true }
       : { title: "Escalated", body: `Sent to ${reached}`, warning: false };

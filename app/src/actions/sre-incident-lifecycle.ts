@@ -57,8 +57,8 @@ export type SreIncidentAssignee = {
   image: string | null;
 };
 
-/** Names for ids that timeline events store, so reassignments and linked alerts read as words. */
-export type SreIncidentTimelineRefs = { users: Record<string, string>; alerts: Record<string, string> };
+/** Names for ids that timeline events store, so reassignments, linked alerts and notified channels read as words. */
+export type SreIncidentTimelineRefs = { users: Record<string, string>; alerts: Record<string, string>; providers: Record<string, string> };
 
 export type SreIncidentTimelineItem = {
   id: string;

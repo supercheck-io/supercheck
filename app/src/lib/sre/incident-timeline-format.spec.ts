@@ -1,4 +1,13 @@
-import { parsePostmortemTimeline } from "./incident-timeline-format";
+import { describeTimelineEvent, parsePostmortemTimeline } from "./incident-timeline-format";
+
+describe("describeTimelineEvent notification rows", () => {
+  const event = { eventType: "notification", eventData: { kind: "escalation", channels: [{ providerId: "p1", type: "slack", ok: true }], emailed: 0, reached: 1 } };
+
+  it("names the channel from refs and falls back to a count without them", () => {
+    expect(describeTimelineEvent(event, { users: {}, alerts: {}, providers: { p1: "#ops-alerts" } })).toEqual({ title: "Escalated", body: "Sent to #ops-alerts" });
+    expect(describeTimelineEvent(event)).toEqual({ title: "Escalated", body: "Sent to 1 channel" });
+  });
+});
 
 describe("parsePostmortemTimeline", () => {
   it("reads draft lines as moments and maps known titles back to their events", () => {

@@ -170,7 +170,7 @@ export function describeTimelineEvent(
 } {
   const data = event.eventData ?? {};
   if (event.eventType === "notification") {
-    const { title, body } = describeNotificationEvent(data);
+    const { title, body } = describeNotificationEvent(data, refs);
     return { title, body };
   }
   if (event.eventType === "comment") return { title: "Note", body: str(data.text) };

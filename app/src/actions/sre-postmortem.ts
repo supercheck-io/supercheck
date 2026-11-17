@@ -185,7 +185,11 @@ export async function generateSrePostmortem(
         ? structured.nextChecks.filter((check): check is string => typeof check === "string").slice(0, 5)
         : [],
       evidence,
-      timeline: postmortemTimeline(rows, await loadTimelineRefs(db, { organizationId: auth.organizationId, projectId: auth.projectId, rows })),
+      // Channel names stay out: this timeline goes into the model prompt, so notification rows keep counts only.
+      timeline: postmortemTimeline(rows, {
+        ...(await loadTimelineRefs(db, { organizationId: auth.organizationId, projectId: auth.projectId, rows })),
+        providers: {},
+      }),
     };
 
     // Same usage gate as chat; when it is closed the template still works, with no model call.
