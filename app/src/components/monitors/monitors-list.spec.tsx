@@ -34,3 +34,14 @@ it("shows a first-run empty state and hides the header create action", () => {
   expect(screen.getAllByRole("button", { name: "Create monitor" })).toHaveLength(1);
   expect(screen.queryByTestId("table")).toBeNull();
 });
+
+it("keeps cached monitors and the create action when a refresh fails, with a retry notice", () => {
+  const refetch = jest.fn();
+  useMonitorsMock.mockReturnValue({ ...base, monitors: [{ id: "m1" }], error: new Error("boom"), refetch });
+  render(<MonitorsList />);
+  expect(screen.getByTestId("table")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Create monitor" })).toBeInTheDocument();
+  expect(screen.getByTestId("monitors-refresh-error")).toHaveTextContent("Could not refresh monitors");
+  fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+  expect(refetch).toHaveBeenCalled();
+});

@@ -140,15 +140,18 @@ export function MonitorCreationWizard() {
     };
   }, [isHeartbeat, alertDraftKey]);
 
-  const [currentStep, setCurrentStep] = useState<WizardStep>(
-    stepFromUrl || "monitor"
-  );
-  const [monitorData, setMonitorData] = useState<FormValues | undefined>(
-    getInitialMonitorData
-  );
-  const [apiData, setApiData] = useState<Record<string, unknown> | undefined>(
-    getInitialApiData
-  );
+  // Restore the monitor draft and its API payload together: when the draft is dropped (another UI type
+  // or another hand-off target), its payload goes too and the wizard starts at the monitor step.
+  const [initialDraft] = useState(() => {
+    const monitor = getInitialMonitorData();
+    if (!monitor && typeof window !== "undefined") sessionStorage.removeItem(STORAGE_KEYS.API_DATA);
+    return { monitor, api: monitor ? getInitialApiData() : undefined };
+  });
+  // Same initial step on server and client (sessionStorage is client-only); Create sends a step
+  // without a restored payload back to the monitor step.
+  const [currentStep, setCurrentStep] = useState<WizardStep>(stepFromUrl || "monitor");
+  const [monitorData, setMonitorData] = useState<FormValues | undefined>(initialDraft.monitor);
+  const [apiData, setApiData] = useState<Record<string, unknown> | undefined>(initialDraft.api);
   const [locationConfig, setLocationConfig] = useState<LocationConfig>(
     getInitialLocationConfig
   );
@@ -402,6 +405,15 @@ export function MonitorCreationWizard() {
         setIsCreating(false);
         return;
       }
+    }
+
+    if (!apiData) {
+      // The restored draft was dropped (other UI type or hand-off): never post another monitor's payload.
+      toast.error("Fill in the monitor details first");
+      isCreatingRef.current = false;
+      setIsCreating(false);
+      setCurrentStep("monitor");
+      return;
     }
 
     try {

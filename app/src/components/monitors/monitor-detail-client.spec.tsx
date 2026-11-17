@@ -42,7 +42,7 @@ jest.mock("@/components/monitors/response-time-line-chart", () => ({
   },
 }));
 jest.mock("./AvailabilityBarChart", () => ({
-  AvailabilityBarChart: ({ headerActions }: { headerActions?: React.ReactNode }) => <>{headerActions}</>,
+  AvailabilityBarChart: ({ headerActions, footer }: { headerActions?: React.ReactNode; footer?: React.ReactNode }) => <>{headerActions}{footer}</>,
 }));
 jest.mock("./location-filter-dropdown", () => ({
   LocationFilterDropdown: (props: { availableLocations: string[] }) => {
@@ -261,40 +261,22 @@ describe("heartbeat monitor detail", () => {
     }
   });
 
-  it("opens Setup for a never-pinged monitor, with the URL panel and waiting callout", async () => {
+  it("shows the URL panel, waiting note and both empty cards for a never-pinged monitor", async () => {
     render(<MonitorDetailClient monitor={heartbeatMonitor("pending")} />);
-    expect(screen.getByRole("tab", { name: "Setup" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.queryByRole("tab", { name: "Setup" })).toBeNull();
     expect(screen.getByTestId("heartbeat-ping-url-panel")).toBeInTheDocument();
     expect(screen.getByTestId("heartbeat-waiting")).toHaveTextContent("Waiting for the first ping");
-    expect(screen.queryByText("Recent Check Results")).toBeNull();
+    expect(screen.getByTestId("heartbeat-ping-history")).toBeInTheDocument();
+    expect(screen.getByTestId("heartbeat-ping-history-empty")).toBeInTheDocument();
     expect(await screen.findByRole("button", { name: "Reveal" })).toBeInTheDocument();
   });
 
-  it("opens Overview once pinged: ping history, no URL panel", () => {
+  it("shows the URL panel and ping history together once pinged, with no tabs", () => {
     render(<MonitorDetailClient monitor={heartbeatMonitor("up", pinged())} />);
-    expect(screen.getByRole("tab", { name: "Overview" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.queryByRole("tab", { name: "Overview" })).toBeNull();
+    expect(screen.getByTestId("heartbeat-ping-url-panel")).toBeInTheDocument();
     expect(screen.getByTestId("heartbeat-ping-history")).toBeInTheDocument();
-    expect(screen.queryByTestId("heartbeat-ping-url-panel")).toBeNull();
-  });
-
-  it("lets ?tab win over the default", () => {
-    mockSearch = "tab=setup";
-    const { unmount } = render(<MonitorDetailClient monitor={heartbeatMonitor("up", pinged())} />);
-    expect(screen.getByTestId("heartbeat-ping-url-panel")).toBeInTheDocument();
-    unmount();
-    mockSearch = "tab=overview";
-    render(<MonitorDetailClient monitor={heartbeatMonitor("pending")} />);
-    expect(screen.getByRole("tab", { name: "Overview" })).toHaveAttribute("aria-selected", "true");
-  });
-
-  it("syncs the tab to the URL and the empty Overview opens Setup", () => {
-    mockSearch = "tab=overview";
-    render(<MonitorDetailClient monitor={heartbeatMonitor("pending")} />);
-    expect(screen.getByTestId("heartbeat-overview-empty")).toHaveTextContent("Waiting for the first ping");
-    expect(screen.queryByTestId("heartbeat-ping-history")).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Open setup" }));
-    expect(mockReplace).toHaveBeenCalledWith("/monitors/hb1?tab=setup", { scroll: false });
-    expect(screen.getByTestId("heartbeat-ping-url-panel")).toBeInTheDocument();
+    expect(screen.queryByTestId("heartbeat-waiting")).toBeNull();
   });
 
   it("shows last ping, next ping and last run duration in the header", () => {

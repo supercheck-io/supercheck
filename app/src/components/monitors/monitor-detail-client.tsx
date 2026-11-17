@@ -65,7 +65,7 @@ import {
   AlertDialogAction,
 } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { ResponseTimeBarChart } from "@/components/monitors/response-time-line-chart";
 import { AvailabilityBarChart } from "./AvailabilityBarChart";
 import { LocationFilterDropdown } from "./location-filter-dropdown";
@@ -100,7 +100,6 @@ import { HeartbeatPingUrlPanel } from "./heartbeat-ping-url-panel";
 import { HeartbeatPingHistory } from "./heartbeat-ping-history";
 import { HeartbeatStateBadge } from "./heartbeat-state-badge";
 import { formatHeartbeatMinutes, formatPingAgo, formatPingDue, formatRunDuration } from "./heartbeat-format";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 export interface MonitorResultItem {
@@ -273,8 +272,6 @@ export function MonitorDetailClient({
   // A heartbeat's ping history pages to the rows that fit its panel on desktop; everything else keeps 10 rows.
   const [fitRows, setFitRows] = useState(10);
   const resultsPerPage = isHeartbeatMonitor ? fitRows : 10;
-  const pathname = usePathname();
-  const searchParams = useSearchParams();
 
   // React Query hooks for data fetching with caching
   const { stats: monitorStats } = useMonitorStats(monitor.id, selectedLocation);
@@ -581,19 +578,14 @@ export function MonitorDetailClient({
   const lastRunDuration = formatRunDuration(monitor.recentResults?.[0]?.responseTimeMs);
   // Never pinged: stays pending and never alerts, so there is no deadline to show
   const neverPinged = Boolean(heartbeat && !heartbeat.lastPingAt);
-  const awaitingFirstPing = Boolean(heartbeat && heartbeat.state === "pending" && !heartbeat.lastPingAt);
   const showHeartbeatSetup = isHeartbeat && !isNotificationView;
-  const tabParam = searchParams?.get("tab");
-  const [heartbeatTab, setHeartbeatTab] = useState<string>(
-    tabParam === "overview" || tabParam === "setup" ? tabParam : awaitingFirstPing ? "setup" : "overview"
-  );
-  const activeHeartbeatTab = showHeartbeatSetup ? heartbeatTab : "overview";
-  const changeHeartbeatTab = (value: string) => {
-    setHeartbeatTab(value);
-    const params = new URLSearchParams(searchParams?.toString() ?? "");
-    params.set("tab", value);
-    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
-  };
+  // Relative ping times ("8h ago", "in 52m") tick every 30 s while a heartbeat is open.
+  const [clockNow, setClockNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!isHeartbeat) return;
+    const id = window.setInterval(() => setClockNow(Date.now()), 30_000);
+    return () => window.clearInterval(id);
+  }, [isHeartbeat]);
   
   // AI endpoint preset: extra stats from the latest check; a plain HTTP monitor shows none of this
   const aiEndpoint = monitor.config?.aiEndpoint as { model?: string } | undefined;
@@ -821,7 +813,7 @@ export function MonitorDetailClient({
                         <span aria-hidden="true">·</span>
                         <HeartbeatFact
                           testId="heartbeat-stat-last-ping"
-                          text={heartbeat.lastPingAt ? `Last ping ${formatPingAgo(new Date(heartbeat.lastPingAt))}` : "No pings yet"}
+                          text={heartbeat.lastPingAt ? `Last ping ${formatPingAgo(new Date(heartbeat.lastPingAt), clockNow)}` : "No pings yet"}
                           tooltip={heartbeat.lastPingAt ? format(new Date(heartbeat.lastPingAt), "MMM d, yyyy HH:mm:ss") : undefined}
                         />
                         {heartbeat.state === "paused" ? (
@@ -835,7 +827,7 @@ export function MonitorDetailClient({
                               <span aria-hidden="true">·</span>
                               <HeartbeatFact
                                 testId="heartbeat-stat-next"
-                                text={`Next ping ${formatPingDue(new Date(heartbeat.nextExpectedAt))}`}
+                                text={`Next ping ${formatPingDue(new Date(heartbeat.nextExpectedAt), clockNow)}`}
                                 tooltip={format(new Date(heartbeat.nextExpectedAt), "MMM d, yyyy HH:mm:ss")}
                               />
                             </>
@@ -1235,94 +1227,67 @@ export function MonitorDetailClient({
         </div>
 
         {isHeartbeat ? (
-          <Tabs
-            value={activeHeartbeatTab}
-            onValueChange={changeHeartbeatTab}
-            className="flex min-h-0 flex-1 flex-col gap-4"
-            data-testid="heartbeat-tabs"
-          >
+          <div className="flex min-h-0 flex-1 flex-col gap-4" data-testid="heartbeat-layout">
             {showHeartbeatSetup && (
-              <TabsList aria-label="Heartbeat sections" className="shrink-0 self-start">
-                <TabsTrigger value="overview">Overview</TabsTrigger>
-                <TabsTrigger value="setup">Setup</TabsTrigger>
-              </TabsList>
+              <HeartbeatPingUrlPanel
+                monitorId={monitor.id}
+                canManage={permissionsReady && canEditMonitor}
+                pending={heartbeat?.state === "pending"}
+              />
             )}
-            <TabsContent value="overview" className="mt-0 min-h-0 flex-1">
-              {neverPinged ? (
-                <div
-                  className="flex h-full min-h-[240px] flex-col items-center justify-center gap-3 rounded-lg border border-dashed p-8 text-center"
-                  data-testid="heartbeat-overview-empty"
-                >
-                  <div>
-                    <p className="text-sm font-medium">
-                      {heartbeat?.state === "paused" ? "Paused, no pings yet" : "Waiting for the first ping"}
-                    </p>
-                    <p className="text-sm text-muted-foreground">Availability and ping history appear after your job pings the URL.</p>
-                  </div>
-                  {showHeartbeatSetup && (
-                    <Button variant="outline" size="sm" onClick={() => changeHeartbeatTab("setup")}>
-                      Open setup
-                    </Button>
-                  )}
+            <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 lg:grid-cols-2 lg:grid-rows-1">
+              <div className="flex min-h-0 flex-col gap-4 lg:h-full">
+                <div className="min-h-0 flex-1">
+                  <AvailabilityBarChart
+                    fill
+                    data={availabilityTimelineData}
+                    headerActions={
+                      availableLocations.length > 1 ? (
+                        <LocationFilterDropdown
+                          selectedLocation={selectedLocation}
+                          availableLocations={availableLocations}
+                          onLocationChange={setSelectedLocation}
+                          className="w-[200px]"
+                        />
+                      ) : undefined
+                    }
+                    footer={
+                      hasRunDurations ? undefined : (
+                        <span data-testid="heartbeat-run-duration-hint">
+                          Call <span className="font-mono">/start</span> when the job begins to record how long it runs.
+                        </span>
+                      )
+                    }
+                  />
                 </div>
-              ) : (
-                <div className="grid h-full min-h-0 grid-cols-1 gap-4 lg:grid-cols-2 lg:grid-rows-[minmax(0,1fr)]">
-                  <div className="flex min-h-0 flex-col gap-4 lg:overflow-y-auto">
-                    <AvailabilityBarChart
-                      data={availabilityTimelineData}
-                      headerActions={
-                        availableLocations.length > 1 ? (
-                          <LocationFilterDropdown
-                            selectedLocation={selectedLocation}
-                            availableLocations={availableLocations}
-                            onLocationChange={setSelectedLocation}
-                            className="w-[200px]"
-                          />
-                        ) : undefined
-                      }
+                {hasRunDurations && (
+                  <div className="min-h-0 flex-1">
+                    <ResponseTimeBarChart
+                      fill
+                      data={responseTimeData}
+                      title="Run duration"
+                      empty={{
+                        description: "Time between a /start ping and the ping that finishes the run.",
+                        heading: "No run durations yet",
+                        hint: "Call /start when the job begins to record how long it runs.",
+                      }}
                     />
-                    {hasRunDurations ? (
-                      <ResponseTimeBarChart
-                        data={responseTimeData}
-                        title="Run duration"
-                        empty={{
-                          description: "Time between a /start ping and the ping that finishes the run.",
-                          heading: "No run durations yet",
-                          hint: "Call /start when the job begins to record how long it runs.",
-                        }}
-                      />
-                    ) : (
-                      <p className="px-1 text-xs text-muted-foreground" data-testid="heartbeat-run-duration-hint">
-                        Call <span className="font-mono">/start</span> when the job begins to record how long it runs.
-                      </p>
-                    )}
                   </div>
-                  <HeartbeatPingHistory
-                    results={paginatedTableResults}
-                    isLoading={isLoadingResults}
-                    error={resultsError}
-                    onRetry={() => void refetchResults()}
-                    page={currentPage}
-                    totalPages={totalPages}
-                    total={totalResultsCount}
-                    onPageChange={setCurrentPage}
-                    onFitRows={isNotificationView ? undefined : setFitRows}
-                  />
-                </div>
-              )}
-            </TabsContent>
-            {showHeartbeatSetup && (
-              <TabsContent value="setup" className="mt-0 min-h-0 flex-1 lg:overflow-y-auto">
-                <div className="max-w-3xl">
-                  <HeartbeatPingUrlPanel
-                    monitorId={monitor.id}
-                    canManage={permissionsReady && canEditMonitor}
-                    pending={heartbeat?.state === "pending"}
-                  />
-                </div>
-              </TabsContent>
-            )}
-          </Tabs>
+                )}
+              </div>
+              <HeartbeatPingHistory
+                results={paginatedTableResults}
+                isLoading={isLoadingResults}
+                error={resultsError}
+                onRetry={() => void refetchResults()}
+                page={currentPage}
+                totalPages={totalPages}
+                total={totalResultsCount}
+                onPageChange={setCurrentPage}
+                onFitRows={isNotificationView ? undefined : setFitRows}
+              />
+            </div>
+          </div>
         ) : (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           {/* For all monitors, show charts and results in two columns */}

@@ -12,6 +12,7 @@ import { ListCapNote, ListErrorState } from "@/components/shared/list-states";
 import { PageHeader } from "@/components/shared/page-header";
 import { DashboardEmptyState } from "@/components/dashboard/dashboard-empty-state";
 import { Button } from "@/components/ui/button";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useProjectContext } from "@/hooks/use-project-context";
 import { normalizeRole } from "@/lib/rbac/role-normalizer";
 import { canCreateMonitors } from "@/lib/rbac/client-permissions";
@@ -73,7 +74,7 @@ export default function MonitorsList({ tabs }: { tabs?: ReactNode } = {}) {
         actions={
           <>
             {tabs}
-            {!isEmpty && !loading && !isLoading && !error && createButton}
+            {!isEmpty && !loading && !isLoading && (!error || monitors.length > 0) && createButton}
           </>
         }
       />
@@ -91,6 +92,16 @@ export default function MonitorsList({ tabs }: { tabs?: ReactNode } = {}) {
         />
       ) : (
         <>
+          {error && (
+            <Alert variant="warning" data-testid="monitors-refresh-error">
+              <AlertDescription className="flex flex-wrap items-center gap-2">
+                Could not refresh monitors. The list may be out of date.
+                <Button variant="outline" size="sm" onClick={() => refetch()}>
+                  Retry
+                </Button>
+              </AlertDescription>
+            </Alert>
+          )}
           <ListCapNote count={monitors.length} cap={MONITORS_LIST_CAP} />
           <DataTable
             key={tableKey}

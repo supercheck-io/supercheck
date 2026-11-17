@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { format } from "date-fns";
+import { ChevronsLeft, ChevronsRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -125,7 +126,7 @@ export function HeartbeatPingHistory({
             <p className="text-xs text-muted-foreground">Pings, failures and missed runs appear here.</p>
           </div>
         ) : (
-          <div className="w-full overflow-x-auto">
+          <div className="min-h-0 w-full flex-1 overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -165,16 +166,22 @@ export function HeartbeatPingHistory({
           </div>
         )}
         {totalPages > 1 && !error && (
-          <nav className="mt-auto flex flex-shrink-0 items-center justify-between rounded-b-lg border-t bg-card px-4 py-3" aria-label="Ping history pages">
+          <nav className="flex flex-shrink-0 items-center justify-between rounded-b-lg border-t bg-card px-4 py-3" aria-label="Ping history pages">
             <span className="text-sm text-muted-foreground">
               Page {page} of {totalPages}
             </span>
             <div className="flex items-center space-x-2">
+              <Button variant="outline" size="sm" className="px-2" onClick={() => onPageChange(1)} disabled={page <= 1 || isLoading} aria-label="First page">
+                <ChevronsLeft className="h-4 w-4" />
+              </Button>
               <Button variant="outline" size="sm" className="min-w-[80px]" onClick={() => onPageChange(page - 1)} disabled={page <= 1 || isLoading} aria-label="Previous page">
                 Previous
               </Button>
               <Button variant="outline" size="sm" className="min-w-[60px]" onClick={() => onPageChange(page + 1)} disabled={page >= totalPages || isLoading} aria-label="Next page">
                 Next
+              </Button>
+              <Button variant="outline" size="sm" className="px-2" onClick={() => onPageChange(totalPages)} disabled={page >= totalPages || isLoading} aria-label="Last page">
+                <ChevronsRight className="h-4 w-4" />
               </Button>
             </div>
           </nav>
