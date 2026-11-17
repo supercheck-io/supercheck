@@ -10,6 +10,7 @@ const sources = {
   'products.ts': read('../src/lib/products.ts'),
   'home page': read('../src/app/(home)/page.tsx'),
   'pricing page': read('../src/app/pricing/page.tsx'),
+  'security page': read('../src/app/security/page.tsx'),
   'product page': read('../src/app/product/[product]/page.tsx'),
   'solutions page': read('../src/app/solutions/[persona]/page.tsx'),
   'site-header.tsx': read('../src/components/site-header.tsx'),
@@ -20,7 +21,7 @@ const sources = {
   'bot page': read('../src/app/tools/bot/page.tsx'),
 };
 // Site routes outside the docs that marketing pages may link to.
-const siteRoutes = new Set(['/', '/pricing', '/privacy', '/terms', '/tools', '/tools/bot']);
+const siteRoutes = new Set(['/', '/pricing', '/privacy', '/security', '/terms', '/tools', '/tools/bot']);
 
 const slug = (heading) =>
   heading.toLowerCase().replace(/[`*]/g, '').replace(/[^a-z0-9 -]/g, '').trim().replace(/\s+/g, '-');
