@@ -3,6 +3,7 @@ import { and, count, eq, gt, sql } from "drizzle-orm";
 import { sreIncidents, sreInvestigationRuns } from "@/db/schema";
 import { validateAIConfiguration } from "@/lib/ai/ai-provider";
 import { createLogger } from "@/lib/logger/index";
+import { lapsedWriteBlock } from "@/lib/sre/lapsed-org-gate";
 import { assertCanStartSreInvestigation } from "@/lib/sre/investigation-billing";
 import { getNotificationPolicy } from "@/lib/sre/notification-policy";
 import { sreDailyTokenLimitResponse } from "@/lib/sre/sre-daily-token-limit";
@@ -38,6 +39,9 @@ export async function maybeAutoInvestigateOnOpen(input: AutoInvestigateInput): P
     if (!isSreEnabled()) return { handled: false, reason: "sre_disabled" };
     const policy = await getNotificationPolicy(input.projectId);
     if (!policy.autoInvestigateOnOpen) return { handled: false, reason: "disabled" };
+
+    // A lapsed organization (no plan, no active trial) does not start AI work on its own.
+    if (await lapsedWriteBlock(input.organizationId)) return { handled: false, reason: "subscription_required" };
 
     // A run left "running" by a restart would otherwise block this incident forever.
     await failStaleSreInvestigationRunsForIncident(input);

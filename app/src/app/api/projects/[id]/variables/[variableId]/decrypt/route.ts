@@ -12,6 +12,7 @@ import {
 import { requireUserAuthContext, isAuthError, authErrorStatus } from "@/lib/auth-context";
 import { decryptValue } from "@/lib/encryption";
 import { logAuditEvent } from "@/lib/audit-logger";
+import { permissionDeniedResponse } from "@/lib/deletion/org-state";
 
 // Rate limit secret decryption attempts (10 per minute per IP)
 const rateLimitedHandler = withRateLimit(10, 60 * 1000, {
@@ -80,12 +81,8 @@ export async function POST(
           success: false,
         });
 
-        return NextResponse.json(
-          {
-            error: "Forbidden: Insufficient permissions to view secret values",
-          },
-          { status: 403 }
-        );
+        // A member of an organization pending deletion gets ORG_PENDING_DELETION instead of the generic message.
+        return permissionDeniedResponse(organizationId, "Forbidden: Insufficient permissions to view secret values");
       }
 
       // Check if variable exists and belongs to the project

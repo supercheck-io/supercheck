@@ -113,6 +113,12 @@ describe('maintenance CLI', () => {
     await expect(run('get', id(9))).rejects.toThrow('not found')
   })
 
+  it('shows the server 402 message when the plan has lapsed', async () => {
+    const message = 'Active subscription required. Visit /billing to subscribe to Plus or Pro.'
+    mockPost.mockRejectedValueOnce(new ApiRequestError('API request failed: POST /api/maintenance-windows → 402', 402, { error: message, code: 'subscription_required' }))
+    await expect(run('extend', id(9), '--by', '30')).rejects.toMatchObject({ message, statusCode: 402 })
+  })
+
   it('extends to a strict ISO time and needs exactly one of --by or --to', async () => {
     mockPost.mockResolvedValue({ data: { window: { id: id(9) } } })
     await run('extend', id(9), '--to', '2026-11-20T04:00:00Z')

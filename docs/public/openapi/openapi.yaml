@@ -247,6 +247,24 @@ paths:
           description: Invalid body, or a commander who cannot act on incidents
         "401":
           description: Not authenticated
+        "402":
+          description: 'Declaring an incident needs a paid plan or an active trial
+            (Supercheck Cloud only). Reading, acknowledging and resolving stay
+            available. Body: `{ error, code: "subscription_required" }`.'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  code:
+                    type: string
+                    enum:
+                      - subscription_required
+                required:
+                  - error
+                  - code
         "403":
           description: Insufficient permission, or the organization is pending deletion
         "404":
@@ -7116,6 +7134,24 @@ paths:
           description: Invalid body or schedule; fieldErrors name the fields
         "401":
           description: Not authenticated
+        "402":
+          description: 'Declaring maintenance needs a paid plan or an active trial
+            (Supercheck Cloud only). Ending, cancelling and reading stay
+            available. Body: `{ error, code: "subscription_required" }`.'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  code:
+                    type: string
+                    enum:
+                      - subscription_required
+                required:
+                  - error
+                  - code
         "403":
           description: Insufficient permission, or the organization is pending deletion
         "404":
@@ -7402,6 +7438,24 @@ paths:
           description: Invalid body or schedule; fieldErrors name the fields
         "401":
           description: Not authenticated
+        "402":
+          description: 'Changing a window needs a paid plan or an active trial (Supercheck
+            Cloud only). Ending, cancelling and deleting stay available. Body:
+            `{ error, code: "subscription_required" }`.'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  code:
+                    type: string
+                    enum:
+                      - subscription_required
+                required:
+                  - error
+                  - code
         "403":
           description: Insufficient permission, or the organization is pending deletion
         "404":
@@ -7662,6 +7716,24 @@ paths:
           description: Invalid body or schedule; fieldErrors name the fields
         "401":
           description: Not authenticated
+        "402":
+          description: 'Extending a window needs a paid plan or an active trial
+            (Supercheck Cloud only). Ending and cancelling stay available. Body:
+            `{ error, code: "subscription_required" }`.'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  code:
+                    type: string
+                    enum:
+                      - subscription_required
+                required:
+                  - error
+                  - code
         "403":
           description: Insufficient permission, or the organization is pending deletion
         "404":
