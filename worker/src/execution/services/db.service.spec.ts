@@ -1,6 +1,6 @@
 import { PgDialect } from 'drizzle-orm/pg-core';
 import type { SQL } from 'drizzle-orm';
-import { DbService } from './db.service';
+import { DbService, isTransientDbError } from './db.service';
 
 describe('run status updates', () => {
   it('only lets an active run receive a late terminal result', async () => {
@@ -28,5 +28,92 @@ describe('getJobAlertStreakState', () => {
       lastSentAt: null,
       unknown: true,
     });
+  });
+});
+
+describe('storeReportMetadata', () => {
+  const metadata = {
+    entityId: 'test-id',
+    entityType: 'test',
+    reportPath: 'test-id/report',
+    status: 'passed',
+    s3Url: 's3://bucket/test-id',
+  } as const;
+  const transient = () =>
+    Object.assign(new Error('Failed query'), {
+      cause: Object.assign(new Error('could not serialize access'), {
+        code: '40001',
+      }),
+    });
+
+  function setup(failures: Error[]) {
+    const values = jest.fn(() => ({
+      onConflictDoUpdate: async () => undefined,
+    }));
+    const tx = { insert: () => ({ values }) };
+    const transaction = jest.fn(async (fn: (t: typeof tx) => Promise<void>) => {
+      const failure = failures.shift();
+      if (failure) throw failure;
+      await fn(tx);
+    });
+    const service = new DbService({ transaction } as never, {} as never);
+    const error = jest
+      .spyOn(service['logger'], 'error')
+      .mockImplementation(() => undefined);
+    jest.spyOn(service['logger'], 'warn').mockImplementation(() => undefined);
+    return { service, transaction, values, error };
+  }
+
+  beforeEach(() => jest.useFakeTimers());
+  afterEach(() => jest.useRealTimers());
+
+  it('retries a transient failure and persists the passed status once', async () => {
+    const { service, transaction, values, error } = setup([transient()]);
+    const done = service.storeReportMetadata(metadata);
+    await jest.advanceTimersByTimeAsync(200);
+    await expect(done).resolves.toBeUndefined();
+    expect(transaction).toHaveBeenCalledTimes(2);
+    expect(values).toHaveBeenCalledTimes(1);
+    expect(values).toHaveBeenCalledWith(
+      expect.objectContaining({ entityId: 'test-id', status: 'passed' }),
+    );
+    expect(error).not.toHaveBeenCalled();
+  });
+
+  it('stops after 3 attempts, logs an error and does not throw', async () => {
+    const { service, transaction, values, error } = setup([
+      transient(),
+      transient(),
+      transient(),
+    ]);
+    const done = service.storeReportMetadata(metadata);
+    await jest.advanceTimersByTimeAsync(200 + 400);
+    await expect(done).resolves.toBeUndefined();
+    expect(transaction).toHaveBeenCalledTimes(3);
+    expect(values).not.toHaveBeenCalled();
+    expect(error).toHaveBeenCalledWith(
+      expect.stringContaining('test/test-id after 3 attempt(s)'),
+      expect.anything(),
+    );
+  });
+
+  it('does not retry a non-transient error', async () => {
+    const { service, transaction, error } = setup([
+      Object.assign(new Error('null value'), { code: '23502' }),
+    ]);
+    await expect(
+      service.storeReportMetadata(metadata),
+    ).resolves.toBeUndefined();
+    expect(transaction).toHaveBeenCalledTimes(1);
+    expect(error).toHaveBeenCalledWith(
+      expect.stringContaining('after 1 attempt(s)'),
+      expect.anything(),
+    );
+  });
+
+  it('classifies connection errors as transient', () => {
+    expect(isTransientDbError({ code: 'CONNECTION_CLOSED' })).toBe(true);
+    expect(isTransientDbError({ code: '08006' })).toBe(true);
+    expect(isTransientDbError(new Error('boom'))).toBe(false);
   });
 });

@@ -28,7 +28,7 @@
     "geist": "1.8.2",
     "lucide-react": "^0.544.0",
     "mermaid": "^11.15.0",
-    "next": "16.4.2",
+    "next": "16.4.6",
     "next-themes": "npm:@teispace/next-themes@^3.0.2",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",

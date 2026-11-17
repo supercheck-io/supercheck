@@ -38,6 +38,39 @@ import { RUN_CANCELLATION_MARKER } from '../../common/services/cancellation.serv
 // All new code should import directly from '../../db/db.constants'.
 export { DB_PROVIDER_TOKEN };
 
+const REPORT_WRITE_ATTEMPTS = 3;
+// SQLSTATE serialization/deadlock/shutdown codes plus postgres.js and Node connection codes; class 08 is checked by prefix.
+const TRANSIENT_DB_CODES = new Set([
+  '40001',
+  '40P01',
+  '57P01',
+  '57P02',
+  '57P03',
+  'CONNECTION_CLOSED',
+  'CONNECTION_ENDED',
+  'CONNECTION_DESTROYED',
+  'CONNECT_TIMEOUT',
+  'ECONNRESET',
+  'ECONNREFUSED',
+  'ETIMEDOUT',
+  'EPIPE',
+]);
+
+/** Drizzle wraps driver errors, so walk the cause chain for a transient code. */
+export function isTransientDbError(error: unknown): boolean {
+  let current = error;
+  for (let depth = 0; current && depth < 5; depth++) {
+    const code = (current as { code?: unknown }).code;
+    if (
+      typeof code === 'string' &&
+      (TRANSIENT_DB_CODES.has(code) || code.startsWith('08'))
+    )
+      return true;
+    current = (current as { cause?: unknown }).cause;
+  }
+  return false;
+}
+
 @Injectable()
 export class DbService implements OnModuleInit {
   private readonly logger = new Logger(DbService.name);
@@ -67,47 +100,62 @@ export class DbService implements OnModuleInit {
   }
 
   /**
-   * Stores or updates report metadata in the database.
-   * Adapt based on ReportMetadata interface.
+   * Stores or updates report metadata. Transient DB errors are retried; a final failure is logged, never thrown.
    */
   async storeReportMetadata(metadata: ReportMetadata): Promise<void> {
-    const { entityId, entityType, reportPath, status, s3Url } = metadata;
+    const { entityId, entityType, status } = metadata;
     this.logger.debug(
       `Storing report metadata for ${entityType}/${entityId} with status ${status}`,
     );
 
-    try {
-      await this.db.transaction(async (tx) => {
-        if (!(await canPersistRunCallback(tx))) return;
-
-        for (const id of new Set(
-          [entityId, metadata.aliasEntityId].filter((id): id is string => !!id),
-        )) {
-          await tx
-            .insert(reports)
-            .values({
-              entityId: id,
-              entityType,
-              reportPath,
-              status,
-              s3Url,
-              createdAt: new Date(),
-              updatedAt: new Date(),
-            })
-            .onConflictDoUpdate({
-              target: [reports.entityType, reports.entityId],
-              set: { reportPath, status, s3Url, updatedAt: new Date() },
-            });
+    // Callers never rethrow from here: a throw would send execution.service into its catch, which rewrites a passed report to 'failed'.
+    for (let attempt = 1; ; attempt++) {
+      try {
+        await this.writeReportMetadata(metadata);
+        return;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        if (attempt < REPORT_WRITE_ATTEMPTS && isTransientDbError(error)) {
+          this.logger.warn(
+            `Retrying report metadata write for ${entityType}/${entityId} (attempt ${attempt} failed): ${message}`,
+          );
+          await new Promise((resolve) => setTimeout(resolve, 200 * attempt));
+          continue;
         }
-      });
-    } catch (error) {
-      this.logger.error(
-        `Error storing report metadata for ${entityType}/${entityId}: ${(error as Error).message}`,
-        (error as Error).stack,
-      );
-      // Decide whether to re-throw or just log
-      // throw error;
+        this.logger.error(
+          `Error storing report metadata for ${entityType}/${entityId} after ${attempt} attempt(s): ${message}`,
+          error instanceof Error ? error.stack : undefined,
+        );
+        return;
+      }
     }
+  }
+
+  private async writeReportMetadata(metadata: ReportMetadata): Promise<void> {
+    const { entityId, entityType, reportPath, status, s3Url } = metadata;
+    await this.db.transaction(async (tx) => {
+      if (!(await canPersistRunCallback(tx))) return;
+
+      for (const id of new Set(
+        [entityId, metadata.aliasEntityId].filter((id): id is string => !!id),
+      )) {
+        await tx
+          .insert(reports)
+          .values({
+            entityId: id,
+            entityType,
+            reportPath,
+            status,
+            s3Url,
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          })
+          .onConflictDoUpdate({
+            target: [reports.entityType, reports.entityId],
+            set: { reportPath, status, s3Url, updatedAt: new Date() },
+          });
+      }
+    });
   }
 
   /**
