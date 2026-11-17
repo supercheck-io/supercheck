@@ -38,3 +38,9 @@ it("starts open when defaultOpen is true", () => {
   renderGroup({ collapsible: true, defaultOpen: true });
   expect(screen.getByRole("button", { name: /toggle monitor/i })).toHaveAttribute("aria-expanded", "true");
 });
+
+it("renders no empty label row for an unlabelled group", () => {
+  const { container } = renderGroup({ groupLabel: "" });
+  expect(container.querySelector("[data-sidebar=group-label]")).toBeNull();
+  expect(screen.getByText("Monitors")).toBeVisible();
+});
