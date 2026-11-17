@@ -582,6 +582,20 @@ describe('HeartbeatSweepService.sweep', () => {
     }
   });
 
+  it('skips the maintenance lookup for a held miss when a new ping will clear it', async () => {
+    const recent = new Date(T0 - 30 * MIN).toISOString();
+    const ctx = withClaim([
+      claimed(pinged(1, { lastMissedAt: recent, missHeld: true, pingSeq: 4 })),
+    ]);
+    const lookup = jest.spyOn(ctx.sweep as never, 'inMaintenance');
+    await ctx.sweep.sweep();
+    expect(lookup).not.toHaveBeenCalled();
+    expect(ctx.monitors.recordExternalResult).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ isUp: true }),
+    );
+  });
+
   it('skips the result and does not finish when the lease was lost mid-batch', async () => {
     const ctx = withClaim([claimed(pinged(80))]);
     ctx.renewed.mockResolvedValueOnce([]);

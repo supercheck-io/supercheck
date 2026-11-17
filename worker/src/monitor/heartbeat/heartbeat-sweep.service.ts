@@ -394,9 +394,11 @@ export class HeartbeatSweepService implements OnModuleInit, OnModuleDestroy {
     ingest: IngestStatus,
   ): Promise<void> {
     try {
-      // Only a held miss needs the maintenance lookup, so most monitors cost no extra query.
+      // Only a held miss with no new ping needs the maintenance lookup (a ping clears the marker), so most monitors cost no extra query.
+      const hs = monitor.heartbeatState;
       const heldMissReleased =
-        monitor.heartbeatState?.missHeld === true &&
+        hs?.missHeld === true &&
+        (hs.pingSeq ?? 0) <= (hs.evaluatedSeq ?? 0) &&
         (await this.inMaintenance(monitor.id, new Date(now))) === false;
       const decision = decideHeartbeat(monitor, now, ingest, heldMissReleased);
       // A held miss still inside its window keeps its 3-minute lease, so it is not re-claimed every tick
