@@ -4,6 +4,11 @@ Notable changes to `@supercheck/cli`. The format follows [Keep a Changelog](http
 
 ## [Unreleased]
 
+### Added
+
+- `monitor update` takes the AI endpoint options of `monitor create` (`--model`, `--secret`, `--key-header`, `--prompt`, `--expect`, `--max-tokens`, `--first-token-timeout`, `--warn-first-token-ms`, `--warn-tokens`) and the MCP monitor options (`--secret`, `--header`, `--protocol`, `--require-tool`, `--call-tool`, `--call-args`, `--expect`, `--slow-ms`). Only the options you pass change; an option that does not fit the monitor is refused.
+- `skills safety` explains `ORG_PENDING_DELETION` and that organization and project deletion need a browser session.
+
 ### Changed
 
 - **Breaking for scripts:** `monitor create --type heartbeat` and `deploy` no longer put a new heartbeat's ping URL in `--json` or `--quiet` output, which often lands in CI logs, so `heartbeat.pingUrl` and `results[].pingUrl` are gone (a deploy result has `pingUrlHidden: true` instead). They say on stderr how to show it: `supercheck monitor heartbeat-url <id>`. Table output still prints it once.

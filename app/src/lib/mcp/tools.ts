@@ -1,4 +1,4 @@
-import { listMaintenanceWindows } from "@/lib/maintenance/windows";
+import { getMaintenanceWindow, listMaintenanceWindows } from "@/lib/maintenance/windows";
 import { WEBHOOK_PRESET_IDS } from "@/lib/notification-providers/webhook-presets";
 import { liveJob, liveMonitor, liveRunOfLiveJob } from "@/lib/deletion/visibility";
 import { and, asc, desc, eq, exists, ilike, inArray, isNull, lt, ne, or, sql, type SQL } from "drizzle-orm";
@@ -26,6 +26,7 @@ import {
   sreServices,
   statusPageComponentMonitors,
   statusPageComponents,
+  incidents as statusPageIncidents,
   statusPages,
   tags,
   testRequirements,
@@ -160,7 +161,8 @@ export function registerMcpTools(server: McpServer, ctx: McpCallContext): void {
   const gatedTool: ToolRegistrar = (name, description, gate, shape, run) => {
     server.registerTool(
       name,
-      { description, inputSchema: shape, annotations: WRITE_ANNOTATIONS },
+      // Removing incident resources only unlinks them, so only a real delete is marked destructive.
+      { description, inputSchema: shape, annotations: gate.destructive ? { ...WRITE_ANNOTATIONS, destructiveHint: true } : WRITE_ANNOTATIONS },
       (async (args: never) => {
         const started = Date.now();
         let success = true;
@@ -189,13 +191,14 @@ export function registerMcpTools(server: McpServer, ctx: McpCallContext): void {
   };
   registerSreTools(gatedTool, ctx);
 
-  tool("get_context", "The project this connection is scoped to and your role in it." + UNTRUSTED, "project", {}, async () => {
+  tool("get_context", "The project this connection is scoped to, your role in it, and whether the organization is scheduled for deletion (then read-only)." + UNTRUSTED, "project", {}, async () => {
     const [project] = await db
       .select({ id: projects.id, name: projects.name })
       .from(projects)
       .where(and(eq(projects.id, ctx.projectId), eq(projects.organizationId, ctx.organizationId)))
       .limit(1);
-    return { project: project ?? null, role: ctx.role, scopes: ctx.scopes };
+    // Writes fail with org_pending_deletion while this is true; reads keep working.
+    return { project: project ?? null, role: ctx.role, scopes: ctx.scopes, organization: { pendingDeletion: ctx.orgPendingDeletion } };
   });
 
   tool("list_tests", "List tests in the project (no scripts)." + UNTRUSTED, "test",
@@ -417,6 +420,24 @@ export function registerMcpTools(server: McpServer, ctx: McpCallContext): void {
         occurrenceStartsAt: iso(w.occurrenceStartsAt), occurrenceEndsAt: iso(w.occurrenceEndsAt), targets: w.targets,
       })) };
     });
+
+  tool("get_maintenance_window", "Get one maintenance window: schedule, scope, targets and whether it is posted on a status page." + UNTRUSTED, "monitor", { id: idArg }, async ({ id }) => {
+    const result = await getMaintenanceWindow(
+      { userId: ctx.userId, organizationId: ctx.organizationId, orgPendingDeletion: ctx.orgPendingDeletion, project: { id: ctx.projectId, userRole: ctx.role } },
+      id,
+    );
+    if (!result.ok) throw new McpToolFailure(result.code, result.error);
+    const w = result.window;
+    // Only a post that is not resolved blocks MCP edits and deletes, so that is what onStatusPage reports.
+    const [livePost] = w.statusPageIncidentIds.length === 0 ? [] : await db.select({ id: statusPageIncidents.id }).from(statusPageIncidents)
+      .where(and(inArray(statusPageIncidents.id, w.statusPageIncidentIds), ne(statusPageIncidents.status, "resolved"))).limit(1);
+    return { window: {
+      id: w.id, title: safeText(w.title, 200), description: safeText(w.description, 2000), state: w.state, scope: w.scope, recurrence: w.recurrence,
+      timezone: w.timezone, startsOn: w.startsOn, endsOn: w.endsOn, localStartTime: w.localStartTime, durationMinutes: w.durationMinutes,
+      weekdays: w.weekdays, monthDay: w.monthDay, occurrenceStartsAt: iso(w.occurrenceStartsAt), occurrenceEndsAt: iso(w.occurrenceEndsAt),
+      targets: w.targets, onStatusPage: Boolean(livePost),
+    } };
+  });
 
   // Incident settings of an alert config; both switches default to on.
   const incidentSettings = (alert: { incidentEnabled?: boolean; incidentSeverity?: string; autoResolveIncident?: boolean } | null | undefined) => ({
