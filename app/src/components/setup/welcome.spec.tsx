@@ -104,6 +104,24 @@ describe("Welcome", () => {
     expect(sre).toHaveTextContent("Setup starts with1Your app2Alerts3Monitors");
   });
 
+  it("previews a picked card in the sidebar's cached preferences and restores them on Cancel or leaving", () => {
+    const onDone = jest.fn();
+    const { Wrapper, client } = createWrapper();
+    client.setQueryData(["user-preferences"], { persona: "sre", seen: true });
+    const { unmount } = render(<Welcome mode="change" initialPersona="sre" projectName="Web App" onDone={onDone} />, { wrapper: Wrapper });
+    fireEvent.click(screen.getByRole("radio", { name: /Test my app/ }));
+    expect(client.getQueryData(["user-preferences"])).toEqual({ persona: "qa", seen: true });
+    fireEvent.click(screen.getByRole("radio", { name: /^Default/ }));
+    expect(client.getQueryData(["user-preferences"])).toEqual({ persona: null, seen: true });
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(client.getQueryData(["user-preferences"])).toEqual({ persona: "sre", seen: true });
+    expect(fetchMock).not.toHaveBeenCalled();
+    // Leaving the page without saving also restores it.
+    fireEvent.click(screen.getByRole("radio", { name: /Lead a team/ }));
+    unmount();
+    expect(client.getQueryData(["user-preferences"])).toEqual({ persona: "sre", seen: true });
+  });
+
   it("falls back to a generic organization name and tells the user when saving fails", async () => {
     respond({ error: "nope" }, 500);
     const onDone = jest.fn();

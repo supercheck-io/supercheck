@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { ChevronDown, ChevronRight, LayoutGrid, Rocket, Terminal, type LucideIcon } from "lucide-react";
 import { toast } from "sonner";
 
@@ -8,7 +9,8 @@ import { PageHeader } from "@/components/shared/page-header";
 import { Button } from "@/components/ui/button";
 import { IconChip, type IconTone } from "@/components/ui/icon-chip";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { useSavePersona } from "@/hooks/use-project-setup";
+import { USER_PREFERENCES_QUERY_KEY, useSavePersona } from "@/hooks/use-project-setup";
+import type { UserPreferencesDto } from "@/lib/setup/types";
 import { NAV } from "@/lib/nav-areas";
 import { PERSONA_OPTIONS, SETUP_STEP_SHORT_LABEL, isUserPersona, sidebarLayout, stepOrder, type UserPersona } from "@/lib/setup/persona";
 import { ADMIN_TYPES, TYPE_TONE } from "@/lib/type-tones";
@@ -89,9 +91,33 @@ export function Welcome({ mode, projectName, organizationName, initialPersona = 
   const [choice, setChoice] = useState<Choice | null>(mode === "change" ? initialPersona ?? "default" : null);
   const save = useSavePersona();
 
+  // Live preview: picking a card writes it into the cached preferences the sidebar reads, so the sidebar
+  // reorders at once. Nothing is saved until Save; leaving without saving puts the original back.
+  const queryClient = useQueryClient();
+  const original = useRef<UserPreferencesDto | null>(null);
+  const saved = useRef(false);
+  const restore = () => {
+    if (!saved.current && original.current) queryClient.setQueryData(USER_PREFERENCES_QUERY_KEY, original.current);
+  };
+  const preview = (next: Choice) => {
+    const current = queryClient.getQueryData<UserPreferencesDto>(USER_PREFERENCES_QUERY_KEY);
+    if (!current) return;
+    original.current ??= current;
+    queryClient.setQueryData<UserPreferencesDto>(USER_PREFERENCES_QUERY_KEY, { ...current, persona: toPersona(next) });
+  };
+  useEffect(() => {
+    const state = { original, saved };
+    return () => {
+      if (!state.saved.current && state.original.current) queryClient.setQueryData(USER_PREFERENCES_QUERY_KEY, state.original.current);
+    };
+  }, [queryClient]);
+
   const submit = (value: UserPersona | null) =>
     save.mutate(value, {
-      onSuccess: onDone,
+      onSuccess: () => {
+        saved.current = true;
+        onDone();
+      },
       onError: () => toast.error("Could not save your choice. Try again."),
     });
 
@@ -129,7 +155,11 @@ export function Welcome({ mode, projectName, organizationName, initialPersona = 
       <RadioGroup
         aria-label="What will you mostly do here?"
         value={choice ?? ""}
-        onValueChange={(value) => (value === "default" || isUserPersona(value)) && setChoice(value)}
+        onValueChange={(value) => {
+          if (value !== "default" && !isUserPersona(value)) return;
+          setChoice(value);
+          preview(value);
+        }}
         className="grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3"
       >
         {OPTIONS.map((option) => (
@@ -165,7 +195,14 @@ export function Welcome({ mode, projectName, organizationName, initialPersona = 
           </Button>
         )}
         {mode === "change" ? (
-          <Button variant="ghost" disabled={save.isPending} onClick={onDone}>
+          <Button
+            variant="ghost"
+            disabled={save.isPending}
+            onClick={() => {
+              restore();
+              onDone();
+            }}
+          >
             Cancel
           </Button>
         ) : (
