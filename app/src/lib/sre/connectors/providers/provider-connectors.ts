@@ -292,7 +292,7 @@ export class ObservabilityProviderConnector implements Connector {
         // provider-core is shared with the worker and cannot import app error classes.
         if (
           error instanceof Error &&
-          /rejected the request with HTTP (400|422)\b/.test(error.message)
+          /rejected the (?:request with HTTP (?:400|422)\b|query:|search:)/.test(error.message)
         ) {
           throw new ConnectorQueryRejectedError(error.message);
         }

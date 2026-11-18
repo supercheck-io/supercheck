@@ -91,6 +91,13 @@ describe("observability provider connectors", () => {
     expect(error instanceof ConnectorQueryRejectedError).toBe(status !== 500);
   });
 
+  it.each(["New Relic rejected the query: bad NRQL", "Splunk rejected the search: bad SPL"])("treats an in-band %s as retryable", async (message) => {
+    const http: ProviderHttp = async () => { throw new Error(message); };
+    const error = await new ObservabilityProviderConnector({ ...definition, type: "jaeger", endpointUrl: "https://j.example.com" }, http)
+      .search(searchParams()).catch((e) => e);
+    expect(error).toBeInstanceOf(ConnectorQueryRejectedError);
+  });
+
   it("merges stored credential fields with the secret", async () => {
     let seen: Record<string, string> = {};
     const http: ProviderHttp = async (request) => { seen = request.headers; return { status: 200, text: JSON.stringify({ data: [] }), truncated: false }; };
