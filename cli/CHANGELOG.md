@@ -15,6 +15,15 @@ Notable changes to `@supercheck/cli`. The format follows [Keep a Changelog](http
 - **`run cancel` exits 4 when the run may still be executing.** If the server could not send the stop signal (it answers `signalSent: false`), the command prints the response and exits with code 4 so scripts retry.
 - A `402` from the server (for example `incident create` or `maintenance create` on an organization with no plan or trial) now shows the server's own message instead of the generic request failure.
 
+### Fixed
+
+- **`deploy` failures say what the server rejected.** A rejected create or update now shows the server's validation message after the status code (for example `config.url must be https`), instead of only `API request failed: POST /api/monitors → 400`.
+- **`deploy --verify` reports in table output.** It prints one line per test (`✓ verified`, `✗ failed` or `– skipped` with the reason) instead of nothing; `--json` output is unchanged.
+- **`deploy` shows readable field errors.** Field errors read `field: message; field2: message`, cut at a whole item instead of mid-text.
+- **`diff` and `deploy` no longer report a synthetic monitor as changed when it is not.** The server adds the test's title to the monitor config; it is now ignored when the config does not set it.
+- **`link` and `onboard` show names.** They print the organization and project name (falling back to the id) instead of the slug, and `onboard --json` `context.organization` and `context.project` now hold only `id` and `name`.
+- **The `Target:` line shows names.** `deploy`, `diff` and `destroy` print `organization <name> · project <name>` (falling back to the id) instead of the random organization slug, which matched neither the config nor `whoami`.
+
 ## [0.6.0] - 2026-11-16
 
 This release adds heartbeat and MCP monitors, the AI endpoint preset, agent tests, incident declaration, reminders and escalation, maintenance windows and post-mortems.

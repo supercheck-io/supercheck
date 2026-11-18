@@ -6,7 +6,7 @@ import { getApiClient } from '../api/client.js'
 import { getStoredBaseUrl, getToken } from '../auth/store.js'
 import { outputDetail } from '../output/formatter.js'
 import { ApiRequestError, CLIError, ExitCode } from '../utils/errors.js'
-import { planLink } from '../utils/link-config.js'
+import { planLink, targetLabel } from '../utils/link-config.js'
 import { readSmallFile } from '../utils/safe-read.js'
 import { isTokenSafeUrl, sanitizeApiUrl } from '../utils/api-url.js'
 
@@ -30,7 +30,7 @@ export const linkCommand = new Command('link')
     // Only the stored login's own server is asked; the config file is treated as text, never executed.
     const apiUrl = sanitizeApiUrl(getStoredBaseUrl() ?? DEFAULT_API_URL)
     if (!apiUrl || !isTokenSafeUrl(apiUrl)) throw new CLIError('The API URL must be https:// (http:// is allowed only for localhost) and contain no credentials. Check SUPERCHECK_URL or run `supercheck login --reauth`.', ExitCode.ConfigError)
-    let data: { organization?: { id: string; slug?: string | null }; project?: { id: string; slug?: string | null } }
+    let data: { organization?: { id: string; name?: string | null; slug?: string | null }; project?: { id: string; name?: string | null; slug?: string | null } }
     try {
       ;({ data } = await getApiClient({ baseUrl: apiUrl, token }).get('/api/context'))
     } catch (error) {
@@ -51,7 +51,7 @@ export const linkCommand = new Command('link')
       return
     }
     if (plan.conflicts.length > 0) {
-      throw new CLIError(`CONTEXT_MISMATCH: ${file} targets ${plan.conflicts.map((c) => `${c.field} "${c.from}"`).join(', ')}, but you are logged in to a different project. Refusing to retarget silently; re-run with --force to replace it.`, ExitCode.ConfigError, { conflicts: plan.conflicts })
+      throw new CLIError(`CONTEXT_MISMATCH: ${file} targets ${plan.conflicts.map((c) => `${c.field} "${c.from}"`).join(', ')}, but you are logged in to organization ${targetLabel(data.organization)} · project ${targetLabel(data.project)}. Refusing to retarget silently; re-run with --force to replace it.`, ExitCode.ConfigError, { conflicts: plan.conflicts })
     }
     if (plan.changes.length > 0 && !options.dryRun) {
       // Random exclusive temp file (never follows a planted symlink), original mode kept, cleaned up on failure.
@@ -61,5 +61,5 @@ export const linkCommand = new Command('link')
         renameSync(temp, file)
       } finally { rmSync(temp, { force: true }) }
     }
-    outputDetail({ linked: plan.changes.length > 0 || 'already', dryRun: Boolean(options.dryRun), file, changes: plan.changes, organization: data.organization.id, project: data.project.id }, { redact: false })
+    outputDetail({ linked: plan.changes.length > 0 || 'already', dryRun: Boolean(options.dryRun), file, changes: plan.changes, organization: data.organization.id, project: data.project.id, organizationName: targetLabel(data.organization), projectName: targetLabel(data.project) }, { redact: false })
   })
