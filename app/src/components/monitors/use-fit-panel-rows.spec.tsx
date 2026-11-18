@@ -1,5 +1,5 @@
 import { act, render } from "@testing-library/react";
-import { roundUpRows, useFitPanelRows } from "./use-fit-panel-rows";
+import { roundDownRows, useFitPanelRows } from "./use-fit-panel-rows";
 
 function Panel({ onFit }: { onFit: (n: number) => void }) {
   const ref = useFitPanelRows(onFit, "[data-row]");
@@ -25,18 +25,18 @@ describe("useFitPanelRows", () => {
     jest.restoreAllMocks();
   });
 
-  it("rounds rows up to a multiple of 5", () => {
-    expect([5, 6, 10, 11].map(roundUpRows)).toEqual([5, 10, 10, 15]);
+  it("rounds rows down to a multiple of 5, never below 5, so fetched rows always fit", () => {
+    expect([3, 5, 6, 9, 10, 14, 15].map(roundDownRows)).toEqual([5, 5, 5, 5, 10, 10, 15]);
   });
 
   it("reports once, debounces resizes and ignores changes inside the same page size", () => {
     const onFit = jest.fn();
     render(<Panel onFit={onFit} />);
     expect(onFit.mock.calls).toEqual([[10]]);
-    height = 540; // 11 rows fit before rounding: still 15? 540-98=442/41=10 -> 10
+    height = 700; // (700-98)/41 = 14 -> still 10
     act(() => { resize(); resize(); jest.advanceTimersByTime(200); });
     expect(onFit).toHaveBeenCalledTimes(1);
-    height = 700; // (700-98)/41 = 14 -> 15
+    height = 800; // (800-98)/41 = 17 -> 15
     act(() => { resize(); jest.advanceTimersByTime(200); });
     expect(onFit.mock.calls).toEqual([[10], [15]]);
   });

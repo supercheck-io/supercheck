@@ -124,7 +124,7 @@ export function HeartbeatPingHistory({
             </div>
           </div>
         ) : (
-          <div className="min-h-0 w-full flex-1 overflow-x-auto lg:overflow-y-hidden">
+          <div className="min-h-0 w-full flex-1 overflow-x-auto lg:overflow-y-auto">
             <Table>
               <TableHeader>
                 <TableRow>

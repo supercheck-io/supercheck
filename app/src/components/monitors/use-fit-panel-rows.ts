@@ -16,8 +16,11 @@ export function rowsThatFit(panelPx: number, rowPx = ROW_PX): number {
 const ROUND_TO = 5;
 const DEBOUNCE_MS = 150;
 
-/** Rounded up to a multiple of 5 so small height changes keep the same page size (and the same query). */
-export const roundUpRows = (rows: number) => Math.ceil(rows / ROUND_TO) * ROUND_TO;
+/**
+ * Rounded down to a multiple of 5 (never below MIN_ROWS), so small height changes keep the same page size and
+ * the page never asks for more rows than the panel shows.
+ */
+export const roundDownRows = (rows: number) => Math.max(MIN_ROWS, Math.floor(rows / ROUND_TO) * ROUND_TO);
 
 /**
  * Reports how many rows fit the panel's own height (desktop only). The panel must have a height that does not
@@ -35,7 +38,7 @@ export function useFitPanelRows(onFitRows: ((rows: number) => void) | undefined,
     const measure = () => {
       if (!desktop.matches) return;
       const row = panel.querySelector<HTMLElement>(rowSelector);
-      const rows = roundUpRows(rowsThatFit(panel.clientHeight, row?.offsetHeight || ROW_PX));
+      const rows = roundDownRows(rowsThatFit(panel.clientHeight, row?.offsetHeight || ROW_PX));
       // Only a real change in page size reaches the caller, so the results are not refetched for nothing.
       if (rows !== last) {
         last = rows;
