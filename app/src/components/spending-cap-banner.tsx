@@ -9,9 +9,11 @@ export const BILLING_SETTINGS_SAVED_EVENT = "supercheck:billing-settings-saved";
 
 type UsageResponse = { spending?: { isAtLimit?: boolean; hardStopEnabled?: boolean; limitEnabled?: boolean } };
 
-async function fetchSpending(): Promise<UsageResponse | null> {
+async function fetchSpending(): Promise<UsageResponse> {
   const response = await fetch("/api/billing/usage");
-  return response.ok ? response.json() : null;
+  // Throw so a failed check keeps the last known state instead of caching "no cap reached".
+  if (!response.ok) throw new Error(`Failed to load spending status (${response.status})`);
+  return response.json();
 }
 
 /** Tells org admins which work is paused while the hard-stop overage cap is reached. */

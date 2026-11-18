@@ -91,3 +91,35 @@ describe("dashboard hover prefetch", () => {
     client.clear();
   });
 });
+
+describe("org-admin hover prefetch", () => {
+  afterEach(() => jest.restoreAllMocks());
+
+  it("stores org stats in the mapped shape useOrgStats reads, not the raw API envelope", async () => {
+    const client = createClient();
+    jest.spyOn(global, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => ({ success: true, data: { members: 4, projects: 2, tests: 9 } }),
+    } as Response);
+
+    prefetchSidebarRoute("/org-admin", null, client);
+    await client.fetchQuery({ queryKey: ["organization", "stats"], staleTime: 60_000 });
+
+    expect(client.getQueryData(["organization", "stats"])).toEqual(
+      expect.objectContaining({ memberCount: 4, projectCount: 2, testCount: 9 }),
+    );
+    client.clear();
+  });
+});
+
+describe("variables hover prefetch", () => {
+  afterEach(() => jest.restoreAllMocks());
+
+  it("sends no request, since the variables page loads its own data", () => {
+    const client = createClient();
+    const fetchMock = jest.spyOn(global, "fetch");
+    prefetchSidebarRoute("/variables", "vars-project", client);
+    expect(fetchMock).not.toHaveBeenCalled();
+    client.clear();
+  });
+});

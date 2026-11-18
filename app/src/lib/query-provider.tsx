@@ -12,7 +12,7 @@ import { ReactNode, useEffect, useState } from "react";
 import { useSession } from "@/utils/auth-client";
 
 // Bump the version when a persisted query changes shape; older stores are removed on load.
-const CACHE_KEY = "supercheck-cache-v3";
+const CACHE_KEY = "supercheck-cache-v4";
 const CACHE_KEY_PREFIX = "supercheck-cache-";
 const MAX_AGE = 24 * 60 * 60 * 1000; // 24 hours
 const STALE_TIME = 30 * 60 * 1000; // 30 minutes - data is fresh for this long

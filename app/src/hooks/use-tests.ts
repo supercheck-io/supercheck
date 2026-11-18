@@ -54,12 +54,15 @@ const testsHook = createDataHook<Test, CreateTestData, UpdateTestData>({
   refetchOnWindowFocus: false,
   refetchOnMount: 'always',  // Always refetch on page visit for fresh data
   singleItemField: "test",
+  // A single test carries its full script; keep it out of localStorage.
+  persistSingle: false,
 });
 
 export interface UseTestsOptions {
   type?: string;
   search?: string;
   enabled?: boolean;
+  /** The list is persisted to localStorage, so keep this false unless scripts are needed on screen. */
   includeScript?: boolean;
   limit?: number;
   page?: number;

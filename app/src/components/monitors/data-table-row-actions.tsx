@@ -35,7 +35,7 @@ import { canEditMonitors, canDeleteMonitors } from "@/lib/rbac/client-permission
 
 import { monitorSchema } from "./schema";
 import { useQueryClient } from "@tanstack/react-query";
-import { canToggleMonitors, getResumeStatus, invalidateMonitorCaches } from "./monitor-actions";
+import { canToggleMonitors, getResumeStatus, invalidateDeletedMonitorCaches, invalidateMonitorCaches } from "./monitor-actions";
 
 interface DataTableRowActionsProps<TData> {
   row: Row<TData>;
@@ -145,8 +145,8 @@ export function DataTableRowActions<TData>({
         duration: 5000, // Add auto-dismiss after 5 seconds
       });
 
-      // Invalidate Monitors cache to ensure fresh data on monitors list
-      invalidateMonitorCaches(queryClient, monitor.id);
+      // Refresh the list and drop the deleted monitor's own queries (refetching them would 404)
+      invalidateDeletedMonitorCaches(queryClient, monitor.id);
 
       // Call onDelete callback if provided
       if (onDelete) {

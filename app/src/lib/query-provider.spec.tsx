@@ -19,7 +19,7 @@ jest.mock("@/hooks/use-project-context", () => ({
 }));
 jest.mock("next/navigation", () => ({ usePathname: () => "/" }));
 
-const CACHE_KEY = "supercheck-cache-v3:user-a";
+const CACHE_KEY = "supercheck-cache-v4:user-a";
 const fetchMock = jest.fn();
 let mountedClient: QueryClient;
 

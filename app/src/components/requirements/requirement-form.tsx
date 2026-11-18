@@ -61,6 +61,9 @@ import { useProjectContext } from "@/hooks/use-project-context";
 import { useSession } from "@/utils/auth-client";
 import { REQUIREMENTS_PATH } from "@/lib/requirements/url";
 
+// Stable fallback: a fresh `[]` per render would re-run the linked-tests sync effect in a loop.
+const NO_LINKED_TESTS: LinkedTest[] = [];
+
 // Form schema - following best practices like job form
 const requirementFormSchema = z.object({
     title: z.string()
@@ -234,7 +237,7 @@ export function RequirementForm({
     });
 
     // Fetch linked tests if in edit mode
-    const { data: linkedTests = [] } = useQuery<LinkedTest[]>({
+    const { data: linkedTests = NO_LINKED_TESTS } = useQuery<LinkedTest[]>({
         queryKey: [...REQUIREMENT_LINKED_TESTS_QUERY_KEY, requirementId],
         queryFn: async () => requirementId ? getLinkedTests(requirementId) : [],
         enabled: !!requirementId && mode === "edit",
