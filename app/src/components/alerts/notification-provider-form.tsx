@@ -1,15 +1,16 @@
 "use client";
 
-import React, { useId, useMemo, useState } from "react";
+import React, { useEffect, useId, useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Button } from "@/components/ui/button";
-import { ExternalLink, Loader2 } from "lucide-react";
+import { CheckCircle2, ExternalLink, Loader2, XCircle } from "lucide-react";
 
 import {
   Form,
   FormControl,
+  FormDescription,
   FormField,
   FormItem,
   FormLabel,
@@ -22,12 +23,14 @@ import {
   SelectGroup,
   SelectItem,
   SelectLabel,
+  SelectSeparator,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
+import { cn } from "@/lib/utils";
 import {
   type NotificationProviderType,
   type NotificationProviderConfig,
@@ -39,6 +42,7 @@ import {
 } from "@/lib/error-utils";
 import { parseWebhookJsonTemplate } from "@/lib/notification-providers/webhook-template";
 import { notificationProviders, PAGING_SERVICE_NAMES } from "@/components/alerts/data";
+import { ChannelTypeIcon } from "@/components/alerts/channel-icon";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   WEBHOOK_PRESET_IDS,
@@ -289,9 +293,9 @@ const MASKED_FIELD_LABELS: Record<string, string> = {
   webhookUrl: "Webhook URL",
   url: "Target URL",
   headers: "Custom headers",
-  botToken: "Bot Token",
-  discordWebhookUrl: "Discord Webhook URL",
-  teamsWebhookUrl: "Teams Webhook URL",
+  botToken: "Bot token",
+  discordWebhookUrl: "Discord webhook URL",
+  teamsWebhookUrl: "Teams webhook URL",
 };
 
 const WEBHOOK_DOCS_URL =
@@ -320,6 +324,20 @@ interface NotificationProviderFormProps {
     maskedFields?: string[];
   };
   defaultType?: NotificationProviderType;
+}
+
+function RequiredMark() {
+  return (
+    <span aria-hidden="true" className="ml-0.5 text-destructive">
+      *
+    </span>
+  );
+}
+
+/** Visible label for the selected channel type, shared with the dropdown trigger. */
+function channelTypeLabel(type: string, presetId: string) {
+  if (type === "webhook") return PAGING_SERVICE_NAMES[presetId] ?? "Custom webhook";
+  return notificationProviders.find((p) => p.type === type)?.label ?? type;
 }
 
 function OptionalBadge() {
@@ -585,6 +603,12 @@ export function NotificationProviderForm({
     if (nextUrl !== undefined) form.setValue("config.url", nextUrl, { shouldDirty: true, shouldValidate: true });
   };
 
+  const [testResult, setTestResult] = useState<{ ok: boolean; message: string } | null>(null);
+  useEffect(() => {
+    const subscription = form.watch(() => setTestResult(null));
+    return () => subscription.unsubscribe();
+  }, [form]);
+
   const testConnection = async () => {
     if (form.getValues("type") === "webhook") {
       const error = getHeadersError(headersText);
@@ -597,6 +621,7 @@ export function NotificationProviderForm({
 
     setIsTesting(true);
     setLastWebhookTestDetails(null);
+    setTestResult(null);
     try {
       const data = prepareWebhookData(form.getValues());
 
@@ -625,17 +650,19 @@ export function NotificationProviderForm({
           data.type === "webhook" && result.details?.responseStatus
             ? ` (HTTP ${result.details.responseStatus})`
             : "";
-        toast.success(
-          `${result.message || "Connection test successful!"}${status}`,
-        );
+        const message = `${result.message || "Connection test successful!"}${status}`;
+        setTestResult({ ok: true, message });
+        toast.success(message);
       } else {
         const friendlyError = getUserFriendlyError(result.error, data.type);
+        setTestResult({ ok: false, message: friendlyError });
         toast.error(friendlyError);
       }
     } catch (error) {
       console.error("Error testing connection:", error);
       const currentData = form.getValues();
       const friendlyError = getUserFriendlyError(error, currentData.type);
+      setTestResult({ ok: false, message: friendlyError });
       toast.error(friendlyError);
     } finally {
       setIsTesting(false);
@@ -675,6 +702,12 @@ export function NotificationProviderForm({
     <Form {...form}>
       <form
         onSubmit={form.handleSubmit(onSubmit)}
+        onKeyDown={(event) => {
+          // Enter in a single-line field must not submit by accident; the Create button does.
+          if (event.key === "Enter" && event.target instanceof HTMLInputElement) {
+            event.preventDefault();
+          }
+        }}
         className="flex min-h-0 flex-1 flex-col"
       >
         <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-6 py-4 sm:py-5">
@@ -692,7 +725,7 @@ export function NotificationProviderForm({
               name="type"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Channel Type</FormLabel>
+                  <FormLabel>Channel type<RequiredMark /></FormLabel>
                   <Select
                     onValueChange={(value) => {
                       setLastWebhookTestDetails(null);
@@ -715,52 +748,47 @@ export function NotificationProviderForm({
                         <SelectValue placeholder="Select channel type">
                           {field.value && (
                             <div className="flex items-center gap-2">
-                              {(() => {
-                                const provider = notificationProviders.find(p => p.type === field.value);
-                                if (!provider) return null;
-                                const Icon = provider.icon;
-                                const pagingName = field.value === "webhook" ? PAGING_SERVICE_NAMES[selectedPresetId] : undefined;
-                                return (
-                                  <>
-                                    <Icon size={16} className={provider.color} />
-                                    <span>{pagingName ?? (field.value === "webhook" ? "Custom webhook" : provider.label)}</span>
-                                  </>
-                                );
-                              })()}
+                              <ChannelTypeIcon type={field.value} presetId={selectedPresetId} />
+                              <span>{channelTypeLabel(field.value, selectedPresetId)}</span>
                             </div>
                           )}
                         </SelectValue>
                       </SelectTrigger>
                     </FormControl>
-                    <SelectContent>
+                    <SelectContent className="max-h-[min(24rem,var(--radix-select-content-available-height))]">
                       <SelectGroup>
                         <SelectLabel>Chat and email</SelectLabel>
-                        {notificationProviders.filter((p) => p.type !== "webhook").map((provider) => {
-                          const Icon = provider.icon;
-                          return (
-                            <SelectItem key={provider.type} value={provider.type}>
-                              <div className="flex items-center gap-2">
-                                <Icon size={16} className={provider.color} />
-                                <span>{provider.label}</span>
-                              </div>
-                            </SelectItem>
-                          );
-                        })}
+                        {notificationProviders.filter((p) => p.type !== "webhook").map((provider) => (
+                          <SelectItem key={provider.type} value={provider.type}>
+                            <div className="flex items-center gap-2">
+                              <ChannelTypeIcon type={provider.type} />
+                              <span>{provider.label}</span>
+                            </div>
+                          </SelectItem>
+                        ))}
                       </SelectGroup>
+                      <SelectSeparator />
                       <SelectGroup>
                         <SelectLabel>Paging and on-call</SelectLabel>
                         {WEBHOOK_PRESETS.filter((preset) => preset.id !== "custom").map((preset) => (
                           <SelectItem key={preset.id} value={`paging:${preset.id}`}>
                             <div className="flex items-center gap-2">
+                              <ChannelTypeIcon type="webhook" presetId={preset.id} />
                               <span>{PAGING_SERVICE_NAMES[preset.id] ?? preset.label}</span>
                               {preset.endsAt && <span className="text-xs text-muted-foreground">Ends {preset.endsAt}</span>}
                             </div>
                           </SelectItem>
                         ))}
                       </SelectGroup>
+                      <SelectSeparator />
                       <SelectGroup>
-                        <SelectLabel>Other</SelectLabel>
-                        <SelectItem value="webhook">Custom webhook</SelectItem>
+                        <SelectLabel>Webhooks</SelectLabel>
+                        <SelectItem value="webhook">
+                          <div className="flex items-center gap-2">
+                            <ChannelTypeIcon type="webhook" />
+                            <span>Custom webhook</span>
+                          </div>
+                        </SelectItem>
                       </SelectGroup>
                     </SelectContent>
                   </Select>
@@ -774,10 +802,10 @@ export function NotificationProviderForm({
               name="config.name"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Title</FormLabel>
+                  <FormLabel>Title<RequiredMark /></FormLabel>
                   <FormControl>
                     <Input
-                      placeholder="My Email Alerts"
+                      placeholder="e.g. On-call alerts"
                       {...field}
                       disabled={isSubmitting || isTesting}
                     />
@@ -791,16 +819,16 @@ export function NotificationProviderForm({
           {/* Email Configuration */}
           {selectedType === "email" && (
             <div className="space-y-4">
-              <h3 className="text-sm font-semibold">Email Configuration</h3>
+              <h3 className="text-sm font-semibold">Email configuration</h3>
               <FormField
                 control={form.control}
                 name="config.emails"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Email Addresses</FormLabel>
+                    <FormLabel>Email addresses<RequiredMark /></FormLabel>
                     <FormControl>
                       <Textarea
-                        placeholder="admin@yourcompany.com, team@yourcompany.com, alerts@yourcompany.com"
+                        placeholder="e.g. oncall@example.com, team@example.com"
                         className="field-sizing-fixed min-h-[80px] resize-y"
                         maxLength={CHARACTER_LIMITS.emails}
                         disabled={isSubmitting || isTesting}
@@ -822,20 +850,21 @@ export function NotificationProviderForm({
           {/* Slack Configuration */}
           {selectedType === "slack" && (
             <div className="space-y-4">
-              <h3 className="text-sm font-semibold">Slack Configuration</h3>
+              <h3 className="text-sm font-semibold">Slack configuration</h3>
               <FormField
                 control={form.control}
                 name="config.webhookUrl"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Webhook URL</FormLabel>
+                    <FormLabel>Webhook URL<RequiredMark /></FormLabel>
                     <FormControl>
                       <Input
-                        placeholder={maskedFieldSet.has("webhookUrl") ? MASKED_PLACEHOLDER : "https://hooks.slack.com/services/..."}
+                        placeholder={maskedFieldSet.has("webhookUrl") ? MASKED_PLACEHOLDER : "e.g. https://hooks.slack.com/services/T000/B000/XXXX"}
                         {...field}
                         disabled={isSubmitting || isTesting}
                       />
                     </FormControl>
+                    <FormDescription>Create an incoming webhook in your Slack workspace and paste its URL.</FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -845,14 +874,15 @@ export function NotificationProviderForm({
                 name="config.channel"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Channel</FormLabel>
+                    <FormLabel>Channel<OptionalBadge /></FormLabel>
                     <FormControl>
                       <Input
-                        placeholder="#alerts (optional)"
+                        placeholder="e.g. #alerts"
                         {...field}
                         disabled={isSubmitting || isTesting}
                       />
                     </FormControl>
+                    <FormDescription>Overrides the default channel set on the webhook. Leave blank to use the default.</FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -863,7 +893,7 @@ export function NotificationProviderForm({
           {/* Webhook Configuration */}
           {selectedType === "webhook" && (
             <div className="space-y-4">
-              <h3 className="text-sm font-semibold">Webhook Configuration</h3>
+              <h3 className="text-sm font-semibold">Webhook configuration</h3>
               <div className="grid gap-5 lg:grid-cols-2">
                 {/* Primary inputs */}
                 <div className="space-y-4">
@@ -885,11 +915,16 @@ export function NotificationProviderForm({
                               <SelectValue placeholder="Select preset" />
                             </SelectTrigger>
                           </FormControl>
-                          <SelectContent>
+                          <SelectContent className="max-h-[min(24rem,var(--radix-select-content-available-height))]">
                             {WEBHOOK_PRESETS.map((preset) => (
                               <SelectItem key={preset.id} value={preset.id}>
-                                {preset.label}
-                                {preset.endsAt ? ` (ends ${preset.endsAt})` : ""}
+                                <div className="flex items-center gap-2">
+                                  <ChannelTypeIcon type="webhook" presetId={preset.id} />
+                                  <span>
+                                    {preset.label}
+                                    {preset.endsAt ? ` (ends ${preset.endsAt})` : ""}
+                                  </span>
+                                </div>
                               </SelectItem>
                             ))}
                           </SelectContent>
@@ -914,10 +949,10 @@ export function NotificationProviderForm({
                       name="config.url"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>URL</FormLabel>
+                          <FormLabel>URL<RequiredMark /></FormLabel>
                           <FormControl>
                             <Input
-                              placeholder={maskedFieldSet.has("url") ? MASKED_PLACEHOLDER : "https://api.yourservice.com/alerts"}
+                              placeholder={maskedFieldSet.has("url") ? MASKED_PLACEHOLDER : "e.g. https://api.example.com/alerts"}
                               {...field}
                               onChange={(event) => {
                                 field.onChange(event);
@@ -926,6 +961,7 @@ export function NotificationProviderForm({
                               disabled={isSubmitting || isTesting}
                             />
                           </FormControl>
+                          <FormDescription>Supercheck sends alerts to this endpoint. Stored encrypted.</FormDescription>
                           <FormMessage />
                         </FormItem>
                       )}
@@ -975,6 +1011,7 @@ export function NotificationProviderForm({
                         setHeadersText(next);
                         setHeadersError(getHeadersError(next));
                         setLastWebhookTestDetails(null);
+                        setTestResult(null);
                       }}
                       className="field-sizing-fixed min-h-[88px] resize-y font-mono text-sm"
                       aria-invalid={Boolean(headersError)}
@@ -1000,7 +1037,7 @@ export function NotificationProviderForm({
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>
-                          Body Template
+                          Body template
                           <OptionalBadge />
                         </FormLabel>
                         <FormControl>
@@ -1172,23 +1209,24 @@ export function NotificationProviderForm({
           {/* Telegram Configuration */}
           {selectedType === "telegram" && (
             <div className="space-y-4">
-              <h3 className="text-sm font-semibold">Telegram Configuration</h3>
+              <h3 className="text-sm font-semibold">Telegram configuration</h3>
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <FormField
                   control={form.control}
                   name="config.botToken"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Bot Token</FormLabel>
+                      <FormLabel>Bot token<RequiredMark /></FormLabel>
                       <FormControl>
                         <Input
                           type="password"
                           autoComplete="new-password"
-                          placeholder={maskedFieldSet.has("botToken") ? MASKED_PLACEHOLDER : "123456789:ABCdefGHIjklMNOpqrsTUVwxyz"}
+                          placeholder={maskedFieldSet.has("botToken") ? MASKED_PLACEHOLDER : "e.g. 123456789:ABCdefGHIjklMNOpqrsTUVwxyz"}
                           {...field}
                           disabled={isSubmitting || isTesting}
                         />
                       </FormControl>
+                      <FormDescription>Create a bot with @BotFather and paste its token. Stored encrypted.</FormDescription>
                       <FormMessage />
                     </FormItem>
                   )}
@@ -1198,14 +1236,15 @@ export function NotificationProviderForm({
                   name="config.chatId"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Chat ID</FormLabel>
+                      <FormLabel>Chat ID<RequiredMark /></FormLabel>
                       <FormControl>
                         <Input
-                          placeholder="-123456789"
+                          placeholder="e.g. -1001234567890"
                           {...field}
                           disabled={isSubmitting || isTesting}
                         />
                       </FormControl>
+                      <FormDescription>Numeric ID of the chat or group. Group IDs start with a minus sign.</FormDescription>
                       <FormMessage />
                     </FormItem>
                   )}
@@ -1217,20 +1256,21 @@ export function NotificationProviderForm({
           {/* Discord Configuration */}
           {selectedType === "discord" && (
             <div className="space-y-4">
-              <h3 className="text-sm font-semibold">Discord Configuration</h3>
+              <h3 className="text-sm font-semibold">Discord configuration</h3>
               <FormField
                 control={form.control}
                 name="config.discordWebhookUrl"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Webhook URL</FormLabel>
+                    <FormLabel>Webhook URL<RequiredMark /></FormLabel>
                     <FormControl>
                       <Input
-                        placeholder={maskedFieldSet.has("discordWebhookUrl") ? MASKED_PLACEHOLDER : "https://discord.com/api/webhooks/..."}
+                        placeholder={maskedFieldSet.has("discordWebhookUrl") ? MASKED_PLACEHOLDER : "e.g. https://discord.com/api/webhooks/123/abc"}
                         {...field}
                         disabled={isSubmitting || isTesting}
                       />
                     </FormControl>
+                    <FormDescription>In Discord: Channel settings, Integrations, Webhooks. Stored encrypted.</FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -1242,17 +1282,17 @@ export function NotificationProviderForm({
           {selectedType === "teams" && (
             <div className="space-y-4">
               <h3 className="text-sm font-semibold">
-                Microsoft Teams Configuration
+                Microsoft Teams configuration
               </h3>
               <FormField
                 control={form.control}
                 name="config.teamsWebhookUrl"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Incoming Webhook URL</FormLabel>
+                    <FormLabel>Incoming webhook URL<RequiredMark /></FormLabel>
                     <FormControl>
                       <Input
-                        placeholder={maskedFieldSet.has("teamsWebhookUrl") ? MASKED_PLACEHOLDER : "https://xxx.environment.api.powerplatform.com:443/powerautomate/..."}
+                        placeholder={maskedFieldSet.has("teamsWebhookUrl") ? MASKED_PLACEHOLDER : "e.g. https://prod-00.westus.logic.azure.com:443/workflows/..."}
                         {...field}
                         disabled={isSubmitting || isTesting}
                       />
@@ -1269,6 +1309,23 @@ export function NotificationProviderForm({
           )}
         </div>
 
+        {testResult && (
+          <div
+            role={testResult.ok ? "status" : "alert"}
+            data-testid="test-connection-result"
+            className={cn(
+              "flex shrink-0 items-start gap-2 border-t px-6 py-3 text-sm",
+              testResult.ok ? "bg-success/10 text-success" : "bg-failure/10 text-failure",
+            )}
+          >
+            {testResult.ok ? (
+              <CheckCircle2 aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0" />
+            ) : (
+              <XCircle aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0" />
+            )}
+            <span className="min-w-0 break-words">{testResult.message}</span>
+          </div>
+        )}
         <div className="flex shrink-0 flex-col-reverse gap-2 border-t bg-background px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
           <Button
             type="button"
@@ -1277,7 +1334,7 @@ export function NotificationProviderForm({
             disabled={isTesting || isSubmitting}
           >
             {isTesting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            {isTesting ? "Testing..." : "Test Connection"}
+            {isTesting ? "Testing..." : "Test connection"}
           </Button>
           <div className="flex gap-2 sm:justify-end">
             <Button
@@ -1295,7 +1352,7 @@ export function NotificationProviderForm({
                   ? "Updating..."
                   : "Creating..."
                 : initialData
-                  ? "Update Provider"
+                  ? "Update channel"
                   : "Create channel"}
             </Button>
           </div>
