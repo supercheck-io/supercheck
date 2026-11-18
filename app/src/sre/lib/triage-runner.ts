@@ -6,6 +6,7 @@ import { getActualModelName } from "@/lib/ai/ai-provider";
 import { buildSreTriagePrompt, buildSreTriageSystemPrompt } from "@/sre/agents/triage";
 import { runSreAgent } from "@/sre/lib/agent-runner";
 import { createSreEvidenceTools } from "@/sre/tools/evidence-tools";
+import { countStoredIncidentEvidence, persistNativeEvidenceWithin } from "@/lib/sre/native-evidence-bounded";
 import { db } from "@/utils/db";
 import { failStaleSreInvestigationRunsForIncident } from "@/sre/lib/stale-run-recovery";
 import { insertSreRun, SreOrgConcurrencyError } from "@/sre/lib/run-insert";
@@ -151,11 +152,39 @@ export async function startSreIncidentTriage(input: RunSreIncidentTriageInput): 
   return { success: true, investigationRunId: run.id, run, incident, startedAt };
 }
 
+const NATIVE_EVIDENCE_TIMEOUT_MS = 15_000;
+
+/**
+ * A new incident has no stored evidence until an investigation or brief collects it, so triage would
+ * see nothing. Collect monitor, run and alert evidence first when none is stored. Best effort and bounded.
+ */
+async function collectNativeEvidenceIfMissing(
+  started: StartedSreIncidentTriage,
+  input: RunSreIncidentTriageInput,
+): Promise<number> {
+  const stored = Number(started.incident.evidenceCount ?? 0);
+  if (stored > 0) return stored;
+  const scope = { organizationId: input.organizationId, projectId: input.projectId, incidentId: started.incident.id };
+  try {
+    await persistNativeEvidenceWithin({ ...scope, userId: input.userId ?? null, investigationRunId: started.run.id }, NATIVE_EVIDENCE_TIMEOUT_MS);
+  } catch (error) {
+    triageLogger.error({ err: error, incidentId: started.incident.id }, "Native evidence collection for triage failed; continuing without it");
+  }
+  // Recount: rows written before a timeout still commit.
+  try {
+    return (await countStoredIncidentEvidence(scope)).total;
+  } catch (error) {
+    triageLogger.error({ err: error, incidentId: started.incident.id }, "Counting triage evidence failed");
+    return stored;
+  }
+}
+
 export async function completeSreIncidentTriage(
   started: StartedSreIncidentTriage,
   input: RunSreIncidentTriageInput,
 ): Promise<RunSreIncidentTriageResult> {
   const { run, incident, startedAt } = started;
+  const evidenceCount = await collectNativeEvidenceIfMissing(started, input);
   try {
     const result = await runSreAgent({
       organizationId: input.organizationId,
@@ -164,7 +193,7 @@ export async function completeSreIncidentTriage(
         incidentTitle: incident.title,
         severity: incident.severity,
         serviceName: incident.primaryServiceName,
-        evidenceCount: Number(incident.evidenceCount ?? 0),
+        evidenceCount,
         connectorEvidenceCount: Number(incident.connectorEvidenceCount ?? 0),
       }),
       tools: createSreEvidenceTools({
@@ -186,7 +215,7 @@ export async function completeSreIncidentTriage(
             mode: "sre_triage_api",
             summary: result.text,
             finishReason: result.finishReason,
-            evidenceCount: Number(incident.evidenceCount ?? 0),
+            evidenceCount,
             connectorEvidenceCount: Number(incident.connectorEvidenceCount ?? 0),
           },
           completedAt: new Date(),

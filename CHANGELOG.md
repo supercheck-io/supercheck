@@ -94,6 +94,7 @@ The CLI is versioned separately; see [cli/CHANGELOG.md](cli/CHANGELOG.md). Prere
 
 ### Fixed
 
+- **AI triage sees the incident's monitor evidence.** Triage on a new incident found no evidence, because built-in monitor, run and alert evidence was only collected by a full investigation or an evidence brief. Triage now collects it first when none is stored (bounded to 15 seconds, best effort).
 - **Status page links honor `STATUS_PAGE_DOMAIN` in cloud mode.** A cloud deployment with its own status page domain showed and routed `<id>.supercheck.io` links, which pointed at another environment. `STATUS_PAGE_DOMAIN` now applies in every mode; unset, cloud still uses `supercheck.io`.
 - **Agent results on the run page.** Agent runs on Kubernetes now store their results, so the "Agent results" card shows (the report paths were read as if the run directory were `/tmp`).
 - **Single-test run page.** A run of one test shows the test name as its title and "1" tests executed, and no longer shows an empty Job ID card.

@@ -5,6 +5,7 @@ jest.mock("@/lib/audit-logger", () => ({ logAuditEvent: jest.fn() }));
 jest.mock("@/lib/ai/ai-provider", () => ({ getActualModelName: () => "test-model" }));
 jest.mock("@/sre/lib/agent-runner", () => ({ runSreAgent: jest.fn() }));
 jest.mock("@/sre/tools/evidence-tools", () => ({ createSreEvidenceTools: jest.fn() }));
+jest.mock("@/lib/sre/native-evidence-bounded", () => ({ persistNativeEvidenceWithin: jest.fn(), countStoredIncidentEvidence: jest.fn() }));
 const withSreTriageAdmission = jest.fn();
 let admissionTier: "paid" | "trial" = "paid";
 jest.mock("@/lib/sre/investigation-billing", () => ({
@@ -15,6 +16,7 @@ jest.mock("@/lib/sre/investigation-billing", () => ({
 import { db } from "@/utils/db";
 import { runSreAgent } from "./agent-runner";
 import { SreInvestigationBillingError } from "@/lib/sre/investigation-billing";
+import { countStoredIncidentEvidence, persistNativeEvidenceWithin } from "@/lib/sre/native-evidence-bounded";
 import { runSreIncidentTriage, startSreIncidentTriage } from "./triage-runner";
 
 describe("incident triage admission", () => {
@@ -104,5 +106,50 @@ describe("incident triage admission", () => {
     await expect(runSreIncidentTriage(input)).resolves.toMatchObject({ success: false, status: 409, investigationRunId: "run-1" });
     expect(txUpdate).toHaveBeenCalledTimes(1);
     expect(txInsert).not.toHaveBeenCalled();
+  });
+
+  describe("native evidence", () => {
+    const agentPrompt = () => String((runSreAgent as jest.Mock).mock.calls[0][0].prompt);
+    const snapshotValues = jest.fn();
+    beforeEach(() => {
+      (db.insert as jest.Mock).mockReturnValue({ values: () => Object.assign(Promise.resolve(), { returning: async () => [{ id: "run-1" }] }) });
+      (runSreAgent as jest.Mock).mockResolvedValue({ text: "done", modelId: "m", finishReason: "stop" });
+      (db as unknown as { transaction: unknown }).transaction = async (cb: (tx: unknown) => unknown) => cb({
+        update: () => ({ set: (v: unknown) => { snapshotValues(v); return { where: () => ({ returning: async () => [] }) }; } }),
+        insert: jest.fn(),
+      });
+      (countStoredIncidentEvidence as jest.Mock).mockResolvedValue({ total: 4, connector: 0 });
+    });
+
+    it("collects when none is stored, then uses the recounted total in the prompt and the stored run", async () => {
+      await runSreIncidentTriage(input);
+      expect(persistNativeEvidenceWithin).toHaveBeenCalledWith(expect.objectContaining({ incidentId: "incident", investigationRunId: "run-1" }), 15_000);
+      expect(agentPrompt()).toContain("Stored evidence items: 4");
+      expect(snapshotValues).toHaveBeenCalledWith(expect.objectContaining({ agentStateSnapshot: expect.objectContaining({ evidenceCount: 4 }) }));
+    });
+
+    it("recounts after a timeout, because rows written before it still commit", async () => {
+      (persistNativeEvidenceWithin as jest.Mock).mockRejectedValue(new Error("native evidence collection timed out"));
+      (countStoredIncidentEvidence as jest.Mock).mockResolvedValue({ total: 2, connector: 0 });
+      await runSreIncidentTriage(input);
+      expect(agentPrompt()).toContain("Stored evidence items: 2");
+    });
+
+    it("skips collection when evidence is already stored", async () => {
+      (db.select as jest.Mock).mockReturnValue({
+        from: jest.fn().mockReturnThis(), leftJoin: jest.fn().mockReturnThis(), where: jest.fn().mockReturnThis(), groupBy: jest.fn().mockReturnThis(),
+        limit: jest.fn().mockResolvedValue([{ id: input.incidentId, evidenceCount: 3 }]),
+      });
+      await runSreIncidentTriage(input);
+      expect(persistNativeEvidenceWithin).not.toHaveBeenCalled();
+      expect(agentPrompt()).toContain("Stored evidence items: 3");
+    });
+
+    it("still triages when collection and the recount fail", async () => {
+      (persistNativeEvidenceWithin as jest.Mock).mockRejectedValue(new Error("db down"));
+      (countStoredIncidentEvidence as jest.Mock).mockRejectedValue(new Error("db down"));
+      await runSreIncidentTriage(input);
+      expect(agentPrompt()).toContain("Stored evidence items: 0");
+    });
   });
 });
