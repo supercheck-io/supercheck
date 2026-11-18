@@ -455,7 +455,7 @@ export function AlertSettings({
                   </div>
                 ))}
                 <p className="text-xs text-muted-foreground">
-                  Warnings are not sent to paging services (PagerDuty, Opsgenie and similar).{" "}
+                  Warnings are not sent to paging services (PagerDuty and similar).{" "}
                   <a
                     href="https://supercheck.io/docs/app/communicate/alerts#warnings"
                     target="_blank"

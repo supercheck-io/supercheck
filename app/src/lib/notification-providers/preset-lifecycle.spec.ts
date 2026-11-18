@@ -15,11 +15,11 @@ describe("preset-lifecycle (app mirror)", () => {
     expect(presetOverrides("custom", "trigger", {})).toEqual({});
   });
 
-  it("closes Opsgenie/JSM by encoded alias on the configured host only", () => {
+  it("closes JSM by encoded alias on the configured host only", () => {
     const request = presetResolveRequest("jsm_ops", "https://api.atlassian.com/jsm/ops/integration/v2/alerts", "test:a/b", "Test");
     expect(request?.url).toBe("https://api.atlassian.com/jsm/ops/integration/v2/alerts/test%3Aa%2Fb/close?identifierType=alias");
     expect(presetResolveRequest("pagerduty", "https://events.pagerduty.com/v2/enqueue", "k", "t")).toBeNull();
-    expect(isPagingPreset("opsgenie")).toBe(true);
+    expect(isPagingPreset("opsgenie")).toBe(false);
     expect(isPagingPreset("custom")).toBe(false);
   });
 });

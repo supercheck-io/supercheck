@@ -56,13 +56,7 @@ describe('preset lifecycle', () => {
   });
 
   it('leaves custom webhooks and other presets alone', () => {
-    for (const preset of [
-      'custom',
-      undefined,
-      'opsgenie',
-      'jsm_ops',
-      'splunk_on_call',
-    ])
+    for (const preset of ['custom', undefined, 'jsm_ops', 'splunk_on_call'])
       expect(
         worker.presetOverrides(preset, 'resolve', { alertType: 'job_failed' }),
       ).toEqual({});
@@ -71,23 +65,12 @@ describe('preset lifecycle', () => {
   it('recognises paging presets only', () => {
     expect(worker.isPagingPreset('jsm_ops')).toBe(true);
     expect(worker.isPagingPreset('custom')).toBe(false);
+    expect(worker.isPagingPreset('opsgenie')).toBe(false);
     expect(worker.isPagingPreset(undefined)).toBe(false);
   });
 
   describe('presetResolveRequest', () => {
-    it('closes Opsgenie and JSM alerts by alias on the configured host', () => {
-      expect(
-        worker.presetResolveRequest(
-          'opsgenie',
-          'https://api.eu.opsgenie.com/v2/alerts/',
-          'monitor:m-1',
-          'Down',
-        ),
-      ).toEqual({
-        url: 'https://api.eu.opsgenie.com/v2/alerts/monitor%3Am-1/close?identifierType=alias',
-        method: 'POST',
-        body: JSON.stringify({ source: 'Supercheck', note: 'Down' }),
-      });
+    it('closes JSM alerts by alias on the configured host', () => {
       expect(
         worker.presetResolveRequest(
           'jsm_ops',
@@ -110,15 +93,15 @@ describe('preset lifecycle', () => {
         '@evil.example.com',
       ]) {
         const request = worker.presetResolveRequest(
-          'opsgenie',
-          'https://api.opsgenie.com/v2/alerts',
+          'jsm_ops',
+          'https://api.atlassian.com/jsm/ops/integration/v2/alerts',
           alias,
           't',
         );
         const url = new URL(request!.url);
-        expect(url.origin).toBe('https://api.opsgenie.com');
+        expect(url.origin).toBe('https://api.atlassian.com');
         expect(url.pathname).toBe(
-          `/v2/alerts/${encodeURIComponent(alias)}/close`,
+          `/jsm/ops/integration/v2/alerts/${encodeURIComponent(alias)}/close`,
         );
         expect(url.search).toBe('?identifierType=alias');
       }
@@ -145,8 +128,8 @@ describe('preset lifecycle', () => {
 
     it('bounds the note length', () => {
       const body = worker.presetResolveRequest(
-        'opsgenie',
-        'https://api.opsgenie.com/v2/alerts',
+        'jsm_ops',
+        'https://api.atlassian.com/jsm/ops/integration/v2/alerts',
         'k',
         'x'.repeat(5000),
       )!.body;
@@ -167,14 +150,14 @@ describe('preset lifecycle', () => {
         expect(
           app.presetResolveRequest(
             preset,
-            'https://api.opsgenie.com/v2/alerts/',
+            'https://api.atlassian.com/jsm/ops/integration/v2/alerts/',
             alias,
             'T',
           ),
         ).toEqual(
           worker.presetResolveRequest(
             preset,
-            'https://api.opsgenie.com/v2/alerts/',
+            'https://api.atlassian.com/jsm/ops/integration/v2/alerts/',
             alias,
             'T',
           ),

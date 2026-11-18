@@ -87,12 +87,6 @@ export const SRE_CONNECTOR_CATALOG: SreConnectorCatalogItem[] = [
     addable: true,
   },
   {
-    value: "opsgenie",
-    label: "Opsgenie",
-    description: "Alerts, priorities, and responder state",
-    addable: true,
-  },
-  {
     value: "splunk",
     label: "Splunk",
     description: "Logs and operational search",

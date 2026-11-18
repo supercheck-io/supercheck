@@ -81,7 +81,6 @@ type SreEvidenceSourceType =
   | 'elasticsearch'
   | 'tempo'
   | 'pagerduty'
-  | 'opsgenie'
   | 'jira'
   | 'confluence'
   | 'notion'
@@ -159,7 +158,6 @@ type SreEvidenceGraphFocusedViewStatus = 'active' | 'archived';
 type SreEvidenceGraphFocusedViewVisibility = 'project';
 type SreIntegrationKey =
   | 'pagerduty'
-  | 'opsgenie'
   | 'jsm_ops'
   | 'splunk_on_call'
   | 'better_stack'
@@ -190,7 +188,6 @@ type ExternalConnectorType =
   | 'confluence'
   | 'notion'
   | 'pagerduty'
-  | 'opsgenie'
   | 'jira'
   | 'mcp'
   | 'supercheck_native';

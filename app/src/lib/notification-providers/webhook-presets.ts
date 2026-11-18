@@ -4,7 +4,6 @@ import { parseWebhookJsonTemplate } from "@/lib/notification-providers/webhook-t
 export const WEBHOOK_PRESET_IDS = [
   "custom",
   "pagerduty",
-  "opsgenie",
   "jsm_ops",
   "splunk_on_call",
   "better_stack",
@@ -76,38 +75,6 @@ export const WEBHOOK_PRESETS: WebhookPreset[] = [
           },
         },
         links: [{ href: "{{dashboardUrl}}", text: "Open in Supercheck" }],
-      }),
-    },
-  },
-  {
-    id: "opsgenie",
-    label: "Opsgenie Alert API",
-    summary:
-      "Create Opsgenie alerts with an alias for deduplication; Supercheck closes them on recovery.",
-    docsUrl: "https://docs.opsgenie.com/docs/alert-api",
-    endpointPlaceholder: "https://api.opsgenie.com/v2/alerts",
-    secretHint: "Set Authorization to GenieKey <api-key> in headers. EU accounts use api.eu.opsgenie.com.",
-    endsAt: "April 5, 2027",
-    config: {
-      method: "POST",
-      headers: {
-        Authorization: "GenieKey REPLACE_WITH_OPSGENIE_API_KEY",
-      },
-      bodyTemplate: stringifyTemplate({
-        message: "{{title}}",
-        alias: "{{dedupKey}}",
-        description: "{{message}}",
-        source: "supercheck",
-        priority: "P2",
-        tags: ["supercheck", "{{type}}", "{{monitorType}}"],
-        details: {
-          status: "{{status}}",
-          target: "{{targetName}}",
-          target_url: "{{targetUrl}}",
-          response_time_ms: "{{responseTime}}",
-          dashboard_url: "{{dashboardUrl}}",
-          project: "{{projectName}}",
-        },
       }),
     },
   },

@@ -1557,11 +1557,6 @@ describe('NotificationService', () => {
           source: 'supercheck',
         },
       },
-      opsgenie: {
-        message: '{{title}}',
-        alias: '{{dedupKey}}',
-        description: '{{message}}',
-      },
       jsm_ops: {
         message: '{{title}}',
         alias: '{{dedupKey}}',
@@ -1584,7 +1579,6 @@ describe('NotificationService', () => {
     };
     const URLS: Record<string, string> = {
       pagerduty: 'https://events.pagerduty.com/v2/enqueue',
-      opsgenie: 'https://api.eu.opsgenie.com/v2/alerts',
       jsm_ops: 'https://api.atlassian.com/jsm/ops/integration/v2/alerts/',
       splunk_on_call:
         'https://alert.victorops.com/integrations/generic/20131114/alert/KEY/ROUTE',
@@ -1597,10 +1591,9 @@ describe('NotificationService', () => {
       config: {
         url: URLS[preset],
         preset: preset as never,
-        headers:
-          preset.startsWith('jsm') || preset === 'opsgenie'
-            ? { Authorization: 'GenieKey abcd1234' }
-            : {},
+        headers: preset.startsWith('jsm')
+          ? { Authorization: 'GenieKey abcd1234' }
+          : {},
         bodyTemplate: JSON.stringify(OLD_TEMPLATES[preset]),
       },
     });
@@ -1658,7 +1651,7 @@ describe('NotificationService', () => {
       expect(lastCall().body.payload.severity).toBe('warning');
     });
 
-    it.each(['opsgenie', 'jsm_ops'])(
+    it.each(['jsm_ops'])(
       '%s creates on trigger and closes by alias on resolve',
       async (preset) => {
         await send(presetProvider(preset), failure);
@@ -1687,15 +1680,15 @@ describe('NotificationService', () => {
       },
     );
 
-    it('encodes an Opsgenie alias carrying / or ? so the close stays on the configured path', async () => {
-      await send(presetProvider('opsgenie'), {
+    it('encodes a JSM alias carrying / or ? so the close stays on the configured path', async () => {
+      await send(presetProvider('jsm_ops'), {
         ...recovery,
         metadata: { ...recovery.metadata, dedupKey: '../x?y=1/z' },
       });
       const sent = new URL(lastCall().url);
-      expect(sent.host).toBe('api.eu.opsgenie.com');
+      expect(sent.host).toBe('api.atlassian.com');
       expect(sent.pathname).toBe(
-        `/v2/alerts/${encodeURIComponent('../x?y=1/z')}/close`,
+        `/jsm/ops/integration/v2/alerts/${encodeURIComponent('../x?y=1/z')}/close`,
       );
     });
 

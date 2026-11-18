@@ -6,7 +6,6 @@ import { getWebhookPreset } from "@/lib/notification-providers/webhook-presets";
 
 export const SRE_INTEGRATION_KEYS = [
   "pagerduty",
-  "opsgenie",
   "jsm_ops",
   "splunk_on_call",
   "better_stack",
@@ -30,7 +29,7 @@ export const SRE_INTEGRATION_CORRELATION_STRATEGIES = [
 export type SreIntegrationCorrelationStrategy =
   (typeof SRE_INTEGRATION_CORRELATION_STRATEGIES)[number];
 
-export type BindableSreConnectorType = "pagerduty" | "opsgenie" | "splunk";
+export type BindableSreConnectorType = "pagerduty" | "splunk";
 
 // Slack, Teams and webhook integrations have no matching connector type, so they cannot be bound.
 const compatibleConnectorTypes: Record<
@@ -38,7 +37,6 @@ const compatibleConnectorTypes: Record<
   readonly BindableSreConnectorType[]
 > = {
   pagerduty: ["pagerduty"],
-  opsgenie: ["opsgenie"],
   jsm_ops: [],
   splunk_on_call: ["splunk"],
   better_stack: [],
@@ -53,7 +51,6 @@ const defaultCorrelationStrategy: Record<
   SreIntegrationCorrelationStrategy
 > = {
   pagerduty: "dedup_key",
-  opsgenie: "alias",
   jsm_ops: "alias",
   splunk_on_call: "entity_id",
   better_stack: "dedup_key",

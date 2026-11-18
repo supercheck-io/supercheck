@@ -67,7 +67,6 @@ const credentialTypeOptions: Array<{ value: CredentialType; label: string }> = [
 const apiKeyOnlyConnectorTypes = new Set<ConnectorType>([
   "gitlab",
   "pagerduty",
-  "opsgenie",
 ]);
 
 type FieldErrors = Record<string, string[] | undefined>;

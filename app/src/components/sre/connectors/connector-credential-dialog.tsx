@@ -50,7 +50,7 @@ const credentialTypeOptions: Array<{ value: CredentialType; label: string }> = [
   { value: "oauth_token", label: "OAuth token" },
 ];
 
-const apiKeyOnlyConnectorTypes = new Set(["gitlab", "pagerduty", "opsgenie"]);
+const apiKeyOnlyConnectorTypes = new Set(["gitlab", "pagerduty"]);
 
 export function ConnectorCredentialDialog({
   connector,

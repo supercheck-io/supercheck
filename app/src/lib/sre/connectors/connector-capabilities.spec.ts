@@ -6,6 +6,10 @@ import {
 } from "./connector-capabilities";
 
 describe("connector credential requirements", () => {
+  it("does not offer the retired opsgenie connector type", () => {
+    expect(SRE_CONNECTOR_TYPES as readonly string[]).not.toContain("opsgenie");
+  });
+
   it.each(OPTIONAL_CREDENTIAL_CONNECTOR_TYPES)(
     "allows %s to validate an intentionally unauthenticated endpoint",
     (connectorType) => {

@@ -36,13 +36,13 @@ describe("integration-bindings", () => {
     expect(
       describeIntegrationBindingCompatibility({
         providerType: "webhook",
-        providerConfig: { preset: "opsgenie" },
-        connectorType: "opsgenie",
+        providerConfig: { preset: "pagerduty" },
+        connectorType: "pagerduty",
       }),
     ).toEqual({
       bindable: true,
-      integrationKey: "opsgenie",
-      correlationStrategy: "alias",
+      integrationKey: "pagerduty",
+      correlationStrategy: "dedup_key",
     });
   });
 
@@ -62,7 +62,7 @@ describe("integration-bindings", () => {
       describeIntegrationBindingCompatibility({
         providerType: "webhook",
         providerConfig: { preset: "pagerduty" },
-        connectorType: "opsgenie",
+        connectorType: "splunk",
       }),
     ).toMatchObject({
       bindable: false,
@@ -72,7 +72,7 @@ describe("integration-bindings", () => {
 
   it("cannot bind chat or generic webhook integrations to any connector", () => {
     for (const integrationKey of ["slack", "teams", "better_stack", "incident_io", "generic_webhook"] as const) {
-      for (const connectorType of ["pagerduty", "opsgenie", "splunk", "webhook", "slack"]) {
+      for (const connectorType of ["pagerduty", "splunk", "webhook", "slack"]) {
         expect(canBindIntegrationToConnector(integrationKey, connectorType)).toBe(false);
       }
     }

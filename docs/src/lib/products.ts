@@ -274,7 +274,7 @@ export const products: Product[] = [
         body: "Add connectors under Organization, Integrations. Use a Private Agent for APIs that are reachable only inside your network.",
         bullets: [
           "Prometheus, Grafana, AWS CloudWatch, Datadog, Loki and Elasticsearch / OpenSearch",
-          "Grafana Tempo, Kubernetes, Sentry, GitHub, GitLab, PagerDuty and Opsgenie",
+          "Grafana Tempo, Kubernetes, Sentry, GitHub, GitLab and PagerDuty",
           "Credentials and raw connector responses are excluded from saved reports",
         ],
         href: "/docs/app/investigate/connectors",

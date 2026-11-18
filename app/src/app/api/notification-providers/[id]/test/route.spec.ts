@@ -42,7 +42,7 @@ import { POST } from "./route";
 const send = (body?: unknown, id = PROVIDER) =>
   POST(new NextRequest(`https://example.com/api/notification-providers/${id}/test`, { method: "POST", body: body === undefined ? "{}" : typeof body === "string" ? body : JSON.stringify(body) }), { params: Promise.resolve({ id }) });
 const pagerduty = { id: PROVIDER, type: "webhook", projectId: "proj-1", config: { url: "https://events.pagerduty.com/v2/enqueue", preset: "pagerduty", bodyTemplate: '{"event_action":"{{pagerDutyEventAction}}","dedup_key":"{{dedupKey}}","payload":{"severity":"{{normalizedSeverity}}"}}', headers: { "X-Key": "secret-integration-key" } } };
-const opsgenie = { id: PROVIDER, type: "webhook", projectId: "proj-1", config: { url: "https://api.eu.opsgenie.com/v2/alerts", preset: "opsgenie", bodyTemplate: '{"alias":"{{dedupKey}}"}', headers: { Authorization: "GenieKey k" } } };
+const jsm = { id: PROVIDER, type: "webhook", projectId: "proj-1", config: { url: "https://api.atlassian.com/jsm/ops/integration/v2/alerts", preset: "jsm_ops", bodyTemplate: '{"alias":"{{dedupKey}}"}', headers: { Authorization: "GenieKey k" } } };
 const response = (status: number, body = "") => ({ ok: status < 300, status, statusText: status === 202 ? "Accepted" : "Error", text: async () => body });
 
 beforeEach(() => {
@@ -70,12 +70,12 @@ describe("POST /api/notification-providers/[id]/test (A20)", () => {
     expect(JSON.stringify(body)).not.toContain("secret-integration-key");
   });
 
-  it("resolves the test page; Opsgenie closes by alias on the configured host", async () => {
-    mockProviders = [opsgenie];
+  it("resolves the test page; JSM closes by alias on the configured host", async () => {
+    mockProviders = [jsm];
     const body = await (await send({ action: "resolve" })).json();
     expect(body).toMatchObject({ ok: true, action: "resolve" });
     const [url, init] = fetchChannel.mock.calls[0];
-    expect(url).toBe(`https://api.eu.opsgenie.com/v2/alerts/${encodeURIComponent(`test:${PROVIDER}`)}/close?identifierType=alias`);
+    expect(url).toBe(`https://api.atlassian.com/jsm/ops/integration/v2/alerts/${encodeURIComponent(`test:${PROVIDER}`)}/close?identifierType=alias`);
     expect(init.method).toBe("POST");
   });
 

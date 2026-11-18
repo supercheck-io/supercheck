@@ -73,7 +73,6 @@ describe("ConnectorAdminView", () => {
         "aws_cloudwatch",
         "gitlab",
         "pagerduty",
-        "opsgenie",
       ]),
     );
   });

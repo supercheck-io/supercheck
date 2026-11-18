@@ -143,7 +143,6 @@ const evidenceSearchConnectorTypes = new Set([
   "azure_monitor",
   "gitlab",
   "pagerduty",
-  "opsgenie",
   "jira",
   "confluence",
   "notion",

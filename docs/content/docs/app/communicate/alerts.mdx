@@ -16,7 +16,7 @@ Notifications tell your team when monitors fail, jobs break, or services recover
 
 Email uses your SMTP provider; the others use the service's webhook or bot token.
 
-Paging and on-call services are set up as webhook channels with a preset: PagerDuty, Opsgenie (Atlassian ends Opsgenie on April 5, 2027), Jira Service Management, Splunk On-Call, Better Stack and incident.io. Supercheck opens a page when a check fails and resolves it on recovery. See [Webhook Presets](#webhook-presets).
+Paging and on-call services are set up as webhook channels with a preset: PagerDuty, Jira Service Management, Splunk On-Call, Better Stack and incident.io. Supercheck opens a page when a check fails and resolves it on recovery. See [Webhook Presets](#webhook-presets).
 
 <Steps>
 <Step>
@@ -134,7 +134,7 @@ At most **3 failure alerts** go out per failure streak, for monitors and jobs. T
 
 ## Warnings
 
-Warnings tell your channels about a problem that is not an outage yet. They never open or resolve an incident, are never sent to paging services (PagerDuty, Opsgenie, Jira Service Management, Splunk On-Call, Better Stack, incident.io) and are not counted toward failure or recovery thresholds. They are held back during [maintenance windows](/docs/app/monitor#maintenance-windows).
+Warnings tell your channels about a problem that is not an outage yet. They never open or resolve an incident, are never sent to paging services (PagerDuty, Jira Service Management, Splunk On-Call, Better Stack, incident.io) and are not counted toward failure or recovery thresholds. They are held back during [maintenance windows](/docs/app/monitor#maintenance-windows).
 
 Turn them on or off per monitor under **Warnings** in the alert settings. Only the warnings that apply to the monitor are listed; the AI endpoint warnings appear only for AI Endpoint Monitors. **Ping is late** is off until you turn it on. The MCP and AI endpoint warnings are on, but the slow and token warnings send nothing until you set their limit.
 
@@ -290,14 +290,13 @@ The webhook channel includes presets that fill the method, headers, and JSON bod
 |--------|----------|------------|
 | Custom webhook | Default Supercheck payload or a custom JSON template | [Supercheck alerts](/docs/app/communicate/alerts) |
 | PagerDuty Events API v2 | Trigger and resolve incidents using `{{pagerDutyEventAction}}` and `{{dedupKey}}` | [PagerDuty Events API v2](https://developer.pagerduty.com/docs/events-api-v2/overview/) |
-| Opsgenie Alert API | Create alerts with an alias and API-key auth header; recovery closes the alert by alias | [Opsgenie Alert API](https://docs.opsgenie.com/docs/alert-api) |
-| Jira Service Management | Same payload as Opsgenie, sent to `api.atlassian.com/jsm/ops/integration/v2/alerts` with `Authorization: GenieKey <integration key>`; recovery closes the alert by alias | [JSM integration events](https://developer.atlassian.com/cloud/jira/service-desk-ops/rest/v1/api-group-integration-events/) |
+| Jira Service Management | Creates alerts with an alias, sent to `api.atlassian.com/jsm/ops/integration/v2/alerts` with `Authorization: GenieKey <integration key>`; recovery closes the alert by alias | [JSM integration events](https://developer.atlassian.com/cloud/jira/service-desk-ops/rest/v1/api-group-integration-events/) |
 | Splunk On-Call REST endpoint | Send VictorOps/Splunk On-Call `CRITICAL` and `RECOVERY` events | [Splunk On-Call REST Endpoint](https://help.victorops.com/knowledge-base/rest-endpoint-integration-guide/) |
 | Better Stack webhook | Sends `status: alert` on failure and `status: resolved` on recovery with `dedup_key`. In Better Stack, set the create rule to "status contains alert", the resolve rule to "status contains resolved" and the alert id to `dedup_key` | [Better Stack webhooks](https://betterstack.com/docs/uptime/integrations/webhooks/) |
 | incident.io alert source | Sends `status: firing` on failure and `status: resolved` on recovery with `deduplication_key` | [incident.io alert sources](https://incident.io/docs/alert-sources) |
 
 <Callout type="warn">
-Preset payloads include placeholders such as `REPLACE_WITH_PAGERDUTY_ROUTING_KEY` and `REPLACE_WITH_OPSGENIE_API_KEY`. Replace them before testing, and verify the endpoint URL in the vendor documentation because some providers generate tenant-specific webhook URLs.
+Preset payloads include placeholders such as `REPLACE_WITH_PAGERDUTY_ROUTING_KEY` and `REPLACE_WITH_JSM_INTEGRATION_KEY`. Replace them before testing, and verify the endpoint URL in the vendor documentation because some providers generate tenant-specific webhook URLs.
 </Callout>
 
 <Accordions>
@@ -444,39 +443,6 @@ Splunk On-Call only treats `CRITICAL` as an incident-opening event and `RECOVERY
 </Callout>
 
 </Accordion>
-<Accordion title="OpsGenie Integration" id="opsgenie-integration">
-
-Use a webhook with a body template to send alerts to [OpsGenie's Alert API](https://docs.opsgenie.com/docs/alert-api):
-
-1. In OpsGenie, go to **Settings → Integration List → API**
-2. Copy the **API Key**
-3. In Supercheck, create a Webhook notification channel with:
-   - **URL:** `https://api.opsgenie.com/v2/alerts`
-   - **Method:** POST
-   - **Headers JSON:** `{ "Authorization": "GenieKey YOUR_OPSGENIE_API_KEY" }`
-   - **Body Template:**
-
-```json
-{
-  "message": "{{title}}",
-  "description": "{{message}}",
-  "priority": "P2",
-  "source": "supercheck",
-  "tags": ["supercheck", "{{monitorType}}"],
-  "details": {
-    "monitor": "{{monitorName}}",
-    "status": "{{status}}",
-    "target_url": "{{targetUrl}}",
-    "response_time": "{{responseTime}}"
-  }
-}
-```
-
-<Callout type="info">
-The webhook UI supports custom JSON headers for provider API keys. Header values are masked when you edit the channel and never appear in the payload preview or test diagnostics.
-</Callout>
-
-</Accordion>
 </Accordions>
 
 </Tab>
@@ -498,7 +464,7 @@ When a paging service still fails and the check opens an incident, the incident 
 
 ### One-way paging
 
-Supercheck sends trigger and resolve events only. Acknowledging or closing the page in PagerDuty, Opsgenie or another service does not change the Supercheck incident, and incident reminders and escalation are never sent to paging services, because the service already repeats and escalates its own page. Acknowledge or resolve the incident in Supercheck too.
+Supercheck sends trigger and resolve events only. Acknowledging or closing the page in PagerDuty or another service does not change the Supercheck incident, and incident reminders and escalation are never sent to paging services, because the service already repeats and escalates its own page. Acknowledge or resolve the incident in Supercheck too.
 
 A job's page is resolved once, on the first passing run after the failure (past its recovery threshold), whether or not **Alert on success** is on; later passing runs send the paging service nothing.
 

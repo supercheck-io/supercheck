@@ -623,7 +623,7 @@ supercheck tag delete <id> --force    # Skip confirmation
 | `notification test <id>` | Send a test through a saved channel; webhooks and paging services get a test page with dedup key `test:<id>` and the receiver's HTTP status | `--resolve` (close the test page) |
 | `notification test` | Test an unsaved configuration | `--type`, `--payload` (one payload option required) |
 
-Types: `email`, `slack`, `webhook`, `telegram`, `discord`, `teams`. `--payload` is a JSON object; `--data` and `--config` are aliases. Paging presets (PagerDuty, Opsgenie and the rest) are set up in the app; the CLI can list and test those channels but not create them from a preset.
+Types: `email`, `slack`, `webhook`, `telegram`, `discord`, `teams`. `--payload` is a JSON object; `--data` and `--config` are aliases. Paging presets (PagerDuty and the rest) are set up in the app; the CLI can list and test those channels but not create them from a preset.
 
 <Accordions>
 <Accordion title="Examples" id="notifications-examples">

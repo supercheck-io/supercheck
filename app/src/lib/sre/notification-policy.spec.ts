@@ -158,7 +158,7 @@ it("accepts an unchanged escalation whose target was deleted, but not a new one 
 });
 
 it("treats presets and templated webhooks as paging, not plain webhooks or other types", () => {
-  expect(isPagingWebhook("webhook", { preset: "opsgenie" })).toBe(true);
+  expect(isPagingWebhook("webhook", { preset: "jsm_ops" })).toBe(true);
   expect(isPagingWebhook("webhook", { bodyTemplate: "{}" })).toBe(true);
   expect(isPagingWebhook("webhook", { preset: "custom" })).toBe(false);
   expect(isPagingWebhook("webhook", {})).toBe(false);

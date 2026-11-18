@@ -72,7 +72,6 @@ const supportedLiveConnectorTypes = [
   "aws_cloudwatch",
   "gitlab",
   "pagerduty",
-  "opsgenie",
   "jaeger",
   "newrelic",
   "splunk",

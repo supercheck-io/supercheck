@@ -29,14 +29,24 @@ describe("notification provider validation", () => {
   it("allows integration auth headers for generic webhooks", () => {
     expect(() =>
       validateProviderConfig("webhook", {
-        url: "https://api.opsgenie.com/v2/alerts",
+        url: "https://api.atlassian.com/jsm/ops/integration/v2/alerts",
         method: "POST",
-        preset: "opsgenie",
+        preset: "jsm_ops",
         headers: {
           Authorization: "GenieKey test-key",
         },
       }),
     ).not.toThrow();
+  });
+
+  it("rejects the retired opsgenie preset like any unknown preset", () => {
+    expect(() =>
+      validateProviderConfig("webhook", {
+        url: "https://api.opsgenie.com/v2/alerts",
+        method: "POST",
+        preset: "opsgenie",
+      }),
+    ).toThrow("Webhook preset is not supported.");
   });
 
   it("rejects webhook headers that override managed transport headers", () => {

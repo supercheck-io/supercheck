@@ -51,7 +51,7 @@ describe("describeNotificationEvent", () => {
       body: "The incident was sent to the project's incident channels instead.",
       warning: true,
     });
-    expect(describeNotificationEvent({ kind: "page_failed", preset: "opsgenie", status: 401, terminal: true, fallback: "admins" }).body).toBe(
+    expect(describeNotificationEvent({ kind: "page_failed", preset: "pagerduty", status: 401, terminal: true, fallback: "admins" }).body).toBe(
       "Check the integration key. Project owners and admins were emailed instead.",
     );
     expect(describeNotificationEvent({ kind: "page_failed", preset: "unknown", fallback: "none" })).toEqual({ title: "Paging service page failed", body: null, warning: true });
