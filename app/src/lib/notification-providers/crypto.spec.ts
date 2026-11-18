@@ -94,7 +94,7 @@ describe("notification provider crypto", () => {
     describe("webhook credentials follow their endpoint", () => {
       const existing = {
         name: "W",
-        preset: "incident_io",
+        preset: "incident_io" as const,
         url: "https://api.incident.io/v2/alert_events/http/abc",
         headers: { Authorization: "Bearer real" },
       };
