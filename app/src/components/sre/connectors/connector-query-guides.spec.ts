@@ -1,4 +1,4 @@
-import { getConnectorQueryGuide } from "./connector-query-guides";
+import { getConnectorQueryGuide, getServiceQuery } from "./connector-query-guides";
 
 describe("connector query guides", () => {
   it("provides CloudWatch alarm and metric examples with production references", () => {
@@ -56,5 +56,32 @@ describe("connector query guides", () => {
       ]),
     );
     expect(notion.examples[0]?.query).toContain("runbook");
+  });
+});
+
+describe("getServiceQuery", () => {
+  it("fills the service recipe with the service name", () => {
+    expect(getServiceQuery("tempo", "checkout-api")).toBe(
+      '{ resource.service.name = "checkout-api" && status = error }',
+    );
+    expect(getServiceQuery("loki", "checkout")).toBe('{service="checkout"} |= "error"');
+  });
+
+  it("never injects an unsafe or overlong name into any recipe", () => {
+    for (const type of ["tempo", "loki", "prometheus", "elasticsearch"]) {
+      const example = getConnectorQueryGuide(type).examples[0].query;
+      for (const name of ['a b', "x\ny", "a".repeat(101), '}|~"', "a;b"]) {
+        expect(getServiceQuery(type, name)).toBe(example);
+      }
+    }
+  });
+
+  it("falls back to the guide example without a usable service name", () => {
+    const example = getConnectorQueryGuide("tempo").examples[0].query;
+    expect(getServiceQuery("tempo", "")).toBe(example);
+    expect(getServiceQuery("tempo", 'bad"name')).toBe(example);
+    expect(getServiceQuery("github", "checkout")).toBe(
+      getConnectorQueryGuide("github").examples[0].query,
+    );
   });
 });
