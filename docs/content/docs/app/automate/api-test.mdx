@@ -1,10 +1,10 @@
 ---
-title: API Test
+title: API test
 description: HTTP and GraphQL endpoint testing
 icon: ArrowLeftRight
 ---
 
-Validate REST APIs and GraphQL endpoints with HTTP requests and response assertions. API tests use Playwright's request context for reliable HTTP testing.
+Validate REST APIs and GraphQL endpoints with HTTP requests and response assertions. API tests use Playwright's `request` context, not `fetch`.
 
 ## Example
 
@@ -33,21 +33,22 @@ test.describe('API health check', () => {
 
 📚 [Playwright API Testing](https://playwright.dev/docs/api-testing)
 
-## Create Test
+## Create an API test
 
 <Steps>
 <Step>
-Go to **Create → API Test**
+Go to **Create → API Test**.
 </Step>
 <Step>
-Write your test script
+Write your test script.
 </Step>
 <Step>
-Click **Run** to validate
+Select **Run** to validate.
 </Step>
 <Step>
-**Save** when passing
-</Step></Steps>
+Select **Save** when it passes.
+</Step>
+</Steps>
 
 <Accordions>
 <Accordion title="HTTP methods and assertions" id="methods-assertions">
@@ -109,20 +110,13 @@ expect(response.ok()).toBeTruthy();
 
 ## Tips
 
-- Use `getSecret()` for API keys (execution output is redacted)
-- Set appropriate timeouts for slow endpoints
-- Validate response structure, not just status codes
-- Use Playwright's `request` context instead of `fetch` for better integration
+- Use `getSecret()` for API keys. Execution output is redacted.
+- Set timeouts that fit slow endpoints.
+- Validate response structure, not just status codes.
 
-<Accordions>
-<Accordion title="Further reading" id="further-reading">
+See the [APIRequestContext reference](https://playwright.dev/docs/api/class-apirequestcontext).
 
-- [APIRequestContext reference](https://playwright.dev/docs/api/class-apirequestcontext)
-
-</Accordion>
-</Accordions>
-
-## Next steps
+## Related
 
 <Cards>
 <Card title="Variables" href="/docs/app/automate/variables" description="Base URLs and API keys" />

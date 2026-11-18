@@ -1,56 +1,35 @@
 ---
 title: Communicate
-description: Alerts, notification channels, and status pages
+description: Alerts, notification channels and status pages
 icon: Bell
 ---
 
-Keep your team informed when issues occur and communicate service status to your users. Supercheck provides multi-channel alerting for internal teams and public status pages for external communication.
-
-## Core Features
+Tell your team when something breaks and your users how services are doing.
 
 <Cards>
 <Card icon={<Bell className="text-amber-500" />} title="Notifications" href="/docs/app/communicate/alerts">
-Get notified via Slack, email, Discord, Telegram, Microsoft Teams, or webhooks when tests fail or monitors go down
+Alert Slack, email, Discord, Telegram, Microsoft Teams or a webhook when tests fail or monitors go down
 </Card>
 
-<Card icon={<Tally4 className="text-emerald-500" />} title="Status Pages" href="/docs/app/communicate/status-pages">
-Create public-facing pages to communicate system health, incidents, and maintenance to your users
-</Card>
-</Cards>
-
-## Alert Providers
-
-Send notifications through multiple channels. Configure different providers for different severity levels or teams.
-
-<Cards>
-<Card icon={<Mail className="text-rose-500" />} title="Email">
-Professional HTML emails via SMTP with detailed status information and dashboard links
-</Card>
-
-<Card icon={<BrandMark name="slack" />} title="Slack">
-Send alerts to the channel configured by your Slack webhook.
-</Card>
-
-<Card icon={<BrandMark name="webhook" />} title="Webhook">
-Send JSON to a publicly reachable endpoint; use templates for PagerDuty or custom integrations.
-</Card>
-
-<Card icon={<BrandMark name="telegram" />} title="Telegram">
-Bot messages to chats or groups with Markdown formatting
-</Card>
-
-<Card icon={<BrandMark name="discord" />} title="Discord">
-Embedded messages to server channels with color-coded status
-</Card>
-
-<Card icon={<BrandMark name="teams" />} title="Microsoft Teams">
-Adaptive Card notifications via Power Automate workflows
+<Card icon={<Tally4 className="text-emerald-500" />} title="Status pages" href="/docs/app/communicate/status-pages">
+Publish component status, incidents and maintenance to your users
 </Card>
 </Cards>
 
-Failure and recovery thresholds keep brief interruptions quiet: see [Threshold configuration](/docs/app/communicate/alerts#threshold-configuration).
+## Notification channels
 
-## Public Status Pages
+| Channel | Delivery |
+|---|---|
+| Email | HTML emails via SMTP with status details and dashboard links |
+| Slack | The channel set by your Slack webhook |
+| Webhook | JSON to a publicly reachable endpoint. Templates cover PagerDuty and custom integrations |
+| Telegram | Bot messages to chats or groups with Markdown formatting |
+| Discord | Embedded messages to server channels with color-coded status |
+| Microsoft Teams | Adaptive Card notifications via Power Automate workflows |
+
+Failure and recovery thresholds keep brief interruptions quiet. See [Threshold configuration](/docs/app/communicate/alerts#threshold-configuration).
+
+## Status page capabilities
 
 | Capability | Detail |
 |---|---|

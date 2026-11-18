@@ -1,19 +1,29 @@
 ---
-title: Agent Test
+title: Agent test
 description: Test your own AI agent with repeated runs and a pass rate
 icon: Bot
 ---
 
-An agent test calls an AI agent you run (a chat model, a support bot, an A2A agent or an MCP tool) and checks the replies. Agent replies vary, so a test sends the same prompt several times and asserts on the **pass rate** instead of one answer.
+An agent test calls an AI agent you run (a chat model, support bot, A2A agent or MCP tool). Replies vary, so the test sends the same prompt several times and asserts on the **pass rate** instead of one answer.
 
-Agent tests run in the cloud only. You can create, edit and run them in the [Playground](/docs/app/automate/playground), schedule them in a [job](/docs/app/automate/jobs) or watch them with a synthetic monitor.
+Agent tests run in the cloud only. Run them in the [Playground](/docs/app/automate/playground), schedule them in a [job](/docs/app/automate/jobs) or watch them with a synthetic monitor.
 
 ## Try it in 1 minute
 
-1. Open **Create → Agent Test**. The editor opens with the **Quick start** template. It calls a tool on DeepWiki, a free public MCP server, so it needs no key or variable.
-2. Click **Run**. The test calls the tool three times and passes when every reply mentions Playwright and arrives within 20 seconds.
-3. Open the run. The **Agent results** card shows the pass rate, the slowest call, the tool called and any failures. Token counts appear for chat agents; MCP servers report none.
-4. Click **Templates** and pick one for your own agent. Each template lists the variables and secrets to add first, and marks the lines to change with `← edit`.
+<Steps>
+<Step>
+Open **Create → Agent Test**. The **Quick start** template calls a tool on DeepWiki, a free public MCP server, so it needs no key or variable.
+</Step>
+<Step>
+Select **Run**. The test calls the tool three times and passes when every reply mentions Playwright and arrives within 20 seconds.
+</Step>
+<Step>
+Open the run. The **Agent results** card shows the pass rate, slowest call, tool called and any failures. Token counts appear for chat agents. MCP servers report none.
+</Step>
+<Step>
+Select **Templates** and pick one for your own agent. Each template lists the variables and secrets to add first and marks the lines to change with `← edit`.
+</Step>
+</Steps>
 
 ## How a run works
 
@@ -32,7 +42,7 @@ flowchart LR
     class F complete
 ```
 
-`@supercheck/agent-test` is the small library every agent test imports. It is Playwright's `test` and `expect` plus an `agent` fixture that connects to your agent, sends messages, repeats checks and grades answers. It is available in the editor and in cloud runs, so there is nothing to install yourself. The Playground editor shows its types and autocompletes it.
+Every agent test imports `@supercheck/agent-test`: Playwright's `test` and `expect` plus an `agent` fixture that connects to your agent, sends messages, repeats checks and grades answers. It is built into the editor (with types and autocomplete) and cloud runs.
 
 ## Templates
 
@@ -78,8 +88,6 @@ test('support bot states the refund policy', async ({ agent }) => {
 });
 ```
 
-Pass keys in yourself with `getSecret` and URLs with `getVariable`; nothing is added to the test for you. The test fails when its own assertions fail, as with any other test.
-
 ## API
 
 | API | Meaning |
@@ -95,24 +103,24 @@ The run page shows an **Agent results** card with the pass rate, attempts, token
 ## Limits
 
 - **Tools are only those the agent reports.** For `openai` they are the `tool_calls` the agent returns; for `a2a`, what the task history exposes. A black-box HTTP agent reports none.
-- **A run lasts at most 5 minutes**, and in a job that limit is shared by every test in the job. Keep agent tests in their own job. Inside a run, one test may take at most 4 minutes, and one `repeat()` at most 200 seconds. Each `send()` times out after `timeoutMs`.
+- **A run lasts at most 5 minutes**, shared by every test in a job, so keep agent tests in their own job. One test may take at most 4 minutes and one `repeat()` at most 200 seconds. Each `send()` times out after `timeoutMs`.
 - **You pay for the calls.** Calls to your agent and to your judge model are billed by their provider, not by Supercheck. AI grading uses your own judge endpoint and key (`agent.judge`); it does not use Supercheck AI credits.
 - **Public addresses only.** Cloud runs reach public addresses only: an agent on a private or internal address is unreachable. Expose it on a public URL.
-- **No redirects.** A request that gets a redirect (HTTP 3xx) fails and names the target, so it cannot reach an internal address or carry your headers to another host. Connect to the final URL.
+- **No redirects.** A redirect (HTTP 3xx) fails and names the target, so requests cannot reach an internal address or carry your headers to another host. Connect to the final URL.
 - **Replies up to 5 MiB.** A larger reply fails the request.
 - **Remote only.** `supercheck test run --local` and `job run --local` refuse agent tests.
 
 ## Watch an agent with a synthetic monitor
 
-Pick an agent test in a [synthetic monitor](/docs/app/monitor#synthetic-monitor) to check your agent on a schedule. The monitor shows the pass rate of each run.
+Pick an agent test in a [synthetic monitor](/docs/app/monitor#synthetic-monitor) to check your agent on a schedule. The monitor shows each run's pass rate.
 
-Plan the number of calls before you pick an interval. A 5-minute interval is 8,640 runs a month (30 days), so a test that repeats 10 times sends about 86,400 calls a month to your agent for each location. A 15-minute interval cuts that to 28,800.
+Plan calls before you pick an interval. A 5-minute interval is 8,640 runs a month (30 days), so a test that repeats 10 times sends about 86,400 calls a month to your agent for each location. A 15-minute interval cuts that to 28,800.
 
-For an agent test the monitor form defaults to a failure threshold of 3 and a `sev3` incident. A single failed run sends a **Single failed agent run** warning to your alert channels and opens no incident; the incident opens after 3 failed runs in a row. See [Alerts](/docs/app/communicate/alerts#warnings).
+The monitor form defaults to a failure threshold of 3 and a `sev3` incident. A single failed run sends a **Single failed agent run** warning and opens no incident. The incident opens after 3 failed runs in a row. See [Alerts](/docs/app/communicate/alerts#warnings).
 
 ## In repositories
 
-With the [CLI](/docs/cli/configuration#test-metadata-annotations), an agent test is a normal `*.pw.ts` file whose first line is `// @type agent`. `supercheck pull` writes the line and `deploy` sends the test as an agent test.
+With the [CLI](/docs/cli/configuration#test-metadata-annotations), an agent test is a `*.pw.ts` file whose first line is `// @type agent`. `supercheck pull` writes the line and `deploy` sends the test as an agent test.
 
 ```typescript
 // @type agent
