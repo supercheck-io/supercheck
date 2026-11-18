@@ -12,8 +12,11 @@ import {
   IncidentUpdateEmail,
   TestEmail,
   TrialNotificationEmail,
+  UsageNotificationEmail,
+  OrganizationDeletionEmail,
   alertEmailSubject,
 } from "./index";
+import { emailLogoUrl, formatEmailTime } from "./base-layout";
 
 // @react-email/render needs a dynamic import Jest cannot run here; static markup is
 // enough to check content. Every email must share the BaseLayout chrome.
@@ -137,5 +140,112 @@ describe("email consistency", () => {
     const html = render(<TrialNotificationEmail {...t} manageBillingUrl="https://app.io/b" />);
     expect(html).toContain("Manage billing");
     expect(html).toContain('href="https://app.io/b"');
+  });
+});
+
+describe("email shell rules", () => {
+  const render = renderToStaticMarkup;
+  const org = "Acme's \"Org\" & Co";
+
+  it("escapes names exactly once (no double-escaped apostrophes)", () => {
+    const html = render(
+      <OrganizationInvitationEmail inviteUrl="https://x.io/i" organizationName={org} role="admin" />,
+    );
+    expect(html).toContain("Acme&#x27;s &quot;Org&quot; &amp; Co");
+    expect(html).not.toMatch(/&amp;(#|quot;|amp;)/);
+  });
+
+  it("renders the logo from an absolute public URL with decorative alt text", () => {
+    const prev = { a: process.env.NEXT_PUBLIC_APP_URL, b: process.env.APP_URL };
+    process.env.NEXT_PUBLIC_APP_URL = "https://app.example.com/";
+    try {
+      const html = render(<TestEmail />);
+      expect(html).toContain('src="https://app.example.com/supercheck-logo.png"');
+      expect(html).toContain('alt=""');
+      expect(html).toContain("<title>");
+    } finally {
+      if (prev.a === undefined) delete process.env.NEXT_PUBLIC_APP_URL; else process.env.NEXT_PUBLIC_APP_URL = prev.a;
+      if (prev.b === undefined) delete process.env.APP_URL; else process.env.APP_URL = prev.b;
+    }
+  });
+
+  it("logo URL follows the instance app URL and is omitted without one (never supercheck.io)", () => {
+    expect(emailLogoUrl({ NEXT_PUBLIC_APP_URL: "https://sc.acme.test/" } as unknown as NodeJS.ProcessEnv)).toBe("https://sc.acme.test/supercheck-logo.png");
+    expect(emailLogoUrl({ APP_URL: "http://localhost:3000" } as unknown as NodeJS.ProcessEnv)).toBe("http://localhost:3000/supercheck-logo.png");
+    expect(emailLogoUrl({} as NodeJS.ProcessEnv)).toBeUndefined();
+    expect(emailLogoUrl({ APP_URL: "not-a-url" } as unknown as NodeJS.ProcessEnv)).toBeUndefined();
+    const prev = { a: process.env.NEXT_PUBLIC_APP_URL, b: process.env.APP_URL };
+    delete process.env.NEXT_PUBLIC_APP_URL;
+    delete process.env.APP_URL;
+    try {
+      const html = render(<TestEmail />);
+      expect(html).not.toContain("<img");
+      expect(html).not.toContain("supercheck-logo.png");
+      expect(html).toContain("Supercheck");
+    } finally {
+      if (prev.a !== undefined) process.env.NEXT_PUBLIC_APP_URL = prev.a;
+      if (prev.b !== undefined) process.env.APP_URL = prev.b;
+    }
+  });
+
+  it("usage, trial and deletion emails say why they were sent", () => {
+    expect(render(<UsageNotificationEmail organizationName="A" notificationType="usage_80_percent" resourceType="playwright" usageAmount={8} usageLimit={10} usagePercentage={80} billingPageUrl="https://x.io/b" periodEndDate="Dec 1" />)).toContain("you manage billing for this organization");
+    expect(render(<TrialNotificationEmail organizationName="A" kind="midway" daysRemaining={7} subscribeUrl="https://x.io/s" />)).toContain("you manage billing for this organization");
+    expect(render(<OrganizationDeletionEmail organizationName="A" kind="requested" />)).toContain("owner or admin of this organization");
+  });
+
+  it("logo URL prefers an explicit appUrl, then env vars, then no image", () => {
+    const prev = { a: process.env.NEXT_PUBLIC_APP_URL, b: process.env.APP_URL };
+    delete process.env.NEXT_PUBLIC_APP_URL;
+    delete process.env.APP_URL;
+    try {
+      expect(render(<MonitorAlertEmail title="t" message="m" fields={[]} footer="" type="failure" appUrl="https://explicit.test/" />)).toContain('src="https://explicit.test/supercheck-logo.png"');
+      process.env.APP_URL = "https://env.test";
+      expect(render(<MonitorAlertEmail title="t" message="m" fields={[]} footer="" type="failure" appUrl="https://explicit.test" />)).toContain("https://explicit.test/supercheck-logo.png");
+      expect(render(<MonitorAlertEmail title="t" message="m" fields={[]} footer="" type="failure" />)).toContain("https://env.test/supercheck-logo.png");
+      delete process.env.APP_URL;
+      expect(render(<MonitorAlertEmail title="t" message="m" fields={[]} footer="" type="failure" />)).not.toContain("<img");
+    } finally {
+      if (prev.a === undefined) delete process.env.NEXT_PUBLIC_APP_URL; else process.env.NEXT_PUBLIC_APP_URL = prev.a;
+      if (prev.b === undefined) delete process.env.APP_URL; else process.env.APP_URL = prev.b;
+    }
+  });
+
+  it("detail labels are row headers", () => {
+    const html = render(<MonitorAlertEmail title="t" message="m" fields={[{ title: "Monitor", value: "API" }]} footer="" type="failure" />);
+    expect(html).toContain('<th scope="row"');
+  });
+
+  it("explains why the alert was sent and links to notification settings", () => {
+    const html = render(
+      <MonitorAlertEmail title="t" message="m" fields={[]} footer="" type="failure" manageUrl="https://app.io/notifications" />,
+    );
+    expect(html).toContain("You received this alert");
+    expect(html).toContain('href="https://app.io/notifications"');
+  });
+
+  it("formats times in UTC with an explicit zone", () => {
+    expect(formatEmailTime(new Date("2026-11-18T06:02:36Z"))).toBe("Wed, 18 Nov 2026 06:02:36 UTC");
+  });
+
+  it("every action email uses the shared primary button", () => {
+    const primary = (html: string, href: string) => html.match(new RegExp(`<a[^>]*href="${href}"[^>]*>`))?.[0] ?? "";
+    const usage = render(<UsageNotificationEmail organizationName="A" notificationType="usage_80_percent" resourceType="playwright" usageAmount={8} usageLimit={10} usagePercentage={80} billingPageUrl="https://x.io/b" periodEndDate="Dec 1" />);
+    const trial = render(<TrialNotificationEmail organizationName="A" kind="midway" daysRemaining={7} subscribeUrl="https://x.io/s" />);
+    expect(primary(usage, "https://x.io/b")).toContain("background-color:#111827");
+    expect(primary(trial, "https://x.io/s")).toContain("background-color:#111827");
+  });
+
+  it("rejects malformed or non-web logo bases and keeps the reason when only reason is given", () => {
+    expect(emailLogoUrl({ APP_URL: "https://app host.test" } as unknown as NodeJS.ProcessEnv)).toBeUndefined();
+    expect(emailLogoUrl({ APP_URL: "mailto:a@b.test" } as unknown as NodeJS.ProcessEnv)).toBeUndefined();
+    expect(render(<BaseLayout preview="p" title="t" showStandardFooter={false} reason="Because reasons.">x</BaseLayout>)).toContain("Because reasons.");
+  });
+
+  it("incident email links to notification settings on the incident's origin", () => {
+    const ok = render(<IncidentUpdateEmail event="created" incidentNumber={1} title="t" severity="sev2" statusLabel="Open" incidentUrl="https://app.io/incidents/7" />);
+    expect(ok).toContain('href="https://app.io/notifications"');
+    expect(render(<IncidentUpdateEmail event="created" incidentNumber={1} title="t" severity="sev2" statusLabel="Open" incidentUrl="not a url" />)).not.toContain("Manage notifications");
+    expect(render(<IncidentUpdateEmail event="created" incidentNumber={1} title="t" severity="sev2" statusLabel="Open" incidentUrl="mailto:ops@example.test" />)).not.toContain("null/notifications");
   });
 });

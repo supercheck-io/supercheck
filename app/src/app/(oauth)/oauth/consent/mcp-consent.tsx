@@ -184,8 +184,8 @@ export function McpConsent({ oauthQuery, userEmail, projects, canWriteIncidents 
           </Button>
         </div>
         <p className="text-center text-xs text-muted-foreground">
-          Signed in as {userEmail}. Manage connected apps any time at{" "}
-          <a href="/connected-apps" className="underline">/connected-apps</a>.
+          Signed in as {userEmail}. You can disconnect it any time in{" "}
+          <a href="/connected-apps" className="underline underline-offset-2 hover:text-foreground">Connected apps</a>.
         </p>
       </CardFooter>
     </Card>

@@ -1,7 +1,7 @@
 import { Section, Text } from "@react-email/components";
 import * as React from "react";
 import { PALETTE } from "./palette";
-import { BaseLayout, DetailsTable, EmailButton, type DetailField } from "./base-layout";
+import { BaseLayout, DetailsTable, EmailButton, formatEmailTime, type DetailField } from "./base-layout";
 
 export type IncidentUpdateEvent =
   | "created"
@@ -128,8 +128,19 @@ export function incidentUpdateFields(
   if (props.serviceName) fields.push({ title: "Service", value: props.serviceName });
   fields.push({ title: "Owner", value: props.assigneeName || "Unassigned" });
   if (props.actorName) fields.push({ title: "Updated by", value: props.actorName });
-  fields.push({ title: "Time", value: (props.occurredAt ?? new Date()).toUTCString() });
+  fields.push({ title: "Time", value: formatEmailTime(props.occurredAt ?? new Date()) });
   return fields;
+}
+
+/** Notification settings live on the same origin as the incident link. */
+function notificationsLink(incidentUrl: string) {
+  try {
+    const url = new URL(incidentUrl);
+    if (!/^https?:$/.test(url.protocol)) return undefined;
+    return { href: `${url.origin}/notifications`, label: "Manage notifications" };
+  } catch {
+    return undefined;
+  }
 }
 
 export const IncidentUpdateEmail = ({
@@ -154,6 +165,8 @@ export const IncidentUpdateEmail = ({
       preview={`${headline}: #${incidentNumber} ${title}`}
       title={headline}
       headerColor={accent}
+      reason="You received this because you are an owner, participant or notification recipient for this incident."
+      manage={notificationsLink(incidentUrl)}
     >
       <Section style={titleSection}>
         <Text style={metaRow}>

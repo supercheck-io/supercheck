@@ -40,7 +40,7 @@ export const OrganizationInvitationEmail = ({
 }: OrganizationInvitationEmailProps) => {
   return (
     <BaseLayout
-      preview={`You're invited to join ${organizationName} on Supercheck`}
+      preview={`Join ${organizationName} as ${roleDisplayName(role)}. The invitation expires in 7 days.`}
       title="Team Invitation"
       headerColor={PALETTE.info}
     >
