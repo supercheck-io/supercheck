@@ -1,30 +1,30 @@
 ---
-title: API Reference
+title: API reference
 description: Supercheck REST API documentation
 icon: Braces
 ---
 
-The supported public Supercheck API provides programmatic access to jobs, tests, monitors, variables, notifications, and other documented resources. The web dashboard also uses internal and streaming routes that are intentionally outside this public API contract.
+The public API gives programmatic access to jobs, tests, monitors, variables, notifications and other documented resources. Internal and streaming dashboard routes are outside this contract.
 
 ## Base URL
 
 | Environment | URL |
 |-------------|-----|
 | **Cloud** | `https://app.supercheck.io` |
-| **Self-Hosted** | Your deployment URL (e.g. `https://supercheck.yourdomain.com`) |
+| **Self-hosted** | Your deployment URL (e.g. `https://supercheck.yourdomain.com`) |
 
 ## Authentication
 
-Resource-management requests require authentication via an `Authorization: Bearer <token>` header. Explicitly public endpoints, such as health checks and published status-page feeds, do not. See [Authentication](/docs/api/authentication) for details on token types.
+Resource requests need an `Authorization: Bearer <token>` header. Public endpoints, such as health checks and published status-page feeds, do not. See [Authentication](/docs/api/authentication).
 
 ```bash
 curl https://app.supercheck.io/api/jobs \
   -H "Authorization: Bearer sck_live_..."
 ```
 
-## Interactive API Reference
+## Endpoint reference
 
-Browse the full interactive API documentation with request/response examples, code samples, and a built-in playground to test endpoints directly.
+Each group has request and response examples, code samples and a playground.
 
 <Cards>
 <Card title="Authentication" href="/docs/api/cli-tokens/listCliTokens" icon={<KeyRound className="text-amber-500" />}>
@@ -92,16 +92,16 @@ Health check and available execution locations
 </Card>
 </Cards>
 
-## OpenAPI Specification
+## OpenAPI specification
 
-The OpenAPI 3.1 specification for the supported public API is available for SDK generation and tooling:
+The OpenAPI 3.1 spec is available for SDK generation:
 
 | Format | URL |
 |--------|-----|
 | **JSON** | `/openapi/openapi.json` |
 | **YAML** | `/openapi/openapi.yaml` |
 
-### SDK Generation
+### SDK generation
 
 ```bash
 # TypeScript types
@@ -123,9 +123,9 @@ openapi-generator generate \
   -g go -o ./supercheck-sdk-go
 ```
 
-## Response Format
+## Response format
 
-Responses are JSON. Pagination shapes are endpoint-specific; for example, resource-list endpoints commonly return:
+Responses are JSON. Pagination is endpoint-specific; resource lists commonly return:
 
 ```json
 {
@@ -141,11 +141,13 @@ Responses are JSON. Pagination shapes are endpoint-specific; for example, resour
 }
 ```
 
-## Rate Limits
+## Rate limits
 
-Job trigger keys default to 100 requests per 60 seconds (configurable per key). Other endpoints apply their own limits. See [Authentication](/docs/api/authentication#rate-limiting) for headers and `429` handling.
+Trigger keys default to 100 requests per 60 seconds, configurable per key. Other endpoints have their own limits. See [Authentication](/docs/api/authentication#rate-limiting).
 
-## Reference Guides
+## Related
 
-- [Authentication](/docs/api/authentication) — Token types, security, and rate limiting
-- [Errors](/docs/api/errors) — Error codes, formats, and retry behavior
+<Cards>
+<Card title="Authentication" href="/docs/api/authentication" description="Token types, security and rate limiting" />
+<Card title="Errors" href="/docs/api/errors" description="Error codes, formats and retry behavior" />
+</Cards>

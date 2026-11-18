@@ -1,6 +1,6 @@
 ---
-title: Command Reference
-description: Complete reference for all Supercheck CLI commands
+title: Command reference
+description: Every Supercheck CLI command, flag and exit code
 ---
 
 Every command is `supercheck <group> <command>`. Run `supercheck <command> --help` for options.
@@ -19,116 +19,100 @@ Every command is `supercheck <group> <command>`. Run `supercheck <command> --hel
 | [Variables](#variables), [Tags](#tags) | `var list/get/set/upload/download/delete`, `tag list/create/delete` |
 | [Analytics](#analytics) | `analytics playwright/k6` |
 | [Tokens and projects](#tokens-and-projects) | `token list/create/enable/disable/revoke`, `project list/members` |
-| [Notification providers](#notification-providers) | `notification list/get/create/update/delete`, `notification test <id> [--resolve]` |
-| [Alerts and audit](#alerts--audit) | `alert history`, `audit` |
-| [AI SRE](#ai-sre) | `incident list/get/timeline/create\|declare/policy/resources/postmortem/assign/unassign/ack/resolve`, `sre`, `service` |
+| [Notification providers](#notification-providers) | `notification list/get/create/update/delete/test` |
+| [Alerts and audit](#alerts-and-audit) | `alert history`, `audit` |
+| [AI SRE](#ai-sre) | `incident …`, `sre …`, `service …` |
 | [Maintenance windows](#maintenance-windows) | `maintenance list/get/create/update/end/extend/cancel/delete` |
 | [Monitoring-as-Code](#monitoring-as-code) | `pull`, `diff`, `deploy`, `destroy` |
 | [Utilities](#utilities) | `health`, `locations`, `upgrade`, `doctor` |
 
 ## Common tasks
 
-| I want to | Run | Details |
-|---|---|---|
-| Sign in | `supercheck login` | [Authentication](#authentication) |
-| See what to do next in a repo | `supercheck onboard` | [Authentication](#authentication) |
-| Run tests locally, no account | `supercheck test run --offline --all` | [Tests](#tests) |
-| Preview and publish config | `supercheck diff`, `supercheck deploy --dry-run`, then `supercheck deploy` | [Monitoring-as-Code](#monitoring-as-code) |
-| Trigger a job from CI | `supercheck job trigger <job-id> --wait` | [Jobs](#jobs) |
-| Check why a run failed | `supercheck run get <run-id>` | [Runs](#runs) |
-| Check monitor health | `supercheck monitor status <monitor-id>` | [Monitors](#monitors) |
-| Work an incident | `supercheck incident list`, `supercheck sre ask "..."` | [AI SRE](#ai-sre) |
-| Diagnose my setup | `supercheck doctor` | [Utilities](#utilities) |
+| I want to | Run |
+|---|---|
+| Sign in | `supercheck login` |
+| See what to do next in a repo | `supercheck onboard` |
+| Run tests locally, no account | `supercheck test run --offline --all` |
+| Preview and publish config | `supercheck diff`, `supercheck deploy --dry-run`, then `supercheck deploy` |
+| Trigger a job from CI | `supercheck job trigger <job-id> --wait` |
+| Check why a run failed | `supercheck run get <run-id>` |
+| Check monitor health | `supercheck monitor status <monitor-id>` |
+| Work an incident | `supercheck incident list`, `supercheck sre ask "..."` |
+| Diagnose my setup | `supercheck doctor` |
 
-## Global Flags
+## Global flags
 
-Available on all commands, before or after the subcommand:
-
-```bash
-supercheck --json job trigger <job-id> --wait
-supercheck --quiet whoami
-supercheck config validate --json
-```
+Available on all commands, before or after the subcommand, for example `supercheck --json job trigger <job-id> --wait`.
 
 | Flag | Description |
 |---|---|
-| `--json` | Output in JSON format (for CI/CD scripting) |
+| `--json` | JSON output for scripting |
 | `--envelope` | Include pagination metadata with JSON list results; requires `--json` |
-| `--show-secrets` | Disable redaction for sensitive fields in command output |
-| `--quiet` | Suppress non-essential output (only IDs and errors) |
-| `--wide` | Show tables without width limits |
+| `--show-secrets` | Disable redaction of sensitive fields |
+| `--quiet` | Only IDs and errors |
+| `--wide` | Tables without width limits |
 | `--no-color` | Disable ANSI colors |
-| `--debug` | Enable debug logging |
+| `--debug` | Debug logging |
 | `-v`, `--version` | Show version |
 
-Config-aware commands (for example `config`, `diff`, `deploy`, `pull`, `validate`, `destroy`) also accept `--config <path>` to point at a specific config file.
+Config-aware commands (`config`, `diff`, `deploy`, `pull`, `validate`, `destroy`) also accept `--config <path>`.
 
-Delete commands (`job`, `test`, `monitor`, `run`, `requirement`, `var`, `tag` and `notification` `delete`) and `destroy` need project admin or higher.
+Delete commands (`job`, `test`, `monitor`, `run`, `requirement`, `var`, `tag`, `notification`) and `destroy` need project admin or higher.
 
 <Accordions>
 <Accordion title="JSON output and secret redaction" id="json-output">
 
-- For `sre ask`, `sre brief`, `run stream`, and `test status`, global `--json` produces newline-delimited JSON (NDJSON), one event per line.
-- List commands print a JSON array. Add `--envelope` to include pagination metadata.
-- Local test and job runs emit bounded NDJSON `local.result` records in JSON mode.
-- Errors are emitted on stderr. With `--json`, fatal errors are JSON on stderr with `error`, `exitCode`, and API `status` and `details` when available.
-- Sensitive fields are redacted by default, including notification provider webhook URLs, Discord and Teams webhook credentials, and provider config headers (monitor target URLs stay visible and credential headers are masked). Use `--show-secrets` only when the output can be handled securely.
-- Creating a trigger key requires `--show-secrets` to display its one-time plaintext value. The command fails before making the request when the flag is absent.
+- `sre ask`, `sre brief`, `run stream` and `test status` emit newline-delimited JSON (NDJSON), one event per line.
+- List commands print a JSON array. Add `--envelope` for pagination metadata.
+- Local test and job runs emit bounded NDJSON `local.result` records.
+- Fatal errors go to stderr as JSON with `error`, `exitCode`, and API `status` and `details` when available.
+- Sensitive fields are redacted by default: notification webhook URLs, Discord and Teams webhook credentials and provider config headers. Monitor target URLs stay visible and credential headers are masked. Use `--show-secrets` only when the output is handled securely.
+- Creating a trigger key requires `--show-secrets` to show its one-time value. Without it the command fails before sending the request.
 
 </Accordion>
 <Accordion title="Terminal output details" id="investigation-status-and-terminal-output">
 
-Use `--wide` for unrestricted table values or `--json` for complete structured payloads. `--no-color` and `NO_COLOR` disable colors. Pipes have no colors or spinners, and closing a pipe early (`supercheck ... | head`) ends the command quietly. Ctrl+C exits 130; stream idle timeouts exit 5.
-
-`config print` uses indented JSON in human mode, with secret variable values masked. Test create/update summaries omit the script blob; use `test get <id> --include-script` to read decoded source (redacted; add `--show-secrets` for the exact script).
-
-Structured SRE output follows the same Field/Value detail-table format as monitors, tests, and jobs. Triage separates run metadata from the complete narrative summary. Copilot answers and evidence briefs have report headings; quiet mode suppresses their content. `--json` takes precedence when combined with `--quiet`.
+- Use `--wide` for unrestricted table values or `--json` for complete payloads. `--no-color` and `NO_COLOR` disable colors. Pipes get no colors or spinners, and closing a pipe early (`supercheck ... | head`) ends the command quietly.
+- `config print` prints indented JSON with secret variable values masked.
+- Test create and update summaries omit the script. `test get <id> --include-script` reads the decoded source, redacted unless you add `--show-secrets`.
+- SRE output uses the same Field/Value tables as monitors, tests and jobs. Triage separates run metadata from the summary. Copilot answers and evidence briefs have report headings; `--quiet` suppresses their content. `--json` wins over `--quiet`.
 
 </Accordion>
 </Accordions>
 
-## Exit Codes
+## Exit codes
 
 | Code | Meaning | Example |
 |---|---|---|
-| `0` | Success | Job completed successfully |
+| `0` | Success | Job completed |
 | `1` | General error | Test failed, monitor down |
-| `2` | Authentication error | Invalid token, expired token |
+| `2` | Authentication error | Invalid or expired token |
 | `3` | Configuration error | Missing config, invalid schema |
-| `4` | Network / API error | API unreachable, 5xx response |
-| `5` | Timeout | Operation exceeded timeout |
+| `4` | Network or API error | API unreachable, 5xx |
+| `5` | Timeout | Operation exceeded timeout, stream idle timeout |
 | `130` | Interrupted | Ctrl+C during a stream |
 
-An operation that requires confirmation exits `3` when declined or when input closes (`ABORTED`), and exits `3` with `CONFIRMATION_REQUIRED` when confirmation is unavailable in a non-interactive session. Review its plan, then pass `--force` to apply the already-authorized change. Authentication errors continue to use exit code `2`.
+An operation that needs confirmation exits `3` when declined or when input closes (`ABORTED`). In a non-interactive session it exits `3` with `CONFIRMATION_REQUIRED`. Review the plan, then pass `--force` to apply the authorized change.
 
 ## Agent-first operation
 
 | Command | What it does | Key flags |
 |---|---|---|
-| `supercheck skills [topic]` | Print the offline workflow index or a focused guide (`onboarding`, `authoring`, `local`, `sync`, `configure`, `execute`, `ci`, `ship`, `safety`, `investigate`). Bundled with the CLI version; no credentials | — |
-| `supercheck skills install` | Write a small `.agents/skills/supercheck/SKILL.md` pointer. Existing skill files are preserved unless `--force` | `--path <directory>`, `--force` |
-| `supercheck capabilities` | Report CLI version, local workflow capabilities, and whether credentials are present | `--online` |
-| `supercheck schema config` | Describe the installed configuration schema without loading repository code; a field list, or the full structure with `--json` | `--json` |
+| `supercheck skills [topic]` | Print the offline workflow index or a focused guide: `onboarding`, `authoring`, `local`, `sync`, `configure`, `execute`, `ci`, `ship`, `safety`, `investigate`. Bundled with the CLI version; no credentials | — |
+| `supercheck skills install` | Write a `.agents/skills/supercheck/SKILL.md` pointer. Existing files are kept unless `--force` | `--path <directory>`, `--force` |
+| `supercheck capabilities` | Report CLI version, local capabilities and whether credentials are present | `--online` |
+| `supercheck schema config` | Describe the installed configuration schema without loading repository code; the full structure with `--json` | `--json` |
 
-```bash
-supercheck skills
-supercheck skills local
-supercheck skills sync
-supercheck skills configure
-supercheck skills execute
-supercheck skills investigate
-supercheck capabilities --json
-supercheck capabilities --online --json
-supercheck schema config --json
-```
-
-`--online` verifies the current API context with one request; it does not prove every server feature is available or that the token has permission for every operation.
+`--online` verifies the API context with one request. It does not prove that every server feature is available or that the token may perform every operation.
 
 ### Machine-readable plans and writes
 
-`diff --json` and `deploy --dry-run --json` return plans on stdout. Successful deploys return per-resource results, including server-assigned IDs and the state-file path. `pull --dry-run --json` describes the remote resources and config path it would write. Other mutation `--dry-run --json` commands return the proposed request payload.
+- `diff --json` and `deploy --dry-run --json` return plans on stdout.
+- Successful deploys return per-resource results with server-assigned IDs and the state-file path.
+- `pull --dry-run --json` describes the remote resources and config path it would write.
+- Other mutation `--dry-run --json` commands return the proposed request payload.
 
-JSON errors on stderr carry a stable `code` agents can branch on, with `retryable` and suggested `nextActions` where useful.
+JSON errors on stderr carry a stable `code` to branch on, plus `retryable` and suggested `nextActions` where useful.
 
 | Code | Meaning |
 |---|---|
@@ -145,13 +129,11 @@ JSON errors on stderr carry a stable `code` agents can branch on, with `retryabl
 | `DEVICE_CODE_DENIED`, `DEVICE_CODE_EXPIRED`, `DEVICE_CODE_CONSUMED`, `DEVICE_LOGIN_UNVERIFIED`, `TOKEN_LIMIT_REACHED` | Browser-login outcomes |
 | `CONTEXT_MISMATCH` | The config's API URL, organization or project does not match the logged-in context; see `supercheck link` |
 
-In a non-interactive session, a write requiring confirmation refuses with exit code `3` and a `CONFIRMATION_REQUIRED` error. Review the preview before explicitly passing `--force`. The CLI checks that config organization/project match the authenticated API context before sync operations.
+The CLI checks that the config's organization and project match the authenticated context before sync operations.
 
 <Callout type="info">
-Deploy records returned IDs in `supercheck.state.json`. Share it with CI so subsequent deploys manage the same resources; do not commit the transient `.lock` file. Names alone do not establish ownership; pull an existing resource or set its explicit ID. Deploy does not rename local test files.
+Deploy records returned IDs in `supercheck.state.json`. Share it with CI so later deploys manage the same resources, and do not commit the transient `.lock` file. Names alone do not establish ownership: pull an existing resource or set its explicit ID. Deploy does not rename local test files.
 </Callout>
-
----
 
 ## Authentication
 
@@ -167,62 +149,50 @@ Deploy records returned IDs in `supercheck.state.json`. Share it with CI so subs
 | `supercheck whoami` | Show the authenticated project, role and token details | — |
 | `supercheck logout` | Clear stored credentials | — |
 
-```bash
-supercheck login
-supercheck login --token <token>
-supercheck whoami
-supercheck logout
-```
-
-`whoami` prints User, Token, API URL, Project, Role, Expires and Last used when your role permits viewing API keys; the organization appears only with `--json`. A project viewer cannot create a CLI token or sign in with the CLI, so it cannot use `whoami` either.
+`whoami` prints User, Token, API URL, Project, Role, Expires and Last used when your role may view API keys. The organization appears only with `--json`. A project viewer cannot sign in with the CLI, so it cannot use `whoami` either.
 
 <Accordions>
 <Accordion title="supercheck login: flags and browser sign-in" id="supercheck-login">
 
-```bash
-supercheck login --token <token>
-supercheck login --token <token> --url https://supercheck.yourdomain.com
-```
-
 | Flag | Description |
 |---|---|
-| `--token <token>` | CLI token (`sck_live_*` or `sck_test_*`). Without it, the CLI signs in through your browser when the server supports it |
+| `--token <token>` | CLI token (`sck_live_*` or `sck_test_*`), verified against the API before it is stored. Without it, the CLI signs in through your browser when the server supports it |
 | `--url <url>` | API base URL. Browser login uses `--url`, then `SUPERCHECK_URL`, then the stored URL, then the cloud default. With `--token`, the project config `api.baseUrl` is also tried after the stored URL |
 | `--reauth` | Start a new browser login even if you are already signed in |
 | `--no-browser` | Print the login URL and code without opening a browser |
 | `--wait` | Wait for browser approval instead of returning immediately (default in an interactive terminal) |
 | `--timeout <seconds>` | With `--wait`: give up after this long (30 to 3600, default 900); the login stays resumable. A dropped connection during the wait is retried until then |
 
-A token is verified against the API before being stored locally.
+**Browser login** is a device-authorization sign-in. The CLI prints a URL and a short code. You approve the request in the browser, choosing the project the CLI may access, and the CLI stores a project-scoped key that expires in 90 days. Only approve a code you just requested yourself. Enter the code from your terminal in the confirmation field; the info icon shows the request code and requester address.
 
-**Browser login.** `supercheck login` starts a device-authorization sign-in: it prints a URL and a short code, you approve the request in the browser (choosing the project the CLI may access), and the CLI stores a project-scoped key that expires in 90 days. Only approve a code you just requested yourself. Enter the code from your terminal in the confirmation field; the info icon shows the request code and requester address for comparison.
-
-- **Interactive terminal:** the command waits for approval and opens your browser. Use `--no-browser` to print the URL only.
-- **Agents and scripts:** `supercheck login --json` prints the URL and code and **returns immediately** with `"state": "authorization_pending"`. Run the same command again after approval to finish. With `--wait` it blocks instead: it prints the pending object first (so the URL and code can be shown), then a second JSON line with the result.
-- **Re-authenticating:** `--reauth` starts a new login even if you are already signed in. `SUPERCHECK_TOKEN`, if set, always takes precedence over a stored login.
-- **Plans:** if the organization you pick has neither an active trial nor a paid plan (cloud only), the approval page says so and, if you own the organization, offers **Choose a plan**. That makes the organization active and opens billing in a new tab, so the right organization is charged and your login code stays valid. Approving never depends on a plan: you can connect and run tests locally first. Cloud runs require an active trial or plan, as shown beside the approval controls. Run `supercheck plan` afterwards to confirm.
+- **Interactive terminal:** waits for approval and opens your browser.
+- **Agents and scripts:** `supercheck login --json` prints the URL and code and returns immediately with `"state": "authorization_pending"`. Run it again after approval to finish. With `--wait` it blocks: it prints the pending object first, then a second JSON line with the result.
+- **Precedence:** `SUPERCHECK_TOKEN`, if set, always wins over a stored login.
+- **Plans (cloud only):** if the organization you pick has neither an active trial nor a paid plan, the approval page says so and, if you own the organization, offers **Choose a plan**. That makes the organization active and opens billing in a new tab, so the right organization is charged and your login code stays valid. Approving never depends on a plan: you can connect and run tests locally first. Cloud runs require an active trial or plan. Run `supercheck plan` afterwards to confirm.
 - **Self-hosted:** if the server does not enable browser login, the command explains how to use `--token`. Point at your instance with `--url` or `SUPERCHECK_URL`.
 
 </Accordion>
 <Accordion title="supercheck link" id="supercheck-link">
 
-Points `supercheck.config.ts` at the organization and project you are logged in to. It edits only the `organization` and `project` values and the default API URL written by `supercheck init`, and never executes the file. If the config already targets a different project it refuses with `CONTEXT_MISMATCH`; `--dry-run` shows that conflict without failing, and `--force` replaces the existing values, so use it only after confirming the change.
+Edits only the `organization` and `project` values and the default API URL written by `supercheck init`, and never executes the file. If the config already targets a different project it refuses with `CONTEXT_MISMATCH`. `--dry-run` shows the conflict without failing. `--force` replaces the existing values, so use it only after confirming the change.
 
 </Accordion>
 <Accordion title="supercheck onboard, discover and plan" id="supercheck-onboard">
 
-**`onboard`** is read-only. It reports the state (`needs_init`, `needs_tests`, `needs_auth`, `needs_link`, `needs_plan`, `ready_to_deploy`, `deployed`) and the single next command. It never changes files or the cloud and is safe to run repeatedly.
-
-**`discover`** prints bounded, read-only facts about the repository: package manager, framework, routes, existing Playwright and k6 tests, CI provider and the key names (never values) from `.env.example`. It does not run scripts, import configuration, read `.env`, or follow symlinks.
-
-**`plan`** shows whether the organization has an active subscription. An unknown result is never treated as free or paid.
+- **`onboard`** never changes files or the cloud, so it is safe to repeat. It reports the state (`needs_init`, `needs_tests`, `needs_auth`, `needs_link`, `needs_plan`, `ready_to_deploy`, `deployed`) and the next command.
+- **`discover`** reports package manager, framework, routes, existing Playwright and k6 tests, CI provider and the key names (never values) from `.env.example`. It does not run scripts, import configuration, read `.env` or follow symlinks.
+- **`plan`** never treats an unknown result as free or paid.
 
 </Accordion>
 <Accordion title="supercheck ci init and agent install" id="supercheck-ci-init---github">
 
-**`ci init --github`** writes `.github/workflows/supercheck.yml`: pull requests run tests locally without credentials, and pushes to `main` deploy using the `SUPERCHECK_TOKEN` repository secret. It does not create that secret. Set a `SUPERCHECK_URL` repository variable only for a self-hosted instance; when it is unset or blank the CLI uses the API URL in `supercheck.config.ts` (Supercheck Cloud by default). The deploy job caches `supercheck.state.json` between runs (`actions/cache`). Caches can be evicted, so also commit the file; a newly committed state starts a fresh cache chain because the cache key includes the file's hash. The workflow runs the locally installed CLI (`npx --no-install`, `pnpm exec` or `yarn`, matching your lockfile), so add `@supercheck/cli` as a devDependency. It refuses to overwrite an existing file without `--force`.
+**`ci init --github`** writes a workflow where pull requests run tests locally without credentials and pushes to `main` deploy using the `SUPERCHECK_TOKEN` repository secret. It does not create that secret. Set a `SUPERCHECK_URL` repository variable only for a self-hosted instance. When it is unset or blank the CLI uses the API URL in `supercheck.config.ts` (Supercheck Cloud by default).
 
-**`agent install`** installs the Supercheck skill for a coding agent with `--target claude`, `cursor`, `codex`, `opencode` or `generic`. Existing files are never overwritten without `--force`; `--pointer AGENTS.md` adds a short block delimited by markers and only ever rewrites that block.
+- The deploy job caches `supercheck.state.json` with `actions/cache`. Caches can be evicted, so also commit the file. A newly committed state starts a fresh cache chain because the key includes the file's hash.
+- The workflow runs the locally installed CLI (`npx --no-install`, `pnpm exec` or `yarn`, matching your lockfile), so add `@supercheck/cli` as a devDependency.
+- It refuses to overwrite an existing file without `--force`.
+
+**`agent install`** installs the skill for `--target claude`, `cursor`, `codex`, `opencode` or `generic`. It never overwrites existing files without `--force`. `--pointer AGENTS.md` adds a short block delimited by markers and only ever rewrites that block.
 
 | Target | Installed to |
 |---|---|
@@ -233,39 +203,16 @@ Points `supercheck.config.ts` at the organization and project you are logged in 
 </Accordion>
 </Accordions>
 
----
-
 ## Configuration
 
 | Command | What it does | Key flags |
 |---|---|---|
-| `supercheck init` | Create `supercheck.config.ts` and the `_supercheck_/` folder | `--force`, `--skip-install`, `--skip-examples`, `--pm <manager>` |
+| `supercheck init` | Create `supercheck.config.ts` and the `_supercheck_/` folder | `--force`, `--skip-install`, `--skip-examples`, `--pm <manager>` (`npm`, `pnpm`, `yarn`, `bun`) |
 | `supercheck config validate` | Validate the configuration file schema | `--offline` |
-| `supercheck validate` | Validate local test scripts using the same rules as Playground | — |
-| `supercheck config print` | Print the resolved configuration with environment variable expansion | `--offline` |
+| `supercheck validate` | Validate local test scripts with the same rules as the Playground | — |
+| `supercheck config print` | Print the resolved configuration with environment variables expanded | `--offline` |
 
-<Accordions>
-<Accordion title="Examples" id="config-examples">
-
-```bash
-supercheck init
-supercheck init --force              # Overwrite existing config
-supercheck init --skip-install       # Skip dependency installation
-supercheck init --skip-examples      # Skip example test files
-supercheck init --pm pnpm            # Use specific package manager (npm, pnpm, yarn, bun)
-supercheck config validate
-supercheck config validate --offline
-supercheck validate
-supercheck config print
-supercheck config print --offline
-```
-
-</Accordion>
-</Accordions>
-
-`--offline` validates or prints a local-only config without API credentials. Both modes require an existing config file; `--offline` skips cloud project identity checks. `config print` redacts sensitive provider values, including webhook URLs and config headers; monitor URLs remain visible and credential headers are masked.
-
----
+`--offline` validates or prints a local-only config without API credentials. Both modes need an existing config file; `--offline` skips cloud project identity checks. `config print` redacts sensitive provider values, including webhook URLs and config headers.
 
 ## Jobs
 
@@ -274,59 +221,37 @@ supercheck config print --offline
 | `job list` | List jobs in the current project | `--page` (1), `--limit` (50) |
 | `job get <job-id>` | Get job details | — |
 | `job create` | Create a job | `--name` (required), `--tests` (required), `--description`, `--type`, `--schedule`, `--dry-run` |
-| `job update <job-id>` | Update job configuration | `--name`, `--description`, `--schedule`, `--tests` (replaces the test list), `--dry-run` |
+| `job update <job-id>` | Update a job | `--name`, `--description`, `--schedule`, `--tests` (replaces the test list), `--dry-run` |
 | `job delete <job-id>` | Delete a job with confirmation | `--force` |
-| `job run` | Run a job immediately, bypassing the cron schedule; `--wait` exits 1 on a failed run and 5 on timeout | `--id`, `--local`, `--cloud`, `--offline`, `--playwright-config`, `--wait`, `--timeout` (300, cloud only) |
+| `job run` | Run a job now, bypassing the cron schedule; `--wait` exits 1 on a failed run and 5 on timeout | `--id`, `--local`, `--cloud`, `--offline`, `--playwright-config`, `--wait`, `--timeout` (300, cloud only) |
 | `job trigger <job-id>` | Trigger a job with a trigger key, optionally wait | `--wait`, `--timeout` (300) |
 | `job keys` | List, create and revoke trigger keys | `create --name --expires-in <seconds>` (min 60), `delete` |
 
-<Accordions>
-<Accordion title="Examples" id="jobs-examples">
-
 ```bash
-supercheck job list --page 2 --limit 10
 supercheck job create --name "Nightly E2E" --tests <test-id> --schedule "0 2 * * *"
-supercheck job create --name "Smoke Tests" --tests id1,id2 --type k6 --dry-run
-supercheck job update <job-id> --schedule "0 3 * * *" --dry-run
-supercheck job delete <job-id> --force
-
-supercheck job run --id <job-id>
-supercheck job run --id <job-id> --local     # Run locally
-supercheck job run --id <job-id> --cloud     # Run in the cloud
-supercheck job run --id <job-id> --wait --json  # Run and wait for the result
 supercheck job run --id "Nightly E2E" --local --offline
-
-supercheck job trigger <job-id>
 supercheck job trigger <job-id> --wait --timeout 300
-supercheck --json job trigger <job-id> --wait
-
 supercheck job keys <job-id>
-supercheck --show-secrets job keys create <job-id> --name "CI Trigger"
-supercheck --show-secrets job keys create <job-id> --name "Temp Key" --expires-in 86400
+supercheck --show-secrets job keys create <job-id> --name "CI Trigger" --expires-in 86400
 supercheck job keys delete <job-id> <key-id>
 ```
-
-</Accordion>
-</Accordions>
 
 <Accordions>
 <Accordion title="Job types, status and local runs" id="supercheck-job-run">
 
-- `job create --type` selects the runner (`playwright` or `k6`). `--tests` takes test IDs (space or comma separated). Test `--type` uses API types: `browser`, `performance`, `api`, `database`, `custom`, `agent`.
-- Job status is runtime state, not configuration. Use `job run`, `job trigger`, or the dashboard/scheduler to affect execution state.
-- `job run --local --offline` runs tests referenced by a job in the local configuration without credentials or server-side validation. Browser jobs use the configured Playwright browser. Pass `--playwright-config <path>` to use an existing Playwright configuration.
+- `job create --type` selects the runner (`playwright` or `k6`). `--tests` takes test IDs, space or comma separated.
+- Job status is runtime state, not configuration. Use `job run`, `job trigger` or the dashboard to affect it.
+- `job run --local --offline` runs the tests a job references in the local configuration, without credentials or server-side validation. Browser jobs use the configured Playwright browser. Pass `--playwright-config <path>` to use an existing Playwright configuration.
 
 </Accordion>
 <Accordion title="job trigger: credentials and waiting" id="supercheck-job-trigger">
 
-`job trigger` requires `SUPERCHECK_TRIGGER_KEY`. If you also use `--wait`, set `SUPERCHECK_TOKEN` with access to read job details and run results in the project. A trigger key alone cannot wait for the result.
+`job trigger` requires `SUPERCHECK_TRIGGER_KEY`. With `--wait`, also set `SUPERCHECK_TOKEN` with access to read job details and run results in the project. A trigger key alone cannot wait for the result.
 
-If waiting later fails, use the returned run ID with `supercheck run wait <run-id>` to resume observation without triggering another run.
+If waiting fails, resume with `supercheck run wait <run-id>`. It does not trigger another run.
 
 </Accordion>
 </Accordions>
-
----
 
 ## Runs
 
@@ -336,23 +261,13 @@ If waiting later fails, use the returned run ID with `supercheck run wait <run-i
 | `run get <run-id>` | Get run details | — |
 | `run permissions <run-id>` | Get run access permissions | — |
 | `run status <run-id>` | Quick status check | — |
-| `run wait <run-id>` | Wait for an existing run to reach a terminal state; never starts or retriggers a run | `--timeout <seconds>` (300) |
+| `run wait <run-id>` | Wait for an existing run to finish; never starts or retriggers a run | `--timeout <seconds>` (300) |
 | `run stream <run-id>` | Watch live console output | `--idle-timeout` (60, min 10) |
 | `run cancel <run-id>` | Cancel a running execution | — |
-| `run delete <run-id>` | Delete a run and its stored artifacts (active runs are refused) | `--force` (skip confirmation) |
-| `dashboard` | Show project dashboard metrics (monitors, jobs, runs, queue) | — |
+| `run delete <run-id>` | Delete a run and its stored artifacts (active runs are refused) | `--force` |
+| `dashboard` | Project dashboard metrics (monitors, jobs, runs, queue) | — |
 
-```bash
-supercheck run list --job <job-id> --status failed --limit 20
-supercheck run get <run-id>
-supercheck run wait <run-id> --timeout 600
-supercheck run stream <run-id> --idle-timeout 120
-supercheck run cancel <run-id>
-supercheck run delete <run-id> --force
-supercheck dashboard --json
-```
-
-`run stream`: failed, cancelled, blocked, or missing runs return a nonzero exit code. Ctrl-C cancels the client stream; `--json` emits NDJSON events. `--idle-timeout` is the number of seconds to wait with no data before timing out.
+`run stream` returns a nonzero exit code for failed, cancelled, blocked or missing runs. Ctrl-C cancels the client stream. `--idle-timeout` is the number of seconds without data before it times out.
 
 ### Analytics
 
@@ -360,13 +275,6 @@ supercheck dashboard --json
 |---|---|---|
 | `analytics playwright` | Historical Playwright job trends | `--job <job-id>`, `--period` (30, 60 or 90 days) |
 | `analytics k6` | Historical k6 job trends | `--job`, `--period`, `--left-run <run-id> --right-run <run-id>` (compare two runs) |
-
-```bash
-supercheck analytics playwright --period 90 --json
-supercheck analytics k6 --left-run <run-id> --right-run <run-id>
-```
-
----
 
 ## Tests
 
@@ -379,44 +287,21 @@ supercheck analytics k6 --left-run <run-id> --right-run <run-id>
 | `test delete <test-id>` | Delete a test with confirmation | `--force` |
 | `test tags <test-id>` | List tags for a test | — |
 | `test tag add <test-id> <tags...>` | Add tags (names or IDs), keeping existing tags | — |
-| `test tag remove <test-id> <tags...>` | Remove tags (names or IDs); unknown or unassigned tags are ignored | — |
+| `test tag remove <test-id> <tags...>` | Remove tags; unknown or unassigned tags are ignored | — |
 | `test validate` | Validate a script without creating it | `--file`, `--type` |
 | `test run` | Run tests locally | `--file`, `--all`, `--type` (`browser`, `performance`), `--offline`, `--playwright-config` |
 | `test execute <test-id>` | Execute one deployed test in the cloud; returns the run ID, or waits with `--wait` | `--location <code>`, `--wait`, `--timeout` (300) |
 | `test status <test-id>` | Stream live status events | `--idle-timeout` (60, min 10) |
 
-Test types: `browser`, `performance`, `api`, `database`, `custom`, `agent` (`test create --type agent`; agent tests run only in the cloud, so `test run` refuses them). Priorities: `low`, `medium`, `high`.
-
-<Accordions>
-<Accordion title="Examples" id="tests-examples">
+Test types: `browser`, `performance`, `api`, `database`, `custom`, `agent`. Agent tests run only in the cloud, so `test run` refuses them. Priorities: `low`, `medium`, `high`.
 
 ```bash
-supercheck test list --search "checkout" --type browser
-supercheck test list --priority high
-supercheck test tag add <test-id> smoke checkout
-supercheck test tag remove <test-id> checkout
-supercheck test get <test-id> --include-script --show-secrets
 supercheck test create --title "Homepage Check" --file ./_supercheck_/playwright/homepage-check.<id>.pw.ts --type browser
-supercheck test update <test-id> --title "Updated Title" --file ./updated-script.pw.ts
-supercheck test update <test-id> --type api --dry-run
-supercheck test update <test-id> --description "New description" --dry-run
-supercheck test delete <test-id> --force
-supercheck test validate --file ./_supercheck_/playwright/homepage-check.<id>.pw.ts --type browser
-
-supercheck test run --file ./_supercheck_/playwright/homepage-check.<id>.pw.ts
 supercheck test run --all --type browser
-supercheck test run --all --type performance
 supercheck test run --offline --file ./_supercheck_/playwright/homepage.pw.ts
 supercheck test run --all --offline --playwright-config ./playwright.config.ts
-
-supercheck test execute <test-id>
-supercheck test execute <test-id> --wait --timeout 600
 supercheck test execute <test-id> --location us-east --wait
-supercheck test status <test-id> --idle-timeout 120
 ```
-
-</Accordion>
-</Accordions>
 
 <Callout type="warn">
 Use `supercheck test run --file <path>` for local execution, or `supercheck job trigger <id>` for cloud execution.
@@ -425,16 +310,14 @@ Use `supercheck test run --file <path>` for local execution, or `supercheck job 
 <Accordions>
 <Accordion title="Offline runs" id="supercheck-test-run">
 
-Offline runs (`--offline`) skip credentials and server-side script validation. They require local Playwright packages and browser binaries, or the k6 executable for performance tests. JSON mode emits bounded NDJSON `local.result` records containing captured output, exit code, and whether output was truncated.
+`--offline` skips credentials and server-side script validation. It needs local Playwright packages and browser binaries, or the k6 executable for performance tests. JSON mode emits bounded NDJSON `local.result` records with captured output, exit code and whether output was truncated.
 
 </Accordion>
 </Accordions>
 
----
-
 ## Requirements
 
-Requirements track what the product must do and which tests prove it. `supercheck requirement` (alias `requirements`) manages them from the terminal; you can also manage them as code with `requirements[]` in `supercheck.config.ts` (see [Configuration](/docs/cli/configuration#requirements)).
+Requirements track what the product must do and which tests prove it. `supercheck requirement` (alias `requirements`) manages them from the terminal. To manage them as code, use `requirements[]` in `supercheck.config.ts` ([Configuration](/docs/cli/configuration#requirements)).
 
 | Command | What it does | Key flags |
 |---|---|---|
@@ -448,32 +331,19 @@ Requirements track what the product must do and which tests prove it. `superchec
 | `requirement coverage [id]` | Coverage for one requirement, or a count per coverage status | — |
 | `requirement export` | Export requirements as CSV to stdout or a file | `--output <file>`, `--force` |
 
-<Accordions>
-<Accordion title="Examples" id="requirements-examples">
-
 ```bash
-supercheck requirement list --priority high --status failing
-supercheck requirement get <requirement-id>
 supercheck requirement create --title "Users can reset their password" --priority high --tag auth,security --test <test-id>
-supercheck requirement update <requirement-id> --priority medium
 supercheck requirement update <requirement-id> --tag auth --clear-tests
-supercheck requirement link <requirement-id> <test-id-1> <test-id-2>
-supercheck requirement unlink <requirement-id> <test-id-1>
-supercheck requirement coverage
 supercheck requirement export --output requirements.csv
-supercheck requirement delete <requirement-id> --force
 ```
 
-</Accordion>
-</Accordions>
-
-`--tag` and `--test` repeat or take comma-separated values (up to 10 tags of 50 characters, and 100 tests). On `update` they replace the whole set; `--clear-tags` and `--clear-tests` empty it and cannot be combined with them. Requirement tags that do not exist yet are created by the server. `export` refuses to overwrite a file unless you pass `--force`, never writes through a symbolic link, and leaves the file readable only by you. With `--json` and no `--output`, it prints `{ "format": "csv", "content": "..." }`.
+- `--tag` and `--test` repeat or take comma-separated values (up to 10 tags of 50 characters, and 100 tests). On `update` they replace the whole set. `--clear-tags` and `--clear-tests` empty it and cannot be combined with them.
+- The server creates requirement tags that do not exist yet.
+- `export` refuses to overwrite a file unless you pass `--force`, never writes through a symbolic link and leaves the file readable only by you. With `--json` and no `--output`, it prints `{ "format": "csv", "content": "..." }`.
 
 <Callout type="info">
 Extracting requirements from an uploaded document (PDF, DOCX, Markdown or TXT) with AI is available in the dashboard only. The CLI and MCP server do not upload documents.
 </Callout>
-
----
 
 ## Monitors
 
@@ -481,48 +351,25 @@ Extracting requirements from an uploaded document (PDF, DOCX, Markdown or TXT) w
 |---|---|---|
 | `monitor list` | List all monitors | `--page`, `--limit` |
 | `monitor get <monitor-id>` | Get monitor details | — |
-| `monitor status <monitor-id>` | Current status (quick view) | — |
+| `monitor status <monitor-id>` | Current status | — |
 | `monitor results <monitor-id>` | Recent check results | `--page` (1), `--limit` (20) |
 | `monitor stats <monitor-id>` | Performance statistics | — |
-| `monitor create` | Create a monitor | `--name` (required), `--url`, `--type`, `--test-id`, `--port`, `--protocol`, `--interval-minutes`, `--every`, `--grace`, `--timeout`, `--method`, `--preset`, `--model`, `--secret`, `--key-header`, `--prompt`, `--expect`, `--max-tokens`, `--first-token-timeout`, `--warn-first-token-ms`, `--warn-tokens`, `--header`, `--require-tool`, `--call-tool`, `--call-args`, `--slow-ms`, `--dry-run` |
+| `monitor create` | Create a monitor | `--name` (required), `--url`, `--type`, and the options in [the flag table](#supercheck-monitor-create) |
 | `monitor update <monitor-id>` | Update a monitor | `--name`, `--url`, `--interval-minutes`, `--every`, `--grace`, `--timeout`, `--method`, `--active`, AI endpoint and MCP monitor options, `--dry-run` |
 | `monitor delete <monitor-id>` | Delete with confirmation | `--force` |
 | `monitor heartbeat-url <monitor-id>` | Show a heartbeat monitor's ping URL, or replace it | `--rotate`, `--force` |
 | `heartbeat ping <url>` | Send one ping from a cron job or script; no login needed | `--start`, `--fail` |
 
-<Accordions>
-<Accordion title="Examples" id="monitors-examples">
-
 ```bash
-supercheck monitor list --page 2 --limit 10
-supercheck monitor results <monitor-id> --page 2 --limit 20
-
 supercheck monitor create --name "API Health" --url https://api.example.com/health --type http_request --interval-minutes 5
-supercheck monitor create --name "Website" --url https://example.com --dry-run
 supercheck monitor create --name "TLS port" --type port_check --url example.com --port 443
 supercheck monitor create --name "Browser journey" --type synthetic_test --test-id <test-uuid>
 supercheck monitor create --name "OpenAI chat" --url https://api.openai.com/v1/chat/completions --preset ai-endpoint --model gpt-4o-mini --secret OPENAI_API_KEY
 supercheck monitor create --name "Docs MCP" --type mcp_server --url https://mcp.example.com/mcp --secret MCP_TOKEN --require-tool search_docs --require-tool get_page
 supercheck monitor create --name "Docs MCP call" --type mcp_server --url https://mcp.example.com/mcp --call-tool search_docs --call-args '{"query":"ping"}' --expect result
 supercheck monitor create --name "Nightly backup" --type heartbeat --every 1d --grace 1h
-supercheck monitor heartbeat-url <monitor-id>
-supercheck monitor heartbeat-url <monitor-id> --rotate --force
-supercheck heartbeat ping "$PING_URL" --start
-supercheck heartbeat ping "$PING_URL"
-
 supercheck monitor update <monitor-id> --interval-minutes 1 --active false
-supercheck monitor update <monitor-id> --name "Updated" --method POST --dry-run
-supercheck monitor delete <monitor-id> --force
 ```
-
-`--timeout` must not exceed `--interval-minutes` × 60.
-
-For heartbeat monitors, `monitor list` shows the heartbeat state (`pending`, `up`, `late`, `down`, `paused`), the interval with its grace period and the last ping; `monitor get` and `--json` include a `heartbeat` object with `state`, `lastPingAt`, `lastPingKind`, `lastStartAt`, `nextExpectedAt` and `graceMinutes`. The ping URL is never part of these outputs. `monitor create` prints it once (not with `--json` or `--quiet`), and `monitor heartbeat-url` shows it again (`--quiet` prints only the URL). `--rotate` issues a new URL and the old one stops working at once; it asks for confirmation unless you pass `--force`.
-
-`heartbeat ping` validates that the URL path ends in `/api/heartbeat/hb_…` (an app served under a sub-path, such as `https://example.com/supercheck/api/heartbeat/hb_…`, works) and sends the ping (`/start` with `--start`, `/fail` with `--fail`) with a 10-second timeout per request. It retries `429`, `503`, network errors and timeouts up to 3 times, waiting as long as the server's `Retry-After` asks (at most 30 seconds) or else 1, 2 and 4 seconds, and gives up within about 60 seconds; other HTTP errors are not retried. It exits `0` on a 2xx answer, `4` on another HTTP status, `5` on timeout and `1` when it cannot connect. The ping endpoint answers `200` even for an unknown or rotated URL, so check that the monitor turns **Up** after you wire it in. See [Heartbeat Monitors](/docs/app/heartbeat).
-
-</Accordion>
-</Accordions>
 
 <Accordions>
 <Accordion title="monitor create and update flags" id="supercheck-monitor-create">
@@ -536,10 +383,10 @@ For heartbeat monitors, `monitor list` shows the heartbeat state (`pending`, `up
 | `--port` | Port checks | — | Port number (1-65535) |
 | `--protocol` | No | `tcp` (`auto` for `mcp_server`) | Port check protocol (`tcp` or `udp`), or MCP protocol (`auto`, `2025`, `2026`) |
 | `--interval-minutes` | No | `5` | Check interval in minutes (1–1440) |
-| `--every` | Heartbeat | — | Expected ping interval: `5m`, `1h`, `1d` (1 minute to 31 days). Heartbeat only |
+| `--every` | Heartbeat | — | Expected ping interval: `5m`, `1h`, `1d` (1 minute to 31 days) |
 | `--grace` | No | 20% of the interval, 5 min to 1 day | How late a ping may be before the monitor goes down (1 minute to 1 day). Heartbeat only |
-| `--timeout` | No | `30` (`60` with the preset) | Request timeout in seconds (1-3600; 5-120 with the preset) |
-| `--method` | No | `GET` | HTTP method (`GET`, `POST`, `PUT`, `DELETE`, `PATCH`, `HEAD`, `OPTIONS`). Not allowed with `--preset` (the preset always sends `POST`) |
+| `--timeout` | No | `30` (`60` with the preset) | Request timeout in seconds (1-3600; 5-120 with the preset). Must not exceed `--interval-minutes` × 60 |
+| `--method` | No | `GET` | `GET`, `POST`, `PUT`, `DELETE`, `PATCH`, `HEAD`, `OPTIONS`. Not allowed with `--preset` (the preset always sends `POST`) |
 | `--preset` | No | — | `ai-endpoint`: check an OpenAI-compatible chat-completions endpoint (`http_request` only) |
 | `--model` | With `--preset` | — | Model name to request |
 | `--secret` | No | — | Name of the project secret that holds the API key (preset) or the MCP login (`mcp_server`); omit to send none. Never pass the value |
@@ -557,12 +404,32 @@ For heartbeat monitors, `monitor list` shows the heartbeat state (`pending`, `up
 | `--slow-ms` | No | — | `mcp_server`: warn when a check is slower than this for 3 checks in a row (100-60000) |
 | `--dry-run` | No | — | Preview what would be sent without creating |
 
-`monitor update` accepts `--name`, `--url`, `--interval-minutes` (1–1440), `--every` and `--grace` (heartbeat), `--timeout` (1-3600), `--method`, `--active` (`true` or `false` to enable or disable) and `--dry-run`. For an AI endpoint monitor it also accepts the preset options of `monitor create` (`--model`, `--secret`, `--key-header`, `--prompt`, `--expect`, `--max-tokens`, `--first-token-timeout`, `--warn-first-token-ms`, `--warn-tokens`); for an MCP server monitor `--secret`, `--header`, `--protocol`, `--require-tool` (replaces the list), `--call-tool` (a different tool starts with no arguments or expected text), `--call-args` (replaces the arguments; no `null` values), `--expect` and `--slow-ms`. Only the options you pass change, and an option that does not fit the monitor is refused.
+`monitor update` accepts `--name`, `--url`, `--interval-minutes`, `--every`, `--grace`, `--timeout`, `--method`, `--active` (`true` or `false`) and `--dry-run`. Only the options you pass change, and an option that does not fit the monitor is refused. Type-specific options:
+
+- **AI endpoint:** `--model`, `--secret`, `--key-header`, `--prompt`, `--expect`, `--max-tokens`, `--first-token-timeout`, `--warn-first-token-ms`, `--warn-tokens`.
+- **MCP server:** `--secret`, `--header`, `--protocol`, `--require-tool` (replaces the list), `--call-tool` (a different tool starts with no arguments or expected text), `--call-args` (replaces the arguments; no `null` values), `--expect`, `--slow-ms`.
+
+</Accordion>
+<Accordion title="Heartbeat monitors and heartbeat ping" id="monitors-examples">
+
+For heartbeat monitors, `monitor list` shows the state (`pending`, `up`, `late`, `down`, `paused`), the interval with its grace period and the last ping. `monitor get` and `--json` include a `heartbeat` object with `state`, `lastPingAt`, `lastPingKind`, `lastStartAt`, `nextExpectedAt` and `graceMinutes`. The ping URL is never part of these outputs.
+
+`monitor create` prints the URL once (not with `--json` or `--quiet`). `monitor heartbeat-url` shows it again (`--quiet` prints only the URL). `--rotate` issues a new URL, the old one stops working at once, and it asks for confirmation unless you pass `--force`.
+
+```bash
+supercheck monitor heartbeat-url <monitor-id> --rotate --force
+supercheck heartbeat ping "$PING_URL" --start
+supercheck heartbeat ping "$PING_URL"
+```
+
+`heartbeat ping` checks that the URL path ends in `/api/heartbeat/hb_…` (an app served under a sub-path works) and sends the ping (`/start` with `--start`, `/fail` with `--fail`) with a 10-second timeout per request.
+
+- It retries `429`, `503`, network errors and timeouts up to 3 times. It waits as long as the server's `Retry-After` asks (at most 30 seconds) or else 1, 2 and 4 seconds, and gives up within about 60 seconds. Other HTTP errors are not retried.
+- Exit codes: `0` on a 2xx answer, `4` on another HTTP status, `5` on timeout, `1` when it cannot connect.
+- The endpoint answers `200` even for an unknown or rotated URL, so check that the monitor turns **Up**. See [Heartbeat monitors](/docs/app/heartbeat).
 
 </Accordion>
 </Accordions>
-
----
 
 ## Variables
 
@@ -572,44 +439,25 @@ For heartbeat monitors, `monitor list` shows the heartbeat state (`pending`, `up
 | `var get <key>` | Get a variable by key | — |
 | `var set <key> <value>` | Create or update a variable | `--secret`, `--value-stdin` (read the value from stdin, max 1 MB), `--description` |
 | `var upload <key> <file>` | Create a file variable (`.csv`, `.json`, `.txt`, `.tsv`, `.xml`, `.yaml`, `.yml`; max 5 MB) | `--description` |
-| `var download <key>` | Print a file variable's content, or save it to a new file (owner-only permissions on macOS and Linux) | `--out <path>`, `--force` (overwrite an existing file) |
+| `var download <key>` | Print a file variable's content, or save it to a new file (owner-only permissions on macOS and Linux) | `--out <path>`, `--force` (overwrite) |
 | `var delete <key>` | Delete a variable | `--force` |
 
-<Accordions>
-<Accordion title="Examples" id="variables-examples">
+`--secret` encrypts the value. Prefer `--value-stdin` for secrets so they stay out of shell history and process arguments:
 
 ```bash
-supercheck var set API_KEY sk-secret-value --secret
 printf '%s' "$API_KEY" | supercheck var set API_KEY --secret --value-stdin
-supercheck var set DB_URL postgres://... --description "Database connection string"
 supercheck var upload TEST_DATA ./users.csv
-supercheck var download TEST_DATA --out ./users.csv
-supercheck var delete <key> --force
 ```
-
-</Accordion>
-</Accordions>
-
-`--secret` encrypts the value. Prefer `--value-stdin` for secrets so they do not end up in shell history or process arguments.
-
----
 
 ## Tags
 
 | Command | What it does | Key flags |
 |---|---|---|
 | `tag list` | List tags | — |
-| `tag create <name>` | Create a tag | `--color` |
+| `tag create <name>` | Create a tag | `--color` (for example `"#3B82F6"`) |
 | `tag delete <id>` | Delete a tag | `--force` |
 
-```bash
-supercheck tag create <name> --color "#3B82F6"
-supercheck tag delete <id> --force    # Skip confirmation
-```
-
----
-
-## Notification Providers
+## Notification providers
 
 `notifications` is an alias for `notification`.
 
@@ -623,38 +471,25 @@ supercheck tag delete <id> --force    # Skip confirmation
 | `notification test <id>` | Send a test through a saved channel; webhooks and paging services get a test page with dedup key `test:<id>` and the receiver's HTTP status | `--resolve` (close the test page) |
 | `notification test` | Test an unsaved configuration | `--type`, `--payload` (one payload option required) |
 
-Types: `email`, `slack`, `webhook`, `telegram`, `discord`, `teams`. `--payload` is a JSON object; `--data` and `--config` are aliases. Paging presets (PagerDuty and the rest) are set up in the app; the CLI can list and test those channels but not create them from a preset.
-
-<Accordions>
-<Accordion title="Examples" id="notifications-examples">
+Types: `email`, `slack`, `webhook`, `telegram`, `discord`, `teams`. `--payload` is a JSON object; `--data` and `--config` are aliases. Paging presets (PagerDuty and the rest) are set up in the app. The CLI can list and test those channels but not create them from a preset.
 
 ```bash
 supercheck notification create --type slack --name "Slack Alerts" \
   --payload '{"webhookUrl":"https://hooks.slack.com/..."}'
-supercheck notification update <id> --name "Updated Name" --payload '{...}'
-supercheck notification update <id> --type webhook --payload '{...}'
-supercheck notification delete <id> --force
-supercheck notification test --type slack --payload '{"webhookUrl":"https://hooks.slack.com/..."}'
-supercheck notification test <id>            # test page through a saved channel
-supercheck notification test <id> --resolve  # close that test page
+supercheck notification test <id> --resolve
 ```
-
-</Accordion>
-</Accordions>
 
 <Accordions>
 <Accordion title="Updating providers with secret fields" id="supercheck-notification-update">
 
-`--payload` on update replaces the entire config, so include all fields. When a provider has secret fields (for example webhook URLs or API keys), the CLI never merges your input with masked values from the server. If you omit the payload, only `--name` and `--type` are updated and existing secrets are preserved.
-
-For `notification test` without an id, supply exactly one of `--payload`, `--data` or `--config`. With an id, the saved channel's stored configuration is used and the payload options are rejected. A test that the receiver rejects exits with a general error and prints the result, including `Authentication rejected (HTTP 401). Check the integration key.` for a bad key.
+- `--payload` on update replaces the entire config, so include all fields. The CLI never merges your input with masked values from the server. Without a payload, only `--name` and `--type` change and existing secrets are kept.
+- `notification test` without an id needs exactly one of `--payload`, `--data` or `--config`. With an id, the saved configuration is used and payload options are rejected.
+- A test the receiver rejects exits with a general error and prints the result, for example `Authentication rejected (HTTP 401). Check the integration key.` for a bad key.
 
 </Accordion>
 </Accordions>
 
----
-
-## Alerts & Audit
+## Alerts and audit
 
 `alerts` is an alias for `alert`.
 
@@ -663,45 +498,35 @@ For `notification test` without an id, supply exactly one of `--payload`, `--dat
 | `alert history` | View alert history | `--page` (1), `--limit` (50) |
 | `audit` | View audit logs (admin only) | `--page` (1), `--limit` (20), `--search` (by action), `--action` (filter by action type) |
 
-```bash
-supercheck alert history --page 2 --limit 20
-supercheck audit --page 2 --limit 50 --action "notification_provider_created"
-supercheck audit --search "deploy"
-```
-
----
-
 ## Tokens and projects
 
 | Command | What it does | Key flags |
 |---|---|---|
 | `token list` | List the project's CLI tokens | — |
-| `token create <name>` | Create a CLI token; the key is shown once, so this requires the global `--show-secrets` flag and does not accept `--quiet` | `--expires-in <days>` (1-365; never past the expiry of the token you are using) |
+| `token create <name>` | Create a CLI token; the key is shown once, so this needs the global `--show-secrets` flag and rejects `--quiet` | `--expires-in <days>` (1-365; never past the expiry of the token you are using) |
 | `token enable <id>` / `token disable <id>` | Enable or disable a token | — |
-| `token revoke <id>` | Permanently revoke a token | `--force` (skip confirmation) |
+| `token revoke <id>` | Permanently revoke a token | `--force` |
 | `project list` | List projects visible to the token | — |
 | `project members [projectId]` | List members and roles of a project (default: the current one) | — |
 
-Changing members, invitations and project creation rejects CLI tokens and is available in the dashboard only. So are deleting, restoring and cancelling the deletion of an organization or project: these need an interactive browser session and CLI tokens receive `403`. Tokens are project-scoped, so `project list` shows only the token's project.
+Tokens are project-scoped, so `project list` shows only the token's project. Changing members, invitations and project creation rejects CLI tokens. So does deleting, restoring and cancelling the deletion of an organization or project. These are dashboard-only and CLI tokens receive `403`.
 
-While an organization is scheduled for deletion it is read-only. Reads keep working, and every write fails with `403` and code `ORG_PENDING_DELETION`. The CLI exits `4` and prints the server's answer under `Details`; with `--json` the error is `PERMISSION_DENIED` and `details.code` is `ORG_PENDING_DELETION`. The owner can cancel the deletion in the dashboard.
-
----
+While an organization is scheduled for deletion it is read-only. Reads work, and every write fails with `403` and code `ORG_PENDING_DELETION`. The CLI exits `4` and prints the server's answer under `Details`. With `--json` the error is `PERMISSION_DENIED` with `details.code` set to `ORG_PENDING_DELETION`. The owner can cancel the deletion in the dashboard.
 
 ## AI SRE
 
-AI SRE commands use the active project from the CLI token and follow your role's permissions. Plural aliases `incidents` and `services` are also supported.
+AI SRE commands use the active project from the CLI token and follow your role's permissions. Plural aliases `incidents` and `services` work too.
 
 | Command | What it does | Key flags |
 |---|---|---|
 | `incident list` | List incidents (status label, assignee and acknowledgement shown) | `--status`, `--severity`, `--assignee me\|unassigned\|<user-id>` |
 | `incident get <ref>` | Get an incident | — |
-| `incident timeline <ref>` | Incident timeline; reminders, escalations and failed pages are shown as one line each | — |
+| `incident timeline <ref>` | Incident timeline; reminders, escalations and failed pages are one line each | — |
 | `incident create` (alias `declare`) | Declare an incident by hand | `--title` (required), `--severity`, `--service`, `--affected-service`, `--monitor`, `--summary`, `--commander`, `--status-page`, `--component`, `--notify` |
 | `incident resources <ref>` | List the services and monitors an incident affects; change them with the flags | `--add-service`, `--remove-service`, `--add-monitor`, `--remove-monitor` |
 | `incident postmortem <ref>` | Print the post-mortem as markdown (`--json` returns the sections too) | — |
 | `incident policy get` | Show the project's incident policy (reminders and escalation) | — |
-| `incident policy set` | Change reminders and escalation; flags you omit are kept | `--first-reminder <min\|off>`, `--repeat <min\|off>`, `--max <1-10>`, `--escalate-after <min\|off>`, `--escalate-channel <id>`, `--escalate-member <user-id>` |
+| `incident policy set` | Change reminders and escalation; omitted flags are kept | `--first-reminder <min\|off>`, `--repeat <min\|off>`, `--max <1-10>`, `--escalate-after <min\|off>`, `--escalate-channel <id>`, `--escalate-member <user-id>` |
 | `incident assign <ref>` | Assign the incident, or its commander, to a project editor or admin | `--user <user-id\|me>` (required), `--commander` |
 | `incident unassign <ref>` | Clear the assignee (or commander) | `--commander` |
 | `incident ack <ref>` | Acknowledge an incident | — |
@@ -711,43 +536,43 @@ AI SRE commands use the active project from the CLI token and follow your role's
 | `sre brief <ref>` | Stream an evidence brief | `--idle-timeout` |
 | `sre ask "<question>"` | Ask Copilot (read-only) | `--incident <ref>`, `--live-connectors`, `--idle-timeout` |
 | `sre status <runId>` | Follow a triage or accepted investigation | — |
-| `service list/get/health/dependencies` | Read-only service catalog | needs `sre_service:view` |
+| `service list/get/health/dependencies` | Read-only service catalog; needs `sre_service:view` | — |
 
-`<ref>` is the number shown by `incident list` or a UUID. Numbers resolve within the CLI token's project; they are not row positions. Use `incident list --json` to see UUIDs. Manual triage and investigations need a configured AI provider; `503 feature_disabled` means an operator turned the feature off.
+`<ref>` is the number shown by `incident list` or a UUID. Numbers resolve within the CLI token's project and are not row positions. Use `incident list --json` to see UUIDs. Manual triage and investigations need a configured AI provider. `503 feature_disabled` means an operator turned the feature off.
 
 ### Incidents
 
 ```bash
 supercheck incident list --status investigating --severity sev1
-supercheck incident list --status open   # every incident that is not resolved
-supercheck incident get <incident-number-or-uuid>
-supercheck incident timeline <incident-number-or-uuid>
 supercheck incident list --assignee me
-supercheck incident assign <incident-number-or-uuid> --user me
-supercheck incident ack <incident-number-or-uuid>
 supercheck incident resolve <incident-number-or-uuid> --summary "Traffic restored after rollback"
 supercheck incident create --title "Checkout errors reported by customers" --severity sev2 \
   --service "Checkout API" --monitor <monitor-uuid> --summary "Support reports 500s at payment"
 supercheck incident resources <incident-number-or-uuid> --add-service "Checkout API" --remove-monitor <monitor-uuid>
-supercheck incident postmortem <incident-number-or-uuid>
 supercheck incident create --title "Login outage" --severity sev1 \
   --status-page <status-page-uuid> --component <component-uuid> --impact major --message "We are investigating." --notify
 ```
 
-`incident create` (alias `declare`) opens an incident by hand, with the same notifications and reminders as one opened by an alert. Only `--title` is required; `--severity` defaults to `sev3`. `--service` takes a UUID or the exact service name, and that service's owner becomes the assignee. Each `--monitor` (and `--affected-service`) is listed as affected: its next alert joins this incident instead of opening a new one. `--commander` takes `me` or a user UUID. `--status-page` with at least one `--component` also posts a public incident; subscribers are emailed only with `--notify`. If the public post fails, the incident is still created and the command warns. Declaring needs editor access or above; rate limits are in [Incidents](/docs/app/investigate/incidents).
+`incident create` opens an incident with the same notifications and reminders as one opened by an alert.
 
-The **Status** column shows the display label (Triggered, Acknowledged, Investigating, Fixing, Monitoring, Resolved), also returned as `statusLabel` with `--json`. `--status` filters on the stored values: `open`, `triggered`, `investigating`, `identified`, `recommendations_ready`, `user_applying_fix`, `verifying`, `resolved`.
+- Only `--title` is required. `--severity` defaults to `sev3`.
+- `--service` takes a UUID or the exact service name, and that service's owner becomes the assignee.
+- Each `--monitor` and `--affected-service` is listed as affected: its next alert joins this incident instead of opening a new one.
+- `--commander` takes `me` or a user UUID.
+- `--status-page` with at least one `--component` also posts a public incident. Subscribers are emailed only with `--notify`. If the public post fails, the incident is still created and the command warns.
+- Declaring needs editor access or above. Rate limits are in [Incidents](/docs/app/investigate/incidents).
 
-Resolution prompts for confirmation and stores the required summary in the incident timeline and audit log. Use `--force` only in reviewed automation.
+The **Status** column shows the display label (Triggered, Acknowledged, Investigating, Fixing, Monitoring, Resolved), also returned as `statusLabel` with `--json`. `--status` filters on stored values: `open` (every incident that is not resolved), `triggered`, `investigating`, `identified`, `recommendations_ready`, `user_applying_fix`, `verifying`, `resolved`.
+
+Resolving prompts for confirmation and stores the summary in the incident timeline and audit log. Use `--force` only in reviewed automation.
 
 ```bash
-supercheck incident policy get --json
 supercheck incident policy set --first-reminder 15 --repeat 60 --max 3
 supercheck incident policy set --escalate-after 30 --escalate-member <user-id>
 supercheck incident policy set --first-reminder off --escalate-after off
 ```
 
-`incident policy set` needs project update permission. Minutes are 5 to 1,440, and the reminder schedule must finish within two days. Turning reminders off also clears the repeat; turning escalation off clears its target. The escalation channel cannot be a paging service. See [Default policy](/docs/app/investigate/incidents).
+`incident policy set` needs project update permission. Minutes are 5 to 1,440 and the reminder schedule must finish within two days. Turning reminders off also clears the repeat. Turning escalation off clears its target. The escalation channel cannot be a paging service. See [Default policy](/docs/app/investigate/incidents).
 
 ### Maintenance windows
 
@@ -758,13 +583,13 @@ During a window monitors keep running, but alerts, incidents and reminders are m
 | `maintenance list` | List windows | `--state active\|scheduled\|past`, `--monitor <id>`, `--service <id>` |
 | `maintenance get <id>` | Show one window | — |
 | `maintenance create` | Schedule a window | `--title`, `--start "YYYY-MM-DD HH:MM"`, `--duration` (required); scope `--project`, `--service`, `--monitor` (pick one, repeatable); `--description`, `--timezone`, `--repeat daily\|weekly\|monthly`, `--days mon,thu`, `--day 1-28\|last`, `--until YYYY-MM-DD`, `--status-page` + `--component`, `--notify` |
-| `maintenance update <id>` | Change a window; only the flags you pass change | `--title`, `--description`, a scope flag, `--start`, `--duration`, `--timezone`, `--repeat once\|daily\|weekly\|monthly`, `--days`, `--day`, `--until YYYY-MM-DD\|none`; all optional. `--start` without `--timezone` uses the window's zone. Status page posts are set at create only |
+| `maintenance update <id>` | Change a window; only the flags you pass change | `--title`, `--description`, a scope flag, `--start`, `--duration`, `--timezone`, `--repeat once\|daily\|weekly\|monthly`, `--days`, `--day`, `--until YYYY-MM-DD\|none` |
 | `maintenance end <id>` | End an active window now | — |
 | `maintenance extend <id>` | Extend an active window (never shortens it) | exactly one of `--by 30m` or `--to <ISO 8601 date-time>`; no offset means local time |
 | `maintenance cancel <id>` | Cancel a scheduled window, or the rest of a recurring one | — |
 | `maintenance delete <id>` | Delete a window that is not active | `--force` |
 
-`--start` is the local start in `--timezone` (default: your machine's zone). A one-off window can be shown on a status page with `--status-page <id> --component <id>`.
+`--start` is the local start in `--timezone` (default: your machine's zone). On `update`, `--start` without `--timezone` uses the window's zone. A one-off window can show on a status page with `--status-page <id> --component <id>`, set at create only.
 
 ```bash
 supercheck maintenance create --title "DB upgrade" --monitor <monitor-uuid> \
@@ -776,86 +601,57 @@ supercheck maintenance extend <window-uuid> --to 2026-11-20T04:00:00Z
 
 ```bash
 supercheck sre triage <incident-number-or-uuid>
-supercheck sre investigate <incident-number-or-uuid>
 supercheck sre investigate <incident-number-or-uuid> --live-connectors
-supercheck sre brief <incident-number-or-uuid>
 supercheck sre brief <incident-number-or-uuid> --idle-timeout 120
 supercheck sre status <runId>
 ```
 
-Deep investigation is asynchronous: a successful command returns an accepted investigation-run ID. Follow progress with `incident get` and `incident timeline`, or `sre status <runId>`. `--live-connectors` enables configured read-only telemetry tools and requires the `sre_connector:investigate` permission; without it the request is rejected with 403.
+Deep investigation is asynchronous: a successful command returns an accepted investigation-run ID. Follow it with `incident get`, `incident timeline` or `sre status <runId>`. `--live-connectors` enables configured read-only telemetry tools and needs the `sre_connector:investigate` permission. Without it the request is rejected with 403.
 
 ### Copilot
 
 ```bash
 supercheck sre ask "Why did checkout latency increase?"
-supercheck sre ask "Summarize the strongest evidence" --incident <incident-number-or-uuid>
 supercheck sre ask "Check current telemetry" --incident <incident-number-or-uuid> --live-connectors
 ```
 
-Copilot is read-only. Use an incident your token can access, and add `--live-connectors` only when you have connector investigation permission. `--idle-timeout` controls stream inactivity (minimum 10 seconds). Ctrl-C cancels the client stream. Global `--json` emits NDJSON events for automation. Streamed errors and AI-provider unavailability return a nonzero exit code for both Copilot and evidence briefs.
+Copilot is read-only. Use an incident your token can access, and add `--live-connectors` only with connector investigation permission. `--idle-timeout` sets stream inactivity (minimum 10 seconds). Ctrl-C cancels the client stream. Global `--json` emits NDJSON events. Streamed errors and AI-provider unavailability return a nonzero exit code for Copilot and evidence briefs.
 
 ### Service catalog
 
-```bash
-supercheck service list
-supercheck service get <service-id>
-supercheck service health <service-id>
-supercheck service dependencies <service-id>
-```
-
-These commands are read-only and require `sre_service:view`.
-
----
+`service list`, `service get <service-id>`, `service health <service-id>` and `service dependencies <service-id>` are read-only and need `sre_service:view`.
 
 ## Monitoring-as-Code
 
 | Command | What it does | Key flags |
 |---|---|---|
-| `pull` | Pull remote resources into local config and files | `--dry-run`, `--force`, `--tests-only`, `--config-only`, `--skip-install` (do not install dependencies when initializing a project) |
+| `pull` | Pull remote resources into local config and files | `--dry-run`, `--force`, `--tests-only`, `--config-only`, `--skip-install` (skip dependency install when initializing a project) |
 | `diff` | Preview changes between local config and server state | `--delete` |
 | `deploy` | Push configuration to the API | `--dry-run`, `--delete`, `--no-delete`, `--force`, `--verify`, `--verify-timeout <seconds>` |
 | `destroy` | Tear down all managed resources defined with IDs in the local config, including notification providers, requirements and status pages | `--dry-run`, `--force` |
 
-<Accordions>
-<Accordion title="Examples" id="mac-examples">
-
 ```bash
-supercheck pull
 supercheck pull --dry-run
-supercheck pull --force
-supercheck pull --tests-only
-supercheck pull --config-only
-
 supercheck diff
-
-supercheck deploy
-supercheck deploy --dry-run      # Preview without applying
-supercheck deploy --delete       # Delete remote resources absent from config (and components absent from a declared list)
-supercheck deploy --force        # Skip confirmation
-supercheck deploy --force --verify   # Then run each created/updated browser test once in the cloud
-
-supercheck destroy --dry-run      # Preview resources to be deleted
-supercheck destroy --force        # Confirm and delete resources
+supercheck deploy --dry-run
+supercheck deploy --force --verify   # then run each created or updated browser test once in the cloud
+supercheck destroy --dry-run
 ```
 
-</Accordion>
-</Accordions>
-
 <Callout type="warn">
-`supercheck destroy` requires `--force` to confirm deletion, or `--dry-run` to preview. Bare `supercheck destroy` errors without `--force`.
+`supercheck destroy` needs `--force` to confirm deletion or `--dry-run` to preview. Bare `supercheck destroy` errors.
 </Callout>
 
-`diff` and `deploy` preserve remote resources absent from config by default. Use `diff --delete` to preview pruning, then `deploy --delete` to apply it. Pruning includes resources created outside this config. `--force` skips the confirmation prompt; keep test scripts as editable source files and review `supercheck diff` before deploying.
+`diff` and `deploy` keep remote resources that are absent from config. Use `diff --delete` to preview pruning, then `deploy --delete` to apply it. Pruning includes resources created outside this config, and removes components absent from a declared list. `--force` skips the confirmation prompt. Keep test scripts as editable source files and review `supercheck diff` before deploying.
 
 <Accordions>
 <Accordion title="supercheck pull: files, backups and overwrites" id="supercheck-pull">
 
-Config pulls include monitors (with tags), jobs, requirements, notification providers, variables, tags, and status pages (settings, branding, notifications and components); test pulls also write test scripts under `_supercheck_/` with `@title`, `@priority` and `@tags` annotations, plus `@type` for agent, API, database and custom tests. Pull preserves managed test paths and existing browser and `testMatch` settings. Runner-type changes migrate files with backups; new tests must match configured custom globs or pull stops before writing.
+Config pulls include monitors (with tags), jobs, requirements, notification providers, variables, tags and status pages (settings, branding, notifications and components). Test pulls also write scripts under `_supercheck_/` with `@title`, `@priority` and `@tags` annotations, plus `@type` for agent, API, database and custom tests. Pull preserves managed test paths and existing browser and `testMatch` settings. Runner-type changes migrate files with backups. New tests must match configured custom globs or pull stops before writing.
 
-When overwriting changed files, pull saves a mode-`0600` backup at `<path>.supercheck-backup.<uuid>`. This includes matching test scripts and config files; if a test file is renamed during pull, the old file is backed up before removal. Backups are retained and must be removed manually when no longer needed. When a pull creates backups it also adds the backup pattern to an existing `.gitignore` (it never creates one) and prints a one-line note.
+When pull overwrites changed files it saves a mode-`0600` backup at `<path>.supercheck-backup.<uuid>`. This covers test scripts and config files, and a test file renamed during pull is backed up before removal. Backups are kept until you delete them. When a pull creates backups it adds the backup pattern to an existing `.gitignore` (it never creates one) and prints a one-line note.
 
-In JSON mode, the completed pull summary includes `files` and `backups` arrays with the paths written and preserved. `--dry-run` does not write files or create backups.
+In JSON mode the summary includes `files` and `backups` arrays with the paths written and preserved. `--dry-run` writes no files and creates no backups.
 
 </Accordion>
 <Accordion title="supercheck diff" id="supercheck-diff">
@@ -863,24 +659,22 @@ In JSON mode, the completed pull summary includes `files` and `backups` arrays w
 Includes requirements and status pages. Notification provider changes include nested `config` fields such as webhook `bodyTemplate`.
 
 </Accordion>
-<Accordion title="supercheck deploy: renames, --verify" id="supercheck-deploy">
+<Accordion title="supercheck deploy: renames and --verify" id="supercheck-deploy">
 
-Deploy pushes notification provider config and webhook body templates too. Renaming an ID-less non-test resource creates a separate resource; the old remote resource remains unless `--delete` is used. Carry its explicit ID or pull it first to update the existing resource.
+Deploy pushes notification provider config and webhook body templates too. Renaming an ID-less non-test resource creates a separate resource, and the old remote one stays unless you use `--delete`. Carry its explicit ID or pull it first to update the existing resource.
 
-`--verify` executes every browser test that this deploy created or updated once and waits for the result (up to 5 tests, `--verify-timeout <seconds>` each). Performance (k6) tests are deployed but never run implicitly, because they consume load budget; run them with `supercheck test execute` after you have approved the target, load and spend. If a verification run fails, the command exits `1` and the error message lists each failed test with its run ID (also in `--json` under `verification`) so you can inspect it instead of triggering again.
+`--verify` runs every browser test this deploy created or updated once and waits for the result (up to 5 tests, `--verify-timeout <seconds>` each). k6 tests are deployed but never run implicitly because they use load budget. Run them with `supercheck test execute` after you approve the target, load and spend. If a verification run fails, the command exits `1` and the error lists each failed test with its run ID (also in `--json` under `verification`).
 
 </Accordion>
 <Accordion title="supercheck deploy: requirements, status pages and tags" id="supercheck-deploy-resources">
 
-- **Requirements:** compared and pruned only when the config has a `requirements` key. Omitted `tags` or `tests` leave the remote value alone and `[]` clears it; tag names compare case-insensitively.
-- **Status pages:** `subdomain` is read-only (pulled, never sent), notification flags you omit stay unchanged, and when the page declares `components`, remote-only components are removed only with `--delete` (omitting `components` leaves them all alone).
+- **Requirements:** compared and pruned only when the config has a `requirements` key. Omitted `tags` or `tests` leave the remote value alone and `[]` clears it. Tag names compare case-insensitively.
+- **Status pages:** `subdomain` is read-only (pulled, never sent). Notification flags you omit stay unchanged. When the page declares `components`, remote-only components are removed only with `--delete`. Omitting `components` leaves them all alone.
 - **Tests:** `@priority` and `@tags` annotations are applied on deploy.
-- **Tags:** test and monitor `tags` must already exist in the project or be declared under `tags` in the config; deploy checks this before any write, matching names case-insensitively. Requirement tags are created by the server.
+- **Tags:** test and monitor `tags` must already exist in the project or be declared under `tags` in the config. Deploy checks this before any write, matching names case-insensitively. The server creates requirement tags.
 
 </Accordion>
 </Accordions>
-
----
 
 ## Utilities
 
@@ -888,32 +682,8 @@ Deploy pushes notification provider config and webhook body templates too. Renam
 |---|---|---|
 | `health` | Check API health | `--url` |
 | `locations` | List available execution locations | — |
-| `upgrade` | Upgrade the CLI to the latest release | `--tag <tag>`, `--package-manager <pm>`, `-y, --yes`, `--dry-run` |
+| `upgrade` | Upgrade the CLI to the latest release | `--tag <tag>` (default `latest`, or a version), `--package-manager <pm>` (`npm`, `pnpm`, `yarn`, `bun`), `-y, --yes`, `--dry-run` (preview the command) |
 | `doctor` | Check dependencies and configuration | `--strict`, `--fix` |
-
-<Accordions>
-<Accordion title="Examples" id="utilities-examples">
-
-```bash
-supercheck health
-supercheck health --url https://supercheck.yourdomain.com
-supercheck locations
-
-supercheck upgrade
-supercheck upgrade --tag <version>       # Install a specific version
-supercheck upgrade --package-manager pnpm  # Use specific package manager (npm, pnpm, yarn, bun)
-supercheck upgrade --dry-run               # Preview without installing
-supercheck upgrade -y                      # Skip confirmation
-
-supercheck doctor
-supercheck doctor --strict # Exit non-zero unless deps, config and server-verified credentials are in place
-supercheck doctor --fix    # Auto-install Playwright browsers; prints install hints for other deps
-```
-
-</Accordion>
-</Accordions>
-
-`upgrade --tag` defaults to `latest` and accepts explicit versions; `--dry-run` previews the upgrade command without executing.
 
 <Accordions>
 <Accordion title="supercheck doctor: checks, --strict and --fix" id="supercheck-doctor">
@@ -923,15 +693,14 @@ supercheck doctor --fix    # Auto-install Playwright browsers; prints install hi
 | **Node.js** | Runtime availability |
 | **@playwright/test** | npm package for browser tests |
 | **Playwright browsers** | chromium binary for local test execution |
-| **k6** | Binary for performance/load tests (optional) |
+| **k6** | Binary for performance tests (optional) |
 | **Authentication** | Whether a valid token is stored |
-| **Configuration** | Whether `supercheck.config.ts` exists (it is read as text, never executed, so only literal values are understood; computed values are noted) |
+| **Configuration** | Whether `supercheck.config.ts` exists. It is read as text, never executed, so only literal values are understood and computed values are noted |
 
-If `supercheck.config.ts` names a different API than the one in use, doctor says so and does not send your token to the URL written in a repository. Set `SUPERCHECK_URL` (or run `supercheck login --url ...`) to verify against it.
-
-Doctor verifies stored credentials against the server. Offline, `authenticated` and `ready` are `false` while `cloudCredentialsPresent` stays `true`. With `--strict` the exit code is 3 for missing dependencies or config, 2 for rejected or missing credentials and 4 when the server cannot be reached.
-
-With `--fix`, doctor installs missing Playwright browsers automatically by running `npx playwright install` in the current directory, which uses the repository's own `node_modules`: use `--fix` only in a repository you trust. For `@playwright/test` and `k6`, it prints the install command to run manually.
+- If `supercheck.config.ts` names a different API than the one in use, doctor says so and does not send your token to the URL in a repository. Set `SUPERCHECK_URL` (or run `supercheck login --url ...`) to verify against it.
+- Doctor verifies stored credentials against the server. Offline, `authenticated` and `ready` are `false` while `cloudCredentialsPresent` stays `true`.
+- `--strict` exits `3` for missing dependencies or config, `2` for rejected or missing credentials and `4` when the server is unreachable.
+- `--fix` installs missing Playwright browsers by running `npx playwright install` in the current directory, which uses the repository's own `node_modules`. Use it only in a repository you trust. For `@playwright/test` and `k6` it prints the install command.
 
 </Accordion>
 </Accordions>
