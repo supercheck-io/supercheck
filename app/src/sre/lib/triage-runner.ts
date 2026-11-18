@@ -6,7 +6,7 @@ import { getActualModelName } from "@/lib/ai/ai-provider";
 import { buildSreTriagePrompt, buildSreTriageSystemPrompt } from "@/sre/agents/triage";
 import { runSreAgent } from "@/sre/lib/agent-runner";
 import { createSreEvidenceTools } from "@/sre/tools/evidence-tools";
-import { persistNativeEvidence } from "@/lib/sre/evidence-brief-orchestrator";
+import { countStoredIncidentEvidence, persistNativeEvidenceWithin } from "@/lib/sre/native-evidence-bounded";
 import { db } from "@/utils/db";
 import { failStaleSreInvestigationRunsForIncident } from "@/sre/lib/stale-run-recovery";
 import { insertSreRun, SreOrgConcurrencyError } from "@/sre/lib/run-insert";
@@ -162,32 +162,20 @@ async function collectNativeEvidenceIfMissing(
   started: StartedSreIncidentTriage,
   input: RunSreIncidentTriageInput,
 ): Promise<number> {
-  if (Number(started.incident.evidenceCount ?? 0) > 0) return 0;
-  const abort = new AbortController();
-  let timer: ReturnType<typeof setTimeout> | undefined;
+  const stored = Number(started.incident.evidenceCount ?? 0);
+  if (stored > 0) return stored;
+  const scope = { organizationId: input.organizationId, projectId: input.projectId, incidentId: started.incident.id };
   try {
-    const persisted = await Promise.race([
-      persistNativeEvidence({
-        organizationId: input.organizationId,
-        projectId: input.projectId,
-        incidentId: started.incident.id,
-        userId: input.userId ?? null,
-        investigationRunId: started.run.id,
-        signal: abort.signal,
-      }),
-      new Promise<never>((_, reject) => {
-        timer = setTimeout(() => {
-          abort.abort();
-          reject(new Error("native evidence collection timed out"));
-        }, NATIVE_EVIDENCE_TIMEOUT_MS);
-      }),
-    ]);
-    return persisted?.createdCount ?? 0;
+    await persistNativeEvidenceWithin({ ...scope, userId: input.userId ?? null, investigationRunId: started.run.id }, NATIVE_EVIDENCE_TIMEOUT_MS);
   } catch (error) {
     triageLogger.error({ err: error, incidentId: started.incident.id }, "Native evidence collection for triage failed; continuing without it");
-    return 0;
-  } finally {
-    clearTimeout(timer);
+  }
+  // Recount: rows written before a timeout still commit.
+  try {
+    return (await countStoredIncidentEvidence(scope)).total;
+  } catch (error) {
+    triageLogger.error({ err: error, incidentId: started.incident.id }, "Counting triage evidence failed");
+    return stored;
   }
 }
 
@@ -196,7 +184,7 @@ export async function completeSreIncidentTriage(
   input: RunSreIncidentTriageInput,
 ): Promise<RunSreIncidentTriageResult> {
   const { run, incident, startedAt } = started;
-  const evidenceCount = Number(incident.evidenceCount ?? 0) + (await collectNativeEvidenceIfMissing(started, input));
+  const evidenceCount = await collectNativeEvidenceIfMissing(started, input);
   try {
     const result = await runSreAgent({
       organizationId: input.organizationId,
@@ -227,7 +215,7 @@ export async function completeSreIncidentTriage(
             mode: "sre_triage_api",
             summary: result.text,
             finishReason: result.finishReason,
-            evidenceCount: Number(incident.evidenceCount ?? 0),
+            evidenceCount,
             connectorEvidenceCount: Number(incident.connectorEvidenceCount ?? 0),
           },
           completedAt: new Date(),

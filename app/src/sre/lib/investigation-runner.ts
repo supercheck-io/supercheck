@@ -47,7 +47,7 @@ import {
   listIncidentFeedbackNotes,
   listServiceFeedbackHints,
 } from "@/lib/sre/investigation-feedback";
-import { persistNativeEvidence } from "@/lib/sre/evidence-brief-orchestrator";
+import { countStoredIncidentEvidence, persistNativeEvidenceWithin } from "@/lib/sre/native-evidence-bounded";
 import { findSimilarIncidents, similarIncidentPromptLines } from "@/lib/sre/similar-incidents";
 import { SreDailyTokenLimitError } from "@/lib/sre/sre-daily-token-limit";
 import { failStaleSreInvestigationRunsForIncident, isActiveIncidentRunConflict } from "@/sre/lib/stale-run-recovery";
@@ -247,9 +247,7 @@ export async function executeSreIncidentInvestigation(
     ]);
     // Native monitor/run/alert evidence is otherwise only stored by the evidence
     // brief; collect it here so the agent can see it. Best-effort and bounded.
-    let collectedCount = 0;
-    const abort = new AbortController();
-    let timer: ReturnType<typeof setTimeout> | undefined;
+    let evidenceCount = Number(incident.evidenceCount ?? 0);
     try {
       const [{ latest } = { latest: null }] = await db
       .select({ latest: max(sreEvidenceItems.createdAt) })
@@ -261,39 +259,34 @@ export async function executeSreIncidentInvestigation(
         eq(sreEvidenceItems.sourceType, "native"),
       ));
       if (!latest || new Date(latest).getTime() < Date.now() - NATIVE_EVIDENCE_FRESH_MS) {
-        const persisted = await Promise.race([
-          persistNativeEvidence({
-            organizationId: input.organizationId,
-            projectId: input.projectId,
-            incidentId: incident.id,
-            userId: input.userId,
-            investigationRunId,
-            signal: abort.signal,
-          }),
-          new Promise<never>((_, reject) => {
-            timer = setTimeout(() => {
-              abort.abort();
-              reject(new Error("native evidence collection timed out"));
-            }, NATIVE_EVIDENCE_TIMEOUT_MS);
-          }),
-        ]);
-        collectedCount = persisted?.createdCount ?? 0;
-        if (collectedCount > 0) {
-          nativeEvidence = await listStoredSreEvidence({
+        await persistNativeEvidenceWithin({
+          organizationId: input.organizationId,
+          projectId: input.projectId,
+          incidentId: incident.id,
+          userId: input.userId,
+          investigationRunId,
+        }, NATIVE_EVIDENCE_TIMEOUT_MS);
+      }
+    } catch (error) {
+      investigationLogger.error({ err: error }, "Native evidence collection failed; continuing without it");
+    }
+    // Re-read after collecting: this run, a timed-out write or a concurrent triage may have stored rows.
+    {
+      try {
+        [nativeEvidence, { total: evidenceCount }] = await Promise.all([
+          listStoredSreEvidence({
             organizationId: input.organizationId,
             projectId: input.projectId,
             incidentId: incident.id,
             sourceMode: "native",
             limit: 8,
-          });
-        }
+          }),
+          countStoredIncidentEvidence({ organizationId: input.organizationId, projectId: input.projectId, incidentId: incident.id }),
+        ]);
+      } catch (error) {
+        investigationLogger.error({ err: error }, "Re-reading native evidence failed; using what was loaded");
       }
-    } catch (error) {
-      investigationLogger.error({ err: error }, "Native evidence collection failed; continuing without it");
-    } finally {
-      clearTimeout(timer);
     }
-    const evidenceCount = Number(incident.evidenceCount ?? 0) + collectedCount;
     const storedEvidenceContext = [...nativeEvidence, ...connectorEvidence].map(
       (item) => {
         const summary =

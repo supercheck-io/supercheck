@@ -26,15 +26,16 @@ jest.mock("@/sre/tools/connector-tools", () => ({
   createSreConnectorTools: jest.fn().mockReturnValue({}),
   listIncidentLiveConnectors: jest.fn().mockResolvedValue(null),
 }));
-jest.mock("@/lib/sre/evidence-brief-orchestrator", () => ({
-  persistNativeEvidence: jest.fn().mockResolvedValue({ collection: null, rows: [], createdCount: 0 }),
+jest.mock("@/lib/sre/native-evidence-bounded", () => ({
+  persistNativeEvidenceWithin: jest.fn().mockResolvedValue(undefined),
+  countStoredIncidentEvidence: jest.fn().mockResolvedValue({ total: 0, connector: 0 }),
 }));
 jest.mock("@/lib/ai/ai-provider", () => ({
   getActualModelName: jest.fn(() => "test-model"),
 }));
 
 import { db } from "@/utils/db";
-import { persistNativeEvidence } from "@/lib/sre/evidence-brief-orchestrator";
+import { countStoredIncidentEvidence, persistNativeEvidenceWithin } from "@/lib/sre/native-evidence-bounded";
 import { listStoredSreEvidence } from "@/sre/tools/evidence-tools";
 import { listIncidentLiveConnectors } from "@/sre/tools/connector-tools";
 import {
@@ -490,40 +491,30 @@ describe("executeSreIncidentInvestigation native evidence collection", () => {
 
   const run = () => executeSreIncidentInvestigation("run-1", incident, input);
 
-  it("collects when there is no recent native evidence and adds the new rows to the count", async () => {
-    (persistNativeEvidence as jest.Mock).mockResolvedValue({ collection: {}, rows: [], createdCount: 2 });
+  it("collects when there is no recent native evidence and uses the recounted total", async () => {
+    (countStoredIncidentEvidence as jest.Mock).mockResolvedValue({ total: 3, connector: 0 });
     await run();
-    expect(persistNativeEvidence).toHaveBeenCalledWith(expect.objectContaining({ incidentId: incident.id, investigationRunId: "run-1", signal: expect.any(AbortSignal) }));
-    expect(listStoredSreEvidence).toHaveBeenCalledTimes(3);
+    expect(persistNativeEvidenceWithin).toHaveBeenCalledWith(expect.objectContaining({ incidentId: incident.id, investigationRunId: "run-1" }), 15_000);
     expect((runSreAgent as jest.Mock).mock.calls[0][0].prompt).toContain("Stored evidence items: 3");
   });
 
-  it("skips collection when native evidence was created recently", async () => {
+  it("skips collection when native evidence was created recently, but re-reads what a concurrent run stored", async () => {
     latestRows(new Date());
+    (countStoredIncidentEvidence as jest.Mock).mockResolvedValue({ total: 5, connector: 0 });
     await run();
-    expect(persistNativeEvidence).not.toHaveBeenCalled();
+    expect(persistNativeEvidenceWithin).not.toHaveBeenCalled();
+    expect((runSreAgent as jest.Mock).mock.calls[0][0].prompt).toContain("Stored evidence items: 5");
   });
 
   it("collects again when the latest native evidence is older than the window", async () => {
     latestRows(new Date(Date.now() - 11 * 60_000));
     await run();
-    expect(persistNativeEvidence).toHaveBeenCalledTimes(1);
+    expect(persistNativeEvidenceWithin).toHaveBeenCalledTimes(1);
   });
 
   it("still investigates when collection fails", async () => {
-    (persistNativeEvidence as jest.Mock).mockRejectedValue(new Error("db down"));
+    (persistNativeEvidenceWithin as jest.Mock).mockRejectedValue(new Error("native evidence collection timed out"));
     await run();
-    expect(runSreAgent).toHaveBeenCalledTimes(1);
-  });
-
-  it("aborts the collection on timeout and still investigates", async () => {
-    jest.useFakeTimers();
-    let signal: AbortSignal | undefined;
-    (persistNativeEvidence as jest.Mock).mockImplementation((arg) => { signal = arg.signal; return new Promise(() => undefined); });
-    const pending = run();
-    await jest.advanceTimersByTimeAsync(15_001);
-    await pending;
-    expect(signal?.aborted).toBe(true);
     expect(runSreAgent).toHaveBeenCalledTimes(1);
   });
 });
