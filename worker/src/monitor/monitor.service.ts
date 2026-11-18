@@ -35,7 +35,10 @@ import {
   EnhancedValidationService,
   SecurityConfig,
 } from '../common/validation/enhanced-validation.service';
-import { redactTargetUrl } from '../common/validation/data-sanitizer';
+import {
+  redactTargetUrl,
+  redactUrlsInText,
+} from '../common/validation/data-sanitizer';
 import {
   CredentialSecurityService,
   CredentialData,
@@ -1769,7 +1772,8 @@ export class MonitorService {
         this.logger.warn(
           `HTTP Request to ${redactTargetUrl(target)} failed: ${detailedError}`,
         );
-        details.errorMessage = detailedError;
+        // Persisted and shown in alerts: a URL echoed by the error must not leak query secrets.
+        details.errorMessage = redactUrlsInText(detailedError);
         if (error.response) {
           details.statusCode = error.response.status;
           details.statusText = error.response.statusText;
@@ -1833,7 +1837,7 @@ export class MonitorService {
           isUp = false;
         }
       } else if (isTimeoutError(error)) {
-        details.errorMessage = getErrorMessage(error);
+        details.errorMessage = redactUrlsInText(getErrorMessage(error));
         status = 'timeout';
         isUp = false;
       } else if (isDnsError(error)) {
