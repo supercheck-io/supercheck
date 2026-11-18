@@ -1,10 +1,10 @@
 ---
-title: Browser Test
+title: Browser test
 description: Playwright-based UI testing
 icon: Chrome
 ---
 
-Automate user interactions with Playwright. Navigate pages, fill forms, click buttons, and validate content. Browser tests run in isolated containers on Chromium by default. Add `@firefox`, `@webkit` (or `@safari`) or `@mobile` to a test title to run it on that browser or device instead.
+Automate user interactions with Playwright: navigate pages, fill forms, click buttons and validate content. Tests run in isolated containers on Chromium by default. Add `@firefox`, `@webkit` (or `@safari`) or `@mobile` to a test title to run it on that browser or device instead.
 
 ## Example
 
@@ -37,21 +37,22 @@ test.describe('authentication flow', () => {
 
 📚 [Playwright Writing Tests](https://playwright.dev/docs/writing-tests)
 
-## Create Test
+## Create a browser test
 
 <Steps>
 <Step>
-Go to **Create → Browser Test**
+Go to **Create → Browser Test**.
 </Step>
 <Step>
-Write your test script
+Write your test script.
 </Step>
 <Step>
-Click **Run** to validate
+Select **Run** to validate.
 </Step>
 <Step>
-**Save** when passing
-</Step></Steps>
+Select **Save** when it passes.
+</Step>
+</Steps>
 
 ## Common Actions
 
@@ -95,27 +96,16 @@ await expect(page.locator('h1')).toHaveText('Welcome');
 
 **Tips**
 
-- Use `data-testid` attributes for stable selectors
-- Playwright auto-waits for elements
-- Avoid fixed `waitForTimeout()` calls
+- Use `data-testid` attributes and `getSecret()` for passwords and API keys
+- Playwright auto-waits for elements, so avoid fixed `waitForTimeout()` calls
 - Take screenshots on failure for debugging
-- Use `getSecret()` for passwords and API keys
 
 </Accordion>
 </Accordions>
 
-<Accordions>
-<Accordion title="Further reading" id="further-reading">
+See the [Playwright documentation](https://playwright.dev/docs/intro), [Locators](https://playwright.dev/docs/locators), [Assertions](https://playwright.dev/docs/test-assertions) and [Auto-waiting](https://playwright.dev/docs/actionability).
 
-- [Playwright documentation](https://playwright.dev/docs/intro)
-- [Locators](https://playwright.dev/docs/locators)
-- [Assertions](https://playwright.dev/docs/test-assertions)
-- [Auto-waiting](https://playwright.dev/docs/actionability)
-
-</Accordion>
-</Accordions>
-
-## Next steps
+## Related
 
 <Cards>
 <Card title="Recorder extension" href="/docs/recorder" description="Record a flow in Chrome or Edge" />

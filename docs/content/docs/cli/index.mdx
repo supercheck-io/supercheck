@@ -1,10 +1,10 @@
 ---
-title: CLI Overview
-description: Open-source testing, monitoring, and AI SRE — as code with the Supercheck CLI
+title: CLI overview
+description: Run tests, monitors, jobs and incident workflows from the terminal, CI and coding agents
 icon: Terminal
 ---
 
-The Supercheck CLI (`@supercheck/cli`) runs your tests, monitors, jobs and incident workflows from the terminal, CI/CD pipelines and coding agents. See the [package on npm](https://www.npmjs.com/package/@supercheck/cli).
+The Supercheck CLI ([`@supercheck/cli`](https://www.npmjs.com/package/@supercheck/cli)) runs tests, monitors, jobs and incident workflows from the terminal, CI/CD and coding agents.
 
 <Cards className="grid-cols-1 sm:grid-cols-2">
 <Card icon={<Bot className="text-violet-500" />} title="Agent guidance" href="/docs/cli/agent-quickstart">
@@ -27,7 +27,7 @@ Triage incidents, start investigations, stream Copilot answers, inspect service 
 </Card>
 </Cards>
 
-## Quick Start
+## Quick start
 
 <Steps>
 <Step>
@@ -75,9 +75,9 @@ supercheck sre ask "Summarize active reliability risks"
 </Step>
 </Steps>
 
-## Choose Your Credential
+## Credentials
 
-Most commands use a **CLI token** (`sck_live_*`). `supercheck job trigger` is the exception: it uses a job-specific **trigger key** (`sck_trigger_*`), plus a CLI token only when you add `--wait`.
+Most commands use a **CLI token** (`sck_live_*`). `job trigger` uses a job-specific **trigger key** (`sck_trigger_*`), plus a CLI token only with `--wait`. See [Authentication](/docs/cli/authentication).
 
 | Use case | Credential | Variable |
 |---|---|---|
@@ -86,7 +86,7 @@ Most commands use a **CLI token** (`sck_live_*`). `supercheck job trigger` is th
 | `job trigger --wait` | Trigger key and CLI token | both |
 | Local runs (`--offline`) | None | — |
 
-## Agent Workflows
+## Agent workflows
 
 | Command | Purpose |
 |---|---|
@@ -95,16 +95,16 @@ Most commands use a **CLI token** (`sck_live_*`). `supercheck job trigger` is th
 | `supercheck capabilities --json` | Local CLI capabilities; add `--online` to verify the current server context (does not establish feature availability or permissions) |
 | `supercheck schema config --json` | The installed configuration schema |
 
-`skills` and `schema` work offline. Local runs need no cloud credentials:
+`skills` and `schema` work offline, as do local runs:
 
 ```bash
 supercheck test run --offline --file ./_supercheck_/playwright/homepage.pw.ts
 supercheck job run --id "Nightly E2E" --local --offline
 ```
 
-Offline execution runs local files and skips server-side validation. Cloud sync still requires a project-scoped CLI token. See [Agent-first operation](./commands#agent-first-operation) for JSON, confirmation and resource ownership behavior, or start with the [Agent Quickstart](/docs/cli/agent-quickstart).
+Offline runs use local files and skip server validation. Cloud sync still needs a project-scoped CLI token. See [Agent quickstart](/docs/cli/agent-quickstart) and [Agent-first operation](/docs/cli/commands#agent-first-operation).
 
-## Next Steps
+## Related
 
 <Cards className="grid-cols-1 sm:grid-cols-3">
 <Card icon={<Download className="text-blue-500" />} title="Installation" href="/docs/cli/installation">

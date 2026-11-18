@@ -3,9 +3,9 @@ title: Authentication
 description: CLI tokens, security, and authentication methods
 ---
 
-Supercheck uses prefixed tokens to identify the type and scope of access.
+Prefixed tokens identify the type and scope of access.
 
-## Token Types
+## Token types
 
 | Token | Prefix | Purpose | Scope |
 |---|---|---|---|
@@ -34,7 +34,7 @@ The CLI prints a URL and a short code. You approve the request in your browser a
 supercheck whoami
 ```
 
-Shows your API URL, authenticated project and role. Use `supercheck --json whoami` to also see the organization. Token identity and expiry are shown when your role can view API keys. A project viewer cannot create a CLI token or sign in with the CLI (it lacks the API key permission), so it cannot use the CLI. A 401 prints a hint to run `supercheck login --reauth` or set a valid `SUPERCHECK_TOKEN`.
+Shows your API URL, project and role. `supercheck --json whoami` adds the organization. Token identity and expiry appear when your role can view API keys. A project viewer lacks the API key permission, so it cannot create a CLI token or sign in with the CLI. A 401 hints at `supercheck login --reauth` or a valid `SUPERCHECK_TOKEN`.
 
 </Step>
 </Steps>
@@ -52,11 +52,11 @@ sequenceDiagram
     S-->>C: Project-scoped CLI key (90 days)
 ```
 
-The key created by browser login is project-scoped, expires after 90 days, and appears under **CLI Tokens** where you can revoke it. Each project holds up to 20 active (enabled and unexpired) CLI tokens, and every browser login creates a new one, so revoke tokens you no longer use. See [`supercheck login`](/docs/cli/commands#supercheck-login) for flags and agent-friendly usage. Signing in to the dashboard in a browser does not authenticate the CLI.
+The key from browser login is project-scoped, expires after 90 days and appears under **CLI Tokens**, where you can revoke it. Each project holds up to 20 active (enabled and unexpired) CLI tokens, and every browser login creates one, so revoke unused tokens. Signing in to the dashboard does not authenticate the CLI. Flags: [`supercheck login`](/docs/cli/commands#supercheck-login).
 
-Resetting your account password revokes all your CLI tokens, so sign in again afterwards. Trigger keys are not affected.
+Resetting your account password revokes all your CLI tokens. Trigger keys are not affected.
 
-## Create a Token Manually
+## Create a token manually
 
 | Method | Steps |
 |---|---|
@@ -70,11 +70,11 @@ curl -X POST https://app.supercheck.io/api/cli-tokens \
   -d '{"name": "CI/CD Pipeline"}'
 ```
 
-Tokens can be enabled, disabled or revoked from the dashboard without deleting them. `supercheck whoami` shows the current context and `supercheck logout` clears stored credentials.
+Enable, disable or revoke tokens from the dashboard. `supercheck logout` clears stored credentials.
 
-## Trigger Keys
+## Trigger keys
 
-Trigger keys (`sck_trigger_*`) give limited access for CI/CD: they can only trigger one specific job, and cannot access other API resources or authenticate other commands.
+A trigger key (`sck_trigger_*`) can only trigger one job. It cannot access other API resources or authenticate other commands.
 
 ```bash
 export SUPERCHECK_TRIGGER_KEY="sck_trigger_..."
@@ -82,23 +82,15 @@ curl -X POST https://app.supercheck.io/api/jobs/<id>/trigger \
   -H "Authorization: Bearer $SUPERCHECK_TRIGGER_KEY"
 ```
 
-To wait for the result with `job trigger --wait`, also supply a CLI token with access to read job details and run results in that project. A trigger key alone cannot wait. Creating a trigger key requires `--show-secrets`, because its plaintext value is returned once and cannot be fetched again.
+`job trigger --wait` also needs a CLI token that can read job details and run results in that project. Creating a trigger key requires `--show-secrets`, because its value is returned once.
 
-## Which Credential Do I Need?
-
-| Task | Needs |
-|---|---|
-| `job trigger` | `SUPERCHECK_TRIGGER_KEY` |
-| `job trigger --wait` | `SUPERCHECK_TRIGGER_KEY` and `SUPERCHECK_TOKEN` |
-| `deploy`, `diff`, `whoami`, other API commands | `SUPERCHECK_TOKEN` |
-| `test run --offline`, `job run --local --offline` | Nothing; no contact with Supercheck |
-
-## Environment Variables
+## Environment variables
 
 | Variable | Required | Description |
 |---|---|---|
-| `SUPERCHECK_TOKEN` | Usually | CLI token for most commands and for `job trigger --wait` |
-| `SUPERCHECK_TRIGGER_KEY` | For `job trigger` | Job-specific trigger key |
+| `SUPERCHECK_TOKEN` | Usually | CLI token for most commands, `deploy`, `diff`, `whoami` and `job trigger --wait` |
+| `SUPERCHECK_TRIGGER_KEY` | For `job trigger` | Job-specific trigger key (`--wait` also needs the CLI token) |
+
 | `SUPERCHECK_URL` | No | Base URL (default: `https://app.supercheck.io`). The CLI sends your token only over `https://`, or `http://` to `localhost`, `127.0.0.1` or `[::1]`. An empty value is ignored |
 | `SUPERCHECK_ORG` | No | Default organization ID (UUID) |
 | `SUPERCHECK_PROJECT` | No | Default project ID (UUID) |
@@ -106,10 +98,10 @@ To wait for the result with `job trigger --wait`, also supply a CLI token with a
 | `NO_PROXY` | No | Hosts to bypass the proxy (comma-separated) |
 | `SUPERCHECK_REQUEST_TIMEOUT_MS` | No | Timeout for browser-login requests in milliseconds (5000 to 120000, default 30000) |
 
-`SUPERCHECK_ORG` and `SUPERCHECK_PROJECT` override the matching fields in `supercheck.config.ts` for config resolution. The CLI token itself is project-scoped and determines your actual API access.
+`SUPERCHECK_ORG` and `SUPERCHECK_PROJECT` override the matching `supercheck.config.ts` fields. The project-scoped token decides actual API access. `test run --offline` and `job run --local --offline` need no credential.
 
 <Callout type="warn">
-`SUPERCHECK_TOKEN`, `SUPERCHECK_URL`, `SUPERCHECK_TRIGGER_KEY`, every proxy setting (`HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY`, `NO_PROXY`, in either case) and the TLS settings `NODE_TLS_REJECT_UNAUTHORIZED`, `NODE_EXTRA_CA_CERTS`, `NODE_OPTIONS`, `NODE_USE_ENV_PROXY`, `SSL_CERT_FILE`, `SSL_CERT_DIR` and any `DOTENV_*` variable are **not** read from a project's `.env` file. A repository can be committed by anyone, so letting it choose the credential, the server it is sent to, or a proxy or TLS setting would let a hostile repository intercept your token. Export these in your shell, use your CI secret store, or run `supercheck login`. Other variables in `.env` (for example `SUPERCHECK_ORG` and `SUPERCHECK_PROJECT`) are still loaded.
+`SUPERCHECK_TOKEN`, `SUPERCHECK_URL`, `SUPERCHECK_TRIGGER_KEY`, every proxy setting (`HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY`, `NO_PROXY`, in either case) and the TLS settings `NODE_TLS_REJECT_UNAUTHORIZED`, `NODE_EXTRA_CA_CERTS`, `NODE_OPTIONS`, `NODE_USE_ENV_PROXY`, `SSL_CERT_FILE`, `SSL_CERT_DIR` and any `DOTENV_*` variable are not read from a project's `.env` file, because a hostile repository could use them to intercept your token. Export them in your shell, use your CI secret store, or run `supercheck login`. Other `.env` variables, such as `SUPERCHECK_ORG` and `SUPERCHECK_PROJECT`, still load.
 </Callout>
 
 ## Security
@@ -117,35 +109,31 @@ To wait for the result with `job trigger --wait`, also supply a CLI token with a
 | Practice | Why |
 |---|---|
 | Copy a new token immediately | It is shown only once |
-| Keep tokens in your CI secret manager or environment variables, never in config files | The CLI rejects configs containing token patterns |
+| Keep tokens in your CI secret store, never in config files | The CLI rejects configs containing token patterns |
 | Rotate regularly, use separate tokens per environment, set expiry on temporary ones | Limits exposure |
 | Prefer trigger keys when you only need to trigger a job | Least privilege |
 | Avoid `--show-secrets` in CI logs, shared terminals and agent transcripts | It reveals sensitive values |
 
-The CLI redacts known credential fields in output by default, including notification provider webhook URLs, Discord and Teams webhook credentials, and provider config headers. Monitor target URLs stay visible, while credential headers such as `Authorization` and `Cookie` are masked.
+The CLI redacts credential fields in output by default: notification provider webhook URLs, Discord and Teams webhook credentials and provider config headers. Monitor target URLs stay visible; `Authorization` and `Cookie` headers are masked.
 
-Organization and billing administration, including member management, creating projects, and deleting, restoring or cancelling the deletion of an organization or project, require an interactive browser session. Project-scoped CLI tokens receive `403` for these operations, even when their owner is an organization administrator. Tokens still support scoped organization/project discovery, authentication context and authorized resource operations within their project.
+Organization and billing administration, member management, creating projects, and deleting, restoring or cancelling deletion of an organization or project need a browser session. Project-scoped CLI tokens get `403` for these, even for organization administrators. Tokens still support scoped organization and project discovery, authentication context and authorized resource operations in their project.
 
 <Accordions>
 <Accordion title="Repository trust and .env warnings" id="repository-trust">
 
-In human-readable mode the CLI prints a warning when a `.env` tries to set the protected variables above (JSON output stays unchanged).
+In human-readable mode the CLI warns when a `.env` sets a protected variable (JSON output is unchanged). Commands that load `supercheck.config.ts` still execute that file, which is code: do not run `deploy`, `pull` or `diff` in a repository you do not trust. `onboard`, `discover`, `link`, `plan`, `ci`, `agent` and `doctor` never run it (`doctor --fix` does run `npx playwright install` from the repository, so use it only where you trust the repository).
 
-This protects the CLI's own settings. Commands that load `supercheck.config.ts` still execute that file, which is code: do not run `deploy`, `pull` or `diff` in a repository you do not trust. `onboard`, `discover`, `link`, `plan`, `ci`, `agent` and `doctor` never run it (`doctor --fix` does run `npx playwright install` from the repository, so use it only where you trust the repository).
-
-**Upgrading:** if your config uses `process.env.SUPERCHECK_URL` and you kept that variable in `.env`, export it in your shell or CI instead, otherwise the CLI uses the default URL.
+If your config reads `process.env.SUPERCHECK_URL` from `.env`, export it in your shell or CI instead, or the CLI uses the default URL.
 
 </Accordion>
 <Accordion title="Rate limits" id="rate-limits">
 
-Job trigger keys default to 100 requests per 60-second window; administrators can set a different limit for an individual key. Other endpoints may apply their own limits.
-
-The CLI handles rate limiting with exponential backoff. When the API returns `429`, it reads the `Retry-After` header (if present) and waits before retrying an idempotent request.
+Trigger keys default to 100 requests per 60-second window; administrators can set a different limit per key. Other endpoints may have their own limits. On `429`, the CLI backs off exponentially, honors `Retry-After` and retries idempotent requests.
 
 </Accordion>
 <Accordion title="Self-hosted" id="self-hosted">
 
-Set `SUPERCHECK_URL` or pass `--url` when logging in: `supercheck login --url https://supercheck.yourdomain.com`. Browser sign-in needs `DEVICE_AUTH_ENABLED=true` on the server (HTTPS or localhost). Without it, `login` explains the setting; create a token in the dashboard and use `supercheck login --token <token>`.
+Set `SUPERCHECK_URL` or run `supercheck login --url https://supercheck.yourdomain.com`. Browser sign-in needs `DEVICE_AUTH_ENABLED=true` on the server (HTTPS or localhost). Without it, create a token in the dashboard and run `supercheck login --token <token>`.
 
 </Accordion>
 </Accordions>

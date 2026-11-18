@@ -1,6 +1,6 @@
 ---
 title: Private Agent
-description: Connect private evidence sources to Cloud or your self-hosted instance
+description: Connect private evidence sources to AI SRE through an outbound-only agent
 icon: ShieldCheck
 ---
 
@@ -14,7 +14,7 @@ Connect private services to AI SRE investigations through an outbound-only, read
 | Host | Docker Engine with Compose v2 that can reach Supercheck and your provider endpoints |
 | Network | Outbound HTTPS to the Supercheck API, with no browser challenge in front. No inbound ports for remote agents; colocated agents use the private Docker network |
 
-Use the supplied Compose file: it keeps the agent non-root, read-only, and capability-free.
+The supplied Compose file keeps the agent non-root, read-only and capability-free.
 
 ## Set up
 
@@ -51,7 +51,7 @@ sequenceDiagram
 
 In your Cloud or self-hosted dashboard, select the project and open **Settings → Organization → Private Agents → Register agent**. Keep project scope selected unless the agent must serve other projects.
 
-Copy the **Agent ID** and **Registration token**, and start the agent within **15 minutes**, before the token expires.
+Copy the **Agent ID** and **Registration token** and start the agent within **15 minutes**, before the token expires.
 
 </Step>
 <Step>
@@ -104,9 +104,7 @@ Copy the **Agent ID** and **Registration token**, and start the agent within **1
 
 ### Connect a provider
 
-Confirm the agent shows **connected**. In the same project's **Settings → Organization → Integrations**, add a connector, select **Private Agent**, and choose this agent.
-
-Enter a container-reachable provider endpoint and a read-only credential, then validate the connector and test a known-result query. See [Connectors](/docs/app/investigate/connectors) for provider requirements and [Connector limits](#connector-limits).
+When the agent shows **connected**, add a connector in the same project's **Settings → Organization → Integrations**, select **Private Agent** and choose this agent. Enter a container-reachable provider endpoint and a read-only credential, then validate and test a known-result query. See [Connectors](/docs/app/investigate/connectors) and [Connector limits](#connector-limits).
 
 </Step>
 <Step>
@@ -135,7 +133,7 @@ Preserve the `private-agent-state` volume; do not use `down -v` during maintenan
 <Accordions>
 <Accordion title="Token expired or credential revoked" id="credential-revoked">
 
-Choose **Rotate token**, put the new token in `.env`, and recreate the container within 15 minutes (`docker compose up -d private-agent`); a plain restart does not reload `.env`. A revoked agent logs `Private Agent credential revoked or agent disabled` and exits.
+Choose **Rotate token**, put the new token in `.env` and recreate the container within 15 minutes (`docker compose up -d private-agent`); a plain restart does not reload `.env`. A revoked agent logs `Private Agent credential revoked or agent disabled` and exits.
 
 </Accordion>
 <Accordion title="Connector limits and MCP servers" id="connector-limits">
@@ -148,7 +146,7 @@ Loopback addresses such as `localhost` and cloud metadata endpoints (AWS, GCP, A
 | Any other connector response | Over 10 MiB fails the query |
 | Job result sent back by the agent | 1 MiB |
 
-Private Agents are also the only way to use an [MCP server](/docs/app/investigate/connectors#mcp-servers-private-agent-only) inside your network; the agent runs only tools you allowlisted. Upgrade older agents to use newer connector types such as MCP, Jira or Confluence.
+Private Agents are the only way to use an [MCP server](/docs/app/investigate/connectors#mcp-servers-private-agent-only) in your network; the agent runs only allowlisted tools. Upgrade older agents to use newer connector types such as MCP, Jira or Confluence.
 
 </Accordion>
 </Accordions>

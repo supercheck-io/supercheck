@@ -1,29 +1,27 @@
 ---
 title: Notifications
-description: Notification channels, alert rules, and delivery for failures and recoveries
+description: Set up notification channels, thresholds and warnings for failed checks and recoveries
 icon: BellRing
 ---
 
-Notifications tell your team when monitors fail, jobs break, or services recover. Set up a channel, attach it to a monitor or job, and use thresholds to avoid noise.
+Notifications tell your team when monitors fail, jobs break or services recover. Set up a channel, attach it to a monitor or job, and use thresholds to avoid noise.
 
 ![Notification Channels](/screenshots/notification-channels.png)
 
-**Communicate → Notifications** has two tabs: **Channels**, where you set up where alerts go, and **Delivery history**, which lists the latest 200 alert notifications sent for your monitors and jobs. Each failure alert also opens an incident, unless you turn that off in the check's **Incidents** settings. See [How alerts become incidents](/docs/app/investigate/incidents#how-alerts-become-incidents).
+**Communicate → Notifications** has two tabs: **Channels** and **Delivery history**. Each failure alert also opens an incident unless you turn that off in the check's **Incidents** settings. See [How alerts become incidents](/docs/app/investigate/incidents#how-alerts-become-incidents).
 
-## Set Up a Channel
+## Set up a channel
 
 <Brands names={["slack", "teams", "discord", "telegram", "webhook"]} />
 
-Email uses your SMTP provider; the others use the service's webhook or bot token.
-
-Paging and on-call services are set up as webhook channels with a preset: PagerDuty, Jira Service Management, Splunk On-Call, Better Stack and incident.io. Supercheck opens a page when a check fails and resolves it on recovery. See [Webhook Presets](#webhook-presets).
+Email uses your SMTP provider. The others use the service's webhook or bot token. Paging services (PagerDuty, Jira Service Management, Splunk On-Call, Better Stack, incident.io) are webhook channels with a preset: Supercheck opens a page when a check fails and resolves it on recovery. See [Webhook presets](#webhook-presets).
 
 <Steps>
 <Step>
 Open **Communicate → Notifications → Channels** and select **Create channel**.
 </Step>
 <Step>
-Pick the **Channel type** (email, Slack, Teams, Discord, Telegram, a paging service preset or a custom webhook) and enter its credentials (see [Provider Configuration](#provider-configuration)).
+Pick the **Channel type** (email, Slack, Teams, Discord, Telegram, a paging service preset or a custom webhook) and enter its credentials (see [Provider configuration](#provider-configuration)).
 </Step>
 <Step>
 Select **Test connection**, then save.
@@ -57,7 +55,7 @@ sequenceDiagram
     end
 ```
 
-## Alert Types
+## Alert types
 
 <Tabs items={['Monitors', 'Jobs']}>
 <Tab value="Monitors">
@@ -84,33 +82,13 @@ A down MCP monitor, including a rejected login, is a normal **Failure** and open
 </Tab>
 </Tabs>
 
-## Threshold Configuration
+## Threshold configuration
 
-Thresholds prevent alert noise from transient issues like network blips or brief service hiccups.
+Thresholds keep transient issues such as network blips from alerting.
 
-<Tabs items={['Threshold Settings', 'Example']}>
-<Tab value="Threshold Settings">
+### Thresholds
 
-**Failure Threshold**
-
-The number of consecutive failures required before sending the first failure alert. This prevents alerts from single network blips.
-
-**Recovery Threshold**
-
-The number of consecutive healthy checks required before sending a recovery alert after the monitor was down. In the app, failure and recovery thresholds are 1–5; the API accepts 1–100. A monitor that was never down, or whose failures stayed below the failure threshold, sends no recovery alert.
-
-SSL warnings are separate from the monitor's up/down result. Turn on **SSL Check** on a website monitor; **Alert on SSL certificate expiration** is then switched on for you (you can switch it off) and uses the monitor's **Alert in _N_ days** window. A warning is sent at most once every 24 hours while the certificate stays inside the window. A single failed certificate read sends nothing. If the site stays up but its certificate can't be read for 24 hours, a warning is sent, repeated at most daily while the failure continues.
-
-When a warning has been sent, the next check that finds a valid certificate outside the warning window (or with a later expiry date) sends one **SSL certificate renewed (valid until _date_)** notice to the same channels and appears in alert history as **SSL Renewed**. It is sent once for each warning, and not at all if no warning was sent. If the warning was that the certificate could not be read, the notice says **SSL certificate readable again** instead. Turning off SSL alerts or SSL Check discards a pending notice. The notice does not open or resolve an incident. A channel that fails is retried up to 5 times and then skipped; the notice is not sent again on later healthy reads. During a maintenance window it is held back and sent after the window. Webhook channels receive it as a resolve event with the same `ssl:` key as the warning.
-
-Failure, recovery, SSL and SSL renewed notices are not sent while a scheduled maintenance window covers the monitor; checks still run and count toward uptime.
-
-**Alert limiting**
-
-At most **3 failure alerts** go out per failure streak, for monitors and jobs. The first goes out when the failure threshold is reached, then come reminders. For jobs a reminder follows every further `max(5, 2 × threshold)` failures. For monitors the gap doubles: with `N = max(5, 2 × threshold)`, the first reminder comes `N` failures after the first alert and the second `2N` after that. A monitor alert that cannot be delivered is retried on the next checks for up to `N` checks, and the following gap is counted from when it was actually sent. Each channel normally gets an alert once. If one channel fails while others succeed, only the failed channel is retried (up to 5 attempts), and a retried check or several workers evaluating the same alert at once do not send it twice. In rare failure cases (a worker stopping in the middle of sending, a database error while recording the delivery, or while Supercheck is being upgraded) a channel can receive an alert twice, so integrations should de-duplicate on the alert's dedup key. A passing run resets the streak, and each recovery sends one alert. The interval is not configurable.
-
-</Tab>
-<Tab value="Example">
+**Failure Threshold** is the number of consecutive failures before the first failure alert. **Recovery Threshold** is the number of consecutive healthy checks before the recovery alert after the monitor was down. The app accepts 1–5 for both and the API 1–100. A monitor that was never down, or whose failures stayed below the failure threshold, sends no recovery alert.
 
 **Configuration:** Failure Threshold = 3, Recovery Threshold = 2
 
@@ -129,8 +107,25 @@ At most **3 failure alerts** go out per failure streak, for monitors and jobs. T
 - Check 5: Status changed to passing, failure counter resets, recovery counter starts
 - Check 6: Recovery threshold (2) reached → recovery alert sent
 
-</Tab>
-</Tabs>
+### SSL alerts
+
+SSL warnings are separate from the monitor's up/down result. Turning on **SSL Check** on a website monitor switches on **Alert on SSL certificate expiration** (you can switch it off). It uses the monitor's **Alert in _N_ days** window and sends at most one warning every 24 hours while the certificate is inside it. A single failed certificate read sends nothing. If the site stays up but the certificate cannot be read for 24 hours, a warning is sent, repeated at most daily.
+
+After a warning, the next check that finds a valid certificate outside the warning window (or with a later expiry date) sends one **SSL certificate renewed (valid until _date_)** notice to the same channels. It appears in delivery history as **SSL Renewed** and is sent once per warning. If the warning was that the certificate could not be read, the notice says **SSL certificate readable again**. Turning off SSL alerts or SSL Check discards a pending notice. The notice does not open or resolve an incident. A failing channel is retried up to 5 times and then skipped. Webhook channels receive it as a resolve event with the same `ssl:` key as the warning.
+
+Failure, recovery, SSL and SSL renewed notices are held back while a scheduled maintenance window covers the monitor, and an SSL renewed notice is sent after the window. Checks still run and count toward uptime.
+
+### Alert limiting
+
+At most **3 failure alerts** go out per failure streak, for monitors and jobs. The first goes out when the failure threshold is reached, then come reminders. Let `N = max(5, 2 × threshold)`.
+
+- **Jobs:** a reminder follows every further `N` failures.
+- **Monitors:** the gap doubles. The first reminder comes `N` failures after the first alert and the second `2N` after that. An alert that cannot be delivered is retried on the next checks for up to `N` checks, and the following gap counts from when it was sent.
+
+The interval is not configurable. A passing run resets the streak, and each recovery sends one alert.
+
+Each channel normally gets an alert once. If one channel fails while others succeed, only the failed channel is retried (up to 5 attempts), and a retried check or several workers evaluating the same alert do not send it twice. In rare failure cases (a worker stopping mid-send, a database error while recording the delivery, or an upgrade) a channel can receive an alert twice, so integrations should de-duplicate on the alert's dedup key.
+
 
 ## Warnings
 
@@ -152,12 +147,12 @@ A warning shows as **Warning** in delivery history. Email subjects start with "W
 
 In monitors-as-code, warnings are `alertConfig.warnings`, for example `warnings: { heartbeat_late: true }`.
 
-## Provider Configuration
+## Provider configuration
 
 <Tabs items={['Email', 'Slack', 'Discord', 'Telegram', 'Microsoft Teams', 'Webhook']}>
 <Tab value="Email">
 
-Select **Email** and enter recipients in the notification channel.
+Select **Email** and enter the recipients.
 
 <Accordions>
 <Accordion title="Self-hosted" id="self-hosted-smtp">
@@ -200,14 +195,9 @@ SMTP_BLOCKED_RECIPIENT_DOMAINS=qa.yourdomain.com
 Create an Incoming Webhook in the [Slack API](https://api.slack.com/messaging/webhooks) and select the channel to post to.
 </Step>
 <Step>
-Copy the webhook URL.
-</Step>
-<Step>
-Add the URL in Supercheck.
+Copy the webhook URL and add it in Supercheck.
 </Step>
 </Steps>
-**Example:** `https://hooks.slack.com/services/T00000000/B00000000/XXXX`
-
 </Tab>
 <Tab value="Discord">
 
@@ -216,14 +206,9 @@ Add the URL in Supercheck.
 In Discord, go to **Server Settings → Integrations → Webhooks**, create a webhook and select the channel.
 </Step>
 <Step>
-Copy the webhook URL.
-</Step>
-<Step>
-Add the URL in Supercheck.
+Copy the webhook URL and add it in Supercheck.
 </Step>
 </Steps>
-**Example:** `https://discord.com/api/webhooks/000000000000000000/XXXX`
-
 </Tab>
 <Tab value="Telegram">
 
@@ -255,8 +240,6 @@ Copy the generated webhook URL and add it in Supercheck.
 </Step>
 </Steps>
 
-**Example:** `https://prod-00.westus.environment.api.powerplatform.com:443/powerautomate/...`
-
 Accepted URL hosts (HTTPS only):
 
 | Source | Host |
@@ -282,7 +265,7 @@ Use a publicly reachable HTTPS webhook endpoint (plain HTTP is rejected); privat
 
 Webhook URLs, custom headers and other channel credentials are secrets, so they are cleared when you reopen a channel to edit it. Leave one blank to keep its value, or enter a replacement and use **Test connection**.
 
-### Webhook Presets
+### Webhook presets
 
 The webhook channel includes presets that fill the method, headers, and JSON body template for common SRE and incident-management tools. Enter the notification credentials separately from any [read-only investigation connector](/docs/app/investigate/connectors).
 
@@ -341,7 +324,7 @@ When no body template is provided, Supercheck sends a JSON payload similar to th
 </Accordion>
 </Accordions>
 
-### Body Template
+### Body template
 
 Use a custom body template to match the format required by third-party services. Templates must be valid JSON, and template variables use `{{variableName}}` syntax. Keep placeholders inside JSON string values such as `"summary": "{{title}}"`.
 
@@ -412,9 +395,7 @@ Use a webhook with a body template to send alerts to the [PagerDuty Events API v
 }
 ```
 
-<Callout type="info">
-PagerDuty resolves an alert only when the resolve event has the same `dedup_key` as the original trigger event. Use `{{pagerDutyEventAction}}` and `{{dedupKey}}` together so Supercheck sends `trigger` for failures and `resolve` for recoveries using the same key. PagerDuty expects `severity` to be one of `critical`, `error`, `warning`, or `info`; `{{normalizedSeverity}}` maps Supercheck `success` alerts to `info`.
-</Callout>
+PagerDuty resolves an alert only when the resolve event has the same `dedup_key` as the original trigger event. Use `{{pagerDutyEventAction}}` and `{{dedupKey}}` together so Supercheck sends `trigger` for failures and `resolve` for recoveries using the same key. PagerDuty expects `severity` to be one of `critical`, `error`, `warning` or `info`; `{{normalizedSeverity}}` maps Supercheck `success` alerts to `info`.
 
 </Accordion>
 <Accordion title="Splunk On-Call / VictorOps Integration" id="splunk-on-call-victorops-integration">
@@ -438,9 +419,7 @@ Use a webhook with a body template to send alerts to the [Splunk On-Call REST en
 }
 ```
 
-<Callout type="info">
-Splunk On-Call only treats `CRITICAL` as an incident-opening event and `RECOVERY` as a resolve event. `{{victorOpsMessageType}}` (or its `{{splunkOnCallMessageType}}` alias) maps Supercheck trigger alerts to `CRITICAL` and recoveries to `RECOVERY`. Use `{{dedupKey}}` as `entity_id` so the resolve event closes the same incident. Do not send `trigger` or `resolve` in `message_type`; those values are treated as INFO and will not auto-resolve.
-</Callout>
+Splunk On-Call only treats `CRITICAL` as an incident-opening event and `RECOVERY` as a resolve event. `{{victorOpsMessageType}}` (or its `{{splunkOnCallMessageType}}` alias) maps Supercheck trigger alerts to `CRITICAL` and recoveries to `RECOVERY`. Use `{{dedupKey}}` as `entity_id` so the resolve event closes the same incident. Do not send `trigger` or `resolve` in `message_type`: those values are treated as INFO and never auto-resolve.
 
 </Accordion>
 </Accordions>
@@ -468,9 +447,9 @@ Supercheck sends trigger and resolve events only. Acknowledging or closing the p
 
 A job's page is resolved once, on the first passing run after the failure (past its recovery threshold), whether or not **Alert on success** is on; later passing runs send the paging service nothing.
 
-## Delivery History
+## Delivery history
 
-Review the latest 200 alert notifications in **Notifications → Delivery history**. Incident update notifications are not listed there. Each row shows:
+**Notifications → Delivery history** lists the latest 200 alert notifications. Incident update notifications are not listed. Each row shows:
 
 ![Alert History](/screenshots/alert-history.png)
 
@@ -483,9 +462,7 @@ Review the latest 200 alert notifications in **Notifications → Delivery histor
 | **Time** | When it was sent |
 | **Delivery metadata** | For AI SRE correlation: provider type or preset, dedup key, event action, response status, attempt count and response hash when available. Webhook deliveries also list each attempt with its HTTP status or error and duration |
 
-<Callout type="info">
 Use delivery status and HTTP diagnostics to troubleshoot failed notifications. Raw provider response bodies and credential values are not displayed.
-</Callout>
 
 <Accordions>
 <Accordion title="Alert samples" id="alert-samples">
@@ -532,10 +509,10 @@ Use delivery status and HTTP diagnostics to troubleshoot failed notifications. R
 </Accordion>
 </Accordions>
 
-## Next steps
+## Related
 
 <Cards>
-<Card title="Incident Investigation" href="/docs/app/investigate/incidents" description="Investigate and resolve the incident an alert opens" />
-<Card title="Status Pages" href="/docs/app/communicate/status-pages" description="Tell your users about outages" />
+<Card title="Incident investigation" href="/docs/app/investigate/incidents" description="Investigate and resolve the incident an alert opens" />
+<Card title="Status pages" href="/docs/app/communicate/status-pages" description="Tell your users about outages" />
 <Card title="Monitors" href="/docs/app/monitor" description="Create the checks that send alerts" />
 </Cards>

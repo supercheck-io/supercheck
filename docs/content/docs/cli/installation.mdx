@@ -37,13 +37,13 @@ supercheck health
 supercheck login
 ```
 
-Approve the code in your browser. To use a token instead, create one under **Settings → Organization → CLI Tokens → Create token** (shown only once) and pass it:
+Approve the code in your browser. Or create a token under **Settings → Organization → CLI Tokens → Create token** (shown once):
 
 ```bash
 supercheck login --token sck_live_a1b2c3d4...
 ```
 
-In CI/CD no login step is needed. Export the token and the CLI reads it at runtime:
+In CI/CD, skip login and export the token:
 
 ```bash
 export SUPERCHECK_TOKEN="sck_live_..."
@@ -65,9 +65,9 @@ supercheck init
 `supercheck job trigger` uses `SUPERCHECK_TRIGGER_KEY`, not the CLI token. Add `SUPERCHECK_TOKEN` only when you also use `--wait` or other API commands.
 </Callout>
 
-Local test execution does not require a Supercheck account: `supercheck test run --offline --file <path>` or `supercheck job run --id <name-or-id> --local --offline` use local Playwright/k6 dependencies and skip server validation. Cloud commands still require credentials. For agent setup, see [Agent Quickstart](/docs/cli/agent-quickstart).
+Local runs need no account: `supercheck test run --offline --file <path>` or `supercheck job run --id <name-or-id> --local --offline` use local Playwright and k6 and skip server validation. For agent setup, see [Agent quickstart](/docs/cli/agent-quickstart).
 
-## What `init` Creates
+## What `init` creates
 
 ```
 my-project/
@@ -77,9 +77,9 @@ my-project/
 └── supercheck.config.ts
 ```
 
-`init` also creates `package.json` if missing, writes `tsconfig.supercheck.json`, adds Supercheck entries to `.gitignore`, writes example tests, and installs `@supercheck/cli`, `typescript`, `@types/node`, `@playwright/test` and `@types/k6` as dev dependencies. It downloads the Playwright **chromium** browser for local execution and warns if **k6** is not installed (needed for performance tests). With `--skip-examples`, no example tests are written, `@playwright/test` is not installed and chromium is not downloaded.
+`init` also creates `package.json` if missing, writes `tsconfig.supercheck.json` and example tests, updates `.gitignore`, and installs `@supercheck/cli`, `typescript`, `@types/node`, `@playwright/test` and `@types/k6` as dev dependencies. It downloads Playwright **chromium** and warns if **k6** is missing. With `--skip-examples`, it writes no examples and skips `@playwright/test` and chromium.
 
-## Test Dependencies
+## Test dependencies
 
 | Dependency | Needed for | Install |
 |---|---|---|
@@ -90,7 +90,7 @@ Check everything with `supercheck doctor`.
 
 ## Docker
 
-Set `SUPERCHECK_JOB_ID` and both tokens in your environment, then run the CLI using the official Node.js image:
+Pass the job ID and both tokens as environment variables:
 
 ```bash
 docker run --rm \
@@ -98,12 +98,12 @@ docker run --rm \
   node:20-slim sh -c 'npm install -g @supercheck/cli && supercheck job trigger "$SUPERCHECK_JOB_ID" --wait'
 ```
 
-See [CI/CD Integration](./ci-cd) for Docker-based pipeline examples.
+See [CI/CD](/docs/cli/ci-cd) for pipeline examples.
 
 <Accordions>
 <Accordion title="Self-hosted" id="self-hosted-setup">
 
-Point the CLI at your instance's HTTPS URL. Cloud users do not need this: the default is `https://app.supercheck.io`.
+Point the CLI at your instance's HTTPS URL. The default is `https://app.supercheck.io`.
 
 ```bash
 export SUPERCHECK_URL="https://supercheck.yourdomain.com"
@@ -113,12 +113,10 @@ supercheck login --token $SUPERCHECK_TOKEN --url $SUPERCHECK_URL
 supercheck health
 ```
 
-See the [production deployment guide](/docs/app/deployment/self-hosted) if your administrator still needs to configure HTTPS.
-
 </Accordion>
 <Accordion title="Proxy configuration" id="proxy-configuration">
 
-The CLI respects standard proxy environment variables:
+The CLI honors standard proxy variables:
 
 ```bash
 export HTTPS_PROXY="http://proxy.corp.com:8080"
@@ -129,25 +127,10 @@ supercheck job trigger <id> --wait
 ```
 
 </Accordion>
-<Accordion title="Manual Playwright and k6 setup" id="test-dependencies">
-
-If you skip `supercheck init`:
-
-```bash
-npm install --save-dev @playwright/test
-npx playwright install chromium
-```
-
-Run `supercheck doctor` to verify dependencies.
-
-</Accordion>
 <Accordion title="Uninstall" id="uninstall">
 
 ```bash
-# Clear stored credentials first
-supercheck logout
-
-# Remove global install
+supercheck logout   # clear stored credentials
 npm uninstall -g @supercheck/cli
 ```
 
