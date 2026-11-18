@@ -3,20 +3,24 @@ import {
   assertProviderQueryAllowed,
 } from "./providers/provider-query-guards";
 
+/** Shared by every SRE prompt: an unfiltered sample proves nothing about absence. */
+export const SRE_ERROR_QUERY_RULE =
+  "To answer whether errors occurred, query for errors explicitly with the service's OTel name and an error filter, and read the result's truncated flag and message: a capped or unfiltered sample never proves that there were no errors.";
+
 export function getAgentConnectorQueryGuidance(connectorType: string) {
   switch (connectorType) {
     case "kubernetes":
       return "Kubernetes label selector only. Use an explicit namespace and * until evidence verifies a label mapping; never derive a label from the service name.";
     case "prometheus":
-      return 'PromQL only, for example up or sum(rate(http_requests_total{service="checkout"}[5m])). Never use a bare Kubernetes label selector.';
+      return 'PromQL only, for example up or sum(rate(http_requests_total{service="checkout"}[5m])). For errors use an error-rate query such as sum(rate(http_requests_total{service="checkout",status=~"5.."}[5m])). Never use a bare Kubernetes label selector.';
     case "loki":
-      return 'LogQL only, for example {app="checkout"} or {app="checkout"} |= "error". Never use a bare Kubernetes label selector.';
+      return 'LogQL only, for example {app="checkout"} or {app="checkout"} |= "error"; for errors prefer {service_name="checkout"} |= "error" (or the level label). Never use a bare Kubernetes label selector.';
     case "grafana":
       return "Plain dashboard search text, for example checkout latency.";
     case "elasticsearch":
-      return 'Lucene query string only (not JSON DSL), for example service.name:"checkout" AND log.level:error. The time window is applied automatically.';
+      return 'Lucene query string only (not JSON DSL), for example service.name:"checkout" AND (log.level:error OR level:error); an unfiltered * returns an arbitrary sample, never use it to rule out errors. The time window is applied automatically.';
     case "jaeger":
-      return 'Jaeger trace search. Use service:checkout (add operation:"GET /cart", error:true, minDuration:500ms, tag:http.status_code=500), or trace:<hex id>. Use * to list services first when the service name is unknown. Time window is applied automatically.';
+      return 'Jaeger trace search. Use service:checkout (add operation:"GET /cart", error:true, minDuration:500ms, tag:http.status_code=500), or trace:<hex id>. For failing traces use service:checkout error:true. Use * to list services first when the service name is unknown. Time window is applied automatically.';
     case "newrelic":
       return "NRQL only, read-only, for example SELECT count(*) FROM Transaction WHERE appName = 'checkout' AND error IS true FACET name, or SELECT message FROM Log WHERE service.name = 'checkout' AND level = 'ERROR'. Do not add SINCE/UNTIL (the investigation window is applied) or COMPARE WITH.";
     case "splunk":

@@ -23,6 +23,7 @@ import {
   SseClientError,
 } from "@/sre/lib/sse-stream";
 import { SRE_CHART_PROMPT_LINES } from "@/sre/lib/chart-contract";
+import { SRE_ERROR_QUERY_RULE } from "@/lib/sre/connectors/agent-query-guidance";
 import { createSreConnectorTools } from "@/sre/tools/connector-tools";
 import { createSreSimilarIncidentTools } from "@/sre/tools/similar-incident-tools";
 import { createSreEvidenceTools } from "@/sre/tools/evidence-tools";
@@ -102,7 +103,7 @@ function buildChatPrompt(input: {
       ? "Use available read-only evidence tools before giving incident-specific conclusions."
       : "No incident is scoped; do not claim incident evidence was inspected.",
     input.liveConnectorToolsEnabled
-      ? "Use available live connector tools when fresh data is needed. Discover available project connectors and services first; ask which service if the target is ambiguous."
+      ? "Use available live connector tools when fresh data is needed. Discover available project connectors and services first; ask which service if the target is ambiguous. Search each service by its OTel service name. " + SRE_ERROR_QUERY_RULE
       : "Live connector tools are not available for this chat; use conversation text and any available stored incident evidence only.",
     input.attachments.length > 0
       ? `User-provided context attachments (server-validated metadata/text only):\n${JSON.stringify(input.attachments, null, 2)}`

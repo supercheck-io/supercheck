@@ -155,6 +155,42 @@ describe("MCP connectors in the AI tool layer", () => {
     }
   });
 
+  it("ignores stage outside an investigation run and flags a capped sample", async () => {
+    db.query.sreServices.findFirst.mockResolvedValue({ id: serviceId });
+    db.select
+      .mockReset()
+      .mockReturnValueOnce(selectRows([{ connector: {
+        id: connectorId, type: "loki", status: "configured", config: { endpointUrl: "https://loki.example" },
+        permissionLevel: "read", sideEffectLevel: "none", defaultTimeWindowMinutes: 60,
+        outputLimits: { maxRows: 10, maxBytes: 1024, maxSeconds: 15 },
+      } }]))
+      .mockReturnValueOnce(selectRows([{ connectorId, serviceId }]));
+    jest.mocked(checkSreConnectorSearchRateLimit).mockResolvedValue({ allowed: true, remaining: 10 });
+    const execute = jest.fn().mockResolvedValue([]);
+    jest.mocked(createDirectConnector).mockImplementation((definition) => ({
+      ...definition, search: execute, validate: jest.fn(), metadata: jest.fn(),
+    }));
+    jest.mocked(sanitizeConnectorEvidence).mockReturnValue({
+      items: [], truncated: true, resultHash: "hash",
+    } as unknown as ReturnType<typeof sanitizeConnectorEvidence>);
+    db.insert.mockReturnValue({ values: jest.fn(() => ({ returning: async () => [] })) });
+    const result = await searchIncidentLiveConnectorEvidence(
+      { ...scope, serviceId },
+      { ...search, query: '{service_name="checkout-api"} |= "error"', stage: "sample" },
+    );
+    expect(execute).toHaveBeenCalled();
+    expect(result).toMatchObject({ stage: null, truncated: true, message: expect.stringContaining("capped sample") });
+  });
+
+  it("returns the OTel name of each listed service for chat", async () => {
+    db.query.sreServices.findMany.mockResolvedValue([
+      { id: serviceId, name: "Checkout API", environment: "prod", otelServiceName: "checkout-api" },
+    ]);
+    const result = await listIncidentLiveConnectors(scope);
+    expect(db.query.sreServices.findMany.mock.calls[0][0].columns).toMatchObject({ otelServiceName: true });
+    expect(result.services[0]).toMatchObject({ otelServiceName: "checkout-api" });
+  });
+
   it("includes the primary service OTel name in the incident connector list", async () => {
     db.query.sreIncidents.findFirst.mockResolvedValue({ primaryServiceId: serviceId });
     db.query.sreServices.findFirst.mockResolvedValue({

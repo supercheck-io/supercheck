@@ -509,7 +509,7 @@ export async function listIncidentLiveConnectors(
           eq(sreServices.status, "active"),
           serviceName ? ilike(sreServices.name, `%${serviceName}%`) : undefined,
         ),
-        columns: { id: true, name: true, environment: true },
+        columns: { id: true, name: true, environment: true, otelServiceName: true },
         orderBy: desc(sreServices.updatedAt),
         limit: 51,
       })
@@ -663,6 +663,8 @@ export async function searchIncidentLiveConnectorEvidence(
   const outputLimits = normalizeOutputLimits(connector.outputLimits);
   const stagedStage =
     input.stage &&
+    // Outside an investigation run (chat) the stage is ignored: an ordinary bounded search runs.
+    scope.investigationRunId &&
     !connector.privateAgentId &&
     isStagedLogConnectorType(connector.type)
       ? input.stage
@@ -670,12 +672,6 @@ export async function searchIncidentLiveConnectorEvidence(
 
   if (stagedStage) {
     try {
-      if (!scope.investigationRunId) {
-        throw new Error(
-          "Staged evidence searches require an active investigation run",
-        );
-      }
-
       const previousCalls = await db
         .select({ toolName: sreInvestigationToolCalls.toolName })
         .from(sreInvestigationToolCalls)
@@ -683,7 +679,7 @@ export async function searchIncidentLiveConnectorEvidence(
           and(
             eq(
               sreInvestigationToolCalls.investigationRunId,
-              scope.investigationRunId,
+              scope.investigationRunId ?? "",
             ),
             eq(sreInvestigationToolCalls.connectorId, connector.id),
             eq(sreInvestigationToolCalls.status, "success"),
@@ -1039,7 +1035,11 @@ export async function searchIncidentLiveConnectorEvidence(
       evidence: insertedEvidence.map(summarizeEvidenceItem),
       truncated: sanitized.truncated,
       persisted: Boolean(scope.incidentId),
-      message: `${scope.incidentId ? "Persisted" : "Returned"} ${insertedEvidence.length} connector evidence item(s)`,
+      message: `${scope.incidentId ? "Persisted" : "Returned"} ${insertedEvidence.length} connector evidence item(s)${
+        sanitized.truncated || insertedEvidence.length >= input.maxRows
+          ? ". This is a capped sample, not a complete list: it does not prove that other matching events are absent. Query for the specific signal (for example errors) explicitly."
+          : ""
+      }`,
     };
   } catch (error) {
     await db.insert(sreInvestigationToolCalls).values({

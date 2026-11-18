@@ -3,6 +3,7 @@ import {
   assertAgentConnectorQueryLanguage,
   createAgentConnectorFailureGuard,
   getAgentConnectorQueryGuidance,
+  SRE_ERROR_QUERY_RULE,
 } from "./agent-query-guidance";
 
 describe("agent connector query guidance", () => {
@@ -45,6 +46,14 @@ describe("agent connector query guidance", () => {
         ConnectorQueryRejectedError,
       );
     }
+  });
+
+  it("gives each type an explicit error query example", () => {
+    expect(getAgentConnectorQueryGuidance("elasticsearch")).toContain("log.level:error");
+    expect(getAgentConnectorQueryGuidance("loki")).toContain('|= "error"');
+    expect(getAgentConnectorQueryGuidance("prometheus")).toContain("5..");
+    expect(getAgentConnectorQueryGuidance("jaeger")).toContain("error:true");
+    expect(SRE_ERROR_QUERY_RULE).toContain("never proves");
   });
 
   it("describes Elasticsearch as Lucene", () => {

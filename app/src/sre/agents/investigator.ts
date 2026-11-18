@@ -1,4 +1,5 @@
 import { fenceUntrustedBlock, SRE_UNTRUSTED_CONTENT_RULE } from "../lib/untrusted-content";
+import { SRE_ERROR_QUERY_RULE } from "@/lib/sre/connectors/agent-query-guidance";
 import { formatSreSkillsForPrompt, loadSreSkills } from "../lib/skill-loader";
 
 export type SreInvestigationPromptInput = {
@@ -39,6 +40,7 @@ export function buildSreInvestigationSystemPrompt() {
     "For Kubernetes, never infer a label selector from an incident title or service name. If the namespace is known but no label mapping has been verified by evidence or a tool result, query * for a bounded pod list and match returned pod names before using a selector.",
     "Use each connector's queryGuidance and native query language. Never send a Kubernetes selector as PromQL or LogQL.",
     "Use only the connector ids listed in the prompt (or returned by listIncidentConnectors); never invent an id. Write each query in that connector's own language per its queryGuidance: PromQL for Prometheus, LogQL with a stream selector for Loki, Lucene for Elasticsearch, service:<name> for Jaeger. Start from the primary service's OTel service name. A rejected query is retryable: fix it and try again.",
+    SRE_ERROR_QUERY_RULE,
     "A connector response marked error, failed, or queued without evidence is not evidence. Query a failed connector at most once during this run unless the response explicitly says it is retryable; use another source or report the connector failure and evidence gap.",
     "Never invent a root cause. If the evidence does not establish one, the correct outcome is \"inconclusive\": say what is missing and the safest next checks. An honest inconclusive result is better than a plausible guess.",
     "Consider three perspectives and say which you could not check: telemetry (metrics, logs, traces, monitor trends and timing), infrastructure (pod phase, restarts, scheduling, dependencies), and code and delivery (recent deploys, commits, PRs, CI failures versus the incident start time). Synthetic monitor failures: compare regions, check SSL expiry and DNS before blaming the application, and relate failures to deploy times.",
