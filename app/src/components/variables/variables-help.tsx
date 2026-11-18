@@ -1,15 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { Info, Copy, Check } from "lucide-react";
+import { KeyRound, Copy, Check } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
+import { InfoPopover } from "@/components/ui/info-popover";
 
 /** Info popover beside the Variables title: the helper functions available in scripts. */
 export function VariablesHelp() {
@@ -27,24 +23,13 @@ export function VariablesHelp() {
   };
 
   return (
-    <Popover>
-      <PopoverTrigger asChild>
-        <Button variant="ghost" size="sm" className="h-6 w-6 p-0" aria-label="About variables, secrets and files">
-          <Info className="h-4 w-4 text-muted-foreground" />
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent className="w-[min(480px,calc(100vw-2rem))]" side="bottom" align="start">
+    <InfoPopover
+      label="About variables, secrets and files"
+      title="Variables, Secrets & Files"
+      icon={KeyRound}
+      description="Four helper functions available in Playwright and k6 scripts."
+    >
         <div className="space-y-3">
-          <div>
-            <h3 className="font-medium text-sm">
-              Variables, Secrets & Files
-            </h3>
-            <p className="text-xs text-muted-foreground">
-              Four helper functions available in Playwright and k6
-              scripts.
-            </p>
-          </div>
-
           <div className="space-y-3">
             <div className="space-y-1.5">
               <h4 className="text-xs font-medium text-foreground">getVariable(key, options?)</h4>
@@ -144,7 +129,6 @@ const k6CsvContent = open(getFile('USERS_CSV'));`}</pre>
             </div>
           </div>
         </div>
-      </PopoverContent>
-    </Popover>
+    </InfoPopover>
   );
 }

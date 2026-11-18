@@ -1,12 +1,11 @@
 import {
-  Button,
   Section,
   Text,
   Hr,
 } from "@react-email/components";
 import * as React from "react";
 import { PALETTE } from "./palette";
-import { BaseLayout } from "./base-layout";
+import { BaseLayout, EmailButton } from "./base-layout";
 
 interface UsageNotificationEmailProps {
   organizationName: string;
@@ -122,6 +121,8 @@ export const UsageNotificationEmail = ({
       preview={`${getTitle()} for ${organizationName}`}
       title={getTitle()}
       headerColor={getHeaderColor()}
+      reason="You received this because you manage billing for this organization."
+      manage={{ href: billingPageUrl, label: "Manage usage limits and notifications" }}
     >
       <Section style={contentSection}>
         <Text style={greeting}>
@@ -216,9 +217,7 @@ export const UsageNotificationEmail = ({
         </Text>
 
         <Section style={buttonContainer}>
-          <Button style={button} href={billingPageUrl}>
-            View Billing Dashboard
-          </Button>
+          <EmailButton href={billingPageUrl}>View Billing Dashboard</EmailButton>
         </Section>
 
         <Text style={tipText}>
@@ -307,17 +306,6 @@ const buttonContainer = {
   margin: "24px 0",
 };
 
-const button = {
-  backgroundColor: "#111827",
-  borderRadius: "6px",
-  color: "#ffffff",
-  fontSize: "14px",
-  fontWeight: "600" as const,
-  textDecoration: "none",
-  textAlign: "center" as const,
-  padding: "12px 24px",
-  display: "inline-block",
-};
 
 const tipText = {
   fontSize: "13px",

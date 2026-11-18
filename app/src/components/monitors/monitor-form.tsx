@@ -37,13 +37,8 @@ import {
   Shield,
   BellIcon,
   MapPin,
-  Info,
 } from "lucide-react";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
+import { InfoPopover } from "@/components/ui/info-popover";
 import { channelsOptional } from "@/lib/incident-settings";
 import { AlertSettings } from "@/components/alerts/alert-settings";
 import { MonitorTypesPopover } from "./monitor-types-popover";
@@ -1457,49 +1452,15 @@ export function MonitorForm({
                       <FormItem className="space-y-2">
                         <div className="flex h-3.5 items-center gap-2">
                           <FormLabel>Check Interval</FormLabel>
-                          <Popover>
-                            <PopoverTrigger asChild>
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="sm"
-                                className="h-6 w-6 p-0"
-                                aria-label="Check interval tips"
-                              >
-                                <Info className="h-4 w-4 text-muted-foreground" />
-                              </Button>
-                            </PopoverTrigger>
-                            <PopoverContent
-                              className="w-56 text-xs"
-                              side="right"
-                            >
-                              <div className="space-y-2">
-                                <p className="font-semibold text-foreground">
-                                  Recommended intervals:
-                                </p>
-                                <ul className="space-y-1.5 text-muted-foreground">
-                                  <li className="flex items-start gap-2">
-                                    <span className="text-foreground font-medium">
-                                      Critical:
-                                    </span>
-                                    <span>5-10 min</span>
-                                  </li>
-                                  <li className="flex items-start gap-2">
-                                    <span className="text-foreground font-medium">
-                                      Standard:
-                                    </span>
-                                    <span>15-30 min</span>
-                                  </li>
-                                  <li className="flex items-start gap-2">
-                                    <span className="text-foreground font-medium">
-                                      Low-priority:
-                                    </span>
-                                    <span>1+ hour</span>
-                                  </li>
-                                </ul>
-                              </div>
-                            </PopoverContent>
-                          </Popover>
+                          <InfoPopover
+                            label="Check interval tips"
+                            title="Recommended intervals"
+                            items={[
+                              { title: "Critical", description: "5-10 min" },
+                              { title: "Standard", description: "15-30 min" },
+                              { title: "Low-priority", description: "1+ hour" },
+                            ]}
+                          />
                         </div>
                         <Select
                           onValueChange={field.onChange}
@@ -1603,23 +1564,14 @@ export function MonitorForm({
                         <FormItem>
                           <div className="flex items-center gap-2">
                             <FormLabel>Expected Status</FormLabel>
-                            <Popover>
-                              <PopoverTrigger asChild>
-                                <button
-                                  type="button"
-                                  className="text-muted-foreground hover:text-foreground transition-colors"
-                                >
-                                  <Info className="h-4 w-4" />
-                                </button>
-                              </PopoverTrigger>
-                              <PopoverContent className="w-115" side="right">
-                                <p className="text-sm font-medium mb-2">Port Status Monitoring</p>
-                                <div className="text-xs text-muted-foreground space-y-1.5">
-                                  <p><strong>Port is Open:</strong> Pass when port accepts connections.</p>
-                                  <p><strong>Port is Closed:</strong> Pass when port refuses connections (security monitoring).</p>
-                                </div>
-                              </PopoverContent>
-                            </Popover>
+                            <InfoPopover
+                              label="About port status monitoring"
+                              title="Port Status Monitoring"
+                              items={[
+                                { title: "Port is Open", description: "Pass when port accepts connections." },
+                                { title: "Port is Closed", description: "Pass when port refuses connections (security monitoring)." },
+                              ]}
+                            />
                           </div>
                           <FormControl>
                             <Select
@@ -1824,24 +1776,15 @@ export function MonitorForm({
                                 Optional
                               </span>
                             </FormLabel>
-                            <Popover>
-                              <PopoverTrigger asChild>
-                                <button
-                                  type="button"
-                                  className="text-muted-foreground hover:text-foreground transition-colors"
-                                >
-                                  <Info className="h-4 w-4" />
-                                </button>
-                              </PopoverTrigger>
-                              <PopoverContent className="w-76" side="top">
-                                <p className="text-sm font-medium mb-2">Custom HTTP Headers</p>
-                                <ul className="text-xs text-muted-foreground list-disc list-inside space-y-1">
-                                  <li>Custom User-Agent to bypass bot detection</li>
-                                  <li>Accept headers for content negotiation</li>
-                                  <li>Custom API keys or tokens</li>
-                                </ul>
-                              </PopoverContent>
-                            </Popover>
+                            <InfoPopover
+                              label="About custom HTTP headers"
+                              title="Custom HTTP Headers"
+                              bullets={[
+                                "Custom User-Agent to bypass bot detection",
+                                "Accept headers for content negotiation",
+                                "Custom API keys or tokens",
+                              ]}
+                            />
                           </div>
                           <FormControl>
                             <Textarea
@@ -2202,24 +2145,15 @@ export function MonitorForm({
                               Optional
                             </span>
                           </FormLabel>
-                          <Popover>
-                            <PopoverTrigger asChild>
-                              <button
-                                type="button"
-                                className="text-muted-foreground hover:text-foreground transition-colors"
-                              >
-                                <Info className="h-4 w-4" />
-                              </button>
-                            </PopoverTrigger>
-                            <PopoverContent className="w-76" side="top">
-                              <p className="text-sm font-medium mb-2">Custom HTTP Headers</p>
-                              <ul className="text-xs text-muted-foreground list-disc list-inside space-y-1">
-                                <li>Custom User-Agent to bypass bot detection</li>
-                                <li>Accept headers for content negotiation</li>
-                                <li>Custom API keys or tokens</li>
-                              </ul>
-                            </PopoverContent>
-                          </Popover>
+                          <InfoPopover
+                              label="About custom HTTP headers"
+                              title="Custom HTTP Headers"
+                              bullets={[
+                                "Custom User-Agent to bypass bot detection",
+                                "Accept headers for content negotiation",
+                                "Custom API keys or tokens",
+                              ]}
+                            />
                         </div>
                         <FormControl>
                           <Textarea

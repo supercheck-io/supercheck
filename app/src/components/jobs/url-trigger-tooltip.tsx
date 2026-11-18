@@ -4,9 +4,8 @@ import React, { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { InfoPopover } from "@/components/ui/info-popover";
 import { 
-  Info, 
   Copy, 
   Github,
   Gitlab,
@@ -29,19 +28,15 @@ export function UrlTriggerTooltip({ jobId }: ApiDocsTooltipProps) {
   };
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <Button variant="ghost" size="sm" className="h-6 w-6 p-0">
-          <Info className="h-4 w-4 text-muted-foreground hover:text-foreground" />
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent align="start" className="w-[500px] p-0 bg-popover text-popover-foreground border shadow-xl">
-        <div className="p-4 space-y-4">
-          <div className="flex items-center gap-2">
-         <Workflow className="h-4 w-4 text-primary" />
-            <h4 className="font-semibold text-sm">Remote trigger commands</h4>
-          </div>
-          
+    <InfoPopover
+      label="About remote trigger commands"
+      title="Remote trigger commands"
+      icon={Workflow}
+      open={open}
+      onOpenChange={setOpen}
+      contentClassName="w-[500px]"
+    >
+        <div className="space-y-4">
           <div className="space-y-3">
             
 
@@ -133,7 +128,6 @@ export function UrlTriggerTooltip({ jobId }: ApiDocsTooltipProps) {
             
           </div>
         </div>
-      </PopoverContent>
-    </Popover>
+    </InfoPopover>
   );
 } 

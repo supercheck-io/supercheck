@@ -22,10 +22,10 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { NotificationProviderForm } from "@/components/alerts/notification-provider-form";
-import { Plus, BellRing, History } from "lucide-react";
+import { Plus, BellRing, History, Users } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { DeliveryHistory } from "@/components/alerts/delivery-history";
-import { InfoTip } from "@/components/ui/info-tip";
+import { InfoPopover } from "@/components/ui/info-popover";
 
 import { PageBreadcrumbs } from "@/components/page-breadcrumbs";
 import { PageHeader } from "@/components/shared/page-header";
@@ -244,12 +244,16 @@ function NotificationsPage() {
                   tone={NAV.notifications.tone}
                   description="Choose where Supercheck sends alerts and incident updates, and see what was sent"
                   titleAdornment={
-                    <InfoTip label="About notifications">
-                      Channels are where Supercheck notifies your team about
-                      alerts and incidents. Delivery history lists the alert
-                      notifications sent for your monitors and jobs. Status-page subscribers are managed
-                      on each status page.
-                    </InfoTip>
+                    <InfoPopover
+                      label="About notifications"
+                      title="Notifications"
+                      icon={NAV.notifications.icon}
+                      items={[
+                        { icon: BellRing, title: "Channels", description: "Where Supercheck sends alerts and incident updates." },
+                        { icon: History, title: "Delivery history", description: "The alert notifications sent for your monitors and jobs." },
+                        { icon: Users, title: "Status page subscribers", description: "Managed on each status page." },
+                      ]}
+                    />
                   }
                   actions={
                     <div className="flex flex-wrap items-center gap-2">
@@ -339,7 +343,7 @@ function NotificationsPage() {
             <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
               <DialogContent className="flex max-h-[90vh] flex-col gap-0 overflow-hidden p-0 sm:max-w-4xl">
                 <DialogHeader className="shrink-0 border-b px-6 py-4 pr-14">
-                  <DialogTitle>Edit Notification Channel</DialogTitle>
+                  <DialogTitle>Edit notification channel</DialogTitle>
                   <DialogDescription>
                     Update your notification channel settings
                   </DialogDescription>

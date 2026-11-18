@@ -61,7 +61,9 @@ export class EmailTemplateService {
         fields: params.fields,
         footer: params.footer,
         type: params.type,
-        incidentsUrl: this.incidentsUrl(params.appUrl),
+        incidentsUrl: this.appLink(params.appUrl, '/incidents'),
+        manageUrl: this.appLink(params.appUrl, '/notifications'),
+        appUrl: params.appUrl,
       });
       return {
         subject: alertEmailSubject(params.title),
@@ -76,8 +78,11 @@ export class EmailTemplateService {
     }
   }
 
-  private incidentsUrl(appUrl?: string): string | undefined {
-    return appUrl ? `${appUrl.replace(/\/+$/, '')}/incidents` : undefined;
+  private appLink(
+    appUrl: string | undefined,
+    path: string,
+  ): string | undefined {
+    return appUrl ? `${appUrl.replace(/\/+$/, '')}${path}` : undefined;
   }
 
   private fallback(params: AlertParams): RenderedEmail {

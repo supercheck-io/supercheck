@@ -7,11 +7,7 @@ import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
+import { InfoPopover } from "@/components/ui/info-popover";
 import { SupercheckLoading } from "@/components/shared/supercheck-loading";
 import {
   Calendar,
@@ -25,7 +21,6 @@ import {
   Globe,
   Tally4,
   CreditCard,
-  Info,
 } from "lucide-react";
 import { toast } from "sonner";
 import { SpendingLimits } from "@/components/billing/spending-limits";
@@ -338,22 +333,16 @@ export function SubscriptionTab({ currentUserRole }: SubscriptionTabProps) {
               </Badge>
               {/* Popover, not tooltip: tooltips do not open on touch taps. */}
               {hasSubscription && data.subscription.plan !== "unlimited" && (
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <button
-                      type="button"
-                      aria-label="How billing works"
-                      className="text-muted-foreground hover:text-foreground transition-colors"
-                    >
-                      <Info className="h-4 w-4" />
-                    </button>
-                  </PopoverTrigger>
-                  <PopoverContent side="top" className="w-80 space-y-1.5 text-xs text-muted-foreground">
-                    <p>This monthly subscription and its allowances cover this organization only.</p>
-                    <p>k6 usage is peak VUs × execution minutes, rounded up per run. AI credits are a hard limit.</p>
-                    <p>Discounts, credits, and plan-change proration can change your invoice. Invoices and payment details are in Manage Subscription.</p>
-                  </PopoverContent>
-                </Popover>
+                <InfoPopover
+                  label="How billing works"
+                  title="How billing works"
+                  side="top"
+                  bullets={[
+                    "This monthly subscription and its allowances cover this organization only.",
+                    "k6 usage is peak VUs × execution minutes, rounded up per run. AI credits are a hard limit.",
+                    "Discounts, credits, and plan-change proration can change your invoice. Invoices and payment details are in Manage Subscription.",
+                  ]}
+                />
               )}
               {/* Hard Stop Alert - Inline with status */}
               {isHardStopActive && spending && (

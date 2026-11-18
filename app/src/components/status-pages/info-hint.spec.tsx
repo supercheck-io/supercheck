@@ -5,7 +5,7 @@ import { InfoHint, InfoHintText } from "./info-hint";
 describe("InfoHint", () => {
   it("keeps supporting copy out of the layout until the info button is used", () => {
     render(
-      <InfoHint label="Domain setup details">
+      <InfoHint label="Domain setup details" title="Domain setup">
         <InfoHintText>Point a CNAME at the status page target.</InfoHintText>
       </InfoHint>,
     );
@@ -26,7 +26,7 @@ describe("InfoHint", () => {
 
     render(
       <form onSubmit={onSubmit}>
-        <InfoHint label="Contact options">
+        <InfoHint label="Contact options" title="Contact options">
           <InfoHintText>Email or support URL.</InfoHintText>
         </InfoHint>
       </form>,

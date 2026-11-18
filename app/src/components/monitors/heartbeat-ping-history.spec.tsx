@@ -38,6 +38,15 @@ describe("HeartbeatPingHistory", () => {
     expect(screen.getByText("Showing 3 of 3 recent pings.")).toBeInTheDocument();
   });
 
+  it("shows a dash for a run without /start and a dash for a missing client", () => {
+    render(<HeartbeatPingHistory {...props} total={2} results={[row("a", true, { heartbeat: { kind: "ping" } }), row("c", false, { heartbeat: { kind: "missed" } })]} />);
+    const rows = screen.getAllByTestId("heartbeat-ping-row");
+    const cells = within(rows[0]).getAllByRole("cell");
+    expect(cells[2]).toHaveTextContent("—");
+    expect(cells[3]).toHaveTextContent("—");
+    expect(within(rows[1]).getAllByRole("cell")[2]).toHaveTextContent("—");
+  });
+
   it("falls back to up/down for rows without heartbeat details", () => {
     expect(heartbeatResultKind(row("x", true))).toEqual({ kind: "ping", userAgent: null });
     expect(heartbeatResultKind(row("y", false, { heartbeat: { kind: "other" } }))).toEqual({ kind: "missed", userAgent: null });
@@ -48,7 +57,8 @@ describe("HeartbeatPingHistory", () => {
     const { rerender } = render(<HeartbeatPingHistory {...props} results={[]} isLoading />);
     expect(screen.getByLabelText("Loading ping history")).toBeInTheDocument();
     rerender(<HeartbeatPingHistory {...props} results={[]} />);
-    expect(screen.getByTestId("heartbeat-ping-history-empty")).toHaveTextContent("No Ping Data");
+    expect(screen.getByTestId("heartbeat-ping-history-empty")).toHaveTextContent("No pings yet");
+    expect(screen.getByTestId("heartbeat-ping-history-empty")).toHaveTextContent("curl -fsS");
     rerender(<HeartbeatPingHistory {...props} results={[]} error={new Error("x")} onRetry={onRetry} />);
     fireEvent.click(screen.getByRole("button", { name: "Try again" }));
     expect(onRetry).toHaveBeenCalled();

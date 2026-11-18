@@ -59,7 +59,7 @@ test.describe('MCP monitor @monitors', { annotation: { type: ENV_GATED, descript
     }).toPass({ timeout: 90_000 });
     for (const tool of STUB_TOOLS) await expect(page.getByTestId('mcp-tool-list')).toContainText(tool.name);
     await expect(page.getByTestId('mcp-tool-count')).toHaveText(String(STUB_TOOLS.length));
-    await expect(page.getByTestId('mcp-stat-server')).toContainText('e2e-stub');
+    await expect(page.getByTestId('mcp-server-meta')).toContainText('e2e-stub');
     expect(stub.requests()).toBeGreaterThan(0);
   });
 

@@ -26,7 +26,7 @@ Open **Communicate → Notifications → Channels** and select **Create channel*
 Pick the provider and enter its credentials (see [Provider Configuration](#provider-configuration)).
 </Step>
 <Step>
-Select **Test Connection**, then save.
+Select **Test connection**, then save.
 
 Test sends are rate limited per user: email tests allow 5 per 10 minutes and may only target your own address or members of your organization (at most 5 recipients); other channel types allow 20 tests per 10 minutes. A channel used by a monitor or job cannot be deleted until you remove it from them.
 </Step>
@@ -46,7 +46,7 @@ sequenceDiagram
 
     rect rgba(139, 92, 246, 0.08)
         You->>App: Configure notification channel
-        You->>App: Select Test Connection
+        You->>App: Select Test connection
         Environment-->>You: Test notification
         You->>App: Attach channel and set thresholds
     end
@@ -278,9 +278,9 @@ Other Microsoft hosts, such as `outlook.office.com` or `*.azurewebsites.net`, ar
 - **Rendered sample payload:** Preview of the JSON body generated from sample alert values before you test or save
 - **Test diagnostics:** Redacted test results showing method, target host, sent header names, HTTP status, elapsed time, request hash, and response hash
 
-Use a publicly reachable HTTPS webhook endpoint (plain HTTP is rejected); private and internal targets are blocked. On a self-hosted install with `SELF_HOSTED=true` and `ALLOW_INTERNAL_TARGETS=true`, webhook channels (not Slack, Teams, Discord or Telegram) may also use internal hosts and plain `http://` URLs. Cloud metadata and link-local addresses such as `169.254.169.254` stay blocked. Enter credentials in the channel settings and use **Test Connection** before relying on delivery.
+Use a publicly reachable HTTPS webhook endpoint (plain HTTP is rejected); private and internal targets are blocked. On a self-hosted install with `SELF_HOSTED=true` and `ALLOW_INTERNAL_TARGETS=true`, webhook channels (not Slack, Teams, Discord or Telegram) may also use internal hosts and plain `http://` URLs. Cloud metadata and link-local addresses such as `169.254.169.254` stay blocked. Enter credentials in the channel settings and use **Test connection** before relying on delivery.
 
-Webhook URLs, custom headers and other channel credentials are secrets, so they are cleared when you reopen a channel to edit it. Leave one blank to keep its value, or enter a replacement and use **Test Connection**.
+Webhook URLs, custom headers and other channel credentials are secrets, so they are cleared when you reopen a channel to edit it. Leave one blank to keep its value, or enter a replacement and use **Test connection**.
 
 ### Webhook Presets
 
@@ -452,7 +452,7 @@ Notifications hide credentials in a monitor's target URL: user name and password
 
 ### Test a page
 
-On **Communicate → Notifications → Channels**, open a channel's menu and select **Send test page** (webhooks and paging services) or **Send test message** (other channels). The test goes through the saved channel, so you do not re-enter its secrets. Nothing is sent until you select **Send test page** in the dialog: a test page is a real page and can wake whoever is on call. For a webhook, the dialog shows the receiver's HTTP status, the time it took, the first 1,024 characters of its response (credentials redacted) and the dedup key `test:<channel id>`; for a paging service, **Resolve test page** closes the test page again, also one left open from an earlier test. A successful test clears the channel's **Check the integration key** badge. Editors and above can send tests, within the same per-user limits as **Test Connection**. From the CLI: `supercheck notification test <id>` and `supercheck notification test <id> --resolve`.
+On **Communicate → Notifications → Channels**, open a channel's menu and select **Send test page** (webhooks and paging services) or **Send test message** (other channels). The test goes through the saved channel, so you do not re-enter its secrets. Nothing is sent until you select **Send test page** in the dialog: a test page is a real page and can wake whoever is on call. For a webhook, the dialog shows the receiver's HTTP status, the time it took, the first 1,024 characters of its response (credentials redacted) and the dedup key `test:<channel id>`; for a paging service, **Resolve test page** closes the test page again, also one left open from an earlier test. A successful test clears the channel's **Check the integration key** badge. Editors and above can send tests, within the same per-user limits as **Test connection**. From the CLI: `supercheck notification test <id>` and `supercheck notification test <id> --resolve`.
 
 A channel whose latest delivery in the past 7 days was rejected with HTTP 401 or 403 shows **Check the integration key**; any other failed latest delivery shows **Last delivery failed**.
 
