@@ -96,6 +96,8 @@ export async function getRun(
     }
 
     const { metadata, testTitle, ...run } = result[0];
+    // Playground runs carry a testId even when the test was never saved.
+    const hasTest = typeof (metadata as { testId?: unknown } | null)?.testId === "string";
 
     // Check if user has access to this run's organization
     const userRole = await getUserRole(userId);
@@ -121,7 +123,7 @@ export async function getRun(
         .where(eq(jobTests.jobId, run.jobId));
 
       testCount = testCountResult[0]?.count || 0;
-    } else if (testTitle) {
+    } else if (hasTest) {
       testCount = 1; // a single-test run has no job to count tests through
     }
 
@@ -163,7 +165,7 @@ export async function getRun(
 
     const response: RunResponse = {
       ...run,
-      jobName: run.jobName || testTitle || undefined,
+      jobName: run.jobName || testTitle || (hasTest ? "Playground test" : undefined),
       projectName: run.projectName || undefined,
       jobType: run.jobType || undefined,
       duration: computeDuration(),

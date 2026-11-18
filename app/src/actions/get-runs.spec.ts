@@ -31,6 +31,10 @@ describe("run history authorization", () => {
     jest.mocked(db.select).mockReturnValue({ from: jest.fn().mockReturnThis(), leftJoin: jest.fn().mockReturnThis(), where: jest.fn().mockReturnThis(), limit: jest.fn(async () => [{ ...run, testTitle: "Support bot", metadata: { testId: "t1" } }]) } as never);
     expect(await getRun("run")).toMatchObject({ jobId: null, jobName: "Support bot", testCount: 1 });
   });
+  it("counts an unsaved playground test and gives it a title", async () => {
+    jest.mocked(db.select).mockReturnValue({ from: jest.fn().mockReturnThis(), leftJoin: jest.fn().mockReturnThis(), where: jest.fn().mockReturnThis(), limit: jest.fn(async () => [{ ...run, testTitle: null, metadata: { testId: "unsaved" } }]) } as never);
+    expect(await getRun("run")).toMatchObject({ jobName: "Playground test", testCount: 1 });
+  });
   it("counts no tests for a run with neither job nor test", async () => {
     expect(await getRun("run")).toMatchObject({ jobName: undefined, testCount: 0 });
   });
