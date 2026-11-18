@@ -97,9 +97,9 @@ describe('private agent connector execution', () => {
             {
               metric: { __name__: 'ratio' },
               values: [
-                [1, 'NaN'],
+                [1, '0.0004'],
                 [2, '+Inf'],
-                [3, '0.0004'],
+                [3, 'NaN'],
               ],
             },
             { metric: { __name__: 'empty' }, values: [] },
@@ -115,7 +115,7 @@ describe('private agent connector execution', () => {
     });
     const result = await executePrivateAgentConnectorJob(baseJob);
     expect(result.evidence[0].summary).toBe(
-      '3 samples returned for up (2 non-finite); last=0.0004 min=0.0004 max=0.0004 avg=0.0004',
+      '3 samples returned for up (2 non-finite); last=undefined (non-finite) min=0.0004 max=0.0004 avg=0.0004',
     );
     expect(result.evidence[1].summary).toBe('0 samples returned for up');
     expect(result.evidence[2].summary).not.toContain('supersecret');

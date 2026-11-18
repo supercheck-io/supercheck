@@ -172,7 +172,7 @@ describe("direct connectors", () => {
       json: async () => ({
         data: {
           result: [
-            { metric: { __name__: "ratio" }, values: [[1, "NaN"], [2, "+Inf"], [3, "0.0004"]] },
+            { metric: { __name__: "ratio" }, values: [[1, "0.0004"], [2, "+Inf"], [3, "NaN"]] },
             { metric: { __name__: "empty" }, values: [] },
             { metric: { dsn: "postgres://svc:supersecretpassword1234567890@db.internal:5432/app" }, values: [[1, "1"]] },
           ],
@@ -187,7 +187,7 @@ describe("direct connectors", () => {
       evidenceTypes: ["metric"],
     });
     const evidence = await connector.search({ ...params, query: "ratio" });
-    expect(evidence[0]?.summary).toBe("3 samples returned for ratio (2 non-finite); last=0.0004 min=0.0004 max=0.0004 avg=0.0004");
+    expect(evidence[0]?.summary).toBe("3 samples returned for ratio (2 non-finite); last=undefined (non-finite) min=0.0004 max=0.0004 avg=0.0004");
     expect(evidence[1]?.summary).toBe("0 samples returned for ratio");
     expect(evidence[2]?.summary).not.toContain("supersecret");
   });

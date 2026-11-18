@@ -880,11 +880,16 @@ function prometheusSeriesSummary(
   const labelText = labels ? ` [labels: ${labels}]` : '';
   if (points.length === 0) return head + labelText;
   const round = (n: number) => String(Number(n.toPrecision(4)));
+  // The final sample can be NaN (for example an empty histogram window); say so instead of showing an older value as current.
+  const finalValue = Number(values?.[values.length - 1]?.[1]);
+  const lastText = Number.isFinite(finalValue)
+    ? round(finalValue)
+    : 'undefined (non-finite)';
   const min = points.reduce((a, b) => Math.min(a, b));
   const max = points.reduce((a, b) => Math.max(a, b));
   const avg = points.reduce((a, b) => a + b, 0) / points.length;
   // Stats come before the untrusted label text so a label cannot pose as the numbers.
-  return `${head}; last=${round(points[points.length - 1])} min=${round(min)} max=${round(max)} avg=${round(avg)}${labelText}`;
+  return `${head}; last=${lastText} min=${round(min)} max=${round(max)} avg=${round(avg)}${labelText}`;
 }
 
 async function executePrometheus(
