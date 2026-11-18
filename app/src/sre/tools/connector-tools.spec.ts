@@ -226,7 +226,7 @@ describe("MCP connectors in the AI tool layer", () => {
       );
       const { timeWindow } = execute.mock.calls[0][0];
       expect(timeWindow.end.getTime() - timeWindow.start.getTime()).toBe(60 * 60_000);
-      expect(result.message).toContain("window capped at the connector's 60-minute maximum");
+      expect(result.message).toContain("searched the last 60 minutes; the connector's maximum window is 60 minutes");
     });
 
     it("adds no note for a window inside the connector limit", async () => {
@@ -235,7 +235,7 @@ describe("MCP connectors in the AI tool layer", () => {
         { ...scope, serviceId },
         { ...search, query: '{service_name="checkout-api"}', timeWindowMinutes: 30 },
       );
-      expect(result.message).not.toContain("window capped");
+      expect(result.message).not.toContain("maximum window");
     });
 
     it("names the connector maximum, not the stage bound, when both apply", async () => {
@@ -247,7 +247,7 @@ describe("MCP connectors in the AI tool layer", () => {
       );
       const { timeWindow } = execute.mock.calls[0][0];
       expect(timeWindow.end.getTime() - timeWindow.start.getTime()).toBe(15 * 60_000);
-      expect(result.message).toContain("60-minute maximum");
+      expect(result.message).toContain("searched the last 15 minutes; the connector's maximum window is 60 minutes");
     });
 
     it("records a policy rejection and names it in the failure", async () => {
@@ -265,6 +265,25 @@ describe("MCP connectors in the AI tool layer", () => {
       expect(result).toMatchObject({ error: true, retryable: false, message: expect.stringMatching(/failed: .*read-only/i) });
     });
 
+    it("keeps the policy reason when recording the rejection fails", async () => {
+      setup({ ...lokiRow, permissionLevel: "write" });
+      db.insert.mockReturnValue({ values: jest.fn().mockRejectedValue(new Error("db down")) });
+      await expect(
+        searchIncidentLiveConnectorEvidence({ ...scope, serviceId }, { ...search, query: '{service_name="checkout-api"}' }),
+      ).rejects.toThrow(/read-only/i);
+    });
+
+    it("records a rate-limit denial in the trace", async () => {
+      const { values } = setup(lokiRow);
+      jest.mocked(checkSreConnectorSearchRateLimit).mockResolvedValue({ allowed: false, remaining: 0 });
+      await expect(
+        searchIncidentLiveConnectorEvidence({ ...scope, serviceId }, { ...search, query: '{service_name="checkout-api"}' }),
+      ).rejects.toThrow("rate limit reached");
+      expect(values).toHaveBeenCalledWith(expect.objectContaining({
+        status: "error", toolName: "agent.connector.search.rate_limited", connectorId, errorMessage: "Connector search rate limit reached",
+      }));
+    });
+
     it("keeps Loki usable after a statistics query without a metric function", async () => {
       setup(lokiRow);
       const tools = createSreConnectorTools({ ...scope, serviceId, investigationRunId: "018f0000-0000-7000-8000-0000000000aa" });
@@ -273,11 +292,14 @@ describe("MCP connectors in the AI tool layer", () => {
         { toolCallId: "stats", messages: [] },
       );
       expect(result).toMatchObject({ error: true, retryable: true, message: expect.stringContaining("count_over_time") });
+      // Same connector, corrected query: it must run, not be suppressed.
+      const { execute } = setup(lokiRow);
       const again = await tools.searchLiveConnectorEvidence.execute!(
-        { ...search, query: '{service_name="checkout-api"} |= "error"', stage: "statistics" },
+        { ...search, query: 'sum(count_over_time({service_name="checkout-api"} |= "error" [5m]))', stage: "statistics" },
         { toolCallId: "stats-2", messages: [] },
       );
-      expect(again).not.toHaveProperty("retrySuppressed");
+      expect(again).not.toHaveProperty("error");
+      expect(execute).toHaveBeenCalled();
     });
 
     it("keeps the connector usable after a stage-order mistake", async () => {
@@ -304,6 +326,7 @@ describe("MCP connectors in the AI tool layer", () => {
     it.each([
       ["a refused connection", Object.assign(new Error("connect ECONNREFUSED 10.20.3.7:3100"), { code: "ECONNREFUSED" }), "Connection refused", "10.20.3.7"],
       ["a database error", new DrizzleQueryError("select * from external_connectors", ["secret-param"]), "", "external_connectors"],
+      ["an unmapped socket error", Object.assign(new Error("connect EACCES 10.20.3.7:3100"), { code: "EACCES" }), "Network error contacting the connector (EACCES)", "10.20.3.7"],
       ["a non-JSON body", new SyntaxError('Unexpected token \'<\', "<!DOCTYPE "... is not valid JSON'), "", "DOCTYPE"],
     ])("keeps internal detail out of the reason for %s", async (_name, thrown, shown, hidden) => {
       const { execute } = setup(lokiRow);

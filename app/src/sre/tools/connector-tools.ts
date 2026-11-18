@@ -49,6 +49,11 @@ import { joinPrivateAgentJob, releasePrivateAgentJobWaiter } from "@/lib/sre/pri
 import { waitForPrivateAgentConnectorJob } from "@/lib/sre/private-agent-job-waiter";
 import { ConnectorQueryRejectedError } from "@/lib/sre/connectors/providers/provider-query-guards";
 import { describeConnectionError } from "@/lib/sre/connectors/connection-error";
+import { createLogger } from "@/lib/logger/index";
+
+const logger = createLogger({ module: "sre-connector-tools" }) as {
+  warn: (data: unknown, msg?: string) => void;
+};
 import { flatCredentialFields } from "@/lib/sre/connectors/providers/provider-credentials";
 import { describeMcpToolsForModel } from "@/lib/sre/connectors/providers/mcp";
 import { db } from "@/utils/db";
@@ -551,6 +556,17 @@ export async function listIncidentLiveConnectors(
   };
 }
 
+/** Records a rejected search; a failed write is logged so the caller still gets the original error. */
+async function recordToolCallError(
+  row: Omit<typeof sreInvestigationToolCalls.$inferInsert, "status" | "costEstimateCents" | "executedAt">,
+) {
+  try {
+    await db.insert(sreInvestigationToolCalls).values({ ...row, status: "error", costEstimateCents: 0, executedAt: new Date() });
+  } catch (insertError) {
+    logger.warn({ err: insertError, toolName: row.toolName }, "Failed to record connector tool call error");
+  }
+}
+
 export async function searchIncidentLiveConnectorEvidence(
   scope: SreConnectorToolScope,
   input: z.infer<typeof connectorSearchInputSchema>,
@@ -670,11 +686,20 @@ export async function searchIncidentLiveConnectorEvidence(
     connector.id,
   );
   if (!rateLimit.allowed) {
-    throw new Error(
-      rateLimit.unavailable
-        ? "Connector search rate limiter is temporarily unavailable"
-        : "Connector search rate limit reached",
-    );
+    const message = rateLimit.unavailable
+      ? "Connector search rate limiter is temporarily unavailable"
+      : "Connector search rate limit reached";
+    await recordToolCallError({
+      investigationRunId: scope.investigationRunId ?? null,
+      connectorId: connector.id,
+      connectorType: connector.type,
+      toolName: "agent.connector.search.rate_limited",
+      inputHash: hashConnectorPayload({ connectorId: connector.id, query: input.query }),
+      inputSummary: redactConnectorText(JSON.stringify({ connectorId: connector.id, connectorType: connector.type })),
+      errorMessage: message,
+      durationMs: Date.now() - startedAt,
+    });
+    throw new Error(message);
   }
   const outputLimits = normalizeOutputLimits(connector.outputLimits);
   const stagedStage =
@@ -794,7 +819,7 @@ export async function searchIncidentLiveConnectorEvidence(
       },
     });
   } catch (error) {
-    await db.insert(sreInvestigationToolCalls).values({
+    await recordToolCallError({
       investigationRunId: scope.investigationRunId ?? null,
       connectorId: connector.id,
       connectorType: connector.type,
@@ -807,12 +832,9 @@ export async function searchIncidentLiveConnectorEvidence(
           timeWindowMinutes: effectiveTimeWindowMinutes,
         }),
       ),
-      status: "error",
       errorMessage:
         error instanceof Error ? redactConnectorText(error.message).slice(0, 2000) : "Connector policy rejected the search",
       durationMs: Date.now() - startedAt,
-      costEstimateCents: 0,
-      executedAt: new Date(),
     });
     throw error;
   }
@@ -974,7 +996,7 @@ export async function searchIncidentLiveConnectorEvidence(
         evidence: persistedEvidence.map(summarizeEvidenceItem),
         truncated,
         persisted: Boolean(scope.incidentId),
-        message: `${scope.incidentId ? "Persisted" : "Returned"} ${persistedEvidence.length} connector evidence item(s)${windowClamped ? ` (window capped at the connector's ${requestedWindowMinutes}-minute maximum)` : ""}`,
+        message: `${scope.incidentId ? "Persisted" : "Returned"} ${persistedEvidence.length} connector evidence item(s)${windowClamped ? ` (searched the last ${effectiveTimeWindowMinutes} minutes; the connector's maximum window is ${requestedWindowMinutes} minutes)` : ""}`,
       };
     }
 
@@ -1083,7 +1105,7 @@ export async function searchIncidentLiveConnectorEvidence(
       truncated: sanitized.truncated,
       persisted: Boolean(scope.incidentId),
       message: `${scope.incidentId ? "Persisted" : "Returned"} ${insertedEvidence.length} connector evidence item(s)${
-        windowClamped ? ` (window capped at the connector's ${requestedWindowMinutes}-minute maximum)` : ""
+        windowClamped ? ` (searched the last ${effectiveTimeWindowMinutes} minutes; the connector's maximum window is ${requestedWindowMinutes} minutes)` : ""
       }${
         sanitized.truncated || insertedEvidence.length >= Math.min(outputLimits.maxRows, input.maxRows, MAX_TOOL_ROWS)
           ? ". This is a capped sample, not a complete list: it does not prove that other matching events are absent. Query for the specific signal (for example errors) explicitly."
@@ -1303,6 +1325,16 @@ export async function executeIncidentDiagnosticQuery(
   }
 }
 
+/** A failure reason safe to show the model and the trace: fixed text for network, SQL and body-parse errors. */
+function modelFacingFailureReason(error: unknown): string {
+  if (!(error instanceof Error) || error instanceof DrizzleQueryError || error instanceof SyntaxError) return "";
+  const described = describeConnectionError(error, "");
+  const code = (error as { code?: unknown }).code;
+  // Unmapped socket errors (EACCES, EPIPE, ...) carry the destination IP and port in their message.
+  if (described === error.message && typeof code === "string") return `Network error contacting the connector (${code})`;
+  return redactConnectorText(described).slice(0, 300);
+}
+
 export function createSreConnectorTools(scope: SreConnectorToolScope) {
   const connectorFailureGuard = createAgentConnectorFailureGuard();
 
@@ -1352,10 +1384,7 @@ export function createSreConnectorTools(scope: SreConnectorToolScope) {
           }
           connectorFailureGuard.markFailed(input.connectorId);
           // Network errors get their fixed description (no raw IPs or certificate names); SQL and body fragments are dropped.
-          const reason =
-            error instanceof Error && !(error instanceof DrizzleQueryError) && !(error instanceof SyntaxError)
-              ? redactConnectorText(describeConnectionError(error, "")).slice(0, 300)
-              : "";
+          const reason = modelFacingFailureReason(error);
           return {
             executionMode: "error" as const,
             queued: false,
