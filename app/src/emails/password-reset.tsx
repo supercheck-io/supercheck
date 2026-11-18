@@ -19,7 +19,7 @@ export const PasswordResetEmail = ({
 }: PasswordResetEmailProps) => {
   return (
     <BaseLayout
-      preview="Reset your Supercheck password"
+      preview="Use this link within 1 hour to choose a new password."
       title="Password Reset Request"
       headerColor={PALETTE.neutral}
     >
