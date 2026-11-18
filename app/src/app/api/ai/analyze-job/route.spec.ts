@@ -174,6 +174,52 @@ describe("job AI analysis k6 summary", () => {
     expect(params).toEqual(["run-1", "project-1", "org-1"]);
   });
 
+  it("treats a single k6 test run as k6: names the test and passes its summary", async () => {
+    AuthService.validateUserAccess.mockResolvedValue({ user: { id: "user-1" }, tier: "free" });
+    AuthService.checkRateLimit.mockResolvedValue(undefined);
+    requireAuthContext.mockResolvedValue({ organizationId: "org-1", project: { id: "project-1" }, userId: "user-1" });
+    getActiveOrganization.mockResolvedValue({ id: "org-1" });
+    reserveAICredit.mockResolvedValue({ allowed: true, refund: jest.fn() });
+    AIStreamingService.generateStreamingResponse.mockResolvedValue({ stream: new ReadableStream(), model: "m" });
+    AIPromptBuilder.buildJobAnalyzePrompt.mockClear();
+    const testId = "00000000-0000-4000-8000-0000000000aa";
+    const summary = { metrics: { http_reqs: { count: 10 } } };
+    const testQ = queryOf([{ title: "checkout-rates" }]);
+    db.select
+      .mockReturnValueOnce(queryOf([{ id: "run-1", projectId: "project-1", jobId: null, status: "passed", metadata: { testId, testType: "performance" } }]))
+      .mockReturnValueOnce(testQ)
+      .mockReturnValueOnce(queryOf([{ summaryJson: summary }]));
+    const response = await POST(new NextRequest("http://localhost/api/ai/analyze-job", {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ runId: "00000000-0000-4000-8000-000000000001" }),
+    }));
+    expect(response.status).toBe(200);
+    expect(AIPromptBuilder.buildJobAnalyzePrompt).toHaveBeenCalledWith(expect.objectContaining({
+      job: { id: testId, name: "checkout-rates", type: "k6" },
+      k6SummaryJson: JSON.stringify(summary),
+    }));
+    expect(AIStreamingService.generateStreamingResponse).toHaveBeenCalledWith(expect.objectContaining({ testType: "performance" }));
+    expect(new PgDialect().sqlToQuery(testQ.where.mock.calls[0][0]).params).toEqual([testId, "project-1"]);
+  });
+
+  it("does not look up a test for a single run with a malformed test id", async () => {
+    AuthService.validateUserAccess.mockResolvedValue({ user: { id: "user-1" }, tier: "free" });
+    AuthService.checkRateLimit.mockResolvedValue(undefined);
+    requireAuthContext.mockResolvedValue({ organizationId: "org-1", project: { id: "project-1" }, userId: "user-1" });
+    getActiveOrganization.mockResolvedValue({ id: "org-1" });
+    reserveAICredit.mockResolvedValue({ allowed: true, refund: jest.fn() });
+    AIStreamingService.generateStreamingResponse.mockResolvedValue({ stream: new ReadableStream(), model: "m" });
+    AIPromptBuilder.buildJobAnalyzePrompt.mockClear();
+    db.select.mockClear();
+    db.select.mockReturnValueOnce(queryOf([{ id: "run-1", projectId: "project-1", jobId: null, status: "passed", metadata: { testId: "unsaved", testType: "browser" } }]));
+    await POST(new NextRequest("http://localhost/api/ai/analyze-job", {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ runId: "00000000-0000-4000-8000-000000000001" }),
+    }));
+    expect(db.select).toHaveBeenCalledTimes(1);
+    expect(AIPromptBuilder.buildJobAnalyzePrompt.mock.calls[0][0].job).toEqual({ id: "run-1", name: "Playground test", type: "playwright" });
+  });
+
   it.each([
     ["k6 run without a summary row", "k6", [], 3],
     ["Playwright run", "playwright", [], 2],
