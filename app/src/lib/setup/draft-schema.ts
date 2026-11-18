@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { keySchema } from "@/lib/validations/variable";
+import { SETUP_STEP_KEYS } from "./persona";
 
 /**
  * The setup draft holds non-secret choices only (spec 6). Every level is `.strict()`, so an
@@ -150,6 +151,8 @@ export const setupDraftSchema = z
     tests: testsStep.optional(),
     aiSre: aiSreStep.optional(),
     created: created.optional(),
+    /** Steps the user pressed Continue on; drafts saved before this existed have none. */
+    completed: z.array(z.enum(SETUP_STEP_KEYS)).max(SETUP_STEP_KEYS.length).optional(),
   })
   .strict();
 
