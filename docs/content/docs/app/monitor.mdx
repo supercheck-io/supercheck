@@ -114,7 +114,7 @@ Checks a chat-completions API the way your app calls it. Each check sends one sh
 | Stream ends early, or the reply is empty | Down |
 | No first token within the limit | Timeout |
 
-Two optional limits raise warnings without failing the check or opening an incident. **Warn when first token is slower than (ms)** warns after 3 slow checks in a row. **Warn when a call uses more tokens than** warns once per reply over the limit. The monitor also warns when the served model differs from the last check, for example when a provider swaps `gpt-4o-mini` snapshots. See [Alerts](/docs/app/communicate/alerts#alert-types).
+Two optional limits raise warnings without failing the check or opening an incident. **Warn when first token is slower than (ms)** warns after 3 slow checks in a row. **Warn when a call uses more tokens than** warns once per stretch above the limit. The monitor also warns when the served model differs from the last check, for example when a provider swaps `gpt-4o-mini` snapshots. See [Alerts](/docs/app/communicate/alerts#alert-types).
 
 Each result records first-token time, total time, the served model and token counts (plus cost when the provider reports it). The reply text is not stored.
 
