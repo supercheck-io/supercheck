@@ -78,7 +78,7 @@ import {
 import { NavUser } from "@/components/nav-user";
 import Link from "next/link";
 import { SupercheckLogo } from "@/components/logo/supercheck-logo";
-import { Home } from "lucide-react";
+import { Home, Info } from "lucide-react";
 import { maskUrlPassword } from "@/lib/mask-url-password";
 import { TruncatedTextWithTooltip } from "@/components/ui/truncated-text-with-tooltip";
 import { TableBadge } from "@/components/ui/table-badge";
@@ -101,7 +101,9 @@ import { useLocationMetadata } from "@/hooks/use-locations";
 import { HeartbeatPingUrlPanel } from "./heartbeat-ping-url-panel";
 import { HeartbeatPingHistory } from "./heartbeat-ping-history";
 import { HeartbeatStateBadge } from "./heartbeat-state-badge";
-import { formatHeartbeatMinutes, formatPingAgo, formatPingDue, formatRunDuration } from "./heartbeat-format";
+import { HeartbeatOverview } from "./heartbeat-overview";
+import { useFitPanelRows } from "./use-fit-panel-rows";
+import { formatHeartbeatMinutes, formatRunDuration } from "./heartbeat-format";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 export interface MonitorResultItem {
@@ -182,22 +184,13 @@ function MetricGroup({
   );
 }
 
-/** Header fact with the full timestamp in a tooltip. */
-function HeartbeatFact({ text, tooltip, testId }: { text: string; tooltip?: string; testId: string }) {
-  if (!tooltip) return <span data-testid={testId}>{text}</span>;
+/** Fills the height of its grid row without adding to it, so the rows that fit can be measured without feedback. */
+function FitPanel({ fit, minHeight, className = "", children }: { fit: boolean; minHeight: string; className?: string; children: React.ReactNode }) {
+  if (!fit) return <>{children}</>;
   return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <span
-          tabIndex={0}
-          data-testid={testId}
-          className="rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        >
-          {text}
-        </span>
-      </TooltipTrigger>
-      <TooltipContent>{tooltip}</TooltipContent>
-    </Tooltip>
+    <div className={`relative ${minHeight} ${className}`}>
+      <div className="lg:absolute lg:inset-0">{children}</div>
+    </div>
   );
 }
 
@@ -272,10 +265,11 @@ export function MonitorDetailClient({
   const [selectedLocation, setSelectedLocation] = useState<"all" | string>(
     "all"
   );
-  const isHeartbeatMonitor = initialMonitor.type === "heartbeat";
-  // A heartbeat's ping history pages to the rows that fit its panel on desktop; everything else keeps 10 rows.
+  // The results table pages to the rows that fit its panel on desktop (10 on mobile and in the notification view).
   const [fitRows, setFitRows] = useState(10);
-  const resultsPerPage = isHeartbeatMonitor ? fitRows : 10;
+  const resultsPerPage = fitRows;
+  const fitResults = !isNotificationView;
+  const resultsPanelRef = useFitPanelRows(fitResults ? setFitRows : undefined, 'tbody[data-testid="monitor-results-body"] tr');
 
   // React Query hooks for data fetching with caching
   const { stats: monitorStats } = useMonitorStats(monitor.id, selectedLocation);
@@ -612,6 +606,8 @@ export function MonitorDetailClient({
   const mcpServer = latestMcp?.serverName
     ? `${latestMcp.serverName}${latestMcp.serverVersion ? ` ${latestMcp.serverVersion}` : ""}`
     : null;
+  // Server and protocol are small muted text in the Tools panel header, not a stat card.
+  const mcpMeta = [mcpServer, latestMcp?.protocol ? `MCP ${latestMcp.protocol}` : null].filter(Boolean).join(" · ") || null;
   const mcpFailure = isMcp && latestResult && !latestResult.isUp ? latestResult.details?.errorMessage || "Check failed" : null;
 
   // Prepare data for AvailabilityBarChart (single location or filtered)
@@ -814,35 +810,6 @@ export function MonitorDetailClient({
                         <span data-testid="monitor-heartbeat-subtitle">
                           Every {formatHeartbeatMinutes(monitor.frequencyMinutes)} · grace {formatHeartbeatMinutes(heartbeat.graceMinutes)}
                         </span>
-                        <span aria-hidden="true">·</span>
-                        <HeartbeatFact
-                          testId="heartbeat-stat-last-ping"
-                          text={heartbeat.lastPingAt ? `Last ping ${formatPingAgo(new Date(heartbeat.lastPingAt), clockNow)}` : "No pings yet"}
-                          tooltip={heartbeat.lastPingAt ? format(new Date(heartbeat.lastPingAt), "MMM d, yyyy HH:mm:ss") : undefined}
-                        />
-                        {heartbeat.state === "paused" ? (
-                          <>
-                            <span aria-hidden="true">·</span>
-                            <span data-testid="heartbeat-stat-next">Paused</span>
-                          </>
-                        ) : (
-                          !neverPinged && heartbeat.nextExpectedAt && (
-                            <>
-                              <span aria-hidden="true">·</span>
-                              <HeartbeatFact
-                                testId="heartbeat-stat-next"
-                                text={`Next ping ${formatPingDue(new Date(heartbeat.nextExpectedAt), clockNow)}`}
-                                tooltip={format(new Date(heartbeat.nextExpectedAt), "MMM d, yyyy HH:mm:ss")}
-                              />
-                            </>
-                          )
-                        )}
-                        {lastRunDuration && (
-                          <>
-                            <span aria-hidden="true">·</span>
-                            <span data-testid="heartbeat-stat-duration">Last run {lastRunDuration}</span>
-                          </>
-                        )}
                       </>
                     ) : aiEndpoint ? (
                       <span data-testid="monitor-ai-subtitle">
@@ -1159,29 +1126,6 @@ export function MonitorDetailClient({
               </MetricGroup>
             )}
 
-            {isMcp && (
-              <MetricGroup title="MCP server">
-                <MetricStat
-                  icon={<Activity className="h-4 w-4 text-muted-foreground" />}
-                  label="Tools"
-                  testId="mcp-stat-tools"
-                  value={typeof latestMcp?.toolCount === "number" ? String(latestMcp.toolCount) : null}
-                />
-                <MetricStat
-                  icon={<Zap className="h-4 w-4 text-muted-foreground" />}
-                  label="Protocol"
-                  testId="mcp-stat-protocol"
-                  value={latestMcp?.protocol ?? null}
-                />
-                <MetricStat
-                  icon={<ChartNoAxesCombined className="h-4 w-4 text-muted-foreground" />}
-                  label="Server"
-                  testId="mcp-stat-server"
-                  value={mcpServer}
-                />
-              </MetricGroup>
-            )}
-
             <MetricGroup title="Last 24 hours">
               <MetricStat
                 icon={<TrendingUp className="h-4 w-4 text-success" />}
@@ -1221,63 +1165,78 @@ export function MonitorDetailClient({
           )}
         </div>
 
-        {isHeartbeat ? (
-          <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 lg:grid-cols-2 lg:grid-rows-1" data-testid="heartbeat-layout">
-            {/* Setup and availability stack on the left; the ping history owns the right column's full height. */}
-            <div className="flex min-h-0 flex-col gap-4 lg:overflow-y-auto">
+        {isHeartbeat && heartbeat ? (
+          <div className="flex min-h-0 flex-1 flex-col gap-4" data-testid="heartbeat-layout">
+            {/* Setup (left) and facts with availability (right) share the top row; the ping history fills the rest. */}
+            <div className="grid shrink-0 grid-cols-1 gap-4 lg:grid-cols-2">
               {showHeartbeatSetup && (
                 <HeartbeatPingUrlPanel
                   monitorId={monitor.id}
                   canManage={permissionsReady && canEditMonitor}
-                  pending={heartbeat?.state === "pending"}
+                  pending={heartbeat.state === "pending"}
                 />
               )}
-              <AvailabilityBarChart
-                data={availabilityTimelineData}
-                headerActions={
-                  availableLocations.length > 1 ? (
-                    <LocationFilterDropdown
-                      selectedLocation={selectedLocation}
-                      availableLocations={availableLocations}
-                      onLocationChange={setSelectedLocation}
-                      className="w-[200px]"
+              <div className={`flex min-w-0 flex-col gap-4 ${showHeartbeatSetup ? "" : "lg:col-span-2"}`}>
+                <HeartbeatOverview
+                  state={heartbeat.state}
+                  frequencyMinutes={monitor.frequencyMinutes}
+                  graceMinutes={heartbeat.graceMinutes}
+                  lastPingAt={heartbeat.lastPingAt}
+                  nextExpectedAt={neverPinged ? null : heartbeat.nextExpectedAt}
+                  lastRunDuration={lastRunDuration}
+                  uptime24h={naToNull(calculatedMetrics.uptime24h)}
+                  uptime30d={naToNull(calculatedMetrics.uptime30d)}
+                  now={clockNow}
+                />
+                <AvailabilityBarChart
+                  data={availabilityTimelineData}
+                  headerActions={
+                    availableLocations.length > 1 ? (
+                      <LocationFilterDropdown
+                        selectedLocation={selectedLocation}
+                        availableLocations={availableLocations}
+                        onLocationChange={setSelectedLocation}
+                        className="w-[200px]"
+                      />
+                    ) : undefined
+                  }
+                  footer={
+                    hasRunDurations ? undefined : (
+                      <span data-testid="heartbeat-run-duration-hint">
+                        Call <span className="font-mono">/start</span> when the job begins to record how long it runs.
+                      </span>
+                    )
+                  }
+                />
+                {hasRunDurations && (
+                  // Auto-height wrapper so the card's h-full does not stretch it to the column height.
+                  <div>
+                    <ResponseTimeBarChart
+                      data={responseTimeData}
+                      title="Run duration"
+                      empty={{
+                        description: "Time between a /start ping and the ping that finishes the run.",
+                        heading: "No run durations yet",
+                        hint: "Call /start when the job begins to record how long it runs.",
+                      }}
                     />
-                  ) : undefined
-                }
-                footer={
-                  hasRunDurations ? undefined : (
-                    <span data-testid="heartbeat-run-duration-hint">
-                      Call <span className="font-mono">/start</span> when the job begins to record how long it runs.
-                    </span>
-                  )
-                }
-              />
-              {hasRunDurations && (
-                // Auto-height wrapper so the card's h-full does not stretch it to the column height.
-                <div>
-                  <ResponseTimeBarChart
-                    data={responseTimeData}
-                    title="Run duration"
-                    empty={{
-                      description: "Time between a /start ping and the ping that finishes the run.",
-                      heading: "No run durations yet",
-                      hint: "Call /start when the job begins to record how long it runs.",
-                    }}
-                  />
-                </div>
-              )}
+                  </div>
+                )}
+              </div>
             </div>
-            <HeartbeatPingHistory
-              results={paginatedTableResults}
-              isLoading={isLoadingResults}
-              error={resultsError}
-              onRetry={() => void refetchResults()}
-              page={currentPage}
-              totalPages={totalPages}
-              total={totalResultsCount}
-              onPageChange={setCurrentPage}
-              onFitRows={isNotificationView ? undefined : setFitRows}
-            />
+            <FitPanel fit={showHeartbeatSetup} minHeight="lg:min-h-[26rem]" className="flex-1">
+              <HeartbeatPingHistory
+                results={paginatedTableResults}
+                isLoading={isLoadingResults}
+                error={resultsError}
+                onRetry={() => void refetchResults()}
+                page={currentPage}
+                totalPages={totalPages}
+                total={totalResultsCount}
+                onPageChange={setCurrentPage}
+                onFitRows={showHeartbeatSetup ? setFitRows : undefined}
+              />
+            </FitPanel>
           </div>
         ) : (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -1313,12 +1272,13 @@ export function MonitorDetailClient({
                 changes={monitor.config?.mcpState?.changes}
                 pending={!latestResult}
                 failure={mcpFailure}
+                meta={mcpMeta}
               />
             )}
           </div>
 
-          {(
-          <Card className="shadow-sm flex flex-col">
+          <FitPanel fit={fitResults} minHeight="lg:min-h-[28rem]">
+          <Card className="shadow-sm flex h-full flex-col overflow-hidden">
             <CardHeader className="flex-shrink-0">
               <div className="flex items-center justify-between">
                 <CardTitle className="text-lg font-semibold flex items-center">
@@ -1374,8 +1334,8 @@ export function MonitorDetailClient({
                   : `Showing ${currentResultsCount} of ${totalResultsCount} recent checks.`}
               </CardDescription>
             </CardHeader>
-            <CardContent className="p-0 flex-1 flex flex-col">
-              <div className="w-full overflow-x-auto relative">
+            <CardContent ref={resultsPanelRef} className="p-0 flex-1 flex min-h-0 flex-col">
+              <div className="w-full flex-1 overflow-x-auto relative lg:overflow-y-hidden">
                 {/* Loading overlay - shows on top of existing data for smooth transitions */}
                 {isLoadingResults && paginatedTableResults.length > 0 && (
                   <div className="absolute inset-0 z-20 bg-card/80 backdrop-blur-[1px] flex items-center justify-center transition-opacity duration-200">
@@ -1388,48 +1348,48 @@ export function MonitorDetailClient({
                   </div>
                 )}
                 <div className="w-full">
-                  <table className={`w-full ${aiEndpoint ? "min-w-[850px]" : isMcp || showPassRate ? "min-w-[740px]" : "min-w-[640px]"} table-fixed divide-y divide-border`}>
+                  <table className={`w-full ${aiEndpoint ? "min-w-[640px]" : showPassRate ? "min-w-[520px]" : "min-w-[440px]"} table-fixed divide-y divide-border`}>
+                    {/* Location takes the leftover width; the failure text lives in a tooltip on the Result cell, so there is no Error column. */}
                     <colgroup>
-                      <col className="w-[96px]" />
-                      <col className="w-[192px]" />
-                      <col className="w-[136px]" />
+                      <col className="w-[88px]" />
                       <col className="w-[124px]" />
-                      {aiEndpoint && <col className="w-[112px]" />}
-                      {aiEndpoint && <col className="w-[96px]" />}
-                      {isMcp && <col className="w-[84px]" />}
-                      {showPassRate && <col className="w-[96px]" />}
                       <col />
+                      <col className="w-[92px]" />
+                      {aiEndpoint && <col className="w-[96px]" />}
+                      {aiEndpoint && <col className="w-[80px]" />}
+                      {isMcp && <col className="w-[64px]" />}
+                      {showPassRate && <col className="w-[88px]" />}
                     </colgroup>
                     <thead className="bg-background sticky top-0 z-10 border-b">
                       <tr>
                         <th
                           scope="col"
-                          className="px-4 py-3 text-left text-xs font-medium text-muted-foreground whitespace-nowrap"
+                          className="px-3 py-3 text-left text-xs font-medium text-muted-foreground whitespace-nowrap"
                         >
                           Result
                         </th>
                         <th
                           scope="col"
-                          className="px-4 py-3 text-left text-xs font-medium text-muted-foreground whitespace-nowrap"
+                          className="px-3 py-3 text-left text-xs font-medium text-muted-foreground whitespace-nowrap"
                         >
                           Checked At
                         </th>
                         <th
                           scope="col"
-                          className="px-4 py-3 text-left text-xs font-medium text-muted-foreground whitespace-nowrap"
+                          className="px-3 py-3 text-left text-xs font-medium text-muted-foreground whitespace-nowrap"
                         >
                           Location
                         </th>
                         <th
                           scope="col"
-                          className="px-4 py-3 text-left text-xs font-medium text-muted-foreground whitespace-nowrap"
+                          className="px-3 py-3 text-left text-xs font-medium text-muted-foreground whitespace-nowrap"
                         >
-                          Response Time
+                          Response
                         </th>
                         {aiEndpoint && (
                           <th
                             scope="col"
-                            className="px-4 py-3 text-left text-xs font-medium text-muted-foreground whitespace-nowrap"
+                            className="px-3 py-3 text-left text-xs font-medium text-muted-foreground whitespace-nowrap"
                           >
                             First token
                           </th>
@@ -1437,7 +1397,7 @@ export function MonitorDetailClient({
                         {aiEndpoint && (
                           <th
                             scope="col"
-                            className="px-4 py-3 text-left text-xs font-medium text-muted-foreground whitespace-nowrap"
+                            className="px-3 py-3 text-left text-xs font-medium text-muted-foreground whitespace-nowrap"
                           >
                             Tokens
                           </th>
@@ -1445,7 +1405,7 @@ export function MonitorDetailClient({
                         {isMcp && (
                           <th
                             scope="col"
-                            className="px-4 py-3 text-left text-xs font-medium text-muted-foreground whitespace-nowrap"
+                            className="px-3 py-3 text-left text-xs font-medium text-muted-foreground whitespace-nowrap"
                           >
                             Tools
                           </th>
@@ -1453,26 +1413,20 @@ export function MonitorDetailClient({
                         {showPassRate && (
                           <th
                             scope="col"
-                            className="px-4 py-3 text-left text-xs font-medium text-muted-foreground whitespace-nowrap"
+                            className="px-3 py-3 text-left text-xs font-medium text-muted-foreground whitespace-nowrap"
                           >
                             Pass rate
                           </th>
                         )}
-                        <th
-                          scope="col"
-                          className="px-4 py-3 text-left text-xs font-medium text-muted-foreground whitespace-nowrap"
-                        >
-                          Error
-                        </th>
                       </tr>
                     </thead>
-                    <tbody className="bg-card divide-y divide-border">
+                    <tbody className="bg-card divide-y divide-border" data-testid="monitor-results-body">
                       {isLoadingResults &&
                         paginatedTableResults.length === 0 ? (
                         // Initial loading state (no data yet)
                         <tr>
                           <td
-                            colSpan={(monitor.type === "synthetic_test" ? 6 : 5) + (aiEndpoint ? 2 : 0) + (isMcp ? 1 : 0) + (showPassRate ? 1 : 0)}
+                            colSpan={4 + (aiEndpoint ? 2 : 0) + (isMcp ? 1 : 0) + (showPassRate ? 1 : 0)}
                             className="text-center relative"
                             style={{ height: "320px" }}
                           >
@@ -1535,10 +1489,17 @@ export function MonitorDetailClient({
                               })()
                               : undefined;
 
+                          // Failure text for the tooltip on the Result cell; a successful check has none.
+                          const failureText = result.isUp
+                            ? undefined
+                            : monitor.type === "synthetic_test"
+                              ? syntheticReportError
+                              : result.details?.errorMessage || "Check failed";
+
                           return (
                             <tr key={result.id} className="hover:bg-muted/25">
-                              <td className="px-4 py-[11.5px] whitespace-nowrap text-sm">
-                                <span className="inline-flex items-center gap-1">
+                              <td className="px-3 py-[11.5px] whitespace-nowrap text-sm">
+                                <span className="inline-flex items-center gap-1.5">
                                   <SimpleStatusIcon isUp={result.isUp} />
                                   {result.inMaintenance && (
                                     // Icon-only: the column is narrow. The label is in aria-label and the tooltip.
@@ -1554,17 +1515,57 @@ export function MonitorDetailClient({
                                       <Wrench aria-hidden="true" className="h-3.5 w-3.5" />
                                     </TableBadge>
                                   )}
+                                  {syntheticReportAvailable && (
+                                    <button
+                                      type="button"
+                                      className="inline-flex items-center rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                      aria-label="View test report"
+                                      title="View test report"
+                                      onClick={() => {
+                                        // Use testExecutionId directly from database
+                                        const runTestId = result.testExecutionId;
+                                        if (runTestId) {
+                                          // Use API proxy route like playground does
+                                          setSelectedReportUrl(`/api/test-results/${runTestId}/report/index.html?forceIframe=true`);
+                                          setReportModalOpen(true);
+                                        } else {
+                                          console.error("[Monitor Report] No testExecutionId in monitor result:", result.id);
+                                          toast.error("No report available", {
+                                            description: "This monitor run doesn't have a report",
+                                          });
+                                        }
+                                      }}
+                                    >
+                                      <PlaywrightLogo className="h-4 w-4 hover:opacity-80 transition-opacity" />
+                                    </button>
+                                  )}
+                                  {failureText && (
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <span
+                                          tabIndex={0}
+                                          role="img"
+                                          aria-label={`Error: ${failureText}`}
+                                          data-testid="result-error"
+                                          className="inline-flex rounded-sm text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                        >
+                                          <Info className="h-3.5 w-3.5" aria-hidden="true" />
+                                        </span>
+                                      </TooltipTrigger>
+                                      <TooltipContent className="max-w-xs break-words">{failureText}</TooltipContent>
+                                    </Tooltip>
+                                  )}
                                 </span>
                               </td>
                               {/* Cells stay on one line; long values end in an ellipsis and show in full on hover. */}
-                              <td className="px-4 py-[11.5px] overflow-hidden text-sm text-muted-foreground">
+                              <td className="px-3 py-[11.5px] overflow-hidden text-sm text-muted-foreground">
                                 <TruncatedTextWithTooltip
                                   text={formatDateTime(result.checkedAt)}
                                   maxWidth="100%"
                                   maxLength={22}
                                 />
                               </td>
-                              <td className="px-4 py-[11.5px] overflow-hidden text-xs text-muted-foreground">
+                              <td className="px-3 py-[11.5px] overflow-hidden text-xs text-muted-foreground">
                                 {locationMetadata ? (
                                   <span className="flex min-w-0 items-center gap-1">
                                     {locationMetadata.flag && (
@@ -1587,93 +1588,34 @@ export function MonitorDetailClient({
                                   />
                                 )}
                               </td>
-                              <td className="px-4 py-[11.5px] whitespace-nowrap overflow-hidden text-ellipsis text-sm text-muted-foreground">
+                              <td className="px-3 py-[11.5px] whitespace-nowrap overflow-hidden text-ellipsis text-sm text-muted-foreground">
                                 {result.responseTimeMs !== null &&
                                   result.responseTimeMs !== undefined
                                   ? formatResponseTime(result.responseTimeMs)
                                   : "N/A"}
                               </td>
                               {aiEndpoint && (
-                                <td className="px-4 py-[11.5px] whitespace-nowrap overflow-hidden text-ellipsis text-sm text-muted-foreground" data-testid="ai-row-first-token">
+                                <td className="px-3 py-[11.5px] whitespace-nowrap overflow-hidden text-ellipsis text-sm text-muted-foreground" data-testid="ai-row-first-token">
                                   {typeof aiDetails(result)?.firstTokenMs === "number"
                                     ? formatResponseTime(aiDetails(result)!.firstTokenMs as number)
                                     : "N/A"}
                                 </td>
                               )}
                               {aiEndpoint && (
-                                <td className="px-4 py-[11.5px] whitespace-nowrap overflow-hidden text-ellipsis text-sm text-muted-foreground" data-testid="ai-row-tokens">
+                                <td className="px-3 py-[11.5px] whitespace-nowrap overflow-hidden text-ellipsis text-sm text-muted-foreground" data-testid="ai-row-tokens">
                                   {formatTokens(aiDetails(result))}
                                 </td>
                               )}
                               {isMcp && (
-                                <td className="px-4 py-[11.5px] whitespace-nowrap overflow-hidden text-ellipsis text-sm text-muted-foreground" data-testid="mcp-row-tools">
+                                <td className="px-3 py-[11.5px] whitespace-nowrap overflow-hidden text-ellipsis text-sm text-muted-foreground" data-testid="mcp-row-tools">
                                   {typeof result.details?.mcp?.toolCount === "number" ? result.details.mcp.toolCount : "N/A"}
                                 </td>
                               )}
                               {showPassRate && (
-                                <td className="px-4 py-[11.5px] whitespace-nowrap overflow-hidden text-ellipsis text-sm text-muted-foreground" data-testid="agent-row-pass-rate">
+                                <td className="px-3 py-[11.5px] whitespace-nowrap overflow-hidden text-ellipsis text-sm text-muted-foreground" data-testid="agent-row-pass-rate">
                                   {typeof agentPassRate(result) === "number" ? `${Math.round((agentPassRate(result) as number) * 100)}%` : "N/A"}
                                 </td>
                               )}
-                              <td className="px-4 py-[11.5px] overflow-hidden text-sm text-muted-foreground">
-                                {monitor.type === "synthetic_test" ? (
-                                  // Synthetic test: show report on failure, N/A on success
-                                  syntheticReportAvailable ? (
-                                    <div
-                                      className="cursor-pointer inline-flex items-center justify-center"
-                                      onClick={() => {
-                                        // Use testExecutionId directly from database
-                                        const runTestId =
-                                          result.testExecutionId;
-
-                                        if (runTestId) {
-                                          // Use API proxy route like playground does
-                                          const apiUrl = `/api/test-results/${runTestId}/report/index.html?forceIframe=true`;
-                                          setSelectedReportUrl(apiUrl);
-                                          setReportModalOpen(true);
-                                        } else {
-                                          console.error(
-                                            "[Monitor Report] No testExecutionId in monitor result:",
-                                            result.id
-                                          );
-                                          toast.error("No report available", {
-                                            description:
-                                              "This monitor run doesn't have a report",
-                                          });
-                                        }
-                                      }}
-                                    >
-                                      <PlaywrightLogo className="h-4 w-4 hover:opacity-80 transition-opacity" />
-                                    </div>
-                                  ) : syntheticReportError ? (
-                                    <TruncatedTextWithTooltip
-                                      text={syntheticReportError}
-                                      className="text-muted-foreground text-xs"
-                                      maxWidth="100%"
-                                      maxLength={12}
-                                    />
-                                  ) : (
-                                    <span className="text-muted-foreground text-xs">
-                                      N/A
-                                    </span>
-                                  )
-                                ) : // Other monitor types: show error on failure, N/A on success
-                                  result.isUp ? (
-                                    <span className="text-muted-foreground text-xs">
-                                      N/A
-                                    </span>
-                                  ) : (
-                                    <TruncatedTextWithTooltip
-                                      text={
-                                        result.details?.errorMessage ||
-                                        "Check failed"
-                                      }
-                                      className="text-muted-foreground text-xs"
-                                      maxWidth="100%"
-                                      maxLength={12}
-                                    />
-                                  )}
-                              </td>
                             </tr>
                           );
                         })
@@ -1681,7 +1623,7 @@ export function MonitorDetailClient({
                         // Empty state
                         <tr>
                           <td
-                            colSpan={(monitor.type === "synthetic_test" ? 6 : 5) + (aiEndpoint ? 2 : 0) + (isMcp ? 1 : 0) + (showPassRate ? 1 : 0)}
+                            colSpan={4 + (aiEndpoint ? 2 : 0) + (isMcp ? 1 : 0) + (showPassRate ? 1 : 0)}
                             className="px-4 py-16 text-center"
                           >
                             <div className="text-center space-y-3">
@@ -1757,7 +1699,7 @@ export function MonitorDetailClient({
                 )}
             </CardContent>
           </Card>
-          )}
+          </FitPanel>
         </div>
         )}
 

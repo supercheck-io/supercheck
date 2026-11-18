@@ -54,6 +54,7 @@ Every colour has one job. New code uses the token, never a raw palette class or 
 | Tinted icon (page, section or event type) | `IconChip` (`size="sm"` for sections, `"md"` for page titles) | `app/src/components/ui/icon-chip.tsx` |
 | Section heading inside a card | `SectionTitle` (chip, title, count, hint, action) | `app/src/components/sre/incidents/incident-ui.tsx` |
 | Table footer | `DataTablePagination` (label `Total {n} {itemName}`, rows-per-page fitted to the window) | `app/src/components/ui/data-table-pagination.tsx` |
+| Detail-page table beside charts | Fill the height of the row, never grow it: the card sits in an absolutely filled box and `useFitPanelRows` sets the rows per page. No Error column: put the failure text in a tooltip on the Result cell. | `app/src/components/monitors/use-fit-panel-rows.ts` |
 | Status or category badge | `TableBadge` with a tone | `app/src/components/ui/table-badge.tsx` |
 | Callout (info, success, warning, error box) | `Alert` with `variant="info" | "success" | "warning" | "error"` (`destructive` for blocking errors) | `app/src/components/ui/alert.tsx` |
 | People | `UserCell` and `UserAvatar` | `app/src/components/ui/user-cell.tsx` |
