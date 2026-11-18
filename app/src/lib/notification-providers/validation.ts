@@ -57,6 +57,8 @@ export function validateProviderWebhookUrl(
   providerType: NotificationProviderType,
   fieldName: string = "URL"
 ): void {
+  // new URL() stringifies arrays and objects, so a non-string would pass the checks below and be sent as that string.
+  if (typeof url !== "string") throw new Error(`${fieldName} must be a string.`);
   // SSRF validation: block private/internal IPs and require HTTPS
   // Only generic webhook channels may target internal hosts, and only on opted-in self-hosted installs.
   const urlValidation = validateWebhookUrlString(url, {

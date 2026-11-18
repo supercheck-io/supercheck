@@ -6,6 +6,12 @@ import {
 } from "@/lib/notification-providers/validation";
 
 describe("notification provider validation", () => {
+  it("rejects a non-string URL that new URL() would stringify", () => {
+    const url = ["https://hooks.example.com/x"] as unknown as string;
+    expect(() => validateProviderWebhookUrl(url, "webhook", "Target URL")).toThrow("Target URL must be a string.");
+    expect(() => validateProviderConfig("webhook", { name: "W", url })).toThrow("must be a string");
+  });
+
   it("requires valid email addresses for email providers", () => {
     expect(() => validateProviderConfig("email", { emails: "" })).toThrow("at least one");
     expect(() => validateProviderConfig("email", { emails: "not-an-email" })).toThrow("valid email");

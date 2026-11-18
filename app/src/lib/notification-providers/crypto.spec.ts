@@ -105,6 +105,11 @@ describe("notification provider crypto", () => {
         expect(merged.url).toBe("https://other.example.com/x");
       });
 
+      it("drops stored headers when the URL is sent as a non-string", () => {
+        const url = ["https://other.example.com/x"] as unknown as string;
+        expect(mergeNotificationProviderConfig("webhook", existing, { name: "W", url }).headers).toBeUndefined();
+      });
+
       it("drops stored headers and the old URL when the preset changes without a new URL", () => {
         const merged = mergeNotificationProviderConfig("webhook", existing, { name: "W", preset: "custom" });
         expect(merged.headers).toBeUndefined();

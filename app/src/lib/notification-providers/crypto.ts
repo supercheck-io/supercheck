@@ -75,8 +75,8 @@ export function mergeNotificationProviderConfig(
     // preset) must not carry the old headers to it, and a changed preset must not fall back to the old URL.
     const presetChanged =
       "preset" in incomingConfig && (incomingConfig.preset || "custom") !== (existingConfig.preset || "custom");
-    const urlChanged =
-      typeof incomingConfig.url === "string" && incomingConfig.url !== "" && incomingConfig.url !== existingConfig.url;
+    // Any sent url that differs counts, whatever its type: validation rejects non-strings, the merge must not trust them.
+    const urlChanged = "url" in incomingConfig && incomingConfig.url !== existingConfig.url;
     if (presetChanged && !("url" in incomingConfig)) delete merged.url;
     if ((presetChanged || urlChanged) && !("headers" in incomingConfig)) delete merged.headers;
   }
