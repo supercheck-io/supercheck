@@ -1844,11 +1844,13 @@ describe('NotificationService', () => {
     });
 
     it('keeps the GMT Time value in the shared (webhook) fields', () => {
-      const f = (service as any).formatNotification({
-        ...basePayload,
-        timestamp: new Date('2026-11-18T06:02:36Z'),
-        metadata: { ...basePayload.metadata, observedAt: undefined },
-      }).fields.find((x: { title: string }) => x.title === 'Time');
+      const f = (service as any)
+        .formatNotification({
+          ...basePayload,
+          timestamp: new Date('2026-11-18T06:02:36Z'),
+          metadata: { ...basePayload.metadata, observedAt: undefined },
+        })
+        .fields.find((x: { title: string }) => x.title === 'Time');
       expect(f.value).toBe('Wed, 18 Nov 2026 06:02:36 GMT');
     });
 
