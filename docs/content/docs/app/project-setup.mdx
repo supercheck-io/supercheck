@@ -35,7 +35,7 @@ The order below is the default. Your focus changes the order of the steps and th
 
 **Copy from a project.** When the organization has another project you can reach, **Alerts** and **AI SRE** offer **Copy all alert channels** or **Copy all connectors** from it. Secrets are re-encrypted for the new project and never shown, and each item is listed by name as Copied, Already there or Failed. An item with the same name is reused only when its settings match; otherwise the copy is named `<name> (copied)`. Copies pass the same checks as creating the item by hand (endpoint rules, private agent access, channel settings). Connectors keep their risk level; like every connector they are read-only.
 
-Setup applies your role, your plan's limits and the audit log to every item, and it never deletes what you already have. Running it again only suggests what is new.
+Each item is created through the same API as creating it by hand, so your role and your plan's limits apply to it. Setup only adds items.
 
 ## Focus and sidebar
 

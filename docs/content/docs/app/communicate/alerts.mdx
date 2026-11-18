@@ -292,7 +292,7 @@ The webhook channel includes presets that fill the method, headers, and JSON bod
 | PagerDuty Events API v2 | Trigger and resolve incidents using `{{pagerDutyEventAction}}` and `{{dedupKey}}` | [PagerDuty Events API v2](https://developer.pagerduty.com/docs/events-api-v2/overview/) |
 | Jira Service Management | Creates alerts with an alias, sent to `api.atlassian.com/jsm/ops/integration/v2/alerts` with `Authorization: GenieKey <integration key>`; recovery closes the alert by alias | [JSM integration events](https://developer.atlassian.com/cloud/jira/service-desk-ops/rest/v1/api-group-integration-events/) |
 | Splunk On-Call REST endpoint | Send VictorOps/Splunk On-Call `CRITICAL` and `RECOVERY` events | [Splunk On-Call REST Endpoint](https://help.victorops.com/knowledge-base/rest-endpoint-integration-guide/) |
-| Better Stack webhook | Sends `status: alert` on failure and `status: resolved` on recovery with `dedup_key`. In Better Stack, set the create rule to "status contains alert", the resolve rule to "status contains resolved" and the alert id to `dedup_key` | [Better Stack webhooks](https://betterstack.com/docs/uptime/webhooks/) |
+| Better Stack webhook | Sends `status: alert` on failure and `status: resolved` on recovery with `dedup_key`. In Better Stack, set the create rule to "status contains alert", the resolve rule to "status contains resolved" and the alert id to `dedup_key` | [Better Stack incoming webhooks](https://betterstack.com/docs/uptime/incoming-webhooks/) |
 | incident.io alert source | Sends `status: firing` on failure and `status: resolved` on recovery with `deduplication_key` | [incident.io alert sources](https://docs.incident.io/alerts/alert-sources) |
 
 <Callout type="warn">
