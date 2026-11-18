@@ -1,7 +1,11 @@
 import * as fsp from 'fs/promises';
 import * as os from 'os';
 import * as path from 'path';
-import { createSecretStream, scrubSecretsFromReportDir } from './secret-stream';
+import {
+  createSecretStream,
+  readZip,
+  scrubSecretsFromReportDir,
+} from './secret-stream';
 
 describe('secret console stream', () => {
   it('redacts a secret split at every possible transport boundary and flushes its tail', async () => {
@@ -59,6 +63,35 @@ describe('scrubSecretsFromReportDir', () => {
     expect(await fsp.readFile(path.join(dir, 'index.html'), 'utf8')).toBe(
       'raw [SECRET] / esc [SECRET]',
     );
+  });
+
+  it('scrubs secrets inside the zip Playwright embeds in index.html', async () => {
+    // A real zip (deflated report.json and a data file), as the HTML reporter embeds it.
+    const zip =
+      'UEsDBBQAAAAIACYTc10dcW7mSgAAAEkAAAALAAAAcmVwb3J0Lmpzb26rVkotKsovKlayiq5Wyk0tLk5MT1WyUgpKTU7NLEtNsVJwSk0sSi1SKM7WzQEK6BanJhellugaGhmbmCok5qUo5OYXpSrVxtYCAFBLAwQUAAAACAAmE3NdvUreChQAAAASAAAACwAAAGFiYzEyMy5qc29uq1YqLknJLy1RslJKzklNzFOqBQBQSwECFAMUAAAACAAmE3NdHXFu5koAAABJAAAACwAAAAAAAAAAAAAAgAEAAAAAcmVwb3J0Lmpzb25QSwECFAMUAAAACAAmE3NdvUreChQAAAASAAAACwAAAAAAAAAAAAAAgAFzAAAAYWJjMTIzLmpzb25QSwUGAAAAAAIAAgByAAAAsAAAAAAA';
+    const page = (b64: string) =>
+      `<html></html>\n<template id="playwrightReportBase64">data:application/zip;base64,${b64}</template>`;
+    await fsp.writeFile(path.join(dir, 'index.html'), page(zip));
+    await scrubSecretsFromReportDir(dir, { KEY: 'sk-live-secret-12345' });
+    const html = await fsp.readFile(path.join(dir, 'index.html'), 'utf8');
+    const embedded = /base64,([A-Za-z0-9+/=]+)<\/template>/.exec(html)![1];
+    const entries = readZip(Buffer.from(embedded, 'base64'));
+    expect(entries.map((e) => e.name.toString())).toEqual([
+      'report.json',
+      'abc123.json',
+    ]);
+    expect(entries[0].data.toString()).toBe(
+      '{"errors":[{"message":"Received: Bearer [SECRET] and more"}]}',
+    );
+    expect(entries[1].data.toString()).toBe('{"stdout":"clean"}');
+  });
+
+  it('fails closed when the embedded report zip is corrupt', async () => {
+    await fsp.writeFile(
+      path.join(dir, 'index.html'),
+      '<template id="playwrightReportBase64">data:application/zip;base64,AAAA</template>',
+    );
+    await expect(scrubSecretsFromReportDir(dir, secrets)).rejects.toThrow();
   });
 
   it('skips oversized text files with a warning instead of throwing', async () => {

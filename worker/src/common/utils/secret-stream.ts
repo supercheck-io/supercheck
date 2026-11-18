@@ -1,5 +1,6 @@
 import * as fs from 'fs/promises';
 import * as path from 'path';
+import { crc32, deflateRawSync, inflateRawSync } from 'zlib';
 
 /** Keep only a secret-length tail so matches across transport chunks stay private. */
 export function createSecretStream(
@@ -75,6 +76,120 @@ export function secretRedactionVariants(
     .sort((a, b) => b.length - a.length);
 }
 
+// Playwright's HTML reporter keeps the whole report (test errors, steps) as a deflated zip inside this
+// <template> in index.html, where a plain text replace can never match a secret.
+const EMBEDDED_REPORT =
+  /(<template id="playwrightReportBase64">data:application\/zip;base64,)([A-Za-z0-9+/=]+)(<\/template>)/;
+const MAX_ZIP_ENTRY_BYTES = 64 * 1024 * 1024;
+
+interface ZipEntry {
+  name: Buffer;
+  data: Buffer;
+  time: number;
+  date: number;
+}
+
+export function readZip(zip: Buffer): ZipEntry[] {
+  let eocd = zip.length - 22;
+  while (eocd >= 0 && zip.readUInt32LE(eocd) !== 0x06054b50) eocd--;
+  if (eocd < 0) throw new Error('Report zip has no end record');
+  let p = zip.readUInt32LE(eocd + 16);
+  const entries: ZipEntry[] = [];
+  for (let n = zip.readUInt16LE(eocd + 10); n > 0; n--) {
+    if (zip.readUInt32LE(p) !== 0x02014b50)
+      throw new Error('Report zip is corrupt');
+    const method = zip.readUInt16LE(p + 10);
+    const size = zip.readUInt32LE(p + 20);
+    const local = zip.readUInt32LE(p + 42);
+    const nameLength = zip.readUInt16LE(p + 28);
+    if (size === 0xffffffff || local === 0xffffffff)
+      throw new Error('Report zip64 is not supported');
+    const start =
+      local + 30 + zip.readUInt16LE(local + 26) + zip.readUInt16LE(local + 28);
+    const raw = zip.subarray(start, start + size);
+    entries.push({
+      name: zip.subarray(p + 46, p + 46 + nameLength),
+      data:
+        method === 0
+          ? raw
+          : method === 8
+            ? inflateRawSync(raw, { maxOutputLength: MAX_ZIP_ENTRY_BYTES })
+            : (() => {
+                throw new Error('Report zip uses an unsupported compression');
+              })(),
+      time: zip.readUInt16LE(p + 12),
+      date: zip.readUInt16LE(p + 14),
+    });
+    p += 46 + nameLength + zip.readUInt16LE(p + 30) + zip.readUInt16LE(p + 32);
+  }
+  return entries;
+}
+
+function writeZip(entries: ZipEntry[]): Buffer {
+  const parts: Buffer[] = [];
+  const central: Buffer[] = [];
+  let offset = 0;
+  for (const { name, data, time, date } of entries) {
+    const packed = deflateRawSync(data);
+    const common = Buffer.alloc(26);
+    common.writeUInt16LE(20, 0); // version needed
+    common.writeUInt16LE(0x0800, 2); // UTF-8 names
+    common.writeUInt16LE(8, 4); // deflate
+    common.writeUInt16LE(time, 6);
+    common.writeUInt16LE(date, 8);
+    common.writeUInt32LE(crc32(data), 10);
+    common.writeUInt32LE(packed.length, 14);
+    common.writeUInt32LE(data.length, 18);
+    common.writeUInt16LE(name.length, 22);
+    const local = Buffer.concat([
+      Buffer.from('504b0304', 'hex'),
+      common,
+      name,
+      packed,
+    ]);
+    const dir = Buffer.alloc(14); // clen, disk, attributes, local offset follow the shared fields
+    dir.writeUInt32LE(offset, 10);
+    parts.push(local);
+    central.push(
+      Buffer.concat([
+        Buffer.from('504b01021400', 'hex'), // signature, version made by
+        common, // through the extra-field length
+        dir,
+        name,
+      ]),
+    );
+    offset += local.length;
+  }
+  const directory = Buffer.concat(central);
+  const end = Buffer.alloc(22);
+  end.writeUInt32LE(0x06054b50, 0);
+  end.writeUInt16LE(entries.length, 8);
+  end.writeUInt16LE(entries.length, 10);
+  end.writeUInt32LE(directory.length, 12);
+  end.writeUInt32LE(offset, 16);
+  return Buffer.concat([...parts, directory, end]);
+}
+
+/** Replaces secret variants inside the zip Playwright embeds in index.html; other HTML is returned as is. */
+export function scrubEmbeddedReportZip(
+  html: string,
+  variants: string[],
+): string {
+  return html.replace(
+    EMBEDDED_REPORT,
+    (_all, head: string, b64: string, tail: string) => {
+      const entries = readZip(Buffer.from(b64, 'base64'));
+      for (const entry of entries) {
+        const original = entry.data.toString('utf8');
+        let text = original;
+        for (const v of variants) text = text.split(v).join('[SECRET]');
+        if (text !== original) entry.data = Buffer.from(text, 'utf8');
+      }
+      return head + writeZip(entries).toString('base64') + tail;
+    },
+  );
+}
+
 /**
  * Rewrites text-like report files in place with secret values replaced.
  * Binary artifacts (trace.zip, screenshots, videos) are not scrubbed.
@@ -100,7 +215,10 @@ export async function scrubSecretsFromReportDir(
           continue;
         }
         const original = await fs.readFile(full, 'utf8');
-        let text = original;
+        let text =
+          entry.name === 'index.html'
+            ? scrubEmbeddedReportZip(original, variants)
+            : original;
         for (const v of variants) text = text.split(v).join('[SECRET]');
         if (text !== original) await fs.writeFile(full, text, 'utf8');
       }
