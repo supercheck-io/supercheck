@@ -120,13 +120,20 @@ export function SetupWizard({ response, persona, userEmail }: WizardProps) {
     if (status === "not_started" && !readOnly) patch({ status: "in_progress" });
   }, [status, readOnly, patch]);
 
-  const goTo = (step: SetupStepKey) => (readOnly ? setLocalStep(step) : session.patch({ currentStep: step }));
+  // A draft saved before ticks were stored has no `completed`: until it is first written, steps before the current one (not skipped) count as done.
+  const completedSteps = session.draft.completed ?? steps.filter((s, i) => i < index && !session.skipped.includes(s));
+  const goTo = (step: SetupStepKey) => {
+    if (readOnly) return setLocalStep(step);
+    // Moving the current step would change the legacy fallback, so store what counts as done now.
+    if (!session.draft.completed) session.patchDraft((draft) => ({ ...draft, completed: completedSteps }));
+    session.patch({ currentStep: step });
+  };
   const go = (target: number, mode: "back" | "continue" | "skip" = "continue") => {
     if (mode === "back" || readOnly) return goTo(steps[target]);
     const skipped = new Set(session.skipped);
     if (mode === "skip") skipped.add(key);
     else skipped.delete(key);
-    const completed = new Set(session.draft.completed);
+    const completed = new Set(completedSteps);
     if (mode === "skip") completed.delete(key);
     else completed.add(key);
     session.patchDraft((draft) => ({ ...draft, completed: [...completed] }));
@@ -243,7 +250,7 @@ export function SetupWizard({ response, persona, userEmail }: WizardProps) {
             {steps.map((stepKey, i) => {
               const m = STEP_META[stepKey] as StepMeta;
               const skippedStep = session.skipped.includes(stepKey);
-              const done = !skippedStep && Boolean(session.draft.completed?.includes(stepKey));
+              const done = !skippedStep && completedSteps.includes(stepKey);
               const current = i === index;
               return (
                 <li key={stepKey}>

@@ -185,3 +185,65 @@ describe("useSetupSession 409 with server-saved suggestions", () => {
     expect(toast.error).toHaveBeenCalled();
   });
 });
+
+describe("useSetupSession step marks on a 409", () => {
+  const setupWith = (draft: object, skipped: never[] = []) => {
+    const initial = makeResponse({}, { status: "in_progress", updatedAt: "t0", draft, skipped }).state;
+    return renderHook(() => useSetupSession(PROJECT_ID, initial, TAB, 10), { wrapper: createWrapper().Wrapper });
+  };
+  const mark = (result: { current: ReturnType<typeof useSetupSession> }, key: "app" | "alerts", mode: "skip" | "continue") =>
+    act(() => {
+      const completed = new Set(result.current.draft.completed);
+      const skipped = new Set(result.current.skipped);
+      if (mode === "skip") { completed.delete(key); skipped.add(key); } else { skipped.delete(key); completed.add(key); }
+      result.current.patchDraft((d) => ({ ...d, completed: [...completed] }));
+      result.current.patch({ skipped: [...skipped] });
+    });
+
+  it("keeps a skip over a server copy that still has the step completed, and never ticks and skips one step", async () => {
+    const server = makeResponse({}, { updatedAt: "t-server", draft: { completed: ["app"] }, skipped: [] });
+    fetchMock.mockResolvedValueOnce(reply(409, { error: "conflict", state: server.state }));
+    fetchMock.mockResolvedValueOnce(reply(200, makeResponse({}, { updatedAt: "t-new" })));
+    const { result } = setupWith({ completed: ["app"] });
+    mark(result, "app", "skip");
+    await act(async () => { await result.current.flush(); });
+    expect(result.current.skipped).toEqual(["app"]);
+    expect(result.current.draft.completed).toEqual([]);
+    const resent = puts()[1];
+    expect(resent.skipped).toEqual(["app"]);
+    expect(resent.draft.completed).toEqual([]);
+  });
+
+  it("keeps a Continue over a server copy that skipped the step, and keeps the server's other marks", async () => {
+    const server = makeResponse({}, { updatedAt: "t-server", draft: { completed: ["alerts"] }, skipped: ["app"] });
+    fetchMock.mockResolvedValueOnce(reply(409, { error: "conflict", state: server.state }));
+    fetchMock.mockResolvedValueOnce(reply(200, makeResponse({}, { updatedAt: "t-new" })));
+    const { result } = setupWith({}, ["app"] as never);
+    mark(result, "app", "continue");
+    await act(async () => { await result.current.flush(); });
+    expect(result.current.skipped).toEqual([]);
+    expect([...(result.current.draft.completed ?? [])].sort()).toEqual(["alerts", "app"]);
+  });
+
+  it("leaves `completed` unset on a legacy draft through a 409", async () => {
+    const server = makeResponse({}, { updatedAt: "t-server", draft: {}, skipped: [] });
+    fetchMock.mockResolvedValueOnce(reply(409, { error: "conflict", state: server.state }));
+    const { result } = setupWith({});
+    act(() => result.current.patchDraft((d) => ({ ...d, tests: { requirements: [{ title: "T" }] } })));
+    await act(async () => { await result.current.flush(); });
+    expect(result.current.draft.completed).toBeUndefined();
+  });
+
+  it("lets the server's later un-skip win after this tab's skip was saved", async () => {
+    fetchMock.mockResolvedValueOnce(reply(200, makeResponse({}, { updatedAt: "t1" })));
+    const server = makeResponse({}, { updatedAt: "t-server", draft: { completed: [] }, skipped: [] });
+    fetchMock.mockResolvedValueOnce(reply(409, { error: "conflict", state: server.state }));
+    fetchMock.mockResolvedValueOnce(reply(200, makeResponse({}, { updatedAt: "t3" })));
+    const { result } = setupWith({ completed: [] });
+    mark(result, "app", "skip");
+    await act(async () => { await result.current.flush(); });
+    act(() => result.current.patchDraft((d) => ({ ...d, tests: { requirements: [{ title: "T" }] } })));
+    await act(async () => { await result.current.flush(); });
+    expect(result.current.skipped).toEqual([]);
+  });
+});

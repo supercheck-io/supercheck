@@ -122,6 +122,19 @@ describe("navigation and draft", () => {
     expect(puts()[0].url).toBe(`/api/projects/${PROJECT_ID}/setup`);
   });
 
+  it("keeps the old ticks for a draft saved before steps were tracked, then stores them on Continue", async () => {
+    renderWizard(makeResponse({}, { status: "in_progress", currentStep: "alerts", draft: {}, skipped: [] }));
+    expect(within(screen.getByTestId("setup-step-app")).getByText("(done)")).toBeTruthy();
+    fireEvent.click(screen.getByTestId("setup-step-aiSre"));
+    expect(within(screen.getByTestId("setup-step-app")).getByText("(done)")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+    await leaveAndFlush();
+    await waitFor(() => expect(puts().length).toBeGreaterThan(0));
+    const last = puts().at(-1)?.body as { draft?: { completed?: string[] } } | undefined;
+    expect(last?.draft?.completed).toEqual(expect.arrayContaining(["app", "aiSre"]));
+    expect(last?.draft?.completed).not.toContain("alerts");
+  });
+
   it("only shows a check on steps the user continued, never on ones jumped past", () => {
     renderWizard();
     const nav = within(screen.getByRole("navigation", { name: "Setup steps" }));
