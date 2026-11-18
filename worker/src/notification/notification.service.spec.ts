@@ -31,6 +31,7 @@ import * as nodemailer from 'nodemailer';
 import {
   NotificationService,
   buildEmailFields,
+  formatAlertType,
   NotificationProvider,
   NotificationPayload,
 } from './notification.service';
@@ -1911,6 +1912,16 @@ describe('NotificationService', () => {
         ).toBe(tone);
       },
     );
+
+    it.each([
+      ['http_request', 'HTTP request'],
+      ['ai_endpoint', 'AI endpoint'],
+      ['mcp_server', 'MCP server'],
+      ['website', 'Website'],
+      ['some_new_kind', 'Some new kind'],
+    ])('labels alert type %s as %s', (type, label) => {
+      expect(formatAlertType(type)).toBe(label);
+    });
 
     it('strips emoji from link labels and puts links last', () => {
       const fields = buildEmailFields(
