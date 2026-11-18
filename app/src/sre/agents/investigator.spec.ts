@@ -107,4 +107,11 @@ describe("SRE investigation prompt", () => {
       "Continue with scoped live connector tools when available before drawing conclusions",
     );
   });
+
+  it("names the incident's service id so connector searches do not invent one", () => {
+    const base = { incidentTitle: "t", severity: "sev3", status: "open", serviceName: "checkout-api", evidenceCount: 0, liveConnectorToolsEnabled: true };
+    const id = "01a1ecdd-cebd-7496-a914-e70d7edc2917";
+    expect(buildSreInvestigationPrompt({ ...base, serviceId: id })).toContain(`pass exactly this): ${id}`);
+    expect(buildSreInvestigationPrompt(base)).not.toContain("Primary service id");
+  });
 });
