@@ -45,7 +45,6 @@ import {
     ArrowDown,
 
     Target,
-    Info,
     Plus,
 
     Chrome,
@@ -55,11 +54,7 @@ import {
     Bot,
     Sparkles,
 } from "lucide-react";
-import {
-    Popover,
-    PopoverContent,
-    PopoverTrigger,
-} from "@/components/ui/popover";
+import { InfoPopover } from "@/components/ui/info-popover";
 import { SupercheckLoading } from "@/components/shared/supercheck-loading";
 import { K6Logo } from "@/components/logo/k6-logo";
 import { toast } from "sonner";
@@ -415,19 +410,13 @@ export default function RequirementsPage() {
                                             <div className="space-y-2 bg-card p-4 rounded-lg border border-border/40">
                                                 <div className="flex items-center gap-1">
                                                     <h3 className="text-xs font-medium text-muted-foreground">Coverage Status</h3>
-                                                    <Popover>
-                                                        <PopoverTrigger asChild>
-                                                            <Button variant="ghost" size="icon" className="h-5 w-5 p-0">
-                                                                <Info className="h-3.5 w-3.5 text-muted-foreground/60 hover:text-muted-foreground transition-colors" />
-                                                                <span className="sr-only">Coverage info</span>
-                                                            </Button>
-                                                        </PopoverTrigger>
-                                                        <PopoverContent className="w-72 text-xs" align="start">
-                                                            <p className="text-muted-foreground">
-                                                                Coverage updates when jobs run. Single test runs from the playground do not affect coverage.
-                                                            </p>
-                                                        </PopoverContent>
-                                                    </Popover>
+                                                    <InfoPopover
+                                                        label="Coverage info"
+                                                        title="Coverage Status"
+                                                        description="Coverage updates when jobs run. Single test runs from the playground do not affect coverage."
+                                                        className="h-5 w-5"
+                                                        align="start"
+                                                    />
                                                 </div>
                                                 <div className="flex items-center space-x-2">
                                                     {(() => {
@@ -506,41 +495,20 @@ export default function RequirementsPage() {
                                                 <h3 className="text-xs font-medium text-muted-foreground flex items-center gap-2">
                                                     <Plus className="h-3 w-3" /> Create Test
                                                 </h3>
-                                                <Popover>
-                                                    <PopoverTrigger asChild>
-                                                        <Button variant="ghost" size="icon" className="h-5 w-5 p-0">
-                                                            <Info className="h-3.5 w-3.5 text-muted-foreground/60 hover:text-muted-foreground transition-colors" />
-                                                            <span className="sr-only">Create test info</span>
-                                                        </Button>
-                                                    </PopoverTrigger>
-                                                    <PopoverContent className="w-80 text-xs space-y-3" align="start">
-                                                        <div>
-                                                            <p className="font-medium text-foreground mb-1">How to Create Tests</p>
-                                                            <p className="text-muted-foreground">
-                                                                Select a test type below to open the Playground with this requirement pre-loaded.
-                                                            </p>
-                                                        </div>
-                                                        <div className="space-y-2">
-                                                            <div className="flex gap-2">
-                                                                <Chrome className="h-4 w-4 text-type-sky shrink-0 mt-0.5" />
-                                                                <div>
-                                                                    <p className="font-medium text-foreground">Browser Tests</p>
-                                                                    <p className="text-muted-foreground">Use the Playwright Recorder to capture real user interactions for reliable, accurate tests.</p>
-                                                                </div>
-                                                            </div>
-                                                            <div className="flex gap-2">
-                                                                <Sparkles className="h-4 w-4 text-ai shrink-0 mt-0.5" />
-                                                                <div>
-                                                                    <p className="font-medium text-foreground">API, Database, Custom & Performance</p>
-                                                                    <p className="text-muted-foreground">AI generates a prompt from this requirement. Review, customize, and generate your test script.</p>
-                                                                </div>
-                                                            </div>
-                                                        </div>
-                                                        <p className="text-muted-foreground/80 text-xs border-t pt-2">
-                                                            Tests saved from the Playground are automatically linked to this requirement.
-                                                        </p>
-                                                    </PopoverContent>
-                                                </Popover>
+                                                <InfoPopover
+                                                    label="Create test info"
+                                                    title="How to Create Tests"
+                                                    description="Select a test type below to open the Playground with this requirement pre-loaded."
+                                                    className="h-5 w-5"
+                                                    items={[
+                                                        { icon: Chrome, iconClassName: "text-type-sky", title: "Browser Tests", description: "Use the Playwright Recorder to capture real user interactions for reliable, accurate tests." },
+                                                        { icon: Sparkles, iconClassName: "text-ai", title: "API, Database, Custom & Performance", description: "AI generates a prompt from this requirement. Review, customize, and generate your test script." },
+                                                    ]}
+                                                >
+                                                    <p className="border-t pt-2 text-xs text-muted-foreground">
+                                                        Tests saved from the Playground are automatically linked to this requirement.
+                                                    </p>
+                                                </InfoPopover>
                                             </div>
                                             <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
                                                 <button

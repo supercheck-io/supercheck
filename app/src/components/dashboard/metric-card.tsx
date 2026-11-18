@@ -1,14 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { Info } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
+import { InfoPopover } from "@/components/ui/info-popover";
 
 export interface MetricInfo {
   title: string;
@@ -25,29 +19,14 @@ export function MetricInfoButton({
   align = "start",
 }: MetricInfo & { align?: "start" | "center" | "end" }) {
   return (
-    <Popover>
-      <PopoverTrigger asChild>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-5 w-5 p-0 text-muted-foreground"
-          aria-label={ariaLabel}
-        >
-          <Info className="h-3.5 w-3.5" />
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent className="w-72 space-y-2 p-4" side="bottom" align={align} sideOffset={8}>
-        <p className="text-sm font-semibold text-foreground">{title}</p>
-        <p className="text-xs leading-relaxed text-muted-foreground">
-          {description}
-        </p>
-        <ul className="list-disc space-y-1 pl-4 text-xs text-muted-foreground">
-          {bullets.map((item) => (
-            <li key={item}>{item}</li>
-          ))}
-        </ul>
-      </PopoverContent>
-    </Popover>
+    <InfoPopover
+      label={ariaLabel}
+      title={title}
+      description={description}
+      bullets={bullets}
+      align={align}
+      className="h-5 w-5"
+    />
   );
 }
 

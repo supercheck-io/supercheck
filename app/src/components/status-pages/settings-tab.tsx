@@ -53,7 +53,6 @@ import {
   InfoHint,
   InfoHintList,
   InfoHintText,
-  InfoHintTitle,
 } from "@/components/status-pages/info-hint";
 import { toast } from "sonner";
 import {
@@ -726,11 +725,11 @@ export function SettingsTab({
             <CardTitle className="text-lg">Custom domain</CardTitle>
             <InfoHint
               label="Domain setup details"
+              title="How custom domains work"
               side="bottom"
               className="h-6 w-6"
               contentClassName="w-[34rem]"
             >
-              <InfoHintTitle>How custom domains work</InfoHintTitle>
               <InfoHintList>
                 <li>
                   Point a <strong>CNAME</strong> from a subdomain such as{" "}

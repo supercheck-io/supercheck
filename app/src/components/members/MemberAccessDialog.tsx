@@ -11,6 +11,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Checkbox } from "@/components/ui/checkbox";
+import { InfoPopover } from "@/components/ui/info-popover";
 import {
   Eye,
   User,
@@ -127,37 +128,18 @@ const allAccessLevels = [
 // Role Info Popover Component
 function RoleInfoPopover() {
   return (
-    <Popover>
-      <PopoverTrigger asChild>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-6 w-6 p-0 hover:bg-muted"
-        >
-          <Info className="h-4 w-4 text-muted-foreground" />
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent className="w-80 p-4" side="right" sideOffset={8}>
-        <div className="space-y-4">
-          <h4 className="font-semibold text-sm">Role Permissions</h4>
-          <div className="space-y-3">
-            {allAccessLevels.map((level) => (
-              <div key={level.role} className="flex items-start gap-3">
-                <div className={cn("p-1.5 rounded-md", level.bgColor)}>
-                  <level.icon className={cn("h-3.5 w-3.5", level.color)} />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="font-medium text-sm">{level.fullLabel}</p>
-                  <p className="text-xs text-muted-foreground leading-relaxed">
-                    {level.fullDescription}
-                  </p>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </PopoverContent>
-    </Popover>
+    <InfoPopover
+      label="Role permissions"
+      title="Role Permissions"
+      icon={Shield}
+      side="right"
+      items={allAccessLevels.map((level) => ({
+        icon: level.icon,
+        iconClassName: level.color,
+        title: level.fullLabel,
+        description: level.fullDescription,
+      }))}
+    />
   );
 }
 
