@@ -88,6 +88,8 @@ The CLI is versioned separately; see [cli/CHANGELOG.md](cli/CHANGELOG.md). Prere
 
 ### Fixed
 
+- **AI Analyze on k6 job runs.** The analysis now reads the run's k6 summary (thresholds, error rate, response times, VUs) instead of reporting that no metrics were provided.
+- **AI reports.** The report dialog renders formatted Markdown by default; a Source tab keeps the raw view. Copy and Download still return the raw Markdown.
 - **Maintenance windows.** A monitor failure that fired inside a window no longer opens an incident when its alert reaches incident triage late (incident triage now checks the window too, behind the worker's own mute); a failure from just before the window still does. Such a failure is also no longer added to a declared incident that lists the monitor. The monitors list shows a **Maintenance** badge next to the real status while a window covers a monitor (also `inMaintenance` on `GET /api/monitors`, and the **Maintenance** status filter now finds it), the results table marks checks made during maintenance, and the dashboard's maintenance count is no longer always zero (the monitor status chart no longer has a Maintenance bar, which would count a monitor twice). The monitor banner shows the end date and time in the window's timezone.
 - **Audit log.** Starting an AI triage or investigation (from the app, API, MCP or automatically) and generating or saving a post-mortem are now recorded in the audit log.
 - A heartbeat that missed its run during a maintenance window now alerts within about 3 minutes of the window ending, instead of up to one interval later (a day for a daily job).

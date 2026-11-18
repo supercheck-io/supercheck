@@ -282,6 +282,23 @@ describe('AIPromptBuilder', () => {
   });
 
   describe('buildJobAnalyzePrompt', () => {
+    it('includes the k6 summary metrics for a k6 run', () => {
+      const prompt = AIPromptBuilder.buildJobAnalyzePrompt({
+        run: { id: 'r1', status: 'passed', durationMs: 20000 },
+        job: { id: 'j1', name: 'Checkout load smoke', type: 'k6' },
+        k6SummaryJson: '{"metrics":{"http_req_failed":{"rate":0.01},"vus_max":{"value":3}}}',
+      });
+      expect(prompt).toContain('<K6_SUMMARY>');
+      expect(prompt).toContain('http_req_failed');
+      expect(prompt).toContain('vus_max');
+    });
+    it('omits the k6 summary block for a Playwright run', () => {
+      const prompt = AIPromptBuilder.buildJobAnalyzePrompt({
+        run: { id: 'r1', status: 'passed' },
+        job: { id: 'j1', name: 'pw', type: 'playwright' },
+      });
+      expect(prompt).not.toContain('<K6_SUMMARY>');
+    });
     const mockRun = {
       id: 'run-123',
       status: 'passed',

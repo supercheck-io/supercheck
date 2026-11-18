@@ -11,7 +11,7 @@ import { reserveAICredit } from "@/lib/ai/ai-credit-reservation";
 import { headers } from "next/headers";
 import { logAuditEvent } from "@/lib/audit-logger";
 import { db } from "@/utils/db";
-import { runs, jobs, reports } from "@/db/schema";
+import { runs, jobs, reports, k6PerformanceRuns } from "@/db/schema";
 import { eq, and, sql, inArray } from "drizzle-orm";
 import { getS3FileContentFromUrl, getS3FileContent } from "@/lib/s3-proxy";
 import { requireAuthContext, authErrorStatus, AuthError } from "@/lib/auth-context";
@@ -201,6 +201,23 @@ export async function POST(request: NextRequest) {
       testReportHtml = await getTestReportContent(run.reportUrl);
     }
 
+    // For k6 jobs, the results live in the k6 summary, scoped to this run's project and org
+    let k6SummaryJson: string | undefined;
+    if (isK6) {
+      const [k6Run] = await db
+        .select({ summaryJson: k6PerformanceRuns.summaryJson })
+        .from(k6PerformanceRuns)
+        .where(
+          and(
+            eq(k6PerformanceRuns.runId, run.id),
+            eq(k6PerformanceRuns.projectId, authContext.project.id),
+            eq(k6PerformanceRuns.organizationId, authContext.organizationId),
+          ),
+        )
+        .limit(1);
+      if (k6Run?.summaryJson) k6SummaryJson = JSON.stringify(k6Run.summaryJson);
+    }
+
     // Step 8: Build AI prompt
 
     const prompt = AIPromptBuilder.buildJobAnalyzePrompt({
@@ -221,6 +238,7 @@ export async function POST(request: NextRequest) {
         scriptContent: undefined, // Script content not available on jobs table
       } : null,
       testReportHtml: testReportHtml || undefined,
+      k6SummaryJson,
     });
 
 
