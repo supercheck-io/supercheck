@@ -492,7 +492,8 @@ export async function getUserProjectRole(
   }
 }
 
-// Memoized per request (React.cache): the layout, page and their helpers ask for these several
-// times per render. Each request gets its own scope, so nothing is shared between users.
+// Memoized per page render (React.cache): the layout, page and their helpers ask for these several
+// times. Each render gets its own scope, so nothing is shared between requests or users. Route
+// handlers and server actions have no render scope, so they still call through every time.
 export const getCurrentUser = cache(loadCurrentUser);
 export const getUserOrganizations = cache(loadUserOrganizations);

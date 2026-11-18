@@ -62,9 +62,10 @@ export async function GET() {
       liveMonitor()
     );
     
-    // The five groups below are independent, so they all run at once (one round trip instead of five).
-    // Each is a promise created without an await, and all are awaited together right after, so a
-    // failure in any of them is always handled.
+    // The query groups below are independent. They run in three waves of at most ~10 queries each
+    // (monitors + tests + queue stats, then jobs, then trends): fewer round trips than one group at a
+    // time, without one request holding every connection in the pool. Wave-one promises are awaited
+    // together right after they are created, so a failure in any of them is always handled.
     const monitorBatch = Promise.all([
       // OPTIMIZED: Single query for all monitor counts using FILTER
       // COALESCE ensures 0 instead of NULL when no rows match
@@ -117,7 +118,7 @@ export async function GET() {
     // The 24h/7d failure signals (system health, needs attention) cover every job type so failed k6 job runs still surface.
     const playwrightJobCondition = and(jobBaseCondition, eq(jobs.jobType, "playwright"));
 
-    const jobBatch = Promise.all([
+    const jobBatch = () => Promise.all([
       // OPTIMIZED: Single query for total and active job counts
       dbInstance.select({
         total: count(),
@@ -253,7 +254,7 @@ export async function GET() {
     ]);
 
     // Monitor aggregation, playground aggregation, availability trend, response time stats, playground trend
-    const trendBatch = Promise.all([
+    const trendBatch = () => Promise.all([
       // OPTIMIZED: Synthetic monitor executions - SQL aggregation instead of fetching all rows
       // This was causing CPU spikes by fetching 4000+ rows and looping in JS
       dbInstance.select({
@@ -344,11 +345,13 @@ export async function GET() {
 
     const [
       [monitorCounts, recentMonitorCounts, monitorsByType, criticalAlerts],
-      [jobCounts, recentRuns, runCounts24h, jobsByStatus, failedRuns7d, jobTriggerTrend, executionTimeData],
       [totalTests, testsByType, playgroundExecutions30d, k6Stats],
-      [monitorExecutionAggregated, playgroundExecutionAggregated, availabilityTrend, responseTimeStats, playgroundExecutionsTrend],
       queueStats,
-    ] = await Promise.all([monitorBatch, jobBatch, testBatch, trendBatch, queueStatsPromise]);
+    ] = await Promise.all([monitorBatch, testBatch, queueStatsPromise]);
+    const [jobCounts, recentRuns, runCounts24h, jobsByStatus, failedRuns7d, jobTriggerTrend, executionTimeData] =
+      await jobBatch();
+    const [monitorExecutionAggregated, playgroundExecutionAggregated, availabilityTrend, responseTimeStats, playgroundExecutionsTrend] =
+      await trendBatch();
 
     const recentChecks24h = [...recentMonitorCounts.values()].reduce(
       (acc, c) => ({ total: acc.total + c.total, up: acc.up + c.up }),

@@ -149,6 +149,7 @@ async function loadAuthSession() {
   });
 }
 
-// Memoized per request (React.cache). getCachedSession's AsyncLocalStorage store is only set up by
-// withRequestCache, which nothing calls, so without this every caller re-read the session from the DB.
+// Memoized per page render (React.cache); route handlers and server actions still call through.
+// getCachedSession's AsyncLocalStorage store is only set up by withRequestCache, which nothing calls,
+// so without this every caller in a render re-read the session from the DB.
 export const getCachedAuthSession = cache(loadAuthSession);
