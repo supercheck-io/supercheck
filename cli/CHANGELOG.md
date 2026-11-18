@@ -18,6 +18,7 @@ Notable changes to `@supercheck/cli`. The format follows [Keep a Changelog](http
 ### Fixed
 
 - **`deploy` failures say what the server rejected.** A rejected create or update now shows the server's validation message after the status code (for example `config.url must be https`), instead of only `API request failed: POST /api/monitors → 400`.
+- **`deploy --verify` reports in table output.** It prints one line per test (`✓ verified`, `✗ failed` or `– skipped` with the reason) instead of nothing; `--json` output is unchanged.
 - **The `Target:` line shows names.** `deploy`, `diff` and `destroy` print `organization <name> · project <name>` (falling back to the id) instead of the random organization slug, which matched neither the config nor `whoami`.
 
 ## [0.6.0] - 2026-11-16

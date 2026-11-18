@@ -360,6 +360,16 @@ export function verificationFailureMessage(unverified: Record<string, unknown>[]
   return `Deploy succeeded but ${unverified.length} cloud verification run(s) did not pass: ${runs}. Inspect these runs; do not re-trigger blindly.`
 }
 
+/** One human-readable line per verification result (table mode; JSON carries the raw results). */
+export function verificationLine(v: Record<string, unknown>): string {
+  const name = String(v.name ?? v.id)
+  const run = v.runId ? ` (run ${String(v.runId)})` : ''
+  const reason = typeof v.reason === 'string' ? `: ${v.reason}` : ''
+  if (v.status === 'passed') return `  ✓ verified ${name}${run}`
+  if (v.status === 'skipped') return `  – ${name} skipped${reason}`
+  return `  ✗ ${name} ${v.status === 'error' ? 'could not be verified' : 'failed'}${run}${reason}`
+}
+
 export async function verifyDeployedTests(
   client: ReturnType<typeof createAuthenticatedClient>,
   changes: { action: string; type: string; name: string; id?: string; local?: { definition: Record<string, unknown> }; remote?: { raw?: Record<string, unknown> } }[],
@@ -552,6 +562,7 @@ export const deployCommand = new Command('deploy')
       let verification: Record<string, unknown>[] | undefined
       if (options.verify && !options.dryRun && failed === 0) {
         verification = await verifyDeployedTests(client, ordered, results, verifyTimeoutMs)
+        for (const v of verification) logger.info(verificationLine(v))
       }
       emit({ status: failed ? 'partial' : 'success', results, succeeded, failed, skipped: ordered.length - results.length, statePath: state.path, ...(verification ? { verification } : {}) })
       const unverified = failedVerifications(verification)

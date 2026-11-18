@@ -36,7 +36,7 @@ jest.unstable_mockModule('../../utils/managed.js', () => ({
   rejectAmbiguousCreates: () => undefined,
   managedState: () => ({ path: 'state.json', apply: (v: unknown) => v, resolveTests: (v: unknown) => v, record, resolve: (_t: string, ref: string) => ref }),
 }))
-const { deployCommand, deployErrorMessage } = await import('../deploy.js')
+const { deployCommand, deployErrorMessage, verificationLine } = await import('../deploy.js')
 const { ApiRequestError } = await import('../../utils/errors.js')
 const { setOutputFormat } = await import('../../output/formatter.js')
 
@@ -113,5 +113,14 @@ describe('deploy API errors', () => {
     expect(deployErrorMessage(failed(undefined))).toBe('API request failed: POST /api/monitors → 400')
     expect(deployErrorMessage(failed({ error: 'a\u001b[31mb' }))).not.toContain('\u001b')
     expect(deployErrorMessage(new Error('boom'))).toBe('boom')
+  })
+})
+
+describe('verification lines', () => {
+  it('prints one line per result', () => {
+    expect(verificationLine({ name: 'Home', runId: 'r1', status: 'passed' })).toBe('  ✓ verified Home (run r1)')
+    expect(verificationLine({ name: 'Home', runId: 'r2', status: 'failed' })).toBe('  ✗ Home failed (run r2)')
+    expect(verificationLine({ name: 'Agent', status: 'skipped', reason: 'Only browser tests are verified automatically; agent tests are not run implicitly.' })).toBe('  – Agent skipped: Only browser tests are verified automatically; agent tests are not run implicitly.')
+    expect(verificationLine({ name: 'X', status: 'error', reason: 'timeout' })).toBe('  ✗ X could not be verified: timeout')
   })
 })
