@@ -195,13 +195,23 @@ export const columns: ColumnDef<SreConnectorListItem>[] = [
     cell: ({ row }) => {
       const connector = row.original;
       return (
-        <TableBadge
-          tone={statusTones[connector.status]}
-          compact
-          className="capitalize"
-        >
-          {connector.status.replace(/_/g, " ")}
-        </TableBadge>
+        <div className="flex flex-col items-start gap-1">
+          <TableBadge
+            tone={statusTones[connector.status]}
+            compact
+            className="capitalize"
+          >
+            {connector.status.replace(/_/g, " ")}
+          </TableBadge>
+          {connector.status !== "valid" && connector.lastValidationError && (
+            <TruncatedTextWithTooltip
+              text={connector.lastValidationError}
+              maxLength={40}
+              maxWidth="220px"
+              className="text-xs text-muted-foreground"
+            />
+          )}
+        </div>
       );
     },
     filterFn: (row, id, value) => value.includes(row.getValue(id)),
@@ -247,7 +257,7 @@ export const columns: ColumnDef<SreConnectorListItem>[] = [
                 onClick={() => onSearch?.(connector)}
                 disabled={!supportsEvidenceSearch(connector)}
               >
-                Search evidence
+                Preview data
               </DropdownMenuItem>
               {connector.type === "mcp" && connector.status !== "disabled" && (
                 <DropdownMenuItem onClick={() => onManageMcpTools?.(connector)}>

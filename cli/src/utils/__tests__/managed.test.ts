@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'no
 import { join } from 'node:path'
 import { hostname, tmpdir } from 'node:os'
 import { ApiClient } from '../../api/client.js'
-import { managedState, deploymentLock, rejectAmbiguousCreates, verifyContext } from '../managed.js'
+import { managedState, deploymentLock, rejectAmbiguousCreates, verifyContext, describeTarget } from '../managed.js'
 import { redact, setRevealSecrets } from '../redact.js'
 let dir: string
 const context = { organization: { id: 'org' }, project: { id: 'project' } }
@@ -136,5 +136,12 @@ describe('transcript-safe output', () => {
     expect(input.headers['Set-Cookie']).toContain('SENTINEL')
     setRevealSecrets(true)
     expect(redact(input)).toBe(input)
+  })
+})
+
+describe('describeTarget', () => {
+  it('shows names, falling back to ids', () => {
+    expect(describeTarget({ apiUrl: 'https://x.test', organization: { id: 'o1', name: 'Acme', slug: 'uuid-slug' }, project: { id: 'p1', name: 'Web' } })).toBe('https://x.test · organization Acme · project Web')
+    expect(describeTarget({ apiUrl: 'https://x.test', organization: { id: 'o1', name: null }, project: { id: 'p1' } })).toBe('https://x.test · organization o1 · project p1')
   })
 })

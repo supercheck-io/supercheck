@@ -1628,6 +1628,34 @@ describe('MonitorService', () => {
         expect((await http({ timeoutSeconds: 1 })).status).toBe('timeout');
       });
 
+      it('sends the target with its path and query case intact', async () => {
+        (service['httpService'].request as jest.Mock).mockImplementationOnce(
+          () => of({ status: 200, statusText: 'OK', headers: {}, data: 'ok' }),
+        );
+        await service['executeHttpRequest'](
+          'https://Api.Example.com/v1/Rates?from=Hamburg&sig=AbC',
+          {},
+        );
+        const sent = jest
+          .mocked(requestPinnedMonitorTarget)
+          .mock.calls.at(-1)?.[0] as { url: string };
+        expect(sent.url).toBe(
+          'https://Api.Example.com/v1/Rates?from=Hamburg&sig=AbC',
+        );
+      });
+
+      it('redacts a sensitive query value echoed in a persisted error', async () => {
+        jest
+          .mocked(requestPinnedMonitorTarget)
+          .mockRejectedValueOnce(
+            new AxiosError(
+              'Invalid redirect to https://example.com/x?token=SeCrEt123',
+            ),
+          );
+        const result = await http();
+        expect(result.details.errorMessage).not.toContain('SeCrEt123');
+      });
+
       it('reports a DNS failure as down with a clear message', async () => {
         jest.mocked(requestPinnedMonitorTarget).mockRejectedValueOnce(
           Object.assign(new Error('getaddrinfo ENOTFOUND nope.example'), {

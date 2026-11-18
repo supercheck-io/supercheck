@@ -285,6 +285,7 @@ export type SreConnectorSetupOptions = {
   services: Array<{
     id: string;
     name: string;
+    otelServiceName?: string | null;
     environment: string | null;
     ownerTeam: string | null;
   }>;
@@ -840,6 +841,7 @@ export async function getSreConnectorSetupOptions(
         .select({
           id: sreServices.id,
           name: sreServices.name,
+          otelServiceName: sreServices.otelServiceName,
           environment: sreServices.environment,
           ownerTeam: sreServices.ownerTeam,
         })

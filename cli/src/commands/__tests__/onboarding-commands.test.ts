@@ -201,6 +201,11 @@ describe('planLink', () => {
     expect(plan.text).toContain('process.env.SUPERCHECK_URL ?? "http://localhost:3010"')
     expect(plan.text.replace(/org-1|proj-1|http:\/\/localhost:3010/g, '').replace(/""/g, '').length).toBeGreaterThan(0)
   })
+  it('describes each target by name, falling back to its id, never its slug', () => {
+    const named = planLink(template('my-org', 'my-project'), { ...target, organization: { id: 'org-1', name: 'Acme Inc', slug: 'acme' } })
+    expect(named.changes.slice(0, 2).map((c) => c.toLabel)).toEqual(['Acme Inc', 'proj-1'])
+    expect(JSON.stringify(named.changes)).not.toMatch(/"toLabel":"(acme|web)"/)
+  })
   it('is a no-op when already linked (by id or slug)', () => {
     expect(planLink(template('org-1', 'proj-1', 'http://localhost:3010'), target).changes).toEqual([])
     expect(planLink(template('acme', 'web', 'http://localhost:3010'), target).changes).toEqual([])

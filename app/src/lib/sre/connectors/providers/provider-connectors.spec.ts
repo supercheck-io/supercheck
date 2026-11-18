@@ -8,8 +8,9 @@ import { lookup } from "node:dns/promises";
 import https from "node:https";
 import { createDirectConnector } from "../direct-connectors";
 import { sanitizeConnectorEvidence } from "../output-sanitizer";
-import { ObservabilityProviderConnector, providerHttp } from "./provider-connectors";
-import type { ProviderHttp } from "./provider-core";
+import { ObservabilityProviderConnector, QUERY_REJECTED_MESSAGE, providerHttp } from "./provider-connectors";
+import { ConnectorQueryRejectedError } from "./provider-query-guards";
+import { providerHttpError, type ProviderHttp } from "./provider-core";
 
 const mockLookup = lookup as unknown as jest.Mock;
 const mockRequest = https.request as unknown as jest.Mock;
@@ -81,6 +82,25 @@ describe("observability provider connectors", () => {
     expect((await new ObservabilityProviderConnector({ ...definition, type: "jaeger", endpointUrl: "https://j.example.com" }, down).validate()).status).toBe("unreachable");
     const ok: ProviderHttp = async () => ({ status: 200, text: "{}", truncated: false });
     expect((await new ObservabilityProviderConnector({ ...definition, type: "jaeger", endpointUrl: "https://j.example.com" }, ok).validate()).status).toBe("valid");
+  });
+
+  it.each([400, 422, 500])("maps a backend HTTP %s on search to a retryable rejection only for 400/422", async (status) => {
+    const http: ProviderHttp = async () => ({ status, text: "", truncated: false });
+    const error = await new ObservabilityProviderConnector({ ...definition, type: "jaeger", endpointUrl: "https://j.example.com" }, http)
+      .search(searchParams()).catch((e) => e);
+    expect(error instanceof ConnectorQueryRejectedError).toBe(status !== 500);
+  });
+
+  it.each(["New Relic rejected the query: bad NRQL", "Splunk rejected the search: bad SPL"])("treats an in-band %s as retryable", async (message) => {
+    const http: ProviderHttp = async () => { throw new Error(message); };
+    const error = await new ObservabilityProviderConnector({ ...definition, type: "jaeger", endpointUrl: "https://j.example.com" }, http)
+      .search(searchParams()).catch((e) => e);
+    expect(error).toBeInstanceOf(ConnectorQueryRejectedError);
+  });
+
+  it("pins the shared provider messages the retry mapping depends on", () => {
+    for (const status of [400, 422]) expect(QUERY_REJECTED_MESSAGE.test(providerHttpError("P", status, "").message)).toBe(true);
+    for (const status of [401, 403, 404, 429, 500]) expect(QUERY_REJECTED_MESSAGE.test(providerHttpError("P", status, "").message)).toBe(false);
   });
 
   it("merges stored credential fields with the secret", async () => {

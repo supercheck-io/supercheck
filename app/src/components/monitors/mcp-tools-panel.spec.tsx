@@ -14,6 +14,13 @@ describe("McpToolsPanel", () => {
     expect(screen.queryByText("Changes")).not.toBeInTheDocument();
   });
 
+  it("shows the server and protocol as muted header text when given", () => {
+    const { rerender } = render(<McpToolsPanel baseline={baseline(["a"])} now={NOW} meta="lumen-freight-mcp 1.8.2 · MCP 2025-06-18" />);
+    expect(screen.getByTestId("mcp-server-meta")).toHaveTextContent("lumen-freight-mcp 1.8.2 · MCP 2025-06-18");
+    rerender(<McpToolsPanel baseline={baseline(["a"])} now={NOW} />);
+    expect(screen.queryByTestId("mcp-server-meta")).not.toBeInTheDocument();
+  });
+
   it("shows changes newest first and expands one to names and reasons", () => {
     render(
       <McpToolsPanel

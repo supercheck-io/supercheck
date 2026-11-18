@@ -52,12 +52,15 @@ export function isLocalStatusPageHostname(
 /**
  * Returns the effective status page base domain for runtime usage.
  *
- * Cloud mode always uses the canonical domain.
- * Self-hosted mode can override via STATUS_PAGE_DOMAIN.
+ * STATUS_PAGE_DOMAIN wins in every mode (cloud staging uses its own namespace).
+ * Unset, cloud falls back to the canonical domain and self-hosted to localhost.
  */
 export function getEffectiveStatusPageDomain(): string {
   if (isCloudHosted()) {
-    return CLOUD_STATUS_PAGE_DOMAIN;
+    return (
+      normalizeStatusPageDomain(process.env.STATUS_PAGE_DOMAIN) ||
+      CLOUD_STATUS_PAGE_DOMAIN
+    );
   }
 
   return (

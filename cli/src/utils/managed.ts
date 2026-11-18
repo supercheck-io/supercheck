@@ -12,12 +12,14 @@ import { extractUuidFromFilename } from './slug.js'
 const stateSchema = z.object({ version: z.literal(1), targets: z.record(z.string(), z.record(z.string(), z.string().uuid())) }).strict()
 export type ProjectContext = {
   apiUrl?: string
-  organization: { id: string; slug?: string | null }
-  project: { id: string; slug?: string | null }
+  organization: { id: string; name?: string | null; slug?: string | null }
+  project: { id: string; name?: string | null; slug?: string | null }
 }
 const originOf = (url: string): string => { try { return new URL(url).origin } catch { return url } }
+// Names are user-entered: flatten control characters before printing to a terminal.
+const label = (r: { id: string; name?: string | null }): string => (r.name || r.id).replace(/\p{Cc}/gu, ' ').slice(0, 100)
 export function describeTarget(context: ProjectContext): string {
-  return `${context.apiUrl} · organization ${context.organization.slug ?? context.organization.id} · project ${context.project.slug ?? context.project.id}`
+  return `${context.apiUrl} · organization ${label(context.organization)} · project ${label(context.project)}`
 }
 /** Network-free: refuse a config that declares a different API origin than the active client (env or stored login URL wins). */
 export function assertDeclaredOrigin(client: ApiClient, declared?: string | null): void {
