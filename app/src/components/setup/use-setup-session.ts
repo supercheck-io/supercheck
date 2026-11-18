@@ -116,6 +116,7 @@ export function useSetupSession(projectId: string, initial: SetupStateDto, lockT
           const merged = {
             ...server.draft,
             created: { ...server.draft.created, ...local },
+            completed: [...new Set([...(server.draft.completed ?? []), ...(latest.current.draft.completed ?? [])])],
             ...(keepReqs ? { tests: { ...server.draft.tests, requirements: localReqs } } : {}),
           };
           // A server-side write of what this tab already holds (AI suggestions) is not "somewhere else".
@@ -124,7 +125,8 @@ export function useSetupSession(projectId: string, initial: SetupStateDto, lockT
           updatedAt.current = server.updatedAt;
           setState(latest.current);
           if (!same) toast.error("Setup was changed somewhere else. Your view was reloaded with the saved version.");
-          if (!unsaved && !keepReqs) {
+          const keepCompleted = (merged.completed ?? []).length !== (server.draft.completed ?? []).length;
+          if (!unsaved && !keepReqs && !keepCompleted) {
             lastSaveOk.current = true;
             setSaveState("idle");
             return true;

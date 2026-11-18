@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 
 import { FEATURES, makeResponse, PROJECT_ID } from "./test-fixtures";
 import { createWrapper } from "./test-wrapper";
@@ -122,6 +122,19 @@ describe("navigation and draft", () => {
     expect(puts()[0].url).toBe(`/api/projects/${PROJECT_ID}/setup`);
   });
 
+  it("only shows a check on steps the user continued, never on ones jumped past", () => {
+    renderWizard();
+    const nav = within(screen.getByRole("navigation", { name: "Setup steps" }));
+    fireEvent.click(screen.getByTestId("setup-step-aiSre"));
+    expect(nav.queryAllByText("(done)")).toHaveLength(0);
+    fireEvent.click(screen.getByTestId("setup-step-app"));
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+    expect(within(screen.getByTestId("setup-step-app")).getByText("(done)")).toBeTruthy();
+    expect(nav.getAllByText("(done)")).toHaveLength(1);
+    fireEvent.click(screen.getByRole("button", { name: "Skip this step" }));
+    expect(within(screen.getByTestId("setup-step-alerts")).queryByText("(done)")).toBeNull();
+    expect(screen.getByText("Skipped")).toBeTruthy();
+  });
   it("marks a not-started setup in progress and shows Draft saved", async () => {
     renderWizard();
     await leaveAndFlush();

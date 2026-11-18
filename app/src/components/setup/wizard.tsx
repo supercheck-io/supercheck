@@ -126,6 +126,10 @@ export function SetupWizard({ response, persona, userEmail }: WizardProps) {
     const skipped = new Set(session.skipped);
     if (mode === "skip") skipped.add(key);
     else skipped.delete(key);
+    const completed = new Set(session.draft.completed);
+    if (mode === "skip") completed.delete(key);
+    else completed.add(key);
+    session.patchDraft((draft) => ({ ...draft, completed: [...completed] }));
     session.patch({ currentStep: steps[target], skipped: [...skipped] });
   };
 
@@ -239,7 +243,7 @@ export function SetupWizard({ response, persona, userEmail }: WizardProps) {
             {steps.map((stepKey, i) => {
               const m = STEP_META[stepKey] as StepMeta;
               const skippedStep = session.skipped.includes(stepKey);
-              const done = i < index && !skippedStep;
+              const done = !skippedStep && Boolean(session.draft.completed?.includes(stepKey));
               const current = i === index;
               return (
                 <li key={stepKey}>
