@@ -1,10 +1,10 @@
 ---
-title: Self-Hosted
-description: Install Supercheck on one server with a guided command
+title: Self-hosted deployment
+description: Install Supercheck on one Linux server with a single command
 icon: Container
 ---
 
-Self-host Supercheck on one Linux server. One command installs Docker, the isolated test sandbox, and every Supercheck service, then checks that it is healthy.
+One command installs Docker, the isolated test sandbox and every Supercheck service on one Linux server, then checks that it is healthy.
 
 ## Architecture
 
@@ -55,14 +55,10 @@ flowchart TB
 
 | Requirement | Details |
 |-------------|---------|
-| OS | Ubuntu 22.04+ or Debian 12+ (x86_64 or arm64) |
+| OS | Ubuntu 22.04+ or Debian 12+ (x86_64 or arm64). Linux only: the sandbox needs the Linux kernel, so macOS, Windows, WSL2 and Docker Desktop are not supported |
 | Resources | 2 vCPU and 4 GB RAM minimum; 10 GB free disk minimum, 15 GB to start, 30–50 GB for regular use |
-| Access | `sudo` and outbound internet access. Docker and Compose are installed for you |
+| Access | `sudo` and outbound internet. Docker and Compose are installed for you |
 | Public HTTPS only | A domain pointing at the server, inbound ports 80 and 443, and an email address for certificate notices. Status pages on subdomains also need a wildcard DNS record and a [wildcard certificate](#status-page-https) |
-
-<Callout type="warn">
-**Linux only.** The test sandbox needs the Linux kernel. macOS, Windows, WSL2, and Docker Desktop are not supported.
-</Callout>
 
 ## Install
 
@@ -75,7 +71,7 @@ flowchart TB
 curl -fsSL https://raw.githubusercontent.com/supercheck-io/supercheck/v1.6.0/deploy/docker/install.sh -o install.sh
 ```
 
-Use the same release in the URL and in `--version`. Add `--dry-run` in the next step to preview the plan.
+Use the same release in the URL and `--version`. Add `--dry-run` in the next step to preview the plan.
 
 </Step>
 <Step>
@@ -109,7 +105,7 @@ Use the same release in the URL and in `--version`. Add `--dry-run` in the next 
   </Tab>
 </Tabs>
 
-Allow about 10 minutes. Re-running is safe: it keeps your `.env` and secrets.
+This takes about 10 minutes. Re-running is safe: it keeps your `.env` and secrets.
 
 </Step>
 <Step>
@@ -122,7 +118,7 @@ Open the URL the installer prints: `https://<your-domain>`, or `http://localhost
 </Steps>
 
 <Callout type="warn">
-On a public server, sign-up is open to anyone who can reach the URL. Create your account first, then set `SIGNUP_ENABLED=false` in `.env` (or restrict it with `ALLOWED_EMAIL_DOMAINS`) and recreate the app. See [Optional configuration](#optional-configuration).
+On a public server, sign-up is open to anyone who can reach the URL. Create your account, then set `SIGNUP_ENABLED=false` in `.env` (or restrict it with `ALLOWED_EMAIL_DOMAINS`) and recreate the app. See [Optional configuration](#optional-configuration).
 </Callout>
 
 <Accordions>
@@ -138,9 +134,9 @@ On a public server, sign-up is open to anyone who can reach the URL. Create your
 | `--version <x.y.z>` | Release to install (default: the version bundled with the script) |
 | `--upgrade` | Upgrade an existing install to `--version` (default: the script's release). See [Upgrade](#upgrade) |
 | `--dir <path>` | Install location (default: `/opt/supercheck`) |
-| `--no-prewarm` | Skip importing the ~3 GB worker image into the sandbox; the first test run downloads it instead |
+| `--no-prewarm` | Skip importing the ~3 GB worker image into the sandbox; the first test run downloads it |
 | `--docker-group` | Add the invoking sudo user to the `docker` group (root-equivalent access) |
-| `--ignore-minio` | Start with empty storage even though a volume from the retired MinIO storage exists. Without it the installer stops, so data is not left behind by accident |
+| `--ignore-minio` | Start with empty storage even though a volume from the retired MinIO storage exists. Without it the installer stops, so data is not left behind |
 | `--help`, `-h` | Show all options |
 
 </Accordion>
@@ -155,7 +151,7 @@ sudo docker compose ps
 curl --fail --silent --show-error http://localhost:3000/api/health
 ```
 
-All services should be healthy and the health endpoint should return `{"status":"ok"...`. For HTTPS, also open `https://<your-domain>/api/health`.
+All services should be healthy and the endpoint should return `{"status":"ok"...`. For HTTPS, also open `https://<your-domain>/api/health`.
 
 <Accordions>
 <Accordion title="What gets installed" id="what-gets-installed">
@@ -169,9 +165,9 @@ All services should be healthy and the health endpoint should return `{"status":
 | `rustfs` | S3-compatible artifact storage | `127.0.0.1:9000` (`RUSTFS_BIND_ADDR`, `RUSTFS_HOST_PORT`) |
 | `traefik` | HTTPS reverse proxy (HTTPS profile only) | `80`, `443` |
 
-Never publish Postgres, Redis or RustFS on a public IP: keep the default `127.0.0.1` binds (or a private interface) and firewall their ports. Cloud-hosted installs also get a host rule that stops pods reaching the instance-metadata address `169.254.169.254` (this also applies to the Compose containers on that host, so they cannot use instance-role credentials).
+Never publish Postgres, Redis or RustFS on a public IP: keep the default `127.0.0.1` binds (or a private interface) and firewall their ports. Cloud-hosted installs also get a host rule that stops pods reaching the instance-metadata address `169.254.169.254`; it applies to the Compose containers on that host too, so they cannot use instance-role credentials.
 
-Test runs can reach public addresses but not private networks (RFC1918, link-local, CGNAT, tailnet), mail ports (25, 465, 587, 2525) or the host's Kubernetes control ports. By default, monitors also refuse hosts that resolve to a private address. Use a [Private Agent](/docs/app/deployment/private-agent) for services inside another network.
+Test runs can reach public addresses but not private networks (RFC1918, link-local, CGNAT, tailnet), mail ports (25, 465, 587, 2525) or the host's Kubernetes control ports. Monitors also refuse hosts that resolve to a private address by default. Use a [Private Agent](/docs/app/deployment/private-agent) for services inside another network.
 
 </Accordion>
 </Accordions>
@@ -188,7 +184,7 @@ Edit `.env` in `deploy/docker`, then run `sudo docker compose up -d --force-recr
 | `SIGNUP_ENABLED` | `true` | `false` disables open registration (invited users still work) |
 | `ALLOWED_EMAIL_DOMAINS` | empty | Comma-separated signup allowlist, for example `acme.com,acme.org` |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_FROM_EMAIL`, `SMTP_USER`, `SMTP_PASSWORD` | unset | Email for alerts and invitations (disabled without `SMTP_HOST`) |
-| `ORG_DELETION_GRACE_DAYS` | `14` | Days an owner can cancel a requested organization deletion before the data is purged (0 to 365). `0` removes the window and is honored on self-hosted installations only: the purge is queued at once and runs in the background (if queueing fails, the deletion sweep picks it up). During the window the organization is read-only |
+| `ORG_DELETION_GRACE_DAYS` | `14` | Days an owner can cancel a requested organization deletion before the data is purged (0 to 365). The organization is read-only during the window. `0` removes the window (self-hosted only): the purge is queued at once and runs in the background, and if queueing fails the deletion sweep picks it up |
 | `ORG_DELETION_REAUTH_MINUTES` | `10` | Minutes a session may be old before an owner must sign in again to request an organization deletion (1 to 60) |
 | `AUDIT_EMAIL_SCRUB_DAYS` | `30` | Days before email addresses in audit log details are replaced by a hash. Audit logs are removed after 12 months |
 | `SMTP_FROM_NAME`, `SMTP_REPLY_TO` | unset | Optional display name for the From address and an optional Reply-To address on every email |
@@ -198,14 +194,12 @@ Edit `.env` in `deploy/docker`, then run `sudo docker compose up -d --force-recr
 | `SRE_ENABLED` | `true` | Turns AI SRE (triage, investigations, chat) and opening incidents from alerts on or off. With `false`, alerts still notify but open no incidents |
 | `SRE_DAILY_TOKEN_LIMIT_PER_ORG` | `2000000` | Daily AI token limit per organization for AI SRE (UTC day). `0` disables |
 | `ALLOW_INTERNAL_TARGETS` | `false` | `true` lets monitors target private, loopback and reserved addresses (cloud metadata and link-local addresses stay blocked) |
-| `WORKER_SHUTDOWN_DRAIN_MS` | `20000` | How long a stopping worker waits for in-flight runs before deleting their execution Jobs (max `3900000`, enough for a 60-minute run). A stopping worker takes no new jobs during this wait and reports not-ready on `/health/ready`, but keeps finishing the runs it has. A run whose execution had started and is deleted at the end is recorded with "Interrupted by worker restart" (status `failed` for Playwright, `error` for k6), is not re-run, and sends no failure alert; a run whose execution had not started is delayed and run by another worker. Keep it below the orchestrator grace period: the bundled Compose files set `stop_grace_period: 30s`; on Kubernetes raise `terminationGracePeriodSeconds` first |
+| `WORKER_SHUTDOWN_DRAIN_MS` | `20000` | How long a stopping worker waits for in-flight runs before deleting their execution Jobs (max `3900000`, enough for a 60-minute run). During the wait it takes no new jobs and reports not-ready on `/health/ready`. A run that had started and is deleted at the end is recorded with "Interrupted by worker restart" (status `failed` for Playwright, `error` for k6), is not re-run and sends no failure alert; a run that had not started is delayed and run by another worker. Keep it below the orchestrator grace period: the bundled Compose files set `stop_grace_period: 30s`; on Kubernetes raise `terminationGracePeriodSeconds` first |
 | `DEVICE_AUTH_ENABLED` | `false` | Browser sign-in for `supercheck login`. Needs HTTPS (or localhost) |
 | `TRUSTED_PROXY_HOPS` | `0` | Extra trusted proxies in front of Traefik, such as a CDN |
 | `TRUST_CF_CONNECTING_IP` | `false` | `true` only if the server is reachable exclusively through Cloudflare |
 
-Advanced tunables are listed, commented, in [`app/.env.example`](https://github.com/supercheck-io/supercheck/blob/main/app/.env.example) and [`worker/.env.example`](https://github.com/supercheck-io/supercheck/blob/main/worker/.env.example).
-
-
+Advanced tunables are commented in [`app/.env.example`](https://github.com/supercheck-io/supercheck/blob/main/app/.env.example) and [`worker/.env.example`](https://github.com/supercheck-io/supercheck/blob/main/worker/.env.example).
 </Accordion>
 <Accordion title="Super Admin access" id="super-admin-access">
 
@@ -277,20 +271,20 @@ curl -fsSL https://raw.githubusercontent.com/supercheck-io/supercheck/v1.6.0/dep
 sudo bash install.sh --upgrade
 ```
 
-<Callout type="warn">
-Upgrading from a release before 1.6.0 runs migration `0056`, which drops columns the previous release still reads. Upgrade in a short maintenance window and don't roll back the image afterwards; restore the pre-upgrade backup instead. Keep the same `SECRET_ENCRYPTION_KEY`: older webhook secrets are encrypted with it during the upgrade. Unsubscribe links in emails sent before the upgrade stop working.
-</Callout>
+Replace `v1.6.0` with the target release. The upgrade dumps the database to `/var/backups/supercheck/`, applies migrations and checks health; expect a few minutes of downtime. It stops if tracked files were edited, so keep your changes in `.env`. Then [upgrade remote workers](/docs/app/deployment/multi-server#upgrade-workers).
 
-Replace `v1.6.0` with the target release. Every upgrade must re-run `setup-k3s.sh` (`--upgrade` does this for you; with a manual update run it yourself): it refreshes the execution policy (NetworkPolicy, RBAC, quota) that keeps test runs off your host and private networks. To refresh only those manifests without touching K3s or gVisor, run `sudo bash setup-k3s.sh --execution-plane-only`. An outdated policy is not harmless: each run first checks that it cannot reach the Kubernetes API and refuses to start otherwise. The upgrade dumps the database to `/var/backups/supercheck/` first, applies migrations, and checks health; expect a few minutes of downtime. Keep your changes in `.env`: the upgrade stops if tracked files were edited. Then [upgrade remote workers](/docs/app/deployment/multi-server#upgrade-workers).
+Every upgrade must re-run `setup-k3s.sh` (`--upgrade` does this; with a manual update run it yourself). It refreshes the execution policy (NetworkPolicy, RBAC, quota) that keeps test runs off your host and private networks. To refresh only those manifests, without touching K3s or gVisor, run `sudo bash setup-k3s.sh --execution-plane-only`. An outdated policy is not harmless: each run first checks that it cannot reach the Kubernetes API and refuses to start otherwise.
 
 <Callout type="warn">
-Never run `docker compose down -v`: it deletes the database, stored artifacts, and the queue.
+Upgrading from a release before 1.6.0 runs migration `0056`, which drops columns the previous release still reads. Upgrade in a short maintenance window and do not roll back the image afterwards; restore the pre-upgrade backup instead. Keep the same `SECRET_ENCRYPTION_KEY`: older webhook secrets are encrypted with it during the upgrade. Unsubscribe links in emails sent before the upgrade stop working.
+
+Never run `docker compose down -v`: it deletes the database, stored artifacts and the queue.
 </Callout>
 
 <Accordions>
 <Accordion title="Manual update" id="manual-update">
 
-For an `install.sh` checkout when `--upgrade` is unavailable. Replace `<x.y.z>` with the target release. `backup.sh` ships from 1.5.0; on an older release, dump the database and copy the storage volume yourself first:
+For an `install.sh` checkout when `--upgrade` is unavailable. Replace `<x.y.z>` with the target release. `backup.sh` ships from 1.5.0; on an older release, dump the database and copy the storage volume first:
 
 ```bash
 cd /opt/supercheck/deploy/docker
@@ -310,14 +304,14 @@ curl --fail --silent --show-error http://localhost:3000/api/health
 </Accordion>
 <Accordion title="Upgrading from MinIO (releases before 1.4.0)" id="upgrading-from-minio-breaking">
 
-MinIO and RustFS disk formats are incompatible, so storage must be migrated before you update. Stop remote workers, then run the migration from your **current** checkout's `deploy/docker`, with the old stack running:
+MinIO and RustFS disk formats are incompatible, so migrate storage before you update. Stop remote workers, then run the migration from your **current** checkout's `deploy/docker` with the old stack running:
 
 ```bash
 sudo curl -fsSL https://raw.githubusercontent.com/supercheck-io/supercheck/v1.6.0/deploy/docker/migrate-minio-to-rustfs.sh -o migrate-minio-to-rustfs.sh && \
 sudo bash migrate-minio-to-rustfs.sh && sudo rm -- migrate-minio-to-rustfs.sh
 ```
 
-It stops the app and worker while it copies. Continue only after it succeeds; it keeps the `minio-data` volume for recovery. Then upgrade and run `sudo docker compose up -d --remove-orphans` once. Check a status page and a test report before deleting the old volume.
+It stops the app and worker while it copies and keeps the `minio-data` volume for recovery. Continue only after it succeeds: upgrade, then run `sudo docker compose up -d --remove-orphans` once. Check a status page and a test report before deleting the old volume.
 
 Releases before `1.3.3` predate the current sandbox: back up, then run `sudo bash setup-k3s.sh` before upgrading.
 
@@ -334,13 +328,13 @@ sudo bash backup.sh
 
 This saves the database, storage, `.env` and certificates to `/var/backups/supercheck/<UTC time>/`, stopping the app and worker for about a minute. Copy backups off the server and keep them private: they contain your secrets.
 
-To restore, install the same release as the backup (on a new server, install it first), stop remote workers, then run the command below. It permanently replaces the current `.env`, storage and database:
+To restore, install the same release as the backup (on a new server, install it first), stop remote workers, then run this. It permanently replaces the current `.env`, storage and database:
 
 ```bash
 sudo bash backup.sh --restore /var/backups/supercheck/<UTC time>
 ```
 
-For daily backups (old backups are not deleted, so prune them to keep the disk from filling):
+For daily backups (old backups are not deleted; prune them so the disk does not fill):
 
 ```bash
 echo '0 3 * * * root cd /opt/supercheck/deploy/docker && bash backup.sh >>/var/log/supercheck/backup.log 2>&1' | sudo tee /etc/cron.d/supercheck-backup
@@ -356,7 +350,7 @@ External PostgreSQL, Redis or S3 are not covered; use your provider's backups.
 | Code | Meaning | Next step |
 |---|---|---|
 | `0` | Installed and healthy | Open the printed URL |
-| `1` | A step failed | The installer prints the last log lines; the full log is `/var/log/supercheck/install.log`. Fix the cause and re-run the same command |
+| `1` | A step failed | The installer prints the last log lines; the full log is `/var/log/supercheck/install.log`. Fix the cause and re-run |
 | `2` | Bad usage | Check the options with `bash install.sh --help` |
 | `3` | Running, but `/api/health` reports a problem | Run `curl http://localhost:3000/api/health` to see which dependency fails, then `sudo docker compose logs --tail=100 app worker` |
 
@@ -381,12 +375,12 @@ sudo systemctl status k3s --no-pager
 sudo journalctl -u k3s -n 100 --no-pager
 ```
 
-Re-running `sudo bash setup-k3s.sh` is safe. If the server's IP address changed since installation, the re-run adds the new address to the k3s API certificate and rewrites the worker kubeconfig; then run `sudo docker compose up -d --force-recreate worker`.
+Re-running `sudo bash setup-k3s.sh` is safe. If the server's IP address changed, the re-run adds the new address to the k3s API certificate and rewrites the worker kubeconfig; then run `sudo docker compose up -d --force-recreate worker`.
 
 </Accordion>
 <Accordion title="Run fails with an infrastructure error" id="isolation-check">
 
-`Infrastructure error: execution network isolation not enforced; the run was not started` means the pod could still reach the Kubernetes API, so the run was refused before any test code ran. It is not billed and not a test failure. The usual cause is an outdated `execution-egress` NetworkPolicy or a CNI that does not enforce it. Re-run `sudo bash setup-k3s.sh --execution-plane-only`, then retry the run.
+`Infrastructure error: execution network isolation not enforced; the run was not started` means the pod could still reach the Kubernetes API, so the run was refused before any test code ran. It is not billed and not a test failure. The usual cause is an outdated `execution-egress` NetworkPolicy or a CNI that does not enforce it. Re-run `sudo bash setup-k3s.sh --execution-plane-only`, then retry.
 
 `Infrastructure error: Execution pod was rejected by the cluster: ...` means Kubernetes admission control denied the execution pod; the message names the policy. Fix or relax that policy for the `supercheck-execution` namespace.
 
@@ -400,12 +394,12 @@ sudo k3s kubectl describe pod gvisor-test -n supercheck-execution
 runsc --version
 ```
 
-Fix the reported cause and re-run `sudo bash setup-k3s.sh`. Do not work around it by disabling the sandbox: `EXECUTION_RUNTIME_CLASS_NAME=none` is for local development only, runs untrusted test code without isolation, and makes the worker log `Sandbox isolation is DISABLED`.
+Fix the reported cause and re-run `sudo bash setup-k3s.sh`. Do not disable the sandbox: `EXECUTION_RUNTIME_CLASS_NAME=none` is for local development only, runs untrusted test code without isolation and makes the worker log `Sandbox isolation is DISABLED`.
 
 </Accordion>
 <Accordion title="First test run times out" id="image-pull-timeout">
 
-The ~3 GB worker image must be in the sandbox before a run starts. The installer imports it; if that step was skipped (`--no-prewarm`) or failed, re-run the installer, or import it yourself:
+The ~3 GB worker image must be in the sandbox before a run starts. If the installer's import was skipped (`--no-prewarm`) or failed, re-run the installer or import it yourself, using the `SUPERCHECK_VERSION` in your `.env`:
 
 ```bash
 sudo k3s ctr -n k8s.io images ls -q | grep supercheck/worker
@@ -414,22 +408,20 @@ WORKER_IMAGE=$(sudo docker compose config --images | grep '/worker:' | head -n1)
 sudo docker save --platform "linux/$(dpkg --print-architecture)" "$WORKER_IMAGE" | sudo k3s ctr -n k8s.io images import -
 ```
 
-Use the version in your `.env` (`SUPERCHECK_VERSION`).
-
 A worker reports the `agent-test` capability unless its execution image (`WORKER_IMAGE`) has an older full version tag than the worker, so keep both on the same version.
 
 </Accordion>
 <Accordion title="Compose says a secret is missing from .env" id="missing-secret">
 
-`docker-compose.yml` refuses to start without `DB_PASSWORD`, `REDIS_PASSWORD`, `BETTER_AUTH_SECRET`, and the storage keys. On a new install, run `./init-secrets.sh`. On an existing install, restore the `.env` you installed with (the installer keeps `.env.bak-*` copies next to it, and each backup has one). Never generate new secrets for existing data: the database password and encryption key would no longer match.
+`docker-compose.yml` refuses to start without `DB_PASSWORD`, `REDIS_PASSWORD`, `BETTER_AUTH_SECRET` and the storage keys. On a new install, run `./init-secrets.sh`. On an existing install, restore the `.env` you installed with (the installer keeps `.env.bak-*` copies next to it, and each backup has one). Never generate new secrets for existing data: the database password and encryption key would no longer match.
 
 </Accordion>
 </Accordions>
 
-## Next steps
+## Related
 
 <Cards>
-  <Card title="Multi-Server" href="/docs/app/deployment/multi-server" description="Add execution workers on separate servers" />
-  <Card title="AI SRE Setup" href="/docs/app/admin/ai-sre-setup" description="Add services and read-only evidence sources" />
+  <Card title="Multi-server deployment" href="/docs/app/deployment/multi-server" description="Add execution workers on separate servers" />
+  <Card title="AI SRE setup" href="/docs/app/admin/ai-sre-setup" description="Add services and read-only evidence sources" />
   <Card title="Private Agent" href="/docs/app/deployment/private-agent" description="Reach sources inside another network" />
 </Cards>

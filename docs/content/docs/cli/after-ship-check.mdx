@@ -1,12 +1,10 @@
 ---
-title: Check After Every Ship
+title: Check after every ship
 description: Have a coding agent run your Supercheck job after each deploy and stop when it fails
 icon: ShieldCheck
 ---
 
-The agent runs one of your Supercheck jobs after every deploy and stops when a check fails.
-
-## Copy-paste prompt
+## Prompt
 
 ```text
 After you deploy a change, check it with Supercheck.
@@ -44,7 +42,7 @@ Never print or commit SUPERCHECK_TOKEN.
 | `4` | API or network error | Stops and reports it |
 | `5` | Still running when `--timeout` ran out | Stops and reports the run id |
 
-`--wait` and `--timeout` (default 300 seconds) apply to cloud runs only. The same steps ship in the CLI as `supercheck skills ship`. Install them for your agent:
+`--wait` and `--timeout` (default 300 seconds) apply to cloud runs only. The CLI ships these steps as `supercheck skills ship`. Install them for your agent:
 
 ```bash
 npx @supercheck/cli agent install --target claude   # or --target cursor, --target codex, --target generic

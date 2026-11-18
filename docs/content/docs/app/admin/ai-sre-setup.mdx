@@ -1,38 +1,36 @@
 ---
-title: AI SRE Setup
+title: AI SRE setup
 description: Configure services, read-only integrations, saved queries, and Private Agents
 icon: Wrench
 ---
 
-Organization owners and admins configure AI SRE from **Settings → Organization** (Project Admins do not see this page). Responders start from **Respond → Incidents**; raw alerts are in **Communicate → Notifications → Delivery history**. **Copilot** and **Services** sit under **Respond**.
-
-Open **Setup guide** (under **More** on Integrations, or beside **Add service** and **Add query**) to review setup status.
+Organization owners and admins configure AI SRE from **Settings → Organization** (Project Admins do not see this page). Responders start from **Respond → Incidents**; **Copilot** and **Services** sit under **Respond**. Open **Setup guide** (under **More** on Integrations, or beside **Add service** and **Add query**) to review setup status.
 
 <Callout type="info">
-**Self-hosted:** Configure an [AI provider](/docs/app/deployment/self-hosted#optional-configuration) to use AI SRE. Start with stored evidence. Connectors and Private Agents are optional.
+**Self-hosted:** configure an [AI provider](/docs/app/deployment/self-hosted#optional-configuration) to use AI SRE. Connectors and Private Agents are optional; start with stored evidence.
 </Callout>
 
 <Cards className="grid-cols-1 sm:grid-cols-3">
 <Card icon={<Boxes className="text-blue-500" />} title="Services">
-Define the systems responders recognize
+Systems responders recognize
 </Card>
 <Card icon={<Plug className="text-green-500" />} title="Integrations">
-Read-only connectors and saved queries
+Connectors and saved queries
 </Card>
 <Card icon={<Network className="text-purple-500" />} title="Private Agents">
-Reach providers inside your network
+Providers inside your network
 </Card>
 </Cards>
 
 ## Services
 
-Use **Services** to define systems such as `checkout-service` or `payment-gateway`. Select **Add service** to register one.
+**Add service** registers a system such as `checkout-service` or `payment-gateway`.
 
 ![Services Catalog](/screenshots/sre-services-catalog.png)
 
 ![Add Service Dialog](/screenshots/sre-add-service-dialog.png)
 
-For each service, set its name, tier, **Status** (**Active** or **Deprecated**), environment, owner team, **Owner** (one person who is a project editor or admin; they are emailed when a SEV1 or SEV2 opens if the project's incident policy has **Email the service owners for SEV1 and SEV2** on and the incident is opened by someone else, and an alert incident for the service is assigned to them), OpenTelemetry service name, **Slack channel**, repository URL, **Tags** and **Description**. The services list opens on **Active** services; archiving a service marks it deprecated, and you can show it again with the **Status** filter (which can also list merged services). The service detail page has three sections.
+Set name, tier, **Status** (**Active** or **Deprecated**), environment, owner team, **Owner**, OpenTelemetry service name, **Slack channel**, repository URL, **Tags** and **Description**. **Owner** is one project editor or admin: an alert incident for the service is assigned to them, and they are emailed when someone else opens a SEV1 or SEV2 if the project's incident policy has **Email the service owners for SEV1 and SEV2** on. The list opens on **Active** services; archiving marks a service deprecated, and the **Status** filter shows it again (it can also list merged services). The detail page has three sections.
 
 | Section | Shows |
 |---|---|
@@ -40,30 +38,22 @@ For each service, set its name, tier, **Status** (**Active** or **Deprecated**),
 | **Resources** | Linked monitors, jobs, tests, k6 runs, and status components |
 | **Dependencies** | Service relationships. Expand **Suggested dependencies** to approve or reject discoveries and review past decisions |
 
-Beside the tabs, **Service health** shows the status with an explanation, counts of active incidents, firing alerts, linked resources and dependencies, and the service's owner, repository, Slack channel and tags. The health score appears when nothing is open or firing. **Recent alerts** and **Recent deployments** follow below.
-
-<Callout type="info">
-Suggested relationships are not used as service dependencies or for alert correlation until an authorized user approves them.
-</Callout>
+Beside the tabs, **Service health** shows the status with an explanation, counts of active incidents, firing alerts, linked resources and dependencies, and the service's owner, repository, Slack channel and tags. The health score appears when nothing is open or firing. **Recent alerts** and **Recent deployments** follow. Suggested relationships are not used as dependencies or for alert correlation until an authorized user approves them.
 
 ## Integrations
 
-Add read-only evidence sources under **Settings → Organization → Integrations**: select **Add connector**, choose the **Connector type** (Prometheus, Grafana, Loki, GitHub, and more), and set its service scope. Use the narrowest credential and scope your queries need, and validate after setup. See [Connectors](/docs/app/investigate/connectors) for supported providers.
-
-Connectors are optional: start with stored Supercheck evidence and add external sources as needed.
+In **Settings → Organization → Integrations**, select **Add connector**, choose the **Connector type** and set its service scope. Use the narrowest credential and scope your queries need, and validate after setup. See [Connectors](/docs/app/investigate/connectors) for providers. Connectors are optional.
 
 ## Saved queries (optional)
 
-Saved queries are named templates for read-only questions your team repeats, such as a service's 5xx rate over the last five minutes. You do not need one to investigate stored evidence or run supported live connector searches.
-
-In **Settings → Organization → Integrations**, choose **More → Saved queries** to open the saved queries dialog, then select **Add query**.
+Saved queries are named templates for read-only questions your team repeats, such as a service's 5xx rate over five minutes. You do not need one for stored evidence or live connector searches. In **Settings → Organization → Integrations**, choose **More → Saved queries**, then **Add query**.
 
 | Property | Behavior |
 |---|---|
 | **Connector** | Each query is tied to one enabled connector |
 | **Validation** | Parameters and allowlist are validated |
 | **Limits** | Returned rows, output size, and runtime are limited |
-| **Query types** | Depend on the connector. Include PromQL, LogQL, TraceQL, and HTTP GET |
+| **Query types** | Depend on the connector, such as PromQL, LogQL, TraceQL and HTTP GET |
 | **Disabling** | Prevents future executions. Evidence already collected stays |
 
 ![Saved queries under Integrations](/screenshots/sre-integrations-saved-queries.png)
@@ -73,54 +63,53 @@ Query names must be unique per connector among active queries.
 <Accordions>
 <Accordion title="Parameter rules and connector settings" id="saved-query-rules">
 
-- A parameter whose value can be free text must sit inside quotes in the template, for example `{service="$service"}`.
-- To use a parameter outside quotes, constrain it with an **enum**, an **allowlist**, or a **pattern** that admits only plain tokens (letters, digits and similar, no spaces or query syntax).
-- Over-broad patterns are rejected when you save, for example `.*`.
+- A parameter that can be free text must sit inside quotes in the template, such as `{service="$service"}`.
+- Outside quotes, constrain it with an **enum**, an **allowlist** or a **pattern** that admits only plain tokens (letters, digits and similar; no spaces or query syntax). Over-broad patterns such as `.*` are rejected on save.
 - `allowParens` works only on Azure Monitor connectors, in `metrics:` templates.
 - **Grafana** connectors need the service account token saved under `apiKey`, `api_key` or `secret`. Any other key name is rejected when you save.
-- A connector's **default time window** is 60 minutes unless you change it. A search asking for a longer window is refused with a message naming the limit; raise the connector's window or shorten the search.
+- A connector's **default time window** is 60 minutes unless you change it. A longer search is refused with a message naming the limit; raise the window or shorten the search.
 
 </Accordion>
 </Accordions>
 
 ## Private Agents
 
-Use a Private Agent when a supported provider is reachable only inside your network. On Supercheck Cloud, you keep using the cloud dashboard and run only the agent locally. No inbound firewall access is required.
+Use a Private Agent when a provider is reachable only inside your network. On Supercheck Cloud you keep the cloud dashboard and run only the agent locally; no inbound firewall access is required.
 
 <Steps>
 <Step>
 
 ### Register the agent
 
-Go to **Settings → Organization → Private Agents** and register it. Search and filter the list by status, scope, or network, and select a row to see its version, last heartbeat, and the connectors that use it.
+In **Settings → Organization → Private Agents**, register it. Filter the list by status, scope or network; select a row for its version, last heartbeat and the connectors that use it.
 
 </Step>
 <Step>
 
 ### Run it
 
-[Run it with Docker Compose](/docs/app/deployment/private-agent) inside your network and confirm it shows **connected**.
+[Run it with Docker Compose](/docs/app/deployment/private-agent) in your network until it shows **connected**.
 
 </Step>
 <Step>
 
 ### Add a connector
 
-In **Settings → Organization → Integrations**, add a connector, choose **Private Agent**, and select the registered agent.
+Add a connector in **Integrations**, choose **Private Agent** and select the agent.
 
 </Step>
 <Step>
 
 ### Validate
 
-Validate the connector, then enable live sources in an incident investigation when you need its evidence.
+Validate the connector, then enable live sources in an investigation.
 
 </Step>
 </Steps>
 
-Keep provider credentials in the connector's dedicated credential fields.
+Keep provider credentials in the connector's credential fields.
 
-## Setup Order
+## Setup order
 
 ```mermaid
 %%{init: {"flowchart":{"nodeSpacing":20,"rankSpacing":24,"padding":12,"wrappingWidth":140}}}%%
@@ -142,16 +131,16 @@ flowchart TB
     class Need,Reach decision
 ```
 
-Optionally save a query for bounded questions responders repeat, and validate each connector with live sources enabled before relying on it during an incident.
+Optionally save a query for questions responders repeat, and validate each connector with live sources enabled before an incident.
 
 <Accordions>
 <Accordion title="Usage limit and stuck runs" id="usage-limit">
 
-Each organization has a daily AI usage limit shared by investigations, triage, evidence briefs, and Copilot chat. It counts tokens reported by the AI provider and resets at 00:00 UTC. When it is reached, new AI requests return a "daily AI usage limit" message and evidence briefs fall back to a plain summary.
+Each organization has a daily AI usage limit shared by investigations, triage, evidence briefs and Copilot chat. It counts tokens reported by the AI provider and resets at 00:00 UTC. When reached, new AI requests return a "daily AI usage limit" message and evidence briefs fall back to a plain summary.
 
-Self-hosted deployments set the limit with `SRE_DAILY_TOKEN_LIMIT_PER_ORG` (default `2000000`; `0` disables the limit). Set it in `.env` and recreate the app.
+Self-hosted: set `SRE_DAILY_TOKEN_LIMIT_PER_ORG` in `.env` (default `2000000`; `0` disables the limit) and recreate the app.
 
-If an investigation stops reporting, wait five minutes, then start a new run for that incident. Failed runs are not charged and do not use the free-trial allowance.
+If an investigation stops reporting, wait five minutes, then start a new run. Failed runs are not charged and do not use the free-trial allowance.
 
 </Accordion>
 </Accordions>
