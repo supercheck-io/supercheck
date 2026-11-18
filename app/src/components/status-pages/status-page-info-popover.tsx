@@ -1,3 +1,5 @@
+"use client";
+
 import { ListChecks } from "lucide-react";
 import { InfoPopover } from "@/components/ui/info-popover";
 import { statusPageSteps } from "./data";

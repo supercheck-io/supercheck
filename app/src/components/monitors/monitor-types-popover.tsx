@@ -1,3 +1,5 @@
+"use client";
+
 import { Globe } from "lucide-react";
 import { InfoPopover } from "@/components/ui/info-popover";
 import { monitorTypes } from "./data";
