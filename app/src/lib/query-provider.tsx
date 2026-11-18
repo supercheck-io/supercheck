@@ -180,7 +180,7 @@ export function clearQueryCache() {
   restorationPromise = undefined;
 }
 
-const ServerIdentityContext = createContext<(userId: string) => void>(() => {});
+const ServerIdentityContext = createContext<(userId: string | null) => void>(() => {});
 
 /**
  * Hands the provider the user id the server already resolved for this page, so the saved cache
@@ -189,17 +189,25 @@ const ServerIdentityContext = createContext<(userId: string) => void>(() => {});
 export function useSeedServerIdentity(userId: string | null | undefined) {
   const seed = useContext(ServerIdentityContext);
   useEffect(() => {
-    if (userId) seed(userId);
+    if (!userId) return;
+    seed(userId);
+    // The provider outlives this page (e.g. after a redirect to /sign-in): drop the id with it.
+    return () => seed(null);
   }, [userId, seed]);
 }
 
 export function QueryProvider({ children }: { children: ReactNode }) {
   const session = useSession();
   const [serverIdentity, setServerIdentity] = useState<string | null>(null);
-  // A completed check always wins (sign-out or a different user remounts and clears as before).
-  // Until then, or when the check failed (network, 5xx), use the server's identity, as AuthGuard does.
-  const checkCompleted = !session.isPending && !session.error;
-  const useServerIdentity = !checkCompleted && serverIdentity !== null;
+  const [checkedOnce, setCheckedOnce] = useState(false);
+  // A 401 is an answer (signed out), not a failed check.
+  const unauthorized = (session.error as { status?: number } | null | undefined)?.status === 401;
+  const checkCompleted = !session.isPending && (!session.error || unauthorized);
+  if (checkCompleted && !checkedOnce) setCheckedOnce(true);
+  // The server's identity only bridges the first check on this page load (pending, or failed on a
+  // network/5xx error, as AuthGuard does). After any completed check it is never used again, so the
+  // later refetches better-auth runs (pending again whenever nobody is signed in) behave as before.
+  const useServerIdentity = !checkedOnce && !checkCompleted && serverIdentity !== null;
   const identity = useServerIdentity ? serverIdentity : (session.data?.user.id ?? null);
   const pending = session.isPending && !useServerIdentity;
   // Remount only when a settled identity changes. Keying on the identity itself remounted the whole

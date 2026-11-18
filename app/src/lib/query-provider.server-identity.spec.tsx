@@ -20,7 +20,8 @@ function Page({ serverUserId }: { serverUserId: string }) {
 it("restores the saved cache from the server's identity before the browser's session check returns, and a completed sign-out still clears it", async () => {
   const saved = new QueryClient();
   saved.setQueryData(["alerts-history", "project-1"], [{ id: "saved-alert" }]);
-  localStorage.setItem(CACHE_KEY, JSON.stringify({ timestamp: Date.now(), buster: "", clientState: dehydrate(saved) }));
+  const payload = JSON.stringify({ timestamp: Date.now(), buster: "", clientState: dehydrate(saved) });
+  localStorage.setItem(CACHE_KEY, payload);
   saved.clear();
 
   const view = render(<QueryProvider><Page serverUserId="user-a" /></QueryProvider>);
@@ -30,6 +31,14 @@ it("restores the saved cache from the server's identity before the browser's ses
   mockSession = { data: null, isPending: false };
   view.rerender(<QueryProvider><Page serverUserId="user-a" /></QueryProvider>);
   await waitFor(() => expect(localStorage.getItem(CACHE_KEY)).toBeNull());
+  expect(mountedClient?.getQueryData(["alerts-history", "project-1"])).toBeUndefined();
+
+  // better-auth is pending again on every refetch while nobody is signed in (e.g. on /sign-in):
+  // the server's id must not come back once a check has completed.
+  localStorage.setItem(CACHE_KEY, payload);
+  mockSession = { data: null, isPending: true };
+  view.rerender(<QueryProvider><Page serverUserId="user-a" /></QueryProvider>);
+  await new Promise((resolve) => setTimeout(resolve, 50));
   expect(mountedClient?.getQueryData(["alerts-history", "project-1"])).toBeUndefined();
 });
 
