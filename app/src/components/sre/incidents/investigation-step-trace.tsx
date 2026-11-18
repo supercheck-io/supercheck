@@ -63,6 +63,7 @@ export function InvestigationStepTrace({
               <span className="ml-auto whitespace-nowrap text-xs text-muted-foreground tabular-nums">
                 {step.resultCount !== null ? `${step.resultCount} ${step.resultCount === 1 ? "result" : "results"}` : ""}
               </span>
+              {step.error && <span className="basis-full break-words text-xs text-destructive">{step.error}</span>}
             </li>
           ))}
         </ol>

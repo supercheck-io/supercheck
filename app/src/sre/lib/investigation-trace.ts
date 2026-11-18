@@ -11,6 +11,8 @@ export type SreInvestigationStep = {
   /** Number of items returned, when the tool returns a list. */
   resultCount: number | null;
   durationMs: number;
+  /** Short reason a tool gave for its error (tools redact their own messages), so a failed step is debuggable. */
+  error?: string;
 };
 
 export const MAX_TRACE_STEPS = 30;
@@ -20,6 +22,15 @@ const SECRET_KEY = /(token|secret|password|passwd|authorization|api[-_]?key|cred
 
 // Values that look like credentials are hidden even under an innocent key name.
 const SECRET_VALUE = /(^\s*(bearer|basic)\s|eyJ[A-Za-z0-9_-]{10,}|\b(sk|pk|sck|ghp|glpat|xox[abp])[-_][A-Za-z0-9_-]{8,}|^[A-Za-z0-9+/=_-]{32,}$)/i;
+
+function summarizeError(output: unknown): string | undefined {
+  if (!output || typeof output !== "object") return undefined;
+  const message = (output as Record<string, unknown>).message;
+  if (typeof message !== "string" || !message.trim()) return undefined;
+  const flat = message.replace(/\s+/g, " ").trim();
+  if (SECRET_VALUE.test(flat)) return "[redacted]";
+  return flat.length > MAX_ARGS_LENGTH ? `${flat.slice(0, MAX_ARGS_LENGTH - 3)}...` : flat;
+}
 
 function summarizeValue(value: unknown): string {
   if (value === null || value === undefined) return "";
@@ -86,6 +97,7 @@ export function stepsFromModelStep(
       : result
         ? outputStatus(result.output, count)
         : "error";
+    const error = status === "error" && result ? summarizeError(result.output) : undefined;
     return {
       index: startIndex + offset,
       tool: call.toolName.slice(0, 80),
@@ -93,6 +105,7 @@ export function stepsFromModelStep(
       status,
       resultCount: count,
       durationMs: perCall,
+      ...(error ? { error } : {}),
     };
   });
 }
@@ -112,6 +125,7 @@ export function readStoredSteps(value: unknown): SreInvestigationStep[] {
         status: e.status === "error" || e.status === "empty" ? e.status : "ok",
         resultCount: typeof e.resultCount === "number" ? e.resultCount : null,
         durationMs: typeof e.durationMs === "number" ? e.durationMs : 0,
+        ...(typeof e.error === "string" ? { error: e.error.slice(0, MAX_ARGS_LENGTH) } : {}),
       } satisfies SreInvestigationStep,
     ];
   });

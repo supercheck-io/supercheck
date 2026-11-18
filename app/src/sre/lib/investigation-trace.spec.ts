@@ -49,6 +49,26 @@ describe("stepsFromModelStep", () => {
     ]);
     expect(JSON.stringify(steps)).not.toContain("output");
   });
+  it("keeps a short, sanitized reason for a tool that returned an error", () => {
+    const [rejected, secret] = stepsFromModelStep(
+      {
+        toolCalls: [
+          { toolCallId: "a", toolName: "searchLiveConnectorEvidence", input: { query: "logs for checkout-api" } },
+          { toolCallId: "b", toolName: "searchLiveConnectorEvidence", input: {} },
+        ],
+        toolResults: [
+          { toolCallId: "a", output: { error: true, message: `The connector rejected the query: parse error ${"x".repeat(300)}` } },
+          { toolCallId: "b", output: { error: true, message: "Bearer abc.def" } },
+        ],
+      },
+      0,
+      100,
+    );
+    expect(rejected.status).toBe("error");
+    expect(rejected.error).toMatch(/^The connector rejected the query: parse error x+\.\.\.$/);
+    expect(rejected.error!.length).toBeLessThanOrEqual(160);
+    expect(secret.error).toBe("[redacted]");
+  });
   it("returns nothing for a text-only step", () => {
     expect(stepsFromModelStep({ toolCalls: [] }, 0, 100)).toEqual([]);
   });
@@ -59,6 +79,12 @@ describe("readStoredSteps", () => {
     expect(readStoredSteps(undefined)).toEqual([]);
     expect(readStoredSteps([{ tool: "t", status: "weird" }, 3, { x: 1 }])).toEqual([
       { index: 0, tool: "t", args: "", status: "ok", resultCount: null, durationMs: 0 },
+    ]);
+  });
+  it("reads a stored error reason and ignores a non-string one", () => {
+    expect(readStoredSteps([{ tool: "t", status: "error", error: "timed out" }, { tool: "u", error: 5 }])).toEqual([
+      { index: 0, tool: "t", args: "", status: "error", resultCount: null, durationMs: 0, error: "timed out" },
+      { index: 0, tool: "u", args: "", status: "ok", resultCount: null, durationMs: 0 },
     ]);
   });
 });
