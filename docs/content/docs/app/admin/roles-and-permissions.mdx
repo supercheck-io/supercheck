@@ -1,27 +1,25 @@
 ---
-title: Roles & Permissions
+title: Roles and permissions
 description: Role-based access control for organizations and projects
 icon: ShieldCheck
 ---
 
 Pick a role by the tasks a teammate needs, then check the matrix for exact permissions.
 
-## Role Overview
+## Role overview
 
-<Callout type="info">
-Members can view all active projects in their organization. **Project Admin** and **Project Editor** gain additional permissions only in assigned projects; their access to other projects remains read-only. Organization administrators manage all projects in their organization.
-</Callout>
+Members can view all active projects in their organization. **Project Admin** and **Project Editor** gain additional permissions only in assigned projects; their access to other projects stays read-only. Organization administrators manage all projects in their organization.
 
 | Role | Level | Description |
 |------|-------|-------------|
-| **Super Admin** | System | Platform-wide control, user management, and impersonation |
+| **Super Admin** | System | Platform-wide control, user management, impersonation |
 | **Org Owner** | Organization | Full organization control including deletion |
 | **Org Admin** | Organization | Organization management without deletion rights |
 | **Project Admin** | Project | Full control of assigned projects |
 | **Project Editor** | Project | Create and edit resources in assigned projects |
 | **Project Viewer** | Organization | Read-only access to all projects |
 
-## Role Overview Diagram
+## Role hierarchy
 
 <p className="text-sm md:hidden">Scroll horizontally to view the full diagram.</p>
 
@@ -48,146 +46,87 @@ flowchart LR
 </div>
 </div>
 
-Use the matrix below for each role's exact permissions and project scope.
+## Permission matrix
 
-## Permission Matrix
+Project Admin and Project Editor permissions apply only in assigned projects. Other active projects stay readable.
 
-<Tabs items={['Organization', 'Project', 'Tests, Jobs & Requirements', 'Monitors & Status Pages', 'Test Runs', 'CLI Tokens', 'Notifications', 'Tags', 'AI SRE']}>
-<Tab value="Organization">
+### Organization
 
 | Resource | Super Admin | Org Owner | Org Admin | Project Admin | Project Editor | Project Viewer |
 |----------|:-----------:|:---------:|:---------:|:-------------:|:--------------:|:--------------:|
-| **View organization** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| **Update organization** | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ |
-| **Delete organization** (request, then cancel during the window) | ⚠️ ¹ | ✅ | ❌ | ❌ | ❌ | ❌ |
-| **Invite members** | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ |
-| **Manage members** | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ |
-| **Remove members** | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ |
+| **View organization** | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| **Update organization** | ✓ | ✓ | ✓ | — | — | — |
+| **Delete organization** (request, then cancel during the window) | Limited ¹ | ✓ | — | — | — | — |
+| **Invite, manage and remove members** | ✓ | ✓ | ✓ | — | — | — |
 
 ¹ A Super Admin can request deletion only of an organization that has no members left, and cannot cancel it.
 
-</Tab>
-<Tab value="Project">
+### Projects
 
-| Resource | Super Admin | Org Owner | Org Admin | Project Admin* | Project Editor* | Project Viewer |
-|----------|:-----------:|:---------:|:---------:|:--------------:|:---------------:|:--------------:|
-| **View projects** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| **Create projects** | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ |
-| **Update projects** | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ |
-| **Delete projects** (restorable for 7 days) | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ |
-| **Restore deleted projects** | ❌ | ✅ | ✅ | ❌ | ❌ | ❌ |
-| **Manage project members** | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ |
+| Resource | Super Admin | Org Owner | Org Admin | Project Admin | Project Editor | Project Viewer |
+|----------|:-----------:|:---------:|:---------:|:-------------:|:--------------:|:--------------:|
+| **View projects** | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| **Create projects** | ✓ | ✓ | ✓ | — | — | — |
+| **Update projects** | ✓ | ✓ | ✓ | ✓ | — | — |
+| **Delete projects** (restorable for 7 days) | ✓ | ✓ | ✓ | — | — | — |
+| **Restore deleted projects** | — | ✓ | ✓ | — | — | — |
+| **Manage project members** | ✓ | ✓ | ✓ | ✓ | — | — |
 
-<Callout type="info">
-*\* Additional permissions apply only to assigned projects. Other active projects remain readable.*
-</Callout>
+### Project resources
 
-</Tab>
-<Tab value="Tests, Jobs & Requirements">
+Super Admin, Org Owner, Org Admin and Project Admin share one column because their permissions match here.
 
-| Action | Super Admin | Org Owner | Org Admin | Project Admin* | Project Editor* | Project Viewer |
-|--------|:-----------:|:---------:|:---------:|:--------------:|:---------------:|:--------------:|
-| **View** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| **Create** | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
-| **Edit** | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
-| **Delete** | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ |
-| **Run/Trigger** | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
+| Resource | Action | Project Viewer | Project Editor | Project Admin and above |
+|----------|--------|:--------------:|:--------------:|:-----------------------:|
+| **Tests, jobs, requirements** | View | ✓ | ✓ | ✓ |
+| | Create, edit, run or trigger | — | ✓ | ✓ |
+| | Delete | — | — | ✓ |
+| **Monitors, status pages** | View | ✓ | ✓ | ✓ |
+| | Create, edit, pause or resume | — | ✓ | ✓ |
+| | Delete | — | — | ✓ |
+| **Test runs** | View | ✓ | ✓ | ✓ |
+| | Cancel | — | ✓ | ✓ |
+| | Delete | — | — | ✓ |
+| **CLI tokens** | View, create, edit | — | ✓ | ✓ |
+| | Delete | — | — | ✓ |
+| **Notifications, tags** | View | ✓ | ✓ | ✓ |
+| | Create, edit | — | ✓ | ✓ |
+| | Delete | — | — | ✓ |
 
-</Tab>
-<Tab value="Monitors & Status Pages">
+### AI SRE
 
-| Action | Super Admin | Org Owner | Org Admin | Project Admin* | Project Editor* | Project Viewer |
-|--------|:-----------:|:---------:|:---------:|:--------------:|:---------------:|:--------------:|
-| **View** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| **Create** | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
-| **Edit** | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
-| **Pause/Resume** | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
-| **Delete** | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ |
+| Action | Super Admin | Org Owner | Org Admin | Project Admin | Project Editor | Project Viewer |
+|--------|:-----------:|:---------:|:---------:|:-------------:|:--------------:|:--------------:|
+| **View services and incidents** | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| **Create and update services** | ✓ | ✓ | ✓ | ✓ | ✓ | — |
+| **Delete services** | ✓ | ✓ | ✓ | ✓ | — | — |
+| **Create and update incidents** (assign, acknowledge, resolve, post updates) | ✓ | ✓ | ✓ | ✓ | ✓ | — |
+| **Delete incidents** | ✓ | ✓ | ✓ | ✓ | — | — |
+| **Watch or unwatch an incident** | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| **Post an incident update to a status page** (also needs status page update permission) | ✓ | ✓ | ✓ | ✓ | ✓ | — |
+| **Edit a project's incident notifications** (needs project update permission, see [Organization](/docs/app/admin/organization#projects)) | ✓ | ✓ | ✓ | ✓ | — | — |
+| **Investigate stored evidence** | ✓ | ✓ | ✓ | ✓ | ✓ | — |
+| **Configure and investigate live connectors** | ✓ | ✓ | ✓ | ✓ | — | — |
+| **Approve topology suggestions** | ✓ | ✓ | ✓ | ✓ | — | — |
 
-</Tab>
-<Tab value="Test Runs">
+Project Editors can investigate stored evidence and manage incidents but cannot query or configure live connectors.
 
-| Action | Super Admin | Org Owner | Org Admin | Project Admin* | Project Editor* | Project Viewer |
-|--------|:-----------:|:---------:|:---------:|:--------------:|:---------------:|:--------------:|
-| **View** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| **Cancel** | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
-| **Delete** | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ |
+## Variables and secrets
 
-</Tab>
-<Tab value="CLI Tokens">
-
-| Action | Super Admin | Org Owner | Org Admin | Project Admin* | Project Editor* | Project Viewer |
-|--------|:-----------:|:---------:|:---------:|:--------------:|:---------------:|:--------------:|
-| **View** | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
-| **Create** | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
-| **Edit** | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
-| **Delete** | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ |
-
-</Tab>
-<Tab value="Notifications">
-
-| Action | Super Admin | Org Owner | Org Admin | Project Admin* | Project Editor* | Project Viewer |
-|--------|:-----------:|:---------:|:---------:|:--------------:|:---------------:|:--------------:|
-| **View** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| **Create** | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
-| **Edit** | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
-| **Delete** | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ |
-
-</Tab>
-<Tab value="Tags">
-
-| Action | Super Admin | Org Owner | Org Admin | Project Admin* | Project Editor* | Project Viewer |
-|--------|:-----------:|:---------:|:---------:|:--------------:|:---------------:|:--------------:|
-| **View** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| **Create** | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
-| **Edit** | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
-| **Delete** | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ |
-
-</Tab>
-<Tab value="AI SRE">
-
-| Action | Super Admin | Org Owner | Org Admin | Project Admin* | Project Editor* | Project Viewer |
-|--------|:-----------:|:---------:|:---------:|:--------------:|:---------------:|:--------------:|
-| **View services & incidents** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| **Create & update services** | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
-| **Delete services** | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ |
-| **Create & update incidents** (assign, acknowledge, resolve, post updates) | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
-| **Delete incidents** | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ |
-| **Watch or unwatch an incident** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| **Post an incident update to a status page** (also needs status page update permission) | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
-| **Edit a project's incident notifications** (needs project update permission, see [Organization](/docs/app/admin/organization#projects)) | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ |
-| **Investigate stored evidence** | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
-| **Configure & investigate live connectors** | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ |
-| **Approve topology suggestions** | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ |
-
-<Callout type="info">
-*\* Project Admin and Project Editor permissions apply only to their assigned projects. Project Editors can investigate stored evidence and manage incidents, but cannot query or configure live external connectors.*
-</Callout>
-
-</Tab>
-</Tabs>
-
-## Variables & Secrets
-
-Variables and secrets have special permission rules to balance usability with security.
-
-| Action | Super Admin | Org Owner | Org Admin | Project Admin* | Project Editor* | Project Viewer |
-|--------|:-----------:|:---------:|:---------:|:--------------:|:---------------:|:--------------:|
-| **View variables** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| **Create variables** | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
-| **Edit variables** | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
-| **Delete variables** | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ |
-| **View secret values** | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
+| Action | Super Admin | Org Owner | Org Admin | Project Admin | Project Editor | Project Viewer |
+|--------|:-----------:|:---------:|:---------:|:-------------:|:--------------:|:--------------:|
+| **View variables** | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| **Create and edit variables** | ✓ | ✓ | ✓ | ✓ | ✓ | — |
+| **Delete variables** | ✓ | ✓ | ✓ | ✓ | — | — |
+| **View secret values** | ✓ | ✓ | ✓ | ✓ | ✓ | — |
 
 <Callout type="warn">
-**Project Editors** can create and edit variables and reveal secret values in assigned projects. They cannot delete variables. Keep revealed values out of chat, logs, and shared documents.
+Project Editors can create and edit variables and reveal secret values in assigned projects, but cannot delete variables. Keep revealed values out of chat, logs and shared documents.
 </Callout>
 
-<Callout type="info">
-A **Super Admin** can reveal secret values only in organizations they belong to. To see secrets in another organization, impersonate one of its members.
-</Callout>
+A Super Admin can reveal secret values only in organizations they belong to. To see secrets in another organization, impersonate one of its members.
 
-## Super Admin and Access Scope
+## Super Admin and access scope
 
 <Accordions>
 <Accordion title="System administration (Super Admin only)" id="system-administration">
@@ -196,42 +135,38 @@ These permissions are exclusive to **Super Admin** users:
 
 | Capability | Description |
 |------------|-------------|
-| **User Management** | View, ban, and unban any user |
-| **User Impersonation** | Log in as any user for troubleshooting |
-| **View All Organizations** | Access any organization's data |
-| **Queue Monitoring** | View and manage job queues |
-| **System Statistics** | View platform-wide metrics |
+| **User management** | View, ban and unban any user |
+| **User impersonation** | Log in as any user for troubleshooting |
+| **View all organizations** | Access any organization's data |
+| **Queue monitoring** | View and manage job queues |
+| **System statistics** | View platform-wide metrics |
 
 </Accordion>
 <Accordion title="Access scope details" id="access-scope-details">
 
-### Organization-Wide Access
+### Organization-wide access
 
 The following roles can access **all projects** in their organization without explicit assignment:
 
 - **Super Admin** — All organizations, all projects
 - **Org Owner** — All projects in owned organizations
 - **Org Admin** — All projects in administered organizations
-- **Project Viewer** — Read-only access to all projects (intentional for monitoring roles)
+- **Project Viewer** — Read-only access to all projects, so oversight and monitoring roles need no individual assignments
 
-### Assigned Project Permissions
+### Assigned project permissions
 
 These roles have additional permissions in **assigned projects** and read-only access to other active projects:
 
 - **Project Admin** — Full control, but only for assigned projects
 - **Project Editor** — Create/edit permissions, but only for assigned projects
 
-<Callout type="info">
-**Why is Project Viewer organization-wide?** This design enables oversight and monitoring roles to view all projects without needing individual assignments. They cannot modify anything, making it safe for read-only visibility.
-</Callout>
-
 </Accordion>
 </Accordions>
 
-## Quick Reference
+## Quick reference
 
-| If you need to... | Minimum Role Required |
-|-------------------|----------------------|
+| If you need to... | Minimum role |
+|---|---|
 | View tests and runs | Project Viewer |
 | Run tests manually | Project Editor |
 | Create new tests | Project Editor |
@@ -239,4 +174,4 @@ These roles have additional permissions in **assigned projects** and read-only a
 | Invite team members | Org Admin |
 | Delete the organization, or cancel its pending deletion | Org Owner |
 | Delete or restore a project | Org Admin |
-| Ban/unban users | Super Admin |
+| Ban or unban users | Super Admin |
