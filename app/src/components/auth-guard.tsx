@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useSession } from "@/utils/auth-client";
 import { SupercheckLoading } from "@/components/shared/supercheck-loading";
 import { withNextPath } from "@/lib/auth/safe-next-path";
+import { useSeedServerIdentity } from "@/lib/query-provider";
 
 /**
  * AuthGuard - Client-side authentication guard using Better Auth
@@ -49,6 +50,7 @@ interface AuthGuardProps {
 export function AuthGuard({ children, initialSession }: AuthGuardProps) {
     const router = useRouter();
     const { data: session, isPending, error } = useSession();
+    useSeedServerIdentity(initialSession?.user.id);
     // Use ref to track redirect to avoid re-renders and lint warnings
     const isRedirectingRef = useRef(false);
 
@@ -57,7 +59,8 @@ export function AuthGuard({ children, initialSession }: AuthGuardProps) {
     // A completed check that returns null overrides initialSession. A failed check (network error, 5xx,
     // wrong auth origin) is not a sign-out: redirecting then loops, because the server still sees the
     // session and sends /sign-in straight back. Server routes keep enforcing auth on every request.
-    const checkFailed = !isPending && !!error;
+    // A 401 means signed out, not a failed check, so it ends in the sign-in redirect below.
+    const checkFailed = !isPending && !!error && (error as { status?: number }).status !== 401;
     const effectiveSession = useMemo(() => isPending || checkFailed
         ? (initialSession ? { user: initialSession.user } : null)
         : session, [isPending, checkFailed, initialSession, session]);
