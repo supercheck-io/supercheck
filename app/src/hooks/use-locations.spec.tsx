@@ -17,3 +17,14 @@ it("reports a failed delete with its status when the error body is not JSON", as
   });
   client.clear();
 });
+
+it("reports the status when the error body is JSON null", async () => {
+  global.fetch = jest.fn(async () => ({ ok: false, status: 502, json: async () => null })) as never;
+  const client = new QueryClient({ defaultOptions: { mutations: { retry: false } } });
+  const wrapper = ({ children }: { children: ReactNode }) => <QueryClientProvider client={client}>{children}</QueryClientProvider>;
+  const { result } = renderHook(() => useDeleteLocation(), { wrapper });
+  await act(async () => {
+    await expect(result.current.mutateAsync("loc-1")).rejects.toThrow("Failed to delete location (HTTP 502)");
+  });
+  client.clear();
+});

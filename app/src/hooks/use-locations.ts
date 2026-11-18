@@ -253,8 +253,8 @@ export function useDeleteLocation() {
       });
       // A non-JSON error body (proxy 502, HTML page) must still surface as a failed delete.
       const data = await response.json().catch(() => ({}));
-      if (!response.ok || !data.success) {
-        throw new Error(data.error || `Failed to delete location (HTTP ${response.status})`);
+      if (!response.ok || !data?.success) {
+        throw new Error(data?.error || `Failed to delete location (HTTP ${response.status})`);
       }
       return data;
     },

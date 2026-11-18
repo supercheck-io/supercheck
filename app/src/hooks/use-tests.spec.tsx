@@ -13,6 +13,9 @@ it("keeps a single test (which carries its script) out of the persisted cache, b
   renderHook(() => { useTest("t1"); useJob("j1"); }, { wrapper });
   await waitFor(() => expect(client.getQueryCache().find({ queryKey: ["test", "t1"] })?.state.status).toBe("success"));
   expect(client.getQueryCache().find({ queryKey: ["test", "t1"] })?.meta?.persist).toBe(false);
-  expect(client.getQueryCache().find({ queryKey: ["job", "j1"] })?.meta?.persist).toBeUndefined();
+  await waitFor(() => expect(client.getQueryCache().find({ queryKey: ["job", "j1"] })?.state.status).toBe("success"));
+  const jobQuery = client.getQueryCache().find({ queryKey: ["job", "j1"] });
+  expect(jobQuery).toBeDefined();
+  expect(jobQuery!.meta?.persist).toBeUndefined();
   client.clear();
 });
