@@ -10,6 +10,8 @@ A public page, with no sign-in, that shows system health, incidents and schedule
 
 Open **Communicate → Status Pages**, then **Manage** on a page to edit it.
 
+![Status Pages List](/screenshots/status-pages-list.png)
+
 ```mermaid
 flowchart LR
     A[Create page<br/>draft] --> B[Add components]
@@ -27,6 +29,8 @@ flowchart LR
 <Steps>
 <Step>
 **Create the page.** Choose **Create Status Page** and enter a **Name** (internal), **Headline** (public title) and **Description**. It starts as a draft with a generated subdomain.
+
+![Create Status Page](/screenshots/status-page-create.png)
 </Step>
 <Step>
 **Add components.** Publishing requires at least one public component.
@@ -39,6 +43,8 @@ flowchart LR
 </Step>
 </Steps>
 
+![Status Page Overview](/screenshots/status-page-overview.png)
+
 | Action | Effect |
 |---|---|
 | **Unpublish** | Returns to draft and stops serving. Components, incidents and subscribers are kept (both actions ask for confirmation) |
@@ -47,6 +53,10 @@ flowchart LR
 ## Public page
 
 ![Public Status Page](/screenshots/status-page-external.png)
+
+Selecting an incident opens its full timeline.
+
+![Incident Details](/screenshots/status-page-incident-external.png)
 
 | Section | Shows |
 |---|---|
@@ -83,12 +93,16 @@ Badge colors follow **Status colors**. With no recent data on any showcased comp
 
 A component is a public service. It can link to an internal service without publishing service details.
 
+![Components Tab](/screenshots/status-page-components.png)
+
 | Field | Purpose |
 |---|---|
 | **Basics** | Name, optional description, status. Status is manual until you link a monitor |
 | **Monitors** | Linked monitors, aggregation method and **Failing monitors required**. **Weighted average** takes a weight of 1 to 100 per monitor |
 | **Publish outage and recovery incidents automatically** | Optional, off by default |
 | **Visibility** | Show on the public page, show only while degraded, link an internal service (never published) |
+
+![Add Component](/screenshots/status-page-add-component.png)
 
 ```mermaid
 flowchart LR
@@ -126,7 +140,13 @@ Component statuses: **Operational** (green), **Degraded Performance** (yellow), 
 
 The **Status updates** tab holds what visitors see. An update can link to an internal incident from the **Incidents** page. An automatic update links to the open internal incident its component's monitors triggered, if any.
 
-Choose **New status update** (the page needs a component first) and fill in:
+![Status updates tab](/screenshots/status-page-incidents.png)
+
+Choose **New status update** (the page needs a component first):
+
+![Create Incident](/screenshots/status-page-create-incident.png)
+
+Then fill in:
 
 | Field | Notes |
 |---|---|
@@ -200,10 +220,14 @@ sequenceDiagram
 
 Choose **Subscribe**, enter an email, select **Subscribe via Email** and open the verification link. Unsubscribe links are signed. Resubmitting an unverified address within 5 minutes sends no new email.
 
+![Email Subscription](/screenshots/status-page-subscribe-email.png)
+
 </Tab>
 <Tab value="Slack">
 
 Create a Slack app at [api.slack.com/apps](https://api.slack.com/apps), enable **Incoming Webhooks**, add one to a channel and paste its `https://hooks.slack.com` URL (the only host accepted) in the subscription dialog. Messages are color-coded by impact and link back to the page.
+
+![Slack Subscription](/screenshots/status-page-subscribe-slack.png)
 
 </Tab>
 <Tab value="Webhook">
@@ -227,9 +251,13 @@ if (!valid) throw new Error("Invalid webhook signature");
 </Tab>
 </Tabs>
 
+![Subscribers Tab](/screenshots/status-page-subscribers.png)
+
 The **Subscribers** tab lists subscribers with verification status, search, CSV export, delivery history and retry for failed deliveries. Slack URLs are masked.
 
 ## Settings
+
+![Settings Tab](/screenshots/status-page-settings.png)
 
 | Card | Contains |
 |---|---|

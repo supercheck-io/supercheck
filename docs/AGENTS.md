@@ -6,6 +6,7 @@ Rules for `docs/content/docs/` (Fumadocs). Read before writing or editing a page
 
 - Remove redundancy, restated intros, obvious statements and repeated warnings. Say each fact once and link to it elsewhere.
 - A feature page owns its details. Other pages link to it instead of repeating them. Before cutting a fact, grep `docs/content` and confirm the page you link to states it.
+- Never remove a screenshot or diagram to shorten a page.
 - Never remove a fact, limit, default, permission, data or security warning, or a diagram. If a fact exists nowhere else, it stays.
 - Verify every UI label, default and limit you touch against `app/src` (or `cli/`, `worker/`). Fix the docs when the code differs.
 - Concept pages are short. Reference pages may be long but must scan: headings, tables, no walls of text.
