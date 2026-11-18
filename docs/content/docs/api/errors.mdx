@@ -1,11 +1,11 @@
 ---
-title: Error Handling
-description: API error codes, formats, and retry behavior
+title: Error handling
+description: API error formats, status codes, retry behavior and CLI exit codes
 ---
 
-## Error Response Format
+## Error response format
 
-All error responses return a JSON body with an `error` field:
+Errors return a JSON body with an `error` field:
 
 ```json
 {
@@ -13,7 +13,7 @@ All error responses return a JSON body with an `error` field:
 }
 ```
 
-Some errors include additional context:
+Some add context:
 
 ```json
 {
@@ -24,50 +24,48 @@ Some errors include additional context:
 }
 ```
 
-## HTTP Status Codes
+## HTTP status codes
 
 | Status | Meaning | Action |
-|--------|---------|--------|
+|---|---|---|
 | `200` | Success | — |
-| `201` | Created | Resource created successfully |
-| `400` | Bad Request | Fix the request body or parameters |
-| `401` | Unauthorized | Credentials are missing, invalid, expired or revoked. Check the token |
-| `402` | Subscription required | Supercheck Cloud only: the organization needs an active subscription for this action (for example resuming a monitor after a trial ended, declaring an incident, or scheduling, changing or extending a maintenance window). The body is `{ error, code }` with `code: "subscription_required"` |
-| `403` | Forbidden | Authenticated but not permitted: RBAC role, project scope, or browser-only operation. Admin-only (`/api/admin/*`) endpoints return `401` when signed out and `403` for non-admins |
-| `404` | Not Found | Verify the resource ID exists. A resource in an organization you do not belong to also returns `404`, the same as a missing ID |
-| `409` | Conflict | Duplicate resource (e.g. token name) |
-| `429` | Rate Limited | Wait and retry (see `Retry-After` header) |
-| `500` | Server Error |
-| `503` | Service Unavailable | A safety limiter or dependency is unavailable (for example the invitation or API-key verification limiter while Redis is down). Retry after the `Retry-After` interval | Check whether a mutation succeeded before retrying; report persistent errors |
+| `201` | Created | — |
+| `400` | Bad request | Fix the request body or parameters |
+| `401` | Unauthorized | Credentials are missing, invalid, expired or revoked |
+| `402` | Subscription required | Cloud only: the organization needs an active subscription for this action (for example resuming a monitor after a trial ended, declaring an incident, or scheduling, changing or extending a maintenance window). The body is `{ error, code }` with `code: "subscription_required"` |
+| `403` | Forbidden | Not permitted: role, project scope or browser-only operation. `/api/admin/*` returns `401` when signed out and `403` for non-admins |
+| `404` | Not found | Check the resource ID. A resource in another organization also returns `404` |
+| `409` | Conflict | Duplicate resource, such as a token name |
+| `429` | Rate limited | Wait and retry (see `Retry-After`) |
+| `500` | Server error | Check whether a mutation succeeded before retrying; report persistent errors |
+| `503` | Service unavailable | A safety limiter or dependency is down (for example the invitation or API-key verification limiter while Redis is down). Retry after `Retry-After` |
 
-## Retry Behavior
+## Retry behavior
 
-The CLI retries rate-limited requests and selected transient errors. It does not automatically replay `POST` or `PATCH` requests after server or network failures.
+The CLI retries rate-limited requests and selected transient errors. It never replays `POST` or `PATCH` after server or network failures.
 
 | Error | What to do |
 |---|---|
-| `429` rate limit | Let the CLI wait and retry. In your own client, respect `Retry-After` when present. |
-| `5xx` or network failure | Safe-to-repeat requests use backoff. Before repeating a create, update, or trigger, check whether it already succeeded. |
-| Other `4xx` responses | Fix the request, credentials, or permissions before retrying. |
-| Request timeout | Check connectivity and the operation's result before issuing it again. |
+| `429` | The CLI waits and retries. In your own client, respect `Retry-After`. |
+| `5xx` or network failure | Safe requests use backoff. Before repeating a create, update or trigger, check whether it succeeded. |
+| Other `4xx` | Fix the request, credentials or permissions first. |
+| Timeout | Check connectivity and the operation's result before repeating it. |
 
-### Retry-After Header
+### Retry-After header
 
-When rate limited, the server returns a `Retry-After` header with the number of seconds to wait:
+On `429`, `Retry-After` gives the seconds to wait:
 
 ```
 HTTP/1.1 429 Too Many Requests
 Retry-After: 60
 ```
 
-The CLI parses this header safely — non-numeric or negative values fall back to exponential backoff instead of causing a tight retry loop.
+The CLI falls back to exponential backoff for non-numeric or negative values.
 
-## CLI Exit Codes
+## CLI exit codes
 
-The CLI maps errors to specific exit codes for scripting and CI/CD:
-
-| Exit Code | Meaning | Example |
-|-----------|---------|---------|
+| Exit code | Meaning | Example |
+|---|---|---|
 | `0` | Success | Job completed, resource created |
 | `1` | General error | Test failed, validation error |
 | `2` | Authentication error | Invalid token, expired token |
@@ -75,10 +73,10 @@ The CLI maps errors to specific exit codes for scripting and CI/CD:
 | `4` | Network / API error | API unreachable, 5xx response |
 | `5` | Timeout | Operation exceeded `--timeout` |
 
-### CI/CD Usage
+### CI/CD usage
 
 ```bash
-# Capture exit code before it's overwritten by subsequent commands
+# Capture the exit code before another command overwrites it
 export SUPERCHECK_TRIGGER_KEY="sck_trigger_..."
 export SUPERCHECK_TOKEN="sck_live_..."   # required here because --wait polls the run
 supercheck job trigger $JOB_ID --wait
@@ -93,9 +91,9 @@ elif [ $exit_code -eq 2 ]; then
 fi
 ```
 
-## Common Errors
+## Common errors
 
-### Invalid Token
+### Invalid token
 
 ```
 HTTP/1.1 401 Unauthorized
@@ -104,44 +102,44 @@ HTTP/1.1 401 Unauthorized
 
 The message varies (for example `Authentication required`, or `Invalid token type` for a trigger key used on a general endpoint).
 
-**Fix:** Verify your token is valid with `supercheck whoami`. Create a new token if needed.
+**Fix:** Run `supercheck whoami`. Create a new token if needed.
 
-### Token Expired or Revoked
+### Token expired or revoked
 
 Expired, disabled and revoked tokens return `401 Unauthorized`.
 
 **Fix:** Run `supercheck login --reauth` or create a new token in the dashboard.
 
-### Insufficient Permissions
+### Insufficient permissions
 
 ```
 HTTP/1.1 403 Forbidden
 {"error": "Insufficient permissions"}
 ```
 
-**Fix:** The CLI token inherits the creating user's RBAC role and is limited to one project. Ask an org admin to adjust your role, or use a token for the right project. Organization administration needs a browser session.
+**Fix:** A CLI token inherits its creator's role and is limited to one project. Ask an organization admin to change your role, or use a token for the right project. Organization administration needs a browser session.
 
-### Organization Pending Deletion
+### Organization pending deletion
 
 ```
 HTTP/1.1 403 Forbidden
 {"error": "This organization is scheduled for deletion and is read-only. The owner can cancel the deletion.", "code": "ORG_PENDING_DELETION"}
 ```
 
-The organization is scheduled for deletion. During the grace window reads keep working and every write returns this error, for any role. Only members see the code; anyone else gets the usual `403` or `404`. The CLI shows the code under `Details` (`details.code` with `--json`), and MCP write tools return `org_pending_deletion` (MCP `get_context` reports `organization.pendingDeletion`).
+During the grace window reads work and every write returns this error, for any role. Only members see the code; others get the usual `403` or `404`. The CLI shows the code under `Details` (`details.code` with `--json`), and MCP write tools return `org_pending_deletion` (MCP `get_context` reports `organization.pendingDeletion`).
 
-**Fix:** The organization owner can cancel the deletion in the dashboard (organization settings). Otherwise export what you need before the window ends.
+**Fix:** The owner can cancel the deletion in organization settings. Otherwise export what you need before the window ends.
 
-### Resource Not Found
+### Resource not found
 
 ```
 HTTP/1.1 404 Not Found
 {"error": "Not found"}
 ```
 
-**Fix:** Verify the resource ID. Use `supercheck job list`, `supercheck monitor list`, etc. to find valid IDs.
+**Fix:** Check the ID with `supercheck job list`, `supercheck monitor list` and similar.
 
-### Rate Limited
+### Rate limited
 
 ```
 HTTP/1.1 429 Too Many Requests
@@ -157,9 +155,9 @@ Retry-After: 60
 
 This is the body from the job trigger endpoint. Other endpoints can return a shorter `{"error": "Too many requests"}`.
 
-**Fix:** The CLI handles this automatically. If hitting limits frequently, consider batching operations or using longer intervals between requests.
+**Fix:** The CLI retries automatically. If you hit limits often, batch operations or space requests out.
 
-### Duplicate Token Name
+### Duplicate token name
 
 ```
 HTTP/1.1 409 Conflict
