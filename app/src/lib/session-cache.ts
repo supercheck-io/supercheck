@@ -10,6 +10,7 @@
  * Use: await getCachedSession('auth', () => auth.api.getSession({ headers: await headers() }))
  */
 
+import { cache } from "react";
 import { AsyncLocalStorage } from 'async_hooks';
 
 // Type for session cache entries
@@ -129,7 +130,7 @@ let headersModule: typeof import('next/headers') | null = null;
  * const session = await getCachedAuthSession();
  * ```
  */
-export async function getCachedAuthSession() {
+async function loadAuthSession() {
   // Lazy load modules to avoid circular dependencies
   if (!authModule) {
     authModule = await import('@/utils/auth');
@@ -147,3 +148,8 @@ export async function getCachedAuthSession() {
     return authSession && isCredentialOwnerActive(authSession.user) ? authSession : null;
   });
 }
+
+// Memoized per page render (React.cache); route handlers and server actions still call through.
+// getCachedSession's AsyncLocalStorage store is only set up by withRequestCache, which nothing calls,
+// so without this every caller in a render re-read the session from the DB.
+export const getCachedAuthSession = cache(loadAuthSession);

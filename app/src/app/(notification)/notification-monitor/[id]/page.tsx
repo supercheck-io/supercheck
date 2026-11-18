@@ -1,6 +1,7 @@
 import { liveMonitor } from "@/lib/deletion/visibility";
 import { monitorConfigForRead, monitorResultForRead, monitorTargetForRead } from "@/lib/monitor-read-config";
 import { Metadata } from "next";
+import { cache } from "react";
 import { AlertCircle } from "lucide-react";
 import {
   MonitorDetailClient,
@@ -29,9 +30,10 @@ type MonitorDetailsPageProps = {
 };
 
 // Direct server-side data fetching function
-async function getMonitorDetailsDirectly(
+// cache: generateMetadata and the page both need it; one load per request.
+const getMonitorDetailsDirectly = cache(async (
   id: string
-): Promise<MonitorWithResults | null> {
+): Promise<MonitorWithResults | null> => {
   try {
     const { userId } = await requireAuth();
 
@@ -132,7 +134,7 @@ async function getMonitorDetailsDirectly(
     console.error(`Error in getMonitorDetailsDirectly for ${id}:`, error);
     throw error;
   }
-}
+});
 
 export async function generateMetadata({
   params,
