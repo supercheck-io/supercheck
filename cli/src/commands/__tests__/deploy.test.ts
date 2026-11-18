@@ -110,7 +110,22 @@ describe('deploy API errors', () => {
     expect(deployErrorMessage(failed({ error: 'Invalid name' }))).toBe('API request failed: POST /api/monitors → 400: Invalid name')
   })
   it('shows structured details as JSON', () => {
-    expect(deployErrorMessage(failed({ error: 'Invalid request body', details: { fieldErrors: { description: ['Too long'] } } }))).toContain('{"fieldErrors":{"description":["Too long"]}}')
+    expect(deployErrorMessage(failed({ error: 'Invalid request body', details: { fieldErrors: { description: ['Too long'], name: ['Required', 'Too short'] } } }))).toBe('API request failed: POST /api/monitors → 400: Invalid request body: description: Too long; name: Required, Too short')
+  })
+  it('shows a JSON string body on one line, capped, and skips empty field errors', () => {
+    expect(deployErrorMessage(failed('  name is required\u001b[31m \n '))).toBe('API request failed: POST /api/monitors → 400: name is required [31m')
+    expect(deployErrorMessage(failed('   '))).toBe('API request failed: POST /api/monitors → 400')
+    expect(deployErrorMessage(failed({ error: 'Invalid', details: { fieldErrors: { name: [], url: ['Required'] } } }))).toBe('API request failed: POST /api/monitors → 400: Invalid: url: Required')
+  })
+  it('caps a very long error with no details', () => {
+    expect(deployErrorMessage(failed({ error: 'a'.repeat(5000) })).length).toBeLessThan(560)
+  })
+  it('truncates at item boundaries instead of cutting a field in half', () => {
+    const fieldErrors = Object.fromEntries(Array.from({ length: 30 }, (_, i) => [`field${i}`, ['must be a valid value here']]))
+    const message = deployErrorMessage(failed({ error: 'Invalid', details: { fieldErrors } }))
+    expect(message).toMatch(/\(\+\d+ more\)$/)
+    const shown = message.replace(/^.*?: Invalid: /, '').replace(/ \(\+\d+ more\)$/, '')
+    expect(shown.split('; ').every((item) => /^field\d+: must be a valid value here$/.test(item))).toBe(true)
   })
   it('keeps the plain message without a usable body, and flattens control characters', () => {
     expect(deployErrorMessage(failed(undefined))).toBe('API request failed: POST /api/monitors → 400')

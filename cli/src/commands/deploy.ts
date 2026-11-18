@@ -225,16 +225,61 @@ async function applyTags(client: import('../api/client.js').ApiClient, resourceP
 /**
  * Apply a single resource change via the API.
  */
-/** An API rejection with the server's validation message appended (`error` and `details`), so a 400 says what to fix. */
+const MAX_DETAIL = 500
+/** Terminal-safe single line: control characters and runs of whitespace collapse to one space. */
+const oneLine = (text: string): string => text.replace(/\p{Cc}/gu, ' ').replace(/\s+/g, ' ').trim()
+const text = (value: unknown): string | undefined => (typeof value === 'string' || typeof value === 'number' ? oneLine(String(value)) || undefined : undefined)
+
+/** Flattens structured details (zod `flatten()` output, arrays, objects) into readable `field: message` items. */
+function detailItems(details: unknown): string[] {
+  const direct = text(details)
+  if (direct) return [direct]
+  if (Array.isArray(details)) return details.flatMap(detailItems)
+  if (!details || typeof details !== 'object') return []
+  const record = details as Record<string, unknown>
+  const items: string[] = []
+  for (const [key, value] of Object.entries(record)) {
+    // zod flatten(): { formErrors: string[], fieldErrors: { field: string[] } }
+    if (key === 'formErrors') items.push(...detailItems(value))
+    else if (key === 'fieldErrors' && value && typeof value === 'object' && !Array.isArray(value)) {
+      for (const [field, messages] of Object.entries(value)) {
+        const list = detailItems(messages)
+        if (list.length > 0) items.push(`${field}: ${list.join(', ')}`)
+      }
+    } else {
+      const inner = detailItems(value)
+      if (inner.length > 0) items.push(`${key}: ${inner.join(', ')}`)
+    }
+  }
+  return items
+}
+
+/** An API rejection with the server's message appended (`error` and `details`, or a JSON string body), so a 400 says what to fix. */
 export function deployErrorMessage(err: unknown): string {
   if (!(err instanceof Error)) return String(err)
   const body = err instanceof ApiRequestError ? err.responseBody : undefined
-  if (!body || typeof body !== 'object') return err.message
-  const { error, details } = body as { error?: unknown; details?: unknown }
-  // Structured details (e.g. zod `flatten()` field errors) are shown as compact JSON.
-  const parts = [error, details === undefined || details === null ? undefined : typeof details === 'string' ? details : JSON.stringify(details)].filter((v): v is string => typeof v === 'string' && v.length > 0)
-  // Strip control characters and cap the length: the text is printed to a terminal.
-  const detail = parts.join(': ').replace(/\p{Cc}/gu, ' ').slice(0, 500)
+  let items: string[]
+  let lead: string | undefined
+  if (typeof body === 'string') {
+    // The client keeps only JSON bodies, so this is a JSON string literal; capped before any processing.
+    const plain = oneLine(body.slice(0, 2000))
+    items = plain ? [plain] : []
+  } else if (body && typeof body === 'object') {
+    const { error, details } = body as { error?: unknown; details?: unknown }
+    lead = detailItems(error).join('; ') || undefined
+    items = detailItems(details)
+  } else items = []
+  // Cut at item boundaries so a field is never shown half.
+  let shown = lead && lead.length > MAX_DETAIL ? `${lead.slice(0, MAX_DETAIL - 1)}…` : (lead ?? '')
+  let used = 0
+  for (const item of items) {
+    const next = shown ? `${shown}${used === 0 && lead ? ': ' : '; '}${item}` : item
+    if (next.length > MAX_DETAIL && shown) break
+    shown = next.length > MAX_DETAIL ? `${next.slice(0, MAX_DETAIL - 1)}…` : next
+    used++
+  }
+  const more = items.length - used
+  const detail = shown ? `${shown}${more > 0 ? ` (+${more} more)` : ''}` : ''
   return detail ? `${err.message}: ${detail}` : err.message
 }
 
