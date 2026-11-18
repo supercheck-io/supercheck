@@ -161,6 +161,29 @@ describe('createMcpMonitorRequest (monitor policy)', () => {
     ]);
   });
 
+  it('fails over to the next vetted address when the first refuses the connection', async () => {
+    process.env.ALLOW_INTERNAL_TARGETS = 'true';
+    // Only ::1 listens on this port, so the IPv4 answer (tried first) is refused.
+    const v6 = createServer((_req, res) => res.end('v6 ok'));
+    await new Promise<void>((r) => v6.listen(0, '::1', r));
+    const v6Port = (v6.address() as AddressInfo).port;
+    lookupMock.mockResolvedValue([
+      { address: '127.0.0.1', family: 4 },
+      { address: '::1', family: 6 },
+    ]);
+    try {
+      await expect(
+        createMcpMonitorRequest()(
+          `http://mcp.example.test:${v6Port}/`,
+          {},
+          readText,
+        ),
+      ).resolves.toBe('v6 ok');
+    } finally {
+      await new Promise((r) => v6.close(r));
+    }
+  });
+
   it('resolves again for a different host', async () => {
     process.env.ALLOW_INTERNAL_TARGETS = 'true';
     lookupMock.mockResolvedValue([{ address: '127.0.0.1', family: 4 }]);
