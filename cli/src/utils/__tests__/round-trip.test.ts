@@ -201,3 +201,16 @@ describe('tag casing', () => {
     await expect(resolveTagIds(client, ['nope'])).rejects.toThrow('does not exist')
   })
 })
+
+describe('synthetic monitor test reference', () => {
+  it('shows no change once the test path resolves to its id, although the server adds testTitle to the config', () => {
+    const state = managedState(new ApiClient({ baseUrl: 'https://example.com' }), { organization: { id: 'org' }, project: { id: 'project' } }, join(dir, 'supercheck.config.ts'))
+    state.record('test', 'playwright/portal-quote.pw.ts', TEST_ID)
+    state.record('monitor', 'Portal quote', MONITOR_ID)
+    const local = state.resolveTests(state.apply([{ type: 'monitor', name: 'Portal quote', definition: { name: 'Portal quote', type: 'synthetic_test', config: { testId: 'playwright/portal-quote.pw.ts' } } }]))
+    const remote = [{ id: MONITOR_ID, type: 'monitor' as const, name: 'Portal quote', raw: { name: 'Portal quote', type: 'synthetic_test', target: TEST_ID, config: { testId: TEST_ID, testTitle: 'Portal quote' } } }]
+    expect(reconcile(local, remote)[0].action).toBe('no-change')
+    remote[0].raw.config.testId = TEST_ID_2
+    expect(reconcile(local, remote)[0].action).toBe('update')
+  })
+})
