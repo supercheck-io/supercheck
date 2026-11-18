@@ -178,29 +178,34 @@ function writeZip(entries: ZipEntry[]): Buffer {
   return Buffer.concat([...parts, directory, end]);
 }
 
-/** Replaces secret variants inside the zip Playwright embeds in index.html; other HTML is returned as is. */
-export function scrubEmbeddedReportZip(
-  html: string,
-  variants: string[],
-): string {
-  // Fail closed if Playwright changes this markup: an unmatched report would be uploaded unscrubbed.
-  if (!EMBEDDED_REPORT.test(html)) {
+const MARKER = '<template id="playwrightReportBase64">';
+
+/**
+ * Scrubs index.html: the zip Playwright embeds is rewritten entry by entry, and the rest of the page gets the plain
+ * text replace (never the base64 blob, where a short secret could match by chance and corrupt the zip).
+ * An index.html without the marker (a k6 dashboard) only gets the plain replace.
+ */
+export function scrubReportHtml(html: string, variants: string[]): string {
+  const plain = (text: string) =>
+    variants.reduce((out, v) => out.split(v).join('[SECRET]'), text);
+  const match = EMBEDDED_REPORT.exec(html);
+  if (!match) {
+    // Fail closed if Playwright changes this markup: an unmatched report would be uploaded unscrubbed.
     if (html.includes('playwrightReportBase64'))
       throw new Error('Report zip markup is not recognised');
-    return html;
+    return plain(html);
   }
-  return html.replace(
-    EMBEDDED_REPORT,
-    (_all, head: string, b64: string, tail: string) => {
-      const entries = readZip(Buffer.from(b64, 'base64'));
-      for (const entry of entries) {
-        const original = entry.data.toString('utf8');
-        let text = original;
-        for (const v of variants) text = text.split(v).join('[SECRET]');
-        if (text !== original) entry.data = Buffer.from(text, 'utf8');
-      }
-      return head + writeZip(entries).toString('base64') + tail;
-    },
+  const [all, head, b64, tail] = match;
+  const entries = readZip(Buffer.from(b64, 'base64'));
+  for (const entry of entries) {
+    const original = entry.data.toString('utf8');
+    const text = plain(original);
+    if (text !== original) entry.data = Buffer.from(text, 'utf8');
+  }
+  return (
+    plain(html.slice(0, match.index) + head) +
+    writeZip(entries).toString('base64') +
+    plain(tail + html.slice(match.index + all.length))
   );
 }
 
@@ -223,8 +228,11 @@ export async function scrubSecretsFromReportDir(
         TEXT_REPORT_EXT.has(path.extname(entry.name).toLowerCase())
       ) {
         if ((await fs.stat(full)).size > MAX_SCRUB_FILE_BYTES) {
-          // The embedded report lives in index.html: uploading it unscrubbed would publish any secret in it.
-          if (entry.name === 'index.html')
+          // A Playwright report is embedded in index.html: uploading it unscrubbed would publish any secret in it.
+          if (
+            entry.name === 'index.html' &&
+            (await fs.readFile(full)).includes(MARKER)
+          )
             throw new Error('Report index.html is too large to scrub');
           console.warn(
             `Skipping secret scrub of oversized report file: ${entry.name}`,
@@ -232,11 +240,9 @@ export async function scrubSecretsFromReportDir(
           continue;
         }
         const original = await fs.readFile(full, 'utf8');
-        let text =
-          entry.name === 'index.html'
-            ? scrubEmbeddedReportZip(original, variants)
-            : original;
-        for (const v of variants) text = text.split(v).join('[SECRET]');
+        let text = original;
+        if (entry.name === 'index.html') text = scrubReportHtml(text, variants);
+        else for (const v of variants) text = text.split(v).join('[SECRET]');
         if (text !== original) await fs.writeFile(full, text, 'utf8');
       }
     }

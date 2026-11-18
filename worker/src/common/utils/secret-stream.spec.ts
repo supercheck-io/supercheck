@@ -85,6 +85,8 @@ describe('scrubSecretsFromReportDir', () => {
       '{"errors":[{"message":"Received: Bearer [SECRET] and more"}]}',
     );
     expect(entries[1].data.toString()).toBe('{"stdout":"clean"}');
+    // The page around the blob is scrubbed too, and the blob itself is left alone.
+    expect(html).toContain('<html></html>');
   });
 
   it('fails closed when the embedded report zip is corrupt', async () => {
@@ -136,12 +138,36 @@ describe('scrubSecretsFromReportDir', () => {
     );
   });
 
-  it('fails closed when index.html is too large to scrub', async () => {
+  it('fails closed when a Playwright index.html is too large to scrub', async () => {
     const big = path.join(dir, 'index.html');
-    await fsp.writeFile(big, '');
+    await fsp.writeFile(big, '<template id="playwrightReportBase64">');
     await fsp.truncate(big, 21 * 1024 * 1024);
     await expect(scrubSecretsFromReportDir(dir, secrets)).rejects.toThrow(
       'too large to scrub',
+    );
+  });
+
+  it('skips an oversized index.html without the Playwright marker (a k6 dashboard)', async () => {
+    const warn = jest
+      .spyOn(console, 'warn')
+      .mockImplementation(() => undefined);
+    const big = path.join(dir, 'index.html');
+    await fsp.writeFile(big, '');
+    await fsp.truncate(big, 21 * 1024 * 1024);
+    await expect(
+      scrubSecretsFromReportDir(dir, secrets),
+    ).resolves.toBeUndefined();
+    warn.mockRestore();
+  });
+
+  it('still scrubs plain text of an index.html with no embedded report', async () => {
+    await fsp.writeFile(
+      path.join(dir, 'index.html'),
+      'dashboard a&b<c>"d\'e-secret',
+    );
+    await scrubSecretsFromReportDir(dir, secrets);
+    expect(await fsp.readFile(path.join(dir, 'index.html'), 'utf8')).toBe(
+      'dashboard [SECRET]',
     );
   });
 
