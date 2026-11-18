@@ -27,6 +27,7 @@ import { getSreCopilotChatHistories } from "@/actions/sre-ai";
 import { getSreIncidents } from "@/actions/sre-incidents";
 import { triggerMonacoPreload } from "@/components/monaco-prefetcher";
 import { fetchDashboard, getDashboardQueryKey } from "@/hooks/use-dashboard";
+import { fetchOrgStats, ORG_STATS_QUERY_KEY } from "@/hooks/use-organization";
 import {
   getSreCopilotHistoriesQueryKey,
   getSreIncidentsQueryKey,
@@ -303,26 +304,15 @@ function getRouteConfigs(projectId: string): Record<string, RouteConfig> {
       staleTime: 30_000,
       persist: false,
     },
-    "/variables": {
-      queryKey: ["variables", projectId],
-      queryFn: () =>
-        fetchJsonWithProject(`/api/projects/${projectId}/variables`, projectId),
-      staleTime: STALE_TIME,
-    },
   };
 }
 
 // Organization-scoped routes (not project-scoped)
 const ORG_ROUTES: Record<string, RouteConfig> = {
   "/org-admin": {
-    queryKey: ["organization", "stats"],
-    queryFn: async () => {
-      const res = await fetch("/api/organizations/stats", {
-        headers: { "Content-Type": "application/json" },
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      return res.json();
-    },
+    // Same key and fetcher as useOrgStats, so the cache holds the mapped shape it expects.
+    queryKey: ORG_STATS_QUERY_KEY,
+    queryFn: fetchOrgStats,
     staleTime: STALE_TIME,
   },
 };
@@ -362,7 +352,7 @@ export function prefetchSidebarRoute(
       queryKey: config.queryKey as unknown[],
       queryFn: config.queryFn,
       staleTime: config.staleTime ?? STALE_TIME,
-      meta: { persist: config.persist !== false },
+      ...(config.persist === false && { meta: { persist: false } }),
     });
   }
 

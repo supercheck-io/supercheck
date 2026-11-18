@@ -1012,7 +1012,8 @@ export async function getLinkedTests(
     }));
   } catch (error) {
     console.error("Error getting linked tests:", error);
-    return [];
+    // Throw, not []: the edit form treats [] as "no links" and saving would then delete them.
+    throw new Error("Failed to load linked tests");
   }
 }
 

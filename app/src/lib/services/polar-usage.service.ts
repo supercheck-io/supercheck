@@ -488,14 +488,20 @@ class PolarUsageService {
   }
 
   /**
-   * Get spending status for an organization
+   * Get spending status for an organization.
+   * precomputedMetrics must come from getUsageMetrics for the same organization; never pass it with
+   * `projection`, which must read usage inside its transaction for the cap check.
    */
-  async getSpendingStatus(organizationId: string, projection?: { database: Pick<typeof db, "query">; additionalSreUnits: number }): Promise<SpendingStatus> {
+  async getSpendingStatus(
+    organizationId: string,
+    projection?: { database: Pick<typeof db, "query">; additionalSreUnits: number },
+    precomputedMetrics?: UsageMetrics,
+  ): Promise<SpendingStatus> {
     // Get billing settings
     const cap = await billingSettingsService.getEffectiveSpendingLimit(organizationId, projection?.database ?? db);
 
     // Get current usage metrics
-    const metrics = await this.getUsageMetrics(organizationId, projection);
+    const metrics = precomputedMetrics ?? (await this.getUsageMetrics(organizationId, projection));
     const currentSpendingCents = metrics.totalOverageCostCents;
 
     const limitEnabled = cap.enabled;

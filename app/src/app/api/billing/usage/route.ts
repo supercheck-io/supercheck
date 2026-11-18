@@ -27,7 +27,8 @@ export async function GET() {
     }
 
     const metrics = await polarUsageService.getUsageMetrics(organizationId);
-    const spendingStatus = await polarUsageService.getSpendingStatus(organizationId);
+    // Reuse the metrics above instead of computing the same usage a second time.
+    const spendingStatus = await polarUsageService.getSpendingStatus(organizationId, undefined, metrics);
 
     return NextResponse.json({
       organizationId,

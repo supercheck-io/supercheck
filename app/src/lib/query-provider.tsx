@@ -12,7 +12,7 @@ import { ReactNode, useEffect, useState } from "react";
 import { useSession } from "@/utils/auth-client";
 
 // Bump the version when a persisted query changes shape; older stores are removed on load.
-const CACHE_KEY = "supercheck-cache-v3";
+const CACHE_KEY = "supercheck-cache-v4";
 const CACHE_KEY_PREFIX = "supercheck-cache-";
 const MAX_AGE = 24 * 60 * 60 * 1000; // 24 hours
 const STALE_TIME = 30 * 60 * 1000; // 30 minutes - data is fresh for this long
@@ -26,6 +26,11 @@ let restorationPromise: Promise<void> | undefined;
 // changes, nothing may write that cache back, even if this tab still shows the old data for a moment.
 let cacheClearedByOtherTab = false;
 let stopWatchingCacheKey: (() => void) | undefined;
+
+// These responses carry test scripts, job test scripts, run logs, or monitor configs with inline
+// credentials, so they are never written to localStorage. Checked by key prefix when saving, so no
+// hook, hover prefetch or restored entry can opt them back in through its meta.
+export const NOT_PERSISTED_QUERY_KEYS = [["test"], ["job"], ["run"], ["monitor"], ["monitors"]] as const;
 
 function createClient() {
   return new QueryClient({
@@ -97,6 +102,7 @@ function initializePersistence(
       dehydrateOptions: {
         shouldDehydrateQuery: (query) => {
           if (query.meta?.persist === false) return false;
+          if (NOT_PERSISTED_QUERY_KEYS.some(([prefix]) => query.queryKey[0] === prefix)) return false;
           // Only persist successful queries with data
           return (
             query.state.status === "success" && query.state.data !== undefined
@@ -179,6 +185,8 @@ export function QueryProvider({ children }: { children: ReactNode }) {
       key={settled?.generation ?? 0}
       identity={identity}
       pending={session.isPending}
+      // Only a completed check counts as signed out; a failed one (network, 5xx) must not wipe caches.
+      signedOut={!session.isPending && !session.error && identity === null}
     >
       {children}
     </IdentityQueryProvider>
@@ -189,10 +197,12 @@ function IdentityQueryProvider({
   children,
   identity,
   pending,
+  signedOut,
 }: {
   children: ReactNode;
   identity: string | null;
   pending: boolean;
+  signedOut: boolean;
 }) {
   const client = getClient(pending ? undefined : identity);
   const [isRestoring, setIsRestoring] = useState(true);
@@ -202,6 +212,15 @@ function IdentityQueryProvider({
     // after mount, with queries paused until the saved cache is ready.
     if (pending) return;
     if (!identity) {
+      // Nobody is signed in: drop every saved cache, so an account's data does not wait in this
+      // browser for the next sign-in to prune it.
+      if (signedOut) {
+        try {
+          pruneCaches(window.localStorage, "");
+        } catch {
+          /* storage can be blocked; nothing to prune then */
+        }
+      }
       setIsRestoring(false);
       return;
     }
@@ -210,7 +229,7 @@ function IdentityQueryProvider({
       () => setIsRestoring(false),
       () => setIsRestoring(false),
     );
-  }, [client, identity, pending]);
+  }, [client, identity, pending, signedOut]);
 
   return (
     <QueryClientProvider client={client}>
