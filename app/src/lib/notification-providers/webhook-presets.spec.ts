@@ -49,6 +49,23 @@ describe("webhook-presets", () => {
     expect(config.preset).toBe("custom");
   });
 
+  it("resets the previous preset's headers, body and method when switching to custom", () => {
+    // Otherwise a token typed for one vendor stays in the form and is saved against a custom endpoint.
+    const afterIncidentIo = applyWebhookPresetConfig("incident_io", { url: "https://example.com/hooks" });
+    expect(afterIncidentIo.headers?.Authorization).toContain("REPLACE_WITH");
+    const config = applyWebhookPresetConfig("custom", {
+      ...afterIncidentIo,
+      headers: { Authorization: "Bearer real-token" },
+      method: "PUT",
+    });
+
+    expect(config.preset).toBe("custom");
+    expect(config.url).toBe("https://example.com/hooks");
+    expect(config.headers).toEqual({});
+    expect(config.bodyTemplate).toBe("");
+    expect(config.method).toBe("POST");
+  });
+
   it("exposes provider-specific auth hints without embedding real secrets", () => {
     const jsm = getWebhookPreset("jsm_ops");
 
