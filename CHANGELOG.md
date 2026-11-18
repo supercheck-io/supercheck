@@ -90,6 +90,9 @@ The CLI is versioned separately; see [cli/CHANGELOG.md](cli/CHANGELOG.md). Prere
 
 ### Fixed
 
+- **Agent results on the run page.** Agent runs on Kubernetes now store their results, so the "Agent results" card shows (the report paths were read as if the run directory were `/tmp`).
+- **Single-test run page.** A run of one test shows the test name as its title and "1" tests executed, and no longer shows an empty Job ID card.
+- **Custom webhook preview.** The side card shows the URL you typed, without credentials or query string, instead of the placeholder.
 - **AI SRE live sources actually query connectors.** An investigation with **Include live sources** now receives the project's connector ids, types, query languages and the service's OTel name, so it no longer guesses ids and queries. A wrong connector id or a query-syntax mistake (including an HTTP 400 or 422 from the backend) is returned as a retryable error with the valid ids instead of marking the connector failed for the run. Copilot chat no longer fails a staged log search outside an investigation (the stage is ignored), lists each service with its OTel name, and is told that a capped or unfiltered sample never proves there were no errors; connector query guidance now includes error-filter examples.
 - **Setup wizard no longer ticks steps you jumped past.** Clicking a later step in the list left every earlier step green. A step now shows its check only after you press Continue on it.
 - **AI investigation trace shows why a step failed.** A failed step in *How it was investigated* now shows the tool's short, redacted reason (for example a rejected query or a timeout) instead of only "Failed".
