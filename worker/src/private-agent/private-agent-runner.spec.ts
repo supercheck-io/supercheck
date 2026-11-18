@@ -87,6 +87,33 @@ describe('private agent connector execution', () => {
     );
   });
 
+  it('keeps small values, reports non-finite samples and handles empty series in Prometheus summaries', async () => {
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        data: {
+          result: [
+            {
+              metric: { __name__: 'ratio' },
+              values: [
+                [1, 'NaN'],
+                [2, '+Inf'],
+                [3, '0.0004'],
+              ],
+            },
+            { metric: { __name__: 'empty' }, values: [] },
+          ],
+        },
+      }),
+    });
+    const result = await executePrivateAgentConnectorJob(baseJob);
+    expect(result.evidence[0].summary).toBe(
+      '3 samples returned for up (2 non-finite); last=0.0004 min=0.0004 max=0.0004 avg=0.0004',
+    );
+    expect(result.evidence[1].summary).toBe('0 samples returned for up');
+  });
+
   it('executes Kubernetes jobs without persisting raw pod payloads', async () => {
     global.fetch = jest.fn().mockResolvedValue({
       ok: true,

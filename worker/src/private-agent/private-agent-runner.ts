@@ -870,9 +870,10 @@ function prometheusSeriesSummary(
     .slice(0, 6)
     .map(([key, value]) => `${key}=${String(value).slice(0, 40)}`)
     .join(', ');
-  const head = `${values?.length ?? 0} samples returned for ${query}${labels ? ` (${labels})` : ''}`;
+  const skipped = (values?.length ?? 0) - points.length;
+  const head = `${values?.length ?? 0} samples returned for ${query}${labels ? ` (${labels})` : ''}${skipped ? ` (${skipped} non-finite)` : ''}`;
   if (points.length === 0) return head;
-  const round = (n: number) => String(Math.round(n * 1000) / 1000);
+  const round = (n: number) => String(Number(n.toPrecision(4)));
   const avg = points.reduce((a, b) => a + b, 0) / points.length;
   return `${head}; last=${round(points[points.length - 1])} min=${round(Math.min(...points))} max=${round(Math.max(...points))} avg=${round(avg)}`;
 }
