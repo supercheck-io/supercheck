@@ -21,6 +21,7 @@ import {
   mergeNotificationProviderConfig,
   sanitizeConfigForClient,
 } from "@/lib/notification-providers/crypto";
+import { dropReplacedPresetTemplate } from "@/lib/notification-providers/webhook-presets";
 import {
   normalizeProviderConfig,
   validateProviderConfig,
@@ -211,6 +212,10 @@ export async function PUT(
             existingPlainConfig,
             plainConfig as PlainNotificationProviderConfig
           );
+
+      if (!providerTypeChanged && updateData.type === "webhook") {
+        dropReplacedPresetTemplate(existingPlainConfig, plainConfig, mergedConfig);
+      }
 
       try {
         validateProviderConfig(
