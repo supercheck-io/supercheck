@@ -7,8 +7,8 @@ import { InfoPopover } from "@/components/ui/info-popover";
 type InfoHintProps = {
   /** Accessible name for the trigger, e.g. "Domain setup details". */
   label: string;
-  /** Header title. Defaults to the label. */
-  title?: string;
+  /** Header title. */
+  title: string;
   children: ReactNode;
   side?: "top" | "right" | "bottom" | "left";
   align?: "start" | "center" | "end";
@@ -20,7 +20,7 @@ type InfoHintProps = {
 /** Info popover for a form group or setup step; free-form copy goes in the body. */
 export function InfoHint({ label, title, children, side = "top", ...rest }: InfoHintProps) {
   return (
-    <InfoPopover label={label} title={title ?? label} side={side} contentClassName="w-80" {...rest}>
+    <InfoPopover label={label} title={title} side={side} contentClassName="w-80" {...rest}>
       <div className="space-y-2 text-sm leading-relaxed">{children}</div>
     </InfoPopover>
   );

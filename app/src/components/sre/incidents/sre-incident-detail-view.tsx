@@ -135,7 +135,7 @@ export function SreIncidentDetailView({
 
   const runControls = permissions.canInvestigate ? (
     <SreInvestigationPanel
-      key={investigation?.id ?? "no-investigation"}
+      key={`${incident.id}:${investigation?.id ?? "no-investigation"}`}
       incidentId={incident.id}
       hasPrimaryService={Boolean(incident.primaryServiceId)}
       serviceMappingHref={`/incidents/${incident.id}?edit=service`}
@@ -143,6 +143,7 @@ export function SreIncidentDetailView({
       latestInvestigation={investigation}
       canInvestigate={permissions.canInvestigate}
       canUseLiveConnectors={permissions.canUseLiveConnectors}
+      hasValidConnector={detail.capabilities.hasValidConnector}
       investigationEnabled={detail.capabilities.investigationEnabled}
     />
   ) : null;

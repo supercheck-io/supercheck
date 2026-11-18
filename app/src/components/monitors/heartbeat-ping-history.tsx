@@ -1,6 +1,5 @@
 "use client";
 
-import { useEffect, useRef } from "react";
 import { format } from "date-fns";
 import { ChevronsLeft, ChevronsRight, HeartPulse } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -9,20 +8,11 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { TableBadge, type TableBadgeTone } from "@/components/ui/table-badge";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { formatRunDuration } from "./heartbeat-format";
+import { rowsThatFit, useFitPanelRows } from "./use-fit-panel-rows";
 
-// Table header (h-10) and pager row heights, and the row height used before a row exists.
-const HEAD_PX = 40;
-const NAV_PX = 58;
-const ROW_PX = 41;
-const MIN_ROWS = 5;
-const MAX_ROWS = 50;
-
-/** Rows that fit a fixed-height panel: the header and the pager are always reserved, so the size never oscillates. */
-export function rowsThatFit(panelPx: number, rowPx = ROW_PX): number {
-  if (!(panelPx > 0) || !(rowPx > 0)) return MIN_ROWS;
-  return Math.min(MAX_ROWS, Math.max(MIN_ROWS, Math.floor((panelPx - HEAD_PX - NAV_PX) / rowPx)));
-}
+export { rowsThatFit };
 
 export type HeartbeatResultRow = {
   id: string;
@@ -47,6 +37,20 @@ export function heartbeatResultKind(row: HeartbeatResultRow): { kind: PingKind; 
     ? heartbeat.kind
     : row.isUp ? "ping" : "missed";
   return { kind, userAgent: typeof heartbeat?.userAgent === "string" ? heartbeat.userAgent : null };
+}
+
+/** A run without /start has no duration; a missed run never had one, so only a real ping explains how to get it. */
+function NoDuration({ hint }: { hint: boolean }) {
+  const dash = <span className="text-muted-foreground">—</span>;
+  if (!hint) return dash;
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span tabIndex={0} className="rounded-sm text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">—</span>
+      </TooltipTrigger>
+      <TooltipContent>Call /start to record duration</TooltipContent>
+    </Tooltip>
+  );
 }
 
 interface HeartbeatPingHistoryProps {
@@ -76,21 +80,7 @@ export function HeartbeatPingHistory({
   onPageChange,
   onFitRows,
 }: HeartbeatPingHistoryProps) {
-  const panelRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const panel = panelRef.current;
-    if (!onFitRows || !panel || typeof ResizeObserver === "undefined" || typeof window.matchMedia !== "function") return;
-    const desktop = window.matchMedia("(min-width: 1024px)");
-    const measure = () => {
-      if (!desktop.matches) return;
-      const row = panel.querySelector<HTMLElement>('[data-testid="heartbeat-ping-row"]');
-      onFitRows(rowsThatFit(panel.clientHeight, row?.offsetHeight || ROW_PX));
-    };
-    measure();
-    const observer = new ResizeObserver(measure);
-    observer.observe(panel);
-    return () => observer.disconnect();
-  }, [onFitRows]);
+  const panelRef = useFitPanelRows(onFitRows, '[data-testid="heartbeat-ping-row"]');
 
   return (
     <Card className="flex h-full min-h-0 flex-col overflow-hidden shadow-sm" data-testid="heartbeat-ping-history">
@@ -121,17 +111,20 @@ export function HeartbeatPingHistory({
             <Skeleton className="h-4 w-3/5" />
           </div>
         ) : results.length === 0 ? (
-          <div className="flex flex-1 flex-col items-center justify-center space-y-3 py-8 text-center" data-testid="heartbeat-ping-history-empty">
-            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-muted/50">
-              <HeartPulse className="h-8 w-8 text-muted-foreground" aria-hidden="true" />
+          <div className="flex flex-1 flex-col items-center justify-center space-y-3 px-6 py-8 text-center" data-testid="heartbeat-ping-history-empty">
+            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-muted/50">
+              <HeartPulse className="h-6 w-6 text-muted-foreground" aria-hidden="true" />
             </div>
             <div>
-              <p className="font-medium text-muted-foreground">No Ping Data</p>
-              <p className="mt-1 text-sm text-muted-foreground">Pings will appear here after the first one arrives.</p>
+              <p className="font-medium text-muted-foreground">No pings yet</p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Send your first ping from the job, for example <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">curl -fsS &lt;ping URL&gt;</code>.
+                It shows up here and the monitor turns Up.
+              </p>
             </div>
           </div>
         ) : (
-          <div className="min-h-0 w-full flex-1 overflow-x-auto">
+          <div className="min-h-0 w-full flex-1 overflow-x-auto lg:overflow-y-hidden">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -155,12 +148,12 @@ export function HeartbeatPingHistory({
                           {RESULT[kind].label}
                         </TableBadge>
                       </TableCell>
-                      <TableCell className="px-4 tabular-nums">{duration ?? <span className="text-muted-foreground">-</span>}</TableCell>
-                      <TableCell className="max-w-[220px] truncate px-4 font-mono text-xs" title={userAgent ?? undefined}>
+                      <TableCell className="px-4 tabular-nums">{duration ?? <NoDuration hint={kind !== "missed"} />}</TableCell>
+                      <TableCell className="w-full max-w-0 truncate px-4 font-mono text-xs" title={userAgent ?? undefined}>
                         {kind === "missed" ? (
                           <span className="font-sans text-muted-foreground">No ping before the grace period ended</span>
                         ) : (
-                          userAgent ?? <span className="text-muted-foreground">-</span>
+                          userAgent ?? <span className="text-muted-foreground">—</span>
                         )}
                       </TableCell>
                     </TableRow>

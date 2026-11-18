@@ -2,7 +2,6 @@
 
 import React from "react";
 import { InfoPopover } from "@/components/ui/info-popover";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import type { TestType } from "@/db/schema";
 
 interface AllowedLibrary {
@@ -104,8 +103,7 @@ const RuntimeInfoPopover: React.FC<RuntimeInfoPopoverProps> = ({
       bullets={runtimeInfo.guidance}
       contentClassName="w-96"
     >
-      <ScrollArea className="h-60">
-        <div className="space-y-2">
+      <div className="space-y-2">
           {runtimeInfo.libraries.map((lib) => (
             <div key={lib.name} className="text-sm">
               <code className="font-mono text-xs bg-muted px-1.5 py-0.5 rounded">
@@ -116,8 +114,7 @@ const RuntimeInfoPopover: React.FC<RuntimeInfoPopoverProps> = ({
               </p>
             </div>
           ))}
-        </div>
-      </ScrollArea>
+      </div>
     </InfoPopover>
   );
 };

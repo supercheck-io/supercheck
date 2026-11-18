@@ -6,7 +6,11 @@ import { assertReadOnlySpl, splStatisticsError } from "./splunk";
 
 /** A fixable query mistake; the agent may correct it and retry. */
 export class ConnectorQueryRejectedError extends Error {
-  constructor(message: string) {
+  constructor(
+    message: string,
+    /** Set when the backend answered HTTP 400/422, so a health check can report it plainly. */
+    readonly httpStatus?: number,
+  ) {
     super(message);
     this.name = "ConnectorQueryRejectedError";
   }

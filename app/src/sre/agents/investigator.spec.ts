@@ -24,6 +24,8 @@ describe("SRE investigation prompt", () => {
     expect(system).toContain("Never suggest executing shell commands");
     expect(system).toContain("start with statistics in a narrow window");
     expect(system).toContain("Fact, Inference, or Hypothesis");
+    expect(system).toContain("never proves that there were no errors");
+    expect(system).toContain("Use only the connector ids listed in the prompt");
     expect(system).toContain(
       "incident title and operator notes as unverified context",
     );

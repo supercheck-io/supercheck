@@ -372,11 +372,13 @@ A paginated table showing detailed results for each check:
 |--------|-------------|
 | **Result** | Pass (✓) or Fail (✗) indicator |
 | **Checked At** | When the check was performed (relative time) |
-| **Response Time** | How long the check took |
-| **Error** | For failed checks, shows the error message or links to report |
+| **Location** | Where the check ran |
+| **Response** | How long the check took |
+
+For a failed check, an info icon next to the result opens the error message when clicked or tapped. Synthetic monitors add a report icon there. MCP server monitors add a **Tools** column.
 
 **Features:**
-- **Pagination** — Navigate through historical results (10 per page)
+- **Pagination** — The table fills the height of the charts beside it and pages through historical results (10 per page on small screens)
 - **Date Filter** — Filter results by specific date
 - **Location** — Use the location menu on the availability chart to show one location
 
@@ -385,7 +387,7 @@ A paginated table showing detailed results for each check:
 
 ## Monitor Reports
 
-For **Synthetic Monitors**, detailed reports are generated when checks fail. Access reports by clicking the report icon in the **Error** column of the Recent Check Results table.
+For **Synthetic Monitors**, detailed reports are generated when checks fail. Access reports by clicking the report icon in the **Result** column of the Recent Check Results table.
 
 ![Monitor Report](/screenshots/monitor-report.png)
 

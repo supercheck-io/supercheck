@@ -53,4 +53,13 @@ describe("InfoPopover", () => {
     fireEvent.click(screen.getByRole("button", { name: "About alerts" }));
     expect(onOpenChange).toHaveBeenCalledWith(true);
   });
+
+  it("renders items with duplicate titles without key warnings", () => {
+    const error = jest.spyOn(console, "error").mockImplementation(() => {});
+    render(<InfoPopover label="About x" title="X" items={[{ title: "Same" }, { title: "Same" }]} bullets={["a", "a"]} />);
+    fireEvent.click(screen.getByRole("button", { name: "About x" }));
+    expect(screen.getAllByText("Same")).toHaveLength(2);
+    expect(error).not.toHaveBeenCalled();
+    error.mockRestore();
+  });
 });

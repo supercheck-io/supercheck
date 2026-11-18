@@ -94,8 +94,8 @@ export function InfoPopover({
         </div>
         {items?.length ? (
           <ul className="space-y-2">
-            {items.map(({ icon: ItemIcon, iconClassName, title: itemTitle, description: itemDescription }) => (
-              <li key={itemTitle} className="flex items-start gap-3 rounded-md bg-muted/30 p-2">
+            {items.map(({ icon: ItemIcon, iconClassName, title: itemTitle, description: itemDescription }, index) => (
+              <li key={`${index}-${itemTitle}`} className="flex items-start gap-3 rounded-md bg-muted/30 p-2">
                 {ItemIcon ? (
                   <ItemIcon
                     className={cn("mt-0.5 h-4 w-4 shrink-0", iconClassName ?? "text-muted-foreground")}
@@ -114,8 +114,8 @@ export function InfoPopover({
         ) : null}
         {bullets?.length ? (
           <ul className="list-disc space-y-1 pl-4 text-xs text-muted-foreground marker:text-muted-foreground/60">
-            {bullets.map((bullet) => (
-              <li key={bullet}>{bullet}</li>
+            {bullets.map((bullet, index) => (
+              <li key={`${index}-${bullet}`}>{bullet}</li>
             ))}
           </ul>
         ) : null}
