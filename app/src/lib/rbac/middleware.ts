@@ -10,6 +10,7 @@
  * This replaces both middleware.ts and permission-middleware.ts following DRY principle
  */
 
+import { cache } from "react";
 import { NextRequest, NextResponse } from "next/server";
 import { headers } from "next/headers";
 import { db } from "@/utils/db";
@@ -622,7 +623,7 @@ export async function requireSuperAdmin(): Promise<{
 /**
  * Get user's role (prioritizes organization membership role)
  */
-export async function getUserRole(
+async function loadUserRole(
   userId: string,
   organizationId?: string
 ): Promise<Role> {
@@ -642,7 +643,7 @@ export async function getUserRole(
 /**
  * Get user's organization role
  */
-export async function getUserOrgRole(
+async function loadUserOrgRole(
   userId: string,
   organizationId: string
 ): Promise<Role | null> {
@@ -1195,3 +1196,8 @@ export async function canPerformAdminOperation(
     return false;
   }
 }
+
+// Memoized per request (React.cache): the layout, page and their helpers ask for these several
+// times per render. Each request gets its own scope, so nothing is shared between users.
+export const getUserOrgRole = cache(loadUserOrgRole);
+export const getUserRole = cache(loadUserRole);
