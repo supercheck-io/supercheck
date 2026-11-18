@@ -1,4 +1,4 @@
-import { and, desc, eq, ilike, inArray, isNull, like, or } from "drizzle-orm";
+import { and, desc, DrizzleQueryError, eq, ilike, inArray, isNull, like, or } from "drizzle-orm";
 import { tool } from "ai";
 import { z } from "zod";
 
@@ -48,6 +48,7 @@ import { normalizePrivateAgentEvidenceSummaries } from "@/lib/sre/connector-job-
 import { joinPrivateAgentJob, releasePrivateAgentJobWaiter } from "@/lib/sre/private-agent-job-cancel";
 import { waitForPrivateAgentConnectorJob } from "@/lib/sre/private-agent-job-waiter";
 import { ConnectorQueryRejectedError } from "@/lib/sre/connectors/providers/provider-query-guards";
+import { describeConnectionError } from "@/lib/sre/connectors/connection-error";
 import { flatCredentialFields } from "@/lib/sre/connectors/providers/provider-credentials";
 import { describeMcpToolsForModel } from "@/lib/sre/connectors/providers/mcp";
 import { db } from "@/utils/db";
@@ -751,9 +752,15 @@ export async function searchIncidentLiveConnectorEvidence(
   }
 
   const now = new Date();
+  // The connector's window is the policy maximum; clamp instead of failing the connector.
+  const requestedWindowMinutes = Math.min(
+    input.timeWindowMinutes,
+    connector.defaultTimeWindowMinutes,
+  );
+  const windowClamped = requestedWindowMinutes < input.timeWindowMinutes;
   const effectiveTimeWindowMinutes = stagedStage
-    ? boundedStageWindowMinutes(stagedStage, input.timeWindowMinutes)
-    : input.timeWindowMinutes;
+    ? boundedStageWindowMinutes(stagedStage, requestedWindowMinutes)
+    : requestedWindowMinutes;
   const params = {
     query: input.query,
     serviceId: primaryServiceId,
@@ -773,17 +780,42 @@ export async function searchIncidentLiveConnectorEvidence(
     connector,
     selected.scopedServiceIds,
   );
-  const policyDecision = enforceConnectorPolicy({
-    organizationId: scope.organizationId,
-    projectId: scope.projectId,
-    connector: definition,
-    params,
-    actor: {
-      actorType: "agent",
-      userId: scope.userId ?? undefined,
-      investigationRunId: scope.investigationRunId ?? undefined,
-    },
-  });
+  let policyDecision: ReturnType<typeof enforceConnectorPolicy>;
+  try {
+    policyDecision = enforceConnectorPolicy({
+      organizationId: scope.organizationId,
+      projectId: scope.projectId,
+      connector: definition,
+      params,
+      actor: {
+        actorType: "agent",
+        userId: scope.userId ?? undefined,
+        investigationRunId: scope.investigationRunId ?? undefined,
+      },
+    });
+  } catch (error) {
+    await db.insert(sreInvestigationToolCalls).values({
+      investigationRunId: scope.investigationRunId ?? null,
+      connectorId: connector.id,
+      connectorType: connector.type,
+      toolName: "agent.connector.search.policy_rejected",
+      inputHash: hashConnectorPayload({ connectorId: connector.id, params }),
+      inputSummary: redactConnectorText(
+        JSON.stringify({
+          connectorId: connector.id,
+          connectorType: connector.type,
+          timeWindowMinutes: effectiveTimeWindowMinutes,
+        }),
+      ),
+      status: "error",
+      errorMessage:
+        error instanceof Error ? redactConnectorText(error.message).slice(0, 2000) : "Connector policy rejected the search",
+      durationMs: Date.now() - startedAt,
+      costEstimateCents: 0,
+      executedAt: new Date(),
+    });
+    throw error;
+  }
   const connectorEndpointUrl = endpointUrl(connector);
   await assertEndpointAllowedForExecution(
     connectorEndpointUrl,
@@ -942,7 +974,7 @@ export async function searchIncidentLiveConnectorEvidence(
         evidence: persistedEvidence.map(summarizeEvidenceItem),
         truncated,
         persisted: Boolean(scope.incidentId),
-        message: `${scope.incidentId ? "Persisted" : "Returned"} ${persistedEvidence.length} connector evidence item(s)`,
+        message: `${scope.incidentId ? "Persisted" : "Returned"} ${persistedEvidence.length} connector evidence item(s)${windowClamped ? ` (window capped at the connector's ${requestedWindowMinutes}-minute maximum)` : ""}`,
       };
     }
 
@@ -1051,6 +1083,8 @@ export async function searchIncidentLiveConnectorEvidence(
       truncated: sanitized.truncated,
       persisted: Boolean(scope.incidentId),
       message: `${scope.incidentId ? "Persisted" : "Returned"} ${insertedEvidence.length} connector evidence item(s)${
+        windowClamped ? ` (window capped at the connector's ${requestedWindowMinutes}-minute maximum)` : ""
+      }${
         sanitized.truncated || insertedEvidence.length >= Math.min(outputLimits.maxRows, input.maxRows, MAX_TOOL_ROWS)
           ? ". This is a capped sample, not a complete list: it does not prove that other matching events are absent. Query for the specific signal (for example errors) explicitly."
           : ""
@@ -1317,6 +1351,11 @@ export function createSreConnectorTools(scope: SreConnectorToolScope) {
             };
           }
           connectorFailureGuard.markFailed(input.connectorId);
+          // Network errors get their fixed description (no raw IPs or certificate names); SQL and body fragments are dropped.
+          const reason =
+            error instanceof Error && !(error instanceof DrizzleQueryError) && !(error instanceof SyntaxError)
+              ? redactConnectorText(describeConnectionError(error, "")).slice(0, 300)
+              : "";
           return {
             executionMode: "error" as const,
             queued: false,
@@ -1324,8 +1363,7 @@ export function createSreConnectorTools(scope: SreConnectorToolScope) {
             truncated: false,
             error: true,
             retryable: false,
-            message:
-              "The read-only connector search failed. Do not retry this connector during the current run or treat the failed check as evidence. For Kubernetes, a later run should use an explicit namespace and * unless a label mapping has already been verified.",
+            message: `The read-only connector search failed${reason ? `: ${reason}` : ""}. Do not retry this connector during the current run or treat the failed check as evidence. For Kubernetes, a later run should use an explicit namespace and * unless a label mapping has already been verified.`,
           };
         }
       },

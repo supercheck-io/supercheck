@@ -40,6 +40,7 @@ import { checkSreConnectorSearchRateLimit } from "@/lib/sre/sre-rate-limiter";
 import { sreEvidenceItems } from "@/db/schema";
 import { z } from "zod";
 import { PgDialect } from "drizzle-orm/pg-core";
+import { DrizzleQueryError } from "drizzle-orm";
 import {
   executeIncidentDiagnosticQuery,
   listIncidentDiagnosticQueries,
@@ -189,6 +190,134 @@ describe("MCP connectors in the AI tool layer", () => {
     );
     expect(execute).toHaveBeenCalled();
     expect(result).toMatchObject({ stage: null, truncated: true, message: expect.stringContaining("capped sample") });
+  });
+
+  describe("windows and policy rejections", () => {
+    const lokiRow = {
+      id: connectorId, type: "loki", status: "configured", config: { endpointUrl: "https://loki.example" },
+      permissionLevel: "read", sideEffectLevel: "none", defaultTimeWindowMinutes: 60,
+      outputLimits: { maxRows: 10, maxBytes: 1024, maxSeconds: 15 },
+    };
+    const setup = (row: Record<string, unknown>) => {
+      db.query.sreServices.findFirst.mockResolvedValue({ id: serviceId });
+      db.select
+        .mockReset()
+        .mockReturnValueOnce(selectRows([{ connector: row }]))
+        .mockReturnValueOnce(selectRows([{ connectorId, serviceId }]))
+        .mockReturnValue(selectRows([]));
+      jest.mocked(checkSreConnectorSearchRateLimit).mockResolvedValue({ allowed: true, remaining: 10 });
+      const execute = jest.fn().mockResolvedValue([]);
+      jest.mocked(createDirectConnector).mockImplementation((definition) => ({
+        ...definition, search: execute, validate: jest.fn(), metadata: jest.fn(),
+      }));
+      jest.mocked(sanitizeConnectorEvidence).mockReturnValue({
+        items: [], truncated: false, resultHash: "hash",
+      } as unknown as ReturnType<typeof sanitizeConnectorEvidence>);
+      const values = jest.fn(() => ({ returning: async () => [] }));
+      db.insert.mockReturnValue({ values });
+      return { execute, values };
+    };
+
+    it("clamps a window longer than the connector allows and says so, instead of failing", async () => {
+      const { execute } = setup(lokiRow);
+      const result = await searchIncidentLiveConnectorEvidence(
+        { ...scope, serviceId },
+        { ...search, query: '{service_name="checkout-api"}', timeWindowMinutes: 360 },
+      );
+      const { timeWindow } = execute.mock.calls[0][0];
+      expect(timeWindow.end.getTime() - timeWindow.start.getTime()).toBe(60 * 60_000);
+      expect(result.message).toContain("window capped at the connector's 60-minute maximum");
+    });
+
+    it("adds no note for a window inside the connector limit", async () => {
+      setup(lokiRow);
+      const result = await searchIncidentLiveConnectorEvidence(
+        { ...scope, serviceId },
+        { ...search, query: '{service_name="checkout-api"}', timeWindowMinutes: 30 },
+      );
+      expect(result.message).not.toContain("window capped");
+    });
+
+    it("names the connector maximum, not the stage bound, when both apply", async () => {
+      const { execute } = setup(lokiRow);
+      const runScope = { ...scope, serviceId, investigationRunId: "018f0000-0000-7000-8000-0000000000aa" };
+      const result = await searchIncidentLiveConnectorEvidence(
+        runScope,
+        { ...search, query: 'sum(count_over_time({service_name="checkout-api"}[5m]))', timeWindowMinutes: 360, stage: "statistics" },
+      );
+      const { timeWindow } = execute.mock.calls[0][0];
+      expect(timeWindow.end.getTime() - timeWindow.start.getTime()).toBe(15 * 60_000);
+      expect(result.message).toContain("60-minute maximum");
+    });
+
+    it("records a policy rejection and names it in the failure", async () => {
+      const { values, execute } = setup({ ...lokiRow, permissionLevel: "write" });
+      const tools = createSreConnectorTools({ ...scope, serviceId });
+      const result = await tools.searchLiveConnectorEvidence.execute!(
+        { ...search, query: '{service_name="checkout-api"}' },
+        { toolCallId: "policy", messages: [] },
+      );
+      expect(execute).not.toHaveBeenCalled();
+      expect(values).toHaveBeenCalledWith(expect.objectContaining({
+        status: "error", toolName: "agent.connector.search.policy_rejected",
+        errorMessage: expect.stringMatching(/read-only/i),
+      }));
+      expect(result).toMatchObject({ error: true, retryable: false, message: expect.stringMatching(/failed: .*read-only/i) });
+    });
+
+    it("keeps Loki usable after a statistics query without a metric function", async () => {
+      setup(lokiRow);
+      const tools = createSreConnectorTools({ ...scope, serviceId, investigationRunId: "018f0000-0000-7000-8000-0000000000aa" });
+      const result = await tools.searchLiveConnectorEvidence.execute!(
+        { ...search, query: '{service_name="checkout-api"} |= "error"', stage: "statistics" },
+        { toolCallId: "stats", messages: [] },
+      );
+      expect(result).toMatchObject({ error: true, retryable: true, message: expect.stringContaining("count_over_time") });
+      const again = await tools.searchLiveConnectorEvidence.execute!(
+        { ...search, query: '{service_name="checkout-api"} |= "error"', stage: "statistics" },
+        { toolCallId: "stats-2", messages: [] },
+      );
+      expect(again).not.toHaveProperty("retrySuppressed");
+    });
+
+    it("keeps the connector usable after a stage-order mistake", async () => {
+      setup(lokiRow);
+      const tools = createSreConnectorTools({ ...scope, serviceId, investigationRunId: "018f0000-0000-7000-8000-0000000000aa" });
+      const result = await tools.searchLiveConnectorEvidence.execute!(
+        { ...search, query: '{service_name="checkout-api"}', stage: "sample" },
+        { toolCallId: "order", messages: [] },
+      );
+      expect(result).toMatchObject({ error: true, retryable: true, message: expect.stringContaining("Complete the statistics") });
+    });
+
+    it("names the redacted reason when a search fails hard", async () => {
+      const { execute } = setup(lokiRow);
+      execute.mockRejectedValue(new Error("upstream returned 503 Service Unavailable"));
+      const tools = createSreConnectorTools({ ...scope, serviceId });
+      const result = await tools.searchLiveConnectorEvidence.execute!(
+        { ...search, query: '{service_name="checkout-api"}' },
+        { toolCallId: "hard", messages: [] },
+      );
+      expect(result).toMatchObject({ error: true, retryable: false, message: expect.stringContaining("failed: upstream returned 503") });
+    });
+
+    it.each([
+      ["a refused connection", Object.assign(new Error("connect ECONNREFUSED 10.20.3.7:3100"), { code: "ECONNREFUSED" }), "Connection refused", "10.20.3.7"],
+      ["a database error", new DrizzleQueryError("select * from external_connectors", ["secret-param"]), "", "external_connectors"],
+      ["a non-JSON body", new SyntaxError('Unexpected token \'<\', "<!DOCTYPE "... is not valid JSON'), "", "DOCTYPE"],
+    ])("keeps internal detail out of the reason for %s", async (_name, thrown, shown, hidden) => {
+      const { execute } = setup(lokiRow);
+      execute.mockRejectedValue(thrown);
+      const tools = createSreConnectorTools({ ...scope, serviceId });
+      const result = await tools.searchLiveConnectorEvidence.execute!(
+        { ...search, query: '{service_name="checkout-api"}' },
+        { toolCallId: "detail", messages: [] },
+      );
+      const { message } = result as { message: string };
+      expect(message).not.toContain(hidden);
+      if (shown) expect(message).toContain(shown);
+      else expect(message).toMatch(/^The read-only connector search failed\. /);
+    });
   });
 
   it("returns the OTel name of each listed service for chat", async () => {
