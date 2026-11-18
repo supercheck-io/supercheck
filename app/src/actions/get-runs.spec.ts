@@ -32,6 +32,10 @@ describe("run history authorization", () => {
     jest.mocked(db.select).mockReturnValue({ from: jest.fn().mockReturnThis(), leftJoin: jest.fn().mockReturnThis(), where: jest.fn().mockReturnThis(), limit: jest.fn(async () => [{ ...run, testTitle: "Support bot", metadata: { testId: "t1" } }]) } as never);
     expect(await getRun("run")).toMatchObject({ jobId: null, jobName: "Support bot", testCount: 1 });
   });
+  it.each([["performance", "k6"], ["browser", undefined]])("gives a single %s test run jobType %p", async (testType, jobType) => {
+    jest.mocked(db.select).mockReturnValue({ from: jest.fn().mockReturnThis(), leftJoin: jest.fn().mockReturnThis(), where: jest.fn().mockReturnThis(), limit: jest.fn(async () => [{ ...run, jobType: null, testTitle: "Rates", metadata: { testId: "t1", testType } }]) } as never);
+    expect((await getRun("run"))?.jobType).toBe(jobType);
+  });
   it("counts an unsaved playground test and gives it a title", async () => {
     jest.mocked(db.select).mockReturnValue({ from: jest.fn().mockReturnThis(), leftJoin: jest.fn().mockReturnThis(), where: jest.fn().mockReturnThis(), limit: jest.fn(async () => [{ ...run, testTitle: null, metadata: { testId: "unsaved" } }]) } as never);
     expect(await getRun("run")).toMatchObject({ jobName: "Playground test", testCount: 1 });
