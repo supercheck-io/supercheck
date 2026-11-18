@@ -8,6 +8,8 @@ The CLI is versioned separately; see [cli/CHANGELOG.md](cli/CHANGELOG.md). Prere
 
 ### Upgrade notes
 
+- **Email subjects changed (mail filters).** Sign-up, password reset, invitation and test emails now share the `[Supercheck]` prefix with alerts (alerts and invitations read `<Event>: <Name>`): `[Supercheck] Verify your email address`, `[Supercheck] Reset your password`, `[Supercheck] You're invited: <organization>`, `[Supercheck] Test email`. Update any mail rule that matched the old subjects. No new environment variable.
+
 - **Migration `0086`.** Adds the `project_setup_state` and `user_preferences` tables for project setup. Apply it before you update the app. No new environment variable.
 - **Migration `0084`, then the app, then the worker.** `0084` adds `maintenance_windows` and `maintenance_window_targets`, `monitor_results.in_maintenance` (default false, no table rewrite) and `incidents.maintenance_window_id`. It sets a 5-second lock timeout because `monitor_results` takes constant inserts; if it times out, run it again. An older worker keeps working and simply does not mute for maintenance windows. No new environment variable.
 - **Migration `0083`.** Adds the `sre_incident_resources` table. Apply it before you update the app. No new environment variable.
@@ -56,6 +58,9 @@ The CLI is versioned separately; see [cli/CHANGELOG.md](cli/CHANGELOG.md). Prere
 
 ### Changed
 
+- Page and section info icons now open the same click-to-open popover (icon and title, then short items) instead of a hover tooltip or a long paragraph.
+- **The notification channel dialog is easier to scan.** Every channel type and paging preset (PagerDuty, Jira Service Management, Splunk On-Call, Better Stack, incident.io, custom webhook) now has a logo in the type picker, the preset picker and the Provider column. The picker has group headings and separators, labels use sentence case, fields show example placeholders and helper text, required fields are marked, Enter no longer submits by accident, and the Test connection result shows inline in the dialog.
+- **Email templates.** One shared shell: Supercheck logo (served from your instance's own app URL; omitted when none is set, so self-hosted installs never contact supercheck.io), a "why you received this" line with a link to notification channel, usage or billing settings, one primary button style, row-header detail tables, a document title, and times shown as UTC with an explicit zone (monitor and job alerts and deletion dates included). Trial and usage emails say you receive them because you manage billing, true for owners and admins alike. Alert titles in the body match the subject (`Monitor Down: <name>`), and preheaders drop the `[Supercheck]` prefix.
 - **Monitor detail layout.** Recent Check Results now fits beside the charts without a horizontal scrollbar on desktop: the Error column is gone (the error opens from an info icon on the Result cell), and the table fills the height of the charts and shows as many rows as fit. MCP server monitors no longer have an "MCP server" stat card; the server, version and protocol sit in the Tools panel header. Heartbeat monitors show the ping URL beside an overview of schedule, last and next ping, run duration and uptime, with the ping history full width below.
 - **Include live sources is on by default** for incident investigations when the project has a validated connector and you may use live connectors. You can still turn it off per run.
 - **Connector preview is easier to use.** The Integrations tab names the project it shows and offers a project switch, and its list now reloads when the project changes. "Preview data" (was "Search connector evidence") opens with a query that already fits the selected service, shows results as a compact list that expands for details, explains empty results with a one-click wider window (up to 24 hours, when the connector limit allows it), and shows errors inside the dialog. A connector that is not valid shows its last validation error under the status.
@@ -91,6 +96,7 @@ The CLI is versioned separately; see [cli/CHANGELOG.md](cli/CHANGELOG.md). Prere
 
 ### Fixed
 
+- **AI triage sees the incident's monitor evidence.** Triage on a new incident found no evidence, because built-in monitor, run and alert evidence was only collected by a full investigation or an evidence brief. Triage now collects it first when none is stored (bounded to 15 seconds, best effort).
 - **Status page links honor `STATUS_PAGE_DOMAIN` in cloud mode.** A cloud deployment with its own status page domain showed and routed `<id>.supercheck.io` links, which pointed at another environment. `STATUS_PAGE_DOMAIN` now applies in every mode; unset, cloud still uses `supercheck.io`.
 - **Agent results on the run page.** Agent runs on Kubernetes now store their results, so the "Agent results" card shows (the report paths were read as if the run directory were `/tmp`).
 - **Single-test run page.** A run of one test shows the test name as its title and "1" tests executed, and no longer shows an empty Job ID card.

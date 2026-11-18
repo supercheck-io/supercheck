@@ -53,7 +53,6 @@ import {
   InfoHint,
   InfoHintList,
   InfoHintText,
-  InfoHintTitle,
 } from "@/components/status-pages/info-hint";
 import { toast } from "sonner";
 import {
@@ -595,7 +594,7 @@ export function SettingsTab({
           <div className="space-y-2">
             <div className="flex items-center gap-1">
               <Label htmlFor="name">Title</Label>
-              <InfoHint label="Internal name details">
+              <InfoHint label="Internal name details" title="Internal name">
                 <InfoHintText>
                   Internal name used across the dashboard. Visitors see the
                   headline instead.
@@ -616,7 +615,7 @@ export function SettingsTab({
           <div className="space-y-2">
             <div className="flex items-center gap-1">
               <Label htmlFor="headline">Headline</Label>
-              <InfoHint label="Public heading details">
+              <InfoHint label="Public heading details" title="Public heading">
                 <InfoHintText>
                   Main heading on the public page. Falls back to the page name
                   when left empty.
@@ -638,7 +637,7 @@ export function SettingsTab({
           <div className="space-y-2 md:col-span-2">
             <div className="flex items-center gap-1">
               <Label htmlFor="description">Description</Label>
-              <InfoHint label="Public summary details">
+              <InfoHint label="Public summary details" title="Public summary">
                 <InfoHintText>
                   Short summary shown below the headline on the public page.
                 </InfoHintText>
@@ -662,7 +661,7 @@ export function SettingsTab({
           <div className="space-y-2">
             <div className="flex items-center gap-1">
               <Label htmlFor="supportUrl">Support contact</Label>
-              <InfoHint label="Contact options">
+              <InfoHint label="Contact options" title="Contact options">
                 <InfoHintText>
                   Shown as a contact button on the public page. Email addresses
                   open the visitor&apos;s mail app; URLs open in a new tab.
@@ -686,7 +685,7 @@ export function SettingsTab({
           <div className="space-y-2">
             <div className="flex items-center gap-1">
               <Label htmlFor="language">Language</Label>
-              <InfoHint label="Translation details">
+              <InfoHint label="Translation details" title="Translations">
                 <InfoHintText>
                   Applies to public page text and subscriber emails.
                 </InfoHintText>
@@ -726,11 +725,11 @@ export function SettingsTab({
             <CardTitle className="text-lg">Custom domain</CardTitle>
             <InfoHint
               label="Domain setup details"
+              title="How custom domains work"
               side="bottom"
               className="h-6 w-6"
               contentClassName="w-[34rem]"
             >
-              <InfoHintTitle>How custom domains work</InfoHintTitle>
               <InfoHintList>
                 <li>
                   Point a <strong>CNAME</strong> from a subdomain such as{" "}
@@ -959,7 +958,7 @@ export function SettingsTab({
           <div className="flex items-center gap-2">
             <Bell className="h-5 w-5 text-muted-foreground" />
             <CardTitle className="text-lg">Subscriptions</CardTitle>
-            <InfoHint label="Subscription options">
+            <InfoHint label="Subscription options" title="Subscriptions">
               <InfoHintText>
                 These switches control which subscription options appear on the
                 public page. Turning one off hides it without removing existing
@@ -1016,7 +1015,7 @@ export function SettingsTab({
             <div className="flex items-center gap-2">
               <Palette className="h-5 w-5 text-muted-foreground" />
               <CardTitle className="text-lg">Branding</CardTitle>
-              <InfoHint label="Branding assets">
+              <InfoHint label="Branding assets" title="Branding assets">
                 <InfoHintText>
                   The logo and favicon appear on the public page and in
                   subscriber emails. Colors apply to component and incident

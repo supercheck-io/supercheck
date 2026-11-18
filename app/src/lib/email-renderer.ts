@@ -14,9 +14,7 @@ import {
   StatusPageVerificationEmail,
   StatusPageWelcomeEmail,
   IncidentNotificationEmail,
-  MonitorAlertEmail,
-  alertEmailSubject,
-  IncidentUpdateEmail,
+    IncidentUpdateEmail,
   incidentUpdateHeadline,
   type IncidentUpdateEmailProps,
   TestEmail,
@@ -51,7 +49,7 @@ export async function renderPasswordResetEmail(params: {
   const component = PasswordResetEmail(params);
 
   return {
-    subject: "Reset your Supercheck password",
+    subject: "[Supercheck] Reset your password",
     html: await render(component, { pretty: false }),
     text: await render(component, PLAIN_TEXT_RENDER_OPTIONS),
   };
@@ -68,7 +66,7 @@ export async function renderEmailVerificationEmail(params: {
   const component = EmailVerificationEmail(params);
 
   return {
-    subject: "Verify your email address - Supercheck",
+    subject: "[Supercheck] Verify your email address",
     html: await render(component, { pretty: false }),
     text: await render(component, PLAIN_TEXT_RENDER_OPTIONS),
   };
@@ -86,7 +84,7 @@ export async function renderOrganizationInvitationEmail(params: {
   const component = OrganizationInvitationEmail(params);
 
   return {
-    subject: `You're invited to join ${params.organizationName} on Supercheck`,
+    subject: `[Supercheck] You're invited: ${params.organizationName}`,
     html: await render(component, { pretty: false }),
     text: await render(component, PLAIN_TEXT_RENDER_OPTIONS),
   };
@@ -159,27 +157,6 @@ export async function renderIncidentNotificationEmail(params: {
 }
 
 /**
- * Monitor Alert Email
- */
-export async function renderMonitorAlertEmail(params: {
-  title: string;
-  message: string;
-  fields: Array<{ title: string; value: string }>;
-  footer: string;
-  type: "failure" | "success" | "recovery" | "warning" | "info";
-  color?: string;
-  incidentsUrl?: string;
-}): Promise<RenderedEmail> {
-  const component = MonitorAlertEmail(params);
-
-  return {
-    subject: alertEmailSubject(params.title),
-    html: await render(component, { pretty: false }),
-    text: await render(component, PLAIN_TEXT_RENDER_OPTIONS),
-  };
-}
-
-/**
  * Test Email
  */
 export async function renderTestEmail(params?: {
@@ -188,7 +165,7 @@ export async function renderTestEmail(params?: {
   const component = TestEmail(params || {});
 
   return {
-    subject: "Test Email from Supercheck",
+    subject: "[Supercheck] Test email",
     html: await render(component, { pretty: false }),
     text: await render(component, PLAIN_TEXT_RENDER_OPTIONS),
   };
@@ -277,7 +254,7 @@ export async function renderIncidentUpdateEmail(
 export async function renderOrganizationDeletionEmail(params: {
   organizationName: string;
   kind: OrganizationDeletionKind;
-  purgeDate?: string;
+  purgeDate?: Date;
   daysRemaining?: number;
   settingsUrl?: string;
   projectName?: string;

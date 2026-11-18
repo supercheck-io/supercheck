@@ -532,7 +532,7 @@ export function IncidentFormDialog({
                   <Label htmlFor="incident-component-status">
                     Component status during incident *
                   </Label>
-                  <InfoHint label="Component status">
+                  <InfoHint label="Component status" title="Component status">
                     <InfoHintText>
                       Sets the status shown for every affected component while
                       the incident is active.

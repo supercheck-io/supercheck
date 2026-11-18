@@ -3,7 +3,7 @@ import { Info } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 
-/** Small info icon that explains a concept in one sentence on hover or focus. */
+/** Field-level micro-hint: one short sentence on hover or focus. Page and section help uses `InfoPopover`. */
 export function InfoTip({
   label,
   children,
