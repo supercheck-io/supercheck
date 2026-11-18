@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 
 import { MarkdownReportDialog } from "./markdown-report-dialog";
 
@@ -44,6 +44,34 @@ describe("MarkdownReportDialog", () => {
     expect(link.getAttribute("target")).toBe("_blank");
     expect(link.getAttribute("rel")).toBe("noopener noreferrer");
     expect(rendered.querySelector('a[href^="javascript"]')).toBeNull();
+  });
+
+  it("shows the full link destination next to the label", () => {
+    renderDialog();
+    expect(screen.getByText("(https://example.com)")).toBeTruthy();
+  });
+
+  it("reopens on the Report tab after Source was used", () => {
+    const props = { onClose: () => {}, content: md, isStreaming: false, title: "t", description: "d", downloadFilename: "r.md", loadingMessage: "l" };
+    const { rerender } = render(<MarkdownReportDialog open {...props} />);
+    fireEvent.mouseDown(screen.getByRole("tab", { name: "Source" }), { button: 0 });
+    fireEvent.click(screen.getByRole("tab", { name: "Source" }));
+    rerender(<MarkdownReportDialog open={false} {...props} />);
+    rerender(<MarkdownReportDialog open {...props} />);
+    expect(screen.getByTestId("report-rendered")).toBeTruthy();
+  });
+
+  it("throttles rendering while streaming and renders the final text at once", () => {
+    jest.useFakeTimers();
+    const props = { open: true, onClose: () => {}, title: "t", description: "d", downloadFilename: "r.md", loadingMessage: "l" };
+    const { rerender } = render(<MarkdownReportDialog {...props} content="# A" isStreaming />);
+    rerender(<MarkdownReportDialog {...props} content="# AB" isStreaming />);
+    expect(screen.queryByRole("heading", { name: "AB" })).toBeNull();
+    act(() => { jest.advanceTimersByTime(100); });
+    expect(screen.getByRole("heading", { name: "AB" })).toBeTruthy();
+    rerender(<MarkdownReportDialog {...props} content="# ABC" isStreaming={false} />);
+    expect(screen.getByRole("heading", { name: "ABC" })).toBeTruthy();
+    jest.useRealTimers();
   });
 
   it("shows the raw Markdown in the Source tab", () => {

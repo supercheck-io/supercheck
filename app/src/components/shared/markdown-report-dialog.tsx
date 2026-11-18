@@ -42,6 +42,7 @@ export function MarkdownReportDialog({
   loadingMessage,
 }: MarkdownReportDialogProps) {
   const [view, setView] = useState<"report" | "source">("report");
+  const [shown, setShown] = useState(content);
   const reportRef = useRef<HTMLDivElement | null>(null);
   const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null);
   const monaco = useMonaco();
@@ -54,6 +55,21 @@ export function MarkdownReportDialog({
     }
   }, [monaco, editorTheme]);
 
+  // Start on the formatted report each time the dialog opens.
+  const [wasOpen, setWasOpen] = useState(open);
+  if (open !== wasOpen) {
+    setWasOpen(open);
+    if (open) setView("report");
+  }
+
+  // Re-render the Markdown at most every 100ms while streaming; the final text renders at once.
+  useEffect(() => {
+    if (!isStreaming) return;
+    const t = setTimeout(() => setShown(content), 100);
+    return () => clearTimeout(t);
+  }, [content, isStreaming]);
+  const rendered = isStreaming ? shown : content;
+
   useEffect(() => {
     if (view === "report") {
       editorRef.current = null;
@@ -64,7 +80,7 @@ export function MarkdownReportDialog({
       const lineCount = editorRef.current.getModel()?.getLineCount() ?? 1;
       editorRef.current.revealLine(lineCount);
     }
-  }, [content, isStreaming, view]);
+  }, [rendered, content, isStreaming, view]);
 
   const handleEditorMount = (
     instance: editor.IStandaloneCodeEditor,
@@ -126,7 +142,10 @@ export function MarkdownReportDialog({
             </div>
           </div>
           <div className="flex shrink-0 items-center gap-2 sm:mr-6">
-            <Tabs value={view} onValueChange={(v) => setView(v as "report" | "source")}>
+            <Tabs
+              value={view}
+              onValueChange={(v) => setView(v as "report" | "source")}
+            >
               <TabsList>
                 <TabsTrigger value="report">Report</TabsTrigger>
                 <TabsTrigger value="source">Source</TabsTrigger>
@@ -163,7 +182,7 @@ export function MarkdownReportDialog({
               className="h-full overflow-y-auto p-4"
               data-testid="report-rendered"
             >
-              <ReportMarkdown content={content} />
+              <ReportMarkdown content={rendered} />
             </div>
           ) : content ? (
             <Editor

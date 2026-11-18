@@ -1,5 +1,6 @@
 "use client";
 
+import { Children } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 
@@ -35,15 +36,24 @@ const components: Components = {
     </blockquote>
   ),
   hr: () => <hr className="my-4" />,
+  // The destination is always visible, so injected text cannot hide where a link goes.
   a: ({ href, children }) => (
-    <a
-      href={href}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="underline underline-offset-2"
-    >
-      {children}
-    </a>
+    <>
+      <a
+        href={href}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="underline underline-offset-2"
+      >
+        {children}
+      </a>
+      {href && Children.toArray(children).join("") !== href && (
+        <span className="break-all text-xs text-muted-foreground">
+          {" "}
+          ({href})
+        </span>
+      )}
+    </>
   ),
   code: ({ className, children }) => (
     <code
