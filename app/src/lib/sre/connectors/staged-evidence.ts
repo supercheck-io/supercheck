@@ -30,7 +30,8 @@ export function validateStagedEvidenceTransition(input: {
 }) {
   const required = requiredPreviousEvidenceStage(input.stage);
   if (required && !input.completedStages.has(required)) {
-    throw new Error(
+    // Fixable by the agent: it runs the earlier stage first, so the connector stays usable.
+    throw new ConnectorQueryRejectedError(
       `Complete the ${required.replace(/_/g, " ")} evidence stage before ${input.stage.replace(/_/g, " ")}.`,
     );
   }
@@ -65,7 +66,7 @@ export function validateStagedEvidenceQuery(input: {
   if (input.connectorType === "loki" && input.stage === "statistics") {
     const isMetricLogQl = /\b(?:count_over_time|rate|bytes_rate|bytes_over_time)\s*\(/i.test(input.query);
     if (!isMetricLogQl) {
-      throw new Error(
+      throw new ConnectorQueryRejectedError(
         "Loki statistics must use a bounded LogQL metric function such as count_over_time or rate.",
       );
     }
