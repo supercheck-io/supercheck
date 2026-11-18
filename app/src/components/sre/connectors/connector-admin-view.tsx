@@ -318,6 +318,8 @@ export function ConnectorAdminView({
   const [searchError, setSearchError] = useState<string | null>(null);
   const [isSearchQueryEdited, setIsSearchQueryEdited] = useState(false);
   const searchQueryInputRef = useRef<HTMLInputElement>(null);
+  // Bumped on open and close so a slow search cannot update a different dialog.
+  const searchGenerationRef = useRef(0);
   const [searchResult, setSearchResult] = useState<Extract<
     SreConnectorSearchResult,
     { success: true }
@@ -492,6 +494,7 @@ export function ConnectorAdminView({
     const initialService = availableServices[0];
     const builder = getConnectorQueryBuilder(connector.type);
     const builderValues = builder?.defaults(initialService?.name) ?? {};
+    searchGenerationRef.current += 1;
     setSearchConnector(connector);
     setSearchServiceId(initialService?.id ?? "");
     setSearchQuery(
@@ -552,6 +555,7 @@ export function ConnectorAdminView({
   const submitConnectorSearch = (windowMinutes = Number(searchTimeWindowMinutes)) => {
     if (!searchConnector) return;
 
+    const generation = searchGenerationRef.current;
     setSearchError(null);
     startSearchTransition(async () => {
       const result = await searchSreConnectorEvidence({
@@ -562,6 +566,7 @@ export function ConnectorAdminView({
         filters: searchFilters,
       });
 
+      if (generation !== searchGenerationRef.current) return;
       if (!result.success) {
         setSearchResult(null);
         setSearchError(result.error);
@@ -883,7 +888,11 @@ export function ConnectorAdminView({
 
       <Dialog
         open={Boolean(searchConnector)}
-        onOpenChange={(open) => !open && setSearchConnector(null)}
+        onOpenChange={(open) => {
+          if (open) return;
+          searchGenerationRef.current += 1;
+          setSearchConnector(null);
+        }}
       >
         <DialogContent className="max-h-[calc(100svh-1rem)] w-[calc(100vw-1rem)] max-w-2xl gap-0 overflow-hidden p-0 sm:max-h-[min(90svh,760px)] sm:w-[calc(100vw-2rem)]">
           <DialogHeader className="border-b px-5 py-5 sm:px-6">
@@ -1257,6 +1266,26 @@ export function ConnectorAdminView({
                                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                               )}
                               View job result
+                            </Button>
+                          </div>
+                        ) : searchResult.evidence.length === 0 &&
+                          searchResult.truncated ? (
+                          <div className="space-y-2">
+                            <p className="text-sm font-medium">
+                              Matches were found, but they are too large to
+                              show.
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              The size limit on this connector hid them. Narrow the
+                              query to return smaller results.
+                            </p>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => searchQueryInputRef.current?.focus()}
+                            >
+                              Edit query
                             </Button>
                           </div>
                         ) : searchResult.evidence.length === 0 ? (

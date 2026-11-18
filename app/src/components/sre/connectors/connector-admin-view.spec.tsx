@@ -656,6 +656,37 @@ describe("ConnectorAdminView", () => {
       expect(screen.getByLabelText("Trace search")).toHaveFocus();
     });
 
+    it("does not call a size-limited empty result 'no data'", async () => {
+      await openPreview();
+      jest.mocked(searchSreConnectorEvidence).mockResolvedValueOnce({
+        success: true,
+        truncated: true,
+        message: "Returned 0",
+        evidence: [],
+      });
+      fireEvent.click(screen.getByRole("button", { name: "Run query" }));
+      expect(await screen.findByText(/too large to show/)).toBeInTheDocument();
+      expect(screen.queryByText(/No matching data/)).not.toBeInTheDocument();
+    });
+
+    it("ignores a search that finishes after the dialog was closed", async () => {
+      await openPreview();
+      let finish: (value: Awaited<ReturnType<typeof searchSreConnectorEvidence>>) => void = () => {};
+      jest.mocked(searchSreConnectorEvidence).mockReturnValueOnce(
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+      );
+      fireEvent.click(screen.getByRole("button", { name: "Run query" }));
+      fireEvent.click(screen.getByRole("button", { name: "Close" }));
+      openConnectorActions("Tempo prod");
+      fireEvent.click(await screen.findByRole("menuitem", { name: /preview data/i }));
+      await act(async () => {
+        finish({ success: false, error: "stale failure" });
+      });
+      expect(screen.queryByText("stale failure")).not.toBeInTheDocument();
+    });
+
     it("links only http sources", async () => {
       await openPreview();
       jest.mocked(searchSreConnectorEvidence).mockResolvedValueOnce({
