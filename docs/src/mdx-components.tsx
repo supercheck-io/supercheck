@@ -4,6 +4,7 @@ import { Tab, Tabs } from "fumadocs-ui/components/tabs";
 import { Callout } from "fumadocs-ui/components/callout";
 import { Step, Steps } from "fumadocs-ui/components/steps";
 import { Card, Cards } from "fumadocs-ui/components/card";
+import { TypeTable } from "fumadocs-ui/components/type-table";
 import { Accordion, Accordions } from "fumadocs-ui/components/accordion";
 import { Mermaid } from "./components/mdx/mermaid";
 import { DiagramEmbed } from "./components/mdx/diagram-embed";
@@ -25,6 +26,7 @@ export function getMDXComponents(components?: MDXComponents): MDXComponents {
     Card,
     Accordion,
     Accordions,
+    TypeTable,
     Mermaid,
     DiagramEmbed,
     APIPage,
