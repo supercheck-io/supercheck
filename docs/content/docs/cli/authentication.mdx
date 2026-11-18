@@ -91,8 +91,6 @@ curl -X POST https://app.supercheck.io/api/jobs/<id>/trigger \
 | `SUPERCHECK_TOKEN` | Usually | CLI token for most commands, `deploy`, `diff`, `whoami` and `job trigger --wait` |
 | `SUPERCHECK_TRIGGER_KEY` | For `job trigger` | Job-specific trigger key (`--wait` also needs the CLI token) |
 
-`test run --offline` and `job run --local --offline` need no credential.
-
 | `SUPERCHECK_URL` | No | Base URL (default: `https://app.supercheck.io`). The CLI sends your token only over `https://`, or `http://` to `localhost`, `127.0.0.1` or `[::1]`. An empty value is ignored |
 | `SUPERCHECK_ORG` | No | Default organization ID (UUID) |
 | `SUPERCHECK_PROJECT` | No | Default project ID (UUID) |
@@ -100,7 +98,7 @@ curl -X POST https://app.supercheck.io/api/jobs/<id>/trigger \
 | `NO_PROXY` | No | Hosts to bypass the proxy (comma-separated) |
 | `SUPERCHECK_REQUEST_TIMEOUT_MS` | No | Timeout for browser-login requests in milliseconds (5000 to 120000, default 30000) |
 
-`SUPERCHECK_ORG` and `SUPERCHECK_PROJECT` override the matching `supercheck.config.ts` fields. The project-scoped token decides actual API access.
+`SUPERCHECK_ORG` and `SUPERCHECK_PROJECT` override the matching `supercheck.config.ts` fields. The project-scoped token decides actual API access. `test run --offline` and `job run --local --offline` need no credential.
 
 <Callout type="warn">
 `SUPERCHECK_TOKEN`, `SUPERCHECK_URL`, `SUPERCHECK_TRIGGER_KEY`, every proxy setting (`HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY`, `NO_PROXY`, in either case) and the TLS settings `NODE_TLS_REJECT_UNAUTHORIZED`, `NODE_EXTRA_CA_CERTS`, `NODE_OPTIONS`, `NODE_USE_ENV_PROXY`, `SSL_CERT_FILE`, `SSL_CERT_DIR` and any `DOTENV_*` variable are not read from a project's `.env` file, because a hostile repository could use them to intercept your token. Export them in your shell, use your CI secret store, or run `supercheck login`. Other `.env` variables, such as `SUPERCHECK_ORG` and `SUPERCHECK_PROJECT`, still load.

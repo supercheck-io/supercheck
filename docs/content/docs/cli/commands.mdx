@@ -163,7 +163,7 @@ Deploy records returned IDs in `supercheck.state.json`. Share it with CI so late
 | `--wait` | Wait for browser approval instead of returning immediately (default in an interactive terminal) |
 | `--timeout <seconds>` | With `--wait`: give up after this long (30 to 3600, default 900); the login stays resumable. A dropped connection during the wait is retried until then |
 
-**Browser login** is a device-authorization sign-in. The CLI prints a URL and a short code. You approve the request in the browser, choosing the project the CLI may access, and the CLI stores a project-scoped key that expires in 90 days. Only approve a code you just requested yourself. Compare the code in the confirmation field with your terminal; the info icon shows the request code and requester address.
+**Browser login** is a device-authorization sign-in. The CLI prints a URL and a short code. You approve the request in the browser, choosing the project the CLI may access, and the CLI stores a project-scoped key that expires in 90 days. Only approve a code you just requested yourself. Enter the code from your terminal in the confirmation field; the info icon shows the request code and requester address.
 
 - **Interactive terminal:** waits for approval and opens your browser.
 - **Agents and scripts:** `supercheck login --json` prints the URL and code and returns immediately with `"state": "authorization_pending"`. Run it again after approval to finish. With `--wait` it blocks: it prints the pending object first, then a second JSON line with the result.
