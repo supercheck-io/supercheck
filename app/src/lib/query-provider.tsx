@@ -27,8 +27,13 @@ let restorationPromise: Promise<void> | undefined;
 let cacheClearedByOtherTab = false;
 let stopWatchingCacheKey: (() => void) | undefined;
 
+// These responses carry test scripts, job test scripts, run logs, or monitor configs with inline
+// credentials, so they are never written to localStorage. Set per key prefix so every hook and
+// hover prefetch of that key is covered, whichever creates the query first.
+export const NOT_PERSISTED_QUERY_KEYS = [["test"], ["job"], ["run"], ["monitor"], ["monitors"]] as const;
+
 function createClient() {
-  return new QueryClient({
+  const client = new QueryClient({
     defaultOptions: {
       queries: {
         // GLOBAL DEFAULTS - consistent across all hooks
@@ -41,6 +46,10 @@ function createClient() {
       },
     },
   });
+  for (const queryKey of NOT_PERSISTED_QUERY_KEYS) {
+    client.setQueryDefaults(queryKey, { meta: { persist: false } });
+  }
+  return client;
 }
 
 // A cache is only cleared when its own tab sees the session end, so an expired session or a

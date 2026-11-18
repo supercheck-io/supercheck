@@ -251,13 +251,14 @@ export function useDeleteLocation() {
       const response = await fetch(`/api/admin/locations/${id}`, {
         method: "DELETE",
       });
-      // A non-JSON error body (proxy 502, HTML page) must still surface as a failed delete.
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok || !data?.success) {
+      // The status decides: a 2xx with an empty or non-JSON body is still a delete.
+      const data = await response.json().catch(() => null);
+      if (!response.ok || data?.success === false) {
         throw new Error(data?.error || `Failed to delete location (HTTP ${response.status})`);
       }
       return data;
     },
-    onSuccess: () => invalidateAll(),
+    // Refresh either way: a proxy error can arrive after the server already deleted the row.
+    onSettled: () => invalidateAll(),
   });
 }

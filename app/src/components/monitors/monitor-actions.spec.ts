@@ -122,8 +122,8 @@ describe("invalidateDeletedMonitorCaches", () => {
 
     const invalidated = invalidate.mock.calls.map(([filters]) => JSON.stringify(filters?.queryKey));
     expect(invalidated.some((key) => key?.includes("m1"))).toBe(false);
-    expect(cancel).toHaveBeenCalledTimes(3);
-    expect(remove).toHaveBeenCalledTimes(3);
+    expect(cancel).toHaveBeenCalledTimes(4);
+    expect(remove).toHaveBeenCalledTimes(4);
     for (const [filters] of remove.mock.calls) expect(filters?.queryKey).toContain("m1");
     for (const [filters] of cancel.mock.calls) expect(filters?.queryKey).toContain("m1");
   });
@@ -138,8 +138,8 @@ describe("invalidateDeletedMonitorCaches", () => {
     invalidateDeletedMonitorCaches(client, "m1");
     invalidateDeletedMonitorCaches(client, "m2");
 
-    expect(calls.filter((key) => key.includes("m1"))).toHaveLength(3);
-    expect(calls.filter((key) => key.includes("m2"))).toHaveLength(3);
+    expect(calls.filter((key) => key.includes("m1"))).toHaveLength(4);
+    expect(calls.filter((key) => key.includes("m2"))).toHaveLength(4);
   });
 });
 

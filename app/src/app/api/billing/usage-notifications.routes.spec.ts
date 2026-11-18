@@ -97,6 +97,9 @@ describe("GET /api/billing/usage", () => {
     });
     const body = await (await usageGet()).json();
     expect(mockMetrics).toHaveBeenCalledWith("o1");
+    expect(mockMetrics).toHaveBeenCalledTimes(1);
+    // Spending reuses the metrics already loaded instead of computing usage again.
+    expect(mockSpending).toHaveBeenCalledWith("o1", undefined, { playwrightMinutes: { used: 1 } });
     expect(body.spending).toMatchObject({
       currentDollars: 12.5,
       limitDollars: null,

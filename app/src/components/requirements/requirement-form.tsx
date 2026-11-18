@@ -237,7 +237,7 @@ export function RequirementForm({
     });
 
     // Fetch linked tests if in edit mode
-    const { data: linkedTests = NO_LINKED_TESTS } = useQuery<LinkedTest[]>({
+    const { data: linkedTests = NO_LINKED_TESTS, isSuccess, isFetchedAfterMount } = useQuery<LinkedTest[]>({
         queryKey: [...REQUIREMENT_LINKED_TESTS_QUERY_KEY, requirementId],
         queryFn: async () => requirementId ? getLinkedTests(requirementId) : [],
         enabled: !!requirementId && mode === "edit",
@@ -270,6 +270,14 @@ export function RequirementForm({
     }, [linkedTests, mode]);
 
     const onSubmit = form.handleSubmit(async (values: FormData) => {
+        // Saving replaces the whole link list, so it needs the current links, fetched on this visit:
+        // a cached list (from earlier or another tab) could be missing links and would delete them.
+        if (mode === "edit" && !(isSuccess && isFetchedAfterMount)) {
+            toast.error("Linked tests haven't loaded yet", {
+                description: "Wait for them to load, or reload the page, then save again.",
+            });
+            return;
+        }
         setIsSubmitting(true);
 
         try {

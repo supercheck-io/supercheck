@@ -122,8 +122,6 @@ export function prefetchTestPage(
       return response.json();
     },
     staleTime: 60 * 1000, // 1 minute - match useTest hook
-    // The response carries the full script; keep it out of localStorage, as useTest does.
-    meta: { persist: false },
   });
 
   // Also trigger Monaco preload for playground

@@ -145,16 +145,10 @@ export function DataTableRowActions<TData>({
         duration: 5000, // Add auto-dismiss after 5 seconds
       });
 
-      // Refresh the list and drop the deleted monitor's own queries (refetching them would 404)
+      // Refresh the list and drop the deleted monitor's own queries (refetching them would 404).
+      // The list is fetched in the browser, so no router.refresh() (it re-runs the server layout).
       invalidateDeletedMonitorCaches(queryClient, monitor.id);
-
-      // Call onDelete callback if provided
-      if (onDelete) {
-        onDelete();
-      }
-
-      // Refresh the page to update the list
-      router.refresh();
+      onDelete?.();
     } catch (error) {
       console.error("Error deleting monitor:", error);
       toast.error("Error deleting monitor", {

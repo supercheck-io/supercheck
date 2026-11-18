@@ -1,5 +1,5 @@
 import { dehydrate, hydrate, QueryClient } from "@tanstack/react-query";
-import { prefetchSidebarRoute, prefetchTestPage } from "./prefetch-utils";
+import { prefetchSidebarRoute } from "./prefetch-utils";
 import { ORG_STATS_QUERY_KEY } from "@/hooks/use-organization";
 import { getDashboardQueryKey, type DashboardData } from "@/hooks/use-dashboard";
 
@@ -121,19 +121,6 @@ describe("variables hover prefetch", () => {
     const fetchMock = jest.spyOn(global, "fetch");
     prefetchSidebarRoute("/variables", "vars-project", client);
     expect(fetchMock).not.toHaveBeenCalled();
-    client.clear();
-  });
-});
-
-describe("test row hover prefetch", () => {
-  afterEach(() => jest.restoreAllMocks());
-
-  it("marks the prefetched test (full script) as not persisted", async () => {
-    const client = createClient();
-    jest.spyOn(global, "fetch").mockResolvedValue({ ok: true, json: async () => ({ id: "t-hover", script: "x()" }) } as Response);
-    prefetchTestPage("t-hover", client);
-    await client.fetchQuery({ queryKey: ["test", "t-hover"], staleTime: 60_000 });
-    expect(client.getQueryCache().find({ queryKey: ["test", "t-hover"] })?.meta?.persist).toBe(false);
     client.clear();
   });
 });

@@ -108,6 +108,22 @@ describe("QueryProvider hydration", () => {
     }
   });
 
+  it("never saves scripts, run logs or monitor configs, whichever hook or prefetch created the query", async () => {
+    render(<QueryProvider><AlertsProbe /></QueryProvider>);
+    await screen.findByText("Alerts: 1; channels: 1");
+    act(() => {
+      for (const key of [["test", "t1"], ["job", "j1"], ["run", "r1"], ["monitor", "m1"], ["monitors", "project-1", "{}"], ["monitors", "picker", "project-1"]]) {
+        mountedClient.setQueryData(key, { script: "secret()" });
+      }
+      mountedClient.setQueryData(["monitor-stats", "m1"], "saved-stats");
+      mountedClient.setQueryData(["tests", "project-1", "{}"], "saved-list");
+    });
+    await waitFor(() => expect(localStorage.getItem(CACHE_KEY)).toContain("saved-stats"));
+    const saved = localStorage.getItem(CACHE_KEY)!;
+    expect(saved).toContain("saved-list");
+    expect(saved).not.toContain("secret()");
+  });
+
   it("preserves persistence opt-outs and clears the cache at identity changes", async () => {
     render(<QueryProvider><AlertsProbe /></QueryProvider>);
     await screen.findByText("Alerts: 1; channels: 1");

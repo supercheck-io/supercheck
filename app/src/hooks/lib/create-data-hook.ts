@@ -31,8 +31,6 @@ export interface DataHookConfig<T, CreateData, UpdateData> {
   singleItemField?: string;
   /** Other caches that mutations here also make stale (e.g. the dashboard). */
   relatedQueryKeys?: readonly (readonly string[])[];
-  /** false keeps single items out of the localStorage cache (e.g. test scripts). */
-  persistSingle?: boolean;
 }
 
 export interface ListQueryOptions {
@@ -176,7 +174,6 @@ export function createDataHook<
     refetchOnMount = false,
     singleItemField,
     relatedQueryKeys = [],
-    persistSingle = true,
   } = config;
 
   const singleQueryKey = [queryKey[0].replace(/s$/, "")] as const;
@@ -254,7 +251,6 @@ export function createDataHook<
       refetchOnWindowFocus: false,
       refetchOnMount: false,
       refetchOnReconnect: false,
-      ...(persistSingle === false && { meta: { persist: false } }),
       // Note: Removed placeholderData to ensure fresh data is shown immediately after fetch
     });
 

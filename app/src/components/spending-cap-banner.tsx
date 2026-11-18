@@ -26,7 +26,10 @@ export function SpendingCapBanner({ enabled }: { enabled: boolean }) {
     // Picks up a cap raised elsewhere or a billing period reset while the app stays open.
     refetchInterval: 5 * 60_000,
     retry: false,
-    refetchOnWindowFocus: true,
+    // The 5-minute timer and the settings-saved event cover updates; focus refetches only add load.
+    refetchOnWindowFocus: false,
+    // Not restored from localStorage: a saved "cap reached" would show without a refetch after a reload.
+    meta: { persist: false },
   });
   // The spending controls announce a save, so a raised cap clears the banner at once.
   useEffect(() => {
