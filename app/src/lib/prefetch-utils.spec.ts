@@ -1,5 +1,6 @@
 import { dehydrate, hydrate, QueryClient } from "@tanstack/react-query";
 import { prefetchSidebarRoute } from "./prefetch-utils";
+import { ORG_STATS_QUERY_KEY } from "@/hooks/use-organization";
 import { getDashboardQueryKey, type DashboardData } from "@/hooks/use-dashboard";
 
 jest.mock("@/actions/sre-ai", () => ({ getSreCopilotChatHistories: jest.fn() }));
@@ -88,6 +89,38 @@ describe("dashboard hover prefetch", () => {
       client.fetchQuery({ queryKey: getDashboardQueryKey("dash-failure") }),
     ).rejects.toThrow();
     expect(client.getQueryData(getDashboardQueryKey("dash-failure"))).toBeUndefined();
+    client.clear();
+  });
+});
+
+describe("org-admin hover prefetch", () => {
+  afterEach(() => jest.restoreAllMocks());
+
+  it("stores org stats in the mapped shape useOrgStats reads, not the raw API envelope", async () => {
+    const client = createClient();
+    jest.spyOn(global, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => ({ success: true, data: { members: 4, projects: 2, tests: 9 } }),
+    } as Response);
+
+    prefetchSidebarRoute("/org-admin", null, client);
+    await client.fetchQuery({ queryKey: ORG_STATS_QUERY_KEY, staleTime: 60_000 });
+
+    expect(client.getQueryData(ORG_STATS_QUERY_KEY)).toEqual(
+      expect.objectContaining({ memberCount: 4, projectCount: 2, testCount: 9 }),
+    );
+    client.clear();
+  });
+});
+
+describe("variables hover prefetch", () => {
+  afterEach(() => jest.restoreAllMocks());
+
+  it("sends no request, since the variables page loads its own data", () => {
+    const client = createClient();
+    const fetchMock = jest.spyOn(global, "fetch");
+    prefetchSidebarRoute("/variables", "vars-project", client);
+    expect(fetchMock).not.toHaveBeenCalled();
     client.clear();
   });
 });

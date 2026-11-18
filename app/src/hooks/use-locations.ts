@@ -199,9 +199,10 @@ export function useCreateLocation() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
-      const data = await response.json();
-      if (!response.ok || !data.success) {
-        throw new Error(data.error || "Failed to create location");
+      // An HTML error page (proxy 502) must surface as this error, not a JSON parse error.
+      const data = await response.json().catch(() => null);
+      if (!response.ok || !data?.success) {
+        throw new Error(data?.error || `Failed to create location (HTTP ${response.status})`);
       }
       return data.data;
     },
@@ -233,9 +234,10 @@ export function useUpdateLocation() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
-      const data = await response.json();
-      if (!response.ok || !data.success) {
-        throw new Error(data.error || "Failed to update location");
+      // An HTML error page (proxy 502) must surface as this error, not a JSON parse error.
+      const data = await response.json().catch(() => null);
+      if (!response.ok || !data?.success) {
+        throw new Error(data?.error || `Failed to update location (HTTP ${response.status})`);
       }
       return data.data;
     },
@@ -251,12 +253,14 @@ export function useDeleteLocation() {
       const response = await fetch(`/api/admin/locations/${id}`, {
         method: "DELETE",
       });
-      const data = await response.json();
-      if (!response.ok || !data.success) {
-        throw new Error(data.error || "Failed to delete location");
+      // The status decides: a 2xx with an empty or non-JSON body is still a delete.
+      const data = await response.json().catch(() => null);
+      if (!response.ok || data?.success === false) {
+        throw new Error(data?.error || `Failed to delete location (HTTP ${response.status})`);
       }
       return data;
     },
-    onSuccess: () => invalidateAll(),
+    // Refresh either way: a proxy error can arrive after the server already deleted the row.
+    onSettled: () => invalidateAll(),
   });
 }

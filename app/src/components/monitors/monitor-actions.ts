@@ -1,7 +1,7 @@
 import type { QueryClient } from "@tanstack/react-query";
 import { DASHBOARD_QUERY_KEY } from "@/hooks/use-dashboard";
 import { MONITORS_QUERY_KEY, MONITOR_QUERY_KEY } from "@/hooks/use-monitors";
-import { MONITOR_RESULTS_KEY, MONITOR_STATS_KEY } from "@/hooks/use-monitor-details";
+import { MONITOR_PERMISSIONS_KEY, MONITOR_RESULTS_KEY, MONITOR_STATS_KEY } from "@/hooks/use-monitor-details";
 import { hasPermission } from "@/lib/rbac/client-permissions";
 import type { Role } from "@/lib/rbac/permissions-client";
 
@@ -30,7 +30,7 @@ export function invalidateMonitorCaches(queryClient: QueryClient, monitorId?: st
 /** After a delete: refresh the list, but drop (not refetch) the monitor's own queries, which would 404. */
 export function invalidateDeletedMonitorCaches(queryClient: QueryClient, monitorId: string) {
   invalidateMonitorCaches(queryClient);
-  for (const key of [MONITOR_QUERY_KEY, MONITOR_STATS_KEY, MONITOR_RESULTS_KEY]) {
+  for (const key of [MONITOR_QUERY_KEY, MONITOR_STATS_KEY, MONITOR_RESULTS_KEY, MONITOR_PERMISSIONS_KEY]) {
     void queryClient.cancelQueries({ queryKey: [...key, monitorId] });
     queryClient.removeQueries({ queryKey: [...key, monitorId] });
   }

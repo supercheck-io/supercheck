@@ -1,5 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { createDataHook, type PaginatedResponse } from "./lib/create-data-hook";
+import { createDataHook, type PaginatedResponse, type SingleQueryOptions } from "./lib/create-data-hook";
 import { DASHBOARD_QUERY_KEY } from "./use-dashboard";
 
 export interface Test {
@@ -60,6 +60,7 @@ export interface UseTestsOptions {
   type?: string;
   search?: string;
   enabled?: boolean;
+  /** The list is persisted to localStorage, so keep this false unless scripts are needed on screen. */
   includeScript?: boolean;
   limit?: number;
   page?: number;
@@ -77,8 +78,8 @@ export function useTests(options: UseTestsOptions = {}) {
   };
 }
 
-export function useTest(testId: string | null) {
-  return testsHook.useSingle(testId);
+export function useTest(testId: string | null, options?: SingleQueryOptions) {
+  return testsHook.useSingle(testId, options);
 }
 
 export function useTestMutations() {

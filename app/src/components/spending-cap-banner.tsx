@@ -9,9 +9,11 @@ export const BILLING_SETTINGS_SAVED_EVENT = "supercheck:billing-settings-saved";
 
 type UsageResponse = { spending?: { isAtLimit?: boolean; hardStopEnabled?: boolean; limitEnabled?: boolean } };
 
-async function fetchSpending(): Promise<UsageResponse | null> {
+async function fetchSpending(): Promise<UsageResponse> {
   const response = await fetch("/api/billing/usage");
-  return response.ok ? response.json() : null;
+  // Throw so a failed check keeps the last known state instead of caching "no cap reached".
+  if (!response.ok) throw new Error(`Failed to load spending status (${response.status})`);
+  return response.json();
 }
 
 /** Tells org admins which work is paused while the hard-stop overage cap is reached. */
@@ -24,7 +26,10 @@ export function SpendingCapBanner({ enabled }: { enabled: boolean }) {
     // Picks up a cap raised elsewhere or a billing period reset while the app stays open.
     refetchInterval: 5 * 60_000,
     retry: false,
-    refetchOnWindowFocus: true,
+    // The 5-minute timer and the settings-saved event cover updates; focus refetches only add load.
+    refetchOnWindowFocus: false,
+    // Not restored from localStorage: a saved "cap reached" would show without a refetch after a reload.
+    meta: { persist: false },
   });
   // The spending controls announce a save, so a raised cap clears the banner at once.
   useEffect(() => {

@@ -4,6 +4,7 @@ import {
   validateStagedEvidenceQuery,
   validateStagedEvidenceTransition,
 } from "./staged-evidence";
+import { ConnectorQueryRejectedError } from "./providers/provider-query-guards";
 
 describe("staged connector evidence", () => {
   it("requires the immediately preceding stage", () => {
@@ -11,6 +12,11 @@ describe("staged connector evidence", () => {
       stage: "sample",
       completedStages: new Set(),
     })).toThrow("Complete the statistics evidence stage");
+    // Retryable: the agent runs the earlier stage instead of losing the connector.
+    expect(() => validateStagedEvidenceTransition({
+      stage: "sample",
+      completedStages: new Set(),
+    })).toThrow(ConnectorQueryRejectedError);
 
     expect(() => validateStagedEvidenceTransition({
       stage: "sample",

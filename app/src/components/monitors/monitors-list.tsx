@@ -37,7 +37,7 @@ export default function MonitorsList({ tabs }: { tabs?: ReactNode } = {}) {
 
   // Use React Query hook for monitors data (cached, handles loading/error)
   // No pagination params = API returns all monitors for client-side filtering
-  const { monitors, isLoading, isRestoring, invalidate, error, refetch } = useMonitors();
+  const { monitors, isLoading, isRestoring, error, refetch } = useMonitors();
   
 
   // Handle row click to navigate to monitor detail
@@ -50,10 +50,9 @@ export default function MonitorsList({ tabs }: { tabs?: ReactNode } = {}) {
     // Check if mounted before proceeding
     if (!isMounted) return;
     
-    // Invalidate React Query cache to refresh monitors list
-    invalidate();
+    // The row action already invalidated the list; a second invalidate would restart the request.
     setTableKey(prev => prev + 1);
-  }, [isMounted, invalidate]);
+  }, [isMounted]);
 
   const loading = !isMounted || isRestoring;
   const isEmpty = !loading && !error && !isLoading && monitors.length === 0;

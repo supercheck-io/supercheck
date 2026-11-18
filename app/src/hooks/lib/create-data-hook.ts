@@ -41,6 +41,11 @@ export interface ListQueryOptions {
 
 export interface SingleQueryOptions {
   enabled?: boolean;
+  /**
+   * Editors seed their form from the first data they get, so a cached copy (possibly hours old)
+   * could be saved over a newer edit. fresh refetches on mount and reports loading until done.
+   */
+  fresh?: boolean;
 }
 
 function buildSearchParams(options: Record<string, unknown>, pageParamName = "limit"): URLSearchParams {
@@ -235,7 +240,7 @@ export function createDataHook<
   function useSingle(id: string | null, options: SingleQueryOptions = {}) {
     const queryClient = useQueryClient();
     const isRestoring = useIsRestoring();
-    const { enabled = true } = options;
+    const { enabled = true, fresh = false } = options;
     const singleKey = [...singleQueryKey, id];
 
     const { currentProject } = useProjectContext();
@@ -249,7 +254,7 @@ export function createDataHook<
       ...(staleTime !== undefined && { staleTime }),
       ...(gcTime !== undefined && { gcTime }),
       refetchOnWindowFocus: false,
-      refetchOnMount: false,
+      refetchOnMount: fresh ? 'always' : false,
       refetchOnReconnect: false,
       // Note: Removed placeholderData to ensure fresh data is shown immediately after fetch
     });
@@ -257,7 +262,9 @@ export function createDataHook<
     const invalidate = () =>
       queryClient.invalidateQueries({ queryKey: singleKey, refetchType: 'all' });
 
-    const isInitialLoading = query.isPending && query.isFetching && !isRestoring;
+    const isInitialLoading = fresh
+      ? enabled && !!id && !query.isFetchedAfterMount
+      : query.isPending && query.isFetching && !isRestoring;
 
     return {
       data: query.data,

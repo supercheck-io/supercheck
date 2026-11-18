@@ -48,4 +48,24 @@ describe("SpendingCapBanner", () => {
     act(() => { window.dispatchEvent(new Event(BILLING_SETTINGS_SAVED_EVENT)); });
     await waitFor(() => expect(screen.queryByRole("status")).not.toBeInTheDocument());
   });
+
+  it("keeps the banner when a later check fails instead of treating the failure as no cap", async () => {
+    const client = new QueryClient();
+    const fetchMock = jest.fn().mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ spending: { limitEnabled: true, hardStopEnabled: true, isAtLimit: true } }),
+    });
+    global.fetch = fetchMock;
+    render(
+      <QueryClientProvider client={client}>
+        <SpendingCapBanner enabled />
+      </QueryClientProvider>,
+    );
+    expect(await screen.findByRole("status")).toBeInTheDocument();
+    fetchMock.mockResolvedValueOnce({ ok: false, status: 503, json: async () => ({}) });
+    act(() => { window.dispatchEvent(new Event(BILLING_SETTINGS_SAVED_EVENT)); });
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(client.getQueryState(["billing-usage", "spending-cap-banner"])?.fetchStatus).toBe("idle"));
+    expect(screen.getByRole("status")).toBeInTheDocument();
+  });
 });

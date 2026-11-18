@@ -19,7 +19,7 @@ jest.mock("@/hooks/use-project-context", () => ({
 }));
 jest.mock("next/navigation", () => ({ usePathname: () => "/" }));
 
-const CACHE_KEY = "supercheck-cache-v3:user-a";
+const CACHE_KEY = "supercheck-cache-v4:user-a";
 const fetchMock = jest.fn();
 let mountedClient: QueryClient;
 
@@ -106,6 +106,30 @@ describe("QueryProvider hydration", () => {
       await act(async () => root?.unmount());
       container.remove();
     }
+  });
+
+  it("never saves scripts, run logs or monitor configs, whichever hook or prefetch created the query", async () => {
+    render(<QueryProvider><AlertsProbe /></QueryProvider>);
+    await screen.findByText("Alerts: 1; channels: 1");
+    // A prefetch or restored entry that says persist:true must not opt a sensitive key back in.
+    await act(async () => {
+      await mountedClient.prefetchQuery({
+        queryKey: ["monitors", "project-1", "hover"],
+        queryFn: async () => ({ config: { auth: { password: "secret()" } } }),
+        meta: { persist: true },
+      });
+    });
+    act(() => {
+      for (const key of [["test", "t1"], ["job", "j1"], ["run", "r1"], ["monitor", "m1"], ["monitors", "project-1", "{}"], ["monitors", "picker", "project-1"]]) {
+        mountedClient.setQueryData(key, { script: "secret()" });
+      }
+      mountedClient.setQueryData(["monitor-stats", "m1"], "saved-stats");
+      mountedClient.setQueryData(["tests", "project-1", "{}"], "saved-list");
+    });
+    await waitFor(() => expect(localStorage.getItem(CACHE_KEY)).toContain("saved-stats"));
+    const saved = localStorage.getItem(CACHE_KEY)!;
+    expect(saved).toContain("saved-list");
+    expect(saved).not.toContain("secret()");
   });
 
   it("preserves persistence opt-outs and clears the cache at identity changes", async () => {

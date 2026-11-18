@@ -226,6 +226,21 @@ describe("PolarUsageService retry idempotency", () => {
     expect(spending).toMatchObject({ percentageUsed: 99, isAtLimit: false });
   });
 
+  it("uses precomputed metrics without computing usage again", async () => {
+    const spy = jest.spyOn(polarUsageService, "getUsageMetrics");
+    const database = { query: {
+      billingSettings: { findFirst: jest.fn().mockResolvedValue(undefined) },
+      organization: { findFirst: jest.fn().mockResolvedValue({ subscriptionPlan: "plus" }) },
+      planLimits: { findFirst: jest.fn().mockResolvedValue({ defaultSpendingLimitCents: 7000 }) },
+    } } as unknown as Pick<typeof db, "query">;
+    const spending = await polarUsageService.getSpendingStatus(
+      "org-1", { database, additionalSreUnits: 0 }, { totalOverageCostCents: 7000 } as never,
+    );
+    expect(spy).not.toHaveBeenCalled();
+    spy.mockRestore();
+    expect(spending).toMatchObject({ currentSpendingCents: 7000, isAtLimit: true });
+  });
+
   it("applies the plan default cap when the owner has not set one", async () => {
     const spy = jest.spyOn(polarUsageService, "getUsageMetrics").mockResolvedValue({ totalOverageCostCents: 7000 } as never);
     const database = { query: {

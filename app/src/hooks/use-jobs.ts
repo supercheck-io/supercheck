@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient, type QueryClient } from "@tanstack/react-query";
-import { createDataHook, type PaginatedResponse } from "./lib/create-data-hook";
+import { createDataHook, type PaginatedResponse, type SingleQueryOptions } from "./lib/create-data-hook";
 import { RUNS_QUERY_KEY } from "./use-runs";
 import { DASHBOARD_QUERY_KEY } from "./use-dashboard";
 
@@ -123,8 +123,8 @@ export function useJobs(options: UseJobsOptions = {}) {
   };
 }
 
-export function useJob(jobId: string | null) {
-  return jobsHook.useSingle(jobId);
+export function useJob(jobId: string | null, options?: SingleQueryOptions) {
+  return jobsHook.useSingle(jobId, options);
 }
 
 export function useJobMutations() {
