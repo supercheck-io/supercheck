@@ -23,7 +23,7 @@ Paging and on-call services are set up as webhook channels with a preset: PagerD
 Open **Communicate → Notifications → Channels** and select **Create channel**.
 </Step>
 <Step>
-Pick the provider and enter its credentials (see [Provider Configuration](#provider-configuration)).
+Pick the **Channel type** (email, Slack, Teams, Discord, Telegram, a paging service preset or a custom webhook) and enter its credentials (see [Provider Configuration](#provider-configuration)).
 </Step>
 <Step>
 Select **Test connection**, then save.
@@ -292,8 +292,8 @@ The webhook channel includes presets that fill the method, headers, and JSON bod
 | PagerDuty Events API v2 | Trigger and resolve incidents using `{{pagerDutyEventAction}}` and `{{dedupKey}}` | [PagerDuty Events API v2](https://developer.pagerduty.com/docs/events-api-v2/overview/) |
 | Jira Service Management | Creates alerts with an alias, sent to `api.atlassian.com/jsm/ops/integration/v2/alerts` with `Authorization: GenieKey <integration key>`; recovery closes the alert by alias | [JSM integration events](https://developer.atlassian.com/cloud/jira/service-desk-ops/rest/v1/api-group-integration-events/) |
 | Splunk On-Call REST endpoint | Send VictorOps/Splunk On-Call `CRITICAL` and `RECOVERY` events | [Splunk On-Call REST Endpoint](https://help.victorops.com/knowledge-base/rest-endpoint-integration-guide/) |
-| Better Stack webhook | Sends `status: alert` on failure and `status: resolved` on recovery with `dedup_key`. In Better Stack, set the create rule to "status contains alert", the resolve rule to "status contains resolved" and the alert id to `dedup_key` | [Better Stack webhooks](https://betterstack.com/docs/uptime/integrations/webhooks/) |
-| incident.io alert source | Sends `status: firing` on failure and `status: resolved` on recovery with `deduplication_key` | [incident.io alert sources](https://incident.io/docs/alert-sources) |
+| Better Stack webhook | Sends `status: alert` on failure and `status: resolved` on recovery with `dedup_key`. In Better Stack, set the create rule to "status contains alert", the resolve rule to "status contains resolved" and the alert id to `dedup_key` | [Better Stack webhooks](https://betterstack.com/docs/uptime/webhooks/) |
+| incident.io alert source | Sends `status: firing` on failure and `status: resolved` on recovery with `deduplication_key` | [incident.io alert sources](https://docs.incident.io/alerts/alert-sources) |
 
 <Callout type="warn">
 Preset payloads include placeholders such as `REPLACE_WITH_PAGERDUTY_ROUTING_KEY` and `REPLACE_WITH_JSM_INTEGRATION_KEY`. Replace them before testing, and verify the endpoint URL in the vendor documentation because some providers generate tenant-specific webhook URLs.
