@@ -312,5 +312,11 @@ export function normalizeProviderConfig(
     }
   }
 
+  // Only the web form copies a preset's template; API, CLI and config-as-code saves send just `preset`, and the worker would then post the generic Supercheck payload, which no paging vendor accepts.
+  const preset = getWebhookPreset(normalizedConfig.preset);
+  if (preset && preset.id !== "custom" && !normalizedConfig.bodyTemplate && preset.config.bodyTemplate) {
+    normalizedConfig.bodyTemplate = preset.config.bodyTemplate;
+  }
+
   return normalizedConfig;
 }

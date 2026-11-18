@@ -39,6 +39,16 @@ describe("notification provider validation", () => {
     ).not.toThrow();
   });
 
+  it("fills the vendor body template when a paging preset is saved without one", () => {
+    // API, CLI and config-as-code callers send only `preset`; without a template the worker would post the Supercheck default payload, which no vendor accepts.
+    const pagerduty = normalizeProviderConfig("webhook", { url: "https://events.pagerduty.com/v2/enqueue", preset: "pagerduty" });
+    expect(JSON.parse(pagerduty.bodyTemplate as string)).toMatchObject({ event_action: "{{pagerDutyEventAction}}", dedup_key: "{{dedupKey}}" });
+    // An explicit template wins, and custom webhooks keep the default payload.
+    expect(normalizeProviderConfig("webhook", { url: "https://x.example.com", preset: "pagerduty", bodyTemplate: '{"a":1}' }).bodyTemplate).toBe('{"a":1}');
+    expect(normalizeProviderConfig("webhook", { url: "https://x.example.com", preset: "custom" }).bodyTemplate).toBeUndefined();
+    expect(normalizeProviderConfig("webhook", { url: "https://x.example.com" }).bodyTemplate).toBeUndefined();
+  });
+
   it("rejects the retired opsgenie preset like any unknown preset", () => {
     expect(() =>
       validateProviderConfig("webhook", {
