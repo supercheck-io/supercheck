@@ -74,6 +74,11 @@ describe("McpConsent", () => {
     expect(screen.queryByText(/unverified app/i)).not.toBeInTheDocument();
   });
 
+  it("links to Connected apps by name, not by raw path", () => {
+    setup({ name: "Agent Co", verifiedHost: "agent.example.com", clientIdUrl: "https://agent.example.com/client.json", redirectHost: "agent.example.com" });
+    expect(screen.getByRole("link", { name: "Connected apps" })).toHaveAttribute("href", "/connected-apps");
+  });
+
   it("renders a hostile app name as text, never as markup", () => {
     setup({ name: "<img src=x onerror=alert(1)>", verifiedHost: null, redirectHost: null });
     expect(document.querySelector("img")).toBeNull();
