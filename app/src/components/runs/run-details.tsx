@@ -1,5 +1,6 @@
 "use client";
 
+import { statusCardsGridClass } from "./status-cards-grid";
 import { useCallback, useEffect, useRef, useState, useMemo } from "react";
 import { runStatuses, triggerTypes } from "./data";
 import { toast } from "sonner";
@@ -437,7 +438,7 @@ export function RunDetails({
         </div>
 
         {/* Status cards - similar to monitor details but with appropriate content */}
-        <div className="grid grid-cols-1 md:grid-cols-7 gap-2 mt-2">
+        <div className={statusCardsGridClass(Boolean(run.jobId))}>
           <div className="bg-muted/30 rounded-lg p-2 border flex items-center overflow-hidden">
             {statusInfo && (
               <statusInfo.icon
@@ -558,6 +559,7 @@ export function RunDetails({
             </div>
           </div>
 
+          {run.jobId ? (
           <div className="bg-muted/30 rounded-lg p-2 border flex items-center overflow-hidden">
             <CalendarClock className="h-6 w-6 min-w-6 mr-2 text-sky-400" />
             <div className="min-w-0 w-full">
@@ -565,7 +567,6 @@ export function RunDetails({
                 <div className="text-xs font-medium text-muted-foreground">
                   Job ID
                 </div>
-                {run.jobId ? (
                   <Button
                     variant="ghost"
                     size="icon"
@@ -577,13 +578,13 @@ export function RunDetails({
                   >
                     <Copy className="h-3 w-3" />
                   </Button>
-                ) : null}
               </div>
               <div className="text-sm font-semibold truncate">
-                {run.jobId ?? "No Job"}
+                {run.jobId}
               </div>
             </div>
           </div>
+          ) : null}
         </div>
       </div>
 

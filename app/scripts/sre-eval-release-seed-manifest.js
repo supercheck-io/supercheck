@@ -47,6 +47,11 @@ const SEEDED_LIVE_FIXTURES = [
     connectors: ["tempo"],
     seedData: ["Tempo trace for checkout with slow span or downstream dependency attributes"],
   },
+  {
+    id: "connector-investigation-jaeger-trace-errors",
+    connectors: ["jaeger"],
+    seedData: ["Jaeger trace for checkout-api with an error-tagged span or failing downstream dependency"],
+  },
 ];
 
 const RELEASE_ENVIRONMENT_REQUIREMENTS = [

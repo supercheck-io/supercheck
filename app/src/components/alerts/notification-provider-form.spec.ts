@@ -1,5 +1,5 @@
 import { getUserFriendlyError } from "@/lib/error-utils";
-import { createNotificationProviderSchema, getSaveErrorMessage, nextPresetUrl } from "./notification-provider-form";
+import { createNotificationProviderSchema, endpointForDisplay, getSaveErrorMessage, nextPresetUrl } from "./notification-provider-form";
 
 const webhookConfig = {
   name: "Production webhook",
@@ -88,5 +88,23 @@ describe("nextPresetUrl", () => {
   it("keeps a custom endpoint when choosing a preset from a custom webhook, or reselecting the same one", () => {
     expect(nextPresetUrl("custom", "jsm_ops", "https://api.atlassian.com/jsm/ops/integration/v2/alerts", jsm)).toBeUndefined();
     expect(nextPresetUrl("jsm_ops", "jsm_ops", "https://api.atlassian.com/jsm/ops/integration/v2/alerts", jsm)).toBeUndefined();
+  });
+});
+
+describe("endpointForDisplay", () => {
+  it("drops userinfo, query and fragment, keeping a short single-segment path", () => {
+    expect(endpointForDisplay("https://user:pw@hooks.example.com/alerts?token=abc#x")).toBe("https://hooks.example.com/alerts");
+    expect(endpointForDisplay("https://hooks.example.com")).toBe("https://hooks.example.com");
+  });
+  it("hides a path that can carry a secret", () => {
+    expect(endpointForDisplay("https://hooks.slack.com/services/T000/B000/XXXXXXXX")).toBe("https://hooks.slack.com/…");
+    expect(endpointForDisplay("https://discord.com/api/webhooks/123/abcdef")).toBe("https://discord.com/…");
+    expect(endpointForDisplay("https://example.com/Zm9vYmFyYmF6cXV4MTIzNDU2")).toBe("https://example.com/…");
+  });
+  it("is undefined for empty or unparsable input, so the placeholder shows", () => {
+    expect(endpointForDisplay("")).toBeUndefined();
+    expect(endpointForDisplay(undefined)).toBeUndefined();
+    expect(endpointForDisplay("not a url")).toBeUndefined();
+    expect(endpointForDisplay("javascript:alert(1)")).toBeUndefined();
   });
 });

@@ -12,6 +12,7 @@ describe("SRE eval scoring", () => {
       "elasticsearch",
       "aws_cloudwatch",
       "tempo",
+      "jaeger",
     ];
 
     for (const connectorType of implementedConnectorTypes) {
@@ -27,6 +28,7 @@ describe("SRE eval scoring", () => {
         "connector-investigation-elasticsearch-error-documents",
         "connector-investigation-cloudwatch-alarm",
         "connector-investigation-tempo-trace-latency",
+        "connector-investigation-jaeger-trace-errors",
       ])
     );
   });
