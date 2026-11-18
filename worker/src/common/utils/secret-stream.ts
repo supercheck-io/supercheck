@@ -195,6 +195,9 @@ export function scrubReportHtml(html: string, variants: string[]): string {
       throw new Error('Report zip markup is not recognised');
     return plain(html);
   }
+  // Only the matched template is rewritten; a second one would be uploaded with its zip unscrubbed.
+  if (html.split('playwrightReportBase64').length > 2)
+    throw new Error('Report has more than one embedded zip');
   const [all, head, b64, tail] = match;
   const entries = readZip(Buffer.from(b64, 'base64'));
   for (const entry of entries) {

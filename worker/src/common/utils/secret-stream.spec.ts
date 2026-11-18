@@ -138,6 +138,15 @@ describe('scrubSecretsFromReportDir', () => {
     );
   });
 
+  it('fails closed when the report has more than one embedded zip', async () => {
+    const tpl =
+      '<template id="playwrightReportBase64">data:application/zip;base64,AAAA</template>';
+    await fsp.writeFile(path.join(dir, 'index.html'), tpl + tpl);
+    await expect(scrubSecretsFromReportDir(dir, secrets)).rejects.toThrow(
+      'more than one embedded zip',
+    );
+  });
+
   it('fails closed when a Playwright index.html is too large to scrub', async () => {
     const big = path.join(dir, 'index.html');
     await fsp.writeFile(big, '<template id="playwrightReportBase64">');
