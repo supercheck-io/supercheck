@@ -339,6 +339,21 @@ describe("SRE investigate API", () => {
     expect(mockCompleteSreIncidentInvestigation).not.toHaveBeenCalled();
   });
 
+  it("returns the org concurrency reason as a code so clients can tell it from a running run", async () => {
+    mockStartSreIncidentInvestigation.mockResolvedValue({
+      success: false,
+      status: 409,
+      error: "Too many AI runs are in progress",
+      reason: "org_concurrency_limit",
+    });
+    const response = await POST(new NextRequest("http://localhost/api/sre/investigate", {
+      method: "POST",
+      body: JSON.stringify({ incidentId: "018f0000-0000-7000-8000-000000000005" }),
+    }));
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({ error: "Too many AI runs are in progress", code: "org_concurrency_limit" });
+  });
+
   it("still accepts the run when later execution fails", async () => {
     mockCompleteSreIncidentInvestigation.mockResolvedValue({
       success: false,

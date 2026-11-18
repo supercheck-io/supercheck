@@ -758,6 +758,8 @@ describe("Copilot connector service scope", () => {
     db.query.sreIncidents.findFirst.mockResolvedValue({
       primaryServiceId: "other-service",
     });
+    const values = jest.fn().mockResolvedValue(undefined);
+    db.insert.mockReturnValue({ values });
     await expect(
       searchIncidentLiveConnectorEvidence(
         { ...scope, incidentId: "incident" },
@@ -766,6 +768,10 @@ describe("Copilot connector service scope", () => {
     ).rejects.toThrow("Service does not match the scoped incident");
     expect(db.query.sreServices.findFirst).not.toHaveBeenCalled();
     expect(db.select).not.toHaveBeenCalled();
+    expect(values).toHaveBeenCalledWith(expect.objectContaining({
+      connectorId: null, status: "error", toolName: "agent.connector.search.scope_rejected",
+      errorMessage: "Service does not match the scoped incident",
+    }));
   });
 
   it.each(["connector_credential_expired", "private-secret-error"])("reports safe Private Agent failure diagnostics (%s)", async (errorCode) => {

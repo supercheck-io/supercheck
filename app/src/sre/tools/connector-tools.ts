@@ -573,7 +573,24 @@ export async function searchIncidentLiveConnectorEvidence(
 ) {
   const startedAt = Date.now();
   scope = { ...scope, serviceId: input.serviceId ?? scope.serviceId };
-  const { primaryServiceId, connectors } = await loadIncidentConnectors(scope);
+  let loaded: Awaited<ReturnType<typeof loadIncidentConnectors>>;
+  try {
+    loaded = await loadIncidentConnectors(scope);
+  } catch (error) {
+    // A scope rejection (no primary service, service mismatch) happens before any connector is known; still leave a trace row.
+    await recordToolCallError({
+      investigationRunId: scope.investigationRunId ?? null,
+      connectorId: null,
+      connectorType: "unknown",
+      toolName: "agent.connector.search.scope_rejected",
+      inputHash: hashConnectorPayload({ connectorId: input.connectorId, query: input.query }),
+      inputSummary: redactConnectorText(JSON.stringify({ connectorId: input.connectorId })),
+      errorMessage: error instanceof Error ? redactConnectorText(error.message).slice(0, 300) : "Connector scope rejected",
+      durationMs: Date.now() - startedAt,
+    });
+    throw error;
+  }
+  const { primaryServiceId, connectors } = loaded;
   if (!primaryServiceId) {
     throw new Error(
       "Select a service from listIncidentConnectors before querying live sources",
