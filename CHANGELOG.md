@@ -8,6 +8,8 @@ The CLI is versioned separately; see [cli/CHANGELOG.md](cli/CHANGELOG.md). Prere
 
 ### Upgrade notes
 
+- **Email subjects changed (mail filters).** Sign-up, password reset, invitation and test emails now use the same `[Supercheck] <Event>: <Name>` format as alerts: `[Supercheck] Verify your email address`, `[Supercheck] Reset your password`, `[Supercheck] You're invited: <organization>`, `[Supercheck] Test email`. Update any mail rule that matched the old subjects. No new environment variable.
+
 - **Migration `0086`.** Adds the `project_setup_state` and `user_preferences` tables for project setup. Apply it before you update the app. No new environment variable.
 - **Migration `0084`, then the app, then the worker.** `0084` adds `maintenance_windows` and `maintenance_window_targets`, `monitor_results.in_maintenance` (default false, no table rewrite) and `incidents.maintenance_window_id`. It sets a 5-second lock timeout because `monitor_results` takes constant inserts; if it times out, run it again. An older worker keeps working and simply does not mute for maintenance windows. No new environment variable.
 - **Migration `0083`.** Adds the `sre_incident_resources` table. Apply it before you update the app. No new environment variable.
@@ -56,6 +58,7 @@ The CLI is versioned separately; see [cli/CHANGELOG.md](cli/CHANGELOG.md). Prere
 
 ### Changed
 
+- **Email templates.** One shared shell: Supercheck logo (absolute public URL), a "why you received this" line with a link to notification channel, usage or billing settings, one primary button style, row-header detail tables, a document title, and times shown as UTC with an explicit zone. Alert titles in the body match the subject (`Monitor Down: <name>`), and preheaders add information instead of repeating the subject.
 - **Agent tests are harder to leak from.** Every project secret is now redacted from agent results and report transcripts, wherever the script used it (headers, URL, request body, prompt) and also when the agent echoes it URL- or base64-encoded. Agent requests no longer follow redirects: an endpoint that redirects (for example `http` to `https`, or `/mcp` to `/mcp/`) now fails with the redirect target, so point the test at the final URL. A reply over 5 MiB fails the request. `repeat()` stops in time for a short (trial) run to still save its Agent results.
 - **Invalid test types are refused.** Creating, updating, validating, listing or running a test with an unknown type now returns `400` instead of saving a browser test. Case and surrounding spaces are ignored (`" Agent "` is `agent`), in the API, CLI and MCP.
 - **Cancel works while Redis is down.** The run is marked cancelled, so no worker starts it, and the request answers `202` with `signalSent: false`; retry once Redis is back to stop a run that is already executing.

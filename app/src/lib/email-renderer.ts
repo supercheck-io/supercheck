@@ -51,7 +51,7 @@ export async function renderPasswordResetEmail(params: {
   const component = PasswordResetEmail(params);
 
   return {
-    subject: "Reset your Supercheck password",
+    subject: "[Supercheck] Reset your password",
     html: await render(component, { pretty: false }),
     text: await render(component, PLAIN_TEXT_RENDER_OPTIONS),
   };
@@ -68,7 +68,7 @@ export async function renderEmailVerificationEmail(params: {
   const component = EmailVerificationEmail(params);
 
   return {
-    subject: "Verify your email address - Supercheck",
+    subject: "[Supercheck] Verify your email address",
     html: await render(component, { pretty: false }),
     text: await render(component, PLAIN_TEXT_RENDER_OPTIONS),
   };
@@ -86,7 +86,7 @@ export async function renderOrganizationInvitationEmail(params: {
   const component = OrganizationInvitationEmail(params);
 
   return {
-    subject: `You're invited to join ${params.organizationName} on Supercheck`,
+    subject: `[Supercheck] You're invited: ${params.organizationName}`,
     html: await render(component, { pretty: false }),
     text: await render(component, PLAIN_TEXT_RENDER_OPTIONS),
   };
@@ -188,7 +188,7 @@ export async function renderTestEmail(params?: {
   const component = TestEmail(params || {});
 
   return {
-    subject: "Test Email from Supercheck",
+    subject: "[Supercheck] Test email",
     html: await render(component, { pretty: false }),
     text: await render(component, PLAIN_TEXT_RENDER_OPTIONS),
   };

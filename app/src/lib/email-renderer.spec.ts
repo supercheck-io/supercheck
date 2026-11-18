@@ -42,14 +42,14 @@ describe("renderIncidentUpdateEmail", () => {
 
 describe("render* functions", () => {
   const cases: Array<[string, () => Promise<{ subject: string; html: string; text: string }>, string | RegExp, string]> = [
-    ["password reset", () => renderPasswordResetEmail({ resetUrl: "https://app.io/reset?t=1", userEmail: "a@b.co" }), "Reset your Supercheck password", "https://app.io/reset?t=1"],
-    ["email verification", () => renderEmailVerificationEmail({ verificationUrl: "https://app.io/verify?t=2", userEmail: "a@b.co" }), "Verify your email address - Supercheck", "https://app.io/verify?t=2"],
-    ["organization invitation", () => renderOrganizationInvitationEmail({ inviteUrl: "https://app.io/invite/3", organizationName: "Acme", role: "admin" }), "You're invited to join Acme on Supercheck", "https://app.io/invite/3"],
+    ["password reset", () => renderPasswordResetEmail({ resetUrl: "https://app.io/reset?t=1", userEmail: "a@b.co" }), "[Supercheck] Reset your password", "https://app.io/reset?t=1"],
+    ["email verification", () => renderEmailVerificationEmail({ verificationUrl: "https://app.io/verify?t=2", userEmail: "a@b.co" }), "[Supercheck] Verify your email address", "https://app.io/verify?t=2"],
+    ["organization invitation", () => renderOrganizationInvitationEmail({ inviteUrl: "https://app.io/invite/3", organizationName: "Acme", role: "admin" }), "[Supercheck] You're invited: Acme", "https://app.io/invite/3"],
     ["status page verification", () => renderStatusPageVerificationEmail({ verificationUrl: "https://s.io/verify/4", statusPageName: "Acme Status" }), /Acme Status$/, "https://s.io/verify/4"],
     ["status page welcome", () => renderStatusPageWelcomeEmail({ statusPageName: "Acme Status", statusPageUrl: "https://s.io", unsubscribeUrl: "https://s.io/unsub/5" }), /Acme Status$/, "https://s.io/unsub/5"],
     ["status page incident", () => renderIncidentNotificationEmail({ statusPageName: "Acme Status", statusPageUrl: "https://s.io", incidentName: "DB outage", incidentStatus: "investigating", incidentImpact: "major", incidentDescription: "Looking into it", affectedComponents: ["API"], updateTimestamp: "2026-01-01T00:00:00Z", unsubscribeUrl: "https://s.io/unsub/6" }), /^\[INVESTIGATING\] DB outage - Acme Status$/, "DB outage"],
     ["monitor alert", () => renderMonitorAlertEmail({ title: "Monitor down: API", message: "API is failing", fields: [{ title: "Region", value: "eu" }], footer: "Supercheck", type: "failure", color: "#ff0000" }), "[Supercheck] Monitor down: API", "API is failing"],
-    ["test email", () => renderTestEmail({ testMessage: "hello world" }), "Test Email from Supercheck", "hello world"],
+    ["test email", () => renderTestEmail({ testMessage: "hello world" }), "[Supercheck] Test email", "hello world"],
     ["usage notification", () => renderUsageNotificationEmail({ organizationName: "Acme", notificationType: "usage_80_percent", resourceType: "playwright", usageAmount: 80, usageLimit: 100, usagePercentage: 80, billingPageUrl: "https://app.io/billing", periodEndDate: "2026-02-01" }), "[Supercheck] 80% usage warning: Acme", "Acme"],
     ["trial notification", () => renderTrialNotificationEmail({ organizationName: "Acme", kind: "midway", daysRemaining: 7, subscribeUrl: "https://app.io/subscribe" }), /^\[Supercheck\] .+: Acme$/, "https://app.io/subscribe"],
   ];

@@ -5,6 +5,7 @@ import {
   Head,
   Heading,
   Html,
+  Img,
   Link,
   Preview,
   Section,
@@ -25,7 +26,18 @@ interface BaseLayoutProps {
   showBrand?: boolean;
   /** Document language (status-page emails); RTL languages also set dir="rtl". */
   lang?: string;
+  /** Why this email was sent, shown above the standard footer links. */
+  reason?: string;
+  /** Link to where the recipient can change what they receive (notification channels, billing...). */
+  manage?: { href: string; label: string };
 }
+
+/** Public absolute URL: mail clients cannot load app-relative assets. */
+export const LOGO_URL = "https://supercheck.io/supercheck-logo.png";
+
+/** "Wed, 18 Nov 2026 06:02:36 UTC": one timestamp format, with an explicit zone, in every email. */
+export const formatEmailTime = (date: Date): string =>
+  date.toUTCString().replace(/ GMT$/, " UTC");
 
 const RTL_LANGUAGES = new Set(["ar", "he", "fa", "ur"]);
 
@@ -38,6 +50,8 @@ export const BaseLayout = ({
   showStandardFooter = true,
   showBrand = true,
   lang = "en",
+  reason,
+  manage,
 }: BaseLayoutProps) => {
   const dir = RTL_LANGUAGES.has(lang.toLowerCase().split("-")[0]) ? "rtl" : "ltr";
   const headerText = readableTextColor(headerColor);
@@ -46,6 +60,7 @@ export const BaseLayout = ({
       <Head>
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <meta httpEquiv="Content-Type" content="text/html; charset=UTF-8" />
+        <title>{title}</title>
         {/* Light-only: our palette is fixed, so stop clients from auto-inverting it badly. */}
         <meta name="color-scheme" content="light only" />
         <meta name="supported-color-schemes" content="light only" />
@@ -56,6 +71,9 @@ export const BaseLayout = ({
         <Container className="sc-container" style={container}>
           {/* Header */}
           <Section style={{ ...header, background: headerColor }}>
+            {showBrand && (
+              <Img src={LOGO_URL} width="32" height="32" alt="" style={logo} />
+            )}
             {showBrand && <Text style={{ ...brand, color: headerText }}>Supercheck</Text>}
             <Heading style={{ ...headerTitle, color: headerText }}>
               {title}
@@ -69,6 +87,19 @@ export const BaseLayout = ({
           {(footer || showStandardFooter) && (
             <Section style={footerSection}>
               {footer}
+              {reason && (
+                <Text style={reasonText}>
+                  {reason}
+                  {manage && (
+                    <>
+                      {" "}
+                      <Link href={manage.href} style={reasonLink}>
+                        {manage.label}
+                      </Link>
+                    </>
+                  )}
+                </Text>
+              )}
               {showStandardFooter && (
                 <Text style={standardFooterText}>
                   <Link href="https://supercheck.io" style={footerLink}>
@@ -128,6 +159,24 @@ const header = {
   padding: "32px 24px",
   textAlign: "center" as const,
   background: PALETTE.neutral,
+};
+
+const logo = {
+  margin: "0 auto 8px",
+  display: "inline-block",
+  borderRadius: "8px",
+};
+
+const reasonText = {
+  color: "#4b5563",
+  fontSize: "12px",
+  lineHeight: "1.6",
+  margin: "0 0 8px",
+};
+
+const reasonLink = {
+  color: "#1d4ed8",
+  textDecoration: "underline",
 };
 
 const brand = {
@@ -256,7 +305,7 @@ export const PLAIN_TEXT_RENDER_OPTIONS = {
     // Custom selectors replace react-email's defaults (skip images and preview padding, plain links), so keep them.
     selectors: [
       ...plainTextSelectors,
-      { selector: "table.sc-details", format: "dataTable" },
+      { selector: "table.sc-details", format: "dataTable", options: { uppercaseHeaderCells: false } },
       // Layout tables carry no data; keep their text flowing as blocks.
       { selector: "table", format: "block" },
     ],
@@ -276,7 +325,9 @@ export const DetailsTable = ({
       <tbody>
         {fields.map((field, index) => (
           <tr key={index}>
-            <td style={detailsLabelCell}>{field.title}</td>
+            <th scope="row" style={detailsLabelCell}>
+              {field.title}
+            </th>
             <td style={detailsValueCell}>
               {isHttpUrl(field.value) ? (
                 <Link href={field.value} style={detailsLink}>

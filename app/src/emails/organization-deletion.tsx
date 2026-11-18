@@ -1,7 +1,7 @@
-import { Button, Section, Text } from "@react-email/components";
+import { Section, Text } from "@react-email/components";
 import * as React from "react";
 import { PALETTE } from "./palette";
-import { BaseLayout } from "./base-layout";
+import { BaseLayout, EmailButton } from "./base-layout";
 
 export type OrganizationDeletionKind = "requested" | "reminder" | "completed" | "cancelled" | "projectDeleted";
 
@@ -72,14 +72,14 @@ export const OrganizationDeletionEmail = ({
 }: OrganizationDeletionEmailProps) => {
   const text = copy(kind, purgeDate, daysRemaining, projectName);
   return (
-    <BaseLayout preview={text.heading} title={kind === "projectDeleted" ? "Project deletion" : "Organization deletion"} headerColor={kind === "completed" || kind === "cancelled" ? PALETTE.info : PALETTE.warning}>
+    <BaseLayout preview={text.heading} title={kind === "projectDeleted" ? "Project deletion" : "Organization deletion"} headerColor={kind === "completed" || kind === "cancelled" ? PALETTE.info : PALETTE.warning} reason="You received this because you are an owner or admin of this organization.">
       <Section style={contentSection}>
         <Text style={heading}>{text.heading}</Text>
         <Text style={paragraph}><strong>{organizationName}</strong></Text>
         <Text style={paragraph}>{text.body}</Text>
         {settingsUrl && text.cta ? (
           <Section style={buttonContainer}>
-            <Button style={button} href={settingsUrl}>{text.cta}</Button>
+            <EmailButton href={settingsUrl}>{text.cta}</EmailButton>
           </Section>
         ) : null}
       </Section>
@@ -93,4 +93,3 @@ const contentSection = { padding: "32px 32px 0" };
 const heading = { color: "#111827", fontSize: "24px", fontWeight: "700" as const, lineHeight: "1.3", margin: "0 0 16px", textAlign: "center" as const };
 const paragraph = { color: "#4b5563", fontSize: "15px", lineHeight: "1.6", margin: "0 0 20px", textAlign: "center" as const };
 const buttonContainer = { textAlign: "center" as const, margin: "8px 0 24px" };
-const button = { backgroundColor: "#111827", borderRadius: "6px", color: "#ffffff", fontSize: "15px", fontWeight: "600" as const, padding: "12px 24px", textDecoration: "none" };

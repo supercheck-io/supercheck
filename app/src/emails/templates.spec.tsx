@@ -12,8 +12,10 @@ import {
   IncidentUpdateEmail,
   TestEmail,
   TrialNotificationEmail,
+  UsageNotificationEmail,
   alertEmailSubject,
 } from "./index";
+import { formatEmailTime } from "./base-layout";
 
 // @react-email/render needs a dynamic import Jest cannot run here; static markup is
 // enough to check content. Every email must share the BaseLayout chrome.
@@ -137,5 +139,54 @@ describe("email consistency", () => {
     const html = render(<TrialNotificationEmail {...t} manageBillingUrl="https://app.io/b" />);
     expect(html).toContain("Manage billing");
     expect(html).toContain('href="https://app.io/b"');
+  });
+});
+
+describe("email shell rules", () => {
+  const render = renderToStaticMarkup;
+  const org = "Acme's \"Org\" & Co";
+
+  it("escapes names exactly once (no double-escaped apostrophes)", () => {
+    const html = render(
+      <OrganizationInvitationEmail inviteUrl="https://x.io/i" organizationName={org} role="admin" />,
+    );
+    expect(html).toContain("Acme&#x27;s &quot;Org&quot; &amp; Co");
+    expect(html).not.toMatch(/&amp;(#|quot;|amp;)/);
+  });
+
+  it("renders the logo from an absolute public URL with decorative alt text", () => {
+    const html = render(<TestEmail />);
+    expect(html).toContain('src="https://supercheck.io/supercheck-logo.png"');
+    expect(html).toContain('alt=""');
+    expect(html).toContain("<title>");
+  });
+
+  it("detail labels are row headers", () => {
+    const html = render(<MonitorAlertEmail title="t" message="m" fields={[{ title: "Monitor", value: "API" }]} footer="" type="failure" />);
+    expect(html).toContain('<th scope="row"');
+  });
+
+  it("explains why the alert was sent and links to notification settings", () => {
+    const html = render(
+      <MonitorAlertEmail title="t" message="m" fields={[]} footer="" type="failure" manageUrl="https://app.io/notifications" />,
+    );
+    expect(html).toContain("You received this alert");
+    expect(html).toContain('href="https://app.io/notifications"');
+  });
+
+  it("formats times in UTC with an explicit zone", () => {
+    expect(formatEmailTime(new Date("2026-11-18T06:02:36Z"))).toBe("Wed, 18 Nov 2026 06:02:36 UTC");
+  });
+
+  it("every action email uses the shared primary button", () => {
+    const html = render(<UsageNotificationEmail organizationName="A" notificationType="usage_80_percent" resourceType="playwright" usageAmount={8} usageLimit={10} usagePercentage={80} billingPageUrl="https://x.io/b" periodEndDate="Dec 1" />) +
+      render(<TrialNotificationEmail organizationName="A" kind="midway" daysRemaining={7} subscribeUrl="https://x.io/s" />);
+    expect(html.match(/background-color:#111827/g)?.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("incident email links to notification settings on the incident's origin", () => {
+    const ok = render(<IncidentUpdateEmail event="created" incidentNumber={1} title="t" severity="sev2" statusLabel="Open" incidentUrl="https://app.io/incidents/7" />);
+    expect(ok).toContain('href="https://app.io/notifications"');
+    expect(render(<IncidentUpdateEmail event="created" incidentNumber={1} title="t" severity="sev2" statusLabel="Open" incidentUrl="not a url" />)).not.toContain("Manage notifications");
   });
 });

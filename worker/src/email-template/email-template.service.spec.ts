@@ -32,6 +32,25 @@ describe('EmailTemplateService (local render)', () => {
     expect(r.html).not.toContain('View incidents');
   });
 
+  it('escapes an apostrophe once and ships a plain-text part, logo and settings link', async () => {
+    const r = await service.renderMonitorAlertEmail({
+      title: 'Job Failed - Owner\'s "nightly" & co',
+      message: 'Job failed',
+      fields: [{ title: 'Time', value: 'Wed, 18 Nov 2026 06:02:36 UTC' }],
+      footer: '',
+      type: 'failure',
+      appUrl: 'https://app.example.com',
+    });
+    expect(r.subject).toBe('[Supercheck] Job Failed: Owner\'s "nightly" & co');
+    expect(r.html).toContain('Owner&#x27;s');
+    expect(r.html).not.toMatch(/&amp;(#|quot;|amp;)/);
+    expect(r.text).toContain('Owner\'s "nightly" & co');
+    expect(r.text).not.toMatch(/&#|&amp;|<[a-z]/);
+    expect(r.html).toContain('https://supercheck.io/supercheck-logo.png');
+    expect(r.html).toContain('https://app.example.com/notifications');
+    expect(r.html).toContain('lang="en"');
+  });
+
   it('omits the incidents button when no app url is known', async () => {
     const r = await service.renderMonitorAlertEmail({
       title: 'Job Failed - Nightly',
