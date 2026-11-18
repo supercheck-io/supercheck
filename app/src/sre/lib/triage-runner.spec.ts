@@ -96,10 +96,20 @@ describe("incident triage admission", () => {
     expect(JSON.stringify(values.mock.calls)).not.toContain("secret provider text");
   });
 
+  it("stores the model's token usage on the completed triage run", async () => {
+    const values = jest.fn(() => ({ returning: async () => [{ id: "run-1" }] }));
+    (db.insert as jest.Mock).mockReturnValue({ values });
+    (runSreAgent as jest.Mock).mockResolvedValue({ text: "done", modelId: "m", finishReason: "stop", usage: { inputTokens: 10, outputTokens: 5, totalTokens: 15 } });
+    const set = jest.fn(() => ({ where: () => ({ returning: async () => [] }) }));
+    (db as unknown as { transaction: unknown }).transaction = async (cb: (tx: unknown) => unknown) => cb({ update: () => ({ set }), insert: jest.fn() });
+    await runSreIncidentTriage(input);
+    expect(set).toHaveBeenCalledWith(expect.objectContaining({ promptTokens: 10, completionTokens: 5, totalTokens: 15 }));
+  });
+
   it("writes no finding when the run was already closed before completion", async () => {
     const values = jest.fn(() => ({ returning: async () => [{ id: "run-1" }] }));
     (db.insert as jest.Mock).mockReturnValue({ values });
-    (runSreAgent as jest.Mock).mockResolvedValue({ text: "done", modelId: "m", finishReason: "stop" });
+    (runSreAgent as jest.Mock).mockResolvedValue({ text: "done", modelId: "m", finishReason: "stop", usage: {} });
     const txInsert = jest.fn();
     const txUpdate = jest.fn().mockReturnValue({ set: () => ({ where: () => ({ returning: async () => [] }) }) });
     (db as unknown as { transaction: unknown }).transaction = async (cb: (tx: unknown) => unknown) => cb({ update: txUpdate, insert: txInsert });
@@ -113,7 +123,7 @@ describe("incident triage admission", () => {
     const snapshotValues = jest.fn();
     beforeEach(() => {
       (db.insert as jest.Mock).mockReturnValue({ values: () => Object.assign(Promise.resolve(), { returning: async () => [{ id: "run-1" }] }) });
-      (runSreAgent as jest.Mock).mockResolvedValue({ text: "done", modelId: "m", finishReason: "stop" });
+      (runSreAgent as jest.Mock).mockResolvedValue({ text: "done", modelId: "m", finishReason: "stop", usage: {} });
       (db as unknown as { transaction: unknown }).transaction = async (cb: (tx: unknown) => unknown) => cb({
         update: () => ({ set: (v: unknown) => { snapshotValues(v); return { where: () => ({ returning: async () => [] }) }; } }),
         insert: jest.fn(),

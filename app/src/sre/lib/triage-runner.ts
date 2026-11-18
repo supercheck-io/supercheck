@@ -210,6 +210,9 @@ export async function completeSreIncidentTriage(
         .set({
           status: "completed",
           modelId: result.modelId,
+          promptTokens: result.usage.inputTokens,
+          completionTokens: result.usage.outputTokens,
+          totalTokens: result.usage.totalTokens,
           rootCauseHypothesis: result.text.slice(0, 2000),
           agentStateSnapshot: {
             mode: "sre_triage_api",
