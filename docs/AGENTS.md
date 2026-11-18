@@ -1,6 +1,6 @@
 # Docs standard
 
-Rules for `docs/content/docs/` (Fumadocs). Read before writing or editing a page. `DESIGN.md` covers the theme; `README.md` covers build checks.
+Rules for `docs/content/docs/` (Fumadocs). Read before writing or editing a page. [`DESIGN.md`](../DESIGN.md) covers the theme; [`README.md`](./README.md) covers build checks.
 
 ## Concise means
 
