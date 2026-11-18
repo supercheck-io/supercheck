@@ -14,6 +14,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { ChannelTypeIcon } from "@/components/alerts/channel-icon";
 import { getNotificationProviderConfig, PAGING_SERVICE_NAMES } from "./data";
 import { TruncatedTextWithTooltip } from "@/components/ui/truncated-text-with-tooltip";
 import { DateCell } from "@/components/ui/table-cells";
@@ -80,11 +81,10 @@ export const notificationChannelColumns: ColumnDef<NotificationChannel>[] = [
     cell: ({ row }) => {
       const type = row.getValue("type") as string;
       const config = getNotificationProviderConfig(type);
-      const IconComponent = config.icon;
       const preset = type === "webhook" ? row.original.config?.preset : undefined;
       return (
         <div className="flex items-center space-x-2">
-          <IconComponent className={`h-4 w-4 ${config.color}`} />
+          <ChannelTypeIcon type={type} presetId={typeof preset === "string" ? preset : undefined} />
           <span>{(typeof preset === "string" && PAGING_SERVICE_NAMES[preset]) || config.label}</span>
         </div>
       );

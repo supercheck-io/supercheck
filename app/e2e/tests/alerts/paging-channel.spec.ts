@@ -32,8 +32,8 @@ test.describe('Paging channels @alerts @channels', () => {
     await expect(page.getByRole('option', { name: /Opsgenie/ })).toHaveCount(0);
     await page.getByRole('option', { name: 'PagerDuty', exact: true }).click();
     await expect(dialog.getByTestId('one-way-paging-note')).toContainText('does not change the Supercheck incident');
-    await dialog.getByLabel('Title', { exact: true }).fill(name);
-    await expect(dialog.getByLabel('URL', { exact: true })).toHaveValue('https://events.pagerduty.com/v2/enqueue');
+    await dialog.getByLabel(/^Title/).fill(name);
+    await expect(dialog.getByLabel(/^URL/)).toHaveValue('https://events.pagerduty.com/v2/enqueue');
     await dialog.getByRole('button', { name: /^(Create|Save)/ }).click();
     await expect(dialog).toBeHidden();
 
