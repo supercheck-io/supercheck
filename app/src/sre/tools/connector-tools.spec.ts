@@ -265,6 +265,15 @@ describe("MCP connectors in the AI tool layer", () => {
       expect(result).toMatchObject({ error: true, retryable: false, message: expect.stringMatching(/failed: .*read-only/i) });
     });
 
+    it("keeps the search error when its trace row cannot be written", async () => {
+      const { execute } = setup(lokiRow);
+      execute.mockRejectedValue(new Error("evidence insert rejected"));
+      db.insert.mockReturnValue({ values: jest.fn().mockRejectedValue(new Error("db down")) });
+      await expect(
+        searchIncidentLiveConnectorEvidence({ ...scope, serviceId }, { ...search, query: '{service_name="checkout-api"}' }),
+      ).rejects.toThrow("evidence insert rejected");
+    });
+
     it("keeps the policy reason when recording the rejection fails", async () => {
       setup({ ...lokiRow, permissionLevel: "write" });
       db.insert.mockReturnValue({ values: jest.fn().mockRejectedValue(new Error("db down")) });

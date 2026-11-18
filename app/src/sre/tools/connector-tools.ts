@@ -1113,21 +1113,23 @@ export async function searchIncidentLiveConnectorEvidence(
       }`,
     };
   } catch (error) {
-    await db.insert(sreInvestigationToolCalls).values({
+    // Log first: if the error row also fails (e.g. the same bad data), the cause still reaches the logs.
+    logger.warn(
+      { err: error instanceof Error ? redactConnectorText(error.message).slice(0, 500) : String(error), connectorType: connector.type, toolName },
+      "Live connector search failed",
+    );
+    await recordToolCallError({
       investigationRunId: scope.investigationRunId ?? null,
       connectorId: connector.id,
       connectorType: connector.type,
       toolName,
       inputHash,
       inputSummary,
-      status: "error",
       errorMessage:
         error instanceof Error
           ? redactConnectorText(error.message).slice(0, 2000)
           : "Connector search failed",
       durationMs: Date.now() - startedAt,
-      costEstimateCents: 0,
-      executedAt: new Date(),
     });
     throw error;
   }
