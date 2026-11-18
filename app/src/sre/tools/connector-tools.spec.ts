@@ -142,16 +142,20 @@ describe("MCP connectors in the AI tool layer", () => {
       );
     db.select
       .mockReset()
-      .mockReturnValue(selectRows([{ connector: mcpRow }]));
+      .mockReturnValue(selectRows([
+        { connector: mcpRow },
+        { connector: { ...mcpRow, id: "018f0000-0000-7000-8000-0000000000ee", name: "Prom", type: "prometheus", privateAgentId: null } },
+      ]));
     const first = await call();
     const second = await call();
     for (const result of [first, second]) {
       expect(result).toMatchObject({
         error: true,
         retryable: true,
-        message: expect.stringContaining(`${mcpRow.id} (`),
+        message: expect.stringContaining("0000000000ee (Prom, prometheus)"),
       });
       expect(result).not.toHaveProperty("retrySuppressed");
+      expect((result as { message: string }).message).not.toContain(mcpRow.id);
     }
   });
 

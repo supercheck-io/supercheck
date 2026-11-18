@@ -569,6 +569,7 @@ export async function searchIncidentLiveConnectorEvidence(
   if (!selected) {
     // A wrong id is a fixable mistake: list the valid ones instead of failing a connector.
     const valid = connectors
+      .filter(({ row }) => row.type !== "mcp")
       .slice(0, 25)
       .map(({ row }) => `${row.id} (${row.name.replace(/\s+/g, " ").slice(0, 80)}, ${row.type})`)
       .join("; ");
@@ -1036,7 +1037,7 @@ export async function searchIncidentLiveConnectorEvidence(
       truncated: sanitized.truncated,
       persisted: Boolean(scope.incidentId),
       message: `${scope.incidentId ? "Persisted" : "Returned"} ${insertedEvidence.length} connector evidence item(s)${
-        sanitized.truncated || insertedEvidence.length >= input.maxRows
+        sanitized.truncated || insertedEvidence.length >= Math.min(outputLimits.maxRows, input.maxRows, MAX_TOOL_ROWS)
           ? ". This is a capped sample, not a complete list: it does not prove that other matching events are absent. Query for the specific signal (for example errors) explicitly."
           : ""
       }`,
