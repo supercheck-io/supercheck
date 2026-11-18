@@ -247,7 +247,7 @@ export function InvestigationReport({
         </p>
         {permissions.canInvestigate && (
           <SreInvestigationPanel
-            key={`${incident.id}:${investigation?.id ?? "no-investigation"}:${detail.capabilities.hasValidConnector}`}
+            key={`${incident.id}:${investigation?.id ?? "no-investigation"}`}
             incidentId={incident.id}
             hasPrimaryService={Boolean(incident.primaryServiceId)}
             serviceMappingHref={serviceMappingHref}

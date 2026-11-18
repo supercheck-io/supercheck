@@ -56,7 +56,9 @@ export function SreInvestigationPanel({
 }: SreInvestigationPanelProps) {
   const queryClient = useQueryClient();
   const { projectId } = useProjectContext();
-  const [useLiveConnectors, setUseLiveConnectors] = useState(hasValidConnector);
+  // Follows connector availability until the user picks a value; a refresh never resets their choice or note.
+  const [userLiveChoice, setUseLiveConnectors] = useState<boolean | null>(null);
+  const useLiveConnectors = userLiveChoice ?? hasValidConnector;
   const liveConnectorsEnabled = useLiveConnectors && hasPrimaryService && canUseLiveConnectors;
   // In the query client, not component state: a tab switch remounts this panel while the run is still going.
   const investigationMutationKey = ["sre-investigate", projectId, incidentId] as const;

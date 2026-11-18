@@ -222,6 +222,26 @@ describe("SreInvestigationPanel", () => {
     });
   });
 
+  it("follows connector availability until the user chooses, then keeps the choice", () => {
+    const props = {
+      incidentId: "018f0000-0000-7000-8000-000000000001",
+      hasPrimaryService: true,
+      serviceMappingHref: "/org-admin?tab=services",
+      canInvestigate: true,
+      canUseLiveConnectors: true,
+    };
+    const { rerender } = render(<SreInvestigationPanel {...props} hasValidConnector={false} />);
+    openOptions();
+    const toggle = () => screen.getByLabelText("Include live sources").getAttribute("aria-checked");
+    expect(toggle()).toBe("false");
+    rerender(<SreInvestigationPanel {...props} hasValidConnector={true} />);
+    expect(toggle()).toBe("true");
+    fireEvent.click(screen.getByLabelText("Include live sources"));
+    rerender(<SreInvestigationPanel {...props} hasValidConnector={false} />);
+    rerender(<SreInvestigationPanel {...props} hasValidConnector={true} />);
+    expect(toggle()).toBe("false");
+  });
+
   it("treats HTTP 202 as an accepted start, not a completed result", async () => {
     const { toast } = jest.requireMock("sonner") as {
       toast: { success: jest.Mock };
