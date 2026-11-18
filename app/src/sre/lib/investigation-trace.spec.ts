@@ -87,4 +87,55 @@ describe("readStoredSteps", () => {
       { index: 0, tool: "u", args: "", status: "ok", resultCount: null, durationMs: 0 },
     ]);
   });
+  it("keeps the reason of a tool that threw (tool-error part, no result)", () => {
+    const [thrown, secret] = stepsFromModelStep(
+      {
+        toolCalls: [
+          { toolCallId: "a", toolName: "searchLiveConnectorEvidence", input: {} },
+          { toolCallId: "b", toolName: "searchLiveConnectorEvidence", input: {} },
+        ],
+        content: [
+          { type: "tool-error", toolCallId: "a", error: new Error("connector timed out\n after 10s") },
+          { type: "tool-error", toolCallId: "b", error: "Bearer abc.def" },
+        ],
+      },
+      0,
+      200,
+    );
+    expect(thrown.status).toBe("error");
+    expect(thrown.error).toBe("connector timed out after 10s");
+    expect(secret.error).toBe("[redacted]");
+  });
+  it("re-applies redaction to a stored reason on read", () => {
+    const [step] = readStoredSteps([{ tool: "t", status: "error", error: "Bearer x" }]);
+    expect(step.error).toBe("[redacted]");
+  });
+  it("never stores the raw arguments of an invalid tool call", () => {
+    const err = Object.assign(new Error('Invalid input for tool q: Value: {"query":"jane@acme.com"}'), { name: "AI_InvalidToolInputError" });
+    const [step] = stepsFromModelStep(
+      { toolCalls: [{ toolCallId: "a", toolName: "q", input: {} }], content: [{ type: "tool-error", toolCallId: "a", error: err }] },
+      0,
+      10,
+    );
+    expect(step.error).toBe("The model called the tool with invalid input");
+  });
+  it("redacts connection strings and keeps the rest of a thrown reason, on write and on read", () => {
+    const [step] = stepsFromModelStep(
+      { toolCalls: [{ toolCallId: "a", toolName: "q", input: {} }], content: [{ type: "tool-error", toolCallId: "a", error: new Error("connect failed: postgres://u:hunter2@db.internal/app") }] },
+      0,
+      10,
+    );
+    expect(step.error).toContain("connect failed");
+    expect(step.error).not.toContain("hunter2");
+    const [read] = readStoredSteps([{ tool: "t", status: "error", error: "connect failed: postgres://u:hunter2@db.internal/app" }]);
+    expect(read.error).not.toContain("hunter2");
+  });
+  it("keeps the reason of a tool result that returned an error", () => {
+    const [step] = stepsFromModelStep(
+      { toolCalls: [{ toolCallId: "a", toolName: "q", input: {} }], toolResults: [{ toolCallId: "a", output: { error: true, message: "rejected" } }] },
+      0,
+      10,
+    );
+    expect(step.error).toBe("rejected");
+  });
 });
