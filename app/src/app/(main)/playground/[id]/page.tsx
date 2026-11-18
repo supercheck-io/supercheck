@@ -50,7 +50,8 @@ function PlaygroundIdClientBoundary() {
   const id = params.id as string;
 
   // Use React Query hook for test data - loading state handled by React Query
-  const { data: testData, isLoading: isQueryLoading, error } = useTest(id);
+  // fresh: the editor starts from this script, so it must not be an older cached copy.
+  const { data: testData, isLoading: isQueryLoading, error } = useTest(id, { fresh: true });
 
   const breadcrumbs = [
     { label: "Home", href: "/" },

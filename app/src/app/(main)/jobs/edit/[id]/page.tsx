@@ -17,7 +17,8 @@ export default function EditJobPage() {
   const jobId = params.id as string;
 
   // Use React Query hook for job data - this caches for 60s and prevents duplicate fetches
-  const { data: jobData, isLoading, error, refetch } = useJob(jobId);
+  // fresh: the edit form starts from this job, so it must not be an older cached copy.
+  const { data: jobData, isLoading, error, refetch } = useJob(jobId, { fresh: true });
 
   // Redirect only when the job is gone; any other failure keeps the page with a Retry.
   useEffect(() => {

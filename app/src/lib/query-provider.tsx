@@ -188,6 +188,8 @@ export function QueryProvider({ children }: { children: ReactNode }) {
       key={settled?.generation ?? 0}
       identity={identity}
       pending={session.isPending}
+      // Only a completed check counts as signed out; a failed one (network, 5xx) must not wipe caches.
+      signedOut={!session.isPending && !session.error && identity === null}
     >
       {children}
     </IdentityQueryProvider>
@@ -198,10 +200,12 @@ function IdentityQueryProvider({
   children,
   identity,
   pending,
+  signedOut,
 }: {
   children: ReactNode;
   identity: string | null;
   pending: boolean;
+  signedOut: boolean;
 }) {
   const client = getClient(pending ? undefined : identity);
   const [isRestoring, setIsRestoring] = useState(true);
@@ -211,6 +215,15 @@ function IdentityQueryProvider({
     // after mount, with queries paused until the saved cache is ready.
     if (pending) return;
     if (!identity) {
+      // Nobody is signed in: drop every saved cache, so an account's data does not wait in this
+      // browser for the next sign-in to prune it.
+      if (signedOut) {
+        try {
+          pruneCaches(window.localStorage, "");
+        } catch {
+          /* storage can be blocked; nothing to prune then */
+        }
+      }
       setIsRestoring(false);
       return;
     }
@@ -219,7 +232,7 @@ function IdentityQueryProvider({
       () => setIsRestoring(false),
       () => setIsRestoring(false),
     );
-  }, [client, identity, pending]);
+  }, [client, identity, pending, signedOut]);
 
   return (
     <QueryClientProvider client={client}>
