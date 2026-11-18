@@ -209,7 +209,8 @@ export async function POST(request: NextRequest) {
       testRef = {
         id: testId ?? run.id,
         name: test?.title ?? "Playground test",
-        type: runMeta.testType === "performance" ? "k6" : "playwright",
+        // Only browser tests get Playwright guidance; agent, API, database and custom keep their own type.
+        type: runMeta.testType === "performance" ? "k6" : runMeta.testType === "browser" ? "playwright" : runMeta.testType,
       };
     }
     const runType = jobData?.jobType ?? testRef?.type;

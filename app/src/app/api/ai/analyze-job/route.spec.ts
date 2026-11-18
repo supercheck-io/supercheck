@@ -220,6 +220,24 @@ describe("job AI analysis k6 summary", () => {
     expect(AIPromptBuilder.buildJobAnalyzePrompt.mock.calls[0][0].job).toEqual({ id: "run-1", name: "Playground test", type: "playwright" });
   });
 
+  it("keeps an agent test run's own type instead of calling it Playwright", async () => {
+    AuthService.validateUserAccess.mockResolvedValue({ user: { id: "user-1" }, tier: "free" });
+    AuthService.checkRateLimit.mockResolvedValue(undefined);
+    requireAuthContext.mockResolvedValue({ organizationId: "org-1", project: { id: "project-1" }, userId: "user-1" });
+    getActiveOrganization.mockResolvedValue({ id: "org-1" });
+    reserveAICredit.mockResolvedValue({ allowed: true, refund: jest.fn() });
+    AIStreamingService.generateStreamingResponse.mockResolvedValue({ stream: new ReadableStream(), model: "m" });
+    AIPromptBuilder.buildJobAnalyzePrompt.mockClear();
+    db.select.mockClear();
+    db.select.mockReturnValueOnce(queryOf([{ id: "run-1", projectId: "project-1", jobId: null, status: "passed", metadata: { testId: "unsaved", testType: "agent" } }]));
+    await POST(new NextRequest("http://localhost/api/ai/analyze-job", {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ runId: "00000000-0000-4000-8000-000000000001" }),
+    }));
+    expect(AIPromptBuilder.buildJobAnalyzePrompt.mock.calls[0][0].job).toMatchObject({ type: "agent" });
+    expect(db.select).toHaveBeenCalledTimes(1);
+  });
+
   it.each([
     ["k6 run without a summary row", "k6", [], 3],
     ["Playwright run", "playwright", [], 2],
