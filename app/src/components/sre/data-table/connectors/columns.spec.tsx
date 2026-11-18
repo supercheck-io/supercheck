@@ -20,3 +20,21 @@ describe("connector type column", () => {
     expect(screen.getByText(label)).toBeInTheDocument();
   });
 });
+
+describe("connector status column", () => {
+  function renderStatus(connector: Partial<SreConnectorListItem>) {
+    const column = columns.find((candidate) => "accessorKey" in candidate && candidate.accessorKey === "status");
+    const cell = column?.cell as CellRenderer;
+    render(<>{cell({ row: { original: connector as SreConnectorListItem } })}</>);
+  }
+
+  it("shows the last validation error under a status that is not valid", () => {
+    renderStatus({ status: "unreachable", lastValidationError: "HTTP 401 from endpoint" });
+    expect(screen.getByText("HTTP 401 from endpoint")).toBeInTheDocument();
+  });
+
+  it("hides the error when the connector is valid", () => {
+    renderStatus({ status: "valid", lastValidationError: "old error" });
+    expect(screen.queryByText("old error")).not.toBeInTheDocument();
+  });
+});

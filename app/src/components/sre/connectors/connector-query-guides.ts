@@ -1,4 +1,5 @@
 import { observabilityQueryGuides } from "./observability-query-guides";
+import { getDiagnosticQueryAdapterRecipes } from "@/lib/sre/connectors/diagnostic-query-adapters";
 
 export type ConnectorQueryGuide = {
   label: string;
@@ -512,4 +513,30 @@ const guides: Record<string, ConnectorQueryGuide> = {
 
 export function getConnectorQueryGuide(type: string): ConnectorQueryGuide {
   return guides[type] ?? observabilityQueryGuides[type] ?? defaultGuide;
+}
+
+/**
+ * A query that runs as-is for the service: the connector's `$service` recipe with the
+ * service's OTel name, or the guide's first example when no recipe fits.
+ */
+export function getServiceQuery(type: string, serviceName?: string): string {
+  const fallback = getConnectorQueryGuide(type).examples[0]?.query ?? "";
+  const name = serviceName?.trim();
+  // Elasticsearch recipes leave the name unquoted, so a colon would break the query.
+  if (!name || !/^[a-zA-Z0-9_.:-]+$/.test(name)) return fallback;
+  if (type === "elasticsearch" && name.includes(":")) return fallback;
+
+  for (const recipe of getDiagnosticQueryAdapterRecipes(type)) {
+    if (!recipe.template.includes("$service")) continue;
+    const schema = recipe.parameterSchema as Record<string, { default?: unknown }>;
+    let usable = true;
+    const query = recipe.template.replace(/\$([a-z_]+)/g, (_, key: string) => {
+      if (key === "service") return name;
+      const value = schema[key]?.default;
+      if (value === undefined) usable = false;
+      return String(value);
+    });
+    if (usable) return query;
+  }
+  return fallback;
 }

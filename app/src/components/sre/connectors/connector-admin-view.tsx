@@ -1,9 +1,11 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
+import { formatDistanceToNow } from "date-fns";
 import {
   Cable,
   ChevronDown,
+  ExternalLink,
   FileSearch,
   Loader2,
   Plus,
@@ -42,6 +44,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -63,6 +66,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
+import { TableBadge } from "@/components/ui/table-badge";
 import {
   Select,
   SelectContent,
@@ -77,7 +81,7 @@ import { ConnectorsToolbar } from "@/components/sre/data-table/connectors/toolba
 import { canBindIntegrationToConnector } from "@/lib/sre/integration-bindings";
 import { cn } from "@/lib/utils";
 import { getConnectorQueryBuilder } from "./connector-query-builders";
-import { getConnectorQueryGuide } from "./connector-query-guides";
+import { getConnectorQueryGuide, getServiceQuery } from "./connector-query-guides";
 import { SreSetupGuideDialog } from "@/components/sre/onboarding/sre-setup-guide-dialog";
 
 type ConnectorAdminViewProps = {
@@ -182,6 +186,78 @@ function formatDateTime(value: string | Date | null) {
   return new Date(value).toLocaleString();
 }
 
+function EvidenceRow({
+  item,
+}: {
+  item: Extract<SreConnectorSearchResult, { success: true }>["evidence"][number];
+}) {
+  const [open, setOpen] = useState(false);
+  const observed = new Date(item.observedAt);
+  const validTime = !Number.isNaN(observed.getTime());
+
+  return (
+    <li>
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={() => setOpen((current) => !current)}
+        className="flex w-full items-start gap-3 px-3 py-2 text-left hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+      >
+        <span
+          className="w-24 shrink-0 pt-0.5 text-xs text-muted-foreground"
+          title={validTime ? observed.toLocaleString() : undefined}
+        >
+          {validTime
+            ? formatDistanceToNow(observed, { addSuffix: true })
+            : "Unknown time"}
+        </span>
+        <TableBadge compact className="shrink-0">
+          {item.evidenceType}
+        </TableBadge>
+        <span
+          className={cn(
+            "min-w-0 flex-1 break-words text-sm",
+            !open && "line-clamp-2",
+          )}
+        >
+          {item.title}
+        </span>
+      </button>
+      {open && (
+        <div className="space-y-2 border-t bg-muted/10 px-3 py-2 text-sm">
+          <p className="whitespace-pre-wrap break-words">{item.summary}</p>
+          <p className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
+            <ExternalLink className="h-3 w-3 shrink-0" />
+            {/^https?:\/\//.test(item.sourceUri) ? (
+              <a
+                href={item.sourceUri}
+                target="_blank"
+                rel="noreferrer"
+                className="truncate underline underline-offset-2"
+              >
+                {item.sourceUri}
+              </a>
+            ) : (
+              <span className="truncate">{item.sourceUri}</span>
+            )}
+          </p>
+          <p className="break-all font-mono text-xs text-muted-foreground">
+            {item.resultHash}
+          </p>
+        </div>
+      )}
+    </li>
+  );
+}
+
+function formatWindow(minutes: number) {
+  if (minutes === 60) return "hour";
+  return (
+    connectorSearchWindows.find((window) => Number(window.value) === minutes)
+      ?.label ?? `${minutes} minutes`
+  );
+}
+
 function formatIntegrationKey(value: string) {
   return value
     .replace(/_/g, " ")
@@ -238,6 +314,10 @@ export function ConnectorAdminView({
   const [isQueryGuideOpen, setIsQueryGuideOpen] = useState(false);
   const [isQueryBuilderOpen, setIsQueryBuilderOpen] = useState(false);
   const [searchTimeWindowMinutes, setSearchTimeWindowMinutes] = useState("60");
+  const [searchedWindowMinutes, setSearchedWindowMinutes] = useState(60);
+  const [searchError, setSearchError] = useState<string | null>(null);
+  const [isSearchQueryEdited, setIsSearchQueryEdited] = useState(false);
+  const searchQueryInputRef = useRef<HTMLInputElement>(null);
   const [searchResult, setSearchResult] = useState<Extract<
     SreConnectorSearchResult,
     { success: true }
@@ -414,12 +494,23 @@ export function ConnectorAdminView({
     const builderValues = builder?.defaults(initialService?.name) ?? {};
     setSearchConnector(connector);
     setSearchServiceId(initialService?.id ?? "");
-    setSearchQuery(guide.examples[0]?.query ?? "");
+    setSearchQuery(
+      initialService
+        ? getServiceQuery(
+            connector.type,
+            initialService.otelServiceName || initialService.name,
+          )
+        : (guide.examples[0]?.query ?? ""),
+    );
+    setIsSearchQueryEdited(false);
+    setSearchError(null);
     setSearchFilters({});
     setQueryBuilderValues(builderValues);
     setIsQueryGuideOpen(false);
     setIsQueryBuilderOpen(false);
-    setSearchTimeWindowMinutes(String(connector.defaultTimeWindowMinutes));
+    setSearchTimeWindowMinutes(
+      String(Math.min(60, connector.defaultTimeWindowMinutes)),
+    );
     setSearchResult(null);
   };
 
@@ -434,6 +525,14 @@ export function ConnectorAdminView({
     if (builder) {
       setQueryBuilderValues(builder.defaults(service?.name));
     }
+    if (service && !isSearchQueryEdited) {
+      setSearchQuery(
+        getServiceQuery(
+          searchConnector.type,
+          service.otelServiceName || service.name,
+        ),
+      );
+    }
   };
 
   const applyQueryBuilder = () => {
@@ -444,30 +543,33 @@ export function ConnectorAdminView({
 
     const result = builder.build(queryBuilderValues);
     setSearchQuery(result.query);
+    setIsSearchQueryEdited(true);
     setSearchFilters(result.filters ?? {});
     setSearchResult(null);
     setIsQueryBuilderOpen(false);
   };
 
-  const submitConnectorSearch = () => {
+  const submitConnectorSearch = (windowMinutes = Number(searchTimeWindowMinutes)) => {
     if (!searchConnector) return;
 
+    setSearchError(null);
     startSearchTransition(async () => {
       const result = await searchSreConnectorEvidence({
         id: searchConnector.id,
         serviceId: searchServiceId,
         query: searchQuery,
-        timeWindowMinutes: Number(searchTimeWindowMinutes),
+        timeWindowMinutes: windowMinutes,
         filters: searchFilters,
       });
 
       if (!result.success) {
-        toast.error(result.error);
+        setSearchResult(null);
+        setSearchError(result.error);
         return;
       }
 
+      setSearchedWindowMinutes(windowMinutes);
       setSearchResult(result);
-      toast.success(result.message);
     });
   };
 
@@ -785,10 +887,10 @@ export function ConnectorAdminView({
       >
         <DialogContent className="max-h-[calc(100svh-1rem)] w-[calc(100vw-1rem)] max-w-2xl gap-0 overflow-hidden p-0 sm:max-h-[min(90svh,760px)] sm:w-[calc(100vw-2rem)]">
           <DialogHeader className="border-b px-5 py-5 sm:px-6">
-            <DialogTitle>Search connector evidence</DialogTitle>
+            <DialogTitle>Preview connector data</DialogTitle>
             <DialogDescription>
-              Run a bounded, read-only connector search for one service.
-              Searches are rate-limited, audited, and redacted before AI use.
+              Run the kind of read-only query AI SRE runs, to check what it can
+              see.
             </DialogDescription>
           </DialogHeader>
 
@@ -799,6 +901,10 @@ export function ConnectorAdminView({
                 const builder = getConnectorQueryBuilder(searchConnector.type);
                 const availableServices = servicesForConnector(searchConnector);
                 const activeFilters = Object.entries(searchFilters);
+                const widenTo = Math.min(
+                  1440,
+                  searchConnector.defaultTimeWindowMinutes,
+                );
                 const searchWindows = connectorSearchWindows
                   .filter(
                     (window) =>
@@ -829,15 +935,15 @@ export function ConnectorAdminView({
                       <div className="flex items-center gap-2">
                         <ShieldCheck className="h-4 w-4 text-success" />
                         <span className="text-sm font-medium">
-                          Bounded search
+                          Read-only query
                         </span>
                         <Badge variant="outline">
                           {formatConnectorType(searchConnector.type)}
                         </Badge>
                       </div>
                       <span className="text-xs text-muted-foreground">
-                        Up to {searchConnector.outputLimits.maxRows} rows ·{" "}
-                        {searchConnector.outputLimits.maxSeconds}s timeout
+                        Up to {searchConnector.outputLimits.maxRows} results ·{" "}
+                        {searchConnector.outputLimits.maxSeconds}s limit
                       </span>
                     </div>
 
@@ -906,10 +1012,12 @@ export function ConnectorAdminView({
                         </label>
                         <Input
                           id="connector-search-query"
+                          ref={searchQueryInputRef}
                           value={searchQuery}
-                          onChange={(event) =>
-                            setSearchQuery(event.target.value)
-                          }
+                          onChange={(event) => {
+                            setSearchQuery(event.target.value);
+                            setIsSearchQueryEdited(true);
+                          }}
                           placeholder={guide.queryPlaceholder}
                         />
                         {searchConnector.type === "kubernetes" && (
@@ -933,8 +1041,8 @@ export function ConnectorAdminView({
                               required
                             />
                             <p className="text-xs text-muted-foreground">
-                              Kubernetes evidence searches are namespace-bound;
-                              cluster-wide pod listing is not allowed.
+                              Kubernetes queries need a namespace. Listing pods
+                              across the whole cluster is not allowed.
                             </p>
                           </div>
                         )}
@@ -975,7 +1083,7 @@ export function ConnectorAdminView({
                           {isSearchingConnector && (
                             <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                           )}
-                          Search evidence
+                          Run query
                         </Button>
                       </div>
                     </form>
@@ -1017,6 +1125,7 @@ export function ConnectorAdminView({
                                 type="button"
                                 onClick={() => {
                                   setSearchQuery(example.query);
+                                  setIsSearchQueryEdited(true);
                                   setSearchResult(null);
                                   setIsQueryGuideOpen(false);
                                 }}
@@ -1114,21 +1223,24 @@ export function ConnectorAdminView({
                       )}
                     </div>
 
+                    {searchError && (
+                      <Alert variant="error">
+                        <AlertDescription>{searchError}</AlertDescription>
+                      </Alert>
+                    )}
+
                     {searchResult && (
                       <div className="space-y-3 rounded-lg border p-3">
-                        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                          <div>
-                            <p className="text-sm font-medium">
-                              {searchResult.message}
-                            </p>
-                            <p className="text-xs text-muted-foreground">
-                              {searchResult.privateAgentJobId
-                                ? `Private Agent job ${searchResult.privateAgentJobId}`
-                                : `${searchResult.evidence.length} evidence item${searchResult.evidence.length === 1 ? "" : "s"}`}
-                              {searchResult.truncated ? " (truncated)" : ""}
-                            </p>
-                          </div>
-                          {searchResult.privateAgentJobId && (
+                        {searchResult.privateAgentJobId ? (
+                          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                            <div>
+                              <p className="text-sm font-medium">
+                                {searchResult.message}
+                              </p>
+                              <p className="text-xs text-muted-foreground">
+                                Private Agent job {searchResult.privateAgentJobId}
+                              </p>
+                            </div>
                             <Button
                               type="button"
                               variant="outline"
@@ -1146,40 +1258,55 @@ export function ConnectorAdminView({
                               )}
                               View job result
                             </Button>
-                          )}
-                        </div>
-
-                        {searchResult.evidence.length > 0 && (
-                          <div className="space-y-2">
-                            {searchResult.evidence.map((item) => (
-                              <div
-                                key={item.id}
-                                className="rounded-md border bg-muted/20 p-2"
-                              >
-                                <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
-                                  <div className="min-w-0">
-                                    <div className="flex flex-wrap items-center gap-2">
-                                      <p className="font-medium">
-                                        {item.title}
-                                      </p>
-                                      <Badge variant="outline">
-                                        {item.evidenceType}
-                                      </Badge>
-                                    </div>
-                                    <p className="text-sm text-muted-foreground">
-                                      {item.summary}
-                                    </p>
-                                    <p className="truncate text-xs text-muted-foreground">
-                                      {item.sourceUri}
-                                    </p>
-                                  </div>
-                                  <p className="shrink-0 font-mono text-xs text-muted-foreground">
-                                    {item.resultHash.slice(0, 12)}
-                                  </p>
-                                </div>
-                              </div>
-                            ))}
                           </div>
+                        ) : searchResult.evidence.length === 0 ? (
+                          <div className="space-y-2">
+                            <p className="text-sm font-medium">
+                              No matching data in the last{" "}
+                              {formatWindow(searchedWindowMinutes)}.
+                            </p>
+                            <div className="flex flex-wrap gap-2">
+                              {widenTo > searchedWindowMinutes && (
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    disabled={isSearchingConnector}
+                                    onClick={() => {
+                                      setSearchTimeWindowMinutes(String(widenTo));
+                                      submitConnectorSearch(widenTo);
+                                    }}
+                                  >
+                                    Widen to {formatWindow(widenTo)}
+                                  </Button>
+                                )}
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                onClick={() =>
+                                  searchQueryInputRef.current?.focus()
+                                }
+                              >
+                                Edit query
+                              </Button>
+                            </div>
+                          </div>
+                        ) : (
+                          <>
+                            <p className="text-xs text-muted-foreground">
+                              Showing {searchResult.evidence.length} result
+                              {searchResult.evidence.length === 1 ? "" : "s"}
+                              {searchResult.truncated
+                                ? ". More matched than are shown."
+                                : "."}
+                            </p>
+                            <ul className="divide-y rounded-md border">
+                              {searchResult.evidence.map((item) => (
+                                <EvidenceRow key={item.id} item={item} />
+                              ))}
+                            </ul>
+                          </>
                         )}
                       </div>
                     )}

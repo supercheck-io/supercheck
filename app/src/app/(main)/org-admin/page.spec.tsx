@@ -19,8 +19,9 @@ jest.mock("@/components/breadcrumb-context", () => ({
 jest.mock("@/hooks/use-app-config", () => ({
   useAppConfig: () => ({ isCloudHosted: true }),
 }));
+let mockProjectId = "project-1";
 jest.mock("@/hooks/use-project-context", () => ({
-  useProjectContext: () => ({ projectId: "project-1" }),
+  useProjectContext: () => ({ projectId: mockProjectId }),
 }));
 jest.mock("@/hooks/use-organization", () => ({
   useOrgDetails: () => ({
@@ -85,14 +86,17 @@ function renderPage() {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
-  return render(
+  const ui = () => (
     <QueryClientProvider client={queryClient}>
       <OrgAdminDashboard />
-    </QueryClientProvider>,
+    </QueryClientProvider>
   );
+  const result = render(ui());
+  return { ...result, rerenderPage: () => result.rerender(ui()) };
 }
 
 beforeEach(() => {
+  mockProjectId = "project-1";
   mockReplace.mockClear();
   mockFetch.mockReset();
   mockSearchParams = new URLSearchParams("tab=integrations");
@@ -182,4 +186,18 @@ it("opens the section from its canonical URL and clears it when changing tabs", 
     }),
   );
   expect(screen.queryByText("Saved query management")).not.toBeInTheDocument();
+});
+
+it("reloads integrations when the project changes", async () => {
+  const { rerenderPage } = renderPage();
+  await screen.findByText("Connector management");
+  const integrationCalls = () =>
+    mockFetch.mock.calls.filter(([url]) => url === "/api/sre/integrations").length;
+  expect(integrationCalls()).toBe(1);
+
+  mockProjectId = "project-2";
+  rerenderPage();
+
+  await waitFor(() => expect(integrationCalls()).toBe(2));
+  await screen.findByText("Connector management");
 });
