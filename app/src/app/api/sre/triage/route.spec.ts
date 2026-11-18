@@ -173,7 +173,7 @@ describe("SRE triage API", () => {
     mockRequireProjectContext.mockResolvedValue(context);
     mockCheckPermissionWithContext.mockReturnValue(true);
     mockCheckSreTriageRateLimit.mockResolvedValue({ allowed: true });
-    mockRunSreAgent.mockResolvedValue({ text: "Likely dependency latency", modelId: "test-model", finishReason: "stop" });
+    mockRunSreAgent.mockResolvedValue({ text: "Likely dependency latency", modelId: "test-model", finishReason: "stop", usage: {} });
   });
 
   afterAll(() => {
