@@ -46,9 +46,20 @@ describe("status page domain utilities", () => {
   });
 
   describe("getEffectiveStatusPageDomain", () => {
-    it("returns cloud default when SELF_HOSTED is not true", async () => {
+    it("uses STATUS_PAGE_DOMAIN in cloud mode, so a second cloud environment gets its own namespace", async () => {
       delete process.env.SELF_HOSTED;
-      process.env.STATUS_PAGE_DOMAIN = "mydomain.com";
+      process.env.STATUS_PAGE_DOMAIN = "https://Stage.Example.dev/";
+
+      const { getEffectiveStatusPageDomain } = await import(
+        "./status-page-domain"
+      );
+
+      expect(getEffectiveStatusPageDomain()).toBe("stage.example.dev");
+    });
+
+    it("returns cloud default when STATUS_PAGE_DOMAIN is unset in cloud mode", async () => {
+      delete process.env.SELF_HOSTED;
+      delete process.env.STATUS_PAGE_DOMAIN;
 
       const { getEffectiveStatusPageDomain } = await import(
         "./status-page-domain"
@@ -97,7 +108,7 @@ describe("status page domain utilities", () => {
   });
 
   describe("getEffectiveStatusPageCnameTarget", () => {
-    it("returns cloud default when SELF_HOSTED is not true", async () => {
+    it("uses the cloud status page domain itself as the CNAME target", async () => {
       delete process.env.SELF_HOSTED;
       process.env.STATUS_PAGE_DOMAIN = "status.example.com";
 
@@ -105,7 +116,7 @@ describe("status page domain utilities", () => {
         "./status-page-domain"
       );
 
-      expect(getEffectiveStatusPageCnameTarget()).toBe("supercheck.io");
+      expect(getEffectiveStatusPageCnameTarget()).toBe("status.example.com");
     });
 
     it("derives a dedicated target from STATUS_PAGE_DOMAIN in self-hosted mode", async () => {

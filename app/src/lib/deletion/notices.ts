@@ -53,7 +53,7 @@ export async function sendOrganizationNotice(organizationId: string, key: Notice
     const rendered = await renderOrganizationDeletionEmail({
       organizationName: org.name,
       kind: KIND[key],
-      purgeDate: org.purgeAfter ? org.purgeAfter.toUTCString() : undefined,
+      purgeDate: org.purgeAfter ?? undefined,
       daysRemaining: DAYS[key],
       settingsUrl: `${appUrl()}/org-admin`,
     });
@@ -120,7 +120,7 @@ export async function sendDeletionChangeNotice(input:
     const rendered = await renderOrganizationDeletionEmail({
       organizationName: org.name,
       kind: input.kind,
-      ...(input.kind === "projectDeleted" ? { projectName: input.projectName, purgeDate: input.restoreUntil.toUTCString() } : {}),
+      ...(input.kind === "projectDeleted" ? { projectName: input.projectName, purgeDate: input.restoreUntil } : {}),
       settingsUrl: `${appUrl()}/org-admin`,
     });
     const result = await EmailService.getInstance().sendEmailToMultiple({ recipients, subject: rendered.subject, text: rendered.text, html: rendered.html });

@@ -1,7 +1,7 @@
 import { Section, Text } from "@react-email/components";
 import * as React from "react";
 import { PALETTE } from "./palette";
-import { BaseLayout } from "./base-layout";
+import { BaseLayout, formatEmailTime } from "./base-layout";
 
 interface TestEmailProps {
   testMessage?: string;
@@ -12,7 +12,7 @@ export const TestEmail = ({
 }: TestEmailProps) => {
   return (
     <BaseLayout
-      preview="Test Email from Supercheck"
+      preview="Your email configuration is working."
       title="Email Configuration Test"
       headerColor={PALETTE.info}
     >
@@ -29,7 +29,7 @@ export const TestEmail = ({
           <Text style={infoTitle}>Email Details</Text>
           <Text style={infoText}>
             • Status: Sent
-            <br />• Sent at: {new Date().toUTCString()}
+            <br />• Sent at: {formatEmailTime(new Date())}
           </Text>
         </Section>
 

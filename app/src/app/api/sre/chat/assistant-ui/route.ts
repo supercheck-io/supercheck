@@ -37,6 +37,7 @@ import {
   isSreMessageSuperseded,
 } from "@/sre/lib/session-store";
 import { SRE_CHART_PROMPT_LINES } from "@/sre/lib/chart-contract";
+import { SRE_ERROR_QUERY_RULE } from "@/lib/sre/connectors/agent-query-guidance";
 import { createSreConnectorTools } from "@/sre/tools/connector-tools";
 import { createSreSimilarIncidentTools } from "@/sre/tools/similar-incident-tools";
 import { createSreEvidenceTools } from "@/sre/tools/evidence-tools";
@@ -200,7 +201,7 @@ function buildAssistantUiSystemPrompt(input: {
       ? "- Live connector tools are not available for this chat; explain that verification is based on stored evidence and user-provided context only."
       : null,
     input.liveConnectorToolsEnabled
-      ? "- Use available live connector tools when fresh data is needed. For a general question, discover project connectors and service IDs first; ask which service if the target is ambiguous. Never claim a source was checked without successful tool output."
+      ? "- Use available live connector tools when fresh data is needed. For a general question, discover project connectors and service IDs first; ask which service if the target is ambiguous. Search each service by its OTel service name. " + SRE_ERROR_QUERY_RULE + " Never claim a source was checked without successful tool output."
       : null,
     "- Never invent evidence IDs, source systems, queries, observations, metric values, timestamps, or confidence levels.",
     "- Treat evidence as verified only when it appears in tool output or was explicitly supplied by the user. Otherwise say that no supporting evidence is available.",
