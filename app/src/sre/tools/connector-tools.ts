@@ -573,28 +573,35 @@ export async function searchIncidentLiveConnectorEvidence(
 ) {
   const startedAt = Date.now();
   scope = { ...scope, serviceId: input.serviceId ?? scope.serviceId };
-  let loaded: Awaited<ReturnType<typeof loadIncidentConnectors>>;
-  try {
-    loaded = await loadIncidentConnectors(scope);
-  } catch (error) {
-    // A scope rejection (no primary service, service mismatch) happens before any connector is known; still leave a trace row.
-    await recordToolCallError({
+  // A scope rejection happens before any connector is known; still leave a trace row. Database errors are not scope rejections and stay out of the trace.
+  const traceScopeRejection = (error: unknown) =>
+    recordToolCallError({
       investigationRunId: scope.investigationRunId ?? null,
       connectorId: null,
       connectorType: "unknown",
       toolName: "agent.connector.search.scope_rejected",
       inputHash: hashConnectorPayload({ connectorId: input.connectorId, query: input.query }),
       inputSummary: redactConnectorText(JSON.stringify({ connectorId: input.connectorId })),
-      errorMessage: error instanceof Error ? redactConnectorText(error.message).slice(0, 300) : "Connector scope rejected",
+      errorMessage:
+        error instanceof Error && !(error instanceof DrizzleQueryError)
+          ? redactConnectorText(error.message).slice(0, 300)
+          : "Connector scope could not be loaded",
       durationMs: Date.now() - startedAt,
     });
+  let loaded: Awaited<ReturnType<typeof loadIncidentConnectors>>;
+  try {
+    loaded = await loadIncidentConnectors(scope);
+  } catch (error) {
+    await traceScopeRejection(error);
     throw error;
   }
   const { primaryServiceId, connectors } = loaded;
   if (!primaryServiceId) {
-    throw new Error(
+    const error = new Error(
       "Select a service from listIncidentConnectors before querying live sources",
     );
+    await traceScopeRejection(error);
+    throw error;
   }
   const selected = connectors.find(
     (entry) => entry.row.id === input.connectorId,

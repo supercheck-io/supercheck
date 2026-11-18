@@ -762,16 +762,32 @@ describe("Copilot connector service scope", () => {
     db.insert.mockReturnValue({ values });
     await expect(
       searchIncidentLiveConnectorEvidence(
-        { ...scope, incidentId: "incident" },
+        { ...scope, incidentId: "incident", investigationRunId: "run-1" },
         search,
       ),
     ).rejects.toThrow("Service does not match the scoped incident");
     expect(db.query.sreServices.findFirst).not.toHaveBeenCalled();
     expect(db.select).not.toHaveBeenCalled();
     expect(values).toHaveBeenCalledWith(expect.objectContaining({
-      connectorId: null, status: "error", toolName: "agent.connector.search.scope_rejected",
+      connectorId: null, investigationRunId: "run-1", status: "error", toolName: "agent.connector.search.scope_rejected",
       errorMessage: "Service does not match the scoped incident",
     }));
+  });
+
+  it("still throws the scope error when the trace row cannot be written, and traces a search with no service", async () => {
+    const values = jest.fn().mockRejectedValue(new Error("insert failed"));
+    db.insert.mockReturnValue({ values });
+    db.query.sreIncidents.findFirst.mockResolvedValue({ primaryServiceId: "other-service" });
+    await expect(
+      searchIncidentLiveConnectorEvidence({ ...scope, incidentId: "incident" }, search),
+    ).rejects.toThrow("Service does not match the scoped incident");
+    expect(values).toHaveBeenCalledTimes(1);
+
+    values.mockReset().mockResolvedValue(undefined);
+    await expect(
+      searchIncidentLiveConnectorEvidence({ ...scope, serviceId: undefined, incidentId: undefined }, { ...search, serviceId: undefined }),
+    ).rejects.toThrow("Select a service from listIncidentConnectors");
+    expect(values).toHaveBeenCalledWith(expect.objectContaining({ toolName: "agent.connector.search.scope_rejected" }));
   });
 
   it.each(["connector_credential_expired", "private-secret-error"])("reports safe Private Agent failure diagnostics (%s)", async (errorCode) => {
