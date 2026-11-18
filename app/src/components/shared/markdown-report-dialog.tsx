@@ -63,11 +63,16 @@ export function MarkdownReportDialog({
   }
 
   // Re-render the Markdown at most every 100ms while streaming; the final text renders at once.
+  // An interval, not a debounce: chunks arriving faster than 100ms must not hold the text back.
+  const latestContent = useRef(content);
+  useEffect(() => {
+    latestContent.current = content;
+  }, [content]);
   useEffect(() => {
     if (!isStreaming) return;
-    const t = setTimeout(() => setShown(content), 100);
-    return () => clearTimeout(t);
-  }, [content, isStreaming]);
+    const id = setInterval(() => setShown(latestContent.current), 100);
+    return () => clearInterval(id);
+  }, [isStreaming]);
   const rendered = isStreaming ? shown : content;
 
   useEffect(() => {

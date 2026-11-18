@@ -74,6 +74,18 @@ describe("MarkdownReportDialog", () => {
     jest.useRealTimers();
   });
 
+  it("keeps updating while chunks arrive faster than the throttle", () => {
+    jest.useFakeTimers();
+    const props = { open: true, onClose: () => {}, title: "t", description: "d", downloadFilename: "r.md", loadingMessage: "l" };
+    const { rerender } = render(<MarkdownReportDialog {...props} content="# A" isStreaming />);
+    for (const text of ["# AB", "# ABC", "# ABCD"]) {
+      rerender(<MarkdownReportDialog {...props} content={text} isStreaming />);
+      act(() => { jest.advanceTimersByTime(40); });
+    }
+    expect(screen.getByRole("heading", { name: /^ABC/ })).toBeTruthy();
+    jest.useRealTimers();
+  });
+
   it("shows the raw Markdown in the Source tab", () => {
     renderDialog();
     fireEvent.mouseDown(screen.getByRole("tab", { name: "Source" }), { button: 0 });
