@@ -3,7 +3,7 @@ title: Configuration
 description: supercheck.config.ts reference and project structure
 ---
 
-The CLI uses a **TypeScript configuration file** with full IntelliSense via `defineConfig()`.
+`supercheck.config.ts` is a TypeScript file typed by `defineConfig()`.
 
 | File | Purpose |
 |---|---|
@@ -11,12 +11,12 @@ The CLI uses a **TypeScript configuration file** with full IntelliSense via `def
 | `./supercheck.config.local.ts` | Local overrides (gitignored, optional) |
 
 <Callout type="warn">
-Config files must **never** contain tokens. The CLI scans for token patterns (`sck_live_*`, `sck_trigger_*`, `sck_test_*`) and rejects any config containing them.
+Config files must never contain tokens. The CLI rejects any config containing `sck_live_*`, `sck_trigger_*` or `sck_test_*` patterns.
 </Callout>
 
-The CLI rejects unknown keys in typed configuration sections so misspellings surface during `config validate` or a sync operation. Provider-specific `config` maps remain extensible.
+Unknown keys in typed sections fail `config validate` and sync. Provider-specific `config` maps accept any keys.
 
-## Full Example
+## Full example
 
 <Accordions>
 <Accordion title="supercheck.config.ts with every section" id="full-example">
@@ -61,7 +61,7 @@ export default defineConfig({
         enabled: true,
         alertOnFailure: true,
         alertOnRecovery: true,
-        notificationProviders: ['019c22b5-6df9-79b7-b415-db8317b1bd0b', '019c22b5-a812-7acc-9f23-46f7904d2c2a'],
+        notificationProviders: ['019c22b5-6df9-79b7-b415-db8317b1bd0b'],
       },
       tags: ['api', 'production'],
     },
@@ -124,9 +124,9 @@ Settings resolve in this order, highest priority first:
 | 3 | **`supercheck.config.local.ts`** | Local overrides (deep-merged) |
 | 4 | **`supercheck.config.ts`** | Project defaults |
 
-To use a specific file (`.ts`, `.js` or `.mjs`): `supercheck deploy --config ./configs/staging.config.ts`
+Use another file (`.ts`, `.js` or `.mjs`) with `supercheck deploy --config ./configs/staging.config.ts`.
 
-## Project Structure
+## Project structure
 
 Tests live in `_supercheck_/`, grouped by runner:
 
@@ -148,12 +148,14 @@ my-project/
 | `*.k6.ts` | k6 | `_supercheck_/k6/load-test.019a1234-abcd-7000-8000-000000000003.k6.ts` |
 
 <Callout type="info">
-Test files pulled from the cloud use `slug.{uuid}.pw.ts` and `slug.{uuid}.k6.ts`. The UUID keeps paths stable across renames, while the slug makes files easy to identify locally.
+Pulled test files are named `slug.{uuid}.pw.ts` or `slug.{uuid}.k6.ts`. The UUID keeps paths stable across renames.
 </Callout>
 
 ### Test metadata annotations
 
-`supercheck pull` writes `// @title`, `// @priority` (`low`, `medium`, `high`) and `// @tags` (comma-separated tag names) in the header of each test script: the leading run of `//` lines, or inside a multi-line JSDoc block at the very top (a single-line `/** ... */` header is left alone). `@priority` and `@tags` elsewhere in the script are ignored; `@title` is read from the first match anywhere. They are local metadata: the CLI strips them before comparing or sending the script, including with `test create --file` and `test update --file`. `deploy` applies `@priority` (any letter case) and `@tags`; if an annotation is absent, the remote value is left alone. To remove all tags from a test, use `supercheck test tag remove`.
+`supercheck pull` writes `// @title`, `// @priority` (`low`, `medium`, `high`) and `// @tags` (comma-separated) in each script's header: the leading `//` lines, or a multi-line JSDoc block at the very top. A single-line `/** ... */` header is left alone. `@priority` and `@tags` elsewhere are ignored; `@title` is read from the first match anywhere.
+
+The CLI strips them before comparing or sending a script, including `test create --file` and `test update --file`. `deploy` applies `@priority` (any letter case) and `@tags`, and leaves the remote value alone when one is absent. To remove all tags, use `supercheck test tag remove`.
 
 ```ts
 // @title Homepage Check
@@ -161,25 +163,25 @@ Test files pulled from the cloud use `slug.{uuid}.pw.ts` and `slug.{uuid}.k6.ts`
 // @tags smoke, web
 ```
 
-`supercheck pull` also writes `// @type <type>` for `agent`, `api`, `database` and `custom` tests; browser tests have no line and performance tests are told apart by their `.k6.ts` file. `deploy` and `diff` read it, send it as the test type and strip it from the script. Without it a file is a browser test, so keep the line in files you edit. An agent test is a normal `*.pw.ts` file with `// @type agent` as its first line:
+`pull` also writes `// @type <type>` for `agent`, `api`, `database` and `custom` tests. Browser tests have no line, and `.k6.ts` files are performance tests. `deploy` and `diff` send it as the test type and strip it. Without it a file is a browser test, so keep the line when you edit. An agent test is a `*.pw.ts` file with `// @type agent` first:
 
 ```ts
 // @type agent
 import { test, expect } from '@supercheck/agent-test';
 ```
 
-## Validate and Deploy
+## Validate and deploy
 
-Validate with `supercheck config validate`, preview with `supercheck diff`, apply with `supercheck deploy` (see [Monitoring-as-Code](/docs/cli/commands#monitoring-as-code) for every flag).
+Run `supercheck config validate`, preview with `supercheck diff`, apply with `supercheck deploy`. Flags: [Monitoring-as-Code](/docs/cli/commands#monitoring-as-code).
 
 | Behavior | Detail |
 |---|---|
-| Identity | Resources reconcile by database `id`. Pulled resources carry it; new ones omit it and are created |
+| Identity | Resources match by database `id`. Pulled resources carry it; new ones omit it and are created |
 | Pruning | Remote resources absent from config are kept. `diff --delete` previews pruning, `deploy --delete` applies it, including resources created outside this config |
 | Context check | The CLI verifies the configured organization and project against the authenticated context before syncing |
 | Review | `diff` includes notification provider settings such as webhook `bodyTemplate` |
 
-## Schema Reference
+## Schema reference
 
 <Accordions>
 <Accordion title="project and api" id="project">
@@ -245,7 +247,7 @@ Jobs have no `tags` field; a config containing one fails validation.
 
 ### Secrets and the AI endpoint preset in `config`
 
-Monitors reference project secrets by name, so a pulled config holds no credential and deploys back unchanged.
+Monitors reference project secrets by name, so a pulled config holds no credential.
 
 ```ts
 {
@@ -264,7 +266,7 @@ Monitors reference project secrets by name, so a pulled config holds no credenti
 |---|---|
 | `auth.secretKey` | Name of a project secret that supplies the bearer token (`auth.type: 'bearer'`) or the basic-auth password (`auth.type: 'basic'`). Use instead of an inline `token` or `password` |
 | `aiEndpoint` | AI endpoint preset (`http_request` only; `method`, `headers`, `body`, `auth`, `keywordInBody` and `expectedStatusCodes` must be absent). Fields: `model` (required), `secretKey`, `keyHeader`, `prompt`, `maxTokens`, `expectText`, `firstTokenTimeoutMs`, `warnFirstTokenMs`, `warnTotalTokens`. See [AI endpoint preset](/docs/app/monitor#ai-endpoint-monitor) |
-| `mcp` | MCP monitor settings (`mcp_server` only). Fields: `auth` (`{ type: 'none' }`, `{ type: 'bearer', secretKey }` or `{ type: 'header', secretKey, headerName }`), `protocol` (`auto`, `2025`, `2026`), `requiredTools`, `toolCall` (`name`, `arguments`, `expectText`), `slowMs`. See [MCP Monitor](/docs/app/monitor#mcp-monitor) |
+| `mcp` | MCP monitor settings (`mcp_server` only). Fields: `auth` (`{ type: 'none' }`, `{ type: 'bearer', secretKey }` or `{ type: 'header', secretKey, headerName }`), `protocol` (`auto`, `2025`, `2026`), `requiredTools`, `toolCall` (`name`, `arguments`, `expectText`), `slowMs`. See [MCP monitor](/docs/app/monitor#mcp-monitor) |
 
 ```ts
 {
@@ -279,7 +281,7 @@ Monitors reference project secrets by name, so a pulled config holds no credenti
 }
 ```
 
-`config.mcpState` holds the tool-list baseline and change history. The worker owns it: the server ignores it on `deploy`, and `pull` and `diff` drop it (as they do `aiEndpointState`).
+`config.mcpState` (tool-list baseline and change history) belongs to the worker: `deploy` ignores it, and `pull` and `diff` drop it, as they do `aiEndpointState`.
 
 ### Heartbeat monitors
 
@@ -298,7 +300,7 @@ Monitors reference project secrets by name, so a pulled config holds no credenti
 | `config.heartbeat.graceMinutes` | How late a ping may be before the monitor goes down, 1 to 1440. Omit for the default: 20% of the interval, at least 5 minutes and at most 1 day |
 | `alertConfig.warnings` | Warning-only alerts by kind. `heartbeat_late: true` notifies your channels when a ping is late but inside the grace period; warnings never open an incident. An unset kind takes its default: `heartbeat_late` is off; the MCP kinds (`mcp_tools_changed`, `mcp_slow`), AI endpoint kinds (`ai_slow_first_token`, `ai_model_changed`, `ai_tokens_high`) and the synthetic agent kind (`agent_run_failed`) are on, so set them to `false` to turn them off. `pull` writes only toggles that differ from the default |
 
-The ping URL is a secret and never part of the config. `deploy` prints it once when it creates a heartbeat monitor (not with `--json` or `--quiet`, whose output often lands in CI logs); `supercheck monitor heartbeat-url <id>` shows it. `pull` never writes the URL or the heartbeat's runtime state (last ping, late or down), and `diff` ignores them. See [Heartbeat Monitors](/docs/app/heartbeat).
+The ping URL is a secret and never part of the config. `deploy` prints it once when it creates a heartbeat monitor, but not with `--json` or `--quiet`; `supercheck monitor heartbeat-url <id>` shows it. `pull` never writes the URL or runtime state (last ping, late or down), and `diff` ignores them. See [Heartbeat monitors](/docs/app/heartbeat).
 
 ### Incident fields in `alertConfig`
 
@@ -311,7 +313,7 @@ The ping URL is a secret and never part of the config. `deploy` prints it once w
 </Accordion>
 <Accordion title="requirements[]" id="requirements">
 
-Remote requirements are compared, and pruned by `deploy --delete`, only when the config has a `requirements` key; a config without one leaves dashboard requirements alone. Omitting `description`, `priority`, `externalId` or `externalUrl` leaves the remote value unchanged. Set `description`, `priority`, `externalId` or `externalUrl` to `""` to clear it.
+Remote requirements are compared, and pruned by `deploy --delete`, only when the config has a `requirements` key. Omitting `description`, `priority`, `externalId` or `externalUrl` leaves the remote value unchanged; `""` clears it.
 
 | Field | Type | Description |
 |---|---|---|
@@ -327,7 +329,7 @@ Remote requirements are compared, and pruned by `deploy --delete`, only when the
 </Accordion>
 <Accordion title="statusPages[]" id="statuspages">
 
-`config validate` checks length limits and formats, so most bad values fail before anything is written; custom domain availability on your plan is checked at deploy. Omitting a field leaves the remote value unchanged; `""` clears `headline`, `description`, `supportUrl` or `customDomain`.
+`config validate` checks lengths and formats before anything is written; plan availability of a custom domain is checked at deploy. Omitting a field leaves the remote value unchanged; `""` clears `headline`, `description`, `supportUrl` or `customDomain`.
 
 | Field | Type | Description |
 |---|---|---|
@@ -355,7 +357,7 @@ Each entry in `components`:
 | `monitors` | `string[]` | Up to 100 monitor UUIDs, or names of monitors defined in this config. Deploy checks that each one exists before writing. Omit to leave links unchanged; `[]` unlinks all |
 | `position` | `number` | Display order (integer, 0 to 1000) |
 
-When the page declares `components`, remote components missing from that list are removed only when you run `deploy --delete`. Omitting `components` leaves every remote component alone, even with `--delete`. A new page with `status: 'published'` must declare at least one component.
+Remote components missing from a declared `components` list are removed only with `deploy --delete`. Omitting `components` leaves every remote component alone, even with `--delete`. A new `published` page must declare at least one component.
 
 </Accordion>
 <Accordion title="variables[] and tags[]" id="variables">
@@ -387,63 +389,35 @@ When the page declares `components`, remote components missing from that list ar
 | `type` | `string` | `email`, `slack`, `webhook`, `telegram`, `discord`, `teams` |
 | `config` | `object` | Provider-specific configuration, including webhook `method`, `headers` and `bodyTemplate` |
 
-`pull` omits masked provider secrets such as webhook URLs and credentials. You can still edit non-secret settings such as `bodyTemplate`; `diff` detects those changes without exposing stored secrets.
+`pull` omits masked provider secrets such as webhook URLs and credentials. Non-secret settings such as webhook `bodyTemplate` are managed config: `pull` exports them, `diff` reports edits (without exposing stored secrets) and `deploy` applies them. Keep them in source control.
 
-If you explicitly supply provider credentials in config, those values can still produce an update plan. Review provider changes in `diff` before deploying; do not assume a config containing secrets is treated as unchanged.
+Credentials you put in config still produce an update plan, so review provider changes in `diff` before deploying.
 
-For webhook providers, `config.bodyTemplate` is part of the managed configuration and should be kept in source control with the rest of the provider config. `supercheck pull` exports it, `supercheck diff` reports edits to it, and `supercheck deploy` applies them as provider configuration changes.
-
-To edit a pulled provider:
-
-1. Change non-secret settings such as `bodyTemplate` in the configuration file.
-2. Leave omitted secret fields out of the file to preserve their existing values.
-3. Run `supercheck diff`, review the changes, then deploy.
-
-To rotate a credential, enter its replacement in the dashboard or use `supercheck notification update --config` with the full replacement config. If you supply a replacement through monitoring-as-code, keep that value out of source control; `diff` redacts the secret change.
+To edit a pulled provider, change non-secret settings in the file, leave secret fields out to keep their stored values, then run `supercheck diff` and deploy. To rotate a credential, use the dashboard or `supercheck notification update --config` with the full replacement config. If you supply it through config, keep it out of source control; `diff` redacts the change.
 
 </Accordion>
 </Accordions>
 
-## Deployment State
+## Deployment state
 
-Successful deploys record server-assigned IDs for created resources, and the current names of updated or unchanged managed resources, in `supercheck.state.json`. Commit and share this file with CI so later deployments manage the same resources. Do not commit the temporary `supercheck.state.json.lock`.
+Deploys record server-assigned IDs and current names of managed resources in `supercheck.state.json`. Commit it and share it with CI so later deploys manage the same resources. Do not commit `supercheck.state.json.lock`.
 
 <Accordions>
 <Accordion title="State file and ownership details" id="state-details">
 
-Names alone never establish ownership. If a same-name remote resource has no ID in the local config or state file, deploy stops and asks you to pull the resource or provide its explicit ID. Renaming an ID-less non-test resource creates a separate resource; the old remote resource remains unless you deploy with `--delete`. Carry its explicit ID or pull it first to update the existing resource. Deploy does not rename local test files.
+Names never establish ownership. If a same-name remote resource has no ID in the config or state file, deploy stops: pull it or supply its ID. Renaming an ID-less non-test resource creates a separate one, and the old one remains unless you use `--delete`. Deploy does not rename local test files.
 
 </Accordion>
 <Accordion title="Offline validation and pull behavior" id="offline-and-pull">
 
-`config validate --offline` and `config print --offline` support local-only configurations without API credentials, but still require an existing config file. By contrast, `test run --offline --file <path>` can run without a config file.
+`config validate --offline` and `config print --offline` need no API credentials but still need a config file. `test run --offline --file <path>` needs neither.
 
-During pull, managed test paths and existing browser and `testMatch` settings are preserved. Runner-type changes migrate files with backups; new tests must match configured custom globs or pull stops before writing. Backups are retained and must be removed manually when no longer needed.
+`pull` preserves managed test paths and existing browser and `testMatch` settings. Runner-type changes migrate files with backups, which you remove manually. New tests must match configured custom globs or pull stops before writing.
 
 </Accordion>
 <Accordion title="Self-hosted and proxy" id="self-hosted-configuration">
 
-Cloud users need no URL setting. For a self-hosted instance, use its HTTPS URL (see the [production deployment guide](/docs/app/deployment/self-hosted) if it is not configured yet):
-
-```bash
-export SUPERCHECK_URL="https://supercheck.yourdomain.com"
-export SUPERCHECK_TOKEN="sck_live_..."
-
-supercheck whoami
-```
-
-If using the Cloudflare proxy, set SSL/TLS mode to "**Full (strict)**" in the Cloudflare dashboard.
-
-For environments behind HTTP proxies:
-
-```bash
-export HTTPS_PROXY="http://proxy.corp.com:8080"
-export NO_PROXY="localhost,127.0.0.1,.internal.corp.com"
-export SUPERCHECK_TRIGGER_KEY="sck_trigger_..."
-export SUPERCHECK_TOKEN="sck_live_..."
-
-supercheck job trigger abc123 --wait
-```
+Set `SUPERCHECK_URL` to your instance's HTTPS URL ([deployment guide](/docs/app/deployment/self-hosted)). Behind the Cloudflare proxy, set SSL/TLS mode to **Full (strict)**. Proxy variables are listed in [Authentication](/docs/cli/authentication#environment-variables).
 
 </Accordion>
 </Accordions>

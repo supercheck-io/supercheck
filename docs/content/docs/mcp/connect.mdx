@@ -1,12 +1,10 @@
 ---
-title: Connect an AI Tool
+title: Connect an AI tool
 description: Add the Supercheck MCP server to Claude, Cursor, VS Code and other clients
 icon: Link
 ---
 
-You need a Supercheck account with access to the project you want to share, and a server where MCP is turned on. Self-hosting? Follow [Self-Hosted](/docs/app/deployment/self-hosted#connecting-ai-tools-mcp-off-by-default) first.
-
-Replace `https://your-supercheck-host` with your Supercheck URL (use `http://localhost:3000` for a local install).
+You need access to the project you want to share and a server with MCP turned on. Self-hosting? Follow [Self-hosted](/docs/app/deployment/self-hosted#connecting-ai-tools-mcp-off-by-default) first. Replace `https://your-supercheck-host` with your URL (`http://localhost:3000` for a local install).
 
 ## Add the server
 
@@ -48,7 +46,7 @@ Add to `.vscode/mcp.json`:
 </Tab>
 <Tab value="Other clients">
 
-Claude Desktop, ChatGPT and any client with remote MCP support and OAuth: add a **custom connector** and paste `https://your-supercheck-host/api/mcp`. Clients that only speak stdio can bridge with `npx mcp-remote https://your-supercheck-host/api/mcp`.
+Claude Desktop, ChatGPT and any client with remote MCP and OAuth: add a **custom connector** with `https://your-supercheck-host/api/mcp`. Stdio-only clients can bridge with `npx mcp-remote https://your-supercheck-host/api/mcp`.
 
 </Tab>
 </Tabs>
@@ -59,47 +57,44 @@ The first time a tool connects, your browser opens Supercheck.
 
 <Steps>
 <Step>
-
+### Sign in
 Sign in if you are not already.
-
 </Step>
 <Step>
-
-Check the app name. An app that proves its identity with a Client ID Metadata Document shows the host that controls it. An app that registered itself shows an amber **Unverified app** warning, because anyone could have chosen its name: continue only if you just started the connection yourself.
-
+### Check the app name
+An app that proves its identity with a Client ID Metadata Document shows the host that controls it. An app that registered itself shows an amber **Unverified app** warning, because anyone could have chosen its name. Continue only if you just started the connection.
 </Step>
 <Step>
-
-**Choose one project.** The list shows only projects you can access. Each connection is tied to one project; connect again to share another.
-
+### Choose one project
+The list shows only projects you can access. Each connection is tied to one project; connect again to share another.
 </Step>
 <Step>
-
-Select **Approve**. The tool returns to your editor and is connected.
-
+### Approve
+Select **Approve**. The tool returns to your editor, connected.
 </Step>
 </Steps>
 
-The approval screen lists what the app asked for. If it asked for the optional `mcp:incidents:write` (incidents and maintenance windows) or `mcp:sre` scope, those extra abilities appear there too; deny the request if you only want read access. Approving the same app and project again adds to what you approved before; it never narrows it. To remove access, disconnect.
+The approval screen lists what the app asked for, including the optional `mcp:incidents:write` or `mcp:sre` scopes. Deny the request if you only want read access. Approving the same app and project again adds to what you approved before and never narrows it. To remove access, disconnect.
 
-## Try it
-
-Ask your AI tool:
-
-- "Use Supercheck to list the failed runs from today."
-- "Which monitors are down right now?"
-- "Summarize the most recent incident and its root cause."
+Then try: "Use Supercheck to list the failed runs from today", "Which monitors are down right now?" or "Summarize the most recent incident and its root cause."
 
 ## Manage or remove a connection
 
-Open **Account** from the user menu and select the **Connected apps** tab. Each row shows the app, the project and when it last refreshed its sign-in. **Disconnect** removes access immediately: the next call from that app is refused, even if it still holds a recent token.
-
-Tool calls are recorded in the audit log with the user, app, project and duration (never arguments or results).
+Open **Account** from the user menu and select **Connected apps**. Each row shows the app, the project and its last sign-in refresh. **Disconnect** removes access at once: the next call is refused, even with a recent token. Tool calls are recorded in the audit log with user, app, project and duration, never arguments or results.
 
 <Accordions>
 <Accordion title="Request requirements" id="request-requirements">
 
-MCP clients must use Streamable HTTP and send `Accept: application/json, text/event-stream` on POST requests. The configured public host must match `BETTER_AUTH_URL`, including when Supercheck is behind a proxy. When a request carries an `Origin` header (browsers always send one), it must match the canonical resource origin or an exact origin listed in the server's `MCP_ALLOWED_ORIGINS` setting (comma-separated exact origins such as `https://app.example.com` or `http://localhost:3000`; omit default ports, no wildcards or paths; separate from the general CORS policy), otherwise the server answers `403 invalid_request_origin`. Command-line and desktop clients usually send no `Origin` and are not affected.
+Clients must use Streamable HTTP and send `Accept: application/json, text/event-stream` on POST requests. The public host must match `BETTER_AUTH_URL`, including behind a proxy.
+
+A request with an `Origin` header (browsers always send one) must match the canonical resource origin or an exact origin in `MCP_ALLOWED_ORIGINS`, or the server answers `403 invalid_request_origin`. `MCP_ALLOWED_ORIGINS` is comma-separated exact origins such as `https://app.example.com` or `http://localhost:3000`, with default ports omitted, no wildcards or paths. It is separate from the general CORS policy. Command-line and desktop clients usually send no `Origin`.
 
 </Accordion>
 </Accordions>
+
+## Related
+
+<Cards className="grid-cols-1 sm:grid-cols-2">
+<Card title="Tools" href="/docs/mcp/tools" description="Scopes and tool reference" />
+<Card title="Troubleshooting" href="/docs/mcp/troubleshooting" description="Fix connection problems" />
+</Cards>
