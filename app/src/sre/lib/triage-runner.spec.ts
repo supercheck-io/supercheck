@@ -5,6 +5,7 @@ jest.mock("@/lib/audit-logger", () => ({ logAuditEvent: jest.fn() }));
 jest.mock("@/lib/ai/ai-provider", () => ({ getActualModelName: () => "test-model" }));
 jest.mock("@/sre/lib/agent-runner", () => ({ runSreAgent: jest.fn() }));
 jest.mock("@/sre/tools/evidence-tools", () => ({ createSreEvidenceTools: jest.fn() }));
+jest.mock("@/lib/sre/evidence-brief-orchestrator", () => ({ persistNativeEvidence: jest.fn() }));
 const withSreTriageAdmission = jest.fn();
 let admissionTier: "paid" | "trial" = "paid";
 jest.mock("@/lib/sre/investigation-billing", () => ({
@@ -15,6 +16,7 @@ jest.mock("@/lib/sre/investigation-billing", () => ({
 import { db } from "@/utils/db";
 import { runSreAgent } from "./agent-runner";
 import { SreInvestigationBillingError } from "@/lib/sre/investigation-billing";
+import { persistNativeEvidence } from "@/lib/sre/evidence-brief-orchestrator";
 import { runSreIncidentTriage, startSreIncidentTriage } from "./triage-runner";
 
 describe("incident triage admission", () => {
@@ -104,5 +106,35 @@ describe("incident triage admission", () => {
     await expect(runSreIncidentTriage(input)).resolves.toMatchObject({ success: false, status: 409, investigationRunId: "run-1" });
     expect(txUpdate).toHaveBeenCalledTimes(1);
     expect(txInsert).not.toHaveBeenCalled();
+  });
+
+  describe("native evidence", () => {
+    const agentPrompt = () => String((runSreAgent as jest.Mock).mock.calls[0][0].prompt);
+    beforeEach(() => {
+      (db.insert as jest.Mock).mockReturnValue({ values: () => Object.assign(Promise.resolve(), { returning: async () => [{ id: "run-1" }] }) });
+      (runSreAgent as jest.Mock).mockRejectedValue(new Error("stop after prompt"));
+    });
+
+    it("collects native evidence first when the incident has none, and counts it", async () => {
+      (persistNativeEvidence as jest.Mock).mockResolvedValue({ collection: null, createdCount: 4 });
+      await runSreIncidentTriage(input);
+      expect(persistNativeEvidence).toHaveBeenCalledWith(expect.objectContaining({ incidentId: "incident", investigationRunId: "run-1" }));
+      expect(agentPrompt()).toMatch(/4/);
+    });
+
+    it("skips collection when evidence is already stored", async () => {
+      (db.select as jest.Mock).mockReturnValue({
+        from: jest.fn().mockReturnThis(), leftJoin: jest.fn().mockReturnThis(), where: jest.fn().mockReturnThis(), groupBy: jest.fn().mockReturnThis(),
+        limit: jest.fn().mockResolvedValue([{ id: input.incidentId, evidenceCount: 3 }]),
+      });
+      await runSreIncidentTriage(input);
+      expect(persistNativeEvidence).not.toHaveBeenCalled();
+    });
+
+    it("still triages when collection fails", async () => {
+      (persistNativeEvidence as jest.Mock).mockRejectedValue(new Error("db down"));
+      await runSreIncidentTriage(input);
+      expect(runSreAgent).toHaveBeenCalled();
+    });
   });
 });
