@@ -91,6 +91,34 @@ describe("notification provider crypto", () => {
       expect(merged.bodyTemplate).toBe('{"new":"value"}');
     });
 
+    describe("webhook credentials follow their endpoint", () => {
+      const existing = {
+        name: "W",
+        preset: "incident_io",
+        url: "https://api.incident.io/v2/alert_events/http/abc",
+        headers: { Authorization: "Bearer real" },
+      };
+
+      it("drops stored headers when the URL changes and none are sent", () => {
+        const merged = mergeNotificationProviderConfig("webhook", existing, { name: "W", url: "https://other.example.com/x" });
+        expect(merged.headers).toBeUndefined();
+        expect(merged.url).toBe("https://other.example.com/x");
+      });
+
+      it("drops stored headers and the old URL when the preset changes without a new URL", () => {
+        const merged = mergeNotificationProviderConfig("webhook", existing, { name: "W", preset: "custom" });
+        expect(merged.headers).toBeUndefined();
+        expect(merged.url).toBeUndefined();
+      });
+
+      it("keeps headers that are sent, and keeps stored ones when the endpoint is unchanged", () => {
+        expect(mergeNotificationProviderConfig("webhook", existing, { name: "W", url: "https://other.example.com/x", headers: { A: "b" } }).headers).toEqual({ A: "b" });
+        const same = mergeNotificationProviderConfig("webhook", existing, { name: "W", preset: "incident_io", url: existing.url });
+        expect(same.headers).toEqual(existing.headers);
+        expect(mergeNotificationProviderConfig("webhook", existing, { name: "W2" }).headers).toEqual(existing.headers);
+      });
+    });
+
     it("keeps existing non-sensitive fields when not overridden", () => {
       const existing = {
         name: "Webhook",

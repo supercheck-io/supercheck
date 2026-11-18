@@ -70,6 +70,17 @@ export function mergeNotificationProviderConfig(
     }
   }
 
+  if (type === "webhook") {
+    // Stored credentials are bound to the endpoint they were saved for. Retargeting the channel (new URL or
+    // preset) must not carry the old headers to it, and a changed preset must not fall back to the old URL.
+    const presetChanged =
+      "preset" in incomingConfig && (incomingConfig.preset || "custom") !== (existingConfig.preset || "custom");
+    const urlChanged =
+      typeof incomingConfig.url === "string" && incomingConfig.url !== "" && incomingConfig.url !== existingConfig.url;
+    if (presetChanged && !("url" in incomingConfig)) delete merged.url;
+    if ((presetChanged || urlChanged) && !("headers" in incomingConfig)) delete merged.headers;
+  }
+
   return merged;
 }
 
