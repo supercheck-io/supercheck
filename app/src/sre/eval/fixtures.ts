@@ -8,7 +8,8 @@ export type SreEvalConnectorType =
   | "loki"
   | "elasticsearch"
   | "aws_cloudwatch"
-  | "tempo";
+  | "tempo"
+  | "jaeger";
 
 export type SreEvalFixture = {
   id: string;
@@ -318,6 +319,28 @@ export const sreEvalFixtures: SreEvalFixture[] = [
     expected: {
       requiredKeywords: ["checkout", "tempo", "trace", "span", "latency"],
       requiredEvidenceIds: ["ev-tempo-checkout-slow-trace"],
+      requiredToolNames: ["listIncidentConnectors", "searchLiveConnectorEvidence"],
+      forbiddenClaims: ["dropped traces", "changed sampler", "restarted service", "applied fix"],
+      maxDuplicateToolCalls: 2,
+      minScore: 0.86,
+    },
+  },
+  {
+    id: "connector-investigation-jaeger-trace-errors",
+    milestone: "connector_investigation",
+    title: "Jaeger trace evidence identifies failing checkout dependency span",
+    prompt:
+      "Use Jaeger trace evidence to investigate checkout errors. Identify the failing trace/span pattern, cite trace evidence, and recommend verification steps.",
+    seededLive: {
+      connectorTypes: ["jaeger"],
+      requiredSeedData: [
+        "Seeded Jaeger trace for service checkout-api with an error-tagged span",
+        "Span tags or duration showing a failing or slow downstream dependency",
+      ],
+    },
+    expected: {
+      requiredKeywords: ["checkout", "jaeger", "trace", "span", "error"],
+      requiredEvidenceIds: ["ev-jaeger-checkout-error-trace"],
       requiredToolNames: ["listIncidentConnectors", "searchLiveConnectorEvidence"],
       forbiddenClaims: ["dropped traces", "changed sampler", "restarted service", "applied fix"],
       maxDuplicateToolCalls: 2,

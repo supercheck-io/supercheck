@@ -11,6 +11,7 @@ import { isValidKubernetesLabelSelector } from "./kubernetes-label-selector";
 import { ConfluenceConnector } from "./providers/confluence";
 import { JiraConnector } from "./providers/jira";
 import { NotionConnector } from "./providers/notion";
+import { ConnectorQueryRejectedError } from "./providers/provider-query-guards";
 
 import {
   DEFAULT_CONNECTOR_OUTPUT_LIMITS,
@@ -71,6 +72,14 @@ async function fetchJson({
 
   if (response.status === 404) {
     throw new Error("request failed with HTTP 404: path not found, check the endpoint URL and base path");
+  }
+
+  if (response.status === 400 || response.status === 422) {
+    // The backend parsed and refused the query: fixable by the agent, not a connector outage.
+    throw new ConnectorQueryRejectedError(
+      `request rejected with HTTP ${response.status}; check the query syntax for this connector type`,
+      response.status,
+    );
   }
 
   if (!response.ok) {
@@ -444,7 +453,11 @@ abstract class BaseDirectConnector implements Connector {
       await this.validationRequest();
       return { status: "valid", latencyMs: Date.now() - startedAt };
     } catch (error) {
-      const message = describeConnectionError(error, "Connector validation failed");
+      // A health check sends no user query, so a 400/422 is a plain failure here.
+      const message =
+        error instanceof ConnectorQueryRejectedError && error.httpStatus
+          ? `request failed with HTTP ${error.httpStatus}`
+          : describeConnectionError(error, "Connector validation failed");
       const lowerMessage = message.toLowerCase();
       return {
         status:

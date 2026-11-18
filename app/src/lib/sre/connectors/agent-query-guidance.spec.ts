@@ -1,7 +1,9 @@
+import { ConnectorQueryRejectedError } from "./providers/provider-query-guards";
 import {
   assertAgentConnectorQueryLanguage,
   createAgentConnectorFailureGuard,
   getAgentConnectorQueryGuidance,
+  SRE_ERROR_QUERY_RULE,
 } from "./agent-query-guidance";
 
 describe("agent connector query guidance", () => {
@@ -33,6 +35,29 @@ describe("agent connector query guidance", () => {
     expect(() =>
       assertAgentConnectorQueryLanguage("loki", '{app="checkout"} |= "error"'),
     ).not.toThrow();
+  });
+
+  it("marks query-language mistakes as retryable rejections", () => {
+    for (const [type, query] of [
+      ["prometheus", "app=checkout-api"],
+      ["loki", "logs for checkout-api"],
+    ]) {
+      expect(() => assertAgentConnectorQueryLanguage(type, query)).toThrow(
+        ConnectorQueryRejectedError,
+      );
+    }
+  });
+
+  it("gives each type an explicit error query example", () => {
+    expect(getAgentConnectorQueryGuidance("elasticsearch")).toContain("log.level:error");
+    expect(getAgentConnectorQueryGuidance("loki")).toContain('|= "error"');
+    expect(getAgentConnectorQueryGuidance("prometheus")).toContain("5..");
+    expect(getAgentConnectorQueryGuidance("jaeger")).toContain("error:true");
+    expect(SRE_ERROR_QUERY_RULE).toContain("never proves");
+  });
+
+  it("describes Elasticsearch as Lucene", () => {
+    expect(getAgentConnectorQueryGuidance("elasticsearch")).toContain("Lucene");
   });
 
   it("suppresses repeated terminal failures for one connector run", () => {

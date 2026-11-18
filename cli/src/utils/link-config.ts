@@ -9,12 +9,16 @@ const SAFE_ID = /^[A-Za-z0-9_-]{1,128}$/
 const MAX_BLOCK = 4096
 
 export interface LinkTarget {
-  organization: { id: string; slug?: string | null }
-  project: { id: string; slug?: string | null }
+  organization: { id: string; name?: string | null; slug?: string | null }
+  project: { id: string; name?: string | null; slug?: string | null }
   apiUrl: string
 }
 
-export interface LinkChange { field: 'organization' | 'project' | 'api.baseUrl'; from: string; to: string }
+/** `toLabel` is the target's name (id when it has none), for messages; `to` is what is written to the config. */
+export interface LinkChange { field: 'organization' | 'project' | 'api.baseUrl'; from: string; to: string; toLabel?: string }
+
+/** A target described by its name, falling back to its id (never the slug); control characters are flattened for the terminal. */
+export const targetLabel = (t: { id: string; name?: string | null }): string => (t.name || t.id).replace(/\p{Cc}/gu, ' ').slice(0, 100)
 
 export interface LinkPlan {
   text: string
@@ -144,9 +148,9 @@ export function planLink(text: string, target: LinkTarget, force = false): LinkP
   const edits: { lit: Literal; value: string }[] = []
   const changes: LinkChange[] = []
   const conflicts: LinkChange[] = []
-  const apply = (field: 'organization' | 'project', lit: Literal, wanted: { id: string; slug?: string | null }) => {
+  const apply = (field: 'organization' | 'project', lit: Literal, wanted: { id: string; name?: string | null; slug?: string | null }) => {
     if (matches(lit.value, wanted)) return
-    const change = { field, from: lit.value, to: wanted.id }
+    const change = { field, from: lit.value, to: wanted.id, toLabel: targetLabel(wanted) }
     if (PLACEHOLDERS.has(lit.value) || force) { edits.push({ lit, value: wanted.id }); changes.push(change) } else conflicts.push(change)
   }
   apply('organization', found.org, target.organization)
