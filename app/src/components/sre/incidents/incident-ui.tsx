@@ -71,10 +71,10 @@ export function SectionTitle({
           )}
         </Heading>
         {hint && (
+          // No icon prop: this file is not a client module, so a component reference cannot cross into the client InfoPopover from a Server Component.
           <InfoPopover
             label={`About ${typeof children === "string" ? children.toLowerCase() : "this section"}`}
             title={typeof children === "string" ? children : "About this section"}
-            icon={icon}
             description={hint}
             className="size-5"
           />
