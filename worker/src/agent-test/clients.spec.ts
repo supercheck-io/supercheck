@@ -378,6 +378,8 @@ describe('mcp client', () => {
 
   it('spends one timeout across initialize, initialized and the call', async () => {
     const slow = (ms: number, fn: () => void) => setTimeout(fn, ms);
+    let gotCall!: () => void;
+    const callArrived = new Promise<void>((r) => (gotCall = r));
     handler = (_r, body, res) => {
       if (body.method === 'initialize')
         return void slow(300, () => rpcReply(res, 1, {}));
@@ -386,13 +388,16 @@ describe('mcp client', () => {
           res.writeHead(202);
           res.end();
         });
-      // tools/call never answers
+      gotCall(); // tools/call never answers
     };
     const t0 = Date.now();
     await expect(
       connect({ kind: 'mcp', url, tool: 'ask', timeoutMs: 700 }).send('x'),
     ).rejects.toThrow('timed out after 700ms');
     expect(Date.now() - t0).toBeLessThan(1000);
+    // A tools/call sent just before the timeout can reach the server after this test ends and
+    // leak into the next test's log; let it land here (or give up if it was never sent).
+    await Promise.race([callArrived, new Promise((r) => setTimeout(r, 500))]);
   });
 
   it('initializes, notifies, then calls the tool with the message as the named argument', async () => {
