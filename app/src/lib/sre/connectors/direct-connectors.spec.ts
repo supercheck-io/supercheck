@@ -4,6 +4,7 @@ jest.mock("./pinned-fetch", () => ({
 }));
 
 import { createDirectConnector } from "./direct-connectors";
+import { ConnectorQueryRejectedError } from "./providers/provider-query-guards";
 import {
   type ConnectorDefinition,
   type ConnectorSearchParams,
@@ -461,6 +462,34 @@ describe("direct connectors", () => {
     expect(result.status).toBe("unreachable");
     expect(result.message).toContain("ECONNREFUSED");
     expect(result.message).not.toBe("fetch failed");
+  });
+
+  it.each([400, 422])("maps a backend HTTP %s to a retryable query rejection", async (status) => {
+    global.fetch = jest.fn().mockResolvedValue({ ok: false, status }) as unknown as typeof fetch;
+    const connector = createDirectConnector({
+      ...baseDefinition,
+      type: "prometheus",
+      endpointUrl: "https://prometheus.example.com",
+      surfaces: ["metrics"],
+      evidenceTypes: ["metric"],
+    });
+    const error = await connector.search({ ...params, query: "sum(" }).catch((e) => e);
+    expect(error).toBeInstanceOf(ConnectorQueryRejectedError);
+    expect(error.message).toContain(`HTTP ${status}`);
+  });
+
+  it("reports a 400 on a health check as a plain failure, not a query error", async () => {
+    global.fetch = jest.fn().mockResolvedValue({ ok: false, status: 400 }) as unknown as typeof fetch;
+    const connector = createDirectConnector({
+      ...baseDefinition,
+      type: "prometheus",
+      endpointUrl: "https://prometheus.example.com",
+      surfaces: ["metrics"],
+      evidenceTypes: ["metric"],
+    });
+    const result = await connector.validate();
+    expect(result.status).toBe("unreachable");
+    expect(result.message).toBe("request failed with HTTP 400");
   });
 
   it("maps a 404 to a path-not-found message", async () => {

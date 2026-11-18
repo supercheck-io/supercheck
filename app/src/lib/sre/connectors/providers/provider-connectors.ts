@@ -1,5 +1,6 @@
 import { fetchConnectorEndpoint, fetchPublicEndpoint } from "../pinned-fetch";
 import { describeConnectionError } from "../connection-error";
+import { ConnectorQueryRejectedError } from "./provider-query-guards";
 import {
   DEFAULT_CONNECTOR_OUTPUT_LIMITS,
   hashConnectorPayload,
@@ -64,6 +65,15 @@ type ProviderSpec = {
     params: ProviderSearchParams,
   ) => Promise<ProviderResult>;
 };
+
+/**
+ * Messages the shared provider code throws for a query the backend refused (providerHttpError 400/422,
+ * New Relic and Splunk in-band errors). The shared files cannot import the app error class, so
+ * provider-connectors.spec.ts pins these strings: rewording one fails CI instead of silently making
+ * query mistakes non-retryable.
+ */
+export const QUERY_REJECTED_MESSAGE =
+  /rejected the (?:request with HTTP (?:400|422)\b|query:|search:)/;
 
 const PROVIDER_SPECS: Record<ObservabilityProviderType, ProviderSpec> = {
   jaeger: {
@@ -279,13 +289,24 @@ export class ObservabilityProviderConnector implements Connector {
         DEFAULT_CONNECTOR_OUTPUT_LIMITS.maxSeconds,
       30,
     );
-    const result = await this.spec.search(this.context(), {
-      query: params.query,
-      timeWindow: params.timeWindow,
-      maxRows: params.budget.maxRows,
-      maxBytes: params.budget.maxBytes,
-      maxSeconds,
-    });
+    const result = await this.spec
+      .search(this.context(), {
+        query: params.query,
+        timeWindow: params.timeWindow,
+        maxRows: params.budget.maxRows,
+        maxBytes: params.budget.maxBytes,
+        maxSeconds,
+      })
+      .catch((error: unknown) => {
+        // provider-core is shared with the worker and cannot import app error classes.
+        if (
+          error instanceof Error &&
+          QUERY_REJECTED_MESSAGE.test(error.message)
+        ) {
+          throw new ConnectorQueryRejectedError(error.message);
+        }
+        throw error;
+      });
     return result.records
       .slice(0, params.budget.maxRows)
       .map((record) =>

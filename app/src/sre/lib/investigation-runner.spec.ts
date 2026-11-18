@@ -22,6 +22,10 @@ jest.mock("@/sre/tools/evidence-tools", () => ({
   createSreEvidenceTools: jest.fn().mockReturnValue({}),
 }));
 
+jest.mock("@/sre/tools/connector-tools", () => ({
+  createSreConnectorTools: jest.fn().mockReturnValue({}),
+  listIncidentLiveConnectors: jest.fn().mockResolvedValue(null),
+}));
 jest.mock("@/lib/sre/evidence-brief-orchestrator", () => ({
   persistNativeEvidence: jest.fn().mockResolvedValue({ collection: null, rows: [], createdCount: 0 }),
 }));
@@ -32,6 +36,7 @@ jest.mock("@/lib/ai/ai-provider", () => ({
 import { db } from "@/utils/db";
 import { persistNativeEvidence } from "@/lib/sre/evidence-brief-orchestrator";
 import { listStoredSreEvidence } from "@/sre/tools/evidence-tools";
+import { listIncidentLiveConnectors } from "@/sre/tools/connector-tools";
 import {
   startSreIncidentInvestigation,
   executeSreIncidentInvestigation,
@@ -189,6 +194,54 @@ describe("executeSreIncidentInvestigation failure persistence", () => {
       }),
     );
   });
+  it.each([
+    [true, true],
+    [false, false],
+  ])("puts the live connector list and service OTel name in the prompt (live=%s)", async (enabled, listed) => {
+    (listIncidentLiveConnectors as jest.Mock).mockResolvedValue({
+      primaryService: { name: "Checkout API", otelServiceName: "checkout-api" },
+      connectors: [
+        {
+          id: "018f0000-0000-7000-8000-0000000000aa",
+          name: "Prod Loki",
+          type: "loki",
+          queryGuidance: "LogQL only",
+        },
+        { id: "018f0000-0000-7000-8000-0000000000bb", name: "Tools", type: "mcp", queryGuidance: "Not searchable" },
+      ],
+    });
+    (runSreAgent as jest.Mock).mockRejectedValue(new Error("test interruption"));
+    (db.transaction as jest.Mock).mockImplementation(async (callback) =>
+      callback({
+        update: jest.fn().mockReturnValue({ set: jest.fn().mockReturnValue({ where: jest.fn().mockReturnValue({ returning: jest.fn().mockResolvedValue([]) }) }) }),
+        insert: jest.fn().mockReturnValue({ values: jest.fn().mockResolvedValue([]) }),
+      }),
+    );
+    (listIncidentLiveConnectors as jest.Mock).mockClear();
+    await executeSreIncidentInvestigation("run-1", incident, { ...input, enableLiveConnectors: enabled });
+    const prompt = (runSreAgent as jest.Mock).mock.lastCall![0].prompt as string;
+    expect(prompt.includes("018f0000-0000-7000-8000-0000000000aa")).toBe(listed);
+    expect(prompt.includes("queryGuidance=LogQL only")).toBe(listed);
+    expect(prompt).not.toContain("0000000000bb");
+    expect(prompt.includes("OTel service name: checkout-api")).toBe(listed);
+    expect(listIncidentLiveConnectors).toHaveBeenCalledTimes(listed ? 1 : 0);
+  });
+
+  it("still builds the prompt when the live connector list cannot be loaded", async () => {
+    (listIncidentLiveConnectors as jest.Mock).mockRejectedValue(new Error("db down"));
+    (runSreAgent as jest.Mock).mockRejectedValue(new Error("test interruption"));
+    (db.transaction as jest.Mock).mockImplementation(async (callback) =>
+      callback({
+        update: jest.fn().mockReturnValue({ set: jest.fn().mockReturnValue({ where: jest.fn().mockReturnValue({ returning: jest.fn().mockResolvedValue([]) }) }) }),
+        insert: jest.fn().mockReturnValue({ values: jest.fn().mockResolvedValue([]) }),
+      }),
+    );
+    await executeSreIncidentInvestigation("run-1", incident, { ...input, enableLiveConnectors: true });
+    const prompt = (runSreAgent as jest.Mock).mock.lastCall![0].prompt as string;
+    expect(prompt).toContain("Live connector tools: available");
+    expect(prompt).not.toContain("Live connectors you may query");
+  });
+
   it("does not publish success after recovery has released the reservation", async () => {
     const returning = jest.fn().mockResolvedValue([]);
     const set = jest.fn().mockReturnValue({ where: jest.fn().mockReturnValue({ returning }) });
