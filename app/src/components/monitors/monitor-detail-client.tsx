@@ -130,17 +130,16 @@ interface MonitorDetailClientProps {
   isNotificationView?: boolean;
 }
 
-const formatDateTime = (dateTimeInput?: string | Date): string => {
-  if (!dateTimeInput) return "N/A";
-  try {
-    const date =
-      typeof dateTimeInput === "string"
-        ? parseISO(dateTimeInput)
-        : dateTimeInput;
-    return formatPingAgo(date);
-  } catch {
-    return "Invalid date";
-  }
+/** string, Date or epoch ms to a Date; null when it is none of those or not a valid date. */
+export const toValidDate = (input: unknown): Date | null => {
+  const date = typeof input === "string" ? parseISO(input) : input instanceof Date ? input : typeof input === "number" ? new Date(input) : null;
+  return date && !Number.isNaN(date.getTime()) ? date : null;
+};
+
+/** Compact "5m ago"; "—" when the value is missing or invalid. */
+const formatDateTime = (dateTimeInput?: unknown): string => {
+  const date = toValidDate(dateTimeInput);
+  return date ? formatPingAgo(date) : "—";
 };
 
 // Simple status icon component to replace the bar chart
@@ -1225,7 +1224,7 @@ export function MonitorDetailClient({
                 )}
               </div>
             </div>
-            <FitPanel fit={showHeartbeatSetup} minHeight="lg:min-h-[26rem]" className="flex-1">
+            <FitPanel fit minHeight="lg:min-h-[26rem]" className="flex-1">
               <HeartbeatPingHistory
                 results={paginatedTableResults}
                 isLoading={isLoadingResults}
@@ -1235,7 +1234,7 @@ export function MonitorDetailClient({
                 totalPages={totalPages}
                 total={totalResultsCount}
                 onPageChange={setCurrentPage}
-                onFitRows={showHeartbeatSetup ? setFitRows : undefined}
+                onFitRows={setFitRows}
               />
             </FitPanel>
           </div>
@@ -1564,7 +1563,7 @@ export function MonitorDetailClient({
                               <td className="px-3 py-[11.5px] overflow-hidden text-sm text-muted-foreground">
                                 <span
                                   className="whitespace-nowrap"
-                                  title={format(parseISO(String(result.checkedAt)), "MMM d, yyyy HH:mm:ss")}
+                                  title={toValidDate(result.checkedAt) ? format(toValidDate(result.checkedAt)!, "MMM d, yyyy HH:mm:ss") : undefined}
                                 >
                                   {formatDateTime(result.checkedAt)}
                                 </span>

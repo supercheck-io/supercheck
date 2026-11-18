@@ -109,6 +109,19 @@ it("shows the report and error buttons of a failed synthetic check in the Result
   }
 });
 
+it("shows a dash for an invalid check time and accepts a Date or a number", async () => {
+  const row = (id: string, checkedAt: unknown) => ({ id, monitorId: "m1", checkedAt, isUp: true, responseTimeMs: 10, location: null, details: null });
+  mockResults = [row("a", "not a date"), row("b", new Date(Date.now() - 3 * 3_600_000)), row("c", Date.now() - 2 * 86_400_000)];
+  try {
+    render(<MonitorDetailClient monitor={monitor} />);
+    expect(await screen.findByText("3h ago")).toBeInTheDocument();
+    expect(screen.getByText("2d ago")).toBeInTheDocument();
+    expect(screen.getAllByText("—").length).toBeGreaterThan(0);
+  } finally {
+    mockResults = [];
+  }
+});
+
 it("shows a check time in compact form", async () => {
   mockResults = [{ id: "r1", monitorId: "m1", checkedAt: new Date(Date.now() - 2 * 3_600_000 - 5_000).toISOString(), isUp: true, responseTimeMs: 40, location: null, details: null }];
   try {

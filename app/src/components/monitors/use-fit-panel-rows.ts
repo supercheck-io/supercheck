@@ -13,6 +13,15 @@ export function rowsThatFit(panelPx: number, rowPx = ROW_PX): number {
   return Math.min(MAX_ROWS, Math.max(MIN_ROWS, Math.floor((panelPx - HEAD_PX - NAV_PX) / rowPx)));
 }
 
+const ROUND_TO = 5;
+const DEBOUNCE_MS = 150;
+
+/**
+ * Rounded down to a multiple of 5 (never below MIN_ROWS), so small height changes keep the same page size and
+ * the page never asks for more rows than the panel shows.
+ */
+export const roundDownRows = (rows: number) => Math.max(MIN_ROWS, Math.floor(rows / ROUND_TO) * ROUND_TO);
+
 /**
  * Reports how many rows fit the panel's own height (desktop only). The panel must have a height that does not
  * depend on its rows (a fixed flex child or an absolutely filled box), or more rows would grow it forever.
@@ -24,15 +33,28 @@ export function useFitPanelRows(onFitRows: ((rows: number) => void) | undefined,
     const panel = panelRef.current;
     if (!onFitRows || !panel || typeof ResizeObserver === "undefined" || typeof window.matchMedia !== "function") return;
     const desktop = window.matchMedia("(min-width: 1024px)");
+    let last = 0;
+    let timer: ReturnType<typeof setTimeout> | undefined;
     const measure = () => {
       if (!desktop.matches) return;
       const row = panel.querySelector<HTMLElement>(rowSelector);
-      onFitRows(rowsThatFit(panel.clientHeight, row?.offsetHeight || ROW_PX));
+      const rows = roundDownRows(rowsThatFit(panel.clientHeight, row?.offsetHeight || ROW_PX));
+      // Only a real change in page size reaches the caller, so the results are not refetched for nothing.
+      if (rows !== last) {
+        last = rows;
+        onFitRows(rows);
+      }
     };
     measure();
-    const observer = new ResizeObserver(measure);
+    const observer = new ResizeObserver(() => {
+      clearTimeout(timer);
+      timer = setTimeout(measure, DEBOUNCE_MS);
+    });
     observer.observe(panel);
-    return () => observer.disconnect();
+    return () => {
+      clearTimeout(timer);
+      observer.disconnect();
+    };
   }, [onFitRows, rowSelector]);
   return panelRef;
 }
