@@ -196,6 +196,10 @@ function diffFields(local: Record<string, unknown>, remote: Record<string, unkno
       : key === 'alertConfig' && (resourceType === 'job' || resourceType === 'monitor') && localVal && typeof localVal === 'object'
       ? [normalizeLocalAlertConfig(localVal as Record<string, unknown>, remoteVal, resourceType), remoteVal]
       : [localVal, remoteVal]
+    // The server caches the test's title in a synthetic monitor's config; it is not something the config declares.
+    if (resourceType === 'monitor' && key === 'config' && (local.type ?? remote.type) === 'synthetic_test' && comparableLocal && typeof comparableLocal === 'object' && comparableRemote && typeof comparableRemote === 'object' && !('testTitle' in comparableLocal)) {
+      comparableRemote = Object.fromEntries(Object.entries(comparableRemote as Record<string, unknown>).filter(([k]) => k !== 'testTitle'))
+    }
     if (resourceType === 'monitor' && key === 'target') {
       comparableLocal = normalizeUrlTarget(comparableLocal)
       comparableRemote = normalizeUrlTarget(comparableRemote)

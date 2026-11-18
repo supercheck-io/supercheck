@@ -8,7 +8,7 @@ import { ApiRequestError } from '../utils/errors.js'
 import { discoverRepository } from '../utils/discover.js'
 import { readPlan } from './plan.js'
 import { readSmallFile } from '../utils/safe-read.js'
-import { planLink } from '../utils/link-config.js'
+import { planLink, targetLabel } from '../utils/link-config.js'
 import { isTokenSafeUrl, sanitizeApiUrl } from '../utils/api-url.js'
 
 const DEFAULT_API_URL = 'https://app.supercheck.io'
@@ -103,12 +103,12 @@ export const onboardCommand = new Command('onboard')
     }
 
     let linkState: 'ok' | 'needs_link' | 'conflict' = 'ok'
-    const ctx = context as { organization?: { id?: string; slug?: string | null }; project?: { id?: string; slug?: string | null } } | null
+    const ctx = context as { organization?: { id?: string; name?: string | null; slug?: string | null }; project?: { id?: string; name?: string | null; slug?: string | null } } | null
     if (authenticated === true && configExists && ctx?.organization?.id && ctx.project?.id) {
       const configFile = facts.existingTests.supercheck.config
       const text = configFile ? readSmallFile(resolve(cwd, configFile)) : null
       if (text !== null) {
-        const plan = planLink(text, { organization: { id: ctx.organization.id, slug: ctx.organization.slug }, project: { id: ctx.project.id, slug: ctx.project.slug }, apiUrl: loginUrl ?? DEFAULT_API_URL })
+        const plan = planLink(text, { organization: { id: ctx.organization.id, name: ctx.organization.name, slug: ctx.organization.slug }, project: { id: ctx.project.id, name: ctx.project.name, slug: ctx.project.slug }, apiUrl: loginUrl ?? DEFAULT_API_URL })
         linkState = plan.conflicts.length > 0 ? 'conflict' : plan.changes.length > 0 ? 'needs_link' : 'ok'
       }
     }
@@ -123,7 +123,7 @@ export const onboardCommand = new Command('onboard')
       next: derived.next,
       alsoConsider: derived.alsoConsider,
       checks: { config: configExists, tests: { playwright: facts.existingTests.supercheck.playwright, k6: facts.existingTests.supercheck.k6 }, plan: planState, deployedResources, ci: hasCi },
-      ...(context && typeof context === 'object' ? { context: { project: (context as { project?: unknown }).project, organization: (context as { organization?: unknown }).organization } } : {}),
+      ...(ctx?.organization?.id && ctx.project?.id ? { context: { project: { id: ctx.project.id, name: targetLabel({ id: ctx.project.id, name: ctx.project.name }) }, organization: { id: ctx.organization.id, name: targetLabel({ id: ctx.organization.id, name: ctx.organization.name }) } } } : {}),
       note: 'Local state only reflects files and the server; it does not prove tests pass. Run the local tests before deploying.',
     }, { redact: false })
   })
