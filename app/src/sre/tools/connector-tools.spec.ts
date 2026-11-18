@@ -133,6 +133,83 @@ describe("MCP connectors in the AI tool layer", () => {
     ).rejects.toThrow("use callMcpTool");
   });
 
+  it("returns valid connector ids for an unknown id and never marks a connector failed", async () => {
+    const tools = createSreConnectorTools({ ...scope, serviceId });
+    const call = () =>
+      tools.searchLiveConnectorEvidence.execute!(
+        { ...search, connectorId: "018f0000-0000-7000-8000-0000000000ff" },
+        { toolCallId: "unknown", messages: [] },
+      );
+    db.select
+      .mockReset()
+      .mockReturnValue(selectRows([
+        { connector: mcpRow },
+        { connector: { ...mcpRow, id: "018f0000-0000-7000-8000-0000000000ee", name: "Prom", type: "prometheus", privateAgentId: null } },
+      ]));
+    const values = jest.fn().mockResolvedValue(undefined);
+    db.insert.mockReturnValue({ values });
+    const first = await call();
+    const second = await call();
+    expect(values).toHaveBeenCalledWith(
+      expect.objectContaining({ connectorId: null, status: "error", toolName: "agent.connector.search.unknown_connector" }),
+    );
+    for (const result of [first, second]) {
+      expect(result).toMatchObject({
+        error: true,
+        retryable: true,
+        message: expect.stringContaining("0000000000ee (Prom, prometheus)"),
+      });
+      expect(result).not.toHaveProperty("retrySuppressed");
+      expect((result as { message: string }).message).not.toContain(mcpRow.id);
+    }
+  });
+
+  it("ignores stage outside an investigation run and flags a capped sample", async () => {
+    db.query.sreServices.findFirst.mockResolvedValue({ id: serviceId });
+    db.select
+      .mockReset()
+      .mockReturnValueOnce(selectRows([{ connector: {
+        id: connectorId, type: "loki", status: "configured", config: { endpointUrl: "https://loki.example" },
+        permissionLevel: "read", sideEffectLevel: "none", defaultTimeWindowMinutes: 60,
+        outputLimits: { maxRows: 10, maxBytes: 1024, maxSeconds: 15 },
+      } }]))
+      .mockReturnValueOnce(selectRows([{ connectorId, serviceId }]));
+    jest.mocked(checkSreConnectorSearchRateLimit).mockResolvedValue({ allowed: true, remaining: 10 });
+    const execute = jest.fn().mockResolvedValue([]);
+    jest.mocked(createDirectConnector).mockImplementation((definition) => ({
+      ...definition, search: execute, validate: jest.fn(), metadata: jest.fn(),
+    }));
+    jest.mocked(sanitizeConnectorEvidence).mockReturnValue({
+      items: [], truncated: true, resultHash: "hash",
+    } as unknown as ReturnType<typeof sanitizeConnectorEvidence>);
+    db.insert.mockReturnValue({ values: jest.fn(() => ({ returning: async () => [] })) });
+    const result = await searchIncidentLiveConnectorEvidence(
+      { ...scope, serviceId },
+      { ...search, query: '{service_name="checkout-api"} |= "error"', stage: "sample" },
+    );
+    expect(execute).toHaveBeenCalled();
+    expect(result).toMatchObject({ stage: null, truncated: true, message: expect.stringContaining("capped sample") });
+  });
+
+  it("returns the OTel name of each listed service for chat", async () => {
+    db.query.sreServices.findMany.mockResolvedValue([
+      { id: serviceId, name: "Checkout API", environment: "prod", otelServiceName: "checkout-api" },
+    ]);
+    const result = await listIncidentLiveConnectors(scope);
+    expect(db.query.sreServices.findMany.mock.calls[0][0].columns).toMatchObject({ otelServiceName: true });
+    expect(result.services[0]).toMatchObject({ otelServiceName: "checkout-api" });
+  });
+
+  it("includes the primary service OTel name in the incident connector list", async () => {
+    db.query.sreIncidents.findFirst.mockResolvedValue({ primaryServiceId: serviceId });
+    db.query.sreServices.findFirst.mockResolvedValue({
+      name: "Checkout API",
+      otelServiceName: "checkout-api",
+    });
+    const result = await listIncidentLiveConnectors({ ...scope, incidentId: "018f0000-0000-7000-8000-0000000000bb" });
+    expect(result.primaryService).toEqual({ name: "Checkout API", otelServiceName: "checkout-api" });
+  });
+
   it("returns a retryable rejection to the model for non-allowlisted tools", async () => {
     const tools = createSreConnectorTools({ ...scope, serviceId });
     const result = await tools.callMcpTool.execute!(
@@ -277,6 +354,7 @@ describe("Copilot connector service scope", () => {
 
   it("rejects a connector mapped to a different service", async () => {
     db.query.sreServices.findFirst.mockResolvedValue({ id: serviceId });
+    db.insert.mockReturnValue({ values: jest.fn().mockResolvedValue(undefined) });
     db.select
       .mockReturnValueOnce(selectRows([{ connector: { id: connectorId } }]))
       .mockReturnValueOnce(

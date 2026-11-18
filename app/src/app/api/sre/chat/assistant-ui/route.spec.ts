@@ -351,6 +351,13 @@ describe("Copilot assistant-ui chat API", () => {
     );
     expect(streamText).toHaveBeenCalledWith(
       expect.objectContaining({
+        system: expect.stringContaining(
+          "never proves that there were no errors",
+        ),
+      }),
+    );
+    expect(streamText).toHaveBeenCalledWith(
+      expect.objectContaining({
         system: expect.stringContaining('"type":"line"'),
       }),
     );

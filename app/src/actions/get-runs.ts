@@ -2,7 +2,7 @@
 
 import { liveRunOfLiveJob } from "@/lib/deletion/visibility";
 import { db } from "@/utils/db";
-import { runs, reports, jobs, jobTests, projects } from "@/db/schema";
+import { runs, reports, jobs, jobTests, projects, tests } from "@/db/schema";
 import type { JobType } from "@/db/schema";
 import { eq, and, count, sql } from "drizzle-orm";
 import {
@@ -54,6 +54,7 @@ export async function getRun(
         id: runs.id,
         jobId: runs.jobId,
         jobName: jobs.name,
+        testTitle: tests.title,
         projectName: projects.name,
         status: runs.status,
         durationMs: runs.durationMs,
@@ -72,6 +73,15 @@ export async function getRun(
       .from(runs)
       .leftJoin(jobs, eq(runs.jobId, jobs.id))
       .leftJoin(projects, sql`${projects.id} = coalesce(${runs.projectId}, ${jobs.projectId})`)
+      // A single-test run has no job: its title comes from the test in the same project.
+      .leftJoin(
+        tests,
+        and(
+          // Compare as uuid (the text cast would defeat the primary key index); malformed metadata matches nothing.
+          sql`${tests.id} = CASE WHEN ${runs.metadata}->>'testId' ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN (${runs.metadata}->>'testId')::uuid END`,
+          eq(tests.projectId, runs.projectId)
+        )
+      )
       .leftJoin(
         reports,
         and(
@@ -86,7 +96,9 @@ export async function getRun(
       return null;
     }
 
-    const { metadata, ...run } = result[0];
+    const { metadata, testTitle, ...run } = result[0];
+    // Playground runs carry a testId even when the test was never saved.
+    const hasTest = typeof (metadata as { testId?: unknown } | null)?.testId === "string";
 
     // Check if user has access to this run's organization
     const userRole = await getUserRole(userId);
@@ -112,6 +124,8 @@ export async function getRun(
         .where(eq(jobTests.jobId, run.jobId));
 
       testCount = testCountResult[0]?.count || 0;
+    } else if (hasTest) {
+      testCount = 1; // a single-test run has no job to count tests through
     }
 
     const computeDuration = () => {
@@ -152,7 +166,7 @@ export async function getRun(
 
     const response: RunResponse = {
       ...run,
-      jobName: run.jobName || undefined,
+      jobName: run.jobName || testTitle || (hasTest ? "Playground test" : undefined),
       projectName: run.projectName || undefined,
       jobType: run.jobType || undefined,
       duration: computeDuration(),

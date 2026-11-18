@@ -113,6 +113,7 @@ The current opt-in live connector fixtures cover:
 | `connector-investigation-elasticsearch-error-documents` | Elasticsearch/OpenSearch | Indexed checkout error document with service/severity/timestamp fields. |
 | `connector-investigation-cloudwatch-alarm` | AWS CloudWatch | Checkout alarm or metric data in the incident window. |
 | `connector-investigation-tempo-trace-latency` | Grafana Tempo | Slow checkout trace with dependency span attributes. |
+| `connector-investigation-jaeger-trace-errors` | Jaeger | Error-tagged checkout-api trace with failing dependency span. |
 
 Seed these only in non-production tenants. Use fake/demo services, short telemetry retention, and read-only connector credentials.
 

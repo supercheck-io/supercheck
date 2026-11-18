@@ -19,9 +19,11 @@ import { alias } from "drizzle-orm/pg-core";
 import { isActionableAlertForIncident } from "@/lib/alert-escalation";
 import type { SrePostmortem } from "@/db/schema";
 import { z } from "zod";
+import { supportedLiveConnectorTypes } from "@/sre/tools/connector-tools";
 
 import {
   alertHistory,
+  externalConnectors,
   incidents as statusPageIncidents,
   statusPages,
   jobs,
@@ -314,6 +316,8 @@ export type SreIncidentDetail = {
   };
   capabilities: {
     investigationEnabled: boolean;
+    /** The project has at least one validated connector, so live sources are worth defaulting on. */
+    hasValidConnector: boolean;
   };
 };
 
@@ -1050,7 +1054,7 @@ export async function getSreIncidentDetails(
         })
       : null;
 
-    const [evidence, investigationCountRow, toolMetricsRow] = await Promise.all(
+    const [evidence, investigationCountRow, toolMetricsRow, validConnectorRow] = await Promise.all(
       [
         db
           .select({
@@ -1112,6 +1116,18 @@ export async function getSreIncidentDetails(
               eq(sreInvestigationRuns.organizationId, organizationId),
               eq(sreInvestigationRuns.projectId, project.id),
               eq(sreInvestigationRuns.agentType, "investigation"),
+            ),
+          )
+          .limit(1),
+        db
+          .select({ id: externalConnectors.id })
+          .from(externalConnectors)
+          .where(
+            and(
+              eq(externalConnectors.organizationId, organizationId),
+              eq(externalConnectors.projectId, project.id),
+              eq(externalConnectors.status, "valid"),
+              inArray(externalConnectors.type, supportedLiveConnectorTypes),
             ),
           )
           .limit(1),
@@ -1223,6 +1239,7 @@ export async function getSreIncidentDetails(
         },
         capabilities: {
           investigationEnabled: isSreInvestigationAgentEnabled(),
+          hasValidConnector: validConnectorRow.length > 0,
         },
       },
     };

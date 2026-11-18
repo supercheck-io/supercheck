@@ -18,7 +18,9 @@ export interface AgentTestSummary {
 }
 
 export const AGENT_SUMMARY_ATTACHMENT = 'agent-summary';
-const CONTAINER_REPORTS_DIR = '/tmp/playwright-reports';
+// Kubernetes rewrites /tmp to the run's workspace (/tmp/supercheck/run-<id>/playwright-reports), so only this
+// directory name is stable in the pod paths Playwright records.
+const REPORTS_DIR_NAME = 'playwright-reports';
 const MAX_TESTS = 20;
 const MAX_TOOL_NAMES = 50;
 const MAX_FAILURES = 5;
@@ -81,8 +83,8 @@ function sanitize(
 
 /**
  * Reads the agent-summary attachments recorded in results.json. Playwright's JSON reporter stores a
- * path attachment as { name, contentType, path } with the pod path (/tmp/playwright-reports/...), and the
- * pod's report dir is what extractedReportsDir holds, so the path maps by its prefix. Anything missing,
+ * path attachment as { name, contentType, path } with the pod path (.../playwright-reports/...), and the
+ * pod's report dir is what extractedReportsDir holds, so the path maps by what follows that directory. Anything missing,
  * oversized or malformed is skipped: the run result never depends on this.
  */
 export async function readAgentSummaries(
@@ -121,8 +123,11 @@ export async function readAgentSummaries(
   const tests: AgentTestSummary[] = [];
   for (const { testId, file } of found.slice(0, MAX_TESTS)) {
     try {
-      const rel = path.posix.relative(CONTAINER_REPORTS_DIR, file);
-      if (rel.startsWith('..') || path.isAbsolute(rel)) continue;
+      const normalized = path.posix.normalize(file);
+      const at = normalized.indexOf(`/${REPORTS_DIR_NAME}/`);
+      if (at < 0) continue;
+      const rel = normalized.slice(at + REPORTS_DIR_NAME.length + 2);
+      if (rel.startsWith('..')) continue;
       const hostPath = path.join(extractedReportsDir, rel);
       if (path.relative(extractedReportsDir, hostPath).startsWith('..'))
         continue;
