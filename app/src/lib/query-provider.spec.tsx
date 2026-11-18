@@ -111,6 +111,14 @@ describe("QueryProvider hydration", () => {
   it("never saves scripts, run logs or monitor configs, whichever hook or prefetch created the query", async () => {
     render(<QueryProvider><AlertsProbe /></QueryProvider>);
     await screen.findByText("Alerts: 1; channels: 1");
+    // A prefetch or restored entry that says persist:true must not opt a sensitive key back in.
+    await act(async () => {
+      await mountedClient.prefetchQuery({
+        queryKey: ["monitors", "project-1", "hover"],
+        queryFn: async () => ({ config: { auth: { password: "secret()" } } }),
+        meta: { persist: true },
+      });
+    });
     act(() => {
       for (const key of [["test", "t1"], ["job", "j1"], ["run", "r1"], ["monitor", "m1"], ["monitors", "project-1", "{}"], ["monitors", "picker", "project-1"]]) {
         mountedClient.setQueryData(key, { script: "secret()" });
