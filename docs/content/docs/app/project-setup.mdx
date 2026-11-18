@@ -1,55 +1,103 @@
 ---
-title: Project Setup
-description: A guided first run that sets up monitors, alerts and a status page for a project
+title: Project setup
+description: A guided first run that sets up monitors, alert channels and a status page for a project
 icon: Rocket
 ---
 
-**Project setup** takes a new project from empty to watched in a few minutes. It asks what you use Supercheck for, then walks you through your app, alert channels, monitors and a status page, and creates everything in one step at the end. Every step can be skipped and picked up later.
+**Project setup** takes a new project from empty to watched in a few minutes, then creates everything in one step at the end. You can skip any step and finish it later.
 
-It opens after you sign up, and again when you choose **Create and set up** for a new project. You can open it any time from **Project setup** in the sidebar, from <kbd>⌘</kbd> <kbd>K</kbd>, or from **Organization → Projects**.
+It opens after you sign up and when you choose **Create and set up** for a new project. Reopen it from **Project setup** in the sidebar, <kbd>⌘</kbd> <kbd>K</kbd>, or **Organization → Projects**.
 
-## How it works
+## Run the setup
 
 ```mermaid
 flowchart LR
     A[Welcome: pick a focus] --> B[Your app]
     B --> C[Alerts]
     C --> D[Monitors]
-    D --> T[Requirements and tests, Beta]
-    T --> E[Status page]
-    E --> S[AI SRE]
+    D --> E[Status page]
+    E --> T[Requirements and tests, Beta]
+    T --> S[AI SRE]
     S --> F[Review and create]
     F --> G[Dashboard: Getting started]
 ```
 
-1. **Welcome.** Pick what you will mostly do. The choice only changes the order of the steps and of the sidebar; nothing is hidden.
-2. **Your app.** Enter your app's URL and optionally **Scan** it. The scan reads the homepage and a few pages and shows whether the site is reachable, redirects, SSL certificate days left, response time and the pages it found. It never stores page bodies, only codes, timings, paths and page titles. Private addresses are refused, and a site behind bot protection or an unavailable scan simply skips this. You can add a test account here; it is saved straight away as an encrypted [project secret](/docs/app/automate/variables).
-3. **Alerts.** Add email, Slack, Microsoft Teams, Discord, Telegram or a webhook (PagerDuty, Splunk On-Call, Better Stack and incident.io presets) and send a test alert. Channels are saved as soon as you add them. Project admins can also turn on **Repeat until acknowledged** and **Also alert on warnings**. Repeat until acknowledged changes the project's notification policy: it sets the reminder interval and, if the policy has no channels yet, adds the channels you saved here.
-4. **Monitors.** Pick the pages to watch for uptime and SSL (pages found by the scan are suggested; only the homepage starts ticked), how often, and optionally a [heartbeat](/docs/app/heartbeat) for a cron job, an AI endpoint or an MCP server.
-5. **Requirements and tests (Beta).** AI suggests the key user journeys from your scan as [requirements](/docs/app/requirements). Tick the ones you want; Review creates them, and each one then offers **Generate test**. It uses 1 AI credit, once per project per day, and the cost is shown before you click **Suggest requirements**. It is locked on a trial with a link to upgrade, and hidden when no AI provider is configured. A **Test an AI agent** card opens the agent test form.
-6. **Status page.** Name it, publish it or keep it as a draft, or choose **I don't need a status page**.
-7. **AI SRE.** Connect GitHub, Sentry, Datadog, Grafana or Prometheus. Each connector is saved and tested right away and shows **Connected** or **Saved, but the token was rejected**. Tools inside a private network use a private agent from **Organization → Private agents**. You can also tick a suggested service named after your app's host. Needs a project admin; editors see **Ask a project admin**.
-8. **Review and create.** Supercheck shows what is already saved and what will be created, then creates each item one by one. If one item fails, the others stay created and you can retry just that item. A heartbeat's ping URL is shown once, here.
+The default order is below. Your [focus](#focus-and-sidebar) reorders it and never hides a step.
 
-**Copy from a project.** When the organization has another project you can reach, **Alerts** and **AI SRE** offer **Copy all alert channels** or **Copy all connectors** from it. Secrets are re-encrypted for the new project and never shown, and each item is listed by name as Copied, Already there or Failed. An item with the same name is reused only when its settings match; otherwise the copy is named `<name> (copied)`. Copies pass the same checks as creating the item by hand (endpoint rules, private agent access, channel settings). Connectors keep their risk level; like every connector they are read-only.
+<Steps>
+<Step>
 
-Setup uses the same checks as creating each item by hand: your role, your plan's limits and the audit log apply to every item. It adds new items and never deletes anything you already have. The one existing setting it changes is the project's notification policy, when you turn on **Repeat until acknowledged**: it sets the reminder interval and adds your saved channels only if the policy had none. Running it again only suggests what is new, and it does not recreate items you deleted.
+### Welcome
+
+Pick your focus.
+
+</Step>
+<Step>
+
+### Your app
+
+Enter the URL and optionally choose **Scan**. It shows reachability, redirects, SSL days left, response time and pages found. It stores only codes, timings, paths and page titles. Private addresses are refused, and a site behind bot protection skips the scan. A test account you add is saved at once as an encrypted [project secret](/docs/app/automate/variables).
+
+</Step>
+<Step>
+
+### Alerts
+
+Add email, Slack, Microsoft Teams, Discord, Telegram or webhook channels (presets: PagerDuty, Splunk On-Call, Better Stack, incident.io) and send a test alert. Channels save as you add them. Project admins can also turn on **Repeat until acknowledged** and **Also alert on warnings**. The first sets the reminder interval in the project's notification policy and, if the policy has no channels, adds the ones you saved here.
+
+</Step>
+<Step>
+
+### Monitors
+
+Pick pages to watch for uptime and SSL, and how often. Scan results are suggested; only the homepage starts ticked. Optionally add a [heartbeat](/docs/app/heartbeat) for a cron job, AI endpoint or MCP server.
+
+</Step>
+<Step>
+
+### Status page
+
+Name it and publish it or keep it as a draft, or choose **I don't need a status page**.
+
+</Step>
+<Step>
+
+### Requirements and tests (Beta)
+
+AI suggests user journeys from your scan as [requirements](/docs/app/automate/requirements). Tick the ones you want; each then offers **Generate test**. **Test an AI agent** opens the agent test form. Choosing **Suggest requirements** costs 1 AI credit, once per project per day, and the cost shows first. The step is locked on a trial and hidden when no AI provider is configured.
+
+</Step>
+<Step>
+
+### AI SRE
+
+Connect GitHub, Sentry, Datadog, Grafana or Prometheus. Each connector is saved and tested at once and shows **Connected** or **Saved, but the token was rejected**. Tools in a private network use a private agent from **Organization → Private Agents**. You can also tick a suggested service named after your app's host. Editors see **Ask a project admin**.
+
+</Step>
+<Step>
+
+### Review and create
+
+Review what is saved and what will be created. A heartbeat's ping URL is shown once, here.
+
+</Step>
+</Steps>
 
 ## Focus and sidebar
 
-| Focus | Steps start with | Sidebar order (first group open) |
-|---|---|---|
-| SRE and platform | Your app, Alerts, Monitors | Respond, Monitor, Communicate, Automate |
-| QA engineers | Your app, Tests | Automate, Communicate, Respond, Monitor |
-| Developers | Terminal commands and the [coding-agent recipe](/docs/cli/after-ship-check) | Automate, Monitor, Respond, Communicate |
-| Engineering leaders | Invite your team | Unchanged, all groups open |
-| A bit of everything, or skipped | Default order | Unchanged, all groups open |
+Your focus sets the step order after **Welcome** and the sidebar order. **Review and create** is always last. Change it with **Change focus** in the user menu. Dashboard, Quick Create, Settings and Docs always stay visible.
 
-Dashboard, Quick Create, Settings and Docs always stay visible. Change your focus from the user menu (**Change focus**).
+| Focus | Step order | Sidebar order (first group open) |
+|---|---|---|
+| SRE and platform | App, Alerts, Monitors, AI SRE, Status page, Tests | Respond, Monitor, Communicate, Automate |
+| QA engineers | App, Tests, Alerts, Monitors, Status page, AI SRE | Automate, Communicate, Respond, Monitor |
+| Developers | Terminal commands and [coding-agent recipe](/docs/cli/after-ship-check), App, Monitors, Alerts, Tests, Status page, AI SRE | Automate, Monitor, Respond, Communicate |
+| Engineering leaders | Invite your team, App, Alerts, Monitors, Status page, Tests, AI SRE | Unchanged, all groups open |
+| A bit of everything, or skipped | Default order | Unchanged, all groups open |
 
 ## Getting started checklist
 
-Until setup is finished or dismissed, the dashboard shows a **Getting started** card and the sidebar shows **Project setup** with a count such as `4/9`. On a project that already has monitors, tests, jobs or status pages, both appear only once you start setup, so existing projects are not nagged after an upgrade. Ticks come from what exists in the project, so they stay correct when you add or delete items elsewhere.
+Until setup is finished or dismissed, the dashboard shows a **Getting started** card and the sidebar shows **Project setup** with a count such as `4/9`. **Dismiss** hides both for that project. Ticks come from what exists in the project, so they stay correct when you add or delete items elsewhere.
 
 | Group | Item | Done when the project has |
 |---|---|---|
@@ -65,7 +113,7 @@ Until setup is finished or dismissed, the dashboard shows a **Getting started** 
 | Team and code | Invite your team | another member or a pending invitation |
 | Team and code | CLI token | a [CLI token](/docs/cli/authentication) |
 
-**Next steps** links (not counted) point to opening a practice [incident](/docs/app/investigate/incidents) and scheduling maintenance. **Dismiss** hides the card and the sidebar entry for that project.
+Items whose feature is off are hidden and not counted. **Next steps** links are not counted: a practice [incident](/docs/app/investigate/incidents), scheduling maintenance, and the [coding-agent recipe](/docs/cli/after-ship-check).
 
 ## Who sees what
 
@@ -77,6 +125,49 @@ Until setup is finished or dismissed, the dashboard shows a **Getting started** 
 | Project viewer | Read-only checklist |
 | Invited member | Only the focus question, then the dashboard |
 
-Only one person runs setup for a project at a time; others see who is running it. On self-hosted installations there is no plan step and no plan limits.
+Only one person runs setup for a project at a time. Others see who is running it.
 
+<Callout>
 Setup is in the app only. The [CLI](/docs/cli) and [MCP server](/docs/mcp) already create every item setup creates.
+</Callout>
+
+## FAQ
+
+<Accordions>
+<Accordion title="Does an existing project get the checklist?" id="existing-projects">
+
+Not automatically. On a project that already has monitors, tests, jobs or status pages, the card and sidebar entry appear only after you start setup.
+
+</Accordion>
+<Accordion title="What happens if one item fails to create?" id="create-failure">
+
+The other items stay created. Retry just the failed item from **Review and create**.
+
+</Accordion>
+<Accordion title="Do my role and plan limits apply?" id="limits">
+
+Yes. Each item goes through the same API as creating it by hand, so your role and plan limits apply. Setup only adds items. Self-hosted installations have no plan step and no plan limits.
+
+</Accordion>
+<Accordion title="Can I copy channels or connectors from another project?" id="copy-from-project">
+
+If the organization has another project you can reach, **Alerts** and **AI SRE** offer **Copy all alert channels** or **Copy all connectors**. Setup keeps up to 10 of each, so a copy is limited to the room left.
+
+- Secrets are re-encrypted for the new project and never shown.
+- Each item is listed as Copied, Already there or Failed.
+- A same-named item is reused only when its settings match. Otherwise the copy is named `<name> (copied)`.
+- Copies pass the same checks as creating by hand (endpoint rules, private agent access, channel settings).
+- Connectors keep their risk level and stay read-only.
+
+</Accordion>
+</Accordions>
+
+## Related
+
+<Cards>
+<Card title="Monitors" href="/docs/app/monitor" description="Uptime, SSL and other monitor types" />
+<Card title="Notifications" href="/docs/app/communicate/alerts" description="Channels, thresholds and warnings" />
+<Card title="Status pages" href="/docs/app/communicate/status-pages" description="Publish system health" />
+<Card title="Requirements" href="/docs/app/automate/requirements" description="User journeys and generated tests" />
+<Card title="Connectors" href="/docs/app/investigate/connectors" description="Connect AI SRE to your stack" />
+</Cards>
