@@ -12,6 +12,23 @@ describe('EnhancedValidationService URL validation', () => {
     });
   });
 
+  it('keeps the case of the path and query (servers may treat them case-sensitively)', () => {
+    expect(
+      service.validateAndSanitizeUrl(
+        '  https://Api.Example.com/v1/Rates?from=Hamburg&sig=AbC  ',
+      ),
+    ).toEqual({
+      valid: true,
+      sanitized: 'https://Api.Example.com/v1/Rates?from=Hamburg&sig=AbC',
+    });
+  });
+
+  it('still rejects an uppercase private host', () => {
+    expect(
+      service.validateAndSanitizeUrl('http://LOCALHOST:3000/Admin'),
+    ).toMatchObject({ valid: false });
+  });
+
   it('preserves the explicit internal-target opt-in', () => {
     expect(
       service.validateAndSanitizeUrl(

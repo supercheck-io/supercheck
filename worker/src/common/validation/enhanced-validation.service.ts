@@ -32,8 +32,8 @@ export class EnhancedValidationService {
         return { valid: false, error: 'URL must be a non-empty string' };
       }
 
-      // Sanitize: Remove leading/trailing whitespace and normalize
-      const sanitized = url.trim().toLowerCase();
+      // Trim only: paths, queries and signatures can be case-sensitive; URL parsing lowercases the host for the checks below.
+      const sanitized = url.trim();
 
       if (sanitized.length > (config.maxStringLength || 2048)) {
         return { valid: false, error: 'URL exceeds maximum allowed length' };
