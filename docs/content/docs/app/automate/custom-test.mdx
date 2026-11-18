@@ -1,30 +1,28 @@
 ---
-title: Custom Test
+title: Custom test
 description: Write custom Node.js test scripts
 icon: SquareFunction
 ---
 
-Write custom test scripts for advanced scenarios that don't fit into browser, API, or database categories. Custom tests run in an isolated environment with the Playwright, HTTP, data, and database packages included.
+Write TypeScript or JavaScript tests for scenarios that do not fit the browser, API or database types. Custom tests run in an isolated environment with the Playwright, HTTP, data and database packages included.
 
-## Create Test
+## Create a custom test
 
 <Steps>
 <Step>
-Go to **Create → Custom Test**
+Go to **Create → Custom Test**.
 </Step>
 <Step>
-Write TypeScript/JavaScript code
+Write your script, then **Run** and debug it.
 </Step>
 <Step>
-Run and debug
+Select **Save** when it passes.
 </Step>
-<Step>
-Save when passing
-</Step></Steps>
+</Steps>
 
 ## Example
 
-Set `API_URL` to a test API you control that persists posts and supports `POST /posts`, `GET /posts/:id`, and `DELETE /posts/:id`. Public mock APIs that simulate writes cannot verify this workflow.
+Set `API_URL` to a test API you control that supports `POST /posts`, `GET /posts/:id` and `DELETE /posts/:id`. Public mock APIs that simulate writes cannot verify this workflow.
 
 ```typescript
 import { expect, test } from '@playwright/test';
@@ -64,27 +62,13 @@ test.describe.serial('posts CRUD', () => {
 });
 ```
 
-<Accordions>
-<Accordion title="Features and use cases" id="features-use-cases">
-
-**Features**
+## Reference
 
 - Sandboxed TypeScript and JavaScript execution
-- Approved packages including Playwright, Axios, Zod, date-fns, Faker, and supported database drivers
-- Access to variables with `getVariable()`
-- Access to secrets with `getSecret()`
-- Custom assertions and complex logic
+- Approved packages including Playwright, Axios, Zod, date-fns, Faker and supported database drivers
+- `getVariable()` and `getSecret()` for variables and secrets, `readFile()` and `getFile()` for uploaded files
+- Good fits: multi-step workflows, complex data validation, integration tests across services
 
-**Use Cases**
-
-- **Multi-step workflows** — Create, update, delete sequences
-- **Data validation** — Complex business logic checks
-- **Integration tests** — Multiple services in one test
-- **API and database workflows** — Exercise supported services with approved clients
-
-</Accordion>
-</Accordions>
-
-<Callout type="info">
-Tests can reach public hosts over TCP; private-network destinations are blocked. The filesystem is read-only except `/tmp`. Use `readFile()` and `getFile()` to access uploaded files.
+<Callout>
+Tests can reach public hosts over TCP. Private-network destinations are blocked. The filesystem is read-only except `/tmp`.
 </Callout>

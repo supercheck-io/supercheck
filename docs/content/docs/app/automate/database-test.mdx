@@ -1,28 +1,26 @@
 ---
-title: Database Test
+title: Database test
 description: Query and validate database state
 icon: Database
 ---
 
-Run SQL queries and validate database state directly. Database tests connect to your databases securely and execute queries with result validation.
+Run SQL queries and validate database state with Playwright-based tests.
 
-## Create Test
+## Create a database test
 
 <Steps>
 <Step>
-Go to **Create → Database Test**
+Go to **Create → Database Test**.
 </Step>
 <Step>
-Write SQL query
+Write your SQL query and add assertions.
 </Step>
 <Step>
-Add assertions
+**Run** and **Save**.
 </Step>
-<Step>
-Run and save
-</Step></Steps>
+</Steps>
 
-Database connections are defined inline in your script. Use `getVariable()` for connection details such as host, port, database, and user, and `getSecret()` for the password (see the example below). There is no separate connection picker in the UI.
+Database connections are defined inline in your script. Use `getVariable()` for host, port, database and user, and `getSecret()` for the password. There is no connection picker in the UI. Import the matching Node driver (`pg`, `mysql2` or `mssql`) at the top of the script.
 
 ## Example
 
@@ -59,32 +57,11 @@ test.describe('database read health check', () => {
 For databases reachable over a public network, keep `ssl: true` so the connection is encrypted and the certificate is verified. For a private CA use `ssl: { ca: getSecret('DB_CA_CERT') }`. Never set `rejectUnauthorized: false`.
 </Callout>
 
-<Accordions>
-<Accordion title="Supported databases, connections, and assertions" id="db-reference">
-
-**Supported Databases**
+## Reference
 
 | Type | Databases |
 |------|-----------|
 | **Relational** | PostgreSQL, MySQL, SQL Server, MariaDB |
 | **Cloud** | Amazon RDS, Azure SQL, Google Cloud SQL |
 
-**Connection Methods**
-
-- **Direct** — Connect to a publicly reachable database using credentials from Variables/Secrets.
-- **Secrets** — Store credentials securely with `getSecret()` instead of hardcoding them in the script.
-- **Private networks** — Test runs cannot reach private-network addresses, and there is no built-in SSH tunnel. Expose the database on a public address you restrict.
-
-Import the matching Node driver (`pg`, `mysql2`, `mssql`) at the top of your script — connection details come from Variables/Secrets, not a UI connection picker.
-
-**Common Assertions**
-
-| Assertion | Example |
-|-----------|---------|
-| Row count | `COUNT(*) > 0` |
-| Value check | `status = 'active'` |
-| Not null | `email IS NOT NULL` |
-
-</Accordion>
-</Accordions>
-
+Connect directly to a publicly reachable database. Test runs cannot reach private-network addresses and there is no built-in SSH tunnel, so expose the database on a public address you restrict.

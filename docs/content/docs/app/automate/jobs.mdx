@@ -4,69 +4,45 @@ description: Schedule and automate test execution
 icon: CalendarClock
 ---
 
-Jobs group tests and run them on a schedule, on demand, or from your CI/CD pipeline: nightly regression, post-deploy smoke tests and continuous checks of critical flows.
+Jobs group tests and run them on a schedule, on demand or from CI/CD: nightly regression, post-deploy smoke tests and continuous checks of critical flows.
 
 ![Jobs List](/screenshots/jobs-list.png)
 
-## What Jobs Do
+## What a job does
 
-When a job executes:
+Selected tests run in sequence (Playwright jobs), or one test for a k6 performance job. Results are aggregated into reports, and your selected channels are notified for the alert types you enable.
 
-<Steps>
-<Step>
+## Create a job
 
-Selected tests run in sequence (Playwright jobs). A k6 performance job runs exactly one test.
-
-</Step>
-<Step>
-
-Results are collected and aggregated, and reports are generated.
-
-</Step>
-<Step>
-
-Your selected channels are notified for the alert types you enable.
-
-</Step>
-</Steps>
-
-## Creating a Job
-
-On Supercheck Cloud, creating or editing a job requires an active organization subscription and a valid billing customer. These billing checks do not apply to self-hosted installations.
+On Supercheck Cloud, creating or editing a job requires an active organization subscription and a valid billing customer. Self-hosted installations skip these checks.
 
 ![Create Job Form](/screenshots/create-job-form.png)
 
-### Step 1: Basic Information
+### Basic information
 
 <Steps>
 <Step>
-Open **Jobs** and click **Create Job** (or use **Quick Create → Playwright Job**)
+Open **Jobs** and select **Create Job**, or use **Quick Create → Playwright Job**.
 </Step>
 <Step>
-Enter a descriptive **name** (e.g., "Nightly Regression Suite"), up to 255 characters
+Enter a **name** such as "Nightly Regression Suite", up to 255 characters.
 </Step>
 <Step>
-Add a **description** explaining what the job tests (required)
+Add a **description** of what the job tests. It is required.
 </Step>
 </Steps>
 
-### Step 2: Select Tests
+### Select tests
 
 Pick any mix of browser, API, database and custom tests, up to 50 per job. A k6 performance job runs exactly one performance test.
 
 ![Select Tests](/screenshots/create-job-select-tests.png)
 
-<Callout type="info">
-Tests run in the order you select them. Put critical tests first so failures are detected early.
+Tests run in the order you select them, and the Playwright HTML report shows them in that order. Put critical tests first so failures surface early.
 
-The Playwright HTML report will display tests in their execution order, making it easy to trace through the test sequence.
-</Callout>
+### Schedule
 
-### Step 3: Configure Schedule
-
-Choose when the job runs with the schedule builder: an hourly, daily, weekly, monthly or yearly time. Leave the schedule empty for manual execution. To trigger it from CI, save the job, then open its **Edit** action and go to **CI/CD Settings**.
-
-The builder offers hourly and longer periods. Schedules are stored as five-field cron expressions (minute, hour, day of month, month, day of week), so the CLI and API can set any cron down to one minute. Schedules run in UTC.
+Pick an hourly, daily, weekly, monthly or yearly time in the schedule builder, or leave the schedule empty for manual execution. Schedules are stored as five-field cron expressions (minute, hour, day of month, month, day of week) and run in UTC, so the CLI and API can set any cron down to one minute.
 
 <Accordions>
 <Accordion title="Common cron examples" id="cron-examples">
@@ -85,9 +61,7 @@ The builder offers hourly and longer periods. Schedules are stored as five-field
 The Jobs list shows your 100 most recently created jobs. A job beyond that is still reachable by its direct link.
 </Callout>
 
-### Step 4: Configure Alerts
-
-Set up notifications for job results:
+### Alerts
 
 ![Alert Configuration](/screenshots/create-job-alerts-config.png)
 
@@ -112,17 +86,15 @@ See [How alerts become incidents](/docs/app/investigate/incidents#how-alerts-bec
 
 ## Parallel execution
 
-Jobs and tests run in parallel up to your capacity; further runs wait in the queue until a slot frees. Select the **RUNNING / QUEUED** indicator in the header to inspect, open, or cancel active and waiting runs. Self-hosted installations configure concurrent and queued limits; see [Self-Hosted](/docs/app/deployment/self-hosted).
+Jobs and tests run in parallel up to your capacity, and further runs wait in the queue. Use the **RUNNING / QUEUED** indicator in the header to inspect, open or cancel runs. Self-hosted: set limits as described in [Self-hosted](/docs/app/deployment/self-hosted).
 
 ![Parallel Execution Dialog](/screenshots/parallel-execution-dialog.png)
 
-## CI/CD Integration
+## CI/CD integration
 
-Trigger jobs from your CI/CD pipeline to run tests after every deployment.
+Create a job trigger key, store it as a secret in your CI/CD platform, and call the trigger URL after each deployment. To make the pipeline wait for the result and fail when tests fail, use the [CLI CI/CD workflow](/docs/cli/ci-cd) with `supercheck job trigger --wait`.
 
-Create a job trigger key, store it as a secret in your CI/CD platform, and call the copied trigger URL after deployment. To make the pipeline wait for the result and fail when tests fail, use the [CLI CI/CD workflow](/docs/cli/ci-cd) with `supercheck job trigger --wait`.
-
-A trigger key acts as the user who created it. If that user can no longer trigger the job, for example after a role change or removal from the project, the key is refused with `403`; it works again once their access is restored. Removing the user from the organization disables their trigger keys instead.
+A trigger key acts as the user who created it. If that user can no longer trigger the job, for example after a role change or removal from the project, the key is refused with `403` and works again once access is restored. Removing the user from the organization disables their trigger keys instead.
 
 <p className="text-sm md:hidden">Scroll horizontally to view the full diagram.</p>
 
@@ -156,19 +128,19 @@ sequenceDiagram
 </div>
 </div>
 
-This shows the CLI workflow with `--wait`. A plain HTTP trigger starts the job but does not wait for the test result.
+The diagram shows the CLI workflow with `--wait`. A plain HTTP trigger starts the job but does not wait for the result.
 
-### Setting Up API Triggers
+### Set up an API trigger
 
 <Steps>
 <Step>
-Open the job you want to trigger
+Open the job.
 </Step>
 <Step>
-Open the job's **Edit** action and continue to **CI/CD Settings**
+Open its **Edit** action and go to **CI/CD Settings**.
 </Step>
 <Step>
-Select **Create Key**, then copy the trigger URL and API key
+Select **Create Key**, then copy the trigger URL and API key.
 </Step>
 </Steps>
 
@@ -178,7 +150,7 @@ Select **Create Key**, then copy the trigger URL and API key
 
 ![API Key Configuration](/screenshots/edit-job-cicd-apikey-configure.png)
 
-### Triggering from CI/CD
+### Trigger from CI/CD
 
 <Tabs items={['cURL', 'GitHub Actions', 'GitLab CI']}>
 <Tab value="cURL">
@@ -223,9 +195,9 @@ test:
 Use a unique key per pipeline, store it as a CI secret, rotate it periodically, and revoke keys you no longer need.
 </Callout>
 
-## Job Execution
+## Run a job
 
-### Running Jobs Manually
+### Run manually
 
 <Steps>
 <Step>
@@ -235,16 +207,14 @@ Open the **Jobs** list and select **Run** on a job.
 </Step>
 <Step>
 
-Follow live progress in the execution dialog; results appear when it completes.
+Follow progress in the execution dialog. Results appear when it completes.
 
 </Step>
 </Steps>
 
-### Canceling Jobs
+### Cancel a job
 
-Select **Cancel** on a running job and confirm. Partial results and the cancellation status are in the run details.
-
-Open a run to see its summary, per-test results, reports (screenshots, traces, logs), and history. See [Runs](/docs/app/automate/runs).
+Select **Cancel** on a running job and confirm. Partial results and the cancellation status are in the run details. See [Runs](/docs/app/automate/runs).
 
 ## Execution limits
 
@@ -255,7 +225,7 @@ Open a run to see its summary, per-test results, reports (screenshots, traces, l
 
 k6 scripts are rejected when a literal `vus`, `maxVUs`, `preAllocatedVUs`, `startVUs`, or a VU stage target (top-level `stages` or `ramping-vus` scenarios) is above **1000**, or a literal duration is above 60 minutes.
 
-## Notifications and cleanup
+## Reference
 
 <Accordions>
 <Accordion title="Notification contents" id="notification-contents">

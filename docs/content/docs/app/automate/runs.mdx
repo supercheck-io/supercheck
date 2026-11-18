@@ -4,11 +4,11 @@ description: View execution history and results
 icon: ClipboardList
 ---
 
-Every test or job execution creates a run with results, logs, and artifacts.
+Every test or job execution creates a run with results, logs and artifacts.
 
 ![Job Runs](/screenshots/job-runs.png)
 
-## Run Status
+## Run status
 
 | Status | Description |
 |--------|-------------|
@@ -20,9 +20,9 @@ Every test or job execution creates a run with results, logs, and artifacts.
 | **Queued** | Waiting to execute |
 | **Blocked** | Execution denied by access or spending controls |
 
-## View Runs
+## View runs
 
-Open **Automate → Runs** and select a run to view its details. The list shows the newest 1000 runs; older runs are not loaded and search and filters only cover the loaded ones.
+Open **Automate → Runs** and select a run. The list shows the newest 1000 runs. Search and filters only cover the loaded runs.
 
 The **Triggered by** column shows who started each run:
 
@@ -34,57 +34,25 @@ The **Triggered by** column shows who started each run:
 
 Runs recorded before this column was added show **Unknown**.
 
-Tests, jobs, monitors, requirements, variables and notification channels show a **Created by** column. On the jobs and monitors tables it is hidden by default; turn it on from the column menu.
+Tests, jobs, monitors, requirements, variables and notification channels show a **Created by** column. It is hidden by default on the jobs and monitors tables. Turn it on from the column menu.
 
-When cancellation is requested for a running execution, the run ends as **Cancelled**, with cancellation details on the run page.
+Cancelling a running execution ends the run as **Cancelled**, with details on the run page.
 
-## Run Details
+## Run details
 
-Each run includes:
-
-- **Results** — Pass/fail count and duration
-- **Screenshots** — Available screenshots from browser checks
-- **Videos** — Browser test recordings
-- **Logs** — Console output and live streaming logs
-- **Trace** — Step-by-step execution replay
+Each run includes pass/fail counts and duration, screenshots from browser checks, browser test videos, console and live streaming logs, and a step-by-step trace.
 
 ![Run Results and Execution Logs](/screenshots/performance-test-result-logs.png)
 
-## Debug Failures
+## Debug a failure
 
-<Steps>
-<Step>
-Open failed run
-</Step>
-<Step>
-Check error message
-</Step>
-<Step>
-View screenshot at failure point
-</Step>
-<Step>
-Review console logs
-</Step>
-<Step>
-Check network requests
-</Step>
-</Steps>
+Open the failed run, read the error message, then check the screenshot at the failure point, the console logs and the network requests.
 
 ## AI Analyze
 
-Click **AI Analyze** on any job run to generate an AI-powered analysis report.
+Select **AI Analyze** on a job run to generate an analysis report. You need permission to edit the job or test, as for AI Fix. Viewers cannot run it.
 
-You need permission to edit the job or test (as for AI Fix); viewers cannot run it.
-
-**What AI Analyze Provides:**
-- **Execution Summary** — Overview of what happened during the run
-- **Failure Analysis** — Suggested causes supported by the available run data
-- **Performance Insights** — Duration analysis and optimization suggestions
-- **Recommendations** — Actionable next steps based on actual run data
-
-**Supported Job Types:**
-- **Playwright** — Analyzes test failures with HTML report context
-- **K6** — Analyzes performance metrics and threshold breaches
+The report has an execution summary, failure analysis, performance insights and recommendations, based on the run data. It supports Playwright jobs (test failures with HTML report context) and k6 jobs (performance metrics and threshold breaches).
 
 Self-hosted: an administrator must [configure an AI provider](/docs/app/deployment/self-hosted#optional-configuration) first.
 
@@ -97,14 +65,14 @@ Switching projects resets analytics filters, job selection, and any open compari
 <Accordions>
 <Accordion title="Performance (k6) analytics" id="k6-analytics">
 
-The **Performance (k6)** view provides detailed performance metrics for your load tests.
+The **Performance (k6)** view shows performance metrics for your load tests.
 
 ![K6 Analytics](/screenshots/dashboard-k6-analytics.png)
 
 **Filters**
 
-- **Job** — Filter to a specific K6 job or view all jobs
-- **Period** — Analyze last 30, 60, or 90 days of data
+- **Job**: one k6 job or all jobs
+- **Period**: the last 30, 60 or 90 days
 
 **Metric Cards**
 
@@ -120,32 +88,19 @@ The **Performance (k6)** view provides detailed performance metrics for your loa
 **Charts**
 
 **Response Time Trend**
-Area chart showing P95 response time across runs. Use this to identify performance regressions or improvements over time.
+Area chart of P95 response time across runs, to spot regressions or improvements.
 
 **Request Rate Trend**
-Area chart showing requests per second across runs. Monitor throughput patterns and capacity trends.
+Area chart of requests per second across runs.
 
 
-**Run Comparison**
+**Run comparison**
 
-When a specific job is selected and has 2+ runs, click **Compare Runs** to open a side-by-side comparison dialog.
+When a job is selected and has 2 or more runs, select **Compare Runs** for a side-by-side comparison.
 
 ![Run Comparison Dialog](/screenshots/dashboard-k6-compare-dialog.png)
 
-**Run Selection**
-
-- **Baseline (Left)** — Select the reference run to compare against
-- **Compare To (Right)** — Select the run to compare with the baseline
-
-Each run in the dropdown displays:
-- Pass/fail status indicator
-- Run date and time
-- P95 response time
-- Run ID
-
-**Comparison Metrics**
-
-The comparison table shows metrics from both runs with calculated delta values:
+Pick a **Baseline (Left)** run and a **Compare To (Right)** run. Each dropdown entry shows the pass/fail status, date and time, P95 response time and run ID. The table shows both runs with delta values:
 
 | Metric | Description | Better When |
 |--------|-------------|-------------|
@@ -154,34 +109,22 @@ The comparison table shows metrics from both runs with calculated delta values:
 | **Request Rate** | Requests per second | Higher |
 | **Peak VUs** | Maximum virtual users | Context-dependent |
 
-Delta values are color-coded:
-- **Green** — Improvement
-- **Red** — Regression
-
-**View k6 Reports**
-
-Click **View k6 Reports** to compare the detailed k6 HTML reports side-by-side.
+Deltas are green for an improvement and red for a regression. Select **View k6 Reports** to compare the k6 HTML reports side by side.
 
 ![K6 Report Comparison](/screenshots/dashboard-k6-report-comparison.png)
 
 **AI Analyze**
 
-Click **AI Analyze** to generate an AI-powered performance comparison report.
+Select **AI Analyze** for an AI performance comparison report: metric comparison, what improved or regressed, potential causes and recommendations.
 
 ![AI Performance Analysis](/screenshots/dashboard-k6-ai-report-comparison.png)
-
-**Features:**
-- **Metric Comparison** — Detailed analysis of response times and throughput
-- **Performance Insights** — What improved and what regressed
-- **Potential Causes** — AI-identified reasons for changes
-- **Recommendations** — Actionable steps for improvement
 
 Self-hosted: an administrator must [configure an AI provider](/docs/app/deployment/self-hosted#optional-configuration) first.
 
 </Accordion>
 <Accordion title="Browser (Playwright) analytics" id="playwright-analytics">
 
-The **Browser (Playwright)** view provides insights into your browser test execution patterns and duration trends.
+The **Browser (Playwright)** view shows browser test execution patterns and duration trends.
 
 ![Playwright Analytics](/screenshots/dashboard-playwright-analytics.png)
 
@@ -204,20 +147,14 @@ The **Browser (Playwright)** view provides insights into your browser test execu
 **Charts**
 
 **Run Frequency**
-Stacked bar chart showing daily test run distribution (Passed vs Failed). Use this to identify testing patterns and failure spikes.
+Stacked bar chart of daily runs, passed versus failed.
 
 **Execution Time Trend**
-Area chart showing test duration over time. Monitor for performance regressions, flaky tests, or infrastructure issues.
+Area chart of test duration over time.
 
 </Accordion>
 </Accordions>
 
 ## Delete a run
 
-<Accordions>
-<Accordion title="Deleting runs and stored artifacts" id="deleting-runs">
-
-Queued or running executions cannot be deleted. Stop the execution before retrying. If deletion fails, the run stays available so you can retry.
-
-</Accordion>
-</Accordions>
+Queued or running executions cannot be deleted. Stop the execution first. If deletion fails, the run stays available so you can retry.

@@ -1,16 +1,14 @@
 ---
 title: Dashboard
-description: Project overview, real-time metrics, and recent activity
+description: Project health at a glance, from coverage and usage to failed runs and open incidents
 icon: ChartColumn
 ---
 
-The Dashboard gives you a single view of your project's health: requirements coverage, tests, jobs, monitors, usage, failed runs, and open incidents. The status pill in the header shows **Operational** or **Issues Detected** and lists every current issue (down monitors, failed runs in the last 24 hours, and execution queue capacity).
-
-Looking for k6 or Playwright job analytics? They are on the [Runs](/docs/app/automate/runs#analytics) page.
+The Dashboard shows your project's health: requirements coverage, tests, jobs, monitors, usage, failed runs and open incidents. The status pill in the header shows **Operational** or **Issues Detected** and lists every current issue: down monitors, failed runs in the last 24 hours and execution queue capacity. k6 and Playwright job analytics are on the [Runs](/docs/app/automate/runs#analytics) page.
 
 ![Dashboard](/screenshots/dashboard.png)
 
-## Key Metrics
+## Key metrics
 
 | Metric | Description |
 |--------|-------------|
@@ -21,22 +19,20 @@ Looking for k6 or Playwright job analytics? They are on the [Runs](/docs/app/aut
 | **Browser minutes** | Playwright execution time used over the last 30 days from Playwright job runs (k6 jobs are excluded), synthetic monitor checks and playground tests |
 | **k6 VU-minutes** | k6 virtual-user minutes used over the last 30 days (job runs and playground runs) |
 
-Usage cards are estimated from this project's recorded run durations and link to the matching analytics view on the Runs page. Billed usage is metered per organization and billing period, so it can differ.
+Usage cards are estimated from this project's recorded run durations and link to the matching analytics view on the Runs page. Billed usage is metered per organization and billing period, so it can differ. Execution queue capacity covers your organization's running and queued executions across its projects.
 
-Execution queue capacity reflects your organization's running and queued executions across its projects.
+## Needs attention
 
-## Needs Attention
-
-A card with a **Runs** tab (failed job runs from the last 7 days, by trigger) and an **Incidents** tab (open incidents by severity). The **Incidents** tab is hidden when incidents are unavailable or you lack access. Each tab links to the full list.
+The **Runs** tab lists failed job runs from the last 7 days by trigger. The **Incidents** tab lists open incidents by severity and is hidden when incidents are unavailable or you lack access. Each tab links to the full list.
 
 ## Charts
 
 | Chart | Shows |
 |---|---|
-| **Job Status** | Successful vs failed job runs over the last 30 days. Runs that ended in an error count as failed. Blocked runs and k6 job runs are not included. |
-| **Monitor Status** | Current monitors by status: Up, Down, Error, Maintenance, Pending, and Paused. Only statuses with monitors are shown. |
+| **Job Status** | Successful versus failed job runs over the last 30 days. Errors count as failed. Blocked runs and k6 job runs are excluded |
+| **Monitor Status** | Current monitors by status (Up, Down, Error, Maintenance, Pending, Paused). Empty statuses are hidden |
 | **Test Activity** | Playground test executions per day over the last 30 days. |
-| **Job Activity** | Playwright job runs per day by trigger: Manual, Scheduled, or Remote (API/CI). k6 job runs are not included. |
-| **Uptime Trend** | Daily monitor uptime over the last 30 days. Days without monitor checks are left blank rather than estimated. With no checks there is no uptime figure rather than 100%. |
+| **Job Activity** | Playwright job runs per day by trigger: Manual, Scheduled or Remote (API/CI). k6 job runs are excluded |
+| **Uptime Trend** | Daily monitor uptime over the last 30 days. Days without checks are blank rather than estimated, and with no checks there is no figure instead of 100% |
 
-Dashboard uptime counts each location's result separately, so it can differ from a monitor's own Uptime for multi-location monitors. Completed hours and days are read from precomputed monitor rollups. A result that is recorded more than one hour (24-hour figures) or one day (Uptime Trend) after it was checked appears after the next rollup run.
+Dashboard uptime counts each location's result separately, so it can differ from a monitor's own Uptime for multi-location monitors. Completed hours and days come from precomputed rollups, so a result recorded more than one hour (24-hour figures) or one day (Uptime Trend) after its check appears after the next rollup run.

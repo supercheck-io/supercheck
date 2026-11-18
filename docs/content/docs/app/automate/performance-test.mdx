@@ -1,42 +1,37 @@
 ---
-title: Performance Test
+title: Performance test
 description: k6 load testing with configurable virtual users and thresholds
 icon: ChartSpline
 ---
 
-Run k6 performance tests to validate your application under load.
+Run k6 scripts to validate your application under load.
 
 ![Performance Test Editor](/screenshots/performance-test-editor.png)
 
-## Create Test
+## Create a performance test
 
 <Steps>
 <Step>
-Go to **Automate → Create → Performance Test**
+Go to **Create → Performance Test**.
 </Step>
 <Step>
-Write k6 script in the editor
+Write a k6 script in the editor and set the load profile (VUs, duration).
 </Step>
 <Step>
-Configure load profile (VUs, duration)
-</Step>
-<Step>
-Run and analyze results
+**Run** and analyze the results.
 </Step>
 </Steps>
 
 <Accordions>
 <Accordion title="Worker availability (503 EXECUTION_QUEUE_UNAVAILABLE)" id="worker-availability">
 
-If no worker is available to run k6 tests, the API returns HTTP 503 with code `EXECUTION_QUEUE_UNAVAILABLE`. The same response is returned, without creating a run, while the application cannot reach Redis for more than about two seconds. Retry after the `Retry-After` interval. Self-hosted: if no worker is available, make sure a worker is running and has finished starting; if Redis is unreachable, check the Redis (or Sentinel) service and the app's connection settings.
+If no worker is available to run k6 tests, the API returns HTTP 503 with code `EXECUTION_QUEUE_UNAVAILABLE`. The same response is returned, without creating a run, while the app cannot reach Redis for more than about two seconds. Retry after the `Retry-After` interval. Self-hosted: make sure a worker is running and has finished starting, or check the Redis (or Sentinel) service and the app's connection settings.
 </Accordion>
 </Accordions>
 
-## Example Script
+## Example script
 
-Start with a smoke test against a system you own or have permission to test. Increase load gradually and monitor server capacity. Each run uses the load profile in your script. Running several tests at once increases the total load.
-
-Set an `API_URL` project variable to your test environment and replace `/health` with the endpoint you want to exercise.
+Start with a smoke test against a system you own or have permission to test, and increase load gradually. Each run uses the load profile in your script, so several tests at once add up. Set an `API_URL` project variable to your test environment and replace `/health` with the endpoint to exercise.
 
 ```javascript
 import http from 'k6/http';
@@ -70,38 +65,26 @@ export default function () {
 
 📚 [k6 Scenarios](https://grafana.com/docs/k6/latest/using-k6/scenarios/) | [k6 Checks](https://grafana.com/docs/k6/latest/using-k6/checks/)
 
-## Streaming Logs
+## Logs and reports
 
-Watch real-time execution logs as the test runs.
+Watch execution logs live as the test runs, then review them afterwards.
 
 ![Streaming Logs](/screenshots/performance-test-streaming-logs.png)
 
-## Results & Logs
-
-View detailed logs after test completion.
-
 ![Result Logs](/screenshots/performance-test-result-logs.png)
 
-## Reports
-
-Analyze performance metrics after the test completes.
+The report shows request rate, response time (p50, p95, p99), error rate and throughput.
 
 ![Performance Report](/screenshots/performance-test-report.png)
 
-**Metrics include:**
-- **Request rate** — Requests per second
-- **Response time** — p50, p95, p99 latencies
-- **Error rate** — Failed requests percentage
-- **Throughput** — Data transferred
+## Load profiles
 
-## Load Profiles
-
-| Profile | Use Case |
+| Profile | Use case |
 |---------|----------|
-| **Smoke** | 1-2 VUs, 1 min — Verify script works |
-| **Load** | 10-50 VUs, 5-10 min — Normal load |
-| **Stress** | 100+ VUs, 10-30 min — Find breaking point |
-| **Spike** | Sudden ramp, 5 min — Handle traffic bursts |
+| **Smoke** | 1-2 VUs, 1 min. Verify the script works |
+| **Load** | 10-50 VUs, 5-10 min. Normal load |
+| **Stress** | 100+ VUs, 10-30 min. Find the breaking point |
+| **Spike** | Sudden ramp, 5 min. Handle traffic bursts |
 
 ## Thresholds
 
@@ -116,9 +99,9 @@ export const options = {
 };
 ```
 
-📚 [k6 Thresholds Documentation](https://grafana.com/docs/k6/latest/using-k6/thresholds/)
+See [k6 thresholds](https://grafana.com/docs/k6/latest/using-k6/thresholds/).
 
-## Using Variables
+## Use variables
 
 ```javascript
 import http from 'k6/http';
@@ -149,9 +132,6 @@ export default function () {
 }
 ```
 
-## Learn More
+## Related
 
-- **[k6 Documentation](https://grafana.com/docs/k6/latest/)** — Complete k6 guide
-- **[k6 HTTP Requests](https://grafana.com/docs/k6/latest/using-k6/http-requests/)** — Making HTTP calls
-- **[k6 Thresholds](https://grafana.com/docs/k6/latest/using-k6/thresholds/)** — Pass/fail criteria
-- **[k6 Checks](https://grafana.com/docs/k6/latest/using-k6/checks/)** — Response validation
+- [k6 documentation](https://grafana.com/docs/k6/latest/), [HTTP requests](https://grafana.com/docs/k6/latest/using-k6/http-requests/), [thresholds](https://grafana.com/docs/k6/latest/using-k6/thresholds/) and [checks](https://grafana.com/docs/k6/latest/using-k6/checks/)
