@@ -861,21 +861,30 @@ function prometheusSeriesSummary(
   query: string,
   metric: Record<string, string> | undefined,
   values: Array<[number, string]> | undefined,
+  secrets: string[],
 ) {
   const points = (values ?? [])
     .map(([, v]) => Number(v))
     .filter(Number.isFinite);
+  // Redact before cutting, so a secret cut at the limit cannot slip out of its pattern.
   const labels = Object.entries(metric ?? {})
     .filter(([key]) => key !== '__name__')
     .slice(0, 6)
-    .map(([key, value]) => `${key}=${String(value).slice(0, 40)}`)
+    .map(
+      ([key, value]) =>
+        `${clip(key, 40, secrets)}=${clip(String(value), 40, secrets)}`,
+    )
     .join(', ');
   const skipped = (values?.length ?? 0) - points.length;
-  const head = `${values?.length ?? 0} samples returned for ${query}${labels ? ` (${labels})` : ''}${skipped ? ` (${skipped} non-finite)` : ''}`;
-  if (points.length === 0) return head;
+  const head = `${values?.length ?? 0} samples returned for ${query}${skipped ? ` (${skipped} non-finite)` : ''}`;
+  const labelText = labels ? ` [labels: ${labels}]` : '';
+  if (points.length === 0) return head + labelText;
   const round = (n: number) => String(Number(n.toPrecision(4)));
+  const min = points.reduce((a, b) => Math.min(a, b));
+  const max = points.reduce((a, b) => Math.max(a, b));
   const avg = points.reduce((a, b) => a + b, 0) / points.length;
-  return `${head}; last=${round(points[points.length - 1])} min=${round(Math.min(...points))} max=${round(Math.max(...points))} avg=${round(avg)}`;
+  // Stats come before the untrusted label text so a label cannot pose as the numbers.
+  return `${head}; last=${round(points[points.length - 1])} min=${round(min)} max=${round(max)} avg=${round(avg)}${labelText}`;
 }
 
 async function executePrometheus(
@@ -925,6 +934,7 @@ async function executePrometheus(
           spec.query,
           metricSeries.metric,
           metricSeries.values,
+          credentialSecrets(job),
         ),
         evidenceType: 'metric',
         observedAt: spec.timeWindow.end,

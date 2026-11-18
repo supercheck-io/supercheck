@@ -157,7 +157,7 @@ describe("direct connectors", () => {
       source: "prometheus",
       title: "Prometheus metric: up",
       evidenceType: "metric",
-      summary: expect.stringMatching(/^3 samples returned for up \(job=checkout\); last=2 min=1 max=3 avg=2$/),
+      summary: expect.stringMatching(/^3 samples returned for up; last=2 min=1 max=3 avg=2 \[labels: job=checkout\]$/),
     });
     expect(global.fetch).toHaveBeenCalledWith(
       expect.stringContaining("/api/v1/query_range"),
@@ -174,6 +174,7 @@ describe("direct connectors", () => {
           result: [
             { metric: { __name__: "ratio" }, values: [[1, "NaN"], [2, "+Inf"], [3, "0.0004"]] },
             { metric: { __name__: "empty" }, values: [] },
+            { metric: { dsn: "postgres://svc:supersecretpassword1234567890@db.internal:5432/app" }, values: [[1, "1"]] },
           ],
         },
       }),
@@ -188,6 +189,7 @@ describe("direct connectors", () => {
     const evidence = await connector.search({ ...params, query: "ratio" });
     expect(evidence[0]?.summary).toBe("3 samples returned for ratio (2 non-finite); last=0.0004 min=0.0004 max=0.0004 avg=0.0004");
     expect(evidence[1]?.summary).toBe("0 samples returned for ratio");
+    expect(evidence[2]?.summary).not.toContain("supersecret");
   });
 
   it("normalizes Grafana dashboard search results into document evidence", async () => {

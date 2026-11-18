@@ -77,7 +77,7 @@ describe('private agent connector execution', () => {
       title: 'Prometheus metric: up',
       evidenceType: 'metric',
       summary: expect.stringMatching(
-        /^3 samples returned for up \(job=checkout\); last=2 min=1 max=3 avg=2$/,
+        /^3 samples returned for up; last=2 min=1 max=3 avg=2 \[labels: job=checkout\]$/,
       ),
       sourceUri: 'https://prometheus.internal/graph?g0.expr=up',
     });
@@ -103,6 +103,12 @@ describe('private agent connector execution', () => {
               ],
             },
             { metric: { __name__: 'empty' }, values: [] },
+            {
+              metric: {
+                dsn: 'postgres://svc:supersecretpassword1234567890@db.internal:5432/app',
+              },
+              values: [[1, '1']],
+            },
           ],
         },
       }),
@@ -112,6 +118,7 @@ describe('private agent connector execution', () => {
       '3 samples returned for up (2 non-finite); last=0.0004 min=0.0004 max=0.0004 avg=0.0004',
     );
     expect(result.evidence[1].summary).toBe('0 samples returned for up');
+    expect(result.evidence[2].summary).not.toContain('supersecret');
   });
 
   it('executes Kubernetes jobs without persisting raw pod payloads', async () => {
