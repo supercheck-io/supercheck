@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MonitorDetailClient } from "./monitor-detail-client";
 
 const invalidateQueries = jest.fn();
@@ -79,10 +79,16 @@ it("keeps check result cells on one line with an ellipsis", async () => {
   try {
     render(<MonitorDetailClient monitor={monitor} />);
 
-    const errorCell = await screen.findByText(error);
-    const checkedAt = screen.getByText("less than a minute ago");
+    // The failure text opens from an info button on the Result cell, not a column, so the table fits half the page.
+    fireEvent.click(await screen.findByTestId("result-error"));
+    expect(await screen.findByText(error)).toBeInTheDocument();
+    expect(screen.queryByRole("columnheader", { name: "Error" })).toBeNull();
+    // Compact time never truncates; the full timestamp is in the title.
+    const checkedAt = screen.getByText("just now");
+    expect(checkedAt).toHaveAttribute("title", expect.stringMatching(/^[A-Z][a-z]{2} \d{1,2}, \d{4} \d{2}:\d{2}:\d{2}$/));
+    expect(checkedAt).toHaveClass("whitespace-nowrap");
     const location = screen.getByText("Asia Pacific Southeast Two");
-    for (const cell of [errorCell, checkedAt, location]) {
+    for (const cell of [location]) {
       expect(cell).toHaveClass("truncate");
       expect(cell.closest("td")).toHaveClass("overflow-hidden");
     }
@@ -90,6 +96,73 @@ it("keeps check result cells on one line with an ellipsis", async () => {
   } finally {
     mockResults = [];
   }
+});
+
+it("shows the report and error buttons of a failed synthetic check in the Result cell", async () => {
+  mockResults = [{ id: "r7", monitorId: "m9", checkedAt: new Date().toISOString(), isUp: false, responseTimeMs: 40, location: null, testExecutionId: "run1", details: { reportUrl: "r", errorMessage: "boom" } }];
+  try {
+    render(<MonitorDetailClient monitor={{ id: "m9", name: "Bot", type: "synthetic_test", target: "t1", status: "down", frequencyMinutes: 5, config: { testId: "t1" }, recentResults: [] } as never} />);
+    expect(await screen.findByRole("button", { name: "View test report" })).toBeInTheDocument();
+    expect(screen.getByTestId("result-error")).toBeInTheDocument();
+  } finally {
+    mockResults = [];
+  }
+});
+
+it("shows a check time in compact form", async () => {
+  mockResults = [{ id: "r1", monitorId: "m1", checkedAt: new Date(Date.now() - 2 * 3_600_000 - 5_000).toISOString(), isUp: true, responseTimeMs: 40, location: null, details: null }];
+  try {
+    render(<MonitorDetailClient monitor={monitor} />);
+    expect(await screen.findByText("2h ago")).toBeInTheDocument();
+  } finally {
+    mockResults = [];
+  }
+});
+
+it("shows no error marker for a passing check", async () => {
+  mockResults = [{ id: "r1", monitorId: "m1", checkedAt: new Date().toISOString(), isUp: true, responseTimeMs: 40, location: null, details: null }];
+  try {
+    render(<MonitorDetailClient monitor={monitor} />);
+    expect(await screen.findByText("40 ms")).toBeInTheDocument();
+    expect(screen.queryByTestId("result-error")).toBeNull();
+  } finally {
+    mockResults = [];
+  }
+});
+
+describe("MCP server monitor detail", () => {
+  const mcpMonitor = {
+    id: "m2", name: "Freight MCP", type: "mcp_server", target: "https://mcp.example.test", status: "up", frequencyMinutes: 5,
+    config: { mcpState: { baseline: { hash: "h", takenAt: "2026-11-01T00:00:00Z", tools: [{ name: "track", fingerprint: "f" }] } } },
+    recentResults: [],
+  } as never;
+  const mcpRow = { id: "r5", monitorId: "m2", checkedAt: new Date().toISOString(), isUp: true, responseTimeMs: 120, location: null, details: { mcp: { toolCount: 4, protocol: "2025-06-18", serverName: "lumen-freight-mcp", serverVersion: "1.8.2" } } };
+
+  it("has no MCP server stat card and puts server and protocol in the Tools header", async () => {
+    mockResults = [mcpRow];
+    try {
+      render(<MonitorDetailClient monitor={{ ...(mcpMonitor as object), recentResults: [mcpRow] } as never} />);
+      expect(screen.queryByText("MCP server")).toBeNull();
+      expect(screen.queryByTestId("mcp-stat-server")).toBeNull();
+      expect(screen.getAllByText(/^(Current|Last 24 hours|Last 30 days)$/)).toHaveLength(3);
+      expect(screen.getByTestId("mcp-server-meta")).toHaveTextContent("lumen-freight-mcp 1.8.2 · MCP 2025-06-18");
+      expect(await screen.findByTestId("mcp-row-tools")).toHaveTextContent("4");
+    } finally {
+      mockResults = [];
+    }
+  });
+
+  it("has no Error column and no horizontal min width past the compact table", async () => {
+    mockResults = [mcpRow];
+    try {
+      render(<MonitorDetailClient monitor={mcpMonitor} />);
+      expect(await screen.findByTestId("mcp-row-tools")).toBeInTheDocument();
+      expect(screen.queryByRole("columnheader", { name: "Error" })).toBeNull();
+      expect(screen.getAllByRole("columnheader").map((h) => h.textContent)).toEqual(["Result", "Checked At", "Location", "Response", "Tools"]);
+    } finally {
+      mockResults = [];
+    }
+  });
 });
 
 it("badges a check made during maintenance in the results table", async () => {
@@ -294,11 +367,30 @@ describe("heartbeat monitor detail", () => {
     expect(screen.queryByTestId("heartbeat-waiting")).toBeNull();
   });
 
-  it("shows last ping, next ping and last run duration in the header", () => {
+  it("keeps the heartbeat layout without a summary, as in the notification view", () => {
+    const { heartbeat: omitted, ...bare } = heartbeatMonitor("up") as unknown as Record<string, unknown>;
+    void omitted;
+    render(<MonitorDetailClient monitor={bare as never} isNotificationView />);
+    expect(screen.getByTestId("heartbeat-layout")).toBeInTheDocument();
+    expect(screen.getByTestId("heartbeat-ping-history")).toBeInTheDocument();
+    expect(screen.queryByTestId("heartbeat-overview")).toBeNull();
+  });
+
+  it("shows the schedule, last ping, next ping, run and uptime facts in the overview", () => {
     render(<MonitorDetailClient monitor={heartbeatMonitor("up", pinged(), [runRow])} />);
-    expect(screen.getByTestId("heartbeat-stat-last-ping")).toHaveTextContent("Last ping 1m ago");
-    expect(screen.getByTestId("heartbeat-stat-next")).toHaveTextContent(/^Next ping in 5[89]m$/);
-    expect(screen.getByTestId("heartbeat-stat-duration")).toHaveTextContent("Last run 4 min 08 s");
+    const overview = screen.getByTestId("heartbeat-overview");
+    for (const label of ["Expected every", "Grace period", "Last ping", "Next ping", "Last run", "Uptime 24h", "Uptime 30d"]) {
+      expect(within(overview).getByText(label)).toBeInTheDocument();
+    }
+    expect(overview).toHaveTextContent("1 h");
+    expect(overview).toHaveTextContent("10 min");
+  });
+
+  it("shows last ping, next ping and last run duration in the overview", () => {
+    render(<MonitorDetailClient monitor={heartbeatMonitor("up", pinged(), [runRow])} />);
+    expect(screen.getByTestId("heartbeat-stat-last-ping")).toHaveTextContent(/^1m ago$/);
+    expect(screen.getByTestId("heartbeat-stat-next")).toHaveTextContent(/^in 5[89]m$/);
+    expect(screen.getByTestId("heartbeat-stat-duration")).toHaveTextContent("4 min 08 s");
   });
 
   it("charts run duration only when durations exist, else shows a one-line hint", () => {
@@ -319,14 +411,14 @@ describe("heartbeat monitor detail", () => {
   it("omits the next ping before the first ping, whatever the summary holds", () => {
     render(<MonitorDetailClient monitor={heartbeatMonitor("pending", { nextExpectedAt: new Date(Date.now() - 60_000).toISOString() })} />);
     expect(screen.getByTestId("heartbeat-stat-last-ping")).toHaveTextContent("No pings yet");
-    expect(screen.queryByTestId("heartbeat-stat-next")).toBeNull();
-    expect(screen.queryByTestId("heartbeat-stat-duration")).toBeNull();
+    expect(screen.getByTestId("heartbeat-stat-next")).toHaveTextContent("—");
+    expect(screen.getByTestId("heartbeat-stat-duration")).toHaveTextContent("—");
   });
 
   it("shows overdue when down", () => {
     render(<MonitorDetailClient monitor={heartbeatMonitor("down", pinged({ lastPingAt: new Date(Date.now() - 3 * 3_600_000).toISOString(), nextExpectedAt: new Date(Date.now() - 3 * 60_000).toISOString() }))} />);
-    expect(screen.getByTestId("heartbeat-stat-last-ping")).toHaveTextContent("Last ping 3h ago");
-    expect(screen.getByTestId("heartbeat-stat-next")).toHaveTextContent("Next ping overdue 3m");
+    expect(screen.getByTestId("heartbeat-stat-last-ping")).toHaveTextContent(/^3h ago$/);
+    expect(screen.getByTestId("heartbeat-stat-next")).toHaveTextContent(/^overdue 3m$/);
   });
 });
 
