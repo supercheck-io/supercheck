@@ -13,9 +13,10 @@ import {
   TestEmail,
   TrialNotificationEmail,
   UsageNotificationEmail,
+  OrganizationDeletionEmail,
   alertEmailSubject,
 } from "./index";
-import { formatEmailTime } from "./base-layout";
+import { emailLogoUrl, formatEmailTime } from "./base-layout";
 
 // @react-email/render needs a dynamic import Jest cannot run here; static markup is
 // enough to check content. Every email must share the BaseLayout chrome.
@@ -155,10 +156,42 @@ describe("email shell rules", () => {
   });
 
   it("renders the logo from an absolute public URL with decorative alt text", () => {
-    const html = render(<TestEmail />);
-    expect(html).toContain('src="https://supercheck.io/supercheck-logo.png"');
-    expect(html).toContain('alt=""');
-    expect(html).toContain("<title>");
+    const prev = { a: process.env.NEXT_PUBLIC_APP_URL, b: process.env.APP_URL };
+    process.env.NEXT_PUBLIC_APP_URL = "https://app.example.com/";
+    try {
+      const html = render(<TestEmail />);
+      expect(html).toContain('src="https://app.example.com/supercheck-logo.png"');
+      expect(html).toContain('alt=""');
+      expect(html).toContain("<title>");
+    } finally {
+      if (prev.a === undefined) delete process.env.NEXT_PUBLIC_APP_URL; else process.env.NEXT_PUBLIC_APP_URL = prev.a;
+      if (prev.b === undefined) delete process.env.APP_URL; else process.env.APP_URL = prev.b;
+    }
+  });
+
+  it("logo URL follows the instance app URL and is omitted without one (never supercheck.io)", () => {
+    expect(emailLogoUrl({ NEXT_PUBLIC_APP_URL: "https://sc.acme.test/" } as unknown as NodeJS.ProcessEnv)).toBe("https://sc.acme.test/supercheck-logo.png");
+    expect(emailLogoUrl({ APP_URL: "http://localhost:3000" } as unknown as NodeJS.ProcessEnv)).toBe("http://localhost:3000/supercheck-logo.png");
+    expect(emailLogoUrl({} as NodeJS.ProcessEnv)).toBeUndefined();
+    expect(emailLogoUrl({ APP_URL: "not-a-url" } as unknown as NodeJS.ProcessEnv)).toBeUndefined();
+    const prev = { a: process.env.NEXT_PUBLIC_APP_URL, b: process.env.APP_URL };
+    delete process.env.NEXT_PUBLIC_APP_URL;
+    delete process.env.APP_URL;
+    try {
+      const html = render(<TestEmail />);
+      expect(html).not.toContain("<img");
+      expect(html).not.toContain("supercheck-logo.png");
+      expect(html).toContain("Supercheck");
+    } finally {
+      if (prev.a !== undefined) process.env.NEXT_PUBLIC_APP_URL = prev.a;
+      if (prev.b !== undefined) process.env.APP_URL = prev.b;
+    }
+  });
+
+  it("usage, trial and deletion emails say why they were sent", () => {
+    expect(render(<UsageNotificationEmail organizationName="A" notificationType="usage_80_percent" resourceType="playwright" usageAmount={8} usageLimit={10} usagePercentage={80} billingPageUrl="https://x.io/b" periodEndDate="Dec 1" />)).toContain("owner or billing contact");
+    expect(render(<TrialNotificationEmail organizationName="A" kind="midway" daysRemaining={7} subscribeUrl="https://x.io/s" />)).toContain("owner of this organization");
+    expect(render(<OrganizationDeletionEmail organizationName="A" kind="requested" />)).toContain("owner or admin of this organization");
   });
 
   it("detail labels are row headers", () => {

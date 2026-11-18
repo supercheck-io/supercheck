@@ -46,7 +46,6 @@ describe('EmailTemplateService (local render)', () => {
     expect(r.html).not.toMatch(/&amp;(#|quot;|amp;)/);
     expect(r.text).toContain('Owner\'s "nightly" & co');
     expect(r.text).not.toMatch(/&#|&amp;|<[a-z]/);
-    expect(r.html).toContain('https://supercheck.io/supercheck-logo.png');
     expect(r.html).toContain('https://app.example.com/notifications');
     expect(r.html).toContain('lang="en"');
   });
@@ -157,5 +156,42 @@ describe('EmailTemplateService job and recovery emails', () => {
     [3720, '1h 02m'],
   ])('formats %s seconds as %s', (seconds, expected) => {
     expect(formatDuration(seconds)).toBe(expected);
+  });
+
+  describe('logo', () => {
+    const saved = {
+      a: process.env.NEXT_PUBLIC_APP_URL,
+      b: process.env.APP_URL,
+    };
+    const params = {
+      title: 'Monitor Down - API',
+      message: 'm',
+      fields: [],
+      footer: '',
+      type: 'failure' as const,
+    };
+    afterEach(() => {
+      for (const [k, v] of [
+        ['NEXT_PUBLIC_APP_URL', saved.a],
+        ['APP_URL', saved.b],
+      ] as const) {
+        if (v === undefined) delete process.env[k];
+        else process.env[k] = v;
+      }
+    });
+
+    it("loads the logo from the instance's own app URL", async () => {
+      process.env.NEXT_PUBLIC_APP_URL = 'https://sc.acme.test/';
+      const r = await service.renderMonitorAlertEmail(params);
+      expect(r.html).toContain('https://sc.acme.test/supercheck-logo.png');
+    });
+
+    it('omits the image without an app URL and never contacts supercheck.io', async () => {
+      delete process.env.NEXT_PUBLIC_APP_URL;
+      delete process.env.APP_URL;
+      const r = await service.renderMonitorAlertEmail(params);
+      expect(r.html).not.toContain('<img');
+      expect(r.html).not.toContain('supercheck-logo.png');
+    });
   });
 });

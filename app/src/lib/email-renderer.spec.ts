@@ -78,3 +78,11 @@ describe("render* functions", () => {
     expect(r.subject).toBe("[Supercheck] Usage alert: Acme");
   });
 });
+
+describe("renderMonitorAlertEmail settings link", () => {
+  it("links to the notification settings when manageUrl is given", async () => {
+    const r = await renderMonitorAlertEmail({ title: "Monitor Down - API", message: "m", fields: [], footer: "", type: "failure", manageUrl: "https://app.io/notifications" });
+    expect(r.html).toContain('href="https://app.io/notifications"');
+    expect(r.subject).toBe("[Supercheck] Monitor Down: API");
+  });
+});

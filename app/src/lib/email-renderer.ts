@@ -169,6 +169,7 @@ export async function renderMonitorAlertEmail(params: {
   type: "failure" | "success" | "recovery" | "warning" | "info";
   color?: string;
   incidentsUrl?: string;
+  manageUrl?: string;
 }): Promise<RenderedEmail> {
   const component = MonitorAlertEmail(params);
 

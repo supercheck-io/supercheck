@@ -32,8 +32,15 @@ interface BaseLayoutProps {
   manage?: { href: string; label: string };
 }
 
-/** Public absolute URL: mail clients cannot load app-relative assets. */
-export const LOGO_URL = "https://supercheck.io/supercheck-logo.png";
+/**
+ * Absolute logo URL on this instance's own public app URL (mail clients cannot load
+ * relative assets). Without a base URL there is no image, so a self-hosted install
+ * never makes recipients' mail clients contact supercheck.io.
+ */
+export const emailLogoUrl = (env: NodeJS.ProcessEnv = process.env): string | undefined => {
+  const base = (env.NEXT_PUBLIC_APP_URL || env.APP_URL || "").trim().replace(/\/+$/, "");
+  return /^https?:\/\//i.test(base) ? `${base}/supercheck-logo.png` : undefined;
+};
 
 /** "Wed, 18 Nov 2026 06:02:36 UTC": one timestamp format, with an explicit zone, in every email. */
 export const formatEmailTime = (date: Date): string =>
@@ -55,6 +62,7 @@ export const BaseLayout = ({
 }: BaseLayoutProps) => {
   const dir = RTL_LANGUAGES.has(lang.toLowerCase().split("-")[0]) ? "rtl" : "ltr";
   const headerText = readableTextColor(headerColor);
+  const logoUrl = emailLogoUrl();
   return (
     <Html lang={lang} dir={dir}>
       <Head>
@@ -71,8 +79,8 @@ export const BaseLayout = ({
         <Container className="sc-container" style={container}>
           {/* Header */}
           <Section style={{ ...header, background: headerColor }}>
-            {showBrand && (
-              <Img src={LOGO_URL} width="32" height="32" alt="" style={logo} />
+            {showBrand && logoUrl && (
+              <Img src={logoUrl} width="32" height="32" alt="" style={logo} />
             )}
             {showBrand && <Text style={{ ...brand, color: headerText }}>Supercheck</Text>}
             <Heading style={{ ...headerTitle, color: headerText }}>
