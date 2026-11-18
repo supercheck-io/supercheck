@@ -1,28 +1,18 @@
 ---
-title: Status Pages
+title: Status pages
 description: Public-facing status pages to communicate system health and incidents
 icon: Tally4
 ---
 
-Publish a public page that shows system health, incidents, and scheduled maintenance, and notifies subscribers when something changes.
+Publish a public page that shows system health, incidents and scheduled maintenance, and notifies subscribers when something changes. The page has three parts:
 
-<Cards className="grid-cols-1 sm:grid-cols-3">
-<Card icon={<Tally4 className="text-sky-500" />} title="Components">
-Public services, with status from linked monitors and 90-day uptime
-</Card>
-<Card icon={<Siren className="text-rose-500" />} title="Status updates">
-Outages and scheduled maintenance, with a timeline of updates
-</Card>
-<Card icon={<BellRing className="text-amber-500" />} title="Subscribers">
-Email, Slack, webhook, RSS, and iCal updates
-</Card>
-</Cards>
+- **Components**: public services, with status from linked monitors and 90-day uptime.
+- **Status updates**: outages and scheduled maintenance, with a timeline of updates.
+- **Subscribers**: email, Slack, webhook, RSS and iCal updates.
 
-<Callout type="info">
 Status pages are public and need no sign-in. Each page is served from its own subdomain or from your verified custom domain.
-</Callout>
 
-## Create and Publish
+## Create and publish
 
 Open **Communicate → Status Pages**, then choose **Manage** on a page to edit it.
 
@@ -70,7 +60,7 @@ Set branding, subscriptions, and a custom domain in **Settings**.
 
 ### Publish
 
-Choose **Publish** and share the URL. The **Quick setup guide** (info icon next to the page name) shows the same order.
+Choose **Publish** and share the URL. The **Quick setup guide** (info icon next to the page name) shows the same steps.
 
 </Step>
 </Steps>
@@ -82,9 +72,9 @@ Choose **Publish** and share the URL. The **Quick setup guide** (info icon next 
 | **Unpublish** | Returns the page to draft and stops serving it. Components, incidents, and subscribers are kept. |
 | **Archive** | Stops serving the page and marks it archived. Publishing it again restores access. |
 
-Both actions ask for confirmation.
+Both ask for confirmation.
 
-## Public Page
+## Public page
 
 ![Public Status Page](/screenshots/status-page-external.png)
 
@@ -102,13 +92,12 @@ Clicking an incident opens its full timeline.
 
 **Languages:** 24 languages, with right-to-left layout for Arabic. Supercheck writes its own automatic messages (outage, recovery, maintenance) in the page language. Text you write is never translated. Unknown language codes fall back to English.
 
-<Accordions>
-<Accordion title="Status badge and feeds" id="badge-and-feeds">
+### Badge and feeds
 
 | Endpoint | URL | Notes |
 |---|---|---|
 | **Badge** | `/api/status-pages/[id]/badge` | SVG, public, CORS-enabled, briefly cached |
-| **RSS** | `/api/status-pages/[id]/rss` | Incident updates. Needs **Feeds (RSS and iCal)** enabled |
+| **RSS** | `/api/status-pages/[id]/rss` | Incident updates. Needs **RSS and iCal feeds** enabled |
 | **iCal** | `/api/status-pages/[id]/ical` | Last 50 incidents for calendar apps. Same setting as RSS |
 
 Prefix each path with your Supercheck URL. `[id]` is the status page UUID from the manage page URL; a wrong value shows `invalid id` on the badge.
@@ -122,10 +111,7 @@ Prefix each path with your Supercheck URL. `[id]` is the status page UUID from t
 ![Status](https://yourdomain.com/api/status-pages/YOUR_PAGE_ID/badge?label=API&style=flat-square)
 ```
 
-Badge colors follow the page's **Status Colors** setting. When every showcased component has no recent data and no incident is open, the badge shows `no recent data` in grey.
-
-</Accordion>
-</Accordions>
+Badge colors follow the page's **Status colors** setting. When every showcased component has no recent data and no incident is open, the badge shows `no recent data` in grey.
 
 ## Components
 
@@ -233,9 +219,6 @@ flowchart LR
     class D complete
 ```
 
-<Tabs items={['Status', 'Impact', 'Scheduled maintenance']}>
-<Tab value="Status">
-
 | Status | Meaning |
 |--------|---------|
 | **Investigating** | Issue detected, team investigating |
@@ -244,9 +227,6 @@ flowchart LR
 | **Resolved** | Issue resolved |
 | **Scheduled** | Planned maintenance |
 
-</Tab>
-<Tab value="Impact">
-
 | Impact | Meaning |
 |--------|---------|
 | **None** | Informational update |
@@ -254,15 +234,11 @@ flowchart LR
 | **Major** | Significant impact on the service |
 | **Critical** | Complete outage |
 
-</Tab>
-<Tab value="Scheduled maintenance">
+### Scheduled maintenance
 
-Create the incident with **Scheduled** status, set its window, and enable automatic status transitions. It becomes active at the start time and resolves at the end. Monitor alerts, including SSL expiry warnings, are suppressed during the window, while checks still run and count toward uptime. A suppressed SSL warning is not queued: it is sent on the first SSL check after the window that finds the certificate still near expiry, subject to the alert settings and the once-per-24-hours limit.
+Create the update with **Scheduled** status, set its window, and enable automatic status transitions. It becomes active at the start time and resolves at the end. Monitor alerts, including SSL expiry warnings, are suppressed during the window, while checks still run and count toward uptime. A suppressed SSL warning is not queued: it is sent on the first SSL check after the window that finds the certificate still near expiry, subject to the alert settings and the once-per-24-hours limit.
 
-</Tab>
-</Tabs>
-
-A linked SRE incident stays private: investigation notes and evidence are never copied. Use **View public status update** and **Internal SRE incident** to move between the two.
+A linked SRE incident stays private: investigation notes and evidence are never copied. Use **Internal incident** on the status update row, or the **Status page** row in the incident sidebar, to move between the two.
 
 ## Subscribers
 
@@ -324,9 +300,6 @@ New webhook subscriptions stay **Pending** until the endpoint proves it owns the
 
 Submitting the same URL again within 5 minutes is refused. Resubmitting a URL that was never verified issues a new signing secret and returns it, so use the latest one.
 
-<Accordions>
-<Accordion title="Verification and signature details" id="webhook-details">
-
 Supercheck sends one `POST` (10-second timeout):
 
 ```json
@@ -346,7 +319,7 @@ Reply with any `2xx` status and echo the token, either in the `x-supercheck-veri
 | **Secret** | Shown once after subscribing. Rotate it in **Subscribers** |
 | **Retries** | At least once. Deduplicate by `incident_update_id` |
 
-```ts
+```ts title="verify-signature.ts"
 import { createHmac, timingSafeEqual } from "node:crypto";
 
 const expected = createHmac("sha256", signingSecret).update(rawBody).digest("hex");
@@ -355,9 +328,6 @@ const valid = actual.length === expected.length &&
   timingSafeEqual(Buffer.from(actual), Buffer.from(expected));
 if (!valid) throw new Error("Invalid webhook signature");
 ```
-
-</Accordion>
-</Accordions>
 
 </Tab>
 <Tab value="Feeds">
@@ -381,12 +351,12 @@ Subscribers are notified when an incident is created, updated or resolved, and w
 |---|---|
 | **General** | Internal name, public headline, description, support contact, and language |
 | **Custom domain** | Hostname, verification status, and DNS records |
-| **Subscriptions** | Page and incident subscriptions; email, webhook, and Slack channels; **Feeds (RSS and iCal)** |
+| **Subscriptions** | Page and incident subscriptions; email, webhook, and Slack channels; **RSS and iCal feeds** |
 | **Branding** | Logo (630 × 420 px, max 5 MB), favicon (96 × 96 px, max 5 MB), and status colors |
 
 A save bar appears while there are unsaved changes. **Reset** in Branding applies immediately, without **Save changes**.
 
-### Custom Domain
+### Custom domain
 
 Use a subdomain such as `status.example.net`. Apex domains are not supported.
 
@@ -412,8 +382,7 @@ Keep the TXT record in place; ownership is rechecked daily. To remove the domain
 On Cloudflare, use **DNS only** while verifying. Turn on the proxy only after the origin serves HTTPS for the hostname, with **Full** or **Full (Strict)** TLS.
 </Callout>
 
-<Accordions>
-<Accordion title="Self-hosted DNS and HTTPS" id="self-hosted-dns">
+#### Self-hosted DNS and HTTPS
 
 | Purpose | Hostname | DNS record |
 |---|---|---|
@@ -425,8 +394,10 @@ Keep custom hostnames outside the `STATUS_PAGE_DOMAIN` namespace. DNS verificati
 
 Local development uses `http://localhost:3000/status/[subdomain]`; custom domains need a publicly reachable `STATUS_PAGE_DOMAIN`.
 
-</Accordion>
-<Accordion title="Troubleshooting" id="custom-domain-troubleshooting">
+#### Troubleshooting
+
+<Accordions>
+<Accordion title="Custom domain problems" id="custom-domain-troubleshooting">
 
 | Problem | Check |
 |---|---|
@@ -442,7 +413,7 @@ Local development uses `http://localhost:3000/status/[subdomain]`; custom domain
 </Accordion>
 </Accordions>
 
-## Next steps
+## Related
 
 <Cards>
 <Card title="Notifications" href="/docs/app/communicate/alerts" description="Alert your own team on failures" />
