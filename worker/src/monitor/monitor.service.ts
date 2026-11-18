@@ -36,6 +36,10 @@ import {
   SecurityConfig,
 } from '../common/validation/enhanced-validation.service';
 import {
+  redactTargetUrl,
+  redactUrlsInText,
+} from '../common/validation/data-sanitizer';
+import {
   CredentialSecurityService,
   CredentialData,
 } from '../common/security/credential-security.service';
@@ -1765,8 +1769,11 @@ export class MonitorService {
             ? errorParts.join(' - ')
             : 'Unknown network error';
 
-        this.logger.warn(`HTTP Request to ${target} failed: ${detailedError}`);
-        details.errorMessage = detailedError;
+        this.logger.warn(
+          `HTTP Request to ${redactTargetUrl(target)} failed: ${detailedError}`,
+        );
+        // Persisted and shown in alerts: a URL echoed by the error must not leak query secrets.
+        details.errorMessage = redactUrlsInText(detailedError);
         if (error.response) {
           details.statusCode = error.response.status;
           details.statusText = error.response.statusText;
@@ -1830,7 +1837,7 @@ export class MonitorService {
           isUp = false;
         }
       } else if (isTimeoutError(error)) {
-        details.errorMessage = getErrorMessage(error);
+        details.errorMessage = redactUrlsInText(getErrorMessage(error));
         status = 'timeout';
         isUp = false;
       } else if (isDnsError(error)) {
@@ -1843,7 +1850,7 @@ export class MonitorService {
         isUp = false;
       } else {
         this.logger.error(
-          `Unexpected error during HTTP Request to ${target}: ${getErrorMessage(error)}`,
+          `Unexpected error during HTTP Request to ${redactTargetUrl(target)}: ${getErrorMessage(error)}`,
           error instanceof Error ? error.stack : undefined,
         );
         details.errorMessage =
@@ -1859,7 +1866,7 @@ export class MonitorService {
     }
 
     this.logger.debug(
-      `HTTP Request completed: ${target}, Status: ${status}, Response Time: ${responseTimeMs}ms`,
+      `HTTP Request completed: ${redactTargetUrl(target)}, Status: ${status}, Response Time: ${responseTimeMs}ms`,
     );
     if (resolvedSecretForms.length)
       details = scrubSecrets(details, resolvedSecretForms);
