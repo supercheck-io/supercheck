@@ -137,7 +137,7 @@ describe("direct connectors", () => {
           result: [
             {
               metric: { __name__: "up", job: "checkout" },
-              values: [[1782036000, "1"]],
+              values: [[1782036000, "1"], [1782036060, "3"], [1782036120, "2"]],
             },
           ],
         },
@@ -157,6 +157,7 @@ describe("direct connectors", () => {
       source: "prometheus",
       title: "Prometheus metric: up",
       evidenceType: "metric",
+      summary: expect.stringMatching(/^3 samples returned for up \(job=checkout\); last=2 min=1 max=3 avg=2$/),
     });
     expect(global.fetch).toHaveBeenCalledWith(
       expect.stringContaining("/api/v1/query_range"),

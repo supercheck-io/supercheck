@@ -917,6 +917,25 @@ export class PagerDutyConnector extends BaseDirectConnector {
   }
 }
 
+/** Numbers the model needs to answer "what was the rate": the stored summary is all it sees, so a bare sample count is not evidence. */
+export function prometheusSeriesSummary(
+  query: string,
+  metric: Record<string, string> | undefined,
+  values: Array<[number, string]> | undefined,
+) {
+  const points = (values ?? []).map(([, v]) => Number(v)).filter(Number.isFinite);
+  const labels = Object.entries(metric ?? {})
+    .filter(([key]) => key !== "__name__")
+    .slice(0, 6)
+    .map(([key, value]) => `${key}=${String(value).slice(0, 40)}`)
+    .join(", ");
+  const head = `${values?.length ?? 0} samples returned for ${query}${labels ? ` (${labels})` : ""}`;
+  if (points.length === 0) return head;
+  const round = (n: number) => String(Math.round(n * 1000) / 1000);
+  const avg = points.reduce((a, b) => a + b, 0) / points.length;
+  return `${head}; last=${round(points[points.length - 1]!)} min=${round(Math.min(...points))} max=${round(Math.max(...points))} avg=${round(avg)}`;
+}
+
 export class PrometheusConnector extends BaseDirectConnector {
   constructor(
     options: Omit<
@@ -994,7 +1013,7 @@ export class PrometheusConnector extends BaseDirectConnector {
         source: "prometheus",
         sourceUri,
         title: `Prometheus metric: ${metricName}`,
-        summary: `${metricSeries.values?.length ?? 0} samples returned for ${params.query}`,
+        summary: prometheusSeriesSummary(params.query, metricSeries.metric, metricSeries.values),
         rawContent: JSON.stringify(metricSeries),
         evidenceType: "metric",
         metadata: {

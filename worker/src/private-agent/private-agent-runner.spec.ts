@@ -58,7 +58,11 @@ describe('private agent connector execution', () => {
           result: [
             {
               metric: { __name__: 'up', job: 'checkout' },
-              values: [[1782120000, '1']],
+              values: [
+                [1782120000, '1'],
+                [1782120060, '3'],
+                [1782120120, '2'],
+              ],
             },
           ],
         },
@@ -72,6 +76,9 @@ describe('private agent connector execution', () => {
     expect(result.evidence[0]).toMatchObject({
       title: 'Prometheus metric: up',
       evidenceType: 'metric',
+      summary: expect.stringMatching(
+        /^3 samples returned for up \(job=checkout\); last=2 min=1 max=3 avg=2$/,
+      ),
       sourceUri: 'https://prometheus.internal/graph?g0.expr=up',
     });
     expect(global.fetch).toHaveBeenCalledWith(

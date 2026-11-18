@@ -856,6 +856,27 @@ async function executeGitHub(
   );
 }
 
+/** Numbers the model needs to answer "what was the rate": the stored summary is all it sees, so a bare sample count is not evidence. */
+function prometheusSeriesSummary(
+  query: string,
+  metric: Record<string, string> | undefined,
+  values: Array<[number, string]> | undefined,
+) {
+  const points = (values ?? [])
+    .map(([, v]) => Number(v))
+    .filter(Number.isFinite);
+  const labels = Object.entries(metric ?? {})
+    .filter(([key]) => key !== '__name__')
+    .slice(0, 6)
+    .map(([key, value]) => `${key}=${String(value).slice(0, 40)}`)
+    .join(', ');
+  const head = `${values?.length ?? 0} samples returned for ${query}${labels ? ` (${labels})` : ''}`;
+  if (points.length === 0) return head;
+  const round = (n: number) => String(Math.round(n * 1000) / 1000);
+  const avg = points.reduce((a, b) => a + b, 0) / points.length;
+  return `${head}; last=${round(points[points.length - 1])} min=${round(Math.min(...points))} max=${round(Math.max(...points))} avg=${round(avg)}`;
+}
+
 async function executePrometheus(
   job: LeasedJob,
 ): Promise<ConnectorExecutionResult> {
@@ -899,7 +920,11 @@ async function executePrometheus(
         id: evidenceId(spec.connectorId, sourceUri, `${metricName}-${index}`),
         sourceUri,
         title: `Prometheus metric: ${metricName}`,
-        summary: `${metricSeries.values?.length ?? 0} samples returned for ${spec.query}`,
+        summary: prometheusSeriesSummary(
+          spec.query,
+          metricSeries.metric,
+          metricSeries.values,
+        ),
         evidenceType: 'metric',
         observedAt: spec.timeWindow.end,
         resultHash: hashPayload(metricSeries),
