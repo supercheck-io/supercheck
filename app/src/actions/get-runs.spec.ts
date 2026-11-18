@@ -27,6 +27,13 @@ describe("run history authorization", () => {
     expect((await getRun("run"))?.isAgentRun).toBe(true);
     expect(isAgentRun).toHaveBeenCalledWith({ jobId: null, testId: "t1", testType: "agent", projectId: "project" });
   });
+  it("titles a single-test run after its test and counts that one test", async () => {
+    jest.mocked(db.select).mockReturnValue({ from: jest.fn().mockReturnThis(), leftJoin: jest.fn().mockReturnThis(), where: jest.fn().mockReturnThis(), limit: jest.fn(async () => [{ ...run, testTitle: "Support bot", metadata: { testId: "t1" } }]) } as never);
+    expect(await getRun("run")).toMatchObject({ jobId: null, jobName: "Support bot", testCount: 1 });
+  });
+  it("counts no tests for a run with neither job nor test", async () => {
+    expect(await getRun("run")).toMatchObject({ jobName: undefined, testCount: 0 });
+  });
   it("does not expose a run to a user without project permission", async () => {
     jest.mocked(hasPermissionForUser).mockResolvedValue(false);
     await expect(getRun("run")).rejects.toThrow("Failed to fetch run");

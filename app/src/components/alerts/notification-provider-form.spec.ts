@@ -1,5 +1,5 @@
 import { getUserFriendlyError } from "@/lib/error-utils";
-import { createNotificationProviderSchema, getSaveErrorMessage, nextPresetUrl } from "./notification-provider-form";
+import { createNotificationProviderSchema, endpointForDisplay, getSaveErrorMessage, nextPresetUrl } from "./notification-provider-form";
 
 const webhookConfig = {
   name: "Production webhook",
@@ -88,5 +88,17 @@ describe("nextPresetUrl", () => {
   it("keeps a custom endpoint when choosing a preset from a custom webhook, or reselecting the same one", () => {
     expect(nextPresetUrl("custom", "jsm_ops", "https://api.atlassian.com/jsm/ops/integration/v2/alerts", jsm)).toBeUndefined();
     expect(nextPresetUrl("jsm_ops", "jsm_ops", "https://api.atlassian.com/jsm/ops/integration/v2/alerts", jsm)).toBeUndefined();
+  });
+});
+
+describe("endpointForDisplay", () => {
+  it("drops userinfo, query and fragment from the typed URL", () => {
+    expect(endpointForDisplay("https://user:pw@hooks.example.com/alerts/1?token=abc#x")).toBe("https://hooks.example.com/alerts/1");
+  });
+  it("is undefined for empty or unparsable input, so the placeholder shows", () => {
+    expect(endpointForDisplay("")).toBeUndefined();
+    expect(endpointForDisplay(undefined)).toBeUndefined();
+    expect(endpointForDisplay("not a url")).toBeUndefined();
+    expect(endpointForDisplay("javascript:alert(1)")).toBeUndefined();
   });
 });
