@@ -16,6 +16,7 @@
     "updateIncidentPolicy",
     "triageSreIncident",
     "startSreInvestigation",
+    "getSreInvestigationRun",
     "streamSreChat",
     "streamSreEvidenceBrief",
     "listSreServices",

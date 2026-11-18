@@ -3,6 +3,7 @@
   "icon": "HeartPulse",
   "pages": [
     "getHealth",
-    "listLocations"
+    "listLocations",
+    "listLocationMetadata"
   ]
 }

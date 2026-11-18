@@ -63,12 +63,12 @@ View and manage all organizations in the system. See member counts, project coun
 
 ![Organizations](/screenshots/super-admin-organizations.png)
 
-## Deletion
+## Deletions
 
-The **Deletion** tab lists organizations that are pending deletion and the unfinished background purges.
+The **Deletions** tab lists organizations that are pending deletion, then the background purges still in progress.
 
 - **Purge now** skips the grace window for one organization, for example a legal erasure request. Enter a reason of at least 10 characters and type the organization ID. The purge is audited with your reason and cannot be undone. Organization owners cannot do this.
-- **Unfinished deletion jobs** shows purges of organizations, projects, jobs and monitors that are queued, running or failed, with their phase and last error. **Retry** gives a failed job a fresh set of attempts.
+- The purge table below it shows purges of organizations, projects, jobs and monitors that are queued, running or failed, with their phase and last error. **Retry** gives a failed job a fresh set of attempts.
 
 ## Users
 
@@ -76,7 +76,7 @@ Manage all users system-wide. View user details, organization memberships, and a
 
 ![Users](/screenshots/super-admin-users.png)
 
-## Queue Management
+## Queues
 
 Monitor queues for test execution, monitoring, and background jobs. View queue health, pending jobs, and processing status. Queue controls can retry, promote, or delete jobs; use them carefully because these actions affect live work. Admitted jobs retained for a disabled location remain visible and are labelled disabled.
 

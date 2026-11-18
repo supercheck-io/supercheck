@@ -263,7 +263,7 @@ Monitors reference project secrets by name, so a pulled config holds no credenti
 | Field | Description |
 |---|---|
 | `auth.secretKey` | Name of a project secret that supplies the bearer token (`auth.type: 'bearer'`) or the basic-auth password (`auth.type: 'basic'`). Use instead of an inline `token` or `password` |
-| `aiEndpoint` | AI endpoint preset (`http_request` only; `method`, `headers`, `body`, `auth`, `keywordInBody` and `expectedStatusCodes` must be absent). Fields: `model` (required), `secretKey`, `keyHeader`, `prompt`, `maxTokens`, `expectText`, `firstTokenTimeoutMs`, `warnFirstTokenMs`, `warnTotalTokens`. See [AI endpoint preset](/docs/app/monitor#ai-endpoint-preset) |
+| `aiEndpoint` | AI endpoint preset (`http_request` only; `method`, `headers`, `body`, `auth`, `keywordInBody` and `expectedStatusCodes` must be absent). Fields: `model` (required), `secretKey`, `keyHeader`, `prompt`, `maxTokens`, `expectText`, `firstTokenTimeoutMs`, `warnFirstTokenMs`, `warnTotalTokens`. See [AI endpoint preset](/docs/app/monitor#ai-endpoint-monitor) |
 | `mcp` | MCP monitor settings (`mcp_server` only). Fields: `auth` (`{ type: 'none' }`, `{ type: 'bearer', secretKey }` or `{ type: 'header', secretKey, headerName }`), `protocol` (`auto`, `2025`, `2026`), `requiredTools`, `toolCall` (`name`, `arguments`, `expectText`), `slowMs`. See [MCP Monitor](/docs/app/monitor#mcp-monitor) |
 
 ```ts
