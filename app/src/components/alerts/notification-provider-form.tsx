@@ -578,6 +578,12 @@ export function NotificationProviderForm({
       const parsedHeaders = parseHeadersValue(headersText);
       if (parsedHeaders) {
         nextConfig.headers = parsedHeaders;
+      } else if (
+        initialData?.type === "webhook" &&
+        (nextConfig.preset || "custom") !== ((initialData.config as Record<string, unknown>).preset || "custom")
+      ) {
+        // Switching preset on a saved channel: omitting headers would let the server merge restore the old vendor's stored Authorization.
+        nextConfig.headers = {};
       } else {
         delete nextConfig.headers;
       }
