@@ -146,7 +146,7 @@ export function useSetupSession(projectId: string, initial: SetupStateDto, lockT
           updatedAt.current = server.updatedAt;
           setState(latest.current);
           if (!same) toast.error("Setup was changed somewhere else. Your view was reloaded with the saved version.");
-          const keepCompleted = merged.completed !== undefined && !sameSet(mergedCompleted, server.draft.completed ?? []);
+          const keepCompleted = merged.completed !== undefined && (server.draft.completed === undefined || !sameSet(mergedCompleted, server.draft.completed));
           const keepSkipped = !sameSet(mergedSkipped, server.skipped);
           if (!unsaved && !keepReqs && !keepCompleted && !keepSkipped) {
             lastSaveOk.current = true;

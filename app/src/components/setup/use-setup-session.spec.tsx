@@ -246,4 +246,14 @@ describe("useSetupSession step marks on a 409", () => {
     await act(async () => { await result.current.flush(); });
     expect(result.current.skipped).toEqual([]);
   });
+
+  it("re-saves an explicit empty `completed` when the server copy has none", async () => {
+    const server = makeResponse({}, { updatedAt: "t-server", draft: {}, skipped: [] });
+    fetchMock.mockResolvedValueOnce(reply(409, { error: "conflict", state: server.state }));
+    fetchMock.mockResolvedValueOnce(reply(200, makeResponse({}, { updatedAt: "t-new" })));
+    const { result } = setupWith({});
+    act(() => result.current.patchDraft((d) => ({ ...d, completed: [] })));
+    await act(async () => { await result.current.flush(); });
+    expect(puts()[1].draft.completed).toEqual([]);
+  });
 });
