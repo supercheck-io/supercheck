@@ -35,6 +35,7 @@ import {
   EnhancedValidationService,
   SecurityConfig,
 } from '../common/validation/enhanced-validation.service';
+import { redactTargetUrl } from '../common/validation/data-sanitizer';
 import {
   CredentialSecurityService,
   CredentialData,
@@ -1765,7 +1766,9 @@ export class MonitorService {
             ? errorParts.join(' - ')
             : 'Unknown network error';
 
-        this.logger.warn(`HTTP Request to ${target} failed: ${detailedError}`);
+        this.logger.warn(
+          `HTTP Request to ${redactTargetUrl(target)} failed: ${detailedError}`,
+        );
         details.errorMessage = detailedError;
         if (error.response) {
           details.statusCode = error.response.status;
@@ -1843,7 +1846,7 @@ export class MonitorService {
         isUp = false;
       } else {
         this.logger.error(
-          `Unexpected error during HTTP Request to ${target}: ${getErrorMessage(error)}`,
+          `Unexpected error during HTTP Request to ${redactTargetUrl(target)}: ${getErrorMessage(error)}`,
           error instanceof Error ? error.stack : undefined,
         );
         details.errorMessage =
@@ -1859,7 +1862,7 @@ export class MonitorService {
     }
 
     this.logger.debug(
-      `HTTP Request completed: ${target}, Status: ${status}, Response Time: ${responseTimeMs}ms`,
+      `HTTP Request completed: ${redactTargetUrl(target)}, Status: ${status}, Response Time: ${responseTimeMs}ms`,
     );
     if (resolvedSecretForms.length)
       details = scrubSecrets(details, resolvedSecretForms);

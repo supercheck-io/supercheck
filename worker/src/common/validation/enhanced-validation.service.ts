@@ -58,7 +58,7 @@ export class EnhancedValidationService {
 
       // SSRF Protection: Check for internal/private addresses
       if (!config.allowInternalTargets) {
-        const hostname = parsedUrl.hostname;
+        const hostname = parsedUrl.hostname.toLowerCase();
 
         // Check for localhost and internal network variations
         // SECURITY: Block all private IP ranges and cloud metadata endpoints

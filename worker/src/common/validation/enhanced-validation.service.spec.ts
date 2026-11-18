@@ -27,6 +27,12 @@ describe('EnhancedValidationService URL validation', () => {
     expect(
       service.validateAndSanitizeUrl('http://LOCALHOST:3000/Admin'),
     ).toMatchObject({ valid: false });
+    // URL parsing keeps host case for non-special schemes.
+    expect(
+      service.validateAndSanitizeUrl('custom://LOCALHOST/x', {
+        allowedProtocols: ['custom:'],
+      }),
+    ).toMatchObject({ valid: false });
   });
 
   it('preserves the explicit internal-target opt-in', () => {
