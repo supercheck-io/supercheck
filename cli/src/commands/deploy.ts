@@ -225,6 +225,18 @@ async function applyTags(client: import('../api/client.js').ApiClient, resourceP
 /**
  * Apply a single resource change via the API.
  */
+/** An API rejection with the server's validation message appended (`error` and `details`), so a 400 says what to fix. */
+export function deployErrorMessage(err: unknown): string {
+  if (!(err instanceof Error)) return String(err)
+  const body = err instanceof ApiRequestError ? err.responseBody : undefined
+  if (!body || typeof body !== 'object') return err.message
+  const { error, details } = body as { error?: unknown; details?: unknown }
+  const parts = [error, details].filter((v): v is string => typeof v === 'string' && v.length > 0)
+  // Strip control characters and cap the length: the text is printed to a terminal.
+  const detail = parts.join(': ').replace(/\p{Cc}/gu, ' ').slice(0, 500)
+  return detail ? `${err.message}: ${detail}` : err.message
+}
+
 async function applyChange(
   client: import('../api/client.js').ApiClient,
   change: ResourceChange,
@@ -332,7 +344,7 @@ async function applyChange(
         return { success: true }
     }
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err)
+    const message = deployErrorMessage(err)
     const id = err instanceof CLIError && err.details && typeof err.details === 'object' && 'id' in err.details ? String(err.details.id) : undefined
     return { success: false, id, error: message }
   }

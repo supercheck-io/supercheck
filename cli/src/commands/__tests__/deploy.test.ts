@@ -36,7 +36,8 @@ jest.unstable_mockModule('../../utils/managed.js', () => ({
   rejectAmbiguousCreates: () => undefined,
   managedState: () => ({ path: 'state.json', apply: (v: unknown) => v, resolveTests: (v: unknown) => v, record, resolve: (_t: string, ref: string) => ref }),
 }))
-const { deployCommand } = await import('../deploy.js')
+const { deployCommand, deployErrorMessage } = await import('../deploy.js')
+const { ApiRequestError } = await import('../../utils/errors.js')
 const { setOutputFormat } = await import('../../output/formatter.js')
 
 beforeEach(() => {
@@ -99,5 +100,18 @@ describe('deploy heartbeat monitors', () => {
     await deployCommand.parseAsync(['node', 'deploy', '--force'])
     expect(put).toHaveBeenCalledWith(`/api/monitors/${M1}`, definition)
     expect(JSON.stringify(output.mock.calls)).not.toContain(TOKEN)
+  })
+})
+
+describe('deploy API errors', () => {
+  const failed = (body: unknown) => new ApiRequestError('API request failed: POST /api/monitors → 400', 400, body)
+  it('appends the server error and details to a rejected request', () => {
+    expect(deployErrorMessage(failed({ error: 'Invalid configuration', details: 'config.url must be https' }))).toBe('API request failed: POST /api/monitors → 400: Invalid configuration: config.url must be https')
+    expect(deployErrorMessage(failed({ error: 'Invalid name' }))).toBe('API request failed: POST /api/monitors → 400: Invalid name')
+  })
+  it('keeps the plain message without a usable body, and flattens control characters', () => {
+    expect(deployErrorMessage(failed(undefined))).toBe('API request failed: POST /api/monitors → 400')
+    expect(deployErrorMessage(failed({ error: 'a\u001b[31mb' }))).not.toContain('\u001b')
+    expect(deployErrorMessage(new Error('boom'))).toBe('boom')
   })
 })
