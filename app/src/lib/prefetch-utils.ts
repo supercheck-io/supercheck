@@ -352,7 +352,7 @@ export function prefetchSidebarRoute(
       queryKey: config.queryKey as unknown[],
       queryFn: config.queryFn,
       staleTime: config.staleTime ?? STALE_TIME,
-      meta: { persist: config.persist !== false },
+      ...(config.persist === false && { meta: { persist: false } }),
     });
   }
 

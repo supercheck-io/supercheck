@@ -28,8 +28,8 @@ let cacheClearedByOtherTab = false;
 let stopWatchingCacheKey: (() => void) | undefined;
 
 // These responses carry test scripts, job test scripts, run logs, or monitor configs with inline
-// credentials, so they are never written to localStorage. Set per key prefix so every hook and
-// hover prefetch of that key is covered, whichever creates the query first.
+// credentials, so they are never written to localStorage. Checked by key prefix when saving, so no
+// hook, hover prefetch or restored entry can opt them back in through its meta.
 export const NOT_PERSISTED_QUERY_KEYS = [["test"], ["job"], ["run"], ["monitor"], ["monitors"]] as const;
 
 /** Retry failures twice, except client errors (4xx other than 408/429): those fail the same way again. */
@@ -40,7 +40,7 @@ export function shouldRetryQuery(failureCount: number, error: Error): boolean {
 }
 
 function createClient() {
-  const client = new QueryClient({
+  return new QueryClient({
     defaultOptions: {
       queries: {
         // GLOBAL DEFAULTS - consistent across all hooks
@@ -53,10 +53,6 @@ function createClient() {
       },
     },
   });
-  for (const queryKey of NOT_PERSISTED_QUERY_KEYS) {
-    client.setQueryDefaults(queryKey, { meta: { persist: false } });
-  }
-  return client;
 }
 
 // A cache is only cleared when its own tab sees the session end, so an expired session or a
@@ -113,6 +109,7 @@ function initializePersistence(
       dehydrateOptions: {
         shouldDehydrateQuery: (query) => {
           if (query.meta?.persist === false) return false;
+          if (NOT_PERSISTED_QUERY_KEYS.some(([prefix]) => query.queryKey[0] === prefix)) return false;
           // Only persist successful queries with data
           return (
             query.state.status === "success" && query.state.data !== undefined
