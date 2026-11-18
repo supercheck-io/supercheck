@@ -44,7 +44,6 @@ import {
 import { displayMonitorType, monitorStatuses, monitorTypes } from "@/components/monitors/data";
 import { Monitor } from "./schema";
 import {
-  formatDistanceToNow,
   format,
   parseISO,
 } from "date-fns";
@@ -103,7 +102,7 @@ import { HeartbeatPingHistory } from "./heartbeat-ping-history";
 import { HeartbeatStateBadge } from "./heartbeat-state-badge";
 import { HeartbeatOverview } from "./heartbeat-overview";
 import { useFitPanelRows } from "./use-fit-panel-rows";
-import { formatHeartbeatMinutes, formatRunDuration } from "./heartbeat-format";
+import { formatHeartbeatMinutes, formatPingAgo, formatRunDuration } from "./heartbeat-format";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 export interface MonitorResultItem {
@@ -138,7 +137,7 @@ const formatDateTime = (dateTimeInput?: string | Date): string => {
       typeof dateTimeInput === "string"
         ? parseISO(dateTimeInput)
         : dateTimeInput;
-    return formatDistanceToNow(date, { addSuffix: true });
+    return formatPingAgo(date);
   } catch {
     return "Invalid date";
   }
@@ -1563,11 +1562,12 @@ export function MonitorDetailClient({
                               </td>
                               {/* Cells stay on one line; long values end in an ellipsis and show in full on hover. */}
                               <td className="px-3 py-[11.5px] overflow-hidden text-sm text-muted-foreground">
-                                <TruncatedTextWithTooltip
-                                  text={formatDateTime(result.checkedAt)}
-                                  maxWidth="100%"
-                                  maxLength={22}
-                                />
+                                <span
+                                  className="whitespace-nowrap"
+                                  title={format(parseISO(String(result.checkedAt)), "MMM d, yyyy HH:mm:ss")}
+                                >
+                                  {formatDateTime(result.checkedAt)}
+                                </span>
                               </td>
                               <td className="px-3 py-[11.5px] overflow-hidden text-xs text-muted-foreground">
                                 {locationMetadata ? (

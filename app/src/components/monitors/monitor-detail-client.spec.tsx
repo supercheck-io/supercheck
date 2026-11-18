@@ -83,9 +83,12 @@ it("keeps check result cells on one line with an ellipsis", async () => {
     fireEvent.click(await screen.findByTestId("result-error"));
     expect(await screen.findByText(error)).toBeInTheDocument();
     expect(screen.queryByRole("columnheader", { name: "Error" })).toBeNull();
-    const checkedAt = screen.getByText("less than a minute ago");
+    // Compact time never truncates; the full timestamp is in the title.
+    const checkedAt = screen.getByText("just now");
+    expect(checkedAt).toHaveAttribute("title", expect.stringMatching(/^[A-Z][a-z]{2} \d{1,2}, \d{4} \d{2}:\d{2}:\d{2}$/));
+    expect(checkedAt).toHaveClass("whitespace-nowrap");
     const location = screen.getByText("Asia Pacific Southeast Two");
-    for (const cell of [checkedAt, location]) {
+    for (const cell of [location]) {
       expect(cell).toHaveClass("truncate");
       expect(cell.closest("td")).toHaveClass("overflow-hidden");
     }
@@ -101,6 +104,16 @@ it("shows the report and error buttons of a failed synthetic check in the Result
     render(<MonitorDetailClient monitor={{ id: "m9", name: "Bot", type: "synthetic_test", target: "t1", status: "down", frequencyMinutes: 5, config: { testId: "t1" }, recentResults: [] } as never} />);
     expect(await screen.findByRole("button", { name: "View test report" })).toBeInTheDocument();
     expect(screen.getByTestId("result-error")).toBeInTheDocument();
+  } finally {
+    mockResults = [];
+  }
+});
+
+it("shows a check time in compact form", async () => {
+  mockResults = [{ id: "r1", monitorId: "m1", checkedAt: new Date(Date.now() - 2 * 3_600_000 - 5_000).toISOString(), isUp: true, responseTimeMs: 40, location: null, details: null }];
+  try {
+    render(<MonitorDetailClient monitor={monitor} />);
+    expect(await screen.findByText("2h ago")).toBeInTheDocument();
   } finally {
     mockResults = [];
   }
