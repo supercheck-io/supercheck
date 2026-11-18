@@ -94,6 +94,20 @@ describe("NotificationProviderForm fields", () => {
     expect(screen.getByDisplayValue("#ops")).toBeInTheDocument();
     expect(screen.getByPlaceholderText(/Unchanged/)).toHaveValue("");
     expect(screen.getByRole("button", { name: "Update channel" })).toBeInTheDocument();
+    const label = screen.getByText("Webhook URL").closest("label")!;
+    expect(label.querySelector('[aria-hidden="true"]')).toBeNull();
+    expect(screen.getByText("Leave blank to keep the current value.")).toBeInTheDocument();
+  });
+
+  it("marks secrets required on create", () => {
+    render(<NotificationProviderForm defaultType="slack" />);
+    expect(screen.getByText("Webhook URL").closest("label")!.querySelector('[aria-hidden="true"]')?.textContent).toBe("*");
+  });
+
+  it("lets textareas take Enter for new lines", () => {
+    render(<NotificationProviderForm defaultType="webhook" />);
+    expect(fireEvent.keyDown(screen.getByLabelText(/Headers JSON/), { key: "Enter" })).toBe(true);
+    expect(fireEvent.keyDown(screen.getByLabelText(/Body template/), { key: "Enter" })).toBe(true);
   });
 });
 

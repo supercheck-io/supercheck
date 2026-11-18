@@ -326,7 +326,10 @@ interface NotificationProviderFormProps {
   defaultType?: NotificationProviderType;
 }
 
-function RequiredMark() {
+const KEEP_STORED_HINT = "Leave blank to keep the current value.";
+
+function RequiredMark({ hidden }: { hidden?: boolean }) {
+  if (hidden) return null;
   return (
     <span aria-hidden="true" className="ml-0.5 text-destructive">
       *
@@ -553,6 +556,8 @@ export function NotificationProviderForm({
   });
 
   const selectedType = form.watch("type");
+  // A secret that is stored and masked keeps its value when left blank, so it is not required.
+  const keepsStored = (field: string) => Boolean(initialData) && selectedType === initialData?.type && maskedFieldSet.has(field);
   const selectedPresetId = form.watch("config.preset") || "custom";
   const selectedPreset = getWebhookPreset(selectedPresetId);
   const selectedWebhookUrl = form.watch("config.url");
@@ -722,7 +727,9 @@ export function NotificationProviderForm({
         onSubmit={form.handleSubmit(onSubmit)}
         onKeyDown={(event) => {
           // Enter in a single-line field must not submit by accident; the Create button does.
-          if (event.key === "Enter" && event.target instanceof HTMLInputElement) {
+          if (event.key === "Enter" &&
+            event.target instanceof HTMLInputElement &&
+            !["checkbox", "radio", "button", "submit"].includes(event.target.type)) {
             event.preventDefault();
           }
         }}
@@ -874,7 +881,7 @@ export function NotificationProviderForm({
                 name="config.webhookUrl"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Webhook URL<RequiredMark /></FormLabel>
+                    <FormLabel>Webhook URL<RequiredMark hidden={keepsStored("webhookUrl")} /></FormLabel>
                     <FormControl>
                       <Input
                         placeholder={maskedFieldSet.has("webhookUrl") ? MASKED_PLACEHOLDER : "e.g. https://hooks.slack.com/services/T000/B000/XXXX"}
@@ -882,7 +889,7 @@ export function NotificationProviderForm({
                         disabled={isSubmitting || isTesting}
                       />
                     </FormControl>
-                    <FormDescription>Create an incoming webhook in your Slack workspace and paste its URL.</FormDescription>
+                    <FormDescription>{keepsStored("webhookUrl") ? KEEP_STORED_HINT : "Create an incoming webhook in your Slack workspace and paste its URL."}</FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -967,7 +974,7 @@ export function NotificationProviderForm({
                       name="config.url"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>URL<RequiredMark /></FormLabel>
+                          <FormLabel>URL<RequiredMark hidden={keepsStored("url")} /></FormLabel>
                           <FormControl>
                             <Input
                               placeholder={maskedFieldSet.has("url") ? MASKED_PLACEHOLDER : "e.g. https://api.example.com/alerts"}
@@ -979,7 +986,7 @@ export function NotificationProviderForm({
                               disabled={isSubmitting || isTesting}
                             />
                           </FormControl>
-                          <FormDescription>Supercheck sends alerts to this endpoint. Stored encrypted.</FormDescription>
+                          <FormDescription>{keepsStored("url") ? KEEP_STORED_HINT : "Supercheck sends alerts to this endpoint. Stored encrypted."}</FormDescription>
                           <FormMessage />
                         </FormItem>
                       )}
@@ -1234,7 +1241,7 @@ export function NotificationProviderForm({
                   name="config.botToken"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Bot token<RequiredMark /></FormLabel>
+                      <FormLabel>Bot token<RequiredMark hidden={keepsStored("botToken")} /></FormLabel>
                       <FormControl>
                         <Input
                           type="password"
@@ -1244,7 +1251,7 @@ export function NotificationProviderForm({
                           disabled={isSubmitting || isTesting}
                         />
                       </FormControl>
-                      <FormDescription>Create a bot with @BotFather and paste its token. Stored encrypted.</FormDescription>
+                      <FormDescription>{keepsStored("botToken") ? KEEP_STORED_HINT : "Create a bot with @BotFather and paste its token. Stored encrypted."}</FormDescription>
                       <FormMessage />
                     </FormItem>
                   )}
@@ -1280,7 +1287,7 @@ export function NotificationProviderForm({
                 name="config.discordWebhookUrl"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Webhook URL<RequiredMark /></FormLabel>
+                    <FormLabel>Webhook URL<RequiredMark hidden={keepsStored("discordWebhookUrl")} /></FormLabel>
                     <FormControl>
                       <Input
                         placeholder={maskedFieldSet.has("discordWebhookUrl") ? MASKED_PLACEHOLDER : "e.g. https://discord.com/api/webhooks/123/abc"}
@@ -1288,7 +1295,7 @@ export function NotificationProviderForm({
                         disabled={isSubmitting || isTesting}
                       />
                     </FormControl>
-                    <FormDescription>In Discord: Channel settings, Integrations, Webhooks. Stored encrypted.</FormDescription>
+                    <FormDescription>{keepsStored("discordWebhookUrl") ? KEEP_STORED_HINT : "In Discord: Channel settings, Integrations, Webhooks. Stored encrypted."}</FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -1307,7 +1314,7 @@ export function NotificationProviderForm({
                 name="config.teamsWebhookUrl"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Incoming webhook URL<RequiredMark /></FormLabel>
+                    <FormLabel>Incoming webhook URL<RequiredMark hidden={keepsStored("teamsWebhookUrl")} /></FormLabel>
                     <FormControl>
                       <Input
                         placeholder={maskedFieldSet.has("teamsWebhookUrl") ? MASKED_PLACEHOLDER : "e.g. https://prod-00.westus.logic.azure.com:443/workflows/..."}
@@ -1315,10 +1322,7 @@ export function NotificationProviderForm({
                         disabled={isSubmitting || isTesting}
                       />
                     </FormControl>
-                    <div className="text-xs text-muted-foreground">
-                      Create a Workflow webhook in Power Automate from your Teams
-                      channel.
-                    </div>
+                    <FormDescription>{keepsStored("teamsWebhookUrl") ? KEEP_STORED_HINT : "Create a Workflow webhook in Power Automate from your Teams channel."}</FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}

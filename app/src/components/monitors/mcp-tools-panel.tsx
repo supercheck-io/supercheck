@@ -18,6 +18,8 @@ interface McpToolsPanelProps {
   pending?: boolean;
   /** Failure line of the latest check when it is down. */
   failure?: string | null;
+  /** Server name, version and protocol of the latest check, shown as muted text in the header. */
+  meta?: string | null;
   /** Injected for tests. */
   now?: number;
 }
@@ -89,7 +91,7 @@ function ChangeRow({ change, index }: { change: McpToolChange; index: number }) 
   );
 }
 
-export function McpToolsPanel({ baseline, changes, pending = false, failure, now }: McpToolsPanelProps) {
+export function McpToolsPanel({ baseline, changes, pending = false, failure, meta, now }: McpToolsPanelProps) {
   const [mountedAt] = useState(() => Date.now());
   const tools = baseline?.tools ?? [];
   const newestFirst = [...(changes ?? [])].reverse();
@@ -99,12 +101,17 @@ export function McpToolsPanel({ baseline, changes, pending = false, failure, now
   return (
     <Card className="shadow-sm" data-testid="mcp-tools-panel">
       <CardHeader className="pb-2">
-        <CardTitle className="flex items-center gap-2 text-lg font-semibold">
+        <CardTitle className="flex flex-wrap items-center gap-x-2 gap-y-1 text-lg font-semibold">
           <Plug className="h-4 w-4 text-type-purple" aria-hidden />
           Tools
           {baseline && (
             <span className="text-sm font-normal text-muted-foreground" data-testid="mcp-tool-count">
               {tools.length}
+            </span>
+          )}
+          {meta && (
+            <span className="min-w-0 break-words text-xs font-normal text-muted-foreground" data-testid="mcp-server-meta">
+              {meta}
             </span>
           )}
         </CardTitle>
