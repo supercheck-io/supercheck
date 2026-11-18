@@ -8,7 +8,7 @@ import {
 } from "@tanstack/react-query";
 import { persistQueryClient } from "@tanstack/react-query-persist-client";
 import { createSyncStoragePersister } from "@tanstack/query-sync-storage-persister";
-import { ReactNode, useEffect, useState } from "react";
+import { createContext, ReactNode, useContext, useEffect, useState } from "react";
 import { useSession } from "@/utils/auth-client";
 
 // Bump the version when a persisted query changes shape; older stores are removed on load.
@@ -32,6 +32,13 @@ let stopWatchingCacheKey: (() => void) | undefined;
 // hover prefetch of that key is covered, whichever creates the query first.
 export const NOT_PERSISTED_QUERY_KEYS = [["test"], ["job"], ["run"], ["monitor"], ["monitors"]] as const;
 
+/** Retry failures twice, except client errors (4xx other than 408/429): those fail the same way again. */
+export function shouldRetryQuery(failureCount: number, error: Error): boolean {
+  const status = (error as { status?: unknown }).status;
+  if (typeof status === "number" && status >= 400 && status < 500 && status !== 408 && status !== 429) return false;
+  return failureCount < 2;
+}
+
 function createClient() {
   const client = new QueryClient({
     defaultOptions: {
@@ -39,7 +46,7 @@ function createClient() {
         // GLOBAL DEFAULTS - consistent across all hooks
         staleTime: STALE_TIME, // 30 minutes - data considered fresh
         gcTime: MAX_AGE, // 24 hours - cache garbage collection
-        retry: 2, // Retry failed requests twice
+        retry: shouldRetryQuery,
         refetchOnWindowFocus: false, // Don't refetch on tab focus
         refetchOnMount: false, // Use cached data on mount
         refetchOnReconnect: false, // Don't refetch on network reconnect
@@ -173,26 +180,47 @@ export function clearQueryCache() {
   restorationPromise = undefined;
 }
 
+const ServerIdentityContext = createContext<(userId: string) => void>(() => {});
+
+/**
+ * Hands the provider the user id the server already resolved for this page, so the saved cache
+ * restores at hydration instead of after the browser's own session check returns.
+ */
+export function useSeedServerIdentity(userId: string | null | undefined) {
+  const seed = useContext(ServerIdentityContext);
+  useEffect(() => {
+    if (userId) seed(userId);
+  }, [userId, seed]);
+}
+
 export function QueryProvider({ children }: { children: ReactNode }) {
   const session = useSession();
-  const identity = session.data?.user.id ?? null;
+  const [serverIdentity, setServerIdentity] = useState<string | null>(null);
+  // A completed check always wins (sign-out or a different user remounts and clears as before).
+  // Until then, or when the check failed (network, 5xx), use the server's identity, as AuthGuard does.
+  const checkCompleted = !session.isPending && !session.error;
+  const useServerIdentity = !checkCompleted && serverIdentity !== null;
+  const identity = useServerIdentity ? serverIdentity : (session.data?.user.id ?? null);
+  const pending = session.isPending && !useServerIdentity;
   // Remount only when a settled identity changes. Keying on the identity itself remounted the whole
   // app shell (closing open dialogs) when the first session check resolved after hydration.
   const [settled, setSettled] = useState<{ identity: string | null; generation: number } | null>(null);
-  if (!session.isPending) {
+  if (!pending) {
     if (!settled) setSettled({ identity, generation: 0 });
     else if (settled.identity !== identity) setSettled({ identity, generation: settled.generation + 1 });
   }
   return (
-    <IdentityQueryProvider
-      key={settled?.generation ?? 0}
-      identity={identity}
-      pending={session.isPending}
-      // Only a completed check counts as signed out; a failed one (network, 5xx) must not wipe caches.
-      signedOut={!session.isPending && !session.error && identity === null}
-    >
-      {children}
-    </IdentityQueryProvider>
+    <ServerIdentityContext.Provider value={setServerIdentity}>
+      <IdentityQueryProvider
+        key={settled?.generation ?? 0}
+        identity={identity}
+        pending={pending}
+        // Only a completed check counts as signed out; a failed one (network, 5xx) must not wipe caches.
+        signedOut={checkCompleted && identity === null}
+      >
+        {children}
+      </IdentityQueryProvider>
+    </ServerIdentityContext.Provider>
   );
 }
 

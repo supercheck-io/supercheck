@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useSession } from "@/utils/auth-client";
 import { SupercheckLoading } from "@/components/shared/supercheck-loading";
 import { withNextPath } from "@/lib/auth/safe-next-path";
+import { useSeedServerIdentity } from "@/lib/query-provider";
 
 /**
  * AuthGuard - Client-side authentication guard using Better Auth
@@ -49,6 +50,7 @@ interface AuthGuardProps {
 export function AuthGuard({ children, initialSession }: AuthGuardProps) {
     const router = useRouter();
     const { data: session, isPending, error } = useSession();
+    useSeedServerIdentity(initialSession?.user.id);
     // Use ref to track redirect to avoid re-renders and lint warnings
     const isRedirectingRef = useRef(false);
 

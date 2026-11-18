@@ -74,7 +74,8 @@ async function fetchList<T>(endpoint: string, options: Record<string, unknown>, 
   const response = await fetch(url, { headers });
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));
-    throw new Error(error.error || `HTTP ${response.status}: ${response.statusText}`);
+    // status lets the query client skip retries for client errors (see shouldRetryQuery).
+    throw Object.assign(new Error(error.error || `HTTP ${response.status}: ${response.statusText}`), { status: response.status });
   }
   return response.json();
 }
@@ -88,7 +89,8 @@ async function fetchSingle<T>(endpoint: string, id: string, singleItemField?: st
   const response = await fetch(`${endpoint}/${id}`, { headers });
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));
-    throw new Error(error.error || `HTTP ${response.status}: ${response.statusText}`);
+    // status lets the query client skip retries for client errors (see shouldRetryQuery).
+    throw Object.assign(new Error(error.error || `HTTP ${response.status}: ${response.statusText}`), { status: response.status });
   }
   const data = await response.json();
   if (singleItemField && data[singleItemField]) {
