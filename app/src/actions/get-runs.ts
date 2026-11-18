@@ -168,7 +168,8 @@ export async function getRun(
       ...run,
       jobName: run.jobName || testTitle || (hasTest ? "Playground test" : undefined),
       projectName: run.projectName || undefined,
-      jobType: run.jobType || undefined,
+      // A single k6 test run has no job; its stored test type marks it as performance.
+      jobType: run.jobType || ((metadata as { testType?: unknown } | null)?.testType === "performance" ? "k6" : undefined),
       duration: computeDuration(),
       startedAt: run.startedAt?.toISOString() || null,
       completedAt: run.completedAt?.toISOString() || null,

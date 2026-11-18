@@ -3,6 +3,7 @@ import { hasPermissionForUser, requireAuth } from "@/lib/rbac/middleware";
 import { monitorConfigForRead, monitorResultForRead, monitorTargetForRead } from "@/lib/monitor-read-config";
 import { heartbeatSummary } from "@/lib/heartbeat/state";
 import { Metadata } from "next";
+import { cache } from "react";
 import { MonitorDetailClient, MonitorWithResults, MonitorResultItem } from "@/components/monitors/monitor-detail-client";
 import { PageBreadcrumbs } from "@/components/page-breadcrumbs";
 import { notFound } from "next/navigation";
@@ -27,7 +28,8 @@ type MonitorDetailsPageProps = {
 };
 
 // Direct server-side data fetching function (replaces the old fetchMonitorWithResults that used HTTP fetch)
-async function getMonitorDetailsDirectly(id: string): Promise<MonitorWithResults | null> {
+// cache: generateMetadata and the page both need it; one load per request.
+const getMonitorDetailsDirectly = cache(async (id: string): Promise<MonitorWithResults | null> => {
   try {
     const { userId } = await requireAuth();
     // Run both queries in parallel for faster initial page load
@@ -125,7 +127,7 @@ async function getMonitorDetailsDirectly(id: string): Promise<MonitorWithResults
     console.error(`Error in getMonitorDetailsDirectly for ${id}:`, error);
     throw error; // Re-throw to be caught by Next.js error handling
   }
-}
+});
 
 export async function generateMetadata({ params }: MonitorDetailsPageProps): Promise<Metadata> {
   const { id } = await params; // Wait for params to resolve

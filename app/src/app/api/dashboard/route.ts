@@ -47,7 +47,7 @@ export async function GET() {
 
     // Get queue statistics
     // A queue-stats failure must not 500 the whole dashboard
-    const queueStats = await getQueueStats(context.organizationId).catch((error) => {
+    const queueStatsPromise = getQueueStats(context.organizationId).catch((error) => {
       console.error("Dashboard queue stats error:", error instanceof Error ? error.message : "Unknown error");
       return { running: 0, queued: 0, runningCapacity: 0, queuedCapacity: 0 };
     });
@@ -62,12 +62,11 @@ export async function GET() {
       liveMonitor()
     );
     
-    const [
-      monitorCounts,
-      recentMonitorCounts,
-      monitorsByType,
-      criticalAlerts
-    ] = await Promise.all([
+    // The query groups below are independent. They run in three waves of at most ~10 queries each
+    // (monitors + tests + queue stats, then jobs, then trends): fewer round trips than one group at a
+    // time, without one request holding every connection in the pool. Wave-one promises are awaited
+    // together right after they are created, so a failure in any of them is always handled.
+    const monitorBatch = Promise.all([
       // OPTIMIZED: Single query for all monitor counts using FILTER
       // COALESCE ensures 0 instead of NULL when no rows match
       dbInstance.select({
@@ -107,11 +106,6 @@ export async function GET() {
         .limit(5)
     ]);
 
-    const recentChecks24h = [...recentMonitorCounts.values()].reduce(
-      (acc, c) => ({ total: acc.total + c.total, up: acc.up + c.up }),
-      { total: 0, up: 0 },
-    );
-
     // Job Statistics - scoped to project
     // OPTIMIZED: Consolidated count queries using PostgreSQL FILTER clause
     const jobBaseCondition = and(
@@ -124,15 +118,7 @@ export async function GET() {
     // The 24h/7d failure signals (system health, needs attention) cover every job type so failed k6 job runs still surface.
     const playwrightJobCondition = and(jobBaseCondition, eq(jobs.jobType, "playwright"));
 
-    const [
-      jobCounts,
-      recentRuns,
-      runCounts24h,
-      jobsByStatus,
-      failedRuns7d,
-      jobTriggerTrend,
-      executionTimeData
-    ] = await Promise.all([
+    const jobBatch = () => Promise.all([
       // OPTIMIZED: Single query for total and active job counts
       dbInstance.select({
         total: count(),
@@ -223,12 +209,7 @@ export async function GET() {
     ]);
 
     // Test Statistics - scoped to project
-    const [
-      totalTests,
-      testsByType,
-      playgroundExecutions30d,
-      k6Stats,
-    ] = await Promise.all([
+    const testBatch = Promise.all([
       // Total tests
       dbInstance.select({ count: count() }).from(tests)
         .where(and(eq(tests.projectId, targetProjectId), eq(tests.organizationId, context.organizationId))),
@@ -272,16 +253,8 @@ export async function GET() {
 
     ]);
 
-    // PERFORMANCE: Run all remaining queries in parallel instead of sequential awaits
-    // This batch includes: monitor aggregation, playground aggregation, uptime, availability trend, response time stats, playground trend
-    const [
-      monitorExecutionAggregated,
-      playgroundExecutionAggregated,
-      uptimeResult,
-      availabilityTrend,
-      responseTimeStats,
-      playgroundExecutionsTrend
-    ] = await Promise.all([
+    // Monitor aggregation, playground aggregation, availability trend, response time stats, playground trend
+    const trendBatch = () => Promise.all([
       // OPTIMIZED: Synthetic monitor executions - SQL aggregation instead of fetching all rows
       // This was causing CPU spikes by fetching 4000+ rows and looping in JS
       dbInstance.select({
@@ -329,9 +302,6 @@ export async function GET() {
           sql`${auditLogs.details}->'metadata'->>'projectId' = ${targetProjectId}`
         )),
 
-      // Uptime over the last 24h: the same hourly counts as recentChecks24h
-      Promise.resolve([{ totalChecks: recentChecks24h.total, successfulChecks: recentChecks24h.up }]),
-
       // Monitor availability trend (last 30 days): daily aggregates plus raw rows for the unaggregated rest
       getRowCountsByPeriod({ ...availabilityScope, from: last30Days, period: "daily" }).then((counts) =>
         [...counts]
@@ -372,6 +342,23 @@ export async function GET() {
         .groupBy(sql`DATE(${auditLogs.createdAt})`)
         .orderBy(sql`DATE(${auditLogs.createdAt})`)
     ]);
+
+    const [
+      [monitorCounts, recentMonitorCounts, monitorsByType, criticalAlerts],
+      [totalTests, testsByType, playgroundExecutions30d, k6Stats],
+      queueStats,
+    ] = await Promise.all([monitorBatch, testBatch, queueStatsPromise]);
+    const [jobCounts, recentRuns, runCounts24h, jobsByStatus, failedRuns7d, jobTriggerTrend, executionTimeData] =
+      await jobBatch();
+    const [monitorExecutionAggregated, playgroundExecutionAggregated, availabilityTrend, responseTimeStats, playgroundExecutionsTrend] =
+      await trendBatch();
+
+    const recentChecks24h = [...recentMonitorCounts.values()].reduce(
+      (acc, c) => ({ total: acc.total + c.total, up: acc.up + c.up }),
+      { total: 0, up: 0 },
+    );
+    // Uptime over the last 24h: the same hourly counts as recentChecks24h
+    const uptimeResult = [{ totalChecks: recentChecks24h.total, successfulChecks: recentChecks24h.up }];
 
     // Calculate overall uptime percentage from aggregated result
     const totalChecks = uptimeResult[0]?.totalChecks ?? 0;

@@ -5,6 +5,7 @@
  * In Docker/production, each DB round-trip adds 3-5ms latency, so caching is critical.
  */
 
+import { cache } from "react";
 import { auth } from "@/utils/auth";
 import { headers } from "next/headers";
 import { db } from "@/utils/db";
@@ -75,7 +76,7 @@ export interface ProjectWithRole {
  * Get current authenticated user with unified role
  * Handles impersonation by checking database session for impersonated user
  */
-export async function getCurrentUser(): Promise<UserSession | null> {
+async function loadCurrentUser(): Promise<UserSession | null> {
   try {
     // Use cached session to avoid duplicate DB round-trips in Docker
     const authSession = await getCachedAuthSession();
@@ -265,7 +266,7 @@ export async function getActiveProject(): Promise<ProjectWithRole | null> {
 /**
  * Get all organizations for a user with unified roles
  */
-export async function getUserOrganizations(
+async function loadUserOrganizations(
   userId: string
 ): Promise<OrganizationWithRole[]> {
   try {
@@ -490,3 +491,9 @@ export async function getUserProjectRole(
     return Role.PROJECT_VIEWER;
   }
 }
+
+// Memoized per page render (React.cache): the layout, page and their helpers ask for these several
+// times. Each render gets its own scope, so nothing is shared between requests or users. Route
+// handlers and server actions have no render scope, so they still call through every time.
+export const getCurrentUser = cache(loadCurrentUser);
+export const getUserOrganizations = cache(loadUserOrganizations);
