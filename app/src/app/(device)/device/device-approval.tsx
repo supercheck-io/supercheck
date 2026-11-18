@@ -1,12 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import { Check, Info, X } from "lucide-react";
+import { Check, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { InfoPopover } from "@/components/ui/info-popover";
 import { signOut } from "@/utils/auth-client";
 import { cn } from "@/lib/utils";
 
@@ -198,13 +198,7 @@ export function DeviceApproval({ userCode, userEmail, projects, client }: Props)
             {switchingAccount ? "Signing out…" : "Switch account"}
           </button>
         </div>
-        <Popover>
-          <PopoverTrigger asChild>
-            <Button type="button" variant="ghost" size="icon" className="size-8 shrink-0 text-muted-foreground" aria-label="About CLI access">
-              <Info className="size-4" aria-hidden="true" />
-            </Button>
-          </PopoverTrigger>
-          <PopoverContent align="end" aria-label="About CLI access" className="space-y-3 text-sm">
+        <InfoPopover label="About CLI access" title="CLI access" align="end">
             <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
               <dt className="text-muted-foreground">Verification code</dt>
               <dd className="break-all font-mono">{userCode}</dd>
@@ -217,8 +211,7 @@ export function DeviceApproval({ userCode, userEmail, projects, client }: Props)
                 {client.hostname ?? "Unknown device"}{client.version ? ` · CLI ${client.version}` : ""}. Device details are self-reported and not verified.
               </p>
             ) : null}
-          </PopoverContent>
-        </Popover>
+        </InfoPopover>
       </div>
 
       <div className="space-y-2">

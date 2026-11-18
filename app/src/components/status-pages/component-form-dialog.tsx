@@ -452,7 +452,7 @@ export function ComponentFormDialog({
             <section className="space-y-3 border-t pt-5">
               <div className="flex items-center gap-1.5">
                 <h3 className="text-sm font-semibold">Monitors</h3>
-                <InfoHint label="Monitor linking">
+                <InfoHint label="Monitor linking" title="Monitor linking">
                   <InfoHintText>
                     Linked monitors drive component health. Components without
                     monitors keep the status you set manually.
@@ -569,7 +569,7 @@ export function ComponentFormDialog({
                         <Label htmlFor="component-aggregation">
                           Aggregation
                         </Label>
-                        <InfoHint label="Status aggregation">
+                        <InfoHint label="Status aggregation" title="Status aggregation">
                           <InfoHintText>
                             How monitor states combine into one component
                             status.
@@ -615,7 +615,7 @@ export function ComponentFormDialog({
                         <Label htmlFor="component-threshold">
                           Failing monitors required
                         </Label>
-                        <InfoHint label="Failure threshold">
+                        <InfoHint label="Failure threshold" title="Failure threshold">
                           <InfoHintText>
                             Counts failing monitors, not consecutive checks. At
                             or above this number, the aggregation above decides
@@ -791,7 +791,7 @@ export function ComponentFormDialog({
                   <Label htmlFor="component-service">
                     Linked internal service
                   </Label>
-                  <InfoHint label="Service linking">
+                  <InfoHint label="Service linking" title="Service linking">
                     <InfoHintText>
                       Services hold internal ownership and dependencies. Linking
                       one does not publish any service details.

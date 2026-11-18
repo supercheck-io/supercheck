@@ -1,6 +1,6 @@
-import { Info, type LucideIcon } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { InfoPopover } from "@/components/ui/info-popover";
 import { IconChip, type IconTone } from "@/components/ui/icon-chip";
 
 export type { IconTone };
@@ -71,19 +71,13 @@ export function SectionTitle({
           )}
         </Heading>
         {hint && (
-          // A popover, not a tooltip, so a tap on touch screens opens and keeps the hint.
-          <Popover>
-            <PopoverTrigger asChild>
-              <button
-                type="button"
-                aria-label={`About ${typeof children === "string" ? children.toLowerCase() : "this section"}`}
-                className="inline-flex size-5 items-center justify-center rounded-full text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              >
-                <Info className="size-3.5" aria-hidden="true" />
-              </button>
-            </PopoverTrigger>
-            <PopoverContent className="w-auto max-w-xs p-3 text-xs">{hint}</PopoverContent>
-          </Popover>
+          // No icon prop: this file is not a client module, so a component reference cannot cross into the client InfoPopover from a Server Component.
+          <InfoPopover
+            label={`About ${typeof children === "string" ? children.toLowerCase() : "this section"}`}
+            title={typeof children === "string" ? children : "About this section"}
+            description={hint}
+            className="size-5"
+          />
         )}
       </div>
       {action}

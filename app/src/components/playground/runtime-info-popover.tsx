@@ -1,14 +1,7 @@
 "use client";
 
 import React from "react";
-import { Info } from "lucide-react";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
-import { Button } from "@/components/ui/button";
-import { ScrollArea } from "@/components/ui/scroll-area";
+import { InfoPopover } from "@/components/ui/info-popover";
 import type { TestType } from "@/db/schema";
 
 interface AllowedLibrary {
@@ -103,63 +96,26 @@ const RuntimeInfoPopover: React.FC<RuntimeInfoPopoverProps> = ({
   const runtimeInfo = getRuntimeInfo(testType);
 
   return (
-    <Popover>
-      <PopoverTrigger asChild>
-        <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-          <Info className="h-4 w-4 text-muted-foreground" />
-          <span className="sr-only">Available runtime libraries</span>
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent className="w-96 max-w-[calc(100vw-2rem)]" align="start">
-        <div className="space-y-3">
-          <div>
-            <div className="flex items-center gap-1">
-              <h4 className="font-medium">{runtimeInfo.title}</h4>
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-8 w-8 shrink-0 text-muted-foreground"
-                    aria-label={`${runtimeInfo.title} guidance`}
-                  >
-                    <Info className="h-4 w-4" aria-hidden="true" />
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent
-                  className="w-80 max-w-[calc(100vw-2rem)] space-y-2 text-sm text-muted-foreground"
-                  align="end"
-                  aria-label={`${runtimeInfo.title} guidance`}
-                >
-                  {runtimeInfo.guidance.map((paragraph) => (
-                    <p key={paragraph}>{paragraph}</p>
-                  ))}
-                </PopoverContent>
-              </Popover>
+    <InfoPopover
+      label="Available runtime libraries"
+      title={runtimeInfo.title}
+      description={runtimeInfo.description}
+      bullets={runtimeInfo.guidance}
+      contentClassName="w-96"
+    >
+      <div className="space-y-2">
+          {runtimeInfo.libraries.map((lib) => (
+            <div key={lib.name} className="text-sm">
+              <code className="font-mono text-xs bg-muted px-1.5 py-0.5 rounded">
+                {lib.name}
+              </code>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                {lib.description}
+              </p>
             </div>
-            <p className="text-sm text-muted-foreground">
-              {runtimeInfo.description}
-            </p>
-          </div>
-
-          <ScrollArea className="h-60">
-            <div className="space-y-2">
-              {runtimeInfo.libraries.map((lib) => (
-                <div key={lib.name} className="text-sm">
-                  <code className="font-mono text-xs bg-muted px-1.5 py-0.5 rounded">
-                    {lib.name}
-                  </code>
-                  <p className="text-xs text-muted-foreground mt-0.5">
-                    {lib.description}
-                  </p>
-                </div>
-              ))}
-            </div>
-          </ScrollArea>
-
-        </div>
-      </PopoverContent>
-    </Popover>
+          ))}
+      </div>
+    </InfoPopover>
   );
 };
 

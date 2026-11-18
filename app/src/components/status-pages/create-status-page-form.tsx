@@ -80,7 +80,7 @@ export function CreateStatusPageForm({ onSuccess, onCancel }: CreateStatusPageFo
       <div className="space-y-2">
         <div className="flex items-center gap-1">
           <Label htmlFor="name">Title *</Label>
-          <InfoHint label="Internal name details">
+          <InfoHint label="Internal name details" title="Internal name">
             <InfoHintText>
               Internal name used in the dashboard. Visitors see the public
               headline instead.
@@ -101,7 +101,7 @@ export function CreateStatusPageForm({ onSuccess, onCancel }: CreateStatusPageFo
       <div className="space-y-2">
         <div className="flex items-center gap-1">
           <Label htmlFor="headline">Public Headline</Label>
-          <InfoHint label="Public heading details">
+          <InfoHint label="Public heading details" title="Public heading">
             <InfoHintText>
               Main heading on the public page. Falls back to the name when left
               empty.
@@ -122,7 +122,7 @@ export function CreateStatusPageForm({ onSuccess, onCancel }: CreateStatusPageFo
       <div className="space-y-2">
         <div className="flex items-center gap-1">
           <Label htmlFor="description">Description</Label>
-          <InfoHint label="Public summary details">
+          <InfoHint label="Public summary details" title="Public summary">
             <InfoHintText>
               Short summary shown below the headline on the public page.
             </InfoHintText>
