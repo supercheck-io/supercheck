@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import Editor, { type Monaco, useMonaco } from "@monaco-editor/react";
 import type { editor } from "monaco-editor";
 import { Copy, Download, Loader2, Sparkles } from "lucide-react";
@@ -15,6 +15,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { ReportMarkdown } from "@/components/shared/report-markdown";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { getMonacoTheme, registerMonacoThemes } from "@/lib/monaco-config";
 
 type MarkdownReportDialogProps = {
@@ -39,6 +41,9 @@ export function MarkdownReportDialog({
   downloadFilename,
   loadingMessage,
 }: MarkdownReportDialogProps) {
+  const [view, setView] = useState<"report" | "source">("report");
+  const [shown, setShown] = useState(content);
+  const reportRef = useRef<HTMLDivElement | null>(null);
   const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null);
   const monaco = useMonaco();
   const { resolvedTheme } = useTheme();
@@ -50,12 +55,37 @@ export function MarkdownReportDialog({
     }
   }, [monaco, editorTheme]);
 
+  // Start on the formatted report each time the dialog opens.
+  const [wasOpen, setWasOpen] = useState(open);
+  if (open !== wasOpen) {
+    setWasOpen(open);
+    if (open) setView("report");
+  }
+
+  // Re-render the Markdown at most every 100ms while streaming; the final text renders at once.
+  // An interval, not a debounce: chunks arriving faster than 100ms must not hold the text back.
+  const latestContent = useRef(content);
   useEffect(() => {
-    if (editorRef.current && content && isStreaming) {
+    latestContent.current = content;
+  }, [content]);
+  useEffect(() => {
+    if (!isStreaming) return;
+    const id = setInterval(() => setShown(latestContent.current), 100);
+    return () => clearInterval(id);
+  }, [isStreaming]);
+  const rendered = isStreaming ? shown : content;
+
+  useEffect(() => {
+    if (view === "report") {
+      editorRef.current = null;
+      const el = reportRef.current;
+      if (el && isStreaming) el.scrollTop = el.scrollHeight;
+    }
+    if (view === "source" && editorRef.current && content && isStreaming) {
       const lineCount = editorRef.current.getModel()?.getLineCount() ?? 1;
       editorRef.current.revealLine(lineCount);
     }
-  }, [content, isStreaming]);
+  }, [rendered, content, isStreaming, view]);
 
   const handleEditorMount = (
     instance: editor.IStandaloneCodeEditor,
@@ -117,6 +147,15 @@ export function MarkdownReportDialog({
             </div>
           </div>
           <div className="flex shrink-0 items-center gap-2 sm:mr-6">
+            <Tabs
+              value={view}
+              onValueChange={(v) => setView(v as "report" | "source")}
+            >
+              <TabsList>
+                <TabsTrigger value="report">Report</TabsTrigger>
+                <TabsTrigger value="source">Source</TabsTrigger>
+              </TabsList>
+            </Tabs>
             <Button
               variant="outline"
               size="sm"
@@ -141,7 +180,16 @@ export function MarkdownReportDialog({
         </DialogHeader>
 
         <div className="min-h-0 flex-1 overflow-hidden rounded-md border">
-          {content ? (
+          {content && view === "report" ? (
+            <div
+              ref={reportRef}
+              data-sentry-block=""
+              className="h-full overflow-y-auto p-4"
+              data-testid="report-rendered"
+            >
+              <ReportMarkdown content={rendered} />
+            </div>
+          ) : content ? (
             <Editor
               wrapperProps={{ "data-sentry-block": "" }}
               height="100%"

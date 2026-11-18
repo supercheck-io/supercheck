@@ -218,9 +218,9 @@ const customJestConfig = {
 // for better-auth ESM-only modules in v1.4.x
 module.exports = async () => {
   const jestConfig = await createJestConfig(customJestConfig)();
-  // Transform ESM modules from better-auth, @better-auth, and their ESM deps
+  // Transform ESM modules from better-auth, @better-auth, react-markdown (unified ecosystem), and their ESM deps
   jestConfig.transformIgnorePatterns = [
-    "/node_modules/(?!(better-auth|@better-auth|rou3|better-call|@noble|jose|nanostores)/)",
+    "/node_modules/(?!(better-auth|@better-auth|rou3|better-call|@noble|jose|nanostores|react-markdown|remark-[^/]+|unified|unist-[^/]+|mdast-[^/]+|micromark[^/]*|hast-[^/]+|vfile[^/]*|devlop|bail|trough|is-plain-obj|property-information|space-separated-tokens|comma-separated-tokens|decode-named-character-reference|character-entities[^/]*|html-url-attributes|trim-lines|ccount|markdown-table|longest-streak|zwitch|stringify-entities|estree-util-[^/]+|escape-string-regexp)/)",
     "^.+\\.module\\.(css|sass|scss)$",
   ];
   return jestConfig;

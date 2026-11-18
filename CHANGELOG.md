@@ -96,6 +96,8 @@ The CLI is versioned separately; see [cli/CHANGELOG.md](cli/CHANGELOG.md). Prere
 
 ### Fixed
 
+- **AI Analyze on k6 job runs.** The analysis now reads the run's k6 summary (thresholds, error rate, response times, VUs) instead of reporting that no metrics were provided.
+- **AI reports.** The report dialog renders formatted Markdown by default; a Source tab keeps the raw view. Copy and Download still return the raw Markdown.
 - **AI triage sees the incident's monitor evidence.** Triage on a new incident found no evidence, because built-in monitor, run and alert evidence was only collected by a full investigation or an evidence brief. Triage now collects it first when none is stored (bounded to 15 seconds, best effort).
 - **Status page links honor `STATUS_PAGE_DOMAIN` in cloud mode.** A cloud deployment with its own status page domain showed and routed `<id>.supercheck.io` links, which pointed at another environment. `STATUS_PAGE_DOMAIN` now applies in every mode; unset, cloud still uses `supercheck.io`.
 - **Agent results on the run page.** Agent runs on Kubernetes now store their results, so the "Agent results" card shows (the report paths were read as if the run directory were `/tmp`).
