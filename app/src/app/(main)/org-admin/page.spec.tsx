@@ -188,6 +188,31 @@ it("opens the section from its canonical URL and clears it when changing tabs", 
   expect(screen.queryByText("Saved query management")).not.toBeInTheDocument();
 });
 
+it("drops the previous project's connectors until the new ones load", async () => {
+  const { rerenderPage } = renderPage();
+  await screen.findByText("Connector management");
+
+  let release: (value: unknown) => void = () => {};
+  mockFetch.mockImplementationOnce(
+    () => new Promise((resolve) => { release = resolve; }),
+  );
+  mockProjectId = "project-2";
+  rerenderPage();
+
+  expect(await screen.findByText("Loading integrations...")).toBeInTheDocument();
+  expect(screen.queryByText("Connector management")).not.toBeInTheDocument();
+  release({
+    ok: true,
+    json: async () => ({
+      success: true, status: null, connectors: [],
+      setupOptions: { connectors: [], services: [], privateAgents: [] },
+      bindings: [],
+      bindingSetupOptions: { notificationProviders: [], connectors: [], services: [] },
+    }),
+  });
+  await screen.findByText("Connector management");
+});
+
 it("reloads integrations when the project changes", async () => {
   const { rerenderPage } = renderPage();
   await screen.findByText("Connector management");

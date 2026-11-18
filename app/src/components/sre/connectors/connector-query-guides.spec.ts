@@ -67,6 +67,15 @@ describe("getServiceQuery", () => {
     expect(getServiceQuery("loki", "checkout")).toBe('{service="checkout"} |= "error"');
   });
 
+  it("never injects an unsafe or overlong name into any recipe", () => {
+    for (const type of ["tempo", "loki", "prometheus", "elasticsearch"]) {
+      const example = getConnectorQueryGuide(type).examples[0].query;
+      for (const name of ['a b', "x\ny", "a".repeat(101), '}|~"', "a;b"]) {
+        expect(getServiceQuery(type, name)).toBe(example);
+      }
+    }
+  });
+
   it("falls back to the guide example without a usable service name", () => {
     const example = getConnectorQueryGuide("tempo").examples[0].query;
     expect(getServiceQuery("tempo", "")).toBe(example);

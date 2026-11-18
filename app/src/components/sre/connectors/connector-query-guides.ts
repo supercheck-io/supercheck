@@ -522,8 +522,9 @@ export function getConnectorQueryGuide(type: string): ConnectorQueryGuide {
 export function getServiceQuery(type: string, serviceName?: string): string {
   const fallback = getConnectorQueryGuide(type).examples[0]?.query ?? "";
   const name = serviceName?.trim();
+  // Never inject a name that is not a plain identifier (same bound as the recipe schemas).
+  if (!name || !/^[A-Za-z0-9._:-]{1,100}$/.test(name)) return fallback;
   // Elasticsearch recipes leave the name unquoted, so a colon would break the query.
-  if (!name || !/^[a-zA-Z0-9_.:-]+$/.test(name)) return fallback;
   if (type === "elasticsearch" && name.includes(":")) return fallback;
 
   for (const recipe of getDiagnosticQueryAdapterRecipes(type)) {

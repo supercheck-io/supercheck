@@ -480,6 +480,9 @@ function OrgAdminDashboardContent() {
   useEffect(() => {
     if (lastProjectIdRef.current === projectId) return;
     lastProjectIdRef.current = projectId;
+    // Drop the previous project's rows now instead of showing them until the refetch returns.
+    setConnectors([]);
+    setIntegrationBindings([]);
     setIntegrationsLoaded(false);
     setDiagnosticLoaded(false);
     setPrivateAgentsLoaded(false);
@@ -1255,12 +1258,13 @@ function OrgAdminDashboardContent() {
         </TabsContent>
 
         <TabsContent value="integrations" className="mt-0 space-y-4">
-          {integrationsLoading && !integrationsLoaded ? (
+          {!integrationsLoaded ? (
             <TabLoadingSpinner message="Loading integrations..." />
           ) : (
             <>
             <ConnectorProjectNotice />
             <ConnectorAdminView
+              key={projectId}
               initialConnectors={connectors}
               setupOptions={connectorSetupOptions}
               initialBindings={integrationBindings}

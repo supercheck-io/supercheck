@@ -687,6 +687,92 @@ describe("ConnectorAdminView", () => {
       expect(screen.queryByText("stale failure")).not.toBeInTheDocument();
     });
 
+    it("clears results and errors when the query or service changes", async () => {
+      await openPreview();
+      const search = jest.mocked(searchSreConnectorEvidence);
+      search.mockResolvedValueOnce({ success: true, evidence: [], truncated: false, message: "m" });
+      fireEvent.click(screen.getByRole("button", { name: "Run query" }));
+      expect(await screen.findByText(/No matching data/)).toBeInTheDocument();
+      fireEvent.change(screen.getByLabelText("Trace search"), { target: { value: "other" } });
+      expect(screen.queryByText(/No matching data/)).not.toBeInTheDocument();
+
+      search.mockResolvedValueOnce({ success: false, error: "boom" });
+      fireEvent.click(screen.getByRole("button", { name: "Run query" }));
+      expect(await screen.findByText("boom")).toBeInTheDocument();
+      fireEvent.click(screen.getByLabelText("Service"));
+      fireEvent.click(await screen.findByRole("option", { name: "Payments" }));
+      expect(screen.queryByText("boom")).not.toBeInTheDocument();
+    });
+
+    it.each([
+      [120, ["15 minutes", "1 hour", "120 minutes"]],
+      [30, ["15 minutes", "30 minutes"]],
+      [10080, ["15 minutes", "1 hour", "4 hours", "24 hours"]],
+    ])("offers only matching windows for a %i minute connector limit", async (limit, labels) => {
+      render(
+        <ConnectorAdminView
+          loadError={null}
+          initialConnectors={[{ ...tempoConnector, defaultTimeWindowMinutes: limit }]}
+          setupOptions={{ services, privateAgents: [] }}
+          initialBindings={[]}
+          bindingSetupOptions={{ notificationProviders: [], connectors: [], services: [] }}
+        />,
+      );
+      openConnectorActions("Tempo prod");
+      fireEvent.click(await screen.findByRole("menuitem", { name: /preview data/i }));
+      fireEvent.click(screen.getByLabelText("Window"));
+      const options = (await screen.findAllByRole("option")).map((o) => o.textContent);
+      expect(options).toEqual(expect.arrayContaining(labels));
+      expect(options.filter((o) => /minutes|hour/.test(o ?? "")).length).toBe(labels.length);
+      fireEvent.keyDown(document.activeElement ?? document.body, { key: "Escape" });
+    });
+
+    it("widens to the largest allowed window above the current one", async () => {
+      render(
+        <ConnectorAdminView
+          loadError={null}
+          initialConnectors={[{ ...tempoConnector, defaultTimeWindowMinutes: 120 }]}
+          setupOptions={{ services, privateAgents: [] }}
+          initialBindings={[]}
+          bindingSetupOptions={{ notificationProviders: [], connectors: [], services: [] }}
+        />,
+      );
+      openConnectorActions("Tempo prod");
+      fireEvent.click(await screen.findByRole("menuitem", { name: /preview data/i }));
+      jest.mocked(searchSreConnectorEvidence).mockResolvedValue({ success: true, evidence: [], truncated: false, message: "m" });
+      fireEvent.click(screen.getByRole("button", { name: "Run query" }));
+      const widen = await screen.findByRole("button", { name: "Widen to 120 minutes" });
+      await waitFor(() => expect(widen).toBeEnabled());
+      fireEvent.click(widen);
+      expect(await screen.findByText("No matching data in the last 120 minutes.")).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /Widen to/ })).not.toBeInTheDocument();
+    });
+
+    it("shows and links only the origin and path of a source", async () => {
+      await openPreview();
+      jest.mocked(searchSreConnectorEvidence).mockResolvedValueOnce({
+        success: true,
+        truncated: false,
+        message: "m",
+        evidence: [
+          {
+            id: "e3",
+            sourceUri: "https://user:pw@tempo.example/trace/1?sig=SECRET#frag",
+            title: "signed source",
+            summary: "s",
+            evidenceType: "trace",
+            observedAt: "2026-06-27T10:00:00.000Z",
+            resultHash: "h",
+          },
+        ],
+      });
+      fireEvent.click(screen.getByRole("button", { name: "Run query" }));
+      fireEvent.click(await screen.findByRole("button", { name: /signed source/ }));
+      const link = screen.getByRole("link", { name: "https://tempo.example/trace/1" });
+      expect(link).toHaveAttribute("href", "https://tempo.example/trace/1");
+      expect(document.body.textContent).not.toMatch(/SECRET|user:pw/);
+    });
+
     it("links only http sources", async () => {
       await openPreview();
       jest.mocked(searchSreConnectorEvidence).mockResolvedValueOnce({

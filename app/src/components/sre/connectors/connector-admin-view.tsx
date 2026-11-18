@@ -192,6 +192,7 @@ function EvidenceRow({
   item: Extract<SreConnectorSearchResult, { success: true }>["evidence"][number];
 }) {
   const [open, setOpen] = useState(false);
+  const source = safeSourceLink(item.sourceUri);
   const observed = new Date(item.observedAt);
   const validTime = !Number.isNaN(observed.getTime());
 
@@ -228,17 +229,17 @@ function EvidenceRow({
           <p className="whitespace-pre-wrap break-words">{item.summary}</p>
           <p className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
             <ExternalLink className="h-3 w-3 shrink-0" />
-            {/^https?:\/\//.test(item.sourceUri) ? (
+            {source.href ? (
               <a
-                href={item.sourceUri}
+                href={source.href}
                 target="_blank"
                 rel="noreferrer"
                 className="truncate underline underline-offset-2"
               >
-                {item.sourceUri}
+                {source.text}
               </a>
             ) : (
-              <span className="truncate">{item.sourceUri}</span>
+              <span className="truncate">{source.text}</span>
             )}
           </p>
           <p className="break-all font-mono text-xs text-muted-foreground">
@@ -248,6 +249,35 @@ function EvidenceRow({
       )}
     </li>
   );
+}
+
+const MAX_SEARCH_WINDOW_MINUTES = 1440;
+
+/** Standard windows up to the connector limit, plus a non-standard limit; the server rejects more than 24 hours. */
+function getSearchWindows(connectorMinutes: number) {
+  const limit = Math.min(connectorMinutes, MAX_SEARCH_WINDOW_MINUTES);
+  const windows = connectorSearchWindows.filter(
+    (window) => Number(window.value) <= limit,
+  );
+  if (!windows.some((window) => Number(window.value) === limit)) {
+    windows.push({ value: String(limit), label: `${limit} minutes` });
+  }
+  return windows.sort((a, b) => Number(a.value) - Number(b.value));
+}
+
+function safeSourceLink(sourceUri: string) {
+  const text = sourceUri.split(/[?#]/)[0];
+  try {
+    const url = new URL(sourceUri);
+    if (url.protocol !== "http:" && url.protocol !== "https:") {
+      return { text, href: null };
+    }
+    // Signed URLs keep their secrets in the query or userinfo, so show and link only origin and path.
+    const clean = `${url.origin}${url.pathname}`;
+    return { text: clean, href: clean };
+  } catch {
+    return { text, href: null };
+  }
 }
 
 function formatWindow(minutes: number) {
@@ -512,13 +542,20 @@ export function ConnectorAdminView({
     setIsQueryGuideOpen(false);
     setIsQueryBuilderOpen(false);
     setSearchTimeWindowMinutes(
-      String(Math.min(60, connector.defaultTimeWindowMinutes)),
+      String(
+        getSearchWindows(connector.defaultTimeWindowMinutes)
+          .map((window) => Number(window.value))
+          .filter((minutes) => minutes <= 60)
+          .pop() ?? 60,
+      ),
     );
     setSearchResult(null);
   };
 
   const updateSearchService = (serviceId: string) => {
     setSearchServiceId(serviceId);
+    setSearchResult(null);
+    setSearchError(null);
     if (!searchConnector) return;
 
     const builder = getConnectorQueryBuilder(searchConnector.type);
@@ -910,33 +947,14 @@ export function ConnectorAdminView({
                 const builder = getConnectorQueryBuilder(searchConnector.type);
                 const availableServices = servicesForConnector(searchConnector);
                 const activeFilters = Object.entries(searchFilters);
-                const widenTo = Math.min(
-                  1440,
+                const searchWindows = getSearchWindows(
                   searchConnector.defaultTimeWindowMinutes,
                 );
-                const searchWindows = connectorSearchWindows
-                  .filter(
-                    (window) =>
-                      Number(window.value) <=
-                      searchConnector.defaultTimeWindowMinutes,
-                  )
-                  .concat(
-                    connectorSearchWindows.some(
-                      (window) =>
-                        Number(window.value) ===
-                        searchConnector.defaultTimeWindowMinutes,
-                    )
-                      ? []
-                      : [
-                          {
-                            value: String(
-                              searchConnector.defaultTimeWindowMinutes,
-                            ),
-                            label: `${searchConnector.defaultTimeWindowMinutes} minutes`,
-                          },
-                        ],
-                  )
-                  .sort((a, b) => Number(a.value) - Number(b.value));
+                const widenTo =
+                  searchWindows
+                    .map((window) => Number(window.value))
+                    .filter((minutes) => minutes > searchedWindowMinutes)
+                    .pop() ?? 0;
 
                 return (
                   <div className="space-y-4">
@@ -1026,6 +1044,8 @@ export function ConnectorAdminView({
                           onChange={(event) => {
                             setSearchQuery(event.target.value);
                             setIsSearchQueryEdited(true);
+                            setSearchResult(null);
+                            setSearchError(null);
                           }}
                           placeholder={guide.queryPlaceholder}
                         />
