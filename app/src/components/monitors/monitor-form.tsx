@@ -1455,7 +1455,6 @@ export function MonitorForm({
                           <InfoPopover
                             label="Check interval tips"
                             title="Recommended intervals"
-                            side="right"
                             items={[
                               { title: "Critical", description: "5-10 min" },
                               { title: "Standard", description: "15-30 min" },
@@ -1568,7 +1567,6 @@ export function MonitorForm({
                             <InfoPopover
                               label="About port status monitoring"
                               title="Port Status Monitoring"
-                              side="right"
                               items={[
                                 { title: "Port is Open", description: "Pass when port accepts connections." },
                                 { title: "Port is Closed", description: "Pass when port refuses connections (security monitoring)." },

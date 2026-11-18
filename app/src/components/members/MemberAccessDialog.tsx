@@ -32,11 +32,6 @@ import {
   updateMemberSchema,
 } from "@/lib/validations/member";
 import { z } from "zod";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 
 interface Project {
@@ -132,7 +127,6 @@ function RoleInfoPopover() {
       label="Role permissions"
       title="Role Permissions"
       icon={Shield}
-      side="right"
       items={allAccessLevels.map((level) => ({
         icon: level.icon,
         iconClassName: level.color,

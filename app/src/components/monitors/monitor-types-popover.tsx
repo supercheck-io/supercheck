@@ -8,7 +8,6 @@ export function MonitorTypesPopover() {
       label="About uptime monitor types"
       title="Uptime Monitor Types"
       icon={Globe}
-      side="right"
       items={monitorTypes.map((type) => ({
         icon: type.icon,
         iconClassName: type.color,

@@ -46,4 +46,11 @@ describe("InfoPopover", () => {
     fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
     expect(screen.queryByText("Channels")).not.toBeInTheDocument();
   });
+
+  it("reports open changes when controlled", () => {
+    const onOpenChange = jest.fn();
+    render(<InfoPopover label="About alerts" title="Alerts" open={false} onOpenChange={onOpenChange} />);
+    fireEvent.click(screen.getByRole("button", { name: "About alerts" }));
+    expect(onOpenChange).toHaveBeenCalledWith(true);
+  });
 });

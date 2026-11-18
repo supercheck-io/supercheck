@@ -20,14 +20,10 @@ type InfoHintProps = {
 /** Info popover for a form group or setup step; free-form copy goes in the body. */
 export function InfoHint({ label, title, children, side = "top", ...rest }: InfoHintProps) {
   return (
-    <InfoPopover label={label} title={title ?? label} side={side} {...rest}>
+    <InfoPopover label={label} title={title ?? label} side={side} contentClassName="w-80" {...rest}>
       <div className="space-y-2 text-sm leading-relaxed">{children}</div>
     </InfoPopover>
   );
-}
-
-export function InfoHintTitle({ children }: { children: ReactNode }) {
-  return <p className="text-sm font-medium text-foreground">{children}</p>;
 }
 
 export function InfoHintText({ children }: { children: ReactNode }) {
