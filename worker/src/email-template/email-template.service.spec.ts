@@ -1,5 +1,6 @@
 import { EmailTemplateService, formatDuration } from './email-template.service';
 import * as monitorAlert from '../emails/monitor-alert';
+import { formatEmailTime } from '../emails/base-layout';
 
 describe('EmailTemplateService (local render)', () => {
   const service = new EmailTemplateService();
@@ -17,6 +18,34 @@ describe('EmailTemplateService (local render)', () => {
     expect(r.html).toContain('View incidents');
     expect(r.html).toContain('https://app.example.com/incidents');
     expect(r.text).toContain('API is down');
+  });
+
+  it('formats times exactly like the app (pinned literal also asserted in app templates.spec)', () => {
+    expect(formatEmailTime(new Date('2026-11-18T06:02:36Z'))).toBe(
+      'Wed, 18 Nov 2026 06:02:36 UTC',
+    );
+  });
+
+  it('takes the logo from appUrl even when no env var is set', async () => {
+    const prev = { a: process.env.NEXT_PUBLIC_APP_URL, b: process.env.APP_URL };
+    delete process.env.NEXT_PUBLIC_APP_URL;
+    delete process.env.APP_URL;
+    try {
+      const r = await service.renderMonitorAlertEmail({
+        title: 'Monitor Down - API',
+        message: 'm',
+        fields: [],
+        footer: '',
+        type: 'failure',
+        appUrl: 'https://app.example.com/',
+      });
+      expect(r.html).toContain('https://app.example.com/supercheck-logo.png');
+    } finally {
+      if (prev.a === undefined) delete process.env.NEXT_PUBLIC_APP_URL;
+      else process.env.NEXT_PUBLIC_APP_URL = prev.a;
+      if (prev.b === undefined) delete process.env.APP_URL;
+      else process.env.APP_URL = prev.b;
+    }
   });
 
   it('renders recovery as Resolved without an incidents button', async () => {

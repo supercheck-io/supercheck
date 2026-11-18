@@ -63,6 +63,7 @@ export class EmailTemplateService {
         type: params.type,
         incidentsUrl: this.appLink(params.appUrl, '/incidents'),
         manageUrl: this.appLink(params.appUrl, '/notifications'),
+        appUrl: params.appUrl,
       });
       return {
         subject: alertEmailSubject(params.title),

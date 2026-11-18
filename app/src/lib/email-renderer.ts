@@ -14,9 +14,7 @@ import {
   StatusPageVerificationEmail,
   StatusPageWelcomeEmail,
   IncidentNotificationEmail,
-  MonitorAlertEmail,
-  alertEmailSubject,
-  IncidentUpdateEmail,
+    IncidentUpdateEmail,
   incidentUpdateHeadline,
   type IncidentUpdateEmailProps,
   TestEmail,
@@ -159,28 +157,6 @@ export async function renderIncidentNotificationEmail(params: {
 }
 
 /**
- * Monitor Alert Email
- */
-export async function renderMonitorAlertEmail(params: {
-  title: string;
-  message: string;
-  fields: Array<{ title: string; value: string }>;
-  footer: string;
-  type: "failure" | "success" | "recovery" | "warning" | "info";
-  color?: string;
-  incidentsUrl?: string;
-  manageUrl?: string;
-}): Promise<RenderedEmail> {
-  const component = MonitorAlertEmail(params);
-
-  return {
-    subject: alertEmailSubject(params.title),
-    html: await render(component, { pretty: false }),
-    text: await render(component, PLAIN_TEXT_RENDER_OPTIONS),
-  };
-}
-
-/**
  * Test Email
  */
 export async function renderTestEmail(params?: {
@@ -278,7 +254,7 @@ export async function renderIncidentUpdateEmail(
 export async function renderOrganizationDeletionEmail(params: {
   organizationName: string;
   kind: OrganizationDeletionKind;
-  purgeDate?: string;
+  purgeDate?: Date;
   daysRemaining?: number;
   settingsUrl?: string;
   projectName?: string;

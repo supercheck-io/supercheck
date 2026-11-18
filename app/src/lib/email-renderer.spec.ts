@@ -2,7 +2,6 @@ import {
   renderEmailVerificationEmail,
   renderIncidentNotificationEmail,
   renderIncidentUpdateEmail,
-  renderMonitorAlertEmail,
   renderOrganizationInvitationEmail,
   renderPasswordResetEmail,
   renderStatusPageVerificationEmail,
@@ -48,7 +47,6 @@ describe("render* functions", () => {
     ["status page verification", () => renderStatusPageVerificationEmail({ verificationUrl: "https://s.io/verify/4", statusPageName: "Acme Status" }), /Acme Status$/, "https://s.io/verify/4"],
     ["status page welcome", () => renderStatusPageWelcomeEmail({ statusPageName: "Acme Status", statusPageUrl: "https://s.io", unsubscribeUrl: "https://s.io/unsub/5" }), /Acme Status$/, "https://s.io/unsub/5"],
     ["status page incident", () => renderIncidentNotificationEmail({ statusPageName: "Acme Status", statusPageUrl: "https://s.io", incidentName: "DB outage", incidentStatus: "investigating", incidentImpact: "major", incidentDescription: "Looking into it", affectedComponents: ["API"], updateTimestamp: "2026-01-01T00:00:00Z", unsubscribeUrl: "https://s.io/unsub/6" }), /^\[INVESTIGATING\] DB outage - Acme Status$/, "DB outage"],
-    ["monitor alert", () => renderMonitorAlertEmail({ title: "Monitor down: API", message: "API is failing", fields: [{ title: "Region", value: "eu" }], footer: "Supercheck", type: "failure", color: "#ff0000" }), "[Supercheck] Monitor down: API", "API is failing"],
     ["test email", () => renderTestEmail({ testMessage: "hello world" }), "[Supercheck] Test email", "hello world"],
     ["usage notification", () => renderUsageNotificationEmail({ organizationName: "Acme", notificationType: "usage_80_percent", resourceType: "playwright", usageAmount: 80, usageLimit: 100, usagePercentage: 80, billingPageUrl: "https://app.io/billing", periodEndDate: "2026-02-01" }), "[Supercheck] 80% usage warning: Acme", "Acme"],
     ["trial notification", () => renderTrialNotificationEmail({ organizationName: "Acme", kind: "midway", daysRemaining: 7, subscribeUrl: "https://app.io/subscribe" }), /^\[Supercheck\] .+: Acme$/, "https://app.io/subscribe"],
@@ -76,13 +74,5 @@ describe("render* functions", () => {
       periodEndDate: "2026-02-01",
     });
     expect(r.subject).toBe("[Supercheck] Usage alert: Acme");
-  });
-});
-
-describe("renderMonitorAlertEmail settings link", () => {
-  it("links to the notification settings when manageUrl is given", async () => {
-    const r = await renderMonitorAlertEmail({ title: "Monitor Down - API", message: "m", fields: [], footer: "", type: "failure", manageUrl: "https://app.io/notifications" });
-    expect(r.html).toContain('href="https://app.io/notifications"');
-    expect(r.subject).toBe("[Supercheck] Monitor Down: API");
   });
 });

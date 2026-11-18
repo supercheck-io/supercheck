@@ -1828,6 +1828,21 @@ describe('NotificationService', () => {
       ).toHaveBeenCalled();
     });
 
+    it('shows the alert time in UTC, never GMT', async () => {
+      mockEmailTemplateService.renderMonitorAlertEmail.mockClear();
+      await service.sendNotification(emailProvider, {
+        ...basePayload,
+        timestamp: new Date('2026-11-18T06:02:36Z'),
+        metadata: { ...basePayload.metadata, observedAt: undefined },
+      });
+      const arg =
+        mockEmailTemplateService.renderMonitorAlertEmail.mock.calls[0][0];
+      const time = arg.fields.find(
+        (f: { title: string }) => f.title === 'Time',
+      );
+      expect(time.value).toBe('Wed, 18 Nov 2026 06:02:36 UTC');
+    });
+
     it('renders job emails from the payload title/message and the shared fields', async () => {
       mockEmailTemplateService.renderMonitorAlertEmail.mockClear();
       await service.sendNotification(emailProvider, {

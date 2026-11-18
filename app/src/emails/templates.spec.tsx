@@ -189,9 +189,26 @@ describe("email shell rules", () => {
   });
 
   it("usage, trial and deletion emails say why they were sent", () => {
-    expect(render(<UsageNotificationEmail organizationName="A" notificationType="usage_80_percent" resourceType="playwright" usageAmount={8} usageLimit={10} usagePercentage={80} billingPageUrl="https://x.io/b" periodEndDate="Dec 1" />)).toContain("owner or billing contact");
-    expect(render(<TrialNotificationEmail organizationName="A" kind="midway" daysRemaining={7} subscribeUrl="https://x.io/s" />)).toContain("owner of this organization");
+    expect(render(<UsageNotificationEmail organizationName="A" notificationType="usage_80_percent" resourceType="playwright" usageAmount={8} usageLimit={10} usagePercentage={80} billingPageUrl="https://x.io/b" periodEndDate="Dec 1" />)).toContain("you manage billing for this organization");
+    expect(render(<TrialNotificationEmail organizationName="A" kind="midway" daysRemaining={7} subscribeUrl="https://x.io/s" />)).toContain("you manage billing for this organization");
     expect(render(<OrganizationDeletionEmail organizationName="A" kind="requested" />)).toContain("owner or admin of this organization");
+  });
+
+  it("logo URL prefers an explicit appUrl, then env vars, then no image", () => {
+    const prev = { a: process.env.NEXT_PUBLIC_APP_URL, b: process.env.APP_URL };
+    delete process.env.NEXT_PUBLIC_APP_URL;
+    delete process.env.APP_URL;
+    try {
+      expect(render(<MonitorAlertEmail title="t" message="m" fields={[]} footer="" type="failure" appUrl="https://explicit.test/" />)).toContain('src="https://explicit.test/supercheck-logo.png"');
+      process.env.APP_URL = "https://env.test";
+      expect(render(<MonitorAlertEmail title="t" message="m" fields={[]} footer="" type="failure" appUrl="https://explicit.test" />)).toContain("https://explicit.test/supercheck-logo.png");
+      expect(render(<MonitorAlertEmail title="t" message="m" fields={[]} footer="" type="failure" />)).toContain("https://env.test/supercheck-logo.png");
+      delete process.env.APP_URL;
+      expect(render(<MonitorAlertEmail title="t" message="m" fields={[]} footer="" type="failure" />)).not.toContain("<img");
+    } finally {
+      if (prev.a === undefined) delete process.env.NEXT_PUBLIC_APP_URL; else process.env.NEXT_PUBLIC_APP_URL = prev.a;
+      if (prev.b === undefined) delete process.env.APP_URL; else process.env.APP_URL = prev.b;
+    }
   });
 
   it("detail labels are row headers", () => {

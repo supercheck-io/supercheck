@@ -16,6 +16,8 @@ interface MonitorAlertEmailProps {
   incidentsUrl?: string;
   /** Absolute link to the notification channel settings, shown in the footer. */
   manageUrl?: string;
+  /** Public app origin, for the header logo. */
+  appUrl?: string;
 }
 
 const HEADER_TITLE = {
@@ -52,6 +54,7 @@ export const MonitorAlertEmail = ({
   type = "failure",
   incidentsUrl,
   manageUrl,
+  appUrl,
 }: MonitorAlertEmailProps) => {
   const headerColor = PALETTE[TONE[type] ?? "neutral"];
   // Same "<Event>: <Name>" wording as the subject.
@@ -60,6 +63,7 @@ export const MonitorAlertEmail = ({
   return (
     <BaseLayout
       preview={displayTitle}
+      appUrl={appUrl}
       reason="You received this alert because this address is set as a recipient on a Supercheck notification channel."
       manage={manageUrl ? { href: manageUrl, label: "Manage notification channels" } : undefined}
       title={HEADER_TITLE[type] ?? "Alert"}

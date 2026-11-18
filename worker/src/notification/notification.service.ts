@@ -27,6 +27,7 @@ import {
   isUrlSafeForOutbound,
 } from '../common/utils/url-validator';
 import { fetchPublicEndpoint } from '../common/utils/pinned-public-fetch';
+import { formatEmailTime } from '../emails/base-layout';
 import { presetOverrides, presetResolveRequest } from './preset-lifecycle';
 import { isUndeliverableRecipient } from '../common/utils/email-recipient-policy';
 import {
@@ -643,7 +644,7 @@ export class NotificationService implements OnApplicationShutdown {
     // Time
     fields.push({
       title: 'Time',
-      value: observedTime(payload).toUTCString(),
+      value: formatEmailTime(observedTime(payload)),
       short: true,
     });
 

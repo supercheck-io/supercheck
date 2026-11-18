@@ -121,7 +121,7 @@ export const UsageNotificationEmail = ({
       preview={`${getTitle()} for ${organizationName}`}
       title={getTitle()}
       headerColor={getHeaderColor()}
-      reason="You received this because you are an owner or billing contact of this organization."
+      reason="You received this because you manage billing for this organization."
       manage={{ href: billingPageUrl, label: "Manage usage limits and notifications" }}
     >
       <Section style={contentSection}>

@@ -30,6 +30,8 @@ interface BaseLayoutProps {
   reason?: string;
   /** Link to where the recipient can change what they receive (notification channels, billing...). */
   manage?: { href: string; label: string };
+  /** Public app origin; used for the logo before falling back to the env vars. */
+  appUrl?: string;
 }
 
 /**
@@ -37,8 +39,8 @@ interface BaseLayoutProps {
  * relative assets). Without a base URL there is no image, so a self-hosted install
  * never makes recipients' mail clients contact supercheck.io.
  */
-export const emailLogoUrl = (env: NodeJS.ProcessEnv = process.env): string | undefined => {
-  const base = (env.NEXT_PUBLIC_APP_URL || env.APP_URL || "").trim().replace(/\/+$/, "");
+export const emailLogoUrl = (env: NodeJS.ProcessEnv = process.env, appUrl?: string): string | undefined => {
+  const base = (appUrl || env.NEXT_PUBLIC_APP_URL || env.APP_URL || "").trim().replace(/\/+$/, "");
   return /^https?:\/\//i.test(base) ? `${base}/supercheck-logo.png` : undefined;
 };
 
@@ -59,10 +61,11 @@ export const BaseLayout = ({
   lang = "en",
   reason,
   manage,
+  appUrl,
 }: BaseLayoutProps) => {
   const dir = RTL_LANGUAGES.has(lang.toLowerCase().split("-")[0]) ? "rtl" : "ltr";
   const headerText = readableTextColor(headerColor);
-  const logoUrl = emailLogoUrl();
+  const logoUrl = emailLogoUrl(process.env, appUrl);
   return (
     <Html lang={lang} dir={dir}>
       <Head>

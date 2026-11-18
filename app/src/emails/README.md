@@ -29,7 +29,7 @@ dependency on the app being up.
 | `usage-notification`, `trial-notification` | org owners | app |
 | `status-page-verification`, `status-page-welcome`, `incident-notification` | public status-page subscribers | app |
 | `incident-update` | team (incident created/assigned/acknowledged/AI finding/resolved/recovered/reopened) | app (`renderIncidentUpdateEmail`) |
-| `monitor-alert` (also used for job failure/success/timeout) | alert recipients | worker (and app) |
+| `monitor-alert` (also used for job failure/success/timeout) | alert recipients | worker |
 
 Alert subjects are `[Supercheck] <Event>: <name>` (`alertEmailSubject`); status-page emails keep `[STATUS] ...`. Job and monitor alerts share one field builder in the worker (`buildEmailFields`).
 

@@ -65,7 +65,7 @@ export const TrialNotificationEmail = ({
       preview={copy.heading}
       title="Free trial"
       headerColor={kind === "midway" ? PALETTE.info : PALETTE.warning}
-      reason="You received this because you are an owner of this organization."
+      reason="You received this because you manage billing for this organization."
       footer={<ManageBillingLink href={manageBillingUrl} />}
     >
       <Section style={contentSection}>

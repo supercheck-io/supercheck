@@ -1,15 +1,15 @@
 import { Section, Text } from "@react-email/components";
 import * as React from "react";
 import { PALETTE } from "./palette";
-import { BaseLayout, EmailButton } from "./base-layout";
+import { BaseLayout, EmailButton, formatEmailTime } from "./base-layout";
 
 export type OrganizationDeletionKind = "requested" | "reminder" | "completed" | "cancelled" | "projectDeleted";
 
 interface OrganizationDeletionEmailProps {
   organizationName: string;
   kind: OrganizationDeletionKind;
-  /** Purge date, formatted for display. */
-  purgeDate?: string;
+  /** Purge date; shown in the standard email time format (UTC). */
+  purgeDate?: Date;
   daysRemaining?: number;
   /** Where the owner can cancel the deletion. */
   settingsUrl?: string;
@@ -65,12 +65,12 @@ export function organizationDeletionSubject(kind: OrganizationDeletionKind, orga
 export const OrganizationDeletionEmail = ({
   organizationName = "Acme Corp",
   kind = "requested",
-  purgeDate = "",
+  purgeDate,
   daysRemaining = 7,
   settingsUrl,
   projectName,
 }: OrganizationDeletionEmailProps) => {
-  const text = copy(kind, purgeDate, daysRemaining, projectName);
+  const text = copy(kind, purgeDate ? formatEmailTime(purgeDate) : "", daysRemaining, projectName);
   return (
     <BaseLayout preview={text.heading} title={kind === "projectDeleted" ? "Project deletion" : "Organization deletion"} headerColor={kind === "completed" || kind === "cancelled" ? PALETTE.info : PALETTE.warning} reason="You received this because you are an owner or admin of this organization.">
       <Section style={contentSection}>
