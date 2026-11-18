@@ -42,6 +42,7 @@ export function MarkdownReportDialog({
   loadingMessage,
 }: MarkdownReportDialogProps) {
   const [view, setView] = useState<"report" | "source">("report");
+  const reportRef = useRef<HTMLDivElement | null>(null);
   const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null);
   const monaco = useMonaco();
   const { resolvedTheme } = useTheme();
@@ -54,6 +55,11 @@ export function MarkdownReportDialog({
   }, [monaco, editorTheme]);
 
   useEffect(() => {
+    if (view === "report") {
+      editorRef.current = null;
+      const el = reportRef.current;
+      if (el && isStreaming) el.scrollTop = el.scrollHeight;
+    }
     if (view === "source" && editorRef.current && content && isStreaming) {
       const lineCount = editorRef.current.getModel()?.getLineCount() ?? 1;
       editorRef.current.revealLine(lineCount);
@@ -152,6 +158,7 @@ export function MarkdownReportDialog({
         <div className="min-h-0 flex-1 overflow-hidden rounded-md border">
           {content && view === "report" ? (
             <div
+              ref={reportRef}
               data-sentry-block=""
               className="h-full overflow-y-auto p-4"
               data-testid="report-rendered"
