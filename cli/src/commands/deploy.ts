@@ -231,7 +231,8 @@ export function deployErrorMessage(err: unknown): string {
   const body = err instanceof ApiRequestError ? err.responseBody : undefined
   if (!body || typeof body !== 'object') return err.message
   const { error, details } = body as { error?: unknown; details?: unknown }
-  const parts = [error, details].filter((v): v is string => typeof v === 'string' && v.length > 0)
+  // Structured details (e.g. zod `flatten()` field errors) are shown as compact JSON.
+  const parts = [error, details === undefined || details === null ? undefined : typeof details === 'string' ? details : JSON.stringify(details)].filter((v): v is string => typeof v === 'string' && v.length > 0)
   // Strip control characters and cap the length: the text is printed to a terminal.
   const detail = parts.join(': ').replace(/\p{Cc}/gu, ' ').slice(0, 500)
   return detail ? `${err.message}: ${detail}` : err.message

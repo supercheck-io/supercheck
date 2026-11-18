@@ -109,6 +109,9 @@ describe('deploy API errors', () => {
     expect(deployErrorMessage(failed({ error: 'Invalid configuration', details: 'config.url must be https' }))).toBe('API request failed: POST /api/monitors → 400: Invalid configuration: config.url must be https')
     expect(deployErrorMessage(failed({ error: 'Invalid name' }))).toBe('API request failed: POST /api/monitors → 400: Invalid name')
   })
+  it('shows structured details as JSON', () => {
+    expect(deployErrorMessage(failed({ error: 'Invalid request body', details: { fieldErrors: { description: ['Too long'] } } }))).toContain('{"fieldErrors":{"description":["Too long"]}}')
+  })
   it('keeps the plain message without a usable body, and flattens control characters', () => {
     expect(deployErrorMessage(failed(undefined))).toBe('API request failed: POST /api/monitors → 400')
     expect(deployErrorMessage(failed({ error: 'a\u001b[31mb' }))).not.toContain('\u001b')
