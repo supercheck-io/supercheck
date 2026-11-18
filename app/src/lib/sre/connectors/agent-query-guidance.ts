@@ -1,4 +1,7 @@
-import { assertProviderQueryAllowed } from "./providers/provider-query-guards";
+import {
+  ConnectorQueryRejectedError,
+  assertProviderQueryAllowed,
+} from "./providers/provider-query-guards";
 
 export function getAgentConnectorQueryGuidance(connectorType: string) {
   switch (connectorType) {
@@ -10,6 +13,8 @@ export function getAgentConnectorQueryGuidance(connectorType: string) {
       return 'LogQL only, for example {app="checkout"} or {app="checkout"} |= "error". Never use a bare Kubernetes label selector.';
     case "grafana":
       return "Plain dashboard search text, for example checkout latency.";
+    case "elasticsearch":
+      return 'Lucene query string only (not JSON DSL), for example service.name:"checkout" AND log.level:error. The time window is applied automatically.';
     case "jaeger":
       return 'Jaeger trace search. Use service:checkout (add operation:"GET /cart", error:true, minDuration:500ms, tag:http.status_code=500), or trace:<hex id>. Use * to list services first when the service name is unknown. Time window is applied automatically.';
     case "newrelic":
@@ -48,7 +53,7 @@ export function assertAgentConnectorQueryLanguage(
   assertProviderQueryAllowed(connectorType, trimmed);
 
   if (connectorType === "prometheus" && looksLikeBareLabelSelector(trimmed)) {
-    throw new Error(
+    throw new ConnectorQueryRejectedError(
       "Prometheus connector query must be valid PromQL, not a Kubernetes label selector",
     );
   }
@@ -57,7 +62,7 @@ export function assertAgentConnectorQueryLanguage(
     connectorType === "loki" &&
     (!trimmed.includes("{") || !trimmed.includes("}"))
   ) {
-    throw new Error(
+    throw new ConnectorQueryRejectedError(
       "Loki connector query must be valid LogQL with a stream selector",
     );
   }

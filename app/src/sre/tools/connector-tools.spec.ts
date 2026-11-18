@@ -133,6 +133,38 @@ describe("MCP connectors in the AI tool layer", () => {
     ).rejects.toThrow("use callMcpTool");
   });
 
+  it("returns valid connector ids for an unknown id and never marks a connector failed", async () => {
+    const tools = createSreConnectorTools({ ...scope, serviceId });
+    const call = () =>
+      tools.searchLiveConnectorEvidence.execute!(
+        { ...search, connectorId: "018f0000-0000-7000-8000-0000000000ff" },
+        { toolCallId: "unknown", messages: [] },
+      );
+    db.select
+      .mockReset()
+      .mockReturnValue(selectRows([{ connector: mcpRow }]));
+    const first = await call();
+    const second = await call();
+    for (const result of [first, second]) {
+      expect(result).toMatchObject({
+        error: true,
+        retryable: true,
+        message: expect.stringContaining(`${mcpRow.id} (`),
+      });
+      expect(result).not.toHaveProperty("retrySuppressed");
+    }
+  });
+
+  it("includes the primary service OTel name in the incident connector list", async () => {
+    db.query.sreIncidents.findFirst.mockResolvedValue({ primaryServiceId: serviceId });
+    db.query.sreServices.findFirst.mockResolvedValue({
+      name: "Checkout API",
+      otelServiceName: "checkout-api",
+    });
+    const result = await listIncidentLiveConnectors({ ...scope, incidentId: "018f0000-0000-7000-8000-0000000000bb" });
+    expect(result.primaryService).toEqual({ name: "Checkout API", otelServiceName: "checkout-api" });
+  });
+
   it("returns a retryable rejection to the model for non-allowlisted tools", async () => {
     const tools = createSreConnectorTools({ ...scope, serviceId });
     const result = await tools.callMcpTool.execute!(

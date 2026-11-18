@@ -35,6 +35,8 @@ type SreInvestigationPanelProps = {
   canInvestigate?: boolean;
   canMapService?: boolean;
   canUseLiveConnectors?: boolean;
+  /** Project has a valid connector: live sources start switched on. */
+  hasValidConnector?: boolean;
   investigationEnabled?: boolean;
   /** Extra toolbar controls after the run options, such as the sheet's overflow menu. */
   children?: React.ReactNode;
@@ -48,12 +50,13 @@ export function SreInvestigationPanel({
   canInvestigate = false,
   canMapService = false,
   canUseLiveConnectors = false,
+  hasValidConnector = false,
   investigationEnabled = true,
   children,
 }: SreInvestigationPanelProps) {
   const queryClient = useQueryClient();
   const { projectId } = useProjectContext();
-  const [useLiveConnectors, setUseLiveConnectors] = useState(false);
+  const [useLiveConnectors, setUseLiveConnectors] = useState(hasValidConnector);
   const liveConnectorsEnabled = useLiveConnectors && hasPrimaryService && canUseLiveConnectors;
   // In the query client, not component state: a tab switch remounts this panel while the run is still going.
   const investigationMutationKey = ["sre-investigate", projectId, incidentId] as const;
@@ -178,7 +181,7 @@ export function SreInvestigationPanel({
                 <div className="space-y-1">
                   <Label htmlFor="live-connectors">Include live sources</Label>
                   <p className="text-xs text-muted-foreground">
-                    Query connected tools for this service. Off by default; read-only and bounded.
+                    Query connected tools for this service. On when the project has a valid connector; read-only and bounded.
                   </p>
                   {!hasPrimaryService && (
                     <p className="text-xs text-muted-foreground">

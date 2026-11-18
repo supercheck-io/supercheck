@@ -92,7 +92,12 @@ const connectorSearchInputSchema = z.object({
     .describe(
       "Service ID returned by listIncidentConnectors; required for chats without an incident.",
     ),
-  connectorId: z.string().uuid(),
+  connectorId: z
+    .string()
+    .uuid()
+    .describe(
+      "Must be one of the connector ids from the connector list in the prompt or returned by listIncidentConnectors; never invent an id.",
+    ),
   query: z
     .string()
     .trim()
@@ -510,8 +515,21 @@ export async function listIncidentLiveConnectors(
       })
     : [];
 
+  const primaryService =
+    scope.incidentId && primaryServiceId
+      ? ((await db.query.sreServices.findFirst({
+          where: and(
+            eq(sreServices.id, primaryServiceId),
+            eq(sreServices.organizationId, scope.organizationId),
+            eq(sreServices.projectId, scope.projectId),
+          ),
+          columns: { name: true, otelServiceName: true },
+        })) ?? null)
+      : null;
+
   return {
     primaryServiceId,
+    primaryService,
     services: services.slice(0, 50),
     servicesTruncated: services.length > 50,
     connectors: connectors.slice(0, 25).map(({ row, scopedServiceIds }) => ({
@@ -549,8 +567,13 @@ export async function searchIncidentLiveConnectorEvidence(
   );
 
   if (!selected) {
-    throw new Error(
-      "Connector not found, unavailable, or not scoped to the selected service",
+    // A wrong id is a fixable mistake: list the valid ones instead of failing a connector.
+    const valid = connectors
+      .slice(0, 25)
+      .map(({ row }) => `${row.id} (${row.name}, ${row.type})`)
+      .join("; ");
+    throw new ConnectorQueryRejectedError(
+      `Connector not found, unavailable, or not scoped to the selected service. Use one of these connector ids: ${valid || "none available"}`,
     );
   }
 

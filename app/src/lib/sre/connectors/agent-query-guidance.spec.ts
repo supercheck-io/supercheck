@@ -1,3 +1,4 @@
+import { ConnectorQueryRejectedError } from "./providers/provider-query-guards";
 import {
   assertAgentConnectorQueryLanguage,
   createAgentConnectorFailureGuard,
@@ -33,6 +34,21 @@ describe("agent connector query guidance", () => {
     expect(() =>
       assertAgentConnectorQueryLanguage("loki", '{app="checkout"} |= "error"'),
     ).not.toThrow();
+  });
+
+  it("marks query-language mistakes as retryable rejections", () => {
+    for (const [type, query] of [
+      ["prometheus", "app=checkout-api"],
+      ["loki", "logs for checkout-api"],
+    ]) {
+      expect(() => assertAgentConnectorQueryLanguage(type, query)).toThrow(
+        ConnectorQueryRejectedError,
+      );
+    }
+  });
+
+  it("describes Elasticsearch as Lucene", () => {
+    expect(getAgentConnectorQueryGuidance("elasticsearch")).toContain("Lucene");
   });
 
   it("suppresses repeated terminal failures for one connector run", () => {

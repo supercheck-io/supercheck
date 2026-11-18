@@ -169,6 +169,7 @@ function detailFixture(): SreIncidentDetail {
     },
     capabilities: {
       investigationEnabled: true,
+      hasValidConnector: true,
     },
   };
 }

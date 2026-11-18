@@ -107,7 +107,7 @@ On the Investigation tab, **How it was investigated** lists each check the agent
 | Control | What it does |
 |---|---|
 | **Run investigation** / **Run again** | Starts a bounded, read-only AI pass over stored evidence and optional live connectors. Only one run can be active per incident; starting another returns `409` until it finishes |
-| **Run options** | Opens **Include live sources** (off by default; needs a linked service and connector investigation permission) and **Re-run with my note** |
+| **Run options** | Opens **Include live sources** (on by default when the project has a valid connector; needs a linked service and connector investigation permission. The run is told each connector's id, type and query language, and the service's OTel name) and **Re-run with my note** |
 | **Right** / **Wrong** | On the whole investigation or on any single hypothesis, with an optional one-line note (up to 500 characters). Needs permission to update incidents |
 | **Re-run with my note** | In **Run options**. Starts a new investigation that also sees your note as guidance, plus the notes you left on earlier runs |
 | **Save report snapshot** | In the Investigation tab's **More** menu once a run completes. Locks the sanitized report for audit and review |

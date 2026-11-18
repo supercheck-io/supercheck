@@ -24,7 +24,10 @@ import {
   stepsFromModelStep,
   type SreInvestigationStep,
 } from "@/sre/lib/investigation-trace";
-import { createSreConnectorTools } from "@/sre/tools/connector-tools";
+import {
+  createSreConnectorTools,
+  listIncidentLiveConnectors,
+} from "@/sre/tools/connector-tools";
 import {
   createSreEvidenceTools,
   listStoredSreEvidence,
@@ -339,6 +342,11 @@ export async function executeSreIncidentInvestigation(
       ...feedbackPromptLines(ownNotes),
     ];
 
+    // Without the ids and query dialects the model guesses both and every search fails.
+    const liveConnectors = liveConnectorsEnabled
+      ? await listIncidentLiveConnectors(toolScope).catch(() => null)
+      : null;
+
     const result = await runSreAgent({
       organizationId: input.organizationId,
       system: buildSreInvestigationSystemPrompt(),
@@ -347,6 +355,11 @@ export async function executeSreIncidentInvestigation(
         severity: incident.severity,
         status: incident.status,
         serviceName: incident.primaryServiceName,
+        serviceOtelName: liveConnectors?.primaryService?.otelServiceName,
+        liveConnectorLines: liveConnectors?.connectors.map(
+          (connector) =>
+            `id=${connector.id}; name=${connector.name}; type=${connector.type}; queryGuidance=${connector.queryGuidance}`,
+        ),
         evidenceCount,
         connectorEvidenceCount: Number(incident.connectorEvidenceCount ?? 0),
         liveConnectorToolsEnabled: liveConnectorsEnabled,

@@ -56,6 +56,7 @@ The CLI is versioned separately; see [cli/CHANGELOG.md](cli/CHANGELOG.md). Prere
 
 ### Changed
 
+- **Include live sources is on by default** for incident investigations when the project has a valid connector and you may use live connectors. You can still turn it off per run.
 - **Agent tests are harder to leak from.** Every project secret is now redacted from agent results and report transcripts, wherever the script used it (headers, URL, request body, prompt) and also when the agent echoes it URL- or base64-encoded. Agent requests no longer follow redirects: an endpoint that redirects (for example `http` to `https`, or `/mcp` to `/mcp/`) now fails with the redirect target, so point the test at the final URL. A reply over 5 MiB fails the request. `repeat()` stops in time for a short (trial) run to still save its Agent results.
 - **Invalid test types are refused.** Creating, updating, validating, listing or running a test with an unknown type now returns `400` instead of saving a browser test. Case and surrounding spaces are ignored (`" Agent "` is `agent`), in the API, CLI and MCP.
 - **Cancel works while Redis is down.** The run is marked cancelled, so no worker starts it, and the request answers `202` with `signalSent: false`; retry once Redis is back to stop a run that is already executing.
@@ -88,6 +89,7 @@ The CLI is versioned separately; see [cli/CHANGELOG.md](cli/CHANGELOG.md). Prere
 
 ### Fixed
 
+- **AI SRE live sources actually query connectors.** An investigation with **Include live sources** now receives the project's connector ids, types, query languages and the service's OTel name, so it no longer guesses ids and queries. A wrong connector id or a query-syntax mistake (including an HTTP 400 or 422 from the backend) is returned as a retryable error with the valid ids instead of marking the connector failed for the run.
 - **Maintenance windows.** A monitor failure that fired inside a window no longer opens an incident when its alert reaches incident triage late (incident triage now checks the window too, behind the worker's own mute); a failure from just before the window still does. Such a failure is also no longer added to a declared incident that lists the monitor. The monitors list shows a **Maintenance** badge next to the real status while a window covers a monitor (also `inMaintenance` on `GET /api/monitors`, and the **Maintenance** status filter now finds it), the results table marks checks made during maintenance, and the dashboard's maintenance count is no longer always zero (the monitor status chart no longer has a Maintenance bar, which would count a monitor twice). The monitor banner shows the end date and time in the window's timezone.
 - **Audit log.** Starting an AI triage or investigation (from the app, API, MCP or automatically) and generating or saving a post-mortem are now recorded in the audit log.
 - A heartbeat that missed its run during a maintenance window now alerts within about 3 minutes of the window ending, instead of up to one interval later (a day for a daily job).

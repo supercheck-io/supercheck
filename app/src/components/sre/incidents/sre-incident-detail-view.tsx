@@ -143,6 +143,7 @@ export function SreIncidentDetailView({
       latestInvestigation={investigation}
       canInvestigate={permissions.canInvestigate}
       canUseLiveConnectors={permissions.canUseLiveConnectors}
+      hasValidConnector={detail.capabilities.hasValidConnector}
       investigationEnabled={detail.capabilities.investigationEnabled}
     />
   ) : null;

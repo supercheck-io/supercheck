@@ -190,6 +190,38 @@ describe("SreInvestigationPanel", () => {
     });
   });
 
+  it.each([
+    [true, true],
+    [false, false],
+  ])("defaults live sources to the project's valid connector state (hasValidConnector=%s)", async (hasValidConnector, expected) => {
+    render(
+      <SreInvestigationPanel
+        incidentId="018f0000-0000-7000-8000-000000000001"
+        hasPrimaryService={true}
+        serviceMappingHref="/org-admin?tab=services"
+        canInvestigate={true}
+        canUseLiveConnectors={true}
+        hasValidConnector={hasValidConnector}
+      />,
+    );
+
+    openOptions();
+    expect(screen.getByLabelText("Include live sources").getAttribute("aria-checked")).toBe(String(expected));
+    fireEvent.click(screen.getByRole("button", { name: /run investigation/i }));
+
+    await waitFor(() => {
+      expect(global.fetch).toHaveBeenCalledWith(
+        "/api/sre/investigate",
+        expect.objectContaining({
+          body: JSON.stringify({
+            incidentId: "018f0000-0000-7000-8000-000000000001",
+            useLiveConnectors: expected,
+          }),
+        }),
+      );
+    });
+  });
+
   it("treats HTTP 202 as an accepted start, not a completed result", async () => {
     const { toast } = jest.requireMock("sonner") as {
       toast: { success: jest.Mock };
