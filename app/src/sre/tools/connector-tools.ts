@@ -59,7 +59,7 @@ import {
 
 const MAX_TOOL_ROWS = 10;
 const MAX_TIME_WINDOW_MINUTES = 6 * 60;
-const supportedLiveConnectorTypes = [
+export const supportedLiveConnectorTypes = [
   "github",
   "kubernetes",
   "prometheus",
@@ -573,6 +573,20 @@ export async function searchIncidentLiveConnectorEvidence(
       .slice(0, 25)
       .map(({ row }) => `${row.id} (${row.name.replace(/\s+/g, " ").slice(0, 80)}, ${row.type})`)
       .join("; ");
+    // No FK-valid connector id exists here, so the row records the attempt with a null connector.
+    await db.insert(sreInvestigationToolCalls).values({
+      investigationRunId: scope.investigationRunId ?? null,
+      connectorId: null,
+      connectorType: "unknown",
+      toolName: "agent.connector.search.unknown_connector",
+      inputHash: hashConnectorPayload({ connectorId: input.connectorId, query: input.query }),
+      inputSummary: redactConnectorText(JSON.stringify({ connectorId: input.connectorId })),
+      status: "error",
+      errorMessage: "Connector not found, unavailable, or not scoped to the selected service",
+      durationMs: Date.now() - startedAt,
+      costEstimateCents: 0,
+      executedAt: new Date(),
+    });
     throw new ConnectorQueryRejectedError(
       `Connector not found, unavailable, or not scoped to the selected service. Use one of these connector ids: ${valid || "none available"}`,
     );

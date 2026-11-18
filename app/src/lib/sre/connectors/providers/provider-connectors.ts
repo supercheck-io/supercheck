@@ -66,6 +66,15 @@ type ProviderSpec = {
   ) => Promise<ProviderResult>;
 };
 
+/**
+ * Messages the shared provider code throws for a query the backend refused (providerHttpError 400/422,
+ * New Relic and Splunk in-band errors). The shared files cannot import the app error class, so
+ * provider-connectors.spec.ts pins these strings: rewording one fails CI instead of silently making
+ * query mistakes non-retryable.
+ */
+export const QUERY_REJECTED_MESSAGE =
+  /rejected the (?:request with HTTP (?:400|422)\b|query:|search:)/;
+
 const PROVIDER_SPECS: Record<ObservabilityProviderType, ProviderSpec> = {
   jaeger: {
     displayName: "Jaeger",
@@ -292,7 +301,7 @@ export class ObservabilityProviderConnector implements Connector {
         // provider-core is shared with the worker and cannot import app error classes.
         if (
           error instanceof Error &&
-          /rejected the (?:request with HTTP (?:400|422)\b|query:|search:)/.test(error.message)
+          QUERY_REJECTED_MESSAGE.test(error.message)
         ) {
           throw new ConnectorQueryRejectedError(error.message);
         }

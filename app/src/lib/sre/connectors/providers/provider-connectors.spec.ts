@@ -8,9 +8,9 @@ import { lookup } from "node:dns/promises";
 import https from "node:https";
 import { createDirectConnector } from "../direct-connectors";
 import { sanitizeConnectorEvidence } from "../output-sanitizer";
-import { ObservabilityProviderConnector, providerHttp } from "./provider-connectors";
+import { ObservabilityProviderConnector, QUERY_REJECTED_MESSAGE, providerHttp } from "./provider-connectors";
 import { ConnectorQueryRejectedError } from "./provider-query-guards";
-import type { ProviderHttp } from "./provider-core";
+import { providerHttpError, type ProviderHttp } from "./provider-core";
 
 const mockLookup = lookup as unknown as jest.Mock;
 const mockRequest = https.request as unknown as jest.Mock;
@@ -96,6 +96,11 @@ describe("observability provider connectors", () => {
     const error = await new ObservabilityProviderConnector({ ...definition, type: "jaeger", endpointUrl: "https://j.example.com" }, http)
       .search(searchParams()).catch((e) => e);
     expect(error).toBeInstanceOf(ConnectorQueryRejectedError);
+  });
+
+  it("pins the shared provider messages the retry mapping depends on", () => {
+    for (const status of [400, 422]) expect(QUERY_REJECTED_MESSAGE.test(providerHttpError("P", status, "").message)).toBe(true);
+    for (const status of [401, 403, 404, 429, 500]) expect(QUERY_REJECTED_MESSAGE.test(providerHttpError("P", status, "").message)).toBe(false);
   });
 
   it("merges stored credential fields with the secret", async () => {

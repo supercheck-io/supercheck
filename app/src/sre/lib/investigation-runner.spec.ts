@@ -227,6 +227,21 @@ describe("executeSreIncidentInvestigation failure persistence", () => {
     expect(listIncidentLiveConnectors).toHaveBeenCalledTimes(listed ? 1 : 0);
   });
 
+  it("still builds the prompt when the live connector list cannot be loaded", async () => {
+    (listIncidentLiveConnectors as jest.Mock).mockRejectedValue(new Error("db down"));
+    (runSreAgent as jest.Mock).mockRejectedValue(new Error("test interruption"));
+    (db.transaction as jest.Mock).mockImplementation(async (callback) =>
+      callback({
+        update: jest.fn().mockReturnValue({ set: jest.fn().mockReturnValue({ where: jest.fn().mockReturnValue({ returning: jest.fn().mockResolvedValue([]) }) }) }),
+        insert: jest.fn().mockReturnValue({ values: jest.fn().mockResolvedValue([]) }),
+      }),
+    );
+    await executeSreIncidentInvestigation("run-1", incident, { ...input, enableLiveConnectors: true });
+    const prompt = (runSreAgent as jest.Mock).mock.lastCall![0].prompt as string;
+    expect(prompt).toContain("Live connector tools: available");
+    expect(prompt).not.toContain("Live connectors you may query");
+  });
+
   it("does not publish success after recovery has released the reservation", async () => {
     const returning = jest.fn().mockResolvedValue([]);
     const set = jest.fn().mockReturnValue({ where: jest.fn().mockReturnValue({ returning }) });

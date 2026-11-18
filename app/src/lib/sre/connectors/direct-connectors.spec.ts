@@ -478,6 +478,20 @@ describe("direct connectors", () => {
     expect(error.message).toContain(`HTTP ${status}`);
   });
 
+  it("reports a 400 on a health check as a plain failure, not a query error", async () => {
+    global.fetch = jest.fn().mockResolvedValue({ ok: false, status: 400 }) as unknown as typeof fetch;
+    const connector = createDirectConnector({
+      ...baseDefinition,
+      type: "prometheus",
+      endpointUrl: "https://prometheus.example.com",
+      surfaces: ["metrics"],
+      evidenceTypes: ["metric"],
+    });
+    const result = await connector.validate();
+    expect(result.status).toBe("unreachable");
+    expect(result.message).toBe("request failed with HTTP 400");
+  });
+
   it("maps a 404 to a path-not-found message", async () => {
     global.fetch = jest.fn().mockResolvedValue({ ok: false, status: 404 }) as unknown as typeof fetch;
     const connector = createDirectConnector({

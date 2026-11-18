@@ -56,7 +56,7 @@ The CLI is versioned separately; see [cli/CHANGELOG.md](cli/CHANGELOG.md). Prere
 
 ### Changed
 
-- **Include live sources is on by default** for incident investigations when the project has a valid connector and you may use live connectors. You can still turn it off per run.
+- **Include live sources is on by default** for incident investigations when the project has a validated connector and you may use live connectors. You can still turn it off per run.
 - **Agent tests are harder to leak from.** Every project secret is now redacted from agent results and report transcripts, wherever the script used it (headers, URL, request body, prompt) and also when the agent echoes it URL- or base64-encoded. Agent requests no longer follow redirects: an endpoint that redirects (for example `http` to `https`, or `/mcp` to `/mcp/`) now fails with the redirect target, so point the test at the final URL. A reply over 5 MiB fails the request. `repeat()` stops in time for a short (trial) run to still save its Agent results.
 - **Invalid test types are refused.** Creating, updating, validating, listing or running a test with an unknown type now returns `400` instead of saving a browser test. Case and surrounding spaces are ignored (`" Agent "` is `agent`), in the API, CLI and MCP.
 - **Cancel works while Redis is down.** The run is marked cancelled, so no worker starts it, and the request answers `202` with `signalSent: false`; retry once Redis is back to stop a run that is already executing.

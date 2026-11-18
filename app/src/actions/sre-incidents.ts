@@ -19,6 +19,7 @@ import { alias } from "drizzle-orm/pg-core";
 import { isActionableAlertForIncident } from "@/lib/alert-escalation";
 import type { SrePostmortem } from "@/db/schema";
 import { z } from "zod";
+import { supportedLiveConnectorTypes } from "@/sre/tools/connector-tools";
 
 import {
   alertHistory,
@@ -1125,7 +1126,8 @@ export async function getSreIncidentDetails(
             and(
               eq(externalConnectors.organizationId, organizationId),
               eq(externalConnectors.projectId, project.id),
-              inArray(externalConnectors.status, ["configured", "valid"]),
+              eq(externalConnectors.status, "valid"),
+              inArray(externalConnectors.type, supportedLiveConnectorTypes),
             ),
           )
           .limit(1),

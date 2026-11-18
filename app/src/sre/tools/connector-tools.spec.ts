@@ -146,8 +146,13 @@ describe("MCP connectors in the AI tool layer", () => {
         { connector: mcpRow },
         { connector: { ...mcpRow, id: "018f0000-0000-7000-8000-0000000000ee", name: "Prom", type: "prometheus", privateAgentId: null } },
       ]));
+    const values = jest.fn().mockResolvedValue(undefined);
+    db.insert.mockReturnValue({ values });
     const first = await call();
     const second = await call();
+    expect(values).toHaveBeenCalledWith(
+      expect.objectContaining({ connectorId: null, status: "error", toolName: "agent.connector.search.unknown_connector" }),
+    );
     for (const result of [first, second]) {
       expect(result).toMatchObject({
         error: true,
@@ -349,6 +354,7 @@ describe("Copilot connector service scope", () => {
 
   it("rejects a connector mapped to a different service", async () => {
     db.query.sreServices.findFirst.mockResolvedValue({ id: serviceId });
+    db.insert.mockReturnValue({ values: jest.fn().mockResolvedValue(undefined) });
     db.select
       .mockReturnValueOnce(selectRows([{ connector: { id: connectorId } }]))
       .mockReturnValueOnce(

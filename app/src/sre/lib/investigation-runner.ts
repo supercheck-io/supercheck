@@ -344,7 +344,10 @@ export async function executeSreIncidentInvestigation(
 
     // Without the ids and query dialects the model guesses both and every search fails.
     const liveConnectors = liveConnectorsEnabled
-      ? await listIncidentLiveConnectors(toolScope).catch(() => null)
+      ? await listIncidentLiveConnectors(toolScope).catch((error: unknown) => {
+          investigationLogger.error({ err: error }, "Live connector list unavailable; the prompt will not name connectors");
+          return null;
+        })
       : null;
 
     const result = await runSreAgent({

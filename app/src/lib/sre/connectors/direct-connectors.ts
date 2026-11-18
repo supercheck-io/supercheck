@@ -78,6 +78,7 @@ async function fetchJson({
     // The backend parsed and refused the query: fixable by the agent, not a connector outage.
     throw new ConnectorQueryRejectedError(
       `request rejected with HTTP ${response.status}; check the query syntax for this connector type`,
+      response.status,
     );
   }
 
@@ -452,7 +453,11 @@ abstract class BaseDirectConnector implements Connector {
       await this.validationRequest();
       return { status: "valid", latencyMs: Date.now() - startedAt };
     } catch (error) {
-      const message = describeConnectionError(error, "Connector validation failed");
+      // A health check sends no user query, so a 400/422 is a plain failure here.
+      const message =
+        error instanceof ConnectorQueryRejectedError && error.httpStatus
+          ? `request failed with HTTP ${error.httpStatus}`
+          : describeConnectionError(error, "Connector validation failed");
       const lowerMessage = message.toLowerCase();
       return {
         status:
