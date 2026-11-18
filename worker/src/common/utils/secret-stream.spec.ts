@@ -1,3 +1,4 @@
+import * as zlib from 'zlib';
 import * as fsp from 'fs/promises';
 import * as os from 'os';
 import * as path from 'path';
@@ -92,6 +93,56 @@ describe('scrubSecretsFromReportDir', () => {
       '<template id="playwrightReportBase64">data:application/zip;base64,AAAA</template>',
     );
     await expect(scrubSecretsFromReportDir(dir, secrets)).rejects.toThrow();
+  });
+
+  it('fails closed on a zip whose entries share one huge local entry', async () => {
+    // One 100 MB entry (tiny deflated) listed four times in the central directory: 400 MB if inflated per entry.
+    const data = zlib.deflateRawSync(Buffer.alloc(100 * 1024 * 1024));
+    const name = Buffer.from('a.json');
+    const local = Buffer.alloc(30);
+    local.writeUInt32LE(0x04034b50, 0);
+    local.writeUInt16LE(8, 8);
+    local.writeUInt32LE(data.length, 18);
+    local.writeUInt16LE(name.length, 26);
+    const entry = Buffer.alloc(46);
+    entry.writeUInt32LE(0x02014b50, 0);
+    entry.writeUInt16LE(8, 10);
+    entry.writeUInt32LE(data.length, 20);
+    entry.writeUInt16LE(name.length, 28);
+    const directory = Buffer.concat(
+      Array(4).fill(Buffer.concat([entry, name])),
+    );
+    const end = Buffer.alloc(22);
+    end.writeUInt32LE(0x06054b50, 0);
+    end.writeUInt16LE(4, 10);
+    end.writeUInt32LE(local.length + name.length + data.length, 16);
+    const zip = Buffer.concat([local, name, data, directory, end]);
+    await fsp.writeFile(
+      path.join(dir, 'index.html'),
+      `<template id="playwrightReportBase64">data:application/zip;base64,${zip.toString('base64')}</template>`,
+    );
+    await expect(scrubSecretsFromReportDir(dir, secrets)).rejects.toThrow(
+      /too large|Cannot create a buffer/i,
+    );
+  });
+
+  it('fails closed when the report markup is not recognised', async () => {
+    await fsp.writeFile(
+      path.join(dir, 'index.html'),
+      '<script>window.playwrightReportBase64 = "data:application/zip;base64,AAAA";</script>',
+    );
+    await expect(scrubSecretsFromReportDir(dir, secrets)).rejects.toThrow(
+      'not recognised',
+    );
+  });
+
+  it('fails closed when index.html is too large to scrub', async () => {
+    const big = path.join(dir, 'index.html');
+    await fsp.writeFile(big, '');
+    await fsp.truncate(big, 21 * 1024 * 1024);
+    await expect(scrubSecretsFromReportDir(dir, secrets)).rejects.toThrow(
+      'too large to scrub',
+    );
   });
 
   it('skips oversized text files with a warning instead of throwing', async () => {

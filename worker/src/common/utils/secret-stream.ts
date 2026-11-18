@@ -80,7 +80,9 @@ export function secretRedactionVariants(
 // <template> in index.html, where a plain text replace can never match a secret.
 const EMBEDDED_REPORT =
   /(<template id="playwrightReportBase64">data:application\/zip;base64,)([A-Za-z0-9+/=]+)(<\/template>)/;
-const MAX_ZIP_ENTRY_BYTES = 64 * 1024 * 1024;
+// Total inflated bytes for the whole zip: entries may share local data, so a per-entry cap is not enough.
+const MAX_ZIP_TOTAL_BYTES = 256 * 1024 * 1024;
+const MAX_ZIP_ENTRIES = 1000;
 
 interface ZipEntry {
   name: Buffer;
@@ -95,7 +97,10 @@ export function readZip(zip: Buffer): ZipEntry[] {
   if (eocd < 0) throw new Error('Report zip has no end record');
   let p = zip.readUInt32LE(eocd + 16);
   const entries: ZipEntry[] = [];
-  for (let n = zip.readUInt16LE(eocd + 10); n > 0; n--) {
+  const count = zip.readUInt16LE(eocd + 10);
+  if (count > MAX_ZIP_ENTRIES) throw new Error('Report zip has too many files');
+  let budget = MAX_ZIP_TOTAL_BYTES;
+  for (let n = count; n > 0; n--) {
     if (zip.readUInt32LE(p) !== 0x02014b50)
       throw new Error('Report zip is corrupt');
     const method = zip.readUInt16LE(p + 10);
@@ -106,17 +111,20 @@ export function readZip(zip: Buffer): ZipEntry[] {
       throw new Error('Report zip64 is not supported');
     const start =
       local + 30 + zip.readUInt16LE(local + 26) + zip.readUInt16LE(local + 28);
+    if (zip.readUInt32LE(local) !== 0x04034b50)
+      throw new Error('Report zip is corrupt');
     const raw = zip.subarray(start, start + size);
+    if (method !== 0 && method !== 8)
+      throw new Error('Report zip uses an unsupported compression');
+    const data =
+      method === 0
+        ? raw
+        : inflateRawSync(raw, { maxOutputLength: Math.max(budget, 1) });
+    budget -= data.length;
+    if (budget < 0) throw new Error('Report zip is too large');
     entries.push({
       name: zip.subarray(p + 46, p + 46 + nameLength),
-      data:
-        method === 0
-          ? raw
-          : method === 8
-            ? inflateRawSync(raw, { maxOutputLength: MAX_ZIP_ENTRY_BYTES })
-            : (() => {
-                throw new Error('Report zip uses an unsupported compression');
-              })(),
+      data,
       time: zip.readUInt16LE(p + 12),
       date: zip.readUInt16LE(p + 14),
     });
@@ -175,6 +183,12 @@ export function scrubEmbeddedReportZip(
   html: string,
   variants: string[],
 ): string {
+  // Fail closed if Playwright changes this markup: an unmatched report would be uploaded unscrubbed.
+  if (!EMBEDDED_REPORT.test(html)) {
+    if (html.includes('playwrightReportBase64'))
+      throw new Error('Report zip markup is not recognised');
+    return html;
+  }
   return html.replace(
     EMBEDDED_REPORT,
     (_all, head: string, b64: string, tail: string) => {
@@ -209,6 +223,9 @@ export async function scrubSecretsFromReportDir(
         TEXT_REPORT_EXT.has(path.extname(entry.name).toLowerCase())
       ) {
         if ((await fs.stat(full)).size > MAX_SCRUB_FILE_BYTES) {
+          // The embedded report lives in index.html: uploading it unscrubbed would publish any secret in it.
+          if (entry.name === 'index.html')
+            throw new Error('Report index.html is too large to scrub');
           console.warn(
             `Skipping secret scrub of oversized report file: ${entry.name}`,
           );
