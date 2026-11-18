@@ -728,6 +728,7 @@ export function NotificationProviderForm({
         onKeyDown={(event) => {
           // Enter in a single-line field must not submit by accident; the Create button does.
           if (event.key === "Enter" &&
+            !event.nativeEvent.isComposing &&
             event.target instanceof HTMLInputElement &&
             !["checkbox", "radio", "button", "submit"].includes(event.target.type)) {
             event.preventDefault();
@@ -830,6 +831,7 @@ export function NotificationProviderForm({
                   <FormLabel>Title<RequiredMark /></FormLabel>
                   <FormControl>
                     <Input
+                      aria-required={true}
                       placeholder="e.g. On-call alerts"
                       {...field}
                       disabled={isSubmitting || isTesting}
@@ -853,6 +855,7 @@ export function NotificationProviderForm({
                     <FormLabel>Email addresses<RequiredMark /></FormLabel>
                     <FormControl>
                       <Textarea
+                        aria-required={true}
                         placeholder="e.g. oncall@example.com, team@example.com"
                         className="field-sizing-fixed min-h-[80px] resize-y"
                         maxLength={CHARACTER_LIMITS.emails}
@@ -884,6 +887,7 @@ export function NotificationProviderForm({
                     <FormLabel>Webhook URL<RequiredMark hidden={keepsStored("webhookUrl")} /></FormLabel>
                     <FormControl>
                       <Input
+                        aria-required={!keepsStored("webhookUrl")}
                         placeholder={maskedFieldSet.has("webhookUrl") ? MASKED_PLACEHOLDER : "e.g. https://hooks.slack.com/services/T000/B000/XXXX"}
                         {...field}
                         disabled={isSubmitting || isTesting}
@@ -907,7 +911,7 @@ export function NotificationProviderForm({
                         disabled={isSubmitting || isTesting}
                       />
                     </FormControl>
-                    <FormDescription>Overrides the default channel set on the webhook. Leave blank to use the default.</FormDescription>
+                    <FormDescription>Optional note of where alerts should go. Slack app webhooks post to the channel chosen when the webhook was created.</FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -977,6 +981,7 @@ export function NotificationProviderForm({
                           <FormLabel>URL<RequiredMark hidden={keepsStored("url")} /></FormLabel>
                           <FormControl>
                             <Input
+                              aria-required={!keepsStored("url")}
                               placeholder={maskedFieldSet.has("url") ? MASKED_PLACEHOLDER : "e.g. https://api.example.com/alerts"}
                               {...field}
                               onChange={(event) => {
@@ -1244,6 +1249,7 @@ export function NotificationProviderForm({
                       <FormLabel>Bot token<RequiredMark hidden={keepsStored("botToken")} /></FormLabel>
                       <FormControl>
                         <Input
+                          aria-required={!keepsStored("botToken")}
                           type="password"
                           autoComplete="new-password"
                           placeholder={maskedFieldSet.has("botToken") ? MASKED_PLACEHOLDER : "e.g. 123456789:ABCdefGHIjklMNOpqrsTUVwxyz"}
@@ -1264,6 +1270,7 @@ export function NotificationProviderForm({
                       <FormLabel>Chat ID<RequiredMark /></FormLabel>
                       <FormControl>
                         <Input
+                          aria-required={true}
                           placeholder="e.g. -1001234567890"
                           {...field}
                           disabled={isSubmitting || isTesting}
@@ -1290,6 +1297,7 @@ export function NotificationProviderForm({
                     <FormLabel>Webhook URL<RequiredMark hidden={keepsStored("discordWebhookUrl")} /></FormLabel>
                     <FormControl>
                       <Input
+                        aria-required={!keepsStored("discordWebhookUrl")}
                         placeholder={maskedFieldSet.has("discordWebhookUrl") ? MASKED_PLACEHOLDER : "e.g. https://discord.com/api/webhooks/123/abc"}
                         {...field}
                         disabled={isSubmitting || isTesting}
@@ -1317,37 +1325,39 @@ export function NotificationProviderForm({
                     <FormLabel>Incoming webhook URL<RequiredMark hidden={keepsStored("teamsWebhookUrl")} /></FormLabel>
                     <FormControl>
                       <Input
-                        placeholder={maskedFieldSet.has("teamsWebhookUrl") ? MASKED_PLACEHOLDER : "e.g. https://prod-00.westus.logic.azure.com:443/workflows/..."}
+                        aria-required={!keepsStored("teamsWebhookUrl")}
+                        placeholder={maskedFieldSet.has("teamsWebhookUrl") ? MASKED_PLACEHOLDER : "e.g. https://prod-00.environment.api.powerplatform.com:443/powerautomate/automations/..."}
                         {...field}
                         disabled={isSubmitting || isTesting}
                       />
                     </FormControl>
-                    <FormDescription>{keepsStored("teamsWebhookUrl") ? KEEP_STORED_HINT : "Create a Workflow webhook in Power Automate from your Teams channel."}</FormDescription>
+                    <FormDescription>{keepsStored("teamsWebhookUrl") ? KEEP_STORED_HINT : "Create a Workflow webhook in Power Automate from your Teams channel and paste the full URL from the workflow trigger."}</FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}
               />
             </div>
           )}
+          {testResult && (
+            <div
+              role={testResult.ok ? "status" : "alert"}
+              data-testid="test-connection-result"
+              ref={(node) => node?.scrollIntoView?.({ block: "nearest" })}
+              className={cn(
+                "flex items-start gap-2 rounded-md border px-3 py-2 text-sm",
+                testResult.ok ? "bg-success/10 text-success" : "bg-failure/10 text-failure",
+              )}
+            >
+              {testResult.ok ? (
+                <CheckCircle2 aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0" />
+              ) : (
+                <XCircle aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0" />
+              )}
+              <span className="min-w-0 break-words">{testResult.message}</span>
+            </div>
+          )}
         </div>
 
-        {testResult && (
-          <div
-            role={testResult.ok ? "status" : "alert"}
-            data-testid="test-connection-result"
-            className={cn(
-              "flex shrink-0 items-start gap-2 border-t px-6 py-3 text-sm",
-              testResult.ok ? "bg-success/10 text-success" : "bg-failure/10 text-failure",
-            )}
-          >
-            {testResult.ok ? (
-              <CheckCircle2 aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0" />
-            ) : (
-              <XCircle aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0" />
-            )}
-            <span className="min-w-0 break-words">{testResult.message}</span>
-          </div>
-        )}
         <div className="flex shrink-0 flex-col-reverse gap-2 border-t bg-background px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
           <Button
             type="button"

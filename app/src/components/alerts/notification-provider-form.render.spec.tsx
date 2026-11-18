@@ -104,6 +104,23 @@ describe("NotificationProviderForm fields", () => {
     expect(screen.getByText("Webhook URL").closest("label")!.querySelector('[aria-hidden="true"]')?.textContent).toBe("*");
   });
 
+  it("exposes required state, except for stored secrets on edit", () => {
+    const { unmount } = render(<NotificationProviderForm defaultType="slack" />);
+    expect(screen.getByPlaceholderText(/hooks\.slack\.com/)).toHaveAttribute("aria-required", "true");
+    unmount();
+    render(
+      <NotificationProviderForm
+        initialData={{ name: "P", type: "slack", config: { name: "P" } as never, maskedFields: ["webhookUrl"] }}
+      />,
+    );
+    expect(screen.getByPlaceholderText(/Unchanged/)).toHaveAttribute("aria-required", "false");
+  });
+
+  it("does not cancel Enter while an IME composition is active", () => {
+    render(<NotificationProviderForm />);
+    expect(fireEvent.keyDown(screen.getByPlaceholderText(/On-call alerts/), { key: "Enter", isComposing: true })).toBe(true);
+  });
+
   it("lets textareas take Enter for new lines", () => {
     render(<NotificationProviderForm defaultType="webhook" />);
     expect(fireEvent.keyDown(screen.getByLabelText(/Headers JSON/), { key: "Enter" })).toBe(true);
