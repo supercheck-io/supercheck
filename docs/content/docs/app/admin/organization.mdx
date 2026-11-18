@@ -19,9 +19,9 @@ Use **Organization** in the sidebar to manage projects, members, CLI tokens, AI 
 
 ## Default organization and projects
 
-Sign-up creates one default organization and one default project. There is no menu to create or switch organizations. Owners and admins can rename the organization with the pencil button (**Rename organization**) next to its name on the **Organization** page. Use the project selector and the **Projects** tab to create and switch projects.
+Sign-up creates one default organization and one default project. There is no menu to create or switch organizations. Owners and admins rename it with the pencil button (**Rename organization**) next to its name. Create and switch projects with the project selector and the **Projects** tab.
 
-You can accept invitations to projects in other organizations and keep your default one. Those projects appear in the project selector under the team name. You can see every active project in a joined team read-only. Project Editor and Project Admin assignments add permissions only in the selected projects. Owning your default organization gives no administrative access to another team. Users who sign up through an invitation join the inviting team without a separate organization.
+You can accept invitations to projects in other organizations and keep your default one. Those projects appear in the project selector under the team name, and every active project in a joined team is visible read-only. Project Editor and Project Admin assignments add permissions only in the selected projects, and owning your default organization gives no administrative access to another team. Users who sign up through an invitation join the inviting team without a separate organization.
 
 ## Projects
 
@@ -32,12 +32,12 @@ Only organization owners and admins create and manage projects in the UI. Projec
 <Steps>
 <Step>
 
-Open **Organization** in the sidebar, then the **Projects** tab.
+Open **Organization → Projects**.
 
 </Step>
 <Step>
 
-Select **Create Project**, fill in both required fields in the **Create New Project** dialog, then select **Create Project** again to submit.
+Select **Create Project**, fill in both required fields in the **Create New Project** dialog, then select **Create Project** again.
 
 | Field | Limit |
 |---|---|
@@ -49,84 +49,69 @@ Select **Create Project**, fill in both required fields in the **Create New Proj
 
 ![Create Project](/screenshots/org-admin-create-project.png)
 
-Project slugs must be unique. Organization owners and admins can delete a project through the API; the dashboard has no delete action, and the default project cannot be deleted.
+Project slugs must be unique. Owners and admins can also delete a project through the API; the default project cannot be deleted.
 
 <Accordions>
 <Accordion title="Incident notifications" id="project-incident-notifications">
 
-To set where hand-made and connector incidents are announced, open **Organization → Projects**, use the project's menu, and choose **Incident notifications**. Settings are described under [Incident notifications](/docs/app/investigate/incidents#notifications).
+To set where hand-made and connector incidents are announced, open the project's menu in **Organization → Projects** and choose **Incident notifications**. See [Incident notifications](/docs/app/investigate/incidents#notifications).
 
 </Accordion>
 </Accordions>
 
 ## Members
 
-Invite teammates and assign roles. Roles are described in [Roles & Permissions](/docs/app/admin/roles-and-permissions).
-
-<Tabs items={['Invite Member', 'Email Invitation', 'Accept Invitation', 'Signup']}>
-<Tab value="Invite Member">
+Invite teammates and assign [roles](/docs/app/admin/roles-and-permissions).
 
 <Steps>
 <Step>
+### Invite the member
 
-Open **Organization** and select the **Members** tab.
-
-</Step>
-<Step>
-
-Select **Invite Member**, enter the email address, choose a role, and send.
-
-</Step>
-</Steps>
+Open **Organization → Members**, select **Invite Member**, enter the email address, choose a role and send.
 
 ![Invite Member Dialog](/screenshots/org-admin-member-invite-dialog.png)
 
-Invitations are limited per user per hour, and if the limiter is unavailable they are refused with a retry message rather than sent. A pending invitation stops working when the person who sent it is removed, demoted from administrator or leaves, and platform administrator accounts cannot accept invitations.
+Invitations are limited per user per hour; if the limiter is unavailable they are refused with a retry message. A pending invitation stops working when its sender is removed, demoted from administrator or leaves. Platform administrator accounts cannot accept invitations.
+</Step>
+<Step>
+### The member gets an email
 
-</Tab>
-<Tab value="Email Invitation">
-
-The invited member receives an email with a link to join your organization.
+The email contains a link to join your organization.
 
 ![Email Invitation](/screenshots/org-admin-member-email-invitation.png)
-
-</Tab>
-<Tab value="Accept Invitation">
-
-The member accepts the invitation to join the organization.
+</Step>
+<Step>
+### The member accepts
 
 ![Accept Invitation](/screenshots/org-admin-member-invite-acceptance.png)
-
-</Tab>
-<Tab value="Signup">
+</Step>
+<Step>
+### The member signs up or signs in
 
 Sign up or sign in with the invited email address, then accept the invitation to reach the assigned projects. On Supercheck Cloud, verify your email from the link we send before joining.
 
 ![Invitation Signup](/screenshots/org-admin-member-invite-signup.png)
-
-</Tab>
-</Tabs>
+</Step>
+</Steps>
 
 <Accordions>
 <Accordion title="Leave an organization" id="leave-an-organization">
 
-Select a project in the team you want to leave, open your profile menu, choose **Account**, and select **Leave** next to the organization. Confirm with **Leave organization**. This removes your membership and project assignments in that team. Other memberships remain in the project selector. If you have none left, the normal setup flow creates your personal organization and project.
-
-Organization owners cannot leave; transfer ownership or delete the organization first. An administrator must invite you again to rejoin.
+Select a project in the team, open your profile menu, choose **Account**, select **Leave** next to the organization and confirm with **Leave organization**. This removes your membership and project assignments in that team; other memberships remain. If none remain, setup creates your personal organization and project. Owners cannot leave; transfer ownership or delete the organization first. An administrator must invite you again to rejoin.
 
 </Accordion>
 <Accordion title="Delete the organization" id="delete-organization">
 
-Only the organization owner can delete it. Select the trash button (**Delete organization**) next to the organization name on the **Organization** page, read what happens next, type the organization name to confirm, and select **Request deletion**. If you signed in a while ago you are asked to sign in again first, then reopen the dialog and confirm within a few minutes.
+Only the owner can delete it. Select the trash button (**Delete organization**) next to the organization name, type the organization name and select **Request deletion**. If you signed in a while ago you must sign in again, then reopen the dialog and confirm within a few minutes.
 
 Deletion is never immediate. The organization enters a **pending deletion** window of 14 days (self-hosted installations can change it, see [Self-hosted](/docs/app/deployment/self-hosted)):
 
-- **Read-only.** Every member sees a banner with the date. Members can still view and export, but secret values stay hidden (the reveal action is refused with `ORG_PENDING_DELETION`), nothing runs, schedules and monitors stop, and nothing can be created, changed or invited.
-- **Cancel.** The owner can select **Cancel deletion** in the banner at any time before the date. Schedules and monitors resume. Other members see who can cancel but cannot.
-- **Early purge.** A Super Admin can end the window early with **Purge now**, for example to honor a legal erasure request (see [Super Admin](/docs/app/admin/super-admin)). The organization can no longer be cancelled after that.
-- **Billing.** A subscription stops renewing and ends at the end of the paid period. Cancelling the deletion turns renewal back on while the period is still running; if the period already ended, subscribe again.
-- **Emails.** The owners are emailed when the deletion is requested, 7 days and 1 day before it happens, when it is cancelled, and when it is complete. Without a mail server (some self-hosted installations) no email is sent and the dialog confirms the date in the app instead.
-- **After the window.** Every project, test, job, run, monitor, status page and stored report is deleted permanently, and every member loses access. This cannot be undone.
+- **Read-only.** Every member sees a banner with the date. Members can still view and export, but secret values stay hidden (reveal is refused with `ORG_PENDING_DELETION`), nothing runs, schedules and monitors stop, and nothing can be created, changed or invited.
+- **Cancel.** The owner can select **Cancel deletion** in the banner before the date; schedules and monitors resume. Other members see who can cancel.
+- **Early purge.** A Super Admin can end the window with **Purge now**, such as for a legal erasure request (see [Super Admin](/docs/app/admin/super-admin)). It can no longer be cancelled after that.
+- **Billing.** A subscription stops renewing and ends with the paid period. Cancelling the deletion restores renewal while the period is running; if it ended, subscribe again.
+- **Emails.** Owners are emailed when deletion is requested, 7 days and 1 day before, when cancelled, and when complete. Without a mail server (some self-hosted installations) no email is sent and the dialog confirms the date.
+- **After the window.** Every project, test, job, run, monitor, status page and stored report is deleted permanently and every member loses access. This cannot be undone.
 
 Audit log entries are kept for 12 months, with email addresses replaced by a hash after 30 days, and then removed. Invoices and payment records stay with the payment provider.
 
@@ -135,19 +120,19 @@ Deletion is postponed, not refused, while the organization has usage that was no
 </Accordion>
 <Accordion title="Delete and restore a project" id="delete-project">
 
-Organization owners and admins can delete a project from the **Projects** tab: open the row menu, choose **Delete project**, and type the project name. The default project cannot be deleted. Its jobs and monitors stop at once. For 7 days it stays in the projects list marked **Deleted**, with the date it can be restored until (hover it for the exact time), and an owner or admin can **Restore** it, and the organization's owners and admins are emailed. After that its tests, runs, monitors, status pages and reports are deleted permanently.
+Owners and admins delete a project from the **Projects** row menu with **Delete project**, typing the project name. The default project cannot be deleted. Its jobs and monitors stop at once, and the organization's owners and admins are emailed. For 7 days it stays in the list marked **Deleted**, with the restore deadline (hover for the exact time), and an owner or admin can **Restore** it. After that its tests, runs, monitors, status pages and reports are deleted permanently.
 
 </Accordion>
 </Accordions>
 
 ## CLI tokens
 
-CLI tokens give project-scoped API access for automation. A token inherits its owner's permissions, so use a separate token for each pipeline or integration.
+CLI tokens give project-scoped API access for automation. A token inherits its owner's permissions; use one per pipeline or integration.
 
 <Steps>
 <Step>
 
-Open **Organization**, then the **CLI Tokens** tab.
+Open **Organization → CLI Tokens**.
 
 </Step>
 <Step>
@@ -166,13 +151,11 @@ A project can have at most 20 active CLI tokens (enabled and not expired). Anyon
 
 ## AI SRE setup
 
-Administrators configure AI SRE from the **Integrations** and **Private Agents** tabs so responders do not set up during an incident. Register services on the top-level **Services** page first, then follow [AI SRE Setup](/docs/app/admin/ai-sre-setup).
+Administrators configure AI SRE from **Integrations** and **Private Agents** ahead of incidents. Register services on **Services** first, then follow [AI SRE setup](/docs/app/admin/ai-sre-setup).
 
 ## Audit log
 
-The **Audit** tab records who did what and when, for compliance and security review. Search entries, or filter by action and user.
-
-The table shows the newest 100 events first; select **Load older events** to fetch the next page. API clients page the same way with the `cursor` parameter of `GET /api/audit`.
+The **Audit** tab records who did what and when. Search entries, or filter by action and user. The table shows the newest 100 events first; **Load older events** fetches the next page. API clients page with the `cursor` parameter of `GET /api/audit`.
 
 ![Audit Log](/screenshots/org-admin-audit-list.png)
 
@@ -184,9 +167,9 @@ The **Action** filter lists the actions recorded in your log, such as login, pro
 </Accordion>
 </Accordions>
 
-## Next steps
+## Related
 
 <Cards>
-<Card title="Roles & Permissions" href="/docs/app/admin/roles-and-permissions" description="Exact permissions for each role" />
-<Card title="AI SRE Setup" href="/docs/app/admin/ai-sre-setup" description="Services, connectors, and Private Agents" />
+<Card title="Roles and permissions" href="/docs/app/admin/roles-and-permissions" description="Exact permissions for each role" />
+<Card title="AI SRE setup" href="/docs/app/admin/ai-sre-setup" description="Services, connectors and Private Agents" />
 </Cards>

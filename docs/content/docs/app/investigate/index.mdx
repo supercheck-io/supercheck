@@ -4,21 +4,21 @@ description: Gather evidence and investigate incidents with read-only AI agents
 icon: Search
 ---
 
-Open an incident, run a read-only investigation, and review findings with citations. Apply fixes with your own tools, then use tests or monitors to confirm recovery.
+Open an incident, run a read-only investigation and review cited findings. Apply fixes with your own tools, then confirm recovery with tests or monitors.
 
 <Cards className="grid-cols-1 sm:grid-cols-3">
 <Card icon={<ShieldCheck className="text-green-500" />} title="Read-only">
-Supercheck recommends checks and fixes. It never changes your infrastructure
+Recommends checks and fixes. Never changes your infrastructure
 </Card>
 <Card icon={<MousePointerClick className="text-blue-500" />} title="On demand">
-Opening an incident does not start an investigation unless the project turned on automatic investigation. Otherwise select **Run investigation** when ready
+Starts only when you select **Run investigation**, unless the project turned on automatic investigation
 </Card>
 <Card icon={<Quote className="text-purple-500" />} title="Cited">
-Findings link to evidence. When the evidence is weak the result is **Inconclusive**, not a guess
+Findings link to evidence. Weak evidence gives **Inconclusive**, not a guess
 </Card>
 </Cards>
 
-## Investigation Workflow
+## Investigation workflow
 
 <p className="text-sm md:hidden">Scroll horizontally to view the full diagram.</p>
 
@@ -53,9 +53,9 @@ sequenceDiagram
 </div>
 </div>
 
-## Native Evidence
+## Native evidence
 
-Supercheck reads stored summaries and artifact references from its own tests, monitors, runs, and status pages.
+Supercheck reads stored summaries and artifact references from its own tests, monitors, runs and status pages.
 
 | Source | Examples |
 |---|---|
@@ -65,31 +65,31 @@ Supercheck reads stored summaries and artifact references from its own tests, mo
 | **Status pages** | Public and private status page states |
 
 <Callout type="info">
-The agent reads bounded text evidence and artifact references. It does not watch videos or analyze screenshot contents. Open screenshots and videos yourself from the source run or monitor.
+The agent reads bounded text evidence and artifact references. It does not watch videos or analyze screenshots; open those from the source run or monitor.
 </Callout>
 
-## Service Catalog
+## Service catalog
 
-Register the systems you operate in the **Services** catalog. Services provide context for causal discovery, dependency tracking, and connector scoping. They are optional for stored-evidence investigations. See [AI SRE setup](/docs/app/admin/ai-sre-setup#services).
+Register your systems in **Services** for causal discovery, dependency tracking and connector scoping. Optional for stored-evidence investigations. See [AI SRE setup](/docs/app/admin/ai-sre-setup#services).
 
 ![Services Catalog](/screenshots/sre-services-catalog.png)
 
-Open a service to see its health, recent incidents, alerts and deployments, linked resources, and dependencies. The **Activity** tab lists recent incidents; **Resources** and **Dependencies** list what is linked and what the service calls or is called by. People who can edit get an edit and a remove button on each row (hover for the label). If a service cannot be opened, the page says whether it was not found, you do not have access, or loading failed, and links back to **Services**.
+A service shows its health, incidents, alerts, deployments, linked resources and dependencies. **Activity** lists recent incidents; **Resources** and **Dependencies** list what is linked and what the service calls or is called by. Editors get edit and remove buttons on each row. If a service cannot be opened, the page says whether it was not found, you lack access, or loading failed.
 
 ![Service detail](/screenshots/sre-service-detail.png)
 
-## Where to Find Things
+## Where to find things
 
 | Screen | Purpose |
 |---|---|
-| **Communicate → Notifications → Delivery history** | The latest alert notifications sent. Each failure links to its incident (**#N**); otherwise select **Open incident** |
+| **Communicate → Notifications → Delivery history** | Latest alert notifications. Each failure links to its incident (**#N**); otherwise select **Open incident** |
 | **Communicate → Notifications** | Notification channels. See [Alerts](/docs/app/communicate/alerts) |
-| **Respond → [Incidents](/docs/app/investigate/incidents)** | Incident queue and workspaces. Run investigations, review hypotheses and similar incidents, draft post-mortems |
+| **Respond → [Incidents](/docs/app/investigate/incidents)** | Incident queue and workspaces: investigations, hypotheses, similar incidents, post-mortems |
 | **Respond → [Copilot](/docs/app/investigate/copilot)** | Ask questions about symptoms, logs, or active incident evidence |
 | **Respond → Services** | Service metadata, owners, repositories, and tiers |
 | **Settings → Organization → [Integrations](/docs/app/investigate/connectors)** | Read-only connectors to external tools |
 
-## Get Started
+## Get started
 
 <Steps>
 <Step>
@@ -103,7 +103,7 @@ Select **Open incident** on an alert signal, or choose **Respond → Incidents �
 
 ### Run the investigation
 
-Follow the [incident guide](/docs/app/investigate/incidents) to investigate, save findings, and resolve.
+Follow the [incident guide](/docs/app/investigate/incidents).
 
 </Step>
 <Step>

@@ -4,236 +4,166 @@ description: System-wide administration for self-hosted deployments
 icon: ShieldCheck
 ---
 
-Super Admin provides platform-level management for self-hosted deployments, including user management, organization oversight, scheduler control, and system health monitoring.
+Super Admin provides platform-level management for self-hosted deployments: users, organizations, queues, locations and system health.
 
 ## Enable Super Admin
 
-There are two ways to enable super admin access:
-
-<Tabs items={['Manual Script', 'Environment Variable', 'Revoking Access']}>
-<Tab value="Manual Script">
-
-### Recommended
-
-Run the bootstrap script inside the app container:
+Run the bootstrap script inside the app container with the admin's email. The user must have signed up first.
 
 ```bash
 docker compose exec app node scripts/bootstrap-admin.js admin@yourdomain.com
 ```
 
-<Callout type="info">
-Without an argument the script reads `SUPER_ADMIN_EMAIL`. The app container also runs it on every start, so a `SUPER_ADMIN_EMAIL` passed into the container promotes that user at startup once they have signed up.
-</Callout>
-
-</Tab>
-<Tab value="Environment Variable">
-
-Set `SUPER_ADMIN_EMAIL` and run the bootstrap script:
+Without an argument the script reads `SUPER_ADMIN_EMAIL`. The app container also runs it on every start, so a `SUPER_ADMIN_EMAIL` passed into the container promotes that user at startup. Pass the variable into the container; setting it only in your host shell or `.env` does not forward it through the shipped Compose files.
 
 ```bash
 docker compose exec -e SUPER_ADMIN_EMAIL=admin@yourdomain.com \
   app node scripts/bootstrap-admin.js
 ```
 
-Pass the variable into the container as shown. Setting it only in your host shell or `.env` does not forward it through the shipped Compose files.
-
-</Tab>
-<Tab value="Revoking Access">
-
-To revoke the system-level super admin role:
+To revoke the role:
 
 ```bash
 docker compose exec app node scripts/revoke-admin.js admin@yourdomain.com
 ```
 
-This changes only the user's system role back to `project_viewer` and invalidates active sessions for that user. Organization memberships and project assignments are managed separately.
-
-</Tab>
-</Tabs>
+Revoking sets the user's system role back to `project_viewer` and invalidates their sessions. Organization memberships and project assignments are managed separately.
 
 ## Overview
 
-The Super Admin dashboard provides a system-wide view of all organizations, users, and queue status.
+The dashboard shows all organizations, users and queue status.
 
 ![Super Admin Overview](/screenshots/super-admin-overview.png)
 
 ## Organizations
 
-View and manage all organizations in the system. See member counts, project counts, and organization status.
+View and manage every organization, with member counts, project counts and status.
 
 ![Organizations](/screenshots/super-admin-organizations.png)
 
 ## Deletions
 
-The **Deletions** tab lists organizations that are pending deletion, then the background purges still in progress.
+The **Deletions** tab lists organizations pending deletion, then background purges in progress.
 
-- **Purge now** skips the grace window for one organization, for example a legal erasure request. Enter a reason of at least 10 characters and type the organization ID. The purge is audited with your reason and cannot be undone. Organization owners cannot do this.
-- The purge table below it shows purges of organizations, projects, jobs and monitors that are queued, running or failed, with their phase and last error. **Retry** gives a failed job a fresh set of attempts.
+- **Purge now** skips the grace window for one organization, such as for a legal erasure request. Enter a reason of at least 10 characters and type the organization ID. The purge is audited with your reason and cannot be undone. Organization owners cannot do this.
+- The purge table shows purges of organizations, projects, jobs and monitors that are queued, running or failed, with phase and last error. **Retry** gives a failed job a fresh set of attempts.
 
 ## Users
 
-Manage all users system-wide. View user details, organization memberships, and account status.
+View all users with their organization memberships and account status.
 
 ![Users](/screenshots/super-admin-users.png)
 
 ## Queues
 
-Monitor queues for test execution, monitoring, and background jobs. View queue health, pending jobs, and processing status. Queue controls can retry, promote, or delete jobs; use them carefully because these actions affect live work. Admitted jobs retained for a disabled location remain visible and are labelled disabled.
+Monitor queues for test execution, monitoring and background jobs: health, pending jobs and processing status. Queue controls can retry, promote or delete jobs and affect live work, so use them carefully. Admitted jobs retained for a disabled location stay visible and are labelled disabled.
 
 ![BullMQ Queues](/screenshots/super-admin-bullmq-queues.png)
 
 ## Locations
 
-Manage worker execution entries for self-hosted monitoring and performance testing. Connect a worker, then enable its entry for projects.
-
-### Adding a Location
+Locations are worker execution entries for self-hosted monitoring and performance testing. Connect a worker, then enable its entry for projects.
 
 <Steps>
 <Step>
-Navigate to **Super Admin → Locations** tab
+Open **Super Admin → Locations** and select **Add Location**.
 </Step>
 <Step>
-Click **Add Location**
-</Step>
-<Step>
-Fill in the fields described below and click **Create Location**
+Fill in the fields below and select **Create Location**.
 </Step>
 </Steps>
 
 | Field | Required | Description |
 |-------|----------|-------------|
-| **Code** | Yes | Identifier that must match the worker's `WORKER_LOCATION` (e.g. `worker-pool`). Lowercase, 2–50 characters, letters/digits/hyphens only, no consecutive hyphens. Reserved codes (`global`, `all`, `default`, `none`, `any`, `local`, `job-scheduler`, `scheduler`) are blocked. |
-| **Name** | Yes | Human-readable display name (e.g. "Worker Pool"). |
-| **Region** | No | Optional descriptive label for administrators. |
-| **Flag** | No | Emoji flag for the UI (e.g. 🇺🇸). |
-| **Latitude**, **Longitude** | No | Coordinates for map visualization. |
-| **Default location** | No | Switch to set it as the default K6 job execution location. |
-| **Sort Order** | No | Position in location lists. |
-| **Browser execution (Playwright)** | No | Allow synthetic (Playwright) monitors to run in this location. New locations created in the dashboard start with this off. |
-| **Performance tests (k6)** | No | Allow k6 tests pinned to this location. New locations created in the dashboard start with this off. |
-| **Enabled** | No | Make the location available for new checks and runs. On by default; turn it off to stage a region (its name, coordinates and capabilities) before anyone can select it. A disabled location cannot be the default. |
+| **Code** | Yes | Must match the worker's `WORKER_LOCATION` (such as `worker-pool`). Lowercase, 2–50 characters, letters, digits and hyphens only, no consecutive hyphens. Reserved codes (`global`, `all`, `default`, `none`, `any`, `local`, `job-scheduler`, `scheduler`) are blocked |
+| **Name** | Yes | Display name, such as "Worker Pool" |
+| **Region** | No | Descriptive label for administrators |
+| **Flag** | No | Emoji flag for the UI |
+| **Latitude**, **Longitude** | No | Coordinates for map visualization |
+| **Default location** | No | Makes it the default k6 job execution location |
+| **Sort Order** | No | Position in location lists |
+| **Browser execution (Playwright)** | No | Allows synthetic (Playwright) monitors in this location. Off for new locations created in the dashboard |
+| **Performance tests (k6)** | No | Allows k6 tests pinned to this location. Off for new locations created in the dashboard |
+| **Enabled** | No | Makes the location available for new checks and runs. On by default; turn it off to stage a region before anyone can select it. A disabled location cannot be the default |
 
 <Accordions>
 <Accordion title="Workload capabilities" id="workload-capabilities">
 
-An enabled location always runs HTTP, SSL, ping, port, and MCP monitors. Browser (Playwright) and k6 workloads are opt-in per location:
+An enabled location always runs HTTP, SSL, ping, port and MCP monitors. Browser (Playwright) and k6 workloads are opt-in per location:
 
-- **Synthetic monitors** need **Browser execution**. In the monitor form, locations without it stay visible but disabled ("Browser checks are not available in this region."). A monitor that still has such a location selected cannot be saved until you deselect it.
+- **Synthetic monitors** need **Browser execution**. In the monitor form, locations without it stay visible but disabled ("Browser checks are not available in this region."), and a monitor with such a location selected cannot be saved until you deselect it.
 - **k6 tests** need **Performance tests**. `global` runs on any eligible k6 worker.
 - **Playwright tests and CI jobs** have no location of their own. A project is rejected only when every location it may use is probe-only.
-- Turning a capability off stops new executions shortly afterwards. Running executions finish, and results already produced are kept. Drain queued work first for a routine change: turning **Performance tests** off also stops that location's k6 workers, so k6 runs already queued there wait until it is turned back on.
-- Turning a capability on takes effect without an application release. For k6, the worker must already include `k6` in `WORKER_QUEUES`; otherwise, add that queue role and restart the worker before enabling **Performance tests**. An eligible consumer starts after the worker refreshes its location configuration.
+- Turning a capability off stops new executions shortly afterwards. Running executions finish and results are kept. Drain queued work first for a routine change: turning **Performance tests** off also stops that location's k6 workers, so k6 runs already queued there wait until it is turned back on.
+- Turning a capability on takes effect without a release. For k6, the worker must already include `k6` in `WORKER_QUEUES`; otherwise add that queue role and restart the worker before enabling **Performance tests**. An eligible consumer starts after the worker refreshes its location configuration.
 
-Which queues a worker consumes is a separate setting, `WORKER_QUEUES`; see [Multi-Server Deployment](/docs/app/deployment/multi-server#choosing-what-each-worker-runs).
+`WORKER_QUEUES` sets which queues a worker consumes; see [Multi-server deployment](/docs/app/deployment/multi-server#choosing-what-each-worker-runs).
 
 </Accordion>
 </Accordions>
 
-### Location Status
-
 | Status | Meaning |
 |--------|---------|
-| **Active** | Location is enabled and has workers connected (heartbeat detected) |
-| **Offline** | Location is enabled but no workers are currently connected |
-| **Disabled** | Location is unavailable for new checks and runs |
+| **Active** | Enabled, with workers connected (heartbeat detected) |
+| **Offline** | Enabled, but no workers connected |
+| **Disabled** | Unavailable for new checks and runs |
 
-<Callout type="info">
-A location becomes **Active** when it is enabled and a matching worker connects. Deploy a worker with the matching `WORKER_LOCATION` to bring a location online; until the location is created, the worker appears in the **Unregistered worker locations** alert, which confirms it is reaching Redis. A disabled location never shows as Active, and its workers do not consume its queues. See [Self-Hosted Deployment](/docs/app/deployment/self-hosted) for setup instructions.
-</Callout>
+A location becomes **Active** when it is enabled and a matching worker connects. Deploy a worker with the matching `WORKER_LOCATION` to bring it online; until the location is created, the worker appears in the **Unregistered worker locations** alert, which confirms it is reaching Redis. A disabled location never shows as Active and its workers do not consume its queues. See [Self-hosted deployment](/docs/app/deployment/self-hosted) for setup.
 
-### Default Location
+Only one location can be the default for k6 **job** executions; choosing a new default clears the previous one. Organization admins can restrict which locations a project may use.
 
-The default location determines where K6 **job** executions run. Only one location can be default at a time — toggling a new default automatically clears the previous one.
+## User management
 
-### Project Restrictions
+- **Impersonate**: log in as any user for troubleshooting.
+- **Ban User** / **Unban User**: suspend an account with a reason. Banned users cannot sign in.
+- **Delete User**: permanently remove an account. The dialog lists the organizations deleted with it (those where the user is the only member); type the user's email to confirm.
 
-Organization admins can restrict which locations a project is allowed to use.
-
-## User Management
-
-Manage all users across the platform:
-
-- **Impersonate** — Log in as any user for troubleshooting
-- **Ban User / Unban User** — Suspend accounts with a reason (banned users cannot log in)
-- **Delete User** — Permanently remove an account. The dialog lists the organizations that will be deleted with it (those where the user is the only member); type the user's email to confirm
-
-<Tabs items={['Impersonation', 'Banning Users']}>
-<Tab value="Impersonation">
+### Impersonate a user
 
 <Steps>
 <Step>
-
-Go to **Super Admin → Users** and open the user's menu (**⋮**).
-
+Open **Super Admin → Users** and the user's menu (**⋮**).
 </Step>
 <Step>
-
-Select **Impersonate**. If the user belongs to several organizations, choose which one.
-
+Select **Impersonate**. If the user belongs to several organizations, choose one.
 </Step>
 <Step>
-
 Select **Impersonate User** to confirm.
-
 </Step>
 </Steps>
 
 ![Impersonate User Dialog](/screenshots/super-admin-impersonate-user.png)
 
-**Using Impersonation:**
-- a banner at the bottom shows "Impersonating" with the user's email
-- Click **Stop** to return to your admin session
-- You see the platform exactly as the user would
-- Checkout, the billing portal, billing settings, CLI tokens, organization deletion and revealing secret values are blocked while impersonating (secret names and metadata still list; the refused reveal is audited)
+A banner at the bottom shows "Impersonating" with the user's email; select **Stop** to return to your admin session. You see the platform as the user does. Checkout, the billing portal, billing settings, CLI tokens, organization deletion and revealing secret values are blocked while impersonating (secret names and metadata still list; the refused reveal is audited).
 
 ![Impersonation Banner](/screenshots/super-admin-impersonation-banner.png)
 
 <Callout type="warn">
-**Security Notice**: All impersonation sessions are logged for audit purposes.
+All impersonation sessions are logged for audit.
 </Callout>
 
-</Tab>
-<Tab value="Banning Users">
-
-To suspend a user account:
+### Ban a user
 
 <Steps>
 <Step>
-
-Go to **Super Admin → Users** and open the user's menu (**⋮**).
-
+Open **Super Admin → Users** and the user's menu (**⋮**).
 </Step>
 <Step>
-
 Select **Ban User**.
-
 </Step>
 <Step>
-
 Enter a reason (minimum 20 characters), then select **Ban User** to confirm.
-
 </Step>
 </Steps>
 
 ![Ban User Dialog](/screenshots/super-admin-ban-user.png)
 
-<Callout type="warn">
-**Reversible Action**: Banning is reversible. The user will be unable to sign in until unbanned, but all their data is preserved. To unban, select **Unban User** from the same menu.
-</Callout>
+Banning is reversible: the user cannot sign in until unbanned, and their data is preserved. To unban, select **Unban User** from the same menu.
 
-Banned users are refused when they try to sign in.
-
-</Tab>
-</Tabs>
-
-<Accordions>
-<Accordion title="Security controls" id="security-controls">
+## Security controls
 
 | Control | Details |
 |---|---|
-| **Single Admin** | Only one super admin email is supported per deployment |
-| **Validation** | Multiple emails in `SUPER_ADMIN_EMAIL` will cause a startup error |
-| **Audit Trail** | All super admin actions are logged with timestamps |
-
-</Accordion>
-</Accordions>
+| **Single admin** | One super admin email per deployment |
+| **Validation** | Multiple emails in `SUPER_ADMIN_EMAIL` cause a startup error |
+| **Audit trail** | All super admin actions are logged with timestamps |
