@@ -258,20 +258,20 @@ function warningKindOf(payload: NotificationPayload): string | undefined {
 const sentenceCase = (v: string) =>
   v.charAt(0).toUpperCase() + v.slice(1).toLowerCase();
 
-const TYPE_LABELS: Record<string, string> = {
-  http_request: 'HTTP request',
-  ai_endpoint: 'AI endpoint',
-  mcp_server: 'MCP server',
-  ping_host: 'Ping',
-  port_check: 'Port',
-  synthetic_test: 'Synthetic',
-  k6: 'Performance (k6)',
-  playwright: 'Playwright',
-};
+const TYPE_LABELS = new Map<string, string>([
+  ['http_request', 'HTTP request'],
+  ['ai_endpoint', 'AI endpoint'],
+  ['mcp_server', 'MCP server'],
+  ['ping_host', 'Ping'],
+  ['port_check', 'Port'],
+  ['synthetic_test', 'Synthetic'],
+  ['k6', 'Performance (k6)'],
+  ['playwright', 'Playwright'],
+]);
 
 /** Alert "Type" row: known types by name, others sentence-cased (all underscores replaced). */
 export const formatAlertType = (type: string) =>
-  TYPE_LABELS[type] ?? sentenceCase(type.replace(/_/g, ' '));
+  TYPE_LABELS.get(type) ?? sentenceCase(type.replace(/_/g, ' '));
 
 /**
  * Email detail rows for monitor and job alerts alike: the shared formatted

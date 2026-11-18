@@ -1919,6 +1919,7 @@ describe('NotificationService', () => {
       ['mcp_server', 'MCP server'],
       ['website', 'Website'],
       ['some_new_kind', 'Some new kind'],
+      ['constructor', 'Constructor'],
     ])('labels alert type %s as %s', (type, label) => {
       expect(formatAlertType(type)).toBe(label);
     });
