@@ -103,6 +103,8 @@ Save, validate, then run one known-result query and one no-result query before r
 </Step>
 </Steps>
 
+Connectors belong to one project. The Integrations tab names the project it shows, with a **Switch project** button. To check what AI SRE can see, choose **Preview data** in a connector's row menu. The query is filled in for the selected service and the window starts at 1 hour. Results list the time, type and message; select a row for the full text, source link and hash. If nothing matches, you can widen the window to 24 hours when the connector allows it. A connector that failed validation shows the reason under its status.
+
 <Callout type="info">
 Use the smallest service scope and query time window that answer your question. If a search returns no evidence, check the service scope, provider permissions, and time range.
 </Callout>

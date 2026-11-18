@@ -6,7 +6,7 @@ import { toast } from "sonner";
 
 import { setProjectSetupData, updateProjectSetup } from "@/hooks/use-project-setup";
 import type { SetupDraft } from "@/lib/setup/draft-schema";
-import type { SetupStepKey } from "@/lib/setup/persona";
+import { SETUP_STEP_KEYS, type SetupStepKey } from "@/lib/setup/persona";
 import type { SetupLockInfo, SetupStateDto, SetupUpdateRequest } from "@/lib/setup/types";
 
 type Tracked = {
@@ -19,6 +19,10 @@ type Tracked = {
 type TrackedKey = keyof Tracked;
 
 export type SaveState = "idle" | "saving" | "saved" | "error";
+
+type StepMark = "completed" | "skipped" | "none";
+const markOf = (key: SetupStepKey, completed: readonly SetupStepKey[] | undefined, skipped: readonly SetupStepKey[]): StepMark =>
+  skipped.includes(key) ? "skipped" : completed?.includes(key) ? "completed" : "none";
 
 const fromState = (s: SetupStateDto): Tracked => ({
   draft: s.draft,
@@ -66,6 +70,8 @@ export function useSetupSession(projectId: string, initial: SetupStateDto, lockT
   const latest = useRef(state);
   const updatedAt = useRef(initial.updatedAt);
   const dirty = useRef(new Set<TrackedKey>());
+  /** Step marks the server last held (or accepted), to tell which ones the user changed locally. */
+  const baseMarks = useRef({ completed: initial.draft.completed, skipped: initial.skipped });
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const chain = useRef<Promise<void>>(Promise.resolve());
   const [saveState, setSaveState] = useState<SaveState>("idle");
@@ -88,10 +94,12 @@ export function useSetupSession(projectId: string, initial: SetupStateDto, lockT
         dirty.current.clear();
         const body: SetupUpdateRequest = { expectedUpdatedAt: updatedAt.current, lockToken };
         for (const key of keys) (body as Record<string, unknown>)[key] = latest.current[key];
+        const sentMarks = { completed: latest.current.draft.completed, skipped: latest.current.skipped };
         setSaveState("saving");
         try {
           const res = await putWithRateLimitRetry(projectId, body);
           updatedAt.current = res.state.updatedAt;
+          baseMarks.current = sentMarks;
           lastSaveOk.current = true;
           setSaveError(null);
           setSaveState("saved");
@@ -113,23 +121,40 @@ export function useSetupSession(projectId: string, initial: SetupStateDto, lockT
           // Ticked requirements are the user's own edits: keep them over the server's copy (it only added suggestions).
           const localReqs = latest.current.draft.tests?.requirements ?? [];
           const keepReqs = localReqs.length > 0 && JSON.stringify(localReqs) !== JSON.stringify(server.draft.tests?.requirements ?? []);
+          // Per step: the user's own change wins over the server's copy, otherwise the server's; never both ticked and skipped.
+          const mark = (key: SetupStepKey) => {
+            const mine = markOf(key, latest.current.draft.completed, latest.current.skipped);
+            return mine !== markOf(key, baseMarks.current.completed, baseMarks.current.skipped)
+              ? mine
+              : markOf(key, server.draft.completed, server.skipped);
+          };
+          const marks = SETUP_STEP_KEYS.map((key) => [key, mark(key)] as const);
+          const mergedCompleted = marks.filter(([, m]) => m === "completed").map(([key]) => key);
+          const mergedSkipped = marks.filter(([, m]) => m === "skipped").map(([key]) => key);
+          const sameSet = (a: readonly string[], b: readonly string[]) => a.length === b.length && a.every((x) => b.includes(x));
           const merged = {
             ...server.draft,
             created: { ...server.draft.created, ...local },
+            // Neither side ever stored ticks (legacy draft): stay unset so the wizard keeps its fallback.
+            completed: server.draft.completed === undefined && latest.current.draft.completed === undefined ? undefined : mergedCompleted,
             ...(keepReqs ? { tests: { ...server.draft.tests, requirements: localReqs } } : {}),
           };
           // A server-side write of what this tab already holds (AI suggestions) is not "somewhere else".
           const same = keys.every((k) => k === "draft") && JSON.stringify({ ...server.draft, created: undefined }) === JSON.stringify({ ...latest.current.draft, created: undefined });
-          latest.current = fromState({ ...server, draft: merged });
+          latest.current = fromState({ ...server, draft: merged, skipped: mergedSkipped });
+          baseMarks.current = { completed: server.draft.completed, skipped: server.skipped };
           updatedAt.current = server.updatedAt;
           setState(latest.current);
           if (!same) toast.error("Setup was changed somewhere else. Your view was reloaded with the saved version.");
-          if (!unsaved && !keepReqs) {
+          const keepCompleted = merged.completed !== undefined && (server.draft.completed === undefined || !sameSet(mergedCompleted, server.draft.completed));
+          const keepSkipped = !sameSet(mergedSkipped, server.skipped);
+          if (!unsaved && !keepReqs && !keepCompleted && !keepSkipped) {
             lastSaveOk.current = true;
             setSaveState("idle");
             return true;
           }
           dirty.current.add("draft");
+          if (keepSkipped) dirty.current.add("skipped");
         }
       }
       lastSaveOk.current = false;
