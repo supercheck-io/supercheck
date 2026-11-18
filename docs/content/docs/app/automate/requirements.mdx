@@ -4,7 +4,7 @@ description: Track requirements and the tests that cover them
 icon: Target
 ---
 
-Requirements keep testable expectations next to the tests that verify them, so you can see at a glance what is covered, what is failing, and what has no tests yet.
+Requirements keep testable expectations next to the tests that verify them, so you can see what is covered, failing or untested.
 
 <Cards className="grid-cols-1 sm:grid-cols-3">
 <Card icon={<CheckCircle className="text-green-500" />} title="Covered">
@@ -20,7 +20,7 @@ No linked tests, or none have run yet
 
 ![Requirements list with status, priority, and tags](/screenshots/requirements-list.png)
 
-## Requirement Fields
+## Requirement fields
 
 | Field | Required | Details |
 |---|:---:|---|
@@ -30,14 +30,14 @@ No linked tests, or none have run yet
 | **Tags** | No | Group and filter requirements. AI-extracted requirements carry an `ai` tag |
 | **Linked tests** | No | The tests whose results set the coverage status |
 
-## Add a Requirement
+## Add a requirement
 
 <Steps>
 <Step>
 
 ### Open Requirements
 
-Select the project, then open **Requirements** under **Automate** in the sidebar.
+Select the project, then open **Requirements** under **Automate**.
 
 </Step>
 <Step>
@@ -63,7 +63,7 @@ Add the linked tests to a [job](/docs/app/automate/jobs) and run it. Coverage up
 </Step>
 </Steps>
 
-## How Coverage Is Calculated
+## How coverage is calculated
 
 ```mermaid
 flowchart LR
@@ -87,7 +87,7 @@ flowchart LR
 Coverage is per test, using each test's own result from the job run. Running a test in the Playground does not change coverage, and monitors are not linked to requirements.
 </Callout>
 
-## Extract Requirements from a Document
+## Extract requirements from a document
 
 Choose **Upload** in the requirements toolbar, or **Upload Document** on the **Documents** tab, to have AI draft requirements from a PRD or specification.
 
@@ -104,7 +104,7 @@ Review each extracted title, description, and priority before you add it.
 The document is sent to your configured AI provider. Do not upload credentials or documents you are not permitted to share with that provider.
 </Callout>
 
-## Review Coverage
+## Review coverage
 
 | Task | How |
 |---|---|

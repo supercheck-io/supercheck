@@ -1,10 +1,10 @@
 ---
-title: Multi-Server
-description: Add execution workers on separate servers to your self-hosted installation
+title: Multi-server deployment
+description: Add execution workers on separate servers to a self-hosted installation
 icon: Server
 ---
 
-Add execution workers on separate Linux servers to an existing [Self-Hosted](/docs/app/deployment/self-hosted) installation.
+Add execution workers on separate Linux servers to an existing [self-hosted](/docs/app/deployment/self-hosted) installation.
 
 ## Architecture
 
@@ -64,12 +64,12 @@ flowchart TB
 | Requirement | Details |
 |-------------|---------|
 | Main server | A running self-hosted instance and Super Admin access |
-| Each worker server | Ubuntu 22.04+ or Debian 12+ (x86_64 or arm64), 2 vCPU, 4 GB RAM, 10 GB free disk minimum (15 GB recommended), `sudo`, `curl`, `bzip2`, and [Docker Engine with Compose v2.24.4+](https://docs.docker.com/engine/install/) |
-| Network | VPN or other encrypted private link from workers to the main server's PostgreSQL (5432), Redis (6379), and S3 (9000), or the `DB_HOST_PORT`, `REDIS_HOST_PORT` and `RUSTFS_HOST_PORT` values if you moved them |
-| Versions | App, workers, Compose files, and scripts from the same release. Examples use **1.6.0** |
+| Each worker server | Ubuntu 22.04+ or Debian 12+ (x86_64 or arm64), 2 vCPU, 4 GB RAM, 10 GB free disk (15 GB recommended), `sudo`, `curl`, `bzip2` and [Docker Engine with Compose v2.24.4+](https://docs.docker.com/engine/install/) |
+| Network | VPN or other encrypted private link from workers to the main server's PostgreSQL (5432), Redis (6379) and S3 (9000), or your `DB_HOST_PORT`, `REDIS_HOST_PORT` and `RUSTFS_HOST_PORT` if moved |
+| Versions | App, workers, Compose files and scripts from the same release. Examples use **1.6.0** |
 
 <Callout type="warn">
-Never expose PostgreSQL, Redis, or S3 publicly. Docker-published ports bypass `ufw`, so a host firewall rule does not protect them: bind them to the private address (below) and restrict 5432, 6379, and 9000 (or your moved ports) to the worker IPs in your cloud firewall or in the `DOCKER-USER` iptables chain. Keep the k3s API (6443) closed to the internet; each worker uses its own local k3s, and the main server's worker container reaches 6443 over the local Docker network. macOS, Windows, WSL2, and Docker Desktop are not supported for workers.
+Never expose PostgreSQL, Redis or S3 publicly. Docker-published ports bypass `ufw`, so bind them to the private address (below) and restrict 5432, 6379 and 9000 (or your moved ports) to the worker IPs in your cloud firewall or the `DOCKER-USER` iptables chain. Keep the k3s API (6443) closed to the internet; each worker uses its own local k3s, and the main server's worker container reaches 6443 over the local Docker network. macOS, Windows, WSL2 and Docker Desktop are not supported for workers.
 </Callout>
 
 ## Set up
@@ -100,16 +100,16 @@ sequenceDiagram
 
 ### Configure the main server
 
-In [Super Admin](/docs/app/admin/super-admin#locations), add and enable one execution entry per worker, such as `worker-main` and `worker-extra`. Each worker's `WORKER_LOCATION` must match its entry's code.
+In [Super Admin](/docs/app/admin/super-admin#locations), add and enable one entry per worker, such as `worker-main` and `worker-extra`. Each worker's `WORKER_LOCATION` must match its entry's code.
 
-Set the main server's `.env`. `RUNNING_CAPACITY` is the total number of workers across all servers (2 in this example); the app admits at most that many concurrent runs:
+In the main server's `.env`, set `RUNNING_CAPACITY` to the total number of workers across all servers (2 here); the app admits at most that many concurrent runs:
 
 ```dotenv
 WORKER_LOCATION=worker-main
 RUNNING_CAPACITY=2
 ```
 
-In the same `.env`, publish PostgreSQL, Redis, and RustFS on the server's **private VPN address** instead of `127.0.0.1`. Do not edit `docker-compose.yml`: upgrades replace it.
+In the same `.env`, publish PostgreSQL, Redis and RustFS on the server's **private VPN address** instead of `127.0.0.1`. Do not edit `docker-compose.yml`; upgrades replace it.
 
 ```dotenv
 DB_BIND_ADDR=10.0.0.10
@@ -141,7 +141,7 @@ sudo bash setup-k3s.sh
 
 ### Start the worker
 
-Create `.env` in the same directory. Use the main server's **private** address, the same database and storage, and the credentials from the main server's `.env` (`DB_PASSWORD`, `REDIS_PASSWORD`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`):
+Create `.env` in the same directory with the main server's **private** address and the credentials from its `.env` (`DB_PASSWORD`, `REDIS_PASSWORD`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`):
 
 ```dotenv
 WORKER_LOCATION=worker-extra
@@ -172,19 +172,17 @@ sudo docker compose -f docker-compose-worker.yml up -d --wait --wait-timeout 300
 
 ### Verify execution
 
-Confirm the execution entry shows **Active**, then run a monitor or k6 test against it and check the result.
+Confirm the entry shows **Active**, then run a monitor or k6 test against it. Playwright tests use a shared queue and run on any worker.
 
 </Step>
 </Steps>
-
-Playwright tests use a shared queue, so they run on any worker.
 
 ## Optional worker settings
 
 <Accordions>
 <Accordion title="Choosing what each worker runs" id="choosing-what-each-worker-runs">
 
-By default a worker consumes every queue, which suits most setups. To make a server lightweight (for example, monitoring only), set `WORKER_QUEUES` in that worker's `.env`:
+A worker consumes every queue by default. For a lighter server (such as monitoring only), set `WORKER_QUEUES` in its `.env`:
 
 | Token | Queue consumed |
 |-------|----------------|
@@ -197,14 +195,14 @@ By default a worker consumes every queue, which suits most setups. To make a ser
 WORKER_QUEUES=monitor
 ```
 
-An unknown token stops the worker at startup. Which workloads users may run in a location is set in Super Admin ([Workload Capabilities](/docs/app/admin/super-admin#workload-capabilities)).
+An unknown token stops the worker at startup. Which workloads a location allows is set in Super Admin ([workload capabilities](/docs/app/admin/super-admin#workload-capabilities)).
 
 </Accordion>
 </Accordions>
 
 ## Upgrade workers
 
-After [upgrading the main server](/docs/app/deployment/self-hosted#upgrade), upgrade each worker server to the same release. In `~/supercheck-worker`, download that release's `setup-k3s.sh` and `docker-compose-worker.yml` as in [Prepare each worker server](#prepare-each-worker-server), set `SUPERCHECK_VERSION` in `.env`, then:
+After [upgrading the main server](/docs/app/deployment/self-hosted#upgrade), upgrade each worker to the same release. In `~/supercheck-worker`, download that release's `setup-k3s.sh` and `docker-compose-worker.yml` as in [Prepare each worker server](#prepare-each-worker-server), set `SUPERCHECK_VERSION` in `.env`, then:
 
 ```bash
 sudo bash setup-k3s.sh
@@ -216,8 +214,6 @@ sudo docker compose -f docker-compose-worker.yml up -d --wait --wait-timeout 300
 ```
 
 Workers keep no data, so they need no backup; keep their `.env` private.
-
-## Missing-region detection
 
 <Accordions>
 <Accordion title="Missing-region detection (optional)" id="missing-region-detection-optional">

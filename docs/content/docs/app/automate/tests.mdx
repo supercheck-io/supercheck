@@ -4,43 +4,13 @@ description: Create and manage test scripts
 icon: Code
 ---
 
-Tests are reusable scripts that validate your application. Create browser, API, database, custom, agent, or performance tests.
+Tests are reusable scripts that validate your application. Create [browser](/docs/app/automate/browser-test), [API](/docs/app/automate/api-test), [database](/docs/app/automate/database-test), [custom](/docs/app/automate/custom-test), [agent](/docs/app/automate/agent-test) or [performance](/docs/app/automate/performance-test) tests.
 
 ![Tests List](/screenshots/tests-list.png)
 
-The list shows the newest 200 tests; older tests are not loaded and search and filters only cover the loaded ones. Filter by type, priority, or tag, and use the **Created by** column to see who created each test.
+The list shows the newest 200 tests. Search and filters only cover the loaded tests. Filter by type, priority or tag, and use the **Created by** column to see who created each test.
 
-## Test types
-
-<Cards>
-<Card icon={<Chrome className="text-sky-500" />} title="Browser Test">
-Playwright-based UI testing for user flows
-</Card>
-
-<Card icon={<ArrowLeftRight className="text-teal-500" />} title="API Test">
-HTTP and GraphQL endpoint validation
-</Card>
-
-<Card icon={<Database className="text-cyan-500" />} title="Database Test">
-SQL queries and data validation
-</Card>
-
-<Card icon={<SquareFunction className="text-indigo-500" />} title="Custom Test">
-Node.js scripts for any scenario
-</Card>
-
-<Card icon={<Bot className="text-fuchsia-500" />} title="Agent Test">
-Repeated calls to your AI agent with a pass rate
-</Card>
-
-<Card icon={<TrendingUp className="text-violet-500" />} title="Performance Test">
-k6 load testing with configurable virtual users and thresholds
-</Card>
-</Cards>
-
-## Create Test
-
-On Supercheck Cloud, creating tests and saving changes from the Playground requires an active organization subscription and a valid billing customer. These billing checks do not apply to self-hosted installations.
+## Create a test
 
 <Steps>
 <Step>
@@ -53,11 +23,15 @@ Write a script in the [Playground](/docs/app/automate/playground), pick one from
 Replace example URLs and data, then select **Run**.
 </Step>
 <Step>
-Review the result and select **Save**.
+Review the result, logs, screenshots and traces. If it fails, update the script and run it again. Select **Save**.
 </Step>
 </Steps>
 
-After a run completes, review its result and available logs, screenshots, and traces. If it fails, update the script and run it again. You can save a draft before it passes; validate it before adding it to a job or synthetic monitor.
+You can save a draft before it passes. Validate it before adding it to a job or synthetic monitor.
+
+<Callout>
+On Supercheck Cloud, creating tests and saving changes from the Playground requires an active organization subscription and a valid billing customer. Self-hosted installations skip these checks.
+</Callout>
 
 <p className="text-sm md:hidden">Scroll horizontally to view the full diagram.</p>
 
@@ -89,132 +63,34 @@ sequenceDiagram
 </div>
 </div>
 
-## AI Features
+## AI features
 
 | Feature | What it does |
 |---|---|
 | **AI Create** | Generates tests from plain English descriptions (beta for browser tests) |
-| **AI Fix** | Suggests changes for a failing test; you review before applying |
+| **AI Fix** | Suggests changes for a failing test. You review before applying |
 | **Templates** | Pre-built scripts for common scenarios |
 
-<Callout type="info">
-For browser tests, consider recording with the [Supercheck Recorder Extension](/docs/recorder) or [Playwright Codegen](https://playwright.dev/docs/codegen) first, then use AI to enhance.
+<Callout>
+For browser tests, record with the [Supercheck Recorder Extension](/docs/recorder) or [Playwright Codegen](https://playwright.dev/docs/codegen) first, then use AI to enhance. See [Playground](/docs/app/automate/playground) for details.
 </Callout>
 
-See [Playground](/docs/app/automate/playground) for details.
+## Test examples
 
-## Test Examples
-
-<Tabs items={['Browser Test', 'API Test', 'Performance Test']}>
-<Tab value="Browser Test">
-
-```typescript
-import { expect, test } from '@playwright/test';
-
-const APP_URL = 'https://demo.playwright.dev/todomvc';
-
-test.describe('UI smoke test', () => {
-  test('home page renders primary UI', async ({ page }) => {
-    // Navigate to the application
-    await page.goto(APP_URL);
-
-    // Verify page title and input visibility
-    await expect(page).toHaveTitle(/TodoMVC/);
-    await expect(page.getByPlaceholder('What needs to be done?')).toBeVisible();
-
-    // Perform interaction: Add a new task
-    await page.getByPlaceholder('What needs to be done?').fill('Smoke task');
-    await page.keyboard.press('Enter');
-    
-    // Verify the task was added to the list
-    await expect(page.getByRole('listitem').first()).toContainText('Smoke task');
-  });
-});
-```
-
-📚 [Playwright Writing Tests](https://playwright.dev/docs/writing-tests) | [Locators Guide](https://playwright.dev/docs/locators)
-
-</Tab>
-<Tab value="API Test">
-
-```typescript
-import { expect, test } from '@playwright/test';
-
-const API_URL = 'https://jsonplaceholder.typicode.com';
-
-test.describe('API health check', () => {
-  test('health endpoint responds with expected payload', async ({ request }) => {
-    // Send GET request
-    const response = await request.get(API_URL + '/posts/1');
-
-    // Basic status checks
-    expect(response.ok()).toBeTruthy();
-    expect(response.status()).toBe(200);
-    expect(response.headers()['content-type']).toContain('application/json');
-
-    // Validate JSON structure
-    const body = await response.json();
-    expect(body).toMatchObject({ id: 1 });
-    expect(typeof body.title).toBe('string');
-  });
-});
-```
-
-📚 [Playwright API Testing](https://playwright.dev/docs/api-testing)
-
-</Tab>
-<Tab value="Performance Test">
-
-```javascript
-import http from 'k6/http';
-import { check, sleep } from 'k6';
-
-export const options = {
-  vus: 3,           // 3 concurrent users
-  duration: '30s',  // Run for 30 seconds
-  thresholds: {
-    http_req_failed: ['rate<0.01'],      // Error rate < 1%
-    http_req_duration: ['p(95)<800'],    // 95% of requests < 800ms
-  },
-};
-
-export default function () {
-  const baseUrl = 'https://test-api.k6.io';
-  const response = http.get(baseUrl + '/public/crocodiles/1/');
-
-  // Validate response
-  check(response, {
-    'status is 200': (res) => res.status === 200,
-    'body is not empty': (res) => res.body && res.body.length > 0,
-  });
-
-  sleep(1); // Pause between requests
-}
-```
-
-📚 [k6 Documentation](https://grafana.com/docs/k6/latest/) | [k6 Thresholds](https://grafana.com/docs/k6/latest/using-k6/thresholds/)
-
-</Tab>
-</Tabs>
+Each test type page has a working example: [browser](/docs/app/automate/browser-test#example), [API](/docs/app/automate/api-test#example) and [performance](/docs/app/automate/performance-test#example-script).
 
 ## Tags
 
-Color-coded, project-scoped tags organize and filter tests.
+Color-coded, project-scoped tags organize and filter tests. Create a custom tag with a color, filter by tag in the list, and select several tests to apply or remove tags in bulk.
 
-| Action | How |
-|---|---|
-| **Create** | Add a custom tag with a color |
-| **Filter** | Pick tags in the list view |
-| **Bulk apply or remove** | Select several tests |
-
-## Execution Limits
+## Execution limits
 
 | Test type | Maximum runtime per execution |
 |---|---|
-| **Playwright** | **5 minutes**. Tests exceeding this limit are automatically terminated |
-| **K6 Performance** | **60 minutes**, to accommodate load testing scenarios |
+| Playwright | 5 minutes. Longer tests are terminated |
+| k6 performance | 60 minutes |
 
-## Next steps
+## Related
 
 <Cards>
 <Card title="Jobs" href="/docs/app/automate/jobs" description="Group tests, schedule them, and trigger from CI/CD" />

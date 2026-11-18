@@ -4,13 +4,13 @@ description: Interactive test editor with AI assistance
 icon: FlaskConical
 ---
 
-Write, run, and debug test scripts in the Playground. Review AI suggestions before applying them.
+Write, run and debug test scripts in the Playground, with AI suggestions you review before applying.
 
 ![Playground Editor](/screenshots/playground-editor.png)
 
-## Editor and Runs
+## Editor and runs
 
-The editor is Monaco with TypeScript/JavaScript highlighting, Playwright IntelliSense, live syntax checks, auto-formatting, and `getVariable()` / `getSecret()` for project configuration. Check a script here before adding it to a job or monitor.
+The editor is Monaco with TypeScript and JavaScript highlighting, Playwright IntelliSense, live syntax checks and auto-formatting. Check a script here before adding it to a job or monitor.
 
 ```mermaid
 sequenceDiagram
@@ -34,19 +34,19 @@ sequenceDiagram
     end
 ```
 
-Use **Cancel** to stop a running test. You can save a draft at any time, even while it is failing; run and validate it before relying on it in a job or monitor.
+Use **Cancel** to stop a running test. You can save a draft at any time, even a failing one.
 
 ## AI Create
 
-Describe the behavior you want to test. AI Create suggests a script for you to review, edit, and run.
+Describe the behavior to test and AI Create suggests a script to review, edit and run. Check the target URL, selectors, credentials, waits and assertions before relying on it.
 
 <Callout type="warn">
-**Beta Feature**: AI-generated browser tests may require refinement. For best results, **record your test first** using the [Supercheck Recorder Extension](/docs/recorder) or Playwright's codegen, then use AI Create to enhance or modify it. Review all generated code before running.
+AI Create for browser tests is in beta. For best results, **record your test first** with the [Supercheck Recorder Extension](/docs/recorder) or Playwright codegen, then use AI Create to enhance it.
 </Callout>
 
 ![AI Create Prompt](/screenshots/ai-create-prompt.png)
 
-### How to Use AI Create
+### Use AI Create
 
 <Steps>
 <Step>
@@ -81,19 +81,14 @@ Select **Apply to Editor**, or **Discard** to close it.
 
 </Accordion>
 </Accordions>
-
-### Review Generated Code
-
-Check the target URL, selectors, credentials, waits, and assertions. Run the script to confirm it tests the expected behavior.
-
 ## AI Fix
 
-After a failed run, use AI Fix to review suggested changes. Apply only changes you understand, then run the test again.
+After a failed run, AI Fix suggests changes. Apply only changes you understand, then run the test again.
 
 <Accordions>
 <Accordion title="Access and limits" id="ai-fix-access">
 
-You need access to the run's project to use AI Fix. On Supercheck Cloud, AI Create and AI Fix share an hourly organization usage limit; if you reach it, wait before retrying.
+You need access to the run's project. On Supercheck Cloud, AI Create and AI Fix share an hourly organization usage limit. If you reach it, wait before retrying.
 
 </Accordion>
 </Accordions>
@@ -119,7 +114,7 @@ Run the test again to verify the change.
 <Accordions>
 <Accordion title="What AI Fix can repair" id="ai-fix-repairs">
 
-AI Fix is effective for code-level issues that can be resolved by modifying your test:
+AI Fix repairs code-level issues:
 
 | Issue Type | Example | AI Fix Action |
 |------------|---------|---------------|
@@ -134,7 +129,7 @@ AI Fix is effective for code-level issues that can be resolved by modifying your
 <Accordions>
 <Accordion title="When AI Fix shows guidance instead" id="ai-fix-guidance">
 
-Some failures require manual investigation rather than code changes. In these cases, AI Fix displays a guidance modal with troubleshooting steps:
+Failures that need manual investigation show a guidance modal with troubleshooting steps instead:
 
 - **Network Issues** — Server unreachable, DNS failures, HTTP 5xx errors
 - **Authentication Failures** — Invalid credentials, expired tokens, 401/403 errors
@@ -146,11 +141,11 @@ Some failures require manual investigation rather than code changes. In these ca
 
 ## Templates
 
-Start with working templates for common scenarios, then customize them.
+Start from a working template for a common scenario, then customize it.
 
 ![Code Templates](/screenshots/code-template.png)
 
-### Available Templates
+### Available templates
 
 <Tabs items={['Browser', 'API', 'Database', 'Custom', 'Agent', 'Performance']}>
 <Tab value="Browser">
@@ -215,7 +210,7 @@ Start with working templates for common scenarios, then customize them.
 </Tab>
 </Tabs>
 
-### Using Templates
+### Use a template
 
 <Steps>
 <Step>
@@ -226,32 +221,30 @@ Select **Apply Template**, then customize URLs, selectors, and test data.
 </Step>
 </Steps>
 
-## Test Reports
+## Test reports
 
 Every run produces a report with debugging artifacts:
 
 ![Playground Report](/screenshots/playground-report.png)
 
-### Report Contents
-
-| Artifact | Description | Use For |
-|----------|-------------|---------|
-| **Screenshots** | Captured at each step and on failure | Visual verification, debugging UI issues |
-| **Trace** | Interactive step-by-step replay | Understanding test flow, timing issues |
-| **Console Logs** | Browser console output | JavaScript errors, debug messages |
-| **Network** | All HTTP requests and responses | API debugging, performance analysis |
+| Artifact | Description |
+|----------|-------------|
+| **Screenshots** | Captured at each step and on failure |
+| **Trace** | Interactive step-by-step replay |
+| **Console Logs** | Browser console output |
+| **Network** | All HTTP requests and responses |
 
 <Accordions>
 <Accordion title="Viewing traces" id="viewing-traces">
 
-The Playwright Trace Viewer steps through each action, showing page state before and after, DOM, and network timing, which helps with timing and selector issues.
+The Playwright [Trace Viewer](https://playwright.dev/docs/trace-viewer) steps through each action, showing page state before and after, DOM and network timing.
 
 </Accordion>
 </Accordions>
 
-## Using Variables
+## Use variables
 
-Read project configuration, secrets, and file-backed test data:
+Read project configuration, secrets and file-backed test data. See [Variables](/docs/app/automate/variables) for setup.
 
 ```javascript
 
@@ -271,22 +264,9 @@ await page.goto(baseUrl);
 await page.fill('#password', password);
 ```
 
-Keep credentials in **Secrets** and use **File** variables for non-sensitive fixtures and datasets. Avoid logging secret values.
+Keep credentials in **Secrets** and use **File** variables for non-sensitive fixtures and datasets. Do not log secret values.
 
-See [Variables](/docs/app/automate/variables) for setup instructions.
-
-<Accordions>
-<Accordion title="Further reading" id="further-reading">
-
-- [Playwright documentation](https://playwright.dev/docs/intro)
-- [Locators](https://playwright.dev/docs/locators)
-- [Assertions](https://playwright.dev/docs/test-assertions)
-- [Trace Viewer](https://playwright.dev/docs/trace-viewer)
-
-</Accordion>
-</Accordions>
-
-## Next steps
+## Related
 
 <Cards>
 <Card title="Tests" href="/docs/app/automate/tests" description="Manage saved tests" />

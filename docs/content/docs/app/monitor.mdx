@@ -1,6 +1,6 @@
 ---
 title: Monitors
-description: 24/7 uptime monitoring for your services
+description: Check endpoints, ports, MCP servers and browser journeys on a schedule and alert on failures
 icon: Globe
 ---
 
@@ -8,7 +8,7 @@ Monitors check your services on a schedule and alert you when they fail. Track a
 
 ![Monitors List](/screenshots/monitors-list.png)
 
-## Setup Workflow
+## Setup workflow
 
 <p className="text-sm">Scroll horizontally on smaller screens to view all steps.</p>
 
@@ -31,41 +31,41 @@ flowchart LR
 </div>
 </div>
 
-## Monitor Types
+## Monitor types
 
-Choose a type from **Monitor → Create** in the sidebar:
+Choose a type from **Monitor → Create**:
 
 <Cards>
-<Card icon={<ArrowLeftRight className="text-[oklch(0.6_0.11_205)] dark:text-[oklch(0.79_0.13_205)]" />} title="HTTP Monitor">
-Full-featured API and endpoint monitoring with custom headers, authentication, and response validation
+<Card icon={<ArrowLeftRight className="text-[oklch(0.6_0.11_205)] dark:text-[oklch(0.79_0.13_205)]" />} title="HTTP monitor">
+API and endpoint checks with custom headers, authentication and response validation
 </Card>
 
-<Card icon={<LaptopMinimal className="text-[oklch(0.609_0.126_221.723)] dark:text-[oklch(0.789_0.154_211.53)]" />} title="Website Monitor">
-Simple website availability checks with SSL certificate expiration tracking
+<Card icon={<LaptopMinimal className="text-[oklch(0.609_0.126_221.723)] dark:text-[oklch(0.789_0.154_211.53)]" />} title="Website monitor">
+Website availability with SSL certificate expiration tracking
 </Card>
 
-<Card icon={<ChevronsLeftRightEllipsis className="text-[oklch(0.588_0.158_241.966)] dark:text-[oklch(0.746_0.16_232.661)]" />} title="Ping Monitor">
-TCP reachability checks on ports 443/80 for server availability
+<Card icon={<ChevronsLeftRightEllipsis className="text-[oklch(0.588_0.158_241.966)] dark:text-[oklch(0.746_0.16_232.661)]" />} title="Ping monitor">
+TCP reachability on ports 443 and 80
 </Card>
 
-<Card icon={<EthernetPort className="text-[oklch(0.6_0.118_184.704)] dark:text-[oklch(0.777_0.152_181.912)]" />} title="Port Monitor">
-TCP/UDP port checks to verify that specific services are accepting connections
+<Card icon={<EthernetPort className="text-[oklch(0.6_0.118_184.704)] dark:text-[oklch(0.777_0.152_181.912)]" />} title="Port monitor">
+TCP or UDP port checks that a service accepts connections
 </Card>
 
-<Card icon={<Plug className="text-[oklch(0.57_0.25_320)] dark:text-[oklch(0.73_0.2_320)]" />} title="MCP Monitor">
-Check a remote MCP server: login, required tools, an optional tool call, and changes to its tool list
+<Card icon={<Plug className="text-[oklch(0.57_0.25_320)] dark:text-[oklch(0.73_0.2_320)]" />} title="MCP monitor">
+Remote MCP server login, required tools, an optional tool call and tool list changes
 </Card>
 
-<Card icon={<BrainCircuit className="text-[oklch(0.59_0.24_338)] dark:text-[oklch(0.74_0.18_340)]" />} title="AI Endpoint Monitor">
-Check an OpenAI-compatible chat API answers correctly and fast, with a streamed request on every check
+<Card icon={<BrainCircuit className="text-[oklch(0.59_0.24_338)] dark:text-[oklch(0.74_0.18_340)]" />} title="AI endpoint monitor">
+OpenAI-compatible chat API answers correctly and fast, using a streamed request
 </Card>
 
-<Card icon={<Laptop className="text-purple-600" />} title="Synthetic Monitor">
-Run full Playwright browser tests on a schedule to validate complete user journeys
+<Card icon={<Laptop className="text-purple-600" />} title="Synthetic monitor">
+Playwright browser tests on a schedule for full user journeys
 </Card>
 
-<Card icon={<HeartPulse className="text-[oklch(0.6_0.21_357)] dark:text-[oklch(0.74_0.16_358)]" />} title="Heartbeat Monitor" href="/docs/app/heartbeat">
-Your cron jobs and scheduled agents ping Supercheck; alert when a ping is missed or reports a failure
+<Card icon={<HeartPulse className="text-[oklch(0.6_0.21_357)] dark:text-[oklch(0.74_0.16_358)]" />} title="Heartbeat monitor" href="/docs/app/heartbeat">
+Alert when a cron job or scheduled agent misses a ping or reports a failure
 </Card>
 </Cards>
 
@@ -73,7 +73,7 @@ Your cron jobs and scheduled agents ping Supercheck; alert when a ping is missed
 Creating an HTTP, website, ping, port or MCP monitor returns `400` when the target is a private, loopback or reserved address, including a hostname that resolves to one. Changing the type or target of an existing monitor is checked the same way; updates that leave both unchanged are not. Instances can allow these with `ALLOW_INTERNAL_TARGETS=true` (see [Optional configuration](/docs/app/deployment/self-hosted#optional-configuration)); unlike webhook channels, monitors do not also need `SELF_HOSTED=true`. Cloud metadata and link-local addresses such as `169.254.169.254` stay blocked even then.
 </Callout>
 
-## HTTP Monitor
+## HTTP monitor
 
 Checks availability, status code, response time and body content of APIs and web services.
 
@@ -88,9 +88,9 @@ Checks availability, status code, response time and body content of APIs and web
 
 ![Create HTTP Monitor](/screenshots/create-http-monitor.png)
 
-### AI Endpoint Monitor
+### AI endpoint monitor
 
-Choose **AI Endpoint Monitor** under **Monitor → Create** to check a chat-completions API the way your app calls it. Each check sends one short streamed request and reads the reply to the end, so it catches failures a plain status check misses. In the app it is its own monitor type, with its own filter value and icon in the monitor list. The CLI, API and MCP server still model it as an HTTP monitor: use `--preset ai-endpoint` in the CLI or `config.aiEndpoint` in the API.
+Checks a chat-completions API the way your app calls it. Each check sends one short streamed request and reads the reply to the end, so it catches failures a status check misses. The CLI, API and MCP server model it as an HTTP monitor: use `--preset ai-endpoint` in the CLI or `config.aiEndpoint` in the API.
 
 | Field | Default | Notes |
 |---|---|---|
@@ -114,21 +114,21 @@ Choose **AI Endpoint Monitor** under **Monitor → Create** to check a chat-comp
 | Stream ends early, or the reply is empty | Down |
 | No first token within the limit | Timeout |
 
-Two optional limits raise warnings without failing the check or opening an incident. **Warn when first token is slower than (ms)** warns when the first token is slower than the limit for 3 checks in a row. **Warn when a call uses more tokens than** warns once when a reply uses more tokens than the limit. The monitor also warns when the served model differs from the last check (for example a provider swaps `gpt-4o-mini` snapshots). See [Alerts](/docs/app/communicate/alerts#alert-types).
+Two optional limits raise warnings without failing the check or opening an incident. **Warn when first token is slower than (ms)** warns after 3 slow checks in a row. **Warn when a call uses more tokens than** warns once per stretch above the limit. The monitor also warns when the served model differs from the last check, for example when a provider swaps `gpt-4o-mini` snapshots. See [Alerts](/docs/app/communicate/alerts#alert-types).
 
-Every result records first-token time, total time, the model that served the reply, and token counts (plus cost when the provider reports it). The reply text is not stored. The detail page shows first token, tokens per call and served model next to the usual response time.
+Each result records first-token time, total time, the served model and token counts (plus cost when the provider reports it). The reply text is not stored.
 
-A secret that a monitor uses cannot be deleted, renamed or made non-secret while that monitor exists. The error names up to five monitors; point them at another secret first. Rotating the secret's value is always allowed.
+A secret in use by a monitor cannot be deleted, renamed or made non-secret. The error names up to five monitors. Point them at another secret first. Rotating the secret's value is always allowed.
 
-Each check is a paid call on your key. The form shows about how many calls a month your interval and locations make; the default interval is 5 minutes and the failure threshold is 2, so one short rate limit does not alert.
+Each check is a paid call on your key. The form shows about how many calls a month your interval and locations make. The default interval is 5 minutes and the failure threshold is 2, so one short rate limit does not alert.
 
 <Callout type="warn">
-Anyone who can edit a monitor can send a referenced secret to a URL they choose. That is the same trust level as writing a test that reads a secret, and viewers can do neither. Redirects are not followed and private addresses are refused, so the key only goes to the host you entered. Self-hosted: set `ALLOW_INTERNAL_TARGETS=true` to check an internal model server such as Ollama or vLLM.
+Anyone who can edit a monitor can send a referenced secret to a URL they choose, the same trust level as writing a test that reads a secret. Viewers can do neither. Redirects are not followed and private addresses are refused, so the key only goes to the host you entered. Self-hosted: set `ALLOW_INTERNAL_TARGETS=true` to check an internal model server such as Ollama or vLLM.
 </Callout>
 
-## Website Monitor
+## Website monitor
 
-Web page availability with built-in SSL tracking, for marketing sites, landing pages and public apps.
+Web page availability with built-in SSL tracking.
 
 | Checks | Details |
 |---|---|
@@ -136,9 +136,7 @@ Web page availability with built-in SSL tracking, for marketing sites, landing p
 | **SSL** | Certificate is valid; expiration date |
 | **Keyword** | Optional text on the page |
 
-The **SSL Check** toggle appears only when the target starts with `https://` (an `http://` target has no certificate). A monitor that already has it on keeps showing it, so you can turn it off.
-
-With **SSL Check** on (HTTPS targets only):
+The **SSL Check** toggle appears only for `https://` targets. A monitor that already has it on keeps showing it, so you can turn it off. With it on:
 
 | Situation | What happens |
 |---|---|
@@ -152,43 +150,39 @@ Website monitors accept custom headers and Basic or Bearer authentication. The f
 
 ![Create Website Monitor](/screenshots/create-website-monitor.png)
 
-## Ping Monitor
+## Ping monitor
 
-TCP reachability and connection latency for hosts without an HTTP endpoint, on port 443 or 80. Suited to servers, network infrastructure and VPN endpoints; the host must be reachable from the worker.
+TCP reachability and connection latency for hosts without an HTTP endpoint, such as servers, network infrastructure and VPN endpoints. The host must be reachable from the worker.
 
 ![Create Ping Monitor](/screenshots/create-ping-monitor.png)
 
-<Callout type="warn">
-Ping monitors use TCP connectivity on ports 443 and 80 rather than ICMP. The check is up when either port accepts or refuses the connection (a refusal means the host answered), and down only when neither answers. The reported response time is that of the attempt that answered.
-</Callout>
+Ping monitors use TCP on ports 443 and 80, not ICMP. The check is up when either port accepts or refuses the connection (a refusal means the host answered) and down only when neither answers. The response time is that of the attempt that answered.
 
-## Port Monitor
+## Port monitor
 
-Verifies that a TCP or UDP port accepts connections within the timeout, for example databases (5432, 3306), caches (6379, 11211), mail (25, 587, 993) or custom services.
+Verifies that a TCP or UDP port accepts connections within the timeout, for example databases (5432, 3306), caches (6379, 11211) or mail (25, 587, 993).
 
 ![Create Port Monitor](/screenshots/create-port-monitor.png)
 
-**TCP:** with **Expect closed** a refused connection passes. A timeout also passes, because a firewalled port drops packets, but only if the host still answers on port 443 or 80; an unreachable host fails. A DNS failure is always down.
+**TCP:** with **Expected Status** set to **Port is Closed**, a refused connection passes. A timeout also passes, because a firewalled port drops packets, but only if the host still answers on port 443 or 80; an unreachable host fails. A DNS failure is always down.
 
 **UDP:** UDP has no handshake. The worker sends one packet and waits up to two seconds. A reply proves the port open and a refusal proves it closed; only silence is ambiguous:
 
 | Outcome | Result |
 |---|---|
 | Service replies | Up (open) |
-| ICMP port-unreachable (connection refused) | Down, closed (passes with **Expect closed**) |
-| Silence | Up, reported as open or filtered; fails **Expect closed** |
+| ICMP port-unreachable (connection refused) | Down, closed (passes with **Port is Closed**) |
+| Silence | Up, reported as open or filtered; fails **Port is Closed** |
 
-Many UDP services never reply, and a firewall that drops packets looks the same as an open port, so silence is not proof the service works. Use TCP or an application-level check when you need response verification. Firewalls that do not return ICMP errors make closed ports look open.
+Many UDP services never reply, and a firewall that drops packets looks the same as an open port, so silence does not prove the service works. Use TCP or an application-level check when you need verification.
 
-## Synthetic Monitor
+## Synthetic monitor
 
-Runs a Playwright browser test on a schedule to validate full user journeys such as login, signup and checkout, including JavaScript-rendered pages and multi-step flows.
+Runs a Playwright browser test on a schedule to validate user journeys such as login, signup and checkout.
 
 <Steps>
 <Step>
-
-Create a Playwright test in the [Playground](/docs/app/automate/playground) and save it to your project.
-
+Save a Playwright test from the [Playground](/docs/app/automate/playground).
 </Step>
 <Step>
 
@@ -197,16 +191,16 @@ Create a **Synthetic Monitor** and select the test.
 </Step>
 <Step>
 
-Set the check interval (minimum 5 minutes). Supercheck runs the test and reports pass or fail.
+Set the check interval (minimum 5 minutes). Set it longer than the test's run time so executions do not overlap. A 2-minute test needs 5 minutes or more.
 
 </Step>
 </Steps>
 
 ![Create Synthetic Monitor](/screenshots/create-synthetic-monitor.png)
 
-## MCP Monitor
+## MCP monitor
 
-Checks a remote MCP server the way an AI client would use it: connect, log in, list the tools, and optionally call one. It catches a rejected token, a missing tool, a failing tool and a silently edited tool list.
+Checks a remote MCP server the way an AI client would: connect, log in, list the tools and optionally call one. It catches a rejected token, a missing or failing tool and a silently edited tool list.
 
 | Field | Notes |
 |---|---|
@@ -217,19 +211,13 @@ Checks a remote MCP server the way an AI client would use it: connect, log in, l
 | Call a tool | Optional tool name, arguments (a JSON object, up to 8 KiB) and **Result must contain** text. Pick a read-only tool: it runs on every check, from every location |
 | Slow after (ms) | Optional. Warns when a check is slower for 3 checks in a row |
 
-<Callout type="warn">
-The tool call is real: it runs on every check from every location, so a 1-minute monitor in three locations calls the tool about 130,000 times a month. Pick a tool with no side effects. Arguments are stored on the monitor as plain settings, not as a secret, and are hidden only from viewers, so never put a token or personal data in them. Use the login field for credentials.
-</Callout>
+**The tool call is real.** It runs on every check from every location, so a 1-minute monitor in three locations calls the tool about 130,000 times a month. Pick a tool with no side effects. Arguments are stored as plain settings, hidden only from viewers, so never put a token or personal data in them. Use the login field for credentials.
 
-Changing the server URL or the login starts a fresh tool baseline and history.
-
-Only remote Streamable HTTP servers are supported. There is no local `npx` or `uvx` server, no OAuth, and no legacy HTTP+SSE transport.
+Changing the server URL or the login starts a fresh tool baseline and history. Only remote Streamable HTTP servers are supported: no local `npx` or `uvx` server, no OAuth and no legacy HTTP+SSE transport.
 
 ### Tool list changes
 
-The first successful check stores the server's tools as a baseline. Later checks compare each tool's name, description and input schema with it. When any of them differ, Supercheck sends one **Tools changed** warning, lists what was added, removed or changed (and whether the description or the schema changed), and makes the new list the baseline. Tool descriptions are instructions to the calling model, so a silent edit is how a compromised server redirects agents.
-
-A change is a warning, not an incident. A tool list that goes back to an earlier state warns again. With several locations, a change is recorded only after every location has reported and every location that is up sees the same new list. A server that lists more than 10 pages of tools fails the check. A down check never changes the baseline.
+The first successful check stores the server's tools as a baseline. Later checks compare each tool's name, description and input schema with it. When any of them differ, Supercheck sends one **Tools changed** warning, lists what was added, removed or changed (and whether the description or the schema changed), and makes the new list the baseline. Tool descriptions are instructions to the calling model, so a silent edit is how a compromised server redirects agents. A change is a warning, not an incident, and a tool list that reverts warns again. With several locations, a change is recorded only after every location has reported and every location that is up sees the same new list. A server that lists more than 10 pages of tools fails the check. A down check never changes the baseline.
 
 ### Failure messages
 
@@ -244,9 +232,7 @@ A change is a warning, not an incident. A tool list that goes back to an earlier
 | Expected text not found | The tool result does not contain **Result must contain** |
 | Timeout | The whole check took longer than the timeout (5-60 s, default 30) |
 
-Any of these counts as a failed check and opens an incident after the failure threshold (default 2), at `sev2` by default.
-
-Each check records the protocol, server name and version, tool count, and connect, list and call times. Tool arguments and replies are not stored.
+Each of these is a failed check and opens an incident after the failure threshold (default 2), at `sev2` by default. Checks record the protocol, server name and version, tool count, and connect, list and call times. Tool arguments and replies are not stored.
 
 ## Locations
 
@@ -260,21 +246,19 @@ Turn on **Multi-Location Monitoring** in the monitor form, then pick two or more
 
 Synthetic monitors can only use locations that allow browser execution; others are shown but disabled. See [Super Admin](/docs/app/admin/super-admin) for location settings.
 
-## Alert Configuration
-
-Configure when and how you receive notifications about monitor status changes.
+## Alert configuration
 
 ![Alert Settings](/screenshots/create-monitor-alerts-setting.png)
 
-| Setting | What it does | Recommended |
-|---------|-------------|-------------|
-| **Enable Alerts** | Turns notifications on or off for this monitor | On for production |
-| **Alert on Failure** | At most 3 failure alerts per failure streak: the first when the failure threshold is reached, then reminders | On |
-| **Alert on Recovery** | One alert per outage once the recovery threshold is reached | On for critical services |
-| **Failure Threshold** | Consecutive failures before the first alert (1–5 in the app; API: 1–100) | 2–3 |
-| **Recovery Threshold** | Consecutive healthy checks before the recovery alert (1–5 in the app; API: 1–100) | 2 |
-| **Alert on SSL certificate expiration** | Shown only for website monitors with **SSL Check** on. Warns when a certificate is within the days set in the monitor's **Alert in _N_ days** field (1–365, default 30), at most once per 24 hours | On |
-| **Notification Channels** | Where alerts are sent. Channels linked through the notifications API appear here too, and linking or unlinking one through the API updates this list | More than one for critical services |
+| Setting | What it does |
+|---------|-------------|
+| **Enable Alerts** | Turns notifications on or off for this monitor |
+| **Alert on failure** | At most 3 failure alerts per failure streak: the first when the failure threshold is reached, then reminders |
+| **Alert on recovery** | One alert per outage once the recovery threshold is reached |
+| **Failure Threshold** | Consecutive failures before the first alert (1–5 in the app; API: 1–100). 2–3 suits most monitors |
+| **Recovery Threshold** | Consecutive healthy checks before the recovery alert (1–5 in the app; API: 1–100). 2 suits most monitors |
+| **Alert on SSL certificate expiration** | Shown only for website monitors with **SSL Check** on. Warns when a certificate is within the days set in the monitor's **Alert in _N_ days** field (1–365, default 30), at most once per 24 hours |
+| **Notification Channels** | Where alerts are sent. Channels linked through the notifications API appear here too, and linking or unlinking one through the API updates this list |
 
 **Incidents** (in the same Alert Settings):
 
@@ -286,43 +270,22 @@ Configure when and how you receive notifications about monitor status changes.
 
 See [How alerts become incidents](/docs/app/investigate/incidents#how-alerts-become-incidents).
 
-<Accordions>
-<Accordion title="Example: failure threshold 3, recovery threshold 2" id="threshold-example">
-
-| Check | Result | Alert |
-|-------|--------|-------|
-| 1–2 | ❌ Fail | — |
-| 3 | ❌ Fail | **Failure alert** |
-| 4 | ❌ Fail | — |
-| 5 | ✅ Pass | — |
-| 6 | ✅ Pass | **Recovery alert** |
-
-</Accordion>
-</Accordions>
-
-## Monitor Details Page
+See [Threshold configuration](/docs/app/communicate/alerts#threshold-configuration) for a worked example and alert limiting.
+## Monitor details page
 
 Health, performance and history for one monitor.
 
 ![Monitor Details Page](/screenshots/monitor-details.png)
 
-### Header Section
-
-| Element | Details |
-|---------|---------|
-| **Monitor Name** | The name you assigned to the monitor |
-| **Test ID** | For synthetic monitors, the linked Playwright test ID (click to copy) |
-| **Action Buttons** | Quick access to Pause, Edit, Delete, and **AI Analyze** |
+The header shows the monitor name, the linked Playwright test ID for synthetic monitors (click to copy), and buttons for Pause, Edit, Delete and **AI Analyze**.
 
 ### Delete a monitor
 
-Deleting a monitor takes effect at once: it disappears from lists, dashboards, status page pickers, plan counts and alerts, its schedule is removed, and no further checks run. Its results, reports and stored artifacts are then removed in the background in small batches, and a retry continues where it stopped. There is no undo; to stop checks temporarily, pause the monitor instead.
+Deleting a monitor takes effect at once: it disappears from lists, dashboards, status page pickers, plan counts and alerts, and no further checks run. Its results, reports and stored artifacts are then removed in the background, and a retry continues where it stopped. There is no undo. To stop checks temporarily, pause the monitor instead.
 
 ### AI Analyze
 
-**AI Analyze** in the header generates a report from your monitor's own data.
-
-You need permission to edit the monitor; viewers cannot run it, because it spends AI credits.
+**AI Analyze** generates a report from the monitor's own data. You need permission to edit the monitor. Viewers cannot run it because it spends AI credits.
 
 | Section | Content |
 |---|---|
@@ -339,19 +302,17 @@ Self-hosted: an administrator must [configure an AI provider](/docs/app/deployme
 <Accordions>
 <Accordion title="Key metrics" id="key-metrics">
 
-Nine key metrics are displayed prominently below the header. Response times are shown in ms below 1 s (`360 ms`) and in seconds above (`1.25 s`). **P95 Resp** shows N/A until at least 5 successful checks are in the window.
+Nine key metrics sit below the header. Response times show in ms below 1 s (`360 ms`) and in seconds above (`1.25 s`). **P95 Resp** shows N/A until the window has at least 5 successful checks.
 
 | Metric | Description |
 |--------|-------------|
 | **Status** | Current monitor status (Up, Down, Paused, Pending, Error). A **Maintenance** badge appears next to it while a maintenance window covers the monitor |
-| **Interval** | How frequently checks run (e.g., 5m, 15m) |
-| **Resp Time** | Latest response time from the most recent check |
+| **Interval** | How often checks run |
+| **Resp Time** | Response time of the latest check |
 | **Uptime** (Last 24 hours) | Percentage of successful checks in the last 24 hours. A multi-location check counts once, as up or down by the monitor's location rule, not once per region |
-| **Avg Resp** (Last 24 hours) | Average response time over the last 24 hours |
-| **P95 Resp** (Last 24 hours) | 95th percentile response time over the last 24 hours |
+| **Avg Resp** and **P95 Resp** (Last 24 hours) | Average and 95th percentile response time |
 | **Uptime** (Last 30 days) | Percentage of successful checks in the last 30 days, counted the same way. The per-location breakdown counts each region on its own |
-| **Avg Resp** (Last 30 days) | Average response time over the last 30 days |
-| **P95 Resp** (Last 30 days) | 95th percentile response time (30d) — long-term performance indicator |
+| **Avg Resp** and **P95 Resp** (Last 30 days) | Average and 95th percentile response time |
 
 **P95** is the response time that 95% of checks complete within, which exposes tail latency that averages hide.
 
@@ -360,13 +321,13 @@ Nine key metrics are displayed prominently below the header. Response times are 
 
 | Chart | What it shows |
 |-------|---------------|
-| **Availability Overview** | Bar chart of the last 100 individual checks: green bars are successful checks (monitor was up), red bars are failed checks (monitor was down). Helps you spot intermittent failures or sustained outages |
-| **Response Time Chart** | Interactive line chart of the most recent 100 check results. Hover for the exact response time and timestamp; use it to identify latency spikes, trends, and anomalies, and to spot performance degradation before it impacts users |
+| **Availability Overview** | Bar chart of the last 100 checks: green for up, red for down |
+| **Response Time Chart** | Line chart of the most recent 100 check results. Hover for the exact response time and timestamp |
 
 </Accordion>
 <Accordion title="Recent check results table" id="check-results">
 
-A paginated table showing detailed results for each check:
+A paginated table of check results:
 
 | Column | Description |
 |--------|-------------|
@@ -375,23 +336,17 @@ A paginated table showing detailed results for each check:
 | **Location** | Where the check ran |
 | **Response** | How long the check took |
 
-For a failed check, an info icon next to the result opens the error message when clicked or tapped. Synthetic monitors add a report icon there. MCP server monitors add a **Tools** column.
-
-**Features:**
-- **Pagination** — The table fills the height of the charts beside it and pages through historical results (10 per page on small screens)
-- **Date Filter** — Filter results by specific date
-- **Location** — Use the location menu on the availability chart to show one location
+For a failed check, an info icon next to the result opens the error message. Synthetic monitors add a report icon there. MCP monitors add a **Tools** column. The table pages through historical results (10 per page on small screens) and filters by date. Use the location menu on the availability chart to show one location.
 
 </Accordion>
 </Accordions>
 
-## Monitor Reports
+## Monitor reports
 
-For **Synthetic Monitors**, detailed reports are generated when checks fail. Access reports by clicking the report icon in the **Result** column of the Recent Check Results table.
+Synthetic monitors generate a detailed report when a check fails. Open it from the report icon in the **Result** column.
 
 ![Monitor Report](/screenshots/monitor-report.png)
 
-### Report Contents
 
 | Section | Description |
 |---------|-------------|
@@ -400,13 +355,11 @@ For **Synthetic Monitors**, detailed reports are generated when checks fail. Acc
 | **Test Steps** | Timeline of all actions with pass/fail status and timing |
 | **View Trace** | Opens trace viewer with video recording, screenshots, and network logs |
 
-<Callout type="info">
-Use **Copy Prompt** to copy error details for AI-assisted debugging.
-</Callout>
+Use **Copy prompt** to copy the error details for AI-assisted debugging.
 
 ## Maintenance windows
 
-Schedule a maintenance window before planned work so nobody is paged for expected downtime. Open **Monitors → Maintenance**, or **Schedule maintenance** on a monitor or service page, in Quick Create or in the command menu (Cmd+K).
+Schedule a maintenance window before planned work so nobody is paged for expected downtime. Open **Monitors → Maintenance**, or use **Schedule maintenance** on a monitor or service page, Quick Create or the command menu (Cmd+K).
 
 | Setting | Detail |
 |---|---|
@@ -416,44 +369,38 @@ Schedule a maintenance window before planned work so nobody is paged for expecte
 
 During a window:
 
-- Checks keep running and results are stored, marked as maintenance in the results table. The monitors list shows a **Maintenance** badge next to the real status (Up or Down).
+- Checks keep running and results are stored, marked as maintenance. The monitors list shows a **Maintenance** badge next to the real status.
 - No alerts are sent, no incidents open (a failure is judged by when it fired, so one from just before the window still opens its incident), and reminders for open incidents opened by alerts wait until the window ends. Incidents declared by a person still page, but a failure inside the window is not added to them as a related alert.
 - Uptime on monitor pages, the dashboard and status pages leaves those checks out.
-- Failures do not count toward the alert threshold. A monitor that is still down after the window alerts once it has failed its threshold again; a monitor that recovers during the window recovers normally, without a notification.
+- Failures do not count toward the alert threshold. A monitor still down after the window alerts once it fails its threshold again. A monitor that recovers during the window recovers without a notification.
 
 **End now** stops the active occurrence at once (a recurring window moves to its next one), **Extend** adds time, **Cancel** stops a scheduled window or the rest of a series, and **Delete** removes a window that is not active. A status-page maintenance follows: it ends, moves or is resolved as cancelled. Changing a window that is on a status page also needs status page update permission, and such a window must be cancelled before it can be deleted. Scheduling needs monitor update permission; deleting needs monitor delete permission. A project can have 100 upcoming or active windows. On Supercheck Cloud, scheduling, changing and extending a window need a paid plan or an active trial; an organization without one can still view, end and cancel windows (the API answers `402` with `subscription_required`).
 
-The app moves each window to its next occurrence. If the app is down when an occurrence would start, that occurrence starts late: alerting is never muted past a window's end.
+If the app is down when an occurrence would start, it starts late. Alerting is never muted past a window's end.
 
-Also: `supercheck maintenance`, `/api/maintenance-windows` and the MCP tools `list_maintenance_windows`, `create_maintenance_window`, `end_maintenance_window`, `extend_maintenance_window` and `cancel_maintenance_window`.
+Also available through `supercheck maintenance`, `/api/maintenance-windows` and the MCP tools `list_maintenance_windows`, `create_maintenance_window`, `end_maintenance_window`, `extend_maintenance_window` and `cancel_maintenance_window`.
 
-## Monitor Status
+## Monitor status
 
-| Status | Meaning | Action |
-|--------|---------|--------|
-| **Up** | All checks passing | No action needed |
-| **Down** | Latest aggregated check failed | Review results; notifications follow your alert thresholds |
-| **Paused** | Monitoring disabled | Re-enable when ready |
-| **Pending** | Initial check in progress | Wait for first result |
-| **Maintenance** | Reserved status; monitors keep checking during a scheduled maintenance window, and only alerts are held back (see [Status Pages](/docs/app/communicate/status-pages)) | None |
-| **Error** | Configuration or system error | Fix monitor configuration |
+| Status | Meaning |
+|--------|---------|
+| **Up** | All checks passing |
+| **Down** | The latest aggregated check failed. Notifications follow your alert thresholds |
+| **Paused** | Monitoring disabled |
+| **Pending** | Initial check in progress |
+| **Maintenance** | Reserved status. Monitors keep checking during a maintenance window and only alerts are held back (see [Status pages](/docs/app/communicate/status-pages)) |
+| **Error** | Configuration or system error. Fix the monitor configuration |
 
 If a monitor's locations have no live worker, that check is skipped and not counted as down. With several locations, only the locations that ran are judged. A scheduled check that waited in a busy queue for more than three times the interval (at least 3 minutes) may be skipped when a newer result already exists; skipped checks record no result, downtime or alert.
 
-## Check Intervals
+## Check intervals
 
-Available intervals: 1 minute, 5 minutes, 10 minutes, 15 minutes, 30 minutes, 1 hour, 3 hours, 12 hours, and 24 hours. Shorter intervals detect failures sooner and use more resources.
+Available intervals: 1, 5, 10, 15 and 30 minutes, and 1, 3, 12 and 24 hours. Shorter intervals detect failures sooner and use more resources.
 
-The timeout is set through the API or CLI (the form keeps the stored value). It must not exceed the interval, for example 60 s at 1 minute; the form rejects an interval shorter than the stored timeout.
-
-<Callout type="info">
-Synthetic monitors start at 5 minutes. Set the interval longer than your test's run time so executions do not overlap: for a 2-minute test, use 5 minutes or more.
-</Callout>
-
-## Next steps
+The timeout is set through the API or CLI (the form keeps the stored value). It must not exceed the interval, for example 60 s at 1 minute; the form rejects an interval shorter than the stored timeout.## Related
 
 <Cards>
 <Card title="Notifications" href="/docs/app/communicate/alerts" description="Set up the channels that receive monitor alerts" />
-<Card title="Status Pages" href="/docs/app/communicate/status-pages" description="Show monitor health to your users" />
-<Card title="Incident Investigation" href="/docs/app/investigate/incidents" description="Investigate failed checks" />
+<Card title="Status pages" href="/docs/app/communicate/status-pages" description="Show monitor health to your users" />
+<Card title="Incident investigation" href="/docs/app/investigate/incidents" description="Investigate failed checks" />
 </Cards>

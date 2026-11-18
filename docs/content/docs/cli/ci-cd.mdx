@@ -3,7 +3,7 @@ title: CI/CD Integration
 description: Use Supercheck CLI in GitHub Actions, GitLab CI, and Docker pipelines
 ---
 
-Trigger jobs, wait for results, and gate deployments on test outcomes from any CI/CD platform.
+Trigger jobs, wait for results and gate deployments from CI/CD.
 
 <Brands names={["github-actions", "gitlab", "docker"]} labels={{ gitlab: "GitLab CI" }} />
 
@@ -16,7 +16,7 @@ Set these in your CI/CD platform's secret store:
 | `SUPERCHECK_TRIGGER_KEY` | Job-specific trigger key (`sck_trigger_*`) for `supercheck job trigger` |
 | `SUPERCHECK_TOKEN` | CLI token (`sck_live_*`) for general API commands and `job trigger --wait` |
 
-Pass the job ID as the argument to `supercheck job trigger`; the CLI does not read a default job ID from an environment variable. Cloud users need no URL setting.
+Pass the job ID as the `supercheck job trigger` argument; the CLI reads no job ID variable. Cloud needs no URL setting.
 
 ## Pipelines
 
@@ -45,7 +45,7 @@ jobs:
       timeout: 300
 ```
 
-`SUPERCHECK_TRIGGER_KEY` starts the run. `SUPERCHECK_TOKEN` is only needed here because the example uses `wait: true`.
+`SUPERCHECK_TOKEN` is needed only because of `wait: true`.
 
 ### Manual setup
 
@@ -82,7 +82,7 @@ jobs:
           SUPERCHECK_TOKEN: ${{ secrets.SUPERCHECK_TOKEN }}
 ```
 
-The step fails the workflow on any non-zero [exit code](#exit-codes), so a failed, blocked or timed-out run stops the pipeline.
+Any non-zero [exit code](#exit-codes) fails the step, so a failed, blocked or timed-out run stops the pipeline.
 
 </Tab>
 <Tab value="GitLab CI">
@@ -111,7 +111,7 @@ supercheck:
 
 ### With Monitoring-as-Code deploy
 
-Commit `supercheck.state.json` with the project so CI can map local resources to IDs created by earlier deployments. Never commit the transient `supercheck.state.json.lock` file. Keep `SUPERCHECK_TOKEN` in the CI secret store.
+Commit `supercheck.state.json` so CI maps local resources to IDs from earlier deploys. Never commit `supercheck.state.json.lock`.
 
 ```yaml title=".gitlab-ci.yml"
 stages:
@@ -146,7 +146,7 @@ supercheck-deploy:
 </Tab>
 <Tab value="Docker">
 
-Set `SUPERCHECK_JOB_ID` and the required tokens in your environment. Run the CLI using the official Node.js image:
+Set `SUPERCHECK_JOB_ID` and the tokens in your environment, then run the CLI in the Node.js image:
 
 ```bash
 # Trigger a job
@@ -160,9 +160,6 @@ docker run --rm \
   -v $(pwd):/app \
   -w /app \
   node:20-slim sh -c "npm install -g @supercheck/cli && supercheck deploy --force"
-
-# Health check
-docker run --rm node:20-slim sh -c "npm install -g @supercheck/cli && supercheck health"
 ```
 
 ### Docker Compose
@@ -183,7 +180,7 @@ services:
 </Tab>
 </Tabs>
 
-## Exit Codes
+## Exit codes
 
 | Code | Meaning | CI/CD action |
 |---|---|---|
@@ -195,13 +192,12 @@ services:
 | `5` | Timeout | Increase `--timeout` value |
 | `130` | Interrupted | Stream cancelled with Ctrl+C |
 
-In a non-interactive environment, an operation that requires confirmation refuses with exit code `3` and a `CONFIRMATION_REQUIRED` error. Review the JSON plan, then explicitly pass `--force` for an authorized write. Authentication failures remain exit code `2`.
+Without a terminal, an operation that needs confirmation exits `3` with `CONFIRMATION_REQUIRED`. Review the JSON plan, then pass `--force` for an authorized write.
 
 <Accordions>
 <Accordion title="Handle exit codes in GitHub Actions" id="exit-code-handling">
 
 ```yaml
-# Example: Handle exit codes in GitHub Actions
 - name: Run Tests
   id: tests
   continue-on-error: true
@@ -230,7 +226,7 @@ env:
 </Accordion>
 </Accordions>
 
-## Best Practices
+## Best practices
 
 | Practice | How |
 |---|---|
@@ -241,4 +237,3 @@ env:
 | Coding agents | Have the agent run your job after each ship: [Check after every ship](/docs/cli/after-ship-check) |
 | Least privilege | Use trigger keys (`sck_trigger_*`) for single-job triggers |
 | Preview config changes | Run `supercheck diff` in PRs |
-| Faster builds | Cache the CLI in your CI/CD environment |

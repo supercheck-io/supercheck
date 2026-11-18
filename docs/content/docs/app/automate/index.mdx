@@ -1,109 +1,86 @@
 ---
 title: Automate
-description: Create and schedule automated tests
+description: Create tests, schedule them as jobs and review runs
 icon: Play
 ---
 
-Build automated tests for your web applications, APIs, databases, and infrastructure. Write tests in the interactive Playground with AI assistance, then schedule them to run automatically or trigger from your CI/CD pipeline.
-
-## Getting Started
-
-<Cards>
-<Card icon={<FlaskConical className="text-purple-500" />} title="Playground" href="/docs/app/automate/playground">
-Write tests, review AI suggestions, and verify results.
-</Card>
-
-<Card icon={<Code className="text-blue-500" />} title="Tests" href="/docs/app/automate/tests">
-Save, organize, and manage your test scripts across projects
-</Card>
-</Cards>
-
-## Quick Create
-
-Use the **Create** menu from anywhere in the app to quickly add new tests, jobs, or monitors.
+Write tests in the Playground with AI help, then schedule them or trigger them from CI/CD. Use the **Create** menu from anywhere in the app to add a test, job or monitor.
 
 ![Quick Create Menu](/screenshots/quick-create.png)
 
-## Test Types
-
-Supercheck supports six test types, each optimized for different testing scenarios:
-
 <Cards>
-<Card icon={<Chrome className="text-sky-500" />} title="Browser Test" href="/docs/app/automate/browser-test">
-Playwright-based UI testing for user flows, form submissions, and visual validation with screenshots and traces
+<Card icon={<FlaskConical className="text-purple-500" />} title="Playground" href="/docs/app/automate/playground">
+Write tests, review AI suggestions, and verify results
 </Card>
 
-<Card icon={<ArrowLeftRight className="text-teal-500" />} title="API Test" href="/docs/app/automate/api-test">
-HTTP and GraphQL endpoint testing with request/response validation, authentication, and JSON assertions
-</Card>
-
-<Card icon={<Database className="text-cyan-500" />} title="Database Test" href="/docs/app/automate/database-test">
-SQL queries against PostgreSQL, MySQL, and other databases with result validation and data integrity checks
-</Card>
-
-<Card icon={<ChartSpline className="text-purple-500" />} title="Performance Test" href="/docs/app/automate/performance-test">
-k6 load testing with virtual users, duration, and thresholds.
-</Card>
-
-<Card icon={<Bot className="text-purple-500" />} title="Agent Test" href="/docs/app/automate/agent-test">
-
-Call your own AI agent several times and assert on the pass rate, tools called, latency and tokens
-</Card>
-
-
-<Card icon={<SquareFunction className="text-indigo-500" />} title="Custom Test" href="/docs/app/automate/custom-test">
-Node.js scripts for custom scenarios, integrations, or any testing logic not covered by other types
+<Card icon={<Code className="text-blue-500" />} title="Tests" href="/docs/app/automate/tests">
+Save, organize and manage your test scripts
 </Card>
 </Cards>
 
-## Core Concepts
+## Test types
+
+<Cards>
+<Card icon={<Chrome className="text-sky-500" />} title="Browser test" href="/docs/app/automate/browser-test">
+Playwright UI flows with screenshots and traces
+</Card>
+
+<Card icon={<ArrowLeftRight className="text-teal-500" />} title="API test" href="/docs/app/automate/api-test">
+HTTP and GraphQL requests with response assertions
+</Card>
+
+<Card icon={<Database className="text-cyan-500" />} title="Database test" href="/docs/app/automate/database-test">
+SQL queries against PostgreSQL, MySQL and other databases
+</Card>
+
+<Card icon={<ChartSpline className="text-purple-500" />} title="Performance test" href="/docs/app/automate/performance-test">
+k6 load testing with virtual users, duration and thresholds
+</Card>
+
+<Card icon={<Bot className="text-purple-500" />} title="Agent test" href="/docs/app/automate/agent-test">
+Call your AI agent several times and assert on pass rate, tools, latency and tokens
+</Card>
+
+<Card icon={<SquareFunction className="text-indigo-500" />} title="Custom test" href="/docs/app/automate/custom-test">
+Node.js scripts for anything the other types do not cover
+</Card>
+</Cards>
+
+## Core concepts
 
 <Cards>
 <Card icon={<CalendarClock className="text-amber-500" />} title="Jobs" href="/docs/app/automate/jobs">
-Group tests together and run them on a schedule, manually, or via API triggers from your CI/CD pipeline
+Group tests and run them on a schedule, manually or from CI/CD
 </Card>
 
 <Card icon={<ClipboardList className="text-emerald-500" />} title="Runs" href="/docs/app/automate/runs">
-View execution history with detailed results, screenshots, traces, and logs for every test run
+Execution history with results, screenshots, traces and logs
 </Card>
 
 <Card icon={<Variable className="text-rose-500" />} title="Variables" href="/docs/app/automate/variables">
-Store configuration values, encrypted secrets, and reusable file-based test data that your tests can access at runtime
+Configuration values, encrypted secrets and file-based test data
 </Card>
 </Cards>
 
-## Key Features
+## Key features
 
-### AI-Powered Development
-- **AI Create** — Generate test scripts from plain English (beta for browser tests—record first, then enhance)
-- **AI Fix** — Review suggested changes for a failing test, then run again.
-- **AI Analyze** — Get detailed insights on job runs and monitor health with AI-powered analysis reports
+| Area | What you get |
+|---|---|
+| **AI Create** | Test scripts from plain English (beta for browser tests: record first, then enhance) |
+| **AI Fix** | Suggested changes for a failing test that you review, then run again |
+| **AI Analyze** | Analysis reports on job runs and monitor health |
+| Reports | Screenshots, interactive step-by-step traces with DOM inspection, console output, network requests and errors |
+| Scheduling | Cron expressions (down to one minute via the API or CLI), CI/CD trigger endpoints and manual runs |
 
-### Rich Test Reports
-- **Screenshots** — Inspect screenshots available in the test report.
-- **Traces** — Interactive step-by-step replay with DOM inspection
-- **Logs** — Console output, network requests, and error details
+## Parallel execution
 
-### Flexible Scheduling
-- **Cron expressions** — Run tests at specific times (nightly, hourly, weekly), down to one minute via the API or CLI
-- **CI/CD triggers** — API endpoints for pipeline integration
-- **Manual execution** — Run on-demand from the UI
-
-### Parallel Execution
-
-Run multiple tests and jobs simultaneously to reduce total execution time. The parallel execution panel in the header shows real-time status of all running and queued executions.
+Tests and jobs run at the same time up to your capacity limit, and extra runs wait. The **RUNNING / QUEUED** indicator in the header opens the parallel execution panel. Open a run there to review its progress or cancel it.
 
 ![Parallel Execution Panel](/screenshots/parallel-execution-dialog.png)
 
-**Manage executions:**
+Self-hosted: administrators set execution and queue capacity in the [Docker scaling reference](https://github.com/supercheck-io/supercheck/blob/v1.6.0/deploy/docker/README.md#scaling-workers).
 
-- Click the **RUNNING / QUEUED** indicator to inspect active and waiting runs.
-- Open a run to review its progress, or cancel it if you no longer need it.
-- Runs wait when execution capacity is full. Multiple runs can execute at once up to your capacity limit.
-
-Self-hosted: administrators configure execution and queue capacity in the [Docker scaling reference](https://github.com/supercheck-io/supercheck/blob/v1.6.0/deploy/docker/README.md#scaling-workers).
-
-## Workflow Overview
+## Workflow
 
 <p className="text-sm">Scroll horizontally on smaller screens to view all steps.</p>
 
@@ -124,15 +101,7 @@ flowchart LR
 </div>
 </div>
 
-## Next Steps
+## Related
 
-- **New to testing?** Start with the [Playground](/docs/app/automate/playground) to write your first test
-- **Have existing tests?** Learn about [Jobs](/docs/app/automate/jobs) to schedule automated runs
-- **Need secrets?** Set up [Variables](/docs/app/automate/variables) for API keys and credentials
-
-## External Documentation
-
-For deeper understanding of the testing frameworks:
-
-- **[Playwright Documentation](https://playwright.dev/docs/intro)** — Browser automation for browser, API, and database tests
-- **[k6 Documentation](https://grafana.com/docs/k6/latest/)** — Load testing for performance tests
+- [Playwright documentation](https://playwright.dev/docs/intro) for browser, API and database tests
+- [k6 documentation](https://grafana.com/docs/k6/latest/) for performance tests

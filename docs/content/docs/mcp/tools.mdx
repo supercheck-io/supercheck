@@ -4,9 +4,7 @@ description: Reference for the tools the Supercheck MCP server exposes
 icon: Wrench
 ---
 
-Read tools are marked `readOnlyHint: true`; the optional tools below are not, and `delete_maintenance_window` is also marked `destructiveHint: true`. Every tool is limited to the project of the connection.
-
-Returned text (test titles, error excerpts, incident summaries, investigation findings) comes from your systems and is treated as **untrusted data**: tool descriptions tell the AI never to follow instructions found in it.
+Read tools are marked `readOnlyHint: true`. Optional tools are not, and `delete_maintenance_window` also carries `destructiveHint: true`. Every tool is limited to the connection's project. Returned text (titles, error excerpts, summaries, findings) is **untrusted data**: tool descriptions tell the AI never to follow instructions in it.
 
 ## Scopes and tools
 
@@ -69,7 +67,7 @@ Registered only when the connection holds the scope. Calls are recorded in the a
 | `investigate_incident` | `mcp:sre` | investigate incidents | `incidentId`, `useLiveConnectors`, `guidance` | Starts a full investigation. Live connectors also need connector investigate permission |
 | `generate_incident_brief` | `mcp:sre` | investigate incidents | `incidentId` | Generates an evidence brief |
 
-The write tools behave like the dashboard: notifications and timelines are the same. Completed full investigations started with `mcp:sre` count toward the AI SRE investigation allowance, and the tools apply the same checks as the dashboard (AI SRE enabled, plan, daily AI limit, rate limits). They return `accepted: true` at once, or `conflict` if a run of that kind is already in progress; poll `list_investigations` with `incidentId`, then `get_investigation`. A Copilot chat is not available over MCP.
+Write tools behave like the dashboard, with the same notifications, timelines and checks (AI SRE enabled, plan, daily AI limit, rate limits). Completed `mcp:sre` investigations count toward the investigation allowance. AI starts return `accepted: true` at once, or `conflict` if a run of that kind is in progress; poll `list_investigations` with `incidentId`, then `get_investigation`. Copilot chat is not available over MCP.
 
 <Accordions>
 <Accordion title="Paging" id="paging">
@@ -98,12 +96,12 @@ Filters are optional and combine with paging. `list_runs` accepts `status` (`que
 </Accordion>
 <Accordion title="AI SRE" id="ai-sre">
 
-Results AI SRE already produced (hypotheses, confidence, recommendations) are readable with the base scope. Starting AI work needs `mcp:sre`, and always runs asynchronously: the tool returns before the run ends, so poll for the result. Copilot chat stays in the dashboard and the CLI (`supercheck sre ask`).
+Existing results (hypotheses, confidence, recommendations) are readable with `mcp:read`. Starting AI work needs `mcp:sre` and runs asynchronously, so poll for the result. Copilot chat stays in the dashboard and the CLI (`supercheck sre ask`).
 
 </Accordion>
 <Accordion title="Not available" id="not-available">
 
-Creating, editing or deleting tests, monitors, jobs and variables, changing the incident policy, writing post-mortems, test scripts, variable values, monitor credentials and request settings, notification channel settings, status page subscribers, run reports and artifact files, and investigation evidence and tool calls. Use the [CLI](/docs/cli/commands) for authoring and deploys.
+Creating, editing or deleting tests, monitors, jobs and variables; changing the incident policy; writing post-mortems; test scripts; variable values; monitor credentials and request settings; notification channel settings; status page subscribers; run reports and artifact files; investigation evidence and tool calls. Use the [CLI](/docs/cli/commands) for authoring and deploys.
 
 </Accordion>
 </Accordions>

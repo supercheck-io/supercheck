@@ -11,11 +11,12 @@ import { reserveAICredit } from "@/lib/ai/ai-credit-reservation";
 import { headers } from "next/headers";
 import { logAuditEvent } from "@/lib/audit-logger";
 import { db } from "@/utils/db";
-import { runs, jobs, reports, k6PerformanceRuns } from "@/db/schema";
+import { runs, jobs, reports, k6PerformanceRuns, tests } from "@/db/schema";
 import { eq, and, sql, inArray } from "drizzle-orm";
 import { getS3FileContentFromUrl, getS3FileContent } from "@/lib/s3-proxy";
 import { requireAuthContext, authErrorStatus, AuthError } from "@/lib/auth-context";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
+import { isUuid } from "@/lib/uuid";
 import { requireSessionSameOrigin } from "@/lib/security/same-origin";
 
 
@@ -150,6 +151,7 @@ export async function POST(request: NextRequest) {
         logs: runs.logs,
         errorDetails: runs.errorDetails,
         trigger: runs.trigger,
+        metadata: runs.metadata,
         reportUrl: reports.s3Url,
       })
       .from(runs)
@@ -192,10 +194,31 @@ export async function POST(request: NextRequest) {
     }
 
 
+    // A single-test run has no job: its type and title come from the test it ran.
+    const runMeta = (run.metadata ?? {}) as { testId?: unknown; testType?: unknown };
+    let testRef: { id: string; name: string; type: string } | null = null;
+    if (!jobData && typeof runMeta.testType === "string") {
+      const testId = typeof runMeta.testId === "string" && isUuid(runMeta.testId) ? runMeta.testId : null;
+      const [test] = testId
+        ? await db
+            .select({ title: tests.title })
+            .from(tests)
+            .where(and(eq(tests.id, testId), eq(tests.projectId, authContext.project.id)))
+            .limit(1)
+        : [];
+      testRef = {
+        id: testId ?? run.id,
+        name: test?.title ?? "Playground test",
+        // Only browser tests get Playwright guidance; agent, API, database and custom keep their own type.
+        type: runMeta.testType === "performance" ? "k6" : runMeta.testType === "browser" ? "playwright" : runMeta.testType,
+      };
+    }
+    const runType = jobData?.jobType ?? testRef?.type;
+
     // Step 7: For Playwright jobs, fetch HTML report if available
     let testReportHtml: string | null = null;
-    const isPlaywright = jobData?.jobType === "playwright";
-    const isK6 = jobData?.jobType === "k6";
+    const isPlaywright = runType === "playwright";
+    const isK6 = runType === "k6";
     
     if (isPlaywright && run.reportUrl) {
       testReportHtml = await getTestReportContent(run.reportUrl);
@@ -236,7 +259,7 @@ export async function POST(request: NextRequest) {
         name: jobData.name,
         type: jobData.jobType,
         scriptContent: undefined, // Script content not available on jobs table
-      } : null,
+      } : testRef,
       testReportHtml: testReportHtml || undefined,
       k6SummaryJson,
     });
@@ -288,8 +311,8 @@ export async function POST(request: NextRequest) {
           success: true,
           ipAddress: clientIp,
           metadata: {
-            jobName: jobData?.name || "Unknown",
-            jobType: jobData?.jobType || "unknown",
+            jobName: jobData?.name || testRef?.name || "Unknown",
+            jobType: runType || "unknown",
             model: aiResponse.model,
           },
         });
