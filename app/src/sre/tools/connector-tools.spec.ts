@@ -785,7 +785,7 @@ describe("Copilot connector service scope", () => {
 
     values.mockReset().mockResolvedValue(undefined);
     await expect(
-      searchIncidentLiveConnectorEvidence({ ...scope, serviceId: undefined, incidentId: undefined }, { ...search, serviceId: undefined }),
+      searchIncidentLiveConnectorEvidence({ ...scope, serviceId: undefined, incidentId: null }, { ...search, serviceId: undefined }),
     ).rejects.toThrow("Select a service from listIncidentConnectors");
     expect(values).toHaveBeenCalledWith(expect.objectContaining({ toolName: "agent.connector.search.scope_rejected" }));
   });
