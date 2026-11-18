@@ -90,6 +90,7 @@ The CLI is versioned separately; see [cli/CHANGELOG.md](cli/CHANGELOG.md). Prere
 
 ### Fixed
 
+- **Status page links honor `STATUS_PAGE_DOMAIN` in cloud mode.** A cloud deployment with its own status page domain showed and routed `<id>.supercheck.io` links, which pointed at another environment. `STATUS_PAGE_DOMAIN` now applies in every mode; unset, cloud still uses `supercheck.io`.
 - **Agent results on the run page.** Agent runs on Kubernetes now store their results, so the "Agent results" card shows (the report paths were read as if the run directory were `/tmp`).
 - **Single-test run page.** A run of one test shows the test name as its title and "1" tests executed, and no longer shows an empty Job ID card.
 - **Custom webhook preview.** The side card shows the URL you typed, without credentials or query string, instead of the placeholder.
