@@ -190,6 +190,58 @@ describe("SreInvestigationPanel", () => {
     });
   });
 
+  it.each([
+    [true, true],
+    [false, false],
+  ])("defaults live sources to the project's valid connector state (hasValidConnector=%s)", async (hasValidConnector, expected) => {
+    render(
+      <SreInvestigationPanel
+        incidentId="018f0000-0000-7000-8000-000000000001"
+        hasPrimaryService={true}
+        serviceMappingHref="/org-admin?tab=services"
+        canInvestigate={true}
+        canUseLiveConnectors={true}
+        hasValidConnector={hasValidConnector}
+      />,
+    );
+
+    openOptions();
+    expect(screen.getByLabelText("Include live sources").getAttribute("aria-checked")).toBe(String(expected));
+    fireEvent.click(screen.getByRole("button", { name: /run investigation/i }));
+
+    await waitFor(() => {
+      expect(global.fetch).toHaveBeenCalledWith(
+        "/api/sre/investigate",
+        expect.objectContaining({
+          body: JSON.stringify({
+            incidentId: "018f0000-0000-7000-8000-000000000001",
+            useLiveConnectors: expected,
+          }),
+        }),
+      );
+    });
+  });
+
+  it("follows connector availability until the user chooses, then keeps the choice", () => {
+    const props = {
+      incidentId: "018f0000-0000-7000-8000-000000000001",
+      hasPrimaryService: true,
+      serviceMappingHref: "/org-admin?tab=services",
+      canInvestigate: true,
+      canUseLiveConnectors: true,
+    };
+    const { rerender } = render(<SreInvestigationPanel {...props} hasValidConnector={false} />);
+    openOptions();
+    const toggle = () => screen.getByLabelText("Include live sources").getAttribute("aria-checked");
+    expect(toggle()).toBe("false");
+    rerender(<SreInvestigationPanel {...props} hasValidConnector={true} />);
+    expect(toggle()).toBe("true");
+    fireEvent.click(screen.getByLabelText("Include live sources"));
+    rerender(<SreInvestigationPanel {...props} hasValidConnector={false} />);
+    rerender(<SreInvestigationPanel {...props} hasValidConnector={true} />);
+    expect(toggle()).toBe("false");
+  });
+
   it("treats HTTP 202 as an accepted start, not a completed result", async () => {
     const { toast } = jest.requireMock("sonner") as {
       toast: { success: jest.Mock };

@@ -296,6 +296,8 @@ describe("SRE chat API", () => {
     expect(mockRunSreAgent.mock.calls[0][0].tools).toHaveProperty(
       "searchLiveConnectorEvidence",
     );
+    expect(mockRunSreAgent.mock.calls[0][0].prompt).toContain("never proves that there were no errors");
+    expect(mockRunSreAgent.mock.calls[0][0].prompt).toContain("OTel service name");
   });
 
   it("validates and redacts text attachments before prompt and persistence", async () => {

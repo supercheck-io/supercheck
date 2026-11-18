@@ -59,7 +59,7 @@ import {
 
 const MAX_TOOL_ROWS = 10;
 const MAX_TIME_WINDOW_MINUTES = 6 * 60;
-const supportedLiveConnectorTypes = [
+export const supportedLiveConnectorTypes = [
   "github",
   "kubernetes",
   "prometheus",
@@ -92,7 +92,12 @@ const connectorSearchInputSchema = z.object({
     .describe(
       "Service ID returned by listIncidentConnectors; required for chats without an incident.",
     ),
-  connectorId: z.string().uuid(),
+  connectorId: z
+    .string()
+    .uuid()
+    .describe(
+      "Must be one of the connector ids from the connector list in the prompt or returned by listIncidentConnectors; never invent an id.",
+    ),
   query: z
     .string()
     .trim()
@@ -504,14 +509,27 @@ export async function listIncidentLiveConnectors(
           eq(sreServices.status, "active"),
           serviceName ? ilike(sreServices.name, `%${serviceName}%`) : undefined,
         ),
-        columns: { id: true, name: true, environment: true },
+        columns: { id: true, name: true, environment: true, otelServiceName: true },
         orderBy: desc(sreServices.updatedAt),
         limit: 51,
       })
     : [];
 
+  const primaryService =
+    scope.incidentId && primaryServiceId
+      ? ((await db.query.sreServices.findFirst({
+          where: and(
+            eq(sreServices.id, primaryServiceId),
+            eq(sreServices.organizationId, scope.organizationId),
+            eq(sreServices.projectId, scope.projectId),
+          ),
+          columns: { name: true, otelServiceName: true },
+        })) ?? null)
+      : null;
+
   return {
     primaryServiceId,
+    primaryService,
     services: services.slice(0, 50),
     servicesTruncated: services.length > 50,
     connectors: connectors.slice(0, 25).map(({ row, scopedServiceIds }) => ({
@@ -549,8 +567,28 @@ export async function searchIncidentLiveConnectorEvidence(
   );
 
   if (!selected) {
-    throw new Error(
-      "Connector not found, unavailable, or not scoped to the selected service",
+    // A wrong id is a fixable mistake: list the valid ones instead of failing a connector.
+    const valid = connectors
+      .filter(({ row }) => row.type !== "mcp")
+      .slice(0, 25)
+      .map(({ row }) => `${row.id} (${row.name.replace(/\s+/g, " ").slice(0, 80)}, ${row.type})`)
+      .join("; ");
+    // No FK-valid connector id exists here, so the row records the attempt with a null connector.
+    await db.insert(sreInvestigationToolCalls).values({
+      investigationRunId: scope.investigationRunId ?? null,
+      connectorId: null,
+      connectorType: "unknown",
+      toolName: "agent.connector.search.unknown_connector",
+      inputHash: hashConnectorPayload({ connectorId: input.connectorId, query: input.query }),
+      inputSummary: redactConnectorText(JSON.stringify({ connectorId: input.connectorId })),
+      status: "error",
+      errorMessage: "Connector not found, unavailable, or not scoped to the selected service",
+      durationMs: Date.now() - startedAt,
+      costEstimateCents: 0,
+      executedAt: new Date(),
+    });
+    throw new ConnectorQueryRejectedError(
+      `Connector not found, unavailable, or not scoped to the selected service. Use one of these connector ids: ${valid || "none available"}`,
     );
   }
 
@@ -640,6 +678,8 @@ export async function searchIncidentLiveConnectorEvidence(
   const outputLimits = normalizeOutputLimits(connector.outputLimits);
   const stagedStage =
     input.stage &&
+    // Outside an investigation run (chat) the stage is ignored: an ordinary bounded search runs.
+    scope.investigationRunId &&
     !connector.privateAgentId &&
     isStagedLogConnectorType(connector.type)
       ? input.stage
@@ -647,12 +687,6 @@ export async function searchIncidentLiveConnectorEvidence(
 
   if (stagedStage) {
     try {
-      if (!scope.investigationRunId) {
-        throw new Error(
-          "Staged evidence searches require an active investigation run",
-        );
-      }
-
       const previousCalls = await db
         .select({ toolName: sreInvestigationToolCalls.toolName })
         .from(sreInvestigationToolCalls)
@@ -660,7 +694,7 @@ export async function searchIncidentLiveConnectorEvidence(
           and(
             eq(
               sreInvestigationToolCalls.investigationRunId,
-              scope.investigationRunId,
+              scope.investigationRunId ?? "",
             ),
             eq(sreInvestigationToolCalls.connectorId, connector.id),
             eq(sreInvestigationToolCalls.status, "success"),
@@ -1016,7 +1050,11 @@ export async function searchIncidentLiveConnectorEvidence(
       evidence: insertedEvidence.map(summarizeEvidenceItem),
       truncated: sanitized.truncated,
       persisted: Boolean(scope.incidentId),
-      message: `${scope.incidentId ? "Persisted" : "Returned"} ${insertedEvidence.length} connector evidence item(s)`,
+      message: `${scope.incidentId ? "Persisted" : "Returned"} ${insertedEvidence.length} connector evidence item(s)${
+        sanitized.truncated || insertedEvidence.length >= Math.min(outputLimits.maxRows, input.maxRows, MAX_TOOL_ROWS)
+          ? ". This is a capped sample, not a complete list: it does not prove that other matching events are absent. Query for the specific signal (for example errors) explicitly."
+          : ""
+      }`,
     };
   } catch (error) {
     await db.insert(sreInvestigationToolCalls).values({
