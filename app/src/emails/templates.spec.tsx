@@ -229,14 +229,23 @@ describe("email shell rules", () => {
   });
 
   it("every action email uses the shared primary button", () => {
-    const html = render(<UsageNotificationEmail organizationName="A" notificationType="usage_80_percent" resourceType="playwright" usageAmount={8} usageLimit={10} usagePercentage={80} billingPageUrl="https://x.io/b" periodEndDate="Dec 1" />) +
-      render(<TrialNotificationEmail organizationName="A" kind="midway" daysRemaining={7} subscribeUrl="https://x.io/s" />);
-    expect(html.match(/background-color:#111827/g)?.length).toBeGreaterThanOrEqual(2);
+    const primary = (html: string, href: string) => html.match(new RegExp(`<a[^>]*href="${href}"[^>]*>`))?.[0] ?? "";
+    const usage = render(<UsageNotificationEmail organizationName="A" notificationType="usage_80_percent" resourceType="playwright" usageAmount={8} usageLimit={10} usagePercentage={80} billingPageUrl="https://x.io/b" periodEndDate="Dec 1" />);
+    const trial = render(<TrialNotificationEmail organizationName="A" kind="midway" daysRemaining={7} subscribeUrl="https://x.io/s" />);
+    expect(primary(usage, "https://x.io/b")).toContain("background-color:#111827");
+    expect(primary(trial, "https://x.io/s")).toContain("background-color:#111827");
+  });
+
+  it("rejects malformed or non-web logo bases and keeps the reason when only reason is given", () => {
+    expect(emailLogoUrl({ APP_URL: "https://app host.test" } as unknown as NodeJS.ProcessEnv)).toBeUndefined();
+    expect(emailLogoUrl({ APP_URL: "mailto:a@b.test" } as unknown as NodeJS.ProcessEnv)).toBeUndefined();
+    expect(render(<BaseLayout preview="p" title="t" showStandardFooter={false} reason="Because reasons.">x</BaseLayout>)).toContain("Because reasons.");
   });
 
   it("incident email links to notification settings on the incident's origin", () => {
     const ok = render(<IncidentUpdateEmail event="created" incidentNumber={1} title="t" severity="sev2" statusLabel="Open" incidentUrl="https://app.io/incidents/7" />);
     expect(ok).toContain('href="https://app.io/notifications"');
     expect(render(<IncidentUpdateEmail event="created" incidentNumber={1} title="t" severity="sev2" statusLabel="Open" incidentUrl="not a url" />)).not.toContain("Manage notifications");
+    expect(render(<IncidentUpdateEmail event="created" incidentNumber={1} title="t" severity="sev2" statusLabel="Open" incidentUrl="mailto:ops@example.test" />)).not.toContain("null/notifications");
   });
 });

@@ -219,6 +219,7 @@ describe('EmailTemplateService job and recovery emails', () => {
       delete process.env.NEXT_PUBLIC_APP_URL;
       delete process.env.APP_URL;
       const r = await service.renderMonitorAlertEmail(params);
+      expect(r.html).toContain('You received this alert'); // shared layout rendered, not the fallback
       expect(r.html).not.toContain('<img');
       expect(r.html).not.toContain('supercheck-logo.png');
     });

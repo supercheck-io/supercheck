@@ -135,7 +135,9 @@ export function incidentUpdateFields(
 /** Notification settings live on the same origin as the incident link. */
 function notificationsLink(incidentUrl: string) {
   try {
-    return { href: `${new URL(incidentUrl).origin}/notifications`, label: "Manage notifications" };
+    const url = new URL(incidentUrl);
+    if (!/^https?:$/.test(url.protocol)) return undefined;
+    return { href: `${url.origin}/notifications`, label: "Manage notifications" };
   } catch {
     return undefined;
   }

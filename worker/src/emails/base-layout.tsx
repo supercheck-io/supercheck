@@ -40,8 +40,13 @@ interface BaseLayoutProps {
  * never makes recipients' mail clients contact supercheck.io.
  */
 export const emailLogoUrl = (env: NodeJS.ProcessEnv = process.env, appUrl?: string): string | undefined => {
-  const base = (appUrl || env.NEXT_PUBLIC_APP_URL || env.APP_URL || "").trim().replace(/\/+$/, "");
-  return /^https?:\/\//i.test(base) ? `${base}/supercheck-logo.png` : undefined;
+  const base = (appUrl || env.NEXT_PUBLIC_APP_URL || env.APP_URL || "").trim();
+  try {
+    const url = new URL(base);
+    return /^https?:$/.test(url.protocol) ? `${url.origin}${url.pathname.replace(/\/+$/, "")}/supercheck-logo.png` : undefined;
+  } catch {
+    return undefined;
+  }
 };
 
 /** "Wed, 18 Nov 2026 06:02:36 UTC": one timestamp format, with an explicit zone, in every email. */
@@ -95,7 +100,7 @@ export const BaseLayout = ({
           <Section style={content}>{children}</Section>
 
           {/* Footer */}
-          {(footer || showStandardFooter) && (
+          {(footer || showStandardFooter || reason) && (
             <Section style={footerSection}>
               {footer}
               {reason && (

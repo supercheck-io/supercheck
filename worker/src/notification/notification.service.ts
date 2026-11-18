@@ -269,7 +269,12 @@ export function buildEmailFields(
 ): Array<{ title: string; value: string }> {
   const rows = fields.map((f) => ({
     title: f.title.replace(/^\p{Extended_Pictographic}\uFE0F?\s*/u, ''),
-    value: f.title === 'Status' ? sentenceCase(f.value) : f.value,
+    value:
+      f.title === 'Status'
+        ? sentenceCase(f.value)
+        : f.title === 'Time'
+          ? formatEmailTime(observedTime(payload))
+          : f.value,
     raw: f.raw,
   }));
   const extras: Array<{ title: string; value: string }> = [];
@@ -644,7 +649,7 @@ export class NotificationService implements OnApplicationShutdown {
     // Time
     fields.push({
       title: 'Time',
-      value: formatEmailTime(observedTime(payload)),
+      value: observedTime(payload).toUTCString(),
       short: true,
     });
 
