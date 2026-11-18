@@ -79,8 +79,9 @@ it("keeps check result cells on one line with an ellipsis", async () => {
   try {
     render(<MonitorDetailClient monitor={monitor} />);
 
-    // The failure text is a tooltip on the Result cell, not a column, so the table fits half the page.
-    expect(await screen.findByTestId("result-error")).toHaveAccessibleName(`Error: ${error}`);
+    // The failure text opens from an info button on the Result cell, not a column, so the table fits half the page.
+    fireEvent.click(await screen.findByTestId("result-error"));
+    expect(await screen.findByText(error)).toBeInTheDocument();
     expect(screen.queryByRole("columnheader", { name: "Error" })).toBeNull();
     const checkedAt = screen.getByText("less than a minute ago");
     const location = screen.getByText("Asia Pacific Southeast Two");
@@ -89,6 +90,17 @@ it("keeps check result cells on one line with an ellipsis", async () => {
       expect(cell.closest("td")).toHaveClass("overflow-hidden");
     }
     // Hover and keyboard reveal of clipped text is covered in truncated-text-with-tooltip.spec.tsx.
+  } finally {
+    mockResults = [];
+  }
+});
+
+it("shows the report and error buttons of a failed synthetic check in the Result cell", async () => {
+  mockResults = [{ id: "r7", monitorId: "m9", checkedAt: new Date().toISOString(), isUp: false, responseTimeMs: 40, location: null, testExecutionId: "run1", details: { reportUrl: "r", errorMessage: "boom" } }];
+  try {
+    render(<MonitorDetailClient monitor={{ id: "m9", name: "Bot", type: "synthetic_test", target: "t1", status: "down", frequencyMinutes: 5, config: { testId: "t1" }, recentResults: [] } as never} />);
+    expect(await screen.findByRole("button", { name: "View test report" })).toBeInTheDocument();
+    expect(screen.getByTestId("result-error")).toBeInTheDocument();
   } finally {
     mockResults = [];
   }
@@ -340,6 +352,15 @@ describe("heartbeat monitor detail", () => {
     expect(screen.getByTestId("heartbeat-ping-url-panel")).toBeInTheDocument();
     expect(screen.getByTestId("heartbeat-ping-history")).toBeInTheDocument();
     expect(screen.queryByTestId("heartbeat-waiting")).toBeNull();
+  });
+
+  it("keeps the heartbeat layout without a summary, as in the notification view", () => {
+    const { heartbeat: omitted, ...bare } = heartbeatMonitor("up") as unknown as Record<string, unknown>;
+    void omitted;
+    render(<MonitorDetailClient monitor={bare as never} isNotificationView />);
+    expect(screen.getByTestId("heartbeat-layout")).toBeInTheDocument();
+    expect(screen.getByTestId("heartbeat-ping-history")).toBeInTheDocument();
+    expect(screen.queryByTestId("heartbeat-overview")).toBeNull();
   });
 
   it("shows the schedule, last ping, next ping, run and uptime facts in the overview", () => {

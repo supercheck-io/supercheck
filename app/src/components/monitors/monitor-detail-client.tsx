@@ -269,7 +269,7 @@ export function MonitorDetailClient({
   const [fitRows, setFitRows] = useState(10);
   const resultsPerPage = fitRows;
   const fitResults = !isNotificationView;
-  const resultsPanelRef = useFitPanelRows(fitResults ? setFitRows : undefined, 'tbody[data-testid="monitor-results-body"] tr');
+  const resultsPanelRef = useFitPanelRows(fitResults ? setFitRows : undefined, '[data-testid="monitor-result-row"]');
 
   // React Query hooks for data fetching with caching
   const { stats: monitorStats } = useMonitorStats(monitor.id, selectedLocation);
@@ -1165,29 +1165,31 @@ export function MonitorDetailClient({
           )}
         </div>
 
-        {isHeartbeat && heartbeat ? (
-          <div className="flex min-h-0 flex-1 flex-col gap-4" data-testid="heartbeat-layout">
+        {isHeartbeat ? (
+          <div className="flex min-h-0 flex-1 flex-col gap-4 lg:overflow-y-auto" data-testid="heartbeat-layout">
             {/* Setup (left) and facts with availability (right) share the top row; the ping history fills the rest. */}
             <div className="grid shrink-0 grid-cols-1 gap-4 lg:grid-cols-2">
               {showHeartbeatSetup && (
                 <HeartbeatPingUrlPanel
                   monitorId={monitor.id}
                   canManage={permissionsReady && canEditMonitor}
-                  pending={heartbeat.state === "pending"}
+                  pending={heartbeat?.state === "pending"}
                 />
               )}
               <div className={`flex min-w-0 flex-col gap-4 ${showHeartbeatSetup ? "" : "lg:col-span-2"}`}>
-                <HeartbeatOverview
-                  state={heartbeat.state}
-                  frequencyMinutes={monitor.frequencyMinutes}
-                  graceMinutes={heartbeat.graceMinutes}
-                  lastPingAt={heartbeat.lastPingAt}
-                  nextExpectedAt={neverPinged ? null : heartbeat.nextExpectedAt}
-                  lastRunDuration={lastRunDuration}
-                  uptime24h={naToNull(calculatedMetrics.uptime24h)}
-                  uptime30d={naToNull(calculatedMetrics.uptime30d)}
-                  now={clockNow}
-                />
+                {heartbeat && (
+                  <HeartbeatOverview
+                    state={heartbeat.state}
+                    frequencyMinutes={monitor.frequencyMinutes}
+                    graceMinutes={heartbeat.graceMinutes}
+                    lastPingAt={heartbeat.lastPingAt}
+                    nextExpectedAt={neverPinged ? null : heartbeat.nextExpectedAt}
+                    lastRunDuration={lastRunDuration}
+                    uptime24h={naToNull(calculatedMetrics.uptime24h)}
+                    uptime30d={naToNull(calculatedMetrics.uptime30d)}
+                    now={clockNow}
+                  />
+                )}
                 <AvailabilityBarChart
                   data={availabilityTimelineData}
                   headerActions={
@@ -1335,7 +1337,7 @@ export function MonitorDetailClient({
               </CardDescription>
             </CardHeader>
             <CardContent ref={resultsPanelRef} className="p-0 flex-1 flex min-h-0 flex-col">
-              <div className="w-full flex-1 overflow-x-auto relative lg:overflow-y-hidden">
+              <div className="w-full flex-1 overflow-x-auto relative lg:overflow-y-auto">
                 {/* Loading overlay - shows on top of existing data for smooth transitions */}
                 {isLoadingResults && paginatedTableResults.length > 0 && (
                   <div className="absolute inset-0 z-20 bg-card/80 backdrop-blur-[1px] flex items-center justify-center transition-opacity duration-200">
@@ -1351,7 +1353,7 @@ export function MonitorDetailClient({
                   <table className={`w-full ${aiEndpoint ? "min-w-[640px]" : showPassRate ? "min-w-[520px]" : "min-w-[440px]"} table-fixed divide-y divide-border`}>
                     {/* Location takes the leftover width; the failure text lives in a tooltip on the Result cell, so there is no Error column. */}
                     <colgroup>
-                      <col className="w-[88px]" />
+                      <col className="w-[112px]" />
                       <col className="w-[124px]" />
                       <col />
                       <col className="w-[92px]" />
@@ -1497,7 +1499,7 @@ export function MonitorDetailClient({
                               : result.details?.errorMessage || "Check failed";
 
                           return (
-                            <tr key={result.id} className="hover:bg-muted/25">
+                            <tr key={result.id} className="hover:bg-muted/25" data-testid="monitor-result-row">
                               <td className="px-3 py-[11.5px] whitespace-nowrap text-sm">
                                 <span className="inline-flex items-center gap-1.5">
                                   <SimpleStatusIcon isUp={result.isUp} />
@@ -1540,20 +1542,22 @@ export function MonitorDetailClient({
                                     </button>
                                   )}
                                   {failureText && (
-                                    <Tooltip>
-                                      <TooltipTrigger asChild>
-                                        <span
-                                          tabIndex={0}
-                                          role="img"
-                                          aria-label={`Error: ${failureText}`}
+                                    // A popover, not a tooltip: it opens on tap, and Radix tooltips never open on touch.
+                                    <Popover>
+                                      <PopoverTrigger asChild>
+                                        <button
+                                          type="button"
+                                          aria-label="Show error"
                                           data-testid="result-error"
-                                          className="inline-flex rounded-sm text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                          className="inline-flex rounded-sm text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                                         >
                                           <Info className="h-3.5 w-3.5" aria-hidden="true" />
-                                        </span>
-                                      </TooltipTrigger>
-                                      <TooltipContent className="max-w-xs break-words">{failureText}</TooltipContent>
-                                    </Tooltip>
+                                        </button>
+                                      </PopoverTrigger>
+                                      <PopoverContent className="w-auto max-w-xs break-words p-3 text-xs" align="start">
+                                        {failureText}
+                                      </PopoverContent>
+                                    </Popover>
                                   )}
                                 </span>
                               </td>
