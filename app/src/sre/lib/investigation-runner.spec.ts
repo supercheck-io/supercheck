@@ -207,6 +207,7 @@ describe("executeSreIncidentInvestigation failure persistence", () => {
           type: "loki",
           queryGuidance: "LogQL only",
         },
+        { id: "018f0000-0000-7000-8000-0000000000bb", name: "Tools", type: "mcp", queryGuidance: "Not searchable" },
       ],
     });
     (runSreAgent as jest.Mock).mockRejectedValue(new Error("test interruption"));
@@ -221,6 +222,7 @@ describe("executeSreIncidentInvestigation failure persistence", () => {
     const prompt = (runSreAgent as jest.Mock).mock.lastCall![0].prompt as string;
     expect(prompt.includes("018f0000-0000-7000-8000-0000000000aa")).toBe(listed);
     expect(prompt.includes("queryGuidance=LogQL only")).toBe(listed);
+    expect(prompt).not.toContain("0000000000bb");
     expect(prompt.includes("OTel service name: checkout-api")).toBe(listed);
     expect(listIncidentLiveConnectors).toHaveBeenCalledTimes(listed ? 1 : 0);
   });

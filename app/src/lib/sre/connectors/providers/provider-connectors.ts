@@ -1,5 +1,6 @@
 import { fetchConnectorEndpoint, fetchPublicEndpoint } from "../pinned-fetch";
 import { describeConnectionError } from "../connection-error";
+import { ConnectorQueryRejectedError } from "./provider-query-guards";
 import {
   DEFAULT_CONNECTOR_OUTPUT_LIMITS,
   hashConnectorPayload,
@@ -279,13 +280,24 @@ export class ObservabilityProviderConnector implements Connector {
         DEFAULT_CONNECTOR_OUTPUT_LIMITS.maxSeconds,
       30,
     );
-    const result = await this.spec.search(this.context(), {
-      query: params.query,
-      timeWindow: params.timeWindow,
-      maxRows: params.budget.maxRows,
-      maxBytes: params.budget.maxBytes,
-      maxSeconds,
-    });
+    const result = await this.spec
+      .search(this.context(), {
+        query: params.query,
+        timeWindow: params.timeWindow,
+        maxRows: params.budget.maxRows,
+        maxBytes: params.budget.maxBytes,
+        maxSeconds,
+      })
+      .catch((error: unknown) => {
+        // provider-core is shared with the worker and cannot import app error classes.
+        if (
+          error instanceof Error &&
+          /rejected the request with HTTP (400|422)\b/.test(error.message)
+        ) {
+          throw new ConnectorQueryRejectedError(error.message);
+        }
+        throw error;
+      });
     return result.records
       .slice(0, params.budget.maxRows)
       .map((record) =>

@@ -356,7 +356,9 @@ export async function executeSreIncidentInvestigation(
         status: incident.status,
         serviceName: incident.primaryServiceName,
         serviceOtelName: liveConnectors?.primaryService?.otelServiceName,
-        liveConnectorLines: liveConnectors?.connectors.map(
+        liveConnectorLines: liveConnectors?.connectors
+          .filter((connector) => connector.type !== "mcp")
+          .map(
           (connector) =>
             `id=${connector.id}; name=${connector.name}; type=${connector.type}; queryGuidance=${connector.queryGuidance}`,
         ),

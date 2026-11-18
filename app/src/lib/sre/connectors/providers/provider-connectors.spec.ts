@@ -9,6 +9,7 @@ import https from "node:https";
 import { createDirectConnector } from "../direct-connectors";
 import { sanitizeConnectorEvidence } from "../output-sanitizer";
 import { ObservabilityProviderConnector, providerHttp } from "./provider-connectors";
+import { ConnectorQueryRejectedError } from "./provider-query-guards";
 import type { ProviderHttp } from "./provider-core";
 
 const mockLookup = lookup as unknown as jest.Mock;
@@ -81,6 +82,13 @@ describe("observability provider connectors", () => {
     expect((await new ObservabilityProviderConnector({ ...definition, type: "jaeger", endpointUrl: "https://j.example.com" }, down).validate()).status).toBe("unreachable");
     const ok: ProviderHttp = async () => ({ status: 200, text: "{}", truncated: false });
     expect((await new ObservabilityProviderConnector({ ...definition, type: "jaeger", endpointUrl: "https://j.example.com" }, ok).validate()).status).toBe("valid");
+  });
+
+  it.each([400, 422, 500])("maps a backend HTTP %s on search to a retryable rejection only for 400/422", async (status) => {
+    const http: ProviderHttp = async () => ({ status, text: "", truncated: false });
+    const error = await new ObservabilityProviderConnector({ ...definition, type: "jaeger", endpointUrl: "https://j.example.com" }, http)
+      .search(searchParams()).catch((e) => e);
+    expect(error instanceof ConnectorQueryRejectedError).toBe(status !== 500);
   });
 
   it("merges stored credential fields with the secret", async () => {

@@ -1125,7 +1125,7 @@ export async function getSreIncidentDetails(
             and(
               eq(externalConnectors.organizationId, organizationId),
               eq(externalConnectors.projectId, project.id),
-              eq(externalConnectors.status, "valid"),
+              inArray(externalConnectors.status, ["configured", "valid"]),
             ),
           )
           .limit(1),

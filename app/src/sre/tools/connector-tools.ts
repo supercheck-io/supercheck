@@ -570,7 +570,7 @@ export async function searchIncidentLiveConnectorEvidence(
     // A wrong id is a fixable mistake: list the valid ones instead of failing a connector.
     const valid = connectors
       .slice(0, 25)
-      .map(({ row }) => `${row.id} (${row.name}, ${row.type})`)
+      .map(({ row }) => `${row.id} (${row.name.replace(/\s+/g, " ").slice(0, 80)}, ${row.type})`)
       .join("; ");
     throw new ConnectorQueryRejectedError(
       `Connector not found, unavailable, or not scoped to the selected service. Use one of these connector ids: ${valid || "none available"}`,

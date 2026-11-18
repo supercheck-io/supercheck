@@ -66,7 +66,7 @@ export function buildSreInvestigationPrompt(
     `Incident title (unverified):\n${fenceUntrustedBlock("incident_title", [input.incidentTitle], 500)}`,
     `Severity: ${input.severity}`,
     `Status: ${input.status}`,
-    `Primary service: ${input.serviceName ?? "unknown"}${input.serviceOtelName ? ` (OTel service name: ${input.serviceOtelName.replace(/\s+/g, " ").slice(0, 100)})` : ""}`,
+    `Primary service: ${input.serviceName ?? "unknown"}${input.serviceOtelName ? ` (OTel service name: ${input.serviceOtelName.replace(/[<>\s]+/g, " ").slice(0, 100)})` : ""}`,
     `Stored evidence items: ${input.evidenceCount}`,
     `Stored connector evidence items: ${input.connectorEvidenceCount ?? 0}`,
     `Live connector tools: ${input.liveConnectorToolsEnabled ? "available" : "not available"}`,

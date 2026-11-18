@@ -77,7 +77,7 @@ async function fetchJson({
   if (response.status === 400 || response.status === 422) {
     // The backend parsed and refused the query: fixable by the agent, not a connector outage.
     throw new ConnectorQueryRejectedError(
-      `the backend rejected the query with HTTP ${response.status}; check the query syntax for this connector type`,
+      `request rejected with HTTP ${response.status}; check the query syntax for this connector type`,
     );
   }
 
