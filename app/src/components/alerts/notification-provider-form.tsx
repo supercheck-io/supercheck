@@ -377,11 +377,18 @@ function getHeadersError(text: string): string | null {
 const MASKED_PLACEHOLDER = "Unchanged — leave blank to keep";
 const SAVE_ERROR_TOAST_ID = "notification-provider-save-error";
 
-/** The URL the user typed, without userinfo, query or fragment, for the side card; undefined until it parses. */
+/**
+ * The URL the user typed, for the side card; undefined until it parses. Userinfo, query and fragment are dropped, and the
+ * path is hidden (`https://hooks.slack.com/…`) when it has more than one segment or one that looks like a token, since
+ * Slack, Discord and Teams webhook URLs carry their secret in the path.
+ */
 export function endpointForDisplay(value: string | undefined): string | undefined {
   try {
     const url = new URL((value ?? "").trim());
-    return url.protocol === "http:" || url.protocol === "https:" ? url.origin + url.pathname : undefined;
+    if (url.protocol !== "http:" && url.protocol !== "https:") return undefined;
+    const segments = url.pathname.split("/").filter(Boolean);
+    const secretLooking = segments.length > 1 || segments.some((segment) => segment.length >= 20);
+    return segments.length === 0 ? url.origin : secretLooking ? `${url.origin}/…` : url.origin + url.pathname;
   } catch {
     return undefined;
   }

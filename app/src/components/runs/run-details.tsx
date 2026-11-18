@@ -1,5 +1,6 @@
 "use client";
 
+import { statusCardsGridClass } from "./status-cards-grid";
 import { useCallback, useEffect, useRef, useState, useMemo } from "react";
 import { runStatuses, triggerTypes } from "./data";
 import { toast } from "sonner";
@@ -437,7 +438,7 @@ export function RunDetails({
         </div>
 
         {/* Status cards - similar to monitor details but with appropriate content */}
-        <div className="grid grid-cols-1 md:grid-cols-7 gap-2 mt-2">
+        <div className={statusCardsGridClass(Boolean(run.jobId))}>
           <div className="bg-muted/30 rounded-lg p-2 border flex items-center overflow-hidden">
             {statusInfo && (
               <statusInfo.icon

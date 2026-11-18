@@ -77,7 +77,8 @@ export async function getRun(
       .leftJoin(
         tests,
         and(
-          sql`${tests.id}::text = ${runs.metadata}->>'testId'`,
+          // Compare as uuid (the text cast would defeat the primary key index); malformed metadata matches nothing.
+          sql`${tests.id} = CASE WHEN ${runs.metadata}->>'testId' ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN (${runs.metadata}->>'testId')::uuid END`,
           eq(tests.projectId, runs.projectId)
         )
       )
