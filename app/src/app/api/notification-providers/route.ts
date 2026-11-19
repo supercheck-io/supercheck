@@ -21,6 +21,7 @@ import {
 import type { NotificationProviderType } from "@/db/schema";
 import { loadCreators } from "@/lib/creators";
 import { loadProviderHealth } from "@/lib/notification-providers/channel-health";
+import { loadChannelUsage } from "@/lib/notification-providers/channel-usage";
 
 import { permissionDeniedResponse } from "@/lib/deletion/org-state";
 import { requireSessionSameOrigin } from "@/lib/security/same-origin";
@@ -64,7 +65,8 @@ export async function GET() {
 
     const creatorOf = await loadCreators(providers.map((p) => p.createdByUserId));
 
-    const { health: healthMap, lastUsed: lastAlertMap } = await loadProviderHealth(providers.map((p) => p.id));
+    const { health: healthMap, lastUsed: lastAlertMap, lastTest } = await loadProviderHealth(providers.map((p) => p.id));
+    const usage = await loadChannelUsage(targetProjectId, providers.map((p) => p.id));
 
     // Enhance providers with last used information (no N+1 queries)
     const enhancedProviders = providers.map((provider) => {
@@ -92,6 +94,8 @@ export async function GET() {
         configUnavailable,
         lastUsed: lastAlertMap.get(provider.id) || null,
         health: healthMap.get(provider.id) ?? { state: "unknown" as const, at: null },
+        lastTest: lastTest.get(provider.id) ?? null,
+        usage: usage.get(provider.id) ?? { monitors: 0, jobs: 0, policy: false },
       };
     });
 

@@ -20,6 +20,8 @@ interface NotificationProvider {
   updatedAt: string;
   lastUsed?: string;
   health?: NotificationChannel["health"];
+  lastTest?: NotificationChannel["lastTest"];
+  usage?: NotificationChannel["usage"];
   createdByName?: string | null;
   createdByImage?: string | null;
 }
@@ -93,6 +95,8 @@ export function NotificationChannelsComponent({
           updatedAt: provider.updatedAt,
           lastUsed: provider.lastUsed,
           health: provider.health,
+          lastTest: provider.lastTest,
+          usage: provider.usage,
           createdByName: provider.createdByName ?? null,
           createdByImage: provider.createdByImage ?? null,
         }));

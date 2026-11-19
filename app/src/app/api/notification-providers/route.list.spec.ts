@@ -4,7 +4,7 @@ const OTHER = "019a0000-0000-7000-8000-000000000002";
 const queue: unknown[][] = [];
 const node = (rows: unknown[]) => {
   const n: Record<string, unknown> = {};
-  for (const m of ["from", "where", "groupBy", "orderBy"]) n[m] = () => n;
+  for (const m of ["from", "innerJoin", "where", "groupBy", "orderBy"]) n[m] = () => n;
   n.then = (resolve: (v: unknown[]) => unknown) => resolve(rows);
   return n;
 };
@@ -50,4 +50,22 @@ it("a newer successful test clears an auth-failed badge", async () => {
   mget.mockResolvedValueOnce([JSON.stringify({ ok: true, responseStatus: 202, at: testedAt.toISOString() })]);
   const [row] = await (await GET()).json();
   expect(row.health).toEqual({ state: "ok", at: testedAt.toISOString() });
+});
+
+it("each channel carries its newest test result and what sends to it", async () => {
+  const testedAt = new Date(Date.now() - 60_000);
+  queue.push(
+    [{ id: PROVIDER, type: "webhook", config: {}, projectId: "proj-1" }, { id: OTHER, type: "slack", config: {}, projectId: "proj-1" }],
+    [],
+    [{ id: PROVIDER, n: 2 }],
+    [{ id: PROVIDER, n: 1 }],
+    [{ channelIds: [OTHER], escalateChannelId: PROVIDER }],
+  );
+  mget.mockResolvedValueOnce([JSON.stringify({ ok: false, responseStatus: 401, at: testedAt.toISOString() }), null]);
+  const rows = await (await GET()).json();
+  const byId = (id: string) => rows.find((r: { id: string }) => r.id === id);
+  expect(byId(PROVIDER).lastTest).toEqual({ state: "auth_failed", at: testedAt.toISOString() });
+  expect(byId(PROVIDER).usage).toEqual({ monitors: 2, jobs: 1, policy: true });
+  expect(byId(OTHER).lastTest).toBeNull();
+  expect(byId(OTHER).usage).toEqual({ monitors: 0, jobs: 0, policy: true });
 });

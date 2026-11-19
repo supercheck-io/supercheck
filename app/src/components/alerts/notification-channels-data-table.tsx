@@ -8,12 +8,18 @@ import {
   flexRender,
   getCoreRowModel,
   getFilteredRowModel,
+  getFacetedUniqueValues,
+  type ColumnFiltersState,
   getPaginationRowModel,
   getSortedRowModel,
   useReactTable,
   Row,
 } from "@tanstack/react-table";
-import { Loader2 } from "lucide-react";
+import { Loader2, Search, X } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { DataTableFacetedFilter } from "./data-table-faceted-filter";
+import { DataTableViewOptions } from "./data-table-view-options";
+import { notificationProviders, PAGING_SERVICE_NAMES } from "./data";
 
 import {
   Table,
@@ -57,7 +63,9 @@ export function NotificationChannelsDataTable<TData, TValue>({
   const [mounted, setMounted] = React.useState(false);
   const { bodyRef, pagination, onPaginationChange } = useFitPagination(data.length);
   const [sorting, setSorting] = React.useState<SortingState>([]);
-  const [columnVisibility, setColumnVisibility] = React.useState<VisibilityState>({});
+  const [globalFilter, setGlobalFilter] = React.useState("");
+  const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>([]);
+  const [columnVisibility, setColumnVisibility] = React.useState<VisibilityState>({ id: false, createdAt: false });
   const [rowSelection, setRowSelection] = React.useState<Record<string, boolean>>({});
 
   // Set mounted to true after initial render
@@ -96,7 +104,14 @@ export function NotificationChannelsDataTable<TData, TValue>({
       sorting,
       columnVisibility,
       rowSelection,
+      globalFilter,
+      columnFilters,
     },
+    onGlobalFilterChange: setGlobalFilter,
+    onColumnFiltersChange: setColumnFilters,
+    // Search matches the title only; the Provider filter covers the type.
+    globalFilterFn: (row, _id, value: string) => String((row.original as { name?: string }).name ?? "").toLowerCase().includes(value.trim().toLowerCase()),
+    getFacetedUniqueValues: getFacetedUniqueValues(),
     enableRowSelection: true,
     onRowSelectionChange: safeSetRowSelection,
     onSortingChange: safeSetSorting,
@@ -152,8 +167,44 @@ export function NotificationChannelsDataTable<TData, TValue>({
     );
   }
 
+  // Offer only the providers this project has.
+  const providerColumn = table.getAllLeafColumns().find((column) => column.id === "type");
+  const present = providerColumn?.getFacetedUniqueValues() ?? new Map();
+  const providerOptions = [
+    ...notificationProviders.filter((p) => p.type !== "webhook").map((p) => ({ value: p.type as string, label: p.label })),
+    ...Object.entries(PAGING_SERVICE_NAMES).map(([value, label]) => ({ value, label })),
+    { value: "webhook", label: "Custom webhook" },
+  ].filter((option) => present.has(option.value));
+
   return (
     <div className="space-y-4">
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative w-full sm:w-[300px]">
+          <Search aria-hidden="true" className="absolute left-2 top-2 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Search by title..."
+            aria-label="Search channels by title"
+            value={globalFilter}
+            onChange={(event) => setGlobalFilter(event.target.value)}
+            className="h-8 pl-8 pr-8"
+            data-testid="search-input"
+          />
+          {globalFilter && (
+            <button
+              type="button"
+              className="absolute right-2 top-1/2 -translate-y-1/2 rounded-sm p-0.5 text-muted-foreground hover:text-foreground"
+              onClick={() => setGlobalFilter("")}
+              aria-label="Clear search"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          )}
+        </div>
+        {providerColumn && <DataTableFacetedFilter column={providerColumn} title="Provider" options={providerOptions} />}
+        <div className="ml-auto">
+          <DataTableViewOptions table={table} />
+        </div>
+      </div>
       <div className="rounded-t-lg border relative">
         <Table>
           <TableHeader>
