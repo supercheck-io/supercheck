@@ -24,7 +24,7 @@ specifications.
   traces are disabled in `playwright.config.ts`. CI retries are disabled so
   flakes fail the gate visibly.
 - Profiles with `E2E_EXPECTED_BUILD_SHA` assert the exact 40-character build
-  SHA returned by `/api/health`. The scheduled/manual `e2e-full.yml` workflow
+  SHA returned by `/api/health`. The manual `e2e-full.yml` workflow
   allows this input to be omitted, in which case revision attestation is not
   registered.
 
@@ -85,12 +85,13 @@ against the demo; it is not acceptance of the PR's deployed SHA.
 
 `e2e-full.yml` runs the complete deterministic Chromium suite from
 `playwright.config.ts`, requires every test identity, rejects priority skips,
-and runs daily, manually, or through a reusable workflow call. Scheduled and
-manual runs do not attest a revision when `expected_build_sha` is omitted; the
-reusable call requires it. Failure screenshots are retained in the local test
-results, while CI uploads the rendered Playwright report only. Release builds
-also run the suite in `build-multiarch.yml` after verifying the deployed exact
-SHA, but that E2E job is advisory (`continue-on-error`).
+and runs only by manual dispatch (`target=staging` reads the URL from a secret;
+`target=custom` takes `base_url`). Runs do not attest a revision when
+`expected_build_sha` is omitted. Failure screenshots are retained in the local
+test results; CI uploads the rendered Playwright report for custom targets and
+only a sanitized pass/fail summary for staging. Release builds also run the
+suite against the published image in the self-hosted Compose stack
+(`compose-e2e.yml`) before `latest` is promoted.
 
 ## Merge-gate contract
 

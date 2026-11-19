@@ -1,12 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { TriangleAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { CheckIcon } from "@/components/logo/supercheck-logo";
+import { AuthCallout, AuthCard, AuthHeader } from "@/components/auth/auth-shell";
 
 export interface McpConsentProject {
   id: string;
@@ -88,34 +86,30 @@ export function McpConsent({ oauthQuery, userEmail, projects, canWriteIncidents 
 
   return (
     // The project list is the only region that grows; Approve and Deny stay in view.
-    <Card className="flex max-h-[calc(100dvh-5.5rem)] sm:max-h-[calc(100dvh-7.5rem)] w-full max-w-md flex-col shadow-sm">
-      <CardHeader className="items-center p-4 pb-3 text-center">
-        <CheckIcon className="size-8" aria-hidden="true" />
-        <CardTitle className="break-words text-xl font-bold">Connect {client.name}</CardTitle>
-        {client.verifiedHost ? (
-          <CardDescription>
-            Metadata hosted at <span className="font-medium text-foreground">{client.verifiedHost}</span>
-            {client.clientIdUrl ? (
-              <span className="mt-1 block break-all font-mono text-xs">{client.clientIdUrl}</span>
-            ) : null}
-          </CardDescription>
-        ) : null}
-      </CardHeader>
+    <AuthCard className="max-h-[calc(100dvh-4rem)] gap-4">
+      <AuthHeader
+        title={<span className="break-words">Connect {client.name}</span>}
+        description={
+          client.verifiedHost ? (
+            <>
+              Metadata hosted at <span className="font-medium text-foreground">{client.verifiedHost}</span>
+              {client.clientIdUrl ? (
+                <span className="mt-1 block break-all font-mono text-xs">{client.clientIdUrl}</span>
+              ) : null}
+            </>
+          ) : undefined
+        }
+      />
 
       {/* Outside the scroll region so it cannot scroll out of sight above Approve. */}
-      <div className="px-4 pb-3 empty:hidden">
-        {client.verifiedHost ? null : (
-          <div className="flex items-start gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
-            <TriangleAlert className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
-            <p>
-              <span className="font-medium">Unverified app.</span> It registered itself, so anyone could have chosen
-              this name. Only continue if you just started this connection yourself.
-            </p>
-          </div>
-        )}
-      </div>
+      {client.verifiedHost ? null : (
+        <AuthCallout variant="warning">
+          <span className="font-medium">Unverified app.</span> It registered itself, so anyone could have chosen this
+          name. Only continue if you just started this connection yourself.
+        </AuthCallout>
+      )}
 
-      <CardContent className="min-h-32 flex-1 space-y-3 overflow-y-auto px-4 pb-3">
+      <div className="min-h-32 flex-1 space-y-3 overflow-y-auto">
         <div className="space-y-1.5 rounded-md border bg-muted/30 px-3 py-2 text-sm">
           <p className="font-medium">{client.name} will be able to:</p>
           <ul className="list-disc space-y-0.5 pl-5 text-muted-foreground">
@@ -155,9 +149,9 @@ export function McpConsent({ oauthQuery, userEmail, projects, canWriteIncidents 
             ))}
           </RadioGroup>
         </fieldset>
-      </CardContent>
+      </div>
 
-      <CardFooter className="flex flex-col gap-2 px-4 pb-4">
+      <div className="flex flex-col gap-2">
         {keepsEarlierAccessProjectIds.includes(projectId) ? (
           <p className="text-center text-xs text-muted-foreground">
             This app keeps the access you approved earlier. Disconnect it in Connected apps to reduce access.
@@ -170,16 +164,12 @@ export function McpConsent({ oauthQuery, userEmail, projects, canWriteIncidents 
           </p>
         ) : null}
 
-        {error ? (
-          <p role="alert" className="text-center text-sm text-destructive">
-            {error}
-          </p>
-        ) : null}
+        {error ? <AuthCallout variant="error">{error}</AuthCallout> : null}
         <div className="flex w-full gap-2">
-          <Button variant="outline" className="flex-1" disabled={busy} onClick={() => decide(false)}>
+          <Button size="lg" variant="outline" className="flex-1" disabled={busy} onClick={() => decide(false)}>
             Deny
           </Button>
-          <Button className="flex-1" disabled={busy} onClick={() => decide(true)}>
+          <Button size="lg" className="flex-1" disabled={busy} onClick={() => decide(true)}>
             {phase === "idle" ? "Approve" : phase === "submitting" ? "Connecting…" : "Redirecting…"}
           </Button>
         </div>
@@ -187,7 +177,7 @@ export function McpConsent({ oauthQuery, userEmail, projects, canWriteIncidents 
           Signed in as {userEmail}. You can disconnect it any time in{" "}
           <a href="/connected-apps" className="underline underline-offset-2 hover:text-foreground">Connected apps</a>.
         </p>
-      </CardFooter>
-    </Card>
+      </div>
+    </AuthCard>
   );
 }

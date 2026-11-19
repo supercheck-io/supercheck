@@ -9,7 +9,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useState, useEffect, useCallback, useMemo, useRef, Suspense } from "react";
 import { SignupForm } from "@/components/auth/signup-form";
 import { useAppConfig } from "@/hooks/use-app-config";
-import { Loader2 } from "lucide-react";
+import { AuthLoading } from "@/components/auth/auth-shell";
 import { parseInviteToken } from "@/lib/validations/auth";
 import type { TurnstileCaptchaRef } from "@/components/auth/turnstile-captcha";
 
@@ -31,13 +31,7 @@ const DEFAULT_SIGN_UP_NEXT = "/setup";
 
 export default function SignUpPage() {
   return (
-    <Suspense
-      fallback={
-        <div className="flex items-center justify-center min-h-[300px]">
-          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-        </div>
-      }
-    >
+    <Suspense fallback={<AuthLoading />}>
       <SignUpPageContent />
     </Suspense>
   );
@@ -159,9 +153,9 @@ function SignUpPageContent() {
 
     if (signUpError) {
       // ── 1. User already exists ───────────────────────────────────────
-      // Better Auth returns 422 for duplicate users. The error message
-      // contains "already exists". For invited users, redirect to sign-in
-      // with a clear message so they can use their existing credentials.
+      // Self-hosted Better Auth returns 422 for duplicate users. Cloud mode
+      // (email verification on) returns a generic 200 instead and emails the existing
+      // account a sign-in link (see onExistingUserSignUp), so this branch is self-hosted only.
       if (
         signUpError.status === 422 ||
         signUpError.message?.toLowerCase().includes("already exist")
@@ -214,7 +208,7 @@ function SignUpPageContent() {
 
       // Better Auth can create the account before returning the verification gate.
       if (isCloudHosted && inviteToken && signUpError.status === 403) {
-        router.push(`/verify-email?email=${encodeURIComponent(email)}&invite=${encodeURIComponent(inviteToken)}`);
+        router.push(`/verify-email?email=${encodeURIComponent(email)}&invite=${encodeURIComponent(inviteToken)}&from=signup`);
         return;
       }
 
@@ -252,7 +246,7 @@ function SignUpPageContent() {
           setError("Account created, but the verification email could not be sent. Use the resend option on the verification page.");
         }
       }
-      const inviteQuery = inviteToken ? `&invite=${encodeURIComponent(inviteToken)}` : "";
+      const inviteQuery = inviteToken ? `&invite=${encodeURIComponent(inviteToken)}&from=signup` : "";
       router.push(`/verify-email?email=${encodeURIComponent(email)}${inviteQuery}`);
       return;
     }
@@ -326,7 +320,6 @@ function SignUpPageContent() {
 
   return (
     <SignupForm
-      className="w-full max-w-sm px-4"
       onSubmit={handleSubmit}
       isLoading={isLoading}
       error={error}

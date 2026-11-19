@@ -25,6 +25,7 @@ import { MAINTENANCE_QUERY_KEY, useMaintenanceWindows, windowAction, type Mainte
 import { useProjectContext } from "@/hooks/use-project-context";
 import { checkRolePermissionsClient } from "@/lib/rbac/permissions-client";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { useHydrated } from "@/hooks/use-hydrated";
 import { MaintenanceWindowDialog } from "./maintenance-window-dialog";
 import { formatDuration, formatWindowRange } from "./format";
 
@@ -317,8 +318,10 @@ export function MonitorMaintenanceBar({ monitorId }: { monitorId: string }) {
   const canWrite = Boolean(currentProject?.userRole && checkRolePermissionsClient(currentProject.userRole, { monitor: ["update"] }));
   const active = useMaintenanceWindows({ monitorId, state: "active" });
   const [open, setOpen] = useState(false);
+  // A restored cache can hold windows the server HTML did not render, so the badge waits for hydration (#418).
+  const hydrated = useHydrated();
   // Alerts stay muted until the last of the overlapping windows ends.
-  const current = active.data?.reduce<MaintenanceWindowItem | undefined>(
+  const current = (hydrated ? active.data : undefined)?.reduce<MaintenanceWindowItem | undefined>(
     (latest, window) => (!latest || (window.occurrenceEndsAt ?? "") > (latest.occurrenceEndsAt ?? "") ? window : latest),
     undefined,
   );

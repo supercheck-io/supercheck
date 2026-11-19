@@ -89,7 +89,7 @@ export function useFitPageSize(fixedSize?: number) {
     const scroller = scrollParent(body);
     // Work in unscrolled coordinates so the result doesn't depend on scroll position.
     const scrollOffset = window.scrollY + (scroller?.scrollTop ?? 0);
-    // <main> only clips on pages that opt into viewport height; elsewhere the window scrolls
+    // On desktop <main> is the scroller and ends at the window; on mobile the window scrolls
     // and <main> grows with its content, so cap at the window.
     const viewportBottom =
       window.scrollY +
