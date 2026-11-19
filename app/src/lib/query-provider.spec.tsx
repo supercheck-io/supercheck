@@ -246,6 +246,7 @@ describe("QueryProvider hydration", () => {
   });
 
   it("waits for restoration before prefetching layout data", () => {
+    jest.useFakeTimers();
     const client = new QueryClient();
     const prefetch = jest.spyOn(client, "prefetchQuery").mockResolvedValue(undefined);
     const tree = (isRestoring: boolean) => (
@@ -256,12 +257,16 @@ describe("QueryProvider hydration", () => {
     const view = render(tree(true));
     expect(prefetch).not.toHaveBeenCalled();
     view.rerender(tree(false));
+    // The next-page prefetch waits for the page's own queries to go quiet, then an idle callback.
+    act(() => { jest.advanceTimersByTime(1000); });
     expect(prefetch).toHaveBeenCalledWith(expect.objectContaining({
       queryKey: ["notification-providers", "project-1"],
     }));
     const calls = prefetch.mock.calls.length;
     view.rerender(tree(false));
+    act(() => { jest.advanceTimersByTime(5000); });
     expect(prefetch).toHaveBeenCalledTimes(calls);
     client.clear();
+    jest.useRealTimers();
   });
 });
