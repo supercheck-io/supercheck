@@ -62,6 +62,13 @@ describe("notification provider validation", () => {
       validateProviderConfig("webhook", { url, preset: "pagerduty", bodyTemplate: '{"routing_key":"abc123","event_action":"trigger"}' })
     ).not.toThrow();
     expect(() => validateProviderConfig("webhook", { url, preset: "custom" })).not.toThrow();
+    // Only the fixed placeholder name is echoed, never characters around it (stored headers are hidden from editors).
+    expect(() =>
+      validateProviderConfig("webhook", { url, preset: "custom", headers: { Authorization: "Bearer REPLACE_WITH_INCIDENT_IO_TOKENSECRET9" } })
+    ).toThrow(/^Replace REPLACE_WITH_INCIDENT_IO_TOKEN in the webhook headers/);
+    expect(() => validateProviderConfig("webhook", { url, preset: "custom", headers: { X: "REPLACE_WITH_ABC123" } })).toThrow(
+      "Replace the REPLACE_WITH_ placeholder in the webhook headers with your real value."
+    );
   });
 
   it("rejects the retired opsgenie preset like any unknown preset", () => {

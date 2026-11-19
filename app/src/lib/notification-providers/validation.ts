@@ -8,7 +8,7 @@ import {
   getTeamsWebhookDomainError,
   isValidTeamsWebhookDomain,
 } from "@/lib/notification-providers/constants";
-import { getWebhookPreset } from "@/lib/notification-providers/webhook-presets";
+import { getWebhookPreset, WEBHOOK_PRESETS } from "@/lib/notification-providers/webhook-presets";
 import { VALIDATION_PATTERNS } from "@/lib/error-utils";
 
 const WEBHOOK_HEADER_NAME_PATTERN = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/;
@@ -201,7 +201,9 @@ export function validateProviderConfig(
   }
 }
 
-const PRESET_PLACEHOLDER = /REPLACE_WITH_[A-Z0-9_]+/;
+const PLACEHOLDER = /REPLACE_WITH_[A-Z0-9_]+/g;
+// Only these fixed names are echoed: on PUT the value checked includes stored headers the editor cannot see.
+const KNOWN_PLACEHOLDERS = [...new Set(JSON.stringify(WEBHOOK_PRESETS).match(PLACEHOLDER) ?? [])];
 
 /**
  * A preset's stand-in credential (REPLACE_WITH_...) saves fine but every delivery is then rejected by the vendor.
@@ -218,11 +220,10 @@ function rejectPresetPlaceholders(config: Record<string, unknown>): void {
     ["headers", config.headers],
     ["body template", template],
   ] as const) {
-    const placeholder = JSON.stringify(value ?? "").match(PRESET_PLACEHOLDER);
-    if (placeholder) {
-      throw new Error(
-        `Replace ${placeholder[0]} in the webhook ${where} with your real value.`
-      );
+    const text = JSON.stringify(value ?? "");
+    if (text.includes("REPLACE_WITH_")) {
+      const name = KNOWN_PLACEHOLDERS.find((known) => text.includes(known)) ?? "the REPLACE_WITH_ placeholder";
+      throw new Error(`Replace ${name} in the webhook ${where} with your real value.`);
     }
   }
 }
