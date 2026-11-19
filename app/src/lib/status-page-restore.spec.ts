@@ -3,9 +3,9 @@ jest.mock("@/utils/db", () => ({ db: {} }));
 
 import { restoreResolvedIncidentComponents } from "./status-page-reconciliation";
 
-type Link = { componentId: string; oldStatus: string | null; newStatus: string | null; status: string };
+type Link = { componentId: string; oldStatus: string | null; newStatus: string | null; status: string; startedAt?: Date };
 
-type Other = { componentId: string; newStatus: string | null; incidentStatus: string };
+type Other = { componentId: string; newStatus: string | null; incidentStatus: string; resolvedAt?: Date | null };
 /** A tx whose selects return the queued rows in order (this incident's links, monitored components, other incidents' links). */
 function makeTx(links: Link[], busy: string[] = [], monitored: string[] = [], resolvedOthers: Other[] = []) {
   const others: Other[] = [...busy.map((componentId) => ({ componentId, newStatus: "degraded_performance", incidentStatus: "investigating" })), ...resolvedOthers];
@@ -54,6 +54,15 @@ describe("restoreResolvedIncidentComponents", () => {
     const { tx, sets } = makeTx([link({ newStatus: "partial_outage", status: "major_outage" })], [], [], [{ componentId: "c1", newStatus: "major_outage", incidentStatus: "resolved" }]);
     await run(tx);
     expect(sets).toEqual([expect.objectContaining({ status: "operational" })]);
+  });
+
+  it("leaves a status that only matches an older post resolved before this one began, since someone set it by hand since", async () => {
+    const { tx, update } = makeTx(
+      [link({ newStatus: "partial_outage", status: "major_outage", startedAt: new Date("2026-02-01") })],
+      [], [], [{ componentId: "c1", newStatus: "major_outage", incidentStatus: "resolved", resolvedAt: new Date("2026-01-01") }],
+    );
+    await run(tx);
+    expect(update).not.toHaveBeenCalled();
   });
 
   it("restores a component whose only monitors are paused or pending, which reconciliation would leave at the incident's status", async () => {

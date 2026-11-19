@@ -170,9 +170,11 @@ export async function restoreResolvedIncidentComponents(tx: Tx, incidentId: stri
       oldStatus: incidentComponents.oldStatus,
       newStatus: incidentComponents.newStatus,
       status: statusPageComponents.status,
+      startedAt: incidents.createdAt,
     })
     .from(incidentComponents)
     .innerJoin(statusPageComponents, eq(statusPageComponents.id, incidentComponents.componentId))
+    .innerJoin(incidents, eq(incidents.id, incidentComponents.incidentId))
     .where(and(eq(incidentComponents.incidentId, incidentId), eq(statusPageComponents.statusPageId, statusPageId)));
   if (links.length === 0) return;
   const ids = links.map((link) => link.componentId);
@@ -182,7 +184,7 @@ export async function restoreResolvedIncidentComponents(tx: Tx, incidentId: stri
     .innerJoin(monitors, eq(monitors.id, statusPageComponentMonitors.monitorId))
     .where(and(inArray(statusPageComponentMonitors.componentId, ids), liveMonitor(), notInArray(monitors.status, ["pending", "paused"])));
   const others = await tx
-    .select({ componentId: incidentComponents.componentId, newStatus: incidentComponents.newStatus, incidentStatus: incidents.status })
+    .select({ componentId: incidentComponents.componentId, newStatus: incidentComponents.newStatus, incidentStatus: incidents.status, startedAt: incidents.createdAt, resolvedAt: incidents.resolvedAt })
     .from(incidentComponents)
     .innerJoin(incidents, eq(incidents.id, incidentComponents.incidentId))
     .where(and(inArray(incidentComponents.componentId, ids), ne(incidents.id, incidentId)));
@@ -192,9 +194,11 @@ export async function restoreResolvedIncidentComponents(tx: Tx, incidentId: stri
   const groups = new Map<string, { from: ComponentStatus; to: ComponentStatus; ids: string[] }>();
   for (const link of links) {
     if (skip.has(link.componentId)) continue;
-    // The status came from an incident when it matches this one's or another started one's: resolving B first, then A,
-    // leaves B's status in place for A to clear. Anything else was set by hand since and is left alone.
-    const setByIncident = link.status === link.newStatus || others.some((o) => o.componentId === link.componentId && o.newStatus === link.status && o.incidentStatus !== "scheduled");
+    // The status came from an incident when it matches this one's, or that of another post that was open at the same time
+    // (resolving B first, then A, leaves B's status for A to clear). An older, already resolved post says nothing about who
+    // set it now, so a status matching only that one was set by hand since.
+    const overlapped = (o: (typeof others)[number]) => o.incidentStatus !== "scheduled" && (!o.resolvedAt || !link.startedAt || o.resolvedAt >= link.startedAt);
+    const setByIncident = link.status === link.newStatus || others.some((o) => o.componentId === link.componentId && o.newStatus === link.status && overlapped(o));
     if (!setByIncident) continue;
     const from = link.status as ComponentStatus;
     const to = link.newStatus === "under_maintenance" && link.oldStatus && link.oldStatus !== "under_maintenance" ? (link.oldStatus as ComponentStatus) : "operational";
