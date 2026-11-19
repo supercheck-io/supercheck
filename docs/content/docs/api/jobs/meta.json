@@ -3,11 +3,11 @@
   "icon": "CalendarClock",
   "pages": [
     "listJobs",
-    "getJob",
     "createJob",
+    "getJob",
     "updateJob",
-    "replaceJobConfiguration",
     "deleteJob",
+    "replaceJobConfiguration",
     "triggerJob",
     "getJobTriggerInfo",
     "runJob"

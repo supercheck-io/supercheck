@@ -4,10 +4,10 @@
   "pages": [
     "listRuns",
     "getRun",
+    "deleteRun",
     "getRunPermissions",
     "getRunStatus",
     "streamRunOutput",
-    "cancelRun",
-    "deleteRun"
+    "cancelRun"
   ]
 }

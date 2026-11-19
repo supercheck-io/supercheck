@@ -3,16 +3,16 @@
   "icon": "FlaskConical",
   "pages": [
     "listTests",
-    "getTest",
-    "getTestTags",
     "createTest",
+    "getTest",
     "updateTest",
-    "updateTestLegacyPut",
     "deleteTest",
-    "executeTest",
+    "updateTestLegacyPut",
+    "getTestTags",
     "replaceTestTags",
     "patchTestTags",
     "deleteTestTag",
+    "executeTest",
     "validateScript"
   ]
 }

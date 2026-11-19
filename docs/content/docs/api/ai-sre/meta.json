@@ -7,19 +7,19 @@
     "getSreIncident",
     "getSreIncidentTimeline",
     "getSreIncidentPostmortem",
-    "acknowledgeSreIncident",
-    "assignSreIncident",
     "resolveSreIncident",
     "listSreIncidentResources",
     "updateSreIncidentResources",
-    "getIncidentPolicy",
-    "updateIncidentPolicy",
     "triageSreIncident",
     "startSreInvestigation",
     "getSreInvestigationRun",
     "streamSreChat",
     "streamSreEvidenceBrief",
     "listSreServices",
-    "getSreService"
+    "getSreService",
+    "acknowledgeSreIncident",
+    "assignSreIncident",
+    "getIncidentPolicy",
+    "updateIncidentPolicy"
   ]
 }

@@ -4,6 +4,7 @@
   "pages": [
     "listOrganizations",
     "getCurrentOrganization",
+    "getOrganizationStats",
     "getOrganization",
     "updateOrganization",
     "deleteOrganization",
@@ -20,13 +21,12 @@
     "removeProjectMember",
     "listDeletedProjects",
     "restoreProject",
-    "getOrganizationStats",
     "listOrganizationMembers",
     "updateOrganizationMember",
     "removeOrganizationMember",
     "inviteOrganizationMember",
-    "resendOrganizationInvitation",
     "cancelOrganizationInvitation",
+    "resendOrganizationInvitation",
     "listOrganizationInvitations",
     "leaveOrganization"
   ]
