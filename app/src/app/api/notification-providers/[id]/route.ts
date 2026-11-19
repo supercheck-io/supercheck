@@ -204,15 +204,15 @@ export async function PUT(
         existingProvider.config,
         project.id
       );
-      const mergedConfig = providerTypeChanged
-        ? (plainConfig as PlainNotificationProviderConfig)
-        : mergeNotificationProviderConfig(
-            updateData.type as NotificationProviderType,
-            existingPlainConfig,
-            plainConfig as PlainNotificationProviderConfig
-          );
-
+      let mergedConfig: PlainNotificationProviderConfig;
       try {
+        mergedConfig = providerTypeChanged
+          ? (plainConfig as PlainNotificationProviderConfig)
+          : mergeNotificationProviderConfig(
+              updateData.type as NotificationProviderType,
+              existingPlainConfig,
+              plainConfig as PlainNotificationProviderConfig
+            );
         validateProviderConfig(
           updateData.type as NotificationProviderType,
           mergedConfig

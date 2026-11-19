@@ -99,21 +99,41 @@ describe("notification provider crypto", () => {
         headers: { Authorization: "Bearer real" },
       };
 
-      it("drops stored headers when the URL changes and none are sent", () => {
-        const merged = mergeNotificationProviderConfig("webhook", existing, { name: "W", url: "https://other.example.com/x" });
-        expect(merged.headers).toBeUndefined();
-        expect(merged.url).toBe("https://other.example.com/x");
+      const retargetError = "Enter the webhook headers again";
+
+      it("refuses to carry stored headers to another host", () => {
+        expect(() =>
+          mergeNotificationProviderConfig("webhook", existing, { name: "W", url: "https://other.example.com/x" })
+        ).toThrow(retargetError);
       });
 
-      it("drops stored headers when the URL is sent as a non-string", () => {
-        const url = ["https://other.example.com/x"] as unknown as string;
-        expect(mergeNotificationProviderConfig("webhook", existing, { name: "W", url }).headers).toBeUndefined();
+      it("keeps stored headers when only the path on the same host changes", () => {
+        const merged = mergeNotificationProviderConfig("webhook", existing, {
+          name: "W",
+          url: "https://api.incident.io/v2/alert_events/http/def",
+        });
+        expect(merged.headers).toEqual(existing.headers);
       });
 
-      it("drops stored headers and the old URL when the preset changes without a new URL", () => {
-        const merged = mergeNotificationProviderConfig("webhook", existing, { name: "W", preset: "custom" });
-        expect(merged.headers).toBeUndefined();
+      it("treats a URL sent as a non-string as another host", () => {
+        const url = ["https://api.incident.io/v2/alert_events/http/abc"] as unknown as string;
+        expect(() => mergeNotificationProviderConfig("webhook", existing, { name: "W", url })).toThrow(retargetError);
+      });
+
+      it("refuses a preset change that would keep the stored headers, and drops the old URL", () => {
+        expect(() => mergeNotificationProviderConfig("webhook", existing, { name: "W", preset: "custom" })).toThrow(
+          retargetError
+        );
+        const merged = mergeNotificationProviderConfig("webhook", existing, { name: "W", preset: "custom", headers: {} });
         expect(merged.url).toBeUndefined();
+        expect(merged.headers).toEqual({});
+      });
+
+      it("allows retargeting a channel that has no stored headers", () => {
+        const bare = { name: "W", url: "https://a.example.com/x" };
+        expect(mergeNotificationProviderConfig("webhook", bare, { name: "W", url: "https://b.example.com/y" }).url).toBe(
+          "https://b.example.com/y"
+        );
       });
 
       it("keeps headers that are sent, and keeps stored ones when the endpoint is unchanged", () => {

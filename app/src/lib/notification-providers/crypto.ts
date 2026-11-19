@@ -71,17 +71,35 @@ export function mergeNotificationProviderConfig(
   }
 
   if (type === "webhook") {
-    // Stored credentials are bound to the endpoint they were saved for. Retargeting the channel (new URL or
+    // Stored credentials are bound to the host they were saved for. Retargeting the channel (another origin or
     // preset) must not carry the old headers to it, and a changed preset must not fall back to the old URL.
     const presetChanged =
       "preset" in incomingConfig && (incomingConfig.preset || "custom") !== (existingConfig.preset || "custom");
-    // Any sent url that differs counts, whatever its type: validation rejects non-strings, the merge must not trust them.
-    const urlChanged = "url" in incomingConfig && incomingConfig.url !== existingConfig.url;
+    // A sent url that is not a string counts as a change: validation rejects it later, the merge must not trust it.
+    const originChanged =
+      "url" in incomingConfig &&
+      (typeof incomingConfig.url !== "string" || urlOrigin(incomingConfig.url) !== urlOrigin(existingConfig.url));
     if (presetChanged && !("url" in incomingConfig)) delete merged.url;
-    if ((presetChanged || urlChanged) && !("headers" in incomingConfig)) delete merged.headers;
+    const hasStoredHeaders =
+      typeof existingConfig.headers === "object" &&
+      existingConfig.headers !== null &&
+      Object.keys(existingConfig.headers).length > 0;
+    if ((presetChanged || originChanged) && !("headers" in incomingConfig) && hasStoredHeaders) {
+      throw new Error(
+        "Enter the webhook headers again: saved headers are not sent to a new host or preset."
+      );
+    }
   }
 
   return merged;
+}
+
+function urlOrigin(url: unknown): string | undefined {
+  try {
+    return new URL(String(url)).origin;
+  } catch {
+    return undefined;
+  }
 }
 
 export function encryptNotificationProviderConfig(
