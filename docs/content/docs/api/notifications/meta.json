@@ -5,9 +5,9 @@
     "listNotificationProviders",
     "getNotificationProvider",
     "createNotificationProvider",
-    "updateNotificationProvider",
-    "deleteNotificationProvider",
     "testNotificationProvider",
-    "testSavedNotificationProvider"
+    "testSavedNotificationProvider",
+    "updateNotificationProvider",
+    "deleteNotificationProvider"
   ]
 }

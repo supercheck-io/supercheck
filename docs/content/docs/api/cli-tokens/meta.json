@@ -4,11 +4,11 @@
   "pages": [
     "listCliTokens",
     "createCliToken",
-    "updateCliToken",
-    "deleteCliToken",
     "requestDeviceCode",
     "exchangeDeviceCode",
     "approveDeviceCode",
-    "denyDeviceCode"
+    "denyDeviceCode",
+    "updateCliToken",
+    "deleteCliToken"
   ]
 }

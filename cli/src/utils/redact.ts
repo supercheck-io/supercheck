@@ -27,6 +27,20 @@ export function redactText(text: string): string {
 const maskUserinfo = (text: string): string => text.replace(/(\b[a-z][a-z0-9+.-]*:\/\/)[^\s/@:]+:[^\s/@]*@/gi, '$1REDACTED@')
 // Query-parameter masking rewrites URLs, so it is skipped for fields that carry source code.
 const codeKeys = new Set(['script', 'body', 'code', 'content', 'source'])
+// A webhook body template carries literal credentials (the PagerDuty routing_key); `{{placeholders}}` stay readable.
+// A field is a credential when any word of its name is key, token, secret, password or signature (routing_key, apiKey, token_value), so "monkey" is not.
+const CREDENTIAL_WORDS = new Set(['key', 'token', 'secret', 'password', 'signature'])
+// Run-together compounds (apikey, routingkey) have no word break to split on.
+const CREDENTIAL_COMPOUNDS = /(?:apikey|accesskey|appkey|authkey|routingkey|secretkey|privatekey|accesstoken|authtoken|authorization)$/
+const isCredentialField = (name: string): boolean =>
+  name.replace(/([a-z0-9])([A-Z])/g, '$1_$2').toLowerCase().split(/[_-]/).some((word) => CREDENTIAL_WORDS.has(word)) ||
+  CREDENTIAL_COMPOUNDS.test(name.replace(/[_-]/g, '').toLowerCase())
+const TEMPLATE_STRING_FIELD = /("([^"\\]+)"\s*:\s*")((?:[^"{}\\]|\\.)+)"/g
+const maskTemplateSecrets = (text: string): string =>
+  text.replace(TEMPLATE_STRING_FIELD, (whole, prefix: string, name: string) => (isCredentialField(name) ? `${prefix}[REDACTED]"` : whole))
+/** True when a webhook body template holds a literal credential (not a `{{placeholder}}` or the preset stand-in). */
+export const templateHoldsCredential = (text: string): boolean =>
+  [...text.matchAll(TEMPLATE_STRING_FIELD)].some((m) => isCredentialField(m[2]) && !m[3].startsWith('REPLACE_WITH_'))
 export function redact<T>(value: T, inConfig = false, code = false): T {
   if (reveal) return value
   if (typeof value === 'string') return (code ? maskUserinfo(cliTokens(value)) : redactText(maskUserinfo(value))) as T
@@ -40,7 +54,7 @@ export function redact<T>(value: T, inConfig = false, code = false): T {
     && Object.keys(item).every((k) => k === 'type' || k === 'secretKey' || k === 'username' || k === 'headerName')
     && (typeof (item as Record<string, unknown>).secretKey === 'string' || (Object.keys(item).length === 1 && (item as Record<string, unknown>).type === 'none'))
   return Object.fromEntries(Object.entries(record).map(([key, item]) => [key,
-    key === 'pingUrl' && typeof item === 'string' ? item : secretRefAuth(key, item) ? redact(item, false) : (credentialKey.test(key.replace(/[-_]/g, '')) || (inConfig && ['url', 'headers', 'username'].includes(key)) || (key === 'value' && (record.isSecret || record.type === 'secret'))) && item != null && typeof item !== 'boolean'
+    key === 'pingUrl' && typeof item === 'string' ? item : inConfig && key === 'bodyTemplate' && typeof item === 'string' ? redactText(maskTemplateSecrets(item)) : secretRefAuth(key, item) ? redact(item, false) : (credentialKey.test(key.replace(/[-_]/g, '')) || (inConfig && ['url', 'headers', 'username'].includes(key)) || (key === 'value' && (record.isSecret || record.type === 'secret'))) && item != null && typeof item !== 'boolean'
       ? (typeof item === 'string' && ['[local secret provided]', '[remote secret masked]'].includes(item) ? item : '[REDACTED]') : redact(item, key === 'config' && sensitiveConfig, codeKeys.has(key.toLowerCase())),
   ])) as T
 }

@@ -1,4 +1,4 @@
-import { formatDuration, formatWindowRange, previewWindow, timeZoneOptions } from "./format";
+import { dstNote, formatDuration, formatWindowRange, previewWindow, timeZoneOptions } from "./format";
 
 describe("maintenance format", () => {
   it("writes the date once for a same-day window and twice across midnight, in the window's zone", () => {
@@ -53,5 +53,40 @@ describe("maintenance format", () => {
     expect(zones[0]).toBe("UTC");
     expect(zones).toContain("Asia/Calcutta");
     expect(new Set(zones).size).toBe(zones.length);
+  });
+
+  describe("dstNote", () => {
+    const ny = "America/New_York";
+    const note = (startsOn: string, time: string, minutes: number, zone = ny) => {
+      const p = previewWindow({ recurrence: "once", timezone: zone, localStartTime: time, durationMinutes: minutes, startsOn })!;
+      return dstNote(p.startsAt, p.endsAt, zone);
+    };
+
+    it("flags a spring-forward window", () => {
+      expect(note("2027-03-14", "01:30", 90)).toMatch(/go forward 1 h.*further apart/);
+    });
+
+    it("flags a fall-back window", () => {
+      expect(note("2026-11-01", "00:30", 180)).toMatch(/go back 1 h.*closer/);
+    });
+
+    it("covers the repeated hour, a window ending at the change, and southern-hemisphere zones", () => {
+      expect(note("2026-11-01", "01:30", 60)).toMatch(/go back 1 h/);
+      expect(note("2027-03-14", "00:00", 120)).toMatch(/go forward 1 h/);
+      expect(note("2027-03-14", "02:30", 60)).toBeNull();
+      expect(note("2026-04-05", "01:00", 180, "Australia/Sydney")).toMatch(/go back 1 h/);
+    });
+
+    it("stays quiet when no change falls inside the window", () => {
+      expect(note("2027-03-14", "04:00", 60)).toBeNull();
+      expect(note("2027-03-13", "01:30", 90)).toBeNull();
+      expect(note("2027-03-14", "01:30", 90, "UTC")).toBeNull();
+      expect(note("2027-03-14", "01:30", 90, "Asia/Kolkata")).toBeNull();
+    });
+
+    it("handles half-hour shifts and unknown zones", () => {
+      expect(note("2026-10-04", "01:30", 120, "Australia/Lord_Howe")).toMatch(/forward 30 min/);
+      expect(dstNote(new Date(0), new Date(3_600_000), "Not/AZone")).toBeNull();
+    });
   });
 });

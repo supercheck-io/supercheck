@@ -6,13 +6,13 @@
     "getTest",
     "getTestTags",
     "createTest",
-    "updateTest",
-    "updateTestLegacyPut",
-    "deleteTest",
-    "executeTest",
     "replaceTestTags",
+    "executeTest",
+    "validateScript",
+    "updateTestLegacyPut",
+    "updateTest",
     "patchTestTags",
-    "deleteTestTag",
-    "validateScript"
+    "deleteTest",
+    "deleteTestTag"
   ]
 }
