@@ -216,9 +216,12 @@ export function applyWebhookPresetConfig(
 ): PlainNotificationProviderConfig {
   const preset = getWebhookPreset(presetId);
   if (!preset || preset.id === "custom") {
+    // Leaving a vendor preset drops its headers and template (and any token typed into them); re-picking custom keeps the user's own.
+    const fromVendorPreset = currentConfig.preset !== undefined && currentConfig.preset !== "custom";
     return {
       ...currentConfig,
       preset: "custom",
+      ...(fromVendorPreset && { method: "POST", headers: {}, bodyTemplate: "" }),
     };
   }
 
@@ -239,4 +242,24 @@ export function assertWebhookPresetsHaveValidTemplates(): void {
 
     parseWebhookJsonTemplate(preset.config.bodyTemplate);
   }
+}
+
+/**
+ * A save that changes only the preset must not keep the old vendor's untouched default template (the new
+ * preset's default is filled instead); a template the user customised stays. Mutates `merged`.
+ */
+export function dropReplacedPresetTemplate(
+  existing: Record<string, unknown>,
+  incoming: Record<string, unknown>,
+  merged: Record<string, unknown>,
+): void {
+  if (
+    "bodyTemplate" in incoming ||
+    merged.preset === existing.preset ||
+    typeof existing.bodyTemplate !== "string" ||
+    existing.bodyTemplate.trim() !== getWebhookPreset(existing.preset)?.config.bodyTemplate
+  ) {
+    return;
+  }
+  delete merged.bodyTemplate;
 }

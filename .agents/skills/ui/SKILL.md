@@ -7,6 +7,16 @@ description: Build or change Supercheck UI or visual design, such as app pages, 
 
 The app is Next.js 16 + React 19 with Tailwind 4 and shadcn-style components (`app/components.json`: style `new-york`, base color zinc, CSS variables, lucide icons). Reuse what exists before writing new UI. **Read `DESIGN.md` (repo root) first**: it defines the colour roles (black primary actions, area colours, violet for AI only, status colours for badges only), typography and the shared components below.
 
+## Design process (every UI or UX change)
+
+Any change to layout, spacing, a form or dialog, a table, a chart, a state (empty, loading, error) or responsive behaviour goes through these steps. A one-word copy fix or a token swap does not.
+
+1. **Load the design skill alongside this one.** In Claude Code, invoke the `frontend-design` skill before deciding the layout, and use it together with this file and `DESIGN.md`. Other agents follow the same intent: decide the hierarchy, density and alignment on purpose, not by default.
+2. **Supercheck rules win.** `DESIGN.md` and this file set colours, tokens, components and patterns. The design skill guides judgement inside them, never new colours, fonts or primitives.
+3. **Design for the real data.** Long names and URLs, long errors, empty and full lists, loading and error states.
+4. **Verify visually.** Follow [Verify](#verify), then critique the before and after screenshots (in Claude Code, `design:design-critique` and `design:accessibility-review`). Fix what they find.
+5. **Record it in the PR.** Before and after screenshots, plus one line on what the critique found and what changed.
+
 ## Start here
 
 | File | Why |
