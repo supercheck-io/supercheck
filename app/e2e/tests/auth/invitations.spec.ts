@@ -28,7 +28,7 @@ test.describe('Invitation public authorization @auth @invitations @security', ()
     const token = '00000000-0000-4000-8000-000000000001';
     const response = await request.get(`/api/invite/${token}`);
     expect(response.status()).toBe(404);
-    expect(await response.json()).toEqual({ error: 'Invitation not found' });
+    expect(await response.json()).toEqual({ error: 'Invitation not found', code: 'INVITE_UNAVAILABLE' });
 
     await page.goto(`/invite/${token}`);
     await expect(page.getByRole('heading', { name: 'Invalid Invitation' })).toBeVisible();
