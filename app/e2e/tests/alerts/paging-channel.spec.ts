@@ -37,6 +37,12 @@ test.describe('Paging channels @alerts @channels', () => {
     await dialog.getByLabel(/^Routing key/).fill('e2e0000000000000000000000000000k');
     await dialog.getByTestId('webhook-advanced-toggle').click();
     await expect(dialog.getByLabel(/^URL/)).toHaveValue('https://events.pagerduty.com/v2/enqueue');
+    // The preset template carries a placeholder routing key, and a channel that still holds it is rejected.
+    const body = dialog.getByLabel(/^Body template/);
+    await expect(body).toHaveValue(/REPLACE_WITH_PAGERDUTY_ROUTING_KEY/);
+    await dialog.getByRole('button', { name: /^(Create|Save)/ }).click();
+    await expect(page.getByText(/Replace REPLACE_WITH_PAGERDUTY_ROUTING_KEY/).first()).toBeVisible();
+    await body.fill((await body.inputValue()).replace('REPLACE_WITH_PAGERDUTY_ROUTING_KEY', 'e2e0routing0key0000000000000000'));
     await dialog.getByRole('button', { name: /^(Create|Save)/ }).click();
     await expect(dialog).toBeHidden();
 
@@ -61,8 +67,15 @@ test.describe('Paging channels @alerts @channels', () => {
     const create = await page.request.post('/api/notification-providers', {
       data: { type: 'webhook', config: { name, url: 'https://events.pagerduty.com/v2/enqueue', preset: 'pagerduty', method: 'POST' } },
     });
-    expect(create.status(), await create.text()).toBe(201);
-    const created = (await create.json()) as Provider;
+    // The preset default still holds the placeholder routing key, so the API refuses it.
+    expect(create.status()).toBe(400);
+    expect(await create.text()).toContain('REPLACE_WITH_PAGERDUTY_ROUTING_KEY');
+    const bodyTemplate = JSON.stringify({ routing_key: 'e2e0bad0key00000000000000000000', event_action: '{{pagerDutyEventAction}}', dedup_key: '{{dedupKey}}', payload: { summary: '{{title}}', source: 'supercheck', severity: '{{normalizedSeverity}}' } });
+    const created201 = await page.request.post('/api/notification-providers', {
+      data: { type: 'webhook', config: { name, url: 'https://events.pagerduty.com/v2/enqueue', preset: 'pagerduty', method: 'POST', bodyTemplate } },
+    });
+    expect(created201.status(), await created201.text()).toBe(201);
+    const created = (await created201.json()) as Provider;
     cleanup.add(`paging channel ${created.id}`, async () => {
       await page.request.delete(`/api/notification-providers/${created.id}`);
     });
