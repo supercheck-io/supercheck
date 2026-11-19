@@ -45,14 +45,19 @@ export function useFitPanelRows(onFitRows: ((rows: number) => void) | undefined,
       }
     };
     measure();
-    const observer = new ResizeObserver(() => {
+    const schedule = () => {
       clearTimeout(timer);
       timer = setTimeout(measure, DEBOUNCE_MS);
-    });
+    };
+    const observer = new ResizeObserver(schedule);
     observer.observe(panel);
+    // New rows (a first load, the next page) can be taller than the ones measured without resizing the fixed panel.
+    const rowsObserver = typeof MutationObserver === "undefined" ? undefined : new MutationObserver(schedule);
+    rowsObserver?.observe(panel, { childList: true, subtree: true });
     return () => {
       clearTimeout(timer);
       observer.disconnect();
+      rowsObserver?.disconnect();
     };
   }, [onFitRows, rowSelector]);
   return panelRef;

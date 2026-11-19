@@ -53,6 +53,24 @@ describe("useFitPanelRows", () => {
     expect(onFit.mock.calls).toEqual([[9], [15]]);
   });
 
+  it("measures again when rows render, since taller rows do not resize the fixed panel", async () => {
+    const onFit = jest.fn();
+    const { container } = render(<Panel onFit={onFit} />);
+    expect(onFit.mock.calls).toEqual([[9]]);
+    jest.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockImplementation(function (this: HTMLElement) {
+      return this.hasAttribute("data-row") ? 60 : 0;
+    });
+    const row = document.createElement("div");
+    row.setAttribute("data-row", "");
+    await act(async () => {
+      container.firstElementChild!.appendChild(row);
+      await Promise.resolve();
+      jest.advanceTimersByTime(200);
+    });
+    // (508 - 40 - 58 - 1) / 60 = 6.8 -> 6
+    expect(onFit.mock.calls).toEqual([[9], [6]]);
+  });
+
   it("does nothing below the desktop breakpoint", () => {
     window.matchMedia = jest.fn().mockReturnValue({ matches: false }) as never;
     const onFit = jest.fn();

@@ -39,12 +39,14 @@ test.describe('Maintenance windows @incidents', () => {
     await page.goto('/monitors');
     await waitForHydration(page);
     const row = page.getByRole('row').filter({ hasText: monitor.name });
-    await expect(row.getByText('Maintenance', { exact: true })).toBeVisible();
+    // An icon-only wrench chip beside the real status, so the cell never wraps.
+    await expect(row.getByRole('img', { name: 'In maintenance: alerts muted' })).toBeVisible();
 
     await page.goto(`/monitors/${monitor.id}`);
     await waitForHydration(page);
-    await expect(page.getByTestId('maintenance-banner')).toContainText('In maintenance until');
-    await expect(page.getByTestId('maintenance-banner')).toContainText('UTC');
+    // Shown under the monitor name, so the header actions stay on one line.
+    await expect(page.getByTestId('monitor-maintenance-status')).toContainText('In maintenance until');
+    await expect(page.getByTestId('monitor-maintenance-status')).toContainText('UTC');
 
     expect((await request.post(`/api/maintenance-windows/${windowId}/end`)).status()).toBe(200);
     const after = (await (await request.get('/api/monitors')).json()) as { data: Array<{ id: string; inMaintenance?: boolean }> };
@@ -52,7 +54,7 @@ test.describe('Maintenance windows @incidents', () => {
     await page.goto('/monitors');
     await waitForHydration(page);
     await expect(page.getByRole('row').filter({ hasText: monitor.name })).toHaveCount(1);
-    await expect(page.getByRole('row').filter({ hasText: monitor.name }).getByText('Maintenance', { exact: true })).toHaveCount(0);
+    await expect(page.getByRole('row').filter({ hasText: monitor.name }).getByRole('img', { name: 'In maintenance: alerts muted' })).toHaveCount(0);
   });
 
   test('a failing monitor inside a window stores maintenance results and opens no incident @high @positive', async ({ projectAdminPage: page, cleanup }) => {
