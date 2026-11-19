@@ -1,4 +1,4 @@
-import { redact } from './redact.js'
+import { redact, templateHoldsCredential } from './redact.js'
 import pc from './colors.js'
 import { logger } from './logger.js'
 import { diffComponents } from './status-pages.js'
@@ -203,7 +203,9 @@ function diffFields(local: Record<string, unknown>, remote: Record<string, unkno
     // A paging preset saved without a template gets the vendor default on the server; absent locally means "use the default", not drift.
     if (resourceType === 'notificationProvider' && key === 'config' && comparableLocal && typeof comparableLocal === 'object' && comparableRemote && typeof comparableRemote === 'object') {
       const l = comparableLocal as Record<string, unknown>
-      if (typeof l.preset === 'string' && l.preset !== 'custom' && !l.bodyTemplate) {
+      const r = comparableRemote as Record<string, unknown>
+      // pull leaves out a template that holds a credential, whatever the preset, so its absence locally is not drift either.
+      if (!l.bodyTemplate && ((typeof l.preset === 'string' && l.preset !== 'custom') || (typeof r.bodyTemplate === 'string' && templateHoldsCredential(r.bodyTemplate)))) {
         comparableRemote = Object.fromEntries(Object.entries(comparableRemote as Record<string, unknown>).filter(([k]) => k !== 'bodyTemplate'))
       }
     }

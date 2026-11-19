@@ -41,6 +41,15 @@ describe('reconcile', () => {
     expect(reconcile([changed], [r])[0].action).toBe('update')
   })
 
+  it('does not report drift for a custom webhook whose credential-holding template pull left out', () => {
+    const l = { type: 'notificationProvider' as const, id: 'id-2', name: 'Hook', definition: { name: 'Hook', type: 'webhook', config: { name: 'Hook', preset: 'custom', method: 'POST' } } }
+    const r = { id: 'id-2', type: 'notificationProvider' as const, name: 'Hook', raw: { name: 'Hook', type: 'webhook', config: { name: 'Hook', preset: 'custom', method: 'POST', bodyTemplate: '{"api_key":"abc123","text":"{{message}}"}' } } }
+    expect(reconcile([l], [r])[0].action).toBe('no-change')
+    // A template without a credential is still compared, so an omitted one is a real change.
+    const plain = { ...r, raw: { ...r.raw, config: { ...r.raw.config, bodyTemplate: '{"text":"{{message}}"}' } } }
+    expect(reconcile([l], [plain])[0].action).toBe('update')
+  })
+
   it('does not report drift for a paging preset whose server-filled template the config omits', () => {
     const l = { type: 'notificationProvider' as const, id: 'id-1', name: 'PD', definition: { name: 'PD', type: 'webhook', config: { preset: 'pagerduty' } } }
     const r = { id: 'id-1', type: 'notificationProvider' as const, name: 'PD', raw: { name: 'PD', type: 'webhook', config: { preset: 'pagerduty', bodyTemplate: '{"a":1}' } } }

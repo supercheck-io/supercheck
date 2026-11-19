@@ -22,6 +22,7 @@ jest.mock("@/lib/ai/ai-provider", () => ({ validateAIConfiguration: jest.fn() })
 jest.mock("@/sre/lib/triage-runner", () => ({ startSreIncidentTriage: jest.fn(), completeSreIncidentTriage: jest.fn(async () => undefined) }));
 
 import { reconcileRecoveries, retriageStaleRuns, sweepSreIncidents } from "./incident-sweep";
+import { failStaleSreRuns } from "./stale-run-recovery";
 import { notifyIncidentEvent } from "@/lib/sre/incident-notifier";
 import { startSreIncidentTriage } from "@/sre/lib/triage-runner";
 import { sreDailyTokenLimitResponse } from "@/lib/sre/sre-daily-token-limit";
@@ -384,14 +385,41 @@ describe("re-triage", () => {
   });
 });
 
+describe("failStaleSreRuns", () => {
+  it("fails only old running runs, including manual ones that no incident view would touch", async () => {
+    const t = await tenant();
+    const manual = await incident(t, { withAlert: false, manual: true });
+    await run(t, manual, { origin: "manual", status: "running", startedMinutesAgo: 30 });
+    const live = await incident(t, { withAlert: false });
+    await run(t, live, { status: "running", startedMinutesAgo: 1 });
+    const done = await incident(t, { withAlert: false });
+    await run(t, done, { status: "completed", startedMinutesAgo: 30 });
+
+    expect(await failStaleSreRuns()).toBe(1);
+    const [failed] = await runRows(manual);
+    expect(failed).toMatchObject({ status: "failed", agentStateSnapshot: { errorCode: "stale_run" } });
+    expect(failed.completedAt).not.toBeNull();
+    expect((await runRows(live))[0].status).toBe("running");
+    expect((await runRows(done))[0].status).toBe("completed");
+    expect(await failStaleSreRuns()).toBe(0);
+  });
+});
+
 describe("sweepSreIncidents", () => {
+  it("fails a dead running automatic run first, so re-triage retries it in the same tick", async () => {
+    const t = await tenant();
+    const id = await incident(t, { withAlert: false });
+    await run(t, id, { status: "running", startedMinutesAgo: 30 });
+    expect(await sweepSreIncidents()).toEqual({ failedStale: 1, reconciled: 0, retriaged: 1 });
+  });
+
   it("runs both branches end to end", async () => {
     const t = await tenant();
     await setMonitor(t, "up", 10);
     const recovered = await incident(t, { alertMinutesAgo: 30 });
     const retry = await incident(t, { withAlert: false });
     await staleAuto(t, retry);
-    expect(await sweepSreIncidents()).toEqual({ reconciled: 1, retriaged: 1 });
+    expect(await sweepSreIncidents()).toEqual({ failedStale: 0, reconciled: 1, retriaged: 1 });
     expect((await statusOf(recovered))[recovered]).toBe("resolved");
   });
 
@@ -421,7 +449,7 @@ describe("sweepSreIncidents", () => {
       release();
       await other;
     }
-    expect(await sweepSreIncidents()).toEqual({ reconciled: 1, retriaged: 0 });
+    expect(await sweepSreIncidents()).toEqual({ failedStale: 0, reconciled: 1, retriaged: 0 });
   });
 });
 
@@ -467,4 +495,9 @@ it("candidate queries reach investigation runs only through an index", async () 
     if (process.env.SWEEP_EXPLAIN) console.log(`${query.trim().slice(0, 80)}...\n${plan}`);
     expect(plan).not.toMatch(/Seq Scan on sre_investigation_runs/);
   }
+  // The stale-run update: planned without ANALYZE so it changes nothing.
+  const staleUpdate = captured.find(({ query }) => /^\s*update "sre_investigation_runs"/i.test(query) && /limit/i.test(query));
+  expect(staleUpdate).toBeDefined();
+  const updatePlan = (await client.unsafe(`EXPLAIN (COSTS OFF) ${staleUpdate!.query}`, staleUpdate!.params as never[])).map((row) => String(row["QUERY PLAN"])).join("\n");
+  expect(updatePlan).not.toMatch(/Seq Scan on sre_investigation_runs/);
 });

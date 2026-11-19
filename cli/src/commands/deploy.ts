@@ -24,6 +24,7 @@ import { parseIntStrict } from '../utils/number.js'
 import { applyStatusPage, OLD_SERVER_STATUS_PAGE_MESSAGE, validateStatusPageDefinition } from '../utils/status-pages.js'
 import { findTag } from '../utils/tag-assignment.js'
 import { warningDefault } from '../utils/alert-config.js'
+import { PAGERDUTY_URL, pagerDutyBodyTemplate, routingKeyFromEnv } from '../utils/pagerduty.js'
 
 /**
  * Prepare the body for API request by transforming local config shape
@@ -74,6 +75,17 @@ export function prepareBodyForApi(type: string, body: Record<string, unknown>, a
 
     if (typeof payload.name === 'string') {
       config.name = payload.name
+    }
+
+    // A PagerDuty channel pulled from the app has no bodyTemplate (it holds the key), and the server rejects the preset
+    // stand-in on create. Only a create takes PAGERDUTY_ROUTING_KEY: on an update the server keeps the saved template, and
+    // one variable must not overwrite the keys of several PagerDuty services. To change a key, use notification update.
+    if (action === 'create' && config.preset === 'pagerduty' && !config.bodyTemplate) {
+      const routingKey = routingKeyFromEnv()
+      if (!routingKey) throw new CLIError(`PagerDuty provider "${String(payload.name)}" needs its routing key to be created: set PAGERDUTY_ROUTING_KEY for this deploy, or create it with notification create --type pagerduty.`, ExitCode.ConfigError)
+      config.bodyTemplate = pagerDutyBodyTemplate(routingKey)
+      // pull drops the URL too (webhook URLs are masked fields); the Events API v2 endpoint is fixed.
+      if (!config.url) config.url = PAGERDUTY_URL
     }
 
     payload.config = config

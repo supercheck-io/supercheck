@@ -51,6 +51,27 @@ describe("MaintenanceWindowDialog", () => {
     expect(mockInvalidate).toHaveBeenCalledWith({ queryKey: ["monitors"] });
   });
 
+  it("notes a DST change inside the previewed window", () => {
+    render(<MaintenanceWindowDialog open onOpenChange={jest.fn()} defaults={{ monitorId: "m-1" }} />);
+    fireEvent.change(screen.getByLabelText("Date"), { target: { value: "2027-03-14" } });
+    fireEvent.change(screen.getByLabelText("Start time"), { target: { value: "01:30" } });
+    fireEvent.change(screen.getByLabelText("Duration (minutes)"), { target: { value: "90" } });
+    fireEvent.click(screen.getByRole("combobox", { name: "Time zone" }));
+    fireEvent.click(screen.getByRole("option", { name: "America/New_York" }));
+    const note = screen.getByTestId("mw-dst-note");
+    expect(note).toHaveAttribute("role", "status");
+    expect(note).toHaveTextContent(/go forward 1 h/);
+    // The region stays mounted while the preview is hidden by an incomplete field, so the note is announced when it returns.
+    fireEvent.change(screen.getByLabelText("Duration (minutes)"), { target: { value: "1" } });
+    expect(screen.getByTestId("mw-dst-note")).toBe(note);
+    expect(note).toBeEmptyDOMElement();
+    fireEvent.change(screen.getByLabelText("Duration (minutes)"), { target: { value: "90" } });
+    expect(screen.getByTestId("mw-dst-note")).toBe(note);
+    expect(note).toHaveTextContent(/go forward 1 h/);
+    fireEvent.change(screen.getByLabelText("Date"), { target: { value: "2027-03-20" } });
+    expect(note).toBeEmptyDOMElement();
+  });
+
   it("shows server field errors next to the fields and stays open", async () => {
     fetchMock.mockResolvedValue({ ok: false, json: async () => ({ error: "Choose a valid time zone", fieldErrors: { timezone: "Choose a valid time zone", durationMinutes: "Duration must be between 5 minutes and 7 days" } }) });
     const onOpenChange = jest.fn();
