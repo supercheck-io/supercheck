@@ -119,7 +119,7 @@ describe("notification provider crypto", () => {
         method: "POST" as const,
       };
 
-      const { sanitizedConfig, maskedFields } = sanitizeConfigForClient("webhook", config);
+      const { sanitizedConfig, maskedFields } = sanitizeConfigForClient("webhook", config, { canEdit: true });
 
       expect(maskedFields).toContain("url");
       expect(maskedFields).toContain("headers");
@@ -127,6 +127,17 @@ describe("notification provider crypto", () => {
       expect(sanitizedConfig.url).toMatch(/\*+/);
       expect(sanitizedConfig.headers).toEqual({});
       expect(sanitizedConfig.method).toBe("POST");
+    });
+
+    it("withholds the webhook body template from callers who cannot edit the channel", () => {
+      const config = { url: "https://events.pagerduty.com/v2/enqueue", bodyTemplate: '{"routing_key":"R0UT1NGKEY"}' };
+      const viewer = sanitizeConfigForClient("webhook", config, { canEdit: false });
+      expect(viewer.sanitizedConfig.bodyTemplate).toBeUndefined();
+      expect(viewer.maskedFields).toContain("bodyTemplate");
+      expect(JSON.stringify(viewer)).not.toContain("R0UT1NGKEY");
+      const editor = sanitizeConfigForClient("webhook", config, { canEdit: true });
+      expect(editor.sanitizedConfig.bodyTemplate).toBe(config.bodyTemplate);
+      expect(editor.maskedFields).not.toContain("bodyTemplate");
     });
 
     it("masks stale secret fields even when they do not belong to the current provider type", () => {
@@ -137,7 +148,7 @@ describe("notification provider crypto", () => {
         headers: { Authorization: "Bearer stale-secret" },
       };
 
-      const { sanitizedConfig, maskedFields } = sanitizeConfigForClient("slack", config);
+      const { sanitizedConfig, maskedFields } = sanitizeConfigForClient("slack", config, { canEdit: true });
 
       expect(maskedFields).toContain("webhookUrl");
       expect(maskedFields).toContain("url");
