@@ -1,5 +1,6 @@
 /** @jest-environment node */
 import { NextRequest } from "next/server";
+import { PgDialect } from "drizzle-orm/pg-core";
 
 jest.mock("@/lib/deletion/org-state", () => ({
   permissionDeniedResponse: jest.fn(async () => {
@@ -16,9 +17,22 @@ jest.mock("@/lib/sre/sre-rate-limiter", () => ({ checkSlidingWindowRateLimit: je
 jest.mock("@/lib/audit-logger", () => ({ logAuditEvent: jest.fn() }));
 jest.mock("ai", () => ({ generateText: jest.fn() }));
 const mockExisting = jest.fn();
+const mockWhere = jest.fn();
+const mockOrderBy = jest.fn();
+const mockLimit = jest.fn();
 jest.mock("@/utils/db", () => ({
-  db: { select: () => ({ from: () => ({ where: () => ({ orderBy: () => ({ limit: () => mockExisting() }) }) }) }) },
+  db: {
+    select: () => ({
+      from: () => ({
+        where: (c: unknown) => {
+          mockWhere(c);
+          return { orderBy: (o: unknown) => { mockOrderBy(o); return { limit: (n: number) => { mockLimit(n); return mockExisting(); } }; } };
+        },
+      }),
+    }),
+  },
 }));
+
 jest.mock("@/lib/ai/ai-rate-limiter", () => ({ aiRateLimiter: { checkAndTrackTokens: jest.fn() } }));
 jest.mock("@/lib/ai/ai-credit-reservation", () => ({ reserveAICredit: jest.fn() }));
 jest.mock("@/lib/ai/ai-provider", () => ({
@@ -318,15 +332,72 @@ describe("existing requirements", () => {
     expect((saveSuggestions as jest.Mock).mock.calls[0][2]).toHaveLength(2);
   });
 
-  it("502 with a refund, keeping the daily slot, when every suggestion already exists", async () => {
+  it("answers success with no_new_suggestions, refunding the credit and freeing the slot, when every suggestion already exists", async () => {
     mockExisting.mockResolvedValue([{ title: "Login works" }]);
     answer(["login works"]);
     const res = await POST(req(), params);
-    expect(res.status).toBe(502);
-    expect(await res.json()).toMatchObject({ code: "unusable_output" });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ requirements: [], code: "no_new_suggestions", updatedAt: null });
     expect(saveSuggestions).not.toHaveBeenCalled();
     expect(refund).toHaveBeenCalledTimes(1);
+    expect(releaseAiRun).toHaveBeenCalledWith(ORG, PROJECT, claim);
+    expect(logAuditEvent).not.toHaveBeenCalled();
+  });
+
+  it("accepts an empty model answer as no new suggestions", async () => {
+    (generateText as jest.Mock).mockResolvedValue({ text: '{"requirements":[]}', usage: {} });
+    const res = await POST(req(), params);
+    expect(res.status).toBe(200);
+    expect((await res.json()).code).toBe("no_new_suggestions");
+    expect(refund).toHaveBeenCalledTimes(1);
+    expect(releaseAiRun).toHaveBeenCalled();
+    expect(saveSuggestions).not.toHaveBeenCalled();
+    expect(logAuditEvent).not.toHaveBeenCalled();
+  });
+
+  it("treats titles that all sanitize to empty as unusable output, keeping the slot", async () => {
+    answer(["<b></b>", "<i></i>"]);
+    const res = await POST(req(), params);
+    expect(res.status).toBe(502);
+    expect((await res.json()).code).toBe("unusable_output");
     expect(releaseAiRun).not.toHaveBeenCalled();
+  });
+
+  it("ignores a malformed draft elsewhere instead of dropping every suggestion", async () => {
+    (getSetupState as jest.Mock).mockResolvedValue({ scanResult: { pages: [{ path: "/a", title: "Stored" }] }, draft: { app: "oops", tests: { requirements: "x" } } });
+    answer(["Fresh"]);
+    const res = await POST(req(), params);
+    expect(res.status).toBe(200);
+    expect((await res.json()).requirements).toHaveLength(1);
+  });
+
+  it("still treats unparseable output as unusable and keeps the slot", async () => {
+    (generateText as jest.Mock).mockResolvedValue({ text: "nope", usage: {} });
+    const res = await POST(req(), params);
+    expect(res.status).toBe(502);
+    expect(releaseAiRun).not.toHaveBeenCalled();
+  });
+
+  it("scopes the saved-title query to the org and project, newest first, bounded", async () => {
+    await POST(req(), params);
+    const q = new PgDialect().sqlToQuery(mockWhere.mock.calls[0][0]);
+    expect(q.sql).toContain('"requirements"."organization_id" = $');
+    expect(q.sql).toContain('"requirements"."project_id" = $');
+    expect(q.params).toEqual([ORG, PROJECT]);
+    expect(new PgDialect().sqlToQuery(mockOrderBy.mock.calls[0][0]).sql).toMatch(/"created_at" desc/);
+    expect(mockLimit).toHaveBeenCalledWith(500);
+  });
+
+  it("also excludes earlier unticked suggestions, and survives a malformed draft", async () => {
+    (getSetupState as jest.Mock).mockResolvedValue({
+      scanResult: { pages: [{ path: "/a", title: "Stored" }] },
+      draft: { tests: { requirements: "oops", suggestions: [{ title: "Earlier idea" }, null, { title: 5 }] } },
+    });
+    answer(["earlier IDEA", "Brand new"]);
+    const res = await POST(req(), params);
+    expect(res.status).toBe(200);
+    expect(((await res.json()).requirements as { title: string }[]).map((r) => r.title)).toEqual(["Brand new"]);
+    expect((generateText as jest.Mock).mock.calls[0][0].prompt).toContain("- Earlier idea");
   });
 
   it("matches despite trailing punctuation and markup the prompt sanitizer strips", async () => {

@@ -77,6 +77,14 @@ describe("TestsStep", () => {
     expect(text).not.toMatch(/Try again\./);
   });
 
+  it("shows an info message, not an error, when nothing new was suggested", async () => {
+    fetchMock.mockReturnValue(json({ requirements: [], code: "no_new_suggestions", updatedAt: null }));
+    render(<TestsStep {...mk({ scan })} />);
+    suggest();
+    expect(await screen.findByText(/No new suggestions/)).toBeInTheDocument();
+    expect(screen.queryByText(/Try again/)).not.toBeInTheDocument();
+  });
+
   it("disables Suggest when ten requirements are ticked", () => {
     const requirements = Array.from({ length: 10 }, (_, i) => ({ title: `R${i}` }));
     render(<TestsStep {...mk({ scan, draft: { tests: { requirements } } })} />);
