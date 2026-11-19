@@ -22,7 +22,7 @@ import { useStatusPageDetail, useStatusPages } from "@/hooks/use-status-pages";
 import { checkRolePermissionsClient } from "@/lib/rbac/permissions-client";
 import { MONITORS_QUERY_KEY } from "@/hooks/use-monitors";
 import { MAINTENANCE_QUERY_KEY, type MaintenanceWindowItem } from "@/hooks/use-maintenance-windows";
-import { formatDuration, formatWindowRange, previewWindow, timeZoneOptions } from "./format";
+import { dstNote, formatDuration, formatWindowRange, previewWindow, timeZoneOptions } from "./format";
 
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 type Scope = "project" | "services" | "monitors";
@@ -113,6 +113,8 @@ export function MaintenanceWindowDialog({
     recurrence, timezone, localStartTime, durationMinutes: Number(durationMinutes), startsOn, endsOn: endsOn || null,
     weekdays: recurrence === "weekly" ? weekdays : null, monthDay: recurrence === "monthly" ? Number(monthDay) : null,
   });
+
+  const dst = preview ? dstNote(preview.startsAt, preview.endsAt, timezone) : null;
 
   const submit = async () => {
     if (pending) return;
@@ -313,6 +315,7 @@ export function MaintenanceWindowDialog({
             <p className="text-xs text-muted-foreground" data-testid="mw-preview-time">
               {recurrence === "once" ? "Runs" : "First window"} {formatWindowRange(preview.startsAt, preview.endsAt, timezone)} ({timezone}), {formatDuration(Number(durationMinutes))}.
               {scheduleLocked && " In progress: end or extend it from the table to change its times."}
+              {dst && <span data-testid="mw-dst-note"> {dst}</span>}
             </p>
           )}
           <div className="space-y-2">
