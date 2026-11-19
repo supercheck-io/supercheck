@@ -131,7 +131,8 @@ const subscribeNever = () => () => {};
 
 /**
  * False while the page hydrates. The server HTML has no query data, but a restored browser cache can have it
- * before a late-hydrating component renders, so data is shown only after hydration to avoid a mismatch (#418).
+ * before a late-hydrating component renders (and a fetch can already be running), so data and loading flags
+ * are shown only after hydration to avoid a mismatch (#418).
  */
 export function useHydrated() {
   return useSyncExternalStore(subscribeNever, () => true, () => false);
@@ -164,7 +165,7 @@ export function useMonitorStats(monitorId: string, location: string = "all") {
 
   return {
     stats: hydrated ? query.data : undefined,
-    isLoading: isActuallyLoading,
+    isLoading: hydrated && isActuallyLoading,
     isRestoring,  // Expose for component-level hydration safety
     error: query.error as Error | null,
     refetch: query.refetch,
@@ -231,7 +232,7 @@ export function useMonitorResults(
   return {
     results: (hydrated && query.data?.data) || [],
     pagination: (hydrated && query.data?.pagination) || null,
-    isLoading: isActuallyLoading,
+    isLoading: hydrated && isActuallyLoading,
     isRestoring,  // Expose for component-level hydration safety
     isFetching: query.isFetching,
     // Rows of the previous page or page size, shown while the new one loads.
