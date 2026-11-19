@@ -48,6 +48,13 @@ describe("restoreResolvedIncidentComponents", () => {
     expect(update).not.toHaveBeenCalled();
   });
 
+  it("restores a component whose only monitors are paused or pending, which reconciliation would leave at the incident's status", async () => {
+    // The monitors query returns nothing for them: the helper asks only for reporting (not paused or pending) monitors.
+    const { tx, sets } = makeTx([link()], [], []);
+    await run(tx);
+    expect(sets).toEqual([expect.objectContaining({ status: "operational" })]);
+  });
+
   it("returns a maintenance component to the status saved when it began, and falls back to operational", async () => {
     const maintenance = { newStatus: "under_maintenance", status: "under_maintenance" };
     const { tx, sets, update } = makeTx([

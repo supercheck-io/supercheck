@@ -1,5 +1,5 @@
 import { notFoundIfDeleting } from "@/lib/deletion/visibility";
-import { and, desc, eq, inArray, isNull, lte, ne, or, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, lte, ne, notInArray, or, sql } from "drizzle-orm";
 import { db } from "@/utils/db";
 import { isMonitorInMaintenance } from "@/lib/maintenance/predicate";
 import { liveMonitor } from "@/lib/deletion/visibility";
@@ -156,8 +156,10 @@ export async function repointSreStatusPageSlot(tx: Tx, resolvedIncidentId: strin
  * already be resolved in `tx`, so it no longer counts as active. A component is left alone when
  * - its status is no longer what this incident set (someone changed it by hand since);
  * - another open incident still affects it (reconciliation derives its status from that one);
- * - it has linked monitors: reconciliation recomputes it from their current health, and this incident's update
- *   triggers that, so writing "operational" here would only flicker while a monitor is still failing.
+ * - a linked monitor is reporting (not paused or pending): reconciliation recomputes it from their current health, and
+ *   this incident's update triggers that, so writing "operational" here would only flicker while a monitor is failing.
+ *   With only paused or pending monitors it would keep the incident's status for good (calculateFromMonitors falls
+ *   back to the previous one), so those are restored here.
  * The rest return to operational, or for a maintenance link to the status saved when it began, as in the
  * maintenance end above. Writes are keyed on (status page, component) and grouped, so N components cost two writes.
  */
@@ -185,7 +187,7 @@ export async function restoreResolvedIncidentComponents(tx: Tx, incidentId: stri
       .select({ componentId: statusPageComponentMonitors.componentId })
       .from(statusPageComponentMonitors)
       .innerJoin(monitors, eq(monitors.id, statusPageComponentMonitors.monitorId))
-      .where(and(inArray(statusPageComponentMonitors.componentId, ids), liveMonitor())),
+      .where(and(inArray(statusPageComponentMonitors.componentId, ids), liveMonitor(), notInArray(monitors.status, ["pending", "paused"]))),
   ];
   const skip = new Set([...busy, ...monitored].map((row) => row.componentId));
   const groups = new Map<string, { from: ComponentStatus; to: ComponentStatus; ids: string[] }>();
