@@ -58,8 +58,8 @@ export type Ids = {
   incidentResolved?: string;
   incidentOpen?: string;
   service?: string;
-  runFailed?: string;
-  runK6?: string;
+  /** A synthetic monitor whose recent failed check has a saved report (the only case the report button shows). */
+  reportMonitor?: string;
 };
 
 async function getJson(api: APIRequestContext, url: string): Promise<Record<string, unknown>> {
@@ -68,7 +68,7 @@ async function getJson(api: APIRequestContext, url: string): Promise<Record<stri
   return (await response.json()) as Record<string, unknown>;
 }
 
-type Row = { id?: string; type?: string; status?: string; name?: string; title?: string };
+type Row = { id?: string; type?: string; status?: string; name?: string; title?: string; isUp?: boolean; testExecutionId?: string; testReportS3Url?: string; details?: { reportUrl?: string } };
 const rows = (body: Record<string, unknown>, key: string) => (body[key] as Row[] | undefined) ?? [];
 
 /** Switches the session to the named project of the demo organization (a session-row update only). */
@@ -88,14 +88,21 @@ export async function lookupIds(api: APIRequestContext): Promise<Ids> {
   const incidents = rows(await getJson(api, '/api/sre/incidents'), 'incidents');
   const optional = async (url: string, key: string): Promise<Row[]> =>
     api.get(url).then(async (r) => (r.ok() ? rows((await r.json()) as Record<string, unknown>, key) : []));
-  const [jobs, pages, requirements, services, failed, k6runs] = await Promise.all([
+  const [jobs, pages, requirements, services] = await Promise.all([
     optional('/api/jobs', 'data'),
     optional('/api/status-pages', 'data'),
     optional('/api/requirements', 'data'),
     optional('/api/sre/services', 'services'),
-    optional('/api/runs?status=failed', 'data'),
-    optional('/api/runs', 'data'),
   ]);
+  const hasReport = (r: Row) => r.isUp === false && !!r.testExecutionId && !!(r.details?.reportUrl || r.testReportS3Url);
+  let reportMonitor: string | undefined;
+  for (const m of monitors.filter((m) => m.type === 'synthetic_test').slice(0, 10)) {
+    // Newest first; the detail table shows only the first rows, so look at the latest 10.
+    if ((await optional(`/api/monitors/${m.id}/results?limit=10`, 'data')).some(hasReport)) {
+      reportMonitor = m.id;
+      break;
+    }
+  }
   const byType = (list: Row[], type: string) => list.find((r) => r.type === type)?.id;
   const monitor = (monitors.find((m) => m.type === 'http_request') ?? monitors[0])?.id;
   expect(monitor, 'the project has no monitors').toBeTruthy();
@@ -112,28 +119,23 @@ export async function lookupIds(api: APIRequestContext): Promise<Ids> {
     incidentResolved: incidents.find((i) => i.status === 'resolved')?.id,
     incidentOpen: incidents.find((i) => i.status !== 'resolved')?.id,
     service: services[0]?.id,
-    runFailed: failed.find((r) => (r as { jobType?: string }).jobType === 'playwright')?.id,
-    runK6: k6runs.find((r) => (r as { jobType?: string }).jobType === 'k6')?.id,
+    reportMonitor,
   };
 }
 
-/** Clicks the first visible tab, button, link, radio or card text whose name matches. */
+/** Clicks the first visible tab, button, link, menu item, radio or text whose name matches; waits for it to render. */
 export async function open(page: Page, name: RegExp): Promise<void> {
-  for (const role of ['tab', 'button', 'link', 'menuitem', 'radio'] as const) {
-    const target = page.getByRole(role, { name }).first();
-    if (await target.isVisible().catch(() => false)) {
-      await target.click();
-      await settle(page);
-      return;
+  const find = async () => {
+    for (const role of ['tab', 'button', 'link', 'menuitem', 'radio'] as const) {
+      const target = page.getByRole(role, { name }).first();
+      if (await target.isVisible().catch(() => false)) return target;
     }
-  }
-  const text = page.getByText(name).first();
-  if (await text.isVisible().catch(() => false)) {
-    await text.click();
-    await settle(page);
-    return;
-  }
-  throw new Error(`nothing to open for ${name}`);
+    const text = page.getByText(name).first();
+    return (await text.isVisible().catch(() => false)) ? text : null;
+  };
+  await expect.poll(async () => (await find()) !== null, { message: `nothing to open for ${name}`, timeout: 15_000 }).toBe(true);
+  await (await find())!.click();
+  await settle(page);
 }
 
 /** Opens a page and fails if the app redirected somewhere else (for example to sign-in). */
