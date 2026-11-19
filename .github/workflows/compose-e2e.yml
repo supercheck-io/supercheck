@@ -140,13 +140,16 @@ jobs:
         id: e2e
         working-directory: ./app/e2e
         run: |
-          grep='--grep-invert @execution'
-          if [ "$FULL" != "true" ]; then grep='--grep @critical --grep-invert @execution'; fi
-          # shellcheck disable=SC2086
-          npx playwright test --project=chromium $grep
+          # No worker (@execution) and no AI provider (@aisre) in this stack.
+          args=(--project=chromium --grep-invert '@execution|@aisre')
+          if [ "$FULL" != "true" ]; then args+=(--grep @critical); fi
+          npx playwright test "${args[@]}"
         env:
           CI: true
           E2E_CHECKPOINTS: "1"
+          # Asserts /api/health reports this commit (tests/core/build-revision.spec.ts); skipped
+          # when a manual run tests a published tag built from another commit.
+          E2E_EXPECTED_BUILD_SHA: ${{ (github.event_name != 'workflow_dispatch' || inputs.image_tag == '') && github.sha || '' }}
           E2E_BASE_URL: http://localhost:3000
 
       - name: Show app log on failure
