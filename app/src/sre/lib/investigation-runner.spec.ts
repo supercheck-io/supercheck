@@ -359,11 +359,14 @@ describe("completeSreIncidentInvestigation", () => {
     (db.transaction as jest.Mock).mockImplementation(async (callback) => callback({
       update: jest.fn().mockReturnValue({ set }), insert: jest.fn().mockReturnValue({ values }),
     }));
-    (runSreAgent as jest.Mock).mockRejectedValue(new SreAgentIncompleteResponseError(finishReason));
+    (runSreAgent as jest.Mock).mockRejectedValue(
+      new SreAgentIncompleteResponseError(finishReason, { inputTokens: 900, outputTokens: 1200, totalTokens: 2100 }),
+    );
     const result = await completeSreIncidentInvestigation("run-1", incident, input);
     expect(result).toMatchObject({ success: false, status: 502 });
     expect(mockConsume).not.toHaveBeenCalled();
     expect(set).toHaveBeenCalledWith(expect.objectContaining({ status: "failed",
+      promptTokens: 900, completionTokens: 1200, totalTokens: 2100,
       agentStateSnapshot: expect.objectContaining({ errorCode, error: expect.any(String) }),
     }));
     expect(values).toHaveBeenCalledWith(expect.objectContaining({ eventData: expect.objectContaining({ errorCode }) }));
