@@ -73,7 +73,8 @@ export async function GET(
     );
     const { sanitizedConfig, maskedFields } = sanitizeConfigForClient(
       provider.type as NotificationProviderType,
-      decryptedConfig
+      decryptedConfig,
+      { canEdit: checkPermissionWithContext("notification", "update", authContext) }
     );
 
     // Get last used information from alert history

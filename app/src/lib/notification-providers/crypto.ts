@@ -94,6 +94,7 @@ export function decryptNotificationProviderConfig(
 export function sanitizeConfigForClient(
   type: NotificationProviderType,
   config: PlainNotificationProviderConfig,
+  options: { canEdit?: boolean } = {},
 ): {
   sanitizedConfig: PlainNotificationProviderConfig;
   maskedFields: string[];
@@ -120,6 +121,13 @@ export function sanitizeConfigForClient(
       }
     }
   });
+
+  // A webhook body template can carry a credential (PagerDuty puts its routing key there). Editors need it to edit the
+  // channel; a viewer cannot edit, so it is withheld.
+  if (options.canEdit === false && typeof sanitized.bodyTemplate === "string" && sanitized.bodyTemplate) {
+    maskedFields.push("bodyTemplate");
+    sanitized.bodyTemplate = undefined;
+  }
 
   return { sanitizedConfig: sanitized, maskedFields };
 }

@@ -44,6 +44,7 @@ export async function GET() {
     if (!canView) {
       return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 });
     }
+    const canEdit = checkPermissionWithContext("notification", "update", context);
 
     // Get notification providers scoped to the project
     // Using ID ordering instead of createdAt since UUIDv7 is time-ordered (PostgreSQL 18+)
@@ -77,6 +78,7 @@ export async function GET() {
         ({ sanitizedConfig, maskedFields } = sanitizeConfigForClient(
           provider.type as NotificationProviderType,
           decryptedConfig,
+          { canEdit },
         ));
       } catch {
         // Keep one stale/corrupt credential from hiding every provider, but do
