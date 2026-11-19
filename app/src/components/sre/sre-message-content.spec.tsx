@@ -261,6 +261,12 @@ describe("SreMessageContent citations", () => {
     expect(await screen.findByRole("dialog")).toHaveTextContent("12 matching lines");
   });
 
+  it("renders a citation inside bold text as a footnote", () => {
+    render(<SreMessageContent citations={[loki]} content={"**Evidence: connector_0123456789abcdef01234567**"} />);
+    expect(screen.queryByText(/\[\[cite/)).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^Citation 1: Loki/ })).toBeInTheDocument();
+  });
+
   it("leaves uncited uuids, code spans and link targets intact", () => {
     render(
       <SreMessageContent

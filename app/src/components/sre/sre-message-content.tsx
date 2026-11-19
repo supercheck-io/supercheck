@@ -212,7 +212,9 @@ function renderInlineMarkdown(source: string, citations?: CitationContext) {
     }
 
     if (part.startsWith("**") && part.endsWith("**")) {
-      nodes.push(<strong key={`${part}-${index}`}>{part.slice(2, -2)}</strong>);
+      // Bold text can hold a citation marker; render it inside the bold span.
+      const inner = part.slice(2, -2);
+      nodes.push(<strong key={`${part}-${index}`}>{citations ? renderInlineMarkdown(inner, citations) : inner}</strong>);
       return;
     }
 

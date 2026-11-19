@@ -66,7 +66,17 @@ export function stripReportBoilerplate(text: string) {
   return lines.slice(start).join("\n").trim();
 }
 
-const RAW_ID_ASIDE = /\s*\([^()]*\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b[^()]*\)/gi;
+const RAW_UUID = /\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi;
+const ID_ASIDE = /\s*\(([^()]*\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b[^()]*)\)/gi;
+
+/** Drops an aside that only labels a raw id ("(for example, <uuid>)"); a longer aside keeps its words and loses only the id. */
+function dropRawIds(text: string) {
+  return text.replace(ID_ASIDE, (match, inner: string) => {
+    const words = inner.replace(RAW_UUID, " ").replace(/[^\p{L}\p{N}\s]/gu, " ").trim().split(/\s+/).filter(Boolean);
+    if (words.length <= 3) return "";
+    return match.replace(RAW_UUID, "").replace(/\(\s+/, "(").replace(/\s+([,.;:)])/g, "$1").replace(/\s{2,}/g, " ");
+  });
+}
 
 /** The text shown as the conclusion: structured conclusion, else a legacy full report, else the stored headline. */
 export function getInvestigationConclusion(
@@ -79,7 +89,7 @@ export function getInvestigationConclusion(
   const raw = structured?.conclusion ?? fullReport ?? rootCauseSummary;
   // Runs stored before ids were stripped at parse time still carry inline id lists.
   // An aside that only carries a raw id, like "(for example, 01a1f039-…)", means nothing to a reader.
-  const stripped = raw ? stripEvidenceIdLists(raw).replace(RAW_ID_ASIDE, "") : raw;
+  const stripped = raw ? dropRawIds(stripEvidenceIdLists(raw)) : raw;
   return stripped ? stripReportBoilerplate(stripped) || stripped : stripped;
 }
 

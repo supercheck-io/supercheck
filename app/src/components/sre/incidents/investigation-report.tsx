@@ -6,6 +6,7 @@ import {
   CircleAlert,
   ArrowRight,
   Bell,
+  ChevronRight,
   CircleCheck,
   Clock,
   Database,
@@ -35,6 +36,7 @@ import { SreInvestigationPanel, SreReportSnapshotMenuItem } from "@/components/s
 import { SreMessageContent } from "@/components/sre/sre-message-content";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Skeleton } from "@/components/ui/skeleton";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { TableBadge } from "@/components/ui/table-badge";
@@ -107,6 +109,38 @@ export function groupEvidence(evidence: EvidenceItem[]) {
   return [...groups.values()].map((group) => ({ ...group, rows: [...group.rows.values()] }));
 }
 
+/** Every result folded into a row, each openable on its own: same titles can hide different resources or failures. */
+export function FoldedResults({ items }: { items: EvidenceItem[] }) {
+  return (
+    <Collapsible>
+      <CollapsibleTrigger className="group/fold ml-12 mb-2 inline-flex items-center gap-1 rounded-sm text-xs text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+        <ChevronRight className="size-3.5 transition-transform group-data-[state=open]/fold:rotate-90" aria-hidden="true" />
+        Show all {items.length} results
+      </CollapsibleTrigger>
+      <CollapsibleContent>
+        <ul className="mb-2 ml-12 mr-3 divide-y rounded-md border text-xs">
+          {items.map((entry) => (
+            <li key={entry.id}>
+              <EvidenceDetailsDialog item={entry}>
+                <button
+                  type="button"
+                  aria-label={`View evidence: ${entry.title}, ${formatTime(entry.observedAt) ?? "time not recorded"}`}
+                  className="flex w-full min-w-0 items-center gap-3 px-2.5 py-1.5 text-left hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                >
+                  <span className="min-w-0 flex-1 truncate text-muted-foreground">{entry.summary || entry.title}</span>
+                  <span className="shrink-0 tabular-nums text-muted-foreground" suppressHydrationWarning>
+                    {formatTime(entry.observedAt)}
+                  </span>
+                </button>
+              </EvidenceDetailsDialog>
+            </li>
+          ))}
+        </ul>
+      </CollapsibleContent>
+    </Collapsible>
+  );
+}
+
 function EvidenceList({
   evidence,
   citedInConclusion,
@@ -132,7 +166,8 @@ function EvidenceList({
             </p>
             <ul className="divide-y rounded-lg border">
               {group.rows.map((items) => {
-                const [item] = items as [EvidenceItem, ...EvidenceItem[]];
+                // The row opens the cited result when there is one, else the newest.
+                const item = items.find((entry) => citedInConclusion.has(entry.id)) ?? items[0]!;
                 const type = EVIDENCE_TYPE[item.evidenceType] ?? OTHER_EVIDENCE;
                 const cited = items.some((entry) => citedInConclusion.has(entry.id));
                 const hypotheses = [...new Set(items.flatMap((entry) => hypothesisTitles.get(entry.id) ?? []))];
@@ -144,8 +179,8 @@ function EvidenceList({
                 return (
                   <li key={item.id} className="relative">
                     {/* Every folded result keeps its anchor, so links to any of them land on this row. */}
-                    {items.map((entry, index) => (
-                      <span key={entry.id} id={index === 0 ? undefined : `sre-evidence-${entry.id}`} className="absolute top-0 scroll-mt-4" aria-hidden="true" />
+                    {items.map((entry) => (
+                      <span key={entry.id} id={entry.id === item.id ? undefined : `sre-evidence-${entry.id}`} className="absolute top-0 scroll-mt-4" aria-hidden="true" />
                     ))}
                     <EvidenceDetailsDialog item={item}>
                       <button
@@ -174,6 +209,7 @@ function EvidenceList({
                         </span>
                       </button>
                     </EvidenceDetailsDialog>
+                    {items.length > 1 && <FoldedResults items={items} />}
                   </li>
                 );
               })}
