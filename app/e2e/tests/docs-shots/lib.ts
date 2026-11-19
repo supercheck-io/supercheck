@@ -34,7 +34,15 @@ export function assertStagingTarget(): { baseUrl: string; host: string } {
   const staging = process.env.E2E_STAGING_BASE_URL || '';
   if (!baseUrl || !staging) throw new Error('docs-shots needs E2E_BASE_URL and E2E_STAGING_BASE_URL');
   if (hostOf(baseUrl) !== hostOf(staging)) throw new Error('docs-shots only runs against the staging deployment');
+  if (/(^|\.)supercheck\.io$/.test(hostOf(baseUrl))) throw new Error('docs-shots never runs against a supercheck.io host');
   return { baseUrl, host: hostOf(staging) };
+}
+
+/** Staging-only hostnames to hide: the app host plus the status-page domains the app reports. */
+export async function stagingHosts(api: APIRequestContext, host: string): Promise<string[]> {
+  const body: Record<string, unknown> = await api.get('/api/status-pages').then((r) => (r.ok() ? r.json() : {}));
+  const extra = [body.statusPageDomain, body.statusPageCnameTarget].filter((h): h is string => typeof h === 'string' && !!h);
+  return [...new Set([host, ...extra.map((h) => h.toLowerCase())])];
 }
 
 export type Ids = {
@@ -86,7 +94,7 @@ export async function lookupIds(api: APIRequestContext): Promise<Ids> {
     optional('/api/requirements', 'data'),
     optional('/api/sre/services', 'services'),
     optional('/api/runs?status=failed', 'data'),
-    optional('/api/runs?limit=50', 'data'),
+    optional('/api/runs', 'data'),
   ]);
   const byType = (list: Row[], type: string) => list.find((r) => r.type === type)?.id;
   const monitor = (monitors.find((m) => m.type === 'http_request') ?? monitors[0])?.id;
@@ -104,7 +112,7 @@ export async function lookupIds(api: APIRequestContext): Promise<Ids> {
     incidentResolved: incidents.find((i) => i.status === 'resolved')?.id,
     incidentOpen: incidents.find((i) => i.status !== 'resolved')?.id,
     service: services[0]?.id,
-    runFailed: failed[0]?.id,
+    runFailed: failed.find((r) => (r as { jobType?: string }).jobType === 'playwright')?.id,
     runK6: k6runs.find((r) => (r as { jobType?: string }).jobType === 'k6')?.id,
   };
 }
@@ -138,44 +146,51 @@ export async function visit(page: Page, target: string): Promise<void> {
 }
 
 /**
- * Replaces the staging origin in visible text and field values with the production one,
- * then fails if the staging host is still anywhere on screen.
+ * Replaces staging hostnames in visible text and field values (page and iframes) with the
+ * production host, then fails if any is still on screen.
  */
-export async function hideHost(page: Page, host: string): Promise<void> {
-  await page.evaluate(
-    ({ host, publicOrigin }) => {
-      const re = new RegExp(host.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
-      const swap = (s: string) => s.replace(re, new URL(publicOrigin).host);
-      const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
-      for (let n = walker.nextNode(); n; n = walker.nextNode()) {
-        if (n.nodeValue && re.test(n.nodeValue)) n.nodeValue = swap(n.nodeValue);
-        re.lastIndex = 0;
-      }
-      for (const el of Array.from(document.querySelectorAll('input, textarea'))) {
-        const field = el as HTMLInputElement;
-        if (re.test(field.value)) field.value = swap(field.value);
-        re.lastIndex = 0;
-      }
-    },
-    { host, publicOrigin: PUBLIC_ORIGIN },
-  );
-  const leaked = await page.evaluate(
-    (host) =>
-      document.body.innerText.toLowerCase().includes(host) ||
-      Array.from(document.querySelectorAll('input, textarea')).some((el) => (el as HTMLInputElement).value.toLowerCase().includes(host)),
-    host,
-  );
-  expect(leaked, 'the staging host is still visible in the frame').toBe(false);
+export async function hideHost(page: Page, hosts: string[]): Promise<void> {
+  const publicHost = new URL(PUBLIC_ORIGIN).host;
+  for (const frame of page.frames()) {
+    await frame.evaluate(
+      ({ hosts, publicHost }) => {
+        const escape = (h: string) => h.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const re = new RegExp(hosts.map(escape).join('|'), 'gi');
+        const swap = (s: string) => s.replace(re, publicHost);
+        const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+        for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+          if (n.nodeValue && re.test(n.nodeValue)) n.nodeValue = swap(n.nodeValue);
+          re.lastIndex = 0;
+        }
+        for (const el of Array.from(document.querySelectorAll('input, textarea'))) {
+          const field = el as HTMLInputElement;
+          if (re.test(field.value)) field.value = swap(field.value);
+          re.lastIndex = 0;
+        }
+      },
+      { hosts, publicHost },
+    ).catch(() => undefined);
+    const leaked = await frame
+      .evaluate(
+        (hosts) => {
+          const has = (t: string) => hosts.some((h) => t.toLowerCase().includes(h));
+          return has(document.body.innerText) || Array.from(document.querySelectorAll('input, textarea')).some((el) => has((el as HTMLInputElement).value));
+        },
+        hosts,
+      )
+      .catch(() => false);
+    expect(leaked, 'a staging host is still visible in the frame').toBe(false);
+  }
 }
 
 export type Output = { file: string; size: { width: number; height: number } };
 
 /** Saves one frame per output. `.webp` files are written as `<name>.webp.png` masters for the workflow to convert. */
-export async function capture(page: Page, host: string, outputs: Output[]): Promise<void> {
+export async function capture(page: Page, hosts: string[], outputs: Output[]): Promise<void> {
   for (const { file, size } of outputs) {
     await page.setViewportSize(size);
     await settle(page);
-    await hideHost(page, host);
+    await hideHost(page, hosts);
     const target = path.join(OUT_DIR, file.endsWith('.webp') ? `${file}.png` : file);
     fs.mkdirSync(path.dirname(target), { recursive: true });
     await page.screenshot({ path: target, animations: 'disabled', caret: 'hide', scale: 'device', mask: [page.locator(VOLATILE_IMAGES)], maskColor: '#9ca3af' });

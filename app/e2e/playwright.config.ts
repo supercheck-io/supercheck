@@ -79,8 +79,8 @@ export default defineConfig({
       },
       dependencies: ['setup'],
     },
-    /* Docs and landing capture (docs-shots.yml): staging only, enforced at run time by the spec. */
-    {
+    /* Docs and landing capture (docs-shots.yml): only with E2E_DOCS_SHOTS=1, so full-suite runs never capture. */
+    ...(process.env.E2E_DOCS_SHOTS === '1' ? [{
       name: 'docs-shots',
       testMatch: /tests\/docs-shots\/[^/]+\.spec\.ts$/,
       use: {
@@ -89,13 +89,13 @@ export default defineConfig({
         // A 1710x1035 window at 2x gives the 3420x2070 docs size.
         viewport: { width: 1710, height: 1035 },
         deviceScaleFactor: 2,
-        colorScheme: 'dark',
+        colorScheme: 'dark' as const,
         storageState: 'user-auth-state.json',
         // Failure frames could show the staging host; the workflow uploads only the image folder anyway.
-        screenshot: 'off',
+        screenshot: 'off' as const,
       },
       dependencies: ['setup'],
-    },
+    }] : []),
     /* PR screenshot tour (pr-screenshots.yml): only with E2E_SCREENSHOTS=1, so full-suite runs never sign up on a real deployment. */
     ...(process.env.E2E_SCREENSHOTS === '1' ? [
       {

@@ -12,7 +12,7 @@
  * billed AI dialogs, and super-admin pages (a different identity).
  */
 import { test, expect, type Page } from '@playwright/test';
-import { assertStagingTarget, capture, DOCS_SIZE, LANDING_SIZE, lookupIds, open, SRE_SIZE, useProject, visit, type Ids, type Output } from './lib';
+import { assertStagingTarget, capture, DOCS_SIZE, LANDING_SIZE, lookupIds, open, SRE_SIZE, stagingHosts, useProject, visit, type Ids, type Output } from './lib';
 
 type Ctx = { page: Page; ids: Ids };
 type Shot = {
@@ -138,7 +138,7 @@ test.describe('docs screenshots', () => {
       if (!idsByProject.has(project)) idsByProject.set(project, lookupIds(page.request));
       await shot.go({ page, ids: await (idsByProject.get(project) as Promise<Ids>) });
       const outputs: Output[] = shot.files.map((file) => ({ file, size: file.endsWith('.webp') ? LANDING_SIZE : shot.sre ? SRE_SIZE : DOCS_SIZE }));
-      await capture(page, host, outputs);
+      await capture(page, await stagingHosts(page.request, host), outputs);
     });
   }
 });
