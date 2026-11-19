@@ -1,6 +1,7 @@
 import { getCachedAuthSession } from "@/lib/session-cache";
 import { redirect } from "next/navigation";
 import type { Metadata } from "next";
+import { AuthFrame } from "@/components/auth/auth-shell";
 
 export const metadata: Metadata = {
   title: "Auth | Supercheck",
@@ -18,9 +19,5 @@ export default async function AuthLayout({
     redirect("/");
   }
 
-  return (
-    <div className="flex min-h-screen items-center justify-center">
-      {children}
-    </div>
-  );
+  return <AuthFrame>{children}</AuthFrame>;
 }

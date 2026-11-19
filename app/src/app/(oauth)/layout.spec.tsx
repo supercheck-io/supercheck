@@ -7,9 +7,8 @@ describe("OAuth consent layout", () => {
     expect(OAuthLayout).toBe(DeviceLayout);
   });
 
-  it("wraps the page in the Supercheck shell", () => {
+  it("wraps the page in the shared auth frame (the logo sits in each card)", () => {
     render(<OAuthLayout><p>consent content</p></OAuthLayout>);
-    expect(screen.getByText("Supercheck")).toBeInTheDocument();
-    expect(screen.getByText("consent content")).toBeInTheDocument();
+    expect(screen.getByRole("main")).toContainElement(screen.getByText("consent content"));
   });
 });

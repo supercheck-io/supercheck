@@ -475,3 +475,19 @@
   bottom: 84px !important;
   z-index: 45 !important;
 }
+
+/* Print: the app shell clips its content to the window (h-svh inset, scrolling main); let the page grow to fit it. */
+@media print {
+  /* The fixed sidebar would repeat beside the content on every printed page. */
+  [data-slot="sidebar-wrapper"] [data-slot="sidebar"] {
+    display: none !important;
+  }
+  [data-slot="sidebar-inset"] {
+    height: auto !important;
+    min-height: 0 !important;
+  }
+  [data-slot="sidebar-inset"] > main {
+    overflow: visible !important;
+    flex: none !important;
+  }
+}

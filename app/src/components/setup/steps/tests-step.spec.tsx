@@ -77,6 +77,17 @@ describe("TestsStep", () => {
     expect(text).not.toMatch(/Try again\./);
   });
 
+  it("shows an info message, not an error, when nothing new was suggested", async () => {
+    fetchMock.mockReturnValue(json({ requirements: [], code: "no_new_suggestions", updatedAt: null, retryAt: "2030-01-01T00:00:00.000Z" }));
+    render(<TestsStep {...mk({ scan })} />);
+    suggest();
+    const text = (await screen.findByText(/already cover the pages we scanned/)).textContent ?? "";
+    expect(text).toMatch(/No credit was used/);
+    expect(text).toMatch(/can run again/);
+    expect(screen.queryByText(/Try again/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("alert")?.className ?? "").not.toMatch(/destructive|red/);
+  });
+
   it("disables Suggest when ten requirements are ticked", () => {
     const requirements = Array.from({ length: 10 }, (_, i) => ({ title: `R${i}` }));
     render(<TestsStep {...mk({ scan, draft: { tests: { requirements } } })} />);
