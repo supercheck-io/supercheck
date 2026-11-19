@@ -923,7 +923,11 @@ export function prometheusSeriesSummary(
   metric: Record<string, string> | undefined,
   values: Array<[number, string]> | undefined,
 ) {
-  const points = (values ?? []).map(([, v]) => Number(v)).filter(Number.isFinite);
+  // A non-conforming server can send any shape; one bad series must not fail the whole search.
+  const samples = (Array.isArray(values) ? values : []).map((sample) =>
+    Number(Array.isArray(sample) ? sample[1] : NaN),
+  );
+  const points = samples.filter(Number.isFinite);
   // Redact before cutting, so a secret cut at the limit cannot slip out of its pattern.
   const cut = (text: string) => redactConnectorText(text).slice(0, 40);
   const labels = Object.entries(metric ?? {})
@@ -931,13 +935,13 @@ export function prometheusSeriesSummary(
     .slice(0, 6)
     .map(([key, value]) => `${cut(key)}=${cut(String(value))}`)
     .join(", ");
-  const skipped = (values?.length ?? 0) - points.length;
-  const head = `${values?.length ?? 0} samples returned for ${query}${skipped ? ` (${skipped} non-finite)` : ""}`;
+  const skipped = samples.length - points.length;
+  const head = `${samples.length} samples returned for ${query}${skipped ? ` (${skipped} non-finite)` : ""}`;
   const labelText = labels ? ` [labels: ${labels}]` : "";
   if (points.length === 0) return head + labelText;
-  const round = (n: number) => String(Number(n.toPrecision(4)));
+  const round = (n: number) => String(Number(n.toPrecision(6)));
   // The final sample can be NaN (for example an empty histogram window); say so instead of showing an older value as current.
-  const finalValue = Number(values?.[values.length - 1]?.[1]);
+  const finalValue = samples[samples.length - 1];
   const lastText = Number.isFinite(finalValue) ? round(finalValue) : "undefined (non-finite)";
   const min = points.reduce((a, b) => Math.min(a, b));
   const max = points.reduce((a, b) => Math.max(a, b));

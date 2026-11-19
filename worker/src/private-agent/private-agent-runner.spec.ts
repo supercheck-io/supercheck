@@ -109,11 +109,18 @@ describe('private agent connector execution', () => {
               },
               values: [[1, '1']],
             },
+            { metric: { __name__: 'bad' }, values: 'not-an-array' },
+            { metric: { __name__: 'bad2' }, values: [null, [2, '0.99996']] },
           ],
         },
       }),
     });
     const result = await executePrivateAgentConnectorJob(baseJob);
+    // A malformed series is summarised, not thrown, and availability-sized values keep their precision.
+    expect(result.evidence[3].summary).toBe('0 samples returned for up');
+    expect(result.evidence[4].summary).toBe(
+      '2 samples returned for up (1 non-finite); last=0.99996 min=0.99996 max=0.99996 avg=0.99996',
+    );
     expect(result.evidence[0].summary).toBe(
       '3 samples returned for up (2 non-finite); last=undefined (non-finite) min=0.0004 max=0.0004 avg=0.0004',
     );

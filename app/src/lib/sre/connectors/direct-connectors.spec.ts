@@ -3,7 +3,7 @@ jest.mock("./pinned-fetch", () => ({
     global.fetch(...args),
 }));
 
-import { createDirectConnector } from "./direct-connectors";
+import { createDirectConnector, prometheusSeriesSummary } from "./direct-connectors";
 import { ConnectorQueryRejectedError } from "./providers/provider-query-guards";
 import {
   type ConnectorDefinition,
@@ -163,6 +163,13 @@ describe("direct connectors", () => {
       expect.stringContaining("/api/v1/query_range"),
       expect.objectContaining({ method: "GET", cache: "no-store" }),
     );
+  });
+
+  it("keeps availability-sized precision and survives malformed Prometheus series", () => {
+    expect(prometheusSeriesSummary("up", {}, [[1, "0.99996"]])).toContain("last=0.99996");
+    const odd = (values: unknown) => prometheusSeriesSummary("up", undefined, values as Array<[number, string]>);
+    expect(odd("not-an-array")).toBe("0 samples returned for up");
+    expect(odd([null, [2, "5"]])).toBe("2 samples returned for up (1 non-finite); last=5 min=5 max=5 avg=5");
   });
 
   it("keeps small values, reports non-finite samples and handles empty series in Prometheus summaries", async () => {
