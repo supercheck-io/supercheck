@@ -1,9 +1,11 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { IncidentUpdateDialog, incidentUpdateFormSchema } from "./incident-update-dialog";
 
+const mockUpdate = jest.fn();
 jest.mock("@/actions/update-incident-status", () => ({
-  updateIncidentStatus: jest.fn(),
+  updateIncidentStatus: (...args: unknown[]) => mockUpdate(...args),
 }));
+jest.mock("sonner", () => ({ toast: { success: jest.fn(), error: jest.fn() } }));
 
 const base = {
   deliverNotifications: true,
@@ -60,6 +62,7 @@ describe("incident update scheduled validation", () => {
 });
 
 describe("restore components checkbox", () => {
+  beforeEach(() => mockUpdate.mockReset());
   const renderDialog = (incident: Partial<Parameters<typeof IncidentUpdateDialog>[0]["incident"] & object>) =>
     render(
       <IncidentUpdateDialog
@@ -82,6 +85,31 @@ describe("restore components checkbox", () => {
     expect(box).toBeChecked();
     fireEvent.click(box);
     expect(box).not.toBeChecked();
+  });
+
+  const submit = async () => {
+    fireEvent.change(screen.getByLabelText("Update Message *"), { target: { value: "Fixed and verified" } });
+    fireEvent.click(screen.getByRole("button", { name: "Post Update" }));
+    await waitFor(() => expect(mockUpdate).toHaveBeenCalled());
+    return mockUpdate.mock.calls[0][0] as { status: string; restoreComponentStatus: boolean };
+  };
+
+  it("submits restoreComponentStatus true when resolving with the default, and false once unchecked", async () => {
+    mockUpdate.mockResolvedValue({ success: true });
+    renderDialog({});
+    pickResolved();
+    expect(await submit()).toMatchObject({ status: "resolved", restoreComponentStatus: true });
+
+    mockUpdate.mockClear();
+    fireEvent.click(screen.getByRole("checkbox", { name: "Restore components to operational" }));
+    expect(await submit()).toMatchObject({ status: "resolved", restoreComponentStatus: false });
+  });
+
+  it("submits restoreComponentStatus false for a post with no affected components", async () => {
+    mockUpdate.mockResolvedValue({ success: true });
+    renderDialog({ affectedComponentsCount: 0 });
+    pickResolved();
+    expect(await submit()).toMatchObject({ restoreComponentStatus: false });
   });
 
   it("is unchecked on open for a post that is already resolved", () => {

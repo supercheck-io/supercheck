@@ -15,7 +15,7 @@ import { z } from "zod";
 import { requireProjectContext } from "@/lib/project-context";
 import { requirePermissions } from "@/lib/rbac/middleware";
 import { logAuditEvent } from "@/lib/audit-logger";
-import { repointSreStatusPageSlot } from "@/lib/status-page-reconciliation";
+import { repointSreStatusPageSlot, restoreResolvedIncidentComponents } from "@/lib/status-page-reconciliation";
 import { incidentScheduleFields } from "@/lib/incident-schedule";
 
 import { updateIncidentStatusSchema, type UpdateIncidentStatusData } from "@/lib/validations/incident-status";
@@ -156,47 +156,9 @@ export async function updateIncidentStatus(
         await tx.insert(statusPageNotificationEvents).values({ incidentId: incident.id, updateId: update.id });
       }
 
-      // If resolved and restore is true, restore affected components to operational
-      // SECURITY: Only restore if no other active (non-resolved) incidents affect the same component
-      if (
-        validatedData.status === "resolved" &&
-        validatedData.restoreComponentStatus
-      ) {
-        const affectedComponents = await tx.query.incidentComponents.findMany({
-          where: eq(incidentComponents.incidentId, validatedData.incidentId),
-        });
-
-        for (const ic of affectedComponents) {
-          // Check if any other active incidents still affect this component
-          const otherActiveIncidentComponents =
-            await tx.query.incidentComponents.findMany({
-              where: eq(incidentComponents.componentId, ic.componentId),
-              with: {
-                incident: {
-                  columns: { id: true, status: true },
-                },
-              },
-            });
-
-          const hasOtherActiveIncidents = otherActiveIncidentComponents.some(
-            (aic) =>
-              aic.incident &&
-              aic.incident.id !== validatedData.incidentId &&
-              aic.incident.status !== "resolved" &&
-            // A not-yet-started maintenance does not affect health (reconciler ignores it).
-            aic.incident.status !== "scheduled",
-          );
-
-          if (!hasOtherActiveIncidents) {
-            await tx
-              .update(statusPageComponents)
-              .set({
-                status: "operational",
-                updatedAt: new Date(),
-              })
-              .where(eq(statusPageComponents.id, ic.componentId));
-          }
-        }
+      // Restore follows the reconciliation rules (see restoreResolvedIncidentComponents).
+      if (validatedData.status === "resolved" && validatedData.restoreComponentStatus) {
+        await restoreResolvedIncidentComponents(tx, validatedData.incidentId, validatedData.statusPageId);
       }
 
       if (validatedData.status === "resolved") await repointSreStatusPageSlot(tx, incident.id);

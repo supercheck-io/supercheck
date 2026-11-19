@@ -43,7 +43,7 @@ type Incident = {
   status: IncidentStatus;
   scheduledFor?: Date | string | null;
   scheduledUntil?: Date | string | null;
-  affectedComponentsCount?: number;
+  affectedComponentsCount: number;
 };
 
 type IncidentUpdateDialogProps = {
@@ -128,7 +128,7 @@ const statusOptions: { value: IncidentStatus; label: string; color: string }[] =
   ];
 
 // Resolving should clear Degraded components by default; the server skips ones another active post still affects.
-const restoreByDefault = (status: IncidentStatus, affectedComponentsCount = 0) =>
+const restoreByDefault = (status: IncidentStatus, affectedComponentsCount: number) =>
   status === "resolved" && affectedComponentsCount > 0;
 
 export function IncidentUpdateDialog({

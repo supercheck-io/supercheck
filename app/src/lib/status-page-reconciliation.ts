@@ -2,6 +2,7 @@ import { notFoundIfDeleting } from "@/lib/deletion/visibility";
 import { and, desc, eq, inArray, isNull, lte, ne, or, sql } from "drizzle-orm";
 import { db } from "@/utils/db";
 import { isMonitorInMaintenance } from "@/lib/maintenance/predicate";
+import { liveMonitor } from "@/lib/deletion/visibility";
 import {
   statusPageComponents,
   statusPageComponentMonitors,
@@ -13,6 +14,7 @@ import {
   sreIncidents,
   sreIncidentAlerts,
   sreAlertEvents,
+  monitors,
 } from "@/db/schema";
 import {
   statusAggregationService,
@@ -147,6 +149,60 @@ export async function repointSreStatusPageSlot(tx: Tx, resolvedIncidentId: strin
     .update(sreIncidents)
     .set({ statusPageIncidentId: next?.id ?? null })
     .where(eq(sreIncidents.id, owner.id));
+}
+
+/**
+ * "Restore components" on a manually resolved public incident, with the rules reconciliation applies. The incident must
+ * already be resolved in `tx`, so it no longer counts as active. A component is left alone when
+ * - its status is no longer what this incident set (someone changed it by hand since);
+ * - another open incident still affects it (reconciliation derives its status from that one);
+ * - it has linked monitors: reconciliation recomputes it from their current health, and this incident's update
+ *   triggers that, so writing "operational" here would only flicker while a monitor is still failing.
+ * The rest return to operational, or for a maintenance link to the status saved when it began, as in the
+ * maintenance end above. Writes are keyed on (status page, component) and grouped, so N components cost two writes.
+ */
+export async function restoreResolvedIncidentComponents(tx: Tx, incidentId: string, statusPageId: string) {
+  const links = await tx
+    .select({
+      componentId: incidentComponents.componentId,
+      oldStatus: incidentComponents.oldStatus,
+      newStatus: incidentComponents.newStatus,
+      status: statusPageComponents.status,
+    })
+    .from(incidentComponents)
+    .innerJoin(statusPageComponents, eq(statusPageComponents.id, incidentComponents.componentId))
+    .where(and(eq(incidentComponents.incidentId, incidentId), eq(statusPageComponents.statusPageId, statusPageId)));
+  const own = links.filter((link) => link.newStatus !== null && link.status === link.newStatus);
+  if (own.length === 0) return;
+  const ids = own.map((link) => link.componentId);
+  const [busy, monitored] = [
+    await tx
+      .select({ componentId: incidentComponents.componentId })
+      .from(incidentComponents)
+      .innerJoin(incidents, eq(incidents.id, incidentComponents.incidentId))
+      .where(and(inArray(incidentComponents.componentId, ids), ne(incidents.id, incidentId), ne(incidents.status, "resolved"), ne(incidents.status, "scheduled"))),
+    await tx
+      .select({ componentId: statusPageComponentMonitors.componentId })
+      .from(statusPageComponentMonitors)
+      .innerJoin(monitors, eq(monitors.id, statusPageComponentMonitors.monitorId))
+      .where(and(inArray(statusPageComponentMonitors.componentId, ids), liveMonitor())),
+  ];
+  const skip = new Set([...busy, ...monitored].map((row) => row.componentId));
+  const groups = new Map<string, { from: ComponentStatus; to: ComponentStatus; ids: string[] }>();
+  for (const link of own) {
+    if (skip.has(link.componentId)) continue;
+    const from = link.newStatus as ComponentStatus;
+    const to = from === "under_maintenance" && link.oldStatus && link.oldStatus !== "under_maintenance" ? (link.oldStatus as ComponentStatus) : "operational";
+    const group = groups.get(`${from}>${to}`) ?? { from, to, ids: [] };
+    group.ids.push(link.componentId);
+    groups.set(`${from}>${to}`, group);
+  }
+  for (const group of groups.values()) {
+    await tx
+      .update(statusPageComponents)
+      .set({ status: group.to, updatedAt: new Date() })
+      .where(and(inArray(statusPageComponents.id, group.ids), eq(statusPageComponents.statusPageId, statusPageId), eq(statusPageComponents.status, group.from)));
+  }
 }
 
 /** Returns false when another replica holds the reconcile lock (the tick did nothing). */
