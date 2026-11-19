@@ -3,10 +3,10 @@
 import { useState, useEffect, useCallback, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { Loader2, Mail, CheckCircle, ArrowLeft, Clock } from "lucide-react";
-import Link from "next/link";
+import { Loader2, Clock } from "lucide-react";
+import { AuthBackLink, AuthCallout, AuthCard, AuthHeader, AuthLoading } from "@/components/auth/auth-shell";
 import { sendVerificationEmail } from "@/utils/auth-client";
-import { FieldGroup, Field, FieldDescription } from "@/components/ui/field";
+import { FieldGroup, Field } from "@/components/ui/field";
 import { parseInviteToken } from "@/lib/validations/auth";
 
 // Rate limiting configuration
@@ -47,13 +47,7 @@ function formatCooldownTime(ms: number): string {
 
 export default function VerifyEmailPage() {
   return (
-    <Suspense
-      fallback={
-        <div className="flex items-center justify-center min-h-[300px]">
-          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-        </div>
-      }
-    >
+    <Suspense fallback={<AuthLoading />}>
       <VerifyEmailPageContent />
     </Suspense>
   );
@@ -134,50 +128,29 @@ function VerifyEmailPageContent() {
   }, [email, inviteToken]);
 
   return (
-    <div className="flex flex-col gap-6 w-full max-w-sm px-4">
+    <AuthCard>
       <FieldGroup>
-        {/* Email Icon - Primary visual element */}
-        <div className="flex justify-center">
-          <div className="flex size-20 items-center justify-center rounded-full bg-primary/10">
-            <Mail className="size-10 text-primary" />
-          </div>
-        </div>
+        <AuthHeader
+          status="info"
+          title="Check your email"
+          description={
+            <>
+              We&apos;ve sent a verification link to{" "}
+              {email ? <span className="font-medium text-foreground">{email}</span> : "your email address"}. Click the
+              link to verify your account and complete signup.
+            </>
+          }
+        />
 
-        {/* Content */}
-        <div className="text-center space-y-2">
-          <h1 className="text-2xl font-bold">Check your email</h1>
-          <FieldDescription>
-            We&apos;ve sent a verification link to
-          </FieldDescription>
-          {email && <p className="font-medium text-foreground">{email}</p>}
-          <FieldDescription>
-            Click the link in the email to verify your account and complete
-            signup.
-          </FieldDescription>
-        </div>
+        {resendSuccess && <AuthCallout variant="success">Verification email sent.</AuthCallout>}
 
-        {/* Success Message */}
-        {resendSuccess && (
-          <div className="flex items-center gap-2 p-3 rounded-md bg-green-500/10 border border-green-500/20">
-            <CheckCircle className="h-4 w-4 text-green-500" />
-            <span className="text-sm text-green-600 dark:text-green-400">
-              Verification email sent successfully!
-            </span>
-          </div>
-        )}
+        {error && <AuthCallout variant="error">{error}</AuthCallout>}
 
-        {/* Error Message */}
-        {error && (
-          <p className="text-sm font-medium text-destructive text-center">
-            {error}
-          </p>
-        )}
-
-        {/* Resend Button */}
         <Field>
           <Button
             onClick={handleResendVerification}
             variant="outline"
+            size="lg"
             className="w-full"
             disabled={isResending || !email || cooldownRemaining > 0}
           >
@@ -197,22 +170,12 @@ function VerifyEmailPageContent() {
           </Button>
         </Field>
 
-        {/* Info */}
-        <FieldDescription className="text-center text-xs">
+        <p className="text-center text-xs text-muted-foreground">
           Didn&apos;t receive the email? Check your spam folder or click resend.
-        </FieldDescription>
+        </p>
 
-        {/* Back Link */}
-        <div className="text-center">
-          <Link
-            href={inviteToken ? `/sign-in?invite=${encodeURIComponent(inviteToken)}` : "/sign-in"}
-            className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            Back to sign in
-          </Link>
-        </div>
+        <AuthBackLink href={inviteToken ? `/sign-in?invite=${encodeURIComponent(inviteToken)}` : "/sign-in"} />
       </FieldGroup>
-    </div>
+    </AuthCard>
   );
 }

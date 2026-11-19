@@ -6,6 +6,7 @@ import { useState, useEffect } from "react";
 import { Loader2 } from "lucide-react";
 import { GitHubIcon, GoogleIcon } from "./social-icons";
 import { Badge } from "@/components/ui/badge";
+import { AuthCallout } from "./auth-shell";
 import { useAppConfig } from "@/hooks/use-app-config";
 
 interface SocialAuthButtonsProps {
@@ -82,9 +83,7 @@ export function SocialAuthButtons({
   return (
     <div className="flex flex-col gap-3">
       {error && (
-        <p className="text-sm font-medium text-destructive text-center">
-          {error}
-        </p>
+        <AuthCallout variant="error">{error}</AuthCallout>
       )}
 
       <div className="flex flex-col gap-3">

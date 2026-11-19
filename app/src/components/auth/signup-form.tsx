@@ -1,10 +1,9 @@
 "use client";
 
-import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { SupercheckLogo } from "@/components/logo/supercheck-logo";
-import { Loader2, Eye, EyeOff, Mail } from "lucide-react";
+import { Loader2 } from "lucide-react";
+import { AuthCard, AuthCallout, PasswordToggle, AuthHeader, AuthLegal, AuthLoading, InviteBanner } from "./auth-shell";
 import Link from "next/link";
 import { useState, useEffect, type RefObject } from "react";
 import { TurnstileCaptcha, type TurnstileCaptchaRef } from "./turnstile-captcha";
@@ -12,12 +11,7 @@ import { useCaptcha } from "@/hooks/use-captcha";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Building2 } from "lucide-react";
-import {
-  FieldGroup,
-  Field,
-  FieldLabel,
-  FieldDescription,
-} from "@/components/ui/field";
+import { FieldGroup, Field, FieldLabel } from "@/components/ui/field";
 import {
   Form,
   FormControl,
@@ -122,108 +116,55 @@ export function SignupForm({
   // If signup is disabled and there's no invite, show a closed registration message
   if (!isSignupEnabled && !inviteData && !inviteToken) {
     return (
-      <div className={cn("flex flex-col gap-6", className)}>
-        <div className="flex flex-col items-center gap-3 text-center">
-          <Link
-            href="/"
-            className="flex flex-col items-center gap-3 font-medium"
-          >
-            <div className="flex size-14 items-center justify-center rounded-md">
-              <SupercheckLogo className="size-12" />
-            </div>
-            <span className="sr-only">Supercheck</span>
+      <AuthCard className={className}>
+        <AuthHeader
+          title="Registration closed"
+          description="New account registration is currently disabled. Please contact your administrator for access."
+          logoHref="/"
+        />
+        <p className="text-center text-sm text-muted-foreground">
+          Already have an account?{" "}
+          <Link href="/sign-in" className="font-medium text-foreground underline underline-offset-4">
+            Sign in instead
           </Link>
-          <h1 className="text-2xl font-bold">Registration Closed</h1>
-          <p className="text-sm text-muted-foreground max-w-[300px]">
-            New account registration is currently disabled. Please contact your administrator for access.
-          </p>
-          <div className="mt-4 text-center text-sm">
-            <p className="text-muted-foreground">
-              Already have an account?{" "}
-              <Link
-                href="/sign-in"
-                className="font-medium underline underline-offset-2"
-              >
-                Sign in instead
-              </Link>
-            </p>
-          </div>
-        </div>
-      </div>
+        </p>
+      </AuthCard>
     );
   }
 
   // Show loading state while fetching invite data (when invite token is present but data hasn't loaded)
   if (!inviteData && !isOpenRegistration) {
-    return (
-      <div className={cn("flex flex-col gap-6 items-center justify-center min-h-[300px]", className)}>
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-        <p className="text-sm text-muted-foreground">Loading invitation...</p>
-      </div>
-    );
+    return <AuthLoading label="Loading invitation…" />;
   }
 
   return (
-    <div className={cn("flex flex-col gap-6", className)}>
+    <AuthCard className={className} footer={shouldShowLegalFooter ? <AuthLegal /> : undefined}>
       <Form {...form}>
         <form method="post" onSubmit={onSubmit}>
           <FieldGroup>
-            {/* Header */}
-            <div className="flex flex-col items-center gap-3 text-center">
-              <Link
-                href="/"
-                className="flex flex-col items-center gap-3 font-medium"
-              >
-                <div className="flex size-14 items-center justify-center rounded-md">
-                  <SupercheckLogo className="size-12" />
-                </div>
-                <span className="sr-only">Supercheck</span>
-              </Link>
-              <h1 className="text-2xl font-bold">
-                {isInviteMode
-                  ? `Join ${inviteData.organizationName}`
-                  : "Create your account"}
-              </h1>
-              <FieldDescription>
-                {isInviteMode ? (
-                  <>
-                    You&apos;ve been invited to join as{" "}
-                    <span className="font-medium text-foreground">
-                      {inviteData.role.replace(/_/g, " ")}
-                    </span>
-                  </>
-                ) : (
-                  "Sign up to get started with Supercheck"
-                )}
-              </FieldDescription>
-            </div>
+            <AuthHeader
+              logoHref="/"
+              title={isInviteMode ? `Join ${inviteData.organizationName}` : "Create your account"}
+              description={
+                isInviteMode
+                  ? isEmailLocked
+                    ? "Create an account to accept your invitation."
+                    : "Create an account with the email address this invitation was sent to."
+                  : "Sign up to get started with Supercheck"
+              }
+            />
 
-            {/* Invitation badge - only show in invite mode */}
             {isInviteMode && (
-              <div className="flex items-center gap-3 p-3 rounded-lg bg-primary/5 border border-primary/10">
-                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10">
-                  <Mail className="h-4 w-4 text-primary" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium">Invitation for</p>
-                  <p className="text-sm text-muted-foreground truncate">
-                    {inviteData.email || "Use the email address this invitation was sent to"}
-                  </p>
-                </div>
-              </div>
+              <InviteBanner organizationName={inviteData.organizationName} role={inviteData.role} email={inviteData.email} />
             )}
 
-            {/* Open registration callout - only show in self-hosted open registration */}
             {isOpenRegistration && (
-              <div className="flex items-start gap-3 p-3 rounded-lg bg-muted/50 border border-border/50 text-sm">
-                <Building2 className="h-5 w-5 text-muted-foreground shrink-0 mt-0.5" />
-                <div className="flex-1">
-                  <p className="font-medium text-foreground">Joining an existing team?</p>
-                  <p className="text-muted-foreground mt-0.5">
-                    Ask your admin for an invite to join their organization instead of creating a new one.
-                  </p>
-                </div>
-              </div>
+              <AuthCallout variant="info">
+                <p className="font-medium">Joining an existing team?</p>
+                <p className="text-muted-foreground">
+                  Ask your admin for an invite to join their organization instead of creating a new one.
+                </p>
+              </AuthCallout>
             )}
 
             {/* Name Field */}
@@ -297,22 +238,7 @@ export function SignupForm({
                           className={passwordValue ? "pr-10" : ""}
                           {...field}
                         />
-                        {passwordValue && (
-                          <button
-                            type="button"
-                            onClick={() => setShowPassword(!showPassword)}
-                            className="absolute right-3 top-1/2 transform -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                            aria-label={
-                              showPassword ? "Hide password" : "Show password"
-                            }
-                          >
-                            {showPassword ? (
-                              <EyeOff className="h-4 w-4" />
-                            ) : (
-                              <Eye className="h-4 w-4" />
-                            )}
-                          </button>
-                        )}
+                        {passwordValue && <PasswordToggle shown={showPassword} onToggle={() => setShowPassword(!showPassword)} />}
                       </div>
                     </FormControl>
                     <p className="text-xs text-muted-foreground">
@@ -326,21 +252,17 @@ export function SignupForm({
 
             {/* Error Message */}
             {error && (
-              <p className="text-sm font-medium text-destructive text-center">
-                {error}
-              </p>
+              <AuthCallout variant="error">{error}</AuthCallout>
             )}
 
             {/* CAPTCHA Error */}
             {captchaError && (
-              <p className="text-sm font-medium text-destructive text-center">
-                {captchaError}
-              </p>
+              <AuthCallout variant="error">{captchaError}</AuthCallout>
             )}
 
             {/* Submit Button */}
             <Field>
-              <Button type="submit" className="w-full" disabled={isLoading}>
+              <Button type="submit" size="lg" className="w-full" disabled={isLoading}>
                 {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 {isInviteMode ? "Create account & join" : "Create account"}
               </Button>
@@ -348,29 +270,18 @@ export function SignupForm({
 
 
             {/* Link to sign-in for existing users */}
-            <div className="text-center text-sm">
-              <FieldDescription>
-                Already have an account?{" "}
-                <Link
-                  href={inviteToken ? `/sign-in?invite=${inviteToken}` : "/sign-in"}
-                  className="font-medium underline underline-offset-2"
-                >
-                  Sign in instead
-                </Link>
-              </FieldDescription>
-            </div>
+            <p className="text-center text-sm text-muted-foreground">
+              Already have an account?{" "}
+              <Link
+                href={inviteToken ? `/sign-in?invite=${inviteToken}` : "/sign-in"}
+                className="font-medium text-foreground underline underline-offset-4"
+              >
+                Sign in instead
+              </Link>
+            </p>
           </FieldGroup>
         </form>
       </Form>
-
-      {/* Footer (cloud mode only; hidden until config is resolved to avoid mode flicker) */}
-      {shouldShowLegalFooter && (
-        <FieldDescription className="px-6 text-center">
-          By clicking continue, you agree to our{" "}
-          <Link href="https://supercheck.io/terms">Terms of Service</Link> and{" "}
-          <Link href="https://supercheck.io/privacy">Privacy Policy</Link>.
-        </FieldDescription>
-      )}
 
       {/* Invisible CAPTCHA - placed outside form to avoid any layout shift */}
       <TurnstileCaptcha
@@ -379,7 +290,7 @@ export function SignupForm({
         onError={handleCaptchaError}
         onExpire={handleCaptchaExpire}
       />
-    </div>
+    </AuthCard>
   );
 }
 

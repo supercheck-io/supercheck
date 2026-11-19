@@ -9,7 +9,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useState, useEffect, useCallback, useMemo, useRef, Suspense } from "react";
 import { LoginForm } from "@/components/auth/login-form";
 import type { TurnstileCaptchaRef } from "@/components/auth/turnstile-captcha";
-import { Loader2 } from "lucide-react";
+import { AuthLoading } from "@/components/auth/auth-shell";
 import { parseInviteToken } from "@/lib/validations/auth";
 
 interface InviteData {
@@ -20,13 +20,7 @@ interface InviteData {
 
 export default function SignInPage() {
   return (
-    <Suspense
-      fallback={
-        <div className="flex items-center justify-center min-h-[300px]">
-          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-        </div>
-      }
-    >
+    <Suspense fallback={<AuthLoading />}>
       <SignInPageContent />
     </Suspense>
   );
@@ -206,7 +200,6 @@ function SignInPageContent() {
 
   return (
     <LoginForm
-      className="w-full max-w-sm px-4"
       nextPath={nextPath}
       onSubmit={handleSubmit}
       isLoading={isLoading}

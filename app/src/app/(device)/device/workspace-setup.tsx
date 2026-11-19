@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
+import { AuthCallout } from "@/components/auth/auth-shell";
 
 export function WorkspaceSetup() {
   const router = useRouter();
@@ -36,11 +37,11 @@ export function WorkspaceSetup() {
   }
 
   return (
-    <div className="space-y-3">
-      <Button className="w-full" onClick={setup} disabled={busy}>
+    <div className="flex flex-col gap-4">
+      <Button size="lg" className="w-full" onClick={setup} disabled={busy}>
         {busy ? "Setting up…" : "Create my workspace"}
       </Button>
-      {message ? <p role="alert" className="text-sm text-muted-foreground">{message}</p> : null}
+      {message ? <AuthCallout variant="error">{message}</AuthCallout> : null}
     </div>
   );
 }

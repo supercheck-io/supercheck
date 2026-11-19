@@ -1,10 +1,9 @@
 "use client";
 
-import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { SupercheckLogo } from "@/components/logo/supercheck-logo";
-import { Loader2, Eye, EyeOff } from "lucide-react";
+import { Loader2 } from "lucide-react";
+import { AuthCard, AuthCallout, PasswordToggle, AuthHeader, AuthLegal, InviteBanner } from "./auth-shell";
 import Link from "next/link";
 import { useEffect, useState, type RefObject } from "react";
 import { SocialAuthButtons } from "./social-auth-buttons";
@@ -17,7 +16,6 @@ import {
   FieldGroup,
   Field,
   FieldLabel,
-  FieldDescription,
   FieldSeparator,
 } from "@/components/ui/field";
 import {
@@ -122,91 +120,45 @@ export function LoginForm({
   const passwordValue = form.watch("password");
 
   return (
-    <div className={cn("flex flex-col gap-6", className)} data-testid="login-form">
+    <AuthCard
+      className={className}
+      data-testid="login-form"
+      footer={shouldShowLegalFooter ? <AuthLegal /> : undefined}
+    >
       <Form {...form}>
         <form method="post" onSubmit={onSubmit} data-testid="login-form-element">
           <FieldGroup>
-            {/* Header */}
-            <div className="flex flex-col items-center gap-3 text-center">
-
-              <div className="flex size-14 items-center justify-center rounded-md">
-                <SupercheckLogo className="size-12" />
-              </div>
-              <span className="sr-only">Supercheck</span>
-
-              <h1 className="text-2xl font-bold">
-                {inviteData
-                  ? `Welcome to ${inviteData.organizationName}`
-                  : "Welcome to Supercheck"}
-              </h1>
-              <FieldDescription>
-                {inviteData ? (
+            <AuthHeader
+              title={inviteData ? `Welcome to ${inviteData.organizationName}` : "Welcome to Supercheck"}
+              description={
+                inviteData ? (
                   <>
-                    Sign in to join as{" "}
-                    <span className="font-medium text-foreground">
-                      {(inviteData.role ?? "project_viewer").replace(/_/g, " ")}
-                    </span>
+                    Sign in to accept your invitation.
                     <br />
-                    <span className="text-sm">
-                      Don&apos;t have an account?{" "}
-                      <Link
-                        href={`/sign-up?invite=${inviteToken}`}
-                        className="underline underline-offset-2"
-                      >
-                        Create one
-                      </Link>
-                    </span>
+                    Don&apos;t have an account?{" "}
+                    <Link href={`/sign-up?invite=${inviteToken}`}>Create one</Link>
                   </>
                 ) : isSelfHosted && isSignupEnabled ? (
-                  <span className="text-sm text-muted-foreground">
-                    Don&apos;t have an account?{" "}
-                    <Link
-                      href={signUpHref(nextPath)}
-                      className="underline underline-offset-2"
-                    >
-                      Sign up
-                    </Link>
-                  </span>
+                  <>
+                    Don&apos;t have an account? <Link href={signUpHref(nextPath)}>Sign up</Link>
+                  </>
                 ) : isSelfHosted && !isSignupEnabled ? (
-                  <span className="text-xs text-muted-foreground">
-                    Contact your administrator for an account
-                  </span>
+                  "Contact your administrator for an account"
                 ) : (
-                  <span className="text-xs text-muted-foreground">
-                    New here? Sign in with GitHub or Google to get started
-                  </span>
-                )}
-              </FieldDescription>
-            </div>
+                  "New here? Sign in with GitHub or Google to get started"
+                )
+              }
+            />
 
-            {/* Email Verified Success Alert */}
+            {inviteData ? (
+              <InviteBanner organizationName={inviteData.organizationName} role={inviteData.role} email={inviteData.email} />
+            ) : null}
+
             {emailVerified && (
-              <div className="flex items-center gap-3 p-4 rounded-lg bg-green-500/10 border border-green-500/20" data-testid="email-verified-alert">
-                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-green-500/20">
-                  <svg
-                    className="h-4 w-4 text-green-600 dark:text-green-400"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                    strokeWidth={2}
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      d="M5 13l4 4L19 7"
-                    />
-                  </svg>
-                </div>
-                <div>
-                  <p className="font-medium text-sm text-green-700 dark:text-green-300">
-                    Email verified successfully!
-                  </p>
-                  <p className="text-xs text-green-600/80 dark:text-green-400/80">
-                    Your email has been verified. You can now sign in to your
-                    account.
-                  </p>
-                </div>
-              </div>
+              <AuthCallout variant="success" data-testid="email-verified-alert">
+                <p className="font-medium">Email verified</p>
+                <p className="text-muted-foreground">You can now sign in to your account.</p>
+              </AuthCallout>
             )}
 
             {/* Social Auth - shown when providers are available or config is unresolved, including on invitations */}
@@ -275,22 +227,7 @@ export function LoginForm({
                           data-testid="login-password-input"
                           {...field}
                         />
-                        {passwordValue && (
-                          <button
-                            type="button"
-                            onClick={() => setShowPassword(!showPassword)}
-                            className="absolute right-3 top-1/2 transform -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                            aria-label={
-                              showPassword ? "Hide password" : "Show password"
-                            }
-                          >
-                            {showPassword ? (
-                              <EyeOff className="h-4 w-4" />
-                            ) : (
-                              <Eye className="h-4 w-4" />
-                            )}
-                          </button>
-                        )}
+                        {passwordValue && <PasswordToggle shown={showPassword} onToggle={() => setShowPassword(!showPassword)} />}
                       </div>
                     </FormControl>
                     <FormMessage />
@@ -301,21 +238,19 @@ export function LoginForm({
 
             {/* Error Message */}
             {error && (
-              <p className="text-sm font-medium text-destructive text-center" data-testid="login-error-message" role="alert">
+              <AuthCallout variant="error" data-testid="login-error-message">
                 {error}
-              </p>
+              </AuthCallout>
             )}
 
             {/* CAPTCHA Error */}
             {captchaError && (
-              <p className="text-sm font-medium text-destructive text-center">
-                {captchaError}
-              </p>
+              <AuthCallout variant="error">{captchaError}</AuthCallout>
             )}
 
             {/* Submit Button */}
             <Field>
-              <Button type="submit" className="w-full" disabled={isLoading} data-testid="login-submit-button">
+              <Button type="submit" size="lg" className="w-full" disabled={isLoading} data-testid="login-submit-button">
                 {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 Login
               </Button>
@@ -325,15 +260,6 @@ export function LoginForm({
         </form>
       </Form>
 
-      {/* Footer (cloud mode only; hidden until config is resolved to avoid mode flicker) */}
-      {shouldShowLegalFooter && (
-        <FieldDescription className="px-6 text-center">
-          By clicking continue, you agree to our{" "}
-          <Link href="https://supercheck.io/terms">Terms of Service</Link> and{" "}
-          <Link href="https://supercheck.io/privacy">Privacy Policy</Link>.
-        </FieldDescription>
-      )}
-
       {/* Invisible CAPTCHA - placed outside form to avoid any layout shift */}
       <TurnstileCaptcha
         ref={externalCaptchaRef ?? captchaRef}
@@ -341,6 +267,6 @@ export function LoginForm({
         onError={handleCaptchaError}
         onExpire={handleCaptchaExpire}
       />
-    </div>
+    </AuthCard>
   );
 }

@@ -3,22 +3,9 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import {
-  CheckCircle,
-  AlertCircle,
-  Loader2,
-  Building2,
-  Users,
-  Clock,
-  ArrowRight,
-  Mail,
-  Shield,
-} from "lucide-react";
-import { CheckIcon } from "@/components/logo/supercheck-logo";
-import { FieldGroup, Field, FieldDescription } from "@/components/ui/field";
-import Link from "next/link";
-import { cn } from "@/lib/utils";
+import { Loader2, ArrowRight } from "lucide-react";
+import { FieldGroup, Field } from "@/components/ui/field";
+import { AuthCallout, AuthCard, AuthHeader, AuthLegal, AuthLoading, InviteBanner, formatInviteRole } from "@/components/auth/auth-shell";
 import { signOut, useSession } from "@/utils/auth-client";
 import { useAppConfig } from "@/hooks/use-app-config";
 import { clearProjectsCache } from "@/hooks/use-project-context";
@@ -147,30 +134,6 @@ export default function InvitePage({
     }
   };
 
-  const getRoleBadgeStyle = (role: string | undefined) => {
-    switch (role?.toLowerCase()) {
-      case "org_owner":
-        return "bg-purple-500/10 text-purple-500 border-purple-500/20";
-      case "org_admin":
-        return "bg-amber-500/10 text-amber-500 border-amber-500/20";
-      case "project_editor":
-        return "bg-blue-500/10 text-blue-500 border-blue-500/20";
-      case "project_viewer":
-        return "bg-slate-500/10 text-slate-500 border-slate-500/20";
-      default:
-        return "bg-muted text-muted-foreground";
-    }
-  };
-
-  const formatRoleName = (role: string | undefined) => {
-    if (!role) return "Member";
-    return role
-      .replace(/_/g, " ")
-      .split(" ")
-      .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-      .join(" ");
-  };
-
   const handleSignOut = async () => {
     setSignOutError(null);
     const result = await signOut();
@@ -182,124 +145,98 @@ export default function InvitePage({
   };
 
   // Loading State
-  if (loading) {
-    return (
-      <div className="flex flex-col gap-6 w-full max-w-md">
-        <FieldGroup>
-          <div className="flex flex-col items-center gap-3 text-center">
-            <div className="flex size-14 items-center justify-center rounded-md">
-              <CheckIcon className="size-12" />
-            </div>
-            <div className="flex items-center gap-2 text-muted-foreground">
-              <Loader2 className="h-4 w-4 animate-spin" />
-              <span>Loading invitation...</span>
-            </div>
-          </div>
-        </FieldGroup>
-      </div>
-    );
-  }
+  if (loading) return <AuthLoading label="Loading invitation…" />;
 
   // Error State
   if (error) {
     // A dead (expired, used, unknown) invite must not travel on: it would loop back here after sign-in.
     const inviteQuery = invitation ? `?invite=${encodeURIComponent(token)}` : "";
     return (
-      <div className="flex flex-col gap-6 w-full max-w-md">
+      <AuthCard>
         <FieldGroup>
-          <div className="flex flex-col items-center gap-2 text-center">
-            <div className="flex size-12 items-center justify-center rounded-full bg-destructive/10">
-              <AlertCircle className="size-6 text-destructive" />
-            </div>
-            <h1 className="text-xl font-bold">Invalid Invitation</h1>
-            <FieldDescription className="text-center">{error}</FieldDescription>
-          </div>
+          <AuthHeader status="error" title="Invalid invitation" description={error} logoHref="/" />
 
           <Field className="flex flex-col gap-2">
-            <Button onClick={() => router.push(`/sign-in${inviteQuery}`)} className="w-full">
-              Go to Sign In
+            <Button size="lg" onClick={() => router.push(`/sign-in${inviteQuery}`)} className="w-full">
+              Go to sign in
             </Button>
             <Button
+              size="lg"
               variant="outline"
               onClick={() => router.push(`/sign-up${inviteQuery}`)}
               className="w-full"
             >
-              Create New Account
+              Create new account
             </Button>
           </Field>
         </FieldGroup>
-      </div>
+      </AuthCard>
     );
   }
 
   // Signed in as someone other than the invitee
   if (emailMismatch) {
     return (
-      <div className="flex flex-col gap-6 w-full max-w-md">
+      <AuthCard>
         <FieldGroup>
-          <div className="flex flex-col items-center gap-2 text-center">
-            <div className="flex size-12 items-center justify-center rounded-full bg-destructive/10">
-              <AlertCircle className="size-6 text-destructive" />
-            </div>
-            <h1 className="text-xl font-bold">Wrong account</h1>
-            <FieldDescription className="text-center">
-              {session?.user?.email ? (
-                <>You are signed in as <span className="font-medium text-foreground">{session.user.email}</span>, but this invitation is for a different email address.</>
-              ) : (
-                <>You are signed in with a different email address than this invitation is for.</>
-              )}{" "}
-              Sign out, then sign in with the invited account.
-            </FieldDescription>
-          </div>
-          {signOutError && (
-            <p className="text-sm font-medium text-destructive text-center" role="alert">{signOutError}</p>
-          )}
+          <AuthHeader
+            status="error"
+            title="Wrong account"
+            logoHref="/"
+            description={
+              <>
+                {session?.user?.email ? (
+                  <>You are signed in as <span className="font-medium text-foreground">{session.user.email}</span>, but this invitation is for a different email address.</>
+                ) : (
+                  <>You are signed in with a different email address than this invitation is for.</>
+                )}{" "}
+                Sign out, then sign in with the invited account.
+              </>
+            }
+          />
+          {invitation ? (
+            <InviteBanner organizationName={invitation.organizationName} role={invitation.role} email={invitation.email} />
+          ) : null}
+          {signOutError && <AuthCallout variant="error">{signOutError}</AuthCallout>}
           <Field>
-            <Button onClick={handleSignOut} className="w-full">
+            <Button size="lg" onClick={handleSignOut} className="w-full">
               Sign out
             </Button>
           </Field>
         </FieldGroup>
-      </div>
+      </AuthCard>
     );
   }
 
   // Success State - Invitation Accepted
   if (accepted) {
     return (
-      <div className="flex flex-col gap-6 w-full max-w-md">
+      <AuthCard>
         <FieldGroup>
-          <div className="flex flex-col items-center gap-4 text-center">
-            <div className="flex size-16 items-center justify-center rounded-full bg-success/10">
-              <CheckCircle className="size-8 text-success" />
-            </div>
-            <div>
-              <h1 className="text-xl font-bold">
-                Welcome to {accepted.organizationName}!
-              </h1>
-              <FieldDescription className="mt-2">
+          <AuthHeader
+            status="success"
+            title={`Welcome to ${accepted.organizationName}`}
+            description={
+              <>
                 You now have{" "}
-                <span className="font-medium text-foreground">
-                  {formatRoleName(accepted.role)}
-                </span>{" "}
-                access.
-              </FieldDescription>
-            </div>
-          </div>
+                <span className="font-medium text-foreground">{formatInviteRole(accepted.role)}</span> access.
+              </>
+            }
+          />
 
-          <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
-            <Loader2 className="h-4 w-4 animate-spin" />
-            <span>Redirecting to dashboard...</span>
+          <div role="status" className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
+            <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+            <span>Redirecting to dashboard…</span>
           </div>
 
           <Field>
-            <Button onClick={() => reloadProjectContext(clearProjectsCache, INVITEE_LANDING_PATH)} className="w-full">
-              Go to Dashboard
+            <Button size="lg" onClick={() => reloadProjectContext(clearProjectsCache, INVITEE_LANDING_PATH)} className="w-full">
+              Go to dashboard
               <ArrowRight className="ml-2 h-4 w-4" />
             </Button>
           </Field>
         </FieldGroup>
-      </div>
+      </AuthCard>
     );
   }
 
@@ -312,96 +249,29 @@ export default function InvitePage({
     const isExpiringSoon = daysUntilExpiry <= 2;
 
     return (
-      <div className="flex flex-col gap-6 w-full max-w-md">
+      <AuthCard footer={shouldShowLegalFooter ? <AuthLegal action="accepting" /> : undefined}>
         <FieldGroup>
-          {/* Header */}
-          <div className="flex flex-col items-center gap-3 text-center">
-            <Link
-              href="/"
-              className="flex flex-col items-center gap-3 font-medium"
-            >
-              <div className="flex size-14 items-center justify-center rounded-md">
-                <CheckIcon className="size-12" />
-              </div>
-              <span className="sr-only">Supercheck</span>
-            </Link>
-            <h1 className="text-2xl font-bold">You&apos;re Invited!</h1>
-            <FieldDescription>
-              Join {invitation.organizationName} on Supercheck
-            </FieldDescription>
-          </div>
+          <AuthHeader
+            logoHref="/"
+            title="You're invited"
+            description={`Join ${invitation.organizationName} on Supercheck`}
+          />
 
-          {/* Invitation Details Card */}
-          <div className="rounded-lg border bg-card p-6 space-y-4">
-            {/* Organization */}
-            <div className="flex items-center gap-3">
-              <div className="flex size-10 items-center justify-center rounded-full bg-primary/10">
-                <Building2 className="size-5 text-primary" />
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Organization</p>
-                <p className="font-medium">{invitation.organizationName}</p>
-              </div>
-            </div>
+          <InviteBanner
+            organizationName={invitation.organizationName}
+            role={invitation.role}
+            email={invitation.email}
+            invitedBy={invitation.inviterName}
+          />
 
-            {/* Role */}
-            <div className="flex items-center gap-3">
-              <div className="flex size-10 items-center justify-center rounded-full bg-primary/10">
-                <Shield className="size-5 text-primary" />
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Your Role</p>
-                <Badge
-                  className={cn("mt-0.5", getRoleBadgeStyle(invitation.role))}
-                >
-                  {formatRoleName(invitation.role)}
-                </Badge>
-              </div>
-            </div>
+          {isExpiringSoon && (
+            <AuthCallout variant="warning">
+              Expires in {daysUntilExpiry} day{daysUntilExpiry !== 1 ? "s" : ""}
+            </AuthCallout>
+          )}
 
-            {/* Email */}
-            {invitation.email && <div className="flex items-center gap-3">
-              <div className="flex size-10 items-center justify-center rounded-full bg-primary/10">
-                <Mail className="size-5 text-primary" />
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Invited Email</p>
-                <p className="font-medium">{invitation.email}</p>
-              </div>
-            </div>}
-
-            {/* Inviter */}
-            {invitation.inviterName && (
-              <div className="flex items-center gap-3">
-                <div className="flex size-10 items-center justify-center rounded-full bg-primary/10">
-                  <Users className="size-5 text-primary" />
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">Invited By</p>
-                  <p className="font-medium">{invitation.inviterName}</p>
-                </div>
-              </div>
-            )}
-
-            {/* Expiry Warning */}
-            {isExpiringSoon && (
-              <div className="flex items-center gap-2 p-3 rounded-md bg-warning/10 border border-warning/20">
-                <Clock className="h-4 w-4 text-warning" />
-                <span className="text-sm text-warning">
-                  Expires in {daysUntilExpiry} day
-                  {daysUntilExpiry !== 1 ? "s" : ""}
-                </span>
-              </div>
-            )}
-          </div>
-
-          {/* Actions */}
           <Field className="flex gap-3">
-            <Button
-              onClick={handleAcceptInvitation}
-              disabled={accepting}
-              className="flex-1"
-            >
+            <Button size="lg" onClick={handleAcceptInvitation} disabled={accepting} className="flex-1">
               {accepting ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -409,30 +279,17 @@ export default function InvitePage({
                 </>
               ) : (
                 <>
-                  Accept Invitation
+                  Accept invitation
                   <ArrowRight className="ml-2 h-4 w-4" />
                 </>
               )}
             </Button>
-            <Button
-              variant="outline"
-              onClick={() => router.push("/")}
-              className="flex-1"
-            >
+            <Button size="lg" variant="outline" onClick={() => router.push("/")} className="flex-1">
               Decline
             </Button>
           </Field>
         </FieldGroup>
-
-        {/* Footer (cloud mode only; hidden until config is resolved to avoid mode flicker) */}
-        {shouldShowLegalFooter && (
-          <FieldDescription className="px-6 text-center">
-            By accepting, you agree to our{" "}
-            <Link href="https://supercheck.io/terms">Terms of Service</Link> and{" "}
-            <Link href="https://supercheck.io/privacy">Privacy Policy</Link>.
-          </FieldDescription>
-        )}
-      </div>
+      </AuthCard>
     );
   }
 
