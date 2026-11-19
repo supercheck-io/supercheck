@@ -58,9 +58,18 @@ describe("MaintenanceWindowDialog", () => {
     fireEvent.change(screen.getByLabelText("Duration (minutes)"), { target: { value: "90" } });
     fireEvent.click(screen.getByRole("combobox", { name: "Time zone" }));
     fireEvent.click(screen.getByRole("option", { name: "America/New_York" }));
-    expect(screen.getByRole("status")).toHaveTextContent(/go forward 1 h/);
+    const note = screen.getByTestId("mw-dst-note");
+    expect(note).toHaveAttribute("role", "status");
+    expect(note).toHaveTextContent(/go forward 1 h/);
+    // The region stays mounted while the preview is hidden by an incomplete field, so the note is announced when it returns.
+    fireEvent.change(screen.getByLabelText("Duration (minutes)"), { target: { value: "1" } });
+    expect(screen.getByTestId("mw-dst-note")).toBe(note);
+    expect(note).toBeEmptyDOMElement();
+    fireEvent.change(screen.getByLabelText("Duration (minutes)"), { target: { value: "90" } });
+    expect(screen.getByTestId("mw-dst-note")).toBe(note);
+    expect(note).toHaveTextContent(/go forward 1 h/);
     fireEvent.change(screen.getByLabelText("Date"), { target: { value: "2027-03-20" } });
-    expect(screen.getByRole("status")).toBeEmptyDOMElement();
+    expect(note).toBeEmptyDOMElement();
   });
 
   it("shows server field errors next to the fields and stays open", async () => {

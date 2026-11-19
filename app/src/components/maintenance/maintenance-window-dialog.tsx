@@ -315,10 +315,10 @@ export function MaintenanceWindowDialog({
             <p className="text-xs text-muted-foreground" data-testid="mw-preview-time">
               {recurrence === "once" ? "Runs" : "First window"} {formatWindowRange(preview.startsAt, preview.endsAt, timezone)} ({timezone}), {formatDuration(Number(durationMinutes))}.
               {scheduleLocked && " In progress: end or extend it from the table to change its times."}
-              {/* Always mounted so a screen reader announces the note when it appears. */}
-              <span role="status" data-testid="mw-dst-note">{dst ? ` ${dst}` : null}</span>
             </p>
           )}
+          {/* Outside the preview, which unmounts while a field is incomplete: a live region must already be in the page to be announced. */}
+          <p role="status" className="-mt-2 text-xs text-muted-foreground empty:hidden" data-testid="mw-dst-note">{dst}</p>
           <div className="space-y-2">
             <Label htmlFor="mw-repeat">Repeats</Label>
             <Select value={recurrence} onValueChange={(value) => setRecurrence(value as Recurrence)} disabled={repeatLocked}>
