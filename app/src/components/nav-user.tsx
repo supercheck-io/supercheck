@@ -1,6 +1,7 @@
 "use client";
 
-import { useSession, signOut } from "@/utils/auth-client";
+import { useSession } from "@/utils/auth-client";
+import { signOutAndClear } from "@/lib/auth/sign-out";
 import { useState, useSyncExternalStore } from "react";
 import {
   DropdownMenu,
@@ -16,9 +17,7 @@ import Link from "next/link";
 import { useTheme } from "next-themes";
 import { Moon, Sun, User, UserCog, UserRoundPen, Monitor } from "lucide-react";
 import { AccountDialog } from "@/components/account/account-dialog";
-import { useProjectContextSafe, clearProjectsCache } from "@/hooks/use-project-context";
-import { resetChatwootSession } from "@/components/support/chatwoot-widget";
-import { clearQueryCache } from "@/lib/query-provider";
+import { useProjectContextSafe } from "@/hooks/use-project-context";
 
 export function NavUser() {
   const { data: session, isPending } = useSession();
@@ -38,11 +37,7 @@ export function NavUser() {
   const currentProject = projectContext?.currentProject ?? null;
 
   const handleLogout = async () => {
-    // Clear all caches to prevent data leakage between sessions
-    clearProjectsCache();
-    clearQueryCache();
-    resetChatwootSession(); // Drop the support-chat contact so the next user never sees this conversation
-    await signOut();
+    await signOutAndClear();
     // Sign-out crosses an authentication boundary. Replace the history entry
     // with a same-origin document navigation to avoid reusing private UI state.
     window.location.replace(new URL("/sign-in", window.location.origin));

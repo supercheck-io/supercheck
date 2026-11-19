@@ -28,8 +28,3 @@ export function isSreAutomaticTriageEnabled() {
 // worker/src/monitor/services/sre-alert-triage-queue.service.ts. AI triage on
 // top of it still needs isSreAutomaticTriageEnabled().
 export const isSreBackgroundAlertTriageEnabled = isSreEnabled;
-
-// Internal sandbox infrastructure is separate from normal SRE workflows.
-export function isSreAgentSandboxEnabled() {
-  return process.env.SRE_AGENT_SANDBOX_ENABLED === "true";
-}

@@ -1,3 +1,4 @@
+import { useHydrated } from "@/hooks/use-hydrated";
 import { useQuery, useQueryClient, useIsRestoring, keepPreviousData } from "@tanstack/react-query";
 import type { MonitorResultItem } from "@/components/monitors/monitor-detail-client";
 import { Role } from "@/lib/rbac/permissions-client";
@@ -129,6 +130,7 @@ async function fetchMonitorPermissions(
 export function useMonitorStats(monitorId: string, location: string = "all") {
   const queryClient = useQueryClient();
   const isRestoring = useIsRestoring();
+  const hydrated = useHydrated();
 
   const query = useQuery({
     queryKey: [...MONITOR_STATS_KEY, monitorId, location],
@@ -151,8 +153,8 @@ export function useMonitorStats(monitorId: string, location: string = "all") {
   const isActuallyLoading = query.isPending && query.isFetching && !isRestoring;
 
   return {
-    stats: query.data,
-    isLoading: isActuallyLoading,
+    stats: hydrated ? query.data : undefined,
+    isLoading: hydrated && isActuallyLoading,
     isRestoring,  // Expose for component-level hydration safety
     error: query.error as Error | null,
     refetch: query.refetch,
@@ -171,6 +173,7 @@ export function useMonitorResults(
 ) {
   const queryClient = useQueryClient();
   const isRestoring = useIsRestoring();
+  const hydrated = useHydrated();
   const dateString = options.date ? formatLocalDateParam(options.date) : undefined;
   // The offset at each local midnight: a DST change day starts and ends on different offsets.
   const dayOffset = (days: number) =>
@@ -216,11 +219,11 @@ export function useMonitorResults(
   const isActuallyLoading = query.isPending && query.isFetching && !isRestoring;
 
   return {
-    results: query.data?.data ?? [],
-    pagination: query.data?.pagination ?? null,
-    isLoading: isActuallyLoading,
+    results: (hydrated && query.data?.data) || [],
+    pagination: (hydrated && query.data?.pagination) || null,
+    isLoading: hydrated && isActuallyLoading,
     isRestoring,  // Expose for component-level hydration safety
-    isFetching: query.isFetching,
+    isFetching: hydrated && query.isFetching,
     // Rows of the previous page or page size, shown while the new one loads.
     isPlaceholderData: query.isPlaceholderData,
     error: query.error as Error | null,

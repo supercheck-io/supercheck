@@ -8,6 +8,7 @@
 
 export { BaseLayout, PLAIN_TEXT_RENDER_OPTIONS } from "./base-layout";
 export { PasswordResetEmail } from "./password-reset";
+export { ExistingAccountEmail } from "./existing-account";
 export { EmailVerificationEmail } from "./email-verification";
 export { OrganizationInvitationEmail } from "./organization-invitation";
 export { StatusPageVerificationEmail } from "./status-page-verification";

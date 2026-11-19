@@ -241,6 +241,16 @@ export async function checkPasswordResetRateLimit(
  * Prevents abuse of verification email endpoint
  * Uses same limits as password reset for consistency
  */
+/**
+ * Own counter for the "you already have an account" email, so a stranger who only holds a pending
+ * invitation cannot use up the invitee's real verification-email resends. One per 15 minutes.
+ */
+export async function checkExistingAccountNoticeRateLimit(
+  email: string,
+): Promise<{ allowed: boolean; resetTime?: number }> {
+  return checkRateLimit(`existing-account-notice:${email.toLowerCase().trim()}`, 1, 15 * 60 * 1000);
+}
+
 export async function checkEmailVerificationRateLimit(
   identifier: string, // email or IP address
   maxAttempts = 3,
