@@ -5,13 +5,14 @@ import { generateTestPassword } from './env';
 import { ENV_GATED } from '../reporters/priority-skip-reporter';
 import { waitForHydration } from './hydration';
 
-const SIGN_UP_REASON = 'needs open sign-up (self-hosted); a cloud deployment does not allow fresh users';
+const SIGN_UP_REASON = 'needs a self-hosted target; a cloud deployment does not allow fresh users';
 /** Describe option for specs that sign fresh users up: their skip on a cloud target is listed as a warning, not a gate failure. */
 export const SIGN_UP_GATED = { annotation: { type: ENV_GATED, description: SIGN_UP_REASON } };
 
 async function signUpIsClosed(baseURL: string): Promise<boolean> {
   const res = await fetch(new URL('/api/config/app', baseURL));
-  return !res.ok || ((await res.json()) as { hosting?: { selfHosted?: boolean } }).hosting?.selfHosted !== true;
+  if (!res.ok) throw new Error(`/api/config/app answered ${res.status}`);
+  return ((await res.json()) as { hosting?: { selfHosted?: boolean } }).hosting?.selfHosted !== true;
 }
 
 export type FreshCreator = {
