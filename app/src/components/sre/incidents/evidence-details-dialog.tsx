@@ -7,7 +7,13 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { isSafeEvidenceSourceUri } from "@/lib/sre/evidence-source-uri";
 
 /** `children` replaces the default "View" button as the dialog trigger (for example a citation chip). */
-export function EvidenceDetailsDialog({ item, children }: { item: SreIncidentDetail["evidence"][number]; children?: React.ReactNode }) {
+/** Saved incident evidence, or the evidence a Copilot reply cited. */
+type EvidenceDetailsItem = Pick<
+  SreIncidentDetail["evidence"][number],
+  "title" | "summary" | "sourceUri" | "citationQuery" | "rawContentExcerpt"
+> & { observedAt: Date | string | null };
+
+export function EvidenceDetailsDialog({ item, children }: { item: EvidenceDetailsItem; children?: React.ReactNode }) {
   const external = /^https?:/i.test(item.sourceUri);
   return (
     <Dialog>

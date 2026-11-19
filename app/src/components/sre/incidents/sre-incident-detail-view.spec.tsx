@@ -143,6 +143,7 @@ function detailFixture(): SreIncidentDetail {
     evidence: [
       {
         id: "ev-monitor-timeout",
+        sourceType: "native",
         title: "Monitor timeout",
         summary: "Checkout monitor timed out.",
         sourceUri: "https://example.com/evidence",

@@ -7,7 +7,7 @@ jest.mock("@/hooks/use-sre", () => ({ useSreIncidentTimeline: jest.fn() }));
 
 import type { SreIncidentDetail } from "@/actions/sre-incidents";
 
-import { IncidentAiSummaryCard, confidenceLabel, rootCauseFromBrief, stripReportBoilerplate } from "./incident-ai-summary-card";
+import { IncidentAiSummaryCard, confidenceLabel, getInvestigationConclusion, rootCauseFromBrief, stripReportBoilerplate } from "./incident-ai-summary-card";
 import { describeTimelineEvent } from "./incident-timeline";
 
 describe("confidenceLabel", () => {
@@ -172,7 +172,7 @@ describe("IncidentAiSummaryCard structured states", () => {
     expect(screen.queryByText(/Inconclusive|Confidence/)).not.toBeInTheDocument();
   });
 
-  it("shows live progress while running and the failure reason when a run fails", () => {
+  it("shows live progress while running, and one calm line (no reason) when a run fails", () => {
     const steps = [{ index: 0, tool: "t", args: "", status: "ok" as const, resultCount: 1, durationMs: 5 }];
     const { rerender } = render(
       <IncidentAiSummaryCard rootCauseSummary={null} confidenceScore={null} investigationStatus="running" investigation={investigation({ status: "running", steps })} />,
@@ -188,8 +188,19 @@ describe("IncidentAiSummaryCard structured states", () => {
         investigation={investigation({ status: "failed", summary: "Investigation timed out." })}
       />,
     );
-    expect(screen.getByRole("alert")).toHaveTextContent("Investigation timed out.");
-    expect(screen.getByText("Previous conclusion")).toBeInTheDocument();
+    // The reason is shown once, on the Investigation tab; the Overview only says the run did not finish.
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("The last investigation did not finish. Showing the previous conclusion.");
+    expect(screen.queryByText("Investigation timed out.")).not.toBeInTheDocument();
+    expect(screen.getByTestId("ai-summary-body")).toHaveTextContent("Earlier result");
+  });
+});
+
+describe("getInvestigationConclusion raw ids", () => {
+  it("drops an aside that only carries a raw id", () => {
+    expect(getInvestigationConclusion(null, "Earlier checks were up (for example, 01a1f039-9ef8-71d7-8e65-0823c827c42d). Cause unknown.")).toBe(
+      "Earlier checks were up. Cause unknown.",
+    );
   });
 });
 

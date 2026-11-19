@@ -11,7 +11,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { IconTile } from "@/components/sre/incidents/incident-ui";
 import { reportHeadline } from "@/lib/sre/evidence-brief-summary";
 import { stripEvidenceIdLists } from "@/sre/lib/investigation-output";
@@ -65,6 +64,8 @@ export function stripReportBoilerplate(text: string) {
   return lines.slice(start).join("\n").trim();
 }
 
+const RAW_ID_ASIDE = /\s*\([^()]*\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b[^()]*\)/gi;
+
 /** The text shown as the conclusion: structured conclusion, else a legacy full report, else the stored headline. */
 export function getInvestigationConclusion(
   investigation: SreIncidentDetail["latestInvestigation"] | undefined,
@@ -75,7 +76,8 @@ export function getInvestigationConclusion(
   const fullReport = !structured && investigation?.status === "completed" ? investigation.summary : null;
   const raw = structured?.conclusion ?? fullReport ?? rootCauseSummary;
   // Runs stored before ids were stripped at parse time still carry inline id lists.
-  const stripped = raw ? stripEvidenceIdLists(raw) : raw;
+  // An aside that only carries a raw id, like "(for example, 01a1f039-…)", means nothing to a reader.
+  const stripped = raw ? stripEvidenceIdLists(raw).replace(RAW_ID_ASIDE, "") : raw;
   return stripped ? stripReportBoilerplate(stripped) || stripped : stripped;
 }
 
@@ -147,13 +149,14 @@ export function IncidentAiSummaryCard({
           </p>
         )}
         {failed && (
-          <Alert variant="destructive">
-            <CircleAlert aria-hidden="true" />
-            <AlertTitle>Last investigation failed</AlertTitle>
-            <AlertDescription className="line-clamp-2">
-              {investigation?.summary || "No completed report is available. Review the saved evidence before trying again."}
-            </AlertDescription>
-          </Alert>
+          // One calm line here; the reason is shown once, on the Investigation tab.
+          <p role="status" className="flex items-start gap-2 text-sm text-muted-foreground">
+            <CircleAlert className="mt-0.5 size-4 shrink-0 text-warning" aria-hidden="true" />
+            <span>
+              The last investigation did not finish.
+              {headline && source === "investigation" ? " Showing the previous conclusion." : ""}
+            </span>
+          </p>
         )}
         {headline ? (
           <div className="space-y-1.5">
@@ -163,7 +166,7 @@ export function IncidentAiSummaryCard({
                 No root cause established
               </p>
             )}
-            {(failed || running) && source === "investigation" && (
+            {running && source === "investigation" && (
               <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Previous conclusion</p>
             )}
             <p data-testid="ai-summary-body" className="break-words text-[15px] leading-relaxed">
@@ -186,7 +189,7 @@ export function IncidentAiSummaryCard({
         {nextCheck && !running && (
           <p className="flex gap-2 rounded-md bg-violet-500/5 px-3 py-2 text-sm">
             <ArrowRight className="mt-0.5 size-4 shrink-0 text-violet-500" aria-hidden="true" />
-            <span className="line-clamp-2 min-w-0 break-words">
+            <span className="min-w-0 break-words">
               <span className="font-medium">Next step: </span>
               <span className="text-muted-foreground">{nextCheck}</span>
             </span>

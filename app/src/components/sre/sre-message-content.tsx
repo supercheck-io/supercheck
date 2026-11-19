@@ -29,6 +29,9 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { evidenceSourceLabel } from "@/components/sre/connectors/connector-catalog";
+import { EvidenceDetailsDialog } from "@/components/sre/incidents/evidence-details-dialog";
+import { CITATION_ID_SOURCE, type SreChatCitation } from "@/lib/sre/chat-citations";
 import { cn } from "@/lib/utils";
 import { SRE_CHART_LIMITS } from "@/sre/lib/chart-contract";
 
@@ -87,13 +90,110 @@ function labelHost(label: string | undefined) {
   }
 }
 
-function renderInlineMarkdown(text: string) {
+const CITE_ID = `(?:${CITATION_ID_SOURCE})`;
+const CITE_LIST = `\`?${CITE_ID}\`?(?:\\s*(?:,\\s*and|,|and)\\s*\`?${CITE_ID}\`?)*`;
+// "(evidence: `a`, `b`)", "Evidence: a and b" and "evidence `a`" all become one marker.
+const CITE_PHRASE = new RegExp(String.raw`\s*\((?:evidence|sources?)(?: ids?)?:?\s*(${CITE_LIST})\)|\b(?:evidence|sources?)(?: ids?)?:?\s*(${CITE_LIST})`, "gi");
+// The lookbehind skips ids already inside a marker.
+const CITE_ALONE = new RegExp(String.raw`(?<![\w:,])\`?(${CITE_ID})\`?`, "gi");
+const CITE_MARKER = /^\[\[cite:([^\]]+)\]\]$/;
+
+type CitationContext = {
+  byId: Map<string, SreChatCitation>;
+  /** Footnote numbers in order of first mention. */
+  order: string[];
+};
+
+/** Rewrites cited evidence ids as `[[cite:id,id]]` markers; bare uuids are left unless the reply's citations name them. */
+function markCitations(text: string, context: CitationContext) {
+  return text
+    .replace(CITE_PHRASE, (_match, inParens: string | undefined, plain: string | undefined) =>
+      `${inParens ? " " : ""}[[cite:${((inParens ?? plain ?? "").match(new RegExp(CITE_ID, "gi")) ?? []).join(",")}]]`,
+    )
+    .replace(CITE_ALONE, (match, id: string) =>
+      id.toLowerCase().startsWith("connector_") || context.byId.has(id) ? `[[cite:${id}]]` : match,
+    );
+}
+
+function citationNumber(id: string, context: CitationContext) {
+  let index = context.order.indexOf(id);
+  if (index === -1) index = context.order.push(id) - 1;
+  return index + 1;
+}
+
+function CitationLabel({ citation }: { citation: SreChatCitation | undefined }) {
+  return citation ? <>{evidenceSourceLabel(citation.sourceType)}</> : <>Live result, not saved</>;
+}
+
+/** The "[1] Loki · title" list under a reply. Saved evidence opens its details; an unsaved live result cannot. */
+function CitationFootnotes({ context }: { context: CitationContext }) {
+  if (context.order.length === 0) return null;
+  return (
+    <ol aria-label="Sources" className="mt-1 space-y-1 border-t pt-2 text-xs text-muted-foreground">
+      {context.order.map((id, index) => {
+        const citation = context.byId.get(id);
+        const body = (
+          <>
+            <span className="shrink-0 tabular-nums">[{index + 1}]</span>
+            <span className="shrink-0 font-medium text-foreground"><CitationLabel citation={citation} /></span>
+            {citation && <span className="min-w-0 truncate">· {citation.title}</span>}
+          </>
+        );
+        return (
+          <li key={id} className="flex min-w-0">
+            {citation ? (
+              <EvidenceDetailsDialog item={citation}>
+                <button type="button" className="flex min-w-0 gap-1.5 text-left hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                  {body}
+                </button>
+              </EvidenceDetailsDialog>
+            ) : (
+              <span className="flex min-w-0 gap-1.5">{body}</span>
+            )}
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
+function renderCitationMarker(ids: string[], context: CitationContext, key: string) {
+  return (
+    <sup key={key} className="ml-0.5 inline-flex gap-0.5 text-[0.75em] font-medium">
+      {ids.map((id) => {
+        const number = citationNumber(id, context);
+        const citation = context.byId.get(id);
+        const label = `Citation ${number}: ${citation ? `${evidenceSourceLabel(citation.sourceType)}, ${citation.title}` : "live result, not saved"}`;
+        return citation ? (
+          <EvidenceDetailsDialog key={id} item={citation}>
+            <button type="button" aria-label={label} className="text-violet-600 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:text-violet-400">
+              [{number}]
+            </button>
+          </EvidenceDetailsDialog>
+        ) : (
+          <span key={id} aria-label={label} title="Live result, not saved" className="text-muted-foreground">
+            [{number}]
+          </span>
+        );
+      })}
+    </sup>
+  );
+}
+
+function renderInlineMarkdown(source: string, citations?: CitationContext) {
   const nodes: ReactNode[] = [];
-  const pattern = /(\*\*[^*]+\*\*|`[^`]+`|\[[^\]]+\]\([^)\s]*\))/g;
+  const text = citations ? markCitations(source, citations) : source;
+  const pattern = /(\[\[cite:[^\]]+\]\]|\*\*[^*]+\*\*|`[^`]+`|\[[^\]]+\]\([^)\s]*\))/g;
   const parts = text.split(pattern);
 
   parts.forEach((part, index) => {
     if (!part) return;
+
+    const marker = citations ? CITE_MARKER.exec(part) : null;
+    if (marker && citations) {
+      nodes.push(renderCitationMarker(marker[1]!.split(","), citations, `${part}-${index}`));
+      return;
+    }
 
     if (part.startsWith("**") && part.endsWith("**")) {
       nodes.push(<strong key={`${part}-${index}`}>{part.slice(2, -2)}</strong>);
@@ -550,11 +650,17 @@ function VirtualizedLargeOutput({ lines }: { lines: string[] }) {
 export function SreMessageContent({
   content,
   isStreaming = false,
+  citations,
 }: {
   content: string;
   /** The reply is still arriving, so an unclosed chart fence is not an error yet. */
   isStreaming?: boolean;
+  /** Evidence the reply cites. When given, cited ids render as "[1]" markers with a source list. */
+  citations?: SreChatCitation[];
 }) {
+  const cite: CitationContext | undefined = citations
+    ? { byId: new Map(citations.map((item) => [item.id, item])), order: [] }
+    : undefined;
   const lines = content.replace(/\r\n/g, "\n").split("\n");
 
   if (lines.length >= LARGE_OUTPUT_LINE_THRESHOLD) {
@@ -578,7 +684,7 @@ export function SreMessageContent({
             level <= 2 ? "mt-2 text-base" : "mt-1 text-sm",
           )}
         >
-          {renderInlineMarkdown(headingMatch[2] ?? "")}
+          {renderInlineMarkdown(headingMatch[2] ?? "", cite)}
         </p>,
       );
       continue;
@@ -665,7 +771,7 @@ export function SreMessageContent({
                     key={`${cell}-${cellIndex}`}
                     className="h-8 whitespace-normal px-3 first:pl-3"
                   >
-                    {renderInlineMarkdown(cell)}
+                    {renderInlineMarkdown(cell, cite)}
                   </TableHead>
                 ))}
               </TableRow>
@@ -678,7 +784,7 @@ export function SreMessageContent({
                       key={`cell-${rowIndex}-${cellIndex}`}
                       className="whitespace-normal px-3 py-2 first:pl-3"
                     >
-                      {renderInlineMarkdown(row[cellIndex] ?? "")}
+                      {renderInlineMarkdown(row[cellIndex] ?? "", cite)}
                     </TableCell>
                   ))}
                 </TableRow>
@@ -711,7 +817,7 @@ export function SreMessageContent({
             {orderedMatch[1]}.
           </span>
           <span className="min-w-0">
-            {renderInlineMarkdown(orderedMatch[2] ?? "")}
+            {renderInlineMarkdown(orderedMatch[2] ?? "", cite)}
           </span>
         </div>,
       );
@@ -723,7 +829,7 @@ export function SreMessageContent({
         <div key={`${line}-${index}`} className="flex gap-2">
           <span className="mt-px shrink-0 text-muted-foreground">-</span>
           <span className="min-w-0">
-            {renderInlineMarkdown(unorderedMatch[1] ?? "")}
+            {renderInlineMarkdown(unorderedMatch[1] ?? "", cite)}
           </span>
         </div>,
       );
@@ -731,9 +837,14 @@ export function SreMessageContent({
     }
 
     rendered.push(
-      <p key={`${line}-${index}`}>{renderInlineMarkdown(trimmed)}</p>,
+      <p key={`${line}-${index}`}>{renderInlineMarkdown(trimmed, cite)}</p>,
     );
   }
 
-  return <div className="flex flex-col gap-2" data-sentry-block>{rendered}</div>;
+  return (
+    <div className="flex flex-col gap-2" data-sentry-block>
+      {rendered}
+      {cite && <CitationFootnotes context={cite} />}
+    </div>
+  );
 }

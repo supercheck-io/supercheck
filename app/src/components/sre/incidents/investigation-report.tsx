@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 
 import type { SreIncidentDetail } from "@/actions/sre-incidents";
+import { evidenceSourceLabel } from "@/components/sre/connectors/connector-catalog";
 import { EvidenceDetailsDialog } from "@/components/sre/incidents/evidence-details-dialog";
 import { GenerateEvidenceBriefButton } from "@/components/sre/incidents/generate-evidence-brief-button";
 import { formatAgo } from "@/components/sre/incidents/incident-age";
@@ -87,37 +88,109 @@ function formatTime(value: Date | string | null) {
   return new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }).format(new Date(value));
 }
 
-function EvidenceList({ evidence }: { evidence: SreIncidentDetail["evidence"] }) {
+type EvidenceItem = SreIncidentDetail["evidence"][number];
+
+/**
+ * Groups evidence by source, then folds results with the same type and title into one row.
+ * Input order (newest first) is kept, so each row opens its newest result.
+ */
+export function groupEvidence(evidence: EvidenceItem[]) {
+  const groups = new Map<string, { source: string; label: string; rows: Map<string, EvidenceItem[]> }>();
+  for (const item of evidence) {
+    const source = item.sourceType || "other";
+    const group = groups.get(source) ?? { source, label: evidenceSourceLabel(source), rows: new Map() };
+    const key = `${item.evidenceType}\u0000${item.title.trim().toLowerCase()}`;
+    group.rows.set(key, [...(group.rows.get(key) ?? []), item]);
+    groups.set(source, group);
+  }
+  return [...groups.values()].map((group) => ({ ...group, rows: [...group.rows.values()] }));
+}
+
+function EvidenceList({
+  evidence,
+  citedInConclusion,
+  hypothesisTitles,
+}: {
+  evidence: EvidenceItem[];
+  /** Evidence ids the conclusion relies on. */
+  citedInConclusion: Set<string>;
+  /** Evidence id to the hypotheses that cite it. */
+  hypothesisTitles: Map<string, string[]>;
+}) {
   if (evidence.length === 0) {
     return <p className="text-sm text-muted-foreground">No evidence gathered yet.</p>;
   }
   return (
-    <ul className="divide-y rounded-lg border">
-      {evidence.map((item) => {
-        const type = EVIDENCE_TYPE[item.evidenceType] ?? OTHER_EVIDENCE;
+    <div className="space-y-4">
+      {groupEvidence(evidence).map((group) => {
+        const count = group.rows.reduce((total, row) => total + row.length, 0);
         return (
-          <li key={item.id} id={`sre-evidence-${item.id}`} className="scroll-mt-4">
-            <EvidenceDetailsDialog item={item}>
-              <button
-                type="button"
-                aria-label={`View evidence: ${item.title}`}
-                className="flex w-full min-w-0 items-center gap-3 px-3 py-2.5 text-left hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
-              >
-                <IconTile icon={type.icon} tone={type.tone} />
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-sm font-medium">{item.title}</span>
-                  <span className="block truncate text-xs text-muted-foreground">{type.label}</span>
-                </span>
-                <span className="shrink-0 text-xs tabular-nums text-muted-foreground" suppressHydrationWarning>
-                  {formatTime(item.observedAt)}
-                </span>
-              </button>
-            </EvidenceDetailsDialog>
-          </li>
+          <section key={group.source} aria-label={`${group.label} evidence`} className="space-y-1.5">
+            <p className="text-xs font-medium text-muted-foreground">
+              {group.label} <span className="tabular-nums">· {count} {count === 1 ? "result" : "results"}</span>
+            </p>
+            <ul className="divide-y rounded-lg border">
+              {group.rows.map((items) => {
+                const [item] = items as [EvidenceItem, ...EvidenceItem[]];
+                const type = EVIDENCE_TYPE[item.evidenceType] ?? OTHER_EVIDENCE;
+                const cited = items.some((entry) => citedInConclusion.has(entry.id));
+                const hypotheses = [...new Set(items.flatMap((entry) => hypothesisTitles.get(entry.id) ?? []))];
+                const why = cited
+                  ? "Cited in the conclusion"
+                  : hypotheses.length > 0
+                    ? `Supports: ${hypotheses.join("; ")}`
+                    : null;
+                return (
+                  <li key={item.id} className="relative">
+                    {/* Every folded result keeps its anchor, so links to any of them land on this row. */}
+                    {items.map((entry, index) => (
+                      <span key={entry.id} id={index === 0 ? undefined : `sre-evidence-${entry.id}`} className="absolute top-0 scroll-mt-4" aria-hidden="true" />
+                    ))}
+                    <EvidenceDetailsDialog item={item}>
+                      <button
+                        type="button"
+                        id={`sre-evidence-${item.id}`}
+                        aria-label={`View evidence: ${item.title}${items.length > 1 ? ` (${items.length} similar results)` : ""}`}
+                        className="flex w-full min-w-0 scroll-mt-4 items-start gap-3 px-3 py-2.5 text-left hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                      >
+                        <IconTile icon={type.icon} tone={type.tone} />
+                        <span className="min-w-0 flex-1 space-y-0.5">
+                          <span className="flex min-w-0 items-center gap-2">
+                            <span className="truncate text-sm font-medium">{item.title}</span>
+                            {items.length > 1 && (
+                              <TableBadge tone="slate" compact className="shrink-0 tabular-nums">
+                                ×{items.length}
+                              </TableBadge>
+                            )}
+                          </span>
+                          {why && <span className="block text-xs font-medium text-violet-600 dark:text-violet-400">{why}</span>}
+                          <span className="line-clamp-2 break-words text-xs text-muted-foreground">
+                            {item.summary || type.label}
+                          </span>
+                        </span>
+                        <span className="shrink-0 pt-0.5 text-xs tabular-nums text-muted-foreground" suppressHydrationWarning>
+                          {formatTime(item.observedAt)}
+                        </span>
+                      </button>
+                    </EvidenceDetailsDialog>
+                  </li>
+                );
+              })}
+            </ul>
+          </section>
         );
       })}
-    </ul>
+    </div>
   );
+}
+
+function hypothesisTitlesByEvidence(hypotheses: NonNullable<SreIncidentDetail["latestInvestigation"]>["hypotheses"]) {
+  const titles = new Map<string, string[]>();
+  for (const hypothesis of hypotheses) {
+    if (hypothesis.state === "ruled_out") continue;
+    for (const id of hypothesis.evidenceIds) titles.set(id, [...(titles.get(id) ?? []), hypothesis.title]);
+  }
+  return titles;
 }
 
 /**
@@ -293,10 +366,10 @@ export function InvestigationReport({
         }
       >
         {failed && (
-          <Alert variant="destructive">
+          <Alert role="status" className="bg-muted/30 [&>svg]:text-warning">
             <CircleAlert aria-hidden="true" />
-            <AlertTitle>Last investigation failed</AlertTitle>
-            <AlertDescription className="line-clamp-2">
+            <AlertTitle>Last investigation did not finish</AlertTitle>
+            <AlertDescription className="break-words text-muted-foreground">
               {investigation?.summary || "No completed report is available. Review the saved evidence before trying again."}
             </AlertDescription>
           </Alert>
@@ -401,7 +474,11 @@ export function InvestigationReport({
       )}
 
       <Section id="evidence" title="Evidence" icon={Database} tone="blue" count={detail.evidence.length || undefined}>
-        <EvidenceList evidence={detail.evidence} />
+        <EvidenceList
+          evidence={detail.evidence}
+          citedInConclusion={new Set(structured?.topEvidenceIds ?? [])}
+          hypothesisTitles={hypothesisTitlesByEvidence(investigation?.hypotheses ?? [])}
+        />
       </Section>
 
       {investigation && (

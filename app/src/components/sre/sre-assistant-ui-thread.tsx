@@ -46,6 +46,7 @@ import { TableBadge } from "@/components/ui/table-badge";
 import { UserAvatar } from "@/components/ui/user-cell";
 import { useProjectContext } from "@/hooks/use-project-context";
 import { canUseSreLiveConnectors } from "@/lib/rbac/permissions-client";
+import { extractCitations, type SreChatCitation } from "@/lib/sre/chat-citations";
 import { useSession } from "@/utils/auth-client";
 
 const SRE_COPILOT_MESSAGE_MAX_LENGTH = 4000;
@@ -93,6 +94,8 @@ export type SreAssistantUiMessageMetadata = {
   conversationId?: string;
   assistantMessageId?: string;
   modelId?: string;
+  /** Evidence a saved reply cites (a live reply reads its own tool results instead). */
+  citations?: SreChatCitation[];
 };
 
 export type SreAssistantUiMessage = UIMessage<SreAssistantUiMessageMetadata>;
@@ -151,7 +154,13 @@ export function historyMessagesToUiMessages(
   return messages.map((message) => ({
     id: message.id,
     role: message.role,
-    metadata: message.modelId ? { modelId: message.modelId } : undefined,
+    metadata:
+      message.modelId || message.citations?.length
+        ? {
+            ...(message.modelId ? { modelId: message.modelId } : {}),
+            ...(message.citations?.length ? { citations: message.citations } : {}),
+          }
+        : undefined,
     parts: [
       {
         type: "text",
@@ -214,14 +223,31 @@ export function uiMessagesToHistoryMessages(
         role: message.role,
         content,
         modelId: message.metadata?.modelId ?? null,
+        ...(message.role === "assistant" ? citationsField(messageCitations(message, content)) : {}),
       },
     ];
   });
 }
 
+function citationsField(citations: SreChatCitation[]) {
+  return citations.length ? { citations } : {};
+}
+
+/** Saved citations, plus any the reply's own tool results provide (a live reply has no saved ones yet). */
+function messageCitations(message: { metadata?: unknown; parts?: unknown; content?: unknown }, text: string) {
+  const metadata = message.metadata as { citations?: unknown; custom?: { citations?: unknown } } | undefined;
+  const saved = metadata?.custom?.citations ?? metadata?.citations;
+  const fromTools = extractCitations(message.parts ?? message.content, text);
+  const merged = new Map<string, SreChatCitation>();
+  for (const item of [...(Array.isArray(saved) ? (saved as SreChatCitation[]) : []), ...fromTools]) merged.set(item.id, item);
+  return [...merged.values()];
+}
+
 function AssistantTextPart() {
   const part = useMessagePartText();
-  return <SreMessageContent content={part.text} isStreaming={part.status.type === "running"} />;
+  const message = useAuiState((state) => state.message);
+  const citations = useMemo(() => messageCitations(message, part.text), [message, part.text]);
+  return <SreMessageContent content={part.text} isStreaming={part.status.type === "running"} citations={citations} />;
 }
 
 const INTERRUPTED_NOTICE = "Reply was interrupted.";
