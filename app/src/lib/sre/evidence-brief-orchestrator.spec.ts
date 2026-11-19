@@ -1,3 +1,4 @@
+import type { SQL } from "drizzle-orm";
 import { PgDialect } from "drizzle-orm/pg-core";
 import { collectNativeEvidence } from "./native-evidence-collector";
 import { runSreEvidenceBriefGeneration } from "./evidence-brief-orchestrator";
@@ -6,7 +7,7 @@ const mockWhere = jest.fn();
 const mockLock = jest.fn();
 const mockLimit = jest.fn();
 const mockCompleted = jest.fn(() => Promise.resolve([{ id: "brief-run" }]));
-const mockUpdateWhere = jest.fn((_condition?: unknown) => Object.assign(Promise.resolve(undefined), { returning: () => mockCompleted() }));
+const mockUpdateWhere = jest.fn((_condition?: SQL) => Object.assign(Promise.resolve(undefined), { returning: () => mockCompleted() }));
 const mockSet = jest.fn((_values: unknown) => ({ where: mockUpdateWhere }));
 const mockValues = jest.fn(() => ({ returning: jest.fn().mockResolvedValue([{ id: "brief-run" }]) }));
 jest.mock("@/utils/db", () => ({ db: {
