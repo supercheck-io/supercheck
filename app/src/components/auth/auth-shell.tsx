@@ -166,7 +166,7 @@ export function InviteBanner({
     <dl className="space-y-3 rounded-lg border bg-muted/30 p-4" data-testid="invite-banner">
       {rows.map(({ Icon, label, value }) => (
         <div key={label} className="flex items-start gap-3">
-          <Icon className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+          <Icon className="mt-0.5 hidden size-4 shrink-0 text-muted-foreground sm:block" aria-hidden="true" />
           <dt className="w-24 shrink-0 sm:w-28 text-sm text-muted-foreground">{label}</dt>
           <dd className="min-w-0 break-words text-sm font-medium">{value}</dd>
         </div>
