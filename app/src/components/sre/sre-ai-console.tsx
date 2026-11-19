@@ -200,7 +200,7 @@ export function SreAiConsole({
   return (
     <div className="flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden bg-background">
       <Sheet open={isHistoryOpen} onOpenChange={handleHistoryOpenChange}>
-        <SheetContent side="left" className="w-[min(22rem,88vw)] gap-0 p-0">
+        <SheetContent side="right" className="w-[min(22rem,88vw)] gap-0 p-0">
           <SheetHeader className="border-b pr-12">
             <SheetTitle>Chat history</SheetTitle>
             <SheetDescription>Your saved Copilot chats</SheetDescription>

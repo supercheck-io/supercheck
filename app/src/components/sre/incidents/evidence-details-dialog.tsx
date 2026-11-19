@@ -7,7 +7,13 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { isSafeEvidenceSourceUri } from "@/lib/sre/evidence-source-uri";
 
 /** `children` replaces the default "View" button as the dialog trigger (for example a citation chip). */
-export function EvidenceDetailsDialog({ item, children }: { item: SreIncidentDetail["evidence"][number]; children?: React.ReactNode }) {
+/** Saved incident evidence, or the evidence a Copilot reply cited. */
+type EvidenceDetailsItem = Pick<
+  SreIncidentDetail["evidence"][number],
+  "title" | "summary" | "sourceUri" | "citationQuery" | "rawContentExcerpt"
+> & { observedAt: Date | string | null };
+
+export function EvidenceDetailsDialog({ item, children }: { item: EvidenceDetailsItem; children?: React.ReactNode }) {
   const external = /^https?:/i.test(item.sourceUri);
   return (
     <Dialog>
@@ -17,7 +23,7 @@ export function EvidenceDetailsDialog({ item, children }: { item: SreIncidentDet
       <DialogContent className="max-h-[85svh] overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle className="break-words">{item.title}</DialogTitle>
-          <DialogDescription>Saved evidence for this incident. Viewing it does not run another provider query.</DialogDescription>
+          <DialogDescription>Viewing this evidence does not run another provider query.</DialogDescription>
         </DialogHeader>
         <dl className="space-y-4 text-sm">
           <div><dt className="font-medium">Summary</dt><dd className="mt-1 whitespace-pre-wrap break-words text-muted-foreground">{item.summary || "No summary recorded."}</dd></div>

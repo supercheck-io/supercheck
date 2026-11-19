@@ -15,6 +15,7 @@ import Link from "next/link";
 import { formatAge } from "@/components/sre/incidents/incident-age";
 import { InfoTip } from "@/components/ui/info-tip";
 import { getDisplayStatus, INCIDENT_DISPLAY_STATUSES } from "@/lib/sre/incident-status-display";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { useRouter } from "next/navigation";
 
 import { type SreIncidentListItem } from "@/actions/sre-incidents";
@@ -116,7 +117,7 @@ const columns: ColumnDef<SreIncidentListItem>[] = [
     cell: ({ row }) => (
       <Link
         href={`/incidents/${row.original.id}`}
-        className="block max-w-[360px] truncate rounded-sm font-medium underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className="block max-w-[100px] truncate rounded-sm sm:max-w-[240px] 2xl:max-w-[360px] font-medium underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         title={row.original.title}
       >
         {row.original.title}
@@ -128,7 +129,8 @@ const columns: ColumnDef<SreIncidentListItem>[] = [
     header: ({ column }) => (
       <div className="flex items-center gap-1">
         <DataTableColumnHeader column={column} title="Severity" />
-        <InfoTip label="About severity">SEV1 is a customer-facing outage; SEV4 is minor with no customer impact.</InfoTip>
+        {/* Phones keep the column narrow; the tip is one tap away on the incident page. */}
+        <span className="hidden sm:inline-flex"><InfoTip label="About severity">SEV1 is a customer-facing outage; SEV4 is minor with no customer impact.</InfoTip></span>
       </div>
     ),
     cell: ({ row }) => (
@@ -147,7 +149,8 @@ const columns: ColumnDef<SreIncidentListItem>[] = [
     header: ({ column }) => (
       <div className="flex items-center gap-1">
         <DataTableColumnHeader column={column} title="Status" />
-        <InfoTip label="About status">Triggered, Acknowledged, Investigating, Fixing, Monitoring or Resolved. Hover a status on the incident page for details.</InfoTip>
+        {/* Phones keep the column narrow; the tip is one tap away on the incident page. */}
+        <span className="hidden sm:inline-flex"><InfoTip label="About status">Triggered, Acknowledged, Investigating, Fixing, Monitoring or Resolved. Hover a status on the incident page for details.</InfoTip></span>
       </div>
     ),
     cell: ({ row }) => {
@@ -228,6 +231,16 @@ const columns: ColumnDef<SreIncidentListItem>[] = [
   },
 ];
 
+const PHONE_HIDDEN_COLUMNS = {
+  incidentNumber: false,
+  primaryServiceName: false,
+  assigneeName: false,
+  alertCount: false,
+  createdAt: false,
+  updatedAt: false,
+  latestInvestigationStatus: false,
+};
+
 export function SreIncidentsList({
   incidents,
   loadError,
@@ -238,6 +251,7 @@ export function SreIncidentsList({
   loadingScope = false,
 }: SreIncidentsListProps) {
   const router = useRouter();
+  const isMobile = useIsMobile();
   const [search, setSearch] = useState("");
   const deferredSearch = useDeferredValue(search);
   const [severityFilter, setSeverityFilter] = useState<string[]>([]);
@@ -429,7 +443,9 @@ export function SreIncidentsList({
             data={filteredIncidents}
             isLoading={loadingScope && filteredIncidents.length === 0}
             onRowClick={(row) => router.push(`/incidents/${row.original.id}`)}
-            initialColumnVisibility={{}}
+            // The firing count is on the incident page; without it the table fits a 1440px window. On a phone only what identifies an incident stays.
+            initialColumnVisibility={isMobile ? PHONE_HIDDEN_COLUMNS : { alertCount: false }}
+            minWidthClassName={isMobile ? "min-w-0" : "min-w-[900px]"}
             entityLabel={`incidents${truncated ? " (from the latest 500)" : ""}`}
             emptyMessage="No incidents match the current filters."
             initialSorting={[{ id: "updatedAt", desc: true }]}

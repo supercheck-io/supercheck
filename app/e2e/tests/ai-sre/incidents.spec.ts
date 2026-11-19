@@ -195,7 +195,7 @@ test.describe("AI SRE incident, brief, and investigation lifecycle @aisre @criti
       await expect(page).toHaveURL(/\/incidents$/);
       // Severity and Status headers carry info-tip text, so match prefixes in exact order.
       await expect(page.getByRole("columnheader")).toHaveText([
-        /^#/, /^Title/, /^Severity/, /^Status/, /^Service/, /^Assignee/, /^Alerts/, /^Age/, /^Updated/, /^AI/,
+        /^#/, /^Title/, /^Severity/, /^Status/, /^Service/, /^Assignee/, /^Age/, /^Updated/, /^AI/,
       ]);
       await expect(page.getByRole("row").filter({ hasText: incidentTitle })).toBeVisible();
     } finally {

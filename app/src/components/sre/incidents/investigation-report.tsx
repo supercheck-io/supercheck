@@ -6,6 +6,7 @@ import {
   CircleAlert,
   ArrowRight,
   Bell,
+  ChevronRight,
   CircleCheck,
   Clock,
   Database,
@@ -21,11 +22,13 @@ import {
 } from "lucide-react";
 
 import type { SreIncidentDetail } from "@/actions/sre-incidents";
+import { evidenceSourceLabel } from "@/components/sre/connectors/connector-catalog";
 import { EvidenceDetailsDialog } from "@/components/sre/incidents/evidence-details-dialog";
 import { GenerateEvidenceBriefButton } from "@/components/sre/incidents/generate-evidence-brief-button";
 import { formatAgo } from "@/components/sre/incidents/incident-age";
 import { confidenceLabel, getInvestigationConclusion, rootCauseFromBrief } from "@/components/sre/incidents/incident-ai-summary-card";
 import { IconTile, SectionTitle, type IconTone } from "@/components/sre/incidents/incident-ui";
+import { InconclusiveHint, inconclusiveReason } from "@/components/sre/incidents/inconclusive-hint";
 import { InvestigationHypotheses } from "@/components/sre/incidents/investigation-hypotheses";
 import { InvestigationStepTrace } from "@/components/sre/incidents/investigation-step-trace";
 import { SreIncidentBriefReportActions } from "@/components/sre/incidents/sre-incident-brief-report";
@@ -33,6 +36,7 @@ import { SreInvestigationPanel, SreReportSnapshotMenuItem } from "@/components/s
 import { SreMessageContent } from "@/components/sre/sre-message-content";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Skeleton } from "@/components/ui/skeleton";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { TableBadge } from "@/components/ui/table-badge";
@@ -87,37 +91,143 @@ function formatTime(value: Date | string | null) {
   return new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }).format(new Date(value));
 }
 
-function EvidenceList({ evidence }: { evidence: SreIncidentDetail["evidence"] }) {
+type EvidenceItem = SreIncidentDetail["evidence"][number];
+
+/**
+ * Groups evidence by source, then folds results with the same type and title into one row.
+ * Input order (newest first) is kept, so each row opens its newest result.
+ */
+export function groupEvidence(evidence: EvidenceItem[]) {
+  const groups = new Map<string, { source: string; label: string; rows: Map<string, EvidenceItem[]> }>();
+  for (const item of evidence) {
+    const source = item.sourceType || "other";
+    const group = groups.get(source) ?? { source, label: evidenceSourceLabel(source), rows: new Map() };
+    const key = `${item.evidenceType}\u0000${item.title.trim().toLowerCase()}`;
+    group.rows.set(key, [...(group.rows.get(key) ?? []), item]);
+    groups.set(source, group);
+  }
+  return [...groups.values()].map((group) => ({ ...group, rows: [...group.rows.values()] }));
+}
+
+/** Every result folded into a row, each openable on its own: same titles can hide different resources or failures. */
+export function FoldedResults({ items }: { items: EvidenceItem[] }) {
+  return (
+    <Collapsible>
+      <CollapsibleTrigger className="group/fold ml-12 mb-2 inline-flex items-center gap-1 rounded-sm text-xs text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+        <ChevronRight className="size-3.5 transition-transform group-data-[state=open]/fold:rotate-90" aria-hidden="true" />
+        Show all {items.length} results
+      </CollapsibleTrigger>
+      <CollapsibleContent>
+        <ul className="mb-2 ml-12 mr-3 divide-y rounded-md border text-xs">
+          {items.map((entry) => (
+            <li key={entry.id}>
+              <EvidenceDetailsDialog item={entry}>
+                <button
+                  type="button"
+                  aria-label={`View evidence: ${entry.title}, ${formatTime(entry.observedAt) ?? "time not recorded"}`}
+                  className="flex w-full min-w-0 items-center gap-3 px-2.5 py-1.5 text-left hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                >
+                  <span className="min-w-0 flex-1 truncate text-muted-foreground">{entry.summary || entry.title}</span>
+                  <span className="shrink-0 tabular-nums text-muted-foreground" suppressHydrationWarning>
+                    {formatTime(entry.observedAt)}
+                  </span>
+                </button>
+              </EvidenceDetailsDialog>
+            </li>
+          ))}
+        </ul>
+      </CollapsibleContent>
+    </Collapsible>
+  );
+}
+
+function EvidenceList({
+  evidence,
+  citedInConclusion,
+  hypothesisTitles,
+}: {
+  evidence: EvidenceItem[];
+  /** Evidence ids the conclusion relies on. */
+  citedInConclusion: Set<string>;
+  /** Evidence id to the hypotheses that cite it. */
+  hypothesisTitles: Map<string, string[]>;
+}) {
   if (evidence.length === 0) {
     return <p className="text-sm text-muted-foreground">No evidence gathered yet.</p>;
   }
   return (
-    <ul className="divide-y rounded-lg border">
-      {evidence.map((item) => {
-        const type = EVIDENCE_TYPE[item.evidenceType] ?? OTHER_EVIDENCE;
+    <div className="space-y-4">
+      {groupEvidence(evidence).map((group) => {
+        const count = group.rows.reduce((total, row) => total + row.length, 0);
         return (
-          <li key={item.id} id={`sre-evidence-${item.id}`} className="scroll-mt-4">
-            <EvidenceDetailsDialog item={item}>
-              <button
-                type="button"
-                aria-label={`View evidence: ${item.title}`}
-                className="flex w-full min-w-0 items-center gap-3 px-3 py-2.5 text-left hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
-              >
-                <IconTile icon={type.icon} tone={type.tone} />
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-sm font-medium">{item.title}</span>
-                  <span className="block truncate text-xs text-muted-foreground">{type.label}</span>
-                </span>
-                <span className="shrink-0 text-xs tabular-nums text-muted-foreground" suppressHydrationWarning>
-                  {formatTime(item.observedAt)}
-                </span>
-              </button>
-            </EvidenceDetailsDialog>
-          </li>
+          <section key={group.source} aria-label={`${group.label} evidence`} className="space-y-1.5">
+            <p className="text-xs font-medium text-muted-foreground">
+              {group.label} <span className="tabular-nums">· {count} {count === 1 ? "result" : "results"}</span>
+            </p>
+            <ul className="divide-y rounded-lg border">
+              {group.rows.map((items) => {
+                // The row opens the cited result when there is one, else the newest.
+                const item = items.find((entry) => citedInConclusion.has(entry.id)) ?? items[0]!;
+                const type = EVIDENCE_TYPE[item.evidenceType] ?? OTHER_EVIDENCE;
+                const cited = items.some((entry) => citedInConclusion.has(entry.id));
+                const hypotheses = [...new Set(items.flatMap((entry) => hypothesisTitles.get(entry.id) ?? []))];
+                const why = cited
+                  ? "Cited in the conclusion"
+                  : hypotheses.length > 0
+                    ? `Supports: ${hypotheses.join("; ")}`
+                    : null;
+                return (
+                  <li key={item.id} className="relative">
+                    {/* Every folded result keeps its anchor, so links to any of them land on this row. */}
+                    {items.map((entry) => (
+                      <span key={entry.id} id={entry.id === item.id ? undefined : `sre-evidence-${entry.id}`} className="absolute top-0 scroll-mt-4" aria-hidden="true" />
+                    ))}
+                    <EvidenceDetailsDialog item={item}>
+                      <button
+                        type="button"
+                        id={`sre-evidence-${item.id}`}
+                        aria-label={`View evidence: ${item.title}${items.length > 1 ? ` (${items.length} similar results)` : ""}`}
+                        className="flex w-full min-w-0 scroll-mt-4 items-start gap-3 px-3 py-2.5 text-left hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                      >
+                        <IconTile icon={type.icon} tone={type.tone} />
+                        <span className="min-w-0 flex-1 space-y-0.5">
+                          <span className="flex min-w-0 items-center gap-2">
+                            <span className="truncate text-sm font-medium">{item.title}</span>
+                            {items.length > 1 && (
+                              <TableBadge tone="slate" compact className="shrink-0 tabular-nums">
+                                ×{items.length}
+                              </TableBadge>
+                            )}
+                          </span>
+                          {why && <span className="block text-xs font-medium text-ai">{why}</span>}
+                          <span className="line-clamp-2 break-words text-xs text-muted-foreground">
+                            {item.summary || type.label}
+                          </span>
+                        </span>
+                        <span className="shrink-0 pt-0.5 text-xs tabular-nums text-muted-foreground" suppressHydrationWarning>
+                          {formatTime(item.observedAt)}
+                        </span>
+                      </button>
+                    </EvidenceDetailsDialog>
+                    {items.length > 1 && <FoldedResults items={items} />}
+                  </li>
+                );
+              })}
+            </ul>
+          </section>
         );
       })}
-    </ul>
+    </div>
   );
+}
+
+function hypothesisTitlesByEvidence(hypotheses: NonNullable<SreIncidentDetail["latestInvestigation"]>["hypotheses"]) {
+  const titles = new Map<string, string[]>();
+  for (const hypothesis of hypotheses) {
+    if (hypothesis.state === "ruled_out") continue;
+    for (const id of hypothesis.evidenceIds) titles.set(id, [...(titles.get(id) ?? []), hypothesis.title]);
+  }
+  return titles;
 }
 
 /**
@@ -210,6 +320,7 @@ export function InvestigationReport({
     />
   ) : null;
 
+  const gap = inconclusiveReason(detail, serviceMappingHref);
   const stepsDone = investigation?.steps.length ?? 0;
   const [allSteps, setAllSteps] = useState(false);
   const shownChecks = allSteps ? nextChecks : nextChecks.slice(0, NEXT_STEPS_COLLAPSED);
@@ -225,7 +336,7 @@ export function InvestigationReport({
       <div className="flex flex-wrap items-start justify-between gap-3">
         <p className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 pt-1.5 text-xs text-muted-foreground">
           {running ? (
-            <span role="status" className="inline-flex items-center gap-2 font-medium text-violet-600 dark:text-violet-400">
+            <span role="status" className="inline-flex items-center gap-2 font-medium text-ai">
               <span aria-hidden="true" className="relative flex size-2">
                 <span className="absolute inline-flex size-full animate-ping rounded-full bg-violet-500 opacity-60" />
                 <span className="relative inline-flex size-2 rounded-full bg-violet-500" />
@@ -293,10 +404,11 @@ export function InvestigationReport({
         }
       >
         {failed && (
-          <Alert variant="destructive">
+          // A resolved incident needs no attention, so its note stays neutral.
+          <Alert variant={incident.status === "resolved" ? "default" : "warning"} role="status">
             <CircleAlert aria-hidden="true" />
-            <AlertTitle>Last investigation failed</AlertTitle>
-            <AlertDescription className="line-clamp-2">
+            <AlertTitle>Last investigation did not finish</AlertTitle>
+            <AlertDescription className="break-words text-muted-foreground">
               {investigation?.summary || "No completed report is available. Review the saved evidence before trying again."}
             </AlertDescription>
           </Alert>
@@ -313,6 +425,7 @@ export function InvestigationReport({
                 The model suggested a cause, but the cited evidence did not support it, so this is reported as inconclusive.
               </p>
             )}
+            {gap && <InconclusiveHint reason={gap} />}
             {nextChecks.length > 0 && !running && (
               <div className="space-y-1.5">
                 <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
@@ -401,7 +514,11 @@ export function InvestigationReport({
       )}
 
       <Section id="evidence" title="Evidence" icon={Database} tone="blue" count={detail.evidence.length || undefined}>
-        <EvidenceList evidence={detail.evidence} />
+        <EvidenceList
+          evidence={detail.evidence}
+          citedInConclusion={new Set(structured?.topEvidenceIds ?? [])}
+          hypothesisTitles={hypothesisTitlesByEvidence(investigation?.hypotheses ?? [])}
+        />
       </Section>
 
       {investigation && (

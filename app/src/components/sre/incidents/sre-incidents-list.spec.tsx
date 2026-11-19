@@ -5,6 +5,9 @@ import type { SreIncidentListItem } from "@/actions/sre-incidents";
 import { NewIncidentAction } from "./new-incident-action";
 import { SreIncidentsList, formatAge, matchesQuickFilter } from "./sre-incidents-list";
 
+const mockIsMobile = jest.fn(() => false);
+jest.mock("@/hooks/use-mobile", () => ({ useIsMobile: () => mockIsMobile() }));
+
 // Radix/cmdk use browser layout APIs that jsdom does not provide.
 beforeAll(() => {
   globalThis.ResizeObserver = class {
@@ -115,6 +118,17 @@ describe("SreIncidentsList", () => {
     expect(cells[0]).toHaveTextContent(/^#7$/);
     expect(cells[1]).toHaveTextContent(/^Checkout incident 7$/);
     expect(within(row).queryByText(/evidence item/)).not.toBeInTheDocument();
+  });
+
+  it("keeps only identifying columns on a phone and hides the firing count on wide screens", () => {
+    const { unmount } = render(<SreIncidentsList incidents={[incidentFixture(7)]} loadError={null} />);
+    expect(screen.queryByRole("columnheader", { name: /Alerts/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: /Service/ })).toBeInTheDocument();
+    unmount();
+    mockIsMobile.mockReturnValue(true);
+    render(<SreIncidentsList incidents={[incidentFixture(7)]} loadError={null} />);
+    expect(screen.getAllByRole("columnheader").map((cell) => cell.textContent?.trim())).toEqual(["Title", "Severity", "Status"]);
+    mockIsMobile.mockReturnValue(false);
   });
 
   it("sorts by incident number from the # header", () => {
