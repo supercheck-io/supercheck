@@ -719,7 +719,7 @@ export function TestForm({
                   Created
                 </h3>
                 <div>
-                  <p className="truncate whitespace-nowrap text-xs" title={fullStamp(testCase.createdAt)}>
+                  <p className="break-words text-xs" title={fullStamp(testCase.createdAt)}>
                     {compactStamp(testCase.createdAt)}
                   </p>
                   <p className="text-xs text-muted-foreground">
@@ -744,7 +744,7 @@ export function TestForm({
               <div>
                 {testCase.updatedAt ? (
                   <>
-                    <p className="truncate whitespace-nowrap text-xs" title={fullStamp(testCase.updatedAt)}>
+                    <p className="break-words text-xs" title={fullStamp(testCase.updatedAt)}>
                       {compactStamp(testCase.updatedAt)}
                     </p>
                     <p className="text-xs text-muted-foreground">
