@@ -51,7 +51,8 @@ import { type PerformanceLocation } from "./performance-locations";
 export function compactStamp(value: string | Date, now: Date = new Date()): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "Invalid date";
-  return format(date, isSameYear(date, now) ? "MMM d, h:mm a" : "MMM d, yyyy");
+  // The time is always shown: a hover title is not reachable by keyboard or touch.
+  return format(date, isSameYear(date, now) ? "MMM d, h:mm a" : "MMM d, yyyy, h:mm a");
 }
 
 const fullStamp = (value: string | Date) => {

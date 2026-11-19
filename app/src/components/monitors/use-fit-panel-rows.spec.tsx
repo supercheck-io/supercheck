@@ -69,6 +69,13 @@ describe("useFitPanelRows", () => {
     });
     // (508 - 40 - 58 - 1) / 60 = 6.8 -> 6
     expect(onFit.mock.calls).toEqual([[9], [6]]);
+    // Skeletons replace the rows during a page change: the last measured height stays, so the count does not jump.
+    await act(async () => {
+      row.remove();
+      await Promise.resolve();
+      jest.advanceTimersByTime(200);
+    });
+    expect(onFit.mock.calls).toEqual([[9], [6]]);
   });
 
   it("does nothing below the desktop breakpoint", () => {

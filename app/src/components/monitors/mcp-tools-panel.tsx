@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { format } from "date-fns";
 import { AlertCircle, ChevronRight, Plug } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -94,9 +94,16 @@ function ChangeRow({ change, index }: { change: McpToolChange; index: number }) 
 
 /** True when the newest tool change is under a day old. */
 function useRecentChange(changes: McpToolChange[] | undefined, now: number | undefined) {
-  const [mountedAt] = useState(() => Date.now());
+  const [clock, setClock] = useState(() => Date.now());
   const newest = changes?.length ? new Date(changes[changes.length - 1].at).getTime() : NaN;
-  return Number.isFinite(newest) && (now ?? mountedAt) - newest < DAY_MS;
+  const recent = Number.isFinite(newest) && (now ?? clock) - newest < DAY_MS;
+  // Re-render when the "Changed" flag expires, so a long-open page does not keep showing it.
+  useEffect(() => {
+    if (now !== undefined || !recent) return;
+    const timer = setTimeout(() => setClock(Date.now()), newest + DAY_MS - Date.now() + 1000);
+    return () => clearTimeout(timer);
+  }, [now, recent, newest]);
+  return recent;
 }
 
 /** The tool list, server identity and change history of an MCP server; shown in the Tools popover. */

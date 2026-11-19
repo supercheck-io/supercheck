@@ -30,13 +30,17 @@ export function useFitPanelRows(onFitRows: ((rows: number) => void) | undefined,
     if (!onFitRows || !panel || typeof ResizeObserver === "undefined" || typeof window.matchMedia !== "function") return;
     const desktop = window.matchMedia("(min-width: 1024px)");
     let last = 0;
+    // Skeletons replacing the rows (a page change) don't match rowSelector; keep the last real height meanwhile.
+    let lastRowPx = 0;
     let timer: ReturnType<typeof setTimeout> | undefined;
     const measure = () => {
       if (!desktop.matches) return;
       const head = panel.querySelector<HTMLElement>("thead");
       const pager = panel.querySelector<HTMLElement>("[data-fit-pager]");
       // The tallest rendered row, so one taller row (a wrapped cell, zoomed text) never pushes the last row out.
-      const rowPx = Math.max(0, ...Array.from(panel.querySelectorAll<HTMLElement>(rowSelector), (r) => r.offsetHeight)) || ROW_PX;
+      const measuredRowPx = Math.max(0, ...Array.from(panel.querySelectorAll<HTMLElement>(rowSelector), (r) => r.offsetHeight));
+      if (measuredRowPx) lastRowPx = measuredRowPx;
+      const rowPx = lastRowPx || ROW_PX;
       const rows = rowsThatFit(panel.clientHeight, rowPx, head?.offsetHeight || HEAD_PX, pager?.offsetHeight || NAV_PX);
       // Only a real change in page size reaches the caller, so the results are not refetched for nothing.
       if (rows !== last) {
