@@ -261,6 +261,19 @@ describe("SreMessageContent citations", () => {
     expect(await screen.findByRole("dialog")).toHaveTextContent("12 matching lines");
   });
 
+  it("leaves uncited uuids, code spans and link targets intact", () => {
+    render(
+      <SreMessageContent
+        citations={[loki]}
+        content={"Monitor run evidence 01a1f039-9ef8-71d7-8e65-0823c827c42d failed. Run `curl /x/connector_0123456789abcdef01234567` or open [logs](https://loki.example.test/x?id=connector_0123456789abcdef01234567)."}
+      />,
+    );
+    expect(screen.getByText(/evidence 01a1f039-9ef8-71d7-8e65-0823c827c42d failed/)).toBeInTheDocument();
+    expect(screen.getByText("curl /x/connector_0123456789abcdef01234567")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /logs/ })).toHaveAttribute("href", "https://loki.example.test/x?id=connector_0123456789abcdef01234567");
+    expect(screen.queryByRole("list", { name: "Sources" })).not.toBeInTheDocument();
+  });
+
   it("leaves ids alone when no citations are given, and keeps unrelated uuids as text", () => {
     render(<SreMessageContent content={"Run `connector_0123456789abcdef01234567` for monitor 01a1f039-9ef8-71d7-8e65-0823c827c42d."} />);
     expect(screen.getByText("connector_0123456789abcdef01234567")).toBeInTheDocument();

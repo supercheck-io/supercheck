@@ -120,6 +120,17 @@ describe("SreIncidentsList", () => {
     expect(within(row).queryByText(/evidence item/)).not.toBeInTheDocument();
   });
 
+  it("keeps only identifying columns on a phone and hides the firing count on wide screens", () => {
+    const { unmount } = render(<SreIncidentsList incidents={[incidentFixture(7)]} loadError={null} />);
+    expect(screen.queryByRole("columnheader", { name: /Alerts/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: /Service/ })).toBeInTheDocument();
+    unmount();
+    mockIsMobile.mockReturnValue(true);
+    render(<SreIncidentsList incidents={[incidentFixture(7)]} loadError={null} />);
+    expect(screen.getAllByRole("columnheader").map((cell) => cell.textContent?.trim())).toEqual(["Title", "Severity", "Status"]);
+    mockIsMobile.mockReturnValue(false);
+  });
+
   it("sorts by incident number from the # header", () => {
     render(
       <SreIncidentsList

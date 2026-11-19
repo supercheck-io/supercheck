@@ -104,15 +104,29 @@ type CitationContext = {
   order: string[];
 };
 
-/** Rewrites cited evidence ids as `[[cite:id,id]]` markers; bare uuids are left unless the reply's citations name them. */
+function isCitable(id: string, context: CitationContext) {
+  return id.toLowerCase().startsWith("connector_") || context.byId.has(id);
+}
+
+// Code spans that are not a lone id, and markdown links, are left untouched so their text and hrefs stay intact.
+const PROTECTED = /`[^`]+`|\[[^\]]+\]\([^)\s]*\)/g;
+const LONE_ID = new RegExp(`^\`${CITE_ID}\`$`, "i");
+
+/** Rewrites cited evidence ids as `[[cite:id,id]]` markers. Only live connector ids and ids this reply's citations name count. */
 function markCitations(text: string, context: CitationContext) {
-  return text
-    .replace(CITE_PHRASE, (_match, inParens: string | undefined, plain: string | undefined) =>
-      `${inParens ? " " : ""}[[cite:${((inParens ?? plain ?? "").match(new RegExp(CITE_ID, "gi")) ?? []).join(",")}]]`,
-    )
-    .replace(CITE_ALONE, (match, id: string) =>
-      id.toLowerCase().startsWith("connector_") || context.byId.has(id) ? `[[cite:${id}]]` : match,
-    );
+  const kept: string[] = [];
+  const shielded = text.replace(PROTECTED, (match) => {
+    if (LONE_ID.test(match)) return match;
+    kept.push(match);
+    return `\u0000${kept.length - 1}\u0000`;
+  });
+  return shielded
+    .replace(CITE_PHRASE, (match, inParens: string | undefined, plain: string | undefined) => {
+      const ids = ((inParens ?? plain ?? "").match(new RegExp(CITE_ID, "gi")) ?? []).filter((id) => isCitable(id, context));
+      return ids.length ? `${inParens ? " " : ""}[[cite:${ids.join(",")}]]` : match;
+    })
+    .replace(CITE_ALONE, (match, id: string) => (isCitable(id, context) ? `[[cite:${id}]]` : match))
+    .replace(/\u0000(\d+)\u0000/g, (_match, index: string) => kept[Number(index)] ?? "");
 }
 
 function citationNumber(id: string, context: CitationContext) {

@@ -132,6 +132,7 @@ export function ConnectorFormDialog({
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (!typeChosen) return;
 
     const trimmedCredential = credentialValue.trim();
     const trimmedAwsAccessKeyId = awsAccessKeyId.trim();
@@ -335,7 +336,7 @@ export function ConnectorFormDialog({
                       id="connector-name"
                       value={name}
                       onChange={(event) => setName(event.target.value)}
-                      placeholder={`Production ${selectedTypeOption?.label ?? "connector"}`}
+                      placeholder={`Production ${typeChosen ? (selectedTypeOption?.label ?? "connector") : "connector"}`}
                       aria-invalid={Boolean(firstError(fieldErrors, "name"))}
                     />
                     <p className="text-xs text-muted-foreground">
