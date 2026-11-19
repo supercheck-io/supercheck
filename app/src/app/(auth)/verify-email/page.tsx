@@ -151,7 +151,7 @@ function VerifyEmailPageContent() {
           </AuthCallout>
         )}
 
-        {resendSuccess && <AuthCallout variant="success">Verification email sent.</AuthCallout>}
+        {resendSuccess && <AuthCallout variant="success" live>Verification email sent.</AuthCallout>}
 
         {error && <AuthCallout variant="error">{error}</AuthCallout>}
 

@@ -45,7 +45,7 @@ export function WorkspaceSetup() {
       <Button size="lg" className="w-full" onClick={setup} disabled={busy}>
         {busy ? "Setting up…" : "Create my workspace"}
       </Button>
-      {message ? <AuthCallout variant={isFailure ? "error" : "info"}>{message}</AuthCallout> : null}
+      {message ? <AuthCallout variant={isFailure ? "error" : "info"} live>{message}</AuthCallout> : null}
     </div>
   );
 }

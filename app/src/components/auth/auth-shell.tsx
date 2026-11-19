@@ -89,16 +89,21 @@ const CALLOUT_ICONS: Record<"info" | "success" | "warning" | "error", LucideIcon
 /** The one callout for errors, successes, warnings and notes on auth screens. */
 export function AuthCallout({
   variant,
+  live = false,
   children,
   className,
   ...props
-}: React.HTMLAttributes<HTMLDivElement> & { variant: keyof typeof CALLOUT_ICONS }) {
+}: React.HTMLAttributes<HTMLDivElement> & {
+  variant: keyof typeof CALLOUT_ICONS;
+  /** Set for messages that appear after the page loaded (a result), so screen readers announce them. */
+  live?: boolean;
+}) {
   const Icon = CALLOUT_ICONS[variant];
   return (
     <Alert
       variant={variant}
-      // Errors interrupt; everything else is announced politely.
-      role={variant === "error" ? "alert" : "status"}
+      // Errors interrupt; other messages are announced only when they appear dynamically (`live`).
+      role={variant === "error" ? "alert" : live ? "status" : undefined}
       className={cn("px-4 py-3 [&>svg]:top-3.5 [&>svg+div]:translate-y-0", className)}
       {...props}
     >

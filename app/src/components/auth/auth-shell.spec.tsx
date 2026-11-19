@@ -2,15 +2,18 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { AuthCallout, InviteBanner, PasswordToggle } from "./auth-shell";
 
 describe("auth shell", () => {
-  it("announces errors as alerts and other callouts as status", () => {
+  it("announces errors as alerts and only dynamic callouts as status", () => {
     render(
       <>
         <AuthCallout variant="error">Bad password</AuthCallout>
-        <AuthCallout variant="success">Sent</AuthCallout>
+        <AuthCallout variant="success" live>Sent</AuthCallout>
+        <AuthCallout variant="info">Always there</AuthCallout>
       </>,
     );
     expect(screen.getByRole("alert")).toHaveTextContent("Bad password");
     expect(screen.getByRole("status")).toHaveTextContent("Sent");
+    // A note that is part of the loaded page is not a live region.
+    expect(screen.getAllByRole("status")).toHaveLength(1);
   });
 
   it("toggles password visibility with a labelled button", () => {

@@ -148,7 +148,7 @@ export function DeviceApproval({ userCode, userEmail, projects, client }: Props)
 
   if (phase === "approved") {
     return (
-      <AuthCallout variant="success">
+      <AuthCallout variant="success" live>
         <p className="font-medium">You&apos;re connected.</p>
         <p className="text-muted-foreground">
           Return to your terminal; the CLI will finish signing in automatically. You can close this tab.
@@ -158,7 +158,7 @@ export function DeviceApproval({ userCode, userEmail, projects, client }: Props)
   }
   if (phase === "denied") {
     return (
-      <AuthCallout variant="info">
+      <AuthCallout variant="info" live>
         <p className="font-medium">Request denied.</p>
         <p className="text-muted-foreground">No access was granted. You can close this tab.</p>
       </AuthCallout>
