@@ -33,6 +33,36 @@ export function formatDuration(minutes: number): string {
   return [days && `${days} d`, hours && `${hours} h`, mins && `${mins} min`].filter(Boolean).join(" ");
 }
 
+/** Minutes `timeZone` is ahead of UTC at `at`, read from the zone's wall clock. */
+function zoneOffsetMinutes(at: Date, timeZone: string): number {
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat("en-US", { timeZone, hourCycle: "h23", year: "numeric", month: "numeric", day: "numeric", hour: "numeric", minute: "numeric", second: "numeric" })
+      .formatToParts(at).map((p) => [p.type, Number(p.value)]),
+  );
+  const wallAsUtc = Date.UTC(parts.year, parts.month - 1, parts.day, parts.hour, parts.minute, parts.second);
+  return Math.round((wallAsUtc - Math.floor(at.getTime() / 1000) * 1000) / 60_000);
+}
+
+/**
+ * A note for a window that crosses a DST change in `timeZone`, or null. The duration is elapsed time, so the
+ * wall-clock gap between start and end differs by the shift: a spring-forward skips an hour, a fall-back repeats one.
+ */
+export function dstNote(start: Date, end: Date, timeZone: string): string | null {
+  let shift: number;
+  // shortcut: compares only the two endpoints, so two opposite transitions inside one window would cancel and show no note;
+  // no zone changes twice within 8 days (the longest window is 7), so upgrade only if one ever does.
+  try {
+    shift = zoneOffsetMinutes(end, timeZone) - zoneOffsetMinutes(start, timeZone);
+  } catch {
+    return null;
+  }
+  if (shift === 0) return null;
+  const amount = formatDuration(Math.abs(shift));
+  return shift > 0
+    ? `Clocks go forward ${amount} in this window, so the start and end times look ${amount} further apart than the duration.`
+    : `Clocks go back ${amount} in this window, so the start and end times look ${amount} closer than the duration.`;
+}
+
 /**
  * The first window the server would schedule for this form, as real instants, or null while a field is
  * incomplete or out of range. Uses the server's own occurrence rule, so weekdays, month days and DST all match.
