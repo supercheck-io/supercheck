@@ -126,6 +126,10 @@ describe('retry.util', () => {
       expect(
         isRetryableError(new AggregateError([new Error('invalid')], '')),
       ).toBe(false);
+      const cyclic = new AggregateError([], '');
+      cyclic.errors.push(cyclic);
+      expect(isRetryableError(cyclic)).toBe(false);
+      expect(typeof describeError(cyclic)).toBe('string');
     });
 
     it.each(['invalid input', 'unauthorized', 'not found'])(
