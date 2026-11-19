@@ -74,4 +74,49 @@ describe("ShellMain", () => {
     rerender(ui());
     expect(main.scrollTop).toBe(0);
   });
+
+  it("stops restoring once the user moves the scrollbar, but keeps retrying while content grows", () => {
+    jest.useFakeTimers();
+    const raf: FrameRequestCallback[] = [];
+    jest.spyOn(window, "requestAnimationFrame").mockImplementation((cb) => (raf.push(cb), raf.length));
+    jest.spyOn(window, "cancelAnimationFrame").mockImplementation((id) => {
+      raf[id - 1] = () => {};
+    });
+    const { rerender } = render(ui());
+    const main = screen.getByRole("main");
+    main.scrollTop = 1000;
+    act(() => main.dispatchEvent(new Event("scroll")));
+    mockPathname = "/b";
+    rerender(ui());
+    window.history.pushState({}, "", "/a");
+    act(() => window.dispatchEvent(new PopStateEvent("popstate")));
+    // jsdom has no layout, so clamp the scroller like a short page: only 500px is reachable at first.
+    let max = 500;
+    const desc = Object.getOwnPropertyDescriptor(Element.prototype, "scrollTop");
+    let top = 0;
+    Object.defineProperty(main, "scrollTop", { configurable: true, get: () => top, set: (v) => (top = Math.min(v, max)) });
+    mockPathname = "/a";
+    rerender(ui());
+    expect(top).toBe(500);
+    max = 1500;
+    act(() => raf.splice(0).forEach((cb) => cb(0)));
+    expect(top).toBe(1000);
+    // A second visit: the user drags the scrollbar to 100 while content is still short.
+    max = 500;
+    top = 0;
+    mockPathname = "/b";
+    rerender(ui());
+    window.history.pushState({}, "", "/a");
+    act(() => window.dispatchEvent(new PopStateEvent("popstate")));
+    mockPathname = "/a";
+    rerender(ui());
+    top = 100;
+    act(() => main.dispatchEvent(new Event("scroll")));
+    max = 1500;
+    act(() => raf.splice(0).forEach((cb) => cb(0)));
+    expect(top).toBe(100);
+    if (desc) Object.defineProperty(Element.prototype, "scrollTop", desc);
+    jest.useRealTimers();
+    jest.restoreAllMocks();
+  });
 });

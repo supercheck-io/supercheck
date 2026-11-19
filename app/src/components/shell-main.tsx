@@ -73,16 +73,22 @@ export function ShellMain({ className, children }: { className?: string; childre
     let frames = 0;
     let frame = 0;
     const stop = () => cancelAnimationFrame(frame);
+    // Our own scrollTop writes also fire scroll events; any scroll to a different offset is the user's
+    // (a scrollbar drag, which has no wheel/touch/key event), so it ends the restoration.
+    let lastSet = -1;
+    const onScroll = () => {
+      if (main.scrollTop !== lastSet) stop();
+    };
     const apply = () => {
       main.scrollTop = target;
+      lastSet = main.scrollTop;
       if (target > 0 && main.scrollTop < target && frames++ < 300) frame = requestAnimationFrame(apply);
     };
+    main.addEventListener("scroll", onScroll, { passive: true });
     apply();
-    const userEvents = ["wheel", "touchstart", "keydown"] as const;
-    userEvents.forEach((name) => main.addEventListener(name, stop, { once: true, passive: true }));
     return () => {
       stop();
-      userEvents.forEach((name) => main.removeEventListener(name, stop));
+      main.removeEventListener("scroll", onScroll);
     };
   }, [pathname]);
 

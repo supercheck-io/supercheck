@@ -122,30 +122,41 @@ export async function captureScreenshot(page: Page, testInfo: TestInfo, name: st
 
   // On desktop the app shell is one window tall and <main> scrolls, so let a scrolling page (not a fit-to-window
   // one) grow to its content; the full-page capture below then sees all of it.
-  await page.evaluate(() => {
+  const originalHeight = await page.evaluate(() => {
     const shell = document.querySelector('main')?.parentElement;
-    if (shell && !document.querySelector('[data-fit-viewport]')) {
-      shell.style.height = 'auto';
-    }
+    if (!shell || document.querySelector('[data-fit-viewport]')) return null;
+    const original = shell.style.height;
+    shell.style.height = 'auto';
+    return original;
   });
 
-  const { width, height } = await page.evaluate(() => ({
-    width: document.documentElement.clientWidth,
-    height: document.documentElement.scrollHeight,
-  }));
-  const parts = Math.max(1, Math.ceil(height / MAX_SCREENSHOT_HEIGHT));
-  for (let part = 0; part < parts; part++) {
-    const y = part * MAX_SCREENSHOT_HEIGHT;
-    await page.screenshot({
-      path: testInfo.outputPath(`${part === 0 ? name : `${name}-${part + 1}`}.png`),
-      animations: 'disabled',
-      caret: 'hide',
-      fullPage: true,
-      scale: 'css',
-      clip: { x: 0, y, width, height: Math.min(MAX_SCREENSHOT_HEIGHT, height - y) },
-      mask: [page.locator(VOLATILE_IMAGES)],
-      maskColor: '#9ca3af',
-    });
+  try {
+    const { width, height } = await page.evaluate(() => ({
+      width: document.documentElement.clientWidth,
+      height: document.documentElement.scrollHeight,
+    }));
+    const parts = Math.max(1, Math.ceil(height / MAX_SCREENSHOT_HEIGHT));
+    for (let part = 0; part < parts; part++) {
+      const y = part * MAX_SCREENSHOT_HEIGHT;
+      await page.screenshot({
+        path: testInfo.outputPath(`${part === 0 ? name : `${name}-${part + 1}`}.png`),
+        animations: 'disabled',
+        caret: 'hide',
+        fullPage: true,
+        scale: 'css',
+        clip: { x: 0, y, width, height: Math.min(MAX_SCREENSHOT_HEIGHT, height - y) },
+        mask: [page.locator(VOLATILE_IMAGES)],
+        maskColor: '#9ca3af',
+      });
+    }
+  } finally {
+    // Next keeps the shell across navigations, so the next capture must not inherit the override.
+    if (originalHeight !== null) {
+      await page.evaluate((h) => {
+        const shell = document.querySelector('main')?.parentElement;
+        if (shell) shell.style.height = h;
+      }, originalHeight).catch(() => {});
+    }
   }
 }
 

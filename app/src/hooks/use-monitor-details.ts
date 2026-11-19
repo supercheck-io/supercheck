@@ -234,7 +234,7 @@ export function useMonitorResults(
     pagination: (hydrated && query.data?.pagination) || null,
     isLoading: hydrated && isActuallyLoading,
     isRestoring,  // Expose for component-level hydration safety
-    isFetching: query.isFetching,
+    isFetching: hydrated && query.isFetching,
     // Rows of the previous page or page size, shown while the new one loads.
     isPlaceholderData: query.isPlaceholderData,
     error: query.error as Error | null,
