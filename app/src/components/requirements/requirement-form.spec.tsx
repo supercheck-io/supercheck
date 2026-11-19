@@ -45,8 +45,9 @@ it("does not loop re-rendering while the linked tests are still loading", async 
   expect(loopErrors).toHaveLength(0);
 });
 
-it("refuses to save when the linked tests failed to load, instead of replacing the links", async () => {
+it("keeps Save off when the linked tests failed to load, and offers a retry", async () => {
   (getLinkedTests as jest.Mock).mockRejectedValueOnce(new Error("Failed to load linked tests"));
+  (getLinkedTests as jest.Mock).mockResolvedValueOnce([]);
   const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
   render(
     <QueryClientProvider client={client}>
@@ -57,8 +58,9 @@ it("refuses to save when the linked tests failed to load, instead of replacing t
     </QueryClientProvider>,
   );
   await waitFor(() => expect(client.getQueryState(["requirement-linked-tests", "req-1"])?.status).toBe("error"));
-  fireEvent.click(screen.getByRole("button", { name: /save changes/i }));
-  await waitFor(() => expect(toastError).toHaveBeenCalledWith("Linked tests haven't loaded yet", expect.anything()));
+  expect(screen.getByRole("button", { name: /save changes/i })).toBeDisabled();
+  fireEvent.click(screen.getByRole("button", { name: /retry/i }));
+  await waitFor(() => expect(screen.getByRole("button", { name: /save changes/i })).toBeEnabled());
   expect(updateRequirement).not.toHaveBeenCalled();
   expect(syncRequirementTests).not.toHaveBeenCalled();
   client.clear();
@@ -87,15 +89,46 @@ it("saves a requirement with no linked tests without touching links", async () =
   client.clear();
 });
 
-it("refuses to save on a cached link list until this visit's refetch has landed", async () => {
-  toastError.mockClear();
-  (updateRequirement as jest.Mock).mockClear();
+it("keeps Save off on a cached link list until this visit's refetch has landed, then enables it", async () => {
+  let resolveLinks: (value: unknown[]) => void = () => {};
+  (getLinkedTests as jest.Mock).mockImplementationOnce(() => new Promise((resolve) => (resolveLinks = resolve)));
   const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity } } });
-  // Cached from an earlier visit; the refetch on mount never resolves (default mock).
+  // Cached from an earlier visit: it could be missing links, so it never counts as loaded.
   client.setQueryData(["requirement-linked-tests", "req-1"], []);
   renderEdit(client);
   await screen.findByDisplayValue("Login works");
-  fireEvent.click(screen.getByRole("button", { name: /save changes/i }));
+  expect(screen.getByRole("button", { name: /loading linked tests/i })).toBeDisabled();
+  resolveLinks([]);
+  await waitFor(() => expect(screen.getByRole("button", { name: /save changes/i })).toBeEnabled());
+  client.clear();
+});
+
+it("saves with the existing links kept once a slow fetch lands (no link is removed)", async () => {
+  let resolveLinks: (value: unknown[]) => void = () => {};
+  (getLinkedTests as jest.Mock).mockImplementationOnce(() => new Promise((resolve) => (resolveLinks = resolve)));
+  (updateRequirement as jest.Mock).mockClear();
+  (syncRequirementTests as jest.Mock).mockClear();
+  (updateRequirement as jest.Mock).mockResolvedValueOnce({ success: true });
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
+  renderEdit(client);
+  await screen.findByDisplayValue("Login works");
+  expect(screen.getByRole("button", { name: /loading linked tests/i })).toBeDisabled();
+  resolveLinks([{ id: "t1", title: "T1", name: "T1", type: "browser", description: null, tags: [] }]);
+  const save = await screen.findByRole("button", { name: /save changes/i });
+  await waitFor(() => expect(save).toBeEnabled());
+  fireEvent.click(save);
+  await waitFor(() => expect(updateRequirement).toHaveBeenCalled());
+  expect(syncRequirementTests).not.toHaveBeenCalled();
+  client.clear();
+});
+
+it("still refuses a submit that bypasses the disabled button before this visit's links have loaded", async () => {
+  toastError.mockClear();
+  (updateRequirement as jest.Mock).mockClear();
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
+  const { container } = renderEdit(client);
+  await screen.findByDisplayValue("Login works");
+  fireEvent.submit(container.querySelector("form")!);
   await waitFor(() => expect(toastError).toHaveBeenCalledWith("Linked tests haven't loaded yet", expect.anything()));
   expect(updateRequirement).not.toHaveBeenCalled();
   client.clear();
