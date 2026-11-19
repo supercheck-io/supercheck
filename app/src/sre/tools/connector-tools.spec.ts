@@ -135,7 +135,7 @@ describe("MCP connectors in the AI tool layer", () => {
   });
 
   it("returns valid connector ids for an unknown id and never marks a connector failed", async () => {
-    const tools = createSreConnectorTools({ ...scope, serviceId });
+    const tools = createSreConnectorTools({ ...scope, serviceId, investigationRunId: "run-1" });
     const call = () =>
       tools.searchLiveConnectorEvidence.execute!(
         { ...search, connectorId: "018f0000-0000-7000-8000-0000000000ff" },
@@ -152,8 +152,16 @@ describe("MCP connectors in the AI tool layer", () => {
     const first = await call();
     const second = await call();
     expect(values).toHaveBeenCalledWith(
-      expect.objectContaining({ connectorId: null, status: "error", toolName: "agent.connector.search.unknown_connector" }),
+      expect.objectContaining({ connectorId: null, investigationRunId: "run-1", status: "error", toolName: "agent.connector.search.unknown_connector" }),
     );
+    // Chat has no run: the rejection still returns the valid ids, but writes no ownerless row.
+    values.mockClear();
+    const chat = await createSreConnectorTools({ ...scope, serviceId }).searchLiveConnectorEvidence.execute!(
+      { ...search, connectorId: "018f0000-0000-7000-8000-0000000000ff" },
+      { toolCallId: "unknown-chat", messages: [] },
+    );
+    expect(chat).toMatchObject({ error: true, retryable: true });
+    expect(values).not.toHaveBeenCalled();
     for (const result of [first, second]) {
       expect(result).toMatchObject({
         error: true,

@@ -617,9 +617,9 @@ export async function searchIncidentLiveConnectorEvidence(
       .slice(0, 25)
       .map(({ row }) => `${row.id} (${row.name.replace(/\s+/g, " ").slice(0, 80)}, ${row.type})`)
       .join("; ");
-    // No FK-valid connector id exists here, so the row records the attempt with a null connector.
-    await db.insert(sreInvestigationToolCalls).values({
-      investigationRunId: scope.investigationRunId ?? null,
+    // No FK-valid connector id exists here, so the row records the attempt with a null connector; chat has no run to own it.
+    if (scope.investigationRunId) await db.insert(sreInvestigationToolCalls).values({
+      investigationRunId: scope.investigationRunId,
       connectorId: null,
       connectorType: "unknown",
       toolName: "agent.connector.search.unknown_connector",
