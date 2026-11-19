@@ -107,10 +107,13 @@ describe("notification provider crypto", () => {
         ).toThrow(retargetError);
       });
 
-      it("keeps stored headers when only the path on the same host changes", () => {
+      it("refuses another path on the same host, which may belong to someone else, but keeps an equivalent URL", () => {
+        expect(() =>
+          mergeNotificationProviderConfig("webhook", existing, { name: "W", url: "https://api.incident.io/v2/alert_events/http/def" })
+        ).toThrow(retargetError);
         const merged = mergeNotificationProviderConfig("webhook", existing, {
           name: "W",
-          url: "https://api.incident.io/v2/alert_events/http/def",
+          url: "HTTPS://API.INCIDENT.IO:443/v2/alert_events/http/abc",
         });
         expect(merged.headers).toEqual(existing.headers);
       });

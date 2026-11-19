@@ -71,22 +71,22 @@ export function mergeNotificationProviderConfig(
   }
 
   if (type === "webhook") {
-    // Stored credentials are bound to the host they were saved for. Retargeting the channel (another origin or
-    // preset) must not carry the old headers to it, and a changed preset must not fall back to the old URL.
+    // Stored credentials are bound to the exact URL they were saved for: another path on a shared host (Zapier, Make)
+    // can belong to someone else. A changed preset must not fall back to the old URL either.
     const presetChanged =
       "preset" in incomingConfig && (incomingConfig.preset || "custom") !== (existingConfig.preset || "custom");
     // A sent url that is not a string counts as a change: validation rejects it later, the merge must not trust it.
-    const originChanged =
+    const urlChanged =
       "url" in incomingConfig &&
-      (typeof incomingConfig.url !== "string" || urlOrigin(incomingConfig.url) !== urlOrigin(existingConfig.url));
+      (typeof incomingConfig.url !== "string" || normalizedUrl(incomingConfig.url) !== normalizedUrl(existingConfig.url));
     if (presetChanged && !("url" in incomingConfig)) delete merged.url;
     const hasStoredHeaders =
       typeof existingConfig.headers === "object" &&
       existingConfig.headers !== null &&
       Object.keys(existingConfig.headers).length > 0;
-    if ((presetChanged || originChanged) && !("headers" in incomingConfig) && hasStoredHeaders) {
+    if ((presetChanged || urlChanged) && !("headers" in incomingConfig) && hasStoredHeaders) {
       throw new Error(
-        "Enter the webhook headers again, or {} for none: saved headers are not sent to a new host or preset."
+        "Enter the webhook headers again, or {} for none: saved headers are not sent to a new URL or preset."
       );
     }
   }
@@ -94,9 +94,9 @@ export function mergeNotificationProviderConfig(
   return merged;
 }
 
-function urlOrigin(url: unknown): string | undefined {
+function normalizedUrl(url: unknown): string | undefined {
   try {
-    return new URL(String(url)).origin;
+    return new URL(String(url)).href;
   } catch {
     return undefined;
   }

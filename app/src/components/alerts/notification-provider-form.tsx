@@ -579,7 +579,7 @@ export function NotificationProviderForm({
       if (parsedHeaders) {
         nextConfig.headers = parsedHeaders;
       } else if (
-        // An explicit {} clears stored headers (needed to move a channel to another host that takes none).
+        // An explicit {} clears stored headers (needed to move a channel to a URL that takes none).
         headersText.trim() ||
         (initialData?.type === "webhook" &&
           (nextConfig.preset || "custom") !== ((initialData.config as Record<string, unknown>).preset || "custom"))
