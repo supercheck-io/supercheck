@@ -40,3 +40,15 @@ it("disables a provider whose stored config no longer decrypts", async () => {
   expect(mockSet.mock.calls[0][0]).not.toHaveProperty("config");
   mockDecrypt.mockImplementation((config: unknown) => config);
 });
+
+it("returns 400 with the merge's message when stored headers would follow the channel to a new host", async () => {
+  const { mergeNotificationProviderConfig } = jest.requireMock("@/lib/notification-providers/crypto");
+  mergeNotificationProviderConfig.mockImplementationOnce(() => { throw new Error("Enter the webhook headers again, or {} for none"); });
+  mockUpdate.mockClear();
+  const config = { name: "Hook", url: "https://a.example.com/x", headers: { Authorization: "Bearer s" } };
+  mockSelect.mockReturnValue({ from: jest.fn().mockReturnThis(), where: jest.fn().mockResolvedValue([{ id, name: "Hook", type: "webhook", createdByUserId: id, config }]) });
+  const response = await PUT(new NextRequest(`https://example.com/api/notification-providers/${id}`, { method: "PUT", body: JSON.stringify({ name: "Hook", type: "webhook", config: { name: "Hook", url: "https://b.example.com/y" } }) }), { params: Promise.resolve({ id }) });
+  expect(response.status).toBe(400);
+  expect((await response.json()).error).toMatch(/Enter the webhook headers again/);
+  expect(mockUpdate).not.toHaveBeenCalled();
+});

@@ -1,4 +1,4 @@
-import { contrastRatio, normalizeHexColor, resolveBranding } from "./status-page-branding";
+import { contrastRatio, normalizeHexColor, readableTextOn, resolveBranding } from "./status-page-branding";
 
 describe("resolveBranding", () => {
   it("keeps the theme for stored defaults and nulls", () => {
@@ -56,5 +56,16 @@ describe("border colour", () => {
     const page = resolveBranding({ cssBodyBackgroundColor: "#eeeeee" }).page!;
     expect(page.border).toMatch(/^#[0-9a-f]{6}$/);
     expect(page.lightFont).toMatch(/^#[0-9a-f]{6}$/);
+  });
+});
+
+describe("readableTextOn", () => {
+  it.each(["#2ecc71", "#f1c40f", "#e67e22", "#3498db", "#e74c3c", "#9ca3af", "#2ec", "#777777", "#7c7c7c", "#767676"])("keeps banner text at 4.5:1 or better on %s", (bg) => {
+    expect(contrastRatio(readableTextOn(bg), normalizeHexColor(bg)!)).toBeGreaterThanOrEqual(4.5);
+  });
+
+  it("uses white on a dark custom colour and near-black for junk", () => {
+    expect(readableTextOn("#14532d")).toBe("#ffffff");
+    expect(readableTextOn("green")).toBe("#111827");
   });
 });

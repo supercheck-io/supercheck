@@ -14,6 +14,13 @@ export type MaintenanceWindowItem = {
   scope: "project" | "services" | "monitors";
   recurrence: "once" | "daily" | "weekly" | "monthly";
   timezone: string;
+  /** The schedule as stored, for the edit form. */
+  localStartTime: string;
+  durationMinutes: number;
+  startsOn: string;
+  endsOn: string | null;
+  weekdays: number[] | null;
+  monthDay: number | null;
   occurrenceStartsAt: string | null;
   occurrenceEndsAt: string | null;
   targets: Array<{ type: "service" | "monitor"; id: string }>;

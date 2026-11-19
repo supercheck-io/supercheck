@@ -114,3 +114,27 @@ it("an open incident still outranks stale components", () => {
     incidents={[incident({ impact: "critical", status: "investigating" })]} idOrSubdomain="page" />);
   expect(screen.getByText(t.majorOutage)).toBeInTheDocument();
 });
+
+describe("uptime explanation and banner", () => {
+  const today = new Date().toISOString().slice(0, 10);
+  const metrics = [{ date: today, totalChecks: 100, successfulChecks: 95 }];
+
+  it("shows a legend, the days the uptime covers and when the page was read", () => {
+    render(<PublicStatusPage statusPage={page} components={[{ ...component, dailyMetrics: metrics }]} incidents={[]} idOrSubdomain="page" />);
+    const legend = screen.getByTestId("uptime-legend");
+    for (const label of [t.operational, t.legendSomeDowntime, t.legendDown, t.legendNoData]) expect(legend).toHaveTextContent(label);
+    expect(screen.getByText(/1 of 90 days with data/)).toBeInTheDocument();
+    expect(screen.getByTestId("status-updated-at")).toHaveTextContent(/^Updated \d{2}:\d{2}/);
+  });
+
+  it("uses dark text on the default green banner so it meets 4.5:1", () => {
+    render(<PublicStatusPage statusPage={page} components={[component]} incidents={[]} idOrSubdomain="page" />);
+    expect(screen.getByText(t.allSystemsOperational).closest("[style]")).toHaveStyle({ color: "#111827" });
+  });
+
+  it("says no incidents reported today without a capitalised Today", () => {
+    render(<PublicStatusPage statusPage={page} components={[component]} incidents={[]} idOrSubdomain="page" />);
+    expect(screen.getByText(t.noIncidentsReportedToday)).toBeInTheDocument();
+    expect(screen.queryByText(/reported Today/)).not.toBeInTheDocument();
+  });
+});

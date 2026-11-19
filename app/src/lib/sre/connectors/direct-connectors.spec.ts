@@ -3,7 +3,7 @@ jest.mock("./pinned-fetch", () => ({
     global.fetch(...args),
 }));
 
-import { createDirectConnector } from "./direct-connectors";
+import { createDirectConnector, prometheusSeriesSummary } from "./direct-connectors";
 import { ConnectorQueryRejectedError } from "./providers/provider-query-guards";
 import {
   type ConnectorDefinition,
@@ -137,7 +137,7 @@ describe("direct connectors", () => {
           result: [
             {
               metric: { __name__: "up", job: "checkout" },
-              values: [[1782036000, "1"]],
+              values: [[1782036000, "1"], [1782036060, "3"], [1782036120, "2"]],
             },
           ],
         },
@@ -157,11 +157,46 @@ describe("direct connectors", () => {
       source: "prometheus",
       title: "Prometheus metric: up",
       evidenceType: "metric",
+      summary: expect.stringMatching(/^3 samples returned for up; last=2 min=1 max=3 avg=2 \[labels: job=checkout\]$/),
     });
     expect(global.fetch).toHaveBeenCalledWith(
       expect.stringContaining("/api/v1/query_range"),
       expect.objectContaining({ method: "GET", cache: "no-store" }),
     );
+  });
+
+  it("keeps availability-sized precision and survives malformed Prometheus series", () => {
+    expect(prometheusSeriesSummary("up", {}, [[1, "0.99996"]])).toContain("last=0.99996");
+    const odd = (values: unknown) => prometheusSeriesSummary("up", undefined, values as Array<[number, string]>);
+    expect(odd("not-an-array")).toBe("0 samples returned for up");
+    expect(odd([null, [2, "5"]])).toBe("2 samples returned for up (1 non-finite); last=5 min=5 max=5 avg=5");
+  });
+
+  it("keeps small values, reports non-finite samples and handles empty series in Prometheus summaries", async () => {
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        data: {
+          result: [
+            { metric: { __name__: "ratio" }, values: [[1, "0.0004"], [2, "+Inf"], [3, "NaN"]] },
+            { metric: { __name__: "empty" }, values: [] },
+            { metric: { dsn: "postgres://svc:supersecretpassword1234567890@db.internal:5432/app" }, values: [[1, "1"]] },
+          ],
+        },
+      }),
+    }) as unknown as typeof fetch;
+    const connector = createDirectConnector({
+      ...baseDefinition,
+      type: "prometheus",
+      endpointUrl: "https://prometheus.example.com",
+      surfaces: ["metrics"],
+      evidenceTypes: ["metric"],
+    });
+    const evidence = await connector.search({ ...params, query: "ratio" });
+    expect(evidence[0]?.summary).toBe("3 samples returned for ratio (2 non-finite); last=undefined (non-finite) min=0.0004 max=0.0004 avg=0.0004");
+    expect(evidence[1]?.summary).toBe("0 samples returned for ratio");
+    expect(evidence[2]?.summary).not.toContain("supersecret");
   });
 
   it("normalizes Grafana dashboard search results into document evidence", async () => {

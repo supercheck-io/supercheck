@@ -279,7 +279,7 @@ The webhook channel includes presets that fill the method, headers, and JSON bod
 | incident.io alert source | Sends `status: firing` on failure and `status: resolved` on recovery with `deduplication_key` | [incident.io alert sources](https://docs.incident.io/alerts/alert-sources) |
 
 <Callout type="warn">
-Preset payloads include placeholders such as `REPLACE_WITH_PAGERDUTY_ROUTING_KEY` and `REPLACE_WITH_JSM_INTEGRATION_KEY`. Replace them before testing, and verify the endpoint URL in the vendor documentation because some providers generate tenant-specific webhook URLs.
+Preset payloads include placeholders such as `REPLACE_WITH_PAGERDUTY_ROUTING_KEY` and `REPLACE_WITH_JSM_INTEGRATION_KEY`. Replace them before saving: a channel that still holds one is rejected. Verify the endpoint URL in the vendor documentation because some providers generate tenant-specific webhook URLs.
 </Callout>
 
 <Accordions>
