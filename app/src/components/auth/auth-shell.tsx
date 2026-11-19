@@ -158,7 +158,7 @@ export function InviteBanner({
 }) {
   const rows: Array<{ Icon: LucideIcon; label: string; value: React.ReactNode }> = [
     { Icon: Building2, label: "Organization", value: organizationName },
-    { Icon: Shield, label: "Role", value: <Badge variant="secondary">{formatInviteRole(role ?? "project_viewer")}</Badge> },
+    { Icon: Shield, label: "Role", value: <Badge variant="secondary">{formatInviteRole(role)}</Badge> },
     ...(email ? [{ Icon: Mail, label: "Email", value: email }] : []),
     ...(invitedBy ? [{ Icon: User, label: "Invited by", value: invitedBy }] : []),
   ];

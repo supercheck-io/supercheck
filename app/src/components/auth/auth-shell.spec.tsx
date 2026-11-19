@@ -20,11 +20,11 @@ describe("auth shell", () => {
     expect(onToggle).toHaveBeenCalled();
   });
 
-  it("formats the invited role and defaults to viewer", () => {
+  it("formats the invited role and defaults to member", () => {
     const { rerender } = render(<InviteBanner organizationName="Acme" role="project_editor" email="a@example.test" />);
     expect(screen.getByText("Project Editor")).toBeInTheDocument();
     expect(screen.getByText("a@example.test")).toBeInTheDocument();
     rerender(<InviteBanner organizationName="Acme" />);
-    expect(screen.getByText("Project Viewer")).toBeInTheDocument();
+    expect(screen.getByText("Member")).toBeInTheDocument();
   });
 });

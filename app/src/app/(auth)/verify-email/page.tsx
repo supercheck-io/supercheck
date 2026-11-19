@@ -7,7 +7,7 @@ import { Loader2, Clock } from "lucide-react";
 import { AuthBackLink, AuthCallout, AuthCard, AuthHeader, AuthLoading } from "@/components/auth/auth-shell";
 import { SocialAuthButtons } from "@/components/auth/social-auth-buttons";
 import { sendVerificationEmail } from "@/utils/auth-client";
-import { FieldGroup, Field } from "@/components/ui/field";
+import { FieldGroup, Field, FieldSeparator } from "@/components/ui/field";
 import { parseInviteToken } from "@/lib/validations/auth";
 
 // Rate limiting configuration
@@ -183,7 +183,12 @@ function VerifyEmailPageContent() {
           Didn&apos;t receive the email? Check your spam folder or click resend.
         </p>
 
-        {inviteToken && <SocialAuthButtons callbackUrl={`/invite/${inviteToken}`} />}
+        {inviteToken && (
+          <>
+            <FieldSeparator>Or continue with</FieldSeparator>
+            <SocialAuthButtons callbackUrl={`/invite/${inviteToken}`} />
+          </>
+        )}
 
         <AuthBackLink
           href={inviteToken ? `/sign-in?invite=${encodeURIComponent(inviteToken)}` : "/sign-in"}

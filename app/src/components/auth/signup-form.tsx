@@ -11,7 +11,7 @@ import { TurnstileCaptcha, type TurnstileCaptchaRef } from "./turnstile-captcha"
 import { useCaptcha } from "@/hooks/use-captcha";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { FieldGroup, Field, FieldLabel } from "@/components/ui/field";
+import { FieldGroup, Field, FieldLabel, FieldSeparator } from "@/components/ui/field";
 import {
   Form,
   FormControl,
@@ -282,7 +282,10 @@ export function SignupForm({
 
             {/* An invitee whose account uses Google or GitHub has no password to sign in with */}
             {isInviteMode && inviteToken && (
-              <SocialAuthButtons callbackUrl={`/invite/${inviteToken}`} disabled={isLoading} />
+              <>
+                <FieldSeparator>Or continue with</FieldSeparator>
+                <SocialAuthButtons callbackUrl={`/invite/${inviteToken}`} disabled={isLoading} />
+              </>
             )}
           </FieldGroup>
         </form>

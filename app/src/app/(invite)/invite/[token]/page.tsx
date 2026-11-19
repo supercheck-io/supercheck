@@ -155,7 +155,7 @@ export default function InvitePage({
     return (
       <AuthCard>
         <FieldGroup>
-          <AuthHeader status="error" title="Invalid invitation" description={error} logoHref="/" />
+          <AuthHeader status="error" title="Invalid invitation" description={error} />
 
           <Field className="flex flex-col gap-2">
             <Button size="lg" onClick={() => router.push(`/sign-in${inviteQuery}`)} className="w-full">
@@ -183,7 +183,6 @@ export default function InvitePage({
           <AuthHeader
             status="error"
             title="Wrong account"
-            logoHref="/"
             description={
               <>
                 {session?.user?.email ? (
