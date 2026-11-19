@@ -126,17 +126,20 @@ export function AIMonitorAnalyzeButton({
                 size="sm"
                 onClick={handleAnalyze}
                 disabled={disabled || isLoading}
-                className="flex items-center gap-2 shrink-0 bg-gradient-to-r from-purple-500/10 to-pink-500/10 border-purple-500/30 hover:border-purple-500/50 hover:from-purple-500/20 hover:to-pink-500/20"
+                className="flex items-center gap-2 shrink-0"
+                aria-label={isLoading ? "Analyzing" : "AI Analyze"}
+                title="AI Analyze"
             >
                 {isLoading ? (
                     <>
                         <Loader2 className="h-4 w-4 animate-spin" />
-                        Analyzing...
+                        <span className="hidden 2xl:inline">Analyzing...</span>
                     </>
                 ) : (
                     <>
-                        <Sparkles className="h-4 w-4 text-purple-500" />
-                        AI Analyze
+                        <Sparkles className="h-4 w-4 text-ai" />
+                        {/* Icon-only below 2xl (1536px) so the detail header stays on one line. */}
+                        <span className="hidden 2xl:inline">AI Analyze</span>
                     </>
                 )}
             </Button>

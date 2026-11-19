@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { toast } from "sonner";
-import { TestForm } from "./test-form";
+import { compactStamp, TestForm } from "./test-form";
 
 const push = jest.fn();
 const invalidateQueries = jest.fn();
@@ -74,4 +74,15 @@ it("does not report success or leave the form when saving tags fails", async () 
   await waitFor(() => expect(toast.error).toHaveBeenCalled());
   expect(toast.success).not.toHaveBeenCalled();
   expect(push).not.toHaveBeenCalled();
+});
+
+describe("compactStamp", () => {
+  const now = new Date(2026, 10, 19, 12, 0);
+  it("drops the year in the current year so the date fits on one line", () => {
+    expect(compactStamp(new Date(2026, 10, 18, 10, 28), now)).toBe("Nov 18, 10:28 AM");
+  });
+  it("shows the year instead of the time for an older date, and flags a bad value", () => {
+    expect(compactStamp(new Date(2025, 0, 3, 9, 0), now)).toBe("Jan 3, 2025");
+    expect(compactStamp("not a date", now)).toBe("Invalid date");
+  });
 });

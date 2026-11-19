@@ -18,7 +18,9 @@ export default function CreateMonitorLayout({ children }: CreateMonitorLayoutPro
   ];
 
   return (
-    <div>
+    // Only a page that fits the window (data-fit-viewport) stretches to the full height; a list page keeps its
+    // natural height, or the list's fitted page size would count the stretched space as taken.
+    <div className="has-[[data-fit-viewport]]:flex has-[[data-fit-viewport]]:min-h-0 has-[[data-fit-viewport]]:flex-1 has-[[data-fit-viewport]]:flex-col">
       <PageBreadcrumbs items={breadcrumbs} />
       {children}
     </div>

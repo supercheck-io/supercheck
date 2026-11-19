@@ -52,6 +52,8 @@ interface ResponseTimeBarChartProps {
   title?: string;
   /** Replaces the default empty-state copy (a heartbeat has no duration until /start is called). */
   empty?: { description: string; heading: string; hint: string };
+  /** Controls at the right of the card header. */
+  headerActions?: React.ReactNode;
 }
 
 interface TooltipProps {
@@ -117,7 +119,7 @@ const CustomTooltip = ({ active, payload, label }: TooltipProps) => {
   return null;
 };
 
-export function ResponseTimeBarChart({ data, showFirstToken = false, title = "Response Time", empty }: ResponseTimeBarChartProps) {
+export function ResponseTimeBarChart({ data, showFirstToken = false, title = "Response Time", empty, headerActions }: ResponseTimeBarChartProps) {
   const [visiblePoints, setVisiblePoints] = React.useState(0);
 
   // Input validation
@@ -188,7 +190,7 @@ export function ResponseTimeBarChart({ data, showFirstToken = false, title = "Re
 
   if (!validatedData || validatedData.length === 0) {
     return (
-      <Card className="shadow-sm flex flex-col min-h-[335px]">
+      <Card className="shadow-sm flex h-full flex-col min-h-[335px] lg:min-h-[180px]">
         <CardHeader className="pb-4">
           <CardTitle className="text-lg font-semibold">{title}</CardTitle>
           <CardDescription className="text-sm">
@@ -234,7 +236,7 @@ export function ResponseTimeBarChart({ data, showFirstToken = false, title = "Re
   if (allResponseTimes.length === 0) {
     // If no valid response times at all
     return (
-      <Card className="shadow-sm flex flex-col min-h-[335px]">
+      <Card className="shadow-sm flex h-full flex-col min-h-[335px] lg:min-h-[180px]">
         <CardHeader className="pb-4">
           <CardTitle className="text-lg font-semibold">{title}</CardTitle>
           <CardDescription className="text-sm">
@@ -282,16 +284,20 @@ export function ResponseTimeBarChart({ data, showFirstToken = false, title = "Re
   const yAxisDomain = [yAxisMin, maxValue + padding];
 
   return (
-    <Card className="h-full flex flex-col shadow-sm min-h-[335px]">
-      <CardHeader className="pb-3">
-        <CardTitle className="text-lg font-semibold">{title}</CardTitle>
-        <CardDescription className="text-sm">
-          Recent response times in milliseconds ({data.length} data points)
-          {showFirstToken ? ". Solid: total time. Dashed: first token." : ""}
-        </CardDescription>
+    <Card className="h-full flex flex-col shadow-sm min-h-[335px] lg:min-h-[180px]">
+      <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2 pb-3">
+        <div className="min-w-0">
+          <CardTitle className="text-lg font-semibold">{title}</CardTitle>
+          <CardDescription className="text-sm">
+            Recent response times in milliseconds ({data.length} data points)
+            {showFirstToken ? ". Solid: total time. Dashed: first token." : ""}
+          </CardDescription>
+        </div>
+        {headerActions ? <div className="shrink-0">{headerActions}</div> : null}
       </CardHeader>
-      <CardContent className="p-3 pl-0 pr-8 flex-1">
-        <ChartContainer config={chartConfig} className="w-full h-[310px]">
+      <CardContent className="p-3 pl-0 pr-8 flex-1 min-h-0">
+        {/* A fixed height on mobile; on desktop the chart takes the height left in its column. */}
+        <ChartContainer config={chartConfig} className="w-full h-[310px] lg:h-full">
           <ResponsiveContainer width="100%" height="100%">
             <LineChart
               data={processedData}

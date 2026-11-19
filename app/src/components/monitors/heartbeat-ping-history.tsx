@@ -124,7 +124,7 @@ export function HeartbeatPingHistory({
             </div>
           </div>
         ) : (
-          <div className="min-h-0 w-full flex-1 overflow-x-auto lg:overflow-y-auto">
+          <div className="min-h-0 w-full flex-1 overflow-x-auto lg:overflow-y-hidden">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -163,8 +163,9 @@ export function HeartbeatPingHistory({
             </Table>
           </div>
         )}
-        {totalPages > 1 && !error && (
-          <nav className="flex flex-shrink-0 items-center justify-between rounded-b-lg border-t bg-card px-4 py-3" aria-label="Ping history pages">
+        {/* Shown with any rows, so the pager height the fitted page size reserves is never an empty gap. */}
+        {results.length > 0 && !error && (
+          <nav className="flex flex-shrink-0 items-center justify-between rounded-b-lg border-t bg-card px-4 py-3" aria-label="Ping history pages" data-fit-pager="">
             <span className="text-sm text-muted-foreground">
               Page {page} of {totalPages}
             </span>

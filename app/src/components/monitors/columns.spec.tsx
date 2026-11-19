@@ -11,16 +11,26 @@ const statusCell = (original: Partial<Monitor>) => {
   return render(<>{cell({ row: { original: { id: "m-1", ...original }, getValue: () => original.status } })}</>);
 };
 
-it("shows the real status plus a Maintenance pill while a window covers the monitor", () => {
+it("shows the real status plus an icon-only maintenance chip while a window covers the monitor", () => {
   statusCell({ status: "down", inMaintenance: true });
   expect(screen.getByText("Down")).toBeInTheDocument();
-  expect(screen.getByText("Maintenance")).toBeInTheDocument();
+  expect(screen.queryByText("Maintenance")).toBeNull();
+  expect(screen.getByRole("img", { name: "In maintenance: alerts muted" })).toBeInTheDocument();
+});
+
+it("shows a heartbeat schedule in the body font, not the URL monospace", () => {
+  const column = columns.find((c) => "accessorKey" in c && c.accessorKey === "target")!;
+  const cell = column.cell as (props: unknown) => React.ReactNode;
+  const original = { id: "h", type: "heartbeat", frequencyMinutes: 60, config: { heartbeat: { graceMinutes: 10 } } };
+  render(<>{cell({ row: { original, getValue: () => "" } })}</>);
+  const text = screen.getByText("Every 1 h, grace 10 min");
+  expect(text).not.toHaveClass("font-mono");
 });
 
 it("shows only the status outside a window", () => {
   statusCell({ status: "up", inMaintenance: false });
   expect(screen.getByText("Up")).toBeInTheDocument();
-  expect(screen.queryByText("Maintenance")).toBeNull();
+  expect(screen.queryByTestId("monitor-maintenance-chip")).toBeNull();
 });
 
 it("never shows two Maintenance pills", () => {

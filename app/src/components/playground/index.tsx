@@ -15,7 +15,8 @@ import {
 import { CodeEditor } from "./code-editor";
 import { TestForm } from "./test-form";
 import { ValidationError } from "./validation-error";
-import { Loader2Icon, ZapIcon, Text, Code2, X } from "lucide-react";
+import { Bot, Loader2Icon, ZapIcon, Text, Code2, X } from "lucide-react";
+import { typeText } from "@/lib/type-tones";
 import * as z from "zod";
 import {
   Tooltip,
@@ -1463,8 +1464,11 @@ const Playground: React.FC<PlaygroundProps> = ({
                           value="report"
                           className="flex items-center gap-2"
                         >
+                          {/* The runner's mark: k6 for performance, the Agent type icon for agent tests, Playwright otherwise. */}
                           {isPerformanceMode ? (
                             <K6Logo width={20} height={20} />
+                          ) : testCase.type === "agent" ? (
+                            <Bot className={`h-5 w-5 ${typeText("test", "agent")}`} aria-hidden="true" />
                           ) : (
                             <PlaywrightLogo className="h-5 w-5" />
                           )}
@@ -1807,9 +1811,9 @@ const Playground: React.FC<PlaygroundProps> = ({
             >
               <div className="flex h-full flex-col border rounded-tr-lg rounded-br-lg bg-card">
                 <div className="flex items-center justify-between border-b bg-card px-4 py-3 rounded-tr-lg">
-                  <div className="flex items-center">
-                    <Text className="h-4 w-4 mr-2" />
-                    <h3 className="text-sm font-medium mt-1">Test Details</h3>
+                  <div className="flex min-w-0 items-center">
+                    <Text className="h-4 w-4 mr-2 shrink-0" />
+                    <h3 className="mt-1 truncate whitespace-nowrap text-sm font-medium">Test Details</h3>
                   </div>
                   <div className="flex items-center gap-3">
                     {/* AI Fix Button - reserved space to prevent layout shift */}

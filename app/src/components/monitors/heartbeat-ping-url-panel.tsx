@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { InfoPopover } from "@/components/ui/info-popover";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   AlertDialog,
@@ -140,13 +141,25 @@ export function HeartbeatPingUrlPanel({ monitorId, canManage, pending = false }:
 
   return (
     <Card className="shrink-0 shadow-sm" data-testid="heartbeat-ping-url-panel">
-      <CardContent className="grid gap-4 p-4">
+      <CardContent className="grid gap-3 p-4">
         <div className="min-w-0 space-y-2">
           <div className="flex min-h-8 flex-wrap items-center justify-between gap-2">
-            <h2 className="flex items-center gap-2 text-sm font-semibold">
-              <Link2 className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
-              Ping URL
-            </h2>
+            <div className="flex items-center gap-1">
+              <h2 className="flex items-center gap-2 text-sm font-semibold">
+                <Link2 className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+                Ping URL
+              </h2>
+              <InfoPopover
+                label="About the ping URL"
+                title="Ping URL"
+                description="Your job calls this URL each time it finishes. GET, POST and HEAD all work."
+                bullets={[
+                  "Call /start when the job begins to record how long it ran.",
+                  "Call /fail to report a failure straight away.",
+                ]}
+                learnMoreHref="https://supercheck.io/docs/app/heartbeat"
+              />
+            </div>
             {canManage && (
               <div className="flex flex-wrap items-center gap-1">
                 {!pingUrl && (
@@ -168,7 +181,7 @@ export function HeartbeatPingUrlPanel({ monitorId, canManage, pending = false }:
           </div>
           {!pingUrl && <span className="sr-only">Ping URL hidden.</span>}
           <code
-            className="block break-all rounded-md border bg-muted/40 px-3 py-2 font-mono text-xs"
+            className="block break-all rounded-md border bg-muted/40 px-3 py-2 font-mono text-xs lg:truncate"
             aria-hidden={pingUrl ? undefined : true}
             data-testid="heartbeat-ping-url"
             data-revealed={pingUrl ? "true" : "false"}
@@ -209,24 +222,12 @@ export function HeartbeatPingUrlPanel({ monitorId, canManage, pending = false }:
           ))}
         </Tabs>
 
-        <p className="text-xs text-muted-foreground">
-          {pending && (
-            <span role="status" className="mr-2 inline-flex items-center gap-1.5 font-medium text-foreground" data-testid="heartbeat-waiting">
-              <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground" aria-hidden="true" />
-              Waiting for the first ping. The monitor turns Up when it arrives.
-            </span>
-          )}
-          Optional: call <span className="font-mono">/start</span> when the job begins to record how long it ran, or{" "}
-          <span className="font-mono">/fail</span> to report a failure straight away. GET, POST and HEAD all work.{" "}
-          <a
-            href="https://supercheck.io/docs/app/heartbeat"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="underline underline-offset-2 hover:text-foreground"
-          >
-            Heartbeat docs
-          </a>
-        </p>
+        {pending && (
+          <p role="status" className="flex items-center gap-1.5 text-xs font-medium" data-testid="heartbeat-waiting">
+            <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground" aria-hidden="true" />
+            Waiting for the first ping. The monitor turns Up when it arrives.
+          </p>
+        )}
       </CardContent>
 
       <AlertDialog open={confirmRotate} onOpenChange={setConfirmRotate}>

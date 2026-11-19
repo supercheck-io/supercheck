@@ -1,5 +1,5 @@
 import { fireEvent, render, screen } from "@testing-library/react";
-import { McpToolsPanel } from "./mcp-tools-panel";
+import { McpToolsButton, McpToolsPanel } from "./mcp-tools-panel";
 
 const NOW = Date.parse("2026-11-14T12:00:00Z");
 const baseline = (names: string[]) => ({ hash: "h", takenAt: "2026-11-01T00:00:00Z", tools: names.map((name) => ({ name, fingerprint: "f" })) });
@@ -79,5 +79,24 @@ describe("McpToolsPanel", () => {
     fireEvent.click(screen.getByTestId("mcp-change").querySelector("button") as HTMLButtonElement);
     expect(container.querySelector("img")).toBeNull();
     expect(screen.getAllByText(hostile).length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("opens the panel from a button that names the tool count and flags a recent change or a failure", () => {
+    const { rerender } = render(<McpToolsButton baseline={baseline(["a", "b"])} now={NOW} changes={[change("2026-11-14T00:00:01Z", ["b"])]} />);
+    const button = screen.getByTestId("mcp-tools-button");
+    expect(button).toHaveTextContent("2 tools");
+    expect(screen.getByTestId("mcp-tools-changed-indicator")).toHaveTextContent("Changed");
+    expect(screen.queryByTestId("mcp-tools-panel")).not.toBeInTheDocument();
+    fireEvent.click(button);
+    expect(screen.getByTestId("mcp-tools-panel")).toBeInTheDocument();
+    expect(screen.getByTestId("mcp-tool-list")).toHaveTextContent("b");
+    rerender(<McpToolsButton baseline={baseline(["a"])} now={NOW} failure="Login failed" />);
+    expect(screen.getByTestId("mcp-tools-button")).toHaveAccessibleName("1 tool (latest check failed)");
+    expect(screen.queryByTestId("mcp-tools-changed-indicator")).not.toBeInTheDocument();
+  });
+
+  it("says Tools before the first baseline", () => {
+    render(<McpToolsButton pending now={NOW} />);
+    expect(screen.getByTestId("mcp-tools-button")).toHaveTextContent(/^Tools$/);
   });
 });
