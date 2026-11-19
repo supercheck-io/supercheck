@@ -78,8 +78,8 @@ describe("ShellMain", () => {
   it("stops restoring once the user moves the scrollbar, but keeps retrying while content grows", () => {
     jest.useFakeTimers();
     const raf: FrameRequestCallback[] = [];
-    jest.spyOn(window, "requestAnimationFrame").mockImplementation((cb) => (raf.push(cb), raf.length));
-    jest.spyOn(window, "cancelAnimationFrame").mockImplementation((id) => {
+    jest.spyOn(window, "requestAnimationFrame").mockImplementation((cb: FrameRequestCallback) => (raf.push(cb), raf.length));
+    jest.spyOn(window, "cancelAnimationFrame").mockImplementation((id: number) => {
       raf[id - 1] = () => {};
     });
     const { rerender } = render(ui());
