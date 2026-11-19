@@ -19,6 +19,20 @@ describe("InfoHint", () => {
     expect(screen.getByText(/Point a CNAME/)).toBeInTheDocument();
   });
 
+  it("shows the title alone in the panel header, with no second info icon", () => {
+    render(
+      <InfoHint label="Internal name details" title="Internal name">
+        <InfoHintText>Visitors see the headline instead.</InfoHintText>
+      </InfoHint>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Internal name details" }));
+
+    const panel = screen.getByRole("dialog", { name: "Internal name details" });
+    expect(panel).toHaveTextContent("Internal name");
+    expect(panel.querySelector("svg")).toBeNull();
+  });
+
   it("does not submit the surrounding form", () => {
     const onSubmit = jest.fn((event: React.FormEvent) => {
       event.preventDefault();

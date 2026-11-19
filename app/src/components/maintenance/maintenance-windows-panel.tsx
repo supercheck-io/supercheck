@@ -24,13 +24,22 @@ import { MONITORS_QUERY_KEY } from "@/hooks/use-monitors";
 import { MAINTENANCE_QUERY_KEY, useMaintenanceWindows, windowAction, type MaintenanceWindowItem } from "@/hooks/use-maintenance-windows";
 import { useProjectContext } from "@/hooks/use-project-context";
 import { checkRolePermissionsClient } from "@/lib/rbac/permissions-client";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { MaintenanceWindowDialog } from "./maintenance-window-dialog";
+import { formatDuration, formatWindowRange } from "./format";
 
 const REPEAT_LABEL = { once: "One-off", daily: "Daily", weekly: "Weekly", monthly: "Monthly" } as const;
 const SCOPE_LABEL = (w: MaintenanceWindowItem) =>
   w.scope === "project" ? "Whole project" : `${w.targets.length} ${w.scope === "services" ? "service" : "monitor"}${w.targets.length === 1 ? "" : "s"}`;
-const when = (value: string | null) => (value ? new Date(value).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }) : "-");
+const windowRange = (w: MaintenanceWindowItem) =>
+  w.occurrenceStartsAt && w.occurrenceEndsAt ? formatWindowRange(new Date(w.occurrenceStartsAt), new Date(w.occurrenceEndsAt), w.timezone) : "-";
+// From the occurrence itself, so an extended window shows its real length.
+const windowDuration = (w: MaintenanceWindowItem) =>
+  formatDuration(w.occurrenceStartsAt && w.occurrenceEndsAt ? (Date.parse(w.occurrenceEndsAt) - Date.parse(w.occurrenceStartsAt)) / 60_000 : w.durationMinutes);
+// The zone is written under each window, so its column only feeds the search.
+const HIDDEN_COLUMNS = { timezone: false };
 
+const HEADER_DESCRIPTION = "Planned windows that mute alerts and leave checks out of uptime";
 const EXPLAINER = "During a window, monitors keep running but send no alerts, open no incidents and are left out of uptime.";
 const STATE_BADGE: Record<MaintenanceWindowItem["state"], { label: string; tone: TableBadgeTone }> = {
   active: { label: "In progress", tone: "purple" },
@@ -44,13 +53,22 @@ const byState = (rows: MaintenanceWindowItem[]) => [...rows].sort((a, b) => STAT
 const STATUS_OPTIONS = Object.entries(STATE_BADGE).map(([value, { label }]) => ({ value, label }));
 
 type WindowRunner = (window: MaintenanceWindowItem, action: "end" | "extend" | "cancel" | "delete", body?: unknown) => Promise<void>;
-type TableMeta = { canWrite: boolean; canDelete: boolean; busy: string | null; run: WindowRunner; confirm: (window: MaintenanceWindowItem, action: "cancel" | "delete") => void };
+type TableMeta = {
+  canWrite: boolean;
+  canDelete: boolean;
+  busy: string | null;
+  run: WindowRunner;
+  confirm: (window: MaintenanceWindowItem, action: "cancel" | "delete") => void;
+  edit: (window: MaintenanceWindowItem) => void;
+};
 
 function RowActions({ window, meta }: { window: MaintenanceWindowItem; meta: TableMeta }) {
   const canCancel = meta.canWrite && (window.state === "scheduled" || (window.state === "active" && window.recurrence !== "once"));
   const canEnd = meta.canWrite && window.state === "active";
   const canRemove = meta.canDelete && window.state !== "active";
-  if (!canEnd && !canCancel && !canRemove) return null;
+  // Past windows cannot be edited (the API answers 409).
+  const canEdit = meta.canWrite && (window.state === "scheduled" || window.state === "active");
+  if (!canEdit && !canEnd && !canCancel && !canRemove) return null;
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -59,6 +77,7 @@ function RowActions({ window, meta }: { window: MaintenanceWindowItem; meta: Tab
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-[160px]">
+        {canEdit && <DropdownMenuItem onClick={() => meta.edit(window)}>Edit</DropdownMenuItem>}
         {canEnd && <DropdownMenuItem onClick={() => void meta.run(window, "extend", { byMinutes: 30 })}>Extend 30 min</DropdownMenuItem>}
         {canEnd && <DropdownMenuItem onClick={() => void meta.run(window, "end")}>End now</DropdownMenuItem>}
         {canCancel && <DropdownMenuItem onClick={() => meta.confirm(window, "cancel")}>Cancel</DropdownMenuItem>}
@@ -74,9 +93,11 @@ const columns: ColumnDef<MaintenanceWindowItem>[] = [
     accessorKey: "title",
     header: "Title",
     cell: ({ row }) => (
-      <div className="flex min-w-0 flex-wrap items-center gap-2" data-testid="maintenance-row">
-        <span className="truncate font-medium">{row.original.title}</span>
-        {row.original.statusPageIncidentIds.length > 0 && <TableBadge tone="info" compact>On status page</TableBadge>}
+      <div className="min-w-0" data-testid="maintenance-row">
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          <span className="line-clamp-2 max-w-[24rem] whitespace-normal break-words font-medium" title={row.original.title}>{row.original.title}</span>
+          {row.original.statusPageIncidentIds.length > 0 && <TableBadge tone="info" compact>On status page</TableBadge>}
+        </div>
       </div>
     ),
   },
@@ -92,14 +113,15 @@ const columns: ColumnDef<MaintenanceWindowItem>[] = [
     accessorFn: (w) => w.occurrenceStartsAt ?? "",
     header: "Window",
     cell: ({ row }) => (
-      <span className="whitespace-nowrap text-sm tabular-nums">
-        {when(row.original.occurrenceStartsAt)} to {when(row.original.occurrenceEndsAt)}
-      </span>
+      <div className="text-sm tabular-nums">
+        <div className="sm:whitespace-nowrap">{windowRange(row.original)}</div>
+        <div className="text-xs text-muted-foreground">{windowDuration(row.original)}, {row.original.timezone}</div>
+      </div>
     ),
   },
   { id: "repeats", accessorFn: (w) => REPEAT_LABEL[w.recurrence], header: "Repeats" },
   { id: "scope", accessorFn: SCOPE_LABEL, header: "Scope" },
-  { accessorKey: "timezone", header: "Timezone" },
+  { id: "timezone", accessorKey: "timezone", header: "Timezone" },
   {
     id: "actions",
     header: () => <span className="sr-only">Actions</span>,
@@ -123,7 +145,9 @@ export function MaintenanceWindowsPanel({ tabs }: { tabs?: ReactNode } = {}) {
   const canWrite = Boolean(role && checkRolePermissionsClient(role, { monitor: ["update"] }));
   const canDelete = Boolean(role && checkRolePermissionsClient(role, { monitor: ["delete"] }));
   const windows = useMaintenanceWindows();
+  const isMobile = useIsMobile();
   const [createOpen, setCreateOpen] = useState(false);
+  const [editing, setEditing] = useState<MaintenanceWindowItem | null>(null);
   const [confirm, setConfirm] = useState<{ window: MaintenanceWindowItem; action: "cancel" | "delete" } | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   // ?new=1 (Quick Create, Cmd+K) opens the editor.
@@ -155,6 +179,8 @@ export function MaintenanceWindowsPanel({ tabs }: { tabs?: ReactNode } = {}) {
 
   const isEmpty = Boolean(windows.data && windows.data.length === 0);
   const sortedWindows = useMemo(() => byState(windows.data ?? []), [windows.data]);
+  const tableMeta: TableMeta = { canWrite, canDelete, busy, run, confirm: (window, action) => setConfirm({ window, action }), edit: setEditing };
+
   const scheduleButton = canWrite ? (
     <Button type="button" onClick={() => setEditorOpen(true)}>
       <Plus className="mr-2 h-4 w-4" />
@@ -168,7 +194,7 @@ export function MaintenanceWindowsPanel({ tabs }: { tabs?: ReactNode } = {}) {
         title="Monitors"
         icon={NAV.monitors.icon}
         tone={NAV.monitors.tone}
-        description={isEmpty ? undefined : EXPLAINER}
+        description={isEmpty ? undefined : HEADER_DESCRIPTION}
         actions={
           <>
             {tabs}
@@ -192,20 +218,35 @@ export function MaintenanceWindowsPanel({ tabs }: { tabs?: ReactNode } = {}) {
           action={scheduleButton ?? undefined}
         />
       )}
-      {windows.data && windows.data.length > 0 && (
+      {windows.data && windows.data.length > 0 && isMobile && (
+        // The shared table is 900px wide; at phone width each window is a stacked row instead.
+        <ul className="divide-y rounded-md border" aria-label="Maintenance windows">
+          {sortedWindows.map((window) => (
+            <li key={window.id} className="flex items-start gap-2 p-3" data-testid="maintenance-row">
+              <div className="min-w-0 flex-1 space-y-1">
+                <p className="break-words font-medium">{window.title}</p>
+                <div className="flex flex-wrap gap-1.5">
+                  <TableBadge tone={STATE_BADGE[window.state].tone} compact>{STATE_BADGE[window.state].label}</TableBadge>
+                  {window.statusPageIncidentIds.length > 0 && <TableBadge tone="info" compact>On status page</TableBadge>}
+                </div>
+                <p className="text-sm tabular-nums">{windowRange(window)} ({windowDuration(window)})</p>
+                <p className="text-xs text-muted-foreground">{REPEAT_LABEL[window.recurrence]}, {SCOPE_LABEL(window).toLowerCase()}, {window.timezone}</p>
+              </div>
+              <RowActions window={window} meta={tableMeta} />
+            </li>
+          ))}
+        </ul>
+      )}
+      {windows.data && windows.data.length > 0 && !isMobile && (
         <DataTable
           columns={columns}
           data={sortedWindows}
           entityLabel="maintenance windows"
           emptyMessage="No maintenance windows match."
-          initialColumnVisibility={{}}
+          initialColumnVisibility={HIDDEN_COLUMNS}
           meta={{
             globalFilterColumns: ["title", "scope", "timezone"],
-            canWrite,
-            canDelete,
-            busy,
-            run,
-            confirm: (window: MaintenanceWindowItem, action: "cancel" | "delete") => setConfirm({ window, action }),
+            ...tableMeta,
           }}
           renderToolbar={(table) => (
             <div className="flex flex-wrap items-center gap-2">
@@ -226,6 +267,7 @@ export function MaintenanceWindowsPanel({ tabs }: { tabs?: ReactNode } = {}) {
         />
       )}
       {editorOpen && <MaintenanceWindowDialog open onOpenChange={setEditorOpen} />}
+      {editing && <MaintenanceWindowDialog key={editing.id} open window={editing} onOpenChange={(next) => !next && setEditing(null)} />}
       <AlertDialog open={confirm !== null} onOpenChange={(next) => !next && setConfirm(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>

@@ -51,6 +51,13 @@ export function contrastRatio(a: string, b: string) {
   return (hi + 0.05) / (lo + 0.05);
 }
 
+/** Text colour (white or near-black) that reads best on a solid `background`; unknown values get near-black. */
+export function readableTextOn(background: string | null | undefined): string {
+  const hex = normalizeHexColor(background);
+  if (!hex) return "#111827";
+  return contrastRatio("#ffffff", hex) >= contrastRatio("#111827", hex) ? "#ffffff" : "#111827";
+}
+
 /**
  * Colours are applied only when the owner customised the page background: a custom font
  * alone cannot be checked against the viewer's light/dark theme, so it keeps the theme.

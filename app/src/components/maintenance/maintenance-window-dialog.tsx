@@ -21,7 +21,8 @@ import { useProjectContext } from "@/hooks/use-project-context";
 import { useStatusPageDetail, useStatusPages } from "@/hooks/use-status-pages";
 import { checkRolePermissionsClient } from "@/lib/rbac/permissions-client";
 import { MONITORS_QUERY_KEY } from "@/hooks/use-monitors";
-import { MAINTENANCE_QUERY_KEY } from "@/hooks/use-maintenance-windows";
+import { MAINTENANCE_QUERY_KEY, type MaintenanceWindowItem } from "@/hooks/use-maintenance-windows";
+import { formatDuration, formatWindowRange, previewWindow, timeZoneOptions } from "./format";
 
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 type Scope = "project" | "services" | "monitors";
@@ -43,25 +44,47 @@ function nextHour() {
   return { date: `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`, time: `${pad(d.getHours())}:00` };
 }
 
-/** Schedule a maintenance window: monitors keep running while alerts, incidents and paging are muted. */
-export function MaintenanceWindowDialog({ open, onOpenChange, defaults }: { open: boolean; onOpenChange: (open: boolean) => void; defaults?: MaintenanceDefaults }) {
+const targetIds = (window: MaintenanceWindowItem | undefined, type: "monitor" | "service") =>
+  window?.targets.filter((target) => target.type === type).map((target) => target.id) ?? [];
+
+/**
+ * Schedule a maintenance window, or edit one when `window` is given: monitors keep running while alerts,
+ * incidents and paging are muted.
+ */
+export function MaintenanceWindowDialog({
+  open,
+  onOpenChange,
+  defaults,
+  window: editing,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  defaults?: MaintenanceDefaults;
+  window?: MaintenanceWindowItem;
+}) {
   const queryClient = useQueryClient();
   const { projectId, currentProject } = useProjectContext();
-  const canPostPublicly = Boolean(currentProject?.userRole && checkRolePermissionsClient(currentProject.userRole, { status_page: ["update"] }));
+  const isEdit = Boolean(editing);
+  // The API refuses schedule changes to a one-off window in progress (end or extend it instead),
+  // and a window posted to a status page must stay one-off.
+  const scheduleLocked = editing?.state === "active" && editing.recurrence === "once";
+  const repeatLocked = scheduleLocked || Boolean(editing?.statusPageIncidentIds.length);
+  const canPostPublicly = !isEdit && Boolean(currentProject?.userRole && checkRolePermissionsClient(currentProject.userRole, { status_page: ["update"] }));
   const start = nextHour();
-  const [title, setTitle] = useState("");
-  const [description, setDescription] = useState("");
-  const [scope, setScope] = useState<Scope>(defaults?.serviceId ? "services" : "monitors");
-  const [monitorIds, setMonitorIds] = useState<string[]>(defaults?.monitorId ? [defaults.monitorId] : []);
-  const [serviceIds, setServiceIds] = useState<string[]>(defaults?.serviceId ? [defaults.serviceId] : []);
-  const [startsOn, setStartsOn] = useState(start.date);
-  const [localStartTime, setLocalStartTime] = useState(start.time);
-  const [durationMinutes, setDurationMinutes] = useState("60");
-  const [timezone, setTimezone] = useState(localZone);
-  const [recurrence, setRecurrence] = useState<Recurrence>("once");
-  const [weekdays, setWeekdays] = useState<number[]>([]);
-  const [monthDay, setMonthDay] = useState("1");
-  const [endsOn, setEndsOn] = useState("");
+  const [title, setTitle] = useState(editing?.title ?? "");
+  const [description, setDescription] = useState(editing?.description ?? "");
+  const [scope, setScope] = useState<Scope>(editing?.scope ?? (defaults?.serviceId ? "services" : "monitors"));
+  const [monitorIds, setMonitorIds] = useState<string[]>(editing ? targetIds(editing, "monitor") : defaults?.monitorId ? [defaults.monitorId] : []);
+  const [serviceIds, setServiceIds] = useState<string[]>(editing ? targetIds(editing, "service") : defaults?.serviceId ? [defaults.serviceId] : []);
+  const [startsOn, setStartsOn] = useState(editing?.startsOn ?? start.date);
+  const [localStartTime, setLocalStartTime] = useState(editing?.localStartTime.slice(0, 5) ?? start.time);
+  const [durationMinutes, setDurationMinutes] = useState(String(editing?.durationMinutes ?? 60));
+  const [timezone, setTimezone] = useState(() => editing?.timezone ?? localZone());
+  const [zonePickerOpen, setZonePickerOpen] = useState(false);
+  const [recurrence, setRecurrence] = useState<Recurrence>(editing?.recurrence ?? "once");
+  const [weekdays, setWeekdays] = useState<number[]>(editing?.weekdays ?? []);
+  const [monthDay, setMonthDay] = useState(String(editing?.monthDay ?? 1));
+  const [endsOn, setEndsOn] = useState(editing?.endsOn ?? "");
   const [publish, setPublish] = useState(false);
   const [statusPageId, setStatusPageId] = useState<string | null>(null);
   const [componentIds, setComponentIds] = useState<string[]>([]);
@@ -72,23 +95,45 @@ export function MaintenanceWindowDialog({ open, onOpenChange, defaults }: { open
   // The status page controls show only for a one-off; hidden, they neither block nor post.
   const posting = canPostPublicly && publish && recurrence === "once";
 
-  const monitors = useAllMonitors(open && scope === "monitors");
+  // Also loaded for a whole-project window, so the preview can count what it mutes.
+  const monitors = useAllMonitors(open && scope !== "services");
   const services = useQuery({ queryKey: ["sre-services", "picker", projectId], queryFn: () => getSreServices(), enabled: open && scope === "services" && Boolean(projectId), staleTime: 60_000 });
   const statusPages = useStatusPages({ enabled: open && publish });
   const pageDetail = useStatusPageDetail(open && publish ? statusPageId : null);
   const monitorItems = monitors.data ?? [];
   const serviceItems = (services.data?.services ?? []).filter((s) => s.status === "active" || serviceIds.includes(s.id));
   const selectedCount = scope === "monitors" ? monitorIds.length : serviceIds.length;
+  const zones = timeZoneOptions(timezone);
+  const preview = previewWindow(startsOn, localStartTime, Number(durationMinutes));
 
   const submit = async () => {
     if (pending) return;
     setFieldErrors({});
     setPending(true);
+    const schedule = scheduleLocked
+      ? {}
+      : {
+          ...(repeatLocked ? {} : { recurrence }),
+          timezone: timezone.trim(),
+          localStartTime,
+          durationMinutes: Number(durationMinutes),
+          startsOn,
+          endsOn: recurrence !== "once" && endsOn ? endsOn : null,
+          weekdays: recurrence === "weekly" ? weekdays : null,
+          monthDay: recurrence === "monthly" ? Number(monthDay) : null,
+        };
     try {
-      const response = await fetch("/api/maintenance-windows", {
-        method: "POST",
+      const response = await fetch(editing ? `/api/maintenance-windows/${editing.id}` : "/api/maintenance-windows", {
+        method: editing ? "PATCH" : "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+        // An edit sends no status page fields (the update API does not take them) and, when locked, no schedule keys at all.
+        body: JSON.stringify(editing ? {
+          title: title.trim(),
+          description: description.trim() || null,
+          scope,
+          targets: { serviceIds: scope === "services" ? serviceIds : [], monitorIds: scope === "monitors" ? monitorIds : [] },
+          ...schedule,
+        } : {
           title: title.trim(),
           description: description.trim() || null,
           scope,
@@ -108,10 +153,11 @@ export function MaintenanceWindowDialog({ open, onOpenChange, defaults }: { open
       const body = (await response.json().catch(() => ({}))) as { error?: string; fieldErrors?: Record<string, string>; warning?: string };
       if (!response.ok) {
         setFieldErrors(body.fieldErrors ?? {});
-        toast.error(body.error ?? "Could not schedule maintenance");
+        toast.error(body.error ?? (editing ? "Could not save the maintenance window" : "Could not schedule maintenance"));
         return;
       }
-      if (body.warning === "status_page_failed") toast.warning("Maintenance scheduled, but posting it to the status page failed");
+      if (editing) toast.success("Maintenance window updated");
+      else if (body.warning === "status_page_failed") toast.warning("Maintenance scheduled, but posting it to the status page failed");
       else toast.success("Maintenance scheduled");
       await queryClient.invalidateQueries({ queryKey: [...MAINTENANCE_QUERY_KEY, projectId] });
       // The monitors list carries the inMaintenance badge.
@@ -125,13 +171,37 @@ export function MaintenanceWindowDialog({ open, onOpenChange, defaults }: { open
   };
 
   const fieldError = (key: string) => (fieldErrors[key] ? <p className="text-xs text-destructive" id={`mw-${key}-error`}>{fieldErrors[key]}</p> : null);
-  const invalid = !title.trim() || (scope !== "project" && selectedCount === 0) || (recurrence === "weekly" && weekdays.length === 0) || (posting && (!statusPageId || componentIds.length === 0));
+  // The first unmet requirement, shown beside the disabled button so it never sits greyed out without a reason.
+  const blocker = !title.trim()
+    ? "Add a title."
+    : scope !== "project" && selectedCount === 0
+      ? `Choose at least one ${scope === "monitors" ? "monitor" : "service"}.`
+      : recurrence === "weekly" && weekdays.length === 0
+        ? "Pick at least one day of the week."
+        : posting && !statusPageId
+          ? "Choose a status page, or turn off Show on a status page."
+          : posting && componentIds.length === 0
+            ? "Choose at least one status page component."
+            : null;
+  const invalid = blocker !== null;
+  const names = (ids: string[], items: Array<{ id: string; name: string }>) => {
+    const known = ids.map((id) => items.find((item) => item.id === id)?.name ?? "Unknown");
+    return known.length > 4 ? `${known.slice(0, 4).join(", ")} and ${known.length - 4} more` : known.join(", ");
+  };
+  const muted =
+    scope === "project"
+      ? monitors.data ? `All ${monitorItems.length} monitor${monitorItems.length === 1 ? "" : "s"} in this project` : "Every monitor in this project"
+      : selectedCount === 0
+        ? null
+        : scope === "monitors"
+          ? names(monitorIds, monitorItems)
+          : `${names(serviceIds, serviceItems)}, with every monitor mapped to them`;
 
   return (
     <Dialog open={open} onOpenChange={(next) => (next || !pending) && onOpenChange(next)}>
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>Schedule maintenance</DialogTitle>
+          <DialogTitle>{isEdit ? "Edit maintenance" : "Schedule maintenance"}</DialogTitle>
           <DialogDescription>Monitors keep running. Alerts, new incidents and reminders are muted, and uptime leaves the window out.</DialogDescription>
         </DialogHeader>
         <div className="space-y-4 py-2">
@@ -189,28 +259,57 @@ export function MaintenanceWindowDialog({ open, onOpenChange, defaults }: { open
           <div className="grid gap-4 sm:grid-cols-3">
             <div className="space-y-2">
               <Label htmlFor="mw-date">{recurrence === "once" ? "Date" : "First date"}</Label>
-              <Input id="mw-date" type="date" value={startsOn} onChange={(e) => setStartsOn(e.target.value)} aria-describedby={fieldErrors.startsOn ? "mw-startsOn-error" : undefined} />
+              <Input id="mw-date" type="date" value={startsOn} disabled={scheduleLocked} onChange={(e) => setStartsOn(e.target.value)} aria-describedby={fieldErrors.startsOn ? "mw-startsOn-error" : undefined} />
               {fieldError("startsOn")}
             </div>
             <div className="space-y-2">
               <Label htmlFor="mw-time">Start time</Label>
-              <Input id="mw-time" type="time" value={localStartTime} onChange={(e) => setLocalStartTime(e.target.value)} />
+              <Input id="mw-time" type="time" value={localStartTime} disabled={scheduleLocked} onChange={(e) => setLocalStartTime(e.target.value)} />
               {fieldError("localStartTime")}
             </div>
             <div className="space-y-2">
-              <Label htmlFor="mw-duration">Minutes</Label>
-              <Input id="mw-duration" type="number" min={5} max={10080} value={durationMinutes} onChange={(e) => setDurationMinutes(e.target.value)} aria-describedby={fieldErrors.durationMinutes ? "mw-durationMinutes-error" : undefined} />
+              <Label htmlFor="mw-duration">Duration (minutes)</Label>
+              <Input id="mw-duration" type="number" min={5} max={10080} step={5} value={durationMinutes} disabled={scheduleLocked} onChange={(e) => setDurationMinutes(e.target.value)} aria-describedby={fieldErrors.durationMinutes ? "mw-durationMinutes-error" : undefined} />
               {fieldError("durationMinutes")}
             </div>
           </div>
           <div className="space-y-2">
             <Label htmlFor="mw-timezone">Time zone</Label>
-            <Input id="mw-timezone" value={timezone} onChange={(e) => setTimezone(e.target.value)} placeholder="Europe/Berlin" aria-describedby={fieldErrors.timezone ? "mw-timezone-error" : undefined} />
+            <Popover open={zonePickerOpen} onOpenChange={setZonePickerOpen}>
+              <PopoverTrigger asChild>
+                <Button id="mw-timezone" type="button" variant="outline" role="combobox" aria-expanded={zonePickerOpen} disabled={scheduleLocked} className="w-full justify-between font-normal" aria-describedby={fieldErrors.timezone ? "mw-timezone-error" : undefined}>
+                  <span className="truncate">{timezone}</span>
+                  <ChevronsUpDown className="h-4 w-4 opacity-50" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+                <Command>
+                  <CommandInput placeholder="Search time zones" />
+                  <CommandList>
+                    <CommandEmpty>No time zone found</CommandEmpty>
+                    <CommandGroup>
+                      {zones.map((zone) => (
+                        <CommandItem key={zone} value={zone} onSelect={() => { setTimezone(zone); setZonePickerOpen(false); }}>
+                          <Check className={`mr-2 h-4 w-4 ${zone === timezone ? "opacity-100" : "opacity-0"}`} aria-hidden />
+                          {zone}
+                        </CommandItem>
+                      ))}
+                    </CommandGroup>
+                  </CommandList>
+                </Command>
+              </PopoverContent>
+            </Popover>
             {fieldError("timezone")}
           </div>
+          {preview && (
+            <p className="text-xs text-muted-foreground" data-testid="mw-preview-time">
+              {recurrence === "once" ? "Runs" : "First window"} {formatWindowRange(preview.start, preview.end, "UTC")} ({timezone}), {formatDuration(Number(durationMinutes))}.
+              {scheduleLocked && " In progress: end or extend it from the table to change its times."}
+            </p>
+          )}
           <div className="space-y-2">
             <Label htmlFor="mw-repeat">Repeats</Label>
-            <Select value={recurrence} onValueChange={(value) => setRecurrence(value as Recurrence)}>
+            <Select value={recurrence} onValueChange={(value) => setRecurrence(value as Recurrence)} disabled={repeatLocked}>
               <SelectTrigger id="mw-repeat"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="once">Does not repeat</SelectItem>
@@ -251,6 +350,15 @@ export function MaintenanceWindowDialog({ open, onOpenChange, defaults }: { open
               <Label htmlFor="mw-until">Ends on (optional)</Label>
               <Input id="mw-until" type="date" value={endsOn} onChange={(e) => setEndsOn(e.target.value)} />
               {fieldError("endsOn")}
+            </div>
+          )}
+          {muted && (
+            <div className="rounded-md border bg-muted/30 p-3 text-sm" data-testid="mw-mute-preview">
+              <p className="font-medium">Alerts muted for</p>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                {muted}
+                {posting && componentIds.length > 0 ? ", plus every monitor on the chosen status page components" : ""}.
+              </p>
             </div>
           )}
           <div className="space-y-2">
@@ -294,10 +402,11 @@ export function MaintenanceWindowDialog({ open, onOpenChange, defaults }: { open
             </div>
           )}
         </div>
-        <DialogFooter className="gap-2">
+        <DialogFooter className="gap-2 sm:items-center">
+          {blocker && !pending && <p id="mw-blocker" className="mr-auto text-xs text-muted-foreground">{blocker}</p>}
           <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={pending}>Cancel</Button>
-          <Button type="button" onClick={submit} disabled={pending || invalid}>
-            {pending ? (<><Loader2 className="h-4 w-4 animate-spin" />Scheduling...</>) : "Schedule maintenance"}
+          <Button type="button" onClick={submit} disabled={pending || invalid} aria-describedby={blocker ? "mw-blocker" : undefined}>
+            {pending ? (<><Loader2 className="h-4 w-4 animate-spin" />{isEdit ? "Saving..." : "Scheduling..."}</>) : isEdit ? "Save changes" : "Schedule maintenance"}
           </Button>
         </DialogFooter>
       </DialogContent>

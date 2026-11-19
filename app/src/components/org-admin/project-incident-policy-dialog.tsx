@@ -24,6 +24,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import { TableBadge } from "@/components/ui/table-badge";
+import { getNotificationProviderConfig } from "@/components/alerts/data";
 
 const MAX_POLICY_CHANNELS = 10;
 /** Reminders stop after 2 days (the server's limit), so the whole schedule must fit. */
@@ -143,7 +145,8 @@ export function ProjectIncidentPolicyDialog({ open, onOpenChange, projectId, pro
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      {/* One scroll area for the whole dialog: a nested channel scroller cut its last row in half. */}
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-md">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <BellRing className="h-5 w-5" />
@@ -173,7 +176,7 @@ export function ProjectIncidentPolicyDialog({ open, onOpenChange, projectId, pro
                   This project has no notification channels yet. Without one, an unassigned incident is emailed to the project owners and admins.
                 </p>
               ) : (
-                <div className="max-h-40 space-y-1 overflow-y-auto">
+                <div className="space-y-1">
                   {channels.map((channel) => (
                     <label key={channel.id} className="flex cursor-pointer items-center gap-3 rounded-md px-2 py-1.5 hover:bg-muted/50">
                       <Checkbox
@@ -190,11 +193,16 @@ export function ProjectIncidentPolicyDialog({ open, onOpenChange, projectId, pro
                           })
                         }
                       />
-                      <span className="text-sm">{channel.name}</span>
-                      <span className="ml-auto text-xs text-muted-foreground">{channel.paging ? PAGING_HINT : channel.type}</span>
+                      <span className="min-w-0 truncate text-sm" title={channel.name}>{channel.name}</span>
+                      <TableBadge compact className="ml-auto shrink-0">
+                        {channel.paging ? "Paging" : getNotificationProviderConfig(channel.type).label}
+                      </TableBadge>
                     </label>
                   ))}
                 </div>
+              )}
+              {channels.some((channel) => channel.paging) && (
+                <p className="text-xs text-muted-foreground">Paging channels can&apos;t be chosen here: they are paged by monitor and job alerts.</p>
               )}
             </div>
 
