@@ -763,9 +763,25 @@ describe("Copilot connector service scope", () => {
         { ...scope, incidentId: "incident" },
         search,
       ),
-    ).rejects.toThrow("Service does not match the scoped incident");
+    ).rejects.toThrow("Service does not match the scoped incident. Use serviceId other-service");
     expect(db.query.sreServices.findFirst).not.toHaveBeenCalled();
     expect(db.select).not.toHaveBeenCalled();
+  });
+
+  it("keeps the connector usable after a wrong service id", async () => {
+    db.query.sreIncidents.findFirst.mockResolvedValue({ primaryServiceId: "other-service" });
+    const tools = createSreConnectorTools({ ...scope, incidentId: "incident", investigationRunId: "018f0000-0000-7000-8000-0000000000aa" });
+    const call = () => tools.searchLiveConnectorEvidence.execute!(search, { toolCallId: "svc", messages: [] });
+    const first = await call();
+    expect(first).toMatchObject({ error: true, retryable: true, message: expect.stringContaining("Use serviceId other-service") });
+    // Not marked failed: the retry reaches the scope check again instead of being suppressed.
+    expect(await call()).not.toMatchObject({ retrySuppressed: true });
+    const mcp = () => tools.callMcpTool.execute!(
+      { connectorId, serviceId, tool: "search", arguments: {}, maxSeconds: 5 },
+      { toolCallId: "mcp-svc", messages: [] },
+    );
+    expect(await mcp()).toMatchObject({ error: true, retryable: true, message: expect.stringContaining("Use serviceId other-service") });
+    expect(await mcp()).toMatchObject({ retryable: true });
   });
 
   it.each(["connector_credential_expired", "private-secret-error"])("reports safe Private Agent failure diagnostics (%s)", async (errorCode) => {
