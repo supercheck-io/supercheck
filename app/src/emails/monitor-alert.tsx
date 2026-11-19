@@ -36,6 +36,16 @@ const TONE = {
   info: "info",
 } as const;
 
+/**
+ * Inbox preview (preheader): the alert message on one line, cut to ~120 characters. Without it Gmail previews the
+ * body text, which runs the details table together ("ProjectDefault ProjectJob..."). Falls back to the title.
+ */
+export const alertEmailPreview = (message: string, title: string): string => {
+  const text = message.replace(/\s+/g, " ").trim();
+  if (!text) return title;
+  return text.length > 120 ? `${text.slice(0, 119).trimEnd()}…` : text;
+};
+
 /** `Job Failed - Nightly` -> `[Supercheck] Job Failed: Nightly`. */
 export const alertEmailSubject = (title: string): string => {
   const i = title.indexOf(" - ");
@@ -62,7 +72,7 @@ export const MonitorAlertEmail = ({
 
   return (
     <BaseLayout
-      preview={displayTitle}
+      preview={alertEmailPreview(message, displayTitle)}
       appUrl={appUrl}
       reason="You received this alert because this address is set as a recipient on a Supercheck notification channel."
       manage={manageUrl ? { href: manageUrl, label: "Manage notification channels" } : undefined}

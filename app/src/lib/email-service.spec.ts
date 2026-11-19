@@ -56,7 +56,7 @@ describe("EmailService", () => {
     expect(mockVerify).not.toHaveBeenCalled();
     expect(mockSendMail).toHaveBeenCalledWith(
       expect.objectContaining({
-        from: "alerts@example.com",
+        from: { name: "Supercheck", address: "alerts@example.com" },
         to: "user@test.com",
         subject: "Test",
       }),
@@ -190,8 +190,9 @@ describe("EmailService", () => {
 describe("smtpSender", () => {
   const env = (e: Record<string, string>) => e as unknown as NodeJS.ProcessEnv;
 
-  it("is the bare address with no Reply-To by default", () => {
-    expect(smtpSender(env({ SMTP_FROM_EMAIL: "a@x.io" }))).toEqual({ from: "a@x.io" });
+  it("names the sender Supercheck, with no Reply-To, by default", () => {
+    expect(smtpSender(env({ SMTP_FROM_EMAIL: "a@x.io" }))).toEqual({ from: { name: "Supercheck", address: "a@x.io" } });
+    expect(smtpSender(env({ SMTP_FROM_EMAIL: "a@x.io", SMTP_FROM_NAME: "  " })).from).toEqual({ name: "Supercheck", address: "a@x.io" });
   });
 
   it("adds a display name and Reply-To only when configured", () => {

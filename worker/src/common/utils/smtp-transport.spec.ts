@@ -119,11 +119,11 @@ describe('smtp-transport', () => {
     expect(r).toMatchObject({ sentCount: 1, failedRecipients: ['a@x.io'] });
   });
 
-  it('applies the From display name and Reply-To only when configured', async () => {
+  it('names the sender Supercheck by default, and adds Reply-To only when configured', async () => {
     const sendMail = jest.fn().mockResolvedValue({});
     createTransport.mockReturnValue(transport(sendMail));
     await sendMailToRecipients(['a@x.io'], message);
-    expect(sendMail.mock.calls[0][0].from).toBe('alerts@example.com');
+    expect(sendMail.mock.calls[0][0].from).toEqual({ name: 'Supercheck', address: 'alerts@example.com' });
     expect(sendMail.mock.calls[0][0]).not.toHaveProperty('replyTo');
     process.env.SMTP_FROM_NAME = 'Acme';
     process.env.SMTP_REPLY_TO = 'help@acme.test';
