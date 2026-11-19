@@ -366,9 +366,26 @@ describe("paging presets: typed credentials and Advanced", () => {
     openAdvanced();
     fireEvent.change(screen.getByLabelText(/^URL/), { target: { value: "https://api.eu.atlassian.com/jsm/ops/integration/v2/alerts" } });
     expect(screen.getByText(/enter the api key again/)).toBeInTheDocument();
+    // No "{}" escape here: a JSM channel without its key cannot deliver.
+    expect(screen.queryByText(/again, or \{\} for none/)).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Update channel" }));
     await waitFor(() => expect(onSuccess).toHaveBeenCalled());
     // Blank key: headers omitted, so the server refuses the URL change instead of silently dropping the key.
     expect(onSuccess.mock.calls[0][0].config).not.toHaveProperty("headers");
   });
+});
+
+it("on a saved custom webhook, a URL change asks for the headers again or {} for none", () => {
+  render(
+    <NotificationProviderForm
+      initialData={{
+        name: "Hook",
+        type: "webhook",
+        config: { name: "Hook", preset: "custom", method: "POST", url: "[REDACTED]", headers: {} } as never,
+        maskedFields: ["url", "headers"],
+      }}
+    />,
+  );
+  fireEvent.change(screen.getByLabelText(/^URL/), { target: { value: "https://new.example.com/hook" } });
+  expect(screen.getByText(/enter the headers under Advanced again, or \{\} for none/)).toBeInTheDocument();
 });

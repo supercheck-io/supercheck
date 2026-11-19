@@ -882,7 +882,9 @@ export function NotificationProviderForm({
           </FormControl>
           <FormDescription>
             {headersNeedRetyping
-              ? `Saved headers are not sent to a changed URL. If this is a new URL, enter ${credential ? `the ${credential.label.toLowerCase()}` : "the headers under Advanced"} again, or {} under Advanced for no headers.`
+              ? credential
+                ? `Saved headers are not sent to a changed URL. If this is a new URL, enter the ${credential.label.toLowerCase()} again.`
+                : "Saved headers are not sent to a changed URL. If this is a new URL, enter the headers under Advanced again, or {} for none."
               : keepsStored("url")
                 ? KEEP_STORED_HINT
                 : (PRESET_URL_HINTS[selectedPresetId as WebhookPresetId] ?? "The vendor's fixed endpoint. Change it only if your account uses a regional one.")}
