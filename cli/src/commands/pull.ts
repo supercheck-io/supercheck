@@ -21,7 +21,7 @@ import { detectPackageManager, ensurePackageJson, installDependencies } from '..
 import { extractUuidFromFilename, setScriptMetadata } from '../utils/slug.js'
 import { isUuid, resolveWithin, testRelativePath, testTypeToFolder } from '../utils/paths.js'
 import { decodeStoredTestScript } from '../utils/script.js'
-import { redact } from '../utils/redact.js'
+import { redact, templateHoldsCredential } from '../utils/redact.js'
 
 import pc from '../utils/colors.js'
 import type { ApiClient } from '../api/client.js'
@@ -564,6 +564,13 @@ function buildTagDefinitions(tags: RemoteTag[]): Record<string, unknown>[] {
   })
 }
 
+/** Names of providers whose body template holds a credential and was left out of the pulled config. */
+export function notificationTemplateOmissions(providers: RemoteNotificationProvider[]): string[] {
+  return providers
+    .filter((provider) => typeof provider.config?.bodyTemplate === 'string' && templateHoldsCredential(provider.config.bodyTemplate))
+    .map((provider) => provider.name)
+}
+
 /**
  * Build notification provider definitions from remote data.
  *
@@ -583,6 +590,10 @@ export function buildNotificationProviderDefinitions(providers: RemoteNotificati
     for (const field of maskedFields) {
       delete config[field]
     }
+
+    // A body template holding a literal credential (the PagerDuty routing key) is as secret as a masked field, and pull
+    // output is committed. Leave it out: a deploy that omits bodyTemplate keeps the saved one. See notificationTemplateOmissions.
+    if (typeof config.bodyTemplate === 'string' && templateHoldsCredential(config.bodyTemplate)) delete config.bodyTemplate
 
     // Keep config.name in sync with the top-level name for stable round-trip diffs.
     config.name = provider.name
@@ -1174,6 +1185,10 @@ export const pullCommand = new Command('pull')
       const variableDefs = buildVariableDefinitions(variables)
       const tagDefs = buildTagDefinitions(tags)
       const notificationProviderDefs = buildNotificationProviderDefinitions(notificationProviders)
+      const omittedTemplates = notificationTemplateOmissions(notificationProviders)
+      if (omittedTemplates.length > 0) {
+        logger.warn(`Left the body template of ${omittedTemplates.join(', ')} out of the config because it holds a credential. Deploy keeps the saved one; set PAGERDUTY_ROUTING_KEY when deploying to replace a PagerDuty key.`)
+      }
       const statusPageDefs = buildStatusPageDefinitions(statusPages)
       const requirementDefs = buildRequirementDefinitions(requirements, testMap)
 

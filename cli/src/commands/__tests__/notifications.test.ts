@@ -1,3 +1,4 @@
+import { existsSync, readFileSync } from 'node:fs'
 import { jest, describe, it, expect, beforeEach, afterEach } from '@jest/globals'
 
 const mockGet = jest.fn<(...args: unknown[]) => Promise<{ data: unknown }>>()
@@ -55,6 +56,7 @@ jest.unstable_mockModule('../../utils/prompt.js', () => ({
 
 const { notificationCommand } = await import('../notifications.js')
 const { ExitCode } = await import('../../utils/errors.js')
+const { pagerDutyBodyTemplate, PAGERDUTY_URL } = await import('../../utils/pagerduty.js')
 
 function resetCommandState(command: import('commander').Command): void {
   for (const option of command.options) {
@@ -87,6 +89,7 @@ describe('notification provider command', () => {
       'id',
       'name',
       'type',
+      'config',
       'isEnabled',
       'lastUsed',
       'health',
@@ -149,6 +152,38 @@ describe('notification provider command', () => {
       expect(template.routing_key).toBe(KEY)
       expect(template.event_action).toBe('{{pagerDutyEventAction}}')
       expect(JSON.stringify([mockSuccess.mock.calls, mockOutputDetail.mock.calls, mockDebug.mock.calls, mockWarn.mock.calls])).not.toContain(KEY)
+    })
+
+    it('update --type pagerduty sends a webhook with the preset and the new key (a rotation)', async () => {
+      process.env.PAGERDUTY_ROUTING_KEY = KEY
+      mockGet.mockResolvedValueOnce({ data: { id: 'np-3', name: 'On call', type: 'webhook', config: {}, maskedFields: [] } })
+      mockPut.mockResolvedValueOnce({ data: { id: 'np-3' } })
+
+      await notificationCommand.parseAsync(['node', 'notification', 'update', 'np-3', '--type', 'pagerduty'])
+
+      const [path, body] = mockPut.mock.calls[0] as [string, { type: string; config: Record<string, unknown> }]
+      expect(path).toBe('/api/notification-providers/np-3')
+      expect(body.type).toBe('webhook')
+      expect(body.config).toMatchObject({ preset: 'pagerduty', name: 'On call' })
+      expect(JSON.parse(body.config.bodyTemplate as string).routing_key).toBe(KEY)
+    })
+
+    it('matches the app preset template, so the two cannot drift apart unnoticed', () => {
+      const file = new URL('../../../../app/src/lib/notification-providers/webhook-presets.ts', import.meta.url)
+      if (!existsSync(file)) return
+      const source = readFileSync(file, 'utf8').replace(/\s+/g, ' ')
+      const leaves = (value: unknown, out: string[] = []): string[] => {
+        if (Array.isArray(value)) value.forEach((v) => leaves(v, out))
+        else if (value && typeof value === 'object') for (const [k, v] of Object.entries(value)) {
+          out.push(k)
+          leaves(v, out)
+        }
+        else if (typeof value === 'string') out.push(value)
+        return out
+      }
+      const template = JSON.parse(pagerDutyBodyTemplate('k'))
+      for (const text of leaves({ ...template, routing_key: undefined })) expect(source).toContain(text)
+      expect(source).toContain(PAGERDUTY_URL)
     })
 
     it('refuses --routing-key-stdin on an interactive terminal', async () => {

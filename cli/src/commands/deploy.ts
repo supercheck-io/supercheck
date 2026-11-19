@@ -24,6 +24,7 @@ import { parseIntStrict } from '../utils/number.js'
 import { applyStatusPage, OLD_SERVER_STATUS_PAGE_MESSAGE, validateStatusPageDefinition } from '../utils/status-pages.js'
 import { findTag } from '../utils/tag-assignment.js'
 import { warningDefault } from '../utils/alert-config.js'
+import { pagerDutyBodyTemplate, routingKeyFromEnv } from '../utils/pagerduty.js'
 
 /**
  * Prepare the body for API request by transforming local config shape
@@ -75,6 +76,11 @@ export function prepareBodyForApi(type: string, body: Record<string, unknown>, a
     if (typeof payload.name === 'string') {
       config.name = payload.name
     }
+
+    // A PagerDuty channel pulled from the app has no bodyTemplate (it holds the key), and the server rejects the preset
+    // stand-in on create, so PAGERDUTY_ROUTING_KEY supplies it. Without the variable, an update keeps the saved key.
+    const routingKey = routingKeyFromEnv()
+    if (config.preset === 'pagerduty' && !config.bodyTemplate && routingKey) config.bodyTemplate = pagerDutyBodyTemplate(routingKey)
 
     payload.config = config
   }

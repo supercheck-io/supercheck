@@ -28,8 +28,16 @@ const maskUserinfo = (text: string): string => text.replace(/(\b[a-z][a-z0-9+.-]
 // Query-parameter masking rewrites URLs, so it is skipped for fields that carry source code.
 const codeKeys = new Set(['script', 'body', 'code', 'content', 'source'])
 // A webhook body template carries literal credentials (the PagerDuty routing_key); `{{placeholders}}` stay readable.
+// A field is a credential when its last word is key, token, secret, password or signature (routing_key, apiKey), so "monkey" is not.
+const CREDENTIAL_WORDS = new Set(['key', 'token', 'secret', 'password', 'signature'])
+const isCredentialField = (name: string): boolean =>
+  CREDENTIAL_WORDS.has(name.replace(/([a-z0-9])([A-Z])/g, '$1_$2').toLowerCase().split(/[_-]/).pop() ?? '')
+const TEMPLATE_STRING_FIELD = /("([^"\\]+)"\s*:\s*")((?:[^"{}\\]|\\.)+)"/g
 const maskTemplateSecrets = (text: string): string =>
-  text.replace(/("[A-Za-z0-9_-]*(?:key|token|secret|password|signature)[A-Za-z0-9_-]*"\s*:\s*")((?:[^"{}\\]|\\.)+)"/gi, '$1[REDACTED]"')
+  text.replace(TEMPLATE_STRING_FIELD, (whole, prefix: string, name: string) => (isCredentialField(name) ? `${prefix}[REDACTED]"` : whole))
+/** True when a webhook body template holds a literal credential (not a `{{placeholder}}` or the preset stand-in). */
+export const templateHoldsCredential = (text: string): boolean =>
+  [...text.matchAll(TEMPLATE_STRING_FIELD)].some((m) => isCredentialField(m[2]) && !m[3].startsWith('REPLACE_WITH_'))
 export function redact<T>(value: T, inConfig = false, code = false): T {
   if (reveal) return value
   if (typeof value === 'string') return (code ? maskUserinfo(cliTokens(value)) : redactText(maskUserinfo(value))) as T

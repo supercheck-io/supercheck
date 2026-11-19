@@ -466,12 +466,12 @@ supercheck var upload TEST_DATA ./users.csv
 | `notification list` | List providers, with each channel's health (`ok`, `auth_failed`, `failing`, `unknown`) from its latest delivery in the past 7 days | — |
 | `notification get <id>` | Get provider details | — |
 | `notification create` | Create a provider | `--type`, `--name` (both required), `--payload`, `--routing-key-stdin` (PagerDuty) |
-| `notification update <id>` | Update a provider | `--name`, `--type`, `--payload` |
+| `notification update <id>` | Update a provider | `--name`, `--type`, `--payload`, `--routing-key-stdin` (PagerDuty) |
 | `notification delete <id>` | Delete a provider | `--force` |
 | `notification test <id>` | Send a test through a saved channel; webhooks and paging services get a test page with dedup key `test:<id>` and the receiver's HTTP status | `--resolve` (close the test page) |
 | `notification test` | Test an unsaved configuration | `--type`, `--payload` (one payload option required) |
 
-Types: `email`, `slack`, `webhook`, `telegram`, `discord`, `teams`, `pagerduty`. `--payload` is a JSON object; `--data` and `--config` are aliases. `--type pagerduty` creates a PagerDuty Events API v2 channel (a webhook with the `pagerduty` preset, as in the app) and takes no `--payload`. Give it the integration's routing key in the `PAGERDUTY_ROUTING_KEY` environment variable, or pipe it in with `--routing-key-stdin`. The key is never accepted as an argument and never printed. The other paging presets are set up in the app; the CLI can list and test those channels.
+Types: `email`, `slack`, `webhook`, `telegram`, `discord`, `teams`, `pagerduty`. `--payload` is a JSON object; `--data` and `--config` are aliases. `--type pagerduty` creates a PagerDuty Events API v2 channel (a webhook with the `pagerduty` preset, as in the app) and takes no `--payload`. Give it the integration's routing key in the `PAGERDUTY_ROUTING_KEY` environment variable, or pipe it in with `--routing-key-stdin`. The key is never accepted as an argument and is masked in output (`--show-secrets` prints it). `notification update <id> --type pagerduty` replaces the saved key the same way, which rotates it. `notification list` shows the preset, so a PagerDuty channel reads `webhook` / `pagerduty`. The other paging presets are set up in the app; the CLI can list and test those channels.
 
 ```bash
 supercheck notification create --type slack --name "Slack Alerts" \
@@ -484,6 +484,7 @@ supercheck notification test <id> --resolve
 <Accordion title="Updating providers with secret fields" id="supercheck-notification-update">
 
 - `--payload` on update replaces the entire config, so include all fields. The CLI never merges your input with masked values from the server. Without a payload, only `--name` and `--type` change and existing secrets are kept.
+- `pull` leaves a body template that holds a credential, such as a PagerDuty routing key, out of `supercheck.config.ts` and says so. A `deploy` that omits it keeps the saved key. To create the channel elsewhere or replace the key, set `PAGERDUTY_ROUTING_KEY` when you run `deploy`; it fills the template of a `preset: 'pagerduty'` provider.
 - `notification test` without an id needs exactly one of `--payload`, `--data` or `--config`. With an id, the saved configuration is used and payload options are rejected.
 - A test the receiver rejects exits with a general error and prints the result, for example `Authentication rejected (HTTP 401). Check the integration key.` for a bad key.
 
