@@ -134,6 +134,7 @@ const SHOTS: Record<string, Shot> = {
   'status-page-incidents': { files: ['status-page-incidents.png'], go: at(id((v) => `/status-pages/${v}?tab=incidents`, 'statusPage')) },
   'status-page-subscribers': { files: ['status-page-subscribers.png'], go: at(id((v) => `/status-pages/${v}?tab=subscribers`, 'statusPage')) },
   'status-page-settings': { files: ['status-page-settings.png'], go: at(id((v) => `/status-pages/${v}?tab=settings`, 'statusPage')) },
+  // /org-admin has no overview tab; its landing view (Projects) is the frame the docs use as the overview.
   'org-admin-overview': { files: ['org-admin-overview.png'], go: at(ORG) },
   'org-admin-projects': { files: ['org-admin-projects.png'], go: at(`${ORG}?tab=projects`) },
   'org-admin-create-project': { files: ['org-admin-create-project.png'], go: then(`${ORG}?tab=projects`, /create project/i) },
