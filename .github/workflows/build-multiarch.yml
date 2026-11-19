@@ -22,17 +22,15 @@ on:
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: supercheck-io/supercheck
-  E2E_BASE_URL: https://demo.supercheck.dev
 
 # Explicit permissions following least-privilege principle
 # Individual jobs may override with elevated permissions (e.g., packages: write)
 permissions:
   contents: read
 
-# A newer release must not replace the demo while an older release is still
-# running its exact-revision E2E suite.
+# Releases run one at a time, so an older release's Compose E2E is never cut short.
 concurrency:
-  group: demo-release-${{ github.repository }}
+  group: release-${{ github.repository }}
   cancel-in-progress: false
 
 jobs:
@@ -385,195 +383,16 @@ jobs:
             echo "  --certificate-oidc-issuer https://token.actions.githubusercontent.com"
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
-
-  deploy-demo:
-    name: Deploy Demo Environment
+  # Release gate, part 1: the tag's published app image in the self-hosted Compose stack,
+  # full suite. Part 2 is the full E2E run against staging (e2e-full.yml, base_url),
+  # started by hand after the staging deploy.
+  compose-e2e:
+    name: Self-hosted Compose E2E
     needs: build-and-push
-    if: ${{ startsWith(github.ref, 'refs/heads/main') || startsWith(github.ref, 'refs/tags/v') }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 25
-    environment: demo
+    if: ${{ startsWith(github.ref, 'refs/tags/v') }}
     permissions:
       contents: read
-
-    steps:
-      - name: Checkout deployment script
-        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
-        with:
-          persist-credentials: false
-
-      - name: Configure verified SSH access
-        shell: bash
-        env:
-          DEMO_HOST: ${{ secrets.DEMO_HOST }}
-          DEMO_USER: ${{ secrets.DEMO_USER }}
-          DEMO_SSH_KEY: ${{ secrets.DEMO_SSH_KEY }}
-          DEMO_SSH_KNOWN_HOSTS: ${{ secrets.DEMO_SSH_KNOWN_HOSTS }}
-          DEMO_SSH_PORT: ${{ vars.DEMO_SSH_PORT || '22' }}
-        run: |
-          set -Eeuo pipefail
-
-          for required_name in DEMO_HOST DEMO_USER DEMO_SSH_KEY DEMO_SSH_KNOWN_HOSTS; do
-            if [ -z "${!required_name:-}" ]; then
-              echo "::error::Missing required demo environment secret: ${required_name}"
-              exit 1
-            fi
-          done
-
-          if [[ ! "$DEMO_HOST" =~ ^[A-Za-z0-9][A-Za-z0-9._:-]*$ ]]; then
-            echo "::error::DEMO_HOST is invalid"
-            exit 1
-          fi
-          if [[ ! "$DEMO_USER" =~ ^[A-Za-z0-9_][A-Za-z0-9_.-]*$ ]]; then
-            echo "::error::DEMO_USER is invalid"
-            exit 1
-          fi
-          if [[ ! "$DEMO_SSH_PORT" =~ ^[0-9]+$ ]] || (( DEMO_SSH_PORT < 1 || DEMO_SSH_PORT > 65535 )); then
-            echo "::error::DEMO_SSH_PORT must be between 1 and 65535"
-            exit 1
-          fi
-
-          install -d -m 700 "$RUNNER_TEMP/supercheck-demo-ssh"
-          printf '%s\n' "$DEMO_SSH_KEY" >"$RUNNER_TEMP/supercheck-demo-ssh/id"
-          printf '%s\n' "$DEMO_SSH_KNOWN_HOSTS" >"$RUNNER_TEMP/supercheck-demo-ssh/known_hosts"
-          chmod 600 "$RUNNER_TEMP/supercheck-demo-ssh/id" "$RUNNER_TEMP/supercheck-demo-ssh/known_hosts"
-
-          ssh-keygen -y -f "$RUNNER_TEMP/supercheck-demo-ssh/id" >/dev/null
-          ssh-keygen -l -f "$RUNNER_TEMP/supercheck-demo-ssh/known_hosts" >/dev/null
-
-      - name: Deploy exact release to demo
-        shell: bash
-        env:
-          IMAGE_TAG: ${{ needs.build-and-push.outputs.image_tag }}
-          APP_DIGEST: ${{ needs.build-and-push.outputs.app_digest }}
-          WORKER_DIGEST: ${{ needs.build-and-push.outputs.worker_digest }}
-          DEMO_HOST: ${{ secrets.DEMO_HOST }}
-          DEMO_USER: ${{ secrets.DEMO_USER }}
-          DEMO_SSH_PORT: ${{ vars.DEMO_SSH_PORT || '22' }}
-          DEMO_DEPLOY_PATH: ${{ vars.DEMO_DEPLOY_PATH || '/root/supercheck/deploy/docker' }}
-        run: |
-          set -Eeuo pipefail
-
-          if [[ ! "$IMAGE_TAG" =~ ^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$ || "$IMAGE_TAG" == "latest" ]]; then
-            echo "::error::Docker metadata produced an invalid deployment tag"
-            exit 1
-          fi
-          if [[ ! "$APP_DIGEST" =~ ^sha256:[0-9a-f]{64}$ || ! "$WORKER_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]; then
-            echo "::error::Build outputs did not contain valid app and worker digests"
-            exit 1
-          fi
-
-          ssh_options=(
-            -i "$RUNNER_TEMP/supercheck-demo-ssh/id"
-            -p "$DEMO_SSH_PORT"
-            -o BatchMode=yes
-            -o ConnectTimeout=15
-            -o ConnectionAttempts=2
-            -o IdentitiesOnly=yes
-            -o ServerAliveCountMax=3
-            -o ServerAliveInterval=15
-            -o StrictHostKeyChecking=yes
-            -o UserKnownHostsFile="$RUNNER_TEMP/supercheck-demo-ssh/known_hosts"
-          )
-
-          # The host's checkout may lag main, so ship the current K3s setup script
-          # too: the deploy refreshes the execution-plane policy from it (never
-          # reinstalling K3s) before rolling the worker, so the demo cannot drift.
-          remote_setup="$(
-            ssh "${ssh_options[@]}" "$DEMO_USER@$DEMO_HOST" \
-              'set -Eeuo pipefail; f=$(mktemp); cat >"$f"; chmod 700 "$f"; printf "%s\n" "$f"' \
-              <deploy/docker/setup-k3s.sh
-          )"
-          if [[ ! "$remote_setup" =~ ^/[A-Za-z0-9._/-]+$ ]]; then
-            echo "::error::Unexpected remote setup script path"
-            exit 1
-          fi
-
-          printf -v REMOTE_ARGS '%q %q %q %q %q' \
-            "$IMAGE_TAG" "$APP_DIGEST" "$WORKER_DIGEST" "$DEMO_DEPLOY_PATH" "$remote_setup"
-
-          # Copy the script to a remote temp file, then execute it. Running via
-          # `bash -s` with the script on SSH stdin lets docker/cli children
-          # inherit that stream; a failed imagetools/digest step also surfaced
-          # only as SSH exit 255 with no script diagnostics.
-          # shellcheck disable=SC2029 # the remote command is built here on purpose
-          ssh "${ssh_options[@]}" "$DEMO_USER@$DEMO_HOST" \
-            "set -Eeuo pipefail; script=\$(mktemp); trap 'rm -f -- \"\$script\" ${remote_setup}' EXIT; cat >\"\$script\"; chmod 700 \"\$script\"; bash \"\$script\" ${REMOTE_ARGS}" \
-            <.github/scripts/deploy-demo.sh
-
-      - name: Verify public demo revision
-        shell: bash
-        env:
-          EXPECTED_BUILD_SHA: ${{ github.sha }}
-        run: |
-          set -Eeuo pipefail
-
-          deadline=$((SECONDS + 300))
-          while (( SECONDS < deadline )); do
-            if response="$(curl --fail --silent --show-error \
-              --connect-timeout 5 --max-time 10 \
-              "${E2E_BASE_URL}/api/health" 2>/dev/null)"; then
-              revision="$(jq -r '.build.revision // empty' <<<"$response")"
-              status="$(jq -r '.status // empty' <<<"$response")"
-              database_status="$(jq -r '.checks.database.status // empty' <<<"$response")"
-              if [[ "$revision" == "$EXPECTED_BUILD_SHA" && "$status" =~ ^(ok|degraded)$ && "$database_status" == "ok" ]]; then
-                echo "Public demo is serving build ${EXPECTED_BUILD_SHA}"
-                exit 0
-              fi
-            fi
-            sleep 5
-          done
-
-          echo "::error::Public demo did not serve healthy build ${EXPECTED_BUILD_SHA} within five minutes"
-          exit 1
-
-      - name: Write summary
-        if: success()
-        continue-on-error: true
-        env:
-          IMAGE_TAG: ${{ needs.build-and-push.outputs.image_tag }}
-        run: |
-          echo "## 🚀 Demo serves \`$IMAGE_TAG\` ([$E2E_BASE_URL]($E2E_BASE_URL), build \`${GITHUB_SHA:0:12}\`)" >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Remove SSH credentials
-        if: always()
-        shell: bash
-        run: rm -f "$RUNNER_TEMP/supercheck-demo-ssh/id" "$RUNNER_TEMP/supercheck-demo-ssh/known_hosts"
-
-  # The full suite runs only after the demo serves the triggering build SHA.
-  # E2E remains advisory for release builds (advisory: true): failures stay
-  # visible in the summary and artifacts without failing a successfully built
-  # image. The reusable workflow owns the steps and the supercheck-e2e lock.
-  e2e-tests:
-    name: Full E2E Tests
-    needs: deploy-demo
-    if: ${{ startsWith(github.ref, 'refs/heads/main') || startsWith(github.ref, 'refs/tags/v') }}
-    permissions:
-      contents: read
-      actions: read
-    uses: ./.github/workflows/e2e-full.yml
+    uses: ./.github/workflows/compose-e2e.yml
     with:
-      base_url: https://demo.supercheck.dev
-      expected_build_sha: ${{ github.sha }}
-      advisory: true
-    secrets:
-      E2E_TEST_USER_EMAIL: ${{ secrets.E2E_TEST_USER_EMAIL }}
-      E2E_TEST_USER_PASSWORD: ${{ secrets.E2E_TEST_USER_PASSWORD }}
-      E2E_INVITEE_EMAIL: ${{ secrets.E2E_INVITEE_EMAIL }}
-      E2E_INVITEE_PASSWORD: ${{ secrets.E2E_INVITEE_PASSWORD }}
-      E2E_SESSION_USER_EMAIL: ${{ secrets.E2E_SESSION_USER_EMAIL }}
-      E2E_SESSION_USER_PASSWORD: ${{ secrets.E2E_SESSION_USER_PASSWORD }}
-      E2E_SECURITY_USER_EMAIL: ${{ secrets.E2E_SECURITY_USER_EMAIL }}
-      E2E_SECURITY_USER_PASSWORD: ${{ secrets.E2E_SECURITY_USER_PASSWORD }}
-      E2E_SUPER_ADMIN_EMAIL: ${{ secrets.E2E_SUPER_ADMIN_EMAIL }}
-      E2E_SUPER_ADMIN_PASSWORD: ${{ secrets.E2E_SUPER_ADMIN_PASSWORD }}
-      E2E_ORG_OWNER_EMAIL: ${{ secrets.E2E_ORG_OWNER_EMAIL }}
-      E2E_ORG_OWNER_PASSWORD: ${{ secrets.E2E_ORG_OWNER_PASSWORD }}
-      E2E_ORG_ADMIN_EMAIL: ${{ secrets.E2E_ORG_ADMIN_EMAIL }}
-      E2E_ORG_ADMIN_PASSWORD: ${{ secrets.E2E_ORG_ADMIN_PASSWORD }}
-      E2E_PROJECT_ADMIN_EMAIL: ${{ secrets.E2E_PROJECT_ADMIN_EMAIL }}
-      E2E_PROJECT_ADMIN_PASSWORD: ${{ secrets.E2E_PROJECT_ADMIN_PASSWORD }}
-      E2E_EDITOR_EMAIL: ${{ secrets.E2E_EDITOR_EMAIL }}
-      E2E_EDITOR_PASSWORD: ${{ secrets.E2E_EDITOR_PASSWORD }}
-      E2E_VIEWER_EMAIL: ${{ secrets.E2E_VIEWER_EMAIL }}
-      E2E_VIEWER_PASSWORD: ${{ secrets.E2E_VIEWER_PASSWORD }}
+      image_tag: ${{ needs.build-and-push.outputs.image_tag }}
+      full: true
