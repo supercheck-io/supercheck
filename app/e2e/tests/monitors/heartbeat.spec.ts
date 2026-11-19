@@ -26,7 +26,7 @@ async function expectHeartbeatState(page: Page, monitorId: string, state: string
 }
 
 test.describe("Heartbeat monitor @monitors @heartbeat", () => {
-  test("creates from Quick Create, copies the URL, a ping turns it Up and /fail turns it Down @critical", async ({
+  test("creates from Quick Create, copies the URL, a ping turns it Up and /fail turns it Down @critical @execution", async ({
     projectAdminPage: page,
     cleanup,
   }) => {

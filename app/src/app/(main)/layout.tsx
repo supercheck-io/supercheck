@@ -1,4 +1,5 @@
 import { AppSidebar } from "@/components/app-sidebar";
+import { ShellMain } from "@/components/shell-main";
 import { Separator } from "@/components/ui/separator";
 import {
   SidebarInset,
@@ -110,19 +111,32 @@ export default async function MainLayout({
     // Only paying org admins can see or change the cap, so only they poll it.
     // One role lookup serves the spending-cap banner and the pending-deletion banner.
     const needsSpendingCapRole = !initialIsSelfHosted && initialSubscriptionStatus.isActive;
-    const role = needsSpendingCapRole || orgPendingDeletion ? await getUserOrgRole(user.id, org.id).catch(() => null) : null;
+    // The role, trial and project lookups do not depend on each other, so they run together.
+    const rolePromise = needsSpendingCapRole || orgPendingDeletion
+      ? getUserOrgRole(user.id, org.id).catch(() => null)
+      : Promise.resolve(null);
+    const trialPromise = !initialIsSelfHosted && !initialSubscriptionStatus.isActive
+      ? getTrialSummary(org.id).catch(() => undefined)
+      : Promise.resolve(undefined);
+    // getCurrentProjectContext can write (default project membership), so it only runs once a
+    // signed-in user with an organization is known.
+    const projectsPromise = getSelectableProjects(user.id);
+    const currentProjectPromise = getCurrentProjectContext();
+    // Settled inside the try below; this only avoids an unhandled rejection while role/trial resolve.
+    // (getCurrentProjectContext swallows its own errors, so it needs no such guard.)
+    projectsPromise.catch(() => undefined);
+    const [role, trial] = await Promise.all([rolePromise, trialPromise]);
     isOrgOwner = role === Role.ORG_OWNER;
     if (needsSpendingCapRole) {
       showSpendingCap = role === Role.ORG_ADMIN || role === Role.ORG_OWNER;
     }
     if (!initialIsSelfHosted && !initialSubscriptionStatus.isActive) {
-      const trial = await getTrialSummary(org.id).catch(() => undefined);
       initialSubscriptionStatus = { ...initialSubscriptionStatus, trial: trial ?? null };
     }
     try {
       const [projectsResult, currentProjectResult] = await Promise.all([
-        getSelectableProjects(user.id),
-        getCurrentProjectContext(),
+        projectsPromise,
+        currentProjectPromise,
       ]);
 
       initialProjects = projectsResult.map(p => ({
@@ -207,7 +221,7 @@ export default async function MainLayout({
             <JobProvider>
               <SetupChecker />
               <AppSidebar />
-              <SidebarInset className="lg:has-[[data-fit-viewport]]:h-svh lg:has-[[data-fit-viewport]]:min-h-0">
+              <SidebarInset className="lg:h-svh lg:min-h-0">
                 <header className="sticky top-0 z-10 flex h-14 min-w-0 shrink-0 items-center justify-between gap-2 border-b border-t bg-background transition-[width,height] ease-linear group-has-[[data-collapsible=icon]]/sidebar-wrapper:h-12">
                   <div className="flex min-w-0 flex-1 items-center gap-2 px-2 sm:px-4">
                     <SidebarTrigger className="-ml-1 shrink-0" />
@@ -233,7 +247,7 @@ export default async function MainLayout({
                     <NavUser />
                   </div>
                 </header>
-                <main className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+                <ShellMain className="flex min-h-0 flex-1 flex-col overflow-y-auto">
                   {org && <PendingDeletionBanner organizationId={org.id} pending={orgPendingDeletion} isOwner={isOrgOwner} />}
                   <TrialBanner initialTrial={initialSubscriptionStatus?.trial ?? null} />
                   <SpendingCapBanner enabled={showSpendingCap} />
@@ -243,7 +257,7 @@ export default async function MainLayout({
                   >
                     {children}
                   </SubscriptionGuard>
-                </main>
+                </ShellMain>
               </SidebarInset>
             </JobProvider>
           </SidebarProvider>

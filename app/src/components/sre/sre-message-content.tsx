@@ -282,6 +282,18 @@ function splitMarkdownTableRow(line: string) {
     .map((cell) => cell.trim().replace(/\\\|/g, "|"));
 }
 
+/** A chart block with a known type but no rows: say so instead of printing its JSON. */
+function isEmptyChartBlock(value: string): boolean {
+  try {
+    const parsed: unknown = JSON.parse(value);
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return false;
+    const { type, data } = parsed as Record<string, unknown>;
+    return (type === "line" || type === "bar" || type === "area") && (!Array.isArray(data) || data.length === 0);
+  } catch {
+    return false;
+  }
+}
+
 function parseSreChartBlock(value: string): ParsedSreChart | null {
   let parsed: unknown;
 
@@ -736,7 +748,17 @@ export function SreMessageContent({
       }
 
       if (language === "chart") {
-        const chart = parseSreChartBlock(codeLines.join("\n"));
+        const chartSource = codeLines.join("\n");
+        const chart = parseSreChartBlock(chartSource);
+        if (!chart && isEmptyChartBlock(chartSource)) {
+          rendered.push(
+            <p key={`chart-empty-${index}`} className="text-xs text-muted-foreground">
+              No data to chart
+            </p>,
+          );
+          index = codeIndex;
+          continue;
+        }
         if (chart) {
           rendered.push(
             <SreInlineChart key={`chart-${index}`} chart={chart} />,

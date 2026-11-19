@@ -22,17 +22,15 @@ on:
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: supercheck-io/supercheck
-  E2E_BASE_URL: https://demo.supercheck.dev
 
 # Explicit permissions following least-privilege principle
 # Individual jobs may override with elevated permissions (e.g., packages: write)
 permissions:
   contents: read
 
-# A newer release must not replace the demo while an older release is still
-# running its exact-revision E2E suite.
+# Per ref, never cancelled: back-to-back tags each run their own gate.
 concurrency:
-  group: demo-release-${{ github.repository }}
+  group: release-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
@@ -153,7 +151,6 @@ jobs:
     permissions:
       contents: read
       packages: write
-      id-token: write
     outputs:
       image_tag: ${{ steps.app-meta.outputs.version }}
       app_digest: ${{ steps.build-app.outputs.digest }}
@@ -205,17 +202,15 @@ jobs:
         with:
           images: |
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/app
+          # metadata-action adds latest for stable semver tags unless disabled.
+          flavor: latest=false
+          # Only used for the version output and labels: nothing is tagged until
+          # promote-and-sign, after compose-e2e passes.
           tags: |
             # Full version for releases (e.g. 1.2.3 or 1.2.3-canary.1)
             type=semver,pattern={{version}},enable=${{ startsWith(github.ref, 'refs/tags/v') }}
-            # Major.minor for stable releases only (e.g. 1.2)
-            type=semver,pattern={{major}}.{{minor}},enable=${{ startsWith(github.ref, 'refs/tags/v') && !contains(github.ref, '-') }}
             # Custom version from manual workflow input
             type=raw,value=${{ github.event.inputs.version }},priority=800,enable=${{ github.event.inputs.version != '' }}
-            # Latest tag ONLY for stable releases (no prerelease suffix like -canary, -beta, -alpha, -rc)
-            type=raw,value=latest,priority=50,enable=${{ startsWith(github.ref, 'refs/tags/v') && !contains(github.ref_name, '-') }}
-            # Latest tag override for manual builds (use with caution)
-            type=raw,value=latest,priority=50,enable=${{ github.event.inputs.push_latest == 'true' }}
             # Fallback tag using git SHA for manual builds without custom version
             type=sha,prefix={{branch}}-,suffix=-${{ github.run_number }},enable=${{ github.event_name == 'workflow_dispatch' && github.event.inputs.version == '' }}
 
@@ -225,17 +220,14 @@ jobs:
         with:
           images: |
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/worker
+          flavor: latest=false
+          # Only used for the version output and labels: nothing is tagged until
+          # promote-and-sign, after compose-e2e passes.
           tags: |
             # Full version for releases (e.g. 1.2.3 or 1.2.3-canary.1)
             type=semver,pattern={{version}},enable=${{ startsWith(github.ref, 'refs/tags/v') }}
-            # Major.minor for stable releases only (e.g. 1.2)
-            type=semver,pattern={{major}}.{{minor}},enable=${{ startsWith(github.ref, 'refs/tags/v') && !contains(github.ref, '-') }}
             # Custom version from manual workflow input
             type=raw,value=${{ github.event.inputs.version }},priority=800,enable=${{ github.event.inputs.version != '' }}
-            # Latest tag ONLY for stable releases (no prerelease suffix like -canary, -beta, -alpha, -rc)
-            type=raw,value=latest,priority=50,enable=${{ startsWith(github.ref, 'refs/tags/v') && !contains(github.ref_name, '-') }}
-            # Latest tag override for manual builds (use with caution)
-            type=raw,value=latest,priority=50,enable=${{ github.event.inputs.push_latest == 'true' }}
             # Fallback tag using git SHA for manual builds without custom version
             type=sha,prefix={{branch}}-,suffix=-${{ github.run_number }},enable=${{ github.event_name == 'workflow_dispatch' && github.event.inputs.version == '' }}
 
@@ -267,10 +259,10 @@ jobs:
           context: ./app
           file: ./app/Dockerfile
           platforms: ${{ github.event.inputs.platforms || 'linux/amd64,linux/arm64' }}
-          push: true
           provenance: mode=max
           sbom: true
-          tags: ${{ steps.app-meta.outputs.tags }}
+          # Digest only: no tag exists until promote-and-sign, after compose-e2e passes.
+          outputs: type=image,name=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/app,push-by-digest=true,name-canonical=true,push=true
           labels: ${{ steps.app-meta.outputs.labels }}
           build-args: |
             NEXT_PUBLIC_SOURCE_URL=https://github.com/supercheck-io/supercheck/tree/${{ github.sha }}
@@ -302,10 +294,10 @@ jobs:
           context: ./worker
           file: ./worker/Dockerfile
           platforms: ${{ github.event.inputs.platforms || 'linux/amd64,linux/arm64' }}
-          push: true
           provenance: mode=max
           sbom: true
-          tags: ${{ steps.worker-meta.outputs.tags }}
+          # Digest only: no tag exists until promote-and-sign, after compose-e2e passes.
+          outputs: type=image,name=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/worker,push-by-digest=true,name-canonical=true,push=true
           labels: ${{ steps.worker-meta.outputs.labels }}
           build-args: |
             SUPERCHECK_VERSION=${{ steps.worker-meta.outputs.version }}
@@ -346,27 +338,165 @@ jobs:
           npx --yes @sentry/cli@3.8.2 releases set-commits "$RELEASE" --auto --ignore-missing
           npx --yes @sentry/cli@3.8.2 releases finalize "$RELEASE"
 
+  # Release gate, part 1: the pushed-by-digest app image in the self-hosted Compose stack,
+  # full suite. No tag points at the image yet. Part 2 is the full E2E run against staging
+  # (e2e-full.yml, target=staging), started by hand after the staging deploy.
+  compose-e2e:
+    name: Self-hosted Compose E2E
+    needs: build-and-push
+    # The runner is amd64: an arm64-only manual build cannot be pulled, so it skips the gate
+    # (and the promotion that depends on it).
+    if: ${{ github.event.inputs.platforms == '' || contains(github.event.inputs.platforms, 'linux/amd64') }}
+    permissions:
+      contents: read
+    uses: ./.github/workflows/compose-e2e.yml
+    with:
+      release: true
+      image_tag: ${{ needs.build-and-push.outputs.image_tag }}
+      image_digest: ${{ needs.build-and-push.outputs.app_digest }}
+      full: true
+
+  # Only after the gate: tag the tested digests (version, major.minor, latest) and sign them.
+  # imagetools create re-points tags at the existing multi-arch index, so digests,
+  # provenance and SBOM attestations are unchanged.
+  promote-and-sign:
+    name: Tag and sign images
+    needs: [build-and-push, compose-e2e]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    steps:
+      - name: Extract app tags
+        id: app-meta
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
+        with:
+          images: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/app
+          flavor: latest=false
+          tags: |
+            # Full version for releases (e.g. 1.2.3 or 1.2.3-canary.1)
+            type=semver,pattern={{version}},enable=${{ startsWith(github.ref, 'refs/tags/v') }}
+            # Major.minor for stable releases only (e.g. 1.2)
+            type=semver,pattern={{major}}.{{minor}},enable=${{ startsWith(github.ref, 'refs/tags/v') && !contains(github.ref, '-') }}
+            # Custom version from manual workflow input
+            type=raw,value=${{ github.event.inputs.version }},priority=800,enable=${{ github.event.inputs.version != '' }}
+            # Latest tag ONLY for stable releases (no prerelease suffix like -canary, -beta, -alpha, -rc)
+            type=raw,value=latest,priority=50,enable=${{ startsWith(github.ref, 'refs/tags/v') && !contains(github.ref_name, '-') }}
+            # Latest tag override for manual builds (use with caution)
+            type=raw,value=latest,priority=50,enable=${{ github.event.inputs.push_latest == 'true' }}
+            # Fallback tag using git SHA for manual builds without custom version
+            type=sha,prefix={{branch}}-,suffix=-${{ github.run_number }},enable=${{ github.event_name == 'workflow_dispatch' && github.event.inputs.version == '' }}
+
+      - name: Extract worker tags
+        id: worker-meta
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
+        with:
+          images: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/worker
+          flavor: latest=false
+          tags: |
+            # Full version for releases (e.g. 1.2.3 or 1.2.3-canary.1)
+            type=semver,pattern={{version}},enable=${{ startsWith(github.ref, 'refs/tags/v') }}
+            # Major.minor for stable releases only (e.g. 1.2)
+            type=semver,pattern={{major}}.{{minor}},enable=${{ startsWith(github.ref, 'refs/tags/v') && !contains(github.ref, '-') }}
+            # Custom version from manual workflow input
+            type=raw,value=${{ github.event.inputs.version }},priority=800,enable=${{ github.event.inputs.version != '' }}
+            # Latest tag ONLY for stable releases (no prerelease suffix like -canary, -beta, -alpha, -rc)
+            type=raw,value=latest,priority=50,enable=${{ startsWith(github.ref, 'refs/tags/v') && !contains(github.ref_name, '-') }}
+            # Latest tag override for manual builds (use with caution)
+            type=raw,value=latest,priority=50,enable=${{ github.event.inputs.push_latest == 'true' }}
+            # Fallback tag using git SHA for manual builds without custom version
+            type=sha,prefix={{branch}}-,suffix=-${{ github.run_number }},enable=${{ github.event_name == 'workflow_dispatch' && github.event.inputs.version == '' }}
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+
+      # Signing is by digest, so it needs no tag: sign first, so `latest` is never public unsigned.
       - name: Install Cosign
         uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
 
       - name: Sign published images
         env:
-          APP_DIGEST: ${{ steps.build-app.outputs.digest }}
-          WORKER_DIGEST: ${{ steps.build-worker.outputs.digest }}
+          APP_DIGEST: ${{ needs.build-and-push.outputs.app_digest }}
+          WORKER_DIGEST: ${{ needs.build-and-push.outputs.worker_digest }}
         run: |
           cosign sign --yes "$REGISTRY/$IMAGE_NAME/app@$APP_DIGEST"
           cosign sign --yes "$REGISTRY/$IMAGE_NAME/worker@$WORKER_DIGEST"
 
+      - name: Tag the tested digests
+        env:
+          APP_DIGEST: ${{ needs.build-and-push.outputs.app_digest }}
+          WORKER_DIGEST: ${{ needs.build-and-push.outputs.worker_digest }}
+          APP_TAGS: ${{ steps.app-meta.outputs.tags }}
+          WORKER_TAGS: ${{ steps.worker-meta.outputs.tags }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -Eeuo pipefail
+          # No concurrency lock: a pending promotion in a group can be replaced, which would
+          # skip a release's tags and signatures. Only the highest stable tag moves floating tags.
+          # A release only moves `latest` / `major.minor` while it is the highest stable tag
+          # (overall / within that minor), so an older, slower run never rolls them back or
+          # mixes app and worker floating tags.
+          stable=""
+          if [[ "$GITHUB_REF" == refs/tags/v* && "$GITHUB_REF_NAME" != *-* ]]; then
+            stable="$(gh api --paginate "repos/$GITHUB_REPOSITORY/git/matching-refs/tags/v" --jq '.[].ref' \
+              | sed 's#^refs/tags/##' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V)"
+          fi
+          filter_floating() { # tags
+            local tag name top
+            while IFS= read -r tag; do
+              [ -n "$tag" ] || continue
+              name="${tag##*:}"
+              if [ -n "$stable" ]; then
+                if [ "$name" = latest ]; then
+                  top="$(tail -1 <<<"$stable")"
+                elif [[ "$name" =~ ^[0-9]+\.[0-9]+$ ]]; then
+                  top="$(grep -E "^v${name//./\\.}\\." <<<"$stable" | tail -1)"
+                else
+                  top="$GITHUB_REF_NAME"
+                fi
+                [ "$top" = "$GITHUB_REF_NAME" ] || { echo "Not moving $name: $top is newer" >&2; continue; }
+              fi
+              echo "$tag"
+            done <<<"$1"
+          }
+          APP_TAGS="$(filter_floating "$APP_TAGS")"
+          WORKER_TAGS="$(filter_floating "$WORKER_TAGS")"
+          promote() { # image digest tags
+            local image="$1" digest="$2" tags="$3" args=() tag
+            while IFS= read -r tag; do [ -n "$tag" ] && args+=(-t "$tag"); done <<<"$tags"
+            [ "${#args[@]}" -gt 0 ] || { echo "::error::No tags for $image"; return 1; }
+            docker buildx imagetools create "${args[@]}" "$image@$digest"
+            # The tag must resolve to exactly the tested digest.
+            for tag in "${args[@]}"; do
+              [ "$tag" = "-t" ] && continue
+              got="$(docker buildx imagetools inspect "$tag" --format '{{.Manifest.Digest}}')"
+              [ "$got" = "$digest" ] || { echo "::error::$tag resolves to $got, expected $digest"; return 1; }
+            done
+          }
+          promote "$REGISTRY/$IMAGE_NAME/app" "$APP_DIGEST" "$APP_TAGS"
+          promote "$REGISTRY/$IMAGE_NAME/worker" "$WORKER_DIGEST" "$WORKER_TAGS"
+
       - name: Write summary
         continue-on-error: true
         env:
-          IMAGE_TAG: ${{ steps.app-meta.outputs.version }}
-          APP_DIGEST: ${{ steps.build-app.outputs.digest }}
-          WORKER_DIGEST: ${{ steps.build-worker.outputs.digest }}
+          IMAGE_TAG: ${{ needs.build-and-push.outputs.image_tag }}
+          APP_DIGEST: ${{ needs.build-and-push.outputs.app_digest }}
+          WORKER_DIGEST: ${{ needs.build-and-push.outputs.worker_digest }}
           APP_TAGS: ${{ steps.app-meta.outputs.tags }}
         run: |
           {
-            echo "## Images for \`$IMAGE_TAG\` (signed)"
+            echo "## Images for \`$IMAGE_TAG\` (tested, then signed)"
             echo ""
             echo "| Image | Digest |"
             echo "| --- | --- |"
@@ -385,195 +515,3 @@ jobs:
             echo "  --certificate-oidc-issuer https://token.actions.githubusercontent.com"
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
-
-  deploy-demo:
-    name: Deploy Demo Environment
-    needs: build-and-push
-    if: ${{ startsWith(github.ref, 'refs/heads/main') || startsWith(github.ref, 'refs/tags/v') }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 25
-    environment: demo
-    permissions:
-      contents: read
-
-    steps:
-      - name: Checkout deployment script
-        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
-        with:
-          persist-credentials: false
-
-      - name: Configure verified SSH access
-        shell: bash
-        env:
-          DEMO_HOST: ${{ secrets.DEMO_HOST }}
-          DEMO_USER: ${{ secrets.DEMO_USER }}
-          DEMO_SSH_KEY: ${{ secrets.DEMO_SSH_KEY }}
-          DEMO_SSH_KNOWN_HOSTS: ${{ secrets.DEMO_SSH_KNOWN_HOSTS }}
-          DEMO_SSH_PORT: ${{ vars.DEMO_SSH_PORT || '22' }}
-        run: |
-          set -Eeuo pipefail
-
-          for required_name in DEMO_HOST DEMO_USER DEMO_SSH_KEY DEMO_SSH_KNOWN_HOSTS; do
-            if [ -z "${!required_name:-}" ]; then
-              echo "::error::Missing required demo environment secret: ${required_name}"
-              exit 1
-            fi
-          done
-
-          if [[ ! "$DEMO_HOST" =~ ^[A-Za-z0-9][A-Za-z0-9._:-]*$ ]]; then
-            echo "::error::DEMO_HOST is invalid"
-            exit 1
-          fi
-          if [[ ! "$DEMO_USER" =~ ^[A-Za-z0-9_][A-Za-z0-9_.-]*$ ]]; then
-            echo "::error::DEMO_USER is invalid"
-            exit 1
-          fi
-          if [[ ! "$DEMO_SSH_PORT" =~ ^[0-9]+$ ]] || (( DEMO_SSH_PORT < 1 || DEMO_SSH_PORT > 65535 )); then
-            echo "::error::DEMO_SSH_PORT must be between 1 and 65535"
-            exit 1
-          fi
-
-          install -d -m 700 "$RUNNER_TEMP/supercheck-demo-ssh"
-          printf '%s\n' "$DEMO_SSH_KEY" >"$RUNNER_TEMP/supercheck-demo-ssh/id"
-          printf '%s\n' "$DEMO_SSH_KNOWN_HOSTS" >"$RUNNER_TEMP/supercheck-demo-ssh/known_hosts"
-          chmod 600 "$RUNNER_TEMP/supercheck-demo-ssh/id" "$RUNNER_TEMP/supercheck-demo-ssh/known_hosts"
-
-          ssh-keygen -y -f "$RUNNER_TEMP/supercheck-demo-ssh/id" >/dev/null
-          ssh-keygen -l -f "$RUNNER_TEMP/supercheck-demo-ssh/known_hosts" >/dev/null
-
-      - name: Deploy exact release to demo
-        shell: bash
-        env:
-          IMAGE_TAG: ${{ needs.build-and-push.outputs.image_tag }}
-          APP_DIGEST: ${{ needs.build-and-push.outputs.app_digest }}
-          WORKER_DIGEST: ${{ needs.build-and-push.outputs.worker_digest }}
-          DEMO_HOST: ${{ secrets.DEMO_HOST }}
-          DEMO_USER: ${{ secrets.DEMO_USER }}
-          DEMO_SSH_PORT: ${{ vars.DEMO_SSH_PORT || '22' }}
-          DEMO_DEPLOY_PATH: ${{ vars.DEMO_DEPLOY_PATH || '/root/supercheck/deploy/docker' }}
-        run: |
-          set -Eeuo pipefail
-
-          if [[ ! "$IMAGE_TAG" =~ ^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$ || "$IMAGE_TAG" == "latest" ]]; then
-            echo "::error::Docker metadata produced an invalid deployment tag"
-            exit 1
-          fi
-          if [[ ! "$APP_DIGEST" =~ ^sha256:[0-9a-f]{64}$ || ! "$WORKER_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]; then
-            echo "::error::Build outputs did not contain valid app and worker digests"
-            exit 1
-          fi
-
-          ssh_options=(
-            -i "$RUNNER_TEMP/supercheck-demo-ssh/id"
-            -p "$DEMO_SSH_PORT"
-            -o BatchMode=yes
-            -o ConnectTimeout=15
-            -o ConnectionAttempts=2
-            -o IdentitiesOnly=yes
-            -o ServerAliveCountMax=3
-            -o ServerAliveInterval=15
-            -o StrictHostKeyChecking=yes
-            -o UserKnownHostsFile="$RUNNER_TEMP/supercheck-demo-ssh/known_hosts"
-          )
-
-          # The host's checkout may lag main, so ship the current K3s setup script
-          # too: the deploy refreshes the execution-plane policy from it (never
-          # reinstalling K3s) before rolling the worker, so the demo cannot drift.
-          remote_setup="$(
-            ssh "${ssh_options[@]}" "$DEMO_USER@$DEMO_HOST" \
-              'set -Eeuo pipefail; f=$(mktemp); cat >"$f"; chmod 700 "$f"; printf "%s\n" "$f"' \
-              <deploy/docker/setup-k3s.sh
-          )"
-          if [[ ! "$remote_setup" =~ ^/[A-Za-z0-9._/-]+$ ]]; then
-            echo "::error::Unexpected remote setup script path"
-            exit 1
-          fi
-
-          printf -v REMOTE_ARGS '%q %q %q %q %q' \
-            "$IMAGE_TAG" "$APP_DIGEST" "$WORKER_DIGEST" "$DEMO_DEPLOY_PATH" "$remote_setup"
-
-          # Copy the script to a remote temp file, then execute it. Running via
-          # `bash -s` with the script on SSH stdin lets docker/cli children
-          # inherit that stream; a failed imagetools/digest step also surfaced
-          # only as SSH exit 255 with no script diagnostics.
-          # shellcheck disable=SC2029 # the remote command is built here on purpose
-          ssh "${ssh_options[@]}" "$DEMO_USER@$DEMO_HOST" \
-            "set -Eeuo pipefail; script=\$(mktemp); trap 'rm -f -- \"\$script\" ${remote_setup}' EXIT; cat >\"\$script\"; chmod 700 \"\$script\"; bash \"\$script\" ${REMOTE_ARGS}" \
-            <.github/scripts/deploy-demo.sh
-
-      - name: Verify public demo revision
-        shell: bash
-        env:
-          EXPECTED_BUILD_SHA: ${{ github.sha }}
-        run: |
-          set -Eeuo pipefail
-
-          deadline=$((SECONDS + 300))
-          while (( SECONDS < deadline )); do
-            if response="$(curl --fail --silent --show-error \
-              --connect-timeout 5 --max-time 10 \
-              "${E2E_BASE_URL}/api/health" 2>/dev/null)"; then
-              revision="$(jq -r '.build.revision // empty' <<<"$response")"
-              status="$(jq -r '.status // empty' <<<"$response")"
-              database_status="$(jq -r '.checks.database.status // empty' <<<"$response")"
-              if [[ "$revision" == "$EXPECTED_BUILD_SHA" && "$status" =~ ^(ok|degraded)$ && "$database_status" == "ok" ]]; then
-                echo "Public demo is serving build ${EXPECTED_BUILD_SHA}"
-                exit 0
-              fi
-            fi
-            sleep 5
-          done
-
-          echo "::error::Public demo did not serve healthy build ${EXPECTED_BUILD_SHA} within five minutes"
-          exit 1
-
-      - name: Write summary
-        if: success()
-        continue-on-error: true
-        env:
-          IMAGE_TAG: ${{ needs.build-and-push.outputs.image_tag }}
-        run: |
-          echo "## 🚀 Demo serves \`$IMAGE_TAG\` ([$E2E_BASE_URL]($E2E_BASE_URL), build \`${GITHUB_SHA:0:12}\`)" >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Remove SSH credentials
-        if: always()
-        shell: bash
-        run: rm -f "$RUNNER_TEMP/supercheck-demo-ssh/id" "$RUNNER_TEMP/supercheck-demo-ssh/known_hosts"
-
-  # The full suite runs only after the demo serves the triggering build SHA.
-  # E2E remains advisory for release builds (advisory: true): failures stay
-  # visible in the summary and artifacts without failing a successfully built
-  # image. The reusable workflow owns the steps and the supercheck-e2e lock.
-  e2e-tests:
-    name: Full E2E Tests
-    needs: deploy-demo
-    if: ${{ startsWith(github.ref, 'refs/heads/main') || startsWith(github.ref, 'refs/tags/v') }}
-    permissions:
-      contents: read
-      actions: read
-    uses: ./.github/workflows/e2e-full.yml
-    with:
-      base_url: https://demo.supercheck.dev
-      expected_build_sha: ${{ github.sha }}
-      advisory: true
-    secrets:
-      E2E_TEST_USER_EMAIL: ${{ secrets.E2E_TEST_USER_EMAIL }}
-      E2E_TEST_USER_PASSWORD: ${{ secrets.E2E_TEST_USER_PASSWORD }}
-      E2E_INVITEE_EMAIL: ${{ secrets.E2E_INVITEE_EMAIL }}
-      E2E_INVITEE_PASSWORD: ${{ secrets.E2E_INVITEE_PASSWORD }}
-      E2E_SESSION_USER_EMAIL: ${{ secrets.E2E_SESSION_USER_EMAIL }}
-      E2E_SESSION_USER_PASSWORD: ${{ secrets.E2E_SESSION_USER_PASSWORD }}
-      E2E_SECURITY_USER_EMAIL: ${{ secrets.E2E_SECURITY_USER_EMAIL }}
-      E2E_SECURITY_USER_PASSWORD: ${{ secrets.E2E_SECURITY_USER_PASSWORD }}
-      E2E_SUPER_ADMIN_EMAIL: ${{ secrets.E2E_SUPER_ADMIN_EMAIL }}
-      E2E_SUPER_ADMIN_PASSWORD: ${{ secrets.E2E_SUPER_ADMIN_PASSWORD }}
-      E2E_ORG_OWNER_EMAIL: ${{ secrets.E2E_ORG_OWNER_EMAIL }}
-      E2E_ORG_OWNER_PASSWORD: ${{ secrets.E2E_ORG_OWNER_PASSWORD }}
-      E2E_ORG_ADMIN_EMAIL: ${{ secrets.E2E_ORG_ADMIN_EMAIL }}
-      E2E_ORG_ADMIN_PASSWORD: ${{ secrets.E2E_ORG_ADMIN_PASSWORD }}
-      E2E_PROJECT_ADMIN_EMAIL: ${{ secrets.E2E_PROJECT_ADMIN_EMAIL }}
-      E2E_PROJECT_ADMIN_PASSWORD: ${{ secrets.E2E_PROJECT_ADMIN_PASSWORD }}
-      E2E_EDITOR_EMAIL: ${{ secrets.E2E_EDITOR_EMAIL }}
-      E2E_EDITOR_PASSWORD: ${{ secrets.E2E_EDITOR_PASSWORD }}
-      E2E_VIEWER_EMAIL: ${{ secrets.E2E_VIEWER_EMAIL }}
-      E2E_VIEWER_PASSWORD: ${{ secrets.E2E_VIEWER_PASSWORD }}

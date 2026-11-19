@@ -10,8 +10,7 @@ import { mcpAuthApi } from "@/lib/mcp/auth-api";
 import { listConnectableProjects } from "@/lib/mcp/connect-project";
 import { projectsKeepingBroaderGrant, verifiedHostForClientId } from "@/lib/mcp/connections";
 import { displayClientName } from "@/lib/mcp/client-metadata";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { CheckIcon } from "@/components/logo/supercheck-logo";
+import { AuthCard, AuthHeader } from "@/components/auth/auth-shell";
 import { McpConsent, type McpConsentProject } from "./mcp-consent";
 
 export const dynamic = "force-dynamic";
@@ -25,14 +24,10 @@ export const metadata: Metadata = {
 
 function Shell({ title, description, children }: { title: string; description?: string; children?: React.ReactNode }) {
   return (
-    <Card className="w-full max-w-md shadow-sm">
-      <CardHeader className="items-center space-y-3 text-center">
-        <CheckIcon className="size-12" aria-hidden="true" />
-        <CardTitle className="text-2xl font-bold">{title}</CardTitle>
-        {description ? <CardDescription>{description}</CardDescription> : null}
-      </CardHeader>
-      {children ? <CardContent className="space-y-4">{children}</CardContent> : null}
-    </Card>
+    <AuthCard>
+      <AuthHeader title={title} description={description} />
+      {children}
+    </AuthCard>
   );
 }
 

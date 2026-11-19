@@ -57,7 +57,7 @@ test.describe('Maintenance windows @incidents', () => {
     await expect(page.getByRole('row').filter({ hasText: monitor.name }).getByRole('img', { name: 'In maintenance: alerts muted' })).toHaveCount(0);
   });
 
-  test('a failing monitor inside a window stores maintenance results and opens no incident @high @positive', async ({ projectAdminPage: page, cleanup }) => {
+  test('a failing monitor inside a window stores maintenance results and opens no incident @high @positive @execution', async ({ projectAdminPage: page, cleanup }) => {
     test.skip(NO_WORKER, NO_WORKER_REASON);
     test.slow(); // Waits for two of the worker's scheduled checks.
     const request = page.request;
