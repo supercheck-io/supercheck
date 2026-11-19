@@ -28,9 +28,9 @@ env:
 permissions:
   contents: read
 
-# Releases run one at a time, so an older release's Compose E2E is never cut short.
+# Per ref, never cancelled: back-to-back tags each run their own gate.
 concurrency:
-  group: release-${{ github.repository }}
+  group: release-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
@@ -205,8 +205,8 @@ jobs:
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/app
           # metadata-action adds latest for stable semver tags unless disabled.
           flavor: latest=false
-          # Only immutable tags are pushed here. Floating tags (major.minor, latest) are
-          # promoted by promote-floating-tags after compose-e2e passes.
+          # Only used for the version output and labels: nothing is tagged until
+          # promote-and-sign, after compose-e2e passes.
           tags: |
             # Full version for releases (e.g. 1.2.3 or 1.2.3-canary.1)
             type=semver,pattern={{version}},enable=${{ startsWith(github.ref, 'refs/tags/v') }}
@@ -222,8 +222,8 @@ jobs:
           images: |
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/worker
           flavor: latest=false
-          # Only immutable tags are pushed here. Floating tags (major.minor, latest) are
-          # promoted by promote-floating-tags after compose-e2e passes.
+          # Only used for the version output and labels: nothing is tagged until
+          # promote-and-sign, after compose-e2e passes.
           tags: |
             # Full version for releases (e.g. 1.2.3 or 1.2.3-canary.1)
             type=semver,pattern={{version}},enable=${{ startsWith(github.ref, 'refs/tags/v') }}
@@ -260,10 +260,10 @@ jobs:
           context: ./app
           file: ./app/Dockerfile
           platforms: ${{ github.event.inputs.platforms || 'linux/amd64,linux/arm64' }}
-          push: true
           provenance: mode=max
           sbom: true
-          tags: ${{ steps.app-meta.outputs.tags }}
+          # Digest only: no tag exists until promote-and-sign, after compose-e2e passes.
+          outputs: type=image,name=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/app,push-by-digest=true,name-canonical=true,push=true
           labels: ${{ steps.app-meta.outputs.labels }}
           build-args: |
             NEXT_PUBLIC_SOURCE_URL=https://github.com/supercheck-io/supercheck/tree/${{ github.sha }}
@@ -295,10 +295,10 @@ jobs:
           context: ./worker
           file: ./worker/Dockerfile
           platforms: ${{ github.event.inputs.platforms || 'linux/amd64,linux/arm64' }}
-          push: true
           provenance: mode=max
           sbom: true
-          tags: ${{ steps.worker-meta.outputs.tags }}
+          # Digest only: no tag exists until promote-and-sign, after compose-e2e passes.
+          outputs: type=image,name=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/worker,push-by-digest=true,name-canonical=true,push=true
           labels: ${{ steps.worker-meta.outputs.labels }}
           build-args: |
             SUPERCHECK_VERSION=${{ steps.worker-meta.outputs.version }}
@@ -339,13 +339,119 @@ jobs:
           npx --yes @sentry/cli@3.8.2 releases set-commits "$RELEASE" --auto --ignore-missing
           npx --yes @sentry/cli@3.8.2 releases finalize "$RELEASE"
 
+  # Release gate, part 1: the pushed-by-digest app image in the self-hosted Compose stack,
+  # full suite. No tag points at the image yet. Part 2 is the full E2E run against staging
+  # (e2e-full.yml, target=staging), started by hand after the staging deploy.
+  compose-e2e:
+    name: Self-hosted Compose E2E
+    needs: build-and-push
+    # The runner is amd64: an arm64-only manual build cannot be pulled, so it skips the gate
+    # (and the promotion that depends on it).
+    if: ${{ github.event.inputs.platforms == '' || contains(github.event.inputs.platforms, 'linux/amd64') }}
+    permissions:
+      contents: read
+    uses: ./.github/workflows/compose-e2e.yml
+    with:
+      release: true
+      image_tag: ${{ needs.build-and-push.outputs.image_tag }}
+      image_digest: ${{ needs.build-and-push.outputs.app_digest }}
+      full: true
+
+  # Only after the gate: tag the tested digests (version, major.minor, latest) and sign them.
+  # imagetools create re-points tags at the existing multi-arch index, so digests,
+  # provenance and SBOM attestations are unchanged.
+  promote-and-sign:
+    name: Tag and sign images
+    needs: [build-and-push, compose-e2e]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    steps:
+      - name: Extract app tags
+        id: app-meta
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
+        with:
+          images: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/app
+          flavor: latest=false
+          tags: |
+            # Full version for releases (e.g. 1.2.3 or 1.2.3-canary.1)
+            type=semver,pattern={{version}},enable=${{ startsWith(github.ref, 'refs/tags/v') }}
+            # Major.minor for stable releases only (e.g. 1.2)
+            type=semver,pattern={{major}}.{{minor}},enable=${{ startsWith(github.ref, 'refs/tags/v') && !contains(github.ref, '-') }}
+            # Custom version from manual workflow input
+            type=raw,value=${{ github.event.inputs.version }},priority=800,enable=${{ github.event.inputs.version != '' }}
+            # Latest tag ONLY for stable releases (no prerelease suffix like -canary, -beta, -alpha, -rc)
+            type=raw,value=latest,priority=50,enable=${{ startsWith(github.ref, 'refs/tags/v') && !contains(github.ref_name, '-') }}
+            # Latest tag override for manual builds (use with caution)
+            type=raw,value=latest,priority=50,enable=${{ github.event.inputs.push_latest == 'true' }}
+            # Fallback tag using git SHA for manual builds without custom version
+            type=sha,prefix={{branch}}-,suffix=-${{ github.run_number }},enable=${{ github.event_name == 'workflow_dispatch' && github.event.inputs.version == '' }}
+
+      - name: Extract worker tags
+        id: worker-meta
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
+        with:
+          images: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/worker
+          flavor: latest=false
+          tags: |
+            # Full version for releases (e.g. 1.2.3 or 1.2.3-canary.1)
+            type=semver,pattern={{version}},enable=${{ startsWith(github.ref, 'refs/tags/v') }}
+            # Major.minor for stable releases only (e.g. 1.2)
+            type=semver,pattern={{major}}.{{minor}},enable=${{ startsWith(github.ref, 'refs/tags/v') && !contains(github.ref, '-') }}
+            # Custom version from manual workflow input
+            type=raw,value=${{ github.event.inputs.version }},priority=800,enable=${{ github.event.inputs.version != '' }}
+            # Latest tag ONLY for stable releases (no prerelease suffix like -canary, -beta, -alpha, -rc)
+            type=raw,value=latest,priority=50,enable=${{ startsWith(github.ref, 'refs/tags/v') && !contains(github.ref_name, '-') }}
+            # Latest tag override for manual builds (use with caution)
+            type=raw,value=latest,priority=50,enable=${{ github.event.inputs.push_latest == 'true' }}
+            # Fallback tag using git SHA for manual builds without custom version
+            type=sha,prefix={{branch}}-,suffix=-${{ github.run_number }},enable=${{ github.event_name == 'workflow_dispatch' && github.event.inputs.version == '' }}
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+
+      - name: Tag the tested digests
+        env:
+          APP_DIGEST: ${{ needs.build-and-push.outputs.app_digest }}
+          WORKER_DIGEST: ${{ needs.build-and-push.outputs.worker_digest }}
+          APP_TAGS: ${{ steps.app-meta.outputs.tags }}
+          WORKER_TAGS: ${{ steps.worker-meta.outputs.tags }}
+        run: |
+          set -Eeuo pipefail
+          promote() { # image digest tags
+            local image="$1" digest="$2" tags="$3" args=() tag
+            while IFS= read -r tag; do [ -n "$tag" ] && args+=(-t "$tag"); done <<<"$tags"
+            [ "${#args[@]}" -gt 0 ] || { echo "::error::No tags for $image"; return 1; }
+            docker buildx imagetools create "${args[@]}" "$image@$digest"
+            # The tag must resolve to exactly the tested digest.
+            for tag in "${args[@]}"; do
+              [ "$tag" = "-t" ] && continue
+              got="$(docker buildx imagetools inspect "$tag" --format '{{.Manifest.Digest}}')"
+              [ "$got" = "$digest" ] || { echo "::error::$tag resolves to $got, expected $digest"; return 1; }
+            done
+          }
+          promote "$REGISTRY/$IMAGE_NAME/app" "$APP_DIGEST" "$APP_TAGS"
+          promote "$REGISTRY/$IMAGE_NAME/worker" "$WORKER_DIGEST" "$WORKER_TAGS"
+
       - name: Install Cosign
         uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
 
       - name: Sign published images
         env:
-          APP_DIGEST: ${{ steps.build-app.outputs.digest }}
-          WORKER_DIGEST: ${{ steps.build-worker.outputs.digest }}
+          APP_DIGEST: ${{ needs.build-and-push.outputs.app_digest }}
+          WORKER_DIGEST: ${{ needs.build-and-push.outputs.worker_digest }}
         run: |
           cosign sign --yes "$REGISTRY/$IMAGE_NAME/app@$APP_DIGEST"
           cosign sign --yes "$REGISTRY/$IMAGE_NAME/worker@$WORKER_DIGEST"
@@ -353,13 +459,13 @@ jobs:
       - name: Write summary
         continue-on-error: true
         env:
-          IMAGE_TAG: ${{ steps.app-meta.outputs.version }}
-          APP_DIGEST: ${{ steps.build-app.outputs.digest }}
-          WORKER_DIGEST: ${{ steps.build-worker.outputs.digest }}
+          IMAGE_TAG: ${{ needs.build-and-push.outputs.image_tag }}
+          APP_DIGEST: ${{ needs.build-and-push.outputs.app_digest }}
+          WORKER_DIGEST: ${{ needs.build-and-push.outputs.worker_digest }}
           APP_TAGS: ${{ steps.app-meta.outputs.tags }}
         run: |
           {
-            echo "## Images for \`$IMAGE_TAG\` (signed)"
+            echo "## Images for \`$IMAGE_TAG\` (tested, then signed)"
             echo ""
             echo "| Image | Digest |"
             echo "| --- | --- |"
@@ -378,76 +484,3 @@ jobs:
             echo "  --certificate-oidc-issuer https://token.actions.githubusercontent.com"
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
-  # Release gate, part 1: the immutable-tag app image in the self-hosted Compose stack,
-  # full suite. Part 2 is the full E2E run against staging (e2e-full.yml, target=staging),
-  # started by hand after the staging deploy. Runs for tags and manual builds alike.
-  compose-e2e:
-    name: Self-hosted Compose E2E
-    needs: build-and-push
-    # The runner is amd64: an arm64-only manual build cannot be pulled, so it skips the gate
-    # (and the promotion that depends on it).
-    if: ${{ github.event.inputs.platforms == '' || contains(github.event.inputs.platforms, 'linux/amd64') }}
-    permissions:
-      contents: read
-    uses: ./.github/workflows/compose-e2e.yml
-    with:
-      image_tag: ${{ needs.build-and-push.outputs.image_tag }}
-      full: true
-
-  # Floating tags move only after the gate passes. imagetools create re-points the tag at the
-  # already signed digests, so the multi-arch manifests are unchanged.
-  promote-floating-tags:
-    name: Promote floating tags
-    needs: [build-and-push, compose-e2e]
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    permissions:
-      contents: read
-      packages: write
-    steps:
-      - name: Extract app floating tags
-        id: app-meta
-        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
-        with:
-          images: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/app
-          tags: |
-            type=semver,pattern={{major}}.{{minor}},enable=${{ startsWith(github.ref, 'refs/tags/v') && !contains(github.ref, '-') }}
-            type=raw,value=latest,enable=${{ (startsWith(github.ref, 'refs/tags/v') && !contains(github.ref_name, '-')) || github.event.inputs.push_latest == 'true' }}
-
-      - name: Extract worker floating tags
-        id: worker-meta
-        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
-        with:
-          images: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/worker
-          tags: |
-            type=semver,pattern={{major}}.{{minor}},enable=${{ startsWith(github.ref, 'refs/tags/v') && !contains(github.ref, '-') }}
-            type=raw,value=latest,enable=${{ (startsWith(github.ref, 'refs/tags/v') && !contains(github.ref_name, '-')) || github.event.inputs.push_latest == 'true' }}
-
-      - name: Log in to GitHub Container Registry
-        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
-
-      - name: Promote tags to the gated digests
-        env:
-          APP_DIGEST: ${{ needs.build-and-push.outputs.app_digest }}
-          WORKER_DIGEST: ${{ needs.build-and-push.outputs.worker_digest }}
-          APP_TAGS: ${{ steps.app-meta.outputs.tags }}
-          WORKER_TAGS: ${{ steps.worker-meta.outputs.tags }}
-        run: |
-          set -Eeuo pipefail
-          promote() { # image digest tags
-            local image="$1" digest="$2" tags="$3" args=() tag
-            while IFS= read -r tag; do [ -n "$tag" ] && args+=(-t "$tag"); done <<<"$tags"
-            [ "${#args[@]}" -gt 0 ] || { echo "No floating tags for $image"; return 0; }
-            docker buildx imagetools create "${args[@]}" "$image@$digest"
-          }
-          promote "$REGISTRY/$IMAGE_NAME/app" "$APP_DIGEST" "$APP_TAGS"
-          promote "$REGISTRY/$IMAGE_NAME/worker" "$WORKER_DIGEST" "$WORKER_TAGS"

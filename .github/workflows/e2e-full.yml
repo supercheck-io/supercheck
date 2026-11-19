@@ -21,7 +21,7 @@ on:
         required: false
         type: string
       expected_build_sha:
-        description: "Optional full SHA for deployment attestation"
+        description: "Full 40-character SHA the target must report (required for target=staging)"
         required: false
         type: string
 
@@ -83,8 +83,14 @@ jobs:
           TARGET: ${{ inputs.target }}
           CUSTOM_URL: ${{ inputs.base_url }}
           STAGING_URL: ${{ secrets.E2E_STAGING_BASE_URL }}
+          EXPECTED_SHA: ${{ inputs.expected_build_sha }}
         run: |
           set -Eeuo pipefail
+          # Staging is the release gate: a stale deploy must not pass, so the SHA is mandatory.
+          if [ "$TARGET" = "staging" ] && ! [[ "$EXPECTED_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::target=staging requires expected_build_sha (40 lowercase hex characters)"
+            exit 1
+          fi
           if [ -n "$STAGING_URL" ]; then
             echo "::add-mask::$STAGING_URL"
             echo "::add-mask::$(node -e 'process.stdout.write(new URL(process.argv[1]).host)' "$STAGING_URL")"
@@ -175,10 +181,13 @@ jobs:
 
       - name: Write sanitized summary (staging)
         if: ${{ always() && inputs.target == 'staging' }}
+        env:
+          TEST_FILTER: ${{ inputs.test_filter }}
         run: |
           f=app/e2e/test-results/results.json
           mkdir -p sanitized
           {
+            [ -z "$TEST_FILTER" ] || echo "FILTERED RUN ($TEST_FILTER): not a full release gate"
             if [ -s "$f" ]; then
               jq -r '"passed=\(.stats.expected // 0) failed=\(.stats.unexpected // 0) skipped=\(.stats.skipped // 0) flaky=\(.stats.flaky // 0)",
                      (.. | objects | select(has("specs")) | .specs[] | "\(if .ok then "pass" else "FAIL" end) \(.title)")' "$f"
@@ -216,7 +225,7 @@ jobs:
             echo ""
 
             if [ -n "$TEST_FILTER" ]; then
-              echo "**Filter:** \`$TEST_FILTER\`"
+              echo "> ⚠️ **Filtered run (\`$TEST_FILTER\`): not a full release gate.**"
               echo ""
             fi
 
