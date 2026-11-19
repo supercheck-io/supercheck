@@ -83,6 +83,12 @@ describe("SreMessageContent", () => {
     expect(screen.getByText("chart")).toBeInTheDocument();
   });
 
+  it("says there is no data to chart when the chart has no rows", () => {
+    render(<SreMessageContent content={["```chart", JSON.stringify({ type: "line", xKey: "t", series: [{ key: "y", label: "Y" }], data: [] }), "```"].join("\n")} />);
+    expect(screen.getByText("No data to chart")).toBeInTheDocument();
+    expect(screen.queryByText("chart")).not.toBeInTheDocument();
+  });
+
   it("shows a short placeholder, not raw JSON, while a chart fence is still streaming", () => {
     const { container } = render(<SreMessageContent isStreaming content={'Here:\n```chart\n{"type":"line","xKey":"t"'} />);
     expect(screen.getByText("Preparing chart…")).toBeInTheDocument();

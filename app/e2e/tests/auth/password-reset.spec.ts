@@ -119,8 +119,8 @@ test.describe('Reset Password Page @auth @password-reset', () => {
    */
   test('AUTH-010: Invalid reset token is rejected after valid form submission @high @negative', async ({ page }) => {
     await page.goto('/reset-password?token=invalid-token-12345');
-    await page.getByLabel('New Password', { exact: true }).fill('ValidPass123');
-    await page.getByLabel('Confirm New Password').fill('ValidPass123');
+    await page.getByLabel('New password', { exact: true }).fill('ValidPass123');
+    await page.getByLabel('Confirm new password').fill('ValidPass123');
     await page.getByRole('button', { name: 'Reset password' }).click();
 
     await expect(page.getByText(/invalid|expired/i)).toBeVisible();
@@ -136,8 +136,8 @@ test.describe('Reset Password Page @auth @password-reset', () => {
    */
   test('AUTH-010: Expired reset token is rejected @high @negative', async ({ page }) => {
     await page.goto('/reset-password?token=expired-token-12345');
-    await page.getByLabel('New Password', { exact: true }).fill('ValidPass123');
-    await page.getByLabel('Confirm New Password').fill('ValidPass123');
+    await page.getByLabel('New password', { exact: true }).fill('ValidPass123');
+    await page.getByLabel('Confirm new password').fill('ValidPass123');
     await page.getByRole('button', { name: 'Reset password' }).click();
 
     await expect(page.getByText(/invalid|expired/i)).toBeVisible();
@@ -172,8 +172,8 @@ test.describe('Password Reset - Form Validation @auth @password-reset', () => {
     await page.goto('/reset-password?token=client-validation-token');
 
     // Fill mismatched passwords
-    await page.getByLabel('New Password', { exact: true }).fill('NewPassword123!');
-    await page.getByLabel('Confirm New Password').fill('DifferentPassword123!');
+    await page.getByLabel('New password', { exact: true }).fill('NewPassword123!');
+    await page.getByLabel('Confirm new password').fill('DifferentPassword123!');
     await page.getByRole('button', { name: 'Reset password' }).click();
 
     // Should show mismatch error
@@ -188,8 +188,8 @@ test.describe('Password Reset - Form Validation @auth @password-reset', () => {
     await page.goto('/reset-password?token=client-validation-token');
 
     // Fill weak password
-    await page.getByLabel('New Password', { exact: true }).fill('weak');
-    await page.getByLabel('Confirm New Password').fill('weak');
+    await page.getByLabel('New password', { exact: true }).fill('weak');
+    await page.getByLabel('Confirm new password').fill('weak');
     await page.getByRole('button', { name: 'Reset password' }).click();
 
     // Should show password strength error

@@ -21,7 +21,7 @@ import {
   DEVICE_AUTH_LIMITS,
 } from "@/lib/auth/device-auth-rate-limit";
 import { buildDeviceReturnPath } from "@/lib/auth/safe-next-path";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { AuthCallout, AuthCard, AuthHeader } from "@/components/auth/auth-shell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { DeviceApproval, type DeviceProjectOption } from "./device-approval";
@@ -38,13 +38,10 @@ export const metadata: Metadata = {
 
 function Shell({ title, description, children }: { title: string; description?: string; children?: React.ReactNode }) {
   return (
-    <Card className="w-full max-w-sm shadow-sm">
-      <CardHeader className="space-y-2">
-        <CardTitle className="text-xl font-semibold tracking-tight">{title}</CardTitle>
-        {description ? <CardDescription className="text-sm leading-relaxed">{description}</CardDescription> : null}
-      </CardHeader>
-      {children ? <CardContent className="space-y-5">{children}</CardContent> : null}
-    </Card>
+    <AuthCard>
+      <AuthHeader title={title} description={description} />
+      {children}
+    </AuthCard>
   );
 }
 
@@ -55,7 +52,7 @@ function CodeEntryForm({ error }: { error?: string }) {
       description="Enter the code shown in your terminal after running `supercheck login`."
     >
       {/* Plain GET form: viewing a code never approves anything. */}
-      <form method="get" action="/device" className="space-y-3">
+      <form method="get" action="/device" className="flex flex-col gap-4">
         <Input
           name="code"
           autoComplete="off"
@@ -66,8 +63,8 @@ function CodeEntryForm({ error }: { error?: string }) {
           aria-label="Device code"
           className="text-center font-mono text-lg tracking-widest"
         />
-        {error ? <p role="alert" className="text-center text-sm text-destructive">{error}</p> : null}
-        <Button type="submit" className="w-full">Continue</Button>
+        {error ? <AuthCallout variant="error">{error}</AuthCallout> : null}
+        <Button type="submit" size="lg" className="w-full">Continue</Button>
       </form>
     </Shell>
   );
