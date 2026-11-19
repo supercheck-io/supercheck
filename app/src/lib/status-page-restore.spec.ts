@@ -5,9 +5,11 @@ import { restoreResolvedIncidentComponents } from "./status-page-reconciliation"
 
 type Link = { componentId: string; oldStatus: string | null; newStatus: string | null; status: string };
 
-/** A tx whose selects return the queued rows in order (links, other open incidents, monitored components). */
-function makeTx(links: Link[], busy: string[] = [], monitored: string[] = []) {
-  const queue = [links, busy.map((componentId) => ({ componentId })), monitored.map((componentId) => ({ componentId }))];
+type Other = { componentId: string; newStatus: string | null; incidentStatus: string };
+/** A tx whose selects return the queued rows in order (this incident's links, monitored components, other incidents' links). */
+function makeTx(links: Link[], busy: string[] = [], monitored: string[] = [], resolvedOthers: Other[] = []) {
+  const others: Other[] = [...busy.map((componentId) => ({ componentId, newStatus: "degraded_performance", incidentStatus: "investigating" })), ...resolvedOthers];
+  const queue = [links, monitored.map((componentId) => ({ componentId })), others];
   const sets: Array<Record<string, unknown>> = [];
   const select = jest.fn(() => {
     const rows = queue.shift() ?? [];
@@ -30,10 +32,9 @@ describe("restoreResolvedIncidentComponents", () => {
   });
 
   it("leaves a component that was changed by hand since the incident set it", async () => {
-    const { tx, update, select } = makeTx([link({ status: "major_outage" })]);
+    const { tx, update } = makeTx([link({ status: "major_outage" })]);
     await run(tx);
     expect(update).not.toHaveBeenCalled();
-    expect(select).toHaveBeenCalledTimes(1);
   });
 
   it("leaves a component another open incident still affects", async () => {
@@ -46,6 +47,13 @@ describe("restoreResolvedIncidentComponents", () => {
     const { tx, update } = makeTx([link()], [], ["c1"]);
     await run(tx);
     expect(update).not.toHaveBeenCalled();
+  });
+
+  it("clears an earlier post's status when the posts overlap and the later one resolves last", async () => {
+    // B (major) was resolved first and skipped because A was open; now A resolves and the component still shows B's status.
+    const { tx, sets } = makeTx([link({ newStatus: "partial_outage", status: "major_outage" })], [], [], [{ componentId: "c1", newStatus: "major_outage", incidentStatus: "resolved" }]);
+    await run(tx);
+    expect(sets).toEqual([expect.objectContaining({ status: "operational" })]);
   });
 
   it("restores a component whose only monitors are paused or pending, which reconciliation would leave at the incident's status", async () => {

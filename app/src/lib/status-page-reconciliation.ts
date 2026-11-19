@@ -154,7 +154,7 @@ export async function repointSreStatusPageSlot(tx: Tx, resolvedIncidentId: strin
 /**
  * "Restore components" on a manually resolved public incident, with the rules reconciliation applies. The incident must
  * already be resolved in `tx`, so it no longer counts as active. A component is left alone when
- * - its status is no longer what this incident set (someone changed it by hand since);
+ * - its status was not set by an incident (this one, or another that already started and is now resolved): someone changed it by hand since;
  * - another open incident still affects it (reconciliation derives its status from that one);
  * - a linked monitor is reporting (not paused or pending): reconciliation recomputes it from their current health, and
  *   this incident's update triggers that, so writing "operational" here would only flicker while a monitor is failing.
@@ -174,27 +174,31 @@ export async function restoreResolvedIncidentComponents(tx: Tx, incidentId: stri
     .from(incidentComponents)
     .innerJoin(statusPageComponents, eq(statusPageComponents.id, incidentComponents.componentId))
     .where(and(eq(incidentComponents.incidentId, incidentId), eq(statusPageComponents.statusPageId, statusPageId)));
-  const own = links.filter((link) => link.newStatus !== null && link.status === link.newStatus);
-  if (own.length === 0) return;
-  const ids = own.map((link) => link.componentId);
-  const [busy, monitored] = [
-    await tx
-      .select({ componentId: incidentComponents.componentId })
-      .from(incidentComponents)
-      .innerJoin(incidents, eq(incidents.id, incidentComponents.incidentId))
-      .where(and(inArray(incidentComponents.componentId, ids), ne(incidents.id, incidentId), ne(incidents.status, "resolved"), ne(incidents.status, "scheduled"))),
-    await tx
-      .select({ componentId: statusPageComponentMonitors.componentId })
-      .from(statusPageComponentMonitors)
-      .innerJoin(monitors, eq(monitors.id, statusPageComponentMonitors.monitorId))
-      .where(and(inArray(statusPageComponentMonitors.componentId, ids), liveMonitor(), notInArray(monitors.status, ["pending", "paused"]))),
-  ];
-  const skip = new Set([...busy, ...monitored].map((row) => row.componentId));
+  if (links.length === 0) return;
+  const ids = links.map((link) => link.componentId);
+  const monitored = await tx
+    .select({ componentId: statusPageComponentMonitors.componentId })
+    .from(statusPageComponentMonitors)
+    .innerJoin(monitors, eq(monitors.id, statusPageComponentMonitors.monitorId))
+    .where(and(inArray(statusPageComponentMonitors.componentId, ids), liveMonitor(), notInArray(monitors.status, ["pending", "paused"])));
+  const others = await tx
+    .select({ componentId: incidentComponents.componentId, newStatus: incidentComponents.newStatus, incidentStatus: incidents.status })
+    .from(incidentComponents)
+    .innerJoin(incidents, eq(incidents.id, incidentComponents.incidentId))
+    .where(and(inArray(incidentComponents.componentId, ids), ne(incidents.id, incidentId)));
+  // Open means reconciliation still derives the status from it (scheduled maintenance has not started, so it does not).
+  const open = (status: string) => status !== "resolved" && status !== "scheduled";
+  const skip = new Set([...monitored.map((row) => row.componentId), ...others.filter((o) => open(o.incidentStatus)).map((o) => o.componentId)]);
   const groups = new Map<string, { from: ComponentStatus; to: ComponentStatus; ids: string[] }>();
-  for (const link of own) {
+  for (const link of links) {
     if (skip.has(link.componentId)) continue;
-    const from = link.newStatus as ComponentStatus;
-    const to = from === "under_maintenance" && link.oldStatus && link.oldStatus !== "under_maintenance" ? (link.oldStatus as ComponentStatus) : "operational";
+    // The status came from an incident when it matches this one's or another started one's: resolving B first, then A,
+    // leaves B's status in place for A to clear. Anything else was set by hand since and is left alone.
+    const setByIncident = link.status === link.newStatus || others.some((o) => o.componentId === link.componentId && o.newStatus === link.status && o.incidentStatus !== "scheduled");
+    if (!setByIncident) continue;
+    const from = link.status as ComponentStatus;
+    const to = link.newStatus === "under_maintenance" && link.oldStatus && link.oldStatus !== "under_maintenance" ? (link.oldStatus as ComponentStatus) : "operational";
+    if (from === to) continue;
     const group = groups.get(`${from}>${to}`) ?? { from, to, ids: [] };
     group.ids.push(link.componentId);
     groups.set(`${from}>${to}`, group);
