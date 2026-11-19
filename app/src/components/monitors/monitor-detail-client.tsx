@@ -1442,7 +1442,7 @@ export function MonitorDetailClient({
             </CardHeader>
             <CardContent ref={resultsPanelRef} className="p-0 flex-1 flex min-h-0 flex-col">
               {/* Desktop never scrolls here: the page size is the rows that fit, and the columns fit the card width. */}
-              <div className="w-full flex-1 overflow-x-auto lg:overflow-y-hidden">
+              <div className="w-full flex-1 overflow-x-auto lg:overflow-y-auto">
                 <div className="w-full">
                   <table className={`w-full ${aiEndpoint ? "min-w-[600px]" : "min-w-[480px]"} table-fixed lg:min-w-0`}>
                     {/* Location and Error share the leftover width; long text ends in an ellipsis and shows in full on hover. */}
