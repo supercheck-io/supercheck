@@ -63,6 +63,8 @@ export default function VerifyEmailPage() {
 function VerifyEmailPageContent() {
   const searchParams = useSearchParams();
   const inviteToken = parseInviteToken(searchParams.get("invite"));
+  // Only a sign-up is answered with the existing-account email; a sign-in bounced here is not.
+  const cameFromSignUp = searchParams.get("from") === "signup";
   const [email, setEmail] = useState("");
   const [isResending, setIsResending] = useState(false);
   const [resendSuccess, setResendSuccess] = useState(false);
@@ -155,7 +157,7 @@ function VerifyEmailPageContent() {
             Click the link in the email to verify your account and complete
             signup.
           </FieldDescription>
-          {inviteToken && (
+          {inviteToken && cameFromSignUp && (
             <FieldDescription>
               If you already have an account, we&apos;ve emailed you a sign-in link instead.
             </FieldDescription>
@@ -217,7 +219,7 @@ function VerifyEmailPageContent() {
             className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground"
           >
             <ArrowLeft className="h-4 w-4" />
-            {inviteToken ? "Already have an account? Sign in" : "Back to sign in"}
+            {inviteToken && cameFromSignUp ? "Already have an account? Sign in" : "Back to sign in"}
           </Link>
         </div>
       </FieldGroup>

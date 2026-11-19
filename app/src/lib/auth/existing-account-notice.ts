@@ -3,9 +3,9 @@ import { renderExistingAccountEmail } from "@/lib/email-renderer";
 import { checkEmailVerificationRateLimit, getClientIP } from "@/lib/session-security";
 import { parseInviteToken } from "@/lib/validations/auth";
 
-function appOrigin(request: Request | undefined): string {
-  const configured = process.env.NEXT_PUBLIC_APP_URL || process.env.BETTER_AUTH_URL;
-  return (configured || (request ? new URL(request.url).origin : "")).replace(/\/+$/, "");
+// Configured origin only: a request's own URL follows the Host header and must not end up in a link.
+function appOrigin(): string {
+  return (process.env.NEXT_PUBLIC_APP_URL || process.env.BETTER_AUTH_URL || "").replace(/\/+$/, "");
 }
 
 /**
@@ -26,7 +26,8 @@ export async function sendExistingAccountNotice(
     if (clientIP !== "unknown" && !(await checkEmailVerificationRateLimit(clientIP)).allowed) return;
 
     const inviteToken = parseInviteToken(request?.headers.get("x-invite-token")?.trim() ?? null);
-    const origin = appOrigin(request);
+    const origin = appOrigin();
+    if (!origin) return console.error("Cannot email an existing account: no app URL configured");
     const content = await renderExistingAccountEmail({
       signInUrl: `${origin}/sign-in${inviteToken ? `?invite=${encodeURIComponent(inviteToken)}` : ""}`,
       resetUrl: `${origin}/forgot-password`,

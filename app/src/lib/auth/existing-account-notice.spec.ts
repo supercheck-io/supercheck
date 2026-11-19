@@ -43,6 +43,14 @@ describe("sendExistingAccountNotice", () => {
     expect(send).not.toHaveBeenCalled();
   });
 
+  it("sends nothing when no app URL is configured, rather than trusting the request Host", async () => {
+    delete process.env.NEXT_PUBLIC_APP_URL;
+    delete process.env.BETTER_AUTH_URL;
+    jest.spyOn(console, "error").mockImplementation(() => undefined);
+    await sendExistingAccountNotice({ user: { email: "a@b.co" } }, req());
+    expect(send).not.toHaveBeenCalled();
+  });
+
   it("never throws when delivery fails", async () => {
     send.mockRejectedValueOnce(new Error("smtp down"));
     jest.spyOn(console, "error").mockImplementation(() => undefined);
