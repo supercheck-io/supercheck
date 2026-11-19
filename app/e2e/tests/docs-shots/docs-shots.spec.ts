@@ -36,10 +36,17 @@ const then = (route: Parameters<typeof at>[0], ...steps: RegExp[]) => async (c: 
 };
 const id = (build: (value: string) => string, key: keyof Ids) => (ids: Ids) => (ids[key] ? build(ids[key] as string) : undefined);
 
-// Opens a playground test, runs it and waits for the runner to switch to the Report tab with the report loaded.
+// Opens a playground test, runs it once and waits for the runner to switch to the Report tab with the report loaded.
 const runForReport = (route: Parameters<typeof at>[0]) => async (c: Ctx) => {
+  test.setTimeout(300_000); // execution (up to 3 min) plus report load and capture
   await at(route)(c);
   await c.page.getByRole('button', { name: 'Run', exact: true }).click();
+  // k6 tests ask for a location first when the project has more than one.
+  const location = c.page.getByRole('dialog', { name: 'Select Execution Location' });
+  if (await location.waitFor({ state: 'visible', timeout: 3_000 }).then(() => true, () => false)) {
+    await location.getByRole('button', { name: 'Run Test' }).click();
+  }
+  await expect(c.page.getByRole('button', { name: /running/i })).toBeVisible({ timeout: 30_000 });
   await expect(c.page.getByRole('button', { name: /running/i })).toHaveCount(0, { timeout: 180_000 });
   await expect(c.page.frameLocator('iframe').first().locator('body')).not.toBeEmpty({ timeout: 60_000 });
 };
