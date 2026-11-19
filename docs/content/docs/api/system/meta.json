@@ -2,8 +2,8 @@
   "title": "System API",
   "icon": "HeartPulse",
   "pages": [
-    "getHealth",
     "listLocations",
-    "listLocationMetadata"
+    "listLocationMetadata",
+    "getHealth"
   ]
 }

@@ -3,8 +3,8 @@
   "icon": "Tag",
   "pages": [
     "listTags",
-    "createTag",
     "getTag",
+    "createTag",
     "updateTag",
     "deleteTag"
   ]

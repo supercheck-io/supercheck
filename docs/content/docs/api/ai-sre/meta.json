@@ -3,23 +3,23 @@
   "description": "Incident response, investigations, Copilot, and service topology",
   "pages": [
     "listSreIncidents",
-    "declareSreIncident",
+    "listSreIncidentResources",
+    "listSreServices",
     "getSreIncident",
     "getSreIncidentTimeline",
     "getSreIncidentPostmortem",
-    "acknowledgeSreIncident",
-    "assignSreIncident",
-    "resolveSreIncident",
-    "listSreIncidentResources",
-    "updateSreIncidentResources",
+    "getSreInvestigationRun",
+    "getSreService",
     "getIncidentPolicy",
-    "updateIncidentPolicy",
+    "declareSreIncident",
+    "resolveSreIncident",
     "triageSreIncident",
     "startSreInvestigation",
-    "getSreInvestigationRun",
     "streamSreChat",
     "streamSreEvidenceBrief",
-    "listSreServices",
-    "getSreService"
+    "acknowledgeSreIncident",
+    "assignSreIncident",
+    "updateIncidentPolicy",
+    "updateSreIncidentResources"
   ]
 }

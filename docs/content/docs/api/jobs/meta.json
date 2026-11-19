@@ -4,12 +4,12 @@
   "pages": [
     "listJobs",
     "getJob",
-    "createJob",
-    "updateJob",
-    "replaceJobConfiguration",
-    "deleteJob",
-    "triggerJob",
     "getJobTriggerInfo",
-    "runJob"
+    "createJob",
+    "triggerJob",
+    "runJob",
+    "replaceJobConfiguration",
+    "updateJob",
+    "deleteJob"
   ]
 }
