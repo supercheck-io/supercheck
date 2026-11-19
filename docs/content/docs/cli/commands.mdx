@@ -484,7 +484,7 @@ supercheck notification test <id> --resolve
 <Accordion title="Updating providers with secret fields" id="supercheck-notification-update">
 
 - `--payload` on update replaces the entire config, so include all fields. The CLI never merges your input with masked values from the server. Without a payload, only `--name` and `--type` change and existing secrets are kept.
-- `pull` leaves a body template that holds a credential, such as a PagerDuty routing key, out of `supercheck.config.ts` and says so. A `deploy` that omits it keeps the saved key. To create the channel elsewhere or replace the key, set `PAGERDUTY_ROUTING_KEY` when you run `deploy`; it fills the template of a `preset: 'pagerduty'` provider.
+- `pull` leaves a body template that holds a credential, such as a PagerDuty routing key, out of `supercheck.config.ts` and says so. A `deploy` that updates the provider keeps the saved key. To create that provider in another project, set `PAGERDUTY_ROUTING_KEY` for the deploy, which fills the template of a `preset: 'pagerduty'` provider being created. To change a saved key, run `notification update <id> --type pagerduty`.
 - `notification test` without an id needs exactly one of `--payload`, `--data` or `--config`. With an id, the saved configuration is used and payload options are rejected.
 - A test the receiver rejects exits with a general error and prints the result, for example `Authentication rejected (HTTP 401). Check the integration key.` for a bad key.
 

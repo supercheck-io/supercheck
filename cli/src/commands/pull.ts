@@ -1187,7 +1187,7 @@ export const pullCommand = new Command('pull')
       const notificationProviderDefs = buildNotificationProviderDefinitions(notificationProviders)
       const omittedTemplates = notificationTemplateOmissions(notificationProviders)
       if (omittedTemplates.length > 0) {
-        logger.warn(`Left the body template of ${omittedTemplates.join(', ')} out of the config because it holds a credential. Deploy keeps the saved one; set PAGERDUTY_ROUTING_KEY when deploying to replace a PagerDuty key.`)
+        logger.warn(`Left the body template of ${omittedTemplates.join(', ')} out of the config because it holds a credential. Deploy keeps the saved one. To create such a PagerDuty provider elsewhere set PAGERDUTY_ROUTING_KEY for that deploy; to replace a key run notification update <id> --type pagerduty.`)
       }
       const statusPageDefs = buildStatusPageDefinitions(statusPages)
       const requirementDefs = buildRequirementDefinitions(requirements, testMap)

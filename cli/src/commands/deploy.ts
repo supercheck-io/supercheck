@@ -78,9 +78,13 @@ export function prepareBodyForApi(type: string, body: Record<string, unknown>, a
     }
 
     // A PagerDuty channel pulled from the app has no bodyTemplate (it holds the key), and the server rejects the preset
-    // stand-in on create, so PAGERDUTY_ROUTING_KEY supplies it. Without the variable, an update keeps the saved key.
-    const routingKey = routingKeyFromEnv()
-    if (config.preset === 'pagerduty' && !config.bodyTemplate && routingKey) config.bodyTemplate = pagerDutyBodyTemplate(routingKey)
+    // stand-in on create. Only a create takes PAGERDUTY_ROUTING_KEY: on an update the server keeps the saved template, and
+    // one variable must not overwrite the keys of several PagerDuty services. To change a key, use notification update.
+    if (action === 'create' && config.preset === 'pagerduty' && !config.bodyTemplate) {
+      const routingKey = routingKeyFromEnv()
+      if (!routingKey) throw new CLIError(`PagerDuty provider "${String(payload.name)}" needs its routing key to be created: set PAGERDUTY_ROUTING_KEY for this deploy, or create it with notification create --type pagerduty.`, ExitCode.ConfigError)
+      config.bodyTemplate = pagerDutyBodyTemplate(routingKey)
+    }
 
     payload.config = config
   }

@@ -25,6 +25,13 @@ describe('redact webhook body templates', () => {
     for (const secret of ['k-12345', 't-9', 'p@ss']) expect(out).not.toContain(secret)
   })
 
+  it('masks run-together credential names', () => {
+    const template = JSON.stringify({ apikey: 's3cr3t', accessToken: 'a1', routingkey: 'r2', Authorization: 'Bearer b3' })
+    const out = JSON.stringify(redact({ type: 'webhook', config: { bodyTemplate: template } }))
+    for (const secret of ['s3cr3t', 'a1"', 'r2', 'Bearer b3']) expect(out).not.toContain(secret)
+    expect(templateHoldsCredential(template)).toBe(true)
+  })
+
   it('reports whether a template holds a literal credential', () => {
     expect(templateHoldsCredential(bodyTemplate)).toBe(true)
     expect(templateHoldsCredential('{"routing_key":"REPLACE_WITH_PAGERDUTY_ROUTING_KEY"}')).toBe(false)
