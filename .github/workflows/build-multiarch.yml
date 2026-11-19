@@ -203,6 +203,8 @@ jobs:
         with:
           images: |
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/app
+          # metadata-action adds latest for stable semver tags unless disabled.
+          flavor: latest=false
           # Only immutable tags are pushed here. Floating tags (major.minor, latest) are
           # promoted by promote-floating-tags after compose-e2e passes.
           tags: |
@@ -219,6 +221,7 @@ jobs:
         with:
           images: |
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/worker
+          flavor: latest=false
           # Only immutable tags are pushed here. Floating tags (major.minor, latest) are
           # promoted by promote-floating-tags after compose-e2e passes.
           tags: |
@@ -381,6 +384,9 @@ jobs:
   compose-e2e:
     name: Self-hosted Compose E2E
     needs: build-and-push
+    # The runner is amd64: an arm64-only manual build cannot be pulled, so it skips the gate
+    # (and the promotion that depends on it).
+    if: ${{ github.event.inputs.platforms == '' || contains(github.event.inputs.platforms, 'linux/amd64') }}
     permissions:
       contents: read
     uses: ./.github/workflows/compose-e2e.yml

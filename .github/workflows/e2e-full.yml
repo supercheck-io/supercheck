@@ -38,7 +38,7 @@ jobs:
     name: Full E2E Tests
     runs-on: ubuntu-latest
     timeout-minutes: 60
-    # Serialize shared test identities, including callers using URL aliases.
+    # Serialize shared test identities.
     concurrency:
       group: supercheck-e2e
       cancel-in-progress: false
@@ -95,7 +95,10 @@ jobs:
           else
             url="$CUSTOM_URL"
             [ -n "$url" ] || { echo "::error::target=custom needs base_url"; exit 1; }
-            if [ -n "$STAGING_URL" ] && [ "${url%/}" = "${STAGING_URL%/}" ]; then
+            # Parse (rejects newlines and junk), then refuse the staging host in any spelling.
+            host_of() { node -e 'const u=new URL(process.argv[1]); if(!/^https?:$/.test(u.protocol)||/[\r\n]/.test(process.argv[1])) process.exit(1); process.stdout.write(u.hostname.toLowerCase())' "$1"; }
+            custom_host="$(host_of "$url")" || { echo "::error::base_url is not a valid http(s) URL"; exit 1; }
+            if [ -n "$STAGING_URL" ] && [ "$custom_host" = "$(host_of "$STAGING_URL")" ]; then
               echo "::error::Use target=staging for the staging deployment"
               exit 1
             fi
@@ -232,7 +235,7 @@ jobs:
               echo ""
 
               if [ "$TESTS_OUTCOME" == "failure" ]; then
-                echo "> ⚠️ **Some tests failed.** Open the [Playwright report](${REPORT_URL:-#artifacts}) for details."
+                echo "> ⚠️ **Some tests failed.** Custom targets: open the [Playwright report](${REPORT_URL:-#artifacts}). Staging runs publish only the e2e-staging-summary artifact."
               else
                 echo "> ✅ **All tests passed!**"
               fi
@@ -249,7 +252,7 @@ jobs:
           set -Eeuo pipefail
 
           if [ "$TESTS_OUTCOME" != "success" ]; then
-            echo "::error::E2E tests failed. Check the playwright-report-full artifact for details."
+            echo "::error::E2E tests failed. Check the playwright-report-full artifact (custom targets) or e2e-staging-summary (staging)."
             exit 1
           fi
 
