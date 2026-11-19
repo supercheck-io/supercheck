@@ -97,7 +97,12 @@ export function isRetryableStatusCode(statusCode: number): boolean {
 /**
  * Check if an error is retryable based on error type
  */
-export function isRetryableError(error: unknown): boolean {
+export function isRetryableError(error: unknown, depth = 0): boolean {
+  // A multi-address connect failure is an AggregateError with an empty message; judge its members.
+  // The depth cap stops a self-containing AggregateError from recursing forever.
+  if (error instanceof AggregateError && error.errors.length > 0 && depth < 3) {
+    return error.errors.some((inner) => isRetryableError(inner, depth + 1));
+  }
   if (error instanceof Error) {
     const message = error.message.toLowerCase();
     const name = error.name.toLowerCase();
@@ -133,6 +138,21 @@ export function isRetryableError(error: unknown): boolean {
   }
 
   return false;
+}
+
+/** Error text for logs and delivery history; an AggregateError (empty message) reports its members. */
+export function describeError(error: unknown, depth = 0): string {
+  if (
+    error instanceof AggregateError &&
+    !error.message &&
+    error.errors.length > 0 &&
+    depth < 3
+  ) {
+    return error.errors
+      .map((inner) => describeError(inner, depth + 1))
+      .join('; ');
+  }
+  return error instanceof Error ? error.message : String(error);
 }
 
 /**
@@ -251,8 +271,7 @@ export async function fetchWithRetry(
       }
     } catch (error) {
       clearTimeout(timeoutId);
-      const errorMessage =
-        error instanceof Error ? error.message : String(error);
+      const errorMessage = describeError(error);
       lastError = errorMessage;
       lastStatusCode = undefined;
       lastResponseBody = undefined;

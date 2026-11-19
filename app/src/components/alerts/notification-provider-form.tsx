@@ -701,6 +701,10 @@ export function NotificationProviderForm({
   const prepareWebhookData = (data: FormValues): FormValues => {
     const nextConfig: Record<string, unknown> = { ...data.config };
     if (data.type === "webhook") {
+      // The schema maps a cleared template to undefined, which JSON drops; send "" so the server clears the stored one.
+      if (initialData?.type === "webhook" && nextConfig.bodyTemplate === undefined) {
+        nextConfig.bodyTemplate = "";
+      }
       const parsedHeaders = parseHeadersValue(headersText);
       if (parsedHeaders) {
         nextConfig.headers = parsedHeaders;

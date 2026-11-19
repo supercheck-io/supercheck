@@ -856,6 +856,44 @@ async function executeGitHub(
   );
 }
 
+/** Numbers the model needs to answer "what was the rate": the stored summary is all it sees, so a bare sample count is not evidence. */
+function prometheusSeriesSummary(
+  query: string,
+  metric: Record<string, string> | undefined,
+  values: Array<[number, string]> | undefined,
+  secrets: string[],
+) {
+  // A non-conforming server can send any shape; one bad series must not fail the whole search.
+  const samples = (Array.isArray(values) ? values : []).map((sample) =>
+    Number(Array.isArray(sample) ? sample[1] : NaN),
+  );
+  const points = samples.filter(Number.isFinite);
+  // Redact before cutting, so a secret cut at the limit cannot slip out of its pattern.
+  const labels = Object.entries(metric ?? {})
+    .filter(([key]) => key !== '__name__')
+    .slice(0, 6)
+    .map(
+      ([key, value]) =>
+        `${clip(key, 40, secrets)}=${clip(String(value), 40, secrets)}`,
+    )
+    .join(', ');
+  const skipped = samples.length - points.length;
+  const head = `${samples.length} samples returned for ${query}${skipped ? ` (${skipped} non-finite)` : ''}`;
+  const labelText = labels ? ` [labels: ${labels}]` : '';
+  if (points.length === 0) return head + labelText;
+  const round = (n: number) => String(Number(n.toPrecision(6)));
+  // The final sample can be NaN (for example an empty histogram window); say so instead of showing an older value as current.
+  const finalValue = samples[samples.length - 1];
+  const lastText = Number.isFinite(finalValue)
+    ? round(finalValue)
+    : 'undefined (non-finite)';
+  const min = points.reduce((a, b) => Math.min(a, b));
+  const max = points.reduce((a, b) => Math.max(a, b));
+  const avg = points.reduce((a, b) => a + b, 0) / points.length;
+  // Stats come before the untrusted label text so a label cannot pose as the numbers.
+  return `${head}; last=${lastText} min=${round(min)} max=${round(max)} avg=${round(avg)}${labelText}`;
+}
+
 async function executePrometheus(
   job: LeasedJob,
 ): Promise<ConnectorExecutionResult> {
@@ -899,7 +937,12 @@ async function executePrometheus(
         id: evidenceId(spec.connectorId, sourceUri, `${metricName}-${index}`),
         sourceUri,
         title: `Prometheus metric: ${metricName}`,
-        summary: `${metricSeries.values?.length ?? 0} samples returned for ${spec.query}`,
+        summary: prometheusSeriesSummary(
+          spec.query,
+          metricSeries.metric,
+          metricSeries.values,
+          credentialSecrets(job),
+        ),
         evidenceType: 'metric',
         observedAt: spec.timeWindow.end,
         resultHash: hashPayload(metricSeries),

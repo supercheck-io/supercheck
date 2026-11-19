@@ -4,12 +4,10 @@ import {
   MCP_RESPONSE_CAP_BYTES,
   type McpRequest,
 } from '../common/mcp/mcp-http-client';
+import { createPinnedLookup } from '../common/utils/pinned-lookup';
 import { resolvePublicAddresses } from '../common/utils/pinned-monitor-request';
 import { allowInternalMonitorTargets } from '../common/utils/url-validator';
-import {
-  capResponseBody,
-  createAgentPinnedLookup,
-} from '../private-agent/private-agent-endpoint';
+import { capResponseBody } from '../private-agent/private-agent-endpoint';
 
 /** Fixed, secret-free refusal reasons; the check reports them as-is. */
 export class McpPolicyError extends Error {}
@@ -57,9 +55,13 @@ export function createMcpMonitorRequest(): McpRequest {
       throw error;
     }
 
-    // The hostname stays in the URL for Host, SNI and certificate validation.
+    // The hostname stays in the URL for Host, SNI and certificate validation. Every vetted address is offered
+    // (IPv4 first), so a dead first record fails over like an HTTP monitor; none is ever re-resolved.
     const agent = new Agent({
-      connect: { lookup: createAgentPinnedLookup(addresses[0]) },
+      connect: {
+        lookup: createPinnedLookup(addresses),
+        autoSelectFamily: true,
+      },
     });
     try {
       let response: Response;

@@ -2,6 +2,7 @@
 const PROVIDER = "019a0000-0000-7000-8000-000000000001";
 const OTHER = "019a0000-0000-7000-8000-000000000002";
 const queue: unknown[][] = [];
+const sanitize = jest.fn((_t: unknown, config: unknown, _o?: unknown) => ({ sanitizedConfig: config, maskedFields: [] }));
 const node = (rows: unknown[]) => {
   const n: Record<string, unknown> = {};
   for (const m of ["from", "innerJoin", "where", "groupBy", "orderBy"]) n[m] = () => n;
@@ -16,7 +17,7 @@ jest.mock("@/lib/auth-context", () => ({
 jest.mock("@/lib/creators", () => ({ loadCreators: async () => () => ({}) }));
 jest.mock("@/lib/notification-providers/crypto", () => ({
   decryptNotificationProviderConfig: (config: unknown) => config,
-  sanitizeConfigForClient: (_t: unknown, config: unknown) => ({ sanitizedConfig: config, maskedFields: [] }),
+  sanitizeConfigForClient: (t: unknown, config: unknown, o?: unknown) => sanitize(t, config, o),
 }));
 
 const mget = jest.fn(async (..._keys: string[]) => [] as Array<string | null>);
@@ -50,6 +51,12 @@ it("a newer successful test clears an auth-failed badge", async () => {
   mget.mockResolvedValueOnce([JSON.stringify({ ok: true, responseStatus: 202, at: testedAt.toISOString() })]);
   const [row] = await (await GET()).json();
   expect(row.health).toEqual({ state: "ok", at: testedAt.toISOString() });
+});
+
+it("tells the sanitiser that a project viewer cannot edit, so webhook templates are withheld", async () => {
+  queue.push([{ id: PROVIDER, type: "webhook", config: {}, projectId: "proj-1" }], []);
+  await GET();
+  expect(sanitize).toHaveBeenLastCalledWith("webhook", {}, { canEdit: false });
 });
 
 it("each channel carries its newest test result and what sends to it", async () => {
