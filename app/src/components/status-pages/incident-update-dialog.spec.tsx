@@ -1,8 +1,11 @@
-import { incidentUpdateFormSchema } from "./incident-update-dialog";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { IncidentUpdateDialog, incidentUpdateFormSchema } from "./incident-update-dialog";
 
+const mockUpdate = jest.fn();
 jest.mock("@/actions/update-incident-status", () => ({
-  updateIncidentStatus: jest.fn(),
+  updateIncidentStatus: (...args: unknown[]) => mockUpdate(...args),
 }));
+jest.mock("sonner", () => ({ toast: { success: jest.fn(), error: jest.fn() } }));
 
 const base = {
   deliverNotifications: true,
@@ -55,5 +58,79 @@ describe("incident update scheduled validation", () => {
         scheduledUntil: "",
       }).success,
     ).toBe(true);
+  });
+});
+
+describe("restore components checkbox", () => {
+  beforeEach(() => mockUpdate.mockReset());
+  const renderDialog = (incident: Partial<Parameters<typeof IncidentUpdateDialog>[0]["incident"] & object>) =>
+    render(
+      <IncidentUpdateDialog
+        open
+        onOpenChange={jest.fn()}
+        statusPageId="sp-1"
+        onSuccess={jest.fn()}
+        incident={{ id: "i-1", name: "Checkout slow", status: "investigating", affectedComponentsCount: 2, ...incident }}
+      />,
+    );
+  const pickResolved = () => {
+    fireEvent.click(screen.getByRole("combobox"));
+    fireEvent.click(screen.getByRole("option", { name: "Resolved" }));
+  };
+
+  it("is checked by default when resolving a post with affected components, and can be unchecked", () => {
+    renderDialog({});
+    pickResolved();
+    const box = screen.getByRole("checkbox", { name: "Restore components to operational" });
+    expect(box).toBeChecked();
+    fireEvent.click(box);
+    expect(box).not.toBeChecked();
+  });
+
+  const submit = async () => {
+    fireEvent.change(screen.getByLabelText("Update Message *"), { target: { value: "Fixed and verified" } });
+    fireEvent.click(screen.getByRole("button", { name: "Post Update" }));
+    await waitFor(() => expect(mockUpdate).toHaveBeenCalled());
+    return mockUpdate.mock.calls[0][0] as { status: string; restoreComponentStatus: boolean };
+  };
+
+  it("submits restoreComponentStatus true when resolving with the default, and false once unchecked", async () => {
+    mockUpdate.mockResolvedValue({ success: true });
+    renderDialog({});
+    pickResolved();
+    expect(await submit()).toMatchObject({ status: "resolved", restoreComponentStatus: true });
+
+    mockUpdate.mockClear();
+    fireEvent.click(screen.getByRole("checkbox", { name: "Restore components to operational" }));
+    expect(await submit()).toMatchObject({ status: "resolved", restoreComponentStatus: false });
+  });
+
+  it("submits restoreComponentStatus false for a post with no affected components", async () => {
+    mockUpdate.mockResolvedValue({ success: true });
+    renderDialog({ affectedComponentsCount: 0 });
+    pickResolved();
+    expect(await submit()).toMatchObject({ restoreComponentStatus: false });
+  });
+
+  it("is unchecked on open for a post that is already resolved", () => {
+    renderDialog({ status: "resolved" });
+    expect(screen.getByRole("checkbox", { name: "Restore components to operational" })).not.toBeChecked();
+  });
+
+  it("defaults on again after switching away from Resolved and back", () => {
+    renderDialog({});
+    pickResolved();
+    fireEvent.click(screen.getByRole("checkbox", { name: "Restore components to operational" }));
+    fireEvent.click(screen.getByRole("combobox"));
+    fireEvent.click(screen.getByRole("option", { name: "Monitoring" }));
+    expect(screen.queryByRole("checkbox", { name: "Restore components to operational" })).not.toBeInTheDocument();
+    pickResolved();
+    expect(screen.getByRole("checkbox", { name: "Restore components to operational" })).toBeChecked();
+  });
+
+  it("stays unchecked when the post has no affected components", () => {
+    renderDialog({ affectedComponentsCount: 0 });
+    pickResolved();
+    expect(screen.getByRole("checkbox", { name: "Restore components to operational" })).not.toBeChecked();
   });
 });
