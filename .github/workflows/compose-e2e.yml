@@ -179,7 +179,7 @@ jobs:
           E2E_FAIL_ON_PRIORITY_SKIPS: true
           # Asserts /api/health reports this commit (tests/core/build-revision.spec.ts); skipped
           # when a manual run tests a published tag built from another commit.
-          E2E_EXPECTED_BUILD_SHA: ${{ (github.event_name != 'workflow_dispatch' || inputs.image_tag == '') && github.sha || '' }}
+          E2E_EXPECTED_BUILD_SHA: ${{ (inputs.release || github.event_name != 'workflow_dispatch' || inputs.image_tag == '') && github.sha || '' }}
           E2E_BASE_URL: http://localhost:3000
 
       - name: Show app log on failure

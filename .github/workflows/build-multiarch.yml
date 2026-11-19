@@ -151,7 +151,6 @@ jobs:
     permissions:
       contents: read
       packages: write
-      id-token: write
     outputs:
       image_tag: ${{ steps.app-meta.outputs.version }}
       app_digest: ${{ steps.build-app.outputs.digest }}
@@ -422,6 +421,18 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
 
+      # Signing is by digest, so it needs no tag: sign first, so `latest` is never public unsigned.
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+
+      - name: Sign published images
+        env:
+          APP_DIGEST: ${{ needs.build-and-push.outputs.app_digest }}
+          WORKER_DIGEST: ${{ needs.build-and-push.outputs.worker_digest }}
+        run: |
+          cosign sign --yes "$REGISTRY/$IMAGE_NAME/app@$APP_DIGEST"
+          cosign sign --yes "$REGISTRY/$IMAGE_NAME/worker@$WORKER_DIGEST"
+
       - name: Tag the tested digests
         env:
           APP_DIGEST: ${{ needs.build-and-push.outputs.app_digest }}
@@ -444,17 +455,6 @@ jobs:
           }
           promote "$REGISTRY/$IMAGE_NAME/app" "$APP_DIGEST" "$APP_TAGS"
           promote "$REGISTRY/$IMAGE_NAME/worker" "$WORKER_DIGEST" "$WORKER_TAGS"
-
-      - name: Install Cosign
-        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
-
-      - name: Sign published images
-        env:
-          APP_DIGEST: ${{ needs.build-and-push.outputs.app_digest }}
-          WORKER_DIGEST: ${{ needs.build-and-push.outputs.worker_digest }}
-        run: |
-          cosign sign --yes "$REGISTRY/$IMAGE_NAME/app@$APP_DIGEST"
-          cosign sign --yes "$REGISTRY/$IMAGE_NAME/worker@$WORKER_DIGEST"
 
       - name: Write summary
         continue-on-error: true
