@@ -20,7 +20,7 @@ type InfoPopoverProps = {
   label: string;
   /** Header title. */
   title: string;
-  /** Header icon. Defaults to the info icon. */
+  /** Header icon. None by default: the trigger is already an info icon, so repeating it in the panel adds noise. */
   icon?: LucideIcon;
   /** One short sentence under the header. */
   description?: ReactNode;
@@ -48,7 +48,7 @@ type InfoPopoverProps = {
 export function InfoPopover({
   label,
   title,
-  icon: HeaderIcon = Info,
+  icon: HeaderIcon,
   description,
   items,
   bullets,
@@ -87,7 +87,7 @@ export function InfoPopover({
       >
         <div className="space-y-1">
           <div className="flex items-center gap-2">
-            <HeaderIcon className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+            {HeaderIcon ? <HeaderIcon className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" /> : null}
             <h4 className="text-sm font-semibold">{title}</h4>
           </div>
           {description ? <p className="text-xs leading-relaxed text-muted-foreground">{description}</p> : null}
