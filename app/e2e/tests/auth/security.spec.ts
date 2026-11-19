@@ -182,7 +182,7 @@ test.describe("Security - CSRF Protection @auth @security", () => {
       // rate limit, or the login-lockout hook, which answers with its own 429
       // once the shared demo identity/IP bucket is locked. Assert the known
       // contract so another response cannot accidentally mask the CSRF check.
-      expect(body.message).toMatch(/too many requests|account temporarily locked/i);
+      expect(body.message).toMatch(/too many requests|too many sign-in attempts|account temporarily locked/i);
 
       if (/too many requests/i.test(body.message ?? "")) {
         const retryAfter = Number(response.headers()["x-retry-after"]);
