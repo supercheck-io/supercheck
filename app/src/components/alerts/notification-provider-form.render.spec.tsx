@@ -15,6 +15,13 @@ beforeAll(() => {
   global.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} } as never;
 });
 
+const openAdvanced = () => fireEvent.click(screen.getByTestId("webhook-advanced-toggle"));
+
+const pickType = async (name: string | RegExp) => {
+  await openTypeSelect();
+  fireEvent.click(await screen.findByRole("option", { name }));
+};
+
 const openTypeSelect = () => {
   fireEvent.keyDown(screen.getByTestId("channel-type-select"), { key: "Enter" });
   return screen.findByRole("listbox");
@@ -65,7 +72,7 @@ describe("NotificationProviderForm fields", () => {
     ["telegram", "Telegram configuration", ["Bot token", "Chat ID"]],
     ["discord", "Discord configuration", ["Webhook URL"]],
     ["teams", "Microsoft Teams configuration", ["Incoming webhook URL"]],
-    ["webhook", "Webhook configuration", ["URL", "Headers JSON", "Body template"]],
+    ["webhook", "Webhook configuration", ["URL", "Advanced"]],
   ];
   it.each(cases)("%s shows its fields and a trigger logo", (type, heading, labels) => {
     render(<NotificationProviderForm defaultType={type as never} />);
@@ -123,6 +130,7 @@ describe("NotificationProviderForm fields", () => {
 
   it("lets textareas take Enter for new lines", () => {
     render(<NotificationProviderForm defaultType="webhook" />);
+    openAdvanced();
     expect(fireEvent.keyDown(screen.getByLabelText(/Headers JSON/), { key: "Enter" })).toBe(true);
     expect(fireEvent.keyDown(screen.getByLabelText(/Body template/), { key: "Enter" })).toBe(true);
   });
@@ -178,7 +186,7 @@ describe("NotificationProviderForm editing a saved vendor webhook", () => {
         }}
       />,
     );
-    fireEvent.keyDown(screen.getByRole("combobox", { name: /integration preset/i }), { key: "Enter" });
+    await openTypeSelect();
     fireEvent.click(await screen.findByRole("option", { name: /custom webhook/i }));
     fireEvent.click(screen.getByRole("button", { name: "Update channel" }));
     await waitFor(() => expect(onSuccess).toHaveBeenCalled());
@@ -206,6 +214,7 @@ describe("NotificationProviderForm editing a saved vendor webhook", () => {
       return { onSuccess, view };
     };
     const first = renderEdit();
+    openAdvanced();
     fireEvent.change(screen.getByLabelText(/headers/i), { target: { value: "{}" } });
     fireEvent.click(screen.getByRole("button", { name: "Update channel" }));
     await waitFor(() => expect(first.onSuccess).toHaveBeenCalled());
@@ -217,4 +226,224 @@ describe("NotificationProviderForm editing a saved vendor webhook", () => {
     await waitFor(() => expect(second.onSuccess).toHaveBeenCalled());
     expect(second.onSuccess.mock.calls[0][0].config).not.toHaveProperty("headers");
   });
+});
+
+describe("paging presets: typed credentials and Advanced", () => {
+  const pdDefault = WEBHOOK_PRESETS.find((p) => p.id === "pagerduty")!.config.bodyTemplate!;
+
+  it("hides URL, method, headers and body under a closed Advanced section, and drops the preset select", async () => {
+    render(<NotificationProviderForm />);
+    await pickType("PagerDuty");
+    expect(screen.getByLabelText(/Routing key/)).toBeInTheDocument();
+    expect(screen.queryByLabelText(/Headers JSON/)).toBeNull();
+    expect(screen.queryByLabelText(/^URL/)).toBeNull();
+    expect(screen.queryByRole("combobox", { name: /integration preset/i })).toBeNull();
+    openAdvanced();
+    expect(screen.getByLabelText(/Headers JSON/)).toBeInTheDocument();
+    expect(screen.getByLabelText(/^URL/)).toHaveValue("https://events.pagerduty.com/v2/enqueue");
+  });
+
+  it("does not show required errors before the first submit when a preset fills the form", async () => {
+    render(<NotificationProviderForm />);
+    await pickType(/custom webhook/i);
+    await pickType("PagerDuty");
+    await pickType(/custom webhook/i);
+    expect(screen.queryByText("Webhook URL is required")).toBeNull();
+  });
+
+  it("writes the routing key into the body template and nowhere else", async () => {
+    const onSuccess = jest.fn().mockResolvedValue(undefined);
+    render(<NotificationProviderForm onSuccess={onSuccess} />);
+    await pickType("PagerDuty");
+    fireEvent.change(screen.getByPlaceholderText(/On-call alerts/), { target: { value: "PD" } });
+    fireEvent.change(screen.getByLabelText(/Routing key/), { target: { value: "R0UTE" } });
+    fireEvent.click(screen.getByRole("button", { name: "Create channel" }));
+    await waitFor(() => expect(onSuccess).toHaveBeenCalled());
+    const config = onSuccess.mock.calls[0][0].config;
+    expect(config.bodyTemplate).toContain('"routing_key": "R0UTE"');
+    expect(config.bodyTemplate).not.toContain("REPLACE_WITH_");
+    expect(config.headers).toBeUndefined();
+  });
+
+  it("asks for the routing key next to the field instead of saving the placeholder", async () => {
+    const onSuccess = jest.fn();
+    render(<NotificationProviderForm onSuccess={onSuccess} />);
+    await pickType("PagerDuty");
+    fireEvent.change(screen.getByPlaceholderText(/On-call alerts/), { target: { value: "PD" } });
+    fireEvent.click(screen.getByRole("button", { name: "Create channel" }));
+    expect(await screen.findByText("Routing key is required")).toBeInTheDocument();
+    expect(onSuccess).not.toHaveBeenCalled();
+  });
+
+  it("keeps a hidden saved template when the routing key is left blank, and replaces it when one is typed", async () => {
+    const renderEdit = () => {
+      const onSuccess = jest.fn().mockResolvedValue(undefined);
+      const view = render(
+        <NotificationProviderForm
+          onSuccess={onSuccess}
+          initialData={{
+            name: "PD",
+            type: "webhook",
+            // Viewers and masked reads get no bodyTemplate at all.
+            config: { name: "PD", preset: "pagerduty", method: "POST", url: "https://events.pagerduty.com/v2/enqueue", headers: {} } as never,
+            maskedFields: ["headers", "bodyTemplate"],
+          }}
+        />,
+      );
+      return { onSuccess, view };
+    };
+    const first = renderEdit();
+    const key = screen.getByLabelText(/Routing key/);
+    expect(key).toHaveAttribute("aria-required", "false");
+    expect(key).toHaveAttribute("placeholder", expect.stringMatching(/Unchanged/));
+    fireEvent.click(screen.getByRole("button", { name: "Update channel" }));
+    await waitFor(() => expect(first.onSuccess).toHaveBeenCalled());
+    expect(first.onSuccess.mock.calls[0][0].config).not.toHaveProperty("bodyTemplate");
+    first.view.unmount();
+
+    const second = renderEdit();
+    fireEvent.change(screen.getByLabelText(/Routing key/), { target: { value: "NEWKEY" } });
+    fireEvent.click(screen.getByRole("button", { name: "Update channel" }));
+    await waitFor(() => expect(second.onSuccess).toHaveBeenCalled());
+    expect(second.onSuccess.mock.calls[0][0].config.bodyTemplate).toBe(pdDefault.replace("REPLACE_WITH_PAGERDUTY_ROUTING_KEY", "NEWKEY"));
+  });
+
+  it("shows the saved routing key to editors and keeps template edits in sync", async () => {
+    render(
+      <NotificationProviderForm
+        initialData={{
+          name: "PD",
+          type: "webhook",
+          config: { name: "PD", preset: "pagerduty", method: "POST", url: "https://events.pagerduty.com/v2/enqueue", headers: {}, bodyTemplate: '{"routing_key":"SAVED","x":1}' } as never,
+          maskedFields: ["headers"],
+        }}
+      />,
+    );
+    expect(screen.getByLabelText(/Routing key/)).toHaveValue("SAVED");
+    openAdvanced();
+    fireEvent.change(screen.getByLabelText(/Body template/), { target: { value: '{"x":1}' } });
+    expect(screen.getByLabelText(/Routing key/)).toBeDisabled();
+    expect(screen.getByText(/has no routing_key/)).toBeInTheDocument();
+  });
+
+  it("writes the JSM API key as a GenieKey Authorization header", async () => {
+    const onSuccess = jest.fn().mockResolvedValue(undefined);
+    render(<NotificationProviderForm onSuccess={onSuccess} />);
+    await pickType("Jira Service Management");
+    fireEvent.change(screen.getByPlaceholderText(/On-call alerts/), { target: { value: "JSM" } });
+    expect(screen.getByLabelText(/API key/)).toHaveValue("");
+    fireEvent.change(screen.getByLabelText(/API key/), { target: { value: "k-123" } });
+    fireEvent.click(screen.getByRole("button", { name: "Create channel" }));
+    await waitFor(() => expect(onSuccess).toHaveBeenCalled());
+    expect(onSuccess.mock.calls[0][0].config.headers).toEqual({ Authorization: "GenieKey k-123" });
+  });
+
+  it("writes the incident.io token as a Bearer header and shows the URL up front", async () => {
+    const onSuccess = jest.fn().mockResolvedValue(undefined);
+    render(<NotificationProviderForm onSuccess={onSuccess} />);
+    await pickType("incident.io");
+    fireEvent.change(screen.getByPlaceholderText(/On-call alerts/), { target: { value: "IO" } });
+    fireEvent.change(screen.getByLabelText(/^URL/), { target: { value: "https://api.incident.io/v2/alert_events/http/abc" } });
+    fireEvent.change(screen.getByLabelText(/API token/), { target: { value: "tok" } });
+    fireEvent.click(screen.getByRole("button", { name: "Create channel" }));
+    await waitFor(() => expect(onSuccess).toHaveBeenCalled());
+    expect(onSuccess.mock.calls[0][0].config.headers).toEqual({ Authorization: "Bearer tok" });
+  });
+
+  it("on a saved JSM channel, says the key must be entered again after a URL change and otherwise omits headers", async () => {
+    const onSuccess = jest.fn().mockResolvedValue(undefined);
+    render(
+      <NotificationProviderForm
+        onSuccess={onSuccess}
+        initialData={{
+          name: "JSM",
+          type: "webhook",
+          config: { name: "JSM", preset: "jsm_ops", method: "POST", url: "[REDACTED]", headers: {} } as never,
+          maskedFields: ["url", "headers"],
+        }}
+      />,
+    );
+    expect(screen.getByText(/Saved headers are only kept while the URL and preset stay the same/)).toBeInTheDocument();
+    expect(screen.getByLabelText(/API key/)).toHaveAttribute("aria-required", "false");
+    openAdvanced();
+    fireEvent.change(screen.getByLabelText(/^URL/), { target: { value: "https://api.eu.atlassian.com/jsm/ops/integration/v2/alerts" } });
+    expect(screen.getByText(/enter the api key again/)).toBeInTheDocument();
+    // No "{}" escape here: a JSM channel without its key cannot deliver.
+    expect(screen.queryByText(/again, or \{\} for none/)).toBeNull();
+    // Saved headers cannot follow a new URL, so the key is required again.
+    const key = screen.getByLabelText(/API key/);
+    expect(key).toHaveAttribute("aria-required", "true");
+    fireEvent.click(screen.getByRole("button", { name: "Update channel" }));
+    const error = await screen.findByText("API key is required");
+    expect(key).toHaveAttribute("aria-describedby", error.id);
+    expect(onSuccess).not.toHaveBeenCalled();
+    fireEvent.change(key, { target: { value: "k-2" } });
+    fireEvent.click(screen.getByRole("button", { name: "Update channel" }));
+    await waitFor(() => expect(onSuccess).toHaveBeenCalled());
+    expect(onSuccess.mock.calls[0][0].config.headers).toEqual({ Authorization: "GenieKey k-2" });
+  });
+
+  it("keeps a blank JSM key on a saved channel while the URL is unchanged", async () => {
+    const onSuccess = jest.fn().mockResolvedValue(undefined);
+    render(
+      <NotificationProviderForm
+        onSuccess={onSuccess}
+        initialData={{
+          name: "JSM",
+          type: "webhook",
+          config: { name: "JSM", preset: "jsm_ops", method: "POST", url: "[REDACTED]", headers: {} } as never,
+          maskedFields: ["url", "headers"],
+        }}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Update channel" }));
+    await waitFor(() => expect(onSuccess).toHaveBeenCalled());
+    expect(onSuccess.mock.calls[0][0].config).not.toHaveProperty("headers");
+  });
+
+  it("clears the shown test result when the typed token changes", async () => {
+    global.fetch = jest.fn().mockResolvedValue({ json: async () => ({ success: true, message: "Sent" }) }) as never;
+    render(<NotificationProviderForm />);
+    await pickType("incident.io");
+    fireEvent.change(screen.getByLabelText(/^URL/), { target: { value: "https://api.incident.io/v2/alert_events/http/abc" } });
+    fireEvent.change(screen.getByLabelText(/API token/), { target: { value: "tok" } });
+    fireEvent.click(screen.getByRole("button", { name: "Test connection" }));
+    await screen.findByTestId("test-connection-result");
+    fireEvent.change(screen.getByLabelText(/API token/), { target: { value: "tok2" } });
+    expect(screen.queryByTestId("test-connection-result")).toBeNull();
+  });
+
+  it("Test connection opens Advanced for an invalid body template instead of sending it", async () => {
+    global.fetch = jest.fn() as never;
+    render(
+      <NotificationProviderForm
+        initialData={{
+          name: "PD",
+          type: "webhook",
+          config: { name: "PD", preset: "pagerduty", method: "POST", url: "https://events.pagerduty.com/v2/enqueue", headers: {}, bodyTemplate: '{"routing_key":"K", oops' } as never,
+          maskedFields: ["headers"],
+        }}
+      />,
+    );
+    expect(screen.queryByLabelText(/Body template/)).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Test connection" }));
+    expect((await screen.findAllByText("Body template must be valid JSON")).length).toBeGreaterThan(0);
+    expect(screen.getByLabelText(/Body template/)).toBeInTheDocument();
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+});
+
+it("on a saved custom webhook, a URL change asks for the headers again or {} for none", () => {
+  render(
+    <NotificationProviderForm
+      initialData={{
+        name: "Hook",
+        type: "webhook",
+        config: { name: "Hook", preset: "custom", method: "POST", url: "[REDACTED]", headers: {} } as never,
+        maskedFields: ["url", "headers"],
+      }}
+    />,
+  );
+  fireEvent.change(screen.getByLabelText(/^URL/), { target: { value: "https://new.example.com/hook" } });
+  expect(screen.getByText(/enter the headers under Advanced again, or \{\} for none/)).toBeInTheDocument();
 });

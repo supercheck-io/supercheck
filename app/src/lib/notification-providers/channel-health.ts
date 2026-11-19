@@ -7,8 +7,10 @@ import { loadProviderTestHealth, newerHealth, providerHealth, type ProviderHealt
 /**
  * Health per channel (newest delivery in the last 7 days, or a newer test) and when it last sent an alert.
  */
-export async function loadProviderHealth(providerIds: string[]): Promise<{ health: Map<string, ProviderHealth>; lastUsed: Map<string, Date> }> {
-  if (providerIds.length === 0) return { health: new Map(), lastUsed: new Map() };
+export async function loadProviderHealth(
+  providerIds: string[],
+): Promise<{ health: Map<string, ProviderHealth>; lastUsed: Map<string, Date>; lastTest: Map<string, ProviderHealth> }> {
+  if (providerIds.length === 0) return { health: new Map(), lastUsed: new Map(), lastTest: new Map() };
   // One index probe per channel on alert_history_provider_sent_at_idx; DISTINCT ON would read every row of each
   // channel. NULLS LAST must match the index, or the planner walks sent_at_idx and scans the table for a quiet channel.
   const latest = await db.execute<{ provider: string; status: string; sentAt: Date | string; responseStatus: number | null; terminal: boolean }>(sql`
@@ -34,5 +36,5 @@ export async function loadProviderHealth(providerIds: string[]): Promise<{ healt
     const delivery = row && row.sentAt.getTime() >= since ? providerHealth(row) : undefined;
     health.set(id, newerHealth(delivery, tests.get(id)) ?? { state: "unknown", at: null });
   }
-  return { health, lastUsed };
+  return { health, lastUsed, lastTest: tests };
 }

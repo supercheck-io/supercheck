@@ -289,6 +289,8 @@ export type SreIncidentDetail = {
   } | null;
   evidence: Array<{
     id: string;
+    /** Where the evidence came from: "native" or a connector type such as "loki". */
+    sourceType: string;
     title: string;
     summary: string | null;
     sourceUri: string;
@@ -1059,6 +1061,7 @@ export async function getSreIncidentDetails(
         db
           .select({
             id: sreEvidenceItems.id,
+            sourceType: sreEvidenceItems.sourceType,
             title: sreEvidenceItems.title,
             summary: sreEvidenceItems.summary,
             sourceUri: sreEvidenceItems.sourceUri,

@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 
 import { SreMessageContent } from "./sre-message-content";
@@ -227,5 +227,74 @@ describe("SreMessageContent", () => {
   it("compares the label host exactly, so a lookalike subdomain still shows the real host", () => {
     render(<SreMessageContent content={"[safe.evil.example](https://evil.example/x)"} />);
     expect(screen.getByRole("link", { name: /safe\.evil\.example/ })).toHaveTextContent("(evil.example)");
+  });
+});
+
+describe("SreMessageContent citations", () => {
+  const loki = {
+    id: "connector_0123456789abcdef01234567",
+    sourceType: "loki",
+    title: "Loki logs: pool exhausted",
+    summary: "12 matching lines",
+    sourceUri: "https://loki.example.test/explore",
+    evidenceType: "log",
+    observedAt: "2026-11-19T04:00:00.000Z",
+    citationQuery: '{service="checkout"}',
+    rawContentExcerpt: null,
+  };
+
+  it("turns cited ids into numbered footnotes that open the saved evidence", async () => {
+    render(
+      <SreMessageContent
+        citations={[loki]}
+        content={"Loki shows 500s (evidence: `connector_0123456789abcdef01234567`, `connector_ffffffffffffffffffffffff`). Again `connector_0123456789abcdef01234567`."}
+      />,
+    );
+    expect(screen.queryByText(/connector_/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/evidence:/)).not.toBeInTheDocument();
+    const sources = screen.getByRole("list", { name: "Sources" });
+    expect(sources).toHaveTextContent(/\[1\]\s*Loki\s*· Loki logs: pool exhausted/);
+    expect(sources).toHaveTextContent(/\[2\]\s*Live result, not saved/);
+    // The same id keeps its number on a second mention.
+    expect(screen.getAllByRole("button", { name: /^Citation 1: Loki/ })).toHaveLength(2);
+    fireEvent.click(screen.getAllByRole("button", { name: /^Citation 1: Loki/ })[0]!);
+    expect(await screen.findByRole("dialog")).toHaveTextContent("12 matching lines");
+  });
+
+  it("matches ids case-insensitively and leaves mixed lists with an uncited uuid as written", () => {
+    render(
+      <SreMessageContent
+        citations={[loki]}
+        content={"Loki (evidence: CONNECTOR_0123456789ABCDEF01234567). Also evidence: 01a1f039-9ef8-71d7-8e65-0823c827c42d, x."}
+      />,
+    );
+    expect(screen.getByRole("button", { name: /^Citation 1: Loki/ })).toBeInTheDocument();
+    expect(screen.getByText(/evidence: 01a1f039-9ef8-71d7-8e65-0823c827c42d, x\./)).toBeInTheDocument();
+  });
+
+  it("renders a citation inside bold text as a footnote", () => {
+    render(<SreMessageContent citations={[loki]} content={"**Evidence: connector_0123456789abcdef01234567**"} />);
+    expect(screen.queryByText(/\[\[cite/)).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^Citation 1: Loki/ })).toBeInTheDocument();
+  });
+
+  it("leaves uncited uuids, code spans and link targets intact", () => {
+    render(
+      <SreMessageContent
+        citations={[loki]}
+        content={"Monitor run evidence 01a1f039-9ef8-71d7-8e65-0823c827c42d failed. Run `curl /x/connector_0123456789abcdef01234567` or open [logs](https://loki.example.test/x?id=connector_0123456789abcdef01234567)."}
+      />,
+    );
+    expect(screen.getByText(/evidence 01a1f039-9ef8-71d7-8e65-0823c827c42d failed/)).toBeInTheDocument();
+    expect(screen.getByText("curl /x/connector_0123456789abcdef01234567")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /logs/ })).toHaveAttribute("href", "https://loki.example.test/x?id=connector_0123456789abcdef01234567");
+    expect(screen.queryByRole("list", { name: "Sources" })).not.toBeInTheDocument();
+  });
+
+  it("leaves ids alone when no citations are given, and keeps unrelated uuids as text", () => {
+    render(<SreMessageContent content={"Run `connector_0123456789abcdef01234567` for monitor 01a1f039-9ef8-71d7-8e65-0823c827c42d."} />);
+    expect(screen.getByText("connector_0123456789abcdef01234567")).toBeInTheDocument();
+    render(<SreMessageContent citations={[]} content={"Monitor 01a1f039-9ef8-71d7-8e65-0823c827c42d was down."} />);
+    expect(screen.getByText(/Monitor 01a1f039/)).toBeInTheDocument();
   });
 });

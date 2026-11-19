@@ -5,7 +5,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Button } from "@/components/ui/button";
-import { CheckCircle2, ExternalLink, Loader2, XCircle } from "lucide-react";
+import { CheckCircle2, ChevronRight, ExternalLink, Loader2, XCircle } from "lucide-react";
 
 import {
   Form,
@@ -43,7 +43,7 @@ import {
 import { parseWebhookJsonTemplate } from "@/lib/notification-providers/webhook-template";
 import { notificationProviders, PAGING_SERVICE_NAMES } from "@/components/alerts/data";
 import { ChannelTypeIcon } from "@/components/alerts/channel-icon";
-import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
   WEBHOOK_PRESET_IDS,
   WEBHOOK_PRESETS,
@@ -291,11 +291,12 @@ export const createNotificationProviderSchema = (
 
 const MASKED_FIELD_LABELS: Record<string, string> = {
   webhookUrl: "Webhook URL",
-  url: "Target URL",
-  headers: "Custom headers",
+  url: "URL",
+  headers: "Headers",
   botToken: "Bot token",
   discordWebhookUrl: "Discord webhook URL",
   teamsWebhookUrl: "Teams webhook URL",
+  bodyTemplate: "Body template",
 };
 
 const WEBHOOK_DOCS_URL =
@@ -345,7 +346,7 @@ function channelTypeLabel(type: string, presetId: string) {
 
 function OptionalBadge() {
   return (
-    <span className="ml-1.5 rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+    <span className="ml-1.5 rounded-full border px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
       Optional
     </span>
   );
@@ -396,24 +397,100 @@ function getHeadersError(text: string): string | null {
 }
 
 const MASKED_PLACEHOLDER = "Unchanged — leave blank to keep";
-const SAVE_ERROR_TOAST_ID = "notification-provider-save-error";
 
-/**
- * The URL the user typed, for the side card; undefined until it parses. Userinfo, query and fragment are dropped, and the
- * path is hidden (`https://hooks.slack.com/…`) when it has more than one segment or one that looks like a token, since
- * Slack, Discord and Teams webhook URLs carry their secret in the path.
- */
-export function endpointForDisplay(value: string | undefined): string | undefined {
+/** The one dialog size for this form, so it does not jump between channel types; the form body is the only scroll area. */
+export const NOTIFICATION_PROVIDER_DIALOG_CLASS =
+  "flex h-[min(90vh,46rem)] max-h-[90vh] flex-col gap-0 overflow-hidden p-0 sm:max-w-2xl";
+
+type PresetCredential = {
+  label: string;
+  placeholder: string;
+  description: string;
+  /** Shown when the credential cannot be read from the template or headers the user edited under Advanced. */
+  unreadable: string;
+} & ({ in: "template" } | { in: "header"; scheme: string });
+
+/** Typed credential per paging preset; the value is stored where the vendor expects it (body template or Authorization header). */
+const PRESET_CREDENTIALS: Partial<Record<WebhookPresetId, PresetCredential>> = {
+  pagerduty: {
+    in: "template",
+    label: "Routing key",
+    placeholder: "e.g. 1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d",
+    description: "The integration key of an Events API v2 integration on your PagerDuty service.",
+    unreadable: "The body template has no routing_key. Edit it under Advanced.",
+  },
+  jsm_ops: {
+    in: "header",
+    scheme: "GenieKey",
+    label: "API key",
+    placeholder: "Integration API key",
+    description: "The API key of an API integration in Jira Service Management. Stored encrypted.",
+    unreadable: "Fix the headers JSON under Advanced to edit the key here.",
+  },
+  incident_io: {
+    in: "header",
+    scheme: "Bearer",
+    label: "API token",
+    placeholder: "Alert source token",
+    description: "The token incident.io shows when you create the HTTP alert source. Stored encrypted.",
+    unreadable: "Fix the headers JSON under Advanced to edit the token here.",
+  },
+};
+
+/** URL help per preset; presets not listed keep their fixed vendor URL under Advanced. */
+const PRESET_URL_HINTS: Partial<Record<WebhookPresetId, string>> = {
+  custom: "Supercheck sends alerts to this endpoint. Stored encrypted.",
+  splunk_on_call: "The REST endpoint URL from Splunk On-Call, with your API key and routing key in it. Stored encrypted.",
+  better_stack: "The incoming webhook URL from Better Stack. Stored encrypted.",
+  incident_io: "The HTTP alert source URL from incident.io. Stored encrypted.",
+};
+
+const ROUTING_KEY = /("routing_key"\s*:\s*)"((?:[^"\\]|\\.)*)"/;
+const isPlaceholder = (value: string) => value.startsWith("REPLACE_WITH_");
+
+/** The PagerDuty routing key in a body template: "" for none or the preset placeholder, undefined when the template has no routing_key. */
+export function readRoutingKey(template: string): string | undefined {
+  const match = ROUTING_KEY.exec(template);
+  if (!match) return undefined;
+  let value = match[2];
   try {
-    const url = new URL((value ?? "").trim());
-    if (url.protocol !== "http:" && url.protocol !== "https:") return undefined;
-    const segments = url.pathname.split("/").filter(Boolean);
-    const secretLooking = segments.length > 1 || segments.some((segment) => segment.length >= 20);
-    return segments.length === 0 ? url.origin : secretLooking ? `${url.origin}/…` : url.origin + url.pathname;
+    value = JSON.parse(`"${value}"`);
+  } catch {
+    // Keep the raw text.
+  }
+  return isPlaceholder(value) ? "" : value;
+}
+
+/** Replaces only the routing_key string, so the rest of a hand-edited template keeps its formatting. Blank restores the placeholder. */
+export function writeRoutingKey(template: string, key: string): string {
+  return template.replace(ROUTING_KEY, (_, prefix: string) => `${prefix}${JSON.stringify(key.trim() || "REPLACE_WITH_PAGERDUTY_ROUTING_KEY")}`);
+}
+
+const authorizationKey = (headers: Record<string, string>) => Object.keys(headers).find((key) => key.toLowerCase() === "authorization");
+
+/** The token in the Authorization header ("GenieKey abc" -> "abc"), "" when missing or a placeholder, undefined when the headers JSON is invalid. */
+export function readAuthToken(headersText: string, scheme: string): string | undefined {
+  let headers: Record<string, string>;
+  try {
+    headers = parseHeadersValue(headersText) ?? {};
   } catch {
     return undefined;
   }
+  const key = authorizationKey(headers);
+  const token = key ? headers[key].replace(new RegExp(`^${scheme}\\s+`, "i"), "") : "";
+  return isPlaceholder(token) ? "" : token;
 }
+
+/** Sets (or, when blank, removes) the Authorization header and returns the new headers JSON text. Other headers stay. */
+export function writeAuthToken(headersText: string, scheme: string, token: string): string {
+  const headers = { ...(parseHeadersValue(headersText) ?? {}) };
+  const key = authorizationKey(headers) ?? "Authorization";
+  if (token.trim()) headers[key] = `${scheme} ${token.trim()}`;
+  else delete headers[key];
+  return Object.keys(headers).length > 0 ? JSON.stringify(headers, null, 2) : "";
+}
+
+const SAVE_ERROR_TOAST_ID = "notification-provider-save-error";
 
 /** The API's 400 messages are specific and safe to show; only network failures need the generic text. */
 /**
@@ -450,6 +527,7 @@ export function NotificationProviderForm({
   defaultType,
 }: NotificationProviderFormProps) {
   const headersFieldId = useId();
+  const credentialFieldId = useId();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isTesting, setIsTesting] = useState(false);
   const [lastWebhookTestDetails, setLastWebhookTestDetails] =
@@ -495,6 +573,13 @@ export function NotificationProviderForm({
   const [headersError, setHeadersError] = useState<string | null>(() =>
     getHeadersError(initialHeadersText),
   );
+  const [credentialError, setCredentialError] = useState<string | null>(null);
+  // Advanced starts closed, except for a saved custom webhook whose headers or template the user wrote themselves.
+  const [advancedOpen, setAdvancedOpen] = useState(() => {
+    const config = (initialData?.config ?? {}) as Record<string, unknown>;
+    return initialData?.type === "webhook" && (config.preset ?? "custom") === "custom" &&
+      (Boolean(initialHeadersText) || (typeof config.bodyTemplate === "string" && config.bodyTemplate.trim() !== ""));
+  });
 
   const form = useForm<
     FormValues,
@@ -563,6 +648,52 @@ export function NotificationProviderForm({
   const selectedWebhookUrl = form.watch("config.url");
   const selectedWebhookMethod = form.watch("config.method");
   const selectedWebhookBodyTemplate = form.watch("config.bodyTemplate");
+  const credential = selectedType === "webhook" ? PRESET_CREDENTIALS[selectedPresetId as WebhookPresetId] : undefined;
+  const urlOnTop = selectedPresetId in PRESET_URL_HINTS;
+  const samePresetAsSaved =
+    initialData?.type === "webhook" && ((initialData.config as Record<string, unknown>).preset ?? "custom") === selectedPresetId;
+  // A blank template means "keep the saved one" (it is hidden from viewers), so the field starts from the preset default.
+  const templateForCredential = selectedWebhookBodyTemplate?.trim() ? selectedWebhookBodyTemplate : "";
+  const credentialValue = !credential
+    ? undefined
+    : credential.in === "template"
+      ? templateForCredential ? readRoutingKey(templateForCredential) : ""
+      : readAuthToken(headersText, credential.scheme);
+  // Nothing typed and the saved value is hidden: leaving it blank keeps it.
+  const credentialKeepsStored = Boolean(
+    credential && samePresetAsSaved &&
+      (credential.in === "template"
+        ? keepsStored("bodyTemplate") && !templateForCredential
+        // Saved headers are never sent to a changed URL (the server refuses), so a URL edit needs the key again.
+        : keepsStored("headers") && !headersText.trim() && (selectedWebhookUrl ?? "").trim() === initialString("url")),
+  );
+  const setCredential = (value: string) => {
+    if (!credential) return;
+    setCredentialError(null);
+    setLastWebhookTestDetails(null);
+    if (credential.in === "header") {
+      const next = writeAuthToken(headersText, credential.scheme, value);
+      setHeadersText(next);
+      setHeadersError(getHeadersError(next));
+      // Headers are not a watched form field, so the old result would otherwise stay on screen.
+      setTestResult(null);
+      return;
+    }
+    // Clearing a key typed over a hidden saved template goes back to keeping the saved one.
+    const base = templateForCredential || (value ? (selectedPreset?.config.bodyTemplate ?? "") : "");
+    form.setValue("config.bodyTemplate", base ? writeRoutingKey(base, value) : "", { shouldDirty: true });
+    if (!value && samePresetAsSaved && keepsStored("bodyTemplate")) form.setValue("config.bodyTemplate", "", { shouldDirty: true });
+  };
+  /** Required-credential check; the server also rejects the preset placeholder, this just says so next to the field. */
+  const checkCredential = (): boolean => {
+    if (!credential || credentialKeepsStored || credentialValue) return true;
+    setCredentialError(credentialValue === undefined ? credential.unreadable : `${credential.label} is required`);
+    return false;
+  };
+  // Changing the URL of a saved channel drops its saved headers, which the server refuses to do silently.
+  const headersNeedRetyping =
+    samePresetAsSaved && keepsStored("headers") && Boolean(selectedWebhookUrl?.trim()) && !headersText.trim() &&
+    (selectedPresetId === "custom" || credential?.in === "header");
   const webhookPayloadPreview =
     selectedType === "webhook"
       ? buildWebhookPayloadPreview({
@@ -622,7 +753,8 @@ export function NotificationProviderForm({
     });
     form.setValue("config.bodyTemplate", nextConfig.bodyTemplate || "", {
       shouldDirty: true,
-      shouldValidate: true,
+      // Validating before the first submit would show errors on fields the user has not touched yet.
+      shouldValidate: form.formState.isSubmitted,
     });
     form.setValue("config.headers", nextConfig.headers || {}, {
       shouldDirty: true,
@@ -633,9 +765,10 @@ export function NotificationProviderForm({
         : "";
     setHeadersText(nextHeadersText);
     setHeadersError(getHeadersError(nextHeadersText));
+    setCredentialError(null);
 
     const nextUrl = nextPresetUrl(previousPresetId, presetId, form.getValues("config.url"), preset);
-    if (nextUrl !== undefined) form.setValue("config.url", nextUrl, { shouldDirty: true, shouldValidate: true });
+    if (nextUrl !== undefined) form.setValue("config.url", nextUrl, { shouldDirty: true, shouldValidate: form.formState.isSubmitted });
   };
 
   const [testResult, setTestResult] = useState<{ ok: boolean; message: string } | null>(null);
@@ -649,7 +782,17 @@ export function NotificationProviderForm({
       const error = getHeadersError(headersText);
       if (error) {
         setHeadersError(error);
+        setAdvancedOpen(true);
         toast.error(error);
+        return;
+      }
+      if (!checkCredential()) return;
+      // Same field checks as Save, so a broken hidden field opens Advanced instead of failing on the server.
+      const fields: Array<"config.url" | "config.bodyTemplate"> =
+        form.getValues("config.method") === "GET" ? ["config.url"] : ["config.url", "config.bodyTemplate"];
+      if (!(await form.trigger(fields))) {
+        const errors = form.formState.errors.config ?? {};
+        if (errors.bodyTemplate || (errors.url && !urlOnTop)) setAdvancedOpen(true);
         return;
       }
     }
@@ -709,9 +852,11 @@ export function NotificationProviderForm({
       const error = getHeadersError(headersText);
       if (error) {
         setHeadersError(error);
+        setAdvancedOpen(true);
         toast.error(error);
         return;
       }
+      if (!checkCredential()) return;
     }
 
     setIsSubmitting(true);
@@ -733,10 +878,50 @@ export function NotificationProviderForm({
     }
   };
 
+  const webhookUrlField = (
+    <FormField
+      control={form.control}
+      name="config.url"
+      render={({ field }) => (
+        <FormItem>
+          <FormLabel>URL<RequiredMark hidden={keepsStored("url")} /></FormLabel>
+          <FormControl>
+            <Input
+              aria-required={!keepsStored("url")}
+              placeholder={maskedFieldSet.has("url") ? MASKED_PLACEHOLDER : `e.g. ${selectedPreset?.endpointPlaceholder ?? "https://api.example.com/alerts"}`}
+              {...field}
+              onChange={(event) => {
+                field.onChange(event);
+                setLastWebhookTestDetails(null);
+              }}
+              disabled={isSubmitting || isTesting}
+            />
+          </FormControl>
+          <FormDescription>
+            {headersNeedRetyping
+              ? credential
+                ? `Saved headers are not sent to a changed URL. If this is a new URL, enter the ${credential.label.toLowerCase()} again.`
+                : "Saved headers are not sent to a changed URL. If this is a new URL, enter the headers under Advanced again, or {} for none."
+              : keepsStored("url")
+                ? KEEP_STORED_HINT
+                : (PRESET_URL_HINTS[selectedPresetId as WebhookPresetId] ?? "The vendor's fixed endpoint. Change it only if your account uses a regional one.")}
+          </FormDescription>
+          <FormMessage />
+        </FormItem>
+      )}
+    />
+  );
+
   return (
     <Form {...form}>
       <form
-        onSubmit={form.handleSubmit(onSubmit)}
+        onSubmit={form.handleSubmit(onSubmit, (errors) => {
+          if (form.getValues("type") !== "webhook") return;
+          checkCredential();
+          // Open Advanced when an error sits in a field it hides.
+          const config = errors.config ?? {};
+          if (config.method || config.bodyTemplate || (config.url && !urlOnTop)) setAdvancedOpen(true);
+        })}
         onKeyDown={(event) => {
           // Enter in a single-line field must not submit by accident; the Create button does.
           if (event.key === "Enter" &&
@@ -750,11 +935,12 @@ export function NotificationProviderForm({
       >
         <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-6 py-4 sm:py-5">
           {(maskedFields?.length ?? 0) > 0 && (
-            <div className="rounded-md border border-border bg-muted/40 p-3 text-sm text-muted-foreground">
-              Sensitive fields ({friendlyMaskedFields.join(", ")}) are hidden for
-              security. Leave them blank to keep the existing values, or enter
-              replacements to change them.
-            </div>
+            <p className="text-sm text-muted-foreground">
+              Saved secrets ({friendlyMaskedFields.join(", ")}) are hidden. Leave a field blank to keep its saved value.
+              {maskedFieldSet.has("headers") && initialData?.type === "webhook"
+                ? " Saved headers are only kept while the URL and preset stay the same; after changing either, enter the headers again."
+                : ""}
+            </p>
           )}
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -933,111 +1119,101 @@ export function NotificationProviderForm({
 
           {/* Webhook Configuration */}
           {selectedType === "webhook" && (
-            <div className="space-y-4">
-              <h3 className="text-sm font-semibold">Webhook configuration</h3>
-              <div className="grid gap-5 lg:grid-cols-2">
-                {/* Primary inputs */}
-                <div className="space-y-4">
+            <div className="min-w-0 space-y-4">
+              <h3 className="text-sm font-semibold">
+                {selectedPresetId === "custom" ? "Webhook configuration" : `${channelTypeLabel("webhook", selectedPresetId)} configuration`}
+              </h3>
+              {selectedPresetId !== "custom" && selectedPreset && (
+                <p className="text-xs text-muted-foreground" data-testid="one-way-paging-note">
+                  Supercheck opens and resolves the page. Acknowledging or closing it in{" "}
+                  {PAGING_SERVICE_NAMES[selectedPresetId] ?? "the paging service"} does not change the Supercheck incident.{" "}
+                  <a
+                    href={selectedPreset.docsUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-0.5 font-medium text-primary hover:underline"
+                  >
+                    Setup docs
+                    <ExternalLink aria-hidden="true" className="h-3 w-3" />
+                  </a>
+                </p>
+              )}
+
+              {urlOnTop && webhookUrlField}
+
+              {credential && (
+                <div className="space-y-2">
+                  <Label htmlFor={credentialFieldId}>
+                    {credential.label}
+                    <RequiredMark hidden={credentialKeepsStored} />
+                  </Label>
+                  <Input
+                    id={credentialFieldId}
+                    type="password"
+                    autoComplete="new-password"
+                    aria-required={!credentialKeepsStored}
+                    aria-describedby={credentialError ? `${credentialFieldId}-error` : undefined}
+                    aria-invalid={Boolean(credentialError)}
+                    placeholder={credentialKeepsStored ? MASKED_PLACEHOLDER : credential.placeholder}
+                    value={credentialValue ?? ""}
+                    onChange={(event) => setCredential(event.target.value)}
+                    disabled={isSubmitting || isTesting || credentialValue === undefined}
+                  />
+                  {credentialError ? (
+                    <p id={`${credentialFieldId}-error`} className="text-sm font-medium text-destructive">{credentialError}</p>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">
+                      {credentialValue === undefined
+                        ? credential.unreadable
+                        : credentialKeepsStored
+                          ? KEEP_STORED_HINT
+                          : credential.in === "header" && samePresetAsSaved && keepsStored("headers")
+                            ? "A new value replaces all saved headers on this channel."
+                            : credential.description}
+                    </p>
+                  )}
+                </div>
+              )}
+
+              <Collapsible open={advancedOpen} onOpenChange={setAdvancedOpen}>
+                <CollapsibleTrigger asChild>
+                  <Button type="button" variant="ghost" size="sm" className="-ml-2 gap-1 text-muted-foreground" data-testid="webhook-advanced-toggle">
+                    <ChevronRight aria-hidden="true" className={cn("h-4 w-4 transition-transform", advancedOpen && "rotate-90")} />
+                    Advanced
+                    <span className="font-normal">({urlOnTop ? "" : "URL, "}method, headers, body)</span>
+                  </Button>
+                </CollapsibleTrigger>
+                <CollapsibleContent className="space-y-4 pt-2">
+                  {!urlOnTop && webhookUrlField}
                   <FormField
                     control={form.control}
-                    name="config.preset"
+                    name="config.method"
                     render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Integration preset</FormLabel>
+                      <FormItem className="max-w-40">
+                        <FormLabel>Method</FormLabel>
                         <Select
-                          onValueChange={(value) =>
-                            handleWebhookPresetChange(value as WebhookPresetId)
-                          }
-                          value={field.value || "custom"}
+                          onValueChange={(value) => {
+                            field.onChange(value);
+                            setLastWebhookTestDetails(null);
+                          }}
+                          value={field.value ?? "POST"}
                           disabled={isSubmitting || isTesting}
                         >
                           <FormControl>
                             <SelectTrigger>
-                              <SelectValue placeholder="Select preset" />
+                              <SelectValue placeholder="Select method" />
                             </SelectTrigger>
                           </FormControl>
-                          <SelectContent className="max-h-[min(24rem,var(--radix-select-content-available-height))]">
-                            {WEBHOOK_PRESETS.map((preset) => (
-                              <SelectItem key={preset.id} value={preset.id}>
-                                <div className="flex items-center gap-2">
-                                  <ChannelTypeIcon type="webhook" presetId={preset.id} />
-                                  <span>
-                                    {preset.label}
-                                    {preset.endsAt ? ` (ends ${preset.endsAt})` : ""}
-                                  </span>
-                                </div>
-                              </SelectItem>
-                            ))}
+                          <SelectContent>
+                            <SelectItem value="GET">GET</SelectItem>
+                            <SelectItem value="POST">POST</SelectItem>
+                            <SelectItem value="PUT">PUT</SelectItem>
                           </SelectContent>
                         </Select>
                         <FormMessage />
                       </FormItem>
                     )}
                   />
-
-                  {selectedPresetId !== "custom" && (
-                    <Alert variant="info" data-testid="one-way-paging-note">
-                      <AlertDescription>
-                        Supercheck opens and resolves the page. Acknowledging or closing it in{" "}
-                        {PAGING_SERVICE_NAMES[selectedPresetId] ?? "the paging service"} does not change the Supercheck incident.
-                      </AlertDescription>
-                    </Alert>
-                  )}
-
-                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-[minmax(0,1fr)_7rem]">
-                    <FormField
-                      control={form.control}
-                      name="config.url"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>URL<RequiredMark hidden={keepsStored("url")} /></FormLabel>
-                          <FormControl>
-                            <Input
-                              aria-required={!keepsStored("url")}
-                              placeholder={maskedFieldSet.has("url") ? MASKED_PLACEHOLDER : "e.g. https://api.example.com/alerts"}
-                              {...field}
-                              onChange={(event) => {
-                                field.onChange(event);
-                                setLastWebhookTestDetails(null);
-                              }}
-                              disabled={isSubmitting || isTesting}
-                            />
-                          </FormControl>
-                          <FormDescription>{keepsStored("url") ? KEEP_STORED_HINT : "Supercheck sends alerts to this endpoint. Stored encrypted."}</FormDescription>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                    <FormField
-                      control={form.control}
-                      name="config.method"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Method</FormLabel>
-                          <Select
-                            onValueChange={(value) => {
-                              field.onChange(value);
-                              setLastWebhookTestDetails(null);
-                            }}
-                            value={field.value ?? "POST"}
-                            disabled={isSubmitting || isTesting}
-                          >
-                            <FormControl>
-                              <SelectTrigger>
-                                <SelectValue placeholder="Select method" />
-                              </SelectTrigger>
-                            </FormControl>
-                            <SelectContent>
-                              <SelectItem value="GET">GET</SelectItem>
-                              <SelectItem value="POST">POST</SelectItem>
-                              <SelectItem value="PUT">PUT</SelectItem>
-                            </SelectContent>
-                          </Select>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                  </div>
 
                   <div className="space-y-2">
                     <Label htmlFor={headersFieldId}>
@@ -1052,10 +1228,11 @@ export function NotificationProviderForm({
                         const next = event.target.value;
                         setHeadersText(next);
                         setHeadersError(getHeadersError(next));
+                        setCredentialError(null);
                         setLastWebhookTestDetails(null);
                         setTestResult(null);
                       }}
-                      className="field-sizing-fixed min-h-[88px] resize-y font-mono text-sm"
+                      className="min-h-[88px] font-mono text-sm"
                       aria-invalid={Boolean(headersError)}
                       disabled={isSubmitting || isTesting}
                     />
@@ -1065,9 +1242,8 @@ export function NotificationProviderForm({
                       </p>
                     ) : (
                       <p className="text-xs text-muted-foreground">
-                        Use for provider API keys such as{" "}
-                        <code>Authorization</code>. Transport headers like{" "}
-                        <code>Host</code>, <code>Content-Type</code>, and{" "}
+                        {keepsStored("headers") && !headersText.trim() ? "Saved headers are hidden. Leave blank to keep them while the URL and preset stay the same, or enter {} for none. " : ""}
+                        Transport headers like <code>Host</code>, <code>Content-Type</code> and{" "}
                         <code>User-Agent</code> are blocked.
                       </p>
                     )}
@@ -1084,12 +1260,13 @@ export function NotificationProviderForm({
                         </FormLabel>
                         <FormControl>
                           <Textarea
-                            placeholder='{"payload": {"summary": "{{title}}", "severity": "{{normalizedSeverity}}"}}'
-                            className="field-sizing-fixed min-h-[88px] resize-y font-mono text-sm"
+                            placeholder={keepsStored("bodyTemplate") ? MASKED_PLACEHOLDER : '{"payload": {"summary": "{{title}}", "severity": "{{normalizedSeverity}}"}}'}
+                            className="min-h-[88px] font-mono text-sm"
                             disabled={isSubmitting || isTesting}
                             {...field}
                             onChange={(event) => {
                               field.onChange(event);
+                              setCredentialError(null);
                               setLastWebhookTestDetails(null);
                             }}
                           />
@@ -1108,52 +1285,16 @@ export function NotificationProviderForm({
                             className="inline-flex items-center gap-0.5 font-medium text-primary hover:underline"
                           >
                             Variables
-                            <ExternalLink className="h-3 w-3" />
+                            <ExternalLink aria-hidden="true" className="h-3 w-3" />
                           </a>
                         </div>
                         <FormMessage />
                       </FormItem>
                     )}
                   />
-                </div>
-
-                {/* Reference preview */}
-                <div className="space-y-4">
-                  {selectedPreset && (
-                    <div className="rounded-lg border border-border bg-muted/30 p-3 text-sm">
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="font-medium">
-                          {selectedPreset.label}
-                        </div>
-                        <a
-                          href={selectedPreset.docsUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex shrink-0 items-center gap-1 text-xs font-medium text-primary hover:underline"
-                        >
-                          Setup docs
-                          <ExternalLink className="h-3 w-3" />
-                        </a>
-                      </div>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        {selectedPreset.summary}
-                      </p>
-                      <div className="mt-2 flex items-start gap-1.5 text-xs text-muted-foreground">
-                        <span className="shrink-0">Endpoint</span>
-                        <code className="min-w-0 break-all rounded bg-background px-1 py-0.5">
-                          {endpointForDisplay(selectedWebhookUrl) ?? selectedPreset.endpointPlaceholder}
-                        </code>
-                      </div>
-                      {selectedPreset.secretHint && (
-                        <p className="mt-2 text-xs text-amber-600 dark:text-amber-500">
-                          {selectedPreset.secretHint}
-                        </p>
-                      )}
-                    </div>
-                  )}
 
                   {webhookPayloadPreview && (
-                    <div className="rounded-lg border border-border bg-muted/20">
+                    <div className="min-w-0 rounded-lg border border-border">
                       <div className="flex items-center justify-between gap-3 border-b border-border px-3 py-2">
                         <div className="min-w-0">
                           <div className="text-sm font-medium">
@@ -1163,7 +1304,7 @@ export function NotificationProviderForm({
                             Sample alert values only. Secrets are never rendered.
                           </p>
                         </div>
-                        <span className="shrink-0 rounded-full bg-background px-2 py-1 text-xs font-medium text-muted-foreground">
+                        <span className="shrink-0 rounded-full bg-muted px-2 py-1 text-xs font-medium text-muted-foreground">
                           {webhookPayloadPreview.method}
                         </span>
                       </div>
@@ -1177,74 +1318,74 @@ export function NotificationProviderForm({
                             {webhookPayloadPreview.error}
                           </p>
                         ) : (
-                          <pre className="max-h-64 overflow-auto rounded-md bg-background p-3 text-xs leading-relaxed text-foreground">
+                          <pre className="whitespace-pre-wrap break-all rounded-md bg-muted/40 p-3 text-xs leading-relaxed text-foreground">
                             {webhookPayloadPreview.body}
                           </pre>
                         )}
                       </div>
                     </div>
                   )}
+                </CollapsibleContent>
+              </Collapsible>
 
-                  {lastWebhookTestDetails && (
-                    <div className="rounded-lg border border-border bg-background p-3 text-sm">
-                      <div className="mb-2 flex items-center justify-between gap-2">
-                        <div className="font-medium">Last webhook test</div>
-                        {typeof lastWebhookTestDetails.elapsedMs === "number" && (
-                          <span className="text-xs text-muted-foreground">
-                            {lastWebhookTestDetails.elapsedMs} ms
-                          </span>
-                        )}
-                      </div>
-                      <dl className="grid gap-2 text-muted-foreground sm:grid-cols-2">
-                        <div>
-                          Method:{" "}
-                          <span className="font-medium text-foreground">
-                            {lastWebhookTestDetails.method || "unknown"}
-                          </span>
-                        </div>
-                        <div className="min-w-0 break-all">
-                          Host:{" "}
-                          <span className="font-medium text-foreground">
-                            {lastWebhookTestDetails.targetHost || "unknown"}
-                          </span>
-                        </div>
-                        <div>
-                          Status:{" "}
-                          <span className="font-medium text-foreground">
-                            {lastWebhookTestDetails.responseStatus
-                              ? `HTTP ${lastWebhookTestDetails.responseStatus}`
-                              : "No response"}
-                          </span>
-                        </div>
-                        <div className="min-w-0 break-all">
-                          Headers:{" "}
-                          <span className="font-medium text-foreground">
-                            {lastWebhookTestDetails.headerNames?.length
-                              ? lastWebhookTestDetails.headerNames.join(", ")
-                              : "none"}
-                          </span>
-                        </div>
-                      </dl>
-                      {lastWebhookTestDetails.requestBodyHash && (
-                        <div className="mt-2 text-xs text-muted-foreground">
-                          Request hash:{" "}
-                          <code className="break-all rounded bg-muted px-1 py-0.5 text-foreground">
-                            {lastWebhookTestDetails.requestBodyHash}
-                          </code>
-                        </div>
-                      )}
-                      {lastWebhookTestDetails.responseHash && (
-                        <div className="mt-2 text-xs text-muted-foreground">
-                          Response hash:{" "}
-                          <code className="break-all rounded bg-muted px-1 py-0.5 text-foreground">
-                            {lastWebhookTestDetails.responseHash}
-                          </code>
-                        </div>
-                      )}
+              {lastWebhookTestDetails && (
+                <div className="rounded-lg border border-border bg-background p-3 text-sm">
+                  <div className="mb-2 flex items-center justify-between gap-2">
+                    <div className="font-medium">Last webhook test</div>
+                    {typeof lastWebhookTestDetails.elapsedMs === "number" && (
+                      <span className="text-xs text-muted-foreground">
+                        {lastWebhookTestDetails.elapsedMs} ms
+                      </span>
+                    )}
+                  </div>
+                  <dl className="grid gap-2 text-muted-foreground sm:grid-cols-2">
+                    <div>
+                      Method:{" "}
+                      <span className="font-medium text-foreground">
+                        {lastWebhookTestDetails.method || "unknown"}
+                      </span>
+                    </div>
+                    <div className="min-w-0 break-all">
+                      Host:{" "}
+                      <span className="font-medium text-foreground">
+                        {lastWebhookTestDetails.targetHost || "unknown"}
+                      </span>
+                    </div>
+                    <div>
+                      Status:{" "}
+                      <span className="font-medium text-foreground">
+                        {lastWebhookTestDetails.responseStatus
+                          ? `HTTP ${lastWebhookTestDetails.responseStatus}`
+                          : "No response"}
+                      </span>
+                    </div>
+                    <div className="min-w-0 break-all">
+                      Headers:{" "}
+                      <span className="font-medium text-foreground">
+                        {lastWebhookTestDetails.headerNames?.length
+                          ? lastWebhookTestDetails.headerNames.join(", ")
+                          : "none"}
+                      </span>
+                    </div>
+                  </dl>
+                  {lastWebhookTestDetails.requestBodyHash && (
+                    <div className="mt-2 text-xs text-muted-foreground">
+                      Request hash:{" "}
+                      <code className="break-all rounded bg-muted px-1 py-0.5 text-foreground">
+                        {lastWebhookTestDetails.requestBodyHash}
+                      </code>
+                    </div>
+                  )}
+                  {lastWebhookTestDetails.responseHash && (
+                    <div className="mt-2 text-xs text-muted-foreground">
+                      Response hash:{" "}
+                      <code className="break-all rounded bg-muted px-1 py-0.5 text-foreground">
+                        {lastWebhookTestDetails.responseHash}
+                      </code>
                     </div>
                   )}
                 </div>
-              </div>
+              )}
             </div>
           )}
 

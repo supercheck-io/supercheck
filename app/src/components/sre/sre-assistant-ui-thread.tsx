@@ -27,7 +27,7 @@ import {
   RefreshCw,
   Copy,
   BarChart3,
-  CheckCircle2,
+  Search,
 } from "lucide-react";
 
 import type { SreCopilotChatHistory } from "@/actions/sre-ai";
@@ -46,6 +46,7 @@ import { TableBadge } from "@/components/ui/table-badge";
 import { UserAvatar } from "@/components/ui/user-cell";
 import { useProjectContext } from "@/hooks/use-project-context";
 import { canUseSreLiveConnectors } from "@/lib/rbac/permissions-client";
+import { extractCitations, parseCitations, type SreChatCitation } from "@/lib/sre/chat-citations";
 import { useSession } from "@/utils/auth-client";
 
 const SRE_COPILOT_MESSAGE_MAX_LENGTH = 4000;
@@ -93,6 +94,8 @@ export type SreAssistantUiMessageMetadata = {
   conversationId?: string;
   assistantMessageId?: string;
   modelId?: string;
+  /** Evidence a saved reply cites (a live reply reads its own tool results instead). */
+  citations?: SreChatCitation[];
 };
 
 export type SreAssistantUiMessage = UIMessage<SreAssistantUiMessageMetadata>;
@@ -151,7 +154,13 @@ export function historyMessagesToUiMessages(
   return messages.map((message) => ({
     id: message.id,
     role: message.role,
-    metadata: message.modelId ? { modelId: message.modelId } : undefined,
+    metadata:
+      message.modelId || message.citations?.length
+        ? {
+            ...(message.modelId ? { modelId: message.modelId } : {}),
+            ...(message.citations?.length ? { citations: message.citations } : {}),
+          }
+        : undefined,
     parts: [
       {
         type: "text",
@@ -214,14 +223,35 @@ export function uiMessagesToHistoryMessages(
         role: message.role,
         content,
         modelId: message.metadata?.modelId ?? null,
+        ...(message.role === "assistant" ? citationsField(messageCitations(message, content)) : {}),
       },
     ];
   });
 }
 
+function citationsField(citations: SreChatCitation[]) {
+  return citations.length ? { citations } : {};
+}
+
+/** Saved citations, plus any the reply's own tool results provide (a live reply has no saved ones yet). */
+function messageCitations(message: { metadata?: unknown; parts?: unknown; content?: unknown }, text: string) {
+  const metadata = message.metadata as { citations?: unknown; custom?: { citations?: unknown } } | undefined;
+  const saved = metadata?.custom?.citations ?? metadata?.citations;
+  const fromTools = extractCitations(message.parts ?? message.content, text);
+  const merged = new Map<string, SreChatCitation>();
+  for (const item of [...parseCitations(saved), ...fromTools]) merged.set(item.id, item);
+  return [...merged.values()];
+}
+
 function AssistantTextPart() {
   const part = useMessagePartText();
-  return <SreMessageContent content={part.text} isStreaming={part.status.type === "running"} />;
+  const message = useAuiState((state) => state.message);
+  // User text is never rewritten into citations.
+  const citations = useMemo(
+    () => (message.role === "assistant" ? messageCitations(message, part.text) : undefined),
+    [message, part.text],
+  );
+  return <SreMessageContent content={part.text} isStreaming={part.status.type === "running"} citations={citations} />;
 }
 
 const INTERRUPTED_NOTICE = "Reply was interrupted.";
@@ -457,10 +487,11 @@ function SreFollowUpSuggestions({
             composer.setText(reply.prompt);
           }}
         >
+          {/* A neutral icon says what the reply will do; a green check read as "already done". */}
           {reply.intent === "check" ? (
-            <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
+            <Search className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
           ) : reply.intent === "chart" ? (
-            <BarChart3 className="h-3.5 w-3.5 text-sky-500" />
+            <BarChart3 className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
           ) : null}
           {reply.label}
         </Button>
@@ -529,11 +560,11 @@ function SreComposer({
                 ? "Ask about this incident or its evidence..."
                 : "Describe a symptom or paste evidence..."
             }
-            rows={2}
-            className="w-full max-h-44 min-h-16 resize-none border-0 bg-transparent text-sm leading-6 outline-none placeholder:text-muted-foreground focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-60"
+            rows={1}
+            className="w-full field-sizing-content max-h-44 min-h-10 resize-none border-0 bg-transparent text-sm leading-6 outline-none placeholder:text-muted-foreground focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-60"
           />
         </div>
-        <div className="mt-3 flex flex-wrap items-center justify-between gap-3 border-t pt-3">
+        <div className="mt-2 flex flex-wrap items-center justify-between gap-3 border-t pt-2">
           <div className="min-w-0 flex-1 text-xs text-muted-foreground">
             <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-emerald-500/25 bg-emerald-500/10 px-2 py-1 text-emerald-700 dark:text-emerald-300">
               <ShieldCheck className="h-3.5 w-3.5" />
@@ -623,7 +654,7 @@ export function SreThread({
             type="button"
             variant="secondary"
             size="sm"
-            className="sticky bottom-4 left-1/2 z-10 mx-auto mt-4 flex -translate-x-1/2 rounded-full shadow-sm disabled:hidden"
+            className="sticky bottom-3 z-10 ml-auto mt-4 flex rounded-full shadow-sm disabled:hidden"
           >
             <ChevronDown className="h-4 w-4" />
             Jump to latest

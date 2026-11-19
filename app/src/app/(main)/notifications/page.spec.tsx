@@ -19,8 +19,18 @@ jest.mock("next/navigation", () => ({
 }));
 jest.mock("@/components/alerts/delivery-history", () => ({ DeliveryHistory: () => <div>delivery-history</div> }));
 jest.mock("@/components/page-breadcrumbs", () => ({ PageBreadcrumbs: () => null }));
-jest.mock("@/components/alerts/notification-provider-form", () => ({ NotificationProviderForm: () => null }));
-jest.mock("@/components/alerts/notification-channels-component", () => ({ NotificationChannelsComponent: () => null }));
+const mockFormProps = jest.fn();
+jest.mock("@/components/alerts/notification-provider-form", () => ({
+  NotificationProviderForm: (props: unknown) => {
+    mockFormProps(props);
+    return null;
+  },
+}));
+jest.mock("@/components/alerts/notification-channels-component", () => ({
+  NotificationChannelsComponent: ({ onEditChannel, providersData }: { onEditChannel: (c: unknown) => void; providersData: unknown[] }) => (
+    <button type="button" onClick={() => onEditChannel(providersData[0])}>edit-first</button>
+  ),
+}));
 
 it("shows an error with Retry instead of 'No notification channels' when the load fails", () => {
   const refetch = jest.fn();
@@ -41,4 +51,16 @@ it("opens Delivery history from ?tab=history and switches tabs through the URL",
   fireEvent.mouseDown(screen.getByRole("tab", { name: "Channels" }));
   expect(mockReplace).toHaveBeenCalledWith("/notifications", { scroll: false });
   mockParams = new URLSearchParams();
+});
+
+it("edits with the fetched provider, so hidden secrets keep their maskedFields", () => {
+  const provider = {
+    id: "p1", name: "JSM", type: "webhook", isEnabled: true, createdAt: "2026-11-18T00:00:00Z",
+    config: { name: "JSM", preset: "jsm_ops" }, maskedFields: ["url", "headers"],
+  };
+  useProvidersMock.mockReturnValue({ providers: [provider], isLoading: false, error: null, refetch: jest.fn() });
+  render(<NotificationsPage />);
+  fireEvent.click(screen.getByRole("button", { name: "edit-first" }));
+  const edit = mockFormProps.mock.calls.map(([props]) => props as { initialData?: { maskedFields?: string[] } }).find((props) => props.initialData);
+  expect(edit?.initialData?.maskedFields).toEqual(["url", "headers"]);
 });

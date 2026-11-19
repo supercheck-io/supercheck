@@ -21,7 +21,8 @@
   --secondary: oklch(0.94 0.002 286.375);
   --secondary-foreground: oklch(0.21 0.006 285.885);
   --muted: oklch(0.92 0.003 286.375);
-  --muted-foreground: oklch(0.552 0.016 285.938);
+  /* 0.5 keeps secondary text at 4.5:1 or better on --muted (tab lists, kbd) and on muted cards. */
+  --muted-foreground: oklch(0.5 0.016 285.938);
   --accent: oklch(0.94 0.002 286.375);
   --accent-foreground: oklch(0.21 0.006 285.885);
   --destructive: oklch(0.577 0.245 27.325);

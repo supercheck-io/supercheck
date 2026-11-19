@@ -9,6 +9,7 @@ import { sreChatConversations, sreChatMessages } from "@/db/schema";
 import { logAuditEvent } from "@/lib/audit-logger";
 import { requireProjectContext } from "@/lib/project-context";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
+import { citationsFromAttachments, type SreChatCitation } from "@/lib/sre/chat-citations";
 import { archiveSreConversation, SRE_MESSAGE_INTERRUPTED, SRE_MESSAGE_SUPERSEDED } from "@/sre/lib/session-store";
 import { db } from "@/utils/db";
 
@@ -30,6 +31,8 @@ export type SreCopilotChatHistory = {
     content: string;
     modelId: string | null;
     interrupted?: boolean;
+    /** Evidence the reply cites, saved with it so its footnotes open after a reload. */
+    citations?: SreChatCitation[];
   }>;
 };
 
@@ -123,6 +126,7 @@ export async function getSreCopilotChatHistories(incidentId?: string | null): Pr
       updatedAt: conversation.updatedAt.toISOString(),
       messages: (rowsByConversation.get(conversation.id) ?? []).flatMap((message) => {
         if ((message.role !== "user" && message.role !== "assistant") || !message.content) return [];
+        const citations = message.role === "assistant" ? citationsFromAttachments(message.attachments) : [];
         return [
           {
             id: message.id,
@@ -130,6 +134,7 @@ export async function getSreCopilotChatHistories(incidentId?: string | null): Pr
             content: message.content,
             modelId: message.modelId,
             interrupted: message.attachments?.some((item) => item.type === SRE_MESSAGE_INTERRUPTED) || undefined,
+            ...(citations.length ? { citations } : {}),
           },
         ];
       }),

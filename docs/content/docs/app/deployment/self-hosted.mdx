@@ -187,7 +187,7 @@ Edit `.env` in `deploy/docker`, then run `sudo docker compose up -d --force-recr
 | `ORG_DELETION_GRACE_DAYS` | `14` | Days an owner can cancel a requested organization deletion before the data is purged (0 to 365). The organization is read-only during the window. `0` removes the window (self-hosted only): the purge is queued at once and runs in the background, and if queueing fails the deletion sweep picks it up |
 | `ORG_DELETION_REAUTH_MINUTES` | `10` | Minutes a session may be old before an owner must sign in again to request an organization deletion (1 to 60) |
 | `AUDIT_EMAIL_SCRUB_DAYS` | `30` | Days before email addresses in audit log details are replaced by a hash. Audit logs are removed after 12 months |
-| `SMTP_FROM_NAME`, `SMTP_REPLY_TO` | unset | Optional display name for the From address and an optional Reply-To address on every email |
+| `SMTP_FROM_NAME`, `SMTP_REPLY_TO` | `Supercheck`, unset | Display name for the From address and an optional Reply-To address on every email |
 | `SMTP_BLOCKED_RECIPIENT_DOMAINS` | unset | Extra recipient domains never emailed (reserved domains such as `example.com` are always skipped) |
 | `AI_PROVIDER`, `AI_MODEL`, `OPENAI_API_KEY` | `openai`, `gpt-6-luna`, unset | AI features and AI SRE. Other providers: [Docker environment reference](https://github.com/supercheck-io/supercheck/blob/v1.6.0/deploy/docker/README.md#environment-variables) |
 | `SRE_AUTOMATION_ENABLED` | `false` | AI triage of alert incidents; can incur provider charges. Incidents open from alerts without it. Set in the app (the worker only needs `SRE_ENABLED`) |

@@ -148,8 +148,9 @@ export function IncidentSidebar({
               </Row>
             )}
             <Row label="Started">{formatDate(incident.createdAt)}</Row>
-            <Row label="Alerts">
-              {incident.alertCount}
+            {/* alertCount counts every firing, repeats included; the Alerts card lists each distinct alert once. */}
+            <Row label="Fired">
+              {incident.alertCount} {incident.alertCount === 1 ? "time" : "times"}
               {incident.lastAlertAt ? ` (last ${formatDate(incident.lastAlertAt)})` : ""}
             </Row>
             <Row label="Status page">

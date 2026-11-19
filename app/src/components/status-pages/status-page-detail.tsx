@@ -50,7 +50,13 @@ import { getPublicStatusPageUrl } from "@/lib/domain-utils";
 import { DataTable } from "@/components/monitors/data-table";
 import { statusPageColumns } from "@/components/monitors/status-page-columns";
 import { toOverviewMonitor } from "./overview-monitor";
+import { useIsMobile } from "@/hooks/use-mobile";
 import type { StatusPageMonitor } from "@/hooks/use-status-pages";
+
+// At phone width only the name and status fit without scrolling sideways.
+const mobileMonitorColumns = statusPageColumns.filter((column) =>
+  ["name", "status"].includes(("accessorKey" in column ? column.accessorKey : column.id) as string),
+);
 
 type StatusPage = {
   id: string;
@@ -131,6 +137,7 @@ export function StatusPageDetail({
   // ?tab=incidents opens a tab directly, for example to post an incident again.
   const requestedTab = useSearchParams().get("tab");
   const router = useRouter();
+  const isMobile = useIsMobile();
   const [isPublishing, setIsPublishing] = useState(false);
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
   const [confirmAction, setConfirmAction] = useState<PendingAction | null>(null);
@@ -275,13 +282,18 @@ export function StatusPageDetail({
     }
   };
 
+  // A monitor linked to several components is listed once.
+  const linkedMonitors = components
+    .flatMap((c) => c.monitors.map((monitor) => toOverviewMonitor(monitor, c.name)))
+    .filter((monitor, index, all) => index === all.findIndex((m) => m.id === monitor.id));
+
   return (
     <div className="space-y-6 p-4">
       <Tabs defaultValue={STATUS_PAGE_TABS.includes(requestedTab ?? "") ? requestedTab! : "overview"} className="space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-6">
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-3 mb-2 flex-wrap">
-              <h1 className="min-w-0 max-w-full truncate text-xl sm:text-2xl font-semibold">{statusPage.name}</h1>
+              <h1 className="min-w-0 max-w-full break-words text-xl sm:text-2xl font-semibold">{statusPage.name}</h1>
               <Badge
                 className={`text-xs px-2 py-1 rounded-md ${getStatusBadgeColor(
                   statusPage.status
@@ -333,7 +345,7 @@ export function StatusPageDetail({
             </Button>
             {statusPage.status !== "archived" && (
               <Button
-                variant="destructive"
+                variant="outline"
                 disabled={isPublishing || pendingAction !== null || !canUpdate}
                 onClick={() => setConfirmAction("archive")}
                 title={
@@ -421,26 +433,27 @@ export function StatusPageDetail({
           </AlertDialogContent>
         </AlertDialog>
 
-        <TabsList className="grid w-full grid-cols-5 lg:w-auto lg:inline-flex">
-          <TabsTrigger value="overview" aria-label="Overview" className="flex items-center gap-2">
+        {/* Labels stay visible on small screens; the strip scrolls instead of collapsing to bare icons. */}
+        <TabsList className="flex w-full justify-start overflow-x-auto lg:w-auto lg:inline-flex">
+          <TabsTrigger value="overview" aria-label="Overview" className="flex shrink-0 items-center gap-2">
             <LayoutDashboard className="h-4 w-4" />
-            <span className="hidden sm:inline">Overview</span>
+            <span>Overview</span>
           </TabsTrigger>
-          <TabsTrigger value="components" aria-label="Components" className="flex items-center gap-2">
+          <TabsTrigger value="components" aria-label="Components" className="flex shrink-0 items-center gap-2">
             <Layers className="h-4 w-4" />
-            <span className="hidden sm:inline">Components</span>
+            <span>Components</span>
           </TabsTrigger>
-          <TabsTrigger value="incidents" aria-label="Status updates" className="flex items-center gap-2">
+          <TabsTrigger value="incidents" aria-label="Status updates" className="flex shrink-0 items-center gap-2">
             <OctagonAlert className="h-4 w-4" />
-            <span className="hidden sm:inline">Status updates</span>
+            <span>Status updates</span>
           </TabsTrigger>
-          <TabsTrigger value="subscribers" aria-label="Subscribers" className="flex items-center gap-2">
+          <TabsTrigger value="subscribers" aria-label="Subscribers" className="flex shrink-0 items-center gap-2">
             <Users className="h-4 w-4" />
-            <span className="hidden sm:inline">Subscribers</span>
+            <span>Subscribers</span>
           </TabsTrigger>
-          <TabsTrigger value="settings" aria-label="Settings" className="flex items-center gap-2">
+          <TabsTrigger value="settings" aria-label="Settings" className="flex shrink-0 items-center gap-2">
             <Settings2 className="h-4 w-4" />
-            <span className="hidden sm:inline">Settings</span>
+            <span>Settings</span>
           </TabsTrigger>
         </TabsList>
 
@@ -528,31 +541,10 @@ export function StatusPageDetail({
                   <h3 className="text-lg font-semibold">Linked Monitors</h3>
                 </div>
                 <Badge variant="secondary">
-                  {(() => {
-                    // Collect all monitor IDs from all components
-                    const allMonitorIds = components.flatMap((c) =>
-                      c.monitors.map((m) => m.id)
-                    );
-
-                    // Filter unique monitor IDs
-                    const uniqueMonitorIds = [...new Set(allMonitorIds)];
-
-                    return uniqueMonitorIds.length;
-                  })()}{" "}
-                  monitors
+                  {linkedMonitors.length} {linkedMonitors.length === 1 ? "monitor" : "monitors"}
                 </Badge>
               </div>
-              {(() => {
-                // Collect all monitor IDs from all components
-                const allMonitorIds = components.flatMap((c) =>
-                  c.monitors.map((m) => m.id)
-                );
-
-                // Filter unique monitor IDs
-                const uniqueMonitorIds = [...new Set(allMonitorIds)];
-
-                return uniqueMonitorIds.length;
-              })() === 0 ? (
+              {linkedMonitors.length === 0 ? (
                 <DashboardEmptyState
                   className="min-h-[420px]"
                   icon={<Activity className="h-10 w-10" />}
@@ -562,21 +554,8 @@ export function StatusPageDetail({
               ) : (
                 <div className="overflow-x-auto">
                   <DataTable
-                    columns={statusPageColumns}
-                    data={(() => {
-                      // Collect all monitors from all components
-                      const allMonitors = components.flatMap((c) =>
-                        c.monitors.map((monitor) => toOverviewMonitor(monitor, c.name))
-                      );
-
-                      // Filter out duplicate monitors by ID
-                      const uniqueMonitors = allMonitors.filter(
-                        (monitor, index, self) =>
-                          index === self.findIndex((m) => m.id === monitor.id)
-                      );
-
-                      return uniqueMonitors;
-                    })()}
+                    columns={isMobile ? mobileMonitorColumns : statusPageColumns}
+                    data={linkedMonitors}
                     isLoading={false}
                     onRowClick={(row) =>
                       router.push(`/monitors/${row.original.id}`)

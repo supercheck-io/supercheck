@@ -68,6 +68,7 @@ import {
   type CreateProjectFormData,
 } from "@/lib/validations/project";
 import { useBreadcrumbs } from "@/components/breadcrumb-context";
+import { DataTableSkeleton } from "@/components/ui/data-table-skeleton";
 import { TabLoadingSpinner } from "@/components/ui/table-skeleton";
 import { SupercheckLoading } from "@/components/shared/supercheck-loading";
 import { Loader2 } from "lucide-react";
@@ -1259,7 +1260,11 @@ function OrgAdminDashboardContent() {
 
         <TabsContent value="integrations" className="mt-0 space-y-4">
           {!integrationsLoaded ? (
-            <TabLoadingSpinner message="Loading integrations..." />
+            // Shaped like the connectors table, so the tab does not jump when it loads.
+            <div role="status">
+              <span className="sr-only">Loading integrations...</span>
+              <DataTableSkeleton columns={6} rows={5} />
+            </div>
           ) : (
             <>
             <ConnectorProjectNotice />

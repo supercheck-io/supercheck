@@ -7,9 +7,9 @@ import { Sparkles, ShieldCheck } from "lucide-react";
 
 import type { SreCopilotChatHistory } from "@/actions/sre-ai";
 import { DashboardEmptyState } from "@/components/dashboard/dashboard-empty-state";
-import { SupercheckLoading } from "@/components/shared/supercheck-loading";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { PageHeader } from "@/components/shared/page-header";
 import { NAV } from "@/lib/nav-areas";
 import {
@@ -92,7 +92,7 @@ export function SreCopilotPageClient({
   if (!query.data) {
     if (query.isPending) {
       return (
-        <SupercheckLoading className="h-full" message="Loading Copilot..." />
+        <CopilotSkeleton />
       );
     }
 
@@ -140,5 +140,28 @@ function CopilotGateShell({ children }: { children: ReactNode }) {
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+/** Copilot's own layout (header, a short exchange, the composer) while chats load, so nothing jumps after. */
+function CopilotSkeleton() {
+  return (
+    <div role="status" className="flex h-full min-h-0 flex-col">
+      <span className="sr-only">Loading Copilot...</span>
+      <div className="flex items-center justify-between gap-3 border-b px-5 py-4">
+        <div className="space-y-2">
+          <Skeleton className="h-6 w-28" />
+          <Skeleton className="h-4 w-64 max-w-[60vw]" />
+        </div>
+        <Skeleton className="h-8 w-48 max-w-[30vw]" />
+      </div>
+      <div className="mx-auto flex w-full max-w-4xl flex-1 flex-col gap-4 px-5 py-5">
+        <Skeleton className="ml-auto h-16 w-2/3 rounded-xl" />
+        <Skeleton className="h-32 w-full rounded-xl" />
+      </div>
+      <div className="border-t px-5 py-3">
+        <Skeleton className="mx-auto h-24 w-full max-w-4xl rounded-xl" />
+      </div>
+    </div>
   );
 }

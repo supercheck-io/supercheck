@@ -9,6 +9,8 @@ import { useProjectContext } from "@/hooks/use-project-context";
 import { hasPermission } from "@/lib/rbac/client-permissions";
 import { normalizeRole } from "@/lib/rbac/role-normalizer";
 import { ChannelTestDialog } from "./channel-test-dialog";
+import { useQueryClient } from "@tanstack/react-query";
+import { NOTIFICATION_PROVIDERS_QUERY_KEY } from "@/hooks/use-alerts";
 
 interface NotificationProvider {
   id: string;
@@ -20,6 +22,8 @@ interface NotificationProvider {
   updatedAt: string;
   lastUsed?: string;
   health?: NotificationChannel["health"];
+  lastTest?: NotificationChannel["lastTest"];
+  usage?: NotificationChannel["usage"];
   createdByName?: string | null;
   createdByImage?: string | null;
 }
@@ -41,6 +45,7 @@ export function NotificationChannelsComponent({
   const [isLoading, setIsLoading] = useState(true);
   const [mounted, setMounted] = useState(false);
   const [testChannel, setTestChannel] = useState<NotificationChannel | null>(null);
+  const queryClient = useQueryClient();
 
   // Get user permissions
   const { currentProject } = useProjectContext();
@@ -93,6 +98,8 @@ export function NotificationChannelsComponent({
           updatedAt: provider.updatedAt,
           lastUsed: provider.lastUsed,
           health: provider.health,
+          lastTest: provider.lastTest,
+          usage: provider.usage,
           createdByName: provider.createdByName ?? null,
           createdByImage: provider.createdByImage ?? null,
         }));
@@ -136,7 +143,15 @@ export function NotificationChannelsComponent({
           onTest: setTestChannel,
         }}
       />
-      <ChannelTestDialog channel={testChannel} onOpenChange={(open) => !open && setTestChannel(null)} />
+      <ChannelTestDialog
+        channel={testChannel}
+        onOpenChange={(open) => {
+          if (open) return;
+          setTestChannel(null);
+          // The test just recorded a result; refetch so Last test and the health badge show it.
+          void queryClient.invalidateQueries({ queryKey: NOTIFICATION_PROVIDERS_QUERY_KEY });
+        }}
+      />
     </div>
   );
 } 
