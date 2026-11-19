@@ -81,8 +81,8 @@ describe("compactStamp", () => {
   it("drops the year in the current year so the date fits on one line", () => {
     expect(compactStamp(new Date(2026, 10, 18, 10, 28), now)).toBe("Nov 18, 10:28 AM");
   });
-  it("shows the year instead of the time for an older date, and flags a bad value", () => {
-    expect(compactStamp(new Date(2025, 0, 3, 9, 0), now)).toBe("Jan 3, 2025");
+  it("adds the year and keeps the time for an older date, and flags a bad value", () => {
+    expect(compactStamp(new Date(2025, 0, 3, 9, 0), now)).toBe("Jan 3, 2025, 9:00 AM");
     expect(compactStamp("not a date", now)).toBe("Invalid date");
   });
 });

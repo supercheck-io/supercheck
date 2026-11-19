@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { McpToolsButton, McpToolsPanel } from "./mcp-tools-panel";
 
 const NOW = Date.parse("2026-11-14T12:00:00Z");
@@ -52,6 +52,20 @@ describe("McpToolsPanel", () => {
     expect(screen.getByText("Tools changed")).toBeInTheDocument();
     rerender(<McpToolsPanel baseline={baseline(["a"])} now={NOW} changes={[change("2026-11-13T11:59:59Z", ["a"])]} />);
     expect(screen.queryByText("Tools changed")).not.toBeInTheDocument();
+  });
+
+  it("drops the Tools changed badge once the change turns 24 hours old while the page stays open", () => {
+    jest.useFakeTimers().setSystemTime(Date.parse("2026-11-14T12:00:00Z"));
+    try {
+      render(<McpToolsPanel baseline={baseline(["a"])} changes={[change("2026-11-14T11:00:00Z", ["a"])]} />);
+      expect(screen.getByText("Tools changed")).toBeInTheDocument();
+      act(() => {
+        jest.advanceTimersByTime(24 * 60 * 60 * 1000);
+      });
+      expect(screen.queryByText("Tools changed")).not.toBeInTheDocument();
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   it("names a change outside the stored tools", () => {

@@ -191,11 +191,15 @@ export function ResponseTimeBarChart({ data, showFirstToken = false, title = "Re
   if (!validatedData || validatedData.length === 0) {
     return (
       <Card className="shadow-sm flex h-full flex-col min-h-[335px] lg:min-h-[180px]">
-        <CardHeader className="pb-4">
-          <CardTitle className="text-lg font-semibold">{title}</CardTitle>
-          <CardDescription className="text-sm">
-            {empty?.description ?? "Performance metrics will appear here once monitoring begins."}
-          </CardDescription>
+        {/* Header actions (the Availability / Run duration toggle) stay visible while there is nothing to draw yet. */}
+        <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2 pb-4">
+          <div className="min-w-0">
+            <CardTitle className="text-lg font-semibold">{title}</CardTitle>
+            <CardDescription className="text-sm">
+              {empty?.description ?? "Performance metrics will appear here once monitoring begins."}
+            </CardDescription>
+          </div>
+          {headerActions ? <div className="shrink-0">{headerActions}</div> : null}
         </CardHeader>
         <CardContent className="flex items-center justify-center flex-1">
           <div className="text-center space-y-3 py-6">
@@ -237,11 +241,15 @@ export function ResponseTimeBarChart({ data, showFirstToken = false, title = "Re
     // If no valid response times at all
     return (
       <Card className="shadow-sm flex h-full flex-col min-h-[335px] lg:min-h-[180px]">
-        <CardHeader className="pb-4">
-          <CardTitle className="text-lg font-semibold">{title}</CardTitle>
-          <CardDescription className="text-sm">
-            {empty?.description ?? "No response data available"}
-          </CardDescription>
+        {/* Header actions (the Availability / Run duration toggle) stay visible while there is nothing to draw yet. */}
+        <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2 pb-4">
+          <div className="min-w-0">
+            <CardTitle className="text-lg font-semibold">{title}</CardTitle>
+            <CardDescription className="text-sm">
+              {empty?.description ?? "No response data available"}
+            </CardDescription>
+          </div>
+          {headerActions ? <div className="shrink-0">{headerActions}</div> : null}
         </CardHeader>
         <CardContent className="flex items-center justify-center flex-1">
           <div className="text-center space-y-3 py-6">
