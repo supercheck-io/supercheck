@@ -28,12 +28,12 @@ const maskUserinfo = (text: string): string => text.replace(/(\b[a-z][a-z0-9+.-]
 // Query-parameter masking rewrites URLs, so it is skipped for fields that carry source code.
 const codeKeys = new Set(['script', 'body', 'code', 'content', 'source'])
 // A webhook body template carries literal credentials (the PagerDuty routing_key); `{{placeholders}}` stay readable.
-// A field is a credential when its last word is key, token, secret, password or signature (routing_key, apiKey), so "monkey" is not.
+// A field is a credential when any word of its name is key, token, secret, password or signature (routing_key, apiKey, token_value), so "monkey" is not.
 const CREDENTIAL_WORDS = new Set(['key', 'token', 'secret', 'password', 'signature'])
 // Run-together compounds (apikey, routingkey) have no word break to split on.
 const CREDENTIAL_COMPOUNDS = /(?:apikey|accesskey|appkey|authkey|routingkey|secretkey|privatekey|accesstoken|authtoken|authorization)$/
 const isCredentialField = (name: string): boolean =>
-  CREDENTIAL_WORDS.has(name.replace(/([a-z0-9])([A-Z])/g, '$1_$2').toLowerCase().split(/[_-]/).pop() ?? '') ||
+  name.replace(/([a-z0-9])([A-Z])/g, '$1_$2').toLowerCase().split(/[_-]/).some((word) => CREDENTIAL_WORDS.has(word)) ||
   CREDENTIAL_COMPOUNDS.test(name.replace(/[_-]/g, '').toLowerCase())
 const TEMPLATE_STRING_FIELD = /("([^"\\]+)"\s*:\s*")((?:[^"{}\\]|\\.)+)"/g
 const maskTemplateSecrets = (text: string): string =>

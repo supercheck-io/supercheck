@@ -25,6 +25,13 @@ describe('redact webhook body templates', () => {
     for (const secret of ['k-12345', 't-9', 'p@ss']) expect(out).not.toContain(secret)
   })
 
+  it('masks a credential word anywhere in the field name', () => {
+    const out = JSON.stringify(redact({ type: 'webhook', config: { bodyTemplate: JSON.stringify({ token_value: 'plain-secret', secretName: 'hush', keyword: 'visible' }) } }))
+    expect(out).not.toContain('plain-secret')
+    expect(out).not.toContain('hush')
+    expect(out).toContain('visible')
+  })
+
   it('masks run-together credential names', () => {
     const template = JSON.stringify({ apikey: 's3cr3t', accessToken: 'a1', routingkey: 'r2', Authorization: 'Bearer b3' })
     const out = JSON.stringify(redact({ type: 'webhook', config: { bodyTemplate: template } }))

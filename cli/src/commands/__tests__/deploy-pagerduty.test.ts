@@ -12,6 +12,9 @@ describe('deploy of a PagerDuty provider pulled without its template', () => {
     process.env.PAGERDUTY_ROUTING_KEY = KEY
     const body = prepareBodyForApi('notificationProvider', provider('On call'), 'create')
     expect(JSON.parse((body.config as { bodyTemplate: string }).bodyTemplate).routing_key).toBe(KEY)
+    // pull drops the masked webhook URL, so a create supplies the fixed Events API endpoint, but never replaces a declared one.
+    expect((body.config as { url: string }).url).toBe('https://events.pagerduty.com/v2/enqueue')
+    expect((prepareBodyForApi('notificationProvider', provider('Eu', { url: 'https://events.eu.pagerduty.com/v2/enqueue' }), 'create').config as { url: string }).url).toBe('https://events.eu.pagerduty.com/v2/enqueue')
   })
 
   it('explains what to set when a create has no key, instead of the server placeholder error', () => {
