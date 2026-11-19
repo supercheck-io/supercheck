@@ -579,8 +579,10 @@ export function NotificationProviderForm({
       if (parsedHeaders) {
         nextConfig.headers = parsedHeaders;
       } else if (
-        initialData?.type === "webhook" &&
-        (nextConfig.preset || "custom") !== ((initialData.config as Record<string, unknown>).preset || "custom")
+        // An explicit {} clears stored headers (needed to move a channel to another host that takes none).
+        headersText.trim() ||
+        (initialData?.type === "webhook" &&
+          (nextConfig.preset || "custom") !== ((initialData.config as Record<string, unknown>).preset || "custom"))
       ) {
         // Switching preset on a saved channel: omitting headers would let the server merge restore the old vendor's stored Authorization.
         nextConfig.headers = {};

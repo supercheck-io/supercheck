@@ -86,7 +86,7 @@ export function mergeNotificationProviderConfig(
       Object.keys(existingConfig.headers).length > 0;
     if ((presetChanged || originChanged) && !("headers" in incomingConfig) && hasStoredHeaders) {
       throw new Error(
-        "Enter the webhook headers again: saved headers are not sent to a new host or preset."
+        "Enter the webhook headers again, or {} for none: saved headers are not sent to a new host or preset."
       );
     }
   }
