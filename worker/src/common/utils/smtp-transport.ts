@@ -57,7 +57,8 @@ export function buildSmtpSetup(
   if (!fromEmail) {
     return { error: 'SMTP sender not configured (missing SMTP_FROM_EMAIL)' };
   }
-  const fromName = env.SMTP_FROM_NAME?.trim();
+  // Same default as the app's smtpSender, so every email shows one sender name.
+  const fromName = env.SMTP_FROM_NAME?.trim() || 'Supercheck';
   const replyTo = env.SMTP_REPLY_TO?.trim();
   return {
     config: {

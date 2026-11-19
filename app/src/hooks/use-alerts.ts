@@ -17,6 +17,10 @@ export interface NotificationProvider {
   lastUsed?: string;
   /** Newest delivery in the last 7 days. */
   health?: { state: "ok" | "auth_failed" | "failing" | "unknown"; at: string | null };
+  /** Newest result of the row menu's Send test message / Send test page (kept 7 days). */
+  lastTest?: { state: "ok" | "auth_failed" | "failing" | "unknown"; at: string | null } | null;
+  /** Live monitors and jobs that send to this channel, and whether the incident policy does. */
+  usage?: { monitors: number; jobs: number; policy: boolean };
   isInUse?: boolean;
   maskedFields?: string[];
   createdByName?: string | null;

@@ -35,9 +35,28 @@ export function ChannelHealthBadge({ health }: { health?: NotificationChannel["h
   return null;
 }
 
+/** Provider key for sorting and the Provider filter: the paging preset when there is one, else the channel type. */
+export function channelProviderKey(channel: NotificationChannel): string {
+  const preset = channel.type === "webhook" ? channel.config?.preset : undefined;
+  return typeof preset === "string" && PAGING_SERVICE_NAMES[preset] ? preset : channel.type;
+}
+
+/** "2 monitors, 1 job, incident policy" (sentence case), or undefined when nothing sends to the channel. */
+export function channelUsageText(usage: NotificationChannel["usage"]): string | undefined {
+  if (!usage) return undefined;
+  const parts = [
+    usage.monitors ? `${usage.monitors} ${usage.monitors === 1 ? "monitor" : "monitors"}` : "",
+    usage.jobs ? `${usage.jobs} ${usage.jobs === 1 ? "job" : "jobs"}` : "",
+    usage.policy ? "incident policy" : "",
+  ].filter(Boolean);
+  const text = parts.join(", ");
+  return text ? text[0].toUpperCase() + text.slice(1) : undefined;
+}
+
 export const notificationChannelColumns: ColumnDef<NotificationChannel>[] = [
   {
     accessorKey: "id",
+    meta: { label: "Channel ID" },
     header: ({ column }) => (
       <DataTableColumnHeader
         column={column}
@@ -60,6 +79,7 @@ export const notificationChannelColumns: ColumnDef<NotificationChannel>[] = [
   },
   {
     accessorKey: "name",
+    meta: { label: "Title" },
     header: ({ column }) => (
       <DataTableColumnHeader column={column} title="Title" />
     ),
@@ -67,19 +87,22 @@ export const notificationChannelColumns: ColumnDef<NotificationChannel>[] = [
       const name = row.getValue("name") as string;
       return (
         <div className="flex flex-wrap items-center gap-2">
-          <TruncatedTextWithTooltip text={name} className="font-medium" maxWidth="200px" maxLength={30} />
+          <TruncatedTextWithTooltip text={name} className="font-medium" maxWidth="240px" maxLength={40} />
           <ChannelHealthBadge health={row.original.health} />
         </div>
       );
     },
   },
   {
-    accessorKey: "type",
+    id: "type",
+    meta: { label: "Provider" },
+    accessorFn: channelProviderKey,
+    filterFn: (row, id, value: string[]) => value.includes(row.getValue(id)),
     header: ({ column }) => (
       <DataTableColumnHeader column={column} title="Provider" />
     ),
     cell: ({ row }) => {
-      const type = row.getValue("type") as string;
+      const type = row.original.type;
       const config = getNotificationProviderConfig(type);
       const preset = type === "webhook" ? row.original.config?.preset : undefined;
       return (
@@ -90,9 +113,36 @@ export const notificationChannelColumns: ColumnDef<NotificationChannel>[] = [
       );
     },
   },
-  createdByColumn<NotificationChannel>(),
+  {
+    id: "usage",
+    meta: { label: "Used by" },
+    accessorFn: (channel) => (channel.usage ? channel.usage.monitors + channel.usage.jobs + (channel.usage.policy ? 1 : 0) : 0),
+    header: ({ column }) => <DataTableColumnHeader column={column} title="Used by" />,
+    cell: ({ row }) => {
+      const text = channelUsageText(row.original.usage);
+      return text ? <span className="text-sm">{text}</span> : <span className="text-sm text-muted-foreground">Not used</span>;
+    },
+  },
+  {
+    id: "lastTest",
+    meta: { label: "Last test" },
+    accessorFn: (channel) => channel.lastTest?.at ?? "",
+    header: ({ column }) => <DataTableColumnHeader column={column} title="Last test" />,
+    cell: ({ row }) => {
+      const test = row.original.lastTest;
+      if (!test?.at) return <span className="text-sm text-muted-foreground">None in 7 days</span>;
+      return (
+        <div className="flex items-center gap-2" data-testid="channel-last-test">
+          <TableBadge tone={test.state === "ok" ? "success" : "danger"} compact>{test.state === "ok" ? "Passed" : "Failed"}</TableBadge>
+          <DateCell value={test.at} showTime={false} />
+        </div>
+      );
+    },
+  },
+  { ...createdByColumn<NotificationChannel>(), meta: { label: "Created by" } },
   {
     accessorKey: "createdAt",
+    meta: { label: "Created" },
     header: ({ column }) => (
       <DataTableColumnHeader column={column} title="Created" />
     ),
@@ -107,8 +157,9 @@ export const notificationChannelColumns: ColumnDef<NotificationChannel>[] = [
   },
   {
     accessorKey: "lastUsed",
+    meta: { label: "Last used" },
     header: ({ column }) => (
-      <DataTableColumnHeader column={column} title="Last Used" />
+      <DataTableColumnHeader column={column} title="Last used" />
     ),
     cell: ({ row }) => {
       return (

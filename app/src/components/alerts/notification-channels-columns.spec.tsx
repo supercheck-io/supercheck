@@ -11,7 +11,7 @@ jest.mock("@/components/ui/dropdown-menu", () => ({
   ),
 }));
 
-import { ChannelHealthBadge, notificationChannelColumns } from "./notification-channels-columns";
+import { ChannelHealthBadge, channelProviderKey, channelUsageText, notificationChannelColumns } from "./notification-channels-columns";
 import type { NotificationChannel } from "./notification-channels-schema";
 
 const channel = (over: Partial<NotificationChannel> = {}): NotificationChannel => ({
@@ -65,4 +65,48 @@ describe("channel columns", () => {
 it("labels the test for chat channels as a message", () => {
   render(<>{cellOf("actions")(ctx(channel({ type: "slack", config: {} }), { canEdit: true, onTest: jest.fn() }))}</>);
   expect(screen.getByTestId("channel-send-test")).toHaveTextContent("Send test message");
+});
+
+describe("Used by and Last test", () => {
+  it("names what sends to the channel, or says it is unused", () => {
+    expect(channelUsageText({ monitors: 2, jobs: 1, policy: true })).toBe("2 monitors, 1 job, incident policy");
+    expect(channelUsageText({ monitors: 0, jobs: 0, policy: true })).toBe("Incident policy");
+    expect(channelUsageText({ monitors: 1, jobs: 0, policy: false })).toBe("1 monitor");
+    expect(channelUsageText({ monitors: 0, jobs: 0, policy: false })).toBeUndefined();
+    render(<>{cellOf("usage")(ctx(channel({ usage: { monitors: 0, jobs: 3, policy: false } })))}</>);
+    expect(screen.getByText("3 jobs")).toBeInTheDocument();
+  });
+
+  it("shows Not used when nothing references the channel", () => {
+    render(<>{cellOf("usage")(ctx(channel({ usage: { monitors: 0, jobs: 0, policy: false } })))}</>);
+    expect(screen.getByText("Not used")).toBeInTheDocument();
+  });
+
+  it("shows the newest test result, or Not tested", () => {
+    const { rerender } = render(<>{cellOf("lastTest")(ctx(channel({ lastTest: { state: "ok", at: "2026-11-18T00:00:00Z" } })))}</>);
+    expect(screen.getByTestId("channel-last-test")).toHaveTextContent("Passed");
+    rerender(<>{cellOf("lastTest")(ctx(channel({ lastTest: { state: "auth_failed", at: "2026-11-18T00:00:00Z" } })))}</>);
+    expect(screen.getByTestId("channel-last-test")).toHaveTextContent("Failed");
+    rerender(<>{cellOf("lastTest")(ctx(channel({ lastTest: null })))}</>);
+    expect(screen.getByText("None in 7 days")).toBeInTheDocument();
+  });
+
+  it("filters the Provider column by the selected keys", () => {
+    const column = notificationChannelColumns.find((c) => c.id === "type")!;
+    const filter = column.filterFn as (row: unknown, id: string, value: string[]) => boolean;
+    const row = { getValue: () => "pagerduty" };
+    expect(filter(row, "type", ["pagerduty", "slack"])).toBe(true);
+    expect(filter(row, "type", ["webhook"])).toBe(false);
+  });
+
+  it("keys the provider filter by paging preset, else by type", () => {
+    expect(channelProviderKey(channel())).toBe("pagerduty");
+    expect(channelProviderKey(channel({ config: { preset: "custom" } }))).toBe("webhook");
+    expect(channelProviderKey(channel({ type: "slack", config: {} }))).toBe("slack");
+  });
+});
+
+it("labels every hideable column for the View menu with its header text", () => {
+  const labels = notificationChannelColumns.filter((c) => c.id !== "actions").map((c) => (c.meta as { label?: string } | undefined)?.label);
+  expect(labels).toEqual(["Channel ID", "Title", "Provider", "Used by", "Last test", "Created by", "Created", "Last used"]);
 });

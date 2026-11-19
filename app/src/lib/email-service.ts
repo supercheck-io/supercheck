@@ -73,17 +73,17 @@ const CONNECTION_ERROR_CODES = new Set([
 ]);
 
 /**
- * From/Reply-To for every message. SMTP_FROM_NAME adds a display name unless
- * SMTP_FROM_EMAIL already carries one ("Name <a@b.c>"); SMTP_REPLY_TO is optional.
+ * From/Reply-To for every message. The display name is SMTP_FROM_NAME, or "Supercheck" so app and worker
+ * mail always shows the same sender, unless SMTP_FROM_EMAIL already carries one ("Name <a@b.c>"); SMTP_REPLY_TO is optional.
  */
 export function smtpSender(env: NodeJS.ProcessEnv = process.env): {
   from: string | { name: string; address: string };
   replyTo?: string;
 } {
   const address = env.SMTP_FROM_EMAIL!;
-  const name = env.SMTP_FROM_NAME?.trim();
+  const name = env.SMTP_FROM_NAME?.trim() || "Supercheck";
   return {
-    from: name && !address.includes("<") ? { name, address } : address,
+    from: !address.includes("<") ? { name, address } : address,
     ...(env.SMTP_REPLY_TO?.trim() ? { replyTo: env.SMTP_REPLY_TO.trim() } : {}),
   };
 }

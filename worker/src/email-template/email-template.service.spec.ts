@@ -20,6 +20,36 @@ describe('EmailTemplateService (local render)', () => {
     expect(r.text).toContain('API is down');
   });
 
+  it('Job Completed email: inbox preview is a short summary and the text part keeps one detail per line', async () => {
+    const r = await service.renderMonitorAlertEmail({
+      title: 'Job Completed - Rhona Mclean',
+      message: 'Job "Rhona Mclean" passed\n in 12s.',
+      fields: [
+        { title: 'Project', value: 'Default Project' },
+        { title: 'Job', value: 'Rhona Mclean' },
+        { title: 'Type', value: 'Playwright' },
+        { title: 'Status', value: 'Passed' },
+      ],
+      footer: 'Supercheck Job Monitoring',
+      type: 'success',
+    });
+    const preheader = /data-skip-in-text="true">([^<]*)</.exec(r.html)?.[1];
+    expect(preheader).toBe('Job &quot;Rhona Mclean&quot; passed in 12s.');
+    expect(r.text).not.toMatch(/ProjectDefault|Default ProjectJob/);
+    expect(r.text).toMatch(/^Project +Default Project$/m);
+    expect(r.text).toMatch(/^Job +Rhona Mclean$/m);
+    expect(r.text).toMatch(/^Status +Passed$/m);
+  });
+
+  it('cuts a long preheader and falls back to the title when there is no message', () => {
+    expect(monitorAlert.alertEmailPreview('', 'Job Completed: X')).toBe(
+      'Job Completed: X',
+    );
+    const long = monitorAlert.alertEmailPreview('word '.repeat(60), 't');
+    expect(long.length).toBeLessThanOrEqual(120);
+    expect(long.endsWith('…')).toBe(true);
+  });
+
   it('formats times exactly like the app (pinned literal also asserted in app templates.spec)', () => {
     expect(formatEmailTime(new Date('2026-11-18T06:02:36Z'))).toBe(
       'Wed, 18 Nov 2026 06:02:36 UTC',

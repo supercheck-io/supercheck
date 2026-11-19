@@ -8,6 +8,7 @@ The CLI is versioned separately; see [cli/CHANGELOG.md](cli/CHANGELOG.md). Prere
 
 ### Upgrade notes
 
+- **Default email sender name.** With `SMTP_FROM_NAME` unset, the app and the worker now send as `Supercheck <SMTP_FROM_EMAIL>` instead of the bare address, so every email shows the same sender. Set `SMTP_FROM_NAME` to use another name; a name already in `SMTP_FROM_EMAIL` still wins.
 - **Email subjects changed (mail filters).** Sign-up, password reset, invitation and test emails now share the `[Supercheck]` prefix with alerts (alerts and invitations read `<Event>: <Name>`): `[Supercheck] Verify your email address`, `[Supercheck] Reset your password`, `[Supercheck] You're invited: <organization>`, `[Supercheck] Test email`. Update any mail rule that matched the old subjects. No new environment variable.
 
 - **Migration `0086`.** Adds the `project_setup_state` and `user_preferences` tables for project setup. Apply it before you update the app. No new environment variable.

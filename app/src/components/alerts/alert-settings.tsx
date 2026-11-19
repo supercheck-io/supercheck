@@ -26,7 +26,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { NotificationProviderForm } from "@/components/alerts/notification-provider-form";
+import { NotificationProviderForm, NOTIFICATION_PROVIDER_DIALOG_CLASS } from "@/components/alerts/notification-provider-form";
 import { Switch } from "@/components/ui/switch";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Label } from "@/components/ui/label";
@@ -546,7 +546,7 @@ export function AlertSettings({
                       Add Channel
                     </Button>
                   </DialogTrigger>
-                  <DialogContent className="flex max-h-[90vh] flex-col gap-0 overflow-hidden p-0 sm:max-w-4xl">
+                  <DialogContent className={NOTIFICATION_PROVIDER_DIALOG_CLASS}>
                     <DialogHeader className="shrink-0 border-b px-6 py-4 pr-14">
                       <DialogTitle>Add notification channel</DialogTitle>
                       <DialogDescription>

@@ -13,6 +13,8 @@ export const notificationChannelSchema = z.object({
   updatedAt: z.string().optional(),
   lastUsed: z.string().optional(),
   health: z.object({ state: z.enum(["ok", "auth_failed", "failing", "unknown"]), at: z.string().nullable() }).optional(),
+  lastTest: z.object({ state: z.enum(["ok", "auth_failed", "failing", "unknown"]), at: z.string().nullable() }).nullable().optional(),
+  usage: z.object({ monitors: z.number(), jobs: z.number(), policy: z.boolean() }).optional(),
 });
 
 export type NotificationChannel = z.infer<typeof notificationChannelSchema>; 

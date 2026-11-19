@@ -1,5 +1,5 @@
 import { getUserFriendlyError } from "@/lib/error-utils";
-import { createNotificationProviderSchema, endpointForDisplay, getSaveErrorMessage, nextPresetUrl } from "./notification-provider-form";
+import { createNotificationProviderSchema, getSaveErrorMessage, nextPresetUrl, readAuthToken, readRoutingKey, writeAuthToken, writeRoutingKey } from "./notification-provider-form";
 
 const webhookConfig = {
   name: "Production webhook",
@@ -91,20 +91,24 @@ describe("nextPresetUrl", () => {
   });
 });
 
-describe("endpointForDisplay", () => {
-  it("drops userinfo, query and fragment, keeping a short single-segment path", () => {
-    expect(endpointForDisplay("https://user:pw@hooks.example.com/alerts?token=abc#x")).toBe("https://hooks.example.com/alerts");
-    expect(endpointForDisplay("https://hooks.example.com")).toBe("https://hooks.example.com");
+describe("typed credential helpers", () => {
+  it("reads and writes only the routing_key string, keeping the rest of the template as typed", () => {
+    const template = '{\n  "routing_key":   "REPLACE_WITH_PAGERDUTY_ROUTING_KEY",\n  "summary": {{title}}\n}';
+    expect(readRoutingKey(template)).toBe("");
+    const written = writeRoutingKey(template, 'a"b$&');
+    expect(written).toBe('{\n  "routing_key":   "a\\"b$&",\n  "summary": {{title}}\n}');
+    expect(readRoutingKey(written)).toBe('a"b$&');
+    expect(readRoutingKey(writeRoutingKey(written, "  "))).toBe("");
+    expect(readRoutingKey('{"summary":"x"}')).toBeUndefined();
   });
-  it("hides a path that can carry a secret", () => {
-    expect(endpointForDisplay("https://hooks.slack.com/services/T000/B000/XXXXXXXX")).toBe("https://hooks.slack.com/…");
-    expect(endpointForDisplay("https://discord.com/api/webhooks/123/abcdef")).toBe("https://discord.com/…");
-    expect(endpointForDisplay("https://example.com/Zm9vYmFyYmF6cXV4MTIzNDU2")).toBe("https://example.com/…");
-  });
-  it("is undefined for empty or unparsable input, so the placeholder shows", () => {
-    expect(endpointForDisplay("")).toBeUndefined();
-    expect(endpointForDisplay(undefined)).toBeUndefined();
-    expect(endpointForDisplay("not a url")).toBeUndefined();
-    expect(endpointForDisplay("javascript:alert(1)")).toBeUndefined();
+
+  it("reads and writes the Authorization token, keeping other headers", () => {
+    expect(readAuthToken("", "GenieKey")).toBe("");
+    expect(readAuthToken('{"Authorization":"GenieKey REPLACE_WITH_JSM_INTEGRATION_KEY"}', "GenieKey")).toBe("");
+    expect(readAuthToken('{"authorization":"geniekey abc"}', "GenieKey")).toBe("abc");
+    expect(readAuthToken("{not json", "Bearer")).toBeUndefined();
+    const written = writeAuthToken('{"X-Env":"prod","authorization":"Bearer old"}', "Bearer", " new ");
+    expect(JSON.parse(written)).toEqual({ "X-Env": "prod", authorization: "Bearer new" });
+    expect(writeAuthToken('{"Authorization":"Bearer old"}', "Bearer", "")).toBe("");
   });
 });

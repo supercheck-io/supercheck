@@ -5,7 +5,7 @@ const queue: unknown[][] = [];
 const sanitize = jest.fn((_t: unknown, config: unknown, _o?: unknown) => ({ sanitizedConfig: config, maskedFields: [] }));
 const node = (rows: unknown[]) => {
   const n: Record<string, unknown> = {};
-  for (const m of ["from", "where", "groupBy", "orderBy"]) n[m] = () => n;
+  for (const m of ["from", "innerJoin", "where", "groupBy", "orderBy"]) n[m] = () => n;
   n.then = (resolve: (v: unknown[]) => unknown) => resolve(rows);
   return n;
 };
@@ -57,4 +57,22 @@ it("tells the sanitiser that a project viewer cannot edit, so webhook templates 
   queue.push([{ id: PROVIDER, type: "webhook", config: {}, projectId: "proj-1" }], []);
   await GET();
   expect(sanitize).toHaveBeenLastCalledWith("webhook", {}, { canEdit: false });
+});
+
+it("each channel carries its newest test result and what sends to it", async () => {
+  const testedAt = new Date(Date.now() - 60_000);
+  queue.push(
+    [{ id: PROVIDER, type: "webhook", config: {}, projectId: "proj-1" }, { id: OTHER, type: "slack", config: {}, projectId: "proj-1" }],
+    [],
+    [{ id: PROVIDER, n: 2 }],
+    [{ id: PROVIDER, n: 1 }],
+    [{ channelIds: [OTHER], escalateChannelId: PROVIDER }],
+  );
+  mget.mockResolvedValueOnce([JSON.stringify({ ok: false, responseStatus: 401, at: testedAt.toISOString() }), null]);
+  const rows = await (await GET()).json();
+  const byId = (id: string) => rows.find((r: { id: string }) => r.id === id);
+  expect(byId(PROVIDER).lastTest).toEqual({ state: "auth_failed", at: testedAt.toISOString() });
+  expect(byId(PROVIDER).usage).toEqual({ monitors: 2, jobs: 1, policy: true });
+  expect(byId(OTHER).lastTest).toBeNull();
+  expect(byId(OTHER).usage).toEqual({ monitors: 0, jobs: 0, policy: true });
 });
