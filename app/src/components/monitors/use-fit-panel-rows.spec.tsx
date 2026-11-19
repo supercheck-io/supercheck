@@ -28,6 +28,10 @@ describe("useFitPanelRows", () => {
   beforeEach(() => {
     jest.useFakeTimers();
     height = 508;
+    heights.clear();
+    jest.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockImplementation(function (this: HTMLElement) {
+      return heights.get(this) ?? 0;
+    });
     window.matchMedia = jest.fn().mockReturnValue({ matches: true }) as never;
     global.ResizeObserver = class {
       constructor(cb: () => void) { resize = cb; }
@@ -76,6 +80,57 @@ describe("useFitPanelRows", () => {
       jest.advanceTimersByTime(200);
     });
     expect(onFit.mock.calls).toEqual([[9], [6]]);
+  });
+
+  const heights = new Map<Element, number>();
+  const rowHeights = (hs: number[], container: HTMLElement) =>
+    hs.map((h) => {
+      const row = document.createElement("div");
+      row.setAttribute("data-row", "");
+      heights.set(row, h);
+      container.firstElementChild!.appendChild(row);
+      return { row, heights };
+    });
+
+  it("sizes from the median row, so mixed row heights settle on one value", async () => {
+    const onFit = jest.fn();
+    const { container } = render(<Panel onFit={onFit} />);
+    await act(async () => {
+      rowHeights([45, 45, 120, 45, 45], container);
+      await Promise.resolve();
+      jest.advanceTimersByTime(200);
+    });
+    // Median 45 -> (508 - 99) / 45 = 9; the tallest (120) would have given 3.
+    expect(onFit.mock.calls).toEqual([[9]]);
+    // Repeated resizes with the same mixed rows never flip the size.
+    for (let i = 0; i < 5; i++) {
+      act(() => { resize(); jest.advanceTimersByTime(200); });
+    }
+    expect(onFit.mock.calls).toEqual([[9]]);
+  });
+
+  it("does not re-fit when row content changes after the rows were measured, but does on a panel resize", async () => {
+    const onFit = jest.fn();
+    const { container } = render(<Panel onFit={onFit} />);
+    const [first] = rowHeights([45, 45, 45], container);
+    await act(async () => {
+      await Promise.resolve();
+      jest.advanceTimersByTime(200);
+    });
+    expect(onFit.mock.calls).toEqual([[9]]);
+    // A page change brings much taller rows: no re-fit.
+    await act(async () => {
+      first.heights.set(first.row, 200);
+      rowHeights([200, 200, 200, 200], container);
+      await Promise.resolve();
+      jest.advanceTimersByTime(200);
+    });
+    expect(onFit.mock.calls).toEqual([[9]]);
+    // A real panel resize re-fits, measuring the rows now rendered (median 200): (800 - 99) / 200 = 3.
+    height = 800;
+    act(() => { resize(); jest.advanceTimersByTime(200); });
+    expect(onFit).toHaveBeenCalledTimes(2);
+    expect(onFit.mock.calls[1]).toEqual([3]);
   });
 
   it("does nothing below the desktop breakpoint", () => {
