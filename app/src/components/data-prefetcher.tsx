@@ -26,6 +26,9 @@ const STALE_TIME = {
   REALTIME: 5 * 1000,     // 5 sec
 };
 
+// Longest the next-page prefetch waits for the current page's own requests to finish.
+const PREFETCH_MAX_WAIT_MS = 4000;
+
 export function DataPrefetcher() {
   const queryClient = useQueryClient();
   const isRestoring = useIsRestoring();
@@ -58,7 +61,8 @@ export function DataPrefetcher() {
 
   useEffect(() => {
     if (isRestoring || !currentProject || didPrefetch.current.sidebar) return;
-    didPrefetch.current.sidebar = true;
+    const prefetched = didPrefetch.current;
+    prefetched.sidebar = true;
 
     const projectId = currentProject.id;
     const prefetch = (qk: readonly unknown[], fn: () => Promise<unknown>, st: number) =>
@@ -70,18 +74,60 @@ export function DataPrefetcher() {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       return res.json();
     };
+    let fired = false;
+    const run = () => {
+      fired = true;
+      prefetch(getTestsListQueryKey(projectId), fetchWithProject("/api/tests"), STALE_TIME.LONG);
+      prefetch(getJobsListQueryKey(projectId), fetchWithProject("/api/jobs"), STALE_TIME.LONG);
+      prefetch(getRunsListQueryKey(projectId), fetchWithProject("/api/runs"), STALE_TIME.REALTIME);
+      prefetch(getMonitorsListQueryKey(projectId), fetchWithProject("/api/monitors"), STALE_TIME.SHORT);
+      prefetch(getRequirementsListQueryKey(projectId), fetchWithProject("/api/requirements"), STALE_TIME.LONG);
+      prefetch(getStatusPagesListQueryKey(projectId), fetchWithProject("/api/status-pages"), STALE_TIME.LONG);
+      prefetch(getNotificationProvidersQueryKey(projectId), () => fetchNotificationProviders(projectId), STALE_TIME.LONG);
+      prefetch(ORG_STATS_QUERY_KEY, fetchOrgStats, STALE_TIME.LONG);
+      prefetch(ORG_DETAILS_QUERY_KEY, fetchOrgDetails, STALE_TIME.LONG);
+      prefetch(ORG_MEMBERS_QUERY_KEY, fetchOrgMembers, STALE_TIME.LONG);
+      prefetch(ORG_PROJECTS_QUERY_KEY, fetchOrgProjects, STALE_TIME.LONG);
+    };
 
-    prefetch(getTestsListQueryKey(projectId), fetchWithProject("/api/tests"), STALE_TIME.LONG);
-    prefetch(getJobsListQueryKey(projectId), fetchWithProject("/api/jobs"), STALE_TIME.LONG);
-    prefetch(getRunsListQueryKey(projectId), fetchWithProject("/api/runs"), STALE_TIME.REALTIME);
-    prefetch(getMonitorsListQueryKey(projectId), fetchWithProject("/api/monitors"), STALE_TIME.SHORT);
-    prefetch(getRequirementsListQueryKey(projectId), fetchWithProject("/api/requirements"), STALE_TIME.LONG);
-    prefetch(getStatusPagesListQueryKey(projectId), fetchWithProject("/api/status-pages"), STALE_TIME.LONG);
-    prefetch(getNotificationProvidersQueryKey(projectId), () => fetchNotificationProviders(projectId), STALE_TIME.LONG);
-    prefetch(ORG_STATS_QUERY_KEY, fetchOrgStats, STALE_TIME.LONG);
-    prefetch(ORG_DETAILS_QUERY_KEY, fetchOrgDetails, STALE_TIME.LONG);
-    prefetch(ORG_MEMBERS_QUERY_KEY, fetchOrgMembers, STALE_TIME.LONG);
-    prefetch(ORG_PROJECTS_QUERY_KEY, fetchOrgProjects, STALE_TIME.LONG);
+    // These are guesses about the next page. Firing them at mount made the page the user is on queue
+    // behind eleven other requests, so wait until its own requests settle (or a cap), then go idle.
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let unsubscribe: (() => void) | undefined;
+    let quietCheck: ReturnType<typeof setTimeout> | undefined;
+    let idle: number | undefined;
+    let started = false;
+    const start = () => {
+      if (started) return;
+      started = true;
+      unsubscribe?.();
+      clearTimeout(timer);
+      clearTimeout(quietCheck);
+      idle = "requestIdleCallback" in window
+        ? window.requestIdleCallback(run, { timeout: 2000 })
+        : (setTimeout(run, 500) as unknown as number);
+    };
+    // A query is added just before it starts fetching, so confirm the quiet after a short pause.
+    const startWhenQuiet = () => {
+      clearTimeout(quietCheck);
+      quietCheck = setTimeout(() => {
+        if (queryClient.isFetching() === 0) start();
+      }, 300);
+    };
+    unsubscribe = queryClient.getQueryCache().subscribe(startWhenQuiet);
+    timer = setTimeout(start, PREFETCH_MAX_WAIT_MS);
+    startWhenQuiet();
+    return () => {
+      started = true;
+      unsubscribe?.();
+      clearTimeout(timer);
+      clearTimeout(quietCheck);
+      if (idle !== undefined) {
+        if ("cancelIdleCallback" in window) window.cancelIdleCallback(idle);
+        else clearTimeout(idle);
+      }
+      if (!fired) prefetched.sidebar = false;
+    };
   }, [queryClient, currentProject, isRestoring]);
 
   return null;
