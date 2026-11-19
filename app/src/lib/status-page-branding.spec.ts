@@ -60,7 +60,7 @@ describe("border colour", () => {
 });
 
 describe("readableTextOn", () => {
-  it.each(["#2ecc71", "#f1c40f", "#e67e22", "#3498db", "#e74c3c", "#9ca3af", "#2ec"])("keeps banner text at 4.5:1 or better on %s", (bg) => {
+  it.each(["#2ecc71", "#f1c40f", "#e67e22", "#3498db", "#e74c3c", "#9ca3af", "#2ec", "#777777", "#7c7c7c", "#767676"])("keeps banner text at 4.5:1 or better on %s", (bg) => {
     expect(contrastRatio(readableTextOn(bg), normalizeHexColor(bg)!)).toBeGreaterThanOrEqual(4.5);
   });
 

@@ -193,7 +193,8 @@ export function ProjectIncidentPolicyDialog({ open, onOpenChange, projectId, pro
                           })
                         }
                       />
-                      <span className="min-w-0 truncate text-sm" title={channel.name}>{channel.name}</span>
+                      {/* Wraps instead of truncating, so the full name is readable on touch screens too. */}
+                      <span className="min-w-0 break-words text-sm">{channel.name}</span>
                       <TableBadge compact className="ml-auto shrink-0">
                         {channel.paging ? "Paging" : getNotificationProviderConfig(channel.type).label}
                       </TableBadge>

@@ -67,7 +67,9 @@ export function MaintenanceWindowDialog({
   const isEdit = Boolean(editing);
   // The API refuses schedule changes to a one-off window in progress (end or extend it instead),
   // and a window posted to a status page must stay one-off.
-  const scheduleLocked = editing?.state === "active" && editing.recurrence === "once";
+  // Also true once a scheduled one-off has started while the dialog was open (the row object is not refreshed).
+  const scheduleLocked = editing?.recurrence === "once"
+    && (editing.state === "active" || (editing.occurrenceStartsAt !== null && Date.parse(editing.occurrenceStartsAt) <= Date.now()));
   const repeatLocked = scheduleLocked || Boolean(editing?.statusPageIncidentIds.length);
   const canPostPublicly = !isEdit && Boolean(currentProject?.userRole && checkRolePermissionsClient(currentProject.userRole, { status_page: ["update"] }));
   const start = nextHour();
@@ -107,7 +109,10 @@ export function MaintenanceWindowDialog({
   const sameIds = (a: string[], b: string[]) => a.length === b.length && a.every((id) => b.includes(id));
   const targetsChanged = !editing || scope !== editing.scope
     || !sameIds(monitorIds, targetIds(editing, "monitor")) || !sameIds(serviceIds, targetIds(editing, "service"));
-  const preview = previewWindow(startsOn, localStartTime, Number(durationMinutes));
+  const preview = previewWindow({
+    recurrence, timezone, localStartTime, durationMinutes: Number(durationMinutes), startsOn, endsOn: endsOn || null,
+    weekdays: recurrence === "weekly" ? weekdays : null, monthDay: recurrence === "monthly" ? Number(monthDay) : null,
+  });
 
   const submit = async () => {
     if (pending) return;
@@ -306,7 +311,7 @@ export function MaintenanceWindowDialog({
           </div>
           {preview && (
             <p className="text-xs text-muted-foreground" data-testid="mw-preview-time">
-              {recurrence === "once" ? "Runs" : "First window"} {formatWindowRange(preview.start, preview.end, "UTC")} ({timezone}), {formatDuration(Number(durationMinutes))}.
+              {recurrence === "once" ? "Runs" : "First window"} {formatWindowRange(preview.startsAt, preview.endsAt, timezone)} ({timezone}), {formatDuration(Number(durationMinutes))}.
               {scheduleLocked && " In progress: end or extend it from the table to change its times."}
             </p>
           )}

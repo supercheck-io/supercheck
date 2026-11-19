@@ -38,6 +38,7 @@ const windowDuration = (w: MaintenanceWindowItem) =>
   formatDuration(w.occurrenceStartsAt && w.occurrenceEndsAt ? (Date.parse(w.occurrenceEndsAt) - Date.parse(w.occurrenceStartsAt)) / 60_000 : w.durationMinutes);
 // The zone is written under each window, so its column only feeds the search.
 const HIDDEN_COLUMNS = { timezone: false };
+const MOBILE_PAGE = 20;
 
 const HEADER_DESCRIPTION = "Planned windows that mute alerts and leave checks out of uptime";
 const EXPLAINER = "During a window, monitors keep running but send no alerts, open no incidents and are left out of uptime.";
@@ -148,6 +149,8 @@ export function MaintenanceWindowsPanel({ tabs }: { tabs?: ReactNode } = {}) {
   const isMobile = useIsMobile();
   const [createOpen, setCreateOpen] = useState(false);
   const [editing, setEditing] = useState<MaintenanceWindowItem | null>(null);
+  // The phone list is bounded like the table's pages; "Show more" reveals the next batch.
+  const [mobileLimit, setMobileLimit] = useState(MOBILE_PAGE);
   const [confirm, setConfirm] = useState<{ window: MaintenanceWindowItem; action: "cancel" | "delete" } | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   // ?new=1 (Quick Create, Cmd+K) opens the editor.
@@ -221,7 +224,7 @@ export function MaintenanceWindowsPanel({ tabs }: { tabs?: ReactNode } = {}) {
       {windows.data && windows.data.length > 0 && isMobile && (
         // The shared table is 900px wide; at phone width each window is a stacked row instead.
         <ul className="divide-y rounded-md border" aria-label="Maintenance windows">
-          {sortedWindows.map((window) => (
+          {sortedWindows.slice(0, mobileLimit).map((window) => (
             <li key={window.id} className="flex items-start gap-2 p-3" data-testid="maintenance-row">
               <div className="min-w-0 flex-1 space-y-1">
                 <p className="break-words font-medium">{window.title}</p>
@@ -235,6 +238,13 @@ export function MaintenanceWindowsPanel({ tabs }: { tabs?: ReactNode } = {}) {
               <RowActions window={window} meta={tableMeta} />
             </li>
           ))}
+          {sortedWindows.length > mobileLimit && (
+            <li className="p-2">
+              <Button type="button" variant="ghost" className="w-full" onClick={() => setMobileLimit((n) => n + MOBILE_PAGE)}>
+                Show more ({sortedWindows.length - mobileLimit} left)
+              </Button>
+            </li>
+          )}
         </ul>
       )}
       {windows.data && windows.data.length > 0 && !isMobile && (

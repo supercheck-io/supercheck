@@ -45,10 +45,6 @@ import {
 import { toast } from "sonner";
 import { useRouter, useSearchParams } from "next/navigation";
 
-// At phone width only the name and status fit without scrolling sideways.
-const mobileMonitorColumns = statusPageColumns.filter((column) =>
-  ["name", "status"].includes(("accessorKey" in column ? column.accessorKey : column.id) as string),
-);
 const STATUS_PAGE_TABS = ["overview", "components", "incidents", "subscribers", "settings"];
 import { getPublicStatusPageUrl } from "@/lib/domain-utils";
 import { DataTable } from "@/components/monitors/data-table";
@@ -56,6 +52,11 @@ import { statusPageColumns } from "@/components/monitors/status-page-columns";
 import { toOverviewMonitor } from "./overview-monitor";
 import { useIsMobile } from "@/hooks/use-mobile";
 import type { StatusPageMonitor } from "@/hooks/use-status-pages";
+
+// At phone width only the name and status fit without scrolling sideways.
+const mobileMonitorColumns = statusPageColumns.filter((column) =>
+  ["name", "status"].includes(("accessorKey" in column ? column.accessorKey : column.id) as string),
+);
 
 type StatusPage = {
   id: string;

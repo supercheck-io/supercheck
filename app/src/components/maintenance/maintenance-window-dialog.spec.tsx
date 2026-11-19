@@ -108,7 +108,7 @@ describe("MaintenanceWindowDialog", () => {
   const stored = {
     id: "w-9", title: "DB upgrade", description: null, state: "scheduled" as const, scope: "monitors" as const, recurrence: "once" as const,
     timezone: "UTC", localStartTime: "22:00:00", durationMinutes: 240, startsOn: "2026-11-20", endsOn: null, weekdays: null, monthDay: null,
-    occurrenceStartsAt: "2026-11-20T22:00:00Z", occurrenceEndsAt: "2026-11-21T02:00:00Z", targets: [{ type: "monitor" as const, id: "m-1" }], statusPageIncidentIds: [],
+    occurrenceStartsAt: "2099-11-20T22:00:00Z", occurrenceEndsAt: "2099-11-21T02:00:00Z", targets: [{ type: "monitor" as const, id: "m-1" }], statusPageIncidentIds: [],
   };
 
   it("edits a scheduled window with a PATCH and no status page fields", async () => {
@@ -163,5 +163,14 @@ describe("MaintenanceWindowDialog", () => {
     const body = JSON.parse((fetchMock.mock.calls[0]![1] as { body: string }).body);
     expect(body).not.toHaveProperty("recurrence");
     expect(body).toMatchObject({ durationMinutes: 240, weekdays: null, monthDay: null });
+  });
+
+  it("locks the schedule of a one-off that started while the dialog was open", async () => {
+    fetchMock.mockResolvedValue({ ok: true, json: async () => ({ success: true, window: { id: "w-9" } }) });
+    render(<MaintenanceWindowDialog open onOpenChange={jest.fn()} window={{ ...stored, state: "scheduled", occurrenceStartsAt: new Date(Date.now() - 60_000).toISOString() }} />);
+    expect(screen.getByLabelText("Duration (minutes)")).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    expect(JSON.parse((fetchMock.mock.calls[0]![1] as { body: string }).body)).not.toHaveProperty("durationMinutes");
   });
 });

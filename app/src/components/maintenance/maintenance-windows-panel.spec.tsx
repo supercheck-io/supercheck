@@ -179,4 +179,13 @@ describe("maintenance table layout", () => {
     expect(screen.getByRole("button", { name: "Actions for DB upgrade" })).toBeInTheDocument();
     expect(screen.getByTestId("maintenance-row")).toHaveTextContent(/In progress.*2026.*\(1 h 30 min\).*One-off, 1 monitor, UTC/);
   });
+
+  it("bounds the phone list and reveals more on request", () => {
+    mockMobile = true;
+    mockWindows = { data: Array.from({ length: 25 }, (_, i) => win({ id: `w-${i}`, title: `Window ${i}` })) };
+    render(<MaintenanceWindowsPanel />);
+    expect(screen.getAllByTestId("maintenance-row")).toHaveLength(20);
+    fireEvent.click(screen.getByRole("button", { name: "Show more (5 left)" }));
+    expect(screen.getAllByTestId("maintenance-row")).toHaveLength(25);
+  });
 });

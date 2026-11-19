@@ -51,11 +51,16 @@ export function contrastRatio(a: string, b: string) {
   return (hi + 0.05) / (lo + 0.05);
 }
 
-/** Text colour (white or near-black) that reads best on a solid `background`; unknown values get near-black. */
+/**
+ * Text colour for a solid `background` that meets 4.5:1: white or near-black, and pure black for mid-greys
+ * where neither does (white or black always reaches 4.58:1). Unknown values get near-black.
+ */
 export function readableTextOn(background: string | null | undefined): string {
   const hex = normalizeHexColor(background);
   if (!hex) return "#111827";
-  return contrastRatio("#ffffff", hex) >= contrastRatio("#111827", hex) ? "#ffffff" : "#111827";
+  const best = contrastRatio("#ffffff", hex) >= contrastRatio("#111827", hex) ? "#ffffff" : "#111827";
+  if (contrastRatio(best, hex) >= MIN_TEXT_CONTRAST) return best;
+  return contrastRatio("#ffffff", hex) >= contrastRatio("#000000", hex) ? "#ffffff" : "#000000";
 }
 
 /**

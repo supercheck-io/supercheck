@@ -669,8 +669,10 @@ export function PublicStatusPage({
                   : getComponentStatusDisplay(component.status);
                 // Generate uptime data specific to this component
                 const uptimeData = generateUptimeData(component.id);
+                // Same 90 days as the bar, so the percentage and the day count never disagree.
+                const windowDates = new Set(uptimeData.map((day) => day.date.toISOString().slice(0, 10)));
                 const uptimePercentage = checkUptimePercentage(
-                  component.dailyMetrics ?? [],
+                  (component.dailyMetrics ?? []).filter((day) => windowDates.has(day.date)),
                 );
                 const daysWithData = uptimeData.filter((day) => day.status !== "nodata").length;
 

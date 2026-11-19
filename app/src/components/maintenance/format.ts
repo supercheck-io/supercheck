@@ -1,3 +1,13 @@
+import {
+  isValidTimeZone,
+  MAX_DURATION_MINUTES,
+  MIN_DURATION_MINUTES,
+  occurrenceAtOrAfter,
+  zonedTimeToUtc,
+  type Occurrence,
+  type WindowSchedule,
+} from "@/lib/maintenance/occurrence";
+
 /** One date style for maintenance windows: the table, the dialog preview and the edit form agree. */
 const RANGE_OPTIONS = { dateStyle: "medium", timeStyle: "short" } as const;
 
@@ -24,15 +34,16 @@ export function formatDuration(minutes: number): string {
 }
 
 /**
- * The first window of a form's schedule, as wall-clock times in its own zone, or null while a field is incomplete.
- * shortcut: plain wall-clock arithmetic, so a window that crosses a DST change shows the end an hour off; the server computes the real instant.
+ * The first window the server would schedule for this form, as real instants, or null while a field is
+ * incomplete or out of range. Uses the server's own occurrence rule, so weekdays, month days and DST all match.
  */
-export function previewWindow(startsOn: string, localStartTime: string, durationMinutes: number): { start: Date; end: Date } | null {
-  const date = /^(\d{4})-(\d{2})-(\d{2})$/.exec(startsOn);
-  const time = /^(\d{2}):(\d{2})$/.exec(localStartTime);
-  if (!date || !time || !Number.isInteger(durationMinutes) || durationMinutes <= 0) return null;
-  const start = new Date(Date.UTC(+date[1], +date[2] - 1, +date[3], +time[1], +time[2]));
-  return { start, end: new Date(start.getTime() + durationMinutes * 60_000) };
+export function previewWindow(schedule: WindowSchedule): Occurrence | null {
+  const { startsOn, localStartTime, durationMinutes, timezone } = schedule;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(startsOn) || !/^\d{2}:\d{2}$/.test(localStartTime)) return null;
+  if (!Number.isInteger(durationMinutes) || durationMinutes < MIN_DURATION_MINUTES || durationMinutes > MAX_DURATION_MINUTES) return null;
+  if (!isValidTimeZone(timezone)) return null;
+  const occurrence = occurrenceAtOrAfter(schedule, zonedTimeToUtc(startsOn, "00:00", timezone));
+  return occurrence && !Number.isNaN(occurrence.endsAt.getTime()) ? occurrence : null;
 }
 
 /** Every IANA zone the browser knows, plus UTC and `current` (which may be an alias such as Asia/Calcutta). */
