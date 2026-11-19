@@ -4,7 +4,6 @@ import {
   isSreInvestigationAgentEnabled,
   isSreAutomaticTriageEnabled,
   isSreBackgroundAlertTriageEnabled,
-  isSreAgentSandboxEnabled,
   isSreAlertCorrelationEnabled,
 } from "./feature-gates";
 
@@ -43,7 +42,6 @@ describe("AI SRE feature defaults", () => {
     // Incident pipeline is on by default; only AI triage is opt-in.
     expect(isSreBackgroundAlertTriageEnabled()).toBe(true);
     expect(isSreAlertCorrelationEnabled()).toBe(true);
-    expect(isSreAgentSandboxEnabled()).toBe(false);
   });
 
   it.each(["true", "1", " TRUE "])("enables automation only when opted in: %s", (value) => {
