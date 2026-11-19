@@ -21,7 +21,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { NotificationProviderForm } from "@/components/alerts/notification-provider-form";
+import { NotificationProviderForm, NOTIFICATION_PROVIDER_DIALOG_CLASS } from "@/components/alerts/notification-provider-form";
 import { Plus, BellRing, History, Users } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { DeliveryHistory } from "@/components/alerts/delivery-history";
@@ -325,7 +325,7 @@ function NotificationsPage() {
               open={isCreateDialogOpen}
               onOpenChange={handleCreateDialogChange}
             >
-              <DialogContent className="flex max-h-[90vh] flex-col gap-0 overflow-hidden p-0 sm:max-w-4xl">
+              <DialogContent className={NOTIFICATION_PROVIDER_DIALOG_CLASS}>
                 <DialogHeader className="shrink-0 border-b px-6 py-4 pr-14">
                   <DialogTitle>Create channel</DialogTitle>
                   <DialogDescription>
@@ -341,7 +341,7 @@ function NotificationsPage() {
             </Dialog>
 
             <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
-              <DialogContent className="flex max-h-[90vh] flex-col gap-0 overflow-hidden p-0 sm:max-w-4xl">
+              <DialogContent className={NOTIFICATION_PROVIDER_DIALOG_CLASS}>
                 <DialogHeader className="shrink-0 border-b px-6 py-4 pr-14">
                   <DialogTitle>Edit notification channel</DialogTitle>
                   <DialogDescription>

@@ -255,15 +255,16 @@ Other Microsoft hosts, such as `outlook.office.com` or `*.azurewebsites.net`, ar
 
 **Configuration:**
 - **URL:** Your endpoint
-- **Method:** GET, POST, or PUT (default: POST)
-- **Headers JSON:** Optional string-valued headers for provider authentication such as `Authorization`
-- **Body Template:** Optional custom JSON body with template variables (used for POST and PUT requests)
-- **Rendered sample payload:** Preview of the JSON body generated from sample alert values before you test or save
+- **Advanced** (collapsed until you open it):
+  - **Method:** GET, POST, or PUT (default: POST)
+  - **Headers JSON:** Optional string-valued headers for provider authentication such as `Authorization`
+  - **Body Template:** Optional custom JSON body with template variables (used for POST and PUT requests)
+  - **Rendered sample payload:** Preview of the JSON body generated from sample alert values before you test or save
 - **Test diagnostics:** Redacted test results showing method, target host, sent header names, HTTP status, elapsed time, request hash, and response hash
 
 Use a publicly reachable HTTPS webhook endpoint (plain HTTP is rejected); private and internal targets are blocked. On a self-hosted install with `SELF_HOSTED=true` and `ALLOW_INTERNAL_TARGETS=true`, webhook channels (not Slack, Teams, Discord or Telegram) may also use internal hosts and plain `http://` URLs. Cloud metadata and link-local addresses such as `169.254.169.254` stay blocked. Enter credentials in the channel settings and use **Test connection** before relying on delivery.
 
-Webhook URLs, custom headers and other channel credentials are secrets, so they are cleared when you reopen a channel to edit it. Leave one blank to keep its value, or enter a replacement and use **Test connection**.
+Webhook URLs, custom headers and other channel credentials are secrets, so they are cleared when you reopen a channel to edit it. Leave one blank to keep its value, or enter a replacement and use **Test connection**. Saved headers are kept only while the URL and preset stay the same: after changing either, enter the headers (or the API key) again, or `{}` for none.
 
 ### Webhook presets
 
@@ -278,8 +279,10 @@ The webhook channel includes presets that fill the method, headers, and JSON bod
 | Better Stack webhook | Sends `status: alert` on failure and `status: resolved` on recovery with `dedup_key`. In Better Stack, set the create rule to "status contains alert", the resolve rule to "status contains resolved" and the alert id to `dedup_key` | [Better Stack incoming webhooks](https://betterstack.com/docs/uptime/incoming-webhooks/) |
 | incident.io alert source | Sends `status: firing` on failure and `status: resolved` on recovery with `deduplication_key` | [incident.io alert sources](https://docs.incident.io/alerts/alert-sources) |
 
+Each paging service asks only for its own credential: the **Routing key** for PagerDuty (written into the body template), the **API key** for Jira Service Management and the **API token** for incident.io (sent as the `Authorization` header), and the endpoint **URL** for Splunk On-Call, Better Stack and incident.io. The URL, method, headers and body template stay editable under **Advanced**.
+
 <Callout type="warn">
-Preset payloads include placeholders such as `REPLACE_WITH_PAGERDUTY_ROUTING_KEY` and `REPLACE_WITH_JSM_INTEGRATION_KEY`. Replace them before saving: a channel that still holds one is rejected. Verify the endpoint URL in the vendor documentation because some providers generate tenant-specific webhook URLs.
+Preset payloads include placeholders such as `REPLACE_WITH_PAGERDUTY_ROUTING_KEY` and `REPLACE_WITH_JSM_INTEGRATION_KEY`. The typed credential fields replace them; a channel that still holds one is rejected. Verify the endpoint URL in the vendor documentation because some providers generate tenant-specific webhook URLs.
 </Callout>
 
 <Accordions>

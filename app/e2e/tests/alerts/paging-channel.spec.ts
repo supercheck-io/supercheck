@@ -33,6 +33,9 @@ test.describe('Paging channels @alerts @channels', () => {
     await page.getByRole('option', { name: 'PagerDuty', exact: true }).click();
     await expect(dialog.getByTestId('one-way-paging-note')).toContainText('does not change the Supercheck incident');
     await dialog.getByLabel(/^Title/).fill(name);
+    // The routing key is a typed field; the fixed vendor URL sits under Advanced.
+    await dialog.getByLabel(/^Routing key/).fill('e2e0000000000000000000000000000k');
+    await dialog.getByTestId('webhook-advanced-toggle').click();
     await expect(dialog.getByLabel(/^URL/)).toHaveValue('https://events.pagerduty.com/v2/enqueue');
     await dialog.getByRole('button', { name: /^(Create|Save)/ }).click();
     await expect(dialog).toBeHidden();
