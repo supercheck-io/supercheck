@@ -68,7 +68,7 @@ export default defineConfig({
     {
       name: 'chromium',
       // The PR screenshot tour runs only against its own throwaway app.
-      testIgnore: /tests\/screenshots\//,
+      testIgnore: /tests\/(screenshots|docs-shots)\//,
       use: {
         ...devices['Desktop Chrome'],
         // 1.64 forwards screen from device descriptors; pinned for parity, revisit deliberately.
@@ -76,6 +76,23 @@ export default defineConfig({
         storageState: 'user-auth-state.json',
         // Gallery frames use the same viewport as the screenshot tour.
         ...(process.env.E2E_CHECKPOINTS === '1' ? { viewport: { width: 1440, height: 900 } } : {}),
+      },
+      dependencies: ['setup'],
+    },
+    /* Docs and landing capture (docs-shots.yml): staging only, enforced at run time by the spec. */
+    {
+      name: 'docs-shots',
+      testMatch: /tests\/docs-shots\/[^/]+\.spec\.ts$/,
+      use: {
+        ...devices['Desktop Chrome'],
+        screen: undefined,
+        // A 1710x1035 window at 2x gives the 3420x2070 docs size.
+        viewport: { width: 1710, height: 1035 },
+        deviceScaleFactor: 2,
+        colorScheme: 'dark',
+        storageState: 'user-auth-state.json',
+        // Failure frames could show the staging host; the workflow uploads only the image folder anyway.
+        screenshot: 'off',
       },
       dependencies: ['setup'],
     },

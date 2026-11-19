@@ -1,0 +1,97 @@
+name: Docs Screenshots
+
+on:
+  # Manual only: it signs in to the staging deployment and captures the demo organization.
+  workflow_dispatch:
+    inputs:
+      shot_filter:
+        description: "Only shots whose name matches this regex (e.g. monitors-list|dashboard); empty captures all"
+        required: false
+        type: string
+
+env:
+  NODE_VERSION: "24"
+
+permissions:
+  contents: read
+
+jobs:
+  capture:
+    name: Capture docs and landing screenshots
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    # Shares the staging identities with the E2E suite.
+    concurrency:
+      group: supercheck-e2e
+      cancel-in-progress: false
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install dependencies
+        working-directory: ./app/e2e
+        run: npm ci
+
+      - name: Install Playwright browsers and WebP tools
+        working-directory: ./app/e2e
+        run: |
+          npx playwright install --with-deps chromium
+          sudo apt-get install -y --no-install-recommends webp
+
+      # The staging hostname must never reach public logs or artifacts: mask it before any
+      # other step can print it.
+      - name: Mask staging URL
+        env:
+          STAGING_URL: ${{ secrets.E2E_STAGING_BASE_URL }}
+        run: |
+          set -Eeuo pipefail
+          [ -n "$STAGING_URL" ] || { echo "::error::Repository secret E2E_STAGING_BASE_URL is not set"; exit 1; }
+          echo "::add-mask::$STAGING_URL"
+          echo "::add-mask::$(node -e 'process.stdout.write(new URL(process.argv[1]).host)' "$STAGING_URL")"
+          echo "E2E_BASE_URL=$STAGING_URL" >> "$GITHUB_ENV"
+          echo "E2E_STAGING_BASE_URL=$STAGING_URL" >> "$GITHUB_ENV"
+
+      - name: Capture screenshots
+        working-directory: ./app/e2e
+        run: |
+          if [ -n "$SHOT_FILTER" ]; then
+            npx playwright test --project=docs-shots --grep "$SHOT_FILTER"
+          else
+            npx playwright test --project=docs-shots
+          fi
+        timeout-minutes: 35
+        env:
+          CI: true
+          SHOT_FILTER: ${{ inputs.shot_filter }}
+          # auth.setup.ts signs in as E2E_TEST_USER_*; the captures are of the organization owner's view.
+          E2E_TEST_USER_EMAIL: ${{ secrets.E2E_ORG_OWNER_EMAIL }}
+          E2E_TEST_USER_PASSWORD: ${{ secrets.E2E_ORG_OWNER_PASSWORD }}
+
+      # Landing images are saved as PNG masters; the site serves 1600x969 WebP.
+      - name: Convert landing images to WebP
+        if: ${{ always() }}
+        working-directory: ./app/e2e/docs-shots-output
+        run: |
+          shopt -s globstar nullglob
+          for master in **/*.webp.png; do
+            cwebp -quiet -q 85 -resize 1600 969 "$master" -o "${master%.png}"
+            rm "$master"
+          done
+
+      # Only the image folder is uploaded: no report, traces or logs.
+      - name: Upload images
+        if: ${{ always() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: docs-screenshots
+          path: app/e2e/docs-shots-output/
+          if-no-files-found: error
+          retention-days: 7
