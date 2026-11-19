@@ -184,7 +184,7 @@ describe("useFitPageSize layout feedback", () => {
       jest.advanceTimersByTime(6000);
     });
     flap();
-    const retries = timeoutSpy.mock.calls.filter((call) => call[1] === 5050).length;
+    const retries = (timeoutSpy.mock.calls as unknown[][]).filter((call) => call[1] === 5050).length;
     expect(retries).toBe(1);
     jest.useRealTimers();
     jest.restoreAllMocks();
