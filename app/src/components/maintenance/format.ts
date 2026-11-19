@@ -49,6 +49,8 @@ function zoneOffsetMinutes(at: Date, timeZone: string): number {
  */
 export function dstNote(start: Date, end: Date, timeZone: string): string | null {
   let shift: number;
+  // shortcut: compares only the two endpoints, so two opposite transitions inside one window would cancel and show no note;
+  // no zone changes twice within 8 days (the longest window is 7), so upgrade only if one ever does.
   try {
     shift = zoneOffsetMinutes(end, timeZone) - zoneOffsetMinutes(start, timeZone);
   } catch {

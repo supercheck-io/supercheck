@@ -58,9 +58,9 @@ describe("MaintenanceWindowDialog", () => {
     fireEvent.change(screen.getByLabelText("Duration (minutes)"), { target: { value: "90" } });
     fireEvent.click(screen.getByRole("combobox", { name: "Time zone" }));
     fireEvent.click(screen.getByRole("option", { name: "America/New_York" }));
-    expect(screen.getByTestId("mw-dst-note")).toHaveTextContent(/go forward 1 h/);
+    expect(screen.getByRole("status")).toHaveTextContent(/go forward 1 h/);
     fireEvent.change(screen.getByLabelText("Date"), { target: { value: "2027-03-20" } });
-    expect(screen.queryByTestId("mw-dst-note")).not.toBeInTheDocument();
+    expect(screen.getByRole("status")).toBeEmptyDOMElement();
   });
 
   it("shows server field errors next to the fields and stays open", async () => {

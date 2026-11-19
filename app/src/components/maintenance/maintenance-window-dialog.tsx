@@ -315,7 +315,8 @@ export function MaintenanceWindowDialog({
             <p className="text-xs text-muted-foreground" data-testid="mw-preview-time">
               {recurrence === "once" ? "Runs" : "First window"} {formatWindowRange(preview.startsAt, preview.endsAt, timezone)} ({timezone}), {formatDuration(Number(durationMinutes))}.
               {scheduleLocked && " In progress: end or extend it from the table to change its times."}
-              {dst && <span data-testid="mw-dst-note"> {dst}</span>}
+              {/* Always mounted so a screen reader announces the note when it appears. */}
+              <span role="status" data-testid="mw-dst-note">{dst ? ` ${dst}` : null}</span>
             </p>
           )}
           <div className="space-y-2">
