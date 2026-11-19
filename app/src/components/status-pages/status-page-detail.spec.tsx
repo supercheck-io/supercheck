@@ -1,10 +1,12 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { unpublishStatusPage } from "@/actions/publish-status-page";
 import type { StatusPageMonitor } from "@/hooks/use-status-pages";
 
 import { StatusPageDetail } from "./status-page-detail";
 
+jest.mock("@/hooks/use-mobile", () => ({ useIsMobile: () => false }));
 jest.mock("@/actions/publish-status-page", () => ({
   publishStatusPage: jest.fn(),
   unpublishStatusPage: jest.fn(),
@@ -201,5 +203,29 @@ describe("StatusPageDetail tab from the URL", () => {
     window.history.replaceState(null, "", "/status-pages/sp?tab=nope");
     renderDetail();
     expect(screen.getByRole("tab", { name: "Overview" })).toHaveAttribute("aria-selected", "true");
+  });
+});
+
+describe("StatusPageDetail overview", () => {
+  it("counts a monitor shared by two components once, in the singular", () => {
+    const monitor = { id: "m-1", name: "Checkout API", type: "http_request", status: "up", target: "https://x.test", enabled: true } as unknown as StatusPageMonitor;
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <StatusPageDetail
+          statusPage={statusPage}
+          statusPageDomain="example.com"
+          monitors={[]}
+          components={[{ id: "c-1", name: "API", monitors: [monitor] }, { id: "c-2", name: "Web", monitors: [monitor] }] as never}
+          canUpdate
+        />
+      </QueryClientProvider>,
+    );
+    expect(screen.getByText("1 monitor")).toBeInTheDocument();
+  });
+
+  it("keeps Archive secondary and only Unpublish destructive", () => {
+    renderDetail();
+    expect(screen.getByRole("button", { name: "Archive" })).not.toHaveClass("bg-destructive");
+    expect(screen.getByRole("button", { name: "Unpublish" })).toHaveClass("bg-destructive");
   });
 });

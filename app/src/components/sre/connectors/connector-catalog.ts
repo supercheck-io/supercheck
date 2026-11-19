@@ -150,3 +150,9 @@ export function getSreConnectorLabel(type: string) {
       .replace(/\b\w/g, (character) => character.toUpperCase())
   );
 }
+
+/** Display name of an evidence source: the catalog label, "Supercheck" for native evidence. */
+export function evidenceSourceLabel(sourceType: string) {
+  const type = sourceType === "native" ? "supercheck_native" : sourceType;
+  return SRE_CONNECTOR_CATALOG.find((item) => item.value === type)?.label ?? sourceType;
+}

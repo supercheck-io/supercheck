@@ -6,7 +6,7 @@ import { join, relative, sep } from "node:path";
  * New code uses tokens (text-success, bg-ai/10, TableBadge tones). When you remove raw colours, lower
  * BASELINE to the new count printed by the failure message, never raise it.
  */
-const BASELINE = 670;
+const BASELINE = 668;
 /** Raw neutral greys (text-gray-500, bg-zinc-100, ...) have their own ratchet; use muted-foreground, border, muted, accent. */
 const NEUTRAL_BASELINE = 187;
 

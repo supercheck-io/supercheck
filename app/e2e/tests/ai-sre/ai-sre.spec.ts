@@ -73,7 +73,7 @@ test.describe("AI SRE service catalog @aisre @critical", () => {
         "Description",
         "Tier",
         "Owner",
-        "Repo",
+        "Repository",
         "Status",
         "",
       ]);

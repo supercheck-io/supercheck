@@ -52,6 +52,18 @@ export function contrastRatio(a: string, b: string) {
 }
 
 /**
+ * Text colour for a solid `background` that meets 4.5:1: white or near-black, and pure black for mid-greys
+ * where neither does (white or black always reaches 4.58:1). Unknown values get near-black.
+ */
+export function readableTextOn(background: string | null | undefined): string {
+  const hex = normalizeHexColor(background);
+  if (!hex) return "#111827";
+  const best = contrastRatio("#ffffff", hex) >= contrastRatio("#111827", hex) ? "#ffffff" : "#111827";
+  if (contrastRatio(best, hex) >= MIN_TEXT_CONTRAST) return best;
+  return contrastRatio("#ffffff", hex) >= contrastRatio("#000000", hex) ? "#ffffff" : "#000000";
+}
+
+/**
  * Colours are applied only when the owner customised the page background: a custom font
  * alone cannot be checked against the viewer's light/dark theme, so it keeps the theme.
  * Text that fails WCAG AA against the custom background falls back to black or white.

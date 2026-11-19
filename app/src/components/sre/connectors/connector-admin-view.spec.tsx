@@ -133,9 +133,15 @@ describe("ConnectorAdminView", () => {
     expect(dialog).toHaveClass("w-[calc(100vw-1rem)]");
     expect(dialog).toHaveClass("sm:max-w-3xl");
     expect(screen.getByText("Connection")).toBeInTheDocument();
+    // No source is preselected; the later stages appear once one is chosen.
+    expect(screen.getByRole("button", { name: "Add connector" })).toBeDisabled();
+    expect(screen.queryByText("Endpoint and read-only access")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByLabelText("Connector type"));
+    fireEvent.click(screen.getByRole("option", { name: "Prometheus" }));
     expect(
       screen.getByText("Endpoint and read-only access"),
     ).toBeInTheDocument();
+    expect(screen.getByLabelText("Endpoint URL *")).toBeInTheDocument();
     expect(screen.getByText("Service scope")).toBeInTheDocument();
     expect(
       screen.getByText(/read-only, bounded, service-scoped, redacted/i),

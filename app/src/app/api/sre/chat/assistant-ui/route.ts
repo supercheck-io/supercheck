@@ -38,6 +38,7 @@ import {
 } from "@/sre/lib/session-store";
 import { SRE_CHART_PROMPT_LINES } from "@/sre/lib/chart-contract";
 import { SRE_ERROR_QUERY_RULE } from "@/lib/sre/connectors/agent-query-guidance";
+import { extractCitations, SRE_CITATIONS_ATTACHMENT, type SreChatCitation } from "@/lib/sre/chat-citations";
 import { createSreConnectorTools } from "@/sre/tools/connector-tools";
 import { createSreSimilarIncidentTools } from "@/sre/tools/similar-incident-tools";
 import { createSreEvidenceTools } from "@/sre/tools/evidence-tools";
@@ -123,6 +124,10 @@ const assistantUiChatRequestSchema = z.object({
 function authErrorResponse(error: unknown) {
   void error; // never echo the underlying error to the client
   return NextResponse.json({ error: "Authentication required" }, { status: 401 });
+}
+
+function citationAttachments(citations: SreChatCitation[]) {
+  return citations.length ? { attachments: [{ type: SRE_CITATIONS_ATTACHMENT, items: citations }] } : {};
 }
 
 function getTextFromUiMessage(message: SreAssistantUiMessage) {
@@ -674,6 +679,8 @@ export async function POST(request: NextRequest) {
             role: "assistant",
             content: assistantText,
             modelId,
+            // The cited evidence from this reply's own tool results, so its footnotes still open after a reload.
+            ...citationAttachments(extractCitations(responseMessage.parts, assistantText)),
           },
           ...(regenerating && regenerateTargetId ? [{ supersedeMessageId: regenerateTargetId }] : []),
         );

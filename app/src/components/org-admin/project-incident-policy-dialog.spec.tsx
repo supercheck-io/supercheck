@@ -160,8 +160,11 @@ it("keeps a stored target that lost access, says so, and still lets other settin
 it("shows paging channels as not selectable for incident messages", async () => {
   render(<ProjectIncidentPolicyDialog open onOpenChange={jest.fn()} projectId="p1" projectName="Prod" />);
   await screen.findByText("Ops Slack");
-  expect(screen.getByText("Paged by monitor and job alerts")).toBeInTheDocument();
+  expect(screen.getByText(/they are paged by monitor and job alerts/)).toBeInTheDocument();
   const row = screen.getByText("PagerDuty").closest("label") as HTMLElement;
+  // One tag style for every channel: the provider name, or Paging.
+  expect(row).toHaveTextContent("Paging");
+  expect(screen.getByText("Ops Slack").closest("label")).toHaveTextContent("Slack");
   expect(row.querySelector("button[role=checkbox]")).toBeDisabled();
   expect(screen.getByText("Reminders stop when someone acknowledges, resolves or lowers the severity.")).toBeInTheDocument();
 });

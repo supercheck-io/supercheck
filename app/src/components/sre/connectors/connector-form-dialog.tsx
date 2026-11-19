@@ -85,6 +85,8 @@ export function ConnectorFormDialog({
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>();
   const [name, setName] = useState("");
   const [type, setType] = useState<ConnectorType>("github");
+  // No source is preselected: the endpoint and credential fields follow the type the user picks.
+  const [typeChosen, setTypeChosen] = useState(false);
   const [endpointUrl, setEndpointUrl] = useState("");
   const [riskLevel, setRiskLevel] = useState<
     "low" | "medium" | "high" | "critical"
@@ -130,6 +132,7 @@ export function ConnectorFormDialog({
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (!typeChosen) return;
 
     const trimmedCredential = credentialValue.trim();
     const trimmedAwsAccessKeyId = awsAccessKeyId.trim();
@@ -276,9 +279,10 @@ export function ConnectorFormDialog({
                   <div className="flex min-w-0 flex-col gap-1.5">
                     <Label htmlFor="connector-type">Connector type</Label>
                     <Select
-                      value={type}
+                      value={typeChosen ? type : ""}
                       onValueChange={(value) => {
                         const nextType = value as ConnectorType;
+                        setTypeChosen(true);
                         setType(nextType);
                         setProviderValues({});
                         if (getProviderCredentialFields(nextType)) {
@@ -296,7 +300,7 @@ export function ConnectorFormDialog({
                       }}
                     >
                       <SelectTrigger id="connector-type" className="w-full">
-                        <SelectValue />
+                        <SelectValue placeholder="Choose a source" />
                       </SelectTrigger>
                       <SelectContent>
                         {connectorTypeOptions.map((option) => (
@@ -310,6 +314,7 @@ export function ConnectorFormDialog({
                         ))}
                       </SelectContent>
                     </Select>
+                    {typeChosen && (
                     <div className="flex flex-wrap items-center gap-2 pt-0.5">
                       <p className="min-w-0 flex-1 text-xs text-muted-foreground">
                         {selectedTypeOption?.description}
@@ -322,6 +327,7 @@ export function ConnectorFormDialog({
                         {isMcp ? "Agent tools" : "Live search"}
                       </TableBadge>
                     </div>
+                    )}
                   </div>
 
                   <div className="flex min-w-0 flex-col gap-1.5">
@@ -330,7 +336,7 @@ export function ConnectorFormDialog({
                       id="connector-name"
                       value={name}
                       onChange={(event) => setName(event.target.value)}
-                      placeholder={`Production ${selectedTypeOption?.label ?? "connector"}`}
+                      placeholder={`Production ${typeChosen ? (selectedTypeOption?.label ?? "connector") : "connector"}`}
                       aria-invalid={Boolean(firstError(fieldErrors, "name"))}
                     />
                     <p className="text-xs text-muted-foreground">
@@ -427,6 +433,8 @@ export function ConnectorFormDialog({
                 </div>
               </section>
 
+              {typeChosen ? (
+              <>
               <section className="space-y-5 border-t pt-6">
                 <div className="flex items-start gap-3">
                   <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-primary/10 text-sm font-semibold text-primary">
@@ -446,7 +454,7 @@ export function ConnectorFormDialog({
                 <div className="grid gap-4 sm:grid-cols-2">
                   {!providerFields && (
 <div className="flex min-w-0 flex-col gap-1.5 sm:col-span-2">
-                    <Label htmlFor="connector-endpoint">Endpoint URL</Label>
+                    <Label htmlFor="connector-endpoint">Endpoint URL *</Label>
                     <Input
                       id="connector-endpoint"
                       value={endpointUrl}
@@ -709,6 +717,12 @@ export function ConnectorFormDialog({
                   </div>
                 )}
               </section>
+              </>
+              ) : (
+                <p className="border-t pt-6 text-sm text-muted-foreground">
+                  Choose a connector type to see its endpoint and credential fields.
+                </p>
+              )}
             </div>
           </div>
 
@@ -728,7 +742,7 @@ export function ConnectorFormDialog({
               >
                 Cancel
               </Button>
-              <Button type="submit" disabled={isPending}>
+              <Button type="submit" disabled={isPending || !typeChosen}>
                 {isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 Add connector
               </Button>

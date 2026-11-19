@@ -56,8 +56,8 @@ test.describe("AI SRE saved queries @aisre @diagnostics @critical", () => {
       await expect(
         page.getByText(connectorName, { exact: true }),
       ).toBeVisible();
+      // Connector ID is hidden by default (View shows it).
       await expect(page.getByRole("columnheader")).toHaveText([
-        "Connector ID",
         "Title",
         "Type",
         "Execution",

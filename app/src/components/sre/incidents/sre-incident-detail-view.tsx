@@ -12,6 +12,7 @@ import { IncidentAiSummaryCard, rootCauseFromBrief } from "@/components/sre/inci
 import { IncidentSidebar, SEVERITY_TONES } from "@/components/sre/incidents/incident-sidebar";
 import { IncidentTimeline } from "@/components/sre/incidents/incident-timeline";
 import { InvestigationFeedback } from "@/components/sre/incidents/investigation-feedback";
+import { InconclusiveHint, inconclusiveReason } from "@/components/sre/incidents/inconclusive-hint";
 import { InvestigationReport, type ReportFocus } from "@/components/sre/incidents/investigation-report";
 import { PostmortemCard } from "@/components/sre/incidents/postmortem-card";
 import { OPEN_POSTMORTEM_EVENT, ResolveSreIncidentDialog } from "@/components/sre/incidents/resolve-sre-incident-dialog";
@@ -132,6 +133,7 @@ export function SreIncidentDetailView({
   const canAddCommander = permissions.canUpdate && open && !incident.commanderUserId && !showCommander;
   const fromBrief = rootCauseFromBrief(detail);
   const summarySource = fromBrief ? "brief" : investigation ? "investigation" : "triage";
+  const overviewGap = inconclusiveReason(detail, `/incidents/${incident.id}?edit=service`);
 
   const runControls = permissions.canInvestigate ? (
     <SreInvestigationPanel
@@ -268,6 +270,8 @@ export function SreIncidentDetailView({
                 runControls={runControls}
                 source={summarySource}
                 resolved={!open}
+                // Only an open incident with a completed, inconclusive run gets the hint here; failed runs keep details on the Investigation tab.
+                inconclusiveHint={overviewGap && open && investigation?.status === "completed" ? <InconclusiveHint reason={overviewGap} /> : null}
                 feedback={
                   permissions.canUpdate && investigation?.status === "completed" ? (
                     <InvestigationFeedback

@@ -14,6 +14,89 @@ const statusIcon = {
 
 const statusLabel = { ok: "OK", empty: "No results", error: "Failed" } as const;
 
+// Limits and redacted ids say nothing to a reader; they stay in the expanded row.
+const NOISE_ARG = /^(?:max[A-Z]\w*|limit|offset)$/;
+
+/** `key=value, key=value` from the stored trace. Values can contain commas (even `,status=`), so split only on ", " before the next `key=`. */
+export function parseStepArgs(args: string) {
+  if (!args.trim()) return [];
+  return args.split(/, (?=[A-Za-z_][\w.-]*=)/).map((pair) => {
+    const at = pair.indexOf("=");
+    return at === -1 ? { key: "", value: pair.trim() } : { key: pair.slice(0, at).trim(), value: pair.slice(at + 1).trim() };
+  });
+}
+
+function argLabel(key: string, value: string) {
+  if (key === "timeWindowMinutes") return `last ${value} min`;
+  return key ? `${key.replace(/([a-z])([A-Z])/g, "$1 $2").toLowerCase()}: ${value}` : value;
+}
+
+/** The arguments worth a glance: no redacted ids, no output limits. */
+export function summarizeStepArgs(args: string) {
+  return parseStepArgs(args)
+    .filter(({ key, value }) => value !== "[redacted]" && !NOISE_ARG.test(key))
+    .map(({ key, value }) => argLabel(key, value))
+    .join(" · ");
+}
+
+function stepName(tool: string) {
+  return tool.replace(/_/g, " ").replace(/([a-z])([A-Z])/g, "$1 $2").toLowerCase();
+}
+
+/** One step: a one-line summary that expands to every stored argument and the full error. */
+function StepRow({ step }: { step: SreInvestigationStep }) {
+  const summary = summarizeStepArgs(step.args);
+  const all = parseStepArgs(step.args);
+  const expandable = all.length > 0 || Boolean(step.error);
+  const result = step.resultCount !== null ? `${step.resultCount} ${step.resultCount === 1 ? "result" : "results"}` : "";
+  const line = (
+    <>
+      <span className="mt-0.5 shrink-0">{statusIcon[step.status]}</span>
+      <span className="min-w-0 flex-1">
+        <span className="sr-only">{statusLabel[step.status]}: </span>
+        <span className="text-xs font-medium">{stepName(step.tool)}</span>
+        {summary && <span className="block truncate font-mono text-xs text-muted-foreground">{summary}</span>}
+        {step.error && <span className="block truncate text-xs text-destructive">{step.error}</span>}
+      </span>
+      <span className="shrink-0 whitespace-nowrap text-xs tabular-nums text-muted-foreground">{result}</span>
+    </>
+  );
+  if (!expandable) return <li className="flex min-w-0 items-start gap-2 px-2 py-1.5">{line}</li>;
+  return (
+    <li>
+      <Collapsible>
+        <CollapsibleTrigger className="group/step flex w-full min-w-0 cursor-pointer items-start gap-2 rounded-md px-2 py-1.5 text-left hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+          {line}
+          <ChevronRight className="mt-0.5 size-3.5 shrink-0 text-muted-foreground transition-transform group-data-[state=open]/step:rotate-90" aria-hidden="true" />
+        </CollapsibleTrigger>
+        <CollapsibleContent>
+          <dl className="ml-6 mr-2 mb-2 grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 rounded-md bg-muted/40 p-2.5 text-xs">
+            {all.map(({ key, value }, index) => (
+              <div key={`${key}-${index}`} className="contents">
+                <dt className="text-muted-foreground">{key || "argument"}</dt>
+                <dd className="break-all font-mono">{value}</dd>
+              </div>
+            ))}
+            {/* Values may hold ", key=" themselves, so the stored text is shown as written too. */}
+            {step.args && (
+              <div className="contents">
+                <dt className="text-muted-foreground">As stored</dt>
+                <dd className="break-all font-mono text-muted-foreground">{step.args}</dd>
+              </div>
+            )}
+            {step.error && (
+              <div className="contents">
+                <dt className="text-muted-foreground">Error</dt>
+                <dd className="break-words text-destructive">{step.error}</dd>
+              </div>
+            )}
+          </dl>
+        </CollapsibleContent>
+      </Collapsible>
+    </li>
+  );
+}
+
 /**
  * "How it was investigated": the sanitized step trace. Open while the run is live,
  * collapsed once it is done.
@@ -46,25 +129,12 @@ export function InvestigationStepTrace({
         )}
       </CollapsibleTrigger>
       <CollapsibleContent>
-        <ol className="space-y-1.5 border-t px-4 py-3" aria-live={running ? "polite" : "off"}>
+        <ol className="space-y-0.5 border-t px-2 py-2" aria-live={running ? "polite" : "off"}>
           {steps.length === 0 && (
-            <li className="text-sm text-muted-foreground">Starting. Steps appear here as they finish.</li>
+            <li className="px-2 py-1.5 text-sm text-muted-foreground">Starting. Steps appear here as they finish.</li>
           )}
           {steps.map((step) => (
-            <li key={step.index} className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5 text-sm">
-              <span className="inline-flex items-center gap-1.5 text-xs font-medium">
-                {statusIcon[step.status]}
-                <span className="sr-only">{statusLabel[step.status]}: </span>
-                {step.tool.replace(/_/g, " ").replace(/([a-z])([A-Z])/g, "$1 $2").toLowerCase()}
-              </span>
-              {step.args && (
-                <span className="min-w-0 break-all text-xs text-muted-foreground">{step.args}</span>
-              )}
-              <span className="ml-auto whitespace-nowrap text-xs text-muted-foreground tabular-nums">
-                {step.resultCount !== null ? `${step.resultCount} ${step.resultCount === 1 ? "result" : "results"}` : ""}
-              </span>
-              {step.error && <span className="basis-full break-words text-xs text-destructive">{step.error}</span>}
-            </li>
+            <StepRow key={step.index} step={step} />
           ))}
         </ol>
       </CollapsibleContent>
