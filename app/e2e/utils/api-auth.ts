@@ -90,6 +90,10 @@ export function getAuthRetryDelayMs(response: APIResponse, attempt: number) {
   return boundedSeconds * 1_000 + 250;
 }
 
+// Cloudflare's Turnstile test secret keys accept this dummy token; real keys reject it,
+// and deployments without CAPTCHA ignore the header. Staging uses the test keys.
+export const CAPTCHA_TEST_HEADERS = { 'x-captcha-response': 'XXXX.DUMMY.TOKEN.XXXX' };
+
 /**
  * Sign in through Better Auth with bounded retries for its per-IP window.
  * Returns the final response so callers can keep their own assertions.
@@ -106,6 +110,7 @@ export async function signInWithRetry(
 
   for (let attempt = 1; attempt <= AUTH_MAX_ATTEMPTS; attempt += 1) {
     const currentResponse = await request.post('/api/auth/sign-in/email', {
+      headers: CAPTCHA_TEST_HEADERS,
       data: {
         email: credentials.email.trim(),
         password: credentials.password,

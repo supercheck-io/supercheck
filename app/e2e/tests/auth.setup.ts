@@ -1,5 +1,6 @@
 import { test as setup } from '@playwright/test';
 import { env } from '../utils/env';
+import { CAPTCHA_TEST_HEADERS } from '../utils/api-auth';
 
 const authFile = 'user-auth-state.json';
 
@@ -9,6 +10,7 @@ setup('authenticate as regular test user', async ({ request }) => {
   }
 
   const signInResponse = await request.post('/api/auth/sign-in/email', {
+    headers: CAPTCHA_TEST_HEADERS,
     data: {
       email: env.testUser.email.trim(),
       password: env.testUser.password,
