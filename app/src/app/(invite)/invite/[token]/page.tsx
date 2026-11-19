@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -19,6 +19,9 @@ import { CheckIcon } from "@/components/logo/supercheck-logo";
 import { FieldGroup, Field, FieldDescription } from "@/components/ui/field";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
+import { useSession } from "@/utils/auth-client";
+import { parseInviteToken } from "@/lib/validations/auth";
+import { signOutAndClear } from "@/lib/auth/sign-out";
 import { useAppConfig } from "@/hooks/use-app-config";
 import { clearProjectsCache } from "@/hooks/use-project-context";
 import { announceProjectChange, reloadProjectContext } from "@/lib/project-navigation";
@@ -52,14 +55,33 @@ export default function InvitePage({
   const [loading, setLoading] = useState(true);
   const [accepting, setAccepting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [signOutError, setSignOutError] = useState<string | null>(null);
+  const [emailMismatch, setEmailMismatch] = useState(false);
+  // Only a dead invitation drops the token from the recovery links; a transient failure keeps it.
+  const [inviteDead, setInviteDead] = useState(false);
+  const redirectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const { data: session } = useSession();
   const router = useRouter();
   const { isCloudHosted, isFetched, error: configError } = useAppConfig();
   const shouldShowLegalFooter = isFetched && !configError && isCloudHosted;
 
   // Get token from params
   useEffect(() => {
-    params.then(({ token }) => setToken(token));
+    params.then(({ token }) => {
+      const valid = parseInviteToken(token);
+      if (!valid) {
+        setInviteDead(true);
+        setError("Invalid invitation token");
+        setLoading(false);
+        return;
+      }
+      setToken(valid);
+    });
   }, [params]);
+
+  useEffect(() => () => {
+    if (redirectTimer.current) clearTimeout(redirectTimer.current);
+  }, []);
 
   // Fetch invitation details
   useEffect(() => {
@@ -73,6 +95,7 @@ export default function InvitePage({
         if (data.success) {
           setInvitation(data.data);
         } else {
+          if (data.code === "INVITE_UNAVAILABLE" || response.status === 404) setInviteDead(true);
           setError(data.error || "Failed to load invitation");
         }
       } catch (error) {
@@ -100,13 +123,25 @@ export default function InvitePage({
         announceProjectChange();
         setAccepted(data.data);
         // An invitee picks a persona first, then lands on the dashboard (after 3 seconds)
-        setTimeout(() => {
+        redirectTimer.current = setTimeout(() => {
           reloadProjectContext(clearProjectsCache, INVITEE_LANDING_PATH);
         }, 3000);
       } else {
         if (data.code === "EMAIL_NOT_VERIFIED") {
           const inviteQuery = encodeURIComponent(token);
           router.push(`/verify-email?email=${encodeURIComponent(invitation?.email || "")}&invite=${inviteQuery}`);
+          return;
+        }
+        // The signed-in account is not the invitee: sign out is the only way forward, never sign-up.
+        if (data.code === "EMAIL_MISMATCH") {
+          setEmailMismatch(true);
+          return;
+        }
+        if (data.code === "INVITE_UNAVAILABLE") {
+          // Dead invitation: drop it so the error links don't carry the token.
+          setInviteDead(true);
+          setInvitation(null);
+          setError(data.error);
           return;
         }
         const errorMessage = String(data.error ?? "").toLowerCase();
@@ -116,11 +151,9 @@ export default function InvitePage({
           errorMessage.includes("sign up") ||
           errorMessage.includes("authenticate")
         ) {
-          // User needs to authenticate — redirect to sign-up so first-time
-          // invitees can create an account directly. The sign-up page handles
-          // existing users by detecting the 422 "already exists" response and
-          // redirecting them to /sign-in?invite=token automatically.
-          router.push(`/sign-up?invite=${token}`);
+          // Sign-up is the common case; an existing account is told how to sign in by email,
+          // and sign-up links to sign-in. Which one applies is deliberately not revealed here.
+          router.push(`/sign-up?invite=${encodeURIComponent(token)}`);
         } else {
           setError(data.error || "Failed to accept invitation");
         }
@@ -157,6 +190,17 @@ export default function InvitePage({
       .join(" ");
   };
 
+  const handleSignOut = async () => {
+    setSignOutError(null);
+    try {
+      const result = await signOutAndClear();
+      if (result?.error) throw new Error(result.error.message);
+      setEmailMismatch(false);
+    } catch (signOutFailure) {
+      setSignOutError(signOutFailure instanceof Error && signOutFailure.message ? signOutFailure.message : "Failed to sign out. Please try again.");
+    }
+  };
+
   // Loading State
   if (loading) {
     return (
@@ -178,6 +222,8 @@ export default function InvitePage({
 
   // Error State
   if (error) {
+    // A dead (expired, used, unknown) invite must not travel on: it would loop back here after sign-in.
+    const inviteQuery = token && !inviteDead ? `?invite=${encodeURIComponent(token)}` : "";
     return (
       <div className="flex flex-col gap-6 w-full max-w-md">
         <FieldGroup>
@@ -190,15 +236,47 @@ export default function InvitePage({
           </div>
 
           <Field className="flex flex-col gap-2">
-            <Button onClick={() => router.push("/sign-in")} className="w-full">
+            <Button onClick={() => router.push(`/sign-in${inviteQuery}`)} className="w-full">
               Go to Sign In
             </Button>
             <Button
               variant="outline"
-              onClick={() => router.push("/sign-up")}
+              onClick={() => router.push(`/sign-up${inviteQuery}`)}
               className="w-full"
             >
               Create New Account
+            </Button>
+          </Field>
+        </FieldGroup>
+      </div>
+    );
+  }
+
+  // Signed in as someone other than the invitee
+  if (emailMismatch) {
+    return (
+      <div className="flex flex-col gap-6 w-full max-w-md">
+        <FieldGroup>
+          <div className="flex flex-col items-center gap-2 text-center">
+            <div className="flex size-12 items-center justify-center rounded-full bg-destructive/10">
+              <AlertCircle className="size-6 text-destructive" />
+            </div>
+            <h1 className="text-xl font-bold">Wrong account</h1>
+            <FieldDescription className="text-center">
+              {session?.user?.email ? (
+                <>You are signed in as <span className="font-medium text-foreground">{session.user.email}</span>, but this invitation is for a different email address.</>
+              ) : (
+                <>You are signed in with a different email address than this invitation is for.</>
+              )}{" "}
+              Sign out, then sign in with the invited account.
+            </FieldDescription>
+          </div>
+          {signOutError && (
+            <p className="text-sm font-medium text-destructive text-center" role="alert">{signOutError}</p>
+          )}
+          <Field>
+            <Button onClick={handleSignOut} className="w-full">
+              Sign out
             </Button>
           </Field>
         </FieldGroup>

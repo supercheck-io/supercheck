@@ -7,6 +7,7 @@ import { SupercheckLogo } from "@/components/logo/supercheck-logo";
 import { Loader2, Eye, EyeOff, Mail } from "lucide-react";
 import Link from "next/link";
 import { useState, useEffect, type RefObject } from "react";
+import { SocialAuthButtons } from "./social-auth-buttons";
 import { TurnstileCaptcha, type TurnstileCaptchaRef } from "./turnstile-captcha";
 import { useCaptcha } from "@/hooks/use-captcha";
 import { useForm } from "react-hook-form";
@@ -359,6 +360,11 @@ export function SignupForm({
                 </Link>
               </FieldDescription>
             </div>
+
+            {/* An invitee whose account uses Google or GitHub has no password to sign in with */}
+            {isInviteMode && inviteToken && (
+              <SocialAuthButtons callbackUrl={`/invite/${inviteToken}`} disabled={isLoading} />
+            )}
           </FieldGroup>
         </form>
       </Form>

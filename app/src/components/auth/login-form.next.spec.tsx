@@ -38,4 +38,15 @@ describe("LoginForm continuation", () => {
     const link = screen.getByRole("link", { name: /sign up/i });
     expect(link).toHaveAttribute("href", `/sign-up?next=${encodeURIComponent("/device?code=BCDF-GHJK")}`);
   });
+  it("offers social sign-in on an invitation, returning to the invite page", () => {
+    render(<LoginForm {...base} inviteToken="tok" inviteData={{ organizationName: "Acme", role: "project_viewer" }} />);
+    expect(social).toHaveBeenLastCalledWith("/invite/tok");
+    expect(screen.getByTestId("login-email-input")).not.toHaveAttribute("readonly");
+  });
+  it("locks and prefills the email when the invite reveals it", () => {
+    render(<LoginForm {...base} inviteToken="tok" inviteData={{ organizationName: "Acme", role: "project_viewer", email: "a@b.co" }} />);
+    const input = screen.getByTestId("login-email-input") as HTMLInputElement;
+    expect(input).toHaveAttribute("readonly");
+    expect(input.value).toBe("a@b.co");
+  });
 });
