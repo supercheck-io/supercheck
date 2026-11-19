@@ -53,6 +53,8 @@ interface DataTableProps<TData, TValue> {
   cellClassName?: (cell: Cell<TData, unknown>) => string | undefined;
   /** Fixed rows per page. Use inside dialogs, where fit-to-window can't measure reliably. */
   fixedPageSize?: number;
+  /** Minimum table width before it scrolls inside its card; lower it when few columns are shown. */
+  minWidthClassName?: string;
   meta?: {
     [key: string]: unknown;
   };
@@ -125,6 +127,7 @@ export function DataTable<TData, TValue>({
   onRowPrefetch,
   cellClassName,
   fixedPageSize,
+  minWidthClassName = "min-w-[900px]",
   meta,
 }: DataTableProps<TData, TValue>) {
   const [rowSelection, setRowSelection] = React.useState({});
@@ -316,7 +319,7 @@ export function DataTable<TData, TValue>({
     <div className="space-y-4">
       {renderToolbar?.(table)}
       <div className="relative max-w-full overflow-x-auto rounded-t-lg border">
-        <Table className="w-full min-w-[900px]">
+        <Table className={cn("w-full", minWidthClassName)}>
           <TableHeader>
             {table.getHeaderGroups().map((headerGroup) => (
               <TableRow key={headerGroup.id}>

@@ -4,6 +4,8 @@ import { z } from "zod";
 import { PageBreadcrumbs } from "@/components/page-breadcrumbs";
 import { SreCopilotPageClient } from "@/components/sre/sre-copilot-page-client";
 
+export const metadata = { title: "Copilot | Supercheck" };
+
 export default async function SreAiPage({
   searchParams,
 }: {

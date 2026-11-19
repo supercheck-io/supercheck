@@ -2,6 +2,8 @@ import { PageBreadcrumbs } from "@/components/page-breadcrumbs";
 import { SreIncidentAnalyticsPageClient } from "@/components/sre/incidents/sre-incident-analytics-page-client";
 import { Card, CardContent } from "@/components/ui/card";
 
+export const metadata = { title: "Incident trends | Supercheck" };
+
 export default function IncidentAnalyticsPage() {
   return (
     <div data-fit-viewport className="overflow-hidden lg:flex lg:min-h-[560px] lg:flex-1 lg:flex-col">

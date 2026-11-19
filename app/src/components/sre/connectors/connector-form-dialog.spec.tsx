@@ -42,6 +42,9 @@ describe("ConnectorFormDialog credentials", () => {
       />,
     );
 
+    fireEvent.click(screen.getByLabelText("Connector type"));
+    fireEvent.click(screen.getByRole("option", { name: "GitHub" }));
+
     expect(screen.getByLabelText("Credential value")).toBeInTheDocument();
     expect(screen.queryByLabelText("Datadog API key")).not.toBeInTheDocument();
   });

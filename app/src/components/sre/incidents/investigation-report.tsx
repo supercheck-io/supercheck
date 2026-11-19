@@ -27,6 +27,7 @@ import { GenerateEvidenceBriefButton } from "@/components/sre/incidents/generate
 import { formatAgo } from "@/components/sre/incidents/incident-age";
 import { confidenceLabel, getInvestigationConclusion, rootCauseFromBrief } from "@/components/sre/incidents/incident-ai-summary-card";
 import { IconTile, SectionTitle, type IconTone } from "@/components/sre/incidents/incident-ui";
+import { InconclusiveHint, inconclusiveReason } from "@/components/sre/incidents/inconclusive-hint";
 import { InvestigationHypotheses } from "@/components/sre/incidents/investigation-hypotheses";
 import { InvestigationStepTrace } from "@/components/sre/incidents/investigation-step-trace";
 import { SreIncidentBriefReportActions } from "@/components/sre/incidents/sre-incident-brief-report";
@@ -163,7 +164,7 @@ function EvidenceList({
                               </TableBadge>
                             )}
                           </span>
-                          {why && <span className="block text-xs font-medium text-violet-600 dark:text-violet-400">{why}</span>}
+                          {why && <span className="block text-xs font-medium text-ai">{why}</span>}
                           <span className="line-clamp-2 break-words text-xs text-muted-foreground">
                             {item.summary || type.label}
                           </span>
@@ -283,6 +284,7 @@ export function InvestigationReport({
     />
   ) : null;
 
+  const gap = inconclusiveReason(detail, serviceMappingHref);
   const stepsDone = investigation?.steps.length ?? 0;
   const [allSteps, setAllSteps] = useState(false);
   const shownChecks = allSteps ? nextChecks : nextChecks.slice(0, NEXT_STEPS_COLLAPSED);
@@ -298,7 +300,7 @@ export function InvestigationReport({
       <div className="flex flex-wrap items-start justify-between gap-3">
         <p className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 pt-1.5 text-xs text-muted-foreground">
           {running ? (
-            <span role="status" className="inline-flex items-center gap-2 font-medium text-violet-600 dark:text-violet-400">
+            <span role="status" className="inline-flex items-center gap-2 font-medium text-ai">
               <span aria-hidden="true" className="relative flex size-2">
                 <span className="absolute inline-flex size-full animate-ping rounded-full bg-violet-500 opacity-60" />
                 <span className="relative inline-flex size-2 rounded-full bg-violet-500" />
@@ -366,7 +368,7 @@ export function InvestigationReport({
         }
       >
         {failed && (
-          <Alert role="status" className="bg-muted/30 [&>svg]:text-warning">
+          <Alert variant="warning" role="status">
             <CircleAlert aria-hidden="true" />
             <AlertTitle>Last investigation did not finish</AlertTitle>
             <AlertDescription className="break-words text-muted-foreground">
@@ -386,6 +388,7 @@ export function InvestigationReport({
                 The model suggested a cause, but the cited evidence did not support it, so this is reported as inconclusive.
               </p>
             )}
+            {gap && <InconclusiveHint reason={gap} />}
             {nextChecks.length > 0 && !running && (
               <div className="space-y-1.5">
                 <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">

@@ -2,6 +2,8 @@ import { PageBreadcrumbs } from "@/components/page-breadcrumbs";
 import { ServiceDetailPageClient } from "@/components/sre/services/service-detail-page-client";
 import { Card, CardContent } from "@/components/ui/card";
 
+export const metadata = { title: "Service | Supercheck" };
+
 export default async function ServiceDetailPage({
   params,
 }: {

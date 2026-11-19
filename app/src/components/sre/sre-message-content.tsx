@@ -166,7 +166,7 @@ function renderCitationMarker(ids: string[], context: CitationContext, key: stri
         const label = `Citation ${number}: ${citation ? `${evidenceSourceLabel(citation.sourceType)}, ${citation.title}` : "live result, not saved"}`;
         return citation ? (
           <EvidenceDetailsDialog key={id} item={citation}>
-            <button type="button" aria-label={label} className="text-violet-600 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:text-violet-400">
+            <button type="button" aria-label={label} className="text-ai hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
               [{number}]
             </button>
           </EvidenceDetailsDialog>

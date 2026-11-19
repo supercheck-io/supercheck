@@ -4,6 +4,8 @@ import { PageBreadcrumbs } from "@/components/page-breadcrumbs";
 import { SreIncidentsPageClient } from "@/components/sre/incidents/sre-incidents-page-client";
 import { Card, CardContent } from "@/components/ui/card";
 
+export const metadata = { title: "Incidents | Supercheck" };
+
 export default async function IncidentsPage({
   searchParams,
 }: {

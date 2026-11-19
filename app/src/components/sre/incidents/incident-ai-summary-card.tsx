@@ -32,6 +32,8 @@ type IncidentAiSummaryCardProps = {
   source?: "investigation" | "brief" | "triage";
   /** A resolved incident has no next step to take; the checks stay on the Investigation tab. */
   resolved?: boolean;
+  /** What evidence the last run lacked and the fix, when it could not conclude. */
+  inconclusiveHint?: React.ReactNode;
 };
 
 const SOURCE_LABEL = { brief: "From the evidence brief", triage: "From AI triage" } as const;
@@ -103,6 +105,7 @@ export function IncidentAiSummaryCard({
   runControls,
   source = "investigation",
   resolved = false,
+  inconclusiveHint,
 }: IncidentAiSummaryCardProps) {
   const running = investigationStatus === "running";
   const failed = investigationStatus === "failed" || investigationStatus === "aborted" || investigationStatus === "timed_out";
@@ -186,6 +189,7 @@ export function IncidentAiSummaryCard({
             </div>
           )
         )}
+        {!running && inconclusiveHint}
         {nextCheck && !running && (
           <p className="flex gap-2 rounded-md bg-violet-500/5 px-3 py-2 text-sm">
             <ArrowRight className="mt-0.5 size-4 shrink-0 text-violet-500" aria-hidden="true" />

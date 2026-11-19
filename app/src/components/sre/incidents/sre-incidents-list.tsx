@@ -15,6 +15,7 @@ import Link from "next/link";
 import { formatAge } from "@/components/sre/incidents/incident-age";
 import { InfoTip } from "@/components/ui/info-tip";
 import { getDisplayStatus, INCIDENT_DISPLAY_STATUSES } from "@/lib/sre/incident-status-display";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { useRouter } from "next/navigation";
 
 import { type SreIncidentListItem } from "@/actions/sre-incidents";
@@ -116,7 +117,7 @@ const columns: ColumnDef<SreIncidentListItem>[] = [
     cell: ({ row }) => (
       <Link
         href={`/incidents/${row.original.id}`}
-        className="block max-w-[360px] truncate rounded-sm font-medium underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className="block max-w-[150px] truncate rounded-sm sm:max-w-[240px] 2xl:max-w-[360px] font-medium underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         title={row.original.title}
       >
         {row.original.title}
@@ -228,6 +229,15 @@ const columns: ColumnDef<SreIncidentListItem>[] = [
   },
 ];
 
+const PHONE_HIDDEN_COLUMNS = {
+  primaryServiceName: false,
+  assigneeName: false,
+  alertCount: false,
+  createdAt: false,
+  updatedAt: false,
+  latestInvestigationStatus: false,
+};
+
 export function SreIncidentsList({
   incidents,
   loadError,
@@ -238,6 +248,7 @@ export function SreIncidentsList({
   loadingScope = false,
 }: SreIncidentsListProps) {
   const router = useRouter();
+  const isMobile = useIsMobile();
   const [search, setSearch] = useState("");
   const deferredSearch = useDeferredValue(search);
   const [severityFilter, setSeverityFilter] = useState<string[]>([]);
@@ -429,7 +440,11 @@ export function SreIncidentsList({
             data={filteredIncidents}
             isLoading={loadingScope && filteredIncidents.length === 0}
             onRowClick={(row) => router.push(`/incidents/${row.original.id}`)}
-            initialColumnVisibility={{}}
+            // Remount when the breakpoint changes, so the phone and desktop column sets both apply.
+            key={isMobile ? "phone" : "wide"}
+            // Age covers recency at a glance; the list still sorts by last update. On a phone only what identifies an incident stays.
+            initialColumnVisibility={isMobile ? PHONE_HIDDEN_COLUMNS : { updatedAt: false }}
+            minWidthClassName={isMobile ? "min-w-0" : "min-w-[900px]"}
             entityLabel={`incidents${truncated ? " (from the latest 500)" : ""}`}
             emptyMessage="No incidents match the current filters."
             initialSorting={[{ id: "updatedAt", desc: true }]}
