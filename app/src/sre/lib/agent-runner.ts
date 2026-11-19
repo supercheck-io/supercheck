@@ -29,8 +29,14 @@ export type RunSreAgentInput<TTools extends ToolSet = ToolSet> = {
   finalStepWithoutTools?: boolean;
 };
 
+export type SreAgentUsage = {
+  inputTokens: number | null;
+  outputTokens: number | null;
+  totalTokens: number | null;
+};
+
 export class SreAgentEmptyResponseError extends Error {
-  constructor(readonly finishReason: string) {
+  constructor(readonly finishReason: string, readonly usage?: SreAgentUsage) {
     super(
       `SRE agent returned no report (finish reason: ${finishReason || "unknown"})`,
     );
@@ -39,7 +45,7 @@ export class SreAgentEmptyResponseError extends Error {
 }
 
 export class SreAgentIncompleteResponseError extends Error {
-  constructor(readonly finishReason: string) {
+  constructor(readonly finishReason: string, readonly usage?: SreAgentUsage) {
     super(`SRE agent did not complete successfully (${finishReason})`);
     this.name = "SreAgentIncompleteResponseError";
   }
@@ -112,24 +118,25 @@ export async function runSreAgent<TTools extends ToolSet = ToolSet>(input: RunSr
   // Streams can resolve partial text after a provider error or cancellation.
   // Such output must not become a completed, billable investigation.
   abortSignal.throwIfAborted();
+  const runUsage: SreAgentUsage = {
+    inputTokens: usage.inputTokens ?? null,
+    outputTokens: usage.outputTokens ?? null,
+    totalTokens: usage.totalTokens ?? null,
+  };
   // A token limit, content filter, or exhausted tool budget leaves a partial
   // report. Only a normal completion may become a completed investigation.
   if (finishReason !== "stop") {
-    throw new SreAgentIncompleteResponseError(finishReason);
+    throw new SreAgentIncompleteResponseError(finishReason, runUsage);
   }
   const normalizedText = text.trim();
   if (!normalizedText) {
-    throw new SreAgentEmptyResponseError(finishReason);
+    throw new SreAgentEmptyResponseError(finishReason, runUsage);
   }
 
   return {
     modelId,
     text: normalizedText,
-    usage: {
-      inputTokens: usage.inputTokens ?? null,
-      outputTokens: usage.outputTokens ?? null,
-      totalTokens: usage.totalTokens ?? null,
-    },
+    usage: runUsage,
     finishReason,
   };
 }
