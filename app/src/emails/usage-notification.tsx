@@ -64,7 +64,7 @@ export const UsageNotificationEmail = ({
     ? Math.round(Math.max(Math.min(usagePercentage, 100), 0))
     : 0;
 
-  const getHeaderColor = () => {
+  const getMeterColor = () => {
     switch (notificationType) {
       case "usage_50_percent":
         return PALETTE.info;
@@ -120,7 +120,6 @@ export const UsageNotificationEmail = ({
     <BaseLayout
       preview={`${getTitle()} for ${organizationName}`}
       title={getTitle()}
-      headerColor={getHeaderColor()}
       reason="You received this because you manage billing for this organization."
       manage={{ href: billingPageUrl, label: "Manage usage limits and notifications" }}
     >
@@ -137,7 +136,7 @@ export const UsageNotificationEmail = ({
           <>
             <Text style={paragraph}>
               Your overage spending has reached{" "}
-              <strong style={{ color: getHeaderColor() }}>
+              <strong>
                 ${currentSpendingDollars?.toFixed(2)}
               </strong>{" "}
               of your{" "}
@@ -163,7 +162,7 @@ export const UsageNotificationEmail = ({
           <>
             <Text style={paragraph}>
               Your <strong>{getResourceLabel()}</strong> usage has reached{" "}
-              <strong style={{ color: getHeaderColor() }}>
+              <strong>
                 {usagePercentage}%
               </strong>{" "}
               of your included quota.
@@ -182,7 +181,7 @@ export const UsageNotificationEmail = ({
                     <td
                       height={8}
                       width={`${filledPercent}%`}
-                      style={{ ...progressBar, width: `${filledPercent}%`, backgroundColor: getHeaderColor() }}
+                      style={{ ...progressBar, width: `${filledPercent}%`, backgroundColor: getMeterColor() }}
                     >
                       &nbsp;
                     </td>
@@ -230,18 +229,18 @@ export const UsageNotificationEmail = ({
 };
 
 const contentSection = {
-  padding: "32px 24px",
+  padding: "32px",
 };
 
 const greeting = {
-  fontSize: "16px",
+  fontSize: "15px",
   lineHeight: "1.6",
-  color: "#374151",
+  color: "#4b5563",
   margin: "0 0 16px",
 };
 
 const paragraph = {
-  fontSize: "14px",
+  fontSize: "15px",
   lineHeight: "1.6",
   color: "#4b5563",
   margin: "0 0 16px",
@@ -286,12 +285,12 @@ const progressBar = {
 };
 
 const warningText = {
-  fontSize: "14px",
-  lineHeight: "1.6",
-  color: PALETTE.failure,
+  fontSize: "13px",
+  lineHeight: "1.5",
+  color: "#991b1b",
   backgroundColor: "#fef2f2",
-  padding: "12px 16px",
-  borderRadius: "6px",
+  padding: "16px",
+  borderRadius: "8px",
   border: "1px solid #fecaca",
   margin: "16px 0",
 };
@@ -310,11 +309,11 @@ const buttonContainer = {
 const tipText = {
   fontSize: "13px",
   lineHeight: "1.6",
-  color: "#6b7280",
-  backgroundColor: "#f0fdf4",
-  padding: "12px 16px",
-  borderRadius: "6px",
-  border: "1px solid #bbf7d0",
+  color: "#047857",
+  backgroundColor: "#ecfdf5",
+  padding: "16px",
+  borderRadius: "8px",
+  border: "1px solid #a7f3d0",
   margin: "16px 0 0",
 };
 

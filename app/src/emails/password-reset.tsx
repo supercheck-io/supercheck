@@ -5,8 +5,7 @@ import {
   Text,
 } from "@react-email/components";
 import * as React from "react";
-import { PALETTE } from "./palette";
-import { BaseLayout, EmailButton } from "./base-layout";
+import { BaseLayout, Callout, EmailButton } from "./base-layout";
 
 interface PasswordResetEmailProps {
   resetUrl: string;
@@ -21,7 +20,6 @@ export const PasswordResetEmail = ({
     <BaseLayout
       preview="Use this link within 1 hour to choose a new password."
       title="Password Reset Request"
-      headerColor={PALETTE.neutral}
     >
       <Section style={contentSection}>
         {/* Main Content */}
@@ -53,16 +51,14 @@ export const PasswordResetEmail = ({
         <Hr style={hr} />
 
         {/* Security Notice */}
-        <Section style={warningBox}>
-          <Text style={warningTitle}>Security Notice</Text>
-          <Text style={warningText}>
-            This link will expire in <strong>1 hour</strong> for security reasons.
-          </Text>
-          <Text style={warningText}>
-            If you didn&apos;t request this reset, please ignore this email. Your
-            password will remain unchanged.
-          </Text>
-        </Section>
+        <Callout
+          tone="warning"
+          title="Security Notice"
+          lines={[
+            <>This link will expire in <strong>1 hour</strong> for security reasons.</>,
+            "If you didn't request this reset, please ignore this email. Your password will remain unchanged.",
+          ]}
+        />
       </Section>
     </BaseLayout>
   );
@@ -132,32 +128,6 @@ const link = {
 const hr = {
   borderColor: "#e5e7eb",
   margin: "32px 0",
-};
-
-// ============================================================================
-// WARNING BOX STYLES
-// ============================================================================
-
-const warningBox = {
-  backgroundColor: "#fef3c7",
-  borderLeft: "4px solid #f59e0b",
-  borderRadius: "8px",
-  padding: "20px 24px",
-  margin: "0",
-};
-
-const warningTitle = {
-  color: "#92400e",
-  fontSize: "14px",
-  fontWeight: "700" as const,
-  margin: "0 0 12px",
-};
-
-const warningText = {
-  color: "#78350f",
-  fontSize: "14px",
-  lineHeight: "1.6",
-  margin: "0 0 8px",
 };
 
 export default PasswordResetEmail;

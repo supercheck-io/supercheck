@@ -92,7 +92,7 @@ export class EmailTemplateService {
           `<tr><td style="padding:6px 12px;color:#6b7280"><b>${escapeHtml(f.title)}</b></td><td style="padding:6px 12px">${escapeHtml(f.value)}</td></tr>`,
       )
       .join('');
-    const html = `<!DOCTYPE html><html><body style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto"><div style="background:${PALETTE[params.type === 'recovery' ? 'success' : params.type]};color:#fff;padding:20px"><h2 style="margin:0">${escapeHtml(params.title)}</h2></div><div style="padding:20px"><p>${escapeHtml(params.message)}</p><table>${rows}</table><p style="color:#6b7280;font-size:12px">${escapeHtml(params.footer)}</p></div></body></html>`;
+    const html = `<!DOCTYPE html><html><body style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto"><div style="background:${PALETTE.neutral};color:#fff;padding:20px"><h2 style="margin:0">${escapeHtml(params.title)}</h2></div><div style="padding:20px"><p>${escapeHtml(params.message)}</p><table>${rows}</table><p style="color:#6b7280;font-size:12px">${escapeHtml(params.footer)}</p></div></body></html>`;
     const text = [
       params.title,
       '',
