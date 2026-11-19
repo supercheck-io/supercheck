@@ -99,7 +99,8 @@ for (const entry of readdirSync('./content/docs/api', { withFileTypes: true })) 
   if (!entry.isDirectory()) continue;
   const folderPath = `./content/docs/api/${entry.name}`;
   if (!pages[entry.name]) {
-    rmSync(folderPath, { recursive: true });
+    // Only folders this script owns (one per tag); a hand-written subfolder is left alone.
+    if (entry.name in folderMeta || entry.name === 'billing') rmSync(folderPath, { recursive: true });
     continue;
   }
   for (const file of readdirSync(folderPath)) {

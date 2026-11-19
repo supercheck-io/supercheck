@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { test } from 'node:test';
@@ -29,6 +29,13 @@ test('the installed OpenAPI generator preserves public operation folders without
       copyFileSync(join(docsRoot, 'scripts', script), join(root, 'scripts', script));
     }
     copyFileSync(join(docsRoot, 'openapi.json'), join(root, 'openapi.json'));
+    // Pages and a folder that left the spec, and a hand-written folder, which must survive.
+    mkdirSync(join(root, 'content/docs/api/alerts'), { recursive: true });
+    writeFileSync(join(root, 'content/docs/api/alerts/stale.mdx'), 'stale');
+    mkdirSync(join(root, 'content/docs/api/billing'), { recursive: true });
+    writeFileSync(join(root, 'content/docs/api/billing/old.mdx'), 'stale');
+    mkdirSync(join(root, 'content/docs/api/guides'), { recursive: true });
+    writeFileSync(join(root, 'content/docs/api/guides/keep.mdx'), 'keep');
     const result = spawnSync(process.execPath, [
       join(docsRoot, 'node_modules/tsx/dist/cli.mjs'), join(root, 'scripts/generate-docs.mts'),
     ], { cwd: root, encoding: 'utf8' });
@@ -38,7 +45,12 @@ test('the installed OpenAPI generator preserves public operation folders without
       assert.match(readFileSync(join(root, 'content/docs/api', path), 'utf8'), /<OpenAPIPage/);
     }
     assert.equal(readdirSync(join(root, 'content/docs/api')).includes('billing'), false);
-    assert.ok(JSON.parse(readFileSync(join(root, 'content/docs/api/monitors/meta.json'), 'utf8')).pages.includes('listMonitors'));
+    const monitorPages = JSON.parse(readFileSync(join(root, 'content/docs/api/monitors/meta.json'), 'utf8')).pages;
+    assert.equal(monitorPages[0], 'listMonitors');
+    assert.ok(monitorPages.indexOf('createMonitor') < monitorPages.indexOf('deleteMonitor'));
+    assert.equal(existsSync(join(root, 'content/docs/api/alerts/stale.mdx')), false);
+    assert.equal(existsSync(join(root, 'content/docs/api/billing')), false);
+    assert.equal(readFileSync(join(root, 'content/docs/api/guides/keep.mdx'), 'utf8'), 'keep');
   } finally {
     rmSync(fixture, { recursive: true, force: true });
   }

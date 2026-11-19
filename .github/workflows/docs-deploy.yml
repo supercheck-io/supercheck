@@ -60,6 +60,8 @@ jobs:
       - name: Check the generated API pages are current
         working-directory: docs
         run: |
+          # generate-docs also rewrites the published OpenAPI copies; fail first if they were not synced.
+          npm run check:openapi
           npm run generate-docs
           # Also catches pages the generator newly created (untracked), which git diff would not.
           if [ -n "$(git status --porcelain -- content/docs/api)" ]; then
