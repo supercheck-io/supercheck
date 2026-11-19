@@ -10,7 +10,7 @@ import {
   sourceRecoveredSince,
   startAutomaticIncidentTriage,
 } from "@/sre/lib/background-alert-triage";
-import { STALE_RUN_AFTER_MS, failStaleSreInvestigationRunsForIncident } from "@/sre/lib/stale-run-recovery";
+import { STALE_RUN_AFTER_MS, failStaleSreInvestigationRunsForIncident, failStaleSreRuns } from "@/sre/lib/stale-run-recovery";
 import { db } from "@/utils/db";
 
 const logger = createLogger({ module: "sre-incident-sweep" }) as {
@@ -35,7 +35,7 @@ type SourceType = "monitor" | "job";
 
 /**
  * Safety net for two signals that can be lost: the worker's recovery enqueue (Redis down for all retries)
- * and a detached AI triage run killed by an app restart. Runs on the incident re-notify tick; a
+ * and a detached AI triage or investigation run killed by an app restart (such runs are failed as stale_run). Runs on the incident re-notify tick; a
  * transaction advisory lock makes a second replica skip the tick. The lock holds one pooled connection, so the
  * tick stops at a wall-clock budget well under the 120 s job lock instead of running unbounded.
  */
@@ -48,6 +48,11 @@ export async function sweepSreIncidents(now = new Date()) {
     if (!lock?.locked) return { skipped: "locked" as const };
     // One branch failing must not starve the other.
     // Two-key form: a separate lock space from the single-key organization locks.
+    // First, so re-triage below sees dead runs as failed and manual runs do not wait for someone to open the incident.
+    const failedStale = await failStaleSreRuns().catch((error) => {
+      logger.error({ error }, "Stale run sweep failed");
+      return 0;
+    });
     const reconciled = await reconcileRecoveries(now, Date.now() + TICK_BUDGET_MS / 2).catch((error) => {
       logger.error({ error }, "Incident recovery reconcile failed");
       return 0;
@@ -56,7 +61,7 @@ export async function sweepSreIncidents(now = new Date()) {
       logger.error({ error }, "Incident re-triage failed");
       return 0;
     });
-    return { reconciled, retriaged };
+    return { failedStale, reconciled, retriaged };
   });
 }
 

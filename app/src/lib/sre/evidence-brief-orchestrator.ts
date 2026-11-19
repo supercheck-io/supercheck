@@ -443,6 +443,8 @@ export async function runSreEvidenceBriefGeneration(input: {
         .where(
           and(
             eq(sreInvestigationRuns.id, run.id),
+            // A run the stale sweep already failed stays failed.
+            eq(sreInvestigationRuns.status, "running"),
             eq(sreInvestigationRuns.organizationId, input.organizationId),
             eq(sreInvestigationRuns.projectId, input.projectId),
           ),
