@@ -75,7 +75,7 @@ The current form component does not expose dedicated `signup-*` test ids for the
 
 The invite flow is asserted primarily by visible copy, not a dedicated `data-testid`.
 
-- Invite banner contains `Invitation for`
+- Invite banner (`data-testid="invite-banner"`) lists organization, role and email
 - Invited email appears in the banner
 - Heading contains `Join <organization>`
 

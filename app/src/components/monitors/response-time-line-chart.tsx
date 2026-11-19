@@ -292,11 +292,12 @@ export function ResponseTimeBarChart({ data, showFirstToken = false, title = "Re
   const yAxisDomain = [yAxisMin, maxValue + padding];
 
   return (
-    <Card className="h-full flex flex-col shadow-sm min-h-[335px] lg:min-h-[180px]">
-      <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2 pb-3">
+    <Card className="h-full flex flex-col shadow-sm min-h-[335px] lg:min-h-0">
+      <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2 p-4 pb-2">
         <div className="min-w-0">
-          <CardTitle className="text-lg font-semibold">{title}</CardTitle>
-          <CardDescription className="text-sm">
+          <CardTitle className="text-base font-semibold">{title}</CardTitle>
+          {/* Short windows drop the caption so the line keeps its height, unless it also explains the dashed line. */}
+          <CardDescription className={`text-sm ${showFirstToken ? "" : "[@media(min-width:1024px)_and_(max-height:760px)]:hidden"}`}>
             Recent response times in milliseconds ({data.length} data points)
             {showFirstToken ? ". Solid: total time. Dashed: first token." : ""}
           </CardDescription>

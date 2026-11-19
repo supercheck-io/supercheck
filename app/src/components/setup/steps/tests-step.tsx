@@ -16,7 +16,7 @@ interface Suggestion {
   priority?: "low" | "medium" | "high";
 }
 
-type Failure = { kind: "locked" | "unavailable" | "error"; message: string };
+type Failure = { kind: "locked" | "unavailable" | "error" | "info"; message: string };
 
 const MAX_OPTIONS = 10;
 const PRIORITY_TONE: Record<string, TableBadgeTone> = { high: "danger", medium: "warning", low: "neutral" };
@@ -77,7 +77,10 @@ export function TestsStep({ response, features, permissions, draft, patchDraft, 
     setFailure(null);
     try {
       const res = await postJson<{ requirements?: Suggestion[]; updatedAt?: string; code?: string; retryAt?: string }>(`/api/projects/${response.projectId}/setup/suggest-requirements`, { pages: suggestPages.map(({ path, title }) => ({ path, title })).slice(0, 50) });
-      if (res.ok && res.data.requirements) {
+      if (res.ok && res.data.code === "no_new_suggestions") {
+        const when = res.data.retryAt ? new Date(res.data.retryAt).toLocaleString() : "tomorrow";
+        setFailure({ kind: "info", message: `Your requirements already cover the pages we scanned, so there is nothing new to suggest. No credit was used. Suggestions can run again ${when}.` });
+      } else if (res.ok && res.data.requirements) {
         // One bounded set for display and for the draft: ticked ones stay, then the newest run, then older unticked ones.
         const { ticked: nowTicked, options: nowOptions } = latest.current;
         const tickedTitles = new Set(nowTicked.map((r) => r.title));
@@ -160,7 +163,7 @@ export function TestsStep({ response, features, permissions, draft, patchDraft, 
       ) : (
         <div className="space-y-3">
           {!hasScan ? <Alert variant="info">Scan your app first: scan the URL you entered in the first step to get suggestions. You can also add requirements later from Requirements.</Alert> : null}
-          {failure ? <Alert variant="error">{failure.message}</Alert> : null}
+          {failure ? <Alert variant={failure.kind === "info" ? "info" : "error"}>{failure.message}</Alert> : null}
           {maxTicked ? <p className="text-xs text-muted-foreground">You have ticked {MAX_OPTIONS} requirements. Untick some to ask for more suggestions.</p> : null}
           <Button type="button" variant="outline" disabled={readOnly || loading || !hasScan || maxTicked} onClick={() => void suggest()}>
             <Sparkles aria-hidden="true" />

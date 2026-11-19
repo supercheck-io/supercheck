@@ -1,0 +1,206 @@
+name: Self-hosted Compose E2E
+
+# Boots deploy/docker/docker-compose.yml (SELF_HOSTED=true) on the runner, waits for health,
+# runs the Playwright suite against it, and tears the stack down. No server and no secrets:
+# the stack gets generated secrets and the suite signs up its own throwaway accounts
+# (the same seed the PR checkpoint run uses). This is the only live test of self-hosted mode.
+#
+# - Pull requests: builds the app image from the PR and runs the @critical subset.
+# - Release (called from build-multiarch.yml): pulls the tag's published app image and runs
+#   the full suite.
+# - Manual: leave image_tag empty to build the checked-out ref, or name a published tag.
+#
+# Not covered: code execution. Runs need the K3s + gVisor worker, which a runner does not
+# provide, so the worker is not started and @execution tests are excluded.
+on:
+  pull_request:
+    paths:
+      - "app/**"
+      - "worker/**"
+      - "deploy/docker/**"
+      - ".github/workflows/compose-e2e.yml"
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "Published app image tag to test (empty builds the checked-out ref)"
+        required: false
+        type: string
+      full:
+        description: "Run the full suite instead of the @critical subset"
+        required: false
+        type: boolean
+        default: false
+  workflow_call:
+    inputs:
+      release:
+        description: "Release gate: image_tag and image_digest are mandatory"
+        required: false
+        type: boolean
+        default: false
+      image_tag:
+        required: true
+        type: string
+      image_digest:
+        description: "Digest of the image to test (sha256:...)"
+        required: false
+        type: string
+      full:
+        required: false
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: compose-e2e-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  NODE_VERSION: "24"
+  APP_IMAGE: ghcr.io/supercheck-io/supercheck/app
+
+jobs:
+  compose-e2e:
+    name: Compose E2E
+    # Dependabot runs cannot read the registry cache and add no app code worth the runner time.
+    if: github.actor != 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    env:
+      IMAGE_TAG: ${{ inputs.image_tag }}
+      IMAGE_DIGEST: ${{ inputs.image_digest }}
+      RELEASE: ${{ inputs.release }}
+      FULL: ${{ inputs.full }}
+      # Compose interpolates these from the environment.
+      SMTP_BLOCKED_RECIPIENT_DOMAINS: example.com
+
+    steps:
+      # The release gate must never fall back to building the checked-out ref or to a floating
+      # default: it tests exactly the digest that will be tagged.
+      - name: Validate image reference
+        run: |
+          if [ "$RELEASE" = "true" ]; then
+            if [ -z "$IMAGE_TAG" ] || ! [[ "$IMAGE_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+              echo "::error::Release gate needs image_tag and a sha256 image_digest"
+              exit 1
+            fi
+          elif [ -n "$IMAGE_DIGEST" ] && [ -z "$IMAGE_TAG" ]; then
+            echo "::error::image_digest needs image_tag"
+            exit 1
+          fi
+
+      - name: Checkout code
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
+          cache-dependency-path: app/e2e/package-lock.json
+
+      - name: Install E2E dependencies
+        working-directory: ./app/e2e
+        run: npm ci --prefer-offline --no-audit
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ hashFiles('app/e2e/package-lock.json') }}
+          restore-keys: playwright-
+
+      - name: Install Chromium
+        working-directory: ./app/e2e
+        run: npx playwright install --with-deps chromium
+
+      - name: Set up Docker Buildx
+        if: ${{ env.IMAGE_TAG == '' }}
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+
+      # Same Dockerfile and cache as the release build. The cache is read-only here (no push,
+      # no login), so a pull request can never write to the registry.
+      - name: Build app image from this ref
+        if: ${{ env.IMAGE_TAG == '' }}
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: ./app
+          file: ./app/Dockerfile
+          platforms: linux/amd64
+          load: true
+          tags: ${{ env.APP_IMAGE }}:ci
+          build-args: |
+            SUPERCHECK_BUILD_SHA=${{ github.sha }}
+          cache-from: type=registry,ref=${{ env.APP_IMAGE }}:buildcache
+
+      - name: Start the Compose stack
+        working-directory: ./deploy/docker
+        run: |
+          # Only the app image is published for this check; PRs use the one built above.
+          # tag@digest pulls by digest; the tag need not exist yet.
+          export SUPERCHECK_VERSION="${IMAGE_TAG:-ci}${IMAGE_DIGEST:+@$IMAGE_DIGEST}"
+          ./init-secrets.sh
+          # App plus Postgres, Redis and RustFS. The worker needs K3s, which a runner lacks.
+          docker compose up -d --wait --wait-timeout 600 app
+          curl -fsS http://127.0.0.1:3000/api/health
+
+      # Signs up the throwaway accounts through the app, then adds the history only a worker
+      # would create (tests/screenshots/). The seed refuses any non-local target.
+      - name: Seed throwaway accounts
+        id: seed
+        working-directory: ./app/e2e
+        run: |
+          npx playwright test --project=screenshots-setup
+          docker compose -f ../../deploy/docker/docker-compose.yml exec -T postgres \
+            sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=1 -q' \
+            < tests/screenshots/seed-history.sql
+        env:
+          CI: true
+          E2E_SCREENSHOTS: "1"
+          E2E_BASE_URL: http://localhost:3000
+          SUPERCHECK_VERSION: ${{ format('{0}{1}', inputs.image_tag || 'ci', inputs.image_digest && format('@{0}', inputs.image_digest) || '') }}
+
+      - name: Run E2E suite
+        id: e2e
+        working-directory: ./app/e2e
+        run: |
+          # No worker (@execution) and no AI provider (@aisre) in this stack.
+          args=(--project=chromium --grep-invert '@execution|@aisre')
+          if [ "$FULL" != "true" ]; then args+=(--grep @critical); fi
+          npx playwright test "${args[@]}"
+        env:
+          CI: true
+          E2E_CHECKPOINTS: "1"
+          # A skipped @critical or @high spec fails the run. Tests that need a worker or an AI
+          # provider are excluded by tag above, not skipped.
+          E2E_FAIL_ON_PRIORITY_SKIPS: true
+          # Asserts /api/health reports this commit (tests/core/build-revision.spec.ts); skipped
+          # when a manual run tests a published tag built from another commit.
+          E2E_EXPECTED_BUILD_SHA: ${{ (inputs.release || github.event_name != 'workflow_dispatch' || inputs.image_tag == '') && github.sha || '' }}
+          E2E_BASE_URL: http://localhost:3000
+
+      - name: Show app log on failure
+        if: failure()
+        working-directory: ./deploy/docker
+        run: docker compose logs --tail 200 app
+        env:
+          SUPERCHECK_VERSION: ${{ format('{0}{1}', inputs.image_tag || 'ci', inputs.image_digest && format('@{0}', inputs.image_digest) || '') }}
+
+      - name: Upload Playwright report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: compose-e2e-report
+          path: app/e2e/playwright-report/
+          retention-days: 7
+          if-no-files-found: ignore
+
+      - name: Tear down the Compose stack
+        if: always()
+        working-directory: ./deploy/docker
+        run: docker compose down -v --remove-orphans
+        env:
+          SUPERCHECK_VERSION: ${{ format('{0}{1}', inputs.image_tag || 'ci', inputs.image_digest && format('@{0}', inputs.image_digest) || '') }}
