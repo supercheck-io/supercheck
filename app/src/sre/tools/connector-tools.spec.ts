@@ -770,7 +770,7 @@ describe("Copilot connector service scope", () => {
     expect(db.select).not.toHaveBeenCalled();
     expect(values).toHaveBeenCalledWith(expect.objectContaining({
       connectorId: null, investigationRunId: "run-1", status: "error", toolName: "agent.connector.search.scope_rejected",
-      errorMessage: "Service does not match the scoped incident",
+      errorMessage: expect.stringContaining("Service does not match the scoped incident"),
     }));
   });
 
@@ -779,15 +779,28 @@ describe("Copilot connector service scope", () => {
     db.insert.mockReturnValue({ values });
     db.query.sreIncidents.findFirst.mockResolvedValue({ primaryServiceId: "other-service" });
     await expect(
-      searchIncidentLiveConnectorEvidence({ ...scope, incidentId: "incident" }, search),
+      searchIncidentLiveConnectorEvidence({ ...scope, incidentId: "incident", investigationRunId: "run-1" }, search),
     ).rejects.toThrow("Service does not match the scoped incident");
     expect(values).toHaveBeenCalledTimes(1);
 
     values.mockReset().mockResolvedValue(undefined);
     await expect(
-      searchIncidentLiveConnectorEvidence({ ...scope, serviceId: undefined, incidentId: null }, { ...search, serviceId: undefined }),
+      searchIncidentLiveConnectorEvidence(
+        { ...scope, serviceId: undefined, incidentId: null, investigationRunId: "run-1" },
+        { ...search, serviceId: undefined },
+      ),
     ).rejects.toThrow("Select a service from listIncidentConnectors");
     expect(values).toHaveBeenCalledWith(expect.objectContaining({ toolName: "agent.connector.search.scope_rejected" }));
+  });
+
+  it("writes no trace row for a scope rejection in chat, which has no run", async () => {
+    const values = jest.fn().mockResolvedValue(undefined);
+    db.insert.mockReturnValue({ values });
+    db.query.sreIncidents.findFirst.mockResolvedValue({ primaryServiceId: "other-service" });
+    await expect(
+      searchIncidentLiveConnectorEvidence({ ...scope, incidentId: "incident" }, search),
+    ).rejects.toThrow("Service does not match the scoped incident");
+    expect(values).not.toHaveBeenCalled();
   });
 
   it.each(["connector_credential_expired", "private-secret-error"])("reports safe Private Agent failure diagnostics (%s)", async (errorCode) => {

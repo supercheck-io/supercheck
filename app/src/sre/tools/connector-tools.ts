@@ -573,10 +573,12 @@ export async function searchIncidentLiveConnectorEvidence(
 ) {
   const startedAt = Date.now();
   scope = { ...scope, serviceId: input.serviceId ?? scope.serviceId };
-  // A scope rejection happens before any connector is known; still leave a trace row. Database errors are not scope rejections and stay out of the trace.
-  const traceScopeRejection = (error: unknown) =>
-    recordToolCallError({
-      investigationRunId: scope.investigationRunId ?? null,
+  // A scope rejection happens before any connector is known; still leave a trace row on the run. Database errors are not scope rejections and stay out of the trace.
+  // Chat has no run: a row with no run and no connector would belong to nothing, so none is written.
+  const traceScopeRejection = async (error: unknown) => {
+    if (!scope.investigationRunId) return;
+    await recordToolCallError({
+      investigationRunId: scope.investigationRunId,
       connectorId: null,
       connectorType: "unknown",
       toolName: "agent.connector.search.scope_rejected",
@@ -588,6 +590,7 @@ export async function searchIncidentLiveConnectorEvidence(
           : "Connector scope could not be loaded",
       durationMs: Date.now() - startedAt,
     });
+  };
   let loaded: Awaited<ReturnType<typeof loadIncidentConnectors>>;
   try {
     loaded = await loadIncidentConnectors(scope);
