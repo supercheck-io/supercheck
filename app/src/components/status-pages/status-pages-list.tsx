@@ -466,30 +466,34 @@ export default function StatusPagesList() {
                           <Tally4 className="h-5 w-5 text-success" />
                         </div>
                         <div className="min-w-0 flex-1">
-                          <h3 className="font-semibold text-base truncate group-hover:text-primary transition-colors">
+                          {/* Two lines before clipping: long names were cut to a few characters next to the badge. */}
+                          <h3 className="font-semibold text-base leading-snug line-clamp-2 break-words group-hover:text-primary transition-colors" title={page.name}>
                             {page.name}
                           </h3>
-                          <p className="text-sm text-muted-foreground truncate mt-0.5">
+                          <div className="mt-1.5">
+                            <Badge
+                              variant={statusConfig.variant}
+                              className={`${statusConfig.className} text-xs px-2 py-0.5`}
+                            >
+                              <StatusIcon className="h-3 w-3 mr-1" />
+                              {statusConfig.label}
+                            </Badge>
+                          </div>
+                          <p className="text-sm text-muted-foreground truncate mt-1.5" title={page.headline || page.pageDescription || undefined}>
                             {page.headline ||
                               page.pageDescription ||
                               "No description"}
                           </p>
                         </div>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <Badge
-                          variant={statusConfig.variant}
-                          className={`${statusConfig.className} text-xs px-2 py-0.5`}
-                        >
-                          <StatusIcon className="h-3 w-3 mr-1" />
-                          {statusConfig.label}
-                        </Badge>
+                      <div className="flex shrink-0 items-center gap-2">
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
                             <Button
                               variant="ghost"
                               size="sm"
                               className="h-8 w-8 p-0"
+                              aria-label={`Actions for ${page.name}`}
                             >
                               <MoreVertical className="h-4 w-4" />
                             </Button>

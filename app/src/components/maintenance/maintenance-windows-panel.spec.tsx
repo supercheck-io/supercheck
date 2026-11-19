@@ -23,6 +23,8 @@ jest.mock("@/hooks/use-maintenance-windows", () => ({
 jest.mock("./maintenance-window-dialog", () => ({
   MaintenanceWindowDialog: ({ defaults }: { defaults?: { monitorId?: string; serviceId?: string } }) => <div role="dialog" data-defaults={JSON.stringify(defaults ?? {})} />,
 }));
+let mockMobile = false;
+jest.mock("@/hooks/use-mobile", () => ({ useIsMobile: () => mockMobile }));
 jest.mock("sonner", () => ({ toast: { success: jest.fn(), error: jest.fn() } }));
 
 const win = (extra: Record<string, unknown>) => ({
@@ -40,6 +42,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   mockRole = "project_editor";
   mockSearch = "";
+  mockMobile = false;
   mockAction.mockResolvedValue(undefined);
 });
 
@@ -153,5 +156,36 @@ describe("monitor and service actions", () => {
     mockWindows = { data: [] };
     const { container } = render(<><MonitorMaintenanceBar monitorId="m-1" /><ServiceMaintenanceAction serviceId="s-1" /></>);
     expect(container).toBeEmptyDOMElement();
+  });
+});
+
+describe("maintenance table layout", () => {
+  it("shows each window in its own zone with a duration, and offers Edit", async () => {
+    mockWindows = { data: [win({ state: "scheduled", timezone: "America/New_York", occurrenceStartsAt: "2026-11-21T03:00:00Z", occurrenceEndsAt: "2026-11-21T07:00:00Z", durationMinutes: 240 })] };
+    render(<MaintenanceWindowsPanel />);
+    const row = screen.getByTestId("maintenance-row").closest("tr")!;
+    expect(row).toHaveTextContent(/20.*2026.*10:00.*21.*2026.*2:00/);
+    expect(row).toHaveTextContent("4 h, America/New_York");
+    await openMenu("DB upgrade");
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Edit" }));
+    expect(await screen.findByRole("dialog")).toBeInTheDocument();
+  });
+
+  it("stacks each window at phone width instead of a wide table, with its actions", () => {
+    mockMobile = true;
+    mockWindows = { data: [win({})] };
+    render(<MaintenanceWindowsPanel />);
+    expect(screen.queryByRole("table")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Actions for DB upgrade" })).toBeInTheDocument();
+    expect(screen.getByTestId("maintenance-row")).toHaveTextContent(/In progress.*2026.*\(1 h 30 min\).*One-off, 1 monitor, UTC/);
+  });
+
+  it("bounds the phone list and reveals more on request", () => {
+    mockMobile = true;
+    mockWindows = { data: Array.from({ length: 25 }, (_, i) => win({ id: `w-${i}`, title: `Window ${i}` })) };
+    render(<MaintenanceWindowsPanel />);
+    expect(screen.getAllByTestId("maintenance-row")).toHaveLength(20);
+    fireEvent.click(screen.getByRole("button", { name: "Show more (5 left)" }));
+    expect(screen.getAllByTestId("maintenance-row")).toHaveLength(25);
   });
 });
