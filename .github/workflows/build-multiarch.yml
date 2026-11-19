@@ -362,6 +362,10 @@ jobs:
   promote-and-sign:
     name: Tag and sign images
     needs: [build-and-push, compose-e2e]
+    # One promotion at a time: app and worker `latest` can never come from different runs.
+    concurrency:
+      group: release-promote-${{ github.repository }}
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -439,8 +443,36 @@ jobs:
           WORKER_DIGEST: ${{ needs.build-and-push.outputs.worker_digest }}
           APP_TAGS: ${{ steps.app-meta.outputs.tags }}
           WORKER_TAGS: ${{ steps.worker-meta.outputs.tags }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -Eeuo pipefail
+          # A release only moves `latest` / `major.minor` while it is the highest stable tag
+          # (overall / within that minor), so an older, slower run never rolls them back.
+          stable=""
+          if [[ "$GITHUB_REF" == refs/tags/v* && "$GITHUB_REF_NAME" != *-* ]]; then
+            stable="$(gh api --paginate "repos/$GITHUB_REPOSITORY/git/matching-refs/tags/v" --jq '.[].ref' \
+              | sed 's#^refs/tags/##' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V)"
+          fi
+          filter_floating() { # tags
+            local tag name top
+            while IFS= read -r tag; do
+              [ -n "$tag" ] || continue
+              name="${tag##*:}"
+              if [ -n "$stable" ]; then
+                if [ "$name" = latest ]; then
+                  top="$(tail -1 <<<"$stable")"
+                elif [[ "$name" =~ ^[0-9]+\.[0-9]+$ ]]; then
+                  top="$(grep -E "^v${name//./\\.}\\." <<<"$stable" | tail -1)"
+                else
+                  top="$GITHUB_REF_NAME"
+                fi
+                [ "$top" = "$GITHUB_REF_NAME" ] || { echo "Not moving $name: $top is newer" >&2; continue; }
+              fi
+              echo "$tag"
+            done <<<"$1"
+          }
+          APP_TAGS="$(filter_floating "$APP_TAGS")"
+          WORKER_TAGS="$(filter_floating "$WORKER_TAGS")"
           promote() { # image digest tags
             local image="$1" digest="$2" tags="$3" args=() tag
             while IFS= read -r tag; do [ -n "$tag" ] && args+=(-t "$tag"); done <<<"$tags"

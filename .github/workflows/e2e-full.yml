@@ -102,7 +102,7 @@ jobs:
             url="$CUSTOM_URL"
             [ -n "$url" ] || { echo "::error::target=custom needs base_url"; exit 1; }
             # Parse (rejects newlines and junk), then refuse the staging host in any spelling.
-            host_of() { node -e 'const u=new URL(process.argv[1]); if(!/^https?:$/.test(u.protocol)||/[\r\n]/.test(process.argv[1])) process.exit(1); process.stdout.write(u.hostname.toLowerCase())' "$1"; }
+            host_of() { node -e 'const u=new URL(process.argv[1]); if(!/^https?:$/.test(u.protocol)||/[\r\n]/.test(process.argv[1])) process.exit(1); process.stdout.write(u.hostname.toLowerCase().replace(/\.$/,''))' "$1"; }
             custom_host="$(host_of "$url")" || { echo "::error::base_url is not a valid http(s) URL"; exit 1; }
             if [ -n "$STAGING_URL" ] && [ "$custom_host" = "$(host_of "$STAGING_URL")" ]; then
               echo "::error::Use target=staging for the staging deployment"
