@@ -110,19 +110,32 @@ export default async function MainLayout({
     // Only paying org admins can see or change the cap, so only they poll it.
     // One role lookup serves the spending-cap banner and the pending-deletion banner.
     const needsSpendingCapRole = !initialIsSelfHosted && initialSubscriptionStatus.isActive;
-    const role = needsSpendingCapRole || orgPendingDeletion ? await getUserOrgRole(user.id, org.id).catch(() => null) : null;
+    // The role, trial and project lookups do not depend on each other, so they run together.
+    const rolePromise = needsSpendingCapRole || orgPendingDeletion
+      ? getUserOrgRole(user.id, org.id).catch(() => null)
+      : Promise.resolve(null);
+    const trialPromise = !initialIsSelfHosted && !initialSubscriptionStatus.isActive
+      ? getTrialSummary(org.id).catch(() => undefined)
+      : Promise.resolve(undefined);
+    // getCurrentProjectContext can write (default project membership), so it only runs once a
+    // signed-in user with an organization is known.
+    const projectsPromise = getSelectableProjects(user.id);
+    const currentProjectPromise = getCurrentProjectContext();
+    // Settled inside the try below; this only avoids an unhandled rejection while role/trial resolve.
+    // (getCurrentProjectContext swallows its own errors, so it needs no such guard.)
+    projectsPromise.catch(() => undefined);
+    const [role, trial] = await Promise.all([rolePromise, trialPromise]);
     isOrgOwner = role === Role.ORG_OWNER;
     if (needsSpendingCapRole) {
       showSpendingCap = role === Role.ORG_ADMIN || role === Role.ORG_OWNER;
     }
     if (!initialIsSelfHosted && !initialSubscriptionStatus.isActive) {
-      const trial = await getTrialSummary(org.id).catch(() => undefined);
       initialSubscriptionStatus = { ...initialSubscriptionStatus, trial: trial ?? null };
     }
     try {
       const [projectsResult, currentProjectResult] = await Promise.all([
-        getSelectableProjects(user.id),
-        getCurrentProjectContext(),
+        projectsPromise,
+        currentProjectPromise,
       ]);
 
       initialProjects = projectsResult.map(p => ({
