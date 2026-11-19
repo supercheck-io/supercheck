@@ -204,6 +204,9 @@ describe("getInvestigationConclusion raw ids", () => {
     expect(getInvestigationConclusion(null, "Errors stopped after rollback (deployment 01a1f039-9ef8-71d7-8e65-0823c827c42d exhausted the connection pool).")).toBe(
       "Errors stopped after rollback (deployment exhausted the connection pool).",
     );
+    expect(getInvestigationConclusion(null, "Reviewed (01a1f039-9ef8-71d7-8e65-0823c827c42d caused it).")).toBe("Reviewed (caused it).");
+    const link = "See [trace](https://tempo.example.test/trace/01a1f039-9ef8-71d7-8e65-0823c827c42d).";
+    expect(getInvestigationConclusion(null, link)).toBe(link);
   });
 });
 

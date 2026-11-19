@@ -105,7 +105,7 @@ type CitationContext = {
 };
 
 function isCitable(id: string, context: CitationContext) {
-  return id.toLowerCase().startsWith("connector_") || context.byId.has(id);
+  return id.toLowerCase().startsWith("connector_") || context.byId.has(id.toLowerCase());
 }
 
 // Code spans that are not a lone id, and markdown links, are left untouched so their text and hrefs stay intact.
@@ -122,10 +122,13 @@ function markCitations(text: string, context: CitationContext) {
   });
   return shielded
     .replace(CITE_PHRASE, (match, inParens: string | undefined, plain: string | undefined) => {
-      const ids = ((inParens ?? plain ?? "").match(new RegExp(CITE_ID, "gi")) ?? []).filter((id) => isCitable(id, context));
-      return ids.length ? `${inParens ? " " : ""}[[cite:${ids.join(",")}]]` : match;
+      const ids = (inParens ?? plain ?? "").match(new RegExp(CITE_ID, "gi")) ?? [];
+      // A list with any uncited id stays as written; the standalone pass still marks its citable ids.
+      return ids.length && ids.every((id) => isCitable(id, context))
+        ? `${inParens ? " " : ""}[[cite:${ids.map((id) => id.toLowerCase()).join(",")}]]`
+        : match;
     })
-    .replace(CITE_ALONE, (match, id: string) => (isCitable(id, context) ? `[[cite:${id}]]` : match))
+    .replace(CITE_ALONE, (match, id: string) => (isCitable(id, context) ? `[[cite:${id.toLowerCase()}]]` : match))
     .replace(/\u0000(\d+)\u0000/g, (_match, index: string) => kept[Number(index)] ?? "");
 }
 
@@ -677,7 +680,7 @@ export function SreMessageContent({
   citations?: SreChatCitation[];
 }) {
   const cite: CitationContext | undefined = citations
-    ? { byId: new Map(citations.map((item) => [item.id, item])), order: [] }
+    ? { byId: new Map(citations.map((item) => [item.id.toLowerCase(), item])), order: [] }
     : undefined;
   const lines = content.replace(/\r\n/g, "\n").split("\n");
 

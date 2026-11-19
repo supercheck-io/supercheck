@@ -16,13 +16,15 @@ export function inconclusiveReason(
   const run = detail.latestInvestigation;
   if (!run || run.status === "running" || (run.status === "completed" && run.structured?.outcome !== "inconclusive")) return null;
   const canUpdate = detail.permissions.canUpdate;
-  if (!detail.incident.primaryServiceId) {
+  // Current config only explains the gap when the stored run shows no connector search got through.
+  const searchedConnectors = run.steps.some((step) => /connector/i.test(step.tool) && step.status !== "error");
+  if (!searchedConnectors && !detail.incident.primaryServiceId) {
     return {
       missing: "No service is linked, so no connector could be searched.",
       fix: canUpdate ? { label: "Link a service", href: serviceMappingHref } : null,
     };
   }
-  if (!detail.capabilities.hasValidConnector) {
+  if (!searchedConnectors && !detail.capabilities.hasValidConnector) {
     return {
       missing: "No connector is working, so only Supercheck's own checks were read.",
       fix: canUpdate ? { label: "Add a connector", href: "/org-admin?tab=integrations" } : null,

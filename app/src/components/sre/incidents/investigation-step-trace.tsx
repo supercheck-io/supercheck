@@ -77,6 +77,13 @@ function StepRow({ step }: { step: SreInvestigationStep }) {
                 <dd className="break-all font-mono">{value}</dd>
               </div>
             ))}
+            {/* Values may hold ", key=" themselves, so the stored text is shown as written too. */}
+            {step.args && (
+              <div className="contents">
+                <dt className="text-muted-foreground">As stored</dt>
+                <dd className="break-all font-mono text-muted-foreground">{step.args}</dd>
+              </div>
+            )}
             {step.error && (
               <div className="contents">
                 <dt className="text-muted-foreground">Error</dt>

@@ -246,7 +246,11 @@ function messageCitations(message: { metadata?: unknown; parts?: unknown; conten
 function AssistantTextPart() {
   const part = useMessagePartText();
   const message = useAuiState((state) => state.message);
-  const citations = useMemo(() => messageCitations(message, part.text), [message, part.text]);
+  // User text is never rewritten into citations.
+  const citations = useMemo(
+    () => (message.role === "assistant" ? messageCitations(message, part.text) : undefined),
+    [message, part.text],
+  );
   return <SreMessageContent content={part.text} isStreaming={part.status.type === "running"} citations={citations} />;
 }
 

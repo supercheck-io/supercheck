@@ -67,13 +67,15 @@ export function stripReportBoilerplate(text: string) {
 }
 
 const RAW_UUID = /\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi;
-const ID_ASIDE = /\s*\(([^()]*\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b[^()]*)\)/gi;
+// The lookbehind skips Markdown link and image destinations: "](...)".
+const ID_ASIDE = /\s*(?<!\])\(([^()]*\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b[^()]*)\)/gi;
+// Asides that are only a label for an id, such as "(for example, <uuid>)" or "(id: <uuid>)".
+const ID_LABEL_ONLY = /^\s*(?:(?:for example|e\.g\.|eg|id|ids|ref|see|monitor|run|evidence)\s*[,:]?\s*)?(?:[0-9a-f-]{36}[\s,;]*)+$/i;
 
-/** Drops an aside that only labels a raw id ("(for example, <uuid>)"); a longer aside keeps its words and loses only the id. */
+/** Drops an aside that only labels a raw id; any other aside keeps its words and loses only the id. */
 function dropRawIds(text: string) {
   return text.replace(ID_ASIDE, (match, inner: string) => {
-    const words = inner.replace(RAW_UUID, " ").replace(/[^\p{L}\p{N}\s]/gu, " ").trim().split(/\s+/).filter(Boolean);
-    if (words.length <= 3) return "";
+    if (ID_LABEL_ONLY.test(inner)) return "";
     return match.replace(RAW_UUID, "").replace(/\(\s+/, "(").replace(/\s+([,.;:)])/g, "$1").replace(/\s{2,}/g, " ");
   });
 }

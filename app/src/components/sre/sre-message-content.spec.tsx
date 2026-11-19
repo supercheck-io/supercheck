@@ -261,6 +261,17 @@ describe("SreMessageContent citations", () => {
     expect(await screen.findByRole("dialog")).toHaveTextContent("12 matching lines");
   });
 
+  it("matches ids case-insensitively and leaves mixed lists with an uncited uuid as written", () => {
+    render(
+      <SreMessageContent
+        citations={[loki]}
+        content={"Loki (evidence: CONNECTOR_0123456789ABCDEF01234567). Also evidence: 01a1f039-9ef8-71d7-8e65-0823c827c42d, x."}
+      />,
+    );
+    expect(screen.getByRole("button", { name: /^Citation 1: Loki/ })).toBeInTheDocument();
+    expect(screen.getByText(/evidence: 01a1f039-9ef8-71d7-8e65-0823c827c42d, x\./)).toBeInTheDocument();
+  });
+
   it("renders a citation inside bold text as a footnote", () => {
     render(<SreMessageContent citations={[loki]} content={"**Evidence: connector_0123456789abcdef01234567**"} />);
     expect(screen.queryByText(/\[\[cite/)).not.toBeInTheDocument();

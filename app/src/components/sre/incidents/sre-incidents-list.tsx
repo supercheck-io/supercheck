@@ -443,8 +443,6 @@ export function SreIncidentsList({
             data={filteredIncidents}
             isLoading={loadingScope && filteredIncidents.length === 0}
             onRowClick={(row) => router.push(`/incidents/${row.original.id}`)}
-            // Remount when the breakpoint changes, so the phone and desktop column sets both apply.
-            key={isMobile ? "phone" : "wide"}
             // The firing count is on the incident page; without it the table fits a 1440px window. On a phone only what identifies an incident stays.
             initialColumnVisibility={isMobile ? PHONE_HIDDEN_COLUMNS : { alertCount: false }}
             minWidthClassName={isMobile ? "min-w-0" : "min-w-[900px]"}

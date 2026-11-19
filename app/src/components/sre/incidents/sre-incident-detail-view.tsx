@@ -270,8 +270,8 @@ export function SreIncidentDetailView({
                 runControls={runControls}
                 source={summarySource}
                 resolved={!open}
-                // A resolved incident keeps the Overview calm; the hint stays on the Investigation tab.
-                inconclusiveHint={overviewGap && open ? <InconclusiveHint reason={overviewGap} /> : null}
+                // Only an open incident with a completed, inconclusive run gets the hint here; failed runs keep details on the Investigation tab.
+                inconclusiveHint={overviewGap && open && investigation?.status === "completed" ? <InconclusiveHint reason={overviewGap} /> : null}
                 feedback={
                   permissions.canUpdate && investigation?.status === "completed" ? (
                     <InvestigationFeedback

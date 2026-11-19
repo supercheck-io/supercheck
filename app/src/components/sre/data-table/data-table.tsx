@@ -133,6 +133,11 @@ export function DataTable<TData, TValue>({
   const [rowSelection, setRowSelection] = React.useState({});
   const [columnVisibility, setColumnVisibility] =
     React.useState<VisibilityState>(initialColumnVisibility);
+  // A caller can switch its default column set (for example by breakpoint) without resetting sort or page.
+  const visibilityKey = JSON.stringify(initialColumnVisibility);
+  React.useEffect(() => {
+    setColumnVisibility(JSON.parse(visibilityKey) as VisibilityState);
+  }, [visibilityKey]);
   const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>(
     initialColumnFilters,
   );

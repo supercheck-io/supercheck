@@ -44,6 +44,9 @@ describe("inconclusiveReason", () => {
       reason({ latestInvestigation: { status: "failed", structured: null, steps: [{ status: "error" }, { status: "ok" }] } })?.missing,
     ).toBe("1 of 2 source searches failed, so those sources were not checked.");
     expect(reason({ permissions: { canUpdate: false }, incident: { primaryServiceId: null } })?.fix).toBeNull();
+    // A run that did search a connector is not explained by today's config.
+    const searched = { status: "completed", structured: { outcome: "inconclusive" }, steps: [{ tool: "searchLiveConnectorEvidence", status: "ok" }] };
+    expect(reason({ latestInvestigation: searched, capabilities: { hasValidConnector: false } })).toBeNull();
   });
 
   it("stays quiet for a run that concluded or is still running", () => {
