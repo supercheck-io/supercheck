@@ -85,4 +85,20 @@ describe("DataPrefetcher", () => {
     await act(async () => { jest.advanceTimersByTime(850); });
     expect(fetchMock.mock.calls.filter(([url]) => String(url) === "/api/runs")).toHaveLength(1);
   });
+
+  it("keeps its quiet deadline while cached queries keep updating", async () => {
+    const client = new QueryClient();
+    render(
+      <QueryClientProvider client={client}>
+        <DataPrefetcher />
+      </QueryClientProvider>
+    );
+    await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+    // A poll writing to the cache every 200ms must not keep pushing the batch back to the cap.
+    for (let t = 0; t < 850; t += 200) {
+      client.setQueryData(["polled"], t);
+      await act(async () => { jest.advanceTimersByTime(200); });
+    }
+    expect(fetchMock.mock.calls.filter(([url]) => String(url) === "/api/runs")).toHaveLength(1);
+  });
 });

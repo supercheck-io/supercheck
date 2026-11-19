@@ -113,11 +113,20 @@ export function DataPrefetcher() {
         : (setTimeout(run, 500) as unknown as number);
     };
     // A query is added just before it starts fetching, so confirm the quiet after a short pause.
+    const hasPendingFirstLoad = () =>
+      queryClient.isFetching({ predicate: (q) => q.state.status === "pending" }) > 0;
     const startWhenQuiet = () => {
-      clearTimeout(quietCheck);
+      // A first load holds the batch. Cache updates for already-loaded data (polling, refetches)
+      // must not push an armed quiet check back, so it is only re-armed when none is waiting.
+      if (hasPendingFirstLoad()) {
+        clearTimeout(quietCheck);
+        quietCheck = undefined;
+        return;
+      }
+      if (quietCheck !== undefined) return;
       quietCheck = setTimeout(() => {
-        // Only first loads (no data yet) hold it; polling and background refetches never settle.
-        if (queryClient.isFetching({ predicate: (q) => q.state.status === "pending" }) === 0) start();
+        quietCheck = undefined;
+        if (!hasPendingFirstLoad()) start();
       }, 300);
     };
     unsubscribe = queryClient.getQueryCache().subscribe(startWhenQuiet);
