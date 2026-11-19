@@ -186,13 +186,17 @@ export async function POST(request: NextRequest, { params }: Params) {
           known.add(key);
           return true;
         });
-      // The model answered and everything it proposed already exists: not a failure. Give back the credit and the
-      // daily slot (the answer was empty of value; the per-minute limiters still bound repeat calls).
+      // The model answered and everything it proposed already exists: not a failure. Give back the credit but keep
+      // the daily slot, so a client-chosen page list cannot buy repeated free model calls.
       // Titles that all sanitized to nothing are unusable output, not "nothing new".
       if (parsed !== null && cleaned.length === 0 && (parsed.length === 0 || usable > 0)) {
-        keepClaim = false;
         await credit.refund();
-        return NextResponse.json({ requirements: [], code: "no_new_suggestions", updatedAt: null });
+        return NextResponse.json({
+          requirements: [],
+          code: "no_new_suggestions",
+          updatedAt: null,
+          retryAt: new Date(claim.claimedAt.getTime() + 24 * 60 * 60_000).toISOString(),
+        });
       }
       // The whole draft caps at 32 KB of UTF-8, which long CJK suggestions can pass. Keep the leading ones that fit in
       // the stored draft even once every one is ticked (ticking copies it into requirements), so neither this save

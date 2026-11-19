@@ -78,7 +78,8 @@ export function TestsStep({ response, features, permissions, draft, patchDraft, 
     try {
       const res = await postJson<{ requirements?: Suggestion[]; updatedAt?: string; code?: string; retryAt?: string }>(`/api/projects/${response.projectId}/setup/suggest-requirements`, { pages: suggestPages.map(({ path, title }) => ({ path, title })).slice(0, 50) });
       if (res.ok && res.data.code === "no_new_suggestions") {
-        setFailure({ kind: "info", message: "No new suggestions: everything the AI could suggest for these pages is already in your requirements or options. No credit was used." });
+        const when = res.data.retryAt ? new Date(res.data.retryAt).toLocaleString() : "tomorrow";
+        setFailure({ kind: "info", message: `Your requirements already cover the pages we scanned, so there is nothing new to suggest. No credit was used. Suggestions can run again ${when}.` });
       } else if (res.ok && res.data.requirements) {
         // One bounded set for display and for the draft: ticked ones stay, then the newest run, then older unticked ones.
         const { ticked: nowTicked, options: nowOptions } = latest.current;

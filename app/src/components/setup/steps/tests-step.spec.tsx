@@ -78,11 +78,14 @@ describe("TestsStep", () => {
   });
 
   it("shows an info message, not an error, when nothing new was suggested", async () => {
-    fetchMock.mockReturnValue(json({ requirements: [], code: "no_new_suggestions", updatedAt: null }));
+    fetchMock.mockReturnValue(json({ requirements: [], code: "no_new_suggestions", updatedAt: null, retryAt: "2030-01-01T00:00:00.000Z" }));
     render(<TestsStep {...mk({ scan })} />);
     suggest();
-    expect(await screen.findByText(/No new suggestions/)).toBeInTheDocument();
+    const text = (await screen.findByText(/already cover the pages we scanned/)).textContent ?? "";
+    expect(text).toMatch(/No credit was used/);
+    expect(text).toMatch(/can run again/);
     expect(screen.queryByText(/Try again/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("alert")?.className ?? "").not.toMatch(/destructive|red/);
   });
 
   it("disables Suggest when ten requirements are ticked", () => {

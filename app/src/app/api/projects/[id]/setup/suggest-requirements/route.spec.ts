@@ -332,15 +332,20 @@ describe("existing requirements", () => {
     expect((saveSuggestions as jest.Mock).mock.calls[0][2]).toHaveLength(2);
   });
 
-  it("answers success with no_new_suggestions, refunding the credit and freeing the slot, when every suggestion already exists", async () => {
+  it("answers success with no_new_suggestions, refunding the credit and keeping the slot, when every suggestion already exists", async () => {
     mockExisting.mockResolvedValue([{ title: "Login works" }]);
     answer(["login works"]);
     const res = await POST(req(), params);
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ requirements: [], code: "no_new_suggestions", updatedAt: null });
+    expect(await res.json()).toEqual({
+      requirements: [],
+      code: "no_new_suggestions",
+      updatedAt: null,
+      retryAt: new Date(claim.claimedAt.getTime() + 24 * 60 * 60_000).toISOString(),
+    });
     expect(saveSuggestions).not.toHaveBeenCalled();
     expect(refund).toHaveBeenCalledTimes(1);
-    expect(releaseAiRun).toHaveBeenCalledWith(ORG, PROJECT, claim);
+    expect(releaseAiRun).not.toHaveBeenCalled();
     expect(logAuditEvent).not.toHaveBeenCalled();
   });
 
@@ -350,7 +355,7 @@ describe("existing requirements", () => {
     expect(res.status).toBe(200);
     expect((await res.json()).code).toBe("no_new_suggestions");
     expect(refund).toHaveBeenCalledTimes(1);
-    expect(releaseAiRun).toHaveBeenCalled();
+    expect(releaseAiRun).not.toHaveBeenCalled();
     expect(saveSuggestions).not.toHaveBeenCalled();
     expect(logAuditEvent).not.toHaveBeenCalled();
   });
