@@ -29,8 +29,10 @@ jest.mock("@/sre/lib/background-alert-triage", () => ({
   startAutomaticIncidentTriage: (...a: unknown[]) => mockStartTriage(...a),
 }));
 const mockFailStale = jest.fn();
+const mockFailStaleRuns = jest.fn();
 jest.mock("@/sre/lib/stale-run-recovery", () => ({
   STALE_RUN_AFTER_MS: 5 * 60_000,
+  failStaleSreRuns: (...a: unknown[]) => mockFailStaleRuns(...a),
   failStaleSreInvestigationRunsForIncident: (...a: unknown[]) => mockFailStale(...a),
 }));
 
@@ -48,6 +50,7 @@ beforeEach(() => {
   mockResults.length = 0;
   mockGate.mockReturnValue(true);
   mockExecute.mockResolvedValue([{ locked: true }]);
+  mockFailStaleRuns.mockResolvedValue(0);
   mockHandleRecovery.mockResolvedValue({ resolved: [{ id: "inc-1" }], recovered: [] });
   mockStartTriage.mockResolvedValue({ success: true, investigationRunId: "run-2" });
 });
@@ -168,7 +171,7 @@ describe("sweepSreIncidents", () => {
         [{ id: "inc-1", organizationId: "org-1", projectId: "proj-1" }],
         [{ origin: "auto", status: "failed", startedAt: new Date(0), errorCode: "stale_run" }],
       );
-      expect(await sweepSreIncidents(now)).toEqual({ reconciled: 1, retriaged: 1 });
+      expect(await sweepSreIncidents(now)).toEqual({ failedStale: 0, reconciled: 1, retriaged: 1 });
     } finally {
       spy.mockRestore();
     }
@@ -192,6 +195,15 @@ describe("sweepSreIncidents", () => {
       { origin: "auto", status: "failed", startedAt: new Date(0), errorCode: "stale_run" },
     ]);
     mockRecoveredSince.mockResolvedValue(recoveredAt);
-    expect(await sweepSreIncidents(now)).toEqual({ reconciled: 1, retriaged: 1 });
+    expect(await sweepSreIncidents(now)).toEqual({ failedStale: 0, reconciled: 1, retriaged: 1 });
+  });
+
+  it("fails stale runs of any origin first, and a failing stale sweep does not starve the other branches", async () => {
+    mockFailStaleRuns.mockResolvedValueOnce(2);
+    expect(await sweepSreIncidents(now)).toEqual({ failedStale: 2, reconciled: 0, retriaged: 0 });
+    mockFailStaleRuns.mockRejectedValueOnce(new Error("db down"));
+    mockResults.push([monitorRow()], []);
+    mockRecoveredSince.mockResolvedValue(recoveredAt);
+    expect(await sweepSreIncidents(now)).toEqual({ failedStale: 0, reconciled: 1, retriaged: 0 });
   });
 });

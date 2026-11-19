@@ -338,7 +338,6 @@ export async function runSreEvidenceBriefGeneration(input: {
           candidateEvidenceCount: collection.evidence.length,
         },
         createdByUserId: input.userId,
-        startedAt: new Date(startedAt),
         createdAt: new Date(),
       })
       .returning();
@@ -419,7 +418,7 @@ export async function runSreEvidenceBriefGeneration(input: {
     });
 
     await db.transaction(async (tx) => {
-      await tx
+      const [completed] = await tx
         .update(sreInvestigationRuns)
         .set({
           status: "completed",
@@ -443,10 +442,15 @@ export async function runSreEvidenceBriefGeneration(input: {
         .where(
           and(
             eq(sreInvestigationRuns.id, run.id),
+            // A run the stale sweep already failed stays failed.
+            eq(sreInvestigationRuns.status, "running"),
             eq(sreInvestigationRuns.organizationId, input.organizationId),
             eq(sreInvestigationRuns.projectId, input.projectId),
           ),
-        );
+        )
+        .returning({ id: sreInvestigationRuns.id });
+      // The sweep failed this run while it was generating: roll back so no headline or timeline entry is written.
+      if (!completed) throw new Error("Evidence brief run is no longer running");
 
       // Lock the incident in its own statement first: the guarded update below then takes a fresh snapshot, so an
       // investigation that committed while this waited is seen and its result is kept.
@@ -552,7 +556,7 @@ export async function runSreEvidenceBriefGeneration(input: {
     );
 
     try {
-      await db
+      const [failedRun] = await db
         .update(sreInvestigationRuns)
         .set({
           status: "failed",
@@ -566,10 +570,14 @@ export async function runSreEvidenceBriefGeneration(input: {
         .where(
           and(
             eq(sreInvestigationRuns.id, run.id),
+            eq(sreInvestigationRuns.status, "running"),
             eq(sreInvestigationRuns.organizationId, input.organizationId),
             eq(sreInvestigationRuns.projectId, input.projectId),
           ),
-        );
+        )
+        .returning({ id: sreInvestigationRuns.id });
+      // Already failed by the stale sweep (or finished): keep its record and write nothing more.
+      if (!failedRun) return { success: false, error: "Failed to generate evidence brief" };
 
       await db.insert(sreIncidentTimelineEvents).values({
         incidentId: input.incidentId,
