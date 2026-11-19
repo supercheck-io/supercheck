@@ -19,6 +19,7 @@ import { CheckIcon } from "@/components/logo/supercheck-logo";
 import { FieldGroup, Field, FieldDescription } from "@/components/ui/field";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
+import { signOut, useSession } from "@/utils/auth-client";
 import { useAppConfig } from "@/hooks/use-app-config";
 import { clearProjectsCache } from "@/hooks/use-project-context";
 import { announceProjectChange, reloadProjectContext } from "@/lib/project-navigation";
@@ -29,6 +30,7 @@ interface InvitationData {
   organizationName: string;
   email?: string;
   role: string;
+  hasAccount?: boolean;
   expiresAt: string;
   inviterName?: string;
   inviterEmail?: string;
@@ -52,6 +54,8 @@ export default function InvitePage({
   const [loading, setLoading] = useState(true);
   const [accepting, setAccepting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [emailMismatch, setEmailMismatch] = useState(false);
+  const { data: session } = useSession();
   const router = useRouter();
   const { isCloudHosted, isFetched, error: configError } = useAppConfig();
   const shouldShowLegalFooter = isFetched && !configError && isCloudHosted;
@@ -109,6 +113,11 @@ export default function InvitePage({
           router.push(`/verify-email?email=${encodeURIComponent(invitation?.email || "")}&invite=${inviteQuery}`);
           return;
         }
+        // The signed-in account is not the invitee: sign out is the only way forward, never sign-up.
+        if (data.code === "EMAIL_MISMATCH") {
+          setEmailMismatch(true);
+          return;
+        }
         const errorMessage = String(data.error ?? "").toLowerCase();
         if (
           response.status === 401 ||
@@ -116,11 +125,9 @@ export default function InvitePage({
           errorMessage.includes("sign up") ||
           errorMessage.includes("authenticate")
         ) {
-          // User needs to authenticate — redirect to sign-up so first-time
-          // invitees can create an account directly. The sign-up page handles
-          // existing users by detecting the 422 "already exists" response and
-          // redirecting them to /sign-in?invite=token automatically.
-          router.push(`/sign-up?invite=${token}`);
+          // Existing accounts sign in (cloud sign-up would show a fake success for them);
+          // first-time invitees create an account.
+          router.push(`/${invitation?.hasAccount ? "sign-in" : "sign-up"}?invite=${encodeURIComponent(token)}`);
         } else {
           setError(data.error || "Failed to accept invitation");
         }
@@ -157,6 +164,15 @@ export default function InvitePage({
       .join(" ");
   };
 
+  const handleSignOut = async () => {
+    const result = await signOut();
+    if (result?.error) {
+      setError(result.error.message || "Failed to sign out");
+      return;
+    }
+    setEmailMismatch(false);
+  };
+
   // Loading State
   if (loading) {
     return (
@@ -178,6 +194,8 @@ export default function InvitePage({
 
   // Error State
   if (error) {
+    // A dead (expired, used, unknown) invite must not travel on: it would loop back here after sign-in.
+    const inviteQuery = invitation ? `?invite=${encodeURIComponent(token)}` : "";
     return (
       <div className="flex flex-col gap-6 w-full max-w-md">
         <FieldGroup>
@@ -190,15 +208,44 @@ export default function InvitePage({
           </div>
 
           <Field className="flex flex-col gap-2">
-            <Button onClick={() => router.push("/sign-in")} className="w-full">
+            <Button onClick={() => router.push(`/sign-in${inviteQuery}`)} className="w-full">
               Go to Sign In
             </Button>
             <Button
               variant="outline"
-              onClick={() => router.push("/sign-up")}
+              onClick={() => router.push(`/sign-up${inviteQuery}`)}
               className="w-full"
             >
               Create New Account
+            </Button>
+          </Field>
+        </FieldGroup>
+      </div>
+    );
+  }
+
+  // Signed in as someone other than the invitee
+  if (emailMismatch) {
+    return (
+      <div className="flex flex-col gap-6 w-full max-w-md">
+        <FieldGroup>
+          <div className="flex flex-col items-center gap-2 text-center">
+            <div className="flex size-12 items-center justify-center rounded-full bg-destructive/10">
+              <AlertCircle className="size-6 text-destructive" />
+            </div>
+            <h1 className="text-xl font-bold">Wrong account</h1>
+            <FieldDescription className="text-center">
+              {session?.user?.email ? (
+                <>You are signed in as <span className="font-medium text-foreground">{session.user.email}</span>, but this invitation is for a different email address.</>
+              ) : (
+                <>You are signed in with a different email address than this invitation is for.</>
+              )}{" "}
+              Sign out, then sign in with the invited account.
+            </FieldDescription>
+          </div>
+          <Field>
+            <Button onClick={handleSignOut} className="w-full">
+              Sign out
             </Button>
           </Field>
         </FieldGroup>

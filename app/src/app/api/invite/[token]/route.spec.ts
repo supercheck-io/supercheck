@@ -91,6 +91,27 @@ describe("invitation privacy and acceptance", () => {
     expect(body.data).not.toHaveProperty("inviterEmail");
   });
 
+  it("reports whether the invited email already has an account", async () => {
+    const get = () => GET(new NextRequest("http://localhost/api/invite/11111111-1111-4111-8111-111111111111"), context);
+    db.select.mockReset().mockReturnValueOnce(selectRows([invite])).mockReturnValueOnce(selectRows([{ id: "user-9" }]));
+    expect((await (await get()).json()).data.hasAccount).toBe(true);
+    db.select.mockReset().mockReturnValueOnce(selectRows([invite])).mockReturnValueOnce(selectRows([]));
+    expect((await (await get()).json()).data.hasAccount).toBe(false);
+  });
+
+  it("does not look up accounts for a used or expired invitation", async () => {
+    db.select.mockReset().mockReturnValue(selectRows([{ ...invite, status: "accepted" }]));
+    expect((await GET(new NextRequest("http://localhost/api/invite/11111111-1111-4111-8111-111111111111"), context)).status).toBe(400);
+    expect(db.select).toHaveBeenCalledTimes(1);
+  });
+
+  it("flags a signed-in account that is not the invitee with a machine-readable code", async () => {
+    getCurrentUser.mockResolvedValue({ id: "user-2", email: "someone-else@example.com" });
+    const res = await POST(new NextRequest("http://localhost/api/invite/11111111-1111-4111-8111-111111111111", { method: "POST" }), context);
+    expect(res.status).toBe(400);
+    expect((await res.json()).code).toBe("EMAIL_MISMATCH");
+  });
+
   it("shows invite details to the verified invited account in cloud mode", async () => {
     auth.api.getSession.mockResolvedValue({ user: { email: invite.email, emailVerified: true } });
     const response = await GET(new NextRequest("http://localhost/api/invite/11111111-1111-4111-8111-111111111111"), context);
@@ -315,6 +336,14 @@ describe("invitation privacy and acceptance", () => {
     expect(tx.insert).toHaveBeenCalled();
     expect(sessionSet).toHaveBeenCalledWith({ activeOrganizationId: "org-1", activeProjectId: "22222222-2222-4222-8222-222222222222" });
     expect(db.update).not.toHaveBeenCalled();
+  });
+
+  it("adds the membership and switches the session for an existing user who belongs to another organization", async () => {
+    const { tx, sessionSet } = acceptance();
+    const response = await POST(new NextRequest("http://localhost/api/invite/11111111-1111-4111-8111-111111111111", { method: "POST" }), context);
+    expect(response.status).toBe(200);
+    expect(tx.insert.mock.results[0].value.values).toHaveBeenCalledWith(expect.objectContaining({ userId: "user-1", organizationId: "org-1" }));
+    expect(sessionSet).toHaveBeenCalledWith(expect.objectContaining({ activeOrganizationId: "org-1" }));
   });
 
   it("accepts a verified cloud account's assigned project and scopes membership to the invited team", async () => {

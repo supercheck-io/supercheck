@@ -73,6 +73,13 @@ export async function GET(
       viewer.user.email.toLowerCase().trim() === invite.email.toLowerCase().trim());
     const canViewEmail = isMatchingUser;
     const canViewPersonalDetails = isMatchingUser && (isCloudHosted() ? viewer?.user?.emailVerified === true : true);
+    // Better Auth stores emails lowercased, so this hits the unique index.
+    // Only a holder of the unguessable token (pending, unexpired) can learn this; it routes the invitee to sign-in or sign-up.
+    const [existingAccount] = await db
+      .select({ id: userTable.id })
+      .from(userTable)
+      .where(eq(userTable.email, invite.email.toLowerCase().trim()))
+      .limit(1);
 
     return NextResponse.json({
       success: true,
@@ -82,6 +89,7 @@ export async function GET(
         organizationName: invite.orgName,
         ...(canViewEmail ? { email: invite.email } : {}),
         role: invite.role,
+        hasAccount: Boolean(existingAccount),
         expiresAt: invite.expiresAt.toISOString(),
         ...(canViewPersonalDetails ? {
           inviterName: invite.inviterName,
@@ -180,7 +188,7 @@ export async function POST(
     // Check if the current user's email matches the invitation
     if (currentUser.email.toLowerCase().trim() !== invite.email.toLowerCase().trim()) {
       return NextResponse.json(
-        { error: 'This invitation is for a different email address' },
+        { error: 'This invitation is for a different email address', code: 'EMAIL_MISMATCH' },
         { status: 400 }
       );
     }

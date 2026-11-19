@@ -159,9 +159,9 @@ function SignUpPageContent() {
 
     if (signUpError) {
       // ── 1. User already exists ───────────────────────────────────────
-      // Better Auth returns 422 for duplicate users. The error message
-      // contains "already exists". For invited users, redirect to sign-in
-      // with a clear message so they can use their existing credentials.
+      // Self-hosted Better Auth returns 422 for duplicate users. Cloud mode
+      // (email verification on) returns a generic 200 instead, so cloud invitees
+      // with an account are routed to sign-in by the invite page before this runs.
       if (
         signUpError.status === 422 ||
         signUpError.message?.toLowerCase().includes("already exist")

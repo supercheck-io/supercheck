@@ -85,7 +85,7 @@ export function LoginForm({
     error: configError,
   } = useAppConfig();
   const hasSocialAuth = isGithubEnabled || isGoogleEnabled;
-  const shouldShowSocialAuth = !inviteData && (hasSocialAuth || !isFetched || !!configError);
+  const shouldShowSocialAuth = (hasSocialAuth || !isFetched || !!configError);
   const shouldShowLegalFooter = isFetched && !configError && isCloudHosted;
 
   // CAPTCHA state management
@@ -209,9 +209,8 @@ export function LoginForm({
               </div>
             )}
 
-            {/* Social Auth - Only show when NOT from an invitation and providers are available or config is unresolved */}
-            {/* For invitations, user must sign in with the invited email address */}
-            {/* Social auth may use a different email, which would fail the email match check */}
+            {/* Social Auth - shown when providers are available or config is unresolved, including on invitations */}
+            {/* An invitee whose account uses social sign-in has no password. A different social email is refused at accept time */}
             {shouldShowSocialAuth && (
               <>
                 <SocialAuthButtons
