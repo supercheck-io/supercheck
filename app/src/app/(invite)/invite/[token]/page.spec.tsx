@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import InvitePage from "./page";
 
 const mockReload = jest.fn();
@@ -44,7 +44,7 @@ describe("invite accept page", () => {
   async function accept() {
     render(<InvitePage params={Promise.resolve({ token: TOKEN })} />);
     fireEvent.click(await screen.findByRole("button", { name: /accept invitation/i }));
-    await screen.findByRole("button", { name: /go to dashboard/i });
+    await screen.findByRole("button", { name: /continue to setup/i });
   }
 
   it("lands on persona selection after the automatic redirect", async () => {
@@ -56,7 +56,7 @@ describe("invite accept page", () => {
 
   it("lands on persona selection from the button", async () => {
     await accept();
-    fireEvent.click(screen.getByRole("button", { name: /go to dashboard/i }));
+    fireEvent.click(screen.getByRole("button", { name: /continue to setup/i }));
     expect(mockReload).toHaveBeenCalledWith(expect.any(Function), "/setup/welcome");
   });
 
@@ -151,5 +151,25 @@ describe("invite accept page", () => {
     fireEvent.click(await screen.findByRole("button", { name: /go to sign in/i }));
     expect(mockPush).toHaveBeenCalledWith("/sign-in");
     expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  it("titles a member-limit refusal as such, not as an invalid invitation", async () => {
+    mockInvite({ post: { status: 402, body: { success: false, error: "The organization has reached its member limit.", code: "INVITE_MEMBER_LIMIT" } } });
+    await clickAccept();
+    expect(await screen.findByRole("heading", { name: /member limit reached/i })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: /invalid invitation/i })).not.toBeInTheDocument();
+  });
+
+  it("titles a transient load failure as a failure to load", async () => {
+    global.fetch = jest.fn(async () => ({ status: 500, json: async () => ({ error: "Failed" }) })) as unknown as typeof fetch;
+    render(<InvitePage params={Promise.resolve({ token: TOKEN })} />);
+    expect(await screen.findByRole("heading", { name: /couldn.t load invitation/i })).toBeInTheDocument();
+  });
+
+  it("does not redirect after the page is left during the 3 second wait", async () => {
+    await accept();
+    cleanup();
+    act(() => { jest.advanceTimersByTime(4000); });
+    expect(mockReload).not.toHaveBeenCalled();
   });
 });

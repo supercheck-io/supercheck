@@ -4,27 +4,19 @@ import { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { CheckIcon } from "@/components/logo/supercheck-logo";
-import { Loader2, Eye, EyeOff, CheckCircle } from "lucide-react";
+import { AuthBackLink, AuthCallout, AuthCard, AuthHeader, AuthLegal, AuthLoading, PasswordToggle } from "@/components/auth/auth-shell";
+import { Loader2 } from "lucide-react";
 import { resetPassword } from "@/utils/auth-client";
-import Link from "next/link";
 import { useAppConfig } from "@/hooks/use-app-config";
 import {
   FieldGroup,
   Field,
   FieldLabel,
-  FieldDescription,
 } from "@/components/ui/field";
 
 export default function ResetPasswordPage() {
   return (
-    <Suspense
-      fallback={
-        <div className="flex items-center justify-center min-h-[300px]">
-          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-        </div>
-      }
-    >
+    <Suspense fallback={<AuthLoading />}>
       <ResetPasswordPageContent />
     </Suspense>
   );
@@ -120,95 +112,46 @@ function ResetPasswordPageContent() {
     }
   };
 
+
+  const legal = shouldShowLegalFooter ? <AuthLegal /> : undefined;
+
   // Loading state
-  if (!token && !error) {
-    return (
-      <div className="flex flex-col gap-6 w-full max-w-sm px-4">
-        <FieldGroup>
-          <div className="flex flex-col items-center gap-3 text-center">
-            <div className="flex size-14 items-center justify-center rounded-md">
-              <CheckIcon className="size-12" />
-            </div>
-            <div className="flex items-center gap-2 text-muted-foreground">
-              <Loader2 className="h-4 w-4 animate-spin" />
-              <span>Loading...</span>
-            </div>
-          </div>
-        </FieldGroup>
-      </div>
-    );
-  }
+  if (!token && !error) return <AuthLoading />;
 
   // Success state
   if (isSuccess) {
     return (
-      <div className="flex flex-col gap-6 w-full max-w-sm px-4">
+      <AuthCard footer={legal}>
         <FieldGroup>
+          <AuthHeader
+            status="success"
+            title="Password reset"
+            description="You can now sign in with your new password."
+          />
 
-          {/* Success Icon */}
-          <div className="flex justify-center">
-            <div className="flex size-20 items-center justify-center rounded-full bg-green-500/10">
-              <CheckCircle className="size-10 text-green-500" />
-            </div>
+          <div role="status" className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
+            <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+            <span>Redirecting to sign in…</span>
           </div>
 
-          {/* Content */}
-          <div className="text-center space-y-2">
-            <h1 className="text-2xl font-bold">Password reset successfully</h1>
-            <FieldDescription>
-              Your password has been successfully reset. You can now sign in
-              with your new password.
-            </FieldDescription>
-          </div>
-
-          {/* Redirect Message */}
-          <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
-            <Loader2 className="h-4 w-4 animate-spin" />
-            <span>Redirecting to sign in...</span>
-          </div>
-
-          {/* Action Button */}
           <Field>
-            <Button onClick={() => router.push("/sign-in")} className="w-full">
-              Go to Sign In
+            <Button size="lg" onClick={() => router.push("/sign-in")} className="w-full">
+              Go to sign in
             </Button>
           </Field>
         </FieldGroup>
-
-        {/* Footer (cloud mode only; hidden until config is resolved to avoid mode flicker) */}
-        {shouldShowLegalFooter && (
-          <FieldDescription className="px-6 text-center">
-            By clicking continue, you agree to our{" "}
-            <Link href="https://supercheck.io/terms">Terms of Service</Link> and{" "}
-            <Link href="https://supercheck.io/privacy">Privacy Policy</Link>.
-          </FieldDescription>
-        )}
-      </div>
+      </AuthCard>
     );
   }
 
   return (
-    <div className="flex flex-col gap-6 w-full max-w-sm px-4">
+    <AuthCard footer={legal}>
       <form method="post" onSubmit={handleSubmit}>
         <FieldGroup>
-          {/* Header */}
-          <div className="flex flex-col items-center gap-3 text-center">
-            <Link
-              href="/"
-              className="flex flex-col items-center gap-3 font-medium"
-            >
-              <div className="flex size-14 items-center justify-center rounded-md">
-                <CheckIcon className="size-12" />
-              </div>
-              <span className="sr-only">Supercheck</span>
-            </Link>
-            <h1 className="text-2xl font-bold">Reset password</h1>
-            <FieldDescription>Enter your new password below.</FieldDescription>
-          </div>
+          <AuthHeader logoHref="/" title="Reset password" description="Enter your new password below." />
 
-          {/* New Password Field */}
           <Field>
-            <FieldLabel htmlFor="password">New Password</FieldLabel>
+            <FieldLabel htmlFor="password">New password</FieldLabel>
             <div className="relative">
               <Input
                 id="password"
@@ -221,31 +164,15 @@ function ResetPasswordPageContent() {
                 className={password ? "pr-10" : ""}
                 placeholder="Enter new password"
               />
-              {password && (
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                  aria-label={showPassword ? "Hide password" : "Show password"}
-                >
-                  {showPassword ? (
-                    <EyeOff className="h-4 w-4" />
-                  ) : (
-                    <Eye className="h-4 w-4" />
-                  )}
-                </button>
-              )}
+              {password && <PasswordToggle shown={showPassword} onToggle={() => setShowPassword(!showPassword)} />}
             </div>
             <p className="text-xs text-muted-foreground">
               Min 8 characters with uppercase, lowercase, and number.
             </p>
           </Field>
 
-          {/* Confirm Password Field */}
           <Field>
-            <FieldLabel htmlFor="confirmPassword">
-              Confirm New Password
-            </FieldLabel>
+            <FieldLabel htmlFor="confirmPassword">Confirm new password</FieldLabel>
             <div className="relative">
               <Input
                 id="confirmPassword"
@@ -258,36 +185,17 @@ function ResetPasswordPageContent() {
                 className={confirmPassword ? "pr-10" : ""}
                 placeholder="Confirm new password"
               />
-              {confirmPassword && (
-                <button
-                  type="button"
-                  onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                  aria-label={
-                    showConfirmPassword ? "Hide password" : "Show password"
-                  }
-                >
-                  {showConfirmPassword ? (
-                    <EyeOff className="h-4 w-4" />
-                  ) : (
-                    <Eye className="h-4 w-4" />
-                  )}
-                </button>
-              )}
+              {confirmPassword && <PasswordToggle shown={showConfirmPassword} onToggle={() => setShowConfirmPassword(!showConfirmPassword)} />}
             </div>
           </Field>
 
-          {/* Error Message */}
-          {error && (
-            <p className="text-sm font-medium text-destructive text-center">
-              {error}
-            </p>
-          )}
 
-          {/* Submit Button */}
+          {error && <AuthCallout variant="error">{error}</AuthCallout>}
+
           <Field>
             <Button
               type="submit"
+              size="lg"
               className="w-full"
               disabled={isLoading || !password || !confirmPassword || !token}
             >
@@ -295,17 +203,10 @@ function ResetPasswordPageContent() {
               Reset password
             </Button>
           </Field>
+
+          <AuthBackLink href="/sign-in" />
         </FieldGroup>
       </form>
-
-      {/* Footer (cloud mode only; hidden until config is resolved to avoid mode flicker) */}
-      {shouldShowLegalFooter && (
-        <FieldDescription className="px-6 text-center">
-          By clicking continue, you agree to our{" "}
-          <Link href="https://supercheck.io/terms">Terms of Service</Link> and{" "}
-          <Link href="https://supercheck.io/privacy">Privacy Policy</Link>.
-        </FieldDescription>
-      )}
-    </div>
+    </AuthCard>
   );
 }

@@ -9,7 +9,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useState, useEffect, useCallback, useMemo, useRef, Suspense } from "react";
 import { SignupForm } from "@/components/auth/signup-form";
 import { useAppConfig } from "@/hooks/use-app-config";
-import { Loader2 } from "lucide-react";
+import { AuthLoading } from "@/components/auth/auth-shell";
 import { parseInviteToken } from "@/lib/validations/auth";
 import type { TurnstileCaptchaRef } from "@/components/auth/turnstile-captcha";
 
@@ -31,13 +31,7 @@ const DEFAULT_SIGN_UP_NEXT = "/setup";
 
 export default function SignUpPage() {
   return (
-    <Suspense
-      fallback={
-        <div className="flex items-center justify-center min-h-[300px]">
-          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-        </div>
-      }
-    >
+    <Suspense fallback={<AuthLoading />}>
       <SignUpPageContent />
     </Suspense>
   );
@@ -326,7 +320,6 @@ function SignUpPageContent() {
 
   return (
     <SignupForm
-      className="w-full max-w-sm px-4"
       onSubmit={handleSubmit}
       isLoading={isLoading}
       error={error}

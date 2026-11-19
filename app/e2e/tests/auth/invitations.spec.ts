@@ -31,7 +31,7 @@ test.describe('Invitation public authorization @auth @invitations @security', ()
     expect(await response.json()).toEqual({ error: 'Invitation not found', code: 'INVITE_UNAVAILABLE' });
 
     await page.goto(`/invite/${token}`);
-    await expect(page.getByRole('heading', { name: 'Invalid Invitation' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Invalid invitation' })).toBeVisible();
     await expect(page.getByText('Invitation not found', { exact: true })).toBeVisible();
   });
 

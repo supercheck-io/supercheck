@@ -1,5 +1,6 @@
 import { getCachedAuthSession } from "@/lib/session-cache";
 import { redirect } from "next/navigation";
+import { AuthFrame } from "@/components/auth/auth-shell";
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
@@ -12,5 +13,5 @@ export const metadata: Metadata = {
 export default async function VerifyLayout({ children }: { children: React.ReactNode }) {
   const session = await getCachedAuthSession();
   if (session?.user?.emailVerified) redirect("/");
-  return <div className="flex min-h-screen items-center justify-center">{children}</div>;
+  return <AuthFrame>{children}</AuthFrame>;
 }
