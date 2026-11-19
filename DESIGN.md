@@ -113,3 +113,4 @@ Before you finish any UI change:
 3. New pages use `PageHeader` with the right area `icon` and `tone`. New tables use `DataTablePagination`.
 4. You checked light and dark mode at 390px and 1440px (the PR Screenshots workflow covers the app tour).
 5. If you added a pattern, you documented it here in the same PR.
+6. You followed the design process in `.agents/skills/ui/SKILL.md`: the `frontend-design` skill was used alongside `supercheck-ui`, and the before and after screenshots were critiqued.

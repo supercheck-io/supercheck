@@ -137,7 +137,7 @@ export async function POST(request: NextRequest) {
 
   if (!startResult.success) {
     return NextResponse.json(
-      { error: startResult.error },
+      { error: startResult.error, ...(startResult.reason ? { code: startResult.reason } : {}) },
       { status: startResult.status }
     );
   }
