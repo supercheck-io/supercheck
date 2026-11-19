@@ -30,12 +30,13 @@ describe("DataPrefetcher", () => {
     );
     const listCalls = () => fetchMock.mock.calls.filter(([url]) => String(url) === "/api/runs").length;
 
-    await act(async () => { jest.advanceTimersByTime(1500); });
+    await act(async () => { jest.advanceTimersByTime(1000); });
     expect(listCalls()).toBe(0);
 
-    // Released well before the 4s cap, so only the quiet detection can start it.
+    // Released well before the 1.5s cap, so only the quiet detection can start it.
     await act(async () => { release(); await Promise.resolve(); });
-    await act(async () => { jest.advanceTimersByTime(1000); });
+    // 300ms quiet check + 500ms idle fallback = 800ms, which ends before the cap's own run at 2000ms.
+    await act(async () => { jest.advanceTimersByTime(850); });
     expect(listCalls()).toBe(1);
   });
 
@@ -62,5 +63,26 @@ describe("DataPrefetcher", () => {
       delete win.requestIdleCallback;
       delete win.cancelIdleCallback;
     }
+  });
+
+  it("is not held by background refetches of queries that already have data", async () => {
+    const client = new QueryClient();
+    client.setQueryData(["polled"], "old");
+    void client.refetchQueries({
+      queryKey: ["polled"],
+      type: "all",
+    });
+    client.getQueryCache().find({ queryKey: ["polled"] })!.fetch(undefined, {
+      // Never settles: stands in for a polling or retrying refetch.
+      fetchFn: () => new Promise(() => {}),
+    } as never).catch(() => {});
+    render(
+      <QueryClientProvider client={client}>
+        <DataPrefetcher />
+      </QueryClientProvider>
+    );
+    await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+    await act(async () => { jest.advanceTimersByTime(850); });
+    expect(fetchMock.mock.calls.filter(([url]) => String(url) === "/api/runs")).toHaveLength(1);
   });
 });

@@ -70,12 +70,6 @@ export default async function MainLayout({
   let user = null;
   let org = null;
 
-  // Resolves from the session alone, so it starts with the user lookup instead of after it.
-  const currentProjectPromise = getCurrentProjectContext();
-  // Failures are handled where it is awaited below; this only stops an unhandled rejection if
-  // the session lookup throws first.
-  currentProjectPromise.catch(() => undefined);
-
   try {
     [user, org] = await Promise.all([
       getCurrentUser(),
@@ -123,7 +117,12 @@ export default async function MainLayout({
     const trialPromise = !initialIsSelfHosted && !initialSubscriptionStatus.isActive
       ? getTrialSummary(org.id).catch(() => undefined)
       : Promise.resolve(undefined);
+    // getCurrentProjectContext can write (default project membership), so it only runs once a
+    // signed-in user with an organization is known.
     const projectsPromise = getSelectableProjects(user.id);
+    const currentProjectPromise = getCurrentProjectContext();
+    // Settled inside the try below; this only avoids an unhandled rejection while role/trial resolve.
+    // (getCurrentProjectContext swallows its own errors, so it needs no such guard.)
     projectsPromise.catch(() => undefined);
     const [role, trial] = await Promise.all([rolePromise, trialPromise]);
     isOrgOwner = role === Role.ORG_OWNER;

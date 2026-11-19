@@ -27,7 +27,7 @@ const STALE_TIME = {
 };
 
 // Longest the next-page prefetch waits for the current page's own requests to finish.
-const PREFETCH_MAX_WAIT_MS = 4000;
+const PREFETCH_MAX_WAIT_MS = 1500;
 
 export function DataPrefetcher() {
   const queryClient = useQueryClient();
@@ -75,8 +75,13 @@ export function DataPrefetcher() {
       return res.json();
     };
     let fired = false;
+    const mountedAt = performance.now();
     const run = () => {
       fired = true;
+      // Development only: how long after mount the next-page prefetch went out.
+      if (process.env.NODE_ENV === "development") {
+        console.debug(`[DataPrefetcher] next-page prefetch started ${Math.round(performance.now() - mountedAt)}ms after mount`);
+      }
       prefetch(getTestsListQueryKey(projectId), fetchWithProject("/api/tests"), STALE_TIME.LONG);
       prefetch(getJobsListQueryKey(projectId), fetchWithProject("/api/jobs"), STALE_TIME.LONG);
       prefetch(getRunsListQueryKey(projectId), fetchWithProject("/api/runs"), STALE_TIME.REALTIME);
@@ -111,7 +116,8 @@ export function DataPrefetcher() {
     const startWhenQuiet = () => {
       clearTimeout(quietCheck);
       quietCheck = setTimeout(() => {
-        if (queryClient.isFetching() === 0) start();
+        // Only first loads (no data yet) hold it; polling and background refetches never settle.
+        if (queryClient.isFetching({ predicate: (q) => q.state.status === "pending" }) === 0) start();
       }, 300);
     };
     unsubscribe = queryClient.getQueryCache().subscribe(startWhenQuiet);

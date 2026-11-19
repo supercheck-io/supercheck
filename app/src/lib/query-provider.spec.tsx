@@ -267,6 +267,5 @@ describe("QueryProvider hydration", () => {
     act(() => { jest.advanceTimersByTime(5000); });
     expect(prefetch).toHaveBeenCalledTimes(calls);
     client.clear();
-    jest.useRealTimers();
   });
 });
