@@ -49,6 +49,8 @@ const TEXT_REPORT_EXT = new Set(['.html', '.json', '.txt', '.md', '.xml']);
 
 // Larger text files are skipped (with a warning) instead of read whole into memory.
 const MAX_SCRUB_FILE_BYTES = 20 * 1024 * 1024;
+// index.html can embed the whole Playwright report zip, so it gets a higher cap before failing closed.
+const MAX_SCRUB_REPORT_HTML_BYTES = 100 * 1024 * 1024;
 
 /** Raw, base64, URL-encoded, JSON-escaped and HTML-entity-escaped forms of each secret long enough to redact. */
 export function secretRedactionVariants(
@@ -196,7 +198,8 @@ export function scrubReportHtml(html: string, variants: string[]): string {
     return plain(html);
   }
   // Only the matched template is rewritten; a second one would be uploaded with its zip unscrubbed.
-  if (html.split('playwrightReportBase64').length > 2)
+  // Count the full tag: Playwright's inlined report.js names the id too.
+  if (html.split(MARKER).length > 2)
     throw new Error('Report has more than one embedded zip');
   const [all, head, b64, tail] = match;
   const entries = readZip(Buffer.from(b64, 'base64'));
@@ -230,7 +233,11 @@ export async function scrubSecretsFromReportDir(
         entry.isFile() &&
         TEXT_REPORT_EXT.has(path.extname(entry.name).toLowerCase())
       ) {
-        if ((await fs.stat(full)).size > MAX_SCRUB_FILE_BYTES) {
+        const limit =
+          entry.name === 'index.html'
+            ? MAX_SCRUB_REPORT_HTML_BYTES
+            : MAX_SCRUB_FILE_BYTES;
+        if ((await fs.stat(full)).size > limit) {
           // A Playwright report is embedded in index.html: uploading it unscrubbed would publish any secret in it.
           if (
             entry.name === 'index.html' &&
