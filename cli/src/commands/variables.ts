@@ -1,11 +1,11 @@
 import { Command } from 'commander'
-import { Buffer } from 'node:buffer'
 import { chmod, readFile, stat, writeFile } from 'node:fs/promises'
 import { basename, extname } from 'node:path'
 import { createAuthenticatedClient } from '../api/authenticated-client.js'
 import { logger } from '../utils/logger.js'
 import { output, outputDetail, outputMutation } from '../output/formatter.js'
 import { ApiRequestError, CLIError, ExitCode } from '../utils/errors.js'
+import { readValueFromStdin } from '../utils/stdin.js'
 import { withSpinner } from '../utils/spinner.js'
 
 interface Variable {
@@ -19,23 +19,6 @@ interface Variable {
   fileSize?: number | null
   mimeType?: string | null
   createdAt?: string
-}
-
-async function readValueFromStdin(): Promise<string> {
-  const MAX_STDIN_BYTES = 1024 * 1024 // 1 MB
-  const chunks: Buffer[] = []
-  let totalBytes = 0
-
-  for await (const chunk of process.stdin) {
-    const buf = typeof chunk === 'string' ? Buffer.from(chunk) : chunk
-    totalBytes += buf.length
-    if (totalBytes > MAX_STDIN_BYTES) {
-      throw new CLIError('Stdin input exceeds 1 MB limit.', ExitCode.GeneralError)
-    }
-    chunks.push(buf)
-  }
-
-  return Buffer.concat(chunks).toString('utf-8').replace(/\r?\n$/, '')
 }
 
 export const varCommand = new Command('var')

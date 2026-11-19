@@ -1,7 +1,7 @@
 import { describe, expect, it } from '@jest/globals'
 import { buildLocalResources, fetchRemoteResources, getApiEndpoint } from './resources.js'
 import { reconcile } from './reconcile.js'
-import { buildNotificationProviderDefinitions } from '../commands/pull.js'
+import { buildNotificationProviderDefinitions, notificationTemplateOmissions } from '../commands/pull.js'
 import type { ApiClient } from '../api/client.js'
 import type { SupercheckConfig } from '../config/schema.js'
 
@@ -269,6 +269,20 @@ describe('notification provider resources', () => {
       method: 'POST',
       bodyTemplate: '{"message_type":"{{alertAction}}"}',
     })
+  })
+
+  it('pull never writes a credential held in a body template, and keeps templates without one', () => {
+    const KEY = 'a1b2c3d4e5f60718293a4b5c6d7e8f90'
+    const pd = { id: 'np-1', name: 'On call', type: 'webhook', config: { preset: 'pagerduty', url: 'https://events.pagerduty.com/v2/enqueue', method: 'POST', bodyTemplate: JSON.stringify({ routing_key: KEY, event_action: '{{pagerDutyEventAction}}' }) }, maskedFields: [] }
+    const plain = { id: 'np-2', name: 'Hook', type: 'webhook', config: { method: 'POST', bodyTemplate: '{"monkey":"banana","turkey":"gobble","msg":"{{title}}"}' }, maskedFields: [] }
+
+    const defs = buildNotificationProviderDefinitions([pd, plain])
+
+    expect(JSON.stringify(defs)).not.toContain(KEY)
+    expect(defs[0].config).not.toHaveProperty('bodyTemplate')
+    expect(defs[0].config).toMatchObject({ preset: 'pagerduty', name: 'On call' })
+    expect(defs[1].config).toHaveProperty('bodyTemplate', plain.config.bodyTemplate)
+    expect(notificationTemplateOmissions([pd, plain])).toEqual(['On call'])
   })
 
   it('pull adds config.name when it is missing', () => {

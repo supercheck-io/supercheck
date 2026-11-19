@@ -3,6 +3,8 @@ import { createAuthenticatedClient } from '../api/authenticated-client.js'
 import { logger } from '../utils/logger.js'
 import { getOutputFormat, output, outputDetail, outputMutation } from '../output/formatter.js'
 import { CLIError, ExitCode } from '../utils/errors.js'
+import { pagerDutyConfig, routingKeyFromEnv } from '../utils/pagerduty.js'
+import { readValueFromStdin } from '../utils/stdin.js'
 import { withSpinner } from '../utils/spinner.js'
 
 type PayloadOptions = { config?: string; payload?: string; data?: string }
@@ -25,6 +27,21 @@ function parsePayload(options: PayloadOptions, required = false): Record<string,
   }
 }
 
+/** The routing key comes from stdin or PAGERDUTY_ROUTING_KEY, never from an argument, so it stays out of shell history and process lists. */
+async function readRoutingKey(fromStdin: boolean | undefined): Promise<string> {
+  if (fromStdin && process.stdin.isTTY) {
+    throw new CLIError('--routing-key-stdin reads a piped key, so it is not echoed on screen: use `< key.txt` or a pipe.', ExitCode.ConfigError)
+  }
+  const key = fromStdin ? (await readValueFromStdin()).trim() : routingKeyFromEnv()
+  if (!key || key.startsWith('REPLACE_WITH_')) {
+    throw new CLIError(
+      'PagerDuty needs an Events API v2 routing key: set PAGERDUTY_ROUTING_KEY or pass --routing-key-stdin and pipe the key in.',
+      ExitCode.ConfigError,
+    )
+  }
+  return key
+}
+
 export const notificationCommand = new Command('notification')
   .alias('notifications')
   .description('Manage notification providers')
@@ -44,6 +61,8 @@ notificationCommand
         { key: 'id', header: 'ID' },
         { key: 'name', header: 'Name' },
         { key: 'type', header: 'Type' },
+        // A paging service (pagerduty, ...) is a webhook with a preset.
+        { key: 'config', header: 'Preset', format: (value) => (value as { preset?: string } | undefined)?.preset ?? '-' },
         { key: 'isEnabled', header: 'Enabled' },
         { key: 'lastUsed', header: 'Last Used' },
         // ok | auth_failed (integration key rejected) | failing | unknown, from the last 7 days of deliveries.
@@ -67,13 +86,14 @@ notificationCommand
 notificationCommand
   .command('create')
   .description('Create a notification provider')
-  .requiredOption('--type <type>', 'Provider type (email, slack, webhook, telegram, discord, teams)')
+  .requiredOption('--type <type>', 'Provider type (email, slack, webhook, telegram, discord, teams, pagerduty)')
   .requiredOption('--name <name>', 'Provider name')
   .option('--payload <json>', 'Provider configuration as a JSON object')
   .option('--data <json>', 'Alias for --payload')
   .option('--config <json>', 'Legacy alias for --payload')
-  .action(async (options: { type: string; name: string } & PayloadOptions) => {
-    const validTypes = ['email', 'slack', 'webhook', 'telegram', 'discord', 'teams']
+  .option('--routing-key-stdin', 'pagerduty: read the Events API v2 routing key from stdin (default: PAGERDUTY_ROUTING_KEY)')
+  .action(async (options: { type: string; name: string; routingKeyStdin?: boolean } & PayloadOptions) => {
+    const validTypes = ['email', 'slack', 'webhook', 'telegram', 'discord', 'teams', 'pagerduty']
     if (!validTypes.includes(options.type)) {
       throw new CLIError(
         `Invalid provider type. Must be one of: ${validTypes.join(', ')}`,
@@ -81,14 +101,26 @@ notificationCommand
       )
     }
 
-    const config = parsePayload(options) ?? {}
+    let type = options.type
+    let config = parsePayload(options) ?? {}
+    if (options.type === 'pagerduty') {
+      if (Object.keys(config).length > 0) {
+        throw new CLIError('--type pagerduty takes its routing key from PAGERDUTY_ROUTING_KEY or --routing-key-stdin, not --payload', ExitCode.ConfigError)
+      }
+      // PagerDuty is a webhook with the pagerduty preset; the key goes in the body template, as in the web form.
+      const routingKey = await readRoutingKey(options.routingKeyStdin)
+      type = 'webhook'
+      config = pagerDutyConfig(routingKey)
+    } else if (options.routingKeyStdin) {
+      throw new CLIError('--routing-key-stdin only applies to --type pagerduty', ExitCode.ConfigError)
+    }
 
     const client = createAuthenticatedClient()
     const { data } = await withSpinner(
       'Creating notification provider',
       () => client.post<Record<string, unknown>>('/api/notification-providers', {
         name: options.name,
-        type: options.type,
+        type,
         config: { name: options.name, ...config },
       }),
     )
@@ -105,11 +137,21 @@ notificationCommand
   .option('--payload <json>', 'Provider configuration as JSON (replaces the entire configuration)')
   .option('--data <json>', 'Alias for --payload')
   .option('--config <json>', 'Legacy alias for --payload')
-  .action(async (id: string, options: { name?: string; type?: string } & PayloadOptions) => {
+  .option('--routing-key-stdin', 'pagerduty: read the Events API v2 routing key from stdin (default: PAGERDUTY_ROUTING_KEY)')
+  .action(async (id: string, options: { name?: string; type?: string; routingKeyStdin?: boolean } & PayloadOptions) => {
     const client = createAuthenticatedClient()
 
-    const suppliedConfig = parsePayload(options)
-    if (!options.name && !options.type && !suppliedConfig) {
+    let suppliedConfig = parsePayload(options)
+    let requestedType = options.type
+    if (options.type === 'pagerduty') {
+      if (suppliedConfig) throw new CLIError('--type pagerduty takes its routing key from PAGERDUTY_ROUTING_KEY or --routing-key-stdin, not --payload', ExitCode.ConfigError)
+      // Same channel as create: a webhook with the pagerduty preset. Replaces the saved key, so this also rotates it.
+      suppliedConfig = pagerDutyConfig(await readRoutingKey(options.routingKeyStdin))
+      requestedType = 'webhook'
+    } else if (options.routingKeyStdin) {
+      throw new CLIError('--routing-key-stdin only applies to --type pagerduty', ExitCode.ConfigError)
+    }
+    if (!options.name && !requestedType && !suppliedConfig) {
       throw new CLIError('No fields to update. Use --name, --type, or --payload.', ExitCode.ConfigError)
     }
 
@@ -125,7 +167,7 @@ notificationCommand
     const maskedFields = (existing.maskedFields as string[] | undefined) ?? []
 
     const updatedName = options.name ?? String(existing.name ?? '')
-    const updatedType = options.type ?? String(existing.type ?? '')
+    const updatedType = requestedType ?? String(existing.type ?? '')
 
     // Build config for the update
     let updatedConfig: Record<string, unknown> | undefined
