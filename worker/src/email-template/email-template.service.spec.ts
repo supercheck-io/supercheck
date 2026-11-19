@@ -42,7 +42,9 @@ describe('EmailTemplateService (local render)', () => {
   });
 
   it('cuts a long preheader and falls back to the title when there is no message', () => {
-    expect(monitorAlert.alertEmailPreview('', 'Job Completed: X')).toBe('Job Completed: X');
+    expect(monitorAlert.alertEmailPreview('', 'Job Completed: X')).toBe(
+      'Job Completed: X',
+    );
     const long = monitorAlert.alertEmailPreview('word '.repeat(60), 't');
     expect(long.length).toBeLessThanOrEqual(120);
     expect(long.endsWith('…')).toBe(true);

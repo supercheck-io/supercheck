@@ -123,7 +123,10 @@ describe('smtp-transport', () => {
     const sendMail = jest.fn().mockResolvedValue({});
     createTransport.mockReturnValue(transport(sendMail));
     await sendMailToRecipients(['a@x.io'], message);
-    expect(sendMail.mock.calls[0][0].from).toEqual({ name: 'Supercheck', address: 'alerts@example.com' });
+    expect(sendMail.mock.calls[0][0].from).toEqual({
+      name: 'Supercheck',
+      address: 'alerts@example.com',
+    });
     expect(sendMail.mock.calls[0][0]).not.toHaveProperty('replyTo');
     process.env.SMTP_FROM_NAME = 'Acme';
     process.env.SMTP_REPLY_TO = 'help@acme.test';

@@ -1989,7 +1989,10 @@ describe('NotificationService', () => {
       sendMail.mockClear();
       await service.sendNotification(emailProvider, basePayload);
       const sent = sendMail.mock.calls[0][0];
-      expect(sent.from).toEqual({ name: 'Supercheck', address: process.env.SMTP_FROM_EMAIL });
+      expect(sent.from).toEqual({
+        name: 'Supercheck',
+        address: process.env.SMTP_FROM_EMAIL,
+      });
       expect(sent).not.toHaveProperty('replyTo');
     });
 
