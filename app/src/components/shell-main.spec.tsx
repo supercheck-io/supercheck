@@ -119,4 +119,32 @@ describe("ShellMain", () => {
     jest.useRealTimers();
     jest.restoreAllMocks();
   });
+
+  it("stops restoring on a key press even when the position does not change", () => {
+    const raf: FrameRequestCallback[] = [];
+    jest.spyOn(window, "requestAnimationFrame").mockImplementation((cb: FrameRequestCallback) => (raf.push(cb), raf.length));
+    jest.spyOn(window, "cancelAnimationFrame").mockImplementation((id: number) => {
+      raf[id - 1] = () => {};
+    });
+    const { rerender } = render(ui());
+    const main = screen.getByRole("main");
+    let top = 0;
+    let max = 0;
+    Object.defineProperty(main, "scrollTop", { configurable: true, get: () => top, set: (v: number) => (top = Math.min(v, max)) });
+    top = 800;
+    max = 800;
+    act(() => main.dispatchEvent(new Event("scroll")));
+    mockPathname = "/b";
+    rerender(ui());
+    window.history.pushState({}, "", "/a");
+    act(() => window.dispatchEvent(new PopStateEvent("popstate")));
+    max = 0;
+    mockPathname = "/a";
+    rerender(ui());
+    act(() => main.dispatchEvent(new KeyboardEvent("keydown", { key: "Home" })));
+    max = 800;
+    act(() => raf.splice(0).forEach((cb) => cb(0)));
+    expect(top).toBe(0);
+    jest.restoreAllMocks();
+  });
 });

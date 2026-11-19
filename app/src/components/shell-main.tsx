@@ -84,11 +84,15 @@ export function ShellMain({ className, children }: { className?: string; childre
       lastSet = main.scrollTop;
       if (target > 0 && main.scrollTop < target && frames++ < 300) frame = requestAnimationFrame(apply);
     };
+    // Wheel, touch and keys can leave the position unchanged (Home at the top), so they end it too.
+    const inputs = ["wheel", "touchstart", "keydown"] as const;
     main.addEventListener("scroll", onScroll, { passive: true });
+    inputs.forEach((name) => main.addEventListener(name, stop, { passive: true }));
     apply();
     return () => {
       stop();
       main.removeEventListener("scroll", onScroll);
+      inputs.forEach((name) => main.removeEventListener(name, stop));
     };
   }, [pathname]);
 
