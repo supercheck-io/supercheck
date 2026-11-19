@@ -45,7 +45,7 @@ export async function GET(
 
     if (inviteDetails.length === 0) {
       return NextResponse.json(
-        { error: 'Invitation not found' },
+        { error: 'Invitation not found', code: 'INVITE_UNAVAILABLE' },
         { status: 404 }
       );
     }
@@ -55,7 +55,7 @@ export async function GET(
     // Check if invitation is expired
     if (new Date() > invite.expiresAt) {
       return NextResponse.json(
-        { error: 'Invitation has expired' },
+        { error: 'Invitation has expired', code: 'INVITE_UNAVAILABLE' },
         { status: 400 }
       );
     }
@@ -63,7 +63,7 @@ export async function GET(
     // Check if invitation is already used
     if (invite.status !== 'pending') {
       return NextResponse.json(
-        { error: 'Invitation has already been used or cancelled' },
+        { error: 'Invitation has already been used or cancelled', code: 'INVITE_UNAVAILABLE' },
         { status: 400 }
       );
     }
@@ -154,7 +154,7 @@ export async function POST(
 
     if (inviteDetails.length === 0) {
       return NextResponse.json(
-        { error: 'Invitation not found' },
+        { error: 'Invitation not found', code: 'INVITE_UNAVAILABLE' },
         { status: 404 }
       );
     }
@@ -413,7 +413,7 @@ export async function POST(
     });
   } catch (error) {
     if (error instanceof Error && error.message === "INVITE_MEMBER_LIMIT") {
-      return NextResponse.json({ error: "The organization has reached its current plan's member limit. Ask an owner to upgrade or free a seat." }, { status: 402 });
+      return NextResponse.json({ error: "The organization has reached its current plan's member limit. Ask an owner to upgrade or free a seat.", code: "INVITE_MEMBER_LIMIT" }, { status: 402 });
     }
     if (error instanceof Error && error.message === 'INVITE_ORG_PENDING') return pendingDeletionResponse();
     if (error instanceof Error && error.message === 'INVITE_SESSION_CHANGED') {

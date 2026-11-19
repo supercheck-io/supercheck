@@ -97,6 +97,16 @@ describe("invitation privacy and acceptance", () => {
     expect(db.select).toHaveBeenCalledTimes(1);
   });
 
+  it("marks a missing or used invitation INVITE_UNAVAILABLE so the page drops the token", async () => {
+    db.select.mockReset().mockReturnValue(selectRows([]));
+    const missing = await GET(new NextRequest("http://localhost/api/invite/11111111-1111-4111-8111-111111111111"), context);
+    expect(missing.status).toBe(404);
+    expect((await missing.json()).code).toBe("INVITE_UNAVAILABLE");
+    db.select.mockReset().mockReturnValue(selectRows([{ ...invite, status: "accepted" }]));
+    const used = await GET(new NextRequest("http://localhost/api/invite/11111111-1111-4111-8111-111111111111"), context);
+    expect((await used.json()).code).toBe("INVITE_UNAVAILABLE");
+  });
+
   it("rejects a used invitation", async () => {
     db.select.mockReset().mockReturnValue(selectRows([{ ...invite, status: "accepted" }]));
     expect((await GET(new NextRequest("http://localhost/api/invite/11111111-1111-4111-8111-111111111111"), context)).status).toBe(400);

@@ -1,12 +1,13 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Loader2, ArrowRight } from "lucide-react";
 import { FieldGroup, Field } from "@/components/ui/field";
 import { AuthCallout, AuthCard, AuthHeader, AuthLegal, AuthLoading, InviteBanner, formatInviteRole } from "@/components/auth/auth-shell";
 import { useSession } from "@/utils/auth-client";
+import { parseInviteToken } from "@/lib/validations/auth";
 import { signOutAndClear } from "@/lib/auth/sign-out";
 import { useAppConfig } from "@/hooks/use-app-config";
 import { clearProjectsCache } from "@/hooks/use-project-context";
@@ -41,8 +42,12 @@ export default function InvitePage({
   const [loading, setLoading] = useState(true);
   const [accepting, setAccepting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [errorTitle, setErrorTitle] = useState("Invalid invitation");
   const [signOutError, setSignOutError] = useState<string | null>(null);
   const [emailMismatch, setEmailMismatch] = useState(false);
+  // Only a dead invitation drops the token from the recovery links; a transient failure keeps it.
+  const [inviteDead, setInviteDead] = useState(false);
+  const redirectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { data: session } = useSession();
   const router = useRouter();
   const { isCloudHosted, isFetched, error: configError } = useAppConfig();
@@ -50,8 +55,22 @@ export default function InvitePage({
 
   // Get token from params
   useEffect(() => {
-    params.then(({ token }) => setToken(token));
+    params.then(({ token }) => {
+      const valid = parseInviteToken(token);
+      if (!valid) {
+        setInviteDead(true);
+        setErrorTitle("Invalid invitation");
+        setError("Invalid invitation token");
+        setLoading(false);
+        return;
+      }
+      setToken(valid);
+    });
   }, [params]);
+
+  useEffect(() => () => {
+    if (redirectTimer.current) clearTimeout(redirectTimer.current);
+  }, []);
 
   // Fetch invitation details
   useEffect(() => {
@@ -65,10 +84,14 @@ export default function InvitePage({
         if (data.success) {
           setInvitation(data.data);
         } else {
+          const dead = data.code === "INVITE_UNAVAILABLE" || response.status === 404;
+          if (dead) setInviteDead(true);
+          setErrorTitle(dead ? "Invalid invitation" : "Couldn't load invitation");
           setError(data.error || "Failed to load invitation");
         }
       } catch (error) {
         console.error("Error fetching invitation:", error);
+        setErrorTitle("Couldn't load invitation");
         setError("Failed to load invitation");
       } finally {
         setLoading(false);
@@ -92,7 +115,7 @@ export default function InvitePage({
         announceProjectChange();
         setAccepted(data.data);
         // An invitee picks a persona first, then lands on the dashboard (after 3 seconds)
-        setTimeout(() => {
+        redirectTimer.current = setTimeout(() => {
           reloadProjectContext(clearProjectsCache, INVITEE_LANDING_PATH);
         }, 3000);
       } else {
@@ -108,7 +131,9 @@ export default function InvitePage({
         }
         if (data.code === "INVITE_UNAVAILABLE") {
           // Dead invitation: drop it so the error links don't carry the token.
+          setInviteDead(true);
           setInvitation(null);
+          setErrorTitle("Invalid invitation");
           setError(data.error);
           return;
         }
@@ -123,11 +148,13 @@ export default function InvitePage({
           // and sign-up links to sign-in. Which one applies is deliberately not revealed here.
           router.push(`/sign-up?invite=${encodeURIComponent(token)}`);
         } else {
+          setErrorTitle(data.code === "INVITE_MEMBER_LIMIT" ? "Member limit reached" : "Couldn't accept invitation");
           setError(data.error || "Failed to accept invitation");
         }
       }
     } catch (error) {
       console.error("Error accepting invitation:", error);
+      setErrorTitle("Couldn't accept invitation");
       setError("Failed to accept invitation");
     } finally {
       setAccepting(false);
@@ -151,11 +178,11 @@ export default function InvitePage({
   // Error State
   if (error) {
     // A dead (expired, used, unknown) invite must not travel on: it would loop back here after sign-in.
-    const inviteQuery = invitation ? `?invite=${encodeURIComponent(token)}` : "";
+    const inviteQuery = token && !inviteDead ? `?invite=${encodeURIComponent(token)}` : "";
     return (
       <AuthCard>
         <FieldGroup>
-          <AuthHeader status="error" title="Invalid invitation" description={error} />
+          <AuthHeader status="error" title={errorTitle} description={error} />
 
           <Field className="flex flex-col gap-2">
             <Button size="lg" onClick={() => router.push(`/sign-in${inviteQuery}`)} className="w-full">
@@ -226,12 +253,12 @@ export default function InvitePage({
 
           <div role="status" className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
             <Loader2 className="size-4 animate-spin" aria-hidden="true" />
-            <span>Redirecting to dashboard…</span>
+            <span>Redirecting to setup…</span>
           </div>
 
           <Field>
             <Button size="lg" onClick={() => reloadProjectContext(clearProjectsCache, INVITEE_LANDING_PATH)} className="w-full">
-              Go to dashboard
+              Continue to setup
               <ArrowRight className="ml-2 h-4 w-4" />
             </Button>
           </Field>

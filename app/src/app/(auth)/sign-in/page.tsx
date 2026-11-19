@@ -175,7 +175,8 @@ function SignInPageContent() {
             if (acceptResponse.ok && acceptResult.success) {
               console.log(`✅ Auto-accepted invitation to ${acceptResult.data?.organizationName}`);
               announceProjectChange();
-              reloadProjectContext(clearProjectsCache);
+              // Same landing as every other invite path: the persona question first.
+              reloadProjectContext(clearProjectsCache, "/setup/welcome");
               return;
             }
           } catch (acceptError) {

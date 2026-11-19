@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import InvitePage from "./page";
 
 const mockReload = jest.fn();
@@ -18,6 +18,8 @@ jest.mock("@/lib/project-navigation", () => ({
   announceProjectChange: jest.fn(),
   reloadProjectContext: (...args: unknown[]) => mockReload(...args),
 }));
+
+const TOKEN = "01a149f7-ce26-70e2-997b-806e9f48d9de";
 
 describe("invite accept page", () => {
   const originalFetch = global.fetch;
@@ -40,9 +42,9 @@ describe("invite accept page", () => {
   });
 
   async function accept() {
-    render(<InvitePage params={Promise.resolve({ token: "t" })} />);
+    render(<InvitePage params={Promise.resolve({ token: TOKEN })} />);
     fireEvent.click(await screen.findByRole("button", { name: /accept invitation/i }));
-    await screen.findByRole("button", { name: /go to dashboard/i });
+    await screen.findByRole("button", { name: /continue to setup/i });
   }
 
   it("lands on persona selection after the automatic redirect", async () => {
@@ -54,7 +56,7 @@ describe("invite accept page", () => {
 
   it("lands on persona selection from the button", async () => {
     await accept();
-    fireEvent.click(screen.getByRole("button", { name: /go to dashboard/i }));
+    fireEvent.click(screen.getByRole("button", { name: /continue to setup/i }));
     expect(mockReload).toHaveBeenCalledWith(expect.any(Function), "/setup/welcome");
   });
 
@@ -66,14 +68,14 @@ describe("invite accept page", () => {
     ) as unknown as typeof fetch;
   }
   async function clickAccept() {
-    render(<InvitePage params={Promise.resolve({ token: "t" })} />);
+    render(<InvitePage params={Promise.resolve({ token: TOKEN })} />);
     fireEvent.click(await screen.findByRole("button", { name: /accept invitation/i }));
   }
 
   it("sends a signed-out invitee to sign-up without revealing whether an account exists", async () => {
     mockInvite({});
     await clickAccept();
-    await waitFor(() => expect(mockPush).toHaveBeenCalledWith("/sign-up?invite=t"));
+    await waitFor(() => expect(mockPush).toHaveBeenCalledWith(`/sign-up?invite=${TOKEN}`));
   });
 
   it("shows a sign-out state, and never redirects, when signed in as another account", async () => {
@@ -88,8 +90,8 @@ describe("invite accept page", () => {
   });
 
   it("drops the token from the links when the invitation itself is invalid", async () => {
-    global.fetch = jest.fn(async () => ({ json: async () => ({ success: false, error: "Invitation has expired" }) })) as unknown as typeof fetch;
-    render(<InvitePage params={Promise.resolve({ token: "t" })} />);
+    global.fetch = jest.fn(async () => ({ json: async () => ({ success: false, error: "Invitation has expired", code: "INVITE_UNAVAILABLE" }) })) as unknown as typeof fetch;
+    render(<InvitePage params={Promise.resolve({ token: TOKEN })} />);
     fireEvent.click(await screen.findByRole("button", { name: /go to sign in/i }));
     expect(mockPush).toHaveBeenCalledWith("/sign-in");
     fireEvent.click(screen.getByRole("button", { name: /create new account/i }));
@@ -110,7 +112,7 @@ describe("invite accept page", () => {
     mockInvite({ post: { status: 400, body: { success: false, error: "Member limit reached" } } });
     await clickAccept();
     fireEvent.click(await screen.findByRole("button", { name: /go to sign in/i }));
-    expect(mockPush).toHaveBeenCalledWith("/sign-in?invite=t");
+    expect(mockPush).toHaveBeenCalledWith(`/sign-in?invite=${TOKEN}`);
   });
 
   it("stays on the wrong-account state when sign-out fails", async () => {
@@ -128,5 +130,46 @@ describe("invite accept page", () => {
     await clickAccept();
     fireEvent.click(await screen.findByRole("button", { name: /go to sign in/i }));
     expect(mockPush).toHaveBeenCalledWith("/sign-in");
+  });
+
+  it("keeps the token on the recovery links after a transient load failure", async () => {
+    global.fetch = jest.fn(async () => ({ status: 500, json: async () => ({ error: "Failed to fetch invitation details" }) })) as unknown as typeof fetch;
+    render(<InvitePage params={Promise.resolve({ token: TOKEN })} />);
+    fireEvent.click(await screen.findByRole("button", { name: /go to sign in/i }));
+    expect(mockPush).toHaveBeenCalledWith(`/sign-in?invite=${TOKEN}`);
+  });
+
+  it("drops the token when the invitation no longer exists (404)", async () => {
+    global.fetch = jest.fn(async () => ({ status: 404, json: async () => ({ error: "Invitation not found", code: "INVITE_UNAVAILABLE" }) })) as unknown as typeof fetch;
+    render(<InvitePage params={Promise.resolve({ token: TOKEN })} />);
+    fireEvent.click(await screen.findByRole("button", { name: /go to sign in/i }));
+    expect(mockPush).toHaveBeenCalledWith("/sign-in");
+  });
+
+  it("treats a malformed token as a dead invitation without calling the API", async () => {
+    render(<InvitePage params={Promise.resolve({ token: "../x" })} />);
+    fireEvent.click(await screen.findByRole("button", { name: /go to sign in/i }));
+    expect(mockPush).toHaveBeenCalledWith("/sign-in");
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  it("titles a member-limit refusal as such, not as an invalid invitation", async () => {
+    mockInvite({ post: { status: 402, body: { success: false, error: "The organization has reached its member limit.", code: "INVITE_MEMBER_LIMIT" } } });
+    await clickAccept();
+    expect(await screen.findByRole("heading", { name: /member limit reached/i })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: /invalid invitation/i })).not.toBeInTheDocument();
+  });
+
+  it("titles a transient load failure as a failure to load", async () => {
+    global.fetch = jest.fn(async () => ({ status: 500, json: async () => ({ error: "Failed" }) })) as unknown as typeof fetch;
+    render(<InvitePage params={Promise.resolve({ token: TOKEN })} />);
+    expect(await screen.findByRole("heading", { name: /couldn.t load invitation/i })).toBeInTheDocument();
+  });
+
+  it("does not redirect after the page is left during the 3 second wait", async () => {
+    await accept();
+    cleanup();
+    act(() => { jest.advanceTimersByTime(4000); });
+    expect(mockReload).not.toHaveBeenCalled();
   });
 });

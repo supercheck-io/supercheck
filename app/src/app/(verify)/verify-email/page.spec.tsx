@@ -14,7 +14,7 @@ describe("verify-email page", () => {
   it("points an invitee who may already have an account to sign-in, keeping the invitation", () => {
     mockQuery.value = `email=a%40b.co&invite=${TOKEN}&from=signup`;
     render(<VerifyEmailPage />);
-    expect(screen.getByText(/already have an account, we.ve emailed you a sign-in link/i)).toBeInTheDocument();
+    expect(screen.getByText(/already have an account, you.ll also get an email shortly/i)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /already have an account\? sign in/i })).toHaveAttribute("href", `/sign-in?invite=${TOKEN}`);
     expect(social).toHaveBeenLastCalledWith(`/invite/${TOKEN}`);
   });
@@ -22,14 +22,14 @@ describe("verify-email page", () => {
   it("does not claim a sign-in email was sent when the visitor was bounced here from sign-in", () => {
     mockQuery.value = `email=a%40b.co&invite=${TOKEN}`;
     render(<VerifyEmailPage />);
-    expect(screen.queryByText(/sign-in link instead/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/email shortly/i)).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: /back to sign in/i })).toBeInTheDocument();
   });
 
   it("keeps the plain copy without an invitation", () => {
     mockQuery.value = "email=a%40b.co";
     render(<VerifyEmailPage />);
-    expect(screen.queryByText(/sign-in link instead/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/email shortly/i)).not.toBeInTheDocument();
     expect(social).not.toHaveBeenCalled();
   });
 });
