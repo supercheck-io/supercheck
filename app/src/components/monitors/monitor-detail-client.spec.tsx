@@ -3,7 +3,15 @@ import { MonitorDetailClient } from "./monitor-detail-client";
 
 const invalidateQueries = jest.fn();
 jest.mock("@/components/sre/incidents/new-incident-action", () => ({ NewIncidentAction: () => null }));
-jest.mock("@/components/maintenance/maintenance-windows-panel", () => ({ MonitorMaintenanceBar: () => null, ServiceMaintenanceAction: () => null }));
+jest.mock("@/components/maintenance/maintenance-windows-panel", () => ({
+  MonitorMaintenanceBar: () => null,
+  ServiceMaintenanceAction: () => null,
+  maintenanceEndLabel: (end: Date) => end.toISOString(),
+}));
+let mockWindows: unknown[] | undefined;
+const maintenanceQuery = jest.fn(() => ({ data: mockWindows }));
+// The real hook reads the project context, which the notification view has none of.
+jest.mock("@/hooks/use-maintenance-windows", () => ({ useMaintenanceWindows: () => maintenanceQuery() }));
 jest.mock("@tanstack/react-query", () => ({
   useQueryClient: () => ({ invalidateQueries }),
   useIsRestoring: () => false,
@@ -25,11 +33,13 @@ jest.mock("@/hooks/use-monitors", () => ({
 }));
 jest.mock("@/hooks/use-dashboard", () => ({ DASHBOARD_QUERY_KEY: ["dashboard"] }));
 let mockResults: unknown[] = [];
-let mockPagination: { total: number } | null = null;
+let mockPagination: { total: number; totalPages?: number } | null = null;
+let mockFetching = false;
+let mockPlaceholder = false;
 let locationFilterProps: { availableLocations: string[] } | null = null;
 jest.mock("@/hooks/use-monitor-details", () => ({
   useMonitorStats: () => ({ stats: null }),
-  useMonitorResults: () => ({ results: mockResults, pagination: mockPagination, isFetching: false }),
+  useMonitorResults: () => ({ results: mockResults, pagination: mockPagination, isFetching: mockFetching, isPlaceholderData: mockPlaceholder }),
   useMonitorPermissions: () => ({ canEdit: true, canDelete: true, canToggle: true, isLoading: false }),
 }));
 jest.mock("@/components/shared/report-viewer", () => ({ ReportViewer: () => null }));
@@ -79,10 +89,11 @@ it("keeps check result cells on one line with an ellipsis", async () => {
   try {
     render(<MonitorDetailClient monitor={monitor} />);
 
-    // The failure text opens from an info button on the Result cell, not a column, so the table fits half the page.
-    fireEvent.click(await screen.findByTestId("result-error"));
-    expect(await screen.findByText(error)).toBeInTheDocument();
-    expect(screen.queryByRole("columnheader", { name: "Error" })).toBeNull();
+    // The failure text is back in its own Error column, clipped with the full text on hover.
+    expect(screen.getByRole("columnheader", { name: "Error" })).toBeInTheDocument();
+    expect(await screen.findByTestId("result-error")).toHaveTextContent(error);
+    expect(screen.getByText(error)).toHaveClass("truncate");
+    expect(screen.queryByRole("button", { name: "Show error" })).toBeNull();
     // Compact time never truncates; the full timestamp is in the title.
     const checkedAt = screen.getByText("just now");
     expect(checkedAt).toHaveAttribute("title", expect.stringMatching(/^[A-Z][a-z]{2} \d{1,2}, \d{4} \d{2}:\d{2}:\d{2}$/));
@@ -98,12 +109,12 @@ it("keeps check result cells on one line with an ellipsis", async () => {
   }
 });
 
-it("shows the report and error buttons of a failed synthetic check in the Result cell", async () => {
+it("shows the report button in the Result cell and the error in the Error column for a failed synthetic check", async () => {
   mockResults = [{ id: "r7", monitorId: "m9", checkedAt: new Date().toISOString(), isUp: false, responseTimeMs: 40, location: null, testExecutionId: "run1", details: { reportUrl: "r", errorMessage: "boom" } }];
   try {
     render(<MonitorDetailClient monitor={{ id: "m9", name: "Bot", type: "synthetic_test", target: "t1", status: "down", frequencyMinutes: 5, config: { testId: "t1" }, recentResults: [] } as never} />);
     expect(await screen.findByRole("button", { name: "View test report" })).toBeInTheDocument();
-    expect(screen.getByTestId("result-error")).toBeInTheDocument();
+    expect(screen.getByTestId("result-error")).toHaveTextContent("boom");
   } finally {
     mockResults = [];
   }
@@ -132,12 +143,12 @@ it("shows a check time in compact form", async () => {
   }
 });
 
-it("shows no error marker for a passing check", async () => {
+it("shows N/A in the Error column for a passing check", async () => {
   mockResults = [{ id: "r1", monitorId: "m1", checkedAt: new Date().toISOString(), isUp: true, responseTimeMs: 40, location: null, details: null }];
   try {
     render(<MonitorDetailClient monitor={monitor} />);
     expect(await screen.findByText("40 ms")).toBeInTheDocument();
-    expect(screen.queryByTestId("result-error")).toBeNull();
+    expect(screen.getByTestId("result-error")).toHaveTextContent("N/A");
   } finally {
     mockResults = [];
   }
@@ -151,27 +162,29 @@ describe("MCP server monitor detail", () => {
   } as never;
   const mcpRow = { id: "r5", monitorId: "m2", checkedAt: new Date().toISOString(), isUp: true, responseTimeMs: 120, location: null, details: { mcp: { toolCount: 4, protocol: "2025-06-18", serverName: "lumen-freight-mcp", serverVersion: "1.8.2" } } };
 
-  it("has no MCP server stat card and puts server and protocol in the Tools header", async () => {
+  it("puts the tools, server and protocol in a popover from the Tools button, not a card under the charts", async () => {
     mockResults = [mcpRow];
     try {
       render(<MonitorDetailClient monitor={{ ...(mcpMonitor as object), recentResults: [mcpRow] } as never} />);
       expect(screen.queryByText("MCP server")).toBeNull();
-      expect(screen.queryByTestId("mcp-stat-server")).toBeNull();
+      expect(screen.queryByTestId("mcp-tools-panel")).toBeNull();
       expect(screen.getAllByText(/^(Current|Last 24 hours|Last 30 days)$/)).toHaveLength(3);
-      expect(screen.getByTestId("mcp-server-meta")).toHaveTextContent("lumen-freight-mcp 1.8.2 · MCP 2025-06-18");
+      fireEvent.click(screen.getByTestId("mcp-tools-button"));
+      expect(await screen.findByTestId("mcp-server-meta")).toHaveTextContent("lumen-freight-mcp 1.8.2 · MCP 2025-06-18");
+      expect(screen.getByTestId("mcp-tool-list")).toHaveTextContent("track");
       expect(await screen.findByTestId("mcp-row-tools")).toHaveTextContent("4");
     } finally {
       mockResults = [];
     }
   });
 
-  it("has no Error column and no horizontal min width past the compact table", async () => {
+  it("ends the columns with Error and drops the minimum width on desktop", async () => {
     mockResults = [mcpRow];
     try {
       render(<MonitorDetailClient monitor={mcpMonitor} />);
       expect(await screen.findByTestId("mcp-row-tools")).toBeInTheDocument();
-      expect(screen.queryByRole("columnheader", { name: "Error" })).toBeNull();
-      expect(screen.getAllByRole("columnheader").map((h) => h.textContent)).toEqual(["Result", "Checked At", "Location", "Response", "Tools"]);
+      expect(screen.getAllByRole("columnheader").map((h) => h.textContent)).toEqual(["Result", "Checked At", "Location", "Response", "Tools", "Error"]);
+      expect(screen.getByRole("table")).toHaveClass("lg:min-w-0");
     } finally {
       mockResults = [];
     }
@@ -355,9 +368,13 @@ describe("heartbeat monitor detail", () => {
     expect(screen.getByTestId("monitor-heartbeat-subtitle")).toHaveTextContent("Every 1 h · grace 10 min");
   });
 
-  it("has no metric cards", () => {
+  it("shows ping and uptime stat cards in the header, not response-time ones", () => {
     render(<MonitorDetailClient monitor={heartbeatMonitor("up", pinged())} />);
-    for (const label of ["Uptime", "Avg run", "P95 run", "Last 24 hours", "Last 30 days"]) {
+    const header = screen.getByTestId("monitor-detail-header");
+    for (const label of ["Pings", "Uptime", "Last 24 hours", "Last 30 days"]) {
+      expect(within(header).getByText(label)).toBeInTheDocument();
+    }
+    for (const label of ["Avg Resp", "P95 Resp", "Current"]) {
       expect(screen.queryByText(label)).toBeNull();
     }
   });
@@ -383,20 +400,21 @@ describe("heartbeat monitor detail", () => {
   it("keeps the heartbeat layout without a summary, as in the notification view", () => {
     const { heartbeat: omitted, ...bare } = heartbeatMonitor("up") as unknown as Record<string, unknown>;
     void omitted;
+    maintenanceQuery.mockClear();
     render(<MonitorDetailClient monitor={bare as never} isNotificationView />);
+    expect(maintenanceQuery).not.toHaveBeenCalled();
     expect(screen.getByTestId("heartbeat-layout")).toBeInTheDocument();
     expect(screen.getByTestId("heartbeat-ping-history")).toBeInTheDocument();
     expect(screen.queryByTestId("heartbeat-overview")).toBeNull();
   });
 
-  it("shows the schedule, last ping, next ping, run and uptime facts in the overview", () => {
+  it("shows last ping, next ping, run and uptime in the header stats and the schedule in the subtitle", () => {
     render(<MonitorDetailClient monitor={heartbeatMonitor("up", pinged(), [runRow])} />);
     const overview = screen.getByTestId("heartbeat-overview");
-    for (const label of ["Expected every", "Grace period", "Last ping", "Next ping", "Last run", "Uptime 24h", "Uptime 30d"]) {
+    for (const label of ["Last ping", "Next ping", "Last run", "Last 24 hours", "Last 30 days"]) {
       expect(within(overview).getByText(label)).toBeInTheDocument();
     }
-    expect(overview).toHaveTextContent("1 h");
-    expect(overview).toHaveTextContent("10 min");
+    expect(screen.getByTestId("monitor-heartbeat-subtitle")).toHaveTextContent("Every 1 h · grace 10 min");
   });
 
   it("shows last ping, next ping and last run duration in the overview", () => {
@@ -406,14 +424,18 @@ describe("heartbeat monitor detail", () => {
     expect(screen.getByTestId("heartbeat-stat-duration")).toHaveTextContent("4 min 08 s");
   });
 
-  it("charts run duration only when durations exist, else shows a one-line hint", () => {
+  it("offers the run duration chart beside availability only when durations exist, else shows a one-line hint", () => {
     const { unmount } = render(<MonitorDetailClient monitor={heartbeatMonitor("up", pinged())} />);
     expect(chartProps).toBeNull();
+    expect(screen.queryByRole("button", { name: "Run duration" })).toBeNull();
     expect(screen.getByTestId("heartbeat-run-duration-hint")).toBeInTheDocument();
     unmount();
     render(<MonitorDetailClient monitor={heartbeatMonitor("up", pinged(), [runRow])} />);
-    expect(chartProps).toMatchObject({ title: "Run duration" });
     expect(screen.queryByTestId("heartbeat-run-duration-hint")).toBeNull();
+    expect(chartProps).toBeNull();
+    const tab = screen.getByRole("button", { name: "Run duration" });
+    fireEvent.click(tab);
+    expect(chartProps).toMatchObject({ title: "Run duration" });
   });
 
   it("shows Paused instead of a deadline while paused", () => {
@@ -470,5 +492,80 @@ describe("agent test monitor", () => {
     } finally {
       mockResults = [];
     }
+  });
+});
+
+describe("detail header and results table", () => {
+  afterEach(() => {
+    mockResults = [];
+    mockPagination = null;
+    mockFetching = false;
+    mockPlaceholder = false;
+    mockWindows = undefined;
+  });
+  const row = (id: string) => ({ id, monitorId: "m1", checkedAt: new Date().toISOString(), isUp: true, responseTimeMs: 40, location: null, details: null });
+
+  it("truncates a long name and target with the full text in the title instead of cutting at 40 characters", () => {
+    const name = "Checkout API production health check for the EU fulfillment region and partner integrations";
+    const target = "https://checkout-api.example.test/v2/health/deep?include=db,cache,queue,partners";
+    render(<MonitorDetailClient monitor={{ ...(monitor as object), name, target, url: target } as never} />);
+    const title = screen.getByTestId("monitor-detail-name");
+    expect(title).toHaveTextContent(name);
+    expect(title).toHaveClass("truncate");
+    expect(title).toHaveAttribute("title", name);
+    expect(screen.getByTestId("monitor-detail-target")).toHaveClass("truncate");
+    expect(screen.getByTestId("monitor-detail-target")).toHaveAttribute("title", target);
+    expect(screen.getByTestId("monitor-detail-actions")).toHaveClass("lg:flex-nowrap");
+  });
+
+  it("never queries maintenance windows in the notification view, which has no project context", () => {
+    maintenanceQuery.mockClear();
+    render(<MonitorDetailClient monitor={monitor} isNotificationView />);
+    expect(maintenanceQuery).not.toHaveBeenCalled();
+    render(<MonitorDetailClient monitor={monitor} />);
+    expect(maintenanceQuery).toHaveBeenCalled();
+  });
+
+  it("names the icon-only actions for screen readers", () => {
+    render(<MonitorDetailClient monitor={monitor} />);
+    for (const name of ["Pause", "Edit", "Delete"]) {
+      expect(screen.getByRole("button", { name })).toBeInTheDocument();
+    }
+  });
+
+  it("shows an active maintenance window under the name", () => {
+    mockWindows = [{ id: "w1", timezone: "UTC", occurrenceEndsAt: "2026-11-19T14:00:00.000Z" }];
+    render(<MonitorDetailClient monitor={monitor} />);
+    expect(screen.getByTestId("monitor-maintenance-status")).toHaveTextContent("In maintenance until 2026-11-19T14:00:00.000Z");
+  });
+
+  it("shows skeleton rows the size of the page on the first load, not a spinner", () => {
+    mockFetching = true;
+    render(<MonitorDetailClient monitor={monitor} />);
+    const skeleton = screen.getAllByTestId("monitor-result-skeleton");
+    expect(skeleton).toHaveLength(10);
+    expect(skeleton[0].querySelectorAll("td")).toHaveLength(5);
+    expect(screen.queryByText("Loading check results")).toBeNull();
+  });
+
+  it("shows skeleton rows while another page loads, but keeps the rows during a background refresh", () => {
+    mockResults = [row("r1")];
+    mockPagination = { total: 1, totalPages: 1 };
+    mockFetching = true;
+    mockPlaceholder = true;
+    const { rerender } = render(<MonitorDetailClient monitor={monitor} />);
+    expect(screen.getAllByTestId("monitor-result-skeleton")).toHaveLength(10);
+    mockPlaceholder = false;
+    rerender(<MonitorDetailClient monitor={monitor} />);
+    expect(screen.queryByTestId("monitor-result-skeleton")).toBeNull();
+    expect(screen.getAllByTestId("monitor-result-row")).toHaveLength(1);
+  });
+
+  it("shows the pager on a single page, so the height reserved for it is never empty", () => {
+    mockResults = [row("r1")];
+    mockPagination = { total: 1, totalPages: 1 };
+    render(<MonitorDetailClient monitor={monitor} />);
+    expect(screen.getByText("Page 1 of 1")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Next" })).toBeDisabled();
   });
 });

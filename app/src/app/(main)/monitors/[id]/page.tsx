@@ -158,16 +158,11 @@ export default async function MonitorDetailsPage({ params }: MonitorDetailsPageP
     { label: monitorWithData.name && monitorWithData.name.length > 30 ? `${monitorWithData.name?.substring(0, 30)}...` : monitorWithData.name || id, isCurrentPage: true },
   ];
 
-  const fitViewport = monitorWithData.type === "heartbeat";
-
   return (
-    // A heartbeat fits the window on desktop (no page scrollbar); its panels scroll on their own.
-    <div
-      {...(fitViewport ? { "data-fit-viewport": "" } : {})}
-      className={fitViewport ? "flex min-h-0 flex-1 flex-col lg:min-h-[560px] lg:overflow-hidden" : undefined}
-    >
+    // Every monitor fits the window on desktop (no page scrollbar): the results table pages to the rows that fit.
+    <div data-fit-viewport className="flex min-h-0 flex-1 flex-col lg:min-h-[600px]">
       <PageBreadcrumbs items={breadcrumbs} />
-      <div className={fitViewport ? "m-4 flex min-h-0 flex-1 flex-col" : "m-4"}>
+      <div className="m-4 flex min-h-0 flex-1 flex-col">
         <MonitorDetailClient monitor={monitorWithData} />
       </div>
     </div>

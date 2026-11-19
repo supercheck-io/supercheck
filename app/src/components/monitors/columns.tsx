@@ -2,7 +2,8 @@ import type { ColumnDef } from "@tanstack/react-table";
 import { DataTableColumnHeader } from "./data-table-column-header";
 import { DataTableRowActions } from "./data-table-row-actions";
 import type { Monitor } from "./schema";
-import { ClockIcon } from "lucide-react";
+import { ClockIcon, Wrench } from "lucide-react";
+import { TableBadge } from "@/components/ui/table-badge";
 import { UUIDField } from "@/components/ui/uuid-field";
 import { toast } from "sonner";
 
@@ -87,16 +88,17 @@ export const columns: ColumnDef<Monitor>[] = [
       // An MCP server URL often carries a long path; the host is what identifies the server.
       const { type, frequencyMinutes, config } = row.original;
       const mcpHost = type === "mcp_server" ? safeHost(target) : null;
-      const displayValue =
-        type === "heartbeat"
-          ? heartbeatScheduleLabel(frequencyMinutes, heartbeatGraceMinutes({ frequencyMinutes, config }))
-          : mcpHost ?? maskUrlPassword(target || legacyUrl || "—");
+      const isHeartbeat = type === "heartbeat";
+      const displayValue = isHeartbeat
+        ? heartbeatScheduleLabel(frequencyMinutes, heartbeatGraceMinutes({ frequencyMinutes, config }))
+        : mcpHost ?? maskUrlPassword(target || legacyUrl || "—");
 
+      // A schedule is prose, not a URL, so it is set in the body font, which also keeps it from truncating.
       return (
         <TruncatedTextWithTooltip
           text={displayValue}
-          className="font-mono text-sm block"
-          maxWidth="170px"
+          className={`block text-sm ${isHeartbeat ? "" : "font-mono"}`}
+          maxWidth="200px"
           maxLength={30}
         />
       );
@@ -141,12 +143,23 @@ export const columns: ColumnDef<Monitor>[] = [
         | "pending"
         | "maintenance";
       const indicator = <MonitorStatusIndicator status={statusValue} monitorId={row.original.id} />;
-      // Status stays the real up/down during a window; the second pill says alerts are muted.
+      // Status stays the real up/down during a window; a wrench chip says alerts are muted. It is icon-only, so
+      // the cell never wraps (a taller row would change the fitted page size).
       if (!row.original.inMaintenance || statusValue === "maintenance") return indicator;
       return (
-        <div className="flex flex-wrap items-center gap-1">
+        <div className="flex items-center gap-1">
           {indicator}
-          <MonitorStatusIndicator status="maintenance" monitorId={row.original.id} />
+          <TableBadge
+            tone="purple"
+            compact
+            className="px-1.5"
+            role="img"
+            aria-label="In maintenance: alerts muted"
+            title="In maintenance: alerts muted"
+            data-testid="monitor-maintenance-chip"
+          >
+            <Wrench aria-hidden="true" className="h-3.5 w-3.5" />
+          </TableBadge>
         </div>
       );
     },

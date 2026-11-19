@@ -56,8 +56,8 @@ function PlaygroundIdClientBoundary() {
   const breadcrumbs = [
     { label: "Home", href: "/" },
     { label: "Tests", href: "/tests" },
-    { label: testData?.title && testData.title.length > 20 ? `${testData?.title?.substring(0, 20)}...` : testData?.title || 'Test name', href: `/playground/${id}` },
-    { label: "Playground", isCurrentPage: true },
+    // The test is the page: no trailing "Playground" crumb that repeats it.
+    { label: testData?.title && testData.title.length > 40 ? `${testData?.title?.substring(0, 40)}...` : testData?.title || 'Test name', isCurrentPage: true },
   ];
 
   // Memoize initialTestData with proper type mapping

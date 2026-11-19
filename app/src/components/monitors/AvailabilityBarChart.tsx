@@ -35,6 +35,8 @@ interface AvailabilityBarChartProps {
   headerActions?: React.ReactNode;
   /** Muted note under the chart, inside the card. */
   footer?: React.ReactNode;
+  /** Fill the parent's height (the bars grow) instead of the fixed chart height. */
+  fill?: boolean;
 }
 
 type ProcessedAvailabilityPoint = {
@@ -72,6 +74,7 @@ export function AvailabilityBarChart({
   data,
   headerActions,
   footer,
+  fill = false,
 }: AvailabilityBarChartProps) {
   const [tooltipState, setTooltipState] = React.useState<{
     left: number;
@@ -138,7 +141,7 @@ export function AvailabilityBarChart({
 
   if (!data || data.length === 0) {
     return (
-      <Card className="shadow-sm">
+      <Card className={fill ? "flex h-full flex-col shadow-sm" : "shadow-sm"}>
         <CardHeader className="pb-4">
           <CardTitle className="text-lg font-semibold">
             Availability Overview
@@ -149,9 +152,8 @@ export function AvailabilityBarChart({
           {headerActions ? <div className="pt-2">{headerActions}</div> : null}
         </CardHeader>
         <CardContent
-          className="p-4 pt-2"
+          className={fill ? "min-h-[160px] flex-1 p-4 pt-2" : "h-[200px] p-4 pt-2"}
           style={{
-            height: "200px",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
@@ -213,10 +215,11 @@ export function AvailabilityBarChart({
   };
 
   return (
-    <Card className="shadow-sm">
-      <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
-        <div>
-          <CardTitle className="text-lg font-semibold mb-2">
+    <Card className={fill ? "flex h-full flex-col shadow-sm" : "shadow-sm"}>
+      {/* The actions wrap under the title when the card is narrow. */}
+      <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2 pb-2">
+        <div className="min-w-0">
+          <CardTitle className="text-lg font-semibold mb-2 whitespace-nowrap">
             Availability Overview
           </CardTitle>
           <CardDescription>{getDescription()}</CardDescription>
@@ -225,7 +228,7 @@ export function AvailabilityBarChart({
           <div className="flex-shrink-0">{headerActions}</div>
         ) : null}
       </CardHeader>
-      <CardContent className="relative h-[120px] p-3">
+      <CardContent className={fill ? "relative min-h-[64px] flex-1 p-3" : "relative h-[120px] p-3"}>
         <div
           className="relative h-full w-full"
           ref={chartRef}

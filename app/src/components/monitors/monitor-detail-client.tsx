@@ -2,8 +2,10 @@
 
 import React, { useEffect, useState, useMemo, useCallback } from "react";
 import { Spinner } from "@/components/ui/spinner";
+import { Skeleton } from "@/components/ui/skeleton";
 import { NewIncidentAction } from "@/components/sre/incidents/new-incident-action";
-import { MonitorMaintenanceBar } from "@/components/maintenance/maintenance-windows-panel";
+import { MonitorMaintenanceBar, maintenanceEndLabel } from "@/components/maintenance/maintenance-windows-panel";
+import { useMaintenanceWindows, type MaintenanceWindowItem } from "@/hooks/use-maintenance-windows";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { deleteMonitor } from "@/actions/delete-monitor";
 import {
@@ -28,11 +30,13 @@ import {
   FolderOpen,
   Copy,
   ChartNoAxesCombined,
+  CalendarClock,
+  Timer,
 } from "lucide-react";
 import { PlaywrightLogo } from "@/components/logo/playwright-logo";
 import { ReportViewer } from "@/components/shared/report-viewer";
 import { AIMonitorAnalyzeButton } from "@/components/monitors/ai-monitor-analyze-button";
-import { McpToolsPanel } from "@/components/monitors/mcp-tools-panel";
+import { McpToolsButton } from "@/components/monitors/mcp-tools-panel";
 
 import {
   Card,
@@ -77,7 +81,7 @@ import {
 import { NavUser } from "@/components/nav-user";
 import Link from "next/link";
 import { SupercheckLogo } from "@/components/logo/supercheck-logo";
-import { Home, Info } from "lucide-react";
+import { Home } from "lucide-react";
 import { maskUrlPassword } from "@/lib/mask-url-password";
 import { TruncatedTextWithTooltip } from "@/components/ui/truncated-text-with-tooltip";
 import { TableBadge } from "@/components/ui/table-badge";
@@ -100,9 +104,8 @@ import { useLocationMetadata } from "@/hooks/use-locations";
 import { HeartbeatPingUrlPanel } from "./heartbeat-ping-url-panel";
 import { HeartbeatPingHistory } from "./heartbeat-ping-history";
 import { HeartbeatStateBadge } from "./heartbeat-state-badge";
-import { HeartbeatOverview } from "./heartbeat-overview";
 import { useFitPanelRows } from "./use-fit-panel-rows";
-import { formatHeartbeatMinutes, formatPingAgo, formatRunDuration } from "./heartbeat-format";
+import { formatHeartbeatMinutes, formatPingAgo, formatPingDue, formatRunDuration } from "./heartbeat-format";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 export interface MonitorResultItem {
@@ -167,6 +170,8 @@ const StatusHeaderIcon = ({ status }: { status: string }) => {
 
 const naToNull = (value: string) => (value === "N/A" ? null : value);
 
+const STAMP = "MMM d, yyyy HH:mm:ss";
+
 function MetricGroup({
   title,
   children,
@@ -177,7 +182,7 @@ function MetricGroup({
   return (
     <div className="rounded-lg border bg-card px-4 py-3 shadow-sm">
       <p className="mb-2 text-xs font-medium text-muted-foreground">{title}</p>
-      <div className="grid grid-cols-3 gap-3">{children}</div>
+      <div className="grid auto-cols-fr grid-flow-col gap-3">{children}</div>
     </div>
   );
 }
@@ -197,24 +202,27 @@ function MetricStat({
   label,
   value,
   testId,
+  valueTestId,
   tooltip,
 }: {
   icon: React.ReactNode;
   label: string;
   value: string | null;
   testId?: string;
+  /** On the value alone, for assertions on its exact text. */
+  valueTestId?: string;
   /** Full text on hover or focus; replaces the native title. */
   tooltip?: string;
 }) {
   const text = value ?? <span className="text-muted-foreground">—</span>;
   return (
     <div className="min-w-0" data-testid={testId} title={tooltip ? undefined : value ?? undefined}>
-      <div className="flex items-center gap-1.5 text-[13px] font-medium text-muted-foreground">
+      <div className="flex items-center gap-1.5 text-[13px] font-medium text-muted-foreground" data-metric-label="">
         {icon}
         <span className="truncate">{label}</span>
       </div>
-      <div className="mt-1 truncate text-xl font-semibold">
-        {tooltip && value ? (
+      <div className="mt-1 truncate text-xl font-semibold" data-metric-value="" data-testid={valueTestId}>
+        {tooltip ? (
           <Tooltip>
             <TooltipTrigger asChild>
               <span tabIndex={0} className="rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{text}</span>
@@ -226,6 +234,24 @@ function MetricStat({
         )}
       </div>
     </div>
+  );
+}
+
+/** "In maintenance until …" under the name; same query as the Schedule maintenance bar, so the actions stay on one line. */
+function MaintenanceStatus({ monitorId }: { monitorId: string }) {
+  const { data: activeWindows } = useMaintenanceWindows({ monitorId, state: "active" });
+  // Alerts stay muted until the last of the overlapping windows ends.
+  const until = activeWindows?.reduce<MaintenanceWindowItem | undefined>(
+    (latest, window) => (!latest || (window.occurrenceEndsAt ?? "") > (latest.occurrenceEndsAt ?? "") ? window : latest),
+    undefined,
+  );
+  if (!until) return null;
+  return (
+    <TableBadge tone="purple" compact className="shrink-0 gap-1" role="status" data-testid="monitor-maintenance-status">
+      <Wrench className="h-3.5 w-3.5" aria-hidden="true" />
+      In maintenance until{" "}
+      {until.occurrenceEndsAt ? maintenanceEndLabel(new Date(until.occurrenceEndsAt), until.timezone) : "-"}
+    </TableBadge>
   );
 }
 
@@ -275,6 +301,7 @@ export function MonitorDetailClient({
     results: paginatedTableResults,
     pagination: paginationMeta,
     isFetching: isLoadingResults,
+    isPlaceholderData: isPlaceholderResults,
     error: resultsError,
     refetch: refetchResults,
   } = useMonitorResults(monitor.id, {
@@ -574,9 +601,11 @@ export function MonitorDetailClient({
   const lastRunDuration = formatRunDuration(monitor.recentResults?.[0]?.responseTimeMs);
   // Never pinged: stays pending and never alerts, so there is no deadline to show
   const neverPinged = Boolean(heartbeat && !heartbeat.lastPingAt);
+  const nextPingAt = heartbeat && !neverPinged && heartbeat.nextExpectedAt ? new Date(heartbeat.nextExpectedAt) : null;
   const showHeartbeatSetup = isHeartbeat && !isNotificationView;
   // Relative ping times ("8h ago", "in 52m") tick every 30 s while a heartbeat is open.
   const [clockNow, setClockNow] = useState(() => Date.now());
+  const [heartbeatChart, setHeartbeatChart] = useState<"availability" | "duration">("availability");
   useEffect(() => {
     if (!isHeartbeat) return;
     const id = window.setInterval(() => setClockNow(Date.now()), 30_000);
@@ -720,6 +749,39 @@ export function MonitorDetailClient({
     };
   }, [monitor.type, monitor.recentResults, monitor.config, monitor.target, monitor.url]);
 
+  const heartbeatChartToggle = (
+    <div role="group" aria-label="Heartbeat chart" className="flex items-center gap-1 rounded-md bg-muted p-0.5">
+      {(["availability", "duration"] as const).map((chart) => (
+        <Button
+          key={chart}
+          type="button"
+          size="sm"
+          variant={heartbeatChart === chart ? "outline" : "ghost"}
+          className="h-7 px-2 text-xs"
+          aria-pressed={heartbeatChart === chart}
+          onClick={() => setHeartbeatChart(chart)}
+        >
+          {chart === "availability" ? "Availability" : "Run duration"}
+        </Button>
+      ))}
+    </div>
+  );
+
+  const locationFilter =
+    availableLocations.length > 1 ? (
+      <LocationFilterDropdown
+        selectedLocation={selectedLocation}
+        availableLocations={availableLocations}
+        onLocationChange={setSelectedLocation}
+        className="w-[200px]"
+      />
+    ) : undefined;
+
+  // Result, Checked At, Location, Response and Error, plus the type's own columns.
+  const resultColumnCount = 5 + (aiEndpoint ? 2 : 0) + (isMcp ? 1 : 0) + (showPassRate ? 1 : 0);
+  // Skeleton rows on the first load and while a new page or page size loads; a background refresh keeps the rows.
+  const showResultsSkeleton = (isLoadingResults && paginatedTableResults.length === 0) || isPlaceholderResults;
+
   // Use pagination metadata from API
   const totalPages = paginationMeta?.totalPages || 0;
   const currentResultsCount = paginatedTableResults.length;
@@ -742,7 +804,7 @@ export function MonitorDetailClient({
 
   return (
     <>
-      <div className={showHeartbeatSetup ? "flex min-h-0 flex-1 flex-col" : "h-full"}>
+      <div className={fitResults ? "flex min-h-0 flex-1 flex-col" : "h-full"}>
         {/* Logo, breadcrumbs, and user nav for notification view */}
         {isNotificationView && (
           <div className="flex items-center justify-between mb-4">
@@ -773,35 +835,39 @@ export function MonitorDetailClient({
 
         {/* Status and Type Header */}
         <div className="border rounded-lg p-4 mb-4 shadow-sm bg-card shrink-0" data-testid="monitor-detail-header">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="flex min-w-0 items-center gap-3">
+          {/* One line on desktop: the name and target truncate (full text in the title) so the actions never wrap. */}
+          <div className="flex flex-wrap items-center justify-between gap-2 lg:flex-nowrap">
+            <div className="flex min-w-0 flex-1 items-center gap-3">
               {!isNotificationView && (
                 <Button
                   variant="outline"
                   size="icon"
-                  className="h-8 w-8"
+                  className="h-8 w-8 shrink-0"
                   onClick={() => router.push("/monitors")}
                 >
                   <ChevronLeft className="h-4 w-4" />
                   <span className="sr-only">Back to monitors</span>
                 </Button>
               )}
-              <div>
-                <h1 className="text-2xl font-semibold flex items-center gap-2 mt-1">
+              <div className="min-w-0 flex-1">
+                <h1 className="text-2xl font-semibold flex min-w-0 items-center gap-2 mt-1">
                   {monitorTypeInfo?.icon && (
                     <monitorTypeInfo.icon
-                      className={`h-6 w-6 ${monitorTypeInfo.color}`}
+                      className={`h-6 w-6 shrink-0 ${monitorTypeInfo.color}`}
                     />
                   )}
-                  {monitor.name.length > 40
-                    ? monitor.name.slice(0, 40) + "..."
-                    : monitor.name}
+                  <span className="truncate" title={monitor.name} data-testid="monitor-detail-name">
+                    {monitor.name}
+                  </span>
                 </h1>
-                <div className={isHeartbeat ? "flex flex-wrap items-center gap-x-2 gap-y-1" : "flex items-center gap-2"}>
+                <div className={isHeartbeat ? "flex flex-wrap items-center gap-x-2 gap-y-1" : "flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 lg:flex-nowrap"}>
                   {heartbeat && <HeartbeatStateBadge state={heartbeat.state} />}
+                  {/* Needs the project context, which the notification view has none of. */}
+                  {!isNotificationView && <MaintenanceStatus monitorId={monitor.id} />}
                   <div
-                    className={isHeartbeat ? "flex flex-wrap items-center gap-x-1.5 text-sm text-muted-foreground" : "text-sm text-muted-foreground truncate max-w-md"}
-                    title={isHeartbeat ? undefined : maskUrlPassword(monitor.url) ?? undefined}
+                    className={isHeartbeat ? "flex flex-wrap items-center gap-x-1.5 text-sm text-muted-foreground" : "min-w-0 truncate text-sm text-muted-foreground"}
+                    title={isHeartbeat ? undefined : maskUrlPassword(monitor.url || monitor.target) ?? undefined}
+                    data-testid="monitor-detail-target"
                   >
                     {isHeartbeat && heartbeat ? (
                       <>
@@ -846,7 +912,7 @@ export function MonitorDetailClient({
                             monitor.type === "synthetic_test" ? "Test ID" : "URL"
                           )
                         }
-                        className="p-1 hover:bg-muted rounded transition-colors"
+                        className="shrink-0 rounded p-1 transition-colors hover:bg-muted"
                         title={`Copy ${monitor.type === "synthetic_test" ? "Test ID" : "URL"
                           }`}
                       >
@@ -857,7 +923,7 @@ export function MonitorDetailClient({
               </div>
             </div>
 
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2 lg:shrink-0 lg:flex-nowrap" data-testid="monitor-detail-actions">
               {/* Alert Status Indicators */}
               <div className="flex items-center gap-1 ml-1 mr-1">
                 {/* Main Alert Status */}
@@ -984,6 +1050,7 @@ export function MonitorDetailClient({
                         ? "opacity-50 cursor-not-allowed"
                         : ""
                     }
+                    aria-label={monitor.status === "paused" ? "Resume" : "Pause"}
                     title={
                       !permissionsReady
                         ? "Checking permissions"
@@ -993,15 +1060,19 @@ export function MonitorDetailClient({
                     }
                   >
                     {monitor.status === "paused" ? (
-                      <Play className="mr-2 h-4 w-4 text-success" />
+                      <Play className="h-4 w-4 text-success 2xl:mr-2" />
                     ) : (
-                      <Pause className="mr-2 h-4 w-4 text-warning" />
+                      <Pause className="h-4 w-4 text-warning 2xl:mr-2" />
                     )}
-                    {monitor.status === "paused" ? "Resume" : "Pause"}
+                    {/* Pause, Edit, Delete and AI Analyze are icon-only below 2xl (1536px), so the header never wraps. */}
+                    <span className="hidden 2xl:inline">{monitor.status === "paused" ? "Resume" : "Pause"}</span>
                   </Button>
 
                   <NewIncidentAction variant="detail" defaults={{ monitorId: monitor.id }} />
-                  <MonitorMaintenanceBar monitorId={monitor.id} />
+                  {/* Its "In maintenance" banner is shown under the name instead. */}
+                  <div className="shrink-0 empty:hidden [&_[data-testid=maintenance-banner]]:hidden">
+                    <MonitorMaintenanceBar monitorId={monitor.id} />
+                  </div>
 
                   <Button
                     variant="outline"
@@ -1013,6 +1084,7 @@ export function MonitorDetailClient({
                     }
                     disabled={!permissionsReady || !canEditMonitor}
                     className="flex items-center"
+                    aria-label="Edit"
                     title={
                       !permissionsReady
                         ? "Checking permissions"
@@ -1021,8 +1093,8 @@ export function MonitorDetailClient({
                           : "Insufficient permissions to edit monitors"
                     }
                   >
-                    <Edit3 className="h-4 w-4 mr-1" />
-                    <span className="hidden sm:inline">Edit</span>
+                    <Edit3 className="h-4 w-4 2xl:mr-1" />
+                    <span className="hidden 2xl:inline">Edit</span>
                   </Button>
 
                   <Button
@@ -1039,6 +1111,7 @@ export function MonitorDetailClient({
                         ? "opacity-50 cursor-not-allowed text-muted-foreground"
                         : "text-failure border-failure/30 hover:text-failure hover:bg-failure/10"
                     }`}
+                    aria-label="Delete"
                     title={
                       !permissionsReady
                         ? "Checking permissions"
@@ -1047,8 +1120,8 @@ export function MonitorDetailClient({
                           : "Insufficient permissions to delete monitors"
                     }
                   >
-                    <Trash2 className="h-4 w-4 mr-1" />
-                    <span className="hidden sm:inline">Delete</span>
+                    <Trash2 className="h-4 w-4 2xl:mr-1" />
+                    <span className="hidden 2xl:inline">Delete</span>
                   </Button>
 
                   <AIMonitorAnalyzeButton
@@ -1072,9 +1145,54 @@ export function MonitorDetailClient({
             </div>
           </div>
 
-          {/* Metric groups: current state, last 24 hours, last 30 days. A heartbeat keeps its facts in the subtitle. */}
-          {!isHeartbeat && (
-          <div className="mt-4 grid grid-cols-[repeat(auto-fit,minmax(330px,1fr))] gap-3">
+          {/* Metric groups: current state, last 24 hours, last 30 days; a heartbeat shows its pings and uptime. */}
+          {heartbeat ? (
+          <div className="mt-4 grid grid-cols-[repeat(auto-fit,minmax(280px,1fr))] gap-3" data-testid="heartbeat-overview">
+            <MetricGroup title="Pings">
+              <MetricStat
+                icon={<Clock className="h-4 w-4 text-muted-foreground" />}
+                label="Last ping"
+                valueTestId="heartbeat-stat-last-ping"
+                value={heartbeat.lastPingAt ? formatPingAgo(new Date(heartbeat.lastPingAt), clockNow) : "No pings yet"}
+                tooltip={heartbeat.lastPingAt ? format(new Date(heartbeat.lastPingAt), STAMP) : undefined}
+              />
+              <MetricStat
+                icon={<CalendarClock className="h-4 w-4 text-muted-foreground" />}
+                label="Next ping"
+                valueTestId="heartbeat-stat-next"
+                value={heartbeat.state === "paused" ? "Paused" : nextPingAt ? formatPingDue(nextPingAt, clockNow) : null}
+                tooltip={heartbeat.state !== "paused" && nextPingAt ? format(nextPingAt, STAMP) : undefined}
+              />
+              <MetricStat
+                icon={<Timer className="h-4 w-4 text-muted-foreground" />}
+                label="Last run"
+                valueTestId="heartbeat-stat-duration"
+                value={lastRunDuration}
+                tooltip={lastRunDuration ? undefined : "Call /start to record duration"}
+              />
+            </MetricGroup>
+            <MetricGroup title="Uptime">
+              <MetricStat
+                icon={<TrendingUp className="h-4 w-4 text-success" />}
+                label="Last 24 hours"
+                value={naToNull(calculatedMetrics.uptime24h)}
+              />
+              <MetricStat
+                icon={<TrendingUp className="h-4 w-4 text-success" />}
+                label="Last 30 days"
+                value={naToNull(calculatedMetrics.uptime30d)}
+              />
+            </MetricGroup>
+          </div>
+          ) : !isHeartbeat && (
+          <div
+            className={
+              aiEndpoint
+                ? // Four groups stay on one row on desktop, set tighter, so the page still fits the window.
+                  "mt-4 grid grid-cols-[repeat(auto-fit,minmax(280px,1fr))] gap-3 lg:grid-cols-4 lg:gap-2 lg:[&>div]:px-3 lg:[&>div>div]:gap-2 lg:[&_[data-metric-value]]:text-base 2xl:[&_[data-metric-value]]:text-xl lg:[&_[data-metric-label]>svg]:hidden"
+                : "mt-4 grid grid-cols-[repeat(auto-fit,minmax(280px,1fr))] gap-3"
+            }
+          >
             <MetricGroup title="Current">
               <MetricStat
                 icon={<StatusHeaderIcon status={currentActualStatus} />}
@@ -1164,9 +1282,9 @@ export function MonitorDetailClient({
         </div>
 
         {isHeartbeat ? (
-          <div className="flex min-h-0 flex-1 flex-col gap-4 lg:overflow-y-auto" data-testid="heartbeat-layout">
-            {/* Setup (left) and facts with availability (right) share the top row; the ping history fills the rest. */}
-            <div className="grid shrink-0 grid-cols-1 gap-4 lg:grid-cols-2">
+          // Desktop: setup and availability on the left, ping history on the right, both filling the window height.
+          <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 lg:grid-cols-2 lg:grid-rows-[minmax(0,1fr)]" data-testid="heartbeat-layout">
+            <div className="flex min-h-0 min-w-0 flex-col gap-4">
               {showHeartbeatSetup && (
                 <HeartbeatPingUrlPanel
                   monitorId={monitor.id}
@@ -1174,57 +1292,43 @@ export function MonitorDetailClient({
                   pending={heartbeat?.state === "pending"}
                 />
               )}
-              <div className={`flex min-w-0 flex-col gap-4 ${showHeartbeatSetup ? "" : "lg:col-span-2"}`}>
-                {heartbeat && (
-                  <HeartbeatOverview
-                    state={heartbeat.state}
-                    frequencyMinutes={monitor.frequencyMinutes}
-                    graceMinutes={heartbeat.graceMinutes}
-                    lastPingAt={heartbeat.lastPingAt}
-                    nextExpectedAt={neverPinged ? null : heartbeat.nextExpectedAt}
-                    lastRunDuration={lastRunDuration}
-                    uptime24h={naToNull(calculatedMetrics.uptime24h)}
-                    uptime30d={naToNull(calculatedMetrics.uptime30d)}
-                    now={clockNow}
+              {/* One chart slot: availability, or run duration once the job calls /start (a toggle switches). */}
+              <div className={fitResults ? "flex min-h-0 flex-1 flex-col" : "h-[400px]"}>
+                {hasRunDurations && heartbeatChart === "duration" ? (
+                  <ResponseTimeBarChart
+                    data={responseTimeData}
+                    title="Run duration"
+                    headerActions={heartbeatChartToggle}
+                    empty={{
+                      description: "Time between a /start ping and the ping that finishes the run.",
+                      heading: "No run durations yet",
+                      hint: "Call /start when the job begins to record how long it runs.",
+                    }}
                   />
-                )}
-                <AvailabilityBarChart
-                  data={availabilityTimelineData}
-                  headerActions={
-                    availableLocations.length > 1 ? (
-                      <LocationFilterDropdown
-                        selectedLocation={selectedLocation}
-                        availableLocations={availableLocations}
-                        onLocationChange={setSelectedLocation}
-                        className="w-[200px]"
-                      />
-                    ) : undefined
-                  }
-                  footer={
-                    hasRunDurations ? undefined : (
-                      <span data-testid="heartbeat-run-duration-hint">
-                        Call <span className="font-mono">/start</span> when the job begins to record how long it runs.
-                      </span>
-                    )
-                  }
-                />
-                {hasRunDurations && (
-                  // Auto-height wrapper so the card's h-full does not stretch it to the column height.
-                  <div>
-                    <ResponseTimeBarChart
-                      data={responseTimeData}
-                      title="Run duration"
-                      empty={{
-                        description: "Time between a /start ping and the ping that finishes the run.",
-                        heading: "No run durations yet",
-                        hint: "Call /start when the job begins to record how long it runs.",
-                      }}
-                    />
-                  </div>
+                ) : (
+                  <AvailabilityBarChart
+                    data={availabilityTimelineData}
+                    fill={fitResults}
+                    headerActions={
+                      hasRunDurations || locationFilter ? (
+                        <div className="flex items-center gap-2">
+                          {locationFilter}
+                          {hasRunDurations && heartbeatChartToggle}
+                        </div>
+                      ) : undefined
+                    }
+                    footer={
+                      hasRunDurations ? undefined : (
+                        <span data-testid="heartbeat-run-duration-hint">
+                          Call <span className="font-mono">/start</span> when the job begins to record how long it runs.
+                        </span>
+                      )
+                    }
+                  />
                 )}
               </div>
             </div>
-            <FitPanel fit minHeight="lg:min-h-[26rem]" className="flex-1">
+            <FitPanel fit={fitResults} minHeight="lg:min-h-[12rem]">
               <HeartbeatPingHistory
                 results={paginatedTableResults}
                 isLoading={isLoadingResults}
@@ -1234,50 +1338,47 @@ export function MonitorDetailClient({
                 totalPages={totalPages}
                 total={totalResultsCount}
                 onPageChange={setCurrentPage}
-                onFitRows={setFitRows}
+                onFitRows={fitResults ? setFitRows : undefined}
               />
             </FitPanel>
           </div>
         ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          {/* For all monitors, show charts and results in two columns */}
-          <div className="flex flex-col gap-4">
-            <div>
+        // Desktop: the page fits the window; the charts share the left column and the wider results fill the right one.
+        <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] lg:grid-rows-[minmax(0,1fr)]">
+          {/* Both charts share the column height (1:2), so a taller header (an AI endpoint's fourth stat group) shrinks them instead of scrolling the page. */}
+          <div className="flex min-h-0 min-w-0 flex-col gap-4">
+            <div className={fitResults ? "flex min-h-0 flex-1 flex-col" : "shrink-0"}>
               <AvailabilityBarChart
                 data={availabilityTimelineData}
+                fill={fitResults}
                 headerActions={
-                  availableLocations.length > 1 ? (
-                    <LocationFilterDropdown
-                      selectedLocation={selectedLocation}
-                      availableLocations={availableLocations}
-                      onLocationChange={setSelectedLocation}
-                      className="w-[200px]"
-                    />
+                  isMcp || locationFilter ? (
+                    <div className="flex items-center gap-2">
+                      {isMcp && (
+                        <McpToolsButton
+                          baseline={monitor.config?.mcpState?.baseline}
+                          changes={monitor.config?.mcpState?.changes}
+                          pending={!latestResult}
+                          failure={mcpFailure}
+                          meta={mcpMeta}
+                        />
+                      )}
+                      {locationFilter}
+                    </div>
                   ) : undefined
                 }
               />
             </div>
 
-            {/* Response Time Chart; a heartbeat has a duration only when its job calls /start */}
-            <div>
+            <div className={fitResults ? "min-h-0 flex-[2]" : "h-[400px]"}>
               <ResponseTimeBarChart
                 data={responseTimeData}
                 showFirstToken={Boolean(aiEndpoint)}
               />
             </div>
-
-            {isMcp && (
-              <McpToolsPanel
-                baseline={monitor.config?.mcpState?.baseline}
-                changes={monitor.config?.mcpState?.changes}
-                pending={!latestResult}
-                failure={mcpFailure}
-                meta={mcpMeta}
-              />
-            )}
           </div>
 
-          <FitPanel fit={fitResults} minHeight="lg:min-h-[28rem]">
+          <FitPanel fit={fitResults} minHeight="lg:min-h-[16rem]">
           <Card className="shadow-sm flex h-full flex-col overflow-hidden">
             <CardHeader className="flex-shrink-0">
               <div className="flex items-center justify-between">
@@ -1326,7 +1427,9 @@ export function MonitorDetailClient({
                 </div>
               </div>
               <CardDescription>
-                {selectedDate
+                {showResultsSkeleton
+                  ? "Loading checks…"
+                  : selectedDate
                   ? `Showing ${currentResultsCount} of ${totalResultsCount} checks for ${format(
                     selectedDate,
                     "MMMM dd, yyyy"
@@ -1335,30 +1438,21 @@ export function MonitorDetailClient({
               </CardDescription>
             </CardHeader>
             <CardContent ref={resultsPanelRef} className="p-0 flex-1 flex min-h-0 flex-col">
-              <div className="w-full flex-1 overflow-x-auto relative lg:overflow-y-auto">
-                {/* Loading overlay - shows on top of existing data for smooth transitions */}
-                {isLoadingResults && paginatedTableResults.length > 0 && (
-                  <div className="absolute inset-0 z-20 bg-card/80 backdrop-blur-[1px] flex items-center justify-center transition-opacity duration-200">
-                    <div className="bg-card border border-border rounded-lg shadow-sm px-6 py-4 flex flex-col items-center space-y-3">
-                      <Spinner size="lg" className="text-primary" />
-                      <div className="text-sm font-medium text-foreground">
-                        Loading check results
-                      </div>
-                    </div>
-                  </div>
-                )}
+              {/* Desktop never scrolls here: the page size is the rows that fit, and the columns fit the card width. */}
+              <div className="w-full flex-1 overflow-x-auto lg:overflow-y-hidden">
                 <div className="w-full">
-                  <table className={`w-full ${aiEndpoint ? "min-w-[640px]" : showPassRate ? "min-w-[520px]" : "min-w-[440px]"} table-fixed divide-y divide-border`}>
-                    {/* Location takes the leftover width; the failure text lives in a tooltip on the Result cell, so there is no Error column. */}
+                  <table className={`w-full ${aiEndpoint ? "min-w-[600px]" : "min-w-[480px]"} table-fixed divide-y divide-border lg:min-w-0`}>
+                    {/* Location and Error share the leftover width; long text ends in an ellipsis and shows in full on hover. */}
                     <colgroup>
-                      <col className="w-[112px]" />
-                      <col className="w-[124px]" />
+                      <col className="w-[76px]" />
+                      <col className="w-[84px]" />
+                      <col className={aiEndpoint ? "w-[15%]" : "w-[20%]"} />
+                      <col className="w-[80px]" />
+                      {aiEndpoint && <col className="w-[84px]" />}
+                      {aiEndpoint && <col className="w-[68px]" />}
+                      {isMcp && <col className="w-[56px]" />}
+                      {showPassRate && <col className="w-[80px]" />}
                       <col />
-                      <col className="w-[92px]" />
-                      {aiEndpoint && <col className="w-[96px]" />}
-                      {aiEndpoint && <col className="w-[80px]" />}
-                      {isMcp && <col className="w-[64px]" />}
-                      {showPassRate && <col className="w-[88px]" />}
                     </colgroup>
                     <thead className="bg-background sticky top-0 z-10 border-b">
                       <tr>
@@ -1418,31 +1512,26 @@ export function MonitorDetailClient({
                             Pass rate
                           </th>
                         )}
+                        <th
+                          scope="col"
+                          className="px-3 py-3 text-left text-xs font-medium text-muted-foreground whitespace-nowrap"
+                        >
+                          Error
+                        </th>
                       </tr>
                     </thead>
-                    <tbody className="bg-card divide-y divide-border" data-testid="monitor-results-body">
-                      {isLoadingResults &&
-                        paginatedTableResults.length === 0 ? (
-                        // Initial loading state (no data yet)
-                        <tr>
-                          <td
-                            colSpan={4 + (aiEndpoint ? 2 : 0) + (isMcp ? 1 : 0) + (showPassRate ? 1 : 0)}
-                            className="text-center relative"
-                            style={{ height: "320px" }}
-                          >
-                            <div className="absolute inset-0 flex items-center justify-center">
-                              <div className="bg-card/98 border border-border rounded-lg shadow-sm px-6 py-4 flex flex-col items-center space-y-3">
-                                <Spinner size="lg" className="text-primary" />
-                                <div className="text-sm font-medium text-foreground">
-                                  Loading check results
-                                </div>
-                                <div className="text-xs text-muted-foreground">
-                                  Please wait...
-                                </div>
-                              </div>
-                            </div>
-                          </td>
-                        </tr>
+                    <tbody className="bg-card divide-y divide-border" data-testid="monitor-results-body" aria-busy={showResultsSkeleton || undefined}>
+                      {showResultsSkeleton ? (
+                        // Placeholder rows the size of the real ones, so the table keeps its shape while it loads.
+                        Array.from({ length: resultsPerPage }, (_, index) => (
+                          <tr key={`skeleton-${index}`} className="h-[45px]" data-testid="monitor-result-skeleton" aria-hidden="true">
+                            {Array.from({ length: resultColumnCount }, (_, cell) => (
+                              <td key={cell} className="px-3 py-[11.5px]">
+                                <Skeleton className={cell === 0 ? "h-4 w-4 rounded-full" : "h-4 w-3/4"} />
+                              </td>
+                            ))}
+                          </tr>
+                        ))
                       ) : paginatedTableResults &&
                         paginatedTableResults.length > 0 ? (
                         paginatedTableResults.map((result) => {
@@ -1489,7 +1578,7 @@ export function MonitorDetailClient({
                               })()
                               : undefined;
 
-                          // Failure text for the tooltip on the Result cell; a successful check has none.
+                          // Failure text for the Error column; a successful check has none.
                           const failureText = result.isUp
                             ? undefined
                             : monitor.type === "synthetic_test"
@@ -1497,7 +1586,7 @@ export function MonitorDetailClient({
                               : result.details?.errorMessage || "Check failed";
 
                           return (
-                            <tr key={result.id} className="hover:bg-muted/25" data-testid="monitor-result-row">
+                            <tr key={result.id} className="h-[45px] hover:bg-muted/25" data-testid="monitor-result-row">
                               <td className="px-3 py-[11.5px] whitespace-nowrap text-sm">
                                 <span className="inline-flex items-center gap-1.5">
                                   <SimpleStatusIcon isUp={result.isUp} />
@@ -1538,24 +1627,6 @@ export function MonitorDetailClient({
                                     >
                                       <PlaywrightLogo className="h-4 w-4 hover:opacity-80 transition-opacity" />
                                     </button>
-                                  )}
-                                  {failureText && (
-                                    // A popover, not a tooltip: it opens on tap, and Radix tooltips never open on touch.
-                                    <Popover>
-                                      <PopoverTrigger asChild>
-                                        <button
-                                          type="button"
-                                          aria-label="Show error"
-                                          data-testid="result-error"
-                                          className="inline-flex rounded-sm text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                                        >
-                                          <Info className="h-3.5 w-3.5" aria-hidden="true" />
-                                        </button>
-                                      </PopoverTrigger>
-                                      <PopoverContent className="w-auto max-w-xs break-words p-3 text-xs" align="start">
-                                        {failureText}
-                                      </PopoverContent>
-                                    </Popover>
                                   )}
                                 </span>
                               </td>
@@ -1619,6 +1690,13 @@ export function MonitorDetailClient({
                                   {typeof agentPassRate(result) === "number" ? `${Math.round((agentPassRate(result) as number) * 100)}%` : "N/A"}
                                 </td>
                               )}
+                              <td className="px-3 py-[11.5px] overflow-hidden text-xs text-muted-foreground" data-testid="result-error">
+                                {failureText ? (
+                                  <TruncatedTextWithTooltip text={failureText} maxWidth="100%" maxLength={24} />
+                                ) : (
+                                  "N/A"
+                                )}
+                              </td>
                             </tr>
                           );
                         })
@@ -1626,7 +1704,7 @@ export function MonitorDetailClient({
                         // Empty state
                         <tr>
                           <td
-                            colSpan={4 + (aiEndpoint ? 2 : 0) + (isMcp ? 1 : 0) + (showPassRate ? 1 : 0)}
+                            colSpan={resultColumnCount}
                             className="px-4 py-16 text-center"
                           >
                             <div className="text-center space-y-3">
@@ -1662,11 +1740,11 @@ export function MonitorDetailClient({
                   </table>
                 </div>
               </div>
+              {/* Always shown once there are results, so the reserved pager height is never an empty gap. */}
               {paginatedTableResults &&
                 paginatedTableResults.length > 0 &&
-                paginationMeta &&
-                totalPages > 1 && (
-                  <div className="flex items-center justify-between px-4 py-3 border-t flex-shrink-0 bg-card rounded-b-lg">
+                paginationMeta && (
+                  <div className="flex items-center justify-between px-4 py-3 border-t flex-shrink-0 bg-card rounded-b-lg" data-fit-pager="">
                     <div className="text-sm text-muted-foreground">
                       Page {currentPage} of {totalPages}
                     </div>

@@ -75,6 +75,9 @@ export function useFitPageSize(fixedSize?: number) {
   const fittedRef = useRef<number>(PAGE_SIZE_OPTIONS[0]);
   const changes = useRef<number[]>([]);
   const settled = useRef(0); // timestamp of the latch, 0 = measuring
+  const retry = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const retried = useRef(false); // one retry per latch, so a layout that keeps flapping stays latched
+  const measureRef = useRef<() => void>(() => undefined);
 
   const measure = useCallback(() => {
     if (!body || manual !== null) return;
@@ -108,13 +111,25 @@ export function useFitPageSize(fixedSize?: number) {
     const now = Date.now();
     changes.current = [...changes.current.filter((at) => now - at < 1000), now];
     if (changes.current.length > MAX_CHANGES_PER_SECOND) {
-      // Flapping: stop measuring at the smaller size (no page scrollbar) until the window resizes.
+      // Flapping: stop measuring at the smaller size (no page scrollbar), then measure once more when the
+      // pause ends, so a size latched while the page was still loading does not stick until the window resizes.
+      // Only once: a layout that flaps again stays latched until the window resizes.
       settled.current = Date.now();
       size = Math.min(fittedRef.current, next);
+      if (!retried.current) {
+        retried.current = true;
+        clearTimeout(retry.current);
+        retry.current = setTimeout(() => measureRef.current(), SETTLE_MS + 50);
+      }
     }
     fittedRef.current = size;
     setFitted(size);
   }, [body, manual]);
+
+  useEffect(() => {
+    measureRef.current = measure;
+  }, [measure]);
+  useEffect(() => () => clearTimeout(retry.current), []);
 
   useEffect(() => {
     if (!body) return;
@@ -131,6 +146,7 @@ export function useFitPageSize(fixedSize?: number) {
     observer.observe(scroller ?? document.documentElement);
     const onWindowResize = () => {
       settled.current = 0;
+      retried.current = false;
       changes.current = [];
       schedule();
     };

@@ -286,11 +286,13 @@ export function AICreateButton({
     <>
       <Button
         size="sm"
+        variant="outline"
         onClick={handleOpenDialog}
         disabled={disabled || isProcessing}
-        className="flex items-center gap-2 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white border-0 shadow-lg transition-all duration-200"
+        className="flex items-center gap-2"
       >
-        <Sparkles className="h-4 w-4" />
+        {/* Violet marks AI (DESIGN.md); the button itself stays a plain outline action. */}
+        <Sparkles className="h-4 w-4 text-ai" />
         AI Create
       </Button>
 
@@ -360,7 +362,7 @@ export function AICreateButton({
           <DialogFooter className="shrink-0 gap-2 border-t px-6 py-4 sm:items-center">
             <p className="text-xs text-muted-foreground sm:mr-auto">Review the generated script before applying it.</p>
             <Button variant="outline" onClick={handleCloseDialog} disabled={isProcessing}>Cancel</Button>
-            <Button onClick={handleGenerate} disabled={isProcessing || isLoadingPrompt || userRequest.trim().length < 10} className="bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600">
+            <Button onClick={handleGenerate} disabled={isProcessing || isLoadingPrompt || userRequest.trim().length < 10}>
               {isProcessing ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Generating...</> : <><Sparkles className="mr-2 h-4 w-4" />Generate</>}
             </Button>
           </DialogFooter>

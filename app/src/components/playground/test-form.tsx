@@ -18,7 +18,7 @@ import { saveTest } from "@/actions/save-test";
 import { decodeTestScript } from "@/actions/save-test";
 import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
-import { formatDistanceToNow } from "date-fns";
+import { format, formatDistanceToNow, isSameYear } from "date-fns";
 import { useQueryClient } from "@tanstack/react-query";
 import { TESTS_QUERY_KEY, TEST_QUERY_KEY } from "@/hooks/use-tests";
 import { REQUIREMENTS_QUERY_KEY } from "@/hooks/use-requirements";
@@ -46,6 +46,18 @@ import { TagSelector, type Tag } from "@/components/ui/tag-selector";
 import { priorities, types } from "@/components/tests/data";
 import { type PerformanceLocation } from "./performance-locations";
 
+
+/** "Nov 18, 10:28 AM" in the current year, "Nov 18, 2025" before it: short enough for the narrow details panel. */
+export function compactStamp(value: string | Date, now: Date = new Date()): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Invalid date";
+  return format(date, isSameYear(date, now) ? "MMM d, h:mm a" : "MMM d, yyyy");
+}
+
+const fullStamp = (value: string | Date) => {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? undefined : format(date, "MMM d, yyyy h:mm a");
+};
 
 const PLAYWRIGHT_TYPE_OPTIONS = types.filter((t) => t.value !== "performance");
 const PERFORMANCE_TYPE_OPTIONS = types.filter((t) => t.value === "performance");
@@ -706,16 +718,8 @@ export function TestForm({
                   Created
                 </h3>
                 <div>
-                  <p className="text-xs">
-                    {new Date(testCase.createdAt).toLocaleDateString("en-US", {
-                      month: "short",
-                      day: "numeric",
-                      year: "numeric",
-                    })}{" "}
-                    {new Date(testCase.createdAt).toLocaleTimeString("en-US", {
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })}
+                  <p className="truncate whitespace-nowrap text-xs" title={fullStamp(testCase.createdAt)}>
+                    {compactStamp(testCase.createdAt)}
                   </p>
                   <p className="text-xs text-muted-foreground">
                     {(() => {
@@ -739,22 +743,8 @@ export function TestForm({
               <div>
                 {testCase.updatedAt ? (
                   <>
-                    <p className="text-xs">
-                      {new Date(testCase.updatedAt).toLocaleDateString(
-                        "en-US",
-                        {
-                          month: "short",
-                          day: "numeric",
-                          year: "numeric",
-                        }
-                      )}{" "}
-                      {new Date(testCase.updatedAt).toLocaleTimeString(
-                        "en-US",
-                        {
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        }
-                      )}
+                    <p className="truncate whitespace-nowrap text-xs" title={fullStamp(testCase.updatedAt)}>
+                      {compactStamp(testCase.updatedAt)}
                     </p>
                     <p className="text-xs text-muted-foreground">
                       {(() => {

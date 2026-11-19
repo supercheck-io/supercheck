@@ -103,4 +103,91 @@ describe("useFitPageSize layout feedback", () => {
     jest.restoreAllMocks();
     global.ResizeObserver = originalResizeObserver;
   });
+
+  it("measures again once the pause after flapping ends, without a new resize", () => {
+    jest.useFakeTimers();
+    const originalResizeObserver = global.ResizeObserver;
+    const frames: FrameRequestCallback[] = [];
+    jest.spyOn(window, "requestAnimationFrame").mockImplementation((cb: FrameRequestCallback) => frames.push(cb));
+    jest.spyOn(window, "cancelAnimationFrame").mockImplementation(() => undefined);
+    let observer: (() => void) | undefined;
+    global.ResizeObserver = class {
+      constructor(cb: () => void) {
+        observer = cb;
+      }
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    } as unknown as typeof ResizeObserver;
+
+    const { result } = renderHook(() => useFitPageSize());
+    const body = document.createElement("tbody");
+    document.body.appendChild(body);
+    let top = 100;
+    jest.spyOn(body, "getBoundingClientRect").mockImplementation(
+      () => ({ top, bottom: top + 10, height: 10 }) as DOMRect,
+    );
+    act(() => result.current.bodyRef(body));
+    for (let i = 0; i < 40; i++) {
+      top = top === 100 ? 400 : 100;
+      act(() => {
+        observer?.();
+        frames.splice(0).forEach((cb) => cb(0));
+      });
+    }
+    // Latched at the smaller size; the layout then settles with room for more rows.
+    top = 100;
+    const latched = result.current.pageSize;
+    act(() => {
+      jest.advanceTimersByTime(6000);
+    });
+    expect(result.current.pageSize).toBeGreaterThan(latched);
+    jest.useRealTimers();
+    jest.restoreAllMocks();
+    global.ResizeObserver = originalResizeObserver;
+  });
+
+  it("retries once per latch, so a layout that keeps flapping stays latched", () => {
+    jest.useFakeTimers();
+    const originalResizeObserver = global.ResizeObserver;
+    const frames: FrameRequestCallback[] = [];
+    jest.spyOn(window, "requestAnimationFrame").mockImplementation((cb: FrameRequestCallback) => frames.push(cb));
+    jest.spyOn(window, "cancelAnimationFrame").mockImplementation(() => undefined);
+    let observer: (() => void) | undefined;
+    global.ResizeObserver = class {
+      constructor(cb: () => void) {
+        observer = cb;
+      }
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    } as unknown as typeof ResizeObserver;
+    const timeoutSpy = jest.spyOn(global, "setTimeout");
+
+    const { result } = renderHook(() => useFitPageSize());
+    const body = document.createElement("tbody");
+    document.body.appendChild(body);
+    let top = 100;
+    jest.spyOn(body, "getBoundingClientRect").mockImplementation(() => ({ top, bottom: top + 10, height: 10 }) as DOMRect);
+    act(() => result.current.bodyRef(body));
+    const flap = () => {
+      for (let i = 0; i < 40; i++) {
+        top = top === 100 ? 400 : 100;
+        act(() => {
+          observer?.();
+          frames.splice(0).forEach((cb) => cb(0));
+        });
+      }
+    };
+    flap();
+    act(() => {
+      jest.advanceTimersByTime(6000);
+    });
+    flap();
+    const retries = timeoutSpy.mock.calls.filter(([, ms]) => ms === 5050).length;
+    expect(retries).toBe(1);
+    jest.useRealTimers();
+    jest.restoreAllMocks();
+    global.ResizeObserver = originalResizeObserver;
+  });
 });

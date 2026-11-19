@@ -128,6 +128,8 @@ describe("HeartbeatPingUrlPanel", () => {
   it("shows the waiting state while pending and explains /start and /fail", () => {
     render(<HeartbeatPingUrlPanel monitorId="m1" canManage={false} pending />);
     expect(screen.getByTestId("heartbeat-waiting")).toHaveTextContent("Waiting for the first ping");
+    // The /start and /fail help sits in the info popover by the title, so the card stays compact.
+    fireEvent.click(screen.getByRole("button", { name: "About the ping URL" }));
     expect(screen.getByText(/to record how long it ran/)).toBeInTheDocument();
     expect(screen.getByText(/to report a failure straight away/)).toBeInTheDocument();
   });
@@ -143,7 +145,8 @@ describe("HeartbeatPingUrlPanel", () => {
 
 it("links to the heartbeat docs", () => {
   render(<HeartbeatPingUrlPanel monitorId="m1" canManage={false} />);
-  expect(screen.getByRole("link", { name: "Heartbeat docs" })).toHaveAttribute("href", "https://supercheck.io/docs/app/heartbeat");
+  fireEvent.click(screen.getByRole("button", { name: "About the ping URL" }));
+  expect(screen.getByRole("link", { name: /Learn more/ })).toHaveAttribute("href", "https://supercheck.io/docs/app/heartbeat");
 });
 
 it("asks again before retrying a failed rotate", async () => {

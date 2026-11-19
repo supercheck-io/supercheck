@@ -96,13 +96,12 @@ describe("HeartbeatStateBadge", () => {
 });
 
 describe("rowsThatFit", () => {
-  it("reserves the header and pager and clamps to 5..50 rows", () => {
-    // 40 header + 58 pager leave 410px: 10 rows of 41px.
-    expect(rowsThatFit(508, 41)).toBe(10);
-    expect(rowsThatFit(508, 41)).toBe(rowsThatFit(508, 41));
-    expect(rowsThatFit(120, 41)).toBe(5);
+  it("reserves the header and pager and clamps to 1..50 rows", () => {
+    // 40 header + 58 pager + 1px slack leave 409px: 9 rows of 41px (409 / 41 = 9.97).
+    expect(rowsThatFit(508, 41)).toBe(9);
+    expect(rowsThatFit(120, 41)).toBe(1);
     expect(rowsThatFit(10_000, 41)).toBe(50);
-    expect(rowsThatFit(0)).toBe(5);
-    expect(rowsThatFit(Number.NaN)).toBe(5);
+    expect(rowsThatFit(0)).toBe(1);
+    expect(rowsThatFit(Number.NaN)).toBe(1);
   });
 });

@@ -4,7 +4,8 @@ import { useState } from "react";
 import { format } from "date-fns";
 import { AlertCircle, ChevronRight, Plug } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { TableBadge } from "@/components/ui/table-badge";
 import type { McpMonitorState, McpToolChange } from "@/db/schema/types";
 
@@ -91,32 +92,36 @@ function ChangeRow({ change, index }: { change: McpToolChange; index: number }) 
   );
 }
 
-export function McpToolsPanel({ baseline, changes, pending = false, failure, meta, now }: McpToolsPanelProps) {
+/** True when the newest tool change is under a day old. */
+function useRecentChange(changes: McpToolChange[] | undefined, now: number | undefined) {
   const [mountedAt] = useState(() => Date.now());
+  const newest = changes?.length ? new Date(changes[changes.length - 1].at).getTime() : NaN;
+  return Number.isFinite(newest) && (now ?? mountedAt) - newest < DAY_MS;
+}
+
+/** The tool list, server identity and change history of an MCP server; shown in the Tools popover. */
+export function McpToolsPanel({ baseline, changes, pending = false, failure, meta, now }: McpToolsPanelProps) {
   const tools = baseline?.tools ?? [];
   const newestFirst = [...(changes ?? [])].reverse();
-  const newestAt = newestFirst.length ? new Date(newestFirst[0].at).getTime() : NaN;
-  const recentChange = Number.isFinite(newestAt) && (now ?? mountedAt) - newestAt < DAY_MS;
+  const recentChange = useRecentChange(changes, now);
 
   return (
-    <Card className="shadow-sm" data-testid="mcp-tools-panel">
-      <CardHeader className="pb-2">
-        <CardTitle className="flex flex-wrap items-center gap-x-2 gap-y-1 text-lg font-semibold">
-          <Plug className="h-4 w-4 text-type-purple" aria-hidden />
-          Tools
-          {baseline && (
-            <span className="text-sm font-normal text-muted-foreground" data-testid="mcp-tool-count">
-              {tools.length}
-            </span>
-          )}
-          {meta && (
-            <span className="min-w-0 break-words text-xs font-normal text-muted-foreground" data-testid="mcp-server-meta">
-              {meta}
-            </span>
-          )}
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-4">
+    <div className="space-y-3" data-testid="mcp-tools-panel">
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm font-semibold">
+        <Plug className="h-4 w-4 text-type-purple" aria-hidden />
+        Tools
+        {baseline && (
+          <span className="font-normal text-muted-foreground" data-testid="mcp-tool-count">
+            {tools.length}
+          </span>
+        )}
+        {meta && (
+          <span className="min-w-0 break-words text-xs font-normal text-muted-foreground" data-testid="mcp-server-meta">
+            {meta}
+          </span>
+        )}
+      </div>
+      <div className="space-y-4">
         {failure && (
           <Alert variant="error" data-testid="mcp-failure">
             <AlertCircle className="h-4 w-4" aria-hidden />
@@ -129,7 +134,7 @@ export function McpToolsPanel({ baseline, changes, pending = false, failure, met
         ) : baseline && tools.length === 0 ? (
           <p className="text-sm text-muted-foreground" data-testid="mcp-no-tools">This server lists no tools</p>
         ) : tools.length > 0 ? (
-          <ul className="flex flex-wrap gap-1.5" aria-label="Tools on the server" data-testid="mcp-tool-list">
+          <ul className="flex max-h-60 flex-wrap gap-1.5 overflow-y-auto" aria-label="Tools on the server" data-testid="mcp-tool-list">
             {tools.map((tool) => (
               <li key={tool.name} className="rounded-md bg-muted px-2 py-0.5 font-mono text-xs break-all">
                 {tool.name}
@@ -155,7 +160,40 @@ export function McpToolsPanel({ baseline, changes, pending = false, failure, met
             </ul>
           </section>
         )}
-      </CardContent>
-    </Card>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * "48 tools" button for the detail page: opens the tool list and change history, so they take no page height.
+ * The button itself flags a failed check and a change under a day old.
+ */
+export function McpToolsButton(props: McpToolsPanelProps) {
+  const { baseline, changes, failure, now } = props;
+  const recentChange = useRecentChange(changes, now);
+  const count = baseline?.tools.length;
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <Button variant="outline" size="sm" className="h-8 shrink-0 gap-1.5" data-testid="mcp-tools-button">
+          {failure ? (
+            <AlertCircle className="h-4 w-4 text-failure" aria-hidden />
+          ) : (
+            <Plug className="h-4 w-4 text-type-purple" aria-hidden />
+          )}
+          {count === undefined ? "Tools" : `${count} ${count === 1 ? "tool" : "tools"}`}
+          {failure && <span className="sr-only"> (latest check failed)</span>}
+          {recentChange && (
+            <TableBadge tone="warning" compact data-testid="mcp-tools-changed-indicator">
+              Changed
+            </TableBadge>
+          )}
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent align="end" className="max-h-[min(70vh,32rem)] w-[min(28rem,calc(100vw-2rem))] overflow-y-auto">
+        <McpToolsPanel {...props} />
+      </PopoverContent>
+    </Popover>
   );
 }
