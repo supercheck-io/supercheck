@@ -1,4 +1,4 @@
-import { jest, describe, it, expect, beforeEach } from '@jest/globals'
+import { jest, describe, it, expect, beforeEach, afterEach } from '@jest/globals'
 
 const mockGet = jest.fn<(...args: unknown[]) => Promise<{ data: unknown }>>()
 const mockPost = jest.fn<(...args: unknown[]) => Promise<{ data: unknown }>>()
@@ -10,6 +10,7 @@ const mockOutputMutation = jest.fn<(...args: unknown[]) => void>()
 const mockSuccess = jest.fn<(...args: unknown[]) => void>()
 const mockDebug = jest.fn<(...args: unknown[]) => void>()
 const mockWarn = jest.fn<(...args: unknown[]) => void>()
+const mockReadStdin = jest.fn<() => Promise<string>>()
 const mockConfirmPrompt = jest.fn<(...args: unknown[]) => Promise<void>>()
 
 jest.unstable_mockModule('../../api/authenticated-client.js', () => ({
@@ -42,6 +43,10 @@ jest.unstable_mockModule('../../utils/logger.js', () => ({
 
 jest.unstable_mockModule('../../utils/spinner.js', () => ({
   withSpinner: async (_text: string, fn: () => Promise<unknown>) => fn(),
+}))
+
+jest.unstable_mockModule('../../utils/stdin.js', () => ({
+  readValueFromStdin: mockReadStdin,
 }))
 
 jest.unstable_mockModule('../../utils/prompt.js', () => ({
@@ -113,20 +118,80 @@ describe('notification provider command', () => {
 
   it('rejects an unsupported provider type before calling the API', async () => {
     await expect(
-      notificationCommand.parseAsync([
-        'node',
-        'notification',
-        'create',
-        '--type',
-        'pagerduty',
-        '--name',
-        'Nope',
-      ]),
+      notificationCommand.parseAsync(['node', 'notification', 'create', '--type', 'sms', '--name', 'Nope']),
     ).rejects.toMatchObject({
       exitCode: ExitCode.ConfigError,
       message: expect.stringContaining('Invalid provider type'),
     })
     expect(mockPost).not.toHaveBeenCalled()
+  })
+
+  describe('pagerduty', () => {
+    const create = (...extra: string[]) =>
+      notificationCommand.parseAsync(['node', 'notification', 'create', '--type', 'pagerduty', '--name', 'On call', ...extra])
+    const KEY = 'a1b2c3d4e5f60718293a4b5c6d7e8f90'
+
+    afterEach(() => {
+      delete process.env.PAGERDUTY_ROUTING_KEY
+    })
+
+    it('creates a pagerduty-preset webhook with the key from the environment, and never prints it', async () => {
+      process.env.PAGERDUTY_ROUTING_KEY = ` ${KEY}\n`
+      mockPost.mockResolvedValueOnce({ data: { id: 'np-3' } })
+
+      await create()
+
+      const [path, body] = mockPost.mock.calls[0] as [string, { type: string; config: Record<string, unknown> }]
+      expect(path).toBe('/api/notification-providers')
+      expect(body.type).toBe('webhook')
+      expect(body.config).toMatchObject({ name: 'On call', preset: 'pagerduty', url: 'https://events.pagerduty.com/v2/enqueue', method: 'POST', headers: {} })
+      const template = JSON.parse(body.config.bodyTemplate as string)
+      expect(template.routing_key).toBe(KEY)
+      expect(template.event_action).toBe('{{pagerDutyEventAction}}')
+      expect(JSON.stringify([mockSuccess.mock.calls, mockOutputDetail.mock.calls, mockDebug.mock.calls, mockWarn.mock.calls])).not.toContain(KEY)
+    })
+
+    it('refuses --routing-key-stdin on an interactive terminal', async () => {
+      const original = Object.getOwnPropertyDescriptor(process.stdin, 'isTTY')
+      Object.defineProperty(process.stdin, 'isTTY', { value: true, configurable: true })
+      try {
+        await expect(create('--routing-key-stdin')).rejects.toMatchObject({ exitCode: ExitCode.ConfigError })
+      } finally {
+        if (original) Object.defineProperty(process.stdin, 'isTTY', original)
+        else delete (process.stdin as { isTTY?: boolean }).isTTY
+      }
+      expect(mockReadStdin).not.toHaveBeenCalled()
+    })
+
+    it('reads the key from stdin with --routing-key-stdin, ahead of the environment', async () => {
+      process.env.PAGERDUTY_ROUTING_KEY = 'from-env'
+      mockReadStdin.mockResolvedValueOnce(KEY)
+      mockPost.mockResolvedValueOnce({ data: { id: 'np-4' } })
+
+      await create('--routing-key-stdin')
+
+      const body = mockPost.mock.calls[0][1] as { config: { bodyTemplate: string } }
+      expect(JSON.parse(body.config.bodyTemplate).routing_key).toBe(KEY)
+    })
+
+    it.each([
+      ['no key', undefined],
+      ['the preset placeholder', 'REPLACE_WITH_PAGERDUTY_ROUTING_KEY'],
+      ['a blank key', '   '],
+    ])('refuses %s before calling the API', async (_label, value) => {
+      if (value !== undefined) process.env.PAGERDUTY_ROUTING_KEY = value
+      await expect(create()).rejects.toMatchObject({ exitCode: ExitCode.ConfigError, message: expect.stringContaining('routing key') })
+      expect(mockPost).not.toHaveBeenCalled()
+    })
+
+    it('rejects --payload, and --routing-key-stdin on other types', async () => {
+      process.env.PAGERDUTY_ROUTING_KEY = KEY
+      await expect(create('--payload', '{"a":1}')).rejects.toMatchObject({ exitCode: ExitCode.ConfigError })
+      await expect(
+        notificationCommand.parseAsync(['node', 'notification', 'create', '--type', 'slack', '--name', 'x', '--routing-key-stdin']),
+      ).rejects.toMatchObject({ exitCode: ExitCode.ConfigError })
+      expect(mockPost).not.toHaveBeenCalled()
+    })
   })
 
   it.each([

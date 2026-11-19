@@ -27,6 +27,9 @@ export function redactText(text: string): string {
 const maskUserinfo = (text: string): string => text.replace(/(\b[a-z][a-z0-9+.-]*:\/\/)[^\s/@:]+:[^\s/@]*@/gi, '$1REDACTED@')
 // Query-parameter masking rewrites URLs, so it is skipped for fields that carry source code.
 const codeKeys = new Set(['script', 'body', 'code', 'content', 'source'])
+// A webhook body template carries literal credentials (the PagerDuty routing_key); `{{placeholders}}` stay readable.
+const maskTemplateSecrets = (text: string): string =>
+  text.replace(/("[A-Za-z0-9_-]*(?:key|token|secret|password|signature)[A-Za-z0-9_-]*"\s*:\s*")((?:[^"{}\\]|\\.)+)"/gi, '$1[REDACTED]"')
 export function redact<T>(value: T, inConfig = false, code = false): T {
   if (reveal) return value
   if (typeof value === 'string') return (code ? maskUserinfo(cliTokens(value)) : redactText(maskUserinfo(value))) as T
@@ -40,7 +43,7 @@ export function redact<T>(value: T, inConfig = false, code = false): T {
     && Object.keys(item).every((k) => k === 'type' || k === 'secretKey' || k === 'username' || k === 'headerName')
     && (typeof (item as Record<string, unknown>).secretKey === 'string' || (Object.keys(item).length === 1 && (item as Record<string, unknown>).type === 'none'))
   return Object.fromEntries(Object.entries(record).map(([key, item]) => [key,
-    key === 'pingUrl' && typeof item === 'string' ? item : secretRefAuth(key, item) ? redact(item, false) : (credentialKey.test(key.replace(/[-_]/g, '')) || (inConfig && ['url', 'headers', 'username'].includes(key)) || (key === 'value' && (record.isSecret || record.type === 'secret'))) && item != null && typeof item !== 'boolean'
+    key === 'pingUrl' && typeof item === 'string' ? item : inConfig && key === 'bodyTemplate' && typeof item === 'string' ? redactText(maskTemplateSecrets(item)) : secretRefAuth(key, item) ? redact(item, false) : (credentialKey.test(key.replace(/[-_]/g, '')) || (inConfig && ['url', 'headers', 'username'].includes(key)) || (key === 'value' && (record.isSecret || record.type === 'secret'))) && item != null && typeof item !== 'boolean'
       ? (typeof item === 'string' && ['[local secret provided]', '[remote secret masked]'].includes(item) ? item : '[REDACTED]') : redact(item, key === 'config' && sensitiveConfig, codeKeys.has(key.toLowerCase())),
   ])) as T
 }

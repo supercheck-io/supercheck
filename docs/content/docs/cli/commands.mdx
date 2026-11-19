@@ -465,17 +465,18 @@ supercheck var upload TEST_DATA ./users.csv
 |---|---|---|
 | `notification list` | List providers, with each channel's health (`ok`, `auth_failed`, `failing`, `unknown`) from its latest delivery in the past 7 days | — |
 | `notification get <id>` | Get provider details | — |
-| `notification create` | Create a provider | `--type`, `--name` (both required), `--payload` |
+| `notification create` | Create a provider | `--type`, `--name` (both required), `--payload`, `--routing-key-stdin` (PagerDuty) |
 | `notification update <id>` | Update a provider | `--name`, `--type`, `--payload` |
 | `notification delete <id>` | Delete a provider | `--force` |
 | `notification test <id>` | Send a test through a saved channel; webhooks and paging services get a test page with dedup key `test:<id>` and the receiver's HTTP status | `--resolve` (close the test page) |
 | `notification test` | Test an unsaved configuration | `--type`, `--payload` (one payload option required) |
 
-Types: `email`, `slack`, `webhook`, `telegram`, `discord`, `teams`. `--payload` is a JSON object; `--data` and `--config` are aliases. Paging presets (PagerDuty and the rest) are set up in the app. The CLI can list and test those channels but not create them from a preset.
+Types: `email`, `slack`, `webhook`, `telegram`, `discord`, `teams`, `pagerduty`. `--payload` is a JSON object; `--data` and `--config` are aliases. `--type pagerduty` creates a PagerDuty Events API v2 channel (a webhook with the `pagerduty` preset, as in the app) and takes no `--payload`. Give it the integration's routing key in the `PAGERDUTY_ROUTING_KEY` environment variable, or pipe it in with `--routing-key-stdin`. The key is never accepted as an argument and never printed. The other paging presets are set up in the app; the CLI can list and test those channels.
 
 ```bash
 supercheck notification create --type slack --name "Slack Alerts" \
   --payload '{"webhookUrl":"https://hooks.slack.com/..."}'
+supercheck notification create --type pagerduty --name "On call" --routing-key-stdin < routing-key.txt
 supercheck notification test <id> --resolve
 ```
 
