@@ -2,59 +2,28 @@ name: Full E2E Test Suite
 
 on:
   # No schedule: each run sends real invitation emails from the target deployment.
-  # Run it by hand against staging (base_url) after the staging deploy; this workflow
-  # never deploys. Release gate: it must pass before the release is announced.
+  # Run it by hand after the staging deploy; this workflow never deploys.
+  # Release gate: it must pass before the release is announced.
   workflow_dispatch:
     inputs:
+      target:
+        description: "staging reads the URL from the E2E_STAGING_BASE_URL secret; custom uses base_url"
+        required: true
+        default: staging
+        type: choice
+        options: [staging, custom]
+      base_url:
+        description: "Custom target URL (target=custom only; never the staging URL)"
+        required: false
+        type: string
       test_filter:
         description: "Test filter (e.g., @auth, @monitors, leave empty for all)"
         required: false
-        type: string
-      base_url:
-        description: "Target deployment URL, e.g. staging after its manual deploy"
-        required: true
         type: string
       expected_build_sha:
         description: "Optional full SHA for deployment attestation"
         required: false
         type: string
-  workflow_call:
-    inputs:
-      test_filter:
-        required: false
-        type: string
-      base_url:
-        required: true
-        type: string
-      expected_build_sha:
-        required: true
-        type: string
-      advisory:
-        description: "Report failures without failing the calling workflow (release builds)"
-        required: false
-        default: false
-        type: boolean
-    secrets:
-      E2E_TEST_USER_EMAIL: { required: true }
-      E2E_TEST_USER_PASSWORD: { required: true }
-      E2E_INVITEE_EMAIL: { required: true }
-      E2E_INVITEE_PASSWORD: { required: true }
-      E2E_SESSION_USER_EMAIL: { required: true }
-      E2E_SESSION_USER_PASSWORD: { required: true }
-      E2E_SECURITY_USER_EMAIL: { required: true }
-      E2E_SECURITY_USER_PASSWORD: { required: true }
-      E2E_SUPER_ADMIN_EMAIL: { required: true }
-      E2E_SUPER_ADMIN_PASSWORD: { required: true }
-      E2E_ORG_OWNER_EMAIL: { required: true }
-      E2E_ORG_OWNER_PASSWORD: { required: true }
-      E2E_ORG_ADMIN_EMAIL: { required: true }
-      E2E_ORG_ADMIN_PASSWORD: { required: true }
-      E2E_PROJECT_ADMIN_EMAIL: { required: true }
-      E2E_PROJECT_ADMIN_PASSWORD: { required: true }
-      E2E_EDITOR_EMAIL: { required: true }
-      E2E_EDITOR_PASSWORD: { required: true }
-      E2E_VIEWER_EMAIL: { required: true }
-      E2E_VIEWER_PASSWORD: { required: true }
 
 env:
   NODE_VERSION: "24"
@@ -69,9 +38,6 @@ jobs:
     name: Full E2E Tests
     runs-on: ubuntu-latest
     timeout-minutes: 60
-    # Release builds call this workflow with advisory: true so a flaky E2E run
-    # never fails an image that was built and deployed successfully.
-    continue-on-error: ${{ inputs.advisory == true }}
     # Serialize shared test identities, including callers using URL aliases.
     concurrency:
       group: supercheck-e2e
@@ -110,6 +76,34 @@ jobs:
         working-directory: ./app/e2e
         run: npx playwright install --with-deps chromium
 
+      # The staging hostname must never reach public logs or artifacts: it comes from a
+      # secret and is masked before any other step can print it.
+      - name: Resolve and mask target URL
+        env:
+          TARGET: ${{ inputs.target }}
+          CUSTOM_URL: ${{ inputs.base_url }}
+          STAGING_URL: ${{ secrets.E2E_STAGING_BASE_URL }}
+        run: |
+          set -Eeuo pipefail
+          if [ -n "$STAGING_URL" ]; then
+            echo "::add-mask::$STAGING_URL"
+            echo "::add-mask::$(node -e 'process.stdout.write(new URL(process.argv[1]).host)' "$STAGING_URL")"
+          fi
+          if [ "$TARGET" = "staging" ]; then
+            [ -n "$STAGING_URL" ] || { echo "::error::Repository secret E2E_STAGING_BASE_URL is not set"; exit 1; }
+            url="$STAGING_URL"
+          else
+            url="$CUSTOM_URL"
+            [ -n "$url" ] || { echo "::error::target=custom needs base_url"; exit 1; }
+            if [ -n "$STAGING_URL" ] && [ "${url%/}" = "${STAGING_URL%/}" ]; then
+              echo "::error::Use target=staging for the staging deployment"
+              exit 1
+            fi
+          fi
+          echo "::add-mask::$url"
+          echo "E2E_BASE_URL=$url" >> "$GITHUB_ENV"
+          echo "E2E_SANITIZE_URL=$STAGING_URL" >> "$GITHUB_ENV"
+
       - name: Run full E2E test suite
         id: e2e-tests
         working-directory: ./app/e2e
@@ -136,7 +130,6 @@ jobs:
           CI: true
           E2E_FAIL_ON_PRIORITY_SKIPS: true
           TEST_FILTER: ${{ inputs.test_filter }}
-          E2E_BASE_URL: ${{ inputs.base_url }}
           # When omitted, the conditional revision-attestation test is not
           # registered. Functional E2E coverage still runs in full.
           E2E_EXPECTED_BUILD_SHA: ${{ inputs.expected_build_sha }}
@@ -169,10 +162,43 @@ jobs:
       - name: Upload Playwright report
         id: report
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
-        if: always()
+        # The HTML report embeds URLs from navigations and error context, so staging
+        # runs publish only the sanitized summary below.
+        if: ${{ always() && inputs.target != 'staging' }}
         with:
           name: playwright-report-full
           path: app/e2e/playwright-report/
+          retention-days: 30
+
+      - name: Write sanitized summary (staging)
+        if: ${{ always() && inputs.target == 'staging' }}
+        run: |
+          f=app/e2e/test-results/results.json
+          mkdir -p sanitized
+          {
+            if [ -s "$f" ]; then
+              jq -r '"passed=\(.stats.expected // 0) failed=\(.stats.unexpected // 0) skipped=\(.stats.skipped // 0) flaky=\(.stats.flaky // 0)",
+                     (.. | objects | select(has("specs")) | .specs[] | "\(if .ok then "pass" else "FAIL" end) \(.title)")' "$f"
+            else
+              echo "no results"
+            fi
+          } | HOST="$E2E_SANITIZE_URL" python3 -c '
+          import os, sys
+          from urllib.parse import urlparse
+          u = os.environ.get("HOST", "")
+          needles = [x for x in (u, urlparse(u).netloc) if x]
+          for line in sys.stdin:
+              for n in needles:
+                  line = line.replace(n, "[staging]")
+              print(line, end="")
+          ' > sanitized/summary.txt
+
+      - name: Upload sanitized summary (staging)
+        if: ${{ always() && inputs.target == 'staging' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: e2e-staging-summary
+          path: sanitized/summary.txt
           retention-days: 30
 
       - name: Create test summary

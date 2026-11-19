@@ -203,17 +203,13 @@ jobs:
         with:
           images: |
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/app
+          # Only immutable tags are pushed here. Floating tags (major.minor, latest) are
+          # promoted by promote-floating-tags after compose-e2e passes.
           tags: |
             # Full version for releases (e.g. 1.2.3 or 1.2.3-canary.1)
             type=semver,pattern={{version}},enable=${{ startsWith(github.ref, 'refs/tags/v') }}
-            # Major.minor for stable releases only (e.g. 1.2)
-            type=semver,pattern={{major}}.{{minor}},enable=${{ startsWith(github.ref, 'refs/tags/v') && !contains(github.ref, '-') }}
             # Custom version from manual workflow input
             type=raw,value=${{ github.event.inputs.version }},priority=800,enable=${{ github.event.inputs.version != '' }}
-            # Latest tag ONLY for stable releases (no prerelease suffix like -canary, -beta, -alpha, -rc)
-            type=raw,value=latest,priority=50,enable=${{ startsWith(github.ref, 'refs/tags/v') && !contains(github.ref_name, '-') }}
-            # Latest tag override for manual builds (use with caution)
-            type=raw,value=latest,priority=50,enable=${{ github.event.inputs.push_latest == 'true' }}
             # Fallback tag using git SHA for manual builds without custom version
             type=sha,prefix={{branch}}-,suffix=-${{ github.run_number }},enable=${{ github.event_name == 'workflow_dispatch' && github.event.inputs.version == '' }}
 
@@ -223,17 +219,13 @@ jobs:
         with:
           images: |
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/worker
+          # Only immutable tags are pushed here. Floating tags (major.minor, latest) are
+          # promoted by promote-floating-tags after compose-e2e passes.
           tags: |
             # Full version for releases (e.g. 1.2.3 or 1.2.3-canary.1)
             type=semver,pattern={{version}},enable=${{ startsWith(github.ref, 'refs/tags/v') }}
-            # Major.minor for stable releases only (e.g. 1.2)
-            type=semver,pattern={{major}}.{{minor}},enable=${{ startsWith(github.ref, 'refs/tags/v') && !contains(github.ref, '-') }}
             # Custom version from manual workflow input
             type=raw,value=${{ github.event.inputs.version }},priority=800,enable=${{ github.event.inputs.version != '' }}
-            # Latest tag ONLY for stable releases (no prerelease suffix like -canary, -beta, -alpha, -rc)
-            type=raw,value=latest,priority=50,enable=${{ startsWith(github.ref, 'refs/tags/v') && !contains(github.ref_name, '-') }}
-            # Latest tag override for manual builds (use with caution)
-            type=raw,value=latest,priority=50,enable=${{ github.event.inputs.push_latest == 'true' }}
             # Fallback tag using git SHA for manual builds without custom version
             type=sha,prefix={{branch}}-,suffix=-${{ github.run_number }},enable=${{ github.event_name == 'workflow_dispatch' && github.event.inputs.version == '' }}
 
@@ -383,16 +375,73 @@ jobs:
             echo "  --certificate-oidc-issuer https://token.actions.githubusercontent.com"
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
-  # Release gate, part 1: the tag's published app image in the self-hosted Compose stack,
-  # full suite. Part 2 is the full E2E run against staging (e2e-full.yml, base_url),
-  # started by hand after the staging deploy.
+  # Release gate, part 1: the immutable-tag app image in the self-hosted Compose stack,
+  # full suite. Part 2 is the full E2E run against staging (e2e-full.yml, target=staging),
+  # started by hand after the staging deploy. Runs for tags and manual builds alike.
   compose-e2e:
     name: Self-hosted Compose E2E
     needs: build-and-push
-    if: ${{ startsWith(github.ref, 'refs/tags/v') }}
     permissions:
       contents: read
     uses: ./.github/workflows/compose-e2e.yml
     with:
       image_tag: ${{ needs.build-and-push.outputs.image_tag }}
       full: true
+
+  # Floating tags move only after the gate passes. imagetools create re-points the tag at the
+  # already signed digests, so the multi-arch manifests are unchanged.
+  promote-floating-tags:
+    name: Promote floating tags
+    needs: [build-and-push, compose-e2e]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Extract app floating tags
+        id: app-meta
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
+        with:
+          images: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/app
+          tags: |
+            type=semver,pattern={{major}}.{{minor}},enable=${{ startsWith(github.ref, 'refs/tags/v') && !contains(github.ref, '-') }}
+            type=raw,value=latest,enable=${{ (startsWith(github.ref, 'refs/tags/v') && !contains(github.ref_name, '-')) || github.event.inputs.push_latest == 'true' }}
+
+      - name: Extract worker floating tags
+        id: worker-meta
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
+        with:
+          images: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/worker
+          tags: |
+            type=semver,pattern={{major}}.{{minor}},enable=${{ startsWith(github.ref, 'refs/tags/v') && !contains(github.ref, '-') }}
+            type=raw,value=latest,enable=${{ (startsWith(github.ref, 'refs/tags/v') && !contains(github.ref_name, '-')) || github.event.inputs.push_latest == 'true' }}
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+
+      - name: Promote tags to the gated digests
+        env:
+          APP_DIGEST: ${{ needs.build-and-push.outputs.app_digest }}
+          WORKER_DIGEST: ${{ needs.build-and-push.outputs.worker_digest }}
+          APP_TAGS: ${{ steps.app-meta.outputs.tags }}
+          WORKER_TAGS: ${{ steps.worker-meta.outputs.tags }}
+        run: |
+          set -Eeuo pipefail
+          promote() { # image digest tags
+            local image="$1" digest="$2" tags="$3" args=() tag
+            while IFS= read -r tag; do [ -n "$tag" ] && args+=(-t "$tag"); done <<<"$tags"
+            [ "${#args[@]}" -gt 0 ] || { echo "No floating tags for $image"; return 0; }
+            docker buildx imagetools create "${args[@]}" "$image@$digest"
+          }
+          promote "$REGISTRY/$IMAGE_NAME/app" "$APP_DIGEST" "$APP_TAGS"
+          promote "$REGISTRY/$IMAGE_NAME/worker" "$WORKER_DIGEST" "$WORKER_TAGS"
