@@ -4,7 +4,7 @@ import { and, eq, sql } from "drizzle-orm";
 import { sreEvidenceItems, sreIncidentTimelineEvents, sreIncidents, sreInvestigationRuns, sreServices } from "@/db/schema";
 import { getActualModelName } from "@/lib/ai/ai-provider";
 import { buildSreTriagePrompt, buildSreTriageSystemPrompt } from "@/sre/agents/triage";
-import { runSreAgent } from "@/sre/lib/agent-runner";
+import { runSreAgent, type SreAgentUsage } from "@/sre/lib/agent-runner";
 import { createSreEvidenceTools } from "@/sre/tools/evidence-tools";
 import { countStoredIncidentEvidence, persistNativeEvidenceWithin } from "@/lib/sre/native-evidence-bounded";
 import { db } from "@/utils/db";
@@ -291,11 +291,17 @@ export async function completeSreIncidentTriage(
       "SRE triage failed",
     );
     const errorMessage = "SRE triage failed";
+    // A run that ended early (token limit, empty report) still used tokens; an aborted one has no usage to report.
+    const usage =
+      typeof error === "object" && error && "usage" in error ? (error.usage as SreAgentUsage | undefined) : undefined;
     try {
       await db
         .update(sreInvestigationRuns)
         .set({
           status: "failed",
+          ...(usage
+            ? { promptTokens: usage.inputTokens, completionTokens: usage.outputTokens, totalTokens: usage.totalTokens }
+            : {}),
           agentStateSnapshot: { mode: "sre_triage_api", error: errorMessage },
           completedAt: new Date(),
           durationMs: Date.now() - startedAt,

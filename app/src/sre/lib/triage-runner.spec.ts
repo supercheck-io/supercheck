@@ -106,6 +106,21 @@ describe("incident triage admission", () => {
     expect(set).toHaveBeenCalledWith(expect.objectContaining({ promptTokens: 10, completionTokens: 5, totalTokens: 15 }));
   });
 
+  it("stores the token usage of a triage run that hit its output limit", async () => {
+    const values = jest.fn((row: unknown) => Object.assign(Promise.resolve(row), { returning: async () => [{ id: "run-1" }] }));
+    (db.insert as jest.Mock).mockReturnValue({ values });
+    // Shaped like SreAgentIncompleteResponseError, which carries the run's usage.
+    (runSreAgent as jest.Mock).mockRejectedValue(
+      Object.assign(new Error("incomplete"), { finishReason: "length", usage: { inputTokens: 900, outputTokens: 1200, totalTokens: 2100 } }),
+    );
+    const set = jest.fn(() => ({ where: () => Object.assign(Promise.resolve(), { returning: async () => [] }) }));
+    (db.update as jest.Mock).mockReturnValue({ set });
+    await expect(runSreIncidentTriage(input)).resolves.toMatchObject({ success: false, status: 502 });
+    expect(set).toHaveBeenCalledWith(
+      expect.objectContaining({ status: "failed", promptTokens: 900, completionTokens: 1200, totalTokens: 2100 }),
+    );
+  });
+
   it("writes no finding when the run was already closed before completion", async () => {
     const values = jest.fn(() => ({ returning: async () => [{ id: "run-1" }] }));
     (db.insert as jest.Mock).mockReturnValue({ values });
