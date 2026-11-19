@@ -351,6 +351,7 @@ export async function executeSreIncidentInvestigation(
         severity: incident.severity,
         status: incident.status,
         serviceName: incident.primaryServiceName,
+        serviceId: incident.primaryServiceId,
         serviceOtelName: liveConnectors?.primaryService?.otelServiceName,
         liveConnectorLines: liveConnectors?.connectors
           .filter((connector) => connector.type !== "mcp")
