@@ -33,16 +33,16 @@ test.describe('Paging channels @alerts @channels', () => {
     await page.getByRole('option', { name: 'PagerDuty', exact: true }).click();
     await expect(dialog.getByTestId('one-way-paging-note')).toContainText('does not change the Supercheck incident');
     await dialog.getByLabel(/^Title/).fill(name);
-    // The routing key is a typed field; the fixed vendor URL sits under Advanced.
-    await dialog.getByLabel(/^Routing key/).fill('e2e0000000000000000000000000000k');
+    // The preset template holds a placeholder routing key; saving it is refused next to the typed field.
+    await dialog.getByRole('button', { name: /^(Create|Save)/ }).click();
+    await expect(dialog.getByText('Routing key is required')).toBeVisible();
+    await dialog.getByLabel(/^Routing key/).fill('e2e0routing0key0000000000000000');
+    // The fixed vendor URL and the template sit under Advanced; the key is written into the template.
     await dialog.getByTestId('webhook-advanced-toggle').click();
     await expect(dialog.getByLabel(/^URL/)).toHaveValue('https://events.pagerduty.com/v2/enqueue');
-    // The preset template carries a placeholder routing key, and a channel that still holds it is rejected.
     const body = dialog.getByLabel(/^Body template/);
-    await expect(body).toHaveValue(/REPLACE_WITH_PAGERDUTY_ROUTING_KEY/);
-    await dialog.getByRole('button', { name: /^(Create|Save)/ }).click();
-    await expect(page.getByText(/Replace REPLACE_WITH_PAGERDUTY_ROUTING_KEY/).first()).toBeVisible();
-    await body.fill((await body.inputValue()).replace('REPLACE_WITH_PAGERDUTY_ROUTING_KEY', 'e2e0routing0key0000000000000000'));
+    await expect(body).toHaveValue(/"routing_key": "e2e0routing0key0000000000000000"/);
+    await expect(body).not.toHaveValue(/REPLACE_WITH_/);
     await dialog.getByRole('button', { name: /^(Create|Save)/ }).click();
     await expect(dialog).toBeHidden();
 
