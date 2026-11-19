@@ -124,7 +124,8 @@ describe("MaintenanceWindowDialog", () => {
     expect(url).toBe("/api/maintenance-windows/w-9");
     expect((init as { method: string }).method).toBe("PATCH");
     const body = JSON.parse((init as { body: string }).body);
-    expect(body).toMatchObject({ title: "DB upgrade", recurrence: "once", localStartTime: "22:00", durationMinutes: 300, startsOn: "2026-11-20", targets: { monitorIds: ["m-1"] } });
+    expect(body).toMatchObject({ title: "DB upgrade", recurrence: "once", localStartTime: "22:00", durationMinutes: 300, startsOn: "2026-11-20" });
+    expect(body).not.toHaveProperty("targets");
     expect(body).not.toHaveProperty("statusPages");
     expect(body).not.toHaveProperty("notifySubscribers");
   });
@@ -140,5 +141,27 @@ describe("MaintenanceWindowDialog", () => {
     const body = JSON.parse((fetchMock.mock.calls[0]![1] as { body: string }).body);
     expect(body.title).toBe("DB upgrade, phase 2");
     for (const key of ["recurrence", "timezone", "localStartTime", "durationMinutes", "startsOn", "endsOn", "weekdays", "monthDay"]) expect(body).not.toHaveProperty(key);
+  });
+
+  it("does not resend unchanged targets, so a deleted monitor never blocks a title edit", async () => {
+    fetchMock.mockResolvedValue({ ok: true, json: async () => ({ success: true, window: { id: "w-9" } }) });
+    render(<MaintenanceWindowDialog open onOpenChange={jest.fn()} window={{ ...stored, targets: [{ type: "monitor" as const, id: "m-1" }, { type: "monitor" as const, id: "m-deleted" }] }} />);
+    fireEvent.change(screen.getByLabelText("Title"), { target: { value: "Renamed" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    const body = JSON.parse((fetchMock.mock.calls[0]![1] as { body: string }).body);
+    expect(body).not.toHaveProperty("targets");
+    expect(body).not.toHaveProperty("scope");
+  });
+
+  it("keeps a status page window one-off but still sends its other schedule fields", async () => {
+    fetchMock.mockResolvedValue({ ok: true, json: async () => ({ success: true, window: { id: "w-9" } }) });
+    render(<MaintenanceWindowDialog open onOpenChange={jest.fn()} window={{ ...stored, statusPageIncidentIds: ["i-1"] }} />);
+    expect(screen.getByRole("combobox", { name: "Repeats" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    const body = JSON.parse((fetchMock.mock.calls[0]![1] as { body: string }).body);
+    expect(body).not.toHaveProperty("recurrence");
+    expect(body).toMatchObject({ durationMinutes: 240, weekdays: null, monthDay: null });
   });
 });

@@ -18,6 +18,9 @@ describe("maintenance format", () => {
     expect(formatDuration(240)).toBe("4 h");
     expect(formatDuration(3000)).toBe("2 d 2 h");
     expect(formatDuration(Number.NaN)).toBe("-");
+    expect(formatDuration(119.6)).toBe("2 h");
+    expect(formatDuration(59.75)).toBe("1 h");
+    expect(formatDuration(0.3)).toBe("<1 min");
   });
 
   it("previews the end time as wall-clock arithmetic and rejects incomplete input", () => {

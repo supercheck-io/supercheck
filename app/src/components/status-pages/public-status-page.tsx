@@ -161,10 +161,12 @@ export function PublicStatusPage({
     year: "numeric",
   });
 
-  // force-dynamic page: render time is when the data was read. The zone name keeps the server's text honest after hydration.
+  // force-dynamic page: the first render is when the data was read; kept so paging incidents does not move it.
+  // The zone name keeps the server's text honest after hydration.
+  const [renderedAt] = useState(() => new Date());
   const updatedAtLabel = t.lastUpdated.replace(
     "{time}",
-    new Intl.DateTimeFormat(locale, { hour: "2-digit", minute: "2-digit", timeZoneName: "short" }).format(new Date()),
+    new Intl.DateTimeFormat(locale, { hour: "2-digit", minute: "2-digit", timeZoneName: "short" }).format(renderedAt),
   );
 
   const uptimeDateFormatter = new Intl.DateTimeFormat(locale, { year: "numeric", month: "short", day: "numeric", timeZone: "UTC" });

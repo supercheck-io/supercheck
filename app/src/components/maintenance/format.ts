@@ -1,7 +1,7 @@
 /** One date style for maintenance windows: the table, the dialog preview and the edit form agree. */
 const RANGE_OPTIONS = { dateStyle: "medium", timeStyle: "short" } as const;
 
-/** "Nov 21, 2026, 10:00 PM – 2:00 AM": start to end in `timeZone`, the date written once when both fall on the same day. */
+/** "Nov 21, 2026, 1:00 – 2:30 AM": start to end in `timeZone`, the date written once when both fall on the same day. */
 export function formatWindowRange(start: Date, end: Date, timeZone: string): string {
   try {
     return new Intl.DateTimeFormat(undefined, { ...RANGE_OPTIONS, timeZone }).formatRange(start, end);
@@ -14,9 +14,12 @@ export function formatWindowRange(start: Date, end: Date, timeZone: string): str
 /** "45 min", "1 h 30 min", "2 d 4 h". */
 export function formatDuration(minutes: number): string {
   if (!Number.isFinite(minutes) || minutes <= 0) return "-";
-  const days = Math.floor(minutes / 1440);
-  const hours = Math.floor((minutes % 1440) / 60);
-  const mins = Math.round(minutes % 60);
+  // Occurrences ended early can last a fraction of a minute; round once, before splitting.
+  const total = Math.round(minutes);
+  if (total === 0) return "<1 min";
+  const days = Math.floor(total / 1440);
+  const hours = Math.floor((total % 1440) / 60);
+  const mins = total % 60;
   return [days && `${days} d`, hours && `${hours} h`, mins && `${mins} min`].filter(Boolean).join(" ");
 }
 

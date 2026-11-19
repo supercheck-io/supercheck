@@ -104,6 +104,9 @@ export function MaintenanceWindowDialog({
   const serviceItems = (services.data?.services ?? []).filter((s) => s.status === "active" || serviceIds.includes(s.id));
   const selectedCount = scope === "monitors" ? monitorIds.length : serviceIds.length;
   const zones = timeZoneOptions(timezone);
+  const sameIds = (a: string[], b: string[]) => a.length === b.length && a.every((id) => b.includes(id));
+  const targetsChanged = !editing || scope !== editing.scope
+    || !sameIds(monitorIds, targetIds(editing, "monitor")) || !sameIds(serviceIds, targetIds(editing, "service"));
   const preview = previewWindow(startsOn, localStartTime, Number(durationMinutes));
 
   const submit = async () => {
@@ -130,8 +133,8 @@ export function MaintenanceWindowDialog({
         body: JSON.stringify(editing ? {
           title: title.trim(),
           description: description.trim() || null,
-          scope,
-          targets: { serviceIds: scope === "services" ? serviceIds : [], monitorIds: scope === "monitors" ? monitorIds : [] },
+          // Unchanged targets are not resent: a since-deleted monitor among them would make the server refuse the whole edit.
+          ...(targetsChanged ? { scope, targets: { serviceIds: scope === "services" ? serviceIds : [], monitorIds: scope === "monitors" ? monitorIds : [] } } : {}),
           ...schedule,
         } : {
           title: title.trim(),
@@ -230,7 +233,7 @@ export function MaintenanceWindowDialog({
                     <ChevronsUpDown className="h-4 w-4 opacity-50" />
                   </Button>
                 </PopoverTrigger>
-                <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+                <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start">
                   <Command>
                     <CommandInput placeholder={scope === "monitors" ? "Search monitors" : "Search services"} />
                     <CommandList>
@@ -282,7 +285,7 @@ export function MaintenanceWindowDialog({
                   <ChevronsUpDown className="h-4 w-4 opacity-50" />
                 </Button>
               </PopoverTrigger>
-              <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+              <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start">
                 <Command>
                   <CommandInput placeholder="Search time zones" />
                   <CommandList>
