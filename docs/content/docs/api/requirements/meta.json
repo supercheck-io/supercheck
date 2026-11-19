@@ -3,13 +3,13 @@
   "icon": "ListChecks",
   "pages": [
     "listRequirements",
-    "createRequirement",
+    "listRequirementTests",
     "getRequirement",
+    "exportRequirementsCsv",
+    "createRequirement",
+    "linkRequirementTests",
     "updateRequirement",
     "deleteRequirement",
-    "listRequirementTests",
-    "linkRequirementTests",
-    "unlinkRequirementTests",
-    "exportRequirementsCsv"
+    "unlinkRequirementTests"
   ]
 }

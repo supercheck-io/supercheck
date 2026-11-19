@@ -57,6 +57,17 @@ jobs:
         working-directory: docs
         run: npm ci --prefer-offline --no-audit
 
+      - name: Check the generated API pages are current
+        working-directory: docs
+        run: |
+          npm run generate-docs
+          # Also catches pages the generator newly created (untracked), which git diff would not.
+          if [ -n "$(git status --porcelain -- content/docs/api)" ]; then
+            git status --short -- content/docs/api
+            echo "::error::Run 'npm run generate-docs' in docs/ and commit the result"
+            exit 1
+          fi
+
       - name: Test OpenAPI sync
         id: openapi
         working-directory: docs

@@ -3,8 +3,8 @@
   "icon": "Variable",
   "pages": [
     "listVariables",
-    "createVariable",
     "getVariable",
+    "createVariable",
     "updateVariable",
     "deleteVariable"
   ]

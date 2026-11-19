@@ -25,11 +25,11 @@ for (const path of pages) {
 test('API acceptance covers generated operation pages', () => assert.ok(operationPages > 50));
 
 test('every generated API page is listed in its folder navigation, and nothing else is', () => {
-  for (const path of pages) {
-    const folder = path.split(/[\\/]/).slice(0, -1).join('/');
-    if (!folder) continue;
-    const meta = JSON.parse(readFileSync(new URL(join(folder, 'meta.json'), content), 'utf8'));
-    const folderPages = pages.filter(other => other.startsWith(`${folder}/`)).map(other => other.slice(folder.length + 1, -4));
+  const normalized = pages.map(path => path.replaceAll('\\', '/'));
+  const folders = new Set(normalized.filter(path => path.includes('/')).map(path => path.slice(0, path.lastIndexOf('/'))));
+  for (const folder of folders) {
+    const meta = JSON.parse(readFileSync(new URL(`${folder}/meta.json`, content), 'utf8'));
+    const folderPages = normalized.filter(path => path.startsWith(`${folder}/`)).map(path => path.slice(folder.length + 1, -4));
     assert.deepEqual([...meta.pages].sort(), folderPages.sort(), `${folder}/meta.json is out of step with its pages`);
   }
 });

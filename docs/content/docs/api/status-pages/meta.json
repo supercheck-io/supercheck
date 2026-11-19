@@ -3,19 +3,19 @@
   "icon": "Tally4",
   "pages": [
     "listStatusPages",
-    "createStatusPage",
+    "listStatusPageComponents",
     "checkStatusPageSubdomain",
-    "checkStatusPageSubdomainPost",
     "getStatusPage",
-    "deleteStatusPage",
-    "updateStatusPage",
-    "uploadStatusPageAsset",
     "getStatusPageRss",
     "getStatusPageBadge",
     "getStatusPageIcal",
-    "listStatusPageComponents",
+    "createStatusPage",
+    "checkStatusPageSubdomainPost",
+    "uploadStatusPageAsset",
     "createStatusPageComponent",
+    "updateStatusPage",
     "updateStatusPageComponent",
+    "deleteStatusPage",
     "deleteStatusPageComponent"
   ]
 }

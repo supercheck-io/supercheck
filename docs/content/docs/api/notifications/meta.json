@@ -3,11 +3,11 @@
   "icon": "Bell",
   "pages": [
     "listNotificationProviders",
-    "createNotificationProvider",
     "getNotificationProvider",
-    "updateNotificationProvider",
-    "deleteNotificationProvider",
+    "createNotificationProvider",
     "testNotificationProvider",
-    "testSavedNotificationProvider"
+    "testSavedNotificationProvider",
+    "updateNotificationProvider",
+    "deleteNotificationProvider"
   ]
 }

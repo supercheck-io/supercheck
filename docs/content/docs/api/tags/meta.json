@@ -3,9 +3,9 @@
   "icon": "Tag",
   "pages": [
     "listTags",
-    "createTag",
-    "deleteTag",
     "getTag",
-    "updateTag"
+    "createTag",
+    "updateTag",
+    "deleteTag"
   ]
 }

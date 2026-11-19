@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { generateFiles } from 'fumadocs-openapi';
 import { createOpenAPI } from 'fumadocs-openapi/server';
 import { syncOpenApi } from './sync-openapi.mjs';
@@ -75,7 +75,10 @@ await generateFiles({
 const spec = JSON.parse(readFileSync('./openapi.json', 'utf8')) as {
   paths: Record<string, Record<string, { operationId?: string; tags?: string[] } | undefined>>;
 };
-const pages: Record<string, string[]> = {};
+// Sidebar order: list, then the other reads, then create, replace, update and delete; openapi.json order within each.
+const rank = (method: string, operationId: string) =>
+  method === 'get' ? (operationId.startsWith('list') ? 0 : 1) : ({ post: 2, put: 3, patch: 4, delete: 5 } as Record<string, number>)[method] ?? 6;
+const found: Record<string, Array<{ id: string; rank: number }>> = {};
 for (const item of Object.values(spec.paths)) {
   for (const [method, operation] of Object.entries(item)) {
     if (!operation || typeof operation !== 'object' || Array.isArray(operation)) continue;
@@ -85,10 +88,24 @@ for (const item of Object.values(spec.paths)) {
     if (!existsSync(`./content/docs/api/${folder}/${operation.operationId}.mdx`)) {
       throw new Error(`No generated page for ${folder}/${operation.operationId}`);
     }
-    (pages[folder] ??= []).push(operation.operationId);
+    (found[folder] ??= []).push({ id: operation.operationId, rank: rank(method, operation.operationId) });
   }
 }
-// The root navigation is hand-written and absent in a bare checkout (the generation test runs in an empty folder).
+// Array.prototype.sort is stable, so equal ranks keep their openapi.json order.
+const pages = Object.fromEntries(Object.entries(found).map(([folder, list]) => [folder, list.sort((a, b) => a.rank - b.rank).map((entry) => entry.id)]));
+
+// Delete pages and folders of operations that left the spec; the generator only ever adds.
+for (const entry of readdirSync('./content/docs/api', { withFileTypes: true })) {
+  if (!entry.isDirectory()) continue;
+  const folderPath = `./content/docs/api/${entry.name}`;
+  if (!pages[entry.name]) {
+    rmSync(folderPath, { recursive: true });
+    continue;
+  }
+  for (const file of readdirSync(folderPath)) {
+    if (file.endsWith('.mdx') && !pages[entry.name].includes(file.slice(0, -4))) rmSync(`${folderPath}/${file}`);
+  }
+}
 const rootMetaPath = './content/docs/api/meta.json';
 const rootPages = existsSync(rootMetaPath) ? (JSON.parse(readFileSync(rootMetaPath, 'utf8')) as { pages: string[] }).pages : null;
 for (const [folder, operationIds] of Object.entries(pages)) {
