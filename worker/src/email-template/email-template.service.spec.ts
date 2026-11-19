@@ -159,6 +159,8 @@ describe('EmailTemplateService (local render)', () => {
     });
     expect(r.subject).toBe('[Supercheck] T <b>');
     expect(r.html).toContain('&lt;script&gt;');
+    expect(r.html).toContain('background:#1f2937');
+    expect(r.html).toContain('>Failing<');
     expect(r.text).toContain('k: <script>');
     jest.restoreAllMocks();
   });

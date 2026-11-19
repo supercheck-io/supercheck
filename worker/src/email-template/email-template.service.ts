@@ -49,6 +49,15 @@ const escapeHtml = (s: string) =>
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
 
+/** Severity label for the basic fallback body (the React badge is not available there). */
+const FALLBACK_LABEL: Record<AlertType, string> = {
+  failure: 'Failing',
+  success: 'Passed',
+  recovery: '\u2713 Resolved',
+  warning: 'Warning',
+  info: 'Notice',
+};
+
 @Injectable()
 export class EmailTemplateService {
   private readonly logger = new Logger(EmailTemplateService.name);
@@ -92,7 +101,7 @@ export class EmailTemplateService {
           `<tr><td style="padding:6px 12px;color:#6b7280"><b>${escapeHtml(f.title)}</b></td><td style="padding:6px 12px">${escapeHtml(f.value)}</td></tr>`,
       )
       .join('');
-    const html = `<!DOCTYPE html><html><body style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto"><div style="background:${PALETTE.neutral};color:#fff;padding:20px"><h2 style="margin:0">${escapeHtml(params.title)}</h2></div><div style="padding:20px"><p>${escapeHtml(params.message)}</p><table>${rows}</table><p style="color:#6b7280;font-size:12px">${escapeHtml(params.footer)}</p></div></body></html>`;
+    const html = `<!DOCTYPE html><html><body style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto"><div style="background:${PALETTE.neutral};color:#fff;padding:20px"><h2 style="margin:0">${escapeHtml(params.title)}</h2></div><div style="padding:20px"><p style="margin:0 0 12px;font-size:12px;font-weight:bold;color:#374151">${FALLBACK_LABEL[params.type] ?? 'Alert'}</p><p>${escapeHtml(params.message)}</p><table>${rows}</table><p style="color:#6b7280;font-size:12px">${escapeHtml(params.footer)}</p></div></body></html>`;
     const text = [
       params.title,
       '',
