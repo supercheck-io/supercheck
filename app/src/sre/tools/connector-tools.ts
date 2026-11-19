@@ -576,11 +576,38 @@ export async function searchIncidentLiveConnectorEvidence(
 ) {
   const startedAt = Date.now();
   scope = { ...scope, serviceId: input.serviceId ?? scope.serviceId };
-  const { primaryServiceId, connectors } = await loadIncidentConnectors(scope);
+  // A scope rejection happens before any connector is known; still leave a trace row on the run. Database errors are not scope rejections and stay out of the trace.
+  // Chat has no run: a row with no run and no connector would belong to nothing, so none is written.
+  const traceScopeRejection = async (error: unknown) => {
+    if (!scope.investigationRunId) return;
+    await recordToolCallError({
+      investigationRunId: scope.investigationRunId,
+      connectorId: null,
+      connectorType: "unknown",
+      toolName: "agent.connector.search.scope_rejected",
+      inputHash: hashConnectorPayload({ connectorId: input.connectorId, query: input.query }),
+      inputSummary: redactConnectorText(JSON.stringify({ connectorId: input.connectorId })),
+      errorMessage:
+        error instanceof Error && !(error instanceof DrizzleQueryError)
+          ? redactConnectorText(error.message).slice(0, 300)
+          : "Connector scope could not be loaded",
+      durationMs: Date.now() - startedAt,
+    });
+  };
+  let loaded: Awaited<ReturnType<typeof loadIncidentConnectors>>;
+  try {
+    loaded = await loadIncidentConnectors(scope);
+  } catch (error) {
+    await traceScopeRejection(error);
+    throw error;
+  }
+  const { primaryServiceId, connectors } = loaded;
   if (!primaryServiceId) {
-    throw new Error(
+    const error = new Error(
       "Select a service from listIncidentConnectors before querying live sources",
     );
+    await traceScopeRejection(error);
+    throw error;
   }
   const selected = connectors.find(
     (entry) => entry.row.id === input.connectorId,
@@ -593,9 +620,9 @@ export async function searchIncidentLiveConnectorEvidence(
       .slice(0, 25)
       .map(({ row }) => `${row.id} (${row.name.replace(/\s+/g, " ").slice(0, 80)}, ${row.type})`)
       .join("; ");
-    // No FK-valid connector id exists here, so the row records the attempt with a null connector.
-    await db.insert(sreInvestigationToolCalls).values({
-      investigationRunId: scope.investigationRunId ?? null,
+    // No FK-valid connector id exists here, so the row records the attempt with a null connector; chat has no run to own it.
+    if (scope.investigationRunId) await db.insert(sreInvestigationToolCalls).values({
+      investigationRunId: scope.investigationRunId,
       connectorId: null,
       connectorType: "unknown",
       toolName: "agent.connector.search.unknown_connector",
