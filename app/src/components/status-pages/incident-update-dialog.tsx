@@ -43,6 +43,7 @@ type Incident = {
   status: IncidentStatus;
   scheduledFor?: Date | string | null;
   scheduledUntil?: Date | string | null;
+  affectedComponentsCount?: number;
 };
 
 type IncidentUpdateDialogProps = {
@@ -125,6 +126,10 @@ const statusOptions: { value: IncidentStatus; label: string; color: string }[] =
     { value: "resolved", label: "Resolved", color: "text-success" },
     { value: "scheduled", label: "Scheduled", color: "text-purple-600" },
   ];
+
+// Resolving should clear Degraded components by default; the server skips ones another active post still affects.
+const restoreByDefault = (status: IncidentStatus, affectedComponentsCount = 0) =>
+  status === "resolved" && affectedComponentsCount > 0;
 
 export function IncidentUpdateDialog({
   open,
@@ -253,7 +258,11 @@ export function IncidentUpdateDialog({
               render={({ field }) => (
                 <Select
                   value={field.value}
-                  onValueChange={field.onChange}
+                  onValueChange={(value) => {
+                    field.onChange(value);
+                    // Only a change to Resolved defaults on: a note added to an already-resolved post must not reset components set by hand since.
+                    setValue("restoreComponentStatus", value !== incident.status && restoreByDefault(value as IncidentStatus, incident.affectedComponentsCount));
+                  }}
                   disabled={isSubmitting}
                 >
                   <SelectTrigger>
