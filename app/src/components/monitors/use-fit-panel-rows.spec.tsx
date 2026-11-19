@@ -133,6 +133,20 @@ describe("useFitPanelRows", () => {
     expect(onFit.mock.calls[1]).toEqual([3]);
   });
 
+  it("ignores a resize notification when the panel height is unchanged", async () => {
+    const onFit = jest.fn();
+    const { container } = render(<Panel onFit={onFit} />);
+    const [first] = rowHeights([60], container);
+    await act(async () => {
+      await Promise.resolve();
+      jest.advanceTimersByTime(200);
+    });
+    expect(onFit.mock.calls).toEqual([[9], [6]]);
+    first.heights.set(first.row, 45);
+    act(() => { resize(); jest.advanceTimersByTime(200); }); // same panel height, like the initial observe() call
+    expect(onFit.mock.calls).toEqual([[9], [6]]);
+  });
+
   it("does nothing below the desktop breakpoint", () => {
     window.matchMedia = jest.fn().mockReturnValue({ matches: false }) as never;
     const onFit = jest.fn();

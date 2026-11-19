@@ -40,6 +40,7 @@ export function useFitPanelRows(onFitRows: ((rows: number) => void) | undefined,
     if (!onFitRows || !panel || typeof ResizeObserver === "undefined" || typeof window.matchMedia !== "function") return;
     const desktop = window.matchMedia("(min-width: 1024px)");
     let last = 0;
+    let fittedHeight = 0;
     // 0 until real rows have rendered; skeletons don't match rowSelector, so the last real height is kept.
     let rowPx = 0;
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -55,7 +56,8 @@ export function useFitPanelRows(onFitRows: ((rows: number) => void) | undefined,
         rowsObserver?.disconnect();
         rowsObserver = undefined;
       }
-      const rows = rowsThatFit(panel.clientHeight, rowPx || ROW_PX, head?.offsetHeight || HEAD_PX, pager?.offsetHeight || NAV_PX);
+      fittedHeight = panel.clientHeight;
+      const rows = rowsThatFit(fittedHeight, rowPx || ROW_PX, head?.offsetHeight || HEAD_PX, pager?.offsetHeight || NAV_PX);
       // Only a real change in page size reaches the caller, so the results are not refetched for nothing.
       if (rows !== last) {
         last = rows;
@@ -67,7 +69,10 @@ export function useFitPanelRows(onFitRows: ((rows: number) => void) | undefined,
       clearTimeout(timer);
       timer = setTimeout(measure, DEBOUNCE_MS);
     };
-    const observer = new ResizeObserver(schedule);
+    // The initial notification (and any other with the same height) is not a resize.
+    const observer = new ResizeObserver(() => {
+      if (panel.clientHeight !== fittedHeight) schedule();
+    });
     observer.observe(panel);
     // The first rows render after mount and can differ from the fallback height without resizing the fixed panel.
     if (!rowPx && typeof MutationObserver !== "undefined") {
