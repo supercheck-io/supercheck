@@ -185,6 +185,8 @@ describe("NotificationProviderForm editing a saved vendor webhook", () => {
     const config = onSuccess.mock.calls[0][0].config;
     expect(config.preset).toBe("custom");
     expect(config.headers).toEqual({});
+    // The cleared vendor template is sent as "" so the stored one is removed, not kept by the merge.
+    expect(config.bodyTemplate).toBe("");
   });
 
   it("sends empty headers when the user types {} to clear stored ones, and omits headers left blank", async () => {
