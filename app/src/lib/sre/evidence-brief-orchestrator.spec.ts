@@ -1,5 +1,6 @@
 import type { SQL } from "drizzle-orm";
 import { PgDialect } from "drizzle-orm/pg-core";
+import { logAuditEvent } from "@/lib/audit-logger";
 import { collectNativeEvidence } from "./native-evidence-collector";
 import { runSreEvidenceBriefGeneration } from "./evidence-brief-orchestrator";
 
@@ -9,7 +10,7 @@ const mockLimit = jest.fn();
 const mockCompleted = jest.fn(() => Promise.resolve([{ id: "brief-run" }]));
 const mockUpdateWhere = jest.fn((_condition: SQL) => Object.assign(Promise.resolve(undefined), { returning: () => mockCompleted() }));
 const mockSet = jest.fn((_values: unknown) => ({ where: mockUpdateWhere }));
-const mockValues = jest.fn(() => ({ returning: jest.fn().mockResolvedValue([{ id: "brief-run" }]) }));
+const mockValues = jest.fn((_row?: unknown) => ({ returning: jest.fn().mockResolvedValue([{ id: "brief-run" }]) }));
 jest.mock("@/utils/db", () => ({ db: {
   select: () => {
     const from = { where: (condition: unknown) => {
@@ -19,6 +20,7 @@ jest.mock("@/utils/db", () => ({ db: {
     return { from: () => ({ ...from, innerJoin: () => from }) };
   },
   insert: () => ({ values: mockValues }),
+  update: () => ({ set: mockSet }),
   transaction: async (callback: (tx: unknown) => unknown) => callback({
     select: () => ({ from: () => ({ where: () => ({ for: (mode: string) => { mockLock(mode); return Promise.resolve([]); } }) }) }),
     update: () => ({ set: mockSet }),
@@ -128,12 +130,20 @@ describe("evidence brief stored evidence", () => {
     expect(q.params).toContain("triggered");
   });
 
-  it("fails without incident writes when the stale sweep already failed the run", async () => {
+  it("leaves a run the stale sweep already failed untouched: no status overwrite, timeline row or audit event", async () => {
     mockLimit.mockResolvedValue([row]);
-    mockCompleted.mockResolvedValue([]);
+    mockCompleted.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
     const generateBrief = jest.fn().mockResolvedValue({ provider: "fallback", summary: "Brief", modelId: "test-model", confidenceScore: 0.5, suspectedFailureDomain: "Unknown", citedEvidenceIds: [row.id] });
     const result = await runSreEvidenceBriefGeneration({ userId: "user-a", organizationId: "org-a", projectId: "project-a", incidentId: "incident-a", generateBrief });
-    expect(result).toMatchObject({ success: false });
+    expect(result).toEqual({ success: false, error: "Failed to generate evidence brief" });
     expect(mockLock).not.toHaveBeenCalled();
+    // Every status write is guarded on status = running, and none of them matched.
+    const statusWrites = mockSet.mock.calls.map((c) => c[0] as { status?: string }).filter((v) => v.status);
+    expect(statusWrites.map((v) => v.status)).toEqual(["completed", "failed"]);
+    for (const [condition] of mockUpdateWhere.mock.calls.filter((_c, i) => mockSet.mock.calls[i] && (mockSet.mock.calls[i][0] as { status?: string }).status)) {
+      expect(new PgDialect().sqlToQuery(condition).params).toContain("running");
+    }
+    expect(mockValues.mock.calls.some(([v]) => (v as { eventType?: string }).eventType)).toBe(false);
+    expect(logAuditEvent).not.toHaveBeenCalled();
   });
 });

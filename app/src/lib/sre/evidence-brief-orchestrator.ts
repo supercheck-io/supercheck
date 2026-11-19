@@ -557,7 +557,7 @@ export async function runSreEvidenceBriefGeneration(input: {
     );
 
     try {
-      await db
+      const [failedRun] = await db
         .update(sreInvestigationRuns)
         .set({
           status: "failed",
@@ -571,10 +571,14 @@ export async function runSreEvidenceBriefGeneration(input: {
         .where(
           and(
             eq(sreInvestigationRuns.id, run.id),
+            eq(sreInvestigationRuns.status, "running"),
             eq(sreInvestigationRuns.organizationId, input.organizationId),
             eq(sreInvestigationRuns.projectId, input.projectId),
           ),
-        );
+        )
+        .returning({ id: sreInvestigationRuns.id });
+      // Already failed by the stale sweep (or finished): keep its record and write nothing more.
+      if (!failedRun) return { success: false, error: "Failed to generate evidence brief" };
 
       await db.insert(sreIncidentTimelineEvents).values({
         incidentId: input.incidentId,

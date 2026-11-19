@@ -24,7 +24,8 @@ const staleRunPatch = () => ({
 });
 
 const staleRunsWhere = () =>
-  and(eq(sreInvestigationRuns.status, "running"), lt(sreInvestigationRuns.startedAt, new Date(Date.now() - STALE_RUN_AFTER_MS)));
+  // Database clock, like completedAt below, so replicas with skewed clocks agree on staleness.
+  and(eq(sreInvestigationRuns.status, "running"), lt(sreInvestigationRuns.startedAt, sql`now() - make_interval(secs => ${STALE_RUN_AFTER_MS / 1000})`));
 
 /**
  * Releases the one-active-run reservation of a run whose process died, so the
