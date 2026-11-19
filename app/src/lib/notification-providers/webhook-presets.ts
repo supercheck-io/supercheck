@@ -216,9 +216,12 @@ export function applyWebhookPresetConfig(
 ): PlainNotificationProviderConfig {
   const preset = getWebhookPreset(presetId);
   if (!preset || preset.id === "custom") {
+    // Leaving a vendor preset drops its headers and template (and any token typed into them); re-picking custom keeps the user's own.
+    const fromVendorPreset = currentConfig.preset !== undefined && currentConfig.preset !== "custom";
     return {
       ...currentConfig,
       preset: "custom",
+      ...(fromVendorPreset && { method: "POST", headers: {}, bodyTemplate: "" }),
     };
   }
 
