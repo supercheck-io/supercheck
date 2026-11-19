@@ -291,8 +291,8 @@ export const createNotificationProviderSchema = (
 
 const MASKED_FIELD_LABELS: Record<string, string> = {
   webhookUrl: "Webhook URL",
-  url: "Target URL",
-  headers: "Custom headers",
+  url: "URL",
+  headers: "Headers",
   botToken: "Bot token",
   discordWebhookUrl: "Discord webhook URL",
   teamsWebhookUrl: "Teams webhook URL",
@@ -346,7 +346,7 @@ function channelTypeLabel(type: string, presetId: string) {
 
 function OptionalBadge() {
   return (
-    <span className="ml-1.5 rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+    <span className="ml-1.5 rounded-full border px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
       Optional
     </span>
   );

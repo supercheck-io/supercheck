@@ -181,6 +181,9 @@ function NotificationsPage() {
   };
 
   const handleEditChannel = (channel: NotificationChannel) => {
+    // The fetched provider carries maskedFields; without them hidden secrets look empty and required.
+    const fetched = providers.find((p) => p.id === channel.id);
+    if (fetched) return handleEditProvider(fetched);
     const provider: NotificationProvider = {
       id: channel.id,
       name: channel.name,

@@ -51,6 +51,8 @@ it("stays on a valid page when the channel count drops", () => {
 it("filters rows by title from the search box", () => {
   render(<NotificationChannelsDataTable columns={columns} data={channels(12)} />);
   fireEvent.change(screen.getByLabelText("Search channels by title"), { target: { value: "channel-12" } });
-  expect(screen.queryByText("channel-11")).toBeNull();
   expect(screen.getByText("channel-12")).toBeInTheDocument();
+  expect(screen.queryByText("channel-1")).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "Clear search" }));
+  expect(screen.getByText("channel-1")).toBeInTheDocument();
 });
