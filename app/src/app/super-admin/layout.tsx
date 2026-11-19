@@ -44,7 +44,7 @@ export default async function AdminLayout({
       <ProjectContextProvider>
         <SidebarProvider>
           <AppSidebar />
-          <SidebarInset className="lg:has-[[data-fit-viewport]]:h-svh lg:has-[[data-fit-viewport]]:min-h-0">
+          <SidebarInset className="lg:h-svh lg:min-h-0">
             <header className="sticky top-0 z-10 flex h-14 min-w-0 shrink-0 items-center justify-between gap-2 border-b bg-background transition-[width,height] ease-linear group-has-[[data-collapsible=icon]]/sidebar-wrapper:h-12">
               <div className="flex min-w-0 flex-1 items-center gap-2 px-2 sm:px-4">
                 <SidebarTrigger className="-ml-1 shrink-0" />

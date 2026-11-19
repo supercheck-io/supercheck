@@ -152,7 +152,7 @@ export function AvailabilityBarChart({
           {headerActions ? <div className="pt-2">{headerActions}</div> : null}
         </CardHeader>
         <CardContent
-          className={fill ? "min-h-[160px] flex-1 p-4 pt-2" : "h-[200px] p-4 pt-2"}
+          className={fill ? "min-h-[120px] flex-1 p-4 pt-2" : "h-[200px] p-4 pt-2"}
           style={{
             display: "flex",
             alignItems: "center",
@@ -160,9 +160,9 @@ export function AvailabilityBarChart({
           }}
         >
           <div className="text-center space-y-3">
-            <div className="w-16 h-16 mx-auto rounded-full bg-muted/50 flex items-center justify-center">
+            <div className="w-12 h-12 mx-auto rounded-full bg-muted/50 flex items-center justify-center">
               <svg
-                className="w-8 h-8 text-muted-foreground"
+                className="w-6 h-6 text-muted-foreground"
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
@@ -175,7 +175,7 @@ export function AvailabilityBarChart({
                 />
               </svg>
             </div>
-            <div className="mb-10">
+            <div>
               <p className="text-muted-foreground  font-medium">
                 No Availability Data
               </p>
@@ -217,18 +217,19 @@ export function AvailabilityBarChart({
   return (
     <Card className={fill ? "flex h-full flex-col shadow-sm" : "shadow-sm"}>
       {/* The actions wrap under the title when the card is narrow. */}
-      <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2 pb-2">
+      <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2 p-4 pb-2">
         <div className="min-w-0">
-          <CardTitle className="text-lg font-semibold mb-2 whitespace-nowrap">
+          <CardTitle className="mb-1 whitespace-nowrap text-base font-semibold">
             Availability Overview
           </CardTitle>
-          <CardDescription>{getDescription()}</CardDescription>
+          {/* Short windows drop the caption so the bars keep their height. */}
+          <CardDescription className="[@media(min-width:1024px)_and_(max-height:760px)]:hidden">{getDescription()}</CardDescription>
         </div>
         {headerActions ? (
           <div className="flex-shrink-0">{headerActions}</div>
         ) : null}
       </CardHeader>
-      <CardContent className={fill ? "relative min-h-[64px] flex-1 p-3" : "relative h-[120px] p-3"}>
+      <CardContent className={fill ? "relative min-h-[72px] flex-1 p-3 pt-0" : "relative h-[120px] p-3"}>
         <div
           className="relative h-full w-full"
           ref={chartRef}

@@ -97,6 +97,7 @@ import {
   useMonitorStats,
   useMonitorResults,
   useMonitorPermissions,
+  useHydrated,
 } from "@/hooks/use-monitor-details";
 import { useQueryClient } from "@tanstack/react-query";
 import { formatUptime, getResumeStatus, invalidateMonitorCaches, invalidateDeletedMonitorCaches } from "./monitor-actions";
@@ -240,12 +241,13 @@ function MetricStat({
 /** "In maintenance until …" under the name; same query as the Schedule maintenance bar, so the actions stay on one line. */
 function MaintenanceStatus({ monitorId }: { monitorId: string }) {
   const { data: activeWindows } = useMaintenanceWindows({ monitorId, state: "active" });
+  const hydrated = useHydrated();
   // Alerts stay muted until the last of the overlapping windows ends.
   const until = activeWindows?.reduce<MaintenanceWindowItem | undefined>(
     (latest, window) => (!latest || (window.occurrenceEndsAt ?? "") > (latest.occurrenceEndsAt ?? "") ? window : latest),
     undefined,
   );
-  if (!until) return null;
+  if (!hydrated || !until) return null;
   return (
     <TableBadge tone="purple" compact className="shrink-0 gap-1" role="status" data-testid="monitor-maintenance-status">
       <Wrench className="h-3.5 w-3.5" aria-hidden="true" />
@@ -1283,7 +1285,7 @@ export function MonitorDetailClient({
 
         {isHeartbeat ? (
           // Desktop: setup and availability on the left, ping history on the right, both filling the window height.
-          <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 lg:grid-cols-2 lg:grid-rows-[minmax(0,1fr)]" data-testid="heartbeat-layout">
+          <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,min(58%,44rem))] lg:grid-rows-[minmax(min-content,1fr)]" data-testid="heartbeat-layout">
             <div className="flex min-h-0 min-w-0 flex-col gap-4">
               {showHeartbeatSetup && (
                 <HeartbeatPingUrlPanel
@@ -1293,7 +1295,7 @@ export function MonitorDetailClient({
                 />
               )}
               {/* One chart slot: availability, or run duration once the job calls /start (a toggle switches). */}
-              <div className={fitResults ? "flex min-h-0 flex-1 flex-col" : "h-[400px]"}>
+              <div className={fitResults ? "flex min-h-[12rem] flex-1 flex-col" : "h-[400px]"}>
                 {hasRunDurations && heartbeatChart === "duration" ? (
                   <ResponseTimeBarChart
                     data={responseTimeData}
@@ -1344,10 +1346,10 @@ export function MonitorDetailClient({
           </div>
         ) : (
         // Desktop: the page fits the window; the charts share the left column and the wider results fill the right one.
-        <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] lg:grid-rows-[minmax(0,1fr)]">
+        <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,min(58%,44rem))] lg:grid-rows-[minmax(22rem,1fr)]">
           {/* Both charts share the column height (1:2), so a taller header (an AI endpoint's fourth stat group) shrinks them instead of scrolling the page. */}
           <div className="flex min-h-0 min-w-0 flex-col gap-4">
-            <div className={fitResults ? "flex min-h-0 flex-1 flex-col" : "shrink-0"}>
+            <div className="shrink-0">
               <AvailabilityBarChart
                 data={availabilityTimelineData}
                 fill={fitResults}
@@ -1370,7 +1372,7 @@ export function MonitorDetailClient({
               />
             </div>
 
-            <div className={fitResults ? "min-h-0 flex-[2]" : "h-[400px]"}>
+            <div className={fitResults ? "min-h-[10.5rem] flex-1" : "h-[400px]"}>
               <ResponseTimeBarChart
                 data={responseTimeData}
                 showFirstToken={Boolean(aiEndpoint)}
@@ -1441,7 +1443,7 @@ export function MonitorDetailClient({
               {/* Desktop never scrolls here: the page size is the rows that fit, and the columns fit the card width. */}
               <div className="w-full flex-1 overflow-x-auto lg:overflow-y-hidden">
                 <div className="w-full">
-                  <table className={`w-full ${aiEndpoint ? "min-w-[600px]" : "min-w-[480px]"} table-fixed divide-y divide-border lg:min-w-0`}>
+                  <table className={`w-full ${aiEndpoint ? "min-w-[600px]" : "min-w-[480px]"} table-fixed lg:min-w-0`}>
                     {/* Location and Error share the leftover width; long text ends in an ellipsis and shows in full on hover. */}
                     <colgroup>
                       <col className="w-[76px]" />

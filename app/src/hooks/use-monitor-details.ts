@@ -1,3 +1,4 @@
+import { useSyncExternalStore } from "react";
 import { useQuery, useQueryClient, useIsRestoring, keepPreviousData } from "@tanstack/react-query";
 import type { MonitorResultItem } from "@/components/monitors/monitor-detail-client";
 import { Role } from "@/lib/rbac/permissions-client";
@@ -126,9 +127,20 @@ async function fetchMonitorPermissions(
   };
 }
 
+const subscribeNever = () => () => {};
+
+/**
+ * False while the page hydrates. The server HTML has no query data, but a restored browser cache can have it
+ * before a late-hydrating component renders, so data is shown only after hydration to avoid a mismatch (#418).
+ */
+export function useHydrated() {
+  return useSyncExternalStore(subscribeNever, () => true, () => false);
+}
+
 export function useMonitorStats(monitorId: string, location: string = "all") {
   const queryClient = useQueryClient();
   const isRestoring = useIsRestoring();
+  const hydrated = useHydrated();
 
   const query = useQuery({
     queryKey: [...MONITOR_STATS_KEY, monitorId, location],
@@ -151,7 +163,7 @@ export function useMonitorStats(monitorId: string, location: string = "all") {
   const isActuallyLoading = query.isPending && query.isFetching && !isRestoring;
 
   return {
-    stats: query.data,
+    stats: hydrated ? query.data : undefined,
     isLoading: isActuallyLoading,
     isRestoring,  // Expose for component-level hydration safety
     error: query.error as Error | null,
@@ -171,6 +183,7 @@ export function useMonitorResults(
 ) {
   const queryClient = useQueryClient();
   const isRestoring = useIsRestoring();
+  const hydrated = useHydrated();
   const dateString = options.date ? formatLocalDateParam(options.date) : undefined;
   // The offset at each local midnight: a DST change day starts and ends on different offsets.
   const dayOffset = (days: number) =>
@@ -216,8 +229,8 @@ export function useMonitorResults(
   const isActuallyLoading = query.isPending && query.isFetching && !isRestoring;
 
   return {
-    results: query.data?.data ?? [],
-    pagination: query.data?.pagination ?? null,
+    results: (hydrated && query.data?.data) || [],
+    pagination: (hydrated && query.data?.pagination) || null,
     isLoading: isActuallyLoading,
     isRestoring,  // Expose for component-level hydration safety
     isFetching: query.isFetching,

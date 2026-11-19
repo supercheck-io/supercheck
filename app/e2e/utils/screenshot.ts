@@ -120,6 +120,15 @@ export async function captureScreenshot(page: Page, testInfo: TestInfo, name: st
   await settle(page);
   await normalizeVolatileText(page);
 
+  // On desktop the app shell is one window tall and <main> scrolls, so let a scrolling page (not a fit-to-window
+  // one) grow to its content; the full-page capture below then sees all of it.
+  await page.evaluate(() => {
+    const shell = document.querySelector('main')?.parentElement;
+    if (shell && !document.querySelector('[data-fit-viewport]')) {
+      shell.style.height = 'auto';
+    }
+  });
+
   const { width, height } = await page.evaluate(() => ({
     width: document.documentElement.clientWidth,
     height: document.documentElement.scrollHeight,

@@ -117,7 +117,7 @@ const columns: ColumnDef<SreIncidentListItem>[] = [
     cell: ({ row }) => (
       <Link
         href={`/incidents/${row.original.id}`}
-        className="block max-w-[100px] truncate rounded-sm sm:max-w-[240px] 2xl:max-w-[360px] font-medium underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className="block max-w-[100px] truncate rounded-sm sm:max-w-[170px] min-[1440px]:max-w-[240px] 2xl:max-w-[360px] font-medium underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         title={row.original.title}
       >
         {row.original.title}
@@ -167,7 +167,7 @@ const columns: ColumnDef<SreIncidentListItem>[] = [
     accessorFn: (incident) => incident.primaryServiceName ?? "No service linked",
     header: ({ column }) => <DataTableColumnHeader column={column} title="Service" />,
     cell: ({ getValue }) => (
-      <span className="block max-w-[180px] truncate" title={getValue<string>()}>
+      <span className="block max-w-[120px] truncate min-[1440px]:max-w-[180px]" title={getValue<string>()}>
         {getValue<string>()}
       </span>
     ),

@@ -5,6 +5,7 @@ import { ChevronsLeft, ChevronsRight, HeartPulse } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { TruncatedTextWithTooltip } from "@/components/ui/truncated-text-with-tooltip";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { TableBadge, type TableBadgeTone } from "@/components/ui/table-badge";
@@ -149,11 +150,13 @@ export function HeartbeatPingHistory({
                         </TableBadge>
                       </TableCell>
                       <TableCell className="px-4 tabular-nums">{duration ?? <NoDuration hint={kind !== "missed"} />}</TableCell>
-                      <TableCell className="w-full max-w-0 truncate px-4 font-mono text-xs" title={userAgent ?? undefined}>
+                      <TableCell className="w-full max-w-0 px-4 font-mono text-xs">
                         {kind === "missed" ? (
-                          <span className="font-sans text-muted-foreground">No ping before the grace period ended</span>
+                          <TruncatedTextWithTooltip text="No ping before the grace period ended" className="font-sans text-muted-foreground" maxWidth="100%" />
+                        ) : userAgent ? (
+                          <TruncatedTextWithTooltip text={userAgent} maxWidth="100%" />
                         ) : (
-                          userAgent ?? <span className="text-muted-foreground">—</span>
+                          <span className="text-muted-foreground">—</span>
                         )}
                       </TableCell>
                     </TableRow>
