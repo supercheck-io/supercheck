@@ -171,8 +171,10 @@ function renderCitationMarker(ids: string[], context: CitationContext, key: stri
             </button>
           </EvidenceDetailsDialog>
         ) : (
-          <span key={id} aria-label={label} title="Live result, not saved" className="inline-flex h-5 min-w-5 items-center justify-center text-muted-foreground">
-            [{number}]
+          // aria-label is ignored on a plain span, so the meaning goes in screen-reader text.
+          <span key={id} title="Live result, not saved" className="inline-flex h-5 min-w-5 items-center justify-center text-muted-foreground">
+            <span aria-hidden="true">[{number}]</span>
+            <span className="sr-only">{label}</span>
           </span>
         );
       })}

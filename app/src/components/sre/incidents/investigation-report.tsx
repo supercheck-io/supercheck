@@ -368,7 +368,8 @@ export function InvestigationReport({
         }
       >
         {failed && (
-          <Alert variant="warning" role="status">
+          // A resolved incident needs no attention, so its note stays neutral.
+          <Alert variant={incident.status === "resolved" ? "default" : "warning"} role="status">
             <CircleAlert aria-hidden="true" />
             <AlertTitle>Last investigation did not finish</AlertTitle>
             <AlertDescription className="break-words text-muted-foreground">

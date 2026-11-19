@@ -66,9 +66,13 @@ export function extractCitations(parts: unknown, replyText: string): SreChatCita
   return [...found.values()].slice(0, MAX_CITATIONS);
 }
 
+/** Validated citations from untrusted JSON (a stored attachment's items, or message metadata). */
+export function parseCitations(value: unknown): SreChatCitation[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item) => toCitation(item) ?? []).slice(0, MAX_CITATIONS);
+}
+
 /** Citations stored in a message's attachments. */
 export function citationsFromAttachments(attachments: Record<string, unknown>[] | null | undefined): SreChatCitation[] {
-  const stored = attachments?.find((item) => item.type === SRE_CITATIONS_ATTACHMENT)?.items;
-  if (!Array.isArray(stored)) return [];
-  return stored.flatMap((item) => toCitation(item) ?? []).slice(0, MAX_CITATIONS);
+  return parseCitations(attachments?.find((item) => item.type === SRE_CITATIONS_ATTACHMENT)?.items);
 }

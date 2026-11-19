@@ -46,7 +46,7 @@ import { TableBadge } from "@/components/ui/table-badge";
 import { UserAvatar } from "@/components/ui/user-cell";
 import { useProjectContext } from "@/hooks/use-project-context";
 import { canUseSreLiveConnectors } from "@/lib/rbac/permissions-client";
-import { extractCitations, type SreChatCitation } from "@/lib/sre/chat-citations";
+import { extractCitations, parseCitations, type SreChatCitation } from "@/lib/sre/chat-citations";
 import { useSession } from "@/utils/auth-client";
 
 const SRE_COPILOT_MESSAGE_MAX_LENGTH = 4000;
@@ -239,7 +239,7 @@ function messageCitations(message: { metadata?: unknown; parts?: unknown; conten
   const saved = metadata?.custom?.citations ?? metadata?.citations;
   const fromTools = extractCitations(message.parts ?? message.content, text);
   const merged = new Map<string, SreChatCitation>();
-  for (const item of [...(Array.isArray(saved) ? (saved as SreChatCitation[]) : []), ...fromTools]) merged.set(item.id, item);
+  for (const item of [...parseCitations(saved), ...fromTools]) merged.set(item.id, item);
   return [...merged.values()];
 }
 
