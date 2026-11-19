@@ -59,6 +59,7 @@ Every colour has one job. New code uses the token, never a raw palette class or 
 | Form with technical options | Show the one or two fields people must fill (a typed credential, a name) up front. Put raw options (URL when fixed, method, headers JSON, body template) in a collapsed **Advanced** section that opens by itself when one of its fields has an error. One dialog size per form, one scroll area. | `app/src/components/alerts/notification-provider-form.tsx` |
 | Status or category badge | `TableBadge` with a tone | `app/src/components/ui/table-badge.tsx` |
 | Callout (info, success, warning, error box) | `Alert` with `variant="info" | "success" | "warning" | "error"` (`destructive` for blocking errors) | `app/src/components/ui/alert.tsx` |
+| Sign-in, sign-up, password, verify-email, invitation, CLI device and OAuth consent screens | One card (`AuthCard`, `max-w-md`) with `AuthHeader` (logo, optional status icon, `text-2xl` title), `AuthCallout` for every error, success and warning, `InviteBanner` for the invited organization and role, `AuthBackLink` and `AuthLegal` for links and terms, `size="lg"` buttons. Never a bare `<p>` error or a hand-built green box. | `app/src/components/auth/auth-shell.tsx` |
 | People | `UserCell` and `UserAvatar` | `app/src/components/ui/user-cell.tsx` |
 | Buttons | `Button` variants (`default`, `secondary`, `outline`, `ghost`, `link`, `destructive`). Never override a button's colour with a `className`. | `app/src/components/ui/button.tsx` |
 

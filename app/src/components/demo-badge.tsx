@@ -1,6 +1,6 @@
 "use client";
 
-import { useSyncExternalStore } from "react";
+import { useHydrated } from "@/hooks/use-hydrated";
 import {
   Tooltip,
   TooltipContent,
@@ -8,18 +8,6 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { useAppConfig } from "@/hooks/use-app-config";
-
-// Hydration-safe subscribe function - returns no-op unsubscribe
-const subscribe = () => () => { };
-
-// Returns false on server, true on client after hydration
-function useHydrated() {
-  return useSyncExternalStore(
-    subscribe,
-    () => true,  // Client snapshot - hydrated
-    () => false  // Server snapshot - not hydrated
-  );
-}
 
 export function DemoBadge() {
   const hydrated = useHydrated();

@@ -1,14 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import { Check, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { InfoPopover } from "@/components/ui/info-popover";
-import { signOut } from "@/utils/auth-client";
+import { signOutAndClear } from "@/lib/auth/sign-out";
 import { cn } from "@/lib/utils";
+import { AuthCallout } from "@/components/auth/auth-shell";
 
 export interface DeviceProjectOption {
   id: string;
@@ -113,7 +113,7 @@ export function DeviceApproval({ userCode, userEmail, projects, client }: Props)
     setSwitchingAccount(true);
     setError(null);
     try {
-      const result = await signOut();
+      const result = await signOutAndClear();
       if (result?.error) throw new Error("sign out failed");
       // Keep the pending code so the next person can approve the same CLI request.
       window.location.replace(new URL(`/device?code=${encodeURIComponent(userCode)}`, window.location.origin).toString());
@@ -148,37 +148,27 @@ export function DeviceApproval({ userCode, userEmail, projects, client }: Props)
 
   if (phase === "approved") {
     return (
-      <div role="status" className="space-y-3 py-4 text-center">
-        <div className="mx-auto flex size-10 items-center justify-center rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
-          <Check className="size-5" aria-hidden="true" />
-        </div>
-        <div className="space-y-1">
-          <p className="text-lg font-semibold">You&apos;re connected.</p>
-          <p className="text-sm text-muted-foreground">
-            Return to your terminal; the CLI will finish signing in automatically. You can close this tab.
-          </p>
-        </div>
-      </div>
+      <AuthCallout variant="success" live>
+        <p className="font-medium">You&apos;re connected.</p>
+        <p className="text-muted-foreground">
+          Return to your terminal; the CLI will finish signing in automatically. You can close this tab.
+        </p>
+      </AuthCallout>
     );
   }
   if (phase === "denied") {
     return (
-      <div role="status" className="space-y-3 py-4 text-center">
-        <div className="mx-auto flex size-10 items-center justify-center rounded-full bg-muted text-muted-foreground">
-          <X className="size-5" aria-hidden="true" />
-        </div>
-        <div className="space-y-1">
-          <p className="text-lg font-semibold">Request denied.</p>
-          <p className="text-sm text-muted-foreground">No access was granted. You can close this tab.</p>
-        </div>
-      </div>
+      <AuthCallout variant="info" live>
+        <p className="font-medium">Request denied.</p>
+        <p className="text-muted-foreground">No access was granted. You can close this tab.</p>
+      </AuthCallout>
     );
   }
 
   const busy = phase === "submitting" || switchingAccount;
   return (
     <form
-      className="space-y-4"
+      className="flex flex-col gap-4"
       onSubmit={(event) => {
         event.preventDefault();
         if (codeMatches && !busy) void decide("approve");
@@ -193,7 +183,7 @@ export function DeviceApproval({ userCode, userEmail, projects, client }: Props)
             aria-label="Use a different account"
             onClick={() => void switchAccount()}
             disabled={busy || billingState === "opening"}
-            className="text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline focus-visible:underline disabled:opacity-50"
+            className="inline-flex min-h-11 items-center text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline focus-visible:underline disabled:opacity-50 sm:min-h-6"
           >
             {switchingAccount ? "Signing out…" : "Switch account"}
           </button>
@@ -261,11 +251,11 @@ export function DeviceApproval({ userCode, userEmail, projects, client }: Props)
       ) : null}
       {billingState === "opened" ? <p role="status" className="text-xs text-muted-foreground">Billing opened in a new tab for {selected.organizationName}.</p> : null}
       {billingState === "blocked" ? <a className="block text-xs underline" href="/subscribe" target="_blank" rel="noopener noreferrer">Open billing</a> : null}
-      {billingState === "failed" ? <p role="alert" className="text-xs text-destructive">Could not open billing. Try again.</p> : null}
-      {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
+      {billingState === "failed" ? <AuthCallout variant="error">Could not open billing. Try again.</AuthCallout> : null}
+      {error ? <AuthCallout variant="error">{error}</AuthCallout> : null}
       <div className="grid grid-cols-2 gap-3">
-        <Button type="button" variant="outline" disabled={busy} onClick={() => void decide("deny")}>Deny</Button>
-        <Button type="submit" disabled={!codeMatches || busy}>{phase === "submitting" ? "Connecting…" : "Approve"}</Button>
+        <Button type="button" size="lg" variant="outline" disabled={busy} onClick={() => void decide("deny")}>Deny</Button>
+        <Button type="submit" size="lg" disabled={!codeMatches || busy}>{phase === "submitting" ? "Connecting…" : "Approve"}</Button>
       </div>
     </form>
   );
