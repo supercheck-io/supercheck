@@ -19,6 +19,8 @@ jest.mock("@/lib/project-navigation", () => ({
   reloadProjectContext: (...args: unknown[]) => mockReload(...args),
 }));
 
+const TOKEN = "01a149f7-ce26-70e2-997b-806e9f48d9de";
+
 describe("invite accept page", () => {
   const originalFetch = global.fetch;
   beforeEach(() => {
@@ -40,7 +42,7 @@ describe("invite accept page", () => {
   });
 
   async function accept() {
-    render(<InvitePage params={Promise.resolve({ token: "t" })} />);
+    render(<InvitePage params={Promise.resolve({ token: TOKEN })} />);
     fireEvent.click(await screen.findByRole("button", { name: /accept invitation/i }));
     await screen.findByRole("button", { name: /go to dashboard/i });
   }
@@ -66,14 +68,14 @@ describe("invite accept page", () => {
     ) as unknown as typeof fetch;
   }
   async function clickAccept() {
-    render(<InvitePage params={Promise.resolve({ token: "t" })} />);
+    render(<InvitePage params={Promise.resolve({ token: TOKEN })} />);
     fireEvent.click(await screen.findByRole("button", { name: /accept invitation/i }));
   }
 
   it("sends a signed-out invitee to sign-up without revealing whether an account exists", async () => {
     mockInvite({});
     await clickAccept();
-    await waitFor(() => expect(mockPush).toHaveBeenCalledWith("/sign-up?invite=t"));
+    await waitFor(() => expect(mockPush).toHaveBeenCalledWith(`/sign-up?invite=${TOKEN}`));
   });
 
   it("shows a sign-out state, and never redirects, when signed in as another account", async () => {
@@ -88,8 +90,8 @@ describe("invite accept page", () => {
   });
 
   it("drops the token from the links when the invitation itself is invalid", async () => {
-    global.fetch = jest.fn(async () => ({ json: async () => ({ success: false, error: "Invitation has expired" }) })) as unknown as typeof fetch;
-    render(<InvitePage params={Promise.resolve({ token: "t" })} />);
+    global.fetch = jest.fn(async () => ({ json: async () => ({ success: false, error: "Invitation has expired", code: "INVITE_UNAVAILABLE" }) })) as unknown as typeof fetch;
+    render(<InvitePage params={Promise.resolve({ token: TOKEN })} />);
     fireEvent.click(await screen.findByRole("button", { name: /go to sign in/i }));
     expect(mockPush).toHaveBeenCalledWith("/sign-in");
     fireEvent.click(screen.getByRole("button", { name: /create new account/i }));
@@ -110,7 +112,7 @@ describe("invite accept page", () => {
     mockInvite({ post: { status: 400, body: { success: false, error: "Member limit reached" } } });
     await clickAccept();
     fireEvent.click(await screen.findByRole("button", { name: /go to sign in/i }));
-    expect(mockPush).toHaveBeenCalledWith("/sign-in?invite=t");
+    expect(mockPush).toHaveBeenCalledWith(`/sign-in?invite=${TOKEN}`);
   });
 
   it("stays on the wrong-account state when sign-out fails", async () => {
@@ -128,5 +130,26 @@ describe("invite accept page", () => {
     await clickAccept();
     fireEvent.click(await screen.findByRole("button", { name: /go to sign in/i }));
     expect(mockPush).toHaveBeenCalledWith("/sign-in");
+  });
+
+  it("keeps the token on the recovery links after a transient load failure", async () => {
+    global.fetch = jest.fn(async () => ({ status: 500, json: async () => ({ error: "Failed to fetch invitation details" }) })) as unknown as typeof fetch;
+    render(<InvitePage params={Promise.resolve({ token: TOKEN })} />);
+    fireEvent.click(await screen.findByRole("button", { name: /go to sign in/i }));
+    expect(mockPush).toHaveBeenCalledWith(`/sign-in?invite=${TOKEN}`);
+  });
+
+  it("drops the token when the invitation no longer exists (404)", async () => {
+    global.fetch = jest.fn(async () => ({ status: 404, json: async () => ({ error: "Invitation not found", code: "INVITE_UNAVAILABLE" }) })) as unknown as typeof fetch;
+    render(<InvitePage params={Promise.resolve({ token: TOKEN })} />);
+    fireEvent.click(await screen.findByRole("button", { name: /go to sign in/i }));
+    expect(mockPush).toHaveBeenCalledWith("/sign-in");
+  });
+
+  it("treats a malformed token as a dead invitation without calling the API", async () => {
+    render(<InvitePage params={Promise.resolve({ token: "../x" })} />);
+    fireEvent.click(await screen.findByRole("button", { name: /go to sign in/i }));
+    expect(mockPush).toHaveBeenCalledWith("/sign-in");
+    expect(global.fetch).not.toHaveBeenCalled();
   });
 });

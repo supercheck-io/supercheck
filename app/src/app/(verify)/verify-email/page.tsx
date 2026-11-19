@@ -159,7 +159,7 @@ function VerifyEmailPageContent() {
           </FieldDescription>
           {inviteToken && cameFromSignUp && (
             <FieldDescription>
-              If you already have an account, we&apos;ve emailed you a sign-in link instead.
+              If you already have an account, you&apos;ll also get an email shortly with a way to sign in.
             </FieldDescription>
           )}
         </div>

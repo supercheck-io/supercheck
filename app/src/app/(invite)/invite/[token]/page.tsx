@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -20,6 +20,7 @@ import { FieldGroup, Field, FieldDescription } from "@/components/ui/field";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { useSession } from "@/utils/auth-client";
+import { parseInviteToken } from "@/lib/validations/auth";
 import { signOutAndClear } from "@/lib/auth/sign-out";
 import { useAppConfig } from "@/hooks/use-app-config";
 import { clearProjectsCache } from "@/hooks/use-project-context";
@@ -56,6 +57,9 @@ export default function InvitePage({
   const [error, setError] = useState<string | null>(null);
   const [signOutError, setSignOutError] = useState<string | null>(null);
   const [emailMismatch, setEmailMismatch] = useState(false);
+  // Only a dead invitation drops the token from the recovery links; a transient failure keeps it.
+  const [inviteDead, setInviteDead] = useState(false);
+  const redirectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { data: session } = useSession();
   const router = useRouter();
   const { isCloudHosted, isFetched, error: configError } = useAppConfig();
@@ -63,8 +67,21 @@ export default function InvitePage({
 
   // Get token from params
   useEffect(() => {
-    params.then(({ token }) => setToken(token));
+    params.then(({ token }) => {
+      const valid = parseInviteToken(token);
+      if (!valid) {
+        setInviteDead(true);
+        setError("Invalid invitation token");
+        setLoading(false);
+        return;
+      }
+      setToken(valid);
+    });
   }, [params]);
+
+  useEffect(() => () => {
+    if (redirectTimer.current) clearTimeout(redirectTimer.current);
+  }, []);
 
   // Fetch invitation details
   useEffect(() => {
@@ -78,6 +95,7 @@ export default function InvitePage({
         if (data.success) {
           setInvitation(data.data);
         } else {
+          if (data.code === "INVITE_UNAVAILABLE" || response.status === 404) setInviteDead(true);
           setError(data.error || "Failed to load invitation");
         }
       } catch (error) {
@@ -105,7 +123,7 @@ export default function InvitePage({
         announceProjectChange();
         setAccepted(data.data);
         // An invitee picks a persona first, then lands on the dashboard (after 3 seconds)
-        setTimeout(() => {
+        redirectTimer.current = setTimeout(() => {
           reloadProjectContext(clearProjectsCache, INVITEE_LANDING_PATH);
         }, 3000);
       } else {
@@ -121,6 +139,7 @@ export default function InvitePage({
         }
         if (data.code === "INVITE_UNAVAILABLE") {
           // Dead invitation: drop it so the error links don't carry the token.
+          setInviteDead(true);
           setInvitation(null);
           setError(data.error);
           return;
@@ -204,7 +223,7 @@ export default function InvitePage({
   // Error State
   if (error) {
     // A dead (expired, used, unknown) invite must not travel on: it would loop back here after sign-in.
-    const inviteQuery = invitation ? `?invite=${encodeURIComponent(token)}` : "";
+    const inviteQuery = token && !inviteDead ? `?invite=${encodeURIComponent(token)}` : "";
     return (
       <div className="flex flex-col gap-6 w-full max-w-md">
         <FieldGroup>
