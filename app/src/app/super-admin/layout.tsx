@@ -1,4 +1,5 @@
 import { AppSidebar } from "@/components/app-sidebar";
+import { ShellMain } from "@/components/shell-main";
 import { getCachedAuthSession } from "@/lib/session-cache";
 import { Separator } from "@/components/ui/separator";
 import {
@@ -67,9 +68,9 @@ export default async function AdminLayout({
                 <NavUser />
               </div>
             </header>
-            <main className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+            <ShellMain className="flex min-h-0 flex-1 flex-col overflow-y-auto">
               {children}
-            </main>
+            </ShellMain>
           </SidebarInset>
         </SidebarProvider>
       </ProjectContextProvider>

@@ -183,7 +183,7 @@ function MetricGroup({
   return (
     <div className="rounded-lg border bg-card px-4 py-3 shadow-sm">
       <p className="mb-2 text-xs font-medium text-muted-foreground">{title}</p>
-      <div className="grid auto-cols-fr grid-flow-col gap-3">{children}</div>
+      <div className="grid auto-cols-fr grid-flow-col lg:auto-cols-[minmax(max-content,1fr)] gap-3">{children}</div>
     </div>
   );
 }

@@ -1,4 +1,5 @@
 import { AppSidebar } from "@/components/app-sidebar";
+import { ShellMain } from "@/components/shell-main";
 import { Separator } from "@/components/ui/separator";
 import {
   SidebarInset,
@@ -233,7 +234,7 @@ export default async function MainLayout({
                     <NavUser />
                   </div>
                 </header>
-                <main className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+                <ShellMain className="flex min-h-0 flex-1 flex-col overflow-y-auto">
                   {org && <PendingDeletionBanner organizationId={org.id} pending={orgPendingDeletion} isOwner={isOrgOwner} />}
                   <TrialBanner initialTrial={initialSubscriptionStatus?.trial ?? null} />
                   <SpendingCapBanner enabled={showSpendingCap} />
@@ -243,7 +244,7 @@ export default async function MainLayout({
                   >
                     {children}
                   </SubscriptionGuard>
-                </main>
+                </ShellMain>
               </SidebarInset>
             </JobProvider>
           </SidebarProvider>
