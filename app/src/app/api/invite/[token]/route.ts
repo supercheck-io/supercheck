@@ -172,7 +172,7 @@ export async function POST(
     // Check if invitation is expired
     if (new Date() > invite.expiresAt) {
       return NextResponse.json(
-        { error: 'Invitation has expired' },
+        { error: 'Invitation has expired', code: 'INVITE_UNAVAILABLE' },
         { status: 400 }
       );
     }
@@ -180,7 +180,7 @@ export async function POST(
     // Check if invitation is already used
     if (invite.status !== 'pending') {
       return NextResponse.json(
-        { error: 'Invitation has already been used or cancelled' },
+        { error: 'Invitation has already been used or cancelled', code: 'INVITE_UNAVAILABLE' },
         { status: 400 }
       );
     }
@@ -428,7 +428,7 @@ export async function POST(
       return NextResponse.json({ error: 'Session changed. Please sign in again.' }, { status: 401 });
     }
     if (error instanceof Error && error.message === 'INVITE_ALREADY_USED') {
-      return NextResponse.json({ error: 'Invitation has expired, been used or cancelled' }, { status: 400 });
+      return NextResponse.json({ error: 'Invitation has expired, been used or cancelled', code: 'INVITE_UNAVAILABLE' }, { status: 400 });
     }
     if (error instanceof Error && error.message === "INVITE_PROJECT_SCOPE_MISMATCH") {
       return NextResponse.json(

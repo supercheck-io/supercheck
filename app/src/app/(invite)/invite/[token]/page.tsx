@@ -54,6 +54,7 @@ export default function InvitePage({
   const [loading, setLoading] = useState(true);
   const [accepting, setAccepting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [signOutError, setSignOutError] = useState<string | null>(null);
   const [emailMismatch, setEmailMismatch] = useState(false);
   const { data: session } = useSession();
   const router = useRouter();
@@ -118,6 +119,12 @@ export default function InvitePage({
           setEmailMismatch(true);
           return;
         }
+        if (data.code === "INVITE_UNAVAILABLE") {
+          // Dead invitation: drop it so the error links don't carry the token.
+          setInvitation(null);
+          setError(data.error);
+          return;
+        }
         const errorMessage = String(data.error ?? "").toLowerCase();
         if (
           response.status === 401 ||
@@ -165,9 +172,10 @@ export default function InvitePage({
   };
 
   const handleSignOut = async () => {
+    setSignOutError(null);
     const result = await signOut();
     if (result?.error) {
-      setError(result.error.message || "Failed to sign out");
+      setSignOutError(result.error.message || "Failed to sign out. Please try again.");
       return;
     }
     setEmailMismatch(false);
@@ -243,6 +251,9 @@ export default function InvitePage({
               Sign out, then sign in with the invited account.
             </FieldDescription>
           </div>
+          {signOutError && (
+            <p className="text-sm font-medium text-destructive text-center" role="alert">{signOutError}</p>
+          )}
           <Field>
             <Button onClick={handleSignOut} className="w-full">
               Sign out

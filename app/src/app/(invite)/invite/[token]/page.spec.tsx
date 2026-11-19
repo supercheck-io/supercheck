@@ -118,5 +118,13 @@ describe("invite accept page", () => {
     await clickAccept();
     fireEvent.click(await screen.findByRole("button", { name: /sign out/i }));
     expect(await screen.findByText("nope")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /sign out/i })).toBeInTheDocument();
+  });
+
+  it("drops the token when accepting finds the invitation expired or used", async () => {
+    mockInvite({ post: { status: 400, body: { success: false, error: "Invitation has expired", code: "INVITE_UNAVAILABLE" } } });
+    await clickAccept();
+    fireEvent.click(await screen.findByRole("button", { name: /go to sign in/i }));
+    expect(mockPush).toHaveBeenCalledWith("/sign-in");
   });
 });
