@@ -88,7 +88,15 @@ describe("Used by and Last test", () => {
     rerender(<>{cellOf("lastTest")(ctx(channel({ lastTest: { state: "auth_failed", at: "2026-11-18T00:00:00Z" } })))}</>);
     expect(screen.getByTestId("channel-last-test")).toHaveTextContent("Failed");
     rerender(<>{cellOf("lastTest")(ctx(channel({ lastTest: null })))}</>);
-    expect(screen.getByText("Not tested")).toBeInTheDocument();
+    expect(screen.getByText("None in 7 days")).toBeInTheDocument();
+  });
+
+  it("filters the Provider column by the selected keys", () => {
+    const column = notificationChannelColumns.find((c) => c.id === "type")!;
+    const filter = column.filterFn as (row: unknown, id: string, value: string[]) => boolean;
+    const row = { getValue: () => "pagerduty" };
+    expect(filter(row, "type", ["pagerduty", "slack"])).toBe(true);
+    expect(filter(row, "type", ["webhook"])).toBe(false);
   });
 
   it("keys the provider filter by paging preset, else by type", () => {

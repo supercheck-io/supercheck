@@ -125,7 +125,7 @@ export const notificationChannelColumns: ColumnDef<NotificationChannel>[] = [
     header: ({ column }) => <DataTableColumnHeader column={column} title="Last test" />,
     cell: ({ row }) => {
       const test = row.original.lastTest;
-      if (!test?.at) return <span className="text-sm text-muted-foreground">Not tested</span>;
+      if (!test?.at) return <span className="text-sm text-muted-foreground">None in 7 days</span>;
       return (
         <div className="flex items-center gap-2" data-testid="channel-last-test">
           <TableBadge tone={test.state === "ok" ? "success" : "danger"} compact>{test.state === "ok" ? "Passed" : "Failed"}</TableBadge>
