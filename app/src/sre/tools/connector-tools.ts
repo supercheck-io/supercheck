@@ -295,7 +295,10 @@ async function getIncidentPrimaryService(scope: SreConnectorToolScope) {
   }
 
   if (scope.serviceId && scope.serviceId !== incident.primaryServiceId) {
-    throw new Error("Service does not match the scoped incident");
+    // A wrong service id is a fixable mistake: name the incident's service so one bad id does not cost the connector for the run.
+    throw new ConnectorQueryRejectedError(
+      `Service does not match the scoped incident. Use serviceId ${incident.primaryServiceId} or omit serviceId`,
+    );
   }
   return incident.primaryServiceId;
 }
@@ -1419,7 +1422,7 @@ export function createSreConnectorTools(scope: SreConnectorToolScope) {
         try {
           return await callIncidentMcpTool(scope, input);
         } catch (error) {
-          if (error instanceof McpToolCallRejectedError) {
+          if (error instanceof McpToolCallRejectedError || error instanceof ConnectorQueryRejectedError) {
             return {
               executionMode: "error" as const,
               queued: false,
