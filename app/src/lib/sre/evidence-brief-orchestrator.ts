@@ -338,7 +338,6 @@ export async function runSreEvidenceBriefGeneration(input: {
           candidateEvidenceCount: collection.evidence.length,
         },
         createdByUserId: input.userId,
-        startedAt: new Date(startedAt),
         createdAt: new Date(),
       })
       .returning();
