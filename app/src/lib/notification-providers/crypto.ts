@@ -70,7 +70,36 @@ export function mergeNotificationProviderConfig(
     }
   }
 
+  if (type === "webhook") {
+    // Stored credentials are bound to the exact URL they were saved for: another path on a shared host (Zapier, Make)
+    // can belong to someone else. A changed preset must not fall back to the old URL either.
+    const presetChanged =
+      "preset" in incomingConfig && (incomingConfig.preset || "custom") !== (existingConfig.preset || "custom");
+    // A sent url that is not a string counts as a change: validation rejects it later, the merge must not trust it.
+    const urlChanged =
+      "url" in incomingConfig &&
+      (typeof incomingConfig.url !== "string" || normalizedUrl(incomingConfig.url) !== normalizedUrl(existingConfig.url));
+    if (presetChanged && !("url" in incomingConfig)) delete merged.url;
+    const hasStoredHeaders =
+      typeof existingConfig.headers === "object" &&
+      existingConfig.headers !== null &&
+      Object.keys(existingConfig.headers).length > 0;
+    if ((presetChanged || urlChanged) && !("headers" in incomingConfig) && hasStoredHeaders) {
+      throw new Error(
+        "Enter the webhook headers again, or {} for none: saved headers are not sent to a new URL or preset."
+      );
+    }
+  }
+
   return merged;
+}
+
+function normalizedUrl(url: unknown): string | undefined {
+  try {
+    return new URL(String(url)).href;
+  } catch {
+    return undefined;
+  }
 }
 
 export function encryptNotificationProviderConfig(
@@ -94,6 +123,7 @@ export function decryptNotificationProviderConfig(
 export function sanitizeConfigForClient(
   type: NotificationProviderType,
   config: PlainNotificationProviderConfig,
+  options: { canEdit: boolean },
 ): {
   sanitizedConfig: PlainNotificationProviderConfig;
   maskedFields: string[];
@@ -120,6 +150,13 @@ export function sanitizeConfigForClient(
       }
     }
   });
+
+  // A webhook body template can carry a credential (PagerDuty puts its routing key there). Editors need it to edit the
+  // channel; anyone else gets no template.
+  if (!options.canEdit && typeof sanitized.bodyTemplate === "string" && sanitized.bodyTemplate) {
+    maskedFields.push("bodyTemplate");
+    sanitized.bodyTemplate = undefined;
+  }
 
   return { sanitizedConfig: sanitized, maskedFields };
 }

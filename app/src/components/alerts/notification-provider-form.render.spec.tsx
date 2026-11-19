@@ -163,3 +163,58 @@ describe("dialog layout contract", () => {
     expect(container.querySelectorAll(".overflow-y-auto").length).toBe(1);
   });
 });
+
+describe("NotificationProviderForm editing a saved vendor webhook", () => {
+  it("sends empty headers when the preset is switched to Custom so the stored vendor token is not restored", async () => {
+    const onSuccess = jest.fn().mockResolvedValue(undefined);
+    render(
+      <NotificationProviderForm
+        onSuccess={onSuccess}
+        initialData={{
+          name: "Incident",
+          type: "webhook",
+          config: { name: "Incident", preset: "incident_io", method: "POST", url: "[REDACTED]", headers: {} } as never,
+          maskedFields: ["url", "headers"],
+        }}
+      />,
+    );
+    fireEvent.keyDown(screen.getByRole("combobox", { name: /integration preset/i }), { key: "Enter" });
+    fireEvent.click(await screen.findByRole("option", { name: /custom webhook/i }));
+    fireEvent.click(screen.getByRole("button", { name: "Update channel" }));
+    await waitFor(() => expect(onSuccess).toHaveBeenCalled());
+    const config = onSuccess.mock.calls[0][0].config;
+    expect(config.preset).toBe("custom");
+    expect(config.headers).toEqual({});
+    // The cleared vendor template is sent as "" so the stored one is removed, not kept by the merge.
+    expect(config.bodyTemplate).toBe("");
+  });
+
+  it("sends empty headers when the user types {} to clear stored ones, and omits headers left blank", async () => {
+    const renderEdit = () => {
+      const onSuccess = jest.fn().mockResolvedValue(undefined);
+      const view = render(
+        <NotificationProviderForm
+          onSuccess={onSuccess}
+          initialData={{
+            name: "Hook",
+            type: "webhook",
+            config: { name: "Hook", preset: "custom", method: "POST", url: "[REDACTED]", headers: {} } as never,
+            maskedFields: ["url", "headers"],
+          }}
+        />,
+      );
+      return { onSuccess, view };
+    };
+    const first = renderEdit();
+    fireEvent.change(screen.getByLabelText(/headers/i), { target: { value: "{}" } });
+    fireEvent.click(screen.getByRole("button", { name: "Update channel" }));
+    await waitFor(() => expect(first.onSuccess).toHaveBeenCalled());
+    expect(first.onSuccess.mock.calls[0][0].config.headers).toEqual({});
+    first.view.unmount();
+
+    const second = renderEdit();
+    fireEvent.click(screen.getByRole("button", { name: "Update channel" }));
+    await waitFor(() => expect(second.onSuccess).toHaveBeenCalled());
+    expect(second.onSuccess.mock.calls[0][0].config).not.toHaveProperty("headers");
+  });
+});
