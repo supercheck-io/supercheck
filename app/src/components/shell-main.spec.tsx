@@ -120,7 +120,10 @@ describe("ShellMain", () => {
     jest.restoreAllMocks();
   });
 
-  it("stops restoring on a key press even when the position does not change", () => {
+  it.each([
+    ["a key press", () => new KeyboardEvent("keydown", { key: "Home" })],
+    ["a pointer press (middle-click scrolling)", () => new Event("pointerdown", { bubbles: true })],
+  ])("stops restoring on %s even when the position does not change", (_label, makeEvent) => {
     const raf: FrameRequestCallback[] = [];
     jest.spyOn(window, "requestAnimationFrame").mockImplementation((cb: FrameRequestCallback) => (raf.push(cb), raf.length));
     jest.spyOn(window, "cancelAnimationFrame").mockImplementation((id: number) => {
@@ -141,8 +144,41 @@ describe("ShellMain", () => {
     max = 0;
     mockPathname = "/a";
     rerender(ui());
-    act(() => main.dispatchEvent(new KeyboardEvent("keydown", { key: "Home" })));
+    act(() => main.dispatchEvent(makeEvent()));
     max = 800;
+    act(() => raf.splice(0).forEach((cb) => cb(0)));
+    expect(top).toBe(0);
+    jest.restoreAllMocks();
+  });
+
+  it("stops restoring when focus moves to a control inside main, but not when main itself gets focus", () => {
+    const raf: FrameRequestCallback[] = [];
+    jest.spyOn(window, "requestAnimationFrame").mockImplementation((cb: FrameRequestCallback) => (raf.push(cb), raf.length));
+    jest.spyOn(window, "cancelAnimationFrame").mockImplementation((id: number) => {
+      raf[id - 1] = () => {};
+    });
+    const { rerender } = render(ui());
+    const main = screen.getByRole("main");
+    let top = 0;
+    let max = 0;
+    Object.defineProperty(main, "scrollTop", { configurable: true, get: () => top, set: (v: number) => (top = Math.min(v, max)) });
+    top = 800;
+    max = 800;
+    act(() => main.dispatchEvent(new Event("scroll")));
+    mockPathname = "/b";
+    rerender(ui());
+    window.history.pushState({}, "", "/a");
+    act(() => window.dispatchEvent(new PopStateEvent("popstate")));
+    max = 0;
+    mockPathname = "/a";
+    rerender(ui());
+    act(() => main.dispatchEvent(new FocusEvent("focusin", { bubbles: true })));
+    max = 800;
+    act(() => raf.splice(0).forEach((cb) => cb(0)));
+    expect(top).toBe(800);
+    act(() => screen.getByLabelText("search").focus());
+    top = 0;
+    max = 0;
     act(() => raf.splice(0).forEach((cb) => cb(0)));
     expect(top).toBe(0);
     jest.restoreAllMocks();

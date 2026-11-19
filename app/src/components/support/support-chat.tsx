@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useHydrated } from "@/hooks/use-hydrated";
 import { usePathname } from "next/navigation";
 import { useSession } from "@/utils/auth-client";
 import { useImpersonationStatus } from "@/hooks/use-impersonation-status";
@@ -23,20 +24,6 @@ interface ChatwootConfigResponse {
     enabled: boolean;
     baseUrl: string | null;
     websiteToken: string | null;
-}
-
-// Hydration-safe mounting detection using useSyncExternalStore (React 18+ best practice)
-// This avoids calling setState in useEffect which triggers cascading renders
-const emptySubscribe = () => () => { };
-const getClientSnapshot = () => true;
-const getServerSnapshot = () => false;
-
-/**
- * Custom hook for hydration-safe mounting detection
- * Uses useSyncExternalStore to avoid setState in useEffect
- */
-function useHydrated() {
-    return useSyncExternalStore(emptySubscribe, getClientSnapshot, getServerSnapshot);
 }
 
 /**

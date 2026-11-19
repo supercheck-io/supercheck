@@ -85,13 +85,19 @@ export function ShellMain({ className, children }: { className?: string; childre
       if (target > 0 && main.scrollTop < target && frames++ < 300) frame = requestAnimationFrame(apply);
     };
     // Wheel, touch and keys can leave the position unchanged (Home at the top), so they end it too.
-    const inputs = ["wheel", "touchstart", "keydown"] as const;
+    const inputs = ["wheel", "touchstart", "keydown", "pointerdown"] as const;
+    // Focus moving to a control inside main (assistive tech, Tab) can scroll it into view: that is the user's.
+    const onFocusIn = (event: FocusEvent) => {
+      if (event.target !== main) stop();
+    };
     main.addEventListener("scroll", onScroll, { passive: true });
+    main.addEventListener("focusin", onFocusIn);
     inputs.forEach((name) => main.addEventListener(name, stop, { passive: true }));
     apply();
     return () => {
       stop();
       main.removeEventListener("scroll", onScroll);
+      main.removeEventListener("focusin", onFocusIn);
       inputs.forEach((name) => main.removeEventListener(name, stop));
     };
   }, [pathname]);

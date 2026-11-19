@@ -97,8 +97,8 @@ import {
   useMonitorStats,
   useMonitorResults,
   useMonitorPermissions,
-  useHydrated,
 } from "@/hooks/use-monitor-details";
+import { useHydrated } from "@/hooks/use-hydrated";
 import { useQueryClient } from "@tanstack/react-query";
 import { formatUptime, getResumeStatus, invalidateMonitorCaches, invalidateDeletedMonitorCaches } from "./monitor-actions";
 import { useLocationMetadata } from "@/hooks/use-locations";
@@ -1285,8 +1285,9 @@ export function MonitorDetailClient({
 
         {isHeartbeat ? (
           // Desktop: setup and availability on the left, ping history on the right, both filling the window height.
-          <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,min(58%,44rem))] lg:grid-rows-[minmax(min-content,1fr)]" data-testid="heartbeat-layout">
-            <div className="flex min-h-0 min-w-0 flex-col gap-4">
+          <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,min(58%,44rem))] lg:grid-rows-[minmax(22rem,1fr)]" data-testid="heartbeat-layout">
+            {/* The row takes the window height like the other layouts (use-fit-panel-rows needs a height that does not depend on its rows); the setup and chart column scrolls inside it instead of growing it. */}
+            <div className="flex min-h-0 min-w-0 flex-col gap-4 lg:overflow-y-auto lg:px-px">
               {showHeartbeatSetup && (
                 <HeartbeatPingUrlPanel
                   monitorId={monitor.id}

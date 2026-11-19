@@ -47,7 +47,8 @@ function NoDuration({ hint }: { hint: boolean }) {
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <span tabIndex={0} className="rounded-sm text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">—</span>
+        {/* Hover only: one tab stop per row made ~25 stops on a dash; the same hint is a focusable tooltip on the last-run duration stat. */}
+        <span className="text-muted-foreground">—</span>
       </TooltipTrigger>
       <TooltipContent>Call /start to record duration</TooltipContent>
     </Tooltip>

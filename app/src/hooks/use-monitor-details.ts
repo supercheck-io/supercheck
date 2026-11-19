@@ -1,4 +1,4 @@
-import { useSyncExternalStore } from "react";
+import { useHydrated } from "@/hooks/use-hydrated";
 import { useQuery, useQueryClient, useIsRestoring, keepPreviousData } from "@tanstack/react-query";
 import type { MonitorResultItem } from "@/components/monitors/monitor-detail-client";
 import { Role } from "@/lib/rbac/permissions-client";
@@ -125,17 +125,6 @@ async function fetchMonitorPermissions(
     canDelete: result.data?.canDelete ?? false,
     canToggle: result.data?.canToggle ?? false,
   };
-}
-
-const subscribeNever = () => () => {};
-
-/**
- * False while the page hydrates. The server HTML has no query data, but a restored browser cache can have it
- * before a late-hydrating component renders (and a fetch can already be running), so data and loading flags
- * are shown only after hydration to avoid a mismatch (#418).
- */
-export function useHydrated() {
-  return useSyncExternalStore(subscribeNever, () => true, () => false);
 }
 
 export function useMonitorStats(monitorId: string, location: string = "all") {

@@ -38,7 +38,6 @@ let mockFetching = false;
 let mockPlaceholder = false;
 let locationFilterProps: { availableLocations: string[] } | null = null;
 jest.mock("@/hooks/use-monitor-details", () => ({
-  useHydrated: () => true,
   useMonitorStats: () => ({ stats: null }),
   useMonitorResults: () => ({ results: mockResults, pagination: mockPagination, isFetching: mockFetching, isPlaceholderData: mockPlaceholder }),
   useMonitorPermissions: () => ({ canEdit: true, canDelete: true, canToggle: true, isLoading: false }),
