@@ -101,4 +101,25 @@ describe("DataPrefetcher", () => {
     }
     expect(fetchMock.mock.calls.filter(([url]) => String(url) === "/api/runs")).toHaveLength(1);
   });
+
+  it("runs the prefetch from the idle callback when the browser has one", async () => {
+    const win = window as unknown as Record<string, unknown>;
+    win.requestIdleCallback = jest.fn((cb: () => void) => { cb(); return 7; });
+    win.cancelIdleCallback = jest.fn();
+    try {
+      const { unmount } = render(
+        <QueryClientProvider client={new QueryClient()}>
+          <DataPrefetcher />
+        </QueryClientProvider>
+      );
+      await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+      await act(async () => { jest.advanceTimersByTime(400); });
+      expect(win.requestIdleCallback).toHaveBeenCalledWith(expect.any(Function), { timeout: 2000 });
+      expect(fetchMock.mock.calls.filter(([url]) => String(url) === "/api/runs")).toHaveLength(1);
+      unmount();
+    } finally {
+      delete win.requestIdleCallback;
+      delete win.cancelIdleCallback;
+    }
+  });
 });

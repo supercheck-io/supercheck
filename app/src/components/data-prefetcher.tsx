@@ -75,6 +75,7 @@ export function DataPrefetcher() {
       return res.json();
     };
     let fired = false;
+    // Measured from when the cache finished restoring (this effect only runs after that), not from page load.
     const mountedAt = performance.now();
     const run = () => {
       fired = true;
@@ -101,6 +102,8 @@ export function DataPrefetcher() {
     let unsubscribe: (() => void) | undefined;
     let quietCheck: ReturnType<typeof setTimeout> | undefined;
     let idle: number | undefined;
+    // The same API that scheduled the run must cancel it.
+    let useNativeIdle = false;
     let started = false;
     const start = () => {
       if (started) return;
@@ -108,7 +111,8 @@ export function DataPrefetcher() {
       unsubscribe?.();
       clearTimeout(timer);
       clearTimeout(quietCheck);
-      idle = "requestIdleCallback" in window
+      useNativeIdle = "requestIdleCallback" in window && "cancelIdleCallback" in window;
+      idle = useNativeIdle
         ? window.requestIdleCallback(run, { timeout: 2000 })
         : (setTimeout(run, 500) as unknown as number);
     };
@@ -138,7 +142,7 @@ export function DataPrefetcher() {
       clearTimeout(timer);
       clearTimeout(quietCheck);
       if (idle !== undefined) {
-        if ("cancelIdleCallback" in window) window.cancelIdleCallback(idle);
+        if (useNativeIdle) window.cancelIdleCallback(idle);
         else clearTimeout(idle);
       }
       if (!fired) prefetched.sidebar = false;
