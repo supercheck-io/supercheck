@@ -135,7 +135,7 @@ describe("MCP connectors in the AI tool layer", () => {
   });
 
   it("returns valid connector ids for an unknown id and never marks a connector failed", async () => {
-    const tools = createSreConnectorTools({ ...scope, serviceId });
+    const tools = createSreConnectorTools({ ...scope, serviceId, investigationRunId: "run-1" });
     const call = () =>
       tools.searchLiveConnectorEvidence.execute!(
         { ...search, connectorId: "018f0000-0000-7000-8000-0000000000ff" },
@@ -152,8 +152,16 @@ describe("MCP connectors in the AI tool layer", () => {
     const first = await call();
     const second = await call();
     expect(values).toHaveBeenCalledWith(
-      expect.objectContaining({ connectorId: null, status: "error", toolName: "agent.connector.search.unknown_connector" }),
+      expect.objectContaining({ connectorId: null, investigationRunId: "run-1", status: "error", toolName: "agent.connector.search.unknown_connector" }),
     );
+    // Chat has no run: the rejection still returns the valid ids, but writes no ownerless row.
+    values.mockClear();
+    const chat = await createSreConnectorTools({ ...scope, serviceId }).searchLiveConnectorEvidence.execute!(
+      { ...search, connectorId: "018f0000-0000-7000-8000-0000000000ff" },
+      { toolCallId: "unknown-chat", messages: [] },
+    );
+    expect(chat).toMatchObject({ error: true, retryable: true });
+    expect(values).not.toHaveBeenCalled();
     for (const result of [first, second]) {
       expect(result).toMatchObject({
         error: true,
@@ -758,14 +766,65 @@ describe("Copilot connector service scope", () => {
     db.query.sreIncidents.findFirst.mockResolvedValue({
       primaryServiceId: "other-service",
     });
+    const values = jest.fn().mockResolvedValue(undefined);
+    db.insert.mockReturnValue({ values });
     await expect(
       searchIncidentLiveConnectorEvidence(
-        { ...scope, incidentId: "incident" },
+        { ...scope, incidentId: "incident", investigationRunId: "run-1" },
         search,
       ),
-    ).rejects.toThrow("Service does not match the scoped incident");
+    ).rejects.toThrow("Service does not match the scoped incident. Use serviceId other-service");
     expect(db.query.sreServices.findFirst).not.toHaveBeenCalled();
     expect(db.select).not.toHaveBeenCalled();
+    expect(values).toHaveBeenCalledWith(expect.objectContaining({
+      connectorId: null, investigationRunId: "run-1", status: "error", toolName: "agent.connector.search.scope_rejected",
+      errorMessage: expect.stringContaining("Service does not match the scoped incident"),
+    }));
+  });
+
+  it("still throws the scope error when the trace row cannot be written, and traces a search with no service", async () => {
+    const values = jest.fn().mockRejectedValue(new Error("insert failed"));
+    db.insert.mockReturnValue({ values });
+    db.query.sreIncidents.findFirst.mockResolvedValue({ primaryServiceId: "other-service" });
+    await expect(
+      searchIncidentLiveConnectorEvidence({ ...scope, incidentId: "incident", investigationRunId: "run-1" }, search),
+    ).rejects.toThrow("Service does not match the scoped incident");
+    expect(values).toHaveBeenCalledTimes(1);
+
+    values.mockReset().mockResolvedValue(undefined);
+    await expect(
+      searchIncidentLiveConnectorEvidence(
+        { ...scope, serviceId: undefined, incidentId: null, investigationRunId: "run-1" },
+        { ...search, serviceId: undefined },
+      ),
+    ).rejects.toThrow("Select a service from listIncidentConnectors");
+    expect(values).toHaveBeenCalledWith(expect.objectContaining({ toolName: "agent.connector.search.scope_rejected" }));
+  });
+
+  it("writes no trace row for a scope rejection in chat, which has no run", async () => {
+    const values = jest.fn().mockResolvedValue(undefined);
+    db.insert.mockReturnValue({ values });
+    db.query.sreIncidents.findFirst.mockResolvedValue({ primaryServiceId: "other-service" });
+    await expect(
+      searchIncidentLiveConnectorEvidence({ ...scope, incidentId: "incident" }, search),
+    ).rejects.toThrow("Service does not match the scoped incident");
+    expect(values).not.toHaveBeenCalled();
+  });
+
+  it("keeps the connector usable after a wrong service id", async () => {
+    db.query.sreIncidents.findFirst.mockResolvedValue({ primaryServiceId: "other-service" });
+    const tools = createSreConnectorTools({ ...scope, incidentId: "incident", investigationRunId: "018f0000-0000-7000-8000-0000000000aa" });
+    const call = () => tools.searchLiveConnectorEvidence.execute!(search, { toolCallId: "svc", messages: [] });
+    const first = await call();
+    expect(first).toMatchObject({ error: true, retryable: true, message: expect.stringContaining("Use serviceId other-service") });
+    // Not marked failed: the retry reaches the scope check again instead of being suppressed.
+    expect(await call()).not.toMatchObject({ retrySuppressed: true });
+    const mcp = () => tools.callMcpTool.execute!(
+      { connectorId, serviceId, tool: "search", arguments: {}, maxSeconds: 5 },
+      { toolCallId: "mcp-svc", messages: [] },
+    );
+    expect(await mcp()).toMatchObject({ error: true, retryable: true, message: expect.stringContaining("Use serviceId other-service") });
+    expect(await mcp()).toMatchObject({ retryable: true });
   });
 
   it.each(["connector_credential_expired", "private-secret-error"])("reports safe Private Agent failure diagnostics (%s)", async (errorCode) => {

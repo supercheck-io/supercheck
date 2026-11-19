@@ -58,7 +58,11 @@ describe('private agent connector execution', () => {
           result: [
             {
               metric: { __name__: 'up', job: 'checkout' },
-              values: [[1782120000, '1']],
+              values: [
+                [1782120000, '1'],
+                [1782120060, '3'],
+                [1782120120, '2'],
+              ],
             },
           ],
         },
@@ -72,12 +76,56 @@ describe('private agent connector execution', () => {
     expect(result.evidence[0]).toMatchObject({
       title: 'Prometheus metric: up',
       evidenceType: 'metric',
+      summary: expect.stringMatching(
+        /^3 samples returned for up; last=2 min=1 max=3 avg=2 \[labels: job=checkout\]$/,
+      ),
       sourceUri: 'https://prometheus.internal/graph?g0.expr=up',
     });
     expect(global.fetch).toHaveBeenCalledWith(
       expect.stringContaining('/api/v1/query_range'),
       expect.objectContaining({ method: 'GET', redirect: 'error' }),
     );
+  });
+
+  it('keeps small values, reports non-finite samples and handles empty series in Prometheus summaries', async () => {
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        data: {
+          result: [
+            {
+              metric: { __name__: 'ratio' },
+              values: [
+                [1, '0.0004'],
+                [2, '+Inf'],
+                [3, 'NaN'],
+              ],
+            },
+            { metric: { __name__: 'empty' }, values: [] },
+            {
+              metric: {
+                dsn: 'postgres://svc:supersecretpassword1234567890@db.internal:5432/app',
+              },
+              values: [[1, '1']],
+            },
+            { metric: { __name__: 'bad' }, values: 'not-an-array' },
+            { metric: { __name__: 'bad2' }, values: [null, [2, '0.99996']] },
+          ],
+        },
+      }),
+    });
+    const result = await executePrivateAgentConnectorJob(baseJob);
+    // A malformed series is summarised, not thrown, and availability-sized values keep their precision.
+    expect(result.evidence[3].summary).toBe('0 samples returned for up');
+    expect(result.evidence[4].summary).toBe(
+      '2 samples returned for up (1 non-finite); last=0.99996 min=0.99996 max=0.99996 avg=0.99996',
+    );
+    expect(result.evidence[0].summary).toBe(
+      '3 samples returned for up (2 non-finite); last=undefined (non-finite) min=0.0004 max=0.0004 avg=0.0004',
+    );
+    expect(result.evidence[1].summary).toBe('0 samples returned for up');
+    expect(result.evidence[2].summary).not.toContain('supersecret');
   });
 
   it('executes Kubernetes jobs without persisting raw pod payloads', async () => {
