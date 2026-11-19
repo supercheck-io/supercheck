@@ -159,19 +159,19 @@ function CitationFootnotes({ context }: { context: CitationContext }) {
 
 function renderCitationMarker(ids: string[], context: CitationContext, key: string) {
   return (
-    <sup key={key} className="ml-0.5 inline-flex gap-0.5 text-[0.75em] font-medium">
+    <sup key={key} className="ml-0.5 inline-flex gap-0.5 text-[0.75em] font-medium leading-none">
       {ids.map((id) => {
         const number = citationNumber(id, context);
         const citation = context.byId.get(id);
         const label = `Citation ${number}: ${citation ? `${evidenceSourceLabel(citation.sourceType)}, ${citation.title}` : "live result, not saved"}`;
         return citation ? (
           <EvidenceDetailsDialog key={id} item={citation}>
-            <button type="button" aria-label={label} className="text-ai hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+            <button type="button" aria-label={label} className="inline-flex h-5 min-w-5 items-center justify-center rounded-sm text-ai hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
               [{number}]
             </button>
           </EvidenceDetailsDialog>
         ) : (
-          <span key={id} aria-label={label} title="Live result, not saved" className="text-muted-foreground">
+          <span key={id} aria-label={label} title="Live result, not saved" className="inline-flex h-5 min-w-5 items-center justify-center text-muted-foreground">
             [{number}]
           </span>
         );

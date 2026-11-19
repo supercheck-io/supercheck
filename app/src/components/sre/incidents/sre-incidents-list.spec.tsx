@@ -5,6 +5,9 @@ import type { SreIncidentListItem } from "@/actions/sre-incidents";
 import { NewIncidentAction } from "./new-incident-action";
 import { SreIncidentsList, formatAge, matchesQuickFilter } from "./sre-incidents-list";
 
+const mockIsMobile = jest.fn(() => false);
+jest.mock("@/hooks/use-mobile", () => ({ useIsMobile: () => mockIsMobile() }));
+
 // Radix/cmdk use browser layout APIs that jsdom does not provide.
 beforeAll(() => {
   globalThis.ResizeObserver = class {

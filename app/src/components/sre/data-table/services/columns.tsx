@@ -132,7 +132,7 @@ export const columns: ColumnDef<SreServiceListItem>[] = [
   },
   {
     id: "repo",
-    header: "Repo",
+    header: () => <span className="whitespace-nowrap">Repository</span>,
     cell: ({ row }) => {
       const repo = row.original.repoUrl;
       return repo && isSafeEvidenceSourceUri(repo) ? (

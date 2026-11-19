@@ -23,7 +23,7 @@ export function EvidenceDetailsDialog({ item, children }: { item: EvidenceDetail
       <DialogContent className="max-h-[85svh] overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle className="break-words">{item.title}</DialogTitle>
-          <DialogDescription>Saved evidence for this incident. Viewing it does not run another provider query.</DialogDescription>
+          <DialogDescription>Saved evidence. Viewing it does not run another provider query.</DialogDescription>
         </DialogHeader>
         <dl className="space-y-4 text-sm">
           <div><dt className="font-medium">Summary</dt><dd className="mt-1 whitespace-pre-wrap break-words text-muted-foreground">{item.summary || "No summary recorded."}</dd></div>
