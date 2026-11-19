@@ -42,11 +42,6 @@ export function ShellMain({ className, children }: { className?: string; childre
   const currentPath = useRef<string | null>(null);
 
   useEffect(() => {
-    if (!documentChecked) {
-      documentChecked = true;
-      const nav = window.performance?.getEntriesByType?.("navigation")?.[0] as PerformanceNavigationTiming | undefined;
-      if (nav?.type === "back_forward" || nav?.type === "reload") restorePath = window.location.pathname;
-    }
     const onPop = () => {
       restorePath = window.location.pathname;
     };
@@ -63,18 +58,32 @@ export function ShellMain({ className, children }: { className?: string; childre
   useLayoutEffect(() => {
     const main = ref.current;
     if (!main) return;
+    if (!documentChecked) {
+      documentChecked = true;
+      const nav = window.performance?.getEntriesByType?.("navigation")?.[0] as PerformanceNavigationTiming | undefined;
+      if (nav?.type === "back_forward" || nav?.type === "reload") restorePath = window.location.pathname;
+    }
     currentPath.current = pathname;
     const target = restorePath === pathname ? load()[pathname] ?? 0 : 0;
-    restorePath = null;
-    // shortcut: gives up after ~0.5 s, so content that loads later than that is not restored; raise if it matters.
+    // Kept until the path changes: development StrictMode runs this effect twice for the same render.
+    if (restorePath !== pathname) restorePath = null;
+    // Pages load their content after the first paint, so keep trying for a few seconds until it is tall enough,
+    // and stop at once if the user scrolls.
+    // shortcut: gives up after ~5 s; raise it if slower pages matter.
     let frames = 0;
     let frame = 0;
+    const stop = () => cancelAnimationFrame(frame);
     const apply = () => {
       main.scrollTop = target;
-      if (target > 0 && main.scrollTop < target && frames++ < 30) frame = requestAnimationFrame(apply);
+      if (target > 0 && main.scrollTop < target && frames++ < 300) frame = requestAnimationFrame(apply);
     };
     apply();
-    return () => cancelAnimationFrame(frame);
+    const userEvents = ["wheel", "touchstart", "keydown"] as const;
+    userEvents.forEach((name) => main.addEventListener(name, stop, { once: true, passive: true }));
+    return () => {
+      stop();
+      userEvents.forEach((name) => main.removeEventListener(name, stop));
+    };
   }, [pathname]);
 
   useEffect(() => {

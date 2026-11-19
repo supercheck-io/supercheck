@@ -183,7 +183,7 @@ function MetricGroup({
   return (
     <div className="rounded-lg border bg-card px-4 py-3 shadow-sm">
       <p className="mb-2 text-xs font-medium text-muted-foreground">{title}</p>
-      <div className="grid auto-cols-fr grid-flow-col lg:auto-cols-[minmax(max-content,1fr)] gap-3">{children}</div>
+      <div className="grid auto-cols-fr grid-flow-col gap-3">{children}</div>
     </div>
   );
 }
@@ -1192,7 +1192,7 @@ export function MonitorDetailClient({
               aiEndpoint
                 ? // Four groups stay on one row on desktop, set tighter, so the page still fits the window.
                   "mt-4 grid grid-cols-[repeat(auto-fit,minmax(280px,1fr))] gap-3 lg:grid-cols-4 lg:gap-2 lg:[&>div]:px-3 lg:[&>div>div]:gap-2 lg:[&_[data-metric-value]]:text-base 2xl:[&_[data-metric-value]]:text-xl lg:[&_[data-metric-label]>svg]:hidden"
-                : "mt-4 grid grid-cols-[repeat(auto-fit,minmax(280px,1fr))] gap-3"
+                : "mt-4 grid grid-cols-[repeat(auto-fit,minmax(280px,1fr))] gap-3 lg:[&>div>.grid]:gap-2"
             }
           >
             <MetricGroup title="Current">
