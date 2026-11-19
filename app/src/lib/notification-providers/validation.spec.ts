@@ -49,6 +49,21 @@ describe("notification provider validation", () => {
     expect(normalizeProviderConfig("webhook", { url: "https://x.example.com" }).bodyTemplate).toBeUndefined();
   });
 
+  it("rejects a preset saved with its stand-in credential still in place", () => {
+    const url = "https://events.pagerduty.com/v2/enqueue";
+    // API and CLI saves send only the preset; its default template still holds the placeholder routing key.
+    expect(() => validateProviderConfig("webhook", { url, preset: "pagerduty" })).toThrow(
+      "Replace REPLACE_WITH_PAGERDUTY_ROUTING_KEY in the webhook body template with your real value."
+    );
+    expect(() =>
+      validateProviderConfig("webhook", { url, preset: "incident_io", headers: { Authorization: "Bearer REPLACE_WITH_INCIDENT_IO_TOKEN" } })
+    ).toThrow("Replace REPLACE_WITH_INCIDENT_IO_TOKEN in the webhook headers with your real value.");
+    expect(() =>
+      validateProviderConfig("webhook", { url, preset: "pagerduty", bodyTemplate: '{"routing_key":"abc123","event_action":"trigger"}' })
+    ).not.toThrow();
+    expect(() => validateProviderConfig("webhook", { url, preset: "custom" })).not.toThrow();
+  });
+
   it("rejects the retired opsgenie preset like any unknown preset", () => {
     expect(() =>
       validateProviderConfig("webhook", {

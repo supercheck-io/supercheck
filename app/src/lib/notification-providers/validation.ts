@@ -171,6 +171,7 @@ export function validateProviderConfig(
       ) {
         parseWebhookJsonTemplate(config.bodyTemplate);
       }
+      rejectPresetPlaceholders(config);
       break;
     case "telegram":
       if (missing("botToken") || missing("chatId")) {
@@ -197,6 +198,32 @@ export function validateProviderConfig(
       break;
     default:
       throw new Error("Unsupported notification provider type.");
+  }
+}
+
+const PRESET_PLACEHOLDER = /REPLACE_WITH_[A-Z0-9_]+/;
+
+/**
+ * A preset's stand-in credential (REPLACE_WITH_...) saves fine but every delivery is then rejected by the vendor.
+ * Checks the headers and the template the channel will send, including the preset default filled in on save.
+ */
+function rejectPresetPlaceholders(config: Record<string, unknown>): void {
+  const template =
+    typeof config.bodyTemplate === "string" && config.bodyTemplate.trim()
+      ? config.bodyTemplate
+      : config.preset !== "custom"
+        ? getWebhookPreset(config.preset)?.config.bodyTemplate
+        : undefined;
+  for (const [where, value] of [
+    ["headers", config.headers],
+    ["body template", template],
+  ] as const) {
+    const placeholder = JSON.stringify(value ?? "").match(PRESET_PLACEHOLDER);
+    if (placeholder) {
+      throw new Error(
+        `Replace ${placeholder[0]} in the webhook ${where} with your real value.`
+      );
+    }
   }
 }
 
