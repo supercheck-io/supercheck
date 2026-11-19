@@ -1,6 +1,7 @@
 import {
   WEBHOOK_PRESETS,
   applyWebhookPresetConfig,
+  dropReplacedPresetTemplate,
   assertWebhookPresetsHaveValidTemplates,
   getWebhookPreset,
 } from "@/lib/notification-providers/webhook-presets";
@@ -92,5 +93,18 @@ describe("webhook-presets", () => {
 
   it("asks for the incident.io bearer token", () => {
     expect(getWebhookPreset("incident_io")?.config.headers?.Authorization).toMatch(/^Bearer REPLACE_WITH_/);
+  });
+
+  it("drops only an untouched old-preset template when the preset changes", () => {
+    const pd = getWebhookPreset("pagerduty")!.config.bodyTemplate!;
+    const swap = (existing: Record<string, unknown>, incoming: Record<string, unknown>) => {
+      const merged = { ...existing, ...incoming };
+      dropReplacedPresetTemplate(existing, incoming, merged);
+      return merged;
+    };
+    expect(swap({ preset: "pagerduty", bodyTemplate: pd }, { preset: "incident_io" }).bodyTemplate).toBeUndefined();
+    expect(swap({ preset: "pagerduty", bodyTemplate: '{"mine":1}' }, { preset: "incident_io" }).bodyTemplate).toBe('{"mine":1}');
+    expect(swap({ preset: "pagerduty", bodyTemplate: pd }, { preset: "incident_io", bodyTemplate: '{"x":1}' }).bodyTemplate).toBe('{"x":1}');
+    expect(swap({ preset: "pagerduty", bodyTemplate: pd }, { url: "https://x.example.com" }).bodyTemplate).toBe(pd);
   });
 });

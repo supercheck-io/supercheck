@@ -41,6 +41,17 @@ describe('reconcile', () => {
     expect(reconcile([changed], [r])[0].action).toBe('update')
   })
 
+  it('does not report drift for a paging preset whose server-filled template the config omits', () => {
+    const l = { type: 'notificationProvider' as const, id: 'id-1', name: 'PD', definition: { name: 'PD', type: 'webhook', config: { preset: 'pagerduty' } } }
+    const r = { id: 'id-1', type: 'notificationProvider' as const, name: 'PD', raw: { name: 'PD', type: 'webhook', config: { preset: 'pagerduty', bodyTemplate: '{"a":1}' } } }
+    expect(reconcile([l], [r])[0].action).toBe('no-change')
+    // A template the config sets still compares, and custom webhooks are unaffected.
+    const withTemplate = { ...l, definition: { ...l.definition, config: { preset: 'pagerduty', bodyTemplate: '{"b":2}' } } }
+    expect(reconcile([withTemplate], [r])[0].action).toBe('update')
+    const custom = { ...l, definition: { ...l.definition, config: { preset: 'custom' } } }
+    expect(reconcile([custom], [r])[0].action).toBe('update')
+  })
+
   it('treats local resources without an id as creates', () => {
     const changes = reconcile([local()], [])
 

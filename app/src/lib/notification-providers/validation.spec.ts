@@ -45,6 +45,38 @@ describe("notification provider validation", () => {
     ).not.toThrow();
   });
 
+  it("fills the vendor body template when a paging preset is saved without one", () => {
+    // API, CLI and config-as-code callers send only `preset`; without a template the worker would post the Supercheck default payload, which no vendor accepts.
+    const pagerduty = normalizeProviderConfig("webhook", { url: "https://events.pagerduty.com/v2/enqueue", preset: "pagerduty" });
+    expect(JSON.parse(pagerduty.bodyTemplate as string)).toMatchObject({ event_action: "{{pagerDutyEventAction}}", dedup_key: "{{dedupKey}}" });
+    // An explicit template wins, and custom webhooks keep the default payload.
+    expect(normalizeProviderConfig("webhook", { url: "https://x.example.com", preset: "pagerduty", bodyTemplate: '{"a":1}' }).bodyTemplate).toBe('{"a":1}');
+    expect(normalizeProviderConfig("webhook", { url: "https://x.example.com", preset: "custom" }).bodyTemplate).toBeUndefined();
+    expect(normalizeProviderConfig("webhook", { url: "https://x.example.com" }).bodyTemplate).toBeUndefined();
+  });
+
+  it("rejects a preset saved with its stand-in credential still in place", () => {
+    const url = "https://events.pagerduty.com/v2/enqueue";
+    // API and CLI saves send only the preset; its default template still holds the placeholder routing key.
+    expect(() => validateProviderConfig("webhook", { url, preset: "pagerduty" })).toThrow(
+      "Replace REPLACE_WITH_PAGERDUTY_ROUTING_KEY in the webhook body template with your real value."
+    );
+    expect(() =>
+      validateProviderConfig("webhook", { url, preset: "incident_io", headers: { Authorization: "Bearer REPLACE_WITH_INCIDENT_IO_TOKEN" } })
+    ).toThrow("Replace REPLACE_WITH_INCIDENT_IO_TOKEN in the webhook headers with your real value.");
+    expect(() =>
+      validateProviderConfig("webhook", { url, preset: "pagerduty", bodyTemplate: '{"routing_key":"abc123","event_action":"trigger"}' })
+    ).not.toThrow();
+    expect(() => validateProviderConfig("webhook", { url, preset: "custom" })).not.toThrow();
+    // Only the fixed placeholder name is echoed, never characters around it (stored headers are hidden from editors).
+    expect(() =>
+      validateProviderConfig("webhook", { url, preset: "custom", headers: { Authorization: "Bearer REPLACE_WITH_INCIDENT_IO_TOKENSECRET9" } })
+    ).toThrow(/^Replace REPLACE_WITH_INCIDENT_IO_TOKEN in the webhook headers/);
+    expect(() => validateProviderConfig("webhook", { url, preset: "custom", headers: { X: "REPLACE_WITH_ABC123" } })).toThrow(
+      "Replace the REPLACE_WITH_ placeholder in the webhook headers with your real value."
+    );
+  });
+
   it("rejects the retired opsgenie preset like any unknown preset", () => {
     expect(() =>
       validateProviderConfig("webhook", {

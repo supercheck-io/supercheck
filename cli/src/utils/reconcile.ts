@@ -200,6 +200,13 @@ function diffFields(local: Record<string, unknown>, remote: Record<string, unkno
     if (resourceType === 'monitor' && key === 'config' && (local.type ?? remote.type) === 'synthetic_test' && comparableLocal && typeof comparableLocal === 'object' && comparableRemote && typeof comparableRemote === 'object' && !('testTitle' in comparableLocal)) {
       comparableRemote = Object.fromEntries(Object.entries(comparableRemote as Record<string, unknown>).filter(([k]) => k !== 'testTitle'))
     }
+    // A paging preset saved without a template gets the vendor default on the server; absent locally means "use the default", not drift.
+    if (resourceType === 'notificationProvider' && key === 'config' && comparableLocal && typeof comparableLocal === 'object' && comparableRemote && typeof comparableRemote === 'object') {
+      const l = comparableLocal as Record<string, unknown>
+      if (typeof l.preset === 'string' && l.preset !== 'custom' && !l.bodyTemplate) {
+        comparableRemote = Object.fromEntries(Object.entries(comparableRemote as Record<string, unknown>).filter(([k]) => k !== 'bodyTemplate'))
+      }
+    }
     if (resourceType === 'monitor' && key === 'target') {
       comparableLocal = normalizeUrlTarget(comparableLocal)
       comparableRemote = normalizeUrlTarget(comparableRemote)
