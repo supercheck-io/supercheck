@@ -163,7 +163,10 @@ describe("TestsStep", () => {
     fetchMock.mockReturnValue(json({ code: "daily_limit", retryAt: "2030-01-01T00:00:00.000Z" }, 429));
     render(<TestsStep {...mk({ scan })} />);
     suggest();
-    expect((await screen.findByText(/once per project per day. Try again after/)).textContent).toMatch(/2030|2029/);
+    const note = await screen.findByText(/once per project per day. Try again after/);
+    expect(note.textContent).toMatch(/2030|2029/);
+    // A limit that resets tomorrow is not a failure: it renders as the neutral info alert.
+    expect(note.closest("[role=alert]")?.className ?? "").not.toMatch(/destructive|failure|red/);
   });
 
   it("falls back to 'tomorrow' without a retry time", async () => {

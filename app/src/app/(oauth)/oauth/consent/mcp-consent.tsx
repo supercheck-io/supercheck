@@ -4,7 +4,8 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { AuthCallout, AuthCard, AuthHeader } from "@/components/auth/auth-shell";
+import { useAppConfig } from "@/hooks/use-app-config";
+import { AuthCallout, AuthCard, AuthHeader, AuthLegal } from "@/components/auth/auth-shell";
 
 export interface McpConsentProject {
   id: string;
@@ -48,6 +49,8 @@ const ERROR_COPY: Record<string, string> = {
 };
 
 export function McpConsent({ oauthQuery, userEmail, projects, canWriteIncidents = false, canRunSre = false, keepsEarlierAccessProjectIds = [], client, navigate = (url) => window.location.assign(url) }: Props) {
+  const { isCloudHosted, isFetched, error: configError } = useAppConfig();
+  const legal = isFetched && !configError && isCloudHosted ? <AuthLegal /> : undefined;
   const [projectId, setProjectId] = useState((projects.find((p) => p.isDefault) ?? projects[0]).id);
   const [initialProjectId] = useState(projectId);
   const orderedProjects = [...projects].sort((a, b) => Number(b.id === initialProjectId) - Number(a.id === initialProjectId));
@@ -86,7 +89,7 @@ export function McpConsent({ oauthQuery, userEmail, projects, canWriteIncidents 
 
   return (
     // The project list is the only region that grows; Approve and Deny stay in view.
-    <AuthCard className="max-h-[calc(100dvh-4rem)] gap-4">
+    <AuthCard className="max-h-[calc(100dvh-4rem)] gap-4" footer={legal}>
       <AuthHeader
         title={<span className="break-words">Connect {client.name}</span>}
         description={

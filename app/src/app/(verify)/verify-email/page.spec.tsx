@@ -8,7 +8,21 @@ jest.mock("next/navigation", () => ({ useSearchParams: () => new URLSearchParams
 jest.mock("@/utils/auth-client", () => ({ sendVerificationEmail: jest.fn() }));
 jest.mock("@/components/auth/social-auth-buttons", () => ({ SocialAuthButtons: (p: { callbackUrl?: string }) => { social(p.callbackUrl); return null; } }));
 
+const mockConfig = { isCloudHosted: true, isFetched: true, error: null as Error | null };
+jest.mock("@/hooks/use-app-config", () => ({ useAppConfig: () => mockConfig }));
 describe("verify-email page", () => {
+  beforeEach(() => { mockConfig.isCloudHosted = true; });
+  it("shows the terms and privacy line on cloud only", () => {
+    mockConfig.isCloudHosted = true;
+    const { unmount } = render(<VerifyEmailPage />);
+    expect(screen.getByRole("link", { name: /terms of service/i })).toBeInTheDocument();
+    unmount();
+    mockConfig.isCloudHosted = false;
+    render(<VerifyEmailPage />);
+    expect(screen.queryByRole("link", { name: /terms of service/i })).not.toBeInTheDocument();
+    mockConfig.isCloudHosted = true;
+  });
+
   beforeEach(() => social.mockClear());
 
   it("points an invitee who may already have an account to sign-in, keeping the invitation", () => {
