@@ -262,9 +262,11 @@ export async function PUT(
         updatedProvider.config,
         project.id
       );
+      // PUT already required notification:update.
       const { sanitizedConfig, maskedFields } = sanitizeConfigForClient(
         updatedProvider.type as NotificationProviderType,
-        decryptedConfig
+        decryptedConfig,
+        { canEdit: true }
       );
 
       return NextResponse.json({
@@ -311,7 +313,7 @@ export async function PUT(
         console.warn("Notification provider config could not be decrypted after update", { id });
       }
       const { sanitizedConfig, maskedFields } = decryptedConfig
-        ? sanitizeConfigForClient(updatedProvider.type as NotificationProviderType, decryptedConfig)
+        ? sanitizeConfigForClient(updatedProvider.type as NotificationProviderType, decryptedConfig, { canEdit: true })
         : { sanitizedConfig: {}, maskedFields: [] as string[] };
 
       return NextResponse.json({

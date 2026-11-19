@@ -119,7 +119,7 @@ describe("notification provider crypto", () => {
         method: "POST" as const,
       };
 
-      const { sanitizedConfig, maskedFields } = sanitizeConfigForClient("webhook", config);
+      const { sanitizedConfig, maskedFields } = sanitizeConfigForClient("webhook", config, { canEdit: true });
 
       expect(maskedFields).toContain("url");
       expect(maskedFields).toContain("headers");
@@ -148,7 +148,7 @@ describe("notification provider crypto", () => {
         headers: { Authorization: "Bearer stale-secret" },
       };
 
-      const { sanitizedConfig, maskedFields } = sanitizeConfigForClient("slack", config);
+      const { sanitizedConfig, maskedFields } = sanitizeConfigForClient("slack", config, { canEdit: true });
 
       expect(maskedFields).toContain("webhookUrl");
       expect(maskedFields).toContain("url");

@@ -248,7 +248,8 @@ export async function POST(req: NextRequest) {
     );
     const { sanitizedConfig, maskedFields } = sanitizeConfigForClient(
       insertedProvider.type as NotificationProviderType,
-      decryptedConfig
+      decryptedConfig,
+      { canEdit: checkPermissionWithContext("notification", "update", context) }
     );
 
     return NextResponse.json(
