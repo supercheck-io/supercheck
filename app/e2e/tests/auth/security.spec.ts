@@ -20,7 +20,7 @@ test.use({ storageState: { cookies: [], origins: [] } });
 
 import { SignInPage, ForgotPasswordPage } from "../../pages/auth";
 import { env, routes } from "../../utils/env";
-import { signInWithRetry } from "../../utils/api-auth";
+import { CAPTCHA_TEST_HEADERS, signInWithRetry } from "../../utils/api-auth";
 import { loginIfNeeded } from "../../utils/auth-helper";
 
 const SESSION_COOKIE_SUFFIX = "better-auth.session_token";
@@ -165,6 +165,7 @@ test.describe("Security - CSRF Protection @auth @security", () => {
         password: "password123",
       },
       headers: {
+        ...CAPTCHA_TEST_HEADERS, // a CAPTCHA-protected deployment answers 400 before it checks the origin
         "Content-Type": "application/json",
         Origin: "https://malicious-site.com",
       },
