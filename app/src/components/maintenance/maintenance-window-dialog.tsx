@@ -22,7 +22,7 @@ import { useStatusPageDetail, useStatusPages } from "@/hooks/use-status-pages";
 import { checkRolePermissionsClient } from "@/lib/rbac/permissions-client";
 import { MONITORS_QUERY_KEY } from "@/hooks/use-monitors";
 import { MAINTENANCE_QUERY_KEY, type MaintenanceWindowItem } from "@/hooks/use-maintenance-windows";
-import { formatDuration, formatWindowRange, previewWindow, timeZoneOptions } from "./format";
+import { dstNote, formatDuration, formatWindowRange, previewWindow, timeZoneOptions } from "./format";
 
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 type Scope = "project" | "services" | "monitors";
@@ -113,6 +113,8 @@ export function MaintenanceWindowDialog({
     recurrence, timezone, localStartTime, durationMinutes: Number(durationMinutes), startsOn, endsOn: endsOn || null,
     weekdays: recurrence === "weekly" ? weekdays : null, monthDay: recurrence === "monthly" ? Number(monthDay) : null,
   });
+
+  const dst = preview ? dstNote(preview.startsAt, preview.endsAt, timezone) : null;
 
   const submit = async () => {
     if (pending) return;
@@ -315,6 +317,8 @@ export function MaintenanceWindowDialog({
               {scheduleLocked && " In progress: end or extend it from the table to change its times."}
             </p>
           )}
+          {/* Outside the preview, which unmounts while a field is incomplete: a live region must already be in the page to be announced. */}
+          <p role="status" className="-mt-2 text-xs text-muted-foreground empty:hidden" data-testid="mw-dst-note">{dst}</p>
           <div className="space-y-2">
             <Label htmlFor="mw-repeat">Repeats</Label>
             <Select value={recurrence} onValueChange={(value) => setRecurrence(value as Recurrence)} disabled={repeatLocked}>
