@@ -111,7 +111,7 @@ export function ShellMain({ className, children }: { className?: string; childre
     <main
       ref={ref}
       tabIndex={-1}
-      className={`outline-none ${className ?? ""}`}
+      className={`relative outline-none ${className ?? ""}`}
       onScroll={(event) => {
         if (currentPath.current) load()[currentPath.current] = event.currentTarget.scrollTop;
       }}

@@ -180,7 +180,7 @@ export default function InvitePage({
     // A dead (expired, used, unknown) invite must not travel on: it would loop back here after sign-in.
     const inviteQuery = token && !inviteDead ? `?invite=${encodeURIComponent(token)}` : "";
     return (
-      <AuthCard>
+      <AuthCard footer={shouldShowLegalFooter ? <AuthLegal /> : undefined}>
         <FieldGroup>
           <AuthHeader status="error" title={errorTitle} description={error} />
 
@@ -205,7 +205,7 @@ export default function InvitePage({
   // Signed in as someone other than the invitee
   if (emailMismatch) {
     return (
-      <AuthCard>
+      <AuthCard footer={shouldShowLegalFooter ? <AuthLegal /> : undefined}>
         <FieldGroup>
           <AuthHeader
             status="error"
@@ -238,7 +238,7 @@ export default function InvitePage({
   // Success State - Invitation Accepted
   if (accepted) {
     return (
-      <AuthCard>
+      <AuthCard footer={shouldShowLegalFooter ? <AuthLegal /> : undefined}>
         <FieldGroup>
           <AuthHeader
             status="success"

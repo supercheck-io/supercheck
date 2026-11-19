@@ -103,7 +103,7 @@ export function TestsStep({ response, features, permissions, draft, patchDraft, 
         setFailure({ kind: "error", message: "Your AI credits are used up for now. Add credits or wait for the next period, then try again." });
       } else if (res.status === 429 && res.data.code === "daily_limit") {
         const when = res.data.retryAt ? new Date(res.data.retryAt).toLocaleString() : "tomorrow";
-        setFailure({ kind: "error", message: `Suggestions run once per project per day. Try again after ${when}.` });
+        setFailure({ kind: "info", message: `Suggestions run once per project per day. Try again after ${when}.` });
       } else if (res.status === 502 && res.data.code === "unusable_output") {
         const when = res.data.retryAt ? new Date(res.data.retryAt).toLocaleString() : "tomorrow";
         setFailure({ kind: "error", message: `AI could not produce usable suggestions. No credit was used. Suggestions are available again ${when}; you can add requirements later from Requirements.` });

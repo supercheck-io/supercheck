@@ -30,6 +30,11 @@ describe("ShellMain", () => {
     expect(document.activeElement).toBe(main);
   });
 
+  it("is the containing block for absolutely positioned content so it cannot stretch the document", () => {
+    render(ui());
+    expect(screen.getByRole("main").className).toMatch(/\brelative\b/);
+  });
+
   it("does not take focus from an input", () => {
     const outside = document.createElement("input");
     document.body.appendChild(outside);

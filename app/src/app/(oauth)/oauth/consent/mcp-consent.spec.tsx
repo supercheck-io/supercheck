@@ -24,7 +24,21 @@ function setup(client: ClientProp = unverified, list = projects) {
 const reply = (status: number, body: unknown) =>
   fetchMock.mockResolvedValue({ ok: status >= 200 && status < 300, status, json: async () => body });
 
+const mockConfig = { isCloudHosted: true, isFetched: true, error: null as Error | null };
+jest.mock("@/hooks/use-app-config", () => ({ useAppConfig: () => mockConfig }));
 describe("McpConsent", () => {
+  beforeEach(() => { mockConfig.isCloudHosted = true; });
+  it("shows the terms and privacy line on cloud only", () => {
+    mockConfig.isCloudHosted = true;
+    const { unmount } = render(<McpConsent oauthQuery="q" userEmail="me@example.com" projects={projects} client={unverified} navigate={navigate} />);
+    expect(screen.getByRole("link", { name: /privacy policy/i })).toBeInTheDocument();
+    unmount();
+    mockConfig.isCloudHosted = false;
+    render(<McpConsent oauthQuery="q" userEmail="me@example.com" projects={projects} client={unverified} navigate={navigate} />);
+    expect(screen.queryByRole("link", { name: /privacy policy/i })).not.toBeInTheDocument();
+    mockConfig.isCloudHosted = true;
+  });
+
   it("says what the app can and cannot do", () => {
     setup();
     expect(screen.getByRole("heading", { name: /connect my agent/i })).toBeInTheDocument();

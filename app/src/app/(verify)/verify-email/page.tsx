@@ -4,7 +4,8 @@ import { useState, useEffect, useCallback, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Loader2, Clock } from "lucide-react";
-import { AuthBackLink, AuthCallout, AuthCard, AuthHeader, AuthLoading } from "@/components/auth/auth-shell";
+import { useAppConfig } from "@/hooks/use-app-config";
+import { AuthBackLink, AuthCallout, AuthCard, AuthHeader, AuthLegal, AuthLoading } from "@/components/auth/auth-shell";
 import { SocialAuthButtons } from "@/components/auth/social-auth-buttons";
 import { sendVerificationEmail } from "@/utils/auth-client";
 import { FieldGroup, Field, FieldSeparator } from "@/components/ui/field";
@@ -55,6 +56,8 @@ export default function VerifyEmailPage() {
 }
 
 function VerifyEmailPageContent() {
+  const { isCloudHosted, isFetched, error: configError } = useAppConfig();
+  const legal = isFetched && !configError && isCloudHosted ? <AuthLegal /> : undefined;
   const searchParams = useSearchParams();
   const inviteToken = parseInviteToken(searchParams.get("invite"));
   // Only a sign-up is answered with the existing-account email; a sign-in bounced here is not.
@@ -131,7 +134,7 @@ function VerifyEmailPageContent() {
   }, [email, inviteToken]);
 
   return (
-    <AuthCard>
+    <AuthCard footer={legal}>
       <FieldGroup>
         <AuthHeader
           status="info"
