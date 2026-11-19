@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Loader2, Clock } from "lucide-react";
 import { AuthBackLink, AuthCallout, AuthCard, AuthHeader, AuthLoading } from "@/components/auth/auth-shell";
+import { SocialAuthButtons } from "@/components/auth/social-auth-buttons";
 import { sendVerificationEmail } from "@/utils/auth-client";
 import { FieldGroup, Field } from "@/components/ui/field";
 import { parseInviteToken } from "@/lib/validations/auth";
@@ -56,6 +57,8 @@ export default function VerifyEmailPage() {
 function VerifyEmailPageContent() {
   const searchParams = useSearchParams();
   const inviteToken = parseInviteToken(searchParams.get("invite"));
+  // Only a sign-up is answered with the existing-account email; a sign-in bounced here is not.
+  const cameFromSignUp = searchParams.get("from") === "signup";
   const [email, setEmail] = useState("");
   const [isResending, setIsResending] = useState(false);
   const [resendSuccess, setResendSuccess] = useState(false);
@@ -142,6 +145,12 @@ function VerifyEmailPageContent() {
           }
         />
 
+        {inviteToken && cameFromSignUp && (
+          <AuthCallout variant="info">
+            If you already have an account, we&apos;ve emailed you a sign-in link instead.
+          </AuthCallout>
+        )}
+
         {resendSuccess && <AuthCallout variant="success">Verification email sent.</AuthCallout>}
 
         {error && <AuthCallout variant="error">{error}</AuthCallout>}
@@ -174,7 +183,13 @@ function VerifyEmailPageContent() {
           Didn&apos;t receive the email? Check your spam folder or click resend.
         </p>
 
-        <AuthBackLink href={inviteToken ? `/sign-in?invite=${encodeURIComponent(inviteToken)}` : "/sign-in"} />
+        {inviteToken && <SocialAuthButtons callbackUrl={`/invite/${inviteToken}`} />}
+
+        <AuthBackLink
+          href={inviteToken ? `/sign-in?invite=${encodeURIComponent(inviteToken)}` : "/sign-in"}
+        >
+          {inviteToken && cameFromSignUp ? "Already have an account? Sign in" : "Back to sign in"}
+        </AuthBackLink>
       </FieldGroup>
     </AuthCard>
   );

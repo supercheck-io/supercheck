@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { InfoPopover } from "@/components/ui/info-popover";
-import { signOut } from "@/utils/auth-client";
+import { signOutAndClear } from "@/lib/auth/sign-out";
 import { cn } from "@/lib/utils";
 import { AuthCallout } from "@/components/auth/auth-shell";
 
@@ -113,7 +113,7 @@ export function DeviceApproval({ userCode, userEmail, projects, client }: Props)
     setSwitchingAccount(true);
     setError(null);
     try {
-      const result = await signOut();
+      const result = await signOutAndClear();
       if (result?.error) throw new Error("sign out failed");
       // Keep the pending code so the next person can approve the same CLI request.
       window.location.replace(new URL(`/device?code=${encodeURIComponent(userCode)}`, window.location.origin).toString());

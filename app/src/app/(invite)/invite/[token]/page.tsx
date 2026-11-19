@@ -6,7 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Loader2, ArrowRight } from "lucide-react";
 import { FieldGroup, Field } from "@/components/ui/field";
 import { AuthCallout, AuthCard, AuthHeader, AuthLegal, AuthLoading, InviteBanner, formatInviteRole } from "@/components/auth/auth-shell";
-import { signOut, useSession } from "@/utils/auth-client";
+import { useSession } from "@/utils/auth-client";
+import { signOutAndClear } from "@/lib/auth/sign-out";
 import { useAppConfig } from "@/hooks/use-app-config";
 import { clearProjectsCache } from "@/hooks/use-project-context";
 import { announceProjectChange, reloadProjectContext } from "@/lib/project-navigation";
@@ -17,7 +18,6 @@ interface InvitationData {
   organizationName: string;
   email?: string;
   role: string;
-  hasAccount?: boolean;
   expiresAt: string;
   inviterName?: string;
   inviterEmail?: string;
@@ -119,9 +119,9 @@ export default function InvitePage({
           errorMessage.includes("sign up") ||
           errorMessage.includes("authenticate")
         ) {
-          // Existing accounts sign in (cloud sign-up would show a fake success for them);
-          // first-time invitees create an account.
-          router.push(`/${invitation?.hasAccount ? "sign-in" : "sign-up"}?invite=${encodeURIComponent(token)}`);
+          // Sign-up is the common case; an existing account is told how to sign in by email,
+          // and sign-up links to sign-in. Which one applies is deliberately not revealed here.
+          router.push(`/sign-up?invite=${encodeURIComponent(token)}`);
         } else {
           setError(data.error || "Failed to accept invitation");
         }
@@ -136,12 +136,13 @@ export default function InvitePage({
 
   const handleSignOut = async () => {
     setSignOutError(null);
-    const result = await signOut();
-    if (result?.error) {
-      setSignOutError(result.error.message || "Failed to sign out. Please try again.");
-      return;
+    try {
+      const result = await signOutAndClear();
+      if (result?.error) throw new Error(result.error.message);
+      setEmailMismatch(false);
+    } catch (signOutFailure) {
+      setSignOutError(signOutFailure instanceof Error && signOutFailure.message ? signOutFailure.message : "Failed to sign out. Please try again.");
     }
-    setEmailMismatch(false);
   };
 
   // Loading State

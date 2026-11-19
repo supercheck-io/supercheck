@@ -21,6 +21,7 @@ import {
 import { apiKey } from "@better-auth/api-key";
 import { ac, roles, Role } from "@/lib/rbac/permissions";
 import { EmailService } from "@/lib/email-service";
+import { sendExistingAccountNotice } from "@/lib/auth/existing-account-notice";
 import { revokeCredentialsAfterPasswordResetSafely } from "@/lib/security/password-reset-cleanup";
 import catalog from "@/lib/billing/plan-catalog.json";
 import {
@@ -309,6 +310,8 @@ export const auth = betterAuth({
       });
     },
     resetPasswordTokenExpiresIn: 3600, // 1 hour in seconds
+    // Cloud sign-up for an existing address returns a generic success; tell that user how to sign in.
+    onExistingUserSignUp: ({ user }, request) => sendExistingAccountNotice({ user }, request),
   },
   database: drizzleAdapter(db, {
     provider: "pg", // PostgreSQL

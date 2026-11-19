@@ -56,9 +56,14 @@ export function AuthHeader({
 }) {
   const logo = <SupercheckLogo className="size-10" aria-hidden="true" />;
   const StatusIcon = status ? STATUS_ICONS[status] : null;
+  // One mark per screen: result screens show the status circle in place of the logo.
   return (
     <div className="flex flex-col items-center gap-3 text-center">
-      {logoHref ? (
+      {StatusIcon ? (
+        <div className={cn("flex size-12 items-center justify-center rounded-full", StatusIcon.tone)}>
+          <StatusIcon.Icon className="size-6" aria-hidden="true" />
+        </div>
+      ) : logoHref ? (
         <Link href={logoHref} aria-label="Supercheck">
           {logo}
         </Link>
@@ -68,11 +73,6 @@ export function AuthHeader({
           <span className="sr-only">Supercheck</span>
         </>
       )}
-      {StatusIcon ? (
-        <div className={cn("flex size-12 items-center justify-center rounded-full", StatusIcon.tone)}>
-          <StatusIcon.Icon className="size-6" aria-hidden="true" />
-        </div>
-      ) : null}
       <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
       {description ? <div className="text-sm text-muted-foreground [&_a]:underline [&_a]:underline-offset-4">{description}</div> : null}
     </div>

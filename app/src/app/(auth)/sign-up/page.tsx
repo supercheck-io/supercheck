@@ -154,8 +154,8 @@ function SignUpPageContent() {
     if (signUpError) {
       // ── 1. User already exists ───────────────────────────────────────
       // Self-hosted Better Auth returns 422 for duplicate users. Cloud mode
-      // (email verification on) returns a generic 200 instead, so cloud invitees
-      // with an account are routed to sign-in by the invite page before this runs.
+      // (email verification on) returns a generic 200 instead and emails the existing
+      // account a sign-in link (see onExistingUserSignUp), so this branch is self-hosted only.
       if (
         signUpError.status === 422 ||
         signUpError.message?.toLowerCase().includes("already exist")
@@ -208,7 +208,7 @@ function SignUpPageContent() {
 
       // Better Auth can create the account before returning the verification gate.
       if (isCloudHosted && inviteToken && signUpError.status === 403) {
-        router.push(`/verify-email?email=${encodeURIComponent(email)}&invite=${encodeURIComponent(inviteToken)}`);
+        router.push(`/verify-email?email=${encodeURIComponent(email)}&invite=${encodeURIComponent(inviteToken)}&from=signup`);
         return;
       }
 
@@ -246,7 +246,7 @@ function SignUpPageContent() {
           setError("Account created, but the verification email could not be sent. Use the resend option on the verification page.");
         }
       }
-      const inviteQuery = inviteToken ? `&invite=${encodeURIComponent(inviteToken)}` : "";
+      const inviteQuery = inviteToken ? `&invite=${encodeURIComponent(inviteToken)}&from=signup` : "";
       router.push(`/verify-email?email=${encodeURIComponent(email)}${inviteQuery}`);
       return;
     }

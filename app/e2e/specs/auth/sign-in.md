@@ -72,5 +72,5 @@ The check endpoint supports only `pre-check`. Lockout responses use one generic 
 ## Notes
 
 - The current submit button label is `Login`, not `Sign in`.
-- Invite-aware sign-in can prefill and lock the email field, and offers a `Create one` link back to `/sign-up?invite=<token>`.
+- Invite-aware sign-in can prefill and lock the email field, and offers a `Create account` link back to `/sign-up?invite=<token>`.
 - Keep this spec aligned with the progressive lockout implementation instead of asserting a single fixed error string for every failed login.

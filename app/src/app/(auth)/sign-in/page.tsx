@@ -58,10 +58,10 @@ function SignInPageContent() {
       normalized.includes("password") ||
       normalized.includes("credential")
     ) {
-      return "Could not sign in with these credentials. If you have not created your account yet, click \"Create one\" first.";
+      return "Could not sign in with these credentials. If you have not created your account yet, click \"Create account\" first.";
     }
 
-    return "It looks like this invited account is not signed up yet. Please click \"Create one\" to sign up first.";
+    return "It looks like this invited account is not signed up yet. Please click \"Create account\" first.";
   }, []);
 
   // Fetch invite data - defined before useEffect that uses it

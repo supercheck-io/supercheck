@@ -6,11 +6,11 @@ import { Loader2 } from "lucide-react";
 import { AuthCard, AuthCallout, PasswordToggle, AuthHeader, AuthLegal, AuthLoading, InviteBanner } from "./auth-shell";
 import Link from "next/link";
 import { useState, useEffect, type RefObject } from "react";
+import { SocialAuthButtons } from "./social-auth-buttons";
 import { TurnstileCaptcha, type TurnstileCaptchaRef } from "./turnstile-captcha";
 import { useCaptcha } from "@/hooks/use-captcha";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Building2 } from "lucide-react";
 import { FieldGroup, Field, FieldLabel } from "@/components/ui/field";
 import {
   Form,
@@ -279,6 +279,11 @@ export function SignupForm({
                 Sign in instead
               </Link>
             </p>
+
+            {/* An invitee whose account uses Google or GitHub has no password to sign in with */}
+            {isInviteMode && inviteToken && (
+              <SocialAuthButtons callbackUrl={`/invite/${inviteToken}`} disabled={isLoading} />
+            )}
           </FieldGroup>
         </form>
       </Form>

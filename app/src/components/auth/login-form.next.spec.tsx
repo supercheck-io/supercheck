@@ -31,11 +31,11 @@ describe("LoginForm continuation", () => {
     render(<LoginForm {...base} nextPath={resume} />);
     expect(social).toHaveBeenLastCalledWith(resume);
     // As its own query, not a long ?next= value that the sign-up page's allowlist would drop.
-    expect(screen.getByRole("link", { name: /sign up/i })).toHaveAttribute("href", `/sign-up?${query}`);
+    expect(screen.getByRole("link", { name: /create account/i })).toHaveAttribute("href", `/sign-up?${query}`);
   });
   it("carries the continuation to the sign-up link", () => {
     render(<LoginForm {...base} nextPath="/device?code=BCDF-GHJK" />);
-    const link = screen.getByRole("link", { name: /sign up/i });
+    const link = screen.getByRole("link", { name: /create account/i });
     expect(link).toHaveAttribute("href", `/sign-up?next=${encodeURIComponent("/device?code=BCDF-GHJK")}`);
   });
   it("offers social sign-in on an invitation, returning to the invite page", () => {

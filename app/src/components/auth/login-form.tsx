@@ -136,11 +136,11 @@ export function LoginForm({
                     Sign in to accept your invitation.
                     <br />
                     Don&apos;t have an account?{" "}
-                    <Link href={`/sign-up?invite=${inviteToken}`}>Create one</Link>
+                    <Link href={`/sign-up?invite=${inviteToken}`}>Create account</Link>
                   </>
                 ) : isSelfHosted && isSignupEnabled ? (
                   <>
-                    Don&apos;t have an account? <Link href={signUpHref(nextPath)}>Sign up</Link>
+                    Don&apos;t have an account? <Link href={signUpHref(nextPath)}>Create account</Link>
                   </>
                 ) : isSelfHosted && !isSignupEnabled ? (
                   "Contact your administrator for an account"
@@ -252,7 +252,7 @@ export function LoginForm({
             <Field>
               <Button type="submit" size="lg" className="w-full" disabled={isLoading} data-testid="login-submit-button">
                 {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                Login
+                {isLoading ? "Signing in…" : "Sign in"}
               </Button>
             </Field>
 
