@@ -1,17 +1,12 @@
 "use client";
 
-import { useEffect, useSyncExternalStore } from "react";
+import { useEffect } from "react";
+import { useHydrated } from "@/hooks/use-hydrated";
 import { useRouter, usePathname } from "next/navigation";
 import { SupercheckLoading } from "@/components/shared/supercheck-loading";
 import { useAppConfig } from "@/hooks/use-app-config";
 import { withNextPath } from "@/lib/auth/safe-next-path";
 import { useQuery } from "@tanstack/react-query";
-
-// Hydration-safe mounted check using useSyncExternalStore
-const emptySubscribe = () => () => {};
-function useHydrated() {
-  return useSyncExternalStore(emptySubscribe, () => true, () => false);
-}
 
 // Routes that don't require subscription
 const ALLOWED_ROUTES_WITHOUT_SUBSCRIPTION = [
