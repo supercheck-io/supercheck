@@ -39,16 +39,28 @@ describe("DataPrefetcher", () => {
     expect(listCalls()).toBe(1);
   });
 
-  it("does not prefetch after unmounting before the idle callback runs", async () => {
-    const client = new QueryClient();
-    const { unmount } = render(
-      <QueryClientProvider client={client}>
-        <DataPrefetcher />
-      </QueryClientProvider>
-    );
-    await act(async () => { jest.advanceTimersByTime(400); }); // quiet confirmed, run queued
-    unmount();
-    await act(async () => { jest.advanceTimersByTime(5000); });
-    expect(fetchMock.mock.calls.filter(([url]) => String(url) === "/api/runs")).toHaveLength(0);
+  it("cancels the queued idle callback on unmount", async () => {
+    const win = window as unknown as Record<string, unknown>;
+    const request = jest.fn((_cb: () => void, _opts?: object) => 42);
+    const cancel = jest.fn();
+    win.requestIdleCallback = request;
+    win.cancelIdleCallback = cancel;
+    try {
+      const { unmount } = render(
+        <QueryClientProvider client={new QueryClient()}>
+          <DataPrefetcher />
+        </QueryClientProvider>
+      );
+      // Let the auth prefetches settle so the cache goes quiet.
+      await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+      await act(async () => { jest.advanceTimersByTime(400); });
+      expect(request).toHaveBeenCalledTimes(1);
+      unmount();
+      expect(cancel).toHaveBeenCalledWith(42);
+      expect(fetchMock.mock.calls.filter(([url]) => String(url) === "/api/runs")).toHaveLength(0);
+    } finally {
+      delete win.requestIdleCallback;
+      delete win.cancelIdleCallback;
+    }
   });
 });
