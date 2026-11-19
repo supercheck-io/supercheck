@@ -9,7 +9,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useState, useEffect, useCallback, useMemo, useRef, Suspense } from "react";
 import { LoginForm } from "@/components/auth/login-form";
 import type { TurnstileCaptchaRef } from "@/components/auth/turnstile-captcha";
-import { Loader2 } from "lucide-react";
+import { AuthLoading } from "@/components/auth/auth-shell";
 import { parseInviteToken } from "@/lib/validations/auth";
 
 interface InviteData {
@@ -20,13 +20,7 @@ interface InviteData {
 
 export default function SignInPage() {
   return (
-    <Suspense
-      fallback={
-        <div className="flex items-center justify-center min-h-[300px]">
-          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-        </div>
-      }
-    >
+    <Suspense fallback={<AuthLoading />}>
       <SignInPageContent />
     </Suspense>
   );
@@ -64,10 +58,10 @@ function SignInPageContent() {
       normalized.includes("password") ||
       normalized.includes("credential")
     ) {
-      return "Could not sign in with these credentials. If you have not created your account yet, click \"Create one\" first.";
+      return "Could not sign in with these credentials. If you have not created your account yet, click \"Create account\" first.";
     }
 
-    return "It looks like this invited account is not signed up yet. Please click \"Create one\" to sign up first.";
+    return "It looks like this invited account is not signed up yet. Please click \"Create account\" first.";
   }, []);
 
   // Fetch invite data - defined before useEffect that uses it
@@ -181,7 +175,8 @@ function SignInPageContent() {
             if (acceptResponse.ok && acceptResult.success) {
               console.log(`✅ Auto-accepted invitation to ${acceptResult.data?.organizationName}`);
               announceProjectChange();
-              reloadProjectContext(clearProjectsCache);
+              // Same landing as every other invite path: the persona question first.
+              reloadProjectContext(clearProjectsCache, "/setup/welcome");
               return;
             }
           } catch (acceptError) {
@@ -206,7 +201,6 @@ function SignInPageContent() {
 
   return (
     <LoginForm
-      className="w-full max-w-sm px-4"
       nextPath={nextPath}
       onSubmit={handleSubmit}
       isLoading={isLoading}
