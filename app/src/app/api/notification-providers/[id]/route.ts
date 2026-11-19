@@ -21,6 +21,7 @@ import {
   mergeNotificationProviderConfig,
   sanitizeConfigForClient,
 } from "@/lib/notification-providers/crypto";
+import { dropReplacedPresetTemplate } from "@/lib/notification-providers/webhook-presets";
 import {
   normalizeProviderConfig,
   validateProviderConfig,
@@ -73,7 +74,8 @@ export async function GET(
     );
     const { sanitizedConfig, maskedFields } = sanitizeConfigForClient(
       provider.type as NotificationProviderType,
-      decryptedConfig
+      decryptedConfig,
+      { canEdit: checkPermissionWithContext("notification", "update", authContext) }
     );
 
     // Get last used information from alert history
@@ -204,15 +206,18 @@ export async function PUT(
         existingProvider.config,
         project.id
       );
-      const mergedConfig = providerTypeChanged
-        ? (plainConfig as PlainNotificationProviderConfig)
-        : mergeNotificationProviderConfig(
-            updateData.type as NotificationProviderType,
-            existingPlainConfig,
-            plainConfig as PlainNotificationProviderConfig
-          );
-
+      let mergedConfig: PlainNotificationProviderConfig;
       try {
+        mergedConfig = providerTypeChanged
+          ? (plainConfig as PlainNotificationProviderConfig)
+          : mergeNotificationProviderConfig(
+              updateData.type as NotificationProviderType,
+              existingPlainConfig,
+              plainConfig as PlainNotificationProviderConfig
+            );
+        if (!providerTypeChanged && updateData.type === "webhook") {
+          dropReplacedPresetTemplate(existingPlainConfig, plainConfig, mergedConfig);
+        }
         validateProviderConfig(
           updateData.type as NotificationProviderType,
           mergedConfig
@@ -261,9 +266,11 @@ export async function PUT(
         updatedProvider.config,
         project.id
       );
+      // PUT already required notification:update.
       const { sanitizedConfig, maskedFields } = sanitizeConfigForClient(
         updatedProvider.type as NotificationProviderType,
-        decryptedConfig
+        decryptedConfig,
+        { canEdit: true }
       );
 
       return NextResponse.json({
@@ -310,7 +317,7 @@ export async function PUT(
         console.warn("Notification provider config could not be decrypted after update", { id });
       }
       const { sanitizedConfig, maskedFields } = decryptedConfig
-        ? sanitizeConfigForClient(updatedProvider.type as NotificationProviderType, decryptedConfig)
+        ? sanitizeConfigForClient(updatedProvider.type as NotificationProviderType, decryptedConfig, { canEdit: true })
         : { sanitizedConfig: {}, maskedFields: [] as string[] };
 
       return NextResponse.json({

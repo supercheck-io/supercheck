@@ -351,6 +351,7 @@ export async function executeSreIncidentInvestigation(
         severity: incident.severity,
         status: incident.status,
         serviceName: incident.primaryServiceName,
+        serviceId: incident.primaryServiceId,
         serviceOtelName: liveConnectors?.primaryService?.otelServiceName,
         liveConnectorLines: liveConnectors?.connectors
           .filter((connector) => connector.type !== "mcp")
@@ -539,6 +540,14 @@ export async function executeSreIncidentInvestigation(
         .update(sreInvestigationRuns)
         .set({
           status: "failed",
+          // A run that hit its token or step limit still used tokens; the agent error carries them.
+          ...(error instanceof SreAgentIncompleteResponseError || error instanceof SreAgentEmptyResponseError
+            ? {
+                promptTokens: error.usage?.inputTokens ?? null,
+                completionTokens: error.usage?.outputTokens ?? null,
+                totalTokens: error.usage?.totalTokens ?? null,
+              }
+            : {}),
           steps: steps.map((step) => ({ ...step })),
           agentStateSnapshot: {
             mode: "sre_investigation_api",

@@ -575,9 +575,21 @@ export function NotificationProviderForm({
   const prepareWebhookData = (data: FormValues): FormValues => {
     const nextConfig: Record<string, unknown> = { ...data.config };
     if (data.type === "webhook") {
+      // The schema maps a cleared template to undefined, which JSON drops; send "" so the server clears the stored one.
+      if (initialData?.type === "webhook" && nextConfig.bodyTemplate === undefined) {
+        nextConfig.bodyTemplate = "";
+      }
       const parsedHeaders = parseHeadersValue(headersText);
       if (parsedHeaders) {
         nextConfig.headers = parsedHeaders;
+      } else if (
+        // An explicit {} clears stored headers (needed to move a channel to a URL that takes none).
+        headersText.trim() ||
+        (initialData?.type === "webhook" &&
+          (nextConfig.preset || "custom") !== ((initialData.config as Record<string, unknown>).preset || "custom"))
+      ) {
+        // Switching preset on a saved channel: omitting headers would let the server merge restore the old vendor's stored Authorization.
+        nextConfig.headers = {};
       } else {
         delete nextConfig.headers;
       }

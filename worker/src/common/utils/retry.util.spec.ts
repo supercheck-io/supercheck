@@ -5,6 +5,7 @@ import {
   createRetryConfig,
   executeWithRetry,
   fetchWithRetry,
+  describeError,
   isRetryableError,
   isRetryableStatusCode,
   MAX_RETRY_AFTER_MS,
@@ -106,6 +107,29 @@ describe('retry.util', () => {
       error.name = 'AbortError';
 
       expect(isRetryableError(error)).toBe(true);
+    });
+
+    it('retries a multi-address connect failure, whose AggregateError has an empty message', () => {
+      const connect = (code: string) =>
+        Object.assign(new Error(`connect ${code}`), { code });
+      const error = new AggregateError(
+        [connect('ETIMEDOUT'), connect('ECONNREFUSED')],
+        '',
+      );
+
+      expect(error.message).toBe('');
+      expect(isRetryableError(error)).toBe(true);
+      expect(describeError(error)).toBe(
+        'connect ETIMEDOUT; connect ECONNREFUSED',
+      );
+      expect(describeError(new Error('boom'))).toBe('boom');
+      expect(
+        isRetryableError(new AggregateError([new Error('invalid')], '')),
+      ).toBe(false);
+      const cyclic = new AggregateError([], '');
+      cyclic.errors.push(cyclic);
+      expect(isRetryableError(cyclic)).toBe(false);
+      expect(typeof describeError(cyclic)).toBe('string');
     });
 
     it.each(['invalid input', 'unauthorized', 'not found'])(

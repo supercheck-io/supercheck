@@ -7,6 +7,8 @@ export type SreInvestigationPromptInput = {
   severity: string;
   status: string;
   serviceName?: string | null;
+  /** The incident's service id; live searches fail on any other id, so the model must see the real one. */
+  serviceId?: string | null;
   evidenceCount: number;
   connectorEvidenceCount?: number;
   liveConnectorToolsEnabled?: boolean;
@@ -68,6 +70,7 @@ export function buildSreInvestigationPrompt(
     `Incident title (unverified):\n${fenceUntrustedBlock("incident_title", [input.incidentTitle], 500)}`,
     `Severity: ${input.severity}`,
     `Status: ${input.status}`,
+    input.serviceId ? `Primary service id (omit serviceId in connector searches, or pass exactly this): ${input.serviceId}` : null,
     `Primary service: ${input.serviceName ?? "unknown"}${input.serviceOtelName ? ` (OTel service name: ${input.serviceOtelName.replace(/[<>\s]+/g, " ").slice(0, 100)})` : ""}`,
     `Stored evidence items: ${input.evidenceCount}`,
     `Stored connector evidence items: ${input.connectorEvidenceCount ?? 0}`,
