@@ -88,10 +88,12 @@ for (const item of Object.values(spec.paths)) {
     (pages[folder] ??= []).push(operation.operationId);
   }
 }
-const rootPages = (JSON.parse(readFileSync('./content/docs/api/meta.json', 'utf8')) as { pages: string[] }).pages;
+// The root navigation is hand-written and absent in a bare checkout (the generation test runs in an empty folder).
+const rootMetaPath = './content/docs/api/meta.json';
+const rootPages = existsSync(rootMetaPath) ? (JSON.parse(readFileSync(rootMetaPath, 'utf8')) as { pages: string[] }).pages : null;
 for (const [folder, operationIds] of Object.entries(pages)) {
   const meta = folderMeta[folder];
   if (!meta) throw new Error(`Add "${folder}" to folderMeta in generate-docs.mts`);
-  if (!rootPages.includes(folder)) throw new Error(`Add "${folder}" to content/docs/api/meta.json`);
+  if (rootPages && !rootPages.includes(folder)) throw new Error(`Add "${folder}" to content/docs/api/meta.json`);
   writeFileSync(`./content/docs/api/${folder}/meta.json`, `${JSON.stringify({ ...meta, pages: operationIds }, null, 2)}\n`);
 }

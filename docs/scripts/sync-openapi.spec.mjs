@@ -38,6 +38,7 @@ test('the installed OpenAPI generator preserves public operation folders without
       assert.match(readFileSync(join(root, 'content/docs/api', path), 'utf8'), /<OpenAPIPage/);
     }
     assert.equal(readdirSync(join(root, 'content/docs/api')).includes('billing'), false);
+    assert.ok(JSON.parse(readFileSync(join(root, 'content/docs/api/monitors/meta.json'), 'utf8')).pages.includes('listMonitors'));
   } finally {
     rmSync(fixture, { recursive: true, force: true });
   }
