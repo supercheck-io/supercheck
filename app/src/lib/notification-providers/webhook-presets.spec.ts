@@ -1,6 +1,7 @@
 import {
   WEBHOOK_PRESETS,
   applyWebhookPresetConfig,
+  dropReplacedPresetTemplate,
   assertWebhookPresetsHaveValidTemplates,
   getWebhookPreset,
 } from "@/lib/notification-providers/webhook-presets";
@@ -49,6 +50,23 @@ describe("webhook-presets", () => {
     expect(config.preset).toBe("custom");
   });
 
+  it("resets the previous preset's headers, body and method when switching to custom", () => {
+    // Otherwise a token typed for one vendor stays in the form and is saved against a custom endpoint.
+    const afterIncidentIo = applyWebhookPresetConfig("incident_io", { url: "https://example.com/hooks" });
+    expect(afterIncidentIo.headers?.Authorization).toContain("REPLACE_WITH");
+    const config = applyWebhookPresetConfig("custom", {
+      ...afterIncidentIo,
+      headers: { Authorization: "Bearer real-token" },
+      method: "PUT",
+    });
+
+    expect(config.preset).toBe("custom");
+    expect(config.url).toBe("https://example.com/hooks");
+    expect(config.headers).toEqual({});
+    expect(config.bodyTemplate).toBe("");
+    expect(config.method).toBe("POST");
+  });
+
   it("exposes provider-specific auth hints without embedding real secrets", () => {
     const jsm = getWebhookPreset("jsm_ops");
 
@@ -75,5 +93,18 @@ describe("webhook-presets", () => {
 
   it("asks for the incident.io bearer token", () => {
     expect(getWebhookPreset("incident_io")?.config.headers?.Authorization).toMatch(/^Bearer REPLACE_WITH_/);
+  });
+
+  it("drops only an untouched old-preset template when the preset changes", () => {
+    const pd = getWebhookPreset("pagerduty")!.config.bodyTemplate!;
+    const swap = (existing: Record<string, unknown>, incoming: Record<string, unknown>) => {
+      const merged = { ...existing, ...incoming };
+      dropReplacedPresetTemplate(existing, incoming, merged);
+      return merged;
+    };
+    expect(swap({ preset: "pagerduty", bodyTemplate: pd }, { preset: "incident_io" }).bodyTemplate).toBeUndefined();
+    expect(swap({ preset: "pagerduty", bodyTemplate: '{"mine":1}' }, { preset: "incident_io" }).bodyTemplate).toBe('{"mine":1}');
+    expect(swap({ preset: "pagerduty", bodyTemplate: pd }, { preset: "incident_io", bodyTemplate: '{"x":1}' }).bodyTemplate).toBe('{"x":1}');
+    expect(swap({ preset: "pagerduty", bodyTemplate: pd }, { url: "https://x.example.com" }).bodyTemplate).toBe(pd);
   });
 });
