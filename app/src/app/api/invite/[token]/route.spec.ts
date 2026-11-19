@@ -91,15 +91,13 @@ describe("invitation privacy and acceptance", () => {
     expect(body.data).not.toHaveProperty("inviterEmail");
   });
 
-  it("reports whether the invited email already has an account", async () => {
-    const get = () => GET(new NextRequest("http://localhost/api/invite/11111111-1111-4111-8111-111111111111"), context);
-    db.select.mockReset().mockReturnValueOnce(selectRows([invite])).mockReturnValueOnce(selectRows([{ id: "user-9" }]));
-    expect((await (await get()).json()).data.hasAccount).toBe(true);
-    db.select.mockReset().mockReturnValueOnce(selectRows([invite])).mockReturnValueOnce(selectRows([]));
-    expect((await (await get()).json()).data.hasAccount).toBe(false);
+  it("never reveals whether the invited email has an account", async () => {
+    const response = await GET(new NextRequest("http://localhost/api/invite/11111111-1111-4111-8111-111111111111"), context);
+    expect((await response.json()).data).not.toHaveProperty("hasAccount");
+    expect(db.select).toHaveBeenCalledTimes(1);
   });
 
-  it("does not look up accounts for a used or expired invitation", async () => {
+  it("rejects a used invitation", async () => {
     db.select.mockReset().mockReturnValue(selectRows([{ ...invite, status: "accepted" }]));
     expect((await GET(new NextRequest("http://localhost/api/invite/11111111-1111-4111-8111-111111111111"), context)).status).toBe(400);
     expect(db.select).toHaveBeenCalledTimes(1);

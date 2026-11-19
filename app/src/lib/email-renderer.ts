@@ -10,6 +10,7 @@ import { render } from "@react-email/render";
 import {
   PasswordResetEmail,
   EmailVerificationEmail,
+  ExistingAccountEmail,
   OrganizationInvitationEmail,
   StatusPageVerificationEmail,
   StatusPageWelcomeEmail,
@@ -50,6 +51,23 @@ export async function renderPasswordResetEmail(params: {
 
   return {
     subject: "[Supercheck] Reset your password",
+    html: await render(component, { pretty: false }),
+    text: await render(component, PLAIN_TEXT_RENDER_OPTIONS),
+  };
+}
+
+/**
+ * Sent instead of a verification email when a sign-up targets an address that already has an account.
+ */
+export async function renderExistingAccountEmail(params: {
+  signInUrl: string;
+  resetUrl: string;
+  userEmail: string;
+}): Promise<RenderedEmail> {
+  const component = ExistingAccountEmail(params);
+
+  return {
+    subject: "[Supercheck] You already have an account",
     html: await render(component, { pretty: false }),
     text: await render(component, PLAIN_TEXT_RENDER_OPTIONS),
   };

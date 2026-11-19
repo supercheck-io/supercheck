@@ -2,6 +2,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import {
   BaseLayout,
+  ExistingAccountEmail,
   PasswordResetEmail,
   EmailVerificationEmail,
   OrganizationInvitationEmail,
@@ -23,6 +24,7 @@ import { emailLogoUrl, formatEmailTime } from "./base-layout";
 const FOOTER_MARK = "supercheck.io"; // standard footer or status-page "powered by" link
 const cases: Array<[string, React.ReactElement, string[]]> = [
   ["password-reset", <PasswordResetEmail key="a" resetUrl="https://x.io/r?t=1" userEmail="u@x.io" />, ["Reset Password", "https://x.io/r?t=1"]],
+  ["existing-account", <ExistingAccountEmail key="x" signInUrl="https://x.io/sign-in?invite=1" resetUrl="https://x.io/forgot-password" userEmail="u@x.io" />, ["https://x.io/sign-in?invite=1", "https://x.io/forgot-password", "Google or GitHub"]],
   ["email-verification", <EmailVerificationEmail key="b" verificationUrl="https://x.io/v" userEmail="u@x.io" />, ["https://x.io/v"]],
   ["org-invitation", <OrganizationInvitationEmail key="c" inviteUrl="https://x.io/i" organizationName="Acme" role="admin" />, ["Acme", "https://x.io/i"]],
   ["status-page-verification", <StatusPageVerificationEmail key="d" verificationUrl="https://x.io/sv" statusPageName="Acme Status" />, ["https://x.io/sv", "Acme Status"]],

@@ -6,10 +6,8 @@ const mockPush = jest.fn();
 const mockSignOut = jest.fn(async (): Promise<{ error?: { message?: string } } | undefined> => undefined);
 let mockSession: { user: { email: string } } | null = null;
 jest.mock("next/navigation", () => ({ useRouter: () => ({ push: mockPush }) }));
-jest.mock("@/utils/auth-client", () => ({
-  useSession: () => ({ data: mockSession }),
-  signOut: () => mockSignOut(),
-}));
+jest.mock("@/utils/auth-client", () => ({ useSession: () => ({ data: mockSession }) }));
+jest.mock("@/lib/auth/sign-out", () => ({ signOutAndClear: () => mockSignOut() }));
 jest.mock("next/link", () => ({
   __esModule: true,
   default: ({ href, children }: { href: string; children: React.ReactNode }) => <a href={href}>{children}</a>,
@@ -60,11 +58,11 @@ describe("invite accept page", () => {
     expect(mockReload).toHaveBeenCalledWith(expect.any(Function), "/setup/welcome");
   });
 
-  function mockInvite(opts: { hasAccount?: boolean; post?: { status: number; body: Record<string, unknown> } }) {
+  function mockInvite(opts: { post?: { status: number; body: Record<string, unknown> } }) {
     global.fetch = jest.fn(async (_url: string, init?: { method?: string }) =>
       init?.method === "POST"
         ? { status: opts.post?.status ?? 401, json: async () => opts.post?.body ?? { success: false, error: "Please sign in first to accept the invitation" } }
-        : { status: 200, json: async () => ({ success: true, data: { organizationName: "Acme", role: "project_editor", expiresAt: "2099-01-01T00:00:00Z", hasAccount: opts.hasAccount } }) },
+        : { status: 200, json: async () => ({ success: true, data: { organizationName: "Acme", role: "project_editor", expiresAt: "2099-01-01T00:00:00Z"} }) },
     ) as unknown as typeof fetch;
   }
   async function clickAccept() {
@@ -72,21 +70,15 @@ describe("invite accept page", () => {
     fireEvent.click(await screen.findByRole("button", { name: /accept invitation/i }));
   }
 
-  it("sends a signed-out invitee with an existing account to sign-in", async () => {
-    mockInvite({ hasAccount: true });
-    await clickAccept();
-    await waitFor(() => expect(mockPush).toHaveBeenCalledWith("/sign-in?invite=t"));
-  });
-
-  it("sends a signed-out first-time invitee to sign-up", async () => {
-    mockInvite({ hasAccount: false });
+  it("sends a signed-out invitee to sign-up without revealing whether an account exists", async () => {
+    mockInvite({});
     await clickAccept();
     await waitFor(() => expect(mockPush).toHaveBeenCalledWith("/sign-up?invite=t"));
   });
 
   it("shows a sign-out state, and never redirects, when signed in as another account", async () => {
     mockSession = { user: { email: "other@example.com" } };
-    mockInvite({ hasAccount: false, post: { status: 400, body: { success: false, error: "This invitation is for a different email address", code: "EMAIL_MISMATCH" } } });
+    mockInvite({ post: { status: 400, body: { success: false, error: "This invitation is for a different email address", code: "EMAIL_MISMATCH" } } });
     await clickAccept();
     expect(await screen.findByText("other@example.com")).toBeInTheDocument();
     expect(mockPush).not.toHaveBeenCalled();
@@ -102,6 +94,16 @@ describe("invite accept page", () => {
     expect(mockPush).toHaveBeenCalledWith("/sign-in");
     fireEvent.click(screen.getByRole("button", { name: /create new account/i }));
     expect(mockPush).toHaveBeenCalledWith("/sign-up");
+  });
+
+  it("shows the sign-out error when the sign-out request rejects", async () => {
+    mockSession = { user: { email: "other@example.com" } };
+    mockSignOut.mockRejectedValueOnce(new Error("network down"));
+    mockInvite({ post: { status: 400, body: { success: false, error: "x", code: "EMAIL_MISMATCH" } } });
+    await clickAccept();
+    fireEvent.click(await screen.findByRole("button", { name: /sign out/i }));
+    expect(await screen.findByText("network down")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /sign out/i })).toBeInTheDocument();
   });
 
   it("keeps the token on the links when a valid invitation fails to accept", async () => {
