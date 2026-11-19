@@ -662,7 +662,9 @@ export function NotificationProviderForm({
   // Nothing typed and the saved value is hidden: leaving it blank keeps it.
   const credentialKeepsStored = Boolean(
     credential && samePresetAsSaved &&
-      (credential.in === "template" ? !templateForCredential : keepsStored("headers") && !headersText.trim()),
+      (credential.in === "template"
+        ? keepsStored("bodyTemplate") && !templateForCredential
+        : keepsStored("headers") && !headersText.trim()),
   );
   const setCredential = (value: string) => {
     if (!credential) return;
@@ -1153,7 +1155,9 @@ export function NotificationProviderForm({
                         ? credential.unreadable
                         : credentialKeepsStored
                           ? KEEP_STORED_HINT
-                          : credential.description}
+                          : credential.in === "header" && samePresetAsSaved && keepsStored("headers")
+                            ? "A new value replaces all saved headers on this channel."
+                            : credential.description}
                     </p>
                   )}
                 </div>
