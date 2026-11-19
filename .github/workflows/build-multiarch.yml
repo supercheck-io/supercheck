@@ -362,10 +362,6 @@ jobs:
   promote-and-sign:
     name: Tag and sign images
     needs: [build-and-push, compose-e2e]
-    # One promotion at a time: app and worker `latest` can never come from different runs.
-    concurrency:
-      group: release-promote-${{ github.repository }}
-      cancel-in-progress: false
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -446,8 +442,11 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -Eeuo pipefail
+          # No concurrency lock: a pending promotion in a group can be replaced, which would
+          # skip a release's tags and signatures. Only the highest stable tag moves floating tags.
           # A release only moves `latest` / `major.minor` while it is the highest stable tag
-          # (overall / within that minor), so an older, slower run never rolls them back.
+          # (overall / within that minor), so an older, slower run never rolls them back or
+          # mixes app and worker floating tags.
           stable=""
           if [[ "$GITHUB_REF" == refs/tags/v* && "$GITHUB_REF_NAME" != *-* ]]; then
             stable="$(gh api --paginate "repos/$GITHUB_REPOSITORY/git/matching-refs/tags/v" --jq '.[].ref' \
