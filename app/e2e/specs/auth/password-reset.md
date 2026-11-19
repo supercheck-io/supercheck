@@ -75,7 +75,7 @@ The reset page does not currently expose dedicated `reset-password-*` test ids. 
 | Confirm password | `#confirmPassword` |
 | Submit | `button[type="submit"]` |
 | Error | `[role="alert"]` or visible validation copy |
-| Success state | text such as `Password reset successfully` |
+| Success state | text such as `Password reset` |
 
 ## Notes
 

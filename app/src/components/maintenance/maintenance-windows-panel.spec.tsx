@@ -1,3 +1,4 @@
+import { renderToString } from "react-dom/server";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 import { maintenanceEndLabel, MaintenanceWindowsPanel, MonitorMaintenanceBar, ServiceMaintenanceAction } from "./maintenance-windows-panel";
@@ -131,6 +132,11 @@ describe("monitor and service actions", () => {
     expect(screen.getByTestId("maintenance-banner")).toHaveTextContent("In maintenance until");
     fireEvent.click(screen.getByRole("button", { name: /schedule maintenance/i }));
     expect(screen.getByRole("dialog")).toHaveAttribute("data-defaults", JSON.stringify({ monitorId: "m-1" }));
+  });
+
+  it("does not render cached windows in the server markup, so hydration matches (#418)", () => {
+    mockWindows = { data: [win({})] };
+    expect(renderToString(<MonitorMaintenanceBar monitorId="m-1" />)).not.toContain("maintenance-banner");
   });
 
   it("shows the latest end when overlapping windows cover the monitor", () => {

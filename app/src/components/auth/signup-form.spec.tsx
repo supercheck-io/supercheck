@@ -1,6 +1,8 @@
 import { render, screen } from "@testing-library/react";
 import { SignupForm } from "./signup-form";
 
+const social = jest.fn();
+jest.mock("./social-auth-buttons", () => ({ SocialAuthButtons: (p: { callbackUrl?: string }) => { social(p.callbackUrl); return null; } }));
 jest.mock("./turnstile-captcha", () => ({ TurnstileCaptcha: () => null }));
 jest.mock("@/hooks/use-captcha", () => ({
   useCaptcha: () => ({
@@ -62,5 +64,20 @@ describe("SignupForm email field", () => {
       />
     );
     expect(screen.getByText(/Allowed domains: acme\.com/)).toBeInTheDocument();
+  });
+});
+
+describe("SignupForm invitation sign-in routes", () => {
+  beforeEach(() => social.mockClear());
+
+  it("links existing accounts to sign-in with the token and offers social sign-in back to the invite", () => {
+    render(<SignupForm {...baseProps} inviteToken="tok" inviteData={{ organizationName: "Acme", role: "project_editor" }} />);
+    expect(screen.getByRole("link", { name: /sign in instead/i })).toHaveAttribute("href", "/sign-in?invite=tok");
+    expect(social).toHaveBeenLastCalledWith("/invite/tok");
+  });
+
+  it("shows no social buttons without an invitation", () => {
+    render(<SignupForm {...baseProps} inviteToken={null} inviteData={null} />);
+    expect(social).not.toHaveBeenCalled();
   });
 });
