@@ -664,7 +664,8 @@ export function NotificationProviderForm({
     credential && samePresetAsSaved &&
       (credential.in === "template"
         ? keepsStored("bodyTemplate") && !templateForCredential
-        : keepsStored("headers") && !headersText.trim()),
+        // Saved headers are never sent to a changed URL (the server refuses), so a URL edit needs the key again.
+        : keepsStored("headers") && !headersText.trim() && (selectedWebhookUrl ?? "").trim() === initialString("url")),
   );
   const setCredential = (value: string) => {
     if (!credential) return;
@@ -674,6 +675,8 @@ export function NotificationProviderForm({
       const next = writeAuthToken(headersText, credential.scheme, value);
       setHeadersText(next);
       setHeadersError(getHeadersError(next));
+      // Headers are not a watched form field, so the old result would otherwise stay on screen.
+      setTestResult(null);
       return;
     }
     // Clearing a key typed over a hidden saved template goes back to keeping the saved one.
@@ -784,6 +787,14 @@ export function NotificationProviderForm({
         return;
       }
       if (!checkCredential()) return;
+      // Same field checks as Save, so a broken hidden field opens Advanced instead of failing on the server.
+      const fields: Array<"config.url" | "config.bodyTemplate"> =
+        form.getValues("config.method") === "GET" ? ["config.url"] : ["config.url", "config.bodyTemplate"];
+      if (!(await form.trigger(fields))) {
+        const errors = form.formState.errors.config ?? {};
+        if (errors.bodyTemplate || (errors.url && !urlOnTop)) setAdvancedOpen(true);
+        return;
+      }
     }
 
     setIsTesting(true);
@@ -1141,6 +1152,7 @@ export function NotificationProviderForm({
                     type="password"
                     autoComplete="new-password"
                     aria-required={!credentialKeepsStored}
+                    aria-describedby={credentialError ? `${credentialFieldId}-error` : undefined}
                     aria-invalid={Boolean(credentialError)}
                     placeholder={credentialKeepsStored ? MASKED_PLACEHOLDER : credential.placeholder}
                     value={credentialValue ?? ""}
@@ -1148,7 +1160,7 @@ export function NotificationProviderForm({
                     disabled={isSubmitting || isTesting || credentialValue === undefined}
                   />
                   {credentialError ? (
-                    <p className="text-sm font-medium text-destructive">{credentialError}</p>
+                    <p id={`${credentialFieldId}-error`} className="text-sm font-medium text-destructive">{credentialError}</p>
                   ) : (
                     <p className="text-sm text-muted-foreground">
                       {credentialValue === undefined

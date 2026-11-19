@@ -56,6 +56,7 @@ export function channelUsageText(usage: NotificationChannel["usage"]): string | 
 export const notificationChannelColumns: ColumnDef<NotificationChannel>[] = [
   {
     accessorKey: "id",
+    meta: { label: "Channel ID" },
     header: ({ column }) => (
       <DataTableColumnHeader
         column={column}
@@ -78,6 +79,7 @@ export const notificationChannelColumns: ColumnDef<NotificationChannel>[] = [
   },
   {
     accessorKey: "name",
+    meta: { label: "Title" },
     header: ({ column }) => (
       <DataTableColumnHeader column={column} title="Title" />
     ),
@@ -93,6 +95,7 @@ export const notificationChannelColumns: ColumnDef<NotificationChannel>[] = [
   },
   {
     id: "type",
+    meta: { label: "Provider" },
     accessorFn: channelProviderKey,
     filterFn: (row, id, value: string[]) => value.includes(row.getValue(id)),
     header: ({ column }) => (
@@ -112,6 +115,7 @@ export const notificationChannelColumns: ColumnDef<NotificationChannel>[] = [
   },
   {
     id: "usage",
+    meta: { label: "Used by" },
     accessorFn: (channel) => (channel.usage ? channel.usage.monitors + channel.usage.jobs + (channel.usage.policy ? 1 : 0) : 0),
     header: ({ column }) => <DataTableColumnHeader column={column} title="Used by" />,
     cell: ({ row }) => {
@@ -121,6 +125,7 @@ export const notificationChannelColumns: ColumnDef<NotificationChannel>[] = [
   },
   {
     id: "lastTest",
+    meta: { label: "Last test" },
     accessorFn: (channel) => channel.lastTest?.at ?? "",
     header: ({ column }) => <DataTableColumnHeader column={column} title="Last test" />,
     cell: ({ row }) => {
@@ -134,9 +139,10 @@ export const notificationChannelColumns: ColumnDef<NotificationChannel>[] = [
       );
     },
   },
-  createdByColumn<NotificationChannel>(),
+  { ...createdByColumn<NotificationChannel>(), meta: { label: "Created by" } },
   {
     accessorKey: "createdAt",
+    meta: { label: "Created" },
     header: ({ column }) => (
       <DataTableColumnHeader column={column} title="Created" />
     ),
@@ -151,6 +157,7 @@ export const notificationChannelColumns: ColumnDef<NotificationChannel>[] = [
   },
   {
     accessorKey: "lastUsed",
+    meta: { label: "Last used" },
     header: ({ column }) => (
       <DataTableColumnHeader column={column} title="Last used" />
     ),

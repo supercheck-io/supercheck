@@ -105,3 +105,8 @@ describe("Used by and Last test", () => {
     expect(channelProviderKey(channel({ type: "slack", config: {} }))).toBe("slack");
   });
 });
+
+it("labels every hideable column for the View menu with its header text", () => {
+  const labels = notificationChannelColumns.filter((c) => c.id !== "actions").map((c) => (c.meta as { label?: string } | undefined)?.label);
+  expect(labels).toEqual(["Channel ID", "Title", "Provider", "Used by", "Last test", "Created by", "Created", "Last used"]);
+});

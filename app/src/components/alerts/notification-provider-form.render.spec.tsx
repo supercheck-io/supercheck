@@ -370,10 +370,66 @@ describe("paging presets: typed credentials and Advanced", () => {
     expect(screen.getByText(/enter the api key again/)).toBeInTheDocument();
     // No "{}" escape here: a JSM channel without its key cannot deliver.
     expect(screen.queryByText(/again, or \{\} for none/)).toBeNull();
+    // Saved headers cannot follow a new URL, so the key is required again.
+    const key = screen.getByLabelText(/API key/);
+    expect(key).toHaveAttribute("aria-required", "true");
+    fireEvent.click(screen.getByRole("button", { name: "Update channel" }));
+    const error = await screen.findByText("API key is required");
+    expect(key).toHaveAttribute("aria-describedby", error.id);
+    expect(onSuccess).not.toHaveBeenCalled();
+    fireEvent.change(key, { target: { value: "k-2" } });
     fireEvent.click(screen.getByRole("button", { name: "Update channel" }));
     await waitFor(() => expect(onSuccess).toHaveBeenCalled());
-    // Blank key: headers omitted, so the server refuses the URL change instead of silently dropping the key.
+    expect(onSuccess.mock.calls[0][0].config.headers).toEqual({ Authorization: "GenieKey k-2" });
+  });
+
+  it("keeps a blank JSM key on a saved channel while the URL is unchanged", async () => {
+    const onSuccess = jest.fn().mockResolvedValue(undefined);
+    render(
+      <NotificationProviderForm
+        onSuccess={onSuccess}
+        initialData={{
+          name: "JSM",
+          type: "webhook",
+          config: { name: "JSM", preset: "jsm_ops", method: "POST", url: "[REDACTED]", headers: {} } as never,
+          maskedFields: ["url", "headers"],
+        }}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Update channel" }));
+    await waitFor(() => expect(onSuccess).toHaveBeenCalled());
     expect(onSuccess.mock.calls[0][0].config).not.toHaveProperty("headers");
+  });
+
+  it("clears the shown test result when the typed token changes", async () => {
+    global.fetch = jest.fn().mockResolvedValue({ json: async () => ({ success: true, message: "Sent" }) }) as never;
+    render(<NotificationProviderForm />);
+    await pickType("incident.io");
+    fireEvent.change(screen.getByLabelText(/^URL/), { target: { value: "https://api.incident.io/v2/alert_events/http/abc" } });
+    fireEvent.change(screen.getByLabelText(/API token/), { target: { value: "tok" } });
+    fireEvent.click(screen.getByRole("button", { name: "Test connection" }));
+    await screen.findByTestId("test-connection-result");
+    fireEvent.change(screen.getByLabelText(/API token/), { target: { value: "tok2" } });
+    expect(screen.queryByTestId("test-connection-result")).toBeNull();
+  });
+
+  it("Test connection opens Advanced for an invalid body template instead of sending it", async () => {
+    global.fetch = jest.fn() as never;
+    render(
+      <NotificationProviderForm
+        initialData={{
+          name: "PD",
+          type: "webhook",
+          config: { name: "PD", preset: "pagerduty", method: "POST", url: "https://events.pagerduty.com/v2/enqueue", headers: {}, bodyTemplate: '{"routing_key":"K", oops' } as never,
+          maskedFields: ["headers"],
+        }}
+      />,
+    );
+    expect(screen.queryByLabelText(/Body template/)).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Test connection" }));
+    expect((await screen.findAllByText("Body template must be valid JSON")).length).toBeGreaterThan(0);
+    expect(screen.getByLabelText(/Body template/)).toBeInTheDocument();
+    expect(global.fetch).not.toHaveBeenCalled();
   });
 });
 
