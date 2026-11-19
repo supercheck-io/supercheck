@@ -62,4 +62,11 @@ describe("InfoPopover", () => {
     expect(error).not.toHaveBeenCalled();
     error.mockRestore();
   });
+
+  it("shows no header icon unless one is given, so the panel does not repeat the trigger's info icon", () => {
+    render(<InfoPopover label="About title" title="Title" description="Shown to visitors" />);
+    fireEvent.click(screen.getByRole("button", { name: "About title" }));
+    const heading = screen.getByRole("heading", { name: "Title" });
+    expect(heading.parentElement?.querySelector("svg")).toBeNull();
+  });
 });
