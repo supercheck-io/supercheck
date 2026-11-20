@@ -193,7 +193,7 @@ test.describe("AI SRE incident, brief, and investigation lifecycle @aisre @criti
 
       await page.goto("/copilot/investigations");
       await expect(page).toHaveURL(/\/incidents$/);
-      // Severity and Status headers carry info-tip text, so match prefixes in exact order.
+      // Severity and Status headers carry an info button name, so match prefixes in exact order.
       await expect(page.getByRole("columnheader")).toHaveText([
         /^#/, /^Title/, /^Severity/, /^Status/, /^Service/, /^Assignee/, /^Age/, /^Updated/, /^AI/,
       ]);

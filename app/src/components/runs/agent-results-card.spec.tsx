@@ -71,3 +71,9 @@ it("keeps the summary in a popover and flags failed attempts on the button", () 
   fireEvent.click(screen.getByTestId("agent-results-button"));
   expect(screen.getByTestId("agent-results-card")).toHaveTextContent("Agent results");
 });
+
+it("does not flag a run where every attempt passed", () => {
+  render(<AgentResultsButton agent={{ tests: [{ title: "t", attempts: 2, passed: 2, passRate: 1 }] }} />);
+  expect(screen.getByTestId("agent-results-button")).toHaveTextContent("Agent results");
+  expect(screen.getByTestId("agent-results-button")).not.toHaveTextContent("failed");
+});

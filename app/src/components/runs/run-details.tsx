@@ -364,7 +364,7 @@ export function RunDetails({
 
       {/* Main header similar to monitor details */}
       <div className="border rounded-lg p-4 mb-4 shadow-sm bg-card">
-        <div className="flex items-center justify-between mb-3">
+        <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
           <div className="flex items-center gap-2">
             {!isNotificationView && (
               <Button variant="outline" size="icon" className="h-7 w-7" asChild>
