@@ -32,8 +32,8 @@ export function useImpersonationStatus({ enabled = true }: { enabled?: boolean }
     queryKey: IMPERSONATION_STATUS_QUERY_KEY,
     queryFn: fetchImpersonationStatus,
     enabled,
-    // Security-sensitive: always refetch on mount to detect impersonation changes
-    // Cannot use staleTime since impersonation state changes on page reload after redirect
+    // Security-sensitive: without a layout value for this user, refetch on every mount. A layout value is
+    // fresh for this page load only (see useShellBootstrap, which drops it if the user changes).
     staleTime: 0,
     gcTime: 5 * 60 * 1000, // 5 minutes - short cache for security
     refetchOnWindowFocus: false,

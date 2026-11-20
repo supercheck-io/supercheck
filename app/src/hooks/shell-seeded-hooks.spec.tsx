@@ -6,9 +6,15 @@ import { ADMIN_STATUS_QUERY_KEY, useAdminStatus } from "./use-admin-status";
 import { IMPERSONATION_STATUS_QUERY_KEY, useImpersonationStatus } from "./use-impersonation-status";
 import { useProjectSetupSummary, useUserPreferences } from "./use-project-setup";
 
+let mockSessionUserId: string | undefined = "u1";
+jest.mock("@/utils/auth-client", () => ({
+  useSession: () => ({ data: mockSessionUserId ? { user: { id: mockSessionUserId } } : null }),
+}));
+
 // The server layout reads these for each page load; the hooks must start from those values instead of
 // requesting them again, and fall back to their own request when a value is missing.
 const fullBootstrap = (): ShellBootstrap => ({
+  userId: "u1",
   readAt: Date.now(),
   adminStatus: { isAdmin: false, isOrgAdmin: true },
   impersonation: { isImpersonating: true, impersonatedUser: { id: "u2", name: "Pat", email: "p@x" }, originalAdmin: null },
@@ -28,7 +34,7 @@ function setup(bootstrap?: ShellBootstrap) {
 
 describe("shell hooks seeded by the server layout", () => {
   const originalFetch = global.fetch;
-  afterEach(() => { global.fetch = originalFetch; });
+  afterEach(() => { global.fetch = originalFetch; mockSessionUserId = "u1"; });
 
   it("make no request when the layout supplied every value", async () => {
     global.fetch = jest.fn();
@@ -89,5 +95,24 @@ describe("shell hooks seeded by the server layout", () => {
     await new Promise((r) => setTimeout(r, 20));
     expect(global.fetch).not.toHaveBeenCalled();
     expect(result.current).toMatchObject({ isImpersonating: false, isKnown: false });
+  });
+
+  it("uses the layout's values while the browser session check is pending", async () => {
+    mockSessionUserId = undefined;
+    global.fetch = jest.fn();
+    const { wrapper } = setup(fullBootstrap());
+    const { result } = renderHook(() => useAdminStatus(), { wrapper });
+    expect(result.current.isOrgAdmin).toBe(true);
+    await new Promise((r) => setTimeout(r, 20));
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  it("ignores the layout's values once another user is signed in, and asks again", async () => {
+    mockSessionUserId = "u9";
+    global.fetch = jest.fn().mockResolvedValue({ ok: true, json: async () => ({ isImpersonating: false }) });
+    const { wrapper } = setup(fullBootstrap());
+    const { result } = renderHook(() => useImpersonationStatus(), { wrapper });
+    expect(result.current.isKnown).toBe(false);
+    await waitFor(() => expect(global.fetch).toHaveBeenCalledWith("/api/auth/impersonation-status"));
   });
 });

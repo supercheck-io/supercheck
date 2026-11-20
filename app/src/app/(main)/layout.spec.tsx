@@ -173,6 +173,17 @@ describe("MainLayout data fetching", () => {
   });
 
   describe("shell bootstrap", () => {
+    it("passes only the impersonated user, never the original admin's details", async () => {
+      signedIn(cloudOrg());
+      (getImpersonationStatus as jest.Mock).mockResolvedValue({
+        isImpersonating: true,
+        impersonatedUser: { id: "u1", name: "U", email: "u@x" },
+        originalAdmin: { id: "a1", name: "Admin", email: "admin@x" },
+      });
+      const value = findProps(await MainLayout({ children: null }), ShellBootstrapProvider)?.value as Record<string, unknown>;
+      expect(value.impersonation).toEqual({ isImpersonating: true, impersonatedUser: { id: "u1", name: "U", email: "u@x" } });
+    });
+
     const bootstrapOf = (tree: unknown) => findProps(tree, ShellBootstrapProvider)?.value as Record<string, unknown>;
     const project = { id: "p1", organizationId: "o1", userRole: "project_viewer" };
 
@@ -187,11 +198,12 @@ describe("MainLayout data fetching", () => {
       const value = bootstrapOf(await MainLayout({ children: null }));
       expect(value).toMatchObject({
         adminStatus: { isAdmin: true, isOrgAdmin: true },
-        impersonation: { isImpersonating: false },
+        impersonation: { isImpersonating: false, impersonatedUser: undefined },
         preferences: { persona: null, seen: true },
         setupSummary: { projectId: "p1", summary: { status: "in_progress", done: 1, total: 4, projectEmpty: false } },
       });
       expect(typeof value.readAt).toBe("number");
+      expect(value.userId).toBe("u1");
       expect(getSetupSummary).toHaveBeenCalledWith("o1", "p1", "u1");
     });
 

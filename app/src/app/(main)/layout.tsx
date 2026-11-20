@@ -109,7 +109,7 @@ export default async function MainLayout({
   let isOrgOwner = false;
   // Values the shell would otherwise request after hydration; each lookup fails soft, leaving that
   // hook on its own request. Read in parallel with the lookups above.
-  const bootstrap: ShellBootstrap = { readAt: Date.now() };
+  const bootstrap: ShellBootstrap = { userId: user?.id ?? "", readAt: Date.now() };
 
   if (user && org) {
     // Derive subscription status from org data already fetched (avoids client-side API call)
@@ -168,7 +168,8 @@ export default async function MainLayout({
         isOrgAdmin: role === Role.ORG_ADMIN || role === Role.ORG_OWNER,
       };
     }
-    bootstrap.impersonation = impersonation;
+    // Only what the client reads: the original admin's details stay out of the page.
+    bootstrap.impersonation = { isImpersonating: impersonation.isImpersonating, impersonatedUser: impersonation.impersonatedUser };
     bootstrap.preferences = preferences;
     bootstrap.setupSummary = setupSummary;
     if (needsSpendingCapRole) {
