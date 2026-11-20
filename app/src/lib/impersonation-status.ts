@@ -1,3 +1,4 @@
+import { safeErrorFields } from "@/lib/log-safe-error";
 import "server-only";
 import { eq } from "drizzle-orm";
 import { db } from "@/utils/db";
@@ -38,12 +39,8 @@ export async function getImpersonationStatus(): Promise<ImpersonationStatus | nu
     ]);
     return { isImpersonating: true, impersonatedUser: person(impersonated), originalAdmin: person(admin) };
   } catch (error) {
-    // Name and code only: the failed query's parameters include the session token.
-    console.error(
-      "Error checking impersonation status:",
-      (error as { name?: string })?.name ?? "Error",
-      (error as { code?: string })?.code ?? "",
-    );
+    // The failed query's parameters include the session token, so log only safe fields.
+    console.error("Error checking impersonation status:", safeErrorFields(error));
     return null;
   }
 }

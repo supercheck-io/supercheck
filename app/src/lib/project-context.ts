@@ -4,6 +4,7 @@
  */
 
 import { auth } from "@/utils/auth";
+import { safeErrorFields } from "@/lib/log-safe-error";
 import { headers } from "next/headers";
 import { cache } from "react";
 import { db } from "@/utils/db";
@@ -160,7 +161,7 @@ async function loadCurrentProjectContext(): Promise<ProjectContext | null> {
       userRole: roleString,
     };
   } catch (error) {
-    logger.error({ error }, "Failed to get project context");
+    logger.error({ error: safeErrorFields(error) }, "Failed to get project context");
     return null;
   }
 }
@@ -316,7 +317,7 @@ async function setDefaultProjectInSession(expectedSession: {
           }
 
           logger.error(
-            { error, userId: currentUser.id, projectId: projectToAssign.id },
+            { error: safeErrorFields(error), userId: currentUser.id, projectId: projectToAssign.id },
             "Failed to auto-assign user to project",
           );
           return null;
@@ -342,7 +343,7 @@ async function setDefaultProjectInSession(expectedSession: {
       userRole: defaultProject.role || "project_viewer",
     };
   } catch (error) {
-    logger.error({ error }, "Failed to set default project");
+    logger.error({ error: safeErrorFields(error) }, "Failed to set default project");
     return null;
   }
 }
@@ -419,7 +420,7 @@ export async function switchProject(
       project: projectContext,
     };
   } catch (error) {
-    logger.error({ error, projectId }, "Failed to switch project");
+    logger.error({ error: safeErrorFields(error), projectId }, "Failed to switch project");
     return { success: false, message: "Failed to switch project" };
   }
 }

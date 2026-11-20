@@ -3,7 +3,7 @@ import { mkdtempSync, writeFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-let storedUrl: string | null = 'https://demo.supercheck.io'
+let storedUrl: string | null = 'https://supercheck.example.com'
 const checkAll = jest.fn<(...args: unknown[]) => []>(() => [])
 jest.unstable_mockModule('../../utils/deps.js', () => ({ checkAllDependencies: checkAll, formatDependencyReport: () => '', installPlaywrightBrowsers: jest.fn(async () => true) }))
 jest.unstable_mockModule('../../auth/store.js', () => ({ isAuthenticated: () => true, getToken: () => 'tok', getStoredBaseUrl: () => storedUrl }))
@@ -20,7 +20,7 @@ const { detectConfigRequirements } = await import('../../utils/config-text.js')
 
 let dir: string
 let cwd: string
-beforeEach(() => { outputFormat = 'table'; output.mockClear(); storedUrl = 'https://demo.supercheck.io'; apiGet.mockClear(); dir = mkdtempSync(join(tmpdir(), 'sc-doctor-')); cwd = process.cwd(); process.chdir(dir); checkAll.mockClear(); info.mockClear(); warn.mockClear() })
+beforeEach(() => { outputFormat = 'table'; output.mockClear(); storedUrl = 'https://supercheck.example.com'; apiGet.mockClear(); dir = mkdtempSync(join(tmpdir(), 'sc-doctor-')); cwd = process.cwd(); process.chdir(dir); checkAll.mockClear(); info.mockClear(); warn.mockClear() })
 afterEach(() => { process.chdir(cwd); rmSync(dir, { recursive: true, force: true }) })
 const config = (tests: string) => writeFileSync(join(dir, 'supercheck.config.ts'), `export default { project: { organization: 'o', project: 'p' }, ${tests} }\n`)
 const lastArgs = () => checkAll.mock.calls.at(-1)![1] as { requirePlaywright: boolean; requireK6: boolean; browser: string }
@@ -182,7 +182,7 @@ describe('doctor with a config that declares its own API URL', () => {
   })
   it('does not treat SUPERCHECK_URL as agreement with a hand-written literal', async () => {
     writeFileSync(join(dir, 'supercheck.config.ts'), "export default { api: { baseUrl: 'https://checks.example.com' }, project: { organization: 'o', project: 'p' } }\n")
-    process.env.SUPERCHECK_URL = 'https://demo.supercheck.io'
+    process.env.SUPERCHECK_URL = 'https://supercheck.example.com'
     try {
       await doctorCommand.parseAsync(['node', 'doctor'])
     } finally {
@@ -192,13 +192,13 @@ describe('doctor with a config that declares its own API URL', () => {
   })
   it('reads supercheck.config.local.ts first, because it overrides the main config', async () => {
     selfHosted()
-    writeFileSync(join(dir, 'supercheck.config.local.ts'), "export default { api: { baseUrl: 'https://demo.supercheck.io' } }\n")
+    writeFileSync(join(dir, 'supercheck.config.local.ts'), "export default { api: { baseUrl: 'https://supercheck.example.com' } }\n")
     await doctorCommand.parseAsync(['node', 'doctor'])
     expect(info.mock.calls.flat().join(' ')).not.toMatch(/targets/)
   })
   it('says nothing extra when SUPERCHECK_URL is set, since the config follows it', async () => {
     selfHosted()
-    process.env.SUPERCHECK_URL = 'https://demo.supercheck.io'
+    process.env.SUPERCHECK_URL = 'https://supercheck.example.com'
     try {
       await doctorCommand.parseAsync(['node', 'doctor'])
     } finally {

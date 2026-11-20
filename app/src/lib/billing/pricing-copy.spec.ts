@@ -1,4 +1,20 @@
-import { PRICING_FAQS } from "./pricing-copy";
+import catalog from "./plan-catalog.json";
+import { PRICING_FAQS, planFeatureList } from "./pricing-copy";
+
+describe("planFeatureList", () => {
+  it("gives Pro the extra-seat hint and Plus a plain members line", () => {
+    const plus = planFeatureList("plus", catalog.plus.limits);
+    const pro = planFeatureList("pro", catalog.pro.limits);
+    expect(plus).toContain(`${catalog.plus.limits.maxTeamMembers} team members, ${catalog.plus.limits.maxProjects} projects`);
+    expect(pro).toContainEqual(expect.objectContaining({ hint: expect.stringContaining("per extra member") }));
+    expect(plus).toContainEqual(expect.objectContaining({ text: "$70 default overage cap" }));
+    expect(plus.at(-1)).toBe("Email support");
+    expect(pro.at(-1)).toBe("Priority email support");
+    expect(planFeatureList("plus", catalog.plus.limits, "$0.01/min Playwright")).toContainEqual(
+      expect.objectContaining({ hint: expect.stringContaining("Overage: $0.01/min Playwright") }),
+    );
+  });
+});
 
 describe("PRICING_FAQS", () => {
   it("has unique, non-empty questions and answers", () => {
@@ -10,10 +26,10 @@ describe("PRICING_FAQS", () => {
     }
   });
 
-  it("carries the trial questions from the shared catalog, once, before the generic try-it question", () => {
+  it("carries the trial questions from the shared catalog, once", () => {
     const questions = PRICING_FAQS.map((faq) => faq.question);
     expect(questions).toEqual(expect.arrayContaining(["Is there a free trial?", "What happens when the free trial ends?"]));
-    expect(questions.indexOf("Is there a free trial?")).toBeLessThan(questions.indexOf("Can I try Supercheck before subscribing?"));
+    expect(questions.filter((question) => question === "Is there a free trial?")).toHaveLength(1);
     expect(questions.some((question) => /self-host/i.test(question))).toBe(false);
   });
 

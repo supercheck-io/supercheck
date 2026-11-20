@@ -21,6 +21,7 @@ const delivery = {
   organizationId: "org",
   organizationName: "Acme",
   daysRemaining: 7,
+  browserMinutes: 1000,
   recipients: ["owner@example.com"],
 };
 

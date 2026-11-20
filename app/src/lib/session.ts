@@ -6,6 +6,7 @@
  */
 
 import { cache } from "react";
+import { safeErrorFields } from "@/lib/log-safe-error";
 import { auth } from "@/utils/auth";
 import { headers } from "next/headers";
 import { db } from "@/utils/db";
@@ -138,7 +139,7 @@ async function loadCurrentUser(): Promise<UserSession | null> {
   } catch (error) {
     // DYNAMIC_SERVER_USAGE errors are expected during Next.js static generation
     if (!isDynamicServerUsageError(error)) {
-      console.error("Error getting current user:", error);
+      console.error("Error getting current user:", safeErrorFields(error));
     }
     return null;
   }
@@ -196,7 +197,7 @@ export async function getActiveOrganization(): Promise<OrganizationWithRole | nu
     return { ...fallback, isActive: true };
   } catch (error) {
     if (!isDynamicServerUsageError(error)) {
-      console.error("Error getting active organization:", error);
+      console.error("Error getting active organization:", safeErrorFields(error));
     }
     return null;
   }
@@ -257,7 +258,7 @@ export async function getActiveProject(): Promise<ProjectWithRole | null> {
   } catch (error) {
     // DYNAMIC_SERVER_USAGE errors are expected during Next.js static generation
     if (!isDynamicServerUsageError(error)) {
-      console.error("Error getting active project:", error);
+      console.error("Error getting active project:", safeErrorFields(error));
     }
     return null;
   }
@@ -305,7 +306,7 @@ async function loadUserOrganizations(
   } catch (error) {
     // DYNAMIC_SERVER_USAGE errors are expected during Next.js static generation
     if (!isDynamicServerUsageError(error)) {
-      console.error("Error getting user organizations:", error);
+      console.error("Error getting user organizations:", safeErrorFields(error));
     }
     return [];
   }
@@ -380,7 +381,7 @@ export async function getUserProjects(
   } catch (error) {
     // DYNAMIC_SERVER_USAGE errors are expected during Next.js static generation
     if (!isDynamicServerUsageError(error)) {
-      console.error("Error getting user projects:", error);
+      console.error("Error getting user projects:", safeErrorFields(error));
     }
     return [];
   }
@@ -486,7 +487,7 @@ export async function getUserProjectRole(
   } catch (error) {
     // DYNAMIC_SERVER_USAGE errors are expected during Next.js static generation
     if (!isDynamicServerUsageError(error)) {
-      console.error("Error getting user project role:", error);
+      console.error("Error getting user project role:", safeErrorFields(error));
     }
     return Role.PROJECT_VIEWER;
   }

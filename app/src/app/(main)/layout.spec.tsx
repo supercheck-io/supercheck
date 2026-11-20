@@ -30,7 +30,6 @@ jest.mock("@/components/ui/command-search", () => ({}));
 jest.mock("@/components/setup-checker", () => ({}));
 jest.mock("@/hooks/use-project-context", () => ({}));
 jest.mock("@/components/nav-user", () => ({}));
-jest.mock("@/components/demo-badge", () => ({}));
 jest.mock("@/components/community-links", () => ({}));
 jest.mock("@/components/subscription-guard", () => ({}));
 jest.mock("@/components/auth-guard", () => ({}));

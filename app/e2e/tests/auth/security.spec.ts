@@ -35,7 +35,7 @@ function requireCredentials(): { email: string; password: string } {
 async function authenticateContext(page: Page): Promise<void> {
   const credentials = requireCredentials();
   // Better Auth limits sign-ins to 3 per 10 seconds per IP, and the shared
-  // demo IP budget can already be consumed by other suite traffic.
+  // IP budget can already be consumed by other suite traffic.
   const response = await signInWithRetry(page.request, credentials);
   expect(response.status(), await response.text()).toBe(200);
 }
@@ -180,7 +180,7 @@ test.describe("Security - CSRF Protection @auth @security", () => {
     if (status === 429) {
       // Fail-closed rejections before origin validation: Better Auth's per-IP
       // rate limit, or the login-lockout hook, which answers with its own 429
-      // once the shared demo identity/IP bucket is locked. Assert the known
+      // once the shared identity/IP bucket is locked. Assert the known
       // contract so another response cannot accidentally mask the CSRF check.
       expect(body.message).toMatch(/too many requests|too many sign-in attempts|account temporarily locked/i);
 
