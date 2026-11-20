@@ -19,6 +19,7 @@ Notable changes to `@supercheck/cli`. The format follows [Keep a Changelog](http
 
 ### Fixed
 
+- `link` and `discover` look for `supercheck.config.ts`, then `.js`, then `.mjs`, the same order as the config loader. Before, `link` checked `.mjs` before `.js`, so a project with both files could be linked to a file the CLI then ignored.
 - **`deploy` failures say what the server rejected.** A rejected create or update now shows the server's validation message after the status code (for example `config.url must be https`), instead of only `API request failed: POST /api/monitors → 400`.
 - **`deploy --verify` reports in table output.** It prints one line per test (`✓ verified`, `✗ failed` or `– skipped` with the reason) instead of nothing; `--json` output is unchanged.
 - **`deploy` shows readable field errors.** Field errors read `field: message; field2: message`, cut at a whole item instead of mid-text.
