@@ -1,6 +1,6 @@
 import { list, USER_AGENT, type Env, type Tool } from "./env";
 import { isReservedIp } from "./ip-ranges";
-import { checkUrl, registrable } from "./url-policy";
+import { checkUrl, hostReason, registrable } from "./url-policy";
 
 export const SUBREQUEST_BUDGET = 40;
 // DoH and service calls answer fast; targets get longer so a slow site reads as slow, not down.
@@ -103,7 +103,13 @@ export class CheckContext {
   private async resolveGuard(host: string): Promise<string | null> {
     try {
       const answers = await Promise.all([this.doh(host, "A"), this.doh(host, "AAAA")]);
-      const addresses = answers.flat();
+      // An alias onto a reserved or own-product name is refused like the name itself. Shared platform hosts
+      // (pages.dev, workers.dev) are normal CNAME targets for customer sites, so they only count when typed in directly.
+      for (const alias of answers.flatMap((a) => a.aliases)) {
+        const reason = hostReason(alias, this.blocked);
+        if (reason && reason !== "platform_host") return reason;
+      }
+      const addresses = answers.flatMap((a) => a.addresses);
       if (addresses.length === 0) return "no_address";
       return addresses.some(isReservedIp) ? "private_address" : null;
     } catch (error) {
@@ -113,16 +119,20 @@ export class CheckContext {
     }
   }
 
-  private async doh(host: string, type: "A" | "AAAA"): Promise<string[]> {
+  private async doh(host: string, type: "A" | "AAAA"): Promise<{ addresses: string[]; aliases: string[] }> {
     const res = await this.fetch(`${DOH}?name=${encodeURIComponent(host)}&type=${type}`, {
       headers: { accept: "application/dns-json" },
     });
     if (!res.ok) throw new Error("doh_http");
     const body = (await res.json()) as { Status?: number; Answer?: { type: number; data: string }[] };
-    if (body.Status === 3) return [];
+    if (body.Status === 3) return { addresses: [], aliases: [] };
     if (body.Status !== 0) throw new Error("doh_status");
     const code = type === "A" ? 1 : 28;
-    return (body.Answer ?? []).filter((a) => a.type === code).map((a) => a.data);
+    const answer = body.Answer ?? [];
+    return {
+      addresses: answer.filter((a) => a.type === code).map((a) => a.data),
+      aliases: answer.filter((a) => a.type === 5).map((a) => a.data),
+    };
   }
 }
 

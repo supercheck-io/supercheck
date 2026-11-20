@@ -31,7 +31,6 @@ import { toast } from "sonner";
 import { deleteTest } from "@/actions/delete-test";
 import { useTestPermissions } from "@/hooks/use-rbac-permissions";
 
-import { testSchema } from "./schema";
 import { useQueryClient } from "@tanstack/react-query";
 import { TESTS_QUERY_KEY } from "@/hooks/use-tests";
 import { DASHBOARD_QUERY_KEY } from "@/hooks/use-dashboard";
@@ -49,19 +48,9 @@ export function DataTableRowActions<TData>({
   const queryClient = useQueryClient();
   const { canEditTest, canDeleteTest } = useTestPermissions();
 
-  // Use safeParse instead of parse to handle validation errors
-  const parsedTest = testSchema.safeParse(row.original);
-
-  // If parsing fails, provide default values to prevent errors
-  const test = parsedTest.success
-    ? parsedTest.data
-    : {
-      id: (row.original as unknown as { id?: string })?.id || "",
-      title: (row.original as unknown as { title?: string })?.title || "Untitled Test",
-      description: (row.original as unknown as { description?: string | null })?.description || null,
-      priority: "medium",
-      type: "browser",
-    };
+  // Only the id and title are read here; zod stays out of the list page bundle.
+  const original = row.original as { id?: string; title?: string } | undefined;
+  const test = { id: original?.id || "", title: original?.title || "Untitled Test" };
 
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);

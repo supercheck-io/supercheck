@@ -18,7 +18,7 @@ const AUTH_MAX_ATTEMPTS = 3;
 const AUTH_RETRY_FALLBACK_SECONDS = 2;
 const AUTH_RETRY_MAX_SECONDS = 30;
 
-// Longest shell we are willing to sit out inside a single test. The demo
+// Longest shell we are willing to sit out inside a single test. The app
 // escalates to 5/15/60-minute lockouts, and those mean the run cannot proceed
 // with the shared identity, so they must fail loudly instead of stalling.
 const AUTH_LOCKOUT_MAX_WAIT_SECONDS = 35;
@@ -32,7 +32,7 @@ type SignInLockoutState = {
 /**
  * Wait out an active login lockout before a sign-in is attempted.
  *
- * The demo enforces a progressive lockout (30s after 5 failed attempts, then
+ * The app enforces a progressive lockout (30s after 5 failed attempts, then
  * 5/15/60 minutes). A locked identity is rejected by the sign-in pre-check
  * before any credential request is sent, so a naive sign-in cannot tell a
  * lockout from a broken form: it just times out waiting for a redirect.

@@ -1,21 +1,19 @@
 "use client";
 
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Check, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import type { PlanFeature } from "@/lib/billing/pricing-copy";
 
 interface PricingTierCardProps {
   name: string;
-  price?: number | string;
+  price?: number;
   priceInterval?: string;
   tagline: string;
   badge?: string;
-  keyFeatures: string[];
-  overageText?: string;
+  features: PlanFeature[];
   ctaText: string;
-  ctaVariant?: "default" | "outline";
   ctaHref?: string;
   onCtaClick?: () => void;
   loading?: boolean;
@@ -23,134 +21,78 @@ interface PricingTierCardProps {
   highlighted?: boolean;
 }
 
+/** One column of the joined plan grid; matches the plan columns on the marketing pricing page. */
 export function PricingTierCard({
   name,
   price,
   priceInterval,
   tagline,
   badge,
-  keyFeatures,
-  overageText,
+  features,
   ctaText,
-  ctaVariant = "outline",
   ctaHref,
   onCtaClick,
   loading = false,
   disabled = false,
   highlighted = false,
 }: PricingTierCardProps) {
+  const ctaClass = "mt-8 w-full sm:w-auto sm:self-start";
+  const variant = highlighted ? "default" : "outline";
   return (
-    <Card
+    <div
       className={cn(
-        "relative h-full flex flex-col shadow-none",
-        highlighted
-          ? "border-primary bg-primary/5"
-          : "border",
+        "flex flex-col p-6 sm:p-8 [&:not(:first-child)]:border-t lg:[&:not(:first-child)]:border-t-0 lg:[&:not(:first-child)]:border-l",
+        highlighted ? "bg-background" : "bg-card",
       )}
     >
-      {badge && (
-        <div className="absolute -top-3 left-1/2 -translate-x-1/2 z-10">
-          <Badge
-            className={cn(
-              "rounded-full px-2.5 py-1 text-xs font-semibold",
-              highlighted
-                ? "bg-primary text-primary-foreground border-0"
-                : "bg-muted text-muted-foreground border-0",
-            )}
-          >
+      <div className="flex items-center gap-2">
+        <h2 className="text-sm font-medium">{name}</h2>
+        {badge && (
+          <Badge variant="outline" className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
             {badge}
           </Badge>
-        </div>
-      )}
-
-      <CardHeader className="space-y-4 pb-6">
-        {/* Plan Name and Tagline */}
-        <div>
-          <h2 className="text-2xl font-bold tracking-tight">{name}</h2>
-          <p className="text-sm text-muted-foreground mt-1">{tagline}</p>
-        </div>
-
-        {/* Price */}
-        {price !== undefined && (
-          <div className="flex items-baseline gap-1">
-            {typeof price === "number" ? (
-              <>
-                <span className="text-5xl font-bold tracking-tight">
-                  ${price}
-                </span>
-                {priceInterval && (
-                  <span className="text-base text-muted-foreground font-medium">
-                    /{priceInterval}
-                  </span>
-                )}
-              </>
-            ) : (
-              <span className="text-4xl font-bold tracking-tight">{price}</span>
-            )}
-          </div>
         )}
-      </CardHeader>
-
-      <CardContent className="space-y-6 flex-1 flex flex-col pt-0">
-        {/* Key Features */}
-        <ul className="space-y-3 flex-1">
-          {keyFeatures.map((feature, index) => (
-            <li key={index} className="flex items-start gap-3">
-              <Check
-                aria-hidden="true"
-                className="mt-0.5 h-4 w-4 shrink-0 text-primary"
-                strokeWidth={2}
-              />
-              <span className="text-sm leading-5 text-foreground/90">
-                {feature}
+      </div>
+      <div className="mt-4 flex items-baseline gap-1.5">
+        <span className="text-5xl font-semibold tracking-tight">
+          {price === undefined ? "Custom" : `$${price}`}
+        </span>
+        {price !== undefined && priceInterval && (
+          <span className="font-mono text-sm text-muted-foreground">/{priceInterval}</span>
+        )}
+      </div>
+      <p className="mt-4 min-h-10 max-w-xs text-pretty text-sm text-muted-foreground">{tagline}</p>
+      <ul className="mt-6 flex-1 space-y-3 border-t pt-6">
+        {features.map((feature) => {
+          const text = typeof feature === "string" ? feature : feature.text;
+          const hint = typeof feature === "string" ? null : feature.hint;
+          return (
+            <li key={text} className="flex items-start gap-3 text-sm leading-6">
+              <Check aria-hidden="true" className="mt-1 size-4 shrink-0 text-muted-foreground" />
+              <span className="min-w-0">
+                {text}
+                {hint && <span className="block text-xs text-muted-foreground">{hint}</span>}
               </span>
             </li>
-          ))}
-        </ul>
-
-        {/* CTA Button */}
-        {ctaHref ? (
-          <Button
-            className="w-full h-11 text-sm font-semibold"
-            size="lg"
-            variant={highlighted ? "default" : ctaVariant}
-            asChild
-          >
-            <a href={ctaHref} aria-label={`${ctaText} about ${name}`}>
-              {ctaText}
-            </a>
-          </Button>
-        ) : (
-          <Button
-            className="w-full h-11 text-sm font-semibold"
-            size="lg"
-            variant={highlighted ? "default" : ctaVariant}
-            onClick={onCtaClick}
-            disabled={loading || disabled}
-          >
-            {loading ? (
-              <>
-                <Loader2
-                  aria-hidden="true"
-                  className="animate-spin mr-2 h-4 w-4"
-                />
-                Opening checkout...
-              </>
-            ) : (
-              ctaText
-            )}
-          </Button>
-        )}
-
-        {/* Overage Pricing */}
-        {overageText && (
-          <div className="pt-4 border-t border-border/50">
-            <p className="text-xs text-muted-foreground text-center leading-relaxed">
-              {overageText}
-            </p>
-          </div>
-        )}
-      </CardContent>
-    </Card>
+          );
+        })}
+      </ul>
+      {ctaHref ? (
+        <Button className={ctaClass} variant={variant} asChild>
+          <a href={ctaHref}>{ctaText}</a>
+        </Button>
+      ) : (
+        <Button className={ctaClass} variant={variant} onClick={onCtaClick} disabled={loading || disabled}>
+          {loading ? (
+            <>
+              <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" />
+              Opening checkout...
+            </>
+          ) : (
+            ctaText
+          )}
+        </Button>
+      )}
+    </div>
   );
 }

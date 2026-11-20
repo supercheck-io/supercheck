@@ -5,8 +5,8 @@ import { TrialCard } from "./trial-card";
 describe("TrialCard", () => {
   it("lists what the trial includes", () => {
     render(<TrialCard durationDays={30} highlights={["5 monitors", "150 browser minutes"]} />);
-    expect(screen.getByRole("heading", { name: "What your free trial includes" })).toBeInTheDocument();
-    expect(screen.getByText(/30 days, no card required/)).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Your 30-day free trial includes" })).toBeInTheDocument();
+    expect(screen.getByText(/Custom domains are on paid plans/)).toBeInTheDocument();
     expect(screen.getAllByRole("listitem").map((li) => li.textContent)).toEqual(["5 monitors", "150 browser minutes"]);
   });
 });

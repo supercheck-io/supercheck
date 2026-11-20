@@ -42,7 +42,7 @@ async function withFetch(fetchImpl: FetchImpl, run: () => Promise<void>) {
 test('compares instance URLs by origin', () => {
   expect(isSameInstance('https://app.supercheck.io', 'https://app.supercheck.io/')).toBe(true);
   expect(isSameInstance('https://app.supercheck.io/dashboard', 'https://app.supercheck.io')).toBe(true);
-  expect(isSameInstance('https://app.supercheck.io', 'https://demo.supercheck.dev')).toBe(false);
+  expect(isSameInstance('https://app.supercheck.io', 'https://self-hosted.example.com')).toBe(false);
   expect(isSameInstance('http://localhost:3000', 'https://localhost:3000')).toBe(false);
   expect(isSameInstance(undefined, 'https://app.supercheck.io')).toBe(false);
 });
@@ -82,7 +82,7 @@ test('verifies the recorder credential through the extension endpoint', async ()
 
 test('reports an invalid key without throwing', async () => {
   await withStorage(
-    { instanceUrl: 'https://demo.supercheck.dev', apiKey: 'ext-stale' },
+    { instanceUrl: 'https://app.supercheck.io', apiKey: 'ext-stale' },
     async () => {
       await withFetch(
         (async () => new Response(JSON.stringify({ success: false }), { status: 401 })) as FetchImpl,

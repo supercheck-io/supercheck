@@ -16,7 +16,7 @@ import {
 } from "fumadocs-ui/components/ui/navigation-menu";
 import { ArrowRight, ChevronDown, Menu, Search, X } from "lucide-react";
 import { ThemeToggle } from "./theme-toggle";
-import { DEMO_URL, GITHUB_URL, isExternal, navMenus, type NavItem, type NavMenu } from "../lib/site-nav";
+import { GITHUB_URL, isExternal, navMenus, type NavItem, type NavMenu } from "../lib/site-nav";
 
 const focusRing =
   "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fd-primary";
@@ -198,15 +198,14 @@ function MobileNav({ open, onClose }: { open: boolean; onClose: () => void }) {
           <Link href="/pricing" onClick={onClose} className={`${focusRing} rounded-md text-sm font-semibold`}>
             Pricing
           </Link>
-          <a
-            href={DEMO_URL}
-            target="_blank"
-            rel="noopener noreferrer"
+          <Link
+            href="/docs/app/deployment/self-hosted"
+            onClick={onClose}
             className={`${focusRing} inline-flex items-center justify-center gap-2 rounded-md bg-fd-foreground px-4 py-2.5 text-sm font-medium text-fd-background`}
           >
-            Try the live demo
+            Self-host Supercheck
             <ArrowRight className="size-4" aria-hidden="true" />
-          </a>
+          </Link>
         </div>
       </nav>
     </div>
@@ -264,14 +263,12 @@ export function SiteHeader() {
           <ThemeToggle
             className={`${focusRing} inline-flex rounded-md p-2 text-fd-muted-foreground transition-colors hover:text-fd-foreground`}
           />
-          <a
-            href={DEMO_URL}
-            target="_blank"
-            rel="noopener noreferrer"
+          <Link
+            href="/docs/app/deployment/self-hosted"
             className={`${focusRing} ml-1 hidden rounded-md bg-fd-foreground px-3 py-1.5 text-sm font-medium text-fd-background transition-opacity hover:opacity-85 lg:inline-flex`}
           >
-            Live demo
-          </a>
+            Self-host
+          </Link>
           <button
             type="button"
             id="mobile-nav-toggle"

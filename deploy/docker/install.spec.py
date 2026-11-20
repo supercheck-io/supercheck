@@ -54,11 +54,6 @@ class InstallerTests(unittest.TestCase):
         self.assertNotIn('-t raw -I OUTPUT', source)
         self.assertIn('resources: ["events"]', source)
 
-    def test_demo_deploy_refreshes_execution_plane_before_rolling_the_worker(self):
-        source = (DEPLOY.parent.parent / '.github/scripts/deploy-demo.sh').read_text()
-        self.assertIn('--execution-plane-only', source)
-        self.assertLess(source.index('\nif ! refresh_execution_plane; then'), source.index('\nif ! compose_up_app_worker never; then'))
-
     def test_execution_dns_only_reaches_the_cluster_resolver(self):
         dns_rule = self._execution_policy().split('egress:', 1)[1].split('ipBlock:', 1)[0]
         self.assertIn('kubernetes.io/metadata.name: kube-system', dns_rule)
@@ -443,27 +438,6 @@ umask 022
         self.assertEqual((self.root / 'worker.kubeconfig').stat().st_mode & 0o777, 0o440)
         self.assertEqual(len(list(self.root.glob('worker.kubeconfig.*'))), 0)
 
-    def test_demo_deployment_requires_completed_storage_migration(self):
-        source = (DEPLOY.parent.parent / '.github/scripts/deploy-demo.sh').read_text()
-        start = source.index('ensure_storage_migrated() {')
-        end = source.index('\n}', start) + 2
-        function = source[start:end]
-        for legacy, orphan, code in [('minio', '', 78), ('rustfs', 'old-minio-id', 78), ('rustfs', '', 0)]:
-            with self.subTest(legacy=legacy, orphan=orphan):
-                self.run_shell(function + r'''
-COMPOSE_FILE=docker-compose-secure.yml
-docker() {
-  case "$*" in
-    *'config --services'*) printf '%s\n' app worker "$LEGACY_SERVICE" ;;
-    *'config'*) echo 'name: custom-demo' ;;
-    *'ps -aq'*)
-      [[ "$*" == *'label=com.docker.compose.project=custom-demo'* ]] || return 1
-      printf '%s' "$ORPHAN" ;;
-    *) return 1 ;;
-  esac
-}
-''' + f'LEGACY_SERVICE={legacy}\nORPHAN={orphan}\nensure_storage_migrated || exit 78\n', code)
-
     def test_admin_mode_upgrade_handles_systemd_argument_formats(self):
         source = (DEPLOY / 'setup-k3s.sh').read_text()
         start = source.index('secure_kubeconfig() {')
@@ -563,25 +537,6 @@ echo S3_ENDPOINT=http://rustfs:9000 > "$COMPOSE_DIR/.env"
 preflight
 ''', 1)
         self.assertIn('MinIO', output)
-
-    def test_demo_guard_handles_a_quoted_numeric_project_name(self):
-        source = (DEPLOY.parent.parent / '.github/scripts/deploy-demo.sh').read_text()
-        start = source.index('ensure_storage_migrated() {')
-        end = source.index('\n}', start) + 2
-        self.run_shell(source[start:end] + r'''
-COMPOSE_FILE=docker-compose-secure.yml
-docker() {
-  case "$*" in
-    *'config --services'*) printf '%s\n' app worker rustfs ;;
-    *'config'*) echo 'name: "00123"' ;;
-    *'ps -aq'*)
-      [[ "$*" != *'label=com.docker.compose.project=00123'* ]] || echo old-minio-id
-      return 0 ;;
-    *) return 1 ;;
-  esac
-}
-ensure_storage_migrated || exit 78
-''', 78)
 
     def test_explicit_ignore_rejects_retained_minio_container(self):
         output = self.run_shell(r'''uname() { [[ "$1" == -s ]] && echo Linux || echo x86_64; }

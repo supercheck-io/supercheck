@@ -123,7 +123,7 @@ Link the connector's service to an incident and run an investigation with **Incl
 | **pending** | Registered or rotated, not connected yet |
 | **connected** | Heartbeats are arriving |
 | **disconnected** | No heartbeat for 90 seconds |
-| **unhealthy** | Connected, but it reported a problem |
+| **unhealthy** | Connected, but its last attempt to reach Supercheck (polling for a job or sending a result) failed. It returns to **connected** after the next successful poll |
 | **disabled** | Turned off permanently; register a new agent to replace it |
 
 ![Private agents in organization settings](/screenshots/org-admin-private-agents.png)
@@ -144,7 +144,10 @@ Loopback addresses such as `localhost` and cloud metadata endpoints (AWS, GCP, A
 
 | Response | Limit |
 |---|---|
-| Provider response | Truncated over 4 MiB (Jira and Confluence: 2 MiB) |
+| Splunk response | Truncated over 4 MiB; the partial last line is dropped |
+| Other provider responses (New Relic, Azure Monitor, Google Cloud Monitoring, Jaeger) | Over 4 MiB fails the query |
+| Jira and Confluence response | Over 2 MiB fails the query |
+| MCP connector response | Over 4 times the query byte budget (minimum 64 KiB, maximum 2 MiB) fails the query |
 | Any other connector response | Over 10 MiB fails the query |
 | Job result sent back by the agent | 1 MiB |
 

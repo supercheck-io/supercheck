@@ -1,5 +1,6 @@
 import { getExecutionPolicy, assertExecutionWorkload, ExecutionWorkloadError, type ExecutionPolicy } from "./execution/execution-policy";
 import Redis from "ioredis";
+import { watchConsumer } from "./consumer-watchdog";
 import { checkCapacityLimits } from "./middleware/plan-enforcement";
 
 // =============================================================================
@@ -1059,6 +1060,9 @@ export async function setupCapacityManagement(
     queueEvents.playwrightEvents['global'],
     ...Object.values(queueEvents.k6Events),
   ].filter(Boolean);
+
+  // A QueueEvents whose connection ended stops releasing slots; the watchdog revives it.
+  allEvents.forEach(watchConsumer);
 
   // Helper to get org ID for a job
   // Returns null if org cannot be determined (reconciliation will fix any drift)
