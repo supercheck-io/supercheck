@@ -1,7 +1,7 @@
 import { liveJob, liveMonitor } from "@/lib/deletion/visibility";
 import { isUuid } from "@/lib/uuid";
 import { NextRequest, NextResponse } from 'next/server';
-import { hasPermissionForUser, getUserOrgRole, forbiddenOrNotFound } from '@/lib/rbac/middleware';
+import { hasPermissionForUser, getUserOrgRole, forbiddenOrNotFound, isImpersonatedSession } from '@/lib/rbac/middleware';
 import { resolveEffectiveProjectRole } from '@/lib/rbac/effective-project-role';
 import { requireUserAuthContext, isAuthError, authErrorStatus } from '@/lib/auth-context';
 import { db } from '@/utils/db';
@@ -238,6 +238,9 @@ export async function DELETE(
     if (originError) return originError;
     if (isCliAuth) {
       return NextResponse.json({ error: "Organization administration requires an interactive browser session; CLI tokens are project-scoped" }, { status: 403 });
+    }
+    if (await isImpersonatedSession()) {
+      return NextResponse.json({ error: "Stop impersonating before deleting a project" }, { status: 403 });
     }
     const projectId = resolvedParams.id;
     

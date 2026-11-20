@@ -3,6 +3,7 @@ import { NextRequest } from "next/server";
 const mockStanding = { value: true };
 jest.mock("@/lib/rbac/middleware", () => ({
   hasPermissionForUser: jest.fn(),
+  isImpersonatedSession: jest.fn(),
   // Stands in for the real helper: 403 for an org member, 404 for a caller with no standing in the org.
   forbiddenOrNotFound: jest.fn(async (_u: string, _o: string, forbidden: string, notFound: string) => {
     const { NextResponse } = jest.requireActual("next/server");
@@ -24,7 +25,7 @@ import { DELETE, GET, PUT } from "./route";
 import { PgDialect } from "drizzle-orm/pg-core";
 import { db } from "@/utils/db";
 import { deleteScheduledJob } from "@/lib/job-scheduler";
-import { hasPermissionForUser } from "@/lib/rbac/middleware";
+import { hasPermissionForUser, isImpersonatedSession } from "@/lib/rbac/middleware";
 import { requireUserAuthContext } from "@/lib/auth-context";
 import { logAuditEvent } from "@/lib/audit-logger";
 import { unscheduleMonitors } from "@/lib/execution/trial-lifecycle";
@@ -49,6 +50,7 @@ beforeEach(() => {
   mockStanding.value = true;
   (requireUserAuthContext as jest.Mock).mockResolvedValue({ userId: "u1" });
   (hasPermissionForUser as jest.Mock).mockResolvedValue(true);
+  (isImpersonatedSession as jest.Mock).mockResolvedValue(false);
   (db.select as jest.Mock).mockReturnValue(project());
   set.mockReturnValue({ where: () => ({ returning: async () => [{ id: ID }] }) });
   (db.update as jest.Mock).mockReturnValue({ set });
@@ -125,6 +127,16 @@ describe("CLI tokens", () => {
       expect(db.update).not.toHaveBeenCalled();
     },
   );
+});
+
+describe("impersonation", () => {
+  it("refuses to delete a project while a super admin is impersonating", async () => {
+    (isImpersonatedSession as jest.Mock).mockResolvedValue(true);
+    const response = await DELETE(new NextRequest(`http://localhost/api/projects/${ID}`, { method: "DELETE" }), { params: Promise.resolve({ id: ID }) });
+    expect(response.status).toBe(403);
+    expect(db.select).not.toHaveBeenCalled();
+    expect(softDeleteProject).not.toHaveBeenCalled();
+  });
 });
 
 describe("audit, conflicts and ordering", () => {
