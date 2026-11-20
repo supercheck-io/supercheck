@@ -145,7 +145,6 @@ class QueueEventHub extends EventEmitter {
     });
     this.queueEvents.push(events);
     watchConsumer(events);
-    watchConsumer(events);
 
     events.on("error", (error) => {
       eventHubLogger.error({ err: error }, 

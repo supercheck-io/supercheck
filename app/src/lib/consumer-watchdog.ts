@@ -73,7 +73,7 @@ function name(consumer: Consumer): string {
   return (consumer as { name?: string }).name ?? "redis";
 }
 
-/** "ok" | "broken" | "reconnecting" (ioredis is working on it; the clock stays where it is). */
+/** "ok" | "broken" | "reconnecting" (ioredis is working on it, so Redis is not known to be reachable). */
 async function check(consumer: Consumer): Promise<"ok" | "broken" | "reconnecting"> {
   if ("status" in consumer) return pingClient(consumer as Redis, "shared Redis client");
   const isWorker = "blockingConnection" in consumer;
@@ -88,7 +88,10 @@ async function check(consumer: Consumer): Promise<"ok" | "broken" | "reconnectin
     blocking.connect().catch(() => undefined);
     return "broken";
   }
-  if (!isWorker) return blocking.status === "ready" ? "ok" : "reconnecting";
+  if (!isWorker) {
+    if (blocking.status !== "ready") return "reconnecting";
+    return (consumer as unknown as { running?: boolean }).running === false ? "broken" : "ok";
+  }
 
   const worker = consumer as Worker;
   const client = (await withTimeout(worker.client)) as unknown as Redis;
@@ -108,6 +111,8 @@ async function pingClient(client: Redis, label: string): Promise<"ok" | "broken"
     return "ok";
   } catch (error) {
     // A command that neither fails nor answers on a "ready" client means a half-open socket.
+    // Only while still ready: disconnect() on a client already resolving the master can end it for good.
+    if (client.status !== "ready") return "reconnecting";
     logger.warn({ queue: label, err: error }, "Redis PING failed; forcing reconnect");
     client.disconnect(true);
     return "broken";
@@ -130,10 +135,12 @@ export async function probeConsumers(now = Date.now()): Promise<void> {
         try {
           result = await check(consumer);
         } catch {
-          result = "broken";
+          // BullMQ's client promise is still pending: it is waiting for Redis to come up.
+          result = "reconnecting";
         }
-        if (result === "ok") state.brokenSince.delete(consumer);
-        else if (result === "broken" && !state.brokenSince.has(consumer)) {
+        // Redis is not shown reachable while reconnecting, so a long outage never counts as a dead consumer.
+        if (result !== "broken") state.brokenSince.delete(consumer);
+        else if (!state.brokenSince.has(consumer)) {
           state.brokenSince.set(consumer, now);
           logger.warn({ queue: name(consumer) }, "BullMQ consumer unhealthy");
         }

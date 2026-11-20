@@ -94,4 +94,41 @@ describe("consumer watchdog", () => {
     expect(events.connect).toHaveBeenCalledTimes(1);
     expect(shared.ping).toHaveBeenCalledTimes(1);
   });
+
+  it("never fails liveness across a long outage: end then reconnecting resets the clock", async () => {
+    const blocking = client("end");
+    watchConsumer(worker(blocking, client("reconnecting")));
+    await probeConsumers(1000);
+    blocking.status = "reconnecting";
+    await probeConsumers(2000);
+    expect(isConsumerHealthy(1000 + 2 * DEAD_AFTER_MS)).toBe(true);
+  });
+
+  it("does not count a client whose init promise never resolves (pod started while Redis was down)", async () => {
+    const pending = new Promise(() => undefined);
+    watchConsumer(worker(client(), client(), { client: pending, blockingConnection: { client: pending } }));
+    const probing = probeConsumers(1000);
+    await jest.advanceTimersByTimeAsync(5000);
+    await probing;
+    expect(isConsumerHealthy(1000 + DEAD_AFTER_MS)).toBe(true);
+  });
+
+  it("does not disconnect a client that left ready while the PING was pending", async () => {
+    const command = client();
+    command.ping.mockImplementation(() => {
+      command.status = "reconnecting";
+      return new Promise(() => undefined);
+    });
+    watchConsumer(worker(client(), command));
+    const probing = probeConsumers(1000);
+    await jest.advanceTimersByTimeAsync(5000);
+    await probing;
+    expect(command.disconnect).not.toHaveBeenCalled();
+  });
+
+  it("flags a QueueEvents whose consume loop exited", async () => {
+    watchConsumer({ name: "events", client: Promise.resolve(client()), closing: undefined, running: false } as never);
+    await probeConsumers(1000);
+    expect(isConsumerHealthy(1000 + DEAD_AFTER_MS)).toBe(false);
+  });
 });
