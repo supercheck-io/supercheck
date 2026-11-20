@@ -290,7 +290,7 @@ function AiEndpointButton({ requestedModel, latest, pending }: { requestedModel?
           AI details
         </Button>
       </PopoverTrigger>
-      <PopoverContent align="end" className="w-[min(22rem,calc(100vw-2rem))]" data-testid="ai-endpoint-panel">
+      <PopoverContent align="end" className="w-[min(22rem,calc(100vw-2rem))]" aria-label="AI endpoint details" data-testid="ai-endpoint-panel">
         <div className="space-y-1">
           <h4 className="text-sm font-semibold">AI endpoint</h4>
           <p className="text-xs text-muted-foreground">{pending ? "Shown after the first check." : "From the latest check."}</p>

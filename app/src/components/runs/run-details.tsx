@@ -391,10 +391,10 @@ export function RunDetails({
               </div>
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
           {showAgentCard ? <AgentResultsButton agent={agent} loading={agentLoading} error={agentError} /> : null}
           {!isNotificationView && (
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               {/* Loading permissions */}
               {permissionsLoading && (
                 <div className="h-9 px-3 flex items-center justify-center border rounded-md bg-muted/50 border-border/50">

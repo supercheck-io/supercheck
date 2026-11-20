@@ -52,6 +52,7 @@ export function AgentResultsButton({ agent, loading = false, error = false }: { 
       <PopoverContent
         align="end"
         className="max-h-[min(70vh,36rem)] w-[min(32rem,calc(100vw-2rem))] space-y-4 overflow-y-auto"
+        aria-label="Agent results"
         data-testid="agent-results-card"
       >
         <h4 className="text-sm font-semibold">Agent results</h4>
