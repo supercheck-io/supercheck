@@ -44,7 +44,15 @@ it("activates the current successful challenge", async () => {
   expect(db.update).toHaveBeenCalledTimes(2);
 });
 it("does not activate on an unsuccessful ownership check", async () => {
-  jest.mocked(sendWebhookVerificationChallenge).mockResolvedValue({ success: false, error: "No echo" });
+  jest.mocked(sendWebhookVerificationChallenge).mockResolvedValue({ success: false, statusCode: 200, error: "No echo" });
   await expect(sendWebhookChallenge(params)).resolves.toEqual({ verified: false, error: "No echo" });
   expect(insertWithinPlanLimit).not.toHaveBeenCalled();
+});
+it("hides network and address-policy detail when the endpoint never answered", async () => {
+  jest.spyOn(console, "warn").mockImplementation(() => {});
+  jest.mocked(sendWebhookVerificationChallenge).mockResolvedValue({
+    success: false,
+    error: "Direct cloud connectors cannot target private or reserved IP ranges",
+  });
+  await expect(sendWebhookChallenge(params)).resolves.toEqual({ verified: false, error: "Could not reach the endpoint" });
 });

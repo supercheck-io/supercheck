@@ -83,6 +83,20 @@ describe("DoH pre-check", () => {
     await expect(vet("alias.com")).rejects.toMatchObject({ reason: "no_address" });
   });
 
+  it.each([
+    ["app.supercheck.io.", "reserved_name"],
+    ["x.workers.dev.", "platform_host"],
+    ["db.internal.", "reserved_name"],
+  ])("refuses a public name that aliases onto %s", async (target, reason) => {
+    mockFetch({ "doh:alias.com": Response.json({ Status: 0, Answer: [{ type: 5, data: target }, { type: 1, data: "93.184.215.14" }] }) });
+    await expect(vet("alias.com")).rejects.toMatchObject({ reason });
+  });
+
+  it("allows an alias onto an ordinary public name", async () => {
+    mockFetch({ "doh:alias.com": Response.json({ Status: 0, Answer: [{ type: 5, data: "cdn.example-cdn.net." }, { type: 1, data: "93.184.215.14" }] }) });
+    await expect(vet("alias.com")).resolves.toBeUndefined();
+  });
+
   it("memoizes per check and allows public hosts", async () => {
     const { calls } = mockFetch({}, { "ok.com": ["93.184.215.14", "2606:4700::1"] });
     const ctx = ctxFor("uptime");

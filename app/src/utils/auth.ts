@@ -46,6 +46,7 @@ import {
 } from "@/lib/mcp/config";
 import { createMcpAuthPlugins } from "@/lib/mcp/auth-plugins";
 import { resolveConsentProject } from "@/lib/mcp/connect-project";
+import { AUTH_CLIENT_IP_HEADER, betterAuthRateLimitStorage } from "@/lib/auth/better-auth-rate-limit";
 
 /**
  * Get CAPTCHA plugin configuration if enabled
@@ -387,10 +388,13 @@ export const auth = betterAuth({
     ...getMcpPlugins(),
     nextCookies(),
   ],
+  // Shared across replicas and keyed on the client IP the app's proxy-trust rules resolve (withAuthClientIp).
+  rateLimit: { customStorage: betterAuthRateLimitStorage },
   advanced: {
     database: {
       generateId: () => uuidv7(),
     },
+    ipAddress: { ipAddressHeaders: [AUTH_CLIENT_IP_HEADER] },
   },
   databaseHooks: {
     user: {

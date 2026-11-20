@@ -1,5 +1,6 @@
 /** Read-only login preflight; credential outcomes are recorded by server auth hooks. */
 
+import { randomUUID } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import {
   CLIENT_IP_UNAVAILABLE_MESSAGE,
@@ -37,18 +38,22 @@ async function checkEndpointRateLimit(ip: string, email: string): Promise<boolea
       ip === "unknown" ? `email:${email}` : ip
     }`;
     const now = Date.now();
-    const windowStart = now - CHECK_RATE_LIMIT_WINDOW_SECONDS * 1000;
-
-    await redis.zremrangebyscore(key, 0, windowStart);
-    const count = await redis.zcard(key);
-
-    if (count >= CHECK_RATE_LIMIT_MAX) {
-      return false;
-    }
-
-    await redis.zadd(key, now, `${now}`);
-    await redis.expire(key, CHECK_RATE_LIMIT_WINDOW_SECONDS + 10);
-    return true;
+    // One script so concurrent requests cannot all pass the count before any of them is recorded.
+    const allowed = await redis.eval(
+      `redis.call('ZREMRANGEBYSCORE', KEYS[1], 0, ARGV[1])
+      if redis.call('ZCARD', KEYS[1]) >= tonumber(ARGV[3]) then return 0 end
+      redis.call('ZADD', KEYS[1], ARGV[2], ARGV[4])
+      redis.call('EXPIRE', KEYS[1], ARGV[5])
+      return 1`,
+      1,
+      key,
+      now - CHECK_RATE_LIMIT_WINDOW_SECONDS * 1000,
+      now,
+      CHECK_RATE_LIMIT_MAX,
+      `${now}:${randomUUID()}`,
+      CHECK_RATE_LIMIT_WINDOW_SECONDS + 10,
+    );
+    return Number(allowed) === 1;
   } catch {
     // Fail closed on Redis errors for security
     return false;

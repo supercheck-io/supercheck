@@ -51,7 +51,14 @@ export async function sendWebhookChallenge(params: {
     statusPageId: params.statusPageId,
     createdAt: now.toISOString(),
   });
-  if (!result.success) return { verified: false, error: result.error };
+  if (!result.success) {
+    // Anonymous subscribers see this text, so network/DNS/SSRF-policy detail stays in the server log.
+    if (result.statusCode === undefined) {
+      console.warn("Webhook verification challenge failed:", result.error);
+      return { verified: false, error: "Could not reach the endpoint" };
+    }
+    return { verified: false, error: result.error };
+  }
 
   const page = await db.query.statusPages.findFirst({
     where: eq(statusPages.id, params.statusPageId),
