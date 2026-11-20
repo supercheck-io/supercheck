@@ -6,7 +6,7 @@
 // Pointing OPENAI_BASE_URL here makes them render canned, deterministic answers instead.
 // Structured-output calls get an object built from the request's JSON schema.
 //
-//   node mock-ai.mjs [port]        listens on 127.0.0.1 (default 4010)
+//   node mock-ai.mjs [port] [host] listens on 127.0.0.1 (default 4010); pass 0.0.0.0 for an app in a container
 
 import http from 'node:http';
 import { fileURLToPath } from 'node:url';
@@ -115,7 +115,7 @@ export function streamFor(body) {
   return events.map((e) => `event: ${e.type}\ndata: ${JSON.stringify(e)}\n\n`).join('');
 }
 
-function serve(port) {
+function serve(port, host = '127.0.0.1') {
   const server = http.createServer((req, res) => {
     const chunks = [];
     req.on('data', (c) => chunks.push(c));
@@ -137,7 +137,7 @@ function serve(port) {
       }
     });
   });
-  server.listen(port, '127.0.0.1', () => console.log(`Mock AI listening on http://127.0.0.1:${port}/v1`));
+  server.listen(port, host, () => console.log(`Mock AI listening on http://${host}:${port}/v1`));
 }
 
-if (process.argv[1] === fileURLToPath(import.meta.url)) serve(Number(process.argv[2] ?? 4010));
+if (process.argv[1] === fileURLToPath(import.meta.url)) serve(Number(process.argv[2] ?? 4010), process.argv[3] ?? '127.0.0.1');

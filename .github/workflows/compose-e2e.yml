@@ -10,8 +10,13 @@ name: Self-hosted Compose E2E
 #   the full suite.
 # - Manual: leave image_tag empty to build the checked-out ref, or name a published tag.
 #
-# Not covered: code execution. Runs need the K3s + gVisor worker, which a runner does not
-# provide, so the worker is not started and @execution tests are excluded.
+# AI features (AI SRE, Copilot, briefs) talk to the stand-in provider the PR screenshot app uses
+# (app/e2e/scripts/mock-ai.mjs), never a real one.
+# Code execution: runs built from the checked-out ref (pull requests, manual runs without an
+# image_tag) also start the worker against a single-node K3s + gVisor installed by
+# deploy/docker/setup-k3s.sh, with the worker image built from the ref and loaded into K3s.
+# The release gate tests a published app digest, and no worker image exists for it yet, so it
+# runs without a worker and excludes @execution.
 on:
   pull_request:
     paths:
@@ -59,6 +64,7 @@ concurrency:
 env:
   NODE_VERSION: "24"
   APP_IMAGE: ghcr.io/supercheck-io/supercheck/app
+  WORKER_IMAGE: ghcr.io/supercheck-io/supercheck/worker
 
 jobs:
   compose-e2e:
@@ -74,6 +80,8 @@ jobs:
       FULL: ${{ inputs.full }}
       # Compose interpolates these from the environment.
       SMTP_BLOCKED_RECIPIENT_DOMAINS: example.com
+      # A worker only for an image built from this ref (see the header).
+      WITH_WORKER: ${{ inputs.image_tag == '' }}
 
     steps:
       # The release gate must never fall back to building the checked-out ref or to a floating
@@ -115,7 +123,13 @@ jobs:
 
       - name: Install Chromium
         working-directory: ./app/e2e
-        run: npx playwright install --with-deps chromium
+        # apt on a runner occasionally exits 100 (mirror hiccup); retry before failing the job.
+        run: |
+          for _ in 1 2 3; do
+            npx playwright install --with-deps chromium && exit 0
+            sleep 15
+          done
+          exit 1
 
       - name: Set up Docker Buildx
         if: ${{ env.IMAGE_TAG == '' }}
@@ -136,6 +150,59 @@ jobs:
             SUPERCHECK_BUILD_SHA=${{ github.sha }}
           cache-from: type=registry,ref=${{ env.APP_IMAGE }}:buildcache
 
+      - name: Build worker image from this ref
+        if: ${{ env.WITH_WORKER == 'true' }}
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: ./worker
+          file: ./worker/Dockerfile
+          platforms: linux/amd64
+          load: true
+          tags: ${{ env.WORKER_IMAGE }}:ci
+          build-args: |
+            SUPERCHECK_VERSION=ci
+          cache-from: type=registry,ref=${{ env.WORKER_IMAGE }}:buildcache
+
+      # The app is in a container, so the stand-in listens on every interface and the app reaches it
+      # as host.docker.internal. The override lives in RUNNER_TEMP; COMPOSE_FILE makes every later
+      # docker compose call use it.
+      - name: Start stand-in AI provider
+        run: |
+          nohup node app/e2e/scripts/mock-ai.mjs 4010 0.0.0.0 > "$RUNNER_TEMP/mock-ai.log" 2>&1 &
+          for _ in $(seq 1 30); do
+            if curl -s -o /dev/null http://127.0.0.1:4010/; then break; fi
+            sleep 1
+          done
+          curl -s -o /dev/null http://127.0.0.1:4010/ || { echo "::error::Stand-in AI provider did not start"; cat "$RUNNER_TEMP/mock-ai.log"; exit 1; }
+          cat > "$RUNNER_TEMP/compose-ai.yml" <<'YAML'
+          services:
+            app:
+              environment:
+                OPENAI_BASE_URL: http://host.docker.internal:4010/v1
+              extra_hosts:
+                - "host.docker.internal:host-gateway"
+          YAML
+          {
+            echo "COMPOSE_FILE=$GITHUB_WORKSPACE/deploy/docker/docker-compose.yml:$RUNNER_TEMP/compose-ai.yml"
+            echo "OPENAI_API_KEY=sk-compose-e2e-not-a-real-key"
+          } >> "$GITHUB_ENV"
+
+      # The install path a self-hosted server uses. K3s has its own containerd, so the image
+      # built above is imported into it, and Jobs run it without pulling (the :ci tag is not published).
+      - name: Install K3s and gVisor, load the worker image
+        if: ${{ env.WITH_WORKER == 'true' }}
+        run: |
+          sudo bash deploy/docker/setup-k3s.sh
+          docker save "$WORKER_IMAGE:ci" | sudo k3s ctr images import -
+          cat > "$RUNNER_TEMP/compose-worker.yml" <<'YAML'
+          services:
+            worker:
+              pull_policy: never
+              environment:
+                EXECUTION_IMAGE_PULL_POLICY: Never
+          YAML
+          echo "COMPOSE_FILE=$COMPOSE_FILE:$RUNNER_TEMP/compose-worker.yml" >> "$GITHUB_ENV"
+
       - name: Start the Compose stack
         working-directory: ./deploy/docker
         run: |
@@ -143,8 +210,10 @@ jobs:
           # tag@digest pulls by digest; the tag need not exist yet.
           export SUPERCHECK_VERSION="${IMAGE_TAG:-ci}${IMAGE_DIGEST:+@$IMAGE_DIGEST}"
           ./init-secrets.sh
-          # App plus Postgres, Redis and RustFS. The worker needs K3s, which a runner lacks.
-          docker compose up -d --wait --wait-timeout 600 app
+          # App plus Postgres, Redis and RustFS, and the worker when K3s was installed above.
+          services=(app)
+          if [ "$WITH_WORKER" = "true" ]; then services+=(worker); fi
+          docker compose up -d --wait --wait-timeout 600 "${services[@]}"
           curl -fsS http://127.0.0.1:3000/api/health
 
       # Signs up the throwaway accounts through the app, then adds the history only a worker
@@ -167,15 +236,18 @@ jobs:
         id: e2e
         working-directory: ./app/e2e
         run: |
-          # No worker (@execution) and no AI provider (@aisre) in this stack.
-          args=(--project=chromium --grep-invert '@execution|@aisre')
+          # Without a worker (the release gate) @execution is excluded by tag. AI runs against the stand-in.
+          args=(--project=chromium)
+          if [ "$WITH_WORKER" != "true" ]; then args+=(--grep-invert '@execution'); fi
           if [ "$FULL" != "true" ]; then args+=(--grep @critical); fi
           npx playwright test "${args[@]}"
         env:
           CI: true
           E2E_CHECKPOINTS: "1"
-          # A skipped @critical or @high spec fails the run. Tests that need a worker or an AI
-          # provider are excluded by tag above, not skipped.
+          # Checkpoint mode assumes the worker-less screenshot app; tell the specs when a worker runs.
+          E2E_WORKER: ${{ env.WITH_WORKER == 'true' && '1' || '0' }}
+          # A skipped @critical or @high spec fails the run. Tests that need a worker are
+          # excluded by tag above when none runs, not skipped.
           E2E_FAIL_ON_PRIORITY_SKIPS: true
           # Asserts /api/health reports this commit (tests/core/build-revision.spec.ts); skipped
           # when a manual run tests a published tag built from another commit.
@@ -185,7 +257,10 @@ jobs:
       - name: Show app log on failure
         if: failure()
         working-directory: ./deploy/docker
-        run: docker compose logs --tail 200 app
+        run: |
+          docker compose logs --tail 200 app worker
+          sudo k3s kubectl get pods,events -n supercheck-execution || true
+          cat "$RUNNER_TEMP/mock-ai.log" || true
         env:
           SUPERCHECK_VERSION: ${{ format('{0}{1}', inputs.image_tag || 'ci', inputs.image_digest && format('@{0}', inputs.image_digest) || '') }}
 
