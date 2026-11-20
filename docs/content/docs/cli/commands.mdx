@@ -524,7 +524,7 @@ AI SRE commands use the active project from the CLI token and follow your role's
 | `incident list` | List incidents (status label, assignee and acknowledgement shown) | `--status`, `--severity`, `--assignee me\|unassigned\|<user-id>` |
 | `incident get <ref>` | Get an incident | — |
 | `incident timeline <ref>` | Incident timeline; reminders, escalations and failed pages are one line each | — |
-| `incident create` (alias `declare`) | Declare an incident by hand | `--title` (required), `--severity`, `--service`, `--affected-service`, `--monitor`, `--summary`, `--commander`, `--status-page`, `--component`, `--notify` |
+| `incident create` (alias `declare`) | Declare an incident by hand | `--title` (required), `--severity`, `--service`, `--affected-service`, `--monitor`, `--summary`, `--commander`, `--status-page`, `--component`, `--impact` (`none`, `minor`, `major`, `critical`; default `minor`), `--message`, `--notify` (the last three need `--status-page`) |
 | `incident resources <ref>` | List the services and monitors an incident affects; change them with the flags | `--add-service`, `--remove-service`, `--add-monitor`, `--remove-monitor` |
 | `incident postmortem <ref>` | Print the post-mortem as markdown (`--json` returns the sections too) | — |
 | `incident policy get` | Show the project's incident policy (reminders and escalation) | — |

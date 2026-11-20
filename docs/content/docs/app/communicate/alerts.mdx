@@ -260,7 +260,7 @@ Other Microsoft hosts, such as `outlook.office.com` or `*.azurewebsites.net`, ar
 - **Advanced** (collapsed by default; it starts open when you edit a custom webhook with saved headers or a body template, and opens by itself when a field inside it has an error):
   - **Method:** GET, POST, or PUT (default: POST)
   - **Headers JSON:** Optional string-valued headers for provider authentication such as `Authorization`
-  - **Body Template:** Optional custom JSON body with template variables (used for POST and PUT requests)
+  - **Body template:** Optional custom JSON body with template variables (used for POST and PUT requests)
   - **Rendered sample payload:** Preview of the JSON body generated from sample alert values before you test or save
 - **Test diagnostics:** Redacted test results showing method, target host, sent header names, HTTP status, elapsed time, request hash, and response hash
 
@@ -377,7 +377,7 @@ Use a webhook with a body template to send alerts to the [PagerDuty Events API v
 5. In Supercheck, create a Webhook notification channel with:
    - **URL:** `https://events.pagerduty.com/v2/enqueue`
    - **Method:** POST
-   - **Body Template:**
+   - **Body template:**
 
 ```json
 {
@@ -411,7 +411,7 @@ Use a webhook with a body template to send alerts to the [Splunk On-Call REST en
 2. In Supercheck, create a Webhook notification channel and select the **Splunk On-Call REST endpoint** preset, or use:
    - **URL:** `https://alert.victorops.com/integrations/generic/20131114/alert/<routing_key>/<entity_id>`
    - **Method:** POST
-   - **Body Template:**
+   - **Body template:**
 
 ```json
 {
@@ -460,12 +460,15 @@ A job's page is resolved once, on the first passing run after the failure (past 
 
 | Column | Shows |
 |---|---|
-| **Alert** | Type and severity |
-| **Target** | Monitor or job name |
-| **Channels** | Notification channels used, and delivery status |
+| **Alert ID** | Short ID, click to copy |
+| **Title** | Monitor or job name |
+| **Type** | Alert type, and the warning kind for warnings |
+| **Status** | Delivery status. Hover it for each webhook attempt's HTTP status or error and duration |
 | **Incident** | The incident the alert belongs to, linked. A sent failure alert with no incident (for example, incidents turned off for that check) shows **Open incident** to create one. See [How alerts become incidents](/docs/app/investigate/incidents#how-alerts-become-incidents) |
-| **Time** | When it was sent |
-| **Delivery metadata** | For AI SRE correlation: provider type or preset, dedup key, event action, response status, attempt count and response hash when available. Webhook deliveries also list each attempt with its HTTP status or error and duration |
+| **Provider** | Channel type or preset used |
+| **Sent At** | When it was sent |
+
+Each row also stores delivery metadata for AI SRE correlation: provider type or preset, dedup key, event action, response status, attempt count and response hash when available.
 
 Use delivery status and HTTP diagnostics to troubleshoot failed notifications. Raw provider response bodies and credential values are not displayed.
 

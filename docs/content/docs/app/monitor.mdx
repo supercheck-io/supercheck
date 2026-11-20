@@ -97,7 +97,7 @@ Checks a chat-completions API the way your app calls it. Each check sends one sh
 | Field | Default | Notes |
 |---|---|---|
 | Endpoint URL | `https://api.openai.com/v1/chat/completions` | Any OpenAI-compatible chat-completions URL |
-| API key secret | — | Name of a project secret (**Variables**). The key is never stored on the monitor. Tick **No key** for an open endpoint |
+| API key secret | — | Name of a project secret (**Variables**). The key is never stored on the monitor. Tick **No key (endpoint needs none)** for an open endpoint |
 | Key header | `Authorization` | Sends `Bearer <key>`. Any other header name (for example Azure `api-key`) sends the raw key |
 | Model | — | Required |
 | Prompt | `Reply with the single word OK.` | Up to 2,000 characters |
@@ -216,6 +216,7 @@ Checks a remote MCP server the way an AI client would: connect, log in, list the
 | Tools that must exist | Optional list of tool names. A missing one fails the check |
 | Call a tool | Optional tool name, arguments (a JSON object, up to 8 KiB) and **Result must contain** text. Pick a read-only tool: it runs on every check, from every location |
 | Slow after (ms) | Optional. Warns when a check is slower for 3 checks in a row |
+| Timeout (seconds) | 5-60, default 30 |
 
 **The tool call is real.** It runs on every check from every location, so a 1-minute monitor in three locations calls the tool about 130,000 times a month. Pick a tool with no side effects. Arguments are stored as plain settings, hidden only from viewers, so never put a token or personal data in them. Use the login field for credentials.
 
@@ -328,7 +329,7 @@ Nine key metrics sit below the header. Response times show in ms below 1 s (`360
 | Chart | What it shows |
 |-------|---------------|
 | **Availability Overview** | Bar chart of the last 100 checks: green for up, red for down |
-| **Response Time Chart** | Line chart of the most recent 100 check results. Hover for the exact response time and timestamp |
+| **Response Time** | Line chart of the most recent 100 check results. Hover for the exact response time and timestamp |
 
 </Accordion>
 <Accordion title="Recent check results table" id="check-results">
@@ -405,7 +406,9 @@ If a monitor's locations have no live worker, that check is skipped and not coun
 
 Available intervals: 1, 5, 10, 15 and 30 minutes, and 1, 3, 12 and 24 hours. Shorter intervals detect failures sooner and use more resources.
 
-The timeout is set through the API or CLI (the form keeps the stored value). It must not exceed the interval, for example 60 s at 1 minute; the form rejects an interval shorter than the stored timeout.## Related
+MCP and AI endpoint monitors have timeout fields in the form. For other types the timeout is set through the API or CLI (the form keeps the stored value). It must not exceed the interval, for example 60 s at 1 minute; the form rejects an interval shorter than the stored timeout.
+
+## Related
 
 <Cards>
 <Card title="Notifications" href="/docs/app/communicate/alerts" description="Set up the channels that receive monitor alerts" />

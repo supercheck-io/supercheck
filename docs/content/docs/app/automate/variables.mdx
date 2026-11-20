@@ -22,7 +22,7 @@ Variables give your tests configuration, credentials and test data at runtime.
 <Steps>
 <Step>
 
-Open your project's **Variables** page and select **Add Variable**.
+Open your project's **Variables** page and select **Add variable**.
 
 </Step>
 <Step>
@@ -138,7 +138,7 @@ Masking covers console output, error messages, and text report files (`.html`, `
 <Accordion title="What is masked" id="secret-masking">
 
 - Secret values are replaced with `[SECRET]` in console output and errors. They are also replaced in `.html`, `.json`, `.txt`, `.md`, and `.xml` report files, including base64, URL-encoded, and JSON-escaped forms of each value. Files over 20 MB are not masked.
-- Secrets shorter than 6 characters are not masked, because replacing short strings would damage unrelated output. Use longer secrets.
+- Secrets shorter than 6 characters are not masked in report files, because replacing short strings would damage unrelated output. Console output masks any length. Use longer secrets.
 - If a script uses a secret that cannot be decrypted, the run fails with a message naming the key. k6 runs, and scripts that call `getSecret` with a non-literal key, read every project secret, so any undecryptable secret can fail them.
 
 </Accordion>
