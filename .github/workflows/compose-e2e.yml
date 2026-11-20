@@ -10,6 +10,8 @@ name: Self-hosted Compose E2E
 #   the full suite.
 # - Manual: leave image_tag empty to build the checked-out ref, or name a published tag.
 #
+# AI features (AI SRE, Copilot, briefs) talk to the stand-in provider the PR screenshot app uses
+# (app/e2e/scripts/mock-ai.mjs), never a real one.
 # Not covered: code execution. Runs need the K3s + gVisor worker, which a runner does not
 # provide, so the worker is not started and @execution tests are excluded.
 on:
@@ -115,7 +117,13 @@ jobs:
 
       - name: Install Chromium
         working-directory: ./app/e2e
-        run: npx playwright install --with-deps chromium
+        # apt on a runner occasionally exits 100 (mirror hiccup); retry before failing the job.
+        run: |
+          for attempt in 1 2 3; do
+            npx playwright install --with-deps chromium && exit 0
+            sleep 15
+          done
+          exit 1
 
       - name: Set up Docker Buildx
         if: ${{ env.IMAGE_TAG == '' }}
@@ -135,6 +143,30 @@ jobs:
           build-args: |
             SUPERCHECK_BUILD_SHA=${{ github.sha }}
           cache-from: type=registry,ref=${{ env.APP_IMAGE }}:buildcache
+
+      # The app is in a container, so the stand-in listens on every interface and the app reaches it
+      # as host.docker.internal. The override lives in RUNNER_TEMP; COMPOSE_FILE makes every later
+      # docker compose call use it.
+      - name: Start stand-in AI provider
+        run: |
+          nohup node app/e2e/scripts/mock-ai.mjs 4010 0.0.0.0 > "$RUNNER_TEMP/mock-ai.log" 2>&1 &
+          for _ in $(seq 1 30); do
+            if curl -s -o /dev/null http://127.0.0.1:4010/; then break; fi
+            sleep 1
+          done
+          curl -s -o /dev/null http://127.0.0.1:4010/ || { echo "::error::Stand-in AI provider did not start"; cat "$RUNNER_TEMP/mock-ai.log"; exit 1; }
+          cat > "$RUNNER_TEMP/compose-ai.yml" <<'YAML'
+          services:
+            app:
+              environment:
+                OPENAI_BASE_URL: http://host.docker.internal:4010/v1
+              extra_hosts:
+                - "host.docker.internal:host-gateway"
+          YAML
+          {
+            echo "COMPOSE_FILE=$GITHUB_WORKSPACE/deploy/docker/docker-compose.yml:$RUNNER_TEMP/compose-ai.yml"
+            echo "OPENAI_API_KEY=sk-compose-e2e-not-a-real-key"
+          } >> "$GITHUB_ENV"
 
       - name: Start the Compose stack
         working-directory: ./deploy/docker
@@ -167,8 +199,8 @@ jobs:
         id: e2e
         working-directory: ./app/e2e
         run: |
-          # No worker (@execution) and no AI provider (@aisre) in this stack.
-          args=(--project=chromium --grep-invert '@execution|@aisre')
+          # No worker in this stack, so @execution is excluded by tag. AI runs against the stand-in.
+          args=(--project=chromium --grep-invert '@execution')
           if [ "$FULL" != "true" ]; then args+=(--grep @critical); fi
           npx playwright test "${args[@]}"
         env:
