@@ -55,8 +55,9 @@ tags are prereleases built from `main`.
    version cannot be pulled. Cancel that docs run and start it again with
    `gh workflow run docs-deploy.yml` after step 3 has pushed the images.
 3. Create and push the signed tag on the merged commit (see "Creating a release
-   tag"). `build-multiarch.yml` certifies the release, pushes the images
-   (`latest` only for stable tags) and deploys the demo after approval.
+   tag"). `build-multiarch.yml` certifies the release, builds the images, runs
+   the Compose E2E gate (`compose-e2e.yml`) against them, and only then tags and
+   signs them (`latest` only for stable tags).
 4. After the images are published, create the GitHub Release for the tag with
    the changelog section as its notes. No workflow creates releases for `v*`
    tags.
