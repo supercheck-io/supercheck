@@ -4,10 +4,11 @@ All transactional emails are React Email components in this folder. Every templa
 renders inside `BaseLayout` (Supercheck wordmark, header, `EmailButton`, `DetailsTable`,
 footer, preheader), so changes to the look happen in one place.
 
-House style (colours live only in `palette.ts`): dark header colours with white text (red `#b91c1c` problem, amber
-`#b45309` warning, blue `#1d4ed8` info, green `#15803d` resolved, gray `#1f2937`
-neutral) and `#111827` primary buttons. Status-page subscriber emails pass
-`showBrand={false}`; they carry the customer's page name and a "Powered by" footer.
+House style (the `email-verification` email is the reference): one neutral header (`PALETTE.neutral`, white
+text) for every email, never a per-type colour. Severity shows only in the body: a small `StatusBadge` (tones in
+`palette.ts`) or a tinted `Callout`. Body text is left-aligned 15px `#4b5563`, buttons are `EmailButton`
+(`#111827`), details go in `DetailsTable`. Status-page subscriber emails pass `showBrand={false}`; they carry the
+customer's page name and a "Powered by" footer.
 
 ```
 app (Next.js)                         worker (NestJS)
@@ -34,7 +35,7 @@ dependency on the app being up.
 Alert subjects are `[Supercheck] <Event>: <name>` (`alertEmailSubject`); status-page emails keep `[STATUS] ...`. Job and monitor alerts share one field builder in the worker (`buildEmailFields`).
 
 `monitor-alert` takes an optional `incidentsUrl`; failure/warning emails then show a
-"View incidents" button, recovery emails show a "Resolved" chip.
+"View incidents" button; every alert shows a status badge (recovery: "Resolved").
 
 ## Changing a worker-rendered template
 

@@ -13,14 +13,13 @@ import {
 } from "@react-email/components";
 import { plainTextSelectors } from "@react-email/render";
 import * as React from "react";
-import { PALETTE } from "./palette";
+import { PALETTE, TONES, type PaletteTone } from "./palette";
 
 interface BaseLayoutProps {
   preview: string;
   title: string;
   children: React.ReactNode;
   footer?: React.ReactNode;
-  headerColor?: string;
   showStandardFooter?: boolean;
   /** Header wordmark; false for status-page emails, which carry the customer's page name. */
   showBrand?: boolean;
@@ -60,7 +59,6 @@ export const BaseLayout = ({
   title,
   children,
   footer,
-  headerColor = PALETTE.neutral,
   showStandardFooter = true,
   showBrand = true,
   lang = "en",
@@ -69,7 +67,6 @@ export const BaseLayout = ({
   appUrl,
 }: BaseLayoutProps) => {
   const dir = RTL_LANGUAGES.has(lang.toLowerCase().split("-")[0]) ? "rtl" : "ltr";
-  const headerText = readableTextColor(headerColor);
   const logoUrl = emailLogoUrl(process.env, appUrl);
   return (
     <Html lang={lang} dir={dir}>
@@ -86,14 +83,12 @@ export const BaseLayout = ({
       <Body style={main}>
         <Container className="sc-container" style={container}>
           {/* Header */}
-          <Section style={{ ...header, background: headerColor }}>
+          <Section style={header}>
             {showBrand && logoUrl && (
               <Img src={logoUrl} width="32" height="32" alt="" style={logo} />
             )}
-            {showBrand && <Text style={{ ...brand, color: headerText }}>Supercheck</Text>}
-            <Heading style={{ ...headerTitle, color: headerText }}>
-              {title}
-            </Heading>
+            {showBrand && <Text style={brand}>Supercheck</Text>}
+            <Heading style={headerTitle}>{title}</Heading>
           </Section>
 
           {/* Main Content */}
@@ -196,6 +191,7 @@ const reasonLink = {
 };
 
 const brand = {
+  color: "#ffffff",
   margin: "0 0 8px",
   fontSize: "13px",
   fontWeight: "700" as const,
@@ -252,21 +248,13 @@ const bottomSpacer = {
 /**
  * Shared primary button so every email has the same call to action.
  */
-export const EmailButton = ({
-  href,
-  children,
-  background = "#111827",
-}: {
-  href: string;
-  children: React.ReactNode;
-  background?: string;
-}) => (
+export const EmailButton = ({ href, children }: { href: string; children: React.ReactNode }) => (
   <Button
     href={href}
     style={{
-      backgroundColor: background,
+      backgroundColor: "#111827",
       borderRadius: "6px",
-      color: readableTextColor(background),
+      color: "#ffffff",
       fontSize: "15px",
       fontWeight: "600",
       textDecoration: "none",
@@ -293,6 +281,74 @@ const manageBillingText = {
   color: "#6b7280",
   fontSize: "12px",
   margin: "0",
+};
+
+/** Small status pill for the body; the only place severity gets colour (never the header). */
+export const StatusBadge = ({
+  tone = "neutral",
+  skipInText = false,
+  children,
+}: {
+  tone?: PaletteTone;
+  /** Keep the badge out of the plain-text part (when the same words are already in it). */
+  skipInText?: boolean;
+  children: React.ReactNode;
+}) => (
+  <span
+    {...(skipInText ? { "data-skip-in-text": "true" } : {})}
+    style={{
+      display: "inline-block",
+      padding: "2px 10px",
+      borderRadius: "999px",
+      backgroundColor: TONES[tone].bg,
+      color: TONES[tone].fg,
+      fontSize: "12px",
+      fontWeight: "700",
+      lineHeight: "1.5",
+      letterSpacing: "0.02em",
+    }}
+  >
+    {children}
+  </span>
+);
+
+const CALLOUT = {
+  neutral: { bg: "#f9fafb", border: "#e5e7eb", title: "#111827", text: "#4b5563" },
+  note: { bg: "#ecfdf5", border: "#a7f3d0", title: "#065f46", text: "#047857" },
+  warning: { bg: "#fffbeb", border: "#fde68a", title: "#92400e", text: "#78350f" },
+  danger: { bg: "#fef2f2", border: "#fecaca", title: "#991b1b", text: "#7f1d1d" },
+} as const;
+
+/** The "Why verify?" box from the email-verification email: tinted, 1px border, small title + text. */
+export const Callout = ({
+  tone = "note",
+  title,
+  lines,
+}: {
+  tone?: keyof typeof CALLOUT;
+  title?: string;
+  lines: React.ReactNode[];
+}) => {
+  const c = CALLOUT[tone];
+  return (
+    <Section
+      style={{ backgroundColor: c.bg, borderRadius: "8px", border: `1px solid ${c.border}`, margin: "0 0 24px", padding: "16px" }}
+    >
+      {title && (
+        <Text style={{ color: c.title, fontSize: "13px", fontWeight: "600", lineHeight: "1.4", margin: "0 0 8px" }}>
+          {title}
+        </Text>
+      )}
+      {lines.map((line, i) => (
+        <Text
+          key={i}
+          style={{ color: c.text, fontSize: "13px", lineHeight: "1.5", margin: i === lines.length - 1 ? "0" : "0 0 8px" }}
+        >
+          {line}
+        </Text>
+      ))}
+    </Section>
+  );
 };
 
 export interface DetailField {
@@ -407,17 +463,5 @@ const detailsLink = {
   textDecoration: "none",
   fontWeight: "500" as const,
 };
-
-/** White or near-black text, whichever has better contrast on `hex` (WCAG luminance). */
-function readableTextColor(hex: string): string {
-  const m = /^#?([0-9a-f]{6})$/i.exec(hex.trim());
-  if (!m) return "#ffffff";
-  const [r, g, b] = [0, 2, 4].map((i) => {
-    const c = parseInt(m[1].slice(i, i + 2), 16) / 255;
-    return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
-  });
-  const lum = 0.2126 * r + 0.7152 * g + 0.0722 * b;
-  return lum > 0.179 ? "#111827" : "#ffffff";
-}
 
 export default BaseLayout;

@@ -133,7 +133,7 @@ describe('EmailTemplateService (local render)', () => {
     expect(r.html).toContain('white-space:pre-wrap');
   });
 
-  it('uses the info tone (blue), not the warning amber', async () => {
+  it('uses a blue info badge under the neutral header, not the warning amber', async () => {
     const r = await service.renderMonitorAlertEmail({
       title: 'FYI - X',
       message: 'm',
@@ -141,8 +141,9 @@ describe('EmailTemplateService (local render)', () => {
       footer: '',
       type: 'info',
     });
-    expect(r.html).toContain('#1d4ed8');
-    expect(r.html).not.toContain('#b45309');
+    expect(r.html).toContain('background:#1f2937');
+    expect(r.html).toContain('background-color:#dbeafe');
+    expect(r.html).not.toContain('background-color:#fef3c7');
   });
 
   it('falls back to escaped basic HTML when React rendering throws', async () => {
@@ -158,6 +159,8 @@ describe('EmailTemplateService (local render)', () => {
     });
     expect(r.subject).toBe('[Supercheck] T <b>');
     expect(r.html).toContain('&lt;script&gt;');
+    expect(r.html).toContain('background:#1f2937');
+    expect(r.html).toContain('>Failing<');
     expect(r.text).toContain('k: <script>');
     jest.restoreAllMocks();
   });
