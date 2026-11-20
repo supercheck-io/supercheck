@@ -1,5 +1,5 @@
 /** @jest-environment node */
-// Needs TEST_DATABASE_URL (run with `npm run test:db`). Proves the day-14 path: the sweep pauses an expired
+// Needs TEST_DATABASE_URL (run with `npm run test:db`). Proves the trial-end path (the trial is 30 days): the sweep pauses an expired
 // trial's monitors and archives its status pages; separately, the execution policy refuses an expired trial (402).
 import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
@@ -82,7 +82,7 @@ const pageStatus = async (id: string) =>
 const endedAt = async (orgId: string) =>
   (await mockDatabase.select().from(schema.executionEntitlements).where(eq(schema.executionEntitlements.organizationId, orgId)))[0].lifecycleEndedAt;
 
-it("pauses an expired trial once, leaves a live trial alone, refuses execution with 402, and restores the setup on resubscribe", async () => {
+it("pauses an expired trial once and restores it on resubscribe", async () => {
   const expired = await seedTrial(new Date(Date.now() - DAY));
   const live = await seedTrial(new Date(Date.now() + DAY));
 
