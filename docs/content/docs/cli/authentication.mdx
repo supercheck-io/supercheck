@@ -54,7 +54,7 @@ sequenceDiagram
 
 The key from browser login is project-scoped, expires after 90 days and appears under **CLI Tokens**, where you can revoke it. Each project holds up to 20 active (enabled and unexpired) CLI tokens, and every browser login creates one, so revoke unused tokens. Signing in to the dashboard does not authenticate the CLI. Flags: [`supercheck login`](/docs/cli/commands#supercheck-login).
 
-Resetting your account password revokes all your CLI tokens, recorder keys and connected MCP apps. Trigger keys are not affected.
+Resetting your account password revokes all your CLI tokens, recorder keys and connected MCP apps. If revocation fails, it is retried in the background until it succeeds. Trigger keys are not affected.
 
 ## Create a token manually
 
