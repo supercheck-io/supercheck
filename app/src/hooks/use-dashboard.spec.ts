@@ -4,6 +4,10 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fetchDashboard, getDashboardQueryKey, parseSystemHealth, useDashboard, type DashboardData } from "./use-dashboard";
 
 jest.mock("./use-project-context", () => ({ useProjectContext: () => ({ currentProject: { id: "project-a" } }) }));
+let mockSessionUserId: string | undefined = "u1";
+jest.mock("@/utils/auth-client", () => ({
+  useSession: () => ({ data: mockSessionUserId ? { user: { id: mockSessionUserId } } : null }),
+}));
 
 describe("dashboard data contract", () => {
   afterEach(() => jest.restoreAllMocks());
@@ -95,9 +99,10 @@ describe("parseSystemHealth", () => {
 
 describe("useDashboard with a server seed", () => {
   const originalFetch = global.fetch;
-  afterEach(() => { global.fetch = originalFetch; });
+  afterEach(() => { global.fetch = originalFetch; mockSessionUserId = "u1"; });
 
   const seed = (projectId: string, updatedAt = Date.now()) => ({
+    userId: "u1",
     projectId,
     updatedAt,
     data: { stats: { runs: 3 } } as unknown as DashboardData,
@@ -153,5 +158,20 @@ describe("useDashboard with a server seed", () => {
     const wrapper = ({ children }: { children: ReactNode }) => createElement(QueryClientProvider, { client }, children);
     const { result } = renderHook(() => useDashboard(seed("project-a", Date.now() - 30_000)), { wrapper });
     expect(result.current.data?.stats.runs).toBe(8);
+  });
+
+  it("ignores a seed read for another account (account changed in another tab)", async () => {
+    mockSessionUserId = "u2";
+    global.fetch = jest.fn().mockResolvedValue({ ok: true, json: async () => ({ jobs: { recentRuns30d: 6 } }) });
+    const { result } = run(seed("project-a"));
+    expect(result.current.data).toBeUndefined();
+    await waitFor(() => expect(result.current.data?.stats.runs).toBe(6));
+  });
+
+  it("uses the seed while the browser's session check is pending", () => {
+    mockSessionUserId = undefined;
+    global.fetch = jest.fn();
+    const { result } = run(seed("project-a"));
+    expect(result.current.data?.stats.runs).toBe(3);
   });
 });

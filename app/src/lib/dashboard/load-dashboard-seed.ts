@@ -15,7 +15,7 @@ export async function loadDashboardSeed(): Promise<DashboardSeed | null> {
     const context = await requireAuthContext();
     if (!checkPermissionWithContext("project", "view", context)) return null;
     const data = transformDashboardData(await getDashboardPayload(context));
-    return { projectId: context.project.id, data, updatedAt: Date.now() };
+    return { userId: context.userId, projectId: context.project.id, data, updatedAt: Date.now() };
   } catch (error) {
     unstable_rethrow(error);
     // Name and code only: a failed query's message carries its parameters.

@@ -1,5 +1,6 @@
 import { useQuery, useQueryClient, useIsRestoring, keepPreviousData } from "@tanstack/react-query";
 import { useProjectContext } from "./use-project-context";
+import { useSession } from "@/utils/auth-client";
 
 export type { DashboardData, DashboardSeed } from "@/lib/dashboard/dashboard-data";
 export { parseSystemHealth, transformDashboardData } from "@/lib/dashboard/dashboard-data";
@@ -55,8 +56,14 @@ export function useDashboard(seed?: DashboardSeed | null) {
   const isRestoring = useIsRestoring();
 
   const queryKey = getDashboardQueryKey(projectId);
-  // Only a seed for the project being shown counts; after a project switch the hook fetches as before.
-  const usableSeed = seed && seed.projectId === projectId ? seed : undefined;
+  // Only a seed for the signed-in user and the project being shown counts: after an account change in another
+  // tab or a project switch the hook fetches as before. While the browser's session check is pending, the
+  // server's user is the signed-in user.
+  const sessionUserId = useSession().data?.user?.id;
+  const usableSeed =
+    seed && seed.projectId === projectId && (sessionUserId === undefined || sessionUserId === seed.userId)
+      ? seed
+      : undefined;
   // initialData only fills an empty query. On a client navigation back to the dashboard the server has just
   // read newer data, so it replaces an older cached entry before the mount refetch is decided (the page is
   // this key's only observer, and it has not subscribed yet on its first render). Idempotent: once applied,

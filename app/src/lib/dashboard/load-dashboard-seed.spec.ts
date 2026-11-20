@@ -10,7 +10,7 @@ jest.mock("@/lib/rbac/middleware", () => ({ checkPermissionWithContext: (...a: u
 jest.mock("@/lib/dashboard/get-dashboard-payload", () => ({ getDashboardPayload: (...a: unknown[]) => mockPayload(...a) }));
 import { loadDashboardSeed } from "./load-dashboard-seed";
 
-const context = { organizationId: "org-a", project: { id: "project-a" } };
+const context = { userId: "u1", organizationId: "org-a", project: { id: "project-a" } };
 
 describe("loadDashboardSeed", () => {
   beforeEach(() => {
@@ -24,7 +24,7 @@ describe("loadDashboardSeed", () => {
     const seed = await loadDashboardSeed();
     expect(mockCanView).toHaveBeenCalledWith("project", "view", context);
     expect(mockPayload).toHaveBeenCalledWith(context);
-    expect(seed).toMatchObject({ projectId: "project-a", data: { stats: { runs: 4 } } });
+    expect(seed).toMatchObject({ userId: "u1", projectId: "project-a", data: { stats: { runs: 4 } } });
     expect(typeof seed?.updatedAt).toBe("number");
   });
 

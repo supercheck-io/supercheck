@@ -7,7 +7,7 @@ jest.mock("@/hooks/use-requirements-stats", () => ({ useRequirementsStats: () =>
 jest.mock("@/hooks/use-open-incidents", () => ({ useOpenIncidents: () => ({ data: undefined, isLoading: false }) }));
 jest.mock("@/components/page-breadcrumbs", () => ({ PageBreadcrumbs: () => <nav data-testid="breadcrumbs" /> }));
 
-const seed = { projectId: "p1", updatedAt: 1, data: {} as never };
+const seed = { userId: "u1", projectId: "p1", updatedAt: 1, data: {} as never };
 
 describe("DashboardClient", () => {
   beforeEach(() => {

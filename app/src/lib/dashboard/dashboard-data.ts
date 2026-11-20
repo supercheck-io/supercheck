@@ -99,6 +99,8 @@ export interface DashboardData {
 
 /** Dashboard data the server already read for this page load, with the time it was read. */
 export interface DashboardSeed {
+  /** The user it was read for: a seed is only used while that user is signed in. */
+  userId: string;
   projectId: string;
   data: DashboardData;
   updatedAt: number;
