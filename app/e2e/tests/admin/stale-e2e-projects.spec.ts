@@ -38,12 +38,21 @@ test.describe('E2E hygiene @maintenance', () => {
   test('soft-deletes projects left behind by interrupted E2E runs', async ({ orgOwnerPage: page }) => {
     const response = await page.request.get('/api/projects');
     expect(response.ok(), await response.text()).toBe(true);
-    const { data = [] } = (await response.json()) as { data?: Array<{ id: string; name?: string; isDefault?: boolean }> };
-    const stale = staleE2eProjects(data, Date.now());
+    const { data = [], currentProject } = (await response.json()) as {
+      data?: Array<{ id: string; name?: string; isDefault?: boolean; organizationId?: string }>;
+      currentProject?: { organizationId?: string };
+    };
+    // Only the active organization: the list can include other teams' projects the owner can merely view.
+    const orgId = currentProject?.organizationId;
+    expect(orgId, 'the org owner has no active organization').toBeTruthy();
+    const stale = staleE2eProjects(data.filter((p) => p.organizationId === orgId), Date.now());
+    let swept = 0;
     for (const project of stale) {
       const removed = await page.request.delete(`/api/projects/${project.id}`);
-      expect([200, 204, 404], `deleting ${project.name}: ${await removed.text()}`).toContain(removed.status());
+      // 403: not ours to delete, so leave it. Anything else unexpected fails the sweep.
+      expect([200, 204, 403, 404], `deleting ${project.name}: ${await removed.text()}`).toContain(removed.status());
+      if (removed.ok()) swept++;
     }
-    test.info().annotations.push({ type: 'swept', description: `${stale.length} stale E2E project(s)` });
+    test.info().annotations.push({ type: 'swept', description: `${swept} of ${stale.length} stale E2E project(s)` });
   });
 });
