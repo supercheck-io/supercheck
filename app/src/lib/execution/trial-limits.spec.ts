@@ -34,6 +34,8 @@ const entitlement = (expiresAt: Date) => ({
   trialStartedAt: new Date(0),
   lifecycleEndedAt: null,
   midwayNotifiedAt: null,
+  browserHalfNotifiedAt: null,
+  browserFullNotifiedAt: null,
   endingNotifiedAt: null,
   endedNotifiedAt: null,
 });
@@ -49,7 +51,7 @@ describe("trial limits", () => {
       maxStatusPages: 2,
       maxTeamMembers: 3,
     });
-    expect(TRIAL_LIMITS.playwrightBudgetMs).toBe(150 * 60 * 1000);
+    expect(TRIAL_LIMITS.playwrightBudgetMs).toBe(1000 * 60 * 1000);
   });
 
   it.each([
@@ -68,7 +70,7 @@ describe("trial limits", () => {
   it("maps an entitlement to a never-billed plan view", () => {
     const plan = trialPlanLimits(entitlement(new Date(Date.now() + 1000)));
     expect(plan).toMatchObject({
-      playwrightMinutesIncluded: 150,
+      playwrightMinutesIncluded: 1000,
       k6VuMinutesIncluded: 0,
       maxOrganizations: 1,
       customDomains: false,
@@ -201,8 +203,8 @@ describe("trial limits", () => {
   });
 
   describe("consistency with the database defaults", () => {
-    // Column defaults are created in 0037 and 0038; 0065 raised the trial budgets. The last statement wins.
-    const migration = ["0037_execution_entitlements.sql", "0038_trial_load_test_budget.sql", "0065_trial_budget_defaults.sql"]
+    // Column defaults are created in 0037 and 0038; 0065 and 0088 changed the trial budgets. The last statement wins.
+    const migration = ["0037_execution_entitlements.sql", "0038_trial_load_test_budget.sql", "0065_trial_budget_defaults.sql", "0088_trial_browser_usage_notified.sql"]
       .map((file) => readFileSync(resolve(__dirname, "../../db/migrations", file), "utf8"))
       .join("\n");
     const defaultOf = (column: string) => {
