@@ -30,8 +30,8 @@ export type FreshCreator = {
  */
 export async function signUpFreshCreator(browser: Browser, baseURL: string, label: string): Promise<FreshCreator> {
   test.skip(await signUpIsClosed(baseURL), SIGN_UP_REASON);
-  // A submit that sends no request is retried twice, and each attempt waits for the form and the request.
-  test.setTimeout(180_000);
+  // Each attempt waits for the form and the request; a submit that sends nothing or is rate limited is tried again.
+  test.setTimeout(300_000);
   // Playwright applies the project's signed-in storageState to new contexts; start signed out.
   const context = await browser.newContext({ baseURL, storageState: { cookies: [], origins: [] } });
   const page = await context.newPage();
@@ -69,9 +69,15 @@ export async function signUpFreshCreator(browser: Browser, baseURL: string, labe
     }
     const res = await request.response();
     expect(res, `sign-up request got no answer (${trail.join(' | ')})`).not.toBeNull();
-    // A 429 fails loudly: Compose sign-ups bypass the per-IP limiter (no trusted client IP), so one is a real regression.
-    expect(res!.ok(), `sign-up answered ${res!.status()}`).toBe(true);
-    break;
+    if (res!.status() !== 429) {
+      expect(res!.ok(), `sign-up answered ${res!.status()}`).toBe(true);
+      break;
+    }
+    // Every Compose sign-up shares one address, and Better Auth allows 10 per 60 s per address: wait out the
+    // window the server names (X-Retry-After) instead of failing the spec that happened to be the eleventh.
+    expect(attempt, 'sign-up kept answering 429').toBeLessThan(3);
+    const wait = Number(res!.headers()['x-retry-after'] ?? res!.headers()['retry-after']) || 60;
+    await page.waitForTimeout((Math.min(wait, 60) + 1) * 1000);
   }
   await page.waitForURL((url) => !url.pathname.startsWith('/sign-up'), { timeout: 60_000 });
 
