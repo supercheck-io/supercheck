@@ -1,4 +1,5 @@
 import { db } from "@/utils/db";
+import { safeErrorFields } from "@/lib/log-safe-error";
 import {
   user,
   organization,
@@ -31,7 +32,7 @@ export async function isAdmin(): Promise<boolean> {
     const role = await getUserRole(currentUser.id);
     return role === Role.SUPER_ADMIN;
   } catch (error) {
-    console.error("Error checking admin status:", error);
+    console.error("Error checking admin status:", safeErrorFields(error));
     return false;
   }
 }
@@ -46,7 +47,7 @@ export async function isSuperAdmin(): Promise<boolean> {
     const role = await getUserRole(currentUser.id);
     return role === Role.SUPER_ADMIN;
   } catch (error) {
-    console.error("Error checking super admin status:", error);
+    console.error("Error checking super admin status:", safeErrorFields(error));
     return false;
   }
 }
@@ -64,7 +65,7 @@ export async function isOrgAdmin(): Promise<boolean> {
     const orgRole = await getUserOrgRole(currentUser.id, activeOrg.id);
     return orgRole === Role.ORG_ADMIN || orgRole === Role.ORG_OWNER;
   } catch (error) {
-    console.error("Error checking org admin status:", error);
+    console.error("Error checking org admin status:", safeErrorFields(error));
     return false;
   }
 }
@@ -78,7 +79,7 @@ export async function requireAdmin(userId?: string) {
   const role = userId
     ? await getUserRole(userId)
     : await getUserRole(current!.id).catch((error) => {
-        console.error("Error checking admin status:", error);
+        console.error("Error checking admin status:", safeErrorFields(error));
         return null;
       });
   if (role !== Role.SUPER_ADMIN) {
