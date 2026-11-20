@@ -134,7 +134,7 @@ Select **Impersonate User** to confirm.
 
 ![Impersonate User Dialog](/screenshots/super-admin-impersonate-user.png)
 
-A banner at the bottom shows "Impersonating" with the user's email; select **Stop** to return to your admin session. You see the platform as the user does. Checkout, the billing portal, billing settings, CLI tokens, organization deletion and revealing secret values are blocked while impersonating (secret names and metadata still list; the refused reveal is audited).
+A banner at the bottom shows "Impersonating" with the user's email; select **Stop** to return to your admin session. You see the platform as the user does. These are refused while impersonating: creating CLI tokens, trigger keys and recorder keys; approving a CLI device login; connecting or disconnecting MCP apps; registering or rotating Private Agents; checkout, the billing portal, billing settings and seat changes; deleting or purging organizations, cancelling an organization deletion, restoring projects and deleting users; starting another impersonation; changing the profile, credentials, sessions and linked accounts; revealing secret values or heartbeat ping URLs; and using secrets in monitors. Secret names and metadata still list; refused reveals are audited.
 
 ![Impersonation Banner](/screenshots/super-admin-impersonation-banner.png)
 

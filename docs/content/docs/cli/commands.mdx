@@ -163,7 +163,7 @@ Deploy records returned IDs in `supercheck.state.json`. Share it with CI so late
 | `--wait` | Wait for browser approval instead of returning immediately (default in an interactive terminal) |
 | `--timeout <seconds>` | With `--wait`: give up after this long (30 to 3600, default 900); the login stays resumable. A dropped connection during the wait is retried until then |
 
-**Browser login** is a device-authorization sign-in. The CLI prints a URL and a short code. You approve the request in the browser, choosing the project the CLI may access, and the CLI stores a project-scoped key that expires in 90 days. Only approve a code you just requested yourself. Enter the code from your terminal in the confirmation field; the info icon shows the request code and requester address.
+**Browser login** is a device-authorization sign-in. The CLI prints a URL and a short code. You approve the request in the browser, choosing the project the CLI may access, and the CLI stores a project-scoped key that expires in 90 days. Only approve a code you just requested yourself. Enter the code from your terminal in the confirmation field; the info icon shows the verification code and the address the request came from.
 
 - **Interactive terminal:** waits for approval and opens your browser.
 - **Agents and scripts:** `supercheck login --json` prints the URL and code and returns immediately with `"state": "authorization_pending"`. Run it again after approval to finish. With `--wait` it blocks: it prints the pending object first, then a second JSON line with the result.
@@ -225,7 +225,7 @@ Edits only the `organization` and `project` values and the default API URL writt
 | `job delete <job-id>` | Delete a job with confirmation | `--force` |
 | `job run` | Run a job now, bypassing the cron schedule; `--wait` exits 1 on a failed run and 5 on timeout | `--id`, `--local`, `--cloud`, `--offline`, `--playwright-config`, `--wait`, `--timeout` (300, cloud only) |
 | `job trigger <job-id>` | Trigger a job with a trigger key, optionally wait | `--wait`, `--timeout` (300) |
-| `job keys` | List, create and revoke trigger keys | `create --name --expires-in <seconds>` (min 60), `delete` |
+| `job keys` | List, create and delete trigger keys | `create --name --expires-in <seconds>` (min 60), `delete` |
 
 ```bash
 supercheck job create --name "Nightly E2E" --tests <test-id> --schedule "0 2 * * *"
@@ -385,7 +385,7 @@ supercheck monitor update <monitor-id> --interval-minutes 1 --active false
 | `--interval-minutes` | No | `5` | Check interval in minutes (1–1440) |
 | `--every` | Heartbeat | — | Expected ping interval: `5m`, `1h`, `1d` (1 minute to 31 days) |
 | `--grace` | No | 20% of the interval, 5 min to 1 day | How late a ping may be before the monitor goes down (1 minute to 1 day). Heartbeat only |
-| `--timeout` | No | `30` (`60` with the preset) | Request timeout in seconds (1-3600; 5-120 with the preset). Must not exceed `--interval-minutes` × 60 |
+| `--timeout` | No | `30` (`60` with the preset) | Request timeout in seconds (1-3600; 5-120 with the preset; 5-60 for MCP monitors). Must not exceed `--interval-minutes` × 60 |
 | `--method` | No | `GET` | `GET`, `POST`, `PUT`, `DELETE`, `PATCH`, `HEAD`, `OPTIONS`. Not allowed with `--preset` (the preset always sends `POST`) |
 | `--preset` | No | — | `ai-endpoint`: check an OpenAI-compatible chat-completions endpoint (`http_request` only) |
 | `--model` | With `--preset` | — | Model name to request |

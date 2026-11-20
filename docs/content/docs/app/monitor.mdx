@@ -343,7 +343,7 @@ A paginated table of check results:
 | **Location** | Where the check ran |
 | **Response** | How long the check took |
 
-For a failed check, an info icon next to the result opens the error message. Synthetic monitors add a report icon there. MCP monitors add a **Tools** column. The table pages through historical results (10 per page on small screens) and filters by date. Use the location menu on the availability chart to show one location.
+For a failed check, an info icon next to the result opens the error message. Synthetic monitors add a report icon there. MCP monitors add a **Tools** column. The table pages through historical results (10 per page on small screens, as many rows as fit the panel on desktop) and filters by date. Use the location menu on the availability chart to show one location.
 
 </Accordion>
 </Accordions>
@@ -357,12 +357,10 @@ Synthetic monitors generate a detailed report when a check fails. Open it from t
 
 | Section | Description |
 |---------|-------------|
-| **Test Summary** | Test name, file path, browser used, and execution duration |
-| **Error Details** | Assertion failures with expected vs received values and stack trace |
+| Header | Test title, file location, duration and Playwright project (browser). In the test list, **View Trace** opens the trace viewer with screenshots and network logs |
+| **Errors** | Assertion failures with expected vs received values and a code frame. **Copy prompt** copies the error details for AI-assisted debugging |
 | **Test Steps** | Timeline of all actions with pass/fail status and timing |
-| **View Trace** | Opens trace viewer with video recording, screenshots, and network logs |
-
-Use **Copy prompt** to copy the error details for AI-assisted debugging.
+| **Screenshots**, **Videos**, **Traces**, **Attachments** | Files recorded during the check, when present |
 
 ## Maintenance windows
 

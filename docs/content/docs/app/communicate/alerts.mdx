@@ -444,7 +444,7 @@ A channel whose latest delivery in the past 7 days was rejected with HTTP 401 or
 
 Webhook deliveries, including paging services, are retried up to 3 times on HTTP 429, 5xx and network errors, honouring the receiver's `Retry-After` for up to 10 seconds. HTTP 400, 401, 403 and 404 are not retried. A 401 or 403 means the integration key was rejected: it is never retried on later checks either, and the channel shows **Check the integration key** until a delivery succeeds.
 
-When a paging service still fails and the check opens an incident, the incident timeline records the failed page and Supercheck sends the incident message to the project's Default policy channels; if nothing reaches anyone, the project's owners and admins are emailed. Monitors that alert only to a paging service and do not open incidents have no fallback, so add an email or chat channel to them too.
+When a paging service still fails and the check opens an incident, the incident timeline records the failed page and Supercheck sends the incident message to the project's Default policy channels; if nothing reaches anyone and the incident has no owner who can act, the project's owners and admins are emailed. Monitors that alert only to a paging service and do not open incidents have no fallback, so add an email or chat channel to them too.
 
 ### One-way paging
 

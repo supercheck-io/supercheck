@@ -10,6 +10,8 @@ description: supercheck.config.ts reference and project structure
 | `./supercheck.config.ts` | Project configuration (checked into the repo) |
 | `./supercheck.config.local.ts` | Local overrides (gitignored, optional) |
 
+The CLI also accepts `.js` and `.mjs` for both files and looks for `.ts`, then `.js`, then `.mjs`.
+
 <Callout type="warn">
 Config files must never contain tokens. The CLI rejects any config containing `sck_live_*`, `sck_trigger_*` or `sck_test_*` patterns.
 </Callout>
