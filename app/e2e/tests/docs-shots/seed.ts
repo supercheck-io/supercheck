@@ -1,0 +1,124 @@
+import { expect, type APIRequestContext, type Page } from '@playwright/test';
+import { createMonitor, createTest } from '../../utils/test-data';
+import { waitForHydration } from '../../utils/hydration';
+
+/**
+ * Fills the gaps the docs shots need in the showcase project, through the app's own API and UI.
+ * Each step creates its record only when the project has none, so repeated runs add nothing but
+ * fresh heartbeat pings. Names read like a real team's setup, not test data.
+ */
+
+type Row = { id?: string; type?: string; name?: string };
+const list = async (api: APIRequestContext, url: string, key: string): Promise<Row[]> => {
+  const response = await api.get(url);
+  return response.ok() ? (((await response.json()) as Record<string, Row[]>)[key] ?? []) : [];
+};
+
+/** A run of the nightly job: /start, then the finishing ping, so the detail page shows a duration. */
+async function pingHeartbeat(api: APIRequestContext, baseUrl: string, monitors: Row[]): Promise<void> {
+  const heartbeat = monitors.find((m) => m.type === 'heartbeat');
+  if (!heartbeat?.id) return;
+  const reveal = await api.get(`/api/monitors/${heartbeat.id}/heartbeat-url`, { headers: { origin: baseUrl } });
+  expect(reveal.ok(), `revealing the heartbeat URL returned ${reveal.status()}`).toBe(true);
+  const { pingUrl } = (await reveal.json()) as { pingUrl: string };
+  expect((await api.get(`${pingUrl}/start`)).ok()).toBe(true);
+  await new Promise((resolve) => setTimeout(resolve, 2_500));
+  expect((await api.get(pingUrl)).ok()).toBe(true);
+}
+
+/** A public, unauthenticated MCP server, so the monitor lists real tools without a stored key. */
+async function ensureMcpMonitor(api: APIRequestContext, monitors: Row[]): Promise<void> {
+  if (monitors.some((m) => m.type === 'mcp_server')) return;
+  const { id } = await createMonitor(api, {
+    name: 'Docs search MCP server',
+    type: 'mcp_server',
+    target: 'https://mcp.deepwiki.com/mcp',
+    frequencyMinutes: 10,
+    config: { mcp: { auth: { type: 'none' } } },
+  });
+  // The first check runs at once; the detail shot needs its tool list.
+  await expect
+    .poll(async () => (await list(api, `/api/monitors/${id}/results?limit=1`, 'data')).length, { timeout: 90_000 })
+    .toBeGreaterThan(0);
+}
+
+const AGENT_SCRIPT = `import { test, expect } from '@supercheck/agent-test';
+
+test('support bot answers the refund window', async ({ agent }) => {
+  const bot = agent.connect({ kind: 'openai', url: 'https://api.openai.com/v1/chat/completions', model: 'gpt-4o-mini' });
+  const result = await agent.repeat(5, async () => {
+    const run = await bot.send('How long do I have to return a jacket I bought online?');
+    expect(run.text).toContain('30 days');
+  });
+  expect(result.passRate).toBeGreaterThanOrEqual(0.8);
+});
+`;
+
+async function ensureAgentTest(api: APIRequestContext): Promise<void> {
+  if ((await list(api, '/api/tests?limit=100', 'data')).some((t) => t.type === 'agent')) return;
+  await createTest(api, {
+    title: 'Support bot: refund policy answers',
+    description: 'Asks the storefront support bot about returns five times and expects the 30-day window.',
+    type: 'agent',
+    script: Buffer.from(AGENT_SCRIPT).toString('base64'),
+  });
+}
+
+async function ensureService(page: Page, services: Row[]): Promise<void> {
+  if (services.length) return;
+  await page.goto('/services', { waitUntil: 'load' });
+  await waitForHydration(page);
+  await page.getByTestId('add-service-btn').filter({ visible: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'Add service' });
+  await dialog.getByLabel('Title *').fill('Checkout API');
+  await dialog.getByLabel('Environment').fill('production');
+  await dialog.getByLabel('Description').fill('Cart, pricing and payment handoff for the storefront.');
+  await dialog.getByTestId('submit-service-btn').click();
+  await expect(dialog).toBeHidden();
+}
+
+/** A resolved, public status update, so the public page links to an incident page. */
+async function ensurePublicIncident(page: Page, statusPageId: string | undefined): Promise<void> {
+  if (!statusPageId) return;
+  await page.goto(`/status-pages/${statusPageId}/public`, { waitUntil: 'load' });
+  if (await page.locator('a[href*="/incidents/"]').first().isVisible().catch(() => false)) return;
+  await page.goto(`/status-pages/${statusPageId}`, { waitUntil: 'load' });
+  await waitForHydration(page);
+  await page.getByRole('tab', { name: 'Status updates', exact: true }).click();
+  await page.getByRole('button', { name: 'New status update', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'New status update' });
+  await dialog.getByLabel('Title *').fill('Delayed order confirmation emails');
+  await dialog
+    .getByLabel('Initial Message *')
+    .fill('Order confirmation emails are arriving up to 20 minutes late. Orders and payments are not affected. We are working with our email provider.');
+  // The form needs one affected component; a page without components gets no seeded update.
+  const component = dialog.locator('button[id^="component-"]').first();
+  if (!(await component.isVisible().catch(() => false))) {
+    await dialog.getByRole('button', { name: 'Cancel' }).click();
+    return;
+  }
+  await component.click();
+  // Seeding must never email subscribers.
+  const notify = dialog.locator('#incident-notify');
+  if ((await notify.getAttribute('data-state')) === 'checked') await notify.click();
+  await expect(notify).toHaveAttribute('data-state', 'unchecked');
+  await dialog.getByRole('button', { name: 'Post status update', exact: true }).click();
+  await expect(dialog).toBeHidden({ timeout: 15_000 });
+}
+
+export async function seedShowcase(page: Page, baseUrl: string): Promise<void> {
+  const api = page.request;
+  const [monitors, services, pages] = await Promise.all([
+    list(api, '/api/monitors', 'data'),
+    list(api, '/api/sre/services', 'services'),
+    list(api, '/api/status-pages', 'data'),
+  ]);
+  // One failed step must not cost every shot: its own shot fails instead, with the reason logged here.
+  const step = (name: string, run: () => Promise<void>) =>
+    run().catch((error: unknown) => console.warn(`showcase seed: ${name} failed: ${error instanceof Error ? error.message : String(error)}`));
+  await step('heartbeat pings', () => pingHeartbeat(api, baseUrl, monitors));
+  await step('agent test', () => ensureAgentTest(api));
+  await step('MCP monitor', () => ensureMcpMonitor(api, monitors));
+  await step('AI SRE service', () => ensureService(page, services));
+  await step('public status update', () => ensurePublicIncident(page, pages[0]?.id));
+}
