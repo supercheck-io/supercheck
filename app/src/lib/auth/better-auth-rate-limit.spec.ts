@@ -90,3 +90,13 @@ describe("betterAuthRateLimitStorage", () => {
     await expect(betterAuthRateLimitStorage.consume("k", { window: 10, max: 0 })).resolves.toEqual({ allowed: true, retryAfter: null });
   });
 });
+
+describe("withAuthClientIp with trusted proxy hops", () => {
+  it("resolves the trusted entry from a multi-hop chain", () => {
+    process.env.TRUSTED_PROXY_HOPS = "1";
+    const req = withAuthClientIp(new Request("https://app.test/api/auth/oauth2/token", {
+      headers: { "x-forwarded-for": "198.51.100.1, 203.0.113.5, 10.0.0.1" },
+    }));
+    expect(req.headers.get(AUTH_CLIENT_IP_HEADER)).toBe("203.0.113.5");
+  });
+});
