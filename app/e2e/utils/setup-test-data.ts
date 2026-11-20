@@ -30,7 +30,7 @@ export type FreshCreator = {
  */
 export async function signUpFreshCreator(browser: Browser, baseURL: string, label: string): Promise<FreshCreator> {
   test.skip(await signUpIsClosed(baseURL), SIGN_UP_REASON);
-  // A dropped submit is retried once, and each attempt waits for the form and the request.
+  // A submit that sends no request is retried twice, and each attempt waits for the form and the request.
   test.setTimeout(180_000);
   // Playwright applies the project's signed-in storageState to new contexts; start signed out.
   const context = await browser.newContext({ baseURL, storageState: { cookies: [], origins: [] } });

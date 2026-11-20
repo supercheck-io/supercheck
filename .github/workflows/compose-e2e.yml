@@ -246,8 +246,8 @@ jobs:
           E2E_CHECKPOINTS: "1"
           # Checkpoint mode assumes the worker-less screenshot app; tell the specs when a worker runs.
           E2E_WORKER: ${{ env.WITH_WORKER == 'true' && '1' || '0' }}
-          # A skipped @critical or @high spec fails the run. Tests that need a worker or an AI
-          # provider are excluded by tag above, not skipped.
+          # A skipped @critical or @high spec fails the run. Tests that need a worker are
+          # excluded by tag above when none runs, not skipped.
           E2E_FAIL_ON_PRIORITY_SKIPS: true
           # Asserts /api/health reports this commit (tests/core/build-revision.spec.ts); skipped
           # when a manual run tests a published tag built from another commit.
@@ -257,7 +257,10 @@ jobs:
       - name: Show app log on failure
         if: failure()
         working-directory: ./deploy/docker
-        run: docker compose logs --tail 200 app worker
+        run: |
+          docker compose logs --tail 200 app worker
+          sudo k3s kubectl get pods,events -n supercheck-execution || true
+          cat "$RUNNER_TEMP/mock-ai.log" || true
         env:
           SUPERCHECK_VERSION: ${{ format('{0}{1}', inputs.image_tag || 'ci', inputs.image_digest && format('@{0}', inputs.image_digest) || '') }}
 

@@ -49,6 +49,8 @@ async function runToTerminal(request: APIRequestContext, cleanup: CleanupRegistr
 
 test.describe('Worker execution @execution', () => {
   test.skip(NO_WORKER, NO_WORKER_REASON);
+  // The poll below waits up to 240 s for the first Job to start its browser.
+  test.setTimeout(300_000);
 
   test('a Playwright test runs through the worker and the run shows passed @critical @positive', async ({ projectAdminPage: page, cleanup }) => {
     const { runId, run } = await runToTerminal(page.request, cleanup, passing, 'pass');
