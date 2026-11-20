@@ -3,6 +3,7 @@ import type { BetterAuthOptions } from "better-auth";
 import { getRedisConnection } from "@/lib/queue";
 import { withRedisDeadline } from "@/lib/security/redis-deadline";
 import { getClientIP, UNKNOWN_CLIENT_IP } from "@/lib/session-security";
+import { requestWithHeaders } from "@/lib/mcp/request-policy";
 
 /** Request header carrying the client IP resolved with the app's proxy-trust rules; Better Auth reads only this. */
 export const AUTH_CLIENT_IP_HEADER = "x-supercheck-client-ip";
@@ -16,10 +17,13 @@ export function withAuthClientIp(request: Request): Request {
   headers.delete(AUTH_CLIENT_IP_HEADER);
   const ip = getClientIP(request.headers);
   if (ip !== UNKNOWN_CLIENT_IP) headers.set(AUTH_CLIENT_IP_HEADER, ip);
-  return new Request(request, { headers });
+  return requestWithHeaders(request, headers);
 }
 
 type RateLimitStorage = NonNullable<NonNullable<BetterAuthOptions["rateLimit"]>["customStorage"]>;
+
+/** Better Auth's key prefix when it could not resolve a client IP (better-auth/dist/api/rate-limiter). */
+const NO_TRUSTED_IP_KEY = "no-trusted-ip";
 
 const INCREMENT = `
 local count = redis.call('INCR', KEYS[1])
@@ -34,6 +38,9 @@ return {count, redis.call('TTL', KEYS[1])}
  */
 export const betterAuthRateLimitStorage: RateLimitStorage = {
   async consume(key, rule) {
+    // Without a trusted client IP Better Auth uses one bucket for everyone, so a few requests would lock all
+    // users out of sign-in. Skip it; the login lockout and Turnstile still apply (they handle a missing IP).
+    if (key.startsWith(`${NO_TRUSTED_IP_KEY}|`)) return { allowed: true, retryAfter: null };
     try {
       const redis = await getRedisConnection();
       // Keys carry the client IP; hash them so addresses never appear in Redis.
