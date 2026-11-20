@@ -202,7 +202,9 @@ export function useMonitorResults(
         location: options.location,
       }),
     enabled: !!monitorId,
-    staleTime: 30 * 1000,  // Monitor results update frequently (30s)
+    // Always stale: the table refits its page size after mount, and that key change only refetches a stale entry
+    // (refetchOnMount covers mounts, not key changes). A page cached seconds ago would hide new checks.
+    staleTime: 0,
     // gcTime uses global default (24h)
     refetchOnWindowFocus: false,
     refetchOnMount: 'always',  // Always refetch on mount - monitor data must be fresh
