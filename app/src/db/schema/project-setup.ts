@@ -19,16 +19,19 @@ import { sql } from "drizzle-orm";
 import { organization, projects } from "./organization";
 import { user } from "./auth";
 
-export const PROJECT_SETUP_STATUSES = [
-  "not_started",
-  "in_progress",
-  "completed",
-  "dismissed",
-] as const;
-export type ProjectSetupStatus = (typeof PROJECT_SETUP_STATUSES)[number];
+import {
+  PROJECT_SETUP_STATUSES,
+  USER_PERSONAS,
+  type ProjectSetupStatus,
+  type UserPersona,
+} from "./project-setup-values";
 
-export const USER_PERSONAS = ["sre", "qa", "developer", "leader"] as const;
-export type UserPersona = (typeof USER_PERSONAS)[number];
+export {
+  PROJECT_SETUP_STATUSES,
+  USER_PERSONAS,
+  type ProjectSetupStatus,
+  type UserPersona,
+} from "./project-setup-values";
 
 /**
  * One row per project, created on first write. The draft holds non-secret

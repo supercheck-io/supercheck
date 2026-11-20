@@ -8,29 +8,15 @@ interface AdminStatus {
 export const ADMIN_STATUS_QUERY_KEY = ["admin-status"] as const;
 
 export async function fetchAdminStatus(): Promise<AdminStatus> {
-  // Fetch both admin statuses in parallel for efficiency
-  const [adminResponse, orgAdminResponse] = await Promise.all([
-    fetch("/api/admin/check"),
-    fetch("/api/organizations/stats"),
-  ]);
-
-  let isAdmin = false;
-  let isOrgAdmin = false;
-
-  // Check super admin status
-  if (adminResponse.ok) {
-    try {
-      const data = await adminResponse.json();
-      isAdmin = data.isAdmin || false;
-    } catch {
-      // JSON parse error - assume not admin
-    }
+  // One request answers both; /api/organizations/stats counted every org resource just to say 200 or 403.
+  const response = await fetch("/api/admin/check");
+  if (!response.ok) return { isAdmin: false, isOrgAdmin: false };
+  try {
+    const data = await response.json();
+    return { isAdmin: data.isAdmin === true, isOrgAdmin: data.isOrgAdmin === true };
+  } catch {
+    return { isAdmin: false, isOrgAdmin: false };
   }
-
-  // Check org admin status (200 = org admin, 403 = not org admin)
-  isOrgAdmin = orgAdminResponse.status === 200;
-
-  return { isAdmin, isOrgAdmin };
 }
 
 export function useAdminStatus() {
