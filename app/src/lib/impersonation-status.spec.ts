@@ -41,4 +41,9 @@ describe("getImpersonationStatus", () => {
     expect(JSON.stringify(log.mock.calls)).not.toContain("tok_live");
     log.mockRestore();
   });
+
+  it("reports a missing user row as null instead of failing", async () => {
+    rows.push([{ userId: "u2", impersonatedBy: "admin1" }], [], [{ id: "admin1", name: "Ada", email: "a@x" }]);
+    expect(await getImpersonationStatus()).toMatchObject({ isImpersonating: true, impersonatedUser: null });
+  });
 });

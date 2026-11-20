@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { render, waitFor } from "@testing-library/react";
 import { dehydrate, QueryClient } from "@tanstack/react-query";
 import { QueryProvider, useSeedServerIdentity } from "./query-provider";
@@ -17,7 +18,7 @@ let seen: { isAdmin: boolean; isOrgAdmin: boolean } | undefined;
 function Sidebar() {
   useSeedServerIdentity("user-a");
   const { isAdmin, isOrgAdmin } = useAdminStatus();
-  seen = { isAdmin, isOrgAdmin };
+  useEffect(() => { seen = { isAdmin, isOrgAdmin }; });
   return null;
 }
 
