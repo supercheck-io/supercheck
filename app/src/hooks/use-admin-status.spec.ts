@@ -27,4 +27,22 @@ describe("fetchAdminStatus", () => {
     jest.spyOn(global, "fetch").mockResolvedValue({ ok: true, json: async () => { throw new SyntaxError("bad"); } } as unknown as Response);
     expect(await fetchAdminStatus()).toEqual({ isAdmin: false, isOrgAdmin: false });
   });
+
+  it("falls back to the org stats endpoint when an older server omits isOrgAdmin", async () => {
+    const fetchMock = jest.spyOn(global, "fetch").mockImplementation(async (url: unknown) =>
+      url === "/api/admin/check"
+        ? ({ ok: true, json: async () => ({ success: true, isAdmin: true }) } as Response)
+        : ({ ok: true, status: 200 } as Response),
+    );
+    expect(await fetchAdminStatus()).toEqual({ isAdmin: true, isOrgAdmin: true });
+    expect(fetchMock).toHaveBeenCalledWith("/api/organizations/stats");
+  });
+
+  it("keeps isAdmin when the fallback request fails", async () => {
+    jest.spyOn(global, "fetch").mockImplementation(async (url: unknown) => {
+      if (url === "/api/admin/check") return { ok: true, json: async () => ({ isAdmin: true }) } as Response;
+      throw new Error("network");
+    });
+    expect(await fetchAdminStatus()).toEqual({ isAdmin: true, isOrgAdmin: false });
+  });
 });

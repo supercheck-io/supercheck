@@ -13,7 +13,12 @@ export async function fetchAdminStatus(): Promise<AdminStatus> {
   if (!response.ok) return { isAdmin: false, isOrgAdmin: false };
   try {
     const data = await response.json();
-    return { isAdmin: data.isAdmin === true, isOrgAdmin: data.isOrgAdmin === true };
+    // An older server during a rolling deploy omits isOrgAdmin: ask the org stats endpoint, as before.
+    const isOrgAdmin =
+      typeof data.isOrgAdmin === "boolean"
+        ? data.isOrgAdmin
+        : await fetch("/api/organizations/stats").then((r) => r.status === 200, () => false);
+    return { isAdmin: data.isAdmin === true, isOrgAdmin };
   } catch {
     return { isAdmin: false, isOrgAdmin: false };
   }
