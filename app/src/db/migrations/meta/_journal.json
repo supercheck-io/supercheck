@@ -617,6 +617,13 @@
       "when": 1794899247418,
       "tag": "0087_alert_history_provider_sent_at_idx",
       "breakpoints": true
+    },
+    {
+      "idx": 88,
+      "version": "7",
+      "when": 1795180716038,
+      "tag": "0088_trial_browser_usage_notified",
+      "breakpoints": true
     }
   ]
 }

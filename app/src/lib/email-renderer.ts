@@ -238,13 +238,14 @@ export async function renderTrialNotificationEmail(params: {
   organizationName: string;
   kind: TrialNotificationKind;
   daysRemaining: number;
+  browserMinutes?: number;
   subscribeUrl: string;
   manageBillingUrl?: string;
 }): Promise<RenderedEmail> {
   const component = TrialNotificationEmail(params);
 
   return {
-    subject: trialNotificationSubject(params.kind, params.organizationName, params.daysRemaining),
+    subject: trialNotificationSubject(params.kind, params.organizationName, params.daysRemaining, params.browserMinutes),
     html: await render(component, { pretty: false }),
     text: await render(component, PLAIN_TEXT_RENDER_OPTIONS),
   };
