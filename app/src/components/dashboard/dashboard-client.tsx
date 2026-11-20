@@ -23,7 +23,7 @@ import {
   RefreshCw,
   ChevronDown,
 } from "lucide-react";
-import { Suspense, use, useEffect, useMemo, useSyncExternalStore } from "react";
+import { Suspense, use, useMemo, useSyncExternalStore } from "react";
 import { cn } from "@/lib/utils";
 import { PageBreadcrumbs } from "@/components/page-breadcrumbs";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -54,8 +54,7 @@ import { SupercheckLogo } from "@/components/logo/supercheck-logo";
 import { SupercheckLoading } from "@/components/shared/supercheck-loading";
 import { formatTestTypeBreakdown } from "@/lib/dashboard/test-types";
 import { useQueryClient } from "@tanstack/react-query";
-import { DASHBOARD_STALE_MS, getDashboardQueryKey, seedMatches, useDashboard, type DashboardSeed } from "@/hooks/use-dashboard";
-import { useSession } from "@/utils/auth-client";
+import { DASHBOARD_STALE_MS, getDashboardQueryKey, useDashboard, type DashboardSeed } from "@/hooks/use-dashboard";
 import { useProjectContext } from "@/hooks/use-project-context";
 import { useOpenIncidents } from "@/hooks/use-open-incidents";
 import { useRequirementsStats } from "@/hooks/use-requirements-stats";
@@ -284,20 +283,13 @@ export function DashboardClient({ seed }: { seed: Promise<DashboardSeed | null> 
   const queryClient = useQueryClient();
   const projectId = useProjectContext().currentProject?.id ?? null;
   // Warm path (a client navigation after a hover prefetch or an earlier visit): fresh cached data for this
-  // project renders at once instead of waiting for the server's read. The cache is cleared on any account
-  // change, so cached data is the signed-in user's. Cold path: wait for the seed, so the browser does not
-  // request the same data in parallel.
+  // project renders at once and is refreshed in the background by the browser, so the newest result wins
+  // without comparing server and browser clocks. The cache is cleared on any account change, so cached data
+  // is the signed-in user's. Cold path: wait for the server's read, so the browser does not request the same
+  // data in parallel.
   const cached = queryClient.getQueryCache().find({ queryKey: getDashboardQueryKey(projectId), exact: true });
   if (cached?.state.data !== undefined && !cached.isStaleByTime(DASHBOARD_STALE_MS)) {
-    return (
-      <>
-        <DashboardView seed={null} />
-        {/* The server's read is still newer: write it into the cache when it arrives. */}
-        <Suspense fallback={null}>
-          <LateSeed seed={seed} projectId={projectId} />
-        </Suspense>
-      </>
-    );
+    return <DashboardView seed={null} refreshOnMount />;
   }
   return (
     <Suspense fallback={<DashboardSkeleton />}>
@@ -306,29 +298,18 @@ export function DashboardClient({ seed }: { seed: Promise<DashboardSeed | null> 
   );
 }
 
-function LateSeed({ seed, projectId }: { seed: Promise<DashboardSeed | null>; projectId: string | null }) {
-  const value = use(seed);
-  const queryClient = useQueryClient();
-  const sessionUserId = useSession().data?.user?.id;
-  useEffect(() => {
-    if (!value || !seedMatches(value, projectId, sessionUserId)) return;
-    queryClient.setQueryData(getDashboardQueryKey(projectId), value.data, { updatedAt: value.updatedAt });
-  }, [value, projectId, sessionUserId, queryClient]);
-  return null;
-}
-
 function SeededDashboard({ seed }: { seed: Promise<DashboardSeed | null> }) {
   return <DashboardView seed={use(seed)} />;
 }
 
-function DashboardView({ seed }: { seed: DashboardSeed | null }) {
+function DashboardView({ seed, refreshOnMount = false }: { seed: DashboardSeed | null; refreshOnMount?: boolean }) {
   const isMounted = useSyncExternalStore(
     () => () => { },
     () => true,
     () => false
   );
 
-  const { data: dashboardData, isLoading: queryLoading, isRestoring, error: queryError } = useDashboard(seed);
+  const { data: dashboardData, isLoading: queryLoading, isRestoring, error: queryError } = useDashboard(seed, { refreshOnMount });
   const { data: requirementsStats, isLoading: requirementsLoading } = useRequirementsStats();
   const { data: incidentsResult, isLoading: incidentsLoading } = useOpenIncidents();
   const hasData = dashboardData !== undefined && dashboardData !== null;

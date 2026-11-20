@@ -53,14 +53,15 @@ export async function fetchDashboard(projectId: string | null = null): Promise<D
 export const DASHBOARD_STALE_MS = 60 * 1000;
 
 /** A seed counts only for its own project and user; a pending session check counts as the server's user. */
-export function seedMatches(seed: DashboardSeed, projectId: string | null, sessionUserId: string | undefined): boolean {
+function seedMatches(seed: DashboardSeed, projectId: string | null, sessionUserId: string | undefined): boolean {
   return seed.projectId === projectId && (sessionUserId === undefined || sessionUserId === seed.userId);
 }
 
 /** Seeds already written into the cache (each server read is applied at most once). */
 const appliedSeeds = new WeakSet<DashboardSeed>();
 
-export function useDashboard(seed?: DashboardSeed | null) {
+/** `refreshOnMount`: refetch in the background even when the cached data is fresh (warm client navigations). */
+export function useDashboard(seed?: DashboardSeed | null, { refreshOnMount = false }: { refreshOnMount?: boolean } = {}) {
   const { currentProject } = useProjectContext();
   const projectId = currentProject?.id ?? null;
   const queryClient = useQueryClient();
@@ -93,7 +94,7 @@ export function useDashboard(seed?: DashboardSeed | null) {
     // gcTime uses global default (24h)
     refetchOnWindowFocus: false,
     // Refetch on every visit unless the data is under a minute old (a server seed from this page load).
-    refetchOnMount: true,
+    refetchOnMount: refreshOnMount ? "always" : true,
     // Never saved to localStorage: a full page load gets it from the server, and an older saved
     // entry restored after mount would replace that fresher value.
     meta: { persist: false },

@@ -178,4 +178,14 @@ describe("useDashboard with a server seed", () => {
     const { result } = run(seed("project-a"));
     expect(result.current.data?.stats.runs).toBe(3);
   });
+
+  it("refreshes fresh cached data in the background on a warm visit", async () => {
+    global.fetch = jest.fn().mockResolvedValue({ ok: true, json: async () => ({ jobs: { recentRuns30d: 9 } }) });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    client.setQueryData(getDashboardQueryKey("project-a"), { stats: { runs: 1 } });
+    const wrapper = ({ children }: { children: ReactNode }) => createElement(QueryClientProvider, { client }, children);
+    const { result } = renderHook(() => useDashboard(null, { refreshOnMount: true }), { wrapper });
+    expect(result.current.data?.stats.runs).toBe(1);
+    await waitFor(() => expect(result.current.data?.stats.runs).toBe(9));
+  });
 });
