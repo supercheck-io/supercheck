@@ -125,7 +125,7 @@ jobs:
         working-directory: ./app/e2e
         # apt on a runner occasionally exits 100 (mirror hiccup); retry before failing the job.
         run: |
-          for attempt in 1 2 3; do
+          for _ in 1 2 3; do
             npx playwright install --with-deps chromium && exit 0
             sleep 15
           done
