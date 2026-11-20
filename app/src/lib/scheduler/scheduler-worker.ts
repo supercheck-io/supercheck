@@ -11,6 +11,7 @@
 import { liveJob } from "@/lib/deletion/visibility";
 import { Worker } from 'bullmq';
 import { getQueues, getRedisConnection, queueLogger } from '@/lib/queue';
+import { watchConsumer } from '@/lib/consumer-watchdog';
 import { and, eq } from 'drizzle-orm';
 import { db } from '@/utils/db';
 import { jobs } from '@/db/schema';
@@ -162,6 +163,8 @@ export async function initializeSchedulerWorkers(): Promise<void> {
       monitorSchedulerWorker.on('error', (error) => {
         logger.error({ error }, 'Monitor scheduler worker error');
       });
+
+      [playwrightSchedulerWorker, k6SchedulerWorker, monitorSchedulerWorker].forEach(watchConsumer);
 
       // Start all workers after setup is complete
       await Promise.all([

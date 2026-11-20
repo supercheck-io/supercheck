@@ -52,7 +52,7 @@ flowchart LR
 - CLI/session API tokens (`sck_live_`/`sck_test_`) and job trigger keys (`sck_trigger_`, plus legacy `job_` formats) are different credential classes. Validate type, prefix/current format, expiry, enabled state, scope, and allowed operation.
 - Store credential material according to the current one-time-display/hash design; never make plaintext recoverable through list/get APIs.
 - Token lists expose safe metadata only. Creation returns a plaintext token only at the intended one-time boundary.
-- Rate-limit authentication and credential-sensitive endpoints and return useful retry metadata where supported. The invite and API-key verification limiters fail closed: Redis down or slow (`withRedisDeadline`) returns `503` with `Retry-After`, never allows the request. AI analysis routes (job, k6, monitor) need `update` permission like AI fix, because they spend credits.
+- Rate-limit authentication and credential-sensitive endpoints and return useful retry metadata where supported. The invite and API-key verification limiters fail closed: Redis down or slow (`withRedisDeadline`) returns `503` with `Retry-After`, never allows the request. AI analysis routes (job, k6, monitor) need `update` permission like AI fix, because they spend credits. Better Auth's own limiter stores counters in Redis (`lib/auth/better-auth-rate-limit.ts`, fails open) and keys on `getClientIP()`: every Better Auth route handler must pass the request through `withAuthClientIp`, which is the only source of the IP header Better Auth trusts.
 - Do not put tokens in repository config, URLs, logs, analytics, error messages, queue payloads, or client persistence beyond the intended secure store.
 
 ## Project variables and encryption

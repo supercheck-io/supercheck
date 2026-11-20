@@ -52,6 +52,8 @@ const trial = {
   aiCredits: 100,
   lifecycleEndedAt: null,
   midwayNotifiedAt: null,
+  browserHalfNotifiedAt: null,
+  browserFullNotifiedAt: null,
   endingNotifiedAt: null,
   endedNotifiedAt: null,
 };
