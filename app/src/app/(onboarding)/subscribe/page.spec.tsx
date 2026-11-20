@@ -537,7 +537,7 @@ describe("signup plan selection", () => {
     ).toBeVisible();
     expect(screen.getByText(/keep your existing subscription/)).toBeVisible();
     expect(
-      screen.queryByText(/Billed monthly per organization/),
+      screen.queryByText(/Prices in USD, before tax/),
     ).not.toBeInTheDocument();
     expect(
       screen.getByRole("link", { name: "Manage subscription" }),
