@@ -33,7 +33,6 @@ import { useProjectContext } from "@/hooks/use-project-context";
 import { normalizeRole } from "@/lib/rbac/role-normalizer";
 import { canEditMonitors, canDeleteMonitors } from "@/lib/rbac/client-permissions";
 
-import { monitorSchema } from "./schema";
 import { useQueryClient } from "@tanstack/react-query";
 import { canToggleMonitors, getResumeStatus, invalidateDeletedMonitorCaches, invalidateMonitorCaches } from "./monitor-actions";
 
@@ -56,19 +55,13 @@ export function DataTableRowActions<TData>({
   const hasTogglePermission = canToggleMonitors(userRole);
   const hasDeletePermission = userRole ? canDeleteMonitors(userRole) : false;
 
-  // Use safeParse instead of parse to handle validation errors
-  const parsedMonitor = monitorSchema.safeParse(row.original);
-
-  // If parsing fails, provide default values to prevent errors
-  const monitor = parsedMonitor.success
-    ? parsedMonitor.data
-    : {
-      id: (row.original as unknown as { id?: string })?.id || "",
-      name: (row.original as unknown as { name?: string })?.name || "Untitled Monitor",
-      url: (row.original as unknown as { url?: string })?.url || "",
-      method: "ping" as const,
-      status: (row.original as unknown as { status?: string })?.status || "up",
-    };
+  // Only the id, name and status are read here; zod stays out of the list page bundle.
+  const original = row.original as { id?: string; name?: string; status?: string } | undefined;
+  const monitor = {
+    id: original?.id || "",
+    name: original?.name || "Untitled Monitor",
+    status: original?.status || "up",
+  };
 
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);

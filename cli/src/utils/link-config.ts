@@ -128,8 +128,8 @@ export function readConfigBaseUrlInfo(text: string): { url: string; followsEnv: 
   return found.declaredBaseUrl ? { url: found.declaredBaseUrl.value, followsEnv: found.baseUrlFollowsEnv } : null
 }
 
-/** Same names, in the loader's precedence order (local overrides main), as config/loader.ts. */
-export const LOCAL_CONFIG_FILES = ['supercheck.config.local.ts', 'supercheck.config.local.js', 'supercheck.config.local.mjs'] as const
+/** Shared with config/loader.ts so every command looks for the same files in the same order. */
+export { LOCAL_CONFIG_FILES } from '../config/config-files.js'
 
 export function readConfigIdentity(text: string): { organization: string | null; project: string | null } {
   const { org, project } = findLiterals(text)

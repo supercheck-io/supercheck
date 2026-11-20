@@ -24,3 +24,12 @@ it("keeps DTEND stable for an open incident", async () => {
   expect(await call()).toBe(first);
   jest.useRealTimers();
 });
+
+it("escapes bare carriage returns so incident text cannot start a new iCal line", async () => {
+  const { db } = jest.requireMock("@/utils/db");
+  db.query.incidents.findMany.mockResolvedValueOnce([{ id: "i", name: "x\rEND:VEVENT\rBEGIN:VEVENT", impact: "major", status: "investigating", body: "a\r\nb", createdAt: created, resolvedAt: null, scheduledFor: null, scheduledUntil: null, affectedComponents: [] }]);
+  const res = await GET({} as never, { params: Promise.resolve({ id: "00000000-0000-4000-8000-000000000001" }) });
+  const text = await res.text();
+  expect(text.split("\r\n").some((line) => line.includes("\r"))).toBe(false);
+  expect(text).toContain("x\\nEND:VEVENT\\nBEGIN:VEVENT");
+});

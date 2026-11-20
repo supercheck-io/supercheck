@@ -12,6 +12,7 @@ describe("queue location refresh", () => {
   const scan = jest.fn();
   const publish = jest.fn().mockResolvedValue(0);
   const setupCapacityManagement = jest.fn().mockResolvedValue(undefined);
+  const watchConsumer = jest.fn(<T,>(consumer: T) => consumer);
   const invalidateQueueEventHub = jest.fn().mockResolvedValue(undefined);
   const invalidateBullBoard = jest.fn();
   const getActiveWorkerQueueNames = jest.fn();
@@ -118,6 +119,7 @@ describe("queue location refresh", () => {
         close = jest.fn().mockResolvedValue(undefined);
       },
     }));
+    jest.doMock("./consumer-watchdog", () => ({ watchConsumer }));
     jest.doMock("./location-registry", () => ({
       getAllEnabledLocationCodes: jest.fn(async () => {
         if (databaseError) throw new Error("database unavailable");
@@ -270,6 +272,17 @@ describe("queue location refresh", () => {
     expect(setupCapacityManagement.mock.calls[1][1].playwrightEvents).toEqual({});
     expect(Object.keys(setupCapacityManagement.mock.calls[1][1].k6Events)).toEqual(["us-east", "asia-pacific"]);
     expect(publish).toHaveBeenCalledTimes(1);
+  });
+
+  it("watches every monitor QueueEvents, including regions added by a refresh", async () => {
+    const original = await queueModule.getQueues();
+    const watchedNames = () => watchConsumer.mock.calls.map(([c]) => (c as { name: string }).name);
+    expect(watchedNames()).toEqual(expect.arrayContaining(enabledCodes.map((code) => `monitor-${code}`)));
+    enabledCodes.push("us-east");
+    await queueModule.invalidateQueueMaps();
+    await queueModule.getQueues();
+    expect(original).toBeDefined();
+    expect(watchedNames()).toContain("monitor-us-east");
   });
 
   it("waits for overlapping refreshes before returning queue clients", async () => {

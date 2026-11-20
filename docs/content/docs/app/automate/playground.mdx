@@ -34,7 +34,7 @@ sequenceDiagram
     end
 ```
 
-Use **Cancel** to stop a running test. You can save a draft at any time, even a failing one.
+Use **Cancel run** to stop a running test. You can save a draft at any time, even a failing one.
 
 ## AI Create
 
@@ -88,7 +88,7 @@ After a failed run, AI Fix suggests changes. Apply only changes you understand, 
 <Accordions>
 <Accordion title="Access and limits" id="ai-fix-access">
 
-You need access to the run's project. On Supercheck Cloud, AI Create and AI Fix share an hourly organization usage limit. If you reach it, wait before retrying.
+You need access to the run's project. On Supercheck Cloud, AI Create and AI Fix share per-user and per-organization request limits per minute, hour and day, plus an hourly organization token budget and a per-IP limit of 5 requests per minute and 30 per hour. Each request also uses AI credits from the plan. If you reach a limit, wait before retrying. Self-hosted deployments have no AI limits.
 
 </Accordion>
 </Accordions>

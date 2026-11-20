@@ -46,10 +46,7 @@ export async function prepareMcpOAuthRequest(request: Request): Promise<Request 
     });
   }
 
-  // Better Auth must key its own limiter to the same trusted address.
-  const headers = new Headers(request.headers);
-  headers.set("x-forwarded-for", ip);
-  headers.delete("cf-connecting-ip");
-  headers.delete("x-real-ip");
-  return requestWithHeaders(request, headers);
+  // Headers stay as received: withAuthClientIp resolves the same trusted address from the full chain for
+  // Better Auth's own limiter (rewriting the chain here would make it unreadable when TRUSTED_PROXY_HOPS > 0).
+  return request;
 }

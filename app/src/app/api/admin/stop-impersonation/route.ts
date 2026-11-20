@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { safeErrorFields } from "@/lib/log-safe-error";
 import { db } from '@/utils/db';
 import { session } from '@/db/schema';
 import { auth } from '@/utils/auth';
@@ -67,7 +68,7 @@ export async function POST(request: Request) {
       }
     });
   } catch (error) {
-    console.error('Stop impersonation error:', error);
+    console.error('Stop impersonation error:', safeErrorFields(error));
     return NextResponse.json(
       { success: false, error: 'Failed to stop impersonation' },
       { status: 500 }

@@ -1,3 +1,4 @@
+import { CONFIG_FILES } from '../config/config-files.js'
 import { Command } from 'commander'
 import { existsSync, lstatSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { randomBytes } from 'node:crypto'
@@ -11,7 +12,6 @@ import { readSmallFile } from '../utils/safe-read.js'
 import { isTokenSafeUrl, sanitizeApiUrl } from '../utils/api-url.js'
 
 const DEFAULT_API_URL = 'https://app.supercheck.io'
-const CONFIG_NAMES = ['supercheck.config.ts', 'supercheck.config.mjs', 'supercheck.config.js']
 
 export const linkCommand = new Command('link')
   .description('Point supercheck.config.ts at the organization and project you are logged in to')
@@ -22,7 +22,7 @@ export const linkCommand = new Command('link')
     const token = getToken()
     if (!token) throw new CLIError('AUTH_REQUIRED: Run `supercheck login` first.', ExitCode.AuthError)
     const cwd = process.cwd()
-    const file = options.config ? resolve(cwd, options.config) : CONFIG_NAMES.map((n) => resolve(cwd, n)).find((p) => existsSync(p))
+    const file = options.config ? resolve(cwd, options.config) : CONFIG_FILES.map((n) => resolve(cwd, n)).find((p) => existsSync(p))
     if (!file) throw new CLIError('No supercheck.config.ts found. Run `supercheck init --skip-examples` first.', ExitCode.ConfigError)
     const text = readSmallFile(file)
     if (text === null) throw new CLIError(`Cannot read ${file} (missing, too large, or not a regular file).`, ExitCode.ConfigError)

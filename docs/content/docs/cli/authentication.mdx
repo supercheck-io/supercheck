@@ -54,7 +54,7 @@ sequenceDiagram
 
 The key from browser login is project-scoped, expires after 90 days and appears under **CLI Tokens**, where you can revoke it. Each project holds up to 20 active (enabled and unexpired) CLI tokens, and every browser login creates one, so revoke unused tokens. Signing in to the dashboard does not authenticate the CLI. Flags: [`supercheck login`](/docs/cli/commands#supercheck-login).
 
-Resetting your account password revokes all your CLI tokens. Trigger keys are not affected.
+Resetting your account password revokes all your CLI tokens, recorder keys and connected MCP apps. If revocation fails, it is retried in the background until it succeeds. Trigger keys are not affected.
 
 ## Create a token manually
 
@@ -90,7 +90,6 @@ curl -X POST https://app.supercheck.io/api/jobs/<id>/trigger \
 |---|---|---|
 | `SUPERCHECK_TOKEN` | Usually | CLI token for most commands, `deploy`, `diff`, `whoami` and `job trigger --wait` |
 | `SUPERCHECK_TRIGGER_KEY` | For `job trigger` | Job-specific trigger key (`--wait` also needs the CLI token) |
-
 | `SUPERCHECK_URL` | No | Base URL (default: `https://app.supercheck.io`). The CLI sends your token only over `https://`, or `http://` to `localhost`, `127.0.0.1` or `[::1]`. An empty value is ignored |
 | `SUPERCHECK_ORG` | No | Default organization ID (UUID) |
 | `SUPERCHECK_PROJECT` | No | Default project ID (UUID) |

@@ -1,4 +1,5 @@
 import { db } from "@/utils/db";
+import { safeErrorFields } from "@/lib/log-safe-error";
 import { session, user, member, projects, projectMembers, organization } from "@/db/schema";
 import { eq, and, asc, gt } from "drizzle-orm";
 import { normalizeRole } from "./role-normalizer";
@@ -253,7 +254,7 @@ export async function getUnifiedAuthContext(
     };
 
   } catch (error) {
-    console.error("Unified Auth Error:", error);
+    console.error("Unified Auth Error:", safeErrorFields(error));
     return {
         isValid: false,
         userId: "",
