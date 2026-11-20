@@ -81,19 +81,23 @@ export async function useProject(page: Page, baseUrl: string, name: string): Pro
   expect(response.ok(), `switching to ${name} returned ${response.status()}`).toBe(true);
 }
 
+/** E2E runs leave records named "E2E …" behind; the showcase never picks one. */
+export const isTestRecord = (row: { name?: string; title?: string }) => /\bE2E\b/i.test(`${row.name ?? ''} ${row.title ?? ''}`);
+
 /** Looks up route ids in the active project through the API; optional records stay undefined. */
 export async function lookupIds(api: APIRequestContext): Promise<Ids> {
-  const monitors = rows(await getJson(api, '/api/monitors'), 'data');
-  const tests = rows(await getJson(api, '/api/tests?limit=100'), 'data');
-  const incidents = rows(await getJson(api, '/api/sre/incidents'), 'incidents');
+  const real = (list: Row[]) => list.filter((r) => !isTestRecord(r));
+  const monitors = real(rows(await getJson(api, '/api/monitors'), 'data'));
+  const tests = real(rows(await getJson(api, '/api/tests?limit=100'), 'data'));
+  const incidents = real(rows(await getJson(api, '/api/sre/incidents'), 'incidents'));
   const optional = async (url: string, key: string): Promise<Row[]> =>
     api.get(url).then(async (r) => (r.ok() ? rows((await r.json()) as Record<string, unknown>, key) : []));
-  const [jobs, pages, requirements, services] = await Promise.all([
+  const [jobs, pages, requirements, services] = (await Promise.all([
     optional('/api/jobs', 'data'),
     optional('/api/status-pages', 'data'),
     optional('/api/requirements', 'data'),
     optional('/api/sre/services', 'services'),
-  ]);
+  ])).map(real);
   const hasReport = (r: Row) => r.isUp === false && !!r.testExecutionId && !!(r.details?.reportUrl || r.testReportS3Url);
   let reportMonitor: string | undefined;
   for (const m of monitors.filter((m) => m.type === 'synthetic_test').slice(0, 10)) {

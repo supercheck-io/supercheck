@@ -1,4 +1,7 @@
+import fs from 'node:fs';
+import path from 'node:path';
 import { expect, type APIRequestContext, type Page } from '@playwright/test';
+import { isTestRecord, OUT_DIR } from './lib';
 import { createJob, createMonitor, createTest } from '../../utils/test-data';
 import { waitForHydration } from '../../utils/hydration';
 
@@ -21,9 +24,11 @@ async function pingHeartbeat(api: APIRequestContext, baseUrl: string, monitors: 
   const reveal = await api.get(`/api/monitors/${heartbeat.id}/heartbeat-url`, { headers: { origin: baseUrl } });
   expect(reveal.ok(), `revealing the heartbeat URL returned ${reveal.status()}`).toBe(true);
   const { pingUrl } = (await reveal.json()) as { pingUrl: string };
-  expect((await api.get(`${pingUrl}/start`)).ok()).toBe(true);
+  // Pings come from the job's crontab, so they carry curl's user agent like a real one would.
+  const curl = { headers: { 'user-agent': 'curl/8.5.0' } };
+  expect((await api.get(`${pingUrl}/start`, curl)).ok()).toBe(true);
   await new Promise((resolve) => setTimeout(resolve, 2_500));
-  expect((await api.get(pingUrl)).ok()).toBe(true);
+  expect((await api.get(pingUrl, curl)).ok()).toBe(true);
 }
 
 /** A public, unauthenticated MCP server, so the monitor lists real tools without a stored key. */
@@ -126,7 +131,35 @@ async function ensureK6Job(api: APIRequestContext, baseUrl: string): Promise<voi
   }
 }
 
+/** A resolved incident with a real-looking story, so the workspace, brief and post-mortem shots show production data. */
+async function ensureResolvedIncident(api: APIRequestContext, baseUrl: string): Promise<void> {
+  const incidents = (await list(api, '/api/sre/incidents', 'incidents')) as Array<Row & { status?: string }>;
+  if (incidents.some((i) => i.status === 'resolved' && !isTestRecord(i))) return;
+  const services = await list(api, '/api/sre/services', 'services');
+  const created = await api.post('/api/sre/incidents', {
+    headers: { origin: baseUrl },
+    data: {
+      title: 'Checkout API returning 502s after the 14:05 deploy',
+      severity: 'sev2',
+      summary: 'Roughly 8% of checkout requests failed with 502 for 18 minutes after release 2026.11.20-3. Payment capture was not affected; customers saw a retry prompt.',
+      ...(services[0]?.id ? { primaryServiceId: services[0].id } : {}),
+    },
+  });
+  expect(created.status(), await created.text()).toBe(201);
+  const { incident } = (await created.json()) as { incident: { id: string } };
+  const resolved = await api.post(`/api/sre/incidents/${incident.id}/resolve`, {
+    headers: { origin: baseUrl },
+    data: { resolutionSummary: 'Rolled back to 2026.11.20-2. A connection pool limit in the new release capped upstream connections; fixed and redeployed with the limit raised.' },
+  });
+  expect(resolved.ok(), await resolved.text()).toBe(true);
+}
+
 export async function seedShowcase(page: Page, baseUrl: string): Promise<void> {
+  // A failed shot restarts the worker, which would seed again; once per capture run is enough.
+  const marker = path.join(OUT_DIR, '.showcase-seeded');
+  if (fs.existsSync(marker)) return;
+  fs.mkdirSync(OUT_DIR, { recursive: true });
+  fs.writeFileSync(marker, new Date().toISOString());
   const api = page.request;
   const [monitors, services, pages] = await Promise.all([
     list(api, '/api/monitors', 'data'),
@@ -141,5 +174,6 @@ export async function seedShowcase(page: Page, baseUrl: string): Promise<void> {
   await step('MCP monitor', () => ensureMcpMonitor(api, monitors));
   await step('AI SRE service', () => ensureService(page, services));
   await step('public status update', () => ensurePublicIncident(page, pages[0]?.id));
+  await step('resolved incident', () => ensureResolvedIncident(api, baseUrl));
   await step('k6 job runs', () => ensureK6Job(api, baseUrl));
 }
