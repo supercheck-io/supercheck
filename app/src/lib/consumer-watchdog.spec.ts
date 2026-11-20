@@ -56,15 +56,59 @@ describe("consumer watchdog", () => {
     expect(isConsumerHealthy(1000 + DEAD_AFTER_MS)).toBe(true);
   });
 
-  it("forces a reconnect when a ready command client stops answering", async () => {
+  const probeHanging = async (now: number) => {
+    const probing = probeConsumers(now);
+    await jest.advanceTimersByTimeAsync(5000);
+    await probing;
+  };
+
+  it("forces a reconnect only after 3 consecutive timed-out PINGs, and fails liveness after DEAD_AFTER_MS", async () => {
     const command = client();
     command.ping.mockReturnValue(new Promise(() => undefined));
     watchConsumer(worker(client(), command));
-    const probing = probeConsumers(1000);
-    await jest.advanceTimersByTimeAsync(5000);
-    await probing;
+    await probeHanging(1000);
+    await probeHanging(16000);
+    expect(command.disconnect).not.toHaveBeenCalled();
+    await probeHanging(31000);
+    expect(command.disconnect).toHaveBeenCalledTimes(1);
     expect(command.disconnect).toHaveBeenCalledWith(true);
     expect(isConsumerHealthy(1000 + DEAD_AFTER_MS)).toBe(false);
+  });
+
+  it("a slow-but-alive Redis is never kicked: any reply resets the miss count", async () => {
+    const command = client();
+    watchConsumer(worker(client(), command));
+    const hang = new Promise(() => undefined);
+    for (let round = 0; round < 3; round++) {
+      command.ping.mockReturnValue(hang);
+      await probeHanging(1000 + round * 60000);
+      await probeHanging(16000 + round * 60000);
+      command.ping.mockResolvedValue("PONG");
+      await probeConsumers(31000 + round * 60000);
+    }
+    expect(command.disconnect).not.toHaveBeenCalled();
+    expect(isConsumerHealthy(1000 + DEAD_AFTER_MS)).toBe(true);
+  });
+
+  it("treats an error reply (LOADING, READONLY) as alive and never kicks", async () => {
+    const command = client();
+    command.ping.mockRejectedValue(new Error("LOADING Redis is loading the dataset in memory"));
+    watchConsumer(worker(client(), command));
+    for (let i = 0; i < 5; i++) await probeConsumers(1000 + i * 15000);
+    expect(command.disconnect).not.toHaveBeenCalled();
+    expect(isConsumerHealthy(1000 + DEAD_AFTER_MS)).toBe(true);
+  });
+
+  it("counts a client shared by several consumers once per probe", async () => {
+    const command = client();
+    command.ping.mockReturnValue(new Promise(() => undefined));
+    watchConsumer(worker(client(), command));
+    watchConsumer(worker(client(), command));
+    watchConsumer(command as never);
+    await probeHanging(1000);
+    await probeHanging(16000);
+    expect(command.ping).toHaveBeenCalledTimes(2);
+    expect(command.disconnect).not.toHaveBeenCalled();
   });
 
   it("does not count a client that ioredis is still reconnecting", async () => {
@@ -120,9 +164,10 @@ describe("consumer watchdog", () => {
       return new Promise(() => undefined);
     });
     watchConsumer(worker(client(), command));
-    const probing = probeConsumers(1000);
-    await jest.advanceTimersByTimeAsync(5000);
-    await probing;
+    for (let i = 0; i < 3; i++) {
+      command.status = "ready";
+      await probeHanging(1000 + i * 15000);
+    }
     expect(command.disconnect).not.toHaveBeenCalled();
   });
 

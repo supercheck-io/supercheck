@@ -21,6 +21,13 @@ type Consumer = Worker | QueueEvents | Redis;
 const PROBE_INTERVAL_MS = 15_000;
 const PING_TIMEOUT_MS = 5_000;
 export const DEAD_AFTER_MS = 5 * 60_000;
+/** A busy Redis can stall a PING for several seconds; only this many timed-out probes in a row mean a dead socket. */
+const PING_MISSES_BEFORE_KICK = 3;
+
+class ProbeTimeoutError extends Error {}
+type Result = "ok" | "broken" | "reconnecting";
+// Consecutive timed-out PINGs per client; any reply (even an error) or leaving "ready" resets it.
+const pingMisses = new WeakMap<Redis, number>();
 
 interface WatchdogState {
   consumers: Set<Consumer>;
@@ -64,7 +71,7 @@ function withTimeout<T>(work: Promise<T>): Promise<T> {
   return Promise.race([
     work,
     new Promise<never>((_resolve, reject) => {
-      timer = setTimeout(() => reject(new Error("timed out")), PING_TIMEOUT_MS);
+      timer = setTimeout(() => reject(new ProbeTimeoutError("timed out")), PING_TIMEOUT_MS);
     }),
   ]).finally(() => clearTimeout(timer));
 }
@@ -74,8 +81,8 @@ function name(consumer: Consumer): string {
 }
 
 /** "ok" | "broken" | "reconnecting" (ioredis is working on it, so Redis is not known to be reachable). */
-async function check(consumer: Consumer): Promise<"ok" | "broken" | "reconnecting"> {
-  if ("status" in consumer) return pingClient(consumer as Redis, "shared Redis client");
+async function check(consumer: Consumer, pings: Map<Redis, Promise<Result>>): Promise<Result> {
+  if ("status" in consumer) return pingOnce(consumer as Redis, "shared Redis client", pings);
   const isWorker = "blockingConnection" in consumer;
   // Never PING the blocking client: the PING would queue behind the blocked BZPOPMIN/XREAD.
   const blocking = (await withTimeout(
@@ -101,28 +108,54 @@ async function check(consumer: Consumer): Promise<"ok" | "broken" | "reconnectin
   }
   if (worker.isPaused()) return "ok";
   if (!worker.isRunning()) return "broken";
-  return pingClient(client, name(consumer));
+  return pingOnce(client, name(consumer), pings);
 }
 
-async function pingClient(client: Redis, label: string): Promise<"ok" | "broken" | "reconnecting"> {
-  if (client.status !== "ready") return "reconnecting";
+// One PING per client per probe: a client shared by several consumers must not count several misses.
+function pingOnce(client: Redis, label: string, pings: Map<Redis, Promise<Result>>): Promise<Result> {
+  let result = pings.get(client);
+  if (!result) pings.set(client, (result = pingClient(client, label)));
+  return result;
+}
+
+async function pingClient(client: Redis, label: string): Promise<Result> {
+  if (client.status !== "ready") {
+    pingMisses.delete(client);
+    return "reconnecting";
+  }
   try {
     await withTimeout(client.ping());
-    return "ok";
   } catch (error) {
-    // A command that neither fails nor answers on a "ready" client means a half-open socket.
+    // Any reply, even an error such as LOADING or READONLY, proves the socket is alive.
+    if (!(error instanceof ProbeTimeoutError)) {
+      pingMisses.delete(client);
+      return "ok";
+    }
     // Only while still ready: disconnect() on a client already resolving the master can end it for good.
-    if (client.status !== "ready") return "reconnecting";
-    logger.warn({ queue: label, err: error }, "Redis PING failed; forcing reconnect");
+    if (client.status !== "ready") {
+      pingMisses.delete(client);
+      return "reconnecting";
+    }
+    const misses = (pingMisses.get(client) ?? 0) + 1;
+    if (misses < PING_MISSES_BEFORE_KICK) {
+      pingMisses.set(client, misses);
+      return "broken";
+    }
+    // Several silent probes in a row on a "ready" client mean a half-open socket.
+    pingMisses.delete(client);
+    logger.warn({ queue: label, err: error }, "Redis PING timed out repeatedly; forcing reconnect");
     client.disconnect(true);
     return "broken";
   }
+  pingMisses.delete(client);
+  return "ok";
 }
 
 export async function probeConsumers(now = Date.now()): Promise<void> {
   if (state.probing) return;
   state.probing = true;
   try {
+    const pings = new Map<Redis, Promise<Result>>();
     await Promise.all(
       [...state.consumers].map(async (consumer) => {
         // An ended shared client is replaced by getRedisConnection(); the old one is no longer watched.
@@ -131,9 +164,9 @@ export async function probeConsumers(now = Date.now()): Promise<void> {
           state.brokenSince.delete(consumer);
           return;
         }
-        let result: Awaited<ReturnType<typeof check>>;
+        let result: Result;
         try {
-          result = await check(consumer);
+          result = await check(consumer, pings);
         } catch {
           // BullMQ's client promise is still pending: it is waiting for Redis to come up.
           result = "reconnecting";

@@ -590,9 +590,9 @@ export async function getQueues(): Promise<{
         // Monitor Execution Events - Dynamic regional (no global)
         const monitorEvents: Record<string, QueueEvents> = {};
         for (const loc of locationCodes) {
-          monitorEvents[loc] = new QueueEvents(monitorQueueName(loc), {
+          monitorEvents[loc] = watchConsumer(new QueueEvents(monitorQueueName(loc), {
             connection: buildRedisOptions({ lazyConnect: false }),
-          });
+          }));
         }
         queueState.monitorExecutionEvents = monitorEvents;
 
@@ -1453,7 +1453,7 @@ async function refreshRegionalQueues(locationCodes: string[]): Promise<void> {
       const queue = new Queue(monitorQueueName(code), queueSettings);
       queue.on("error", (err) => queueLogger.error({ err, code }, "Monitor queue error"));
       monitorQueues[code] = queue;
-      const events = new QueueEvents(monitorQueueName(code), { connection: buildRedisOptions({ lazyConnect: false }) });
+      const events = watchConsumer(new QueueEvents(monitorQueueName(code), { connection: buildRedisOptions({ lazyConnect: false }) }));
       events.on("error", (err) => queueLogger.error({ err, code }, "Monitor events error"));
       monitorEvents[code] = events;
     }
