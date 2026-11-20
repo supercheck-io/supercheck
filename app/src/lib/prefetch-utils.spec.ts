@@ -46,6 +46,15 @@ describe("dashboard hover prefetch", () => {
     client.clear();
   });
 
+  it("keeps the prefetched dashboard out of the saved cache", async () => {
+    const client = createClient();
+    jest.spyOn(global, "fetch").mockResolvedValue({ ok: true, json: async () => ({}) } as Response);
+    prefetchSidebarRoute("/", "dash-prefetch-meta", client);
+    await client.fetchQuery({ queryKey: getDashboardQueryKey("dash-prefetch-meta"), staleTime: 60_000 });
+    expect(client.getQueryCache().find({ queryKey: getDashboardQueryKey("dash-prefetch-meta") })?.meta).toEqual({ persist: false });
+    client.clear();
+  });
+
   it("ignores a raw dashboard payload persisted under the legacy key", async () => {
     const client = createClient();
     // Before the fix, this is exactly what the hover prefetch stored: the raw

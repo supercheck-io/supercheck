@@ -107,8 +107,9 @@ export default async function MainLayout({
   let showSpendingCap = false;
   const orgPendingDeletion = !!org?.deletionRequestedAt;
   let isOrgOwner = false;
-  // Values the shell would otherwise request after hydration; each lookup fails soft, leaving that
-  // hook on its own request. Read in parallel with the lookups above.
+  // Values the shell would otherwise request after hydration, read in parallel with the lookups above.
+  // A failed lookup leaves that hook on its own request, except impersonation status, which (like its
+  // route) answers "not impersonating" on an error.
   const bootstrap: ShellBootstrap = { userId: user?.id ?? "", readAt: Date.now() };
 
   if (user && org) {

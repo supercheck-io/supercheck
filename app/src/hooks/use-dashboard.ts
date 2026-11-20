@@ -1,3 +1,4 @@
+import { useRef } from "react";
 import { useQuery, useQueryClient, useIsRestoring, keepPreviousData } from "@tanstack/react-query";
 import { useProjectContext } from "./use-project-context";
 
@@ -57,6 +58,17 @@ export function useDashboard(seed?: DashboardSeed | null) {
   const queryKey = getDashboardQueryKey(projectId);
   // Only a seed for the project being shown counts; after a project switch the hook fetches as before.
   const usableSeed = seed && seed.projectId === projectId ? seed : undefined;
+  // initialData only fills an empty query. On a client navigation back to the dashboard the server has just
+  // read newer data, so it replaces an older cached entry before the mount refetch is decided (the page is
+  // this key's only observer, and it has not subscribed yet on its first render).
+  const appliedSeed = useRef<DashboardSeed | null>(null);
+  if (usableSeed && appliedSeed.current !== usableSeed) {
+    appliedSeed.current = usableSeed;
+    const cachedAt = queryClient.getQueryState(queryKey)?.dataUpdatedAt ?? 0;
+    if (cachedAt > 0 && cachedAt < usableSeed.updatedAt) {
+      queryClient.setQueryData(queryKey, usableSeed.data, { updatedAt: usableSeed.updatedAt });
+    }
+  }
 
   const query = useQuery({
     queryKey,

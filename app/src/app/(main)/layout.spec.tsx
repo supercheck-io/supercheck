@@ -47,7 +47,8 @@ jest.mock("next/headers", () => ({ headers: jest.fn(async () => new Headers({ ho
 jest.mock("@/lib/impersonation-status", () => ({ getImpersonationStatus: jest.fn() }));
 jest.mock("@/lib/setup/setup-state", () => ({ getUserPreferences: jest.fn() }));
 jest.mock("@/lib/setup/summary", () => ({ getSetupSummary: jest.fn() }));
-jest.mock("@/lib/setup/features", () => ({ resolveSetupFeatures: () => ({ setup: true }) }));
+let mockSetupEnabled = true;
+jest.mock("@/lib/setup/features", () => ({ resolveSetupFeatures: () => ({ setup: mockSetupEnabled }) }));
 jest.mock("@/lib/ai/ai-provider", () => ({ isAIProviderConfigured: () => false }));
 jest.mock("@/lib/feature-flags", () => ({ isSelfHosted: jest.fn(() => true) }));
 jest.mock("@/lib/execution/trial-limits", () => ({ getTrialSummary: jest.fn() }));
@@ -224,6 +225,20 @@ describe("MainLayout data fetching", () => {
       expect(value.adminStatus).toBeUndefined();
       expect(value.preferences).toBeUndefined();
       expect(value.setupSummary).toBeUndefined();
+    });
+
+    it("does not read the setup summary when setup is turned off", async () => {
+      mockSetupEnabled = false;
+      try {
+        signedIn(cloudOrg());
+        (getCurrentProjectContext as jest.Mock).mockResolvedValue(project);
+        (checkPermissionWithContext as jest.Mock).mockReturnValue(true);
+        const value = bootstrapOf(await MainLayout({ children: null }));
+        expect(getSetupSummary).not.toHaveBeenCalled();
+        expect(value.setupSummary).toBeUndefined();
+      } finally {
+        mockSetupEnabled = true;
+      }
     });
 
     it("does not read the setup summary without project view access", async () => {

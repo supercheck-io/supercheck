@@ -1,7 +1,7 @@
 import { createElement, type ReactNode } from "react";
 import { renderHook, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fetchDashboard, parseSystemHealth, useDashboard, type DashboardData } from "./use-dashboard";
+import { fetchDashboard, getDashboardQueryKey, parseSystemHealth, useDashboard, type DashboardData } from "./use-dashboard";
 
 jest.mock("./use-project-context", () => ({ useProjectContext: () => ({ currentProject: { id: "project-a" } }) }));
 
@@ -133,5 +133,25 @@ describe("useDashboard with a server seed", () => {
     global.fetch = jest.fn();
     const { client } = run(seed("project-a"));
     expect(client.getQueryCache().getAll()[0]?.meta).toEqual({ persist: false });
+  });
+
+  it("replaces an older cached entry with a newer server seed, without requesting it", async () => {
+    global.fetch = jest.fn();
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    client.setQueryData(getDashboardQueryKey("project-a"), { stats: { runs: 1 } }, { updatedAt: Date.now() - 5 * 60_000 });
+    const wrapper = ({ children }: { children: ReactNode }) => createElement(QueryClientProvider, { client }, children);
+    const { result } = renderHook(() => useDashboard(seed("project-a")), { wrapper });
+    expect(result.current.data?.stats.runs).toBe(3);
+    await new Promise((r) => setTimeout(r, 20));
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  it("keeps a cached entry that is newer than the seed", () => {
+    global.fetch = jest.fn();
+    const client = new QueryClient();
+    client.setQueryData(getDashboardQueryKey("project-a"), { stats: { runs: 8 } });
+    const wrapper = ({ children }: { children: ReactNode }) => createElement(QueryClientProvider, { client }, children);
+    const { result } = renderHook(() => useDashboard(seed("project-a", Date.now() - 30_000)), { wrapper });
+    expect(result.current.data?.stats.runs).toBe(8);
   });
 });
