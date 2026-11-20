@@ -51,7 +51,7 @@ const pricing = {
   ],
   trial: {
     durationDays: 30,
-    highlights: ["5 monitors, checked at most every 5 minutes", "150 browser minutes for Playwright tests and synthetic monitors"],
+    highlights: ["5 monitors, checked at most every 5 minutes", "1,000 browser minutes for Playwright tests and synthetic monitors"],
   },
 };
 

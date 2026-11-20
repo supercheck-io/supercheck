@@ -2,10 +2,13 @@ import type { Env, Tool } from "./env";
 
 const SITEVERIFY = "https://challenges.cloudflare.com/turnstile/v0/siteverify";
 
-/** Label-boundary suffix match: www.supercheck.io passes, evilsupercheck.io does not. */
+/**
+ * Exact match, so a token minted on some other subdomain is refused. A leading dot (".supercheck.pages.dev")
+ * opts that entry into label-boundary suffix matching, for preview deploys.
+ */
 export function hostnameAllowed(hostname: string, allowed: string[]): boolean {
   const host = hostname.toLowerCase();
-  return allowed.some((entry) => host === entry || host.endsWith(`.${entry}`));
+  return allowed.some((entry) => (entry.startsWith(".") ? host.endsWith(entry) : host === entry));
 }
 
 export type Verdict = "ok" | "fail";

@@ -1,5 +1,6 @@
 import { auth } from "@/utils/auth";
 import { toNextJsHandler } from "better-auth/next-js";
+import { withAuthClientIp } from "@/lib/auth/better-auth-rate-limit";
 import { NextResponse } from "next/server";
 import { isOAuthEndpointDenied, withReachableEndpointsOnly } from "@/lib/mcp/http-policy";
 import { isMcpServerEnabled } from "@/lib/mcp/config";
@@ -8,7 +9,7 @@ import { isCredentialOwnerActive } from "@/lib/security/credential-owner";
 import { isImpersonatedSession } from "@/lib/rbac/middleware";
 import { getCachedAuthSession } from "@/lib/session-cache";
 
-const handlers = toNextJsHandler(auth);
+const handlers = toNextJsHandler((request: Request) => auth.handler(withAuthClientIp(request)));
 
 // Organization writes must use the dedicated APIs with app RBAC, limits and
 // audit logging. Default-deny also covers new routes in future plugin releases.

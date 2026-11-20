@@ -27,6 +27,8 @@ export class HealthController {
 
   @Get('live')
   liveness() {
-    return this.healthService.getLivenessStatus();
+    const liveness = this.healthService.getLivenessStatus();
+    if (!liveness.alive) throw new ServiceUnavailableException(liveness);
+    return liveness;
   }
 }

@@ -498,6 +498,7 @@ describe("sendTrialReminders", () => {
     organizationId: "org",
     expiresAt: new Date(NOW_MS + 5 * DAY),
     name: "Acme",
+    playwrightBudgetMs: 1000 * 60_000,
     polarCustomerId: null,
     subscriptionPlan: null,
     subscriptionStatus: "none",
@@ -507,11 +508,11 @@ describe("sendTrialReminders", () => {
 
   /** One due list per reminder kind (midway, ending, ended), then owners per organization. */
   function build(
-    due: { midway?: unknown[]; ending?: unknown[]; ended?: unknown[] },
+    due: { midway?: unknown[]; ending?: unknown[]; ended?: unknown[]; browserHalf?: unknown[]; browserFull?: unknown[] },
     owners: Array<{ email: string; role?: string }> = [{ email: "owner@example.com" }],
   ) {
     const sets: Array<Record<string, unknown>> = [];
-    const lists = [due.midway ?? [], due.ending ?? [], due.ended ?? []];
+    const lists = [due.midway ?? [], due.ending ?? [], due.ended ?? [], due.browserHalf ?? [], due.browserFull ?? []];
     let dueCall = 0;
     const database = {
       select: jest.fn((columns: Record<string, unknown>) =>
@@ -532,12 +533,13 @@ describe("sendTrialReminders", () => {
     const deliver = jest.fn().mockResolvedValue(true);
     await expect(
       sendTrialReminders({ now: NOW, database, deliver }),
-    ).resolves.toEqual({ midway: 1, ending: 0, ended: 0 });
+    ).resolves.toEqual({ midway: 1, ending: 0, ended: 0, browserHalf: 0, browserFull: 0 });
     expect(deliver).toHaveBeenCalledWith({
       kind: "midway",
       organizationId: "org",
       organizationName: "Acme",
       daysRemaining: 5,
+      browserMinutes: 1000,
       recipients: ["owner@example.com"],
     });
     expect(sets).toEqual([{ midwayNotifiedAt: NOW }]);
@@ -550,7 +552,7 @@ describe("sendTrialReminders", () => {
     update.mockImplementationOnce(() => { throw new Error("db blip"); });
     update.mockImplementation(recorder);
     const deliver = jest.fn().mockResolvedValue(true);
-    await expect(sendTrialReminders({ now: NOW, database, deliver })).resolves.toEqual({ midway: 1, ending: 0, ended: 0 });
+    await expect(sendTrialReminders({ now: NOW, database, deliver })).resolves.toEqual({ midway: 1, ending: 0, ended: 0, browserHalf: 0, browserFull: 0 });
     expect(deliver).toHaveBeenCalledTimes(1);
     expect(sets).toEqual([{ midwayNotifiedAt: NOW }]);
   });
@@ -561,7 +563,7 @@ describe("sendTrialReminders", () => {
     update.mockImplementation(() => { throw new Error("db down"); });
     const error = jest.spyOn(console, "error").mockImplementation(() => undefined);
     const deliver = jest.fn().mockResolvedValue(true);
-    await expect(sendTrialReminders({ now: NOW, database, deliver })).resolves.toEqual({ midway: 2, ending: 0, ended: 0 });
+    await expect(sendTrialReminders({ now: NOW, database, deliver })).resolves.toEqual({ midway: 2, ending: 0, ended: 0, browserHalf: 0, browserFull: 0 });
     expect(update).toHaveBeenCalledTimes(6);
     error.mockRestore();
   });
@@ -579,7 +581,7 @@ describe("sendTrialReminders", () => {
     const deliver = jest.fn().mockResolvedValue(true);
     await expect(
       sendTrialReminders({ now: NOW, database, deliver }),
-    ).resolves.toEqual({ midway: 1, ending: 1, ended: 1 });
+    ).resolves.toEqual({ midway: 1, ending: 1, ended: 1, browserHalf: 0, browserFull: 0 });
     expect(
       deliver.mock.calls.map((call) => [call[0].kind, call[0].daysRemaining]),
     ).toEqual([
@@ -594,12 +596,28 @@ describe("sendTrialReminders", () => {
     ]);
   });
 
+  it("sends the browser-minute emails from their own lists and records their own columns", async () => {
+    const { database, sets } = build({
+      browserHalf: [entry({ organizationId: "a" })],
+      browserFull: [entry({ organizationId: "b" })],
+    });
+    const deliver = jest.fn().mockResolvedValue(true);
+    await expect(sendTrialReminders({ now: NOW, database, deliver })).resolves.toEqual({
+      midway: 0, ending: 0, ended: 0, browserHalf: 1, browserFull: 1,
+    });
+    expect(deliver.mock.calls.map((call) => [call[0].kind, call[0].browserMinutes])).toEqual([
+      ["browserHalf", 1000],
+      ["browserFull", 1000],
+    ]);
+    expect(sets).toEqual([{ browserHalfNotifiedAt: NOW }, { browserFullNotifiedAt: NOW }]);
+  });
+
   it("keeps a reminder due when it could not be delivered, so the next run retries it", async () => {
     const { database, sets } = build({ midway: [entry()] });
     const deliver = jest.fn().mockResolvedValue(false);
     await expect(
       sendTrialReminders({ now: NOW, database, deliver }),
-    ).resolves.toEqual({ midway: 0, ending: 0, ended: 0 });
+    ).resolves.toEqual({ midway: 0, ending: 0, ended: 0, browserHalf: 0, browserFull: 0 });
     expect(sets).toHaveLength(0);
   });
 
@@ -628,7 +646,7 @@ describe("sendTrialReminders", () => {
       const deliver = jest.fn();
       await expect(
         sendTrialReminders({ now: NOW, database, deliver }),
-      ).resolves.toEqual({ midway: 0, ending: 0, ended: 0 });
+      ).resolves.toEqual({ midway: 0, ending: 0, ended: 0, browserHalf: 0, browserFull: 0 });
       expect(deliver).not.toHaveBeenCalled();
       expect(sets).toEqual([{ midwayNotifiedAt: NOW }]);
     },
@@ -698,7 +716,7 @@ describe("sendTrialReminders", () => {
     const deliver = jest.fn();
     await expect(
       sendTrialReminders({ now: NOW, database, deliver }),
-    ).resolves.toEqual({ midway: 0, ending: 0, ended: 0 });
+    ).resolves.toEqual({ midway: 0, ending: 0, ended: 0, browserHalf: 0, browserFull: 0 });
     expect(deliver).not.toHaveBeenCalled();
   });
 });
