@@ -124,7 +124,7 @@ claude mcp add --transport http supercheck \\
     ],
     closing: {
       title: "Put your first monitor in a pull request",
-      body: "Explore a sample workspace in the live demo, or install the CLI and run supercheck init in your repository.",
+      body: "Self-host Supercheck, then install the CLI and run supercheck init in your repository.",
     },
   },
   {
@@ -203,7 +203,7 @@ claude mcp add --transport http supercheck \\
     ],
     closing: {
       title: "Run it next to the systems it watches",
-      body: "Self-host Supercheck on your own Linux servers with Docker Compose, or explore the live demo first.",
+      body: "Self-host Supercheck on your own Linux servers with Docker Compose.",
     },
   },
   {
@@ -282,7 +282,7 @@ claude mcp add --transport http supercheck \\
     ],
     closing: {
       title: "Give your suite a schedule",
-      body: "Open the live demo to try the Playground, or install the Recorder and record your first flow.",
+      body: "Self-host Supercheck to use the Playground, or install the Recorder and record your first flow.",
     },
   },
   {
@@ -373,7 +373,7 @@ sudo bash install.sh --version 1.6.0 --domain app.example.com --email you@exampl
     ],
     closing: {
       title: "Review coverage, not status reports",
-      body: "Explore the live demo to see projects, requirements and the dashboard with sample data.",
+      body: "Self-host Supercheck to see projects, requirements and the dashboard.",
     },
   },
 ];

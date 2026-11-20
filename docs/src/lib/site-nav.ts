@@ -26,7 +26,6 @@ import {
 } from "lucide-react";
 
 export const GITHUB_URL = "https://github.com/supercheck-io/supercheck";
-export const DEMO_URL = process.env.NEXT_PUBLIC_DEMO_URL || "https://demo.supercheck.dev";
 
 export interface NavItem {
   title: string;
