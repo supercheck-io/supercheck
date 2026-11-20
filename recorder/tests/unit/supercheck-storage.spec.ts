@@ -89,7 +89,7 @@ test('auto-connect from the saved instance or a default config stores the creden
 });
 
 test('only offers auto-connect to a page the saved instance allows', () => {
-  expect(canAutoConnect('https://app.supercheck.io', 'https://demo.supercheck.dev')).toBe(true);
+  expect(canAutoConnect('https://app.supercheck.io', 'https://sc.corp.example')).toBe(true);
   expect(canAutoConnect('https://sc.corp.example', 'https://sc.corp.example')).toBe(true);
   expect(canAutoConnect('https://sc.corp.example', 'https://app.supercheck.io')).toBe(false);
 });

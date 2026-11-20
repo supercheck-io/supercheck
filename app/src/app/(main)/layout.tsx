@@ -14,7 +14,6 @@ import { CommandSearch } from "@/components/ui/command-search";
 import { SetupChecker } from "@/components/setup-checker";
 import { ProjectContextProvider, type ProjectContext } from "@/hooks/use-project-context";
 import { NavUser } from "@/components/nav-user";
-import { DemoBadge } from "@/components/demo-badge";
 import { CommunityLinks } from "@/components/community-links";
 import { SubscriptionGuard, type SubscriptionStatus } from "@/components/subscription-guard";
 import { AuthGuard } from "@/components/auth-guard";
@@ -234,9 +233,6 @@ export default async function MainLayout({
                     </div>
                   </div>
                   <div className="flex shrink-0 items-center gap-1 px-2 sm:gap-4 sm:px-4">
-                    <div className="hidden xl:block">
-                      <DemoBadge />
-                    </div>
                     <CommandSearch {...commandSearchCapabilities} />
                     <div className="hidden xl:block">
                       <ParallelThreads />
