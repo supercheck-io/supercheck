@@ -9,6 +9,14 @@ import { isSelfHosted } from "@/lib/feature-flags";
 import { PendingDeletionBanner } from "@/components/pending-deletion-banner";
 import { SpendingCapBanner } from "@/components/spending-cap-banner";
 import { TrialBanner } from "@/components/trial-banner";
+import { ShellBootstrapProvider } from "@/components/shell-bootstrap";
+import { SentryBrowser } from "@/components/sentry-browser";
+import { getSentryDsn } from "@/lib/sentry-gate";
+import { getSentryBrowserConfig } from "@/lib/sentry-client-config";
+import { getImpersonationStatus } from "@/lib/impersonation-status";
+import { getUserPreferences } from "@/lib/setup/setup-state";
+import { getSetupSummary } from "@/lib/setup/summary";
+import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 
 // The layout only needs to run its data fetching here; every UI import is stubbed.
 jest.mock("@/components/app-sidebar", () => ({}));
@@ -29,15 +37,22 @@ jest.mock("@/components/auth-guard", () => ({}));
 jest.mock("@/components/data-prefetcher", () => ({}));
 jest.mock("@/components/monaco-prefetcher", () => ({}));
 jest.mock("@/components/recorder/RecorderAutoConnect", () => ({}));
-jest.mock("@/components/sentry-browser", () => ({}));
+jest.mock("@/components/sentry-browser", () => ({ SentryBrowser: () => null }));
 jest.mock("@/components/trial-banner", () => ({ TrialBanner: () => null }));
 jest.mock("@/components/spending-cap-banner", () => ({ SpendingCapBanner: () => null }));
 jest.mock("@/components/pending-deletion-banner", () => ({ PendingDeletionBanner: () => null }));
-jest.mock("@/lib/sentry-gate", () => ({ getSentryDsn: () => null }));
+jest.mock("@/lib/sentry-gate", () => ({ getSentryDsn: jest.fn() }));
+jest.mock("@/lib/sentry-client-config", () => ({ getSentryBrowserConfig: jest.fn() }));
+jest.mock("next/headers", () => ({ headers: jest.fn(async () => new Headers({ host: "app.example.com" })) }));
+jest.mock("@/lib/impersonation-status", () => ({ getImpersonationStatus: jest.fn() }));
+jest.mock("@/lib/setup/setup-state", () => ({ getUserPreferences: jest.fn() }));
+jest.mock("@/lib/setup/summary", () => ({ getSetupSummary: jest.fn() }));
+jest.mock("@/lib/setup/features", () => ({ resolveSetupFeatures: () => ({ setup: true }) }));
+jest.mock("@/lib/ai/ai-provider", () => ({ isAIProviderConfigured: () => false }));
 jest.mock("@/lib/feature-flags", () => ({ isSelfHosted: jest.fn(() => true) }));
 jest.mock("@/lib/execution/trial-limits", () => ({ getTrialSummary: jest.fn() }));
 jest.mock("@/lib/rbac/middleware", () => ({ checkPermissionWithContext: jest.fn(() => false), getUserOrgRole: jest.fn() }));
-jest.mock("@/lib/rbac/permissions", () => ({ Role: { ORG_OWNER: "org_owner", ORG_ADMIN: "org_admin" } }));
+jest.mock("@/lib/rbac/permissions", () => ({ Role: { ORG_OWNER: "org_owner", ORG_ADMIN: "org_admin", SUPER_ADMIN: "super_admin" } }));
 jest.mock("@/lib/session", () => ({
   getCurrentUser: jest.fn(),
   getActiveOrganization: jest.fn(),
@@ -51,6 +66,9 @@ describe("MainLayout data fetching", () => {
     (isSelfHosted as jest.Mock).mockReturnValue(true);
     (getSelectableProjects as jest.Mock).mockResolvedValue([]);
     (getCurrentProjectContext as jest.Mock).mockResolvedValue(null);
+    (getImpersonationStatus as jest.Mock).mockResolvedValue({ isImpersonating: false });
+    (getUserPreferences as jest.Mock).mockResolvedValue({ persona: null, seen: true });
+    (getUserOrgRole as jest.Mock).mockResolvedValue(null);
   });
 
   it.each([
@@ -126,7 +144,8 @@ describe("MainLayout data fetching", () => {
     (getTrialSummary as jest.Mock).mockResolvedValue({ daysLeft: 3 });
     let tree = await MainLayout({ children: null });
     expect(findProps(tree, TrialBanner)).toEqual({ initialTrial: { daysLeft: 3 } });
-    expect(getUserOrgRole).not.toHaveBeenCalled();
+    // The role is always read now: the sidebar's admin links come from it.
+    expect(getUserOrgRole).toHaveBeenCalledWith("u1", "o1");
 
     (getTrialSummary as jest.Mock).mockRejectedValue(new Error("db down"));
     tree = await MainLayout({ children: null });
@@ -151,5 +170,74 @@ describe("MainLayout data fetching", () => {
     expect(getCurrentProjectContext).toHaveBeenCalledTimes(1);
     gates.forEach((open) => open());
     await done;
+  });
+
+  describe("shell bootstrap", () => {
+    const bootstrapOf = (tree: unknown) => findProps(tree, ShellBootstrapProvider)?.value as Record<string, unknown>;
+    const project = { id: "p1", organizationId: "o1", userRole: "project_viewer" };
+
+    it("passes the admin flags, impersonation, preferences and setup summary the shell would request", async () => {
+      signedIn(cloudOrg());
+      (getCurrentUser as jest.Mock).mockResolvedValue({ id: "u1", name: "U", email: "u@x", role: "super_admin" });
+      (getUserOrgRole as jest.Mock).mockResolvedValue("org_admin");
+      (getCurrentProjectContext as jest.Mock).mockResolvedValue(project);
+      (checkPermissionWithContext as jest.Mock).mockReturnValue(true);
+      (getImpersonationStatus as jest.Mock).mockResolvedValue({ isImpersonating: false });
+      (getSetupSummary as jest.Mock).mockResolvedValue({ status: "in_progress", done: 1, total: 4, projectEmpty: false });
+      const value = bootstrapOf(await MainLayout({ children: null }));
+      expect(value).toMatchObject({
+        adminStatus: { isAdmin: true, isOrgAdmin: true },
+        impersonation: { isImpersonating: false },
+        preferences: { persona: null, seen: true },
+        setupSummary: { projectId: "p1", summary: { status: "in_progress", done: 1, total: 4, projectEmpty: false } },
+      });
+      expect(typeof value.readAt).toBe("number");
+      expect(getSetupSummary).toHaveBeenCalledWith("o1", "p1", "u1");
+    });
+
+    it("reports a plain member as neither admin", async () => {
+      signedIn(cloudOrg());
+      (getUserOrgRole as jest.Mock).mockResolvedValue("org_member");
+      expect(bootstrapOf(await MainLayout({ children: null })).adminStatus).toEqual({ isAdmin: false, isOrgAdmin: false });
+    });
+
+    it("leaves each value out when its lookup fails, so the client requests it", async () => {
+      signedIn(cloudOrg());
+      (getUserOrgRole as jest.Mock).mockRejectedValue(new Error("db down"));
+      (getUserPreferences as jest.Mock).mockRejectedValue(new Error("db down"));
+      (getCurrentProjectContext as jest.Mock).mockResolvedValue(project);
+      (checkPermissionWithContext as jest.Mock).mockReturnValue(true);
+      (getSetupSummary as jest.Mock).mockRejectedValue(new Error("db down"));
+      const value = bootstrapOf(await MainLayout({ children: null }));
+      expect(value.adminStatus).toBeUndefined();
+      expect(value.preferences).toBeUndefined();
+      expect(value.setupSummary).toBeUndefined();
+    });
+
+    it("does not read the setup summary without project view access", async () => {
+      signedIn(cloudOrg());
+      (getCurrentProjectContext as jest.Mock).mockResolvedValue(project);
+      (checkPermissionWithContext as jest.Mock).mockReturnValue(false);
+      const value = bootstrapOf(await MainLayout({ children: null }));
+      expect(getSetupSummary).not.toHaveBeenCalled();
+      expect(value.setupSummary).toBeUndefined();
+    });
+
+    it("renders the browser error reporter with its config only when a DSN is set", async () => {
+      signedIn(cloudOrg());
+      let tree = await MainLayout({ children: null });
+      expect(findProps(tree, SentryBrowser)).toBeUndefined();
+      expect(getSentryBrowserConfig).not.toHaveBeenCalled();
+
+      (getSentryDsn as jest.Mock).mockReturnValue("https://k@o1.ingest.sentry.io/1");
+      (getSentryBrowserConfig as jest.Mock).mockReturnValue({ dsn: "https://k@o1.ingest.sentry.io/1" });
+      tree = await MainLayout({ children: null });
+      expect(findProps(tree, SentryBrowser)).toEqual({ config: { dsn: "https://k@o1.ingest.sentry.io/1" } });
+
+      // A status-page host gets an empty config: nothing is rendered.
+      (getSentryBrowserConfig as jest.Mock).mockReturnValue({});
+      tree = await MainLayout({ children: null });
+      expect(findProps(tree, SentryBrowser)).toBeUndefined();
+    });
   });
 });

@@ -1,4 +1,6 @@
 import { useQuery, useQueryClient, useIsRestoring } from "@tanstack/react-query";
+import { useShellBootstrap } from "@/components/shell-bootstrap";
+import { seededQueryOptions } from "@/lib/query-seed";
 
 export interface ImpersonationInfo {
   isImpersonating: boolean;
@@ -23,7 +25,8 @@ async function fetchImpersonationStatus(): Promise<ImpersonationInfo> {
 export function useImpersonationStatus() {
   const queryClient = useQueryClient();
   const isRestoring = useIsRestoring();
-  
+  const bootstrap = useShellBootstrap();
+
   const { data, isPending, isFetching, error } = useQuery({
     queryKey: IMPERSONATION_STATUS_QUERY_KEY,
     queryFn: fetchImpersonationStatus,
@@ -35,6 +38,15 @@ export function useImpersonationStatus() {
     refetchOnMount: "always", // Always refetch on mount to catch impersonation state changes
     refetchOnReconnect: false,
     retry: 1,
+    // Never saved to localStorage: each full page load gets it fresh from the server layout.
+    meta: { persist: false },
+    // The server layout read it for this page load, so the load itself makes no request.
+    ...seededQueryOptions<ImpersonationInfo>(
+      bootstrap?.impersonation
+        ? { isImpersonating: bootstrap.impersonation.isImpersonating, impersonatedUser: bootstrap.impersonation.impersonatedUser ?? undefined }
+        : undefined,
+      bootstrap?.readAt,
+    ),
   });
 
   // Function to invalidate cache when impersonation starts/stops

@@ -4,7 +4,6 @@ import { useEffect, useRef } from "react";
 import { useIsRestoring, useQueryClient } from "@tanstack/react-query";
 import { useProjectContext } from "@/hooks/use-project-context";
 import { APP_CONFIG_QUERY_KEY, fetchAppConfig } from "@/hooks/use-app-config";
-import { ADMIN_STATUS_QUERY_KEY, fetchAdminStatus } from "@/hooks/use-admin-status";
 import { getTestsListQueryKey } from "@/hooks/use-tests";
 import { getJobsListQueryKey } from "@/hooks/use-jobs";
 import { getRunsListQueryKey } from "@/hooks/use-runs";
@@ -41,7 +40,7 @@ export function DataPrefetcher() {
       queryClient.prefetchQuery({ queryKey: qk, queryFn: fn, staleTime: st });
 
     prefetch(APP_CONFIG_QUERY_KEY, fetchAppConfig, STALE_TIME.INFINITE);
-    prefetch(ADMIN_STATUS_QUERY_KEY, fetchAdminStatus, STALE_TIME.LONG);
+    // Admin status is not prefetched: the server layout passes it to the sidebar.
   }, [queryClient, isRestoring]);
 
   // No dashboard prefetch: the dashboard page reads its data on the server and passes it down.

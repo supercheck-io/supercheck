@@ -24,8 +24,16 @@ import { RecorderAutoConnect } from "@/components/recorder/RecorderAutoConnect";
 import { getCurrentUser, getActiveOrganization, getSelectableProjects } from "@/lib/session";
 import { getCurrentProjectContext } from "@/lib/project-context";
 import { isSelfHosted } from "@/lib/feature-flags";
-import { getSentryDsn } from "@/lib/sentry-gate";
 import { SentryBrowser } from "@/components/sentry-browser";
+import { ShellBootstrapProvider, type ShellBootstrap } from "@/components/shell-bootstrap";
+import { headers } from "next/headers";
+import { getSentryBrowserConfig } from "@/lib/sentry-client-config";
+import { getSentryDsn } from "@/lib/sentry-gate";
+import { getImpersonationStatus } from "@/lib/impersonation-status";
+import { getUserPreferences } from "@/lib/setup/setup-state";
+import { getSetupSummary } from "@/lib/setup/summary";
+import { resolveSetupFeatures } from "@/lib/setup/features";
+import { isAIProviderConfigured } from "@/lib/ai/ai-provider";
 import { getTrialSummary } from "@/lib/execution/trial-limits";
 import { TrialBanner } from "@/components/trial-banner";
 import { SpendingCapBanner } from "@/components/spending-cap-banner";
@@ -99,6 +107,9 @@ export default async function MainLayout({
   let showSpendingCap = false;
   const orgPendingDeletion = !!org?.deletionRequestedAt;
   let isOrgOwner = false;
+  // Values the shell would otherwise request after hydration; each lookup fails soft, leaving that
+  // hook on its own request. Read in parallel with the lookups above.
+  const bootstrap: ShellBootstrap = { readAt: Date.now() };
 
   if (user && org) {
     // Derive subscription status from org data already fetched (avoids client-side API call)
@@ -109,12 +120,12 @@ export default async function MainLayout({
     // A free trial is separate from a paid subscription; without it an
     // unsubscribed organization would be sent to the subscribe page.
     // Only paying org admins can see or change the cap, so only they poll it.
-    // One role lookup serves the spending-cap banner and the pending-deletion banner.
+    // One role lookup serves the sidebar's admin links and the spending-cap and pending-deletion banners.
     const needsSpendingCapRole = !initialIsSelfHosted && initialSubscriptionStatus.isActive;
     // The role, trial and project lookups do not depend on each other, so they run together.
-    const rolePromise = needsSpendingCapRole || orgPendingDeletion
-      ? getUserOrgRole(user.id, org.id).catch(() => null)
-      : Promise.resolve(null);
+    const rolePromise = getUserOrgRole(user.id, org.id).catch(() => undefined);
+    const impersonationPromise = getImpersonationStatus();
+    const preferencesPromise = getUserPreferences(user.id).catch(() => undefined);
     const trialPromise = !initialIsSelfHosted && !initialSubscriptionStatus.isActive
       ? getTrialSummary(org.id).catch(() => undefined)
       : Promise.resolve(undefined);
@@ -122,11 +133,44 @@ export default async function MainLayout({
     // signed-in user with an organization is known.
     const projectsPromise = getSelectableProjects(user.id);
     const currentProjectPromise = getCurrentProjectContext();
+    // The sidebar's setup badge, for the project being rendered, once that project is known.
+    const userId = user.id;
+    const setupSummaryPromise = resolveSetupFeatures({ aiConfigured: isAIProviderConfigured() }).setup
+      ? currentProjectPromise
+          .then(async (project) =>
+            project &&
+            checkPermissionWithContext("project", "view", {
+              userId,
+              organizationId: project.organizationId,
+              orgPendingDeletion,
+              project: { id: project.id, userRole: project.userRole },
+            })
+              ? { projectId: project.id, summary: await getSetupSummary(project.organizationId, project.id, userId) }
+              : undefined,
+          )
+          .catch(() => undefined)
+      : Promise.resolve(undefined);
     // Settled inside the try below; this only avoids an unhandled rejection while role/trial resolve.
     // (getCurrentProjectContext swallows its own errors, so it needs no such guard.)
     projectsPromise.catch(() => undefined);
-    const [role, trial] = await Promise.all([rolePromise, trialPromise]);
+    const [role, trial, impersonation, preferences, setupSummary] = await Promise.all([
+      rolePromise,
+      trialPromise,
+      impersonationPromise,
+      preferencesPromise,
+      setupSummaryPromise,
+    ]);
     isOrgOwner = role === Role.ORG_OWNER;
+    // Same answers as /api/admin/check: super admin from the user's role, org admin from the active org.
+    if (role !== undefined) {
+      bootstrap.adminStatus = {
+        isAdmin: user.role === Role.SUPER_ADMIN,
+        isOrgAdmin: role === Role.ORG_ADMIN || role === Role.ORG_OWNER,
+      };
+    }
+    bootstrap.impersonation = impersonation;
+    bootstrap.preferences = preferences;
+    bootstrap.setupSummary = setupSummary;
     if (needsSpendingCapRole) {
       showSpendingCap = role === Role.ORG_ADMIN || role === Role.ORG_OWNER;
     }
@@ -205,64 +249,68 @@ export default async function MainLayout({
     }
   }
 
+  // Supercheck Cloud only: nothing is read or rendered when self-hosted, without a DSN, or on a status-page host.
+  const sentryConfig = getSentryDsn() ? getSentryBrowserConfig(await headers()) : {};
+
   return (
     <AuthGuard initialSession={initialSession}>
-      <MonacoPrefetcher />
-      {/* Supercheck Cloud only: never rendered when self-hosted or without a DSN, so nothing is requested. */}
-      {getSentryDsn() ? <SentryBrowser /> : null}
-      <RecorderAutoConnect />
-      <BreadcrumbProvider>
-        <ProjectContextProvider
-          initialProjects={initialProjects}
-          initialCurrentProject={initialCurrentProject}
-        >
-          <DataPrefetcher />
-          <SidebarProvider>
-            <JobProvider>
-              <SetupChecker />
-              <AppSidebar />
-              <SidebarInset className="lg:h-svh lg:min-h-0">
-                <header className="sticky top-0 z-10 flex h-14 min-w-0 shrink-0 items-center justify-between gap-2 border-b border-t bg-background transition-[width,height] ease-linear group-has-[[data-collapsible=icon]]/sidebar-wrapper:h-12">
-                  <div className="flex min-w-0 flex-1 items-center gap-2 px-2 sm:px-4">
-                    <SidebarTrigger className="-ml-1 shrink-0" />
-                    <Separator
-                      orientation="vertical"
-                      className="mr-2 hidden shrink-0 sm:block data-[orientation=vertical]:h-4"
-                    />
-                    <div className="min-w-0 flex-1 overflow-hidden">
-                      <BreadcrumbDisplay />
+      <ShellBootstrapProvider value={bootstrap}>
+        <MonacoPrefetcher />
+        {sentryConfig.dsn ? <SentryBrowser config={sentryConfig} /> : null}
+        <RecorderAutoConnect />
+        <BreadcrumbProvider>
+          <ProjectContextProvider
+            initialProjects={initialProjects}
+            initialCurrentProject={initialCurrentProject}
+          >
+            <DataPrefetcher />
+            <SidebarProvider>
+              <JobProvider>
+                <SetupChecker />
+                <AppSidebar />
+                <SidebarInset className="lg:h-svh lg:min-h-0">
+                  <header className="sticky top-0 z-10 flex h-14 min-w-0 shrink-0 items-center justify-between gap-2 border-b border-t bg-background transition-[width,height] ease-linear group-has-[[data-collapsible=icon]]/sidebar-wrapper:h-12">
+                    <div className="flex min-w-0 flex-1 items-center gap-2 px-2 sm:px-4">
+                      <SidebarTrigger className="-ml-1 shrink-0" />
+                      <Separator
+                        orientation="vertical"
+                        className="mr-2 hidden shrink-0 sm:block data-[orientation=vertical]:h-4"
+                      />
+                      <div className="min-w-0 flex-1 overflow-hidden">
+                        <BreadcrumbDisplay />
+                      </div>
                     </div>
-                  </div>
-                  <div className="flex shrink-0 items-center gap-1 px-2 sm:gap-4 sm:px-4">
-                    <div className="hidden xl:block">
-                      <DemoBadge />
+                    <div className="flex shrink-0 items-center gap-1 px-2 sm:gap-4 sm:px-4">
+                      <div className="hidden xl:block">
+                        <DemoBadge />
+                      </div>
+                      <CommandSearch {...commandSearchCapabilities} />
+                      <div className="hidden xl:block">
+                        <ParallelThreads />
+                      </div>
+                      <div className="hidden lg:block">
+                        <CommunityLinks />
+                      </div>
+                      <NavUser />
                     </div>
-                    <CommandSearch {...commandSearchCapabilities} />
-                    <div className="hidden xl:block">
-                      <ParallelThreads />
-                    </div>
-                    <div className="hidden lg:block">
-                      <CommunityLinks />
-                    </div>
-                    <NavUser />
-                  </div>
-                </header>
-                <ShellMain className="flex min-h-0 flex-1 flex-col overflow-y-auto">
-                  {org && <PendingDeletionBanner organizationId={org.id} pending={orgPendingDeletion} isOwner={isOrgOwner} />}
-                  <TrialBanner initialTrial={initialSubscriptionStatus?.trial ?? null} />
-                  <SpendingCapBanner enabled={showSpendingCap} />
-                  <SubscriptionGuard
-                    initialSubscriptionStatus={initialSubscriptionStatus}
-                    initialIsSelfHosted={initialIsSelfHosted}
-                  >
-                    {children}
-                  </SubscriptionGuard>
-                </ShellMain>
-              </SidebarInset>
-            </JobProvider>
-          </SidebarProvider>
-        </ProjectContextProvider>
-      </BreadcrumbProvider>
+                  </header>
+                  <ShellMain className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+                    {org && <PendingDeletionBanner organizationId={org.id} pending={orgPendingDeletion} isOwner={isOrgOwner} />}
+                    <TrialBanner initialTrial={initialSubscriptionStatus?.trial ?? null} />
+                    <SpendingCapBanner enabled={showSpendingCap} />
+                    <SubscriptionGuard
+                      initialSubscriptionStatus={initialSubscriptionStatus}
+                      initialIsSelfHosted={initialIsSelfHosted}
+                    >
+                      {children}
+                    </SubscriptionGuard>
+                  </ShellMain>
+                </SidebarInset>
+              </JobProvider>
+            </SidebarProvider>
+          </ProjectContextProvider>
+        </BreadcrumbProvider>
+      </ShellBootstrapProvider>
     </AuthGuard>
   );
 }

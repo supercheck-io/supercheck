@@ -13,12 +13,11 @@ import { deriveChecklist } from "@/lib/setup/checklist";
 import { resolveSetupFeatures } from "@/lib/setup/features";
 import { SETUP_STEP_KEYS } from "@/lib/setup/persona";
 import { guardProject, readJsonBody } from "@/lib/setup/route-guard";
+import { getSetupSummary, projectIsEmpty } from "@/lib/setup/summary";
 import { getChecklistCounts, getSetupState, monitorsRemaining, updateSetupState } from "@/lib/setup/setup-state";
 import { trialCheckIntervalViolation } from "@/lib/execution/trial-limits";
-import type { SetupPermissions, SetupResponse, SetupStateDto, SetupSummary } from "@/lib/setup/types";
+import type { SetupPermissions, SetupResponse, SetupStateDto } from "@/lib/setup/types";
 import type { SetupCounts } from "@/lib/setup/checklist";
-
-const projectIsEmpty = (c: SetupCounts) => c.monitors + c.tests + c.jobs + c.statusPages === 0;
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -87,13 +86,7 @@ export async function GET(request: NextRequest, { params }: Params) {
     if (guard instanceof NextResponse) return guard;
     if (request.nextUrl.searchParams.get("summary") === "1") {
       // Sidebar poll: state and counts only, no plan lookup, permissions or project name.
-      const [state, counts] = await Promise.all([
-        getSetupState(guard.ctx.organizationId, guard.ctx.project.id, guard.userId),
-        getChecklistCounts(guard.ctx.organizationId, guard.ctx.project.id),
-      ]);
-      const checklist = deriveChecklist(counts, resolveSetupFeatures({ aiConfigured: isAIProviderConfigured() }), state.statusPageOptOut);
-      const summary: SetupSummary = { status: state.status, done: checklist.done, total: checklist.total, projectEmpty: projectIsEmpty(counts) };
-      return NextResponse.json(summary);
+      return NextResponse.json(await getSetupSummary(guard.ctx.organizationId, guard.ctx.project.id, guard.userId));
     }
     return NextResponse.json(await buildResponse(guard.userId, guard.ctx));
   } catch (error) {
