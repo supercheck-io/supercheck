@@ -177,7 +177,7 @@ test.describe('docs screenshots', () => {
       await useProject(page, baseUrl, project);
       if (!idsByProject.has(project)) {
         // The first shot of a project seeds what the showcase lacks, then looks up the route ids.
-        test.setTimeout(300_000);
+        test.setTimeout(900_000); // two k6 job runs on a first seed
         const seed = project === 'Storefront' ? seedShowcase(page, baseUrl) : Promise.resolve();
         idsByProject.set(project, seed.then(() => lookupIds(page.request)));
       }

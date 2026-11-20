@@ -1,5 +1,5 @@
 import { expect, type APIRequestContext, type Page } from '@playwright/test';
-import { createMonitor, createTest } from '../../utils/test-data';
+import { createJob, createMonitor, createTest } from '../../utils/test-data';
 import { waitForHydration } from '../../utils/hydration';
 
 /**
@@ -8,7 +8,7 @@ import { waitForHydration } from '../../utils/hydration';
  * fresh heartbeat pings. Names read like a real team's setup, not test data.
  */
 
-type Row = { id?: string; type?: string; name?: string };
+type Row = { id?: string; type?: string; name?: string; title?: string; jobType?: string };
 const list = async (api: APIRequestContext, url: string, key: string): Promise<Row[]> => {
   const response = await api.get(url);
   return response.ok() ? (((await response.json()) as Record<string, Row[]>)[key] ?? []) : [];
@@ -106,6 +106,26 @@ async function ensurePublicIncident(page: Page, statusPageId: string | undefined
   await expect(dialog).toBeHidden({ timeout: 15_000 });
 }
 
+/** k6 analytics compare needs a k6 job with at least two finished runs; one-off playground runs do not count. */
+async function ensureK6Job(api: APIRequestContext, baseUrl: string): Promise<void> {
+  if ((await list(api, '/api/jobs', 'data')).some((j) => j.jobType === 'k6')) return;
+  const k6Test = (await list(api, '/api/tests?limit=100', 'data')).find((t) => t.type === 'performance' || t.type === 'k6');
+  if (!k6Test?.id) return;
+  const { id: jobId } = await createJob(api, { name: 'Checkout load check', jobType: 'k6', testId: k6Test.id, tests: [{ id: k6Test.id }] });
+  for (let i = 0; i < 2; i++) {
+    const start = await api.post('/api/jobs/run', {
+      headers: { origin: baseUrl },
+      data: { jobId, tests: [{ id: k6Test.id, name: k6Test.title ?? '', title: k6Test.title ?? '' }], trigger: 'manual' },
+    });
+    expect(start.ok(), `starting the k6 job returned ${start.status()}`).toBe(true);
+    const { runId } = (await start.json()) as { runId: string };
+    // One k6 run at a time, so wait for each before starting the next.
+    await expect
+      .poll(async () => ((await (await api.get(`/api/runs/${runId}`)).json()) as { status?: string }).status, { timeout: 300_000, intervals: [5_000] })
+      .toMatch(/^(passed|failed|error)$/);
+  }
+}
+
 export async function seedShowcase(page: Page, baseUrl: string): Promise<void> {
   const api = page.request;
   const [monitors, services, pages] = await Promise.all([
@@ -121,4 +141,5 @@ export async function seedShowcase(page: Page, baseUrl: string): Promise<void> {
   await step('MCP monitor', () => ensureMcpMonitor(api, monitors));
   await step('AI SRE service', () => ensureService(page, services));
   await step('public status update', () => ensurePublicIncident(page, pages[0]?.id));
+  await step('k6 job runs', () => ensureK6Job(api, baseUrl));
 }
