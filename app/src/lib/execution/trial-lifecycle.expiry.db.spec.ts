@@ -43,8 +43,8 @@ beforeAll(async () => {
   client = postgres(target.toString(), { max: 5, onnotice: () => {} });
   mockDatabase = drizzle(client, { schema });
   // Cloud mode (the default) so the trial branch of the policy is the one under test.
-  delete process.env.SELF_HOSTED;
-  delete process.env.POLAR_ACCESS_TOKEN;
+  Reflect.deleteProperty(process.env, "SELF_HOSTED");
+  Reflect.deleteProperty(process.env, "POLAR_ACCESS_TOKEN");
 }, 100000);
 
 afterAll(async () => {
@@ -127,6 +127,6 @@ it("refuses an ended trial with 402 when billing is configured (production path)
     await expect(getExecutionPolicy(expired.org.id)).rejects.toMatchObject({ status: 402 });
     await expect(getExecutionPolicy(live.org.id)).resolves.toMatchObject({ tier: "trial" });
   } finally {
-    delete process.env.POLAR_ACCESS_TOKEN;
+    Reflect.deleteProperty(process.env, "POLAR_ACCESS_TOKEN");
   }
 });
