@@ -52,6 +52,11 @@ export async function fetchDashboard(projectId: string | null = null): Promise<D
 /** Dashboard data counts as fresh for a minute. */
 export const DASHBOARD_STALE_MS = 60 * 1000;
 
+/** A seed counts only for its own project and user; a pending session check counts as the server's user. */
+export function seedMatches(seed: DashboardSeed, projectId: string | null, sessionUserId: string | undefined): boolean {
+  return seed.projectId === projectId && (sessionUserId === undefined || sessionUserId === seed.userId);
+}
+
 /** Seeds already written into the cache (each server read is applied at most once). */
 const appliedSeeds = new WeakSet<DashboardSeed>();
 
@@ -66,10 +71,7 @@ export function useDashboard(seed?: DashboardSeed | null) {
   // tab or a project switch the hook fetches as before. While the browser's session check is pending, the
   // server's user is the signed-in user.
   const sessionUserId = useSession().data?.user?.id;
-  const usableSeed =
-    seed && seed.projectId === projectId && (sessionUserId === undefined || sessionUserId === seed.userId)
-      ? seed
-      : undefined;
+  const usableSeed = seed && seedMatches(seed, projectId, sessionUserId) ? seed : undefined;
   // initialData only fills an empty query. On a client navigation back to the dashboard the server has just
   // read the data again, so that read replaces the cached entry once, before the mount refetch is decided
   // (the page is this key's only observer, and it has not subscribed yet on its first render). Once per

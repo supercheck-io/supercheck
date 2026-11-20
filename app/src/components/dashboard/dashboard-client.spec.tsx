@@ -7,8 +7,10 @@ import { DashboardClient } from "./dashboard-client";
 jest.mock("@/hooks/use-dashboard", () => ({
   useDashboard: jest.fn(),
   getDashboardQueryKey: (id: string | null) => ["dashboard", id, "v3"],
+  seedMatches: (s: { projectId: string }, p: string) => s.projectId === p,
   DASHBOARD_STALE_MS: 60_000,
 }));
+jest.mock("@/utils/auth-client", () => ({ useSession: () => ({ data: { user: { id: "u1" } } }) }));
 jest.mock("@/hooks/use-project-context", () => ({ useProjectContext: () => ({ currentProject: { id: "p1" } }) }));
 
 let client: QueryClient;
@@ -55,5 +57,21 @@ describe("DashboardClient", () => {
     client.setQueryData(["dashboard", "p1", "v3"], { stats: {} }, { updatedAt: Date.now() - 2 * 60_000 });
     render(<DashboardClient seed={new Promise(() => {})} />, { wrapper: Wrapper });
     expect(useDashboard).not.toHaveBeenCalled();
+  });
+
+  it("writes the server's newer read into the cache after rendering cached data", async () => {
+    client.setQueryData(["dashboard", "p1", "v3"], { stats: { runs: 1 } }, { updatedAt: Date.now() - 1000 });
+    await act(async () => {
+      render(<DashboardClient seed={Promise.resolve({ ...seed, data: { stats: { runs: 2 } } as never, updatedAt: Date.now() })} />, { wrapper: Wrapper });
+    });
+    expect(client.getQueryData(["dashboard", "p1", "v3"])).toEqual({ stats: { runs: 2 } });
+  });
+
+  it("ignores a late seed for another project", async () => {
+    client.setQueryData(["dashboard", "p1", "v3"], { stats: { runs: 1 } });
+    await act(async () => {
+      render(<DashboardClient seed={Promise.resolve({ ...seed, projectId: "p9", data: { stats: { runs: 2 } } as never })} />, { wrapper: Wrapper });
+    });
+    expect(client.getQueryData(["dashboard", "p1", "v3"])).toEqual({ stats: { runs: 1 } });
   });
 });

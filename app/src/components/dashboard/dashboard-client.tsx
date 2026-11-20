@@ -23,7 +23,7 @@ import {
   RefreshCw,
   ChevronDown,
 } from "lucide-react";
-import { Suspense, use, useMemo, useSyncExternalStore } from "react";
+import { Suspense, use, useEffect, useMemo, useSyncExternalStore } from "react";
 import { cn } from "@/lib/utils";
 import { PageBreadcrumbs } from "@/components/page-breadcrumbs";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -54,7 +54,8 @@ import { SupercheckLogo } from "@/components/logo/supercheck-logo";
 import { SupercheckLoading } from "@/components/shared/supercheck-loading";
 import { formatTestTypeBreakdown } from "@/lib/dashboard/test-types";
 import { useQueryClient } from "@tanstack/react-query";
-import { DASHBOARD_STALE_MS, getDashboardQueryKey, useDashboard, type DashboardSeed } from "@/hooks/use-dashboard";
+import { DASHBOARD_STALE_MS, getDashboardQueryKey, seedMatches, useDashboard, type DashboardSeed } from "@/hooks/use-dashboard";
+import { useSession } from "@/utils/auth-client";
 import { useProjectContext } from "@/hooks/use-project-context";
 import { useOpenIncidents } from "@/hooks/use-open-incidents";
 import { useRequirementsStats } from "@/hooks/use-requirements-stats";
@@ -288,13 +289,32 @@ export function DashboardClient({ seed }: { seed: Promise<DashboardSeed | null> 
   // request the same data in parallel.
   const cached = queryClient.getQueryCache().find({ queryKey: getDashboardQueryKey(projectId), exact: true });
   if (cached?.state.data !== undefined && !cached.isStaleByTime(DASHBOARD_STALE_MS)) {
-    return <DashboardView seed={null} />;
+    return (
+      <>
+        <DashboardView seed={null} />
+        {/* The server's read is still newer: write it into the cache when it arrives. */}
+        <Suspense fallback={null}>
+          <LateSeed seed={seed} projectId={projectId} />
+        </Suspense>
+      </>
+    );
   }
   return (
     <Suspense fallback={<DashboardSkeleton />}>
       <SeededDashboard seed={seed} />
     </Suspense>
   );
+}
+
+function LateSeed({ seed, projectId }: { seed: Promise<DashboardSeed | null>; projectId: string | null }) {
+  const value = use(seed);
+  const queryClient = useQueryClient();
+  const sessionUserId = useSession().data?.user?.id;
+  useEffect(() => {
+    if (!value || !seedMatches(value, projectId, sessionUserId)) return;
+    queryClient.setQueryData(getDashboardQueryKey(projectId), value.data, { updatedAt: value.updatedAt });
+  }, [value, projectId, sessionUserId, queryClient]);
+  return null;
 }
 
 function SeededDashboard({ seed }: { seed: Promise<DashboardSeed | null> }) {
