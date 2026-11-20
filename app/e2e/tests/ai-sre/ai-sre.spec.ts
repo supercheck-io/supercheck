@@ -139,7 +139,7 @@ test.describe("AI SRE service catalog @aisre @critical", () => {
 
 test.describe("AI SRE investigation surfaces @aisre @critical", () => {
   test("sends a Copilot prompt and renders the saved response", async ({
-    page,
+    projectAdminPage: page,
   }) => {
     const prompt = `Give a read-only service health checklist ${Date.now()}`;
     await page.goto("/copilot", { waitUntil: "load" });
@@ -211,7 +211,7 @@ test.describe("AI SRE investigation surfaces @aisre @critical", () => {
   });
 
   test("stops an in-flight Copilot stream and restores the composer @negative", async ({
-    page,
+    projectAdminPage: page,
   }) => {
     let releaseChatRequest!: () => void;
     const chatRequestStarted = new Promise<void>((resolveStarted) => {
@@ -248,7 +248,7 @@ test.describe("AI SRE investigation surfaces @aisre @critical", () => {
   });
 
   test("prefills a focused starter without sending and keeps input bounded", async ({
-    page,
+    projectAdminPage: page,
   }) => {
     await page.goto("/copilot", { waitUntil: "load" });
     await page.getByRole("button", { name: "New chat", exact: true }).click();
@@ -285,7 +285,7 @@ test.describe("AI SRE investigation surfaces @aisre @critical", () => {
   }
 
   test("uses the dedicated Copilot screen on mobile without an AI popup", async ({
-    page,
+    projectAdminPage: page,
   }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto("/tests", { waitUntil: "load" });

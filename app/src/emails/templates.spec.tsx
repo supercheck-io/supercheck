@@ -43,6 +43,12 @@ describe("email templates", () => {
     expect(html.toLowerCase()).toContain(FOOTER_MARK);
   });
 
+  it.each(cases)("%s uses the neutral header", (_name, el) => {
+    const html = renderToStaticMarkup(el);
+    expect(html).toContain("background:#1f2937");
+    for (const bad of ["#b91c1c", "#15803d", "#b45309", "#1d4ed8"]) expect(html).not.toContain(`background:${bad}`);
+  });
+
   it("monitor alert: recovery says Recovered/Resolved and has no incidents button", () => {
     const html = renderToStaticMarkup(
       <MonitorAlertEmail title="Up" message="ok" fields={[]} footer="x" type="recovery" incidentsUrl="https://app.io/incidents" />,
@@ -80,11 +86,16 @@ describe("email templates", () => {
     expect(html).toContain("javascript:alert(1)");
   });
 
-  it("BaseLayout picks readable header text for light colors", () => {
-    const html = renderToStaticMarkup(
-      <BaseLayout preview="p" title="T" headerColor="#fde68a">x</BaseLayout>,
-    );
-    expect(html).toContain("color:#111827");
+  it("every email uses the same neutral header, whatever the severity", () => {
+    const failure = renderToStaticMarkup(<MonitorAlertEmail title="Down" message="m" fields={[]} footer="x" type="failure" />);
+    const recovery = renderToStaticMarkup(<MonitorAlertEmail title="Up" message="m" fields={[]} footer="x" type="recovery" />);
+    const header = (html: string) => /background:(#[0-9a-f]{6})/i.exec(html)?.[1];
+    expect(header(failure)).toBe("#1f2937");
+    expect(header(recovery)).toBe("#1f2937");
+    for (const bad of ["#b91c1c", "#15803d", "#b45309"]) {
+      expect(failure).not.toContain(`background:${bad}`);
+      expect(recovery).not.toContain(`background:${bad}`);
+    }
   });
 });
 
@@ -96,10 +107,10 @@ describe("email consistency", () => {
     expect(alertEmailSubject("Test alert")).toBe("[Supercheck] Test alert");
   });
 
-  it("monitor alert: info uses blue, not the warning amber", () => {
+  it("monitor alert: info badge is blue, not the warning amber", () => {
     const html = render(<MonitorAlertEmail title="t" message="m" fields={[]} footer="x" type="info" />);
-    expect(html).toContain("#1d4ed8");
-    expect(html).not.toContain("#b45309");
+    expect(html).toContain("background-color:#dbeafe");
+    expect(html).not.toContain("background-color:#fef3c7");
   });
 
   it("details values keep line breaks (pre-wrap)", () => {

@@ -28,9 +28,10 @@ test.describe('Recorder web integration @recorder', () => {
   });
 
   test('Recorder extension credential lifecycle is scoped, one-time, and revocable @high @security', async ({
-    request,
+    projectAdminPage,
     cleanup,
   }) => {
+    const request = projectAdminPage.request;
     const revoke = async (): Promise<void> => {
       const response = await request.delete('/api/extension/auth');
       expect(response.status()).toBe(200);

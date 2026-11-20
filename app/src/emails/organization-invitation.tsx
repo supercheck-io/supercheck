@@ -4,8 +4,7 @@ import {
   Text,
 } from "@react-email/components";
 import * as React from "react";
-import { PALETTE } from "./palette";
-import { BaseLayout, EmailButton } from "./base-layout";
+import { BaseLayout, Callout, EmailButton } from "./base-layout";
 
 interface OrganizationInvitationEmailProps {
   inviteUrl: string;
@@ -42,7 +41,6 @@ export const OrganizationInvitationEmail = ({
     <BaseLayout
       preview={`Join ${organizationName} as ${roleDisplayName(role)}. The invitation expires in 7 days.`}
       title="Team Invitation"
-      headerColor={PALETTE.info}
     >
       <Section style={contentSection}>
         {/* Main Content */}
@@ -59,10 +57,7 @@ export const OrganizationInvitationEmail = ({
         </Section>
 
         {projectInfo && (
-          <Section style={infoBox}>
-            <Text style={infoTitle}>Project Access</Text>
-            <Text style={infoText}>{projectInfo}</Text>
-          </Section>
+          <Callout tone="neutral" title="Project Access" lines={[projectInfo]} />
         )}
 
         <Text style={paragraph}>
@@ -77,15 +72,13 @@ export const OrganizationInvitationEmail = ({
         <Hr style={hr} />
 
         {/* Expiry Notice */}
-        <Section style={noticeBox}>
-          <Text style={noticeText}>
-            This invitation expires in <strong>7 days</strong>.
-          </Text>
-          <Text style={noticeText}>
-            If you didn&apos;t expect this invitation, you can safely ignore this
-            email.
-          </Text>
-        </Section>
+        <Callout
+          tone="warning"
+          lines={[
+            <>This invitation expires in <strong>7 days</strong>.</>,
+            "If you didn't expect this invitation, you can safely ignore this email.",
+          ]}
+        />
       </Section>
     </BaseLayout>
   );
@@ -101,7 +94,6 @@ const heading = {
   fontWeight: "700" as const,
   lineHeight: "1.3",
   margin: "0 0 24px",
-  textAlign: "center" as const,
   letterSpacing: "-0.025em",
 };
 
@@ -110,7 +102,6 @@ const paragraph = {
   fontSize: "15px",
   lineHeight: "1.6",
   margin: "0 0 24px",
-  textAlign: "center" as const,
 };
 
 const roleBox = {
@@ -138,30 +129,6 @@ const roleValue = {
   margin: "0",
 };
 
-const infoBox = {
-  backgroundColor: "#f8fafc",
-  border: "1px solid #e2e8f0",
-  borderRadius: "8px",
-  padding: "20px",
-  margin: "0 0 24px",
-};
-
-const infoTitle = {
-  color: "#1e293b",
-  fontSize: "14px",
-  fontWeight: "700" as const,
-  margin: "0 0 12px",
-  textTransform: "uppercase" as const,
-  letterSpacing: "0.05em",
-};
-
-const infoText = {
-  color: "#475569",
-  fontSize: "14px",
-  lineHeight: "1.6",
-  margin: "0",
-};
-
 const buttonContainer = {
   textAlign: "center" as const,
   margin: "32px 0",
@@ -171,22 +138,6 @@ const buttonContainer = {
 const hr = {
   borderColor: "#e5e7eb",
   margin: "32px 0",
-};
-
-const noticeBox = {
-  backgroundColor: "#fffbeb",
-  border: "1px solid #fcd34d",
-  borderRadius: "8px",
-  padding: "16px 20px",
-  margin: "0 0 32px",
-};
-
-const noticeText = {
-  color: "#92400e",
-  fontSize: "13px",
-  lineHeight: "1.6",
-  margin: "0 0 4px",
-  textAlign: "center" as const,
 };
 
 export default OrganizationInvitationEmail;

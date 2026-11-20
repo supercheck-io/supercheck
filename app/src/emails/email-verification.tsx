@@ -18,7 +18,6 @@ export const EmailVerificationEmail = ({
     <BaseLayout
       preview="Verify your email address to complete signup"
       title="Email Verification"
-      headerColor={PALETTE.neutral}
     >
       <Section style={contentSection}>
         {/* Main Content */}

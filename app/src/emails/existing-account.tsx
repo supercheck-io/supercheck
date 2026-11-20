@@ -1,6 +1,5 @@
 import { Hr, Link, Section, Text } from "@react-email/components";
 import * as React from "react";
-import { PALETTE } from "./palette";
 import { BaseLayout, EmailButton } from "./base-layout";
 
 interface ExistingAccountEmailProps {
@@ -17,7 +16,6 @@ export const ExistingAccountEmail = ({
   <BaseLayout
     preview="Someone tried to sign up with this address. Sign in to your existing account."
     title="You already have an account"
-    headerColor={PALETTE.neutral}
   >
     <Section style={contentSection}>
       <Text style={paragraph}>

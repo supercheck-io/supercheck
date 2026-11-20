@@ -9,12 +9,12 @@ import {
   monitorNames,
   next,
   purgeCreatedItems,
-  signUpFreshCreator,
+  SIGN_UP_GATED, signUpFreshCreator,
   wizard,
 } from '../../utils/setup-test-data';
 
 // The wizard order for "SRE and platform": App, Alerts, Monitors, (AI SRE), Status page, (Requirements and tests), Review and create.
-test.describe('Project setup creator flow @setup', () => {
+test.describe('Project setup creator flow @setup', SIGN_UP_GATED, () => {
   let context: BrowserContext;
   let page: Page;
 

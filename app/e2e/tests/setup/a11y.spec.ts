@@ -1,7 +1,7 @@
 import { expect, test, type BrowserContext, type Page } from '@playwright/test';
 
 import { waitForHydration } from '../../utils/hydration';
-import { chooseProfile, expectStep, purgeCreatedItems, signUpFreshCreator, stepButton } from '../../utils/setup-test-data';
+import { chooseProfile, expectStep, purgeCreatedItems, SIGN_UP_GATED, signUpFreshCreator, stepButton } from '../../utils/setup-test-data';
 
 // @axe-core/playwright is not a dependency of this suite, so this covers what Playwright can
 // check directly: the labelled step list, aria-current, keyboard operation, dark mode and no
@@ -14,7 +14,7 @@ async function expectNoHorizontalScroll(page: Page) {
   expect(overflow).toBeLessThanOrEqual(0);
 }
 
-test.describe('Project setup accessibility @setup', () => {
+test.describe('Project setup accessibility @setup', SIGN_UP_GATED, () => {
   let context: BrowserContext;
   let page: Page;
 

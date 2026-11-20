@@ -6,6 +6,7 @@
 
 import dotenv from "dotenv";
 import path from "path";
+import { ENV_GATED } from "../reporters/priority-skip-reporter";
 import { SCREENSHOT_IDENTITIES, SCREENSHOT_USER } from "./screenshot";
 
 // The PR gallery's checkpoint run uses the throwaway identities its seed created. Their
@@ -103,6 +104,11 @@ export function hasRbacUser(role: keyof typeof env.rbacUsers): boolean {
   const user = env.rbacUsers[role];
   return !!(user.email && user.password);
 }
+
+/** Describe option for coverage that needs the super admin account, which a deployment may not have. */
+export const SUPER_ADMIN_GATED = {
+  annotation: { type: ENV_GATED, description: "E2E_SUPER_ADMIN credentials are not configured" },
+};
 
 export function requireRbacUser(role: keyof typeof env.rbacUsers): void {
   if (!hasRbacUser(role)) {

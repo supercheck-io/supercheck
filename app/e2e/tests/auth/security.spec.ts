@@ -20,7 +20,7 @@ test.use({ storageState: { cookies: [], origins: [] } });
 
 import { SignInPage, ForgotPasswordPage } from "../../pages/auth";
 import { env, routes } from "../../utils/env";
-import { signInWithRetry } from "../../utils/api-auth";
+import { CAPTCHA_TEST_HEADERS, signInWithRetry } from "../../utils/api-auth";
 import { loginIfNeeded } from "../../utils/auth-helper";
 
 const SESSION_COOKIE_SUFFIX = "better-auth.session_token";
@@ -165,6 +165,7 @@ test.describe("Security - CSRF Protection @auth @security", () => {
         password: "password123",
       },
       headers: {
+        ...CAPTCHA_TEST_HEADERS, // a CAPTCHA-protected deployment answers 400 before it checks the origin
         "Content-Type": "application/json",
         Origin: "https://malicious-site.com",
       },
@@ -181,7 +182,7 @@ test.describe("Security - CSRF Protection @auth @security", () => {
       // rate limit, or the login-lockout hook, which answers with its own 429
       // once the shared demo identity/IP bucket is locked. Assert the known
       // contract so another response cannot accidentally mask the CSRF check.
-      expect(body.message).toMatch(/too many requests|account temporarily locked/i);
+      expect(body.message).toMatch(/too many requests|too many sign-in attempts|account temporarily locked/i);
 
       if (/too many requests/i.test(body.message ?? "")) {
         const retryAfter = Number(response.headers()["x-retry-after"]);
