@@ -353,6 +353,7 @@ External PostgreSQL, Redis or S3 are not covered; use your provider's backups.
 | `1` | A step failed | The installer prints the last log lines; the full log is `/var/log/supercheck/install.log`. Fix the cause and re-run |
 | `2` | Bad usage | Check the options with `bash install.sh --help` |
 | `3` | Running, but `/api/health` reports a problem | Run `curl http://localhost:3000/api/health` to see which dependency fails, then `sudo docker compose logs --tail=100 app worker` |
+| `130` | Interrupted (Ctrl+C or a termination signal) | Re-run the same command to resume |
 
 </Accordion>
 <Accordion title="HTTPS certificate is not issued" id="acme-failure">

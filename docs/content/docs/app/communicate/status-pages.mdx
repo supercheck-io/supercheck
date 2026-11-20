@@ -286,7 +286,7 @@ flowchart LR
     class Share complete
 ```
 
-Add the **CNAME** target and **TXT** proof (at `_supercheck-challenge.<custom-hostname>`) shown in Settings. Publish the page before **Verify DNS**. Keep the TXT record; ownership is rechecked daily. To remove the domain, clear the field and save; the default URL keeps working.
+Add the **CNAME** target and **TXT** proof (at `_supercheck-challenge.<custom-hostname>`) shown in Settings. Publish the page before **Verify DNS**. Keep the TXT record: the records are rechecked daily, and a failed recheck does not unverify or detach the domain. To remove the domain, clear the field and save; the default URL keeps working.
 
 <Callout type="warn">
 On Cloudflare, use **DNS only** while verifying. Turn on the proxy only after the origin serves HTTPS for the hostname, with **Full** or **Full (Strict)** TLS.
