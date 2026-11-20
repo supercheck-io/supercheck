@@ -33,4 +33,11 @@ describe("safeErrorFields", () => {
   it("never throws on unprintable values", () => {
     expect(safeErrorFields(Object.create(null)).message).toBe("[unprintable]");
   });
+
+  it("never throws when reading the error's fields throws", () => {
+    const error = Object.defineProperty(new Error("db down"), "cause", {
+      get() { throw new Error("unavailable cause"); },
+    });
+    expect(safeErrorFields(error)).toEqual({ name: "Error", message: "[unprintable]" });
+  });
 });
