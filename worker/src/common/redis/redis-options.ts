@@ -50,7 +50,7 @@ export function buildRedisOptions(
     maxRetriesPerRequest: null,
     enableReadyCheck: false,
     connectTimeout: 10000,
-    // Bounds how long a half-open socket (a failed-over Redis pod that never sent a FIN) stays unnoticed.
+    // Idle sockets get TCP keepalive probes (about 11 min on Linux defaults); the consumer watchdog covers the rest.
     keepAlive: 10000,
     retryStrategy: (attempt: number) => Math.min(attempt * 250, 3000),
     ...(tlsEnabled && {

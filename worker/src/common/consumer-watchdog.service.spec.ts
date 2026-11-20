@@ -120,6 +120,69 @@ describe('ConsumerWatchdogService', () => {
     expect(service.isHealthy(10 * MIN)).toBe(true);
   });
 
+  const hung = () => jest.fn().mockReturnValue(new Promise(() => undefined));
+
+  it('keeps the stall clock through a reconnect it forced, so a slow reconnect still ends in a restart', async () => {
+    jest.useFakeTimers();
+    const { worker, redis } = fakeWorker({ ping: hung() });
+    watch(worker);
+    const first = service.probe(0);
+    await jest.advanceTimersByTimeAsync(6_000);
+    await first;
+    redis.status = 'reconnecting';
+    await service.probe(2 * MIN);
+    expect(service.isHealthy(5 * MIN)).toBe(false);
+  });
+
+  it('kicks a dead connection while paused or draining, but does not count it', async () => {
+    jest.useFakeTimers();
+    const { worker, redis } = fakeWorker(
+      { ping: hung() },
+      { isPaused: () => true },
+    );
+    watch(worker);
+    jest.spyOn(shutdownIntake, 'isDraining').mockReturnValue(true);
+    const probing = service.probe(0);
+    await jest.advanceTimersByTimeAsync(6_000);
+    await probing;
+    expect(redis.disconnect).toHaveBeenCalledWith(true);
+    expect(service.isHealthy(10 * MIN)).toBe(true);
+  });
+
+  it('pings and kicks a client shared by several workers once', async () => {
+    jest.useFakeTimers();
+    const a = fakeWorker({ ping: hung() });
+    const b = fakeWorker({}, { client: a.worker.client });
+    unregister = registerConsumer(() => [a.worker, b.worker]);
+    const probing = service.probe(0);
+    await jest.advanceTimersByTimeAsync(6_000);
+    await probing;
+    expect(a.redis.ping).toHaveBeenCalledTimes(1);
+    expect(a.redis.disconnect).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not reconnect on a Redis reply error: the socket answered', async () => {
+    const { worker, redis } = fakeWorker({
+      ping: jest.fn().mockRejectedValue(new Error('LOADING')),
+    });
+    watch(worker);
+    await service.probe(0);
+    expect(redis.disconnect).not.toHaveBeenCalled();
+    expect(service.isHealthy(10 * MIN)).toBe(true);
+  });
+
+  it('one consumer whose client never initialises does not block checking the others', async () => {
+    jest.useFakeTimers();
+    const stuck = fakeWorker({}, { client: new Promise(() => undefined) });
+    const dead = fakeWorker({ ping: hung() });
+    unregister = registerConsumer(() => [stuck.worker, dead.worker]);
+    const probing = service.probe(0);
+    await jest.advanceTimersByTimeAsync(12_000);
+    await probing;
+    expect(dead.redis.disconnect).toHaveBeenCalledWith(true);
+    expect(service.isHealthy(5 * MIN)).toBe(false);
+  });
+
   it('forgets a consumer that was removed', async () => {
     const { worker } = fakeWorker({ status: 'end' });
     watch(worker);

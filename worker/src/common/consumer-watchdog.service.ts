@@ -23,15 +23,15 @@ const PING_TIMEOUT_MS = 5_000;
 /** A consumer that stays broken this long cannot recover by itself: liveness fails so Kubernetes restarts the pod. */
 const DEAD_AFTER_MS = 5 * 60_000;
 
-function pingWithTimeout(client: {
-  ping: () => Promise<unknown>;
-}): Promise<void> {
+class ProbeTimeoutError extends Error {}
+
+function withTimeout<T>(work: Promise<T>, what: string): Promise<T> {
   let timer: NodeJS.Timeout | undefined;
   return Promise.race([
-    client.ping().then(() => undefined),
+    work,
     new Promise<never>((_resolve, reject) => {
       timer = setTimeout(
-        () => reject(new Error('PING timed out')),
+        () => reject(new ProbeTimeoutError(`${what} timed out`)),
         PING_TIMEOUT_MS,
       );
     }),
@@ -40,11 +40,14 @@ function pingWithTimeout(client: {
 
 /**
  * Detects a BullMQ consumer that silently stopped pulling jobs after a Redis or Sentinel failover.
- * The command connection a Worker shares can stay `ready` on a half-open socket: no reply, no error and
- * no reconnect, so the queue fills with nothing active. Each probe PINGs that connection; a failed
- * ping on a `ready` connection forces a reconnect (ioredis resends the pending commands). A consumer
- * whose connection has ended, whose run loop exited, or that keeps failing for DEAD_AFTER_MS reports
- * unhealthy. A connection that is merely reconnecting is left alone: it resumes when Redis returns.
+ * The command connection a Worker uses can stay `ready` on a half-open socket: no reply, no error and
+ * no reconnect, so the queue fills with nothing active. Each probe PINGs every distinct command
+ * connection; one that stops answering while `ready` is forced to reconnect (ioredis resends the
+ * pending commands). That kick also runs while draining or paused, because in-flight jobs still need
+ * the connection to finish. A consumer reports unhealthy while its connection is unresponsive, ended,
+ * or its run loop exited, and liveness fails once that has lasted DEAD_AFTER_MS without a successful
+ * ping in between. A connection that is reconnecting keeps the clock as it is: a real outage that
+ * Redis ends resumes on its own, one that outlasts DEAD_AFTER_MS after a stall restarts the pod.
  */
 @Injectable()
 export class ConsumerWatchdogService implements OnModuleInit, OnModuleDestroy {
@@ -54,7 +57,13 @@ export class ConsumerWatchdogService implements OnModuleInit, OnModuleDestroy {
   private readonly brokenSince = new Map<Worker, number>();
 
   onModuleInit(): void {
-    this.timer = setInterval(() => void this.probe(), PROBE_INTERVAL_MS);
+    this.timer = setInterval(() => {
+      this.probe().catch((error) =>
+        this.logger.error(
+          `consumer probe failed: ${error instanceof Error ? error.message : String(error)}`,
+        ),
+      );
+    }, PROBE_INTERVAL_MS);
     this.timer.unref();
   }
 
@@ -83,42 +92,71 @@ export class ConsumerWatchdogService implements OnModuleInit, OnModuleDestroy {
       for (const known of this.brokenSince.keys()) {
         if (!live.has(known)) this.brokenSince.delete(known);
       }
-      if (isDraining()) return this.brokenSince.clear();
+
+      // A client shared by several workers (dynamic monitor/k6) is probed and kicked once.
+      const clients = new Map<Worker, Redis | null>();
       await Promise.all(
         [...live].map(async (worker) => {
-          const problem = await this.check(worker);
-          if (!problem) return void this.brokenSince.delete(worker);
-          if (!this.brokenSince.has(worker)) {
-            this.brokenSince.set(worker, now);
-            this.logger.warn(`[${worker.name}] consumer unhealthy: ${problem}`);
+          try {
+            const client = (await withTimeout(
+              worker.client,
+              'Redis client init',
+            )) as unknown as Redis;
+            clients.set(worker, client);
+          } catch {
+            clients.set(worker, null);
           }
         }),
       );
+      const state = new Map<Redis, 'ok' | 'unresponsive' | 'reconnecting'>();
+      await Promise.all(
+        [...new Set(clients.values())].map(async (client) => {
+          if (client) state.set(client, await this.pingClient(client));
+        }),
+      );
+
+      const counted = !isDraining();
+      for (const worker of live) {
+        const client = clients.get(worker) ?? null;
+        const status = client ? state.get(client) : 'unresponsive';
+        // Draining, paused and closing consumers are stopped on purpose; the kick above still ran.
+        if (!counted || worker.closing || worker.isPaused()) {
+          this.brokenSince.delete(worker);
+        } else if (!worker.isRunning()) {
+          this.markBroken(worker, now, 'run loop is not running');
+        } else if (status === 'unresponsive' || status === undefined) {
+          this.markBroken(worker, now, 'Redis connection unresponsive');
+        } else if (status === 'ok') {
+          this.brokenSince.delete(worker);
+        } // reconnecting: ioredis is working on it; keep the clock where it is
+      }
     } finally {
       this.probing = false;
     }
   }
 
-  /** Returns why the consumer is broken, or null when it is fine or intentionally stopped. */
-  private async check(worker: Worker): Promise<string | null> {
-    if (worker.closing || worker.isPaused()) return null;
-    if (!worker.isRunning()) return 'run loop is not running';
+  private markBroken(worker: Worker, now: number, problem: string): void {
+    if (this.brokenSince.has(worker)) return;
+    this.brokenSince.set(worker, now);
+    this.logger.warn(`[${worker.name}] consumer unhealthy: ${problem}`);
+  }
+
+  private async pingClient(
+    client: Redis,
+  ): Promise<'ok' | 'unresponsive' | 'reconnecting'> {
+    if (client.status === 'end') return 'unresponsive';
+    if (client.status !== 'ready') return 'reconnecting';
     try {
-      const client = (await worker.client) as unknown as Redis;
-      if (client.status === 'end') return 'Redis connection ended';
-      if (client.status !== 'ready') return null; // ioredis is reconnecting by itself
-      try {
-        await pingWithTimeout(client);
-        return null;
-      } catch (error) {
-        this.logger.warn(
-          `[${worker.name}] Redis ping failed on a ready connection (${error instanceof Error ? error.message : String(error)}); forcing reconnect`,
-        );
-        client.disconnect(true);
-        return 'Redis connection unresponsive';
-      }
+      await withTimeout(client.ping(), 'PING');
+      return 'ok';
     } catch (error) {
-      return `Redis client unavailable: ${error instanceof Error ? error.message : String(error)}`;
+      // Any reply (even an error such as LOADING) proves the socket is alive.
+      if (!(error instanceof ProbeTimeoutError)) return 'ok';
+      this.logger.warn(
+        'Redis PING timed out on a ready connection; forcing reconnect',
+      );
+      client.disconnect(true);
+      return 'unresponsive';
     }
   }
 }
