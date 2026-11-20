@@ -1,33 +1,28 @@
 import { Check } from "lucide-react";
-import { Card } from "@/components/ui/card";
 
 interface TrialCardProps {
   durationDays: number;
   highlights: string[];
 }
 
-/** What an active free trial includes. The surrounding page already says how many days are left and what happens when it ends. */
+/** What an active free trial includes, laid out like the trial box on the marketing pricing page. */
 export function TrialCard({ durationDays, highlights }: TrialCardProps) {
   return (
-    <Card aria-labelledby="trial-card-heading" className="gap-4 p-5 shadow-none sm:p-6">
-      <div className="space-y-1">
-        <h2 id="trial-card-heading" className="text-base font-semibold">
-          What your free trial includes
-        </h2>
-        <p className="text-sm text-muted-foreground">
-          Most of the product for {durationDays} days, no card required. Playwright and k6 run
-          without domain approval; the trial allowances below apply. Custom domains are on paid
-          plans. Choose a plan at any time to lift the allowances.
-        </p>
-      </div>
-      <ul className="grid gap-2 text-sm sm:grid-cols-2">
+    <section aria-labelledby="trial-card-heading" className="rounded-xl border p-6 sm:p-8">
+      <h2 id="trial-card-heading" className="text-lg font-semibold">
+        Your {durationDays}-day free trial includes
+      </h2>
+      <p className="mt-1 text-sm text-muted-foreground">
+        Custom domains are on paid plans. Choose a plan any time to lift these limits.
+      </p>
+      <ul className="mt-5 grid gap-2 text-sm sm:grid-cols-2 lg:grid-cols-3">
         {highlights.map((highlight) => (
-          <li key={highlight} className="flex items-start gap-2.5 leading-6">
-            <Check aria-hidden="true" className="mt-1 h-4 w-4 shrink-0 text-primary" />
+          <li key={highlight} className="flex items-start gap-3 leading-6">
+            <Check aria-hidden="true" className="mt-1 size-4 shrink-0 text-muted-foreground" />
             <span>{highlight}</span>
           </li>
         ))}
       </ul>
-    </Card>
+    </section>
   );
 }
