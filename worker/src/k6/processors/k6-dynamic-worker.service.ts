@@ -1,3 +1,4 @@
+import { registerConsumer } from '../../common/consumer-watchdog.service';
 import {
   Injectable,
   OnModuleInit,
@@ -59,6 +60,7 @@ export class K6DynamicWorkerService
   ) {}
 
   async onModuleInit(): Promise<void> {
+    registerConsumer(() => this.workers.values());
     registerIntakeStopper(() => {
       this.shuttingDown = true;
       return this.pauseWorkers();

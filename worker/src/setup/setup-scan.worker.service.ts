@@ -8,6 +8,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { Job, Worker } from 'bullmq';
 import Redis from 'ioredis';
+import { registerConsumer } from '../common/consumer-watchdog.service';
 import { buildRedisOptions } from '../common/redis/redis-options';
 import {
   registerIntakeStopper,
@@ -53,6 +54,7 @@ export class SetupScanWorkerService
     this.worker.on('error', (error: Error) =>
       this.logger.error(`setup-scan worker error: ${error.message}`),
     );
+    registerConsumer(() => [this.worker]);
   }
 
   async onModuleDestroy(): Promise<void> {

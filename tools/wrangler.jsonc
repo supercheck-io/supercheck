@@ -16,7 +16,7 @@
   "vars": {
     "ALLOWED_ORIGINS": "https://supercheck.io,https://www.supercheck.io",
     "ALLOW_PREVIEW_ORIGINS": "false",
-    "TURNSTILE_HOSTNAMES": "supercheck.io,supercheck.pages.dev"
+    "TURNSTILE_HOSTNAMES": "supercheck.io,www.supercheck.io,.supercheck.pages.dev"
   },
   // Counts are per Cloudflare location and eventually consistent: best effort.
   "ratelimits": [

@@ -135,3 +135,7 @@ describe("helpers", () => {
     expect(registrable("www.bar.vercel.app")).toBe("bar.vercel.app");
   });
 });
+
+it("reports an opted-out host under a platform suffix as blocked_host", () => {
+  expect(reason("https://x.pages.dev/", ["x.pages.dev"])).toBe("blocked_host");
+});
