@@ -27,7 +27,7 @@ test.describe('Status Pages - Page Loading @status-pages @smoke', () => {
 });
 
 test.describe('Status Pages - Create Flow @status-pages', () => {
-  test('SP-004: Create button opens dialog @high @positive', async ({ page }) => {
+  test('SP-004: Create button opens dialog @high @positive', async ({ projectAdminPage: page }) => {
     const statusPagesPage = new StatusPagesPage(page);
     await statusPagesPage.navigate();
 
@@ -38,7 +38,7 @@ test.describe('Status Pages - Create Flow @status-pages', () => {
     await statusPagesPage.cancelCreateDialog();
   });
 
-  test('SP-005: Create form shows all fields @high @positive', async ({ page }) => {
+  test('SP-005: Create form shows all fields @high @positive', async ({ projectAdminPage: page }) => {
     const statusPagesPage = new StatusPagesPage(page);
     await statusPagesPage.navigate();
 
@@ -51,7 +51,7 @@ test.describe('Status Pages - Create Flow @status-pages', () => {
     await statusPagesPage.cancelCreateDialog();
   });
 
-  test('SP-006: Cancel closes create dialog @medium @positive', async ({ page }) => {
+  test('SP-006: Cancel closes create dialog @medium @positive', async ({ projectAdminPage: page }) => {
     const statusPagesPage = new StatusPagesPage(page);
     await statusPagesPage.navigate();
 

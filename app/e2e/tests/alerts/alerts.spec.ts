@@ -73,7 +73,8 @@ test.describe('Notification providers lifecycle @alerts @channels', () => {
     expect(await missing.json()).toEqual({ error: 'Notification provider not found' });
   });
 
-  test('rejects invalid provider configuration and private webhook targets @high @security', async ({ request }) => {
+  test('rejects invalid provider configuration and private webhook targets @high @security', async ({ projectAdminPage }) => {
+    const request = projectAdminPage.request;
     const missingRecipient = await request.post('/api/notification-providers', {
       data: { type: 'email', config: { name: 'invalid email channel' } },
     });

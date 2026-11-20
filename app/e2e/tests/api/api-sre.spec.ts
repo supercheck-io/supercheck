@@ -62,7 +62,8 @@ test.describe('SRE API authenticated contracts @api @sre @critical', () => {
     );
   });
 
-  test('Copilot validates the request before invoking an AI provider', async ({ request }) => {
+  test('Copilot validates the request before invoking an AI provider', async ({ projectAdminPage }) => {
+    const request = projectAdminPage.request;
     const response = await request.post('/api/sre/chat', {
       data: { message: '' },
     });

@@ -1,5 +1,5 @@
 import { expect, test } from '../../fixtures/roles.fixture';
-import { requireRbacUser } from '../../utils/env';
+import { hasRbacUser, requireRbacUser, SUPER_ADMIN_GATED } from '../../utils/env';
 
 test.describe('Billing and usage @admin @billing', () => {
   test.beforeAll(() => requireRbacUser('orgOwner'));
@@ -131,8 +131,8 @@ test.describe('Organization audit log @admin @security', () => {
   });
 });
 
-test.describe('Super admin console @admin @security', () => {
-  test.beforeAll(() => requireRbacUser('superAdmin'));
+test.describe('Super admin console @admin @security', SUPER_ADMIN_GATED, () => {
+  test.skip(!hasRbacUser('superAdmin'), SUPER_ADMIN_GATED.annotation.description);
 
   test('super admin dashboard exposes overview, users, organizations, locations, and queues @critical @security', async ({
     superAdminPage: page,

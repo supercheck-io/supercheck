@@ -3,7 +3,7 @@ import { expect, type APIRequestContext, type Page } from '@playwright/test';
 
 import { Role, test } from '../../fixtures';
 import { hasRbacUser } from '../../utils/env';
-import { signUpFreshCreator } from '../../utils/setup-test-data';
+import { SIGN_UP_GATED, signUpFreshCreator } from '../../utils/setup-test-data';
 
 /** Every setup route a project id reaches, with a body each would otherwise accept. */
 const setupCalls = (projectId: string) => [
@@ -25,7 +25,7 @@ async function currentProjectId(page: Page): Promise<string> {
   return ((await res.json()) as { currentProject?: { id?: string } }).currentProject?.id ?? '';
 }
 
-test.describe('Project setup access control @setup', () => {
+test.describe('Project setup access control @setup', SIGN_UP_GATED, () => {
   test('setup routes answer 404 for a project in another organization @critical', async ({ browser, baseURL }) => {
     const origin = new URL(baseURL!).origin;
     const a = await signUpFreshCreator(browser, baseURL!, 'xorg-a');

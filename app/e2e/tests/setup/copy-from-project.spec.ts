@@ -2,11 +2,11 @@ import { expect, test } from '@playwright/test';
 
 import { captureFixturePage } from '../../fixtures/checkpoint.fixture';
 import { waitForHydration } from '../../utils/hydration';
-import { chooseProfile, goToStep, purgeCreatedItems, signUpFreshCreator, wizard, type FreshCreator } from '../../utils/setup-test-data';
+import { chooseProfile, goToStep, purgeCreatedItems, SIGN_UP_GATED, signUpFreshCreator, wizard, type FreshCreator } from '../../utils/setup-test-data';
 
 type Provider = { id: string; name: string; type: string };
 
-test.describe('Project setup copy from project @setup', () => {
+test.describe('Project setup copy from project @setup', SIGN_UP_GATED, () => {
   let creator: FreshCreator | undefined;
   let source: { id: string; name: string } | undefined;
   let sourceChannelId: string | undefined;
