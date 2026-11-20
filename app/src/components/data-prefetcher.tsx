@@ -2,11 +2,9 @@
 
 import { useEffect, useRef } from "react";
 import { useIsRestoring, useQueryClient } from "@tanstack/react-query";
-import { usePathname } from "next/navigation";
 import { useProjectContext } from "@/hooks/use-project-context";
 import { APP_CONFIG_QUERY_KEY, fetchAppConfig } from "@/hooks/use-app-config";
 import { ADMIN_STATUS_QUERY_KEY, fetchAdminStatus } from "@/hooks/use-admin-status";
-import { getDashboardQueryKey, fetchDashboard } from "@/hooks/use-dashboard";
 import { getTestsListQueryKey } from "@/hooks/use-tests";
 import { getJobsListQueryKey } from "@/hooks/use-jobs";
 import { getRunsListQueryKey } from "@/hooks/use-runs";
@@ -32,9 +30,8 @@ const PREFETCH_MAX_WAIT_MS = 1500;
 export function DataPrefetcher() {
   const queryClient = useQueryClient();
   const isRestoring = useIsRestoring();
-  const pathname = usePathname();
   const { currentProject } = useProjectContext();
-  const didPrefetch = useRef({ auth: false, dashboard: false, sidebar: false });
+  const didPrefetch = useRef({ auth: false, sidebar: false });
 
   useEffect(() => {
     if (isRestoring || didPrefetch.current.auth) return;
@@ -47,17 +44,7 @@ export function DataPrefetcher() {
     prefetch(ADMIN_STATUS_QUERY_KEY, fetchAdminStatus, STALE_TIME.LONG);
   }, [queryClient, isRestoring]);
 
-  useEffect(() => {
-    if (isRestoring || !currentProject || didPrefetch.current.dashboard) return;
-    if (pathname === "/" || pathname === `/project/${currentProject.slug}`) {
-      didPrefetch.current.dashboard = true;
-      queryClient.prefetchQuery({
-        queryKey: getDashboardQueryKey(currentProject.id),
-        queryFn: () => fetchDashboard(currentProject.id),
-        staleTime: STALE_TIME.MEDIUM,
-      });
-    }
-  }, [queryClient, currentProject, pathname, isRestoring]);
+  // No dashboard prefetch: the dashboard page reads its data on the server and passes it down.
 
   useEffect(() => {
     if (isRestoring || !currentProject || didPrefetch.current.sidebar) return;
