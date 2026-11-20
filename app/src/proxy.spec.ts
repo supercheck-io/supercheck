@@ -76,15 +76,25 @@ describe("proxy custom domain routing", () => {
   ])("on status host %s serves only the public status page API", async (host) => {
     process.env.STATUS_PAGE_DOMAIN = "supercheck.example.com";
     const { proxy } = await import("./proxy");
-    const call = (path: string) => proxy(new NextRequest(`https://${host}${path}`, { headers: { host } })).status;
+    const call = (path: string) => {
+      const response = proxy(new NextRequest(`https://${host}${path}`, { headers: { host } }));
+      // "served" = passed straight to the API route, not rewritten under /status/...
+      return response.status === 404 ? 404 : response.headers.get("x-middleware-rewrite") ? "rewritten" : "served";
+    };
     expect(call("/api/auth/get-session")).toBe(404);
     expect(call("/api/auth/sign-in/email")).toBe(404);
+    expect(call("/api/auth/sign-in/email.js")).toBe(404);
     expect(call("/api/projects")).toBe(404);
-    expect(call("/api/status-pages/f134b5f9f2b048069deaf7cfb924a0b3/rss")).toBe(200);
-    expect(call("/api/status-pages/f134b5f9f2b048069deaf7cfb924a0b3/ical")).toBe(200);
-    expect(call("/api/status-pages/unsubscribe/tok")).toBe(200);
-    expect(call("/api/assets/status-pages/abc/logo.png")).toBe(200);
+    expect(call("/api/status-pages/f134b5f9f2b048069deaf7cfb924a0b3/rss")).toBe("served");
+    expect(call("/api/status-pages/f134b5f9f2b048069deaf7cfb924a0b3/ical")).toBe("served");
+    expect(call("/api/status-pages/unsubscribe/tok")).toBe("served");
+    expect(call("/api/assets/status-pages/abc/logo.png")).toBe("served");
     expect(call("/api/status-pages/f134b5f9f2b048069deaf7cfb924a0b3")).toBe(404);
+  });
+
+  it("runs the proxy for /api paths that end in a file extension", async () => {
+    const { config } = await import("./proxy");
+    expect(config.matcher).toContain("/api/:path*");
   });
 
   it("still serves the main app when its host sits under the status page domain", async () => {

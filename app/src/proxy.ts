@@ -290,10 +290,11 @@ export function proxy(request: NextRequest) {
   // never the rest of /api, so they cannot act as a second origin for sign-in or the authenticated API.
   if (
     pathname.startsWith("/api/") &&
-    !STATUS_HOST_API.test(pathname) &&
     requestHost !== getMainAppHostname() &&
     (extractSubdomain(requestHost) || isCustomDomain(requestHost, getMainAppHostname() ?? ""))
   ) {
+    // Served as-is (not rewritten under /status/...), keeping each route's own cache headers.
+    if (STATUS_HOST_API.test(pathname)) return NextResponse.next();
     const response = new NextResponse("Not Found", { status: 404 });
     addSecurityHeaders(response);
     return response;
@@ -408,5 +409,7 @@ export const config = {
      * - Public folder files with common extensions
      */
     "/((?!_next/static|_next/image|favicon.ico|sitemap.xml|robots.txt|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|css|js|woff|woff2|ttf|eot)$).*)",
+    // API paths always reach the proxy, even when they end in a file extension, so host checks apply to them.
+    "/api/:path*",
   ],
 };
