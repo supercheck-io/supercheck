@@ -2,7 +2,18 @@ import { expect, test, type APIRequestContext, type Browser, type BrowserContext
 
 import { SignUpPage } from '../pages/auth';
 import { generateTestPassword } from './env';
+import { ENV_GATED } from '../reporters/priority-skip-reporter';
 import { waitForHydration } from './hydration';
+
+const SIGN_UP_REASON = 'needs a self-hosted target; a cloud deployment does not allow fresh users';
+/** Describe option for specs that sign fresh users up: their skip on a cloud target is listed as a warning, not a gate failure. */
+export const SIGN_UP_GATED = { annotation: { type: ENV_GATED, description: SIGN_UP_REASON } };
+
+async function signUpIsClosed(baseURL: string): Promise<boolean> {
+  const res = await fetch(new URL('/api/config/app', baseURL));
+  if (!res.ok) throw new Error(`/api/config/app answered ${res.status}`);
+  return ((await res.json()) as { hosting?: { selfHosted?: boolean } }).hosting?.selfHosted !== true;
+}
 
 export type FreshCreator = {
   context: BrowserContext;
@@ -18,6 +29,7 @@ export type FreshCreator = {
  * as on any local self-hosted app; the accounts are throwaway and live in that app's database.
  */
 export async function signUpFreshCreator(browser: Browser, baseURL: string, label: string): Promise<FreshCreator> {
+  test.skip(await signUpIsClosed(baseURL), SIGN_UP_REASON);
   // The default 60 s hook budget is too tight for a sign-up that waits out the auth rate limit.
   test.setTimeout(180_000);
   // Playwright applies the project's signed-in storageState to new contexts; start signed out.

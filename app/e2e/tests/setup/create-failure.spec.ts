@@ -8,11 +8,11 @@ import {
   monitorNames,
   next,
   purgeCreatedItems,
-  signUpFreshCreator,
+  SIGN_UP_GATED, signUpFreshCreator,
   wizard,
 } from '../../utils/setup-test-data';
 
-test.describe('Project setup create failure @setup', () => {
+test.describe('Project setup create failure @setup', SIGN_UP_GATED, () => {
   let context: BrowserContext;
   let page: Page;
 

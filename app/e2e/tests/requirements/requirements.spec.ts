@@ -47,8 +47,13 @@ test.describe('Requirements lifecycle @requirements @critical', () => {
       await expect(page).toHaveURL(new RegExp(`/requirements/edit/${requirementId}$`));
       await page.getByLabel('Title').fill(updatedTitle);
       await page.getByLabel('Description').fill('Updated E2E requirement description');
-      await page.getByRole('button', { name: 'Save Changes', exact: true }).click();
-      await expect(page).toHaveURL(/\/requirements(?:\?|$)/);
+      // Saving is refused ("Linked tests haven't loaded yet") until that fetch finishes, so click again until it saves.
+      await expect(async () => {
+        if (/\/requirements\/edit\//.test(page.url())) {
+          await page.getByRole('button', { name: 'Save Changes', exact: true }).click({ timeout: 2_000 });
+        }
+        await expect(page).toHaveURL(/\/requirements(?:\?|$)/, { timeout: 5_000 });
+      }).toPass({ timeout: 30_000 });
 
       await expect.poll(async () => findRequirement(request, updatedTitle)).toEqual(
         expect.objectContaining({

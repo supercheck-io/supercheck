@@ -237,13 +237,16 @@ export function RequirementForm({
     });
 
     // Fetch linked tests if in edit mode
-    const { data: linkedTests = NO_LINKED_TESTS, isSuccess, isFetchedAfterMount } = useQuery<LinkedTest[]>({
+    const { data: linkedTests = NO_LINKED_TESTS, isSuccess, isFetchedAfterMount, isError: linkedTestsFailed, refetch: refetchLinkedTests } = useQuery<LinkedTest[]>({
         queryKey: [...REQUIREMENT_LINKED_TESTS_QUERY_KEY, requirementId],
         queryFn: async () => requirementId ? getLinkedTests(requirementId) : [],
         enabled: !!requirementId && mode === "edit",
         staleTime: 0,
         refetchOnMount: 'always',
     });
+
+    // Save stays off until this visit's fetch has landed (see onSubmit), so a click waits instead of being refused.
+    const linkedTestsReady = mode !== "edit" || (isSuccess && isFetchedAfterMount);
 
     // Sync linked tests with selected tests state
     useEffect(() => {
@@ -673,10 +676,15 @@ export function RequirementForm({
                                 >
                                     Cancel
                                 </Button>
+                                {linkedTestsFailed && !linkedTestsReady && (
+                                    <Button type="button" variant="ghost" onClick={() => void refetchLinkedTests()}>
+                                        Could not load linked tests. Retry
+                                    </Button>
+                                )}
                                 <Button
                                     type="submit"
                                     className="flex items-center"
-                                    disabled={isSubmitting}
+                                    disabled={isSubmitting || !linkedTestsReady}
                                 >
                                     {isSubmitting ? (
                                         <Loader2 className="h-4 w-4 mr-2 animate-spin" />
@@ -685,6 +693,8 @@ export function RequirementForm({
                                     )}
                                     {isSubmitting
                                         ? "Saving..."
+                                        : !linkedTestsReady && !linkedTestsFailed
+                                            ? "Loading linked tests..."
                                         : mode === "create"
                                             ? "Create Requirement"
                                             : "Save Changes"}

@@ -1,4 +1,4 @@
-import { expect, test } from '../../fixtures/checkpoint.fixture';
+import { expect, test } from '../../fixtures';
 
 test.describe('Health, CLI and automation API contracts @api @critical', () => {
   test('deep health endpoint reports required dependency health', async ({ request }) => {
@@ -33,7 +33,8 @@ test.describe('Health, CLI and automation API contracts @api @critical', () => {
     }
   });
 
-  test('CLI token listing returns redacted token metadata', async ({ request }) => {
+  test('CLI token listing returns redacted token metadata', async ({ projectAdminPage }) => {
+    const request = projectAdminPage.request;
     const response = await request.get('/api/cli-tokens');
 
     expect(response.status()).toBe(200);
@@ -57,7 +58,8 @@ test.describe('Health, CLI and automation API contracts @api @critical', () => {
     }
   });
 
-  test('CLI token creation validates input without mutating data', async ({ request }) => {
+  test('CLI token creation validates input without mutating data', async ({ projectAdminPage }) => {
+    const request = projectAdminPage.request;
     const response = await request.post('/api/cli-tokens', {
       data: { name: '   ', expiresIn: 60 },
     });

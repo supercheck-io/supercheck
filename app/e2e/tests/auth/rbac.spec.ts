@@ -14,7 +14,7 @@
  */
 
 import { test, expect } from '../../fixtures/roles.fixture';
-import { requireCredentials, requireRbacUser, env } from '../../utils/env';
+import { hasRbacUser, requireCredentials, requireRbacUser, SUPER_ADMIN_GATED, env } from '../../utils/env';
 import { authenticateWithApi } from '../../utils/api-auth';
 import { waitForHydration } from '../../utils/hydration';
 
@@ -244,8 +244,8 @@ test.describe('RBAC - Org Owner Capabilities @auth @rbac', () => {
   });
 });
 
-test.describe('RBAC - Super Admin @auth @rbac', () => {
-  test.beforeAll(() => requireRbacUser('superAdmin'));
+test.describe('RBAC - Super Admin @auth @rbac', SUPER_ADMIN_GATED, () => {
+  test.skip(!hasRbacUser('superAdmin'), SUPER_ADMIN_GATED.annotation.description);
   /**
    * AUTH-031: Super Admin can access admin panel
    * @priority critical

@@ -6,22 +6,16 @@ import {
   expectStep,
   next,
   purgeCreatedItems,
-  signUpFreshCreator,
+  SIGN_UP_GATED, signUpFreshCreator,
   stepButton,
   wizard,
 } from '../../utils/setup-test-data';
 
-test.describe('Project setup self-hosted @setup', () => {
+test.describe('Project setup self-hosted @setup', SIGN_UP_GATED, () => {
   let context: BrowserContext;
   let page: Page;
 
-  test.beforeAll(async ({ browser, baseURL, playwright }) => {
-    const api = await playwright.request.newContext({ baseURL });
-    const res = await api.get('/api/config/app');
-    const selfHosted = res.ok() && ((await res.json()) as { hosting?: { selfHosted?: boolean } }).hosting?.selfHosted === true;
-    await api.dispose();
-    test.skip(!selfHosted, 'project setup billing rules differ on a cloud deployment');
-
+  test.beforeAll(async ({ browser, baseURL }) => {
     const creator = await signUpFreshCreator(browser, baseURL ?? '', 'selfhosted');
     context = creator.context;
     page = creator.page;

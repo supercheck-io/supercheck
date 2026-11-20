@@ -8,12 +8,12 @@ import {
   goToStep,
   next,
   purgeCreatedItems,
-  signUpFreshCreator,
+  SIGN_UP_GATED, signUpFreshCreator,
   stepButton,
   wizard,
 } from '../../utils/setup-test-data';
 
-test.describe('Project setup skip and resume @setup', () => {
+test.describe('Project setup skip and resume @setup', SIGN_UP_GATED, () => {
   let context: BrowserContext;
   let page: Page;
 
