@@ -11,6 +11,15 @@ import { sendWebhookVerificationChallenge } from "@/lib/webhook-delivery.service
 
 const WEBHOOK_VERIFICATION_TTL_MS = 24 * 60 * 60 * 1000;
 
+/** Coarse, non-leaky failure category for authenticated owners; never echoes addresses or resolver text. */
+export function describeUnreachable(message: string): string {
+  if (/timeout|timed out|aborted/i.test(message)) return "Endpoint timed out";
+  if (/ENOTFOUND|EAI_AGAIN|getaddrinfo|dns|resolve/i.test(message)) return "DNS lookup failed";
+  if (/ECONNREFUSED|refused/i.test(message)) return "Connection refused";
+  if (/private|reserved|not allowed|blocked/i.test(message)) return "Endpoint address is not allowed";
+  return "Could not reach the endpoint";
+}
+
 /**
  * Send a fresh ownership challenge. The row stays unverified until the
  * endpoint echoes the token, and unverified rows are filtered out of every
@@ -20,6 +29,8 @@ export async function sendWebhookChallenge(params: {
   subscriberId: string;
   endpoint: string;
   statusPageId: string;
+  /** Only for authenticated owners: report a failure category instead of the generic message. */
+  revealReason?: boolean;
 }): Promise<{ verified: boolean; error?: string }> {
   const token = generateWebhookVerificationToken();
   const now = new Date();
@@ -55,7 +66,10 @@ export async function sendWebhookChallenge(params: {
     // Anonymous subscribers see this text, so network/DNS/SSRF-policy detail stays in the server log.
     if (result.statusCode === undefined) {
       console.warn("Webhook verification challenge failed:", result.error);
-      return { verified: false, error: "Could not reach the endpoint" };
+      return {
+        verified: false,
+        error: params.revealReason ? describeUnreachable(result.error ?? "") : "Could not reach the endpoint",
+      };
     }
     return { verified: false, error: result.error };
   }

@@ -20,6 +20,17 @@ export function withAuthClientIp(request: Request): Request {
   return requestWithHeaders(request, headers);
 }
 
+/**
+ * Per-IP rules for the shared bucket. Brute force is bounded elsewhere (progressive login lockout on IP and
+ * email+IP, Turnstile), so these only stop floods and must tolerate an office NAT or a CI runner that signs in
+ * many users from one address. get-session is a cheap read polled by every tab and skips the limiter.
+ */
+export const betterAuthRateLimitRules: NonNullable<NonNullable<BetterAuthOptions["rateLimit"]>["customRules"]> = {
+  "/get-session": false,
+  "/sign-in/*": { window: 10, max: 30 },
+  "/sign-up/*": { window: 10, max: 30 },
+};
+
 type RateLimitStorage = NonNullable<NonNullable<BetterAuthOptions["rateLimit"]>["customStorage"]>;
 
 /** Better Auth's key prefix when it could not resolve a client IP (better-auth/dist/api/rate-limiter). */

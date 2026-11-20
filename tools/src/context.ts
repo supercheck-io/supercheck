@@ -103,10 +103,11 @@ export class CheckContext {
   private async resolveGuard(host: string): Promise<string | null> {
     try {
       const answers = await Promise.all([this.doh(host, "A"), this.doh(host, "AAAA")]);
-      // An alias onto a reserved, platform or own-product name is refused like the name itself.
+      // An alias onto a reserved or own-product name is refused like the name itself. Shared platform hosts
+      // (pages.dev, workers.dev) are normal CNAME targets for customer sites, so they only count when typed in directly.
       for (const alias of answers.flatMap((a) => a.aliases)) {
         const reason = hostReason(alias, this.blocked);
-        if (reason) return reason;
+        if (reason && reason !== "platform_host") return reason;
       }
       const addresses = answers.flatMap((a) => a.addresses);
       if (addresses.length === 0) return "no_address";

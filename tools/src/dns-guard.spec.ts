@@ -85,11 +85,20 @@ describe("DoH pre-check", () => {
 
   it.each([
     ["app.supercheck.io.", "reserved_name"],
-    ["x.workers.dev.", "platform_host"],
     ["db.internal.", "reserved_name"],
   ])("refuses a public name that aliases onto %s", async (target, reason) => {
     mockFetch({ "doh:alias.com": Response.json({ Status: 0, Answer: [{ type: 5, data: target }, { type: 1, data: "93.184.215.14" }] }) });
     await expect(vet("alias.com")).rejects.toMatchObject({ reason });
+  });
+
+  it.each(["x.workers.dev.", "site.pages.dev."])("allows a customer domain aliased onto the shared platform host %s", async (target) => {
+    mockFetch({ "doh:alias.com": Response.json({ Status: 0, Answer: [{ type: 5, data: target }, { type: 1, data: "93.184.215.14" }] }) });
+    await expect(vet("alias.com")).resolves.toBeUndefined();
+  });
+
+  it("still refuses a platform-hosted alias that resolves to a private address", async () => {
+    mockFetch({ "doh:alias.com": Response.json({ Status: 0, Answer: [{ type: 5, data: "x.workers.dev." }, { type: 1, data: "10.0.0.1" }] }) });
+    await expect(vet("alias.com")).rejects.toMatchObject({ reason: "private_address" });
   });
 
   it("allows an alias onto an ordinary public name", async () => {

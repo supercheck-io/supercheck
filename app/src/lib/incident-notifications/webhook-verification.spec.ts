@@ -56,3 +56,14 @@ it("hides network and address-policy detail when the endpoint never answered", a
   });
   await expect(sendWebhookChallenge(params)).resolves.toEqual({ verified: false, error: "Could not reach the endpoint" });
 });
+it.each([
+  ["The operation was aborted due to timeout", "Endpoint timed out"],
+  ["getaddrinfo ENOTFOUND hook.example.com", "DNS lookup failed"],
+  ["connect ECONNREFUSED 93.184.216.34:443", "Connection refused"],
+  ["Direct cloud connectors cannot target private or reserved IP ranges", "Endpoint address is not allowed"],
+  ["something odd 10.0.0.1", "Could not reach the endpoint"],
+])("gives authenticated owners a safe category for %s", async (error, category) => {
+  jest.spyOn(console, "warn").mockImplementation(() => {});
+  jest.mocked(sendWebhookVerificationChallenge).mockResolvedValue({ success: false, error });
+  await expect(sendWebhookChallenge({ ...params, revealReason: true })).resolves.toEqual({ verified: false, error: category });
+});

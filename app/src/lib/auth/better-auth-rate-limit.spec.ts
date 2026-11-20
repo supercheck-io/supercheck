@@ -16,7 +16,7 @@ jest.mock("@/lib/queue", () => ({
   },
 }));
 
-import { AUTH_CLIENT_IP_HEADER, betterAuthRateLimitStorage, withAuthClientIp } from "./better-auth-rate-limit";
+import { AUTH_CLIENT_IP_HEADER, betterAuthRateLimitRules, betterAuthRateLimitStorage, withAuthClientIp } from "./better-auth-rate-limit";
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -98,5 +98,15 @@ describe("withAuthClientIp with trusted proxy hops", () => {
       headers: { "x-forwarded-for": "198.51.100.1, 203.0.113.5, 10.0.0.1" },
     }));
     expect(req.headers.get(AUTH_CLIENT_IP_HEADER)).toBe("203.0.113.5");
+  });
+});
+
+describe("betterAuthRateLimitRules", () => {
+  it("exempts get-session and lets credential endpoints tolerate a shared IP", () => {
+    expect(betterAuthRateLimitRules["/get-session"]).toBe(false);
+    for (const path of ["/sign-in/*", "/sign-up/*"]) {
+      const rule = betterAuthRateLimitRules[path] as { window: number; max: number };
+      expect(rule.max).toBeGreaterThanOrEqual(30);
+    }
   });
 });
