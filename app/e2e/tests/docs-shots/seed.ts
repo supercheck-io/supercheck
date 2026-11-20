@@ -12,9 +12,11 @@ import { waitForHydration } from '../../utils/hydration';
  */
 
 type Row = { id?: string; type?: string; name?: string; title?: string; jobType?: string };
+/** A failed read is not proof that a record is missing, so it throws (failing only its own seed step). */
 const list = async (api: APIRequestContext, url: string, key: string): Promise<Row[]> => {
   const response = await api.get(url);
-  return response.ok() ? (((await response.json()) as Record<string, Row[]>)[key] ?? []) : [];
+  if (!response.ok()) throw new Error(`${url} returned ${response.status()}`);
+  return ((await response.json()) as Record<string, Row[]>)[key] ?? [];
 };
 
 /** A run of the nightly job: /start, then the finishing ping, so the detail page shows a duration. */
@@ -82,7 +84,7 @@ async function ensureService(page: Page, services: Row[]): Promise<void> {
   await expect(dialog).toBeHidden();
 }
 
-/** A resolved, public status update, so the public page links to an incident page. */
+/** A resolved public status update, so the public page's past incidents link to an incident page. */
 async function ensurePublicIncident(page: Page, statusPageId: string | undefined): Promise<void> {
   if (!statusPageId) return;
   await page.goto(`/status-pages/${statusPageId}/public`, { waitUntil: 'load' });
@@ -103,6 +105,11 @@ async function ensurePublicIncident(page: Page, statusPageId: string | undefined
     return;
   }
   await component.click();
+  // Post it as already resolved, so seeding never leaves a live outage or changes a component's health.
+  await dialog.locator('#incident-status').click();
+  await page.getByRole('option', { name: 'Resolved' }).click();
+  await dialog.locator('#incident-component-status').click();
+  await page.getByRole('option', { name: 'Operational' }).click();
   // Seeding must never email subscribers.
   const notify = dialog.locator('#incident-notify');
   if ((await notify.getAttribute('data-state')) === 'checked') await notify.click();
@@ -113,11 +120,16 @@ async function ensurePublicIncident(page: Page, statusPageId: string | undefined
 
 /** k6 analytics compare needs a k6 job with at least two finished runs; one-off playground runs do not count. */
 async function ensureK6Job(api: APIRequestContext, baseUrl: string): Promise<void> {
-  if ((await list(api, '/api/jobs', 'data')).some((j) => j.jobType === 'k6')) return;
   const k6Test = (await list(api, '/api/tests?limit=100', 'data')).find((t) => t.type === 'performance' || t.type === 'k6');
   if (!k6Test?.id) return;
-  const { id: jobId } = await createJob(api, { name: 'Checkout load check', jobType: 'k6', testId: k6Test.id, tests: [{ id: k6Test.id }] });
-  for (let i = 0; i < 2; i++) {
+  // Reuse an existing k6 job, so an interrupted first seed resumes instead of being skipped forever.
+  const existing = (await list(api, '/api/jobs', 'data')).find((j) => j.jobType === 'k6' && !isTestRecord(j));
+  const jobId = existing?.id ?? (await createJob(api, { name: 'Checkout load check', jobType: 'k6', testId: k6Test.id, tests: [{ id: k6Test.id }] })).id;
+  // Analytics defaults to 30 days, so count only runs that finished inside it.
+  const since = Date.now() - 29 * 24 * 60 * 60 * 1000;
+  const runs = (await list(api, `/api/runs?jobId=${jobId}&limit=20`, 'data')) as Array<Row & { status?: string; completedAt?: string }>;
+  const finished = runs.filter((r) => /^(passed|failed)$/.test(r.status ?? '') && r.completedAt && Date.parse(r.completedAt) > since).length;
+  for (let i = finished; i < 2; i++) {
     const start = await api.post('/api/jobs/run', {
       headers: { origin: baseUrl },
       data: { jobId, tests: [{ id: k6Test.id, name: k6Test.title ?? '', title: k6Test.title ?? '' }], trigger: 'manual' },
