@@ -1,6 +1,5 @@
 import { Section, Text } from "@react-email/components";
 import * as React from "react";
-import { PALETTE } from "./palette";
 import { BaseLayout, EmailButton, ManageBillingLink } from "./base-layout";
 
 export type TrialNotificationKind = "midway" | "ending" | "ended";
@@ -64,7 +63,6 @@ export const TrialNotificationEmail = ({
     <BaseLayout
       preview={copy.heading}
       title="Free trial"
-      headerColor={kind === "midway" ? PALETTE.info : PALETTE.warning}
       reason="You received this because you manage billing for this organization."
       footer={<ManageBillingLink href={manageBillingUrl} />}
     >
@@ -84,20 +82,18 @@ export const TrialNotificationEmail = ({
 
 export default TrialNotificationEmail;
 
-const contentSection = { padding: "32px 32px 0" };
+const contentSection = { padding: "32px" };
 const heading = {
   color: "#111827",
   fontSize: "24px",
   fontWeight: "700" as const,
   lineHeight: "1.3",
   margin: "0 0 16px",
-  textAlign: "center" as const,
 };
 const paragraph = {
   color: "#4b5563",
   fontSize: "15px",
   lineHeight: "1.6",
   margin: "0 0 20px",
-  textAlign: "center" as const,
 };
 const buttonContainer = { textAlign: "center" as const, margin: "8px 0 24px" };

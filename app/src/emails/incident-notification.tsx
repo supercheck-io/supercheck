@@ -7,8 +7,8 @@ import {
   Text,
 } from "@react-email/components";
 import * as React from "react";
-import { PALETTE } from "./palette";
-import { BaseLayout } from "./base-layout";
+import { type PaletteTone } from "./palette";
+import { BaseLayout, EmailButton, StatusBadge } from "./base-layout";
 import {
   getTranslations,
   translateIncidentStatus,
@@ -34,40 +34,17 @@ interface IncidentNotificationEmailProps {
   language?: string;
 }
 
-/**
- * Get colors based on incident status and impact
- * When status is "resolved", always show green colors
- * Otherwise, show colors based on impact level
- */
-const getIncidentColors = (
-  status: string,
-  impact: string
-): {
-  textColor: string;
-  headerBg: string;
-  badgeBg: string;
-  badgeText: string;
-  borderColor: string;
-} => {
-  const tone = (hex: string, text: string, bg: string) => ({
-    textColor: text,
-    headerBg: hex,
-    badgeBg: bg,
-    badgeText: text,
-    borderColor: hex,
-  });
-  // Resolved incidents always show green, regardless of impact
-  if (status.toLowerCase() === "resolved") {
-    return tone(PALETTE.success, "#166534", "#dcfce7");
-  }
+/** Badge tone: resolved is always success; otherwise it follows the impact level. */
+const getIncidentTone = (status: string, impact: string): PaletteTone => {
+  if (status.toLowerCase() === "resolved") return "success";
   switch (impact.toLowerCase()) {
     case "critical":
-      return tone(PALETTE.failure, "#991b1b", "#fee2e2");
+      return "failure";
     case "major":
     case "minor":
-      return tone(PALETTE.warning, "#92400e", "#fef3c7");
+      return "warning";
     default:
-      return tone(PALETTE.neutral, "#374151", "#f3f4f6");
+      return "neutral";
   }
 };
 
@@ -99,7 +76,7 @@ export const IncidentNotificationEmail = ({
   language = "en",
 }: IncidentNotificationEmailProps) => {
   const t = getTranslations(language);
-  const colors = getIncidentColors(incidentStatus, incidentImpact);
+  const tone = getIncidentTone(incidentStatus, incidentImpact);
   const statusLabel = getStatusLabel(incidentStatus, t);
   const impactLabel = getImpactLabel(incidentImpact, t);
   const isResolved = incidentStatus.toLowerCase() === "resolved";
@@ -110,7 +87,6 @@ export const IncidentNotificationEmail = ({
     <BaseLayout
       preview={isResolved ? `✓ ${statusLabel}` : `⚠ ${impactLabel}`}
       title={statusPageName}
-      headerColor={colors.headerBg}
       lang={language}
       showBrand={false}
       showStandardFooter={false}
@@ -144,17 +120,10 @@ export const IncidentNotificationEmail = ({
 
           {/* Status Badge */}
           <Section style={badgeContainer}>
-            <span
-              style={{
-                ...statusBadge,
-                backgroundColor: colors.badgeBg,
-                color: colors.badgeText,
-                border: `1px solid ${colors.borderColor}`,
-              }}
-            >
-              {isResolved ? "✓ " : ""}
-              {statusLabel.toUpperCase()}
-            </span>
+            <StatusBadge tone={tone}>
+              {isResolved ? "\u2713 " : ""}
+              {statusLabel}
+            </StatusBadge>
           </Section>
 
           {/* Incident Title */}
@@ -178,7 +147,7 @@ export const IncidentNotificationEmail = ({
             <table
               style={{
                 ...infoBox,
-                borderLeft: `4px solid ${colors.borderColor}`,
+                borderLeft: "4px solid #d1d5db",
               }}
               cellPadding="0"
               cellSpacing="0"
@@ -196,7 +165,7 @@ export const IncidentNotificationEmail = ({
                           <td style={{ width: "50%", verticalAlign: "top" }}>
                             <Text style={{ ...infoLabel }}>{t.status}</Text>
                             <Text
-                              style={{ ...infoValue, color: colors.textColor }}
+                              style={infoValue}
                             >
                               {statusLabel}
                             </Text>
@@ -204,7 +173,7 @@ export const IncidentNotificationEmail = ({
                           <td style={{ width: "50%", verticalAlign: "top" }}>
                             <Text style={{ ...infoLabel }}>{t.impact}</Text>
                             <Text
-                              style={{ ...infoValue, color: colors.textColor }}
+                              style={infoValue}
                             >
                               {impactLabel}
                             </Text>
@@ -247,9 +216,7 @@ export const IncidentNotificationEmail = ({
 
           {/* CTA Button */}
           <Section style={buttonSection}>
-            <Button style={ctaButton} href={statusPageUrl}>
-              {t.emailViewStatusPage}
-            </Button>
+            <EmailButton href={statusPageUrl}>{t.emailViewStatusPage}</EmailButton>
             {supportContact && (
               <>
                 <div style={buttonSpacer} />
@@ -275,18 +242,7 @@ export const IncidentNotificationEmail = ({
 
 
 const badgeContainer = {
-  textAlign: "center" as const,
   padding: "24px 32px 0",
-};
-
-const statusBadge = {
-  display: "inline-block",
-  padding: "6px 14px",
-  borderRadius: "20px",
-  fontSize: "11px",
-  fontWeight: "700" as const,
-  letterSpacing: "0.5px",
-  textTransform: "uppercase" as const,
 };
 
 const contentSection = {
@@ -294,7 +250,7 @@ const contentSection = {
 };
 
 const incidentTitle = {
-  color: "#18181b",
+  color: "#111827",
   fontSize: "22px",
   fontWeight: "700" as const,
   margin: "20px 0 16px",
@@ -303,7 +259,7 @@ const incidentTitle = {
 };
 
 const introText = {
-  color: "#52525b",
+  color: "#4b5563",
   fontSize: "15px",
   lineHeight: "1.65",
   margin: "0 0 24px",
@@ -312,13 +268,13 @@ const introText = {
 
 const infoBox = {
   width: "100%",
-  backgroundColor: "#fafafa",
+  backgroundColor: "#f9fafb",
   borderRadius: "8px",
   marginBottom: "24px",
 };
 
 const infoLabel = {
-  color: "#71717a",
+  color: "#6b7280",
   fontSize: "11px",
   fontWeight: "600" as const,
   textTransform: "uppercase" as const,
@@ -327,13 +283,14 @@ const infoLabel = {
 };
 
 const infoValue = {
+  color: "#111827",
   fontSize: "16px",
   fontWeight: "600" as const,
   margin: "0",
 };
 
 const sectionLabel = {
-  color: "#71717a",
+  color: "#6b7280",
   fontSize: "11px",
   fontWeight: "600" as const,
   textTransform: "uppercase" as const,
@@ -342,28 +299,28 @@ const sectionLabel = {
 };
 
 const descriptionText = {
-  color: "#3f3f46",
+  color: "#4b5563",
   fontSize: "15px",
   lineHeight: "1.65",
   margin: "0 0 8px",
 };
 
 const timestampText = {
-  color: "#a1a1aa",
+  color: "#9ca3af",
   fontSize: "13px",
   margin: "0 0 24px",
 };
 
 const componentsBox = {
   width: "100%",
-  backgroundColor: "#fafafa",
-  border: "1px solid #e4e4e7",
+  backgroundColor: "#f9fafb",
+  border: "1px solid #e5e7eb",
   borderRadius: "8px",
   marginBottom: "24px",
 };
 
 const componentsTitle = {
-  color: "#52525b",
+  color: "#4b5563",
   fontSize: "12px",
   fontWeight: "600" as const,
   textTransform: "uppercase" as const,
@@ -372,7 +329,7 @@ const componentsTitle = {
 };
 
 const componentItem = {
-  color: "#3f3f46",
+  color: "#4b5563",
   fontSize: "14px",
   margin: "0 0 4px",
   lineHeight: "1.5",
@@ -383,43 +340,31 @@ const buttonSection = {
   padding: "8px 32px 32px",
 };
 
-const ctaButton = {
-  backgroundColor: "#18181b",
-  borderRadius: "8px",
-  color: "#ffffff",
-  fontSize: "14px",
-  fontWeight: "600" as const,
-  textDecoration: "none",
-  textAlign: "center" as const,
-  display: "inline-block",
-  padding: "12px 28px",
-};
-
 const buttonSpacer = {
   height: "12px",
 };
 
 const secondaryButton = {
   backgroundColor: "#ffffff",
-  borderRadius: "8px",
-  color: "#18181b",
-  fontSize: "14px",
+  borderRadius: "6px",
+  color: "#111827",
+  fontSize: "15px",
   fontWeight: "600" as const,
   textDecoration: "none",
   textAlign: "center" as const,
   display: "inline-block",
   padding: "12px 28px",
-  border: "1px solid #d4d4d8",
+  border: "1px solid #d1d5db",
 };
 
 const divider = {
-  borderColor: "#e4e4e7",
+  borderColor: "#e5e7eb",
   margin: "0",
 };
 
 
 const footerText = {
-  color: "#71717a",
+  color: "#6b7280",
   fontSize: "13px",
   lineHeight: "1.5",
   margin: "0 0 12px",
@@ -427,19 +372,19 @@ const footerText = {
 };
 
 const footerLinks = {
-  color: "#71717a",
+  color: "#6b7280",
   fontSize: "13px",
   margin: "0 0 12px",
   textAlign: "center" as const,
 };
 
 const footerLink = {
-  color: "#52525b",
+  color: "#4b5563",
   textDecoration: "underline",
 };
 
 const copyright = {
-  color: "#a1a1aa",
+  color: "#9ca3af",
   fontSize: "12px",
   margin: "0",
   textAlign: "center" as const,

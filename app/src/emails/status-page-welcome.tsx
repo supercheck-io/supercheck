@@ -1,5 +1,4 @@
 import {
-  Button,
   Heading,
   Hr,
   Link,
@@ -7,8 +6,7 @@ import {
   Text,
 } from "@react-email/components";
 import * as React from "react";
-import { PALETTE } from "./palette";
-import { BaseLayout } from "./base-layout";
+import { BaseLayout, EmailButton } from "./base-layout";
 import { getTranslations } from "../lib/status-page-translations";
 
 interface StatusPageWelcomeEmailProps {
@@ -29,7 +27,6 @@ export const StatusPageWelcomeEmail = ({
     <BaseLayout
       preview={`${t.emailNowSubscribed} ${statusPageName}`}
       title={t.emailSubscriptionConfirmed}
-      headerColor={PALETTE.success}
       lang={language}
       showBrand={false}
       showStandardFooter={false}
@@ -124,9 +121,7 @@ export const StatusPageWelcomeEmail = ({
 
           {/* CTA Button */}
           <Section style={buttonSection}>
-            <Button style={ctaButton} href={statusPageUrl}>
-              {t.emailViewStatusPage}
-            </Button>
+            <EmailButton href={statusPageUrl}>{t.emailViewStatusPage}</EmailButton>
           </Section>
 
           <Hr style={divider} />
@@ -169,7 +164,7 @@ const iconSection = {
 
 const iconCircle = {
   display: "inline-block",
-  backgroundColor: "#dcfce7",
+  backgroundColor: "#f3f4f6",
   borderRadius: "50%",
   width: "64px",
   height: "64px",
@@ -178,7 +173,7 @@ const iconCircle = {
 };
 
 const iconText = {
-  color: PALETTE.success,
+  color: "#111827",
   fontSize: "32px",
   fontWeight: "700" as const,
 };
@@ -188,69 +183,65 @@ const contentSection = {
 };
 
 const heading = {
-  color: "#18181b",
+  color: "#111827",
   fontSize: "22px",
   fontWeight: "700" as const,
   margin: "24px 0 16px",
   lineHeight: "1.3",
   letterSpacing: "-0.02em",
-  textAlign: "center" as const,
 };
 
 const paragraph = {
-  color: "#52525b",
+  color: "#4b5563",
   fontSize: "15px",
   lineHeight: "1.65",
   margin: "0 0 24px",
-  textAlign: "center" as const,
 };
 
 const highlight = {
-  color: "#18181b",
+  color: "#111827",
   fontWeight: "600" as const,
 };
 
 const successBox = {
   width: "100%",
-  backgroundColor: "#f0fdf4",
-  border: "1px solid #bbf7d0",
+  backgroundColor: "#ecfdf5",
+  border: "1px solid #a7f3d0",
   borderRadius: "8px",
   marginBottom: "16px",
 };
 
 const successTitle = {
-  color: PALETTE.success,
+  color: "#047857",
   fontSize: "15px",
   fontWeight: "600" as const,
   margin: "0 0 8px",
-  textAlign: "center" as const,
 };
 
 const successText = {
-  color: PALETTE.success,
+  color: "#047857",
   fontSize: "14px",
   lineHeight: "1.5",
   margin: "0",
-  textAlign: "center" as const,
 };
 
 const infoBox = {
   width: "100%",
-  backgroundColor: "#fafafa",
-  border: "1px solid #e4e4e7",
+  backgroundColor: "#f9fafb",
+  border: "1px solid #e5e7eb",
   borderRadius: "8px",
   marginBottom: "24px",
 };
 
 const infoTitle = {
-  color: "#3f3f46",
+  color: "#4b5563",
   fontSize: "14px",
   fontWeight: "600" as const,
   margin: "0 0 12px",
 };
 
 const listItem = {
-  color: "#52525b",
+  color: "#4b5563",
   fontSize: "14px",
   lineHeight: "1.6",
   margin: "0 0 4px",
@@ -261,43 +252,30 @@ const buttonSection = {
   padding: "8px 32px 32px",
 };
 
-const ctaButton = {
-  backgroundColor: "#111827",
-  borderRadius: "8px",
-  color: "#ffffff",
-  fontSize: "15px",
-  fontWeight: "600" as const,
-  textDecoration: "none",
-  textAlign: "center" as const,
-  display: "inline-block",
-  padding: "14px 32px",
-};
-
 const divider = {
-  borderColor: "#e4e4e7",
+  borderColor: "#e5e7eb",
   margin: "0 32px",
 };
 
 const tipBox = {
   width: "100%",
-  backgroundColor: "#eff6ff",
-  border: "1px solid #bfdbfe",
+  backgroundColor: "#f9fafb",
+  border: "1px solid #e5e7eb",
   borderRadius: "8px",
   marginTop: "24px",
 };
 
 const tipText = {
-  color: "#1e40af",
+  color: "#4b5563",
   fontSize: "13px",
   lineHeight: "1.5",
   margin: "0",
-  textAlign: "center" as const,
 };
 
 
 
 const footerText = {
-  color: "#71717a",
+  color: "#6b7280",
   fontSize: "13px",
   lineHeight: "1.5",
   margin: "0 0 12px",
@@ -305,19 +283,19 @@ const footerText = {
 };
 
 const footerLinks = {
-  color: "#71717a",
+  color: "#6b7280",
   fontSize: "13px",
   margin: "0 0 12px",
   textAlign: "center" as const,
 };
 
 const footerLink = {
-  color: "#52525b",
+  color: "#4b5563",
   textDecoration: "underline",
 };
 
 const copyright = {
-  color: "#a1a1aa",
+  color: "#9ca3af",
   fontSize: "12px",
   margin: "0",
   textAlign: "center" as const,

@@ -1,5 +1,4 @@
 import {
-  Button,
   Heading,
   Hr,
   Link,
@@ -8,7 +7,7 @@ import {
 } from "@react-email/components";
 import * as React from "react";
 import { PALETTE } from "./palette";
-import { BaseLayout } from "./base-layout";
+import { BaseLayout, EmailButton } from "./base-layout";
 import { getTranslations } from "../lib/status-page-translations";
 
 interface StatusPageVerificationEmailProps {
@@ -28,7 +27,6 @@ export const StatusPageVerificationEmail = ({
     <BaseLayout
       preview={`${t.emailSubjectVerify} ${statusPageName}`}
       title={t.emailVerifySubscription}
-      headerColor={PALETTE.info}
       lang={language}
       showBrand={false}
       showStandardFooter={false}
@@ -72,9 +70,7 @@ export const StatusPageVerificationEmail = ({
 
           {/* CTA Button */}
           <Section style={buttonSection}>
-            <Button style={ctaButton} href={verificationUrl}>
-              {t.emailVerifyButton}
-            </Button>
+            <EmailButton href={verificationUrl}>{t.emailVerifyButton}</EmailButton>
           </Section>
 
           {/* Alternative Link */}
@@ -132,7 +128,7 @@ const iconSection = {
 
 const iconCircle = {
   display: "inline-block",
-  backgroundColor: "#eff6ff",
+  backgroundColor: "#f3f4f6",
   borderRadius: "50%",
   width: "64px",
   height: "64px",
@@ -149,25 +145,23 @@ const contentSection = {
 };
 
 const heading = {
-  color: "#18181b",
+  color: "#111827",
   fontSize: "22px",
   fontWeight: "700" as const,
   margin: "24px 0 16px",
   lineHeight: "1.3",
   letterSpacing: "-0.02em",
-  textAlign: "center" as const,
 };
 
 const paragraph = {
-  color: "#52525b",
+  color: "#4b5563",
   fontSize: "15px",
   lineHeight: "1.65",
   margin: "0 0 16px",
-  textAlign: "center" as const,
 };
 
 const highlight = {
-  color: "#18181b",
+  color: "#111827",
   fontWeight: "600" as const,
 };
 
@@ -176,20 +170,8 @@ const buttonSection = {
   padding: "16px 32px 32px",
 };
 
-const ctaButton = {
-  backgroundColor: "#111827",
-  borderRadius: "8px",
-  color: "#ffffff",
-  fontSize: "15px",
-  fontWeight: "600" as const,
-  textDecoration: "none",
-  textAlign: "center" as const,
-  display: "inline-block",
-  padding: "14px 32px",
-};
-
 const alternativeText = {
-  color: "#71717a",
+  color: "#6b7280",
   fontSize: "13px",
   margin: "0 0 12px",
   textAlign: "center" as const,
@@ -197,8 +179,8 @@ const alternativeText = {
 
 const urlBox = {
   width: "100%",
-  backgroundColor: "#fafafa",
-  border: "1px solid #e4e4e7",
+  backgroundColor: "#f9fafb",
+  border: "1px solid #e5e7eb",
   borderRadius: "8px",
   marginBottom: "24px",
 };
@@ -212,38 +194,36 @@ const urlLink = {
 };
 
 const divider = {
-  borderColor: "#e4e4e7",
+  borderColor: "#e5e7eb",
   margin: "0 32px",
 };
 
 const noticeBox = {
   width: "100%",
-  backgroundColor: "#fefce8",
-  border: "1px solid #fde047",
+  backgroundColor: "#fffbeb",
+  border: "1px solid #fde68a",
   borderRadius: "8px",
   marginTop: "24px",
 };
 
 const noticeTitle = {
-  color: "#854d0e",
+  color: "#92400e",
   fontSize: "14px",
   fontWeight: "600" as const,
   margin: "0 0 4px",
-  textAlign: "center" as const,
 };
 
 const noticeText = {
-  color: "#a16207",
+  color: "#78350f",
   fontSize: "13px",
   lineHeight: "1.5",
   margin: "0",
-  textAlign: "center" as const,
 };
 
 
 
 const footerText = {
-  color: "#71717a",
+  color: "#6b7280",
   fontSize: "13px",
   lineHeight: "1.5",
   margin: "0 0 12px",
@@ -251,12 +231,12 @@ const footerText = {
 };
 
 const footerLink = {
-  color: "#52525b",
+  color: "#4b5563",
   textDecoration: "underline",
 };
 
 const copyright = {
-  color: "#a1a1aa",
+  color: "#9ca3af",
   fontSize: "12px",
   margin: "0",
   textAlign: "center" as const,

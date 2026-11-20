@@ -1,7 +1,7 @@
 import { Section, Text } from "@react-email/components";
 import * as React from "react";
-import { PALETTE } from "./palette";
-import { BaseLayout, DetailsTable, EmailButton, formatEmailTime, type DetailField } from "./base-layout";
+import { PALETTE, type PaletteTone } from "./palette";
+import { BaseLayout, DetailsTable, EmailButton, formatEmailTime, StatusBadge, type DetailField } from "./base-layout";
 
 export type IncidentUpdateEvent =
   | "created"
@@ -36,17 +36,14 @@ export interface IncidentUpdateEmailProps {
   occurredAt?: Date;
 }
 
-const SEVERITY: Record<
-  IncidentUpdateSeverity,
-  { label: string; bg: string; fg: string }
-> = {
-  sev1: { label: "SEV1 Critical", bg: PALETTE.failure, fg: "#ffffff" },
-  sev2: { label: "SEV2 High", bg: PALETTE.warning, fg: "#ffffff" },
-  sev3: { label: "SEV3 Medium", bg: "#fde68a", fg: "#78350f" },
-  sev4: { label: "SEV4 Low", bg: "#e5e7eb", fg: "#374151" },
+const SEVERITY: Record<IncidentUpdateSeverity, { label: string; tone: PaletteTone }> = {
+  sev1: { label: "SEV1 Critical", tone: "failure" },
+  sev2: { label: "SEV2 High", tone: "warning" },
+  sev3: { label: "SEV3 Medium", tone: "warning" },
+  sev4: { label: "SEV4 Low", tone: "neutral" },
 };
 
-/** Same palette as the monitor alert email: red open, amber/blue in progress, green closed. */
+/** Accent for chat/webhook notifications (Slack, Teams...); emails never use it for the header. */
 export const INCIDENT_EVENT_COLOR: Record<IncidentUpdateEvent, string> = {
   created: PALETTE.failure,
   reopened: PALETTE.failure,
@@ -158,31 +155,25 @@ export const IncidentUpdateEmail = ({
 }: IncidentUpdateEmailProps) => {
   const sev = SEVERITY[severity] ?? SEVERITY.sev3;
   const headline = incidentUpdateHeadline(event, actorName, assigneeName);
-  const accent = INCIDENT_EVENT_COLOR[event] ?? PALETTE.neutral;
 
   return (
     <BaseLayout
       preview={`${headline}: #${incidentNumber} ${title}`}
       title={headline}
-      headerColor={accent}
       reason="You received this because you are an owner, participant or notification recipient for this incident."
       manage={notificationsLink(incidentUrl)}
     >
       <Section style={titleSection}>
         <Text style={metaRow}>
-          <span style={{ ...chip, backgroundColor: sev.bg, color: sev.fg }}>
-            {sev.label}
-          </span>
-          <span style={{ ...chip, backgroundColor: "#f3f4f6", color: "#374151" }}>
-            {statusLabel}
-          </span>
+          <StatusBadge tone={sev.tone}>{sev.label}</StatusBadge>{" "}
+          <StatusBadge>{statusLabel}</StatusBadge>
         </Text>
         <Text style={titleStyle}>
           #{incidentNumber} {title}
         </Text>
       </Section>
 
-      <Section style={{ ...messageBox, borderLeftColor: accent }}>
+      <Section style={messageBox}>
         <Text style={messageText}>{detail || INCIDENT_EVENT_MESSAGE[event]}</Text>
       </Section>
 
@@ -220,18 +211,9 @@ const titleStyle = {
 
 const metaRow = { margin: "0 0 12px", lineHeight: "2" };
 
-const chip = {
-  display: "inline-block",
-  marginRight: "8px",
-  padding: "2px 10px",
-  borderRadius: "999px",
-  fontSize: "12px",
-  fontWeight: "600" as const,
-};
-
 const messageBox = {
   backgroundColor: "#f9fafb",
-  borderLeft: "4px solid",
+  borderLeft: "4px solid #d1d5db",
   padding: "16px 24px",
   margin: "0 0 32px",
   borderRadius: "0 4px 4px 0",

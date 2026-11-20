@@ -1,6 +1,5 @@
 import { Section, Text } from "@react-email/components";
 import * as React from "react";
-import { PALETTE } from "./palette";
 import { BaseLayout, formatEmailTime } from "./base-layout";
 
 interface TestEmailProps {
@@ -14,7 +13,6 @@ export const TestEmail = ({
     <BaseLayout
       preview="Your email configuration is working."
       title="Email Configuration Test"
-      headerColor={PALETTE.info}
     >
       <Section style={contentSection}>
         <Text style={heading}>Email Test Successful</Text>
@@ -43,7 +41,7 @@ export const TestEmail = ({
 };
 
 const contentSection = {
-  padding: "32px 32px 0",
+  padding: "32px",
 };
 
 const heading = {
@@ -51,7 +49,6 @@ const heading = {
   fontSize: "22px",
   fontWeight: "700" as const,
   margin: "0 0 20px",
-  textAlign: "center" as const,
   letterSpacing: "-0.025em",
 };
 
@@ -60,7 +57,6 @@ const paragraph = {
   fontSize: "15px",
   lineHeight: "1.6",
   margin: "0 0 24px",
-  textAlign: "center" as const,
 };
 
 const infoBox = {

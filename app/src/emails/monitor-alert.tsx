@@ -1,7 +1,6 @@
 import { Section, Text } from "@react-email/components";
 import * as React from "react";
-import { PALETTE } from "./palette";
-import { BaseLayout, DetailsTable, EmailButton, type DetailField } from "./base-layout";
+import { BaseLayout, DetailsTable, EmailButton, StatusBadge, type DetailField } from "./base-layout";
 
 interface MonitorAlertEmailProps {
   title: string;
@@ -10,7 +9,7 @@ interface MonitorAlertEmailProps {
   footer: string;
   /** success = a plain pass (e.g. a job run); recovery = back to healthy after a failure. */
   type: "failure" | "success" | "recovery" | "warning" | "info";
-  /** @deprecated Ignored: colours come from the shared email palette. */
+  /** @deprecated Ignored: every email uses the same neutral header. */
   color?: string;
   /** Absolute link to the incidents page; when set, failure/warning emails get a "View incidents" button. */
   incidentsUrl?: string;
@@ -24,6 +23,14 @@ const HEADER_TITLE = {
   failure: "Alert",
   success: "Passed",
   recovery: "Recovered",
+  warning: "Warning",
+  info: "Notice",
+} as const;
+
+const BADGE_LABEL = {
+  failure: "Failing",
+  success: "Passed",
+  recovery: "\u2713 Resolved",
   warning: "Warning",
   info: "Notice",
 } as const;
@@ -66,7 +73,7 @@ export const MonitorAlertEmail = ({
   manageUrl,
   appUrl,
 }: MonitorAlertEmailProps) => {
-  const headerColor = PALETTE[TONE[type] ?? "neutral"];
+  const tone = TONE[type] ?? "neutral";
   // Same "<Event>: <Name>" wording as the subject.
   const displayTitle = alertEmailSubject(title).replace(/^\[Supercheck\] /, "");
 
@@ -77,7 +84,6 @@ export const MonitorAlertEmail = ({
       reason="You received this alert because this address is set as a recipient on a Supercheck notification channel."
       manage={manageUrl ? { href: manageUrl, label: "Manage notification channels" } : undefined}
       title={HEADER_TITLE[type] ?? "Alert"}
-      headerColor={headerColor}
       footer={
         footer && 
         footer !== "Supercheck Monitoring System" && 
@@ -88,12 +94,14 @@ export const MonitorAlertEmail = ({
     >
       {/* Alert Title */}
       <Section style={titleSection}>
-        {type === "recovery" && <Text style={resolvedChip}>&#10003; Resolved</Text>}
+        <Text style={badgeRow}>
+          <StatusBadge tone={tone} skipInText>{BADGE_LABEL[type] ?? "Alert"}</StatusBadge>
+        </Text>
         <Text style={alertTitle}>{displayTitle}</Text>
       </Section>
 
       {/* Alert Message */}
-      <Section style={{ ...messageBox, borderLeftColor: headerColor }}>
+      <Section style={messageBox}>
         <Text style={messageText}>{message}</Text>
       </Section>
 
@@ -113,17 +121,8 @@ export const MonitorAlertEmail = ({
   );
 };
 
-const resolvedChip = {
-  display: "inline-block",
+const badgeRow = {
   margin: "0 0 12px",
-  padding: "2px 10px",
-  borderRadius: "999px",
-  backgroundColor: "#dcfce7",
-  color: PALETTE.success,
-  fontSize: "12px",
-  fontWeight: "700" as const,
-  letterSpacing: "0.04em",
-  textTransform: "uppercase" as const,
 };
 
 const incidentSection = {
@@ -153,7 +152,7 @@ const alertTitle = {
 
 const messageBox = {
   backgroundColor: "#f9fafb",
-  borderLeft: "4px solid",
+  borderLeft: "4px solid #d1d5db",
   padding: "16px 24px",
   margin: "0 0 32px",
   borderRadius: "0 4px 4px 0",
