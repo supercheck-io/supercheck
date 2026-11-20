@@ -82,7 +82,7 @@ const pageStatus = async (id: string) =>
 const endedAt = async (orgId: string) =>
   (await mockDatabase.select().from(schema.executionEntitlements).where(eq(schema.executionEntitlements.organizationId, orgId)))[0].lifecycleEndedAt;
 
-it("pauses an expired trial once and restores it on resubscribe", async () => {
+it("pauses an expired trial once, and restoreTrialSuspensions brings it back", async () => {
   const expired = await seedTrial(new Date(Date.now() - DAY));
   const live = await seedTrial(new Date(Date.now() + DAY));
 
