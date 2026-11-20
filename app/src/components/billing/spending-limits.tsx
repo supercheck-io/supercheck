@@ -302,7 +302,7 @@ export function SpendingLimits({ organizationId, className, onSaved, canEditLimi
           </div>
           <Button
             onClick={() => void handleSave()}
-            disabled={saving || limitAmountInvalid || tooManyEmails}
+            disabled={saving || (canEditLimit && limitAmountInvalid) || tooManyEmails}
             size="sm"
           >
             {saving ? (
