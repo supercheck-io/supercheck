@@ -369,6 +369,8 @@ A down MCP monitor, including a rejected login, is a normal **Failure** and open
 
 ## Threshold configuration
 
+### Thresholds
+
 **Failure Threshold** is the number of consecutive failures before the first failure alert; **Recovery Threshold** is the number of consecutive healthy checks before the recovery alert. Both accept 1–5 in the app and 1–100 in the API. A monitor that never reached the failure threshold sends no recovery alert. Thresholds keep network blips from alerting.
 
 Example with Failure Threshold 3 and Recovery Threshold 2:
