@@ -22,13 +22,13 @@ export function withAuthClientIp(request: Request): Request {
 
 /**
  * Per-IP rules for the shared bucket. Brute force is bounded elsewhere (progressive login lockout on IP and
- * email+IP, Turnstile), so these only stop floods and must tolerate an office NAT or a CI runner that signs in
- * many users from one address. get-session is a cheap read polled by every tab and skips the limiter.
+ * email+IP, Turnstile), so the sign-in rule only stops floods and tolerates an office NAT or a CI runner that
+ * signs in many users from one address. Sign-up has no lockout (and no captcha when self-hosted), so it stays tight. get-session is a cheap read polled by every tab and skips the limiter.
  */
 export const betterAuthRateLimitRules: NonNullable<NonNullable<BetterAuthOptions["rateLimit"]>["customRules"]> = {
   "/get-session": false,
   "/sign-in/*": { window: 10, max: 30 },
-  "/sign-up/*": { window: 10, max: 30 },
+  "/sign-up/*": { window: 60, max: 10 },
 };
 
 type RateLimitStorage = NonNullable<NonNullable<BetterAuthOptions["rateLimit"]>["customStorage"]>;

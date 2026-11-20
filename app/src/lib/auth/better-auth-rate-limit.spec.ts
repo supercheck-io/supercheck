@@ -104,9 +104,7 @@ describe("withAuthClientIp with trusted proxy hops", () => {
 describe("betterAuthRateLimitRules", () => {
   it("exempts get-session and lets credential endpoints tolerate a shared IP", () => {
     expect(betterAuthRateLimitRules["/get-session"]).toBe(false);
-    for (const path of ["/sign-in/*", "/sign-up/*"]) {
-      const rule = betterAuthRateLimitRules[path] as { window: number; max: number };
-      expect(rule.max).toBeGreaterThanOrEqual(30);
-    }
+    expect((betterAuthRateLimitRules["/sign-in/*"] as { max: number }).max).toBeGreaterThanOrEqual(30);
+    expect(betterAuthRateLimitRules["/sign-up/*"]).toEqual({ window: 60, max: 10 });
   });
 });

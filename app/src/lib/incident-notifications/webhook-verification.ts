@@ -14,9 +14,11 @@ const WEBHOOK_VERIFICATION_TTL_MS = 24 * 60 * 60 * 1000;
 /** Coarse, non-leaky failure category for authenticated owners; never echoes addresses or resolver text. */
 export function describeUnreachable(message: string): string {
   if (/timeout|timed out|aborted/i.test(message)) return "Endpoint timed out";
-  if (/ENOTFOUND|EAI_AGAIN|getaddrinfo|dns|resolve/i.test(message)) return "DNS lookup failed";
+  // Unknown names and names that resolve to blocked ranges share one text, so it cannot probe internal DNS.
+  if (/ENOTFOUND|EAI_AGAIN|getaddrinfo|dns|resolve|private|reserved|not allowed|blocked/i.test(message)) {
+    return "Host could not be resolved to an allowed public address";
+  }
   if (/ECONNREFUSED|refused/i.test(message)) return "Connection refused";
-  if (/private|reserved|not allowed|blocked/i.test(message)) return "Endpoint address is not allowed";
   return "Could not reach the endpoint";
 }
 
