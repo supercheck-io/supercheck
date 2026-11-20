@@ -18,18 +18,13 @@ async function checkSubdomainAvailability(subdomain: string) {
     .where(eq(statusPages.subdomain, subdomain))
     .limit(1);
 
-  if (statusPageResult.length === 0) {
+  // A draft answers exactly like a missing page so callers cannot discover unpublished subdomains.
+  const page = statusPageResult[0];
+  if (!page || page.status !== "published") {
     return NextResponse.json({ error: "Status page not found" }, { status: 404 });
   }
 
-  const { id, status } = statusPageResult[0];
-
-  // Only return data for published status pages
-  if (status !== "published") {
-    return NextResponse.json({ error: "Status page not published" }, { status: 404 });
-  }
-
-  return NextResponse.json({ id, status });
+  return NextResponse.json({ id: page.id, status: page.status });
 }
 
 export async function GET(request: NextRequest) {

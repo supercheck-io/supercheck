@@ -20,9 +20,10 @@ export function hostReason(rawHost: string, blocked: string[]): string | null {
   if (!host.includes(".")) return "single_label";
   if (host.split(".").some((label) => label === "")) return "invalid_url";
   if (SPECIAL_SUFFIXES.some((s) => hasSuffix(host, s))) return "reserved_name";
+  // Opt-outs first, so an aliased platform host cannot slip past a BLOCKED_HOSTS entry.
+  if (blocked.some((s) => hasSuffix(host, s.replace(/^\./, "")))) return "blocked_host";
   if (PLATFORM_SUFFIXES.some((s) => hasSuffix(host, s))) return "platform_host";
   if (OWN_SUFFIXES.some((s) => hasSuffix(host, s))) return "reserved_name";
-  if (blocked.some((s) => hasSuffix(host, s.replace(/^\./, "")))) return "blocked_host";
   return null;
 }
 
