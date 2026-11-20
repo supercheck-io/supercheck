@@ -5,6 +5,11 @@ import dotenv from 'dotenv';
 // Load environment variables from .env file
 dotenv.config({ path: path.resolve(__dirname, '.env') });
 
+// The suite mutates the target app's data, so never assume one. `--list` only discovers tests.
+if (!process.env.E2E_BASE_URL && !process.argv.includes('--list')) {
+  throw new Error('E2E_BASE_URL is required (for example http://localhost:3000 for a throwaway local app). Copy .env.example to .env.');
+}
+
 /**
  * Playwright E2E Test Configuration for Supercheck
  *
@@ -38,7 +43,7 @@ export default defineConfig({
 
   /* Shared settings for all the projects below */
   use: {
-    baseURL: process.env.E2E_BASE_URL || 'http://localhost:3000',
+    baseURL: process.env.E2E_BASE_URL,
     // Traces capture raw request and response bodies, including sign-in
     // credentials. Browser tests authenticate with real accounts and CI
     // artifacts on this public repository are world-readable, so traces must

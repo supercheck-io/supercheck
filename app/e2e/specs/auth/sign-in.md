@@ -25,7 +25,7 @@ The sign-in page always supports email/password authentication. OAuth buttons ar
 
 ### AUTH-018: Sign out
 
-- The test exists but is currently `test.skip(...)` because it is flaky on the demo environment
+- The test exists but is currently `test.skip(...)` because it is flaky on the shared test environment
 - Expected behavior remains: open user menu, choose sign out, redirect to `/sign-in`, protected routes require login again
 
 ## Lockout and Safety Rules
