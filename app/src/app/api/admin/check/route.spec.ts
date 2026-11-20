@@ -23,10 +23,19 @@ it("reports a plain member as neither", async () => {
   expect(await (await GET()).json()).toEqual({ success: true, isAdmin: false, isOrgAdmin: false });
 });
 
-it("denies both when a lookup throws", async () => {
+it("keeps the other flag when one lookup throws", async () => {
   jest.spyOn(console, "error").mockImplementation(() => {});
   mockIsAdmin.mockRejectedValue(new Error("db down"));
   mockIsOrgAdmin.mockResolvedValue(true);
+  const res = await GET();
+  expect(res.status).toBe(200);
+  expect(await res.json()).toEqual({ success: true, isAdmin: false, isOrgAdmin: true });
+});
+
+it("denies both when both lookups throw", async () => {
+  jest.spyOn(console, "error").mockImplementation(() => {});
+  mockIsAdmin.mockRejectedValue(new Error("db down"));
+  mockIsOrgAdmin.mockRejectedValue(new Error("db down"));
   const res = await GET();
   expect(res.status).toBe(500);
   expect(await res.json()).toEqual({ success: false, isAdmin: false, isOrgAdmin: false });
