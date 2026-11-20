@@ -12,7 +12,7 @@
   // them across deploys, and defining them here would overwrite them. Unset = checks off.
   "keep_vars": true,
   // Our own structured log line only; invocation logs would record request headers (client IP).
-  "observability": { "enabled": true, "invocation_logs": false },
+  "observability": { "enabled": true, "logs": { "enabled": true, "invocation_logs": false } },
   "vars": {
     "ALLOWED_ORIGINS": "https://supercheck.io,https://www.supercheck.io",
     "ALLOW_PREVIEW_ORIGINS": "false",
