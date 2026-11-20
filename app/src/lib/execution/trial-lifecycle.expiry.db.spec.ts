@@ -1,6 +1,6 @@
 /** @jest-environment node */
 // Needs TEST_DATABASE_URL (run with `npm run test:db`). Proves the day-14 path: the sweep pauses an expired
-// trial's monitors and archives its status pages, and the execution policy then refuses to run work (402).
+// trial's monitors and archives its status pages; separately, the execution policy refuses an expired trial (402).
 import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
@@ -17,7 +17,8 @@ jest.mock("@/utils/db", () => ({
   },
 }));
 const deleteScheduledMonitor = jest.fn(async () => true);
-jest.mock("@/lib/monitor-scheduler", () => ({ deleteScheduledMonitor, scheduleMonitor: jest.fn(async () => "sched-new") }));
+const scheduleMonitor = jest.fn(async () => "sched-new");
+jest.mock("@/lib/monitor-scheduler", () => ({ deleteScheduledMonitor, scheduleMonitor }));
 import { endExpiredTrials, restoreTrialSuspensions } from "./trial-lifecycle";
 import { clearExecutionPolicyCache, ExecutionWorkloadError, getExecutionPolicy } from "./execution-policy";
 
@@ -53,7 +54,9 @@ afterAll(async () => {
   await maintenance?.end({ timeout: 5 });
 });
 
-beforeEach(() => {
+beforeEach(async () => {
+  // Trials left by an earlier test must not count in this test's sweep totals.
+  await mockDatabase.update(schema.executionEntitlements).set({ lifecycleEndedAt: new Date() });
   jest.clearAllMocks();
   clearExecutionPolicyCache();
 });
@@ -79,7 +82,7 @@ const pageStatus = async (id: string) =>
 const endedAt = async (orgId: string) =>
   (await mockDatabase.select().from(schema.executionEntitlements).where(eq(schema.executionEntitlements.organizationId, orgId)))[0].lifecycleEndedAt;
 
-it("pauses an expired trial once, blocks execution with 402, leaves a live trial alone, and restores on subscribe", async () => {
+it("pauses an expired trial once, leaves a live trial alone, refuses execution with 402, and restores the setup on resubscribe", async () => {
   const expired = await seedTrial(new Date(Date.now() - DAY));
   const live = await seedTrial(new Date(Date.now() + DAY));
 
@@ -96,7 +99,7 @@ it("pauses an expired trial once, blocks execution with 402, leaves a live trial
 
   // The user's setup is kept (nothing deleted) and the suspension is recorded for restore.
   const suspensions = await mockDatabase.select().from(schema.trialSuspensions).where(eq(schema.trialSuspensions.organizationId, expired.org.id));
-  expect(suspensions).toHaveLength(2);
+  expect(suspensions.map((r) => [r.resourceType, r.previousStatus]).sort()).toEqual([["monitor", "up"], ["status_page", "published"]]);
 
   const error = await getExecutionPolicy(expired.org.id).catch((e) => e);
   expect(error).toBeInstanceOf(ExecutionWorkloadError);
@@ -111,6 +114,9 @@ it("pauses an expired trial once, blocks execution with 402, leaves a live trial
 
   expect(await restoreTrialSuspensions(expired.org.id)).toEqual({ monitorsResumed: 1, statusPagesRestored: 1 });
   expect(await pageStatus(expired.page.id)).toBe("published");
+  expect(await monitorStatus(expired.monitor.id)).toBe("pending");
+  expect(scheduleMonitor).toHaveBeenCalledTimes(1);
+  expect(await mockDatabase.select().from(schema.trialSuspensions).where(eq(schema.trialSuspensions.organizationId, expired.org.id))).toHaveLength(0);
 });
 
 it("refuses an ended trial with 402 when billing is configured (production path), and still admits a live one", async () => {
