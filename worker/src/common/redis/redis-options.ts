@@ -50,6 +50,8 @@ export function buildRedisOptions(
     maxRetriesPerRequest: null,
     enableReadyCheck: false,
     connectTimeout: 10000,
+    // Bounds how long a half-open socket (a failed-over Redis pod that never sent a FIN) stays unnoticed.
+    keepAlive: 10000,
     retryStrategy: (attempt: number) => Math.min(attempt * 250, 3000),
     ...(tlsEnabled && {
       tls: {

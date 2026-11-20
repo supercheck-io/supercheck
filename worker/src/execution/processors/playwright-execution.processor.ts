@@ -1,3 +1,4 @@
+import { registerConsumer } from '../../common/consumer-watchdog.service';
 import { ExecutionCapacityError } from '../services/execution-admission.service';
 import { deferForCapacity } from '../../common/capacity-deferral';
 import {
@@ -79,6 +80,7 @@ export class PlaywrightExecutionProcessor
   onApplicationBootstrap(): void {
     // Only the global consumer needs guarding; idle consumers never run.
     if (!consumesWorkerQueue('global-playwright')) return;
+    registerConsumer(() => [this.worker]);
     registerIntakeStopper(() => {
       this.capabilityGuard?.stop(); // a resume after the pause would restart intake
       return this.worker.pause(true);
