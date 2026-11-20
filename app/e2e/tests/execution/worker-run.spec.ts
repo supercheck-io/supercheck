@@ -32,9 +32,14 @@ async function runToTerminal(request: APIRequestContext, cleanup: CleanupRegistr
   });
   expect(start.status(), await start.text()).toBe(200);
   const { runId } = (await start.json()) as { runId: string };
-  cleanup.add(`run ${runId}`, async () => { await request.delete(`/api/runs/${runId}`); });
+  cleanup.add(`run ${runId}`, () =>
+    expect(async () => {
+      // 404: already gone. Anything else (a 500 from artifact cleanup, a 409 while still stopping) is retried, then fails.
+      expect([200, 404]).toContain((await request.delete(`/api/runs/${runId}`)).status());
+    }).toPass({ timeout: 30_000 }),
+  );
   // The first run waits for the worker to schedule the Job and start its browser.
-  let run: { status: string; errorDetails?: string | null } = { status: 'queued' };
+  let run: { status: string; errorDetails?: string | null; logs?: string | null } = { status: 'queued' };
   await expect
     .poll(
       async () => {
@@ -63,8 +68,10 @@ test.describe('Worker execution @execution', () => {
 
   test('a test with a known failure shows a failed run @critical @negative', async ({ projectAdminPage: page, cleanup }) => {
     const { runId, run } = await runToTerminal(page.request, cleanup, failing, 'fail');
-    // "failed" is the test's assertion; "error" would be the platform failing to run it at all.
+    // The worker also records its own errors (a browser or Job that never started) as "failed", so the run must
+    // carry the assertion's own message, which names the heading the page does not have.
     expect(run.status, run.errorDetails ?? '').toBe('failed');
+    expect(`${run.errorDetails ?? ''}\n${run.logs ?? ''}`).toContain('Another heading');
 
     await page.goto(`/runs/${runId}`);
     await waitForHydration(page);
