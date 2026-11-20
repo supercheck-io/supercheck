@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
 import { ArrowRight, BellRing, CircleCheck, Code, Globe, Radio, Siren, Sparkles } from "lucide-react";
@@ -8,6 +9,10 @@ import { CheckList, IconChip, Screenshot, SectionHeading, SolutionCards, primary
 import { SiteFooter } from "../../components/site-footer";
 import { toolGroups } from "../../components/landing/tool-logos";
 import { versioned } from "../../lib/assets";
+
+export const metadata: Metadata = {
+  alternates: { canonical: "/" },
+};
 
 // Order follows the path of a failure: tested, caught, handled, announced.
 const products = [

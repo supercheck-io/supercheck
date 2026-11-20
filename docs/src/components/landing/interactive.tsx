@@ -57,7 +57,7 @@ export function HeroVideo({ children }: { children: React.ReactNode }) {
     <button
       type="button"
       onClick={() => setPlaying(true)}
-      aria-label="Play the Supercheck overview video (3 minutes)"
+      aria-label="Watch the overview · 3 min video"
       className="group absolute inset-0 size-full cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-fd-primary"
     >
       {children}
