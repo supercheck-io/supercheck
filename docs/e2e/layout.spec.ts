@@ -29,6 +29,14 @@ for (const path of PAGES) {
   });
 }
 
+test("home: canonical and accessible names for the search and video buttons", async ({ page }) => {
+  await page.goto("/");
+  const canonical = await page.locator('link[rel="canonical"]').getAttribute("href");
+  expect(canonical && new URL(canonical).pathname).toBe("/");
+  await expect(page.getByRole("button", { name: "Search docs" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Watch the overview · 3 min video" })).toBeVisible();
+});
+
 test("without an API URL the tool pages show the methodology and a Supercheck link, no form", async ({ page }) => {
   test.skip(process.env.E2E_TOOLS === "configured", "needs the default (unconfigured) build");
   await page.goto("/tools/security-headers-checker");

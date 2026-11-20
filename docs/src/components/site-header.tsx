@@ -38,11 +38,12 @@ function SearchButton() {
       type="button"
       onClick={() => setOpenSearch(true)}
       className={`${focusRing} inline-flex items-center gap-2 rounded-md p-2 text-sm text-fd-muted-foreground transition-colors hover:text-fd-foreground lg:border lg:border-fd-border lg:px-2.5 lg:py-1.5`}
-      aria-label="Search docs"
     >
       <Search className="size-4" aria-hidden="true" />
+      {/* Visible text names the button; the sr-only copy covers the icon-only mobile layout. */}
+      <span className="sr-only lg:hidden">Search docs</span>
       <span className="hidden pr-4 lg:inline">Search docs</span>
-      <span className="hidden items-center gap-0.5 lg:inline-flex">
+      <span className="hidden items-center gap-0.5 lg:inline-flex" aria-hidden="true">
         {hotKey.map((k, i) => (
           <kbd
             key={i}
