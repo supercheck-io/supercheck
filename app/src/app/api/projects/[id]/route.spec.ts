@@ -3,7 +3,7 @@ import { NextRequest } from "next/server";
 const mockStanding = { value: true };
 jest.mock("@/lib/rbac/middleware", () => ({
   hasPermissionForUser: jest.fn(),
-  isImpersonatedSession: jest.fn(),
+  getImpersonationState: jest.fn(),
   // Stands in for the real helper: 403 for an org member, 404 for a caller with no standing in the org.
   forbiddenOrNotFound: jest.fn(async (_u: string, _o: string, forbidden: string, notFound: string) => {
     const { NextResponse } = jest.requireActual("next/server");
@@ -25,7 +25,7 @@ import { DELETE, GET, PUT } from "./route";
 import { PgDialect } from "drizzle-orm/pg-core";
 import { db } from "@/utils/db";
 import { deleteScheduledJob } from "@/lib/job-scheduler";
-import { hasPermissionForUser, isImpersonatedSession } from "@/lib/rbac/middleware";
+import { hasPermissionForUser, getImpersonationState } from "@/lib/rbac/middleware";
 import { requireUserAuthContext } from "@/lib/auth-context";
 import { logAuditEvent } from "@/lib/audit-logger";
 import { unscheduleMonitors } from "@/lib/execution/trial-lifecycle";
@@ -50,7 +50,7 @@ beforeEach(() => {
   mockStanding.value = true;
   (requireUserAuthContext as jest.Mock).mockResolvedValue({ userId: "u1" });
   (hasPermissionForUser as jest.Mock).mockResolvedValue(true);
-  (isImpersonatedSession as jest.Mock).mockResolvedValue(false);
+  (getImpersonationState as jest.Mock).mockResolvedValue("none");
   (db.select as jest.Mock).mockReturnValue(project());
   set.mockReturnValue({ where: () => ({ returning: async () => [{ id: ID }] }) });
   (db.update as jest.Mock).mockReturnValue({ set });
@@ -131,9 +131,18 @@ describe("CLI tokens", () => {
 
 describe("impersonation", () => {
   it("refuses to delete a project while a super admin is impersonating", async () => {
-    (isImpersonatedSession as jest.Mock).mockResolvedValue(true);
+    (getImpersonationState as jest.Mock).mockResolvedValue("impersonated");
     const response = await DELETE(new NextRequest(`http://localhost/api/projects/${ID}`, { method: "DELETE" }), { params: Promise.resolve({ id: ID }) });
     expect(response.status).toBe(403);
+    expect(db.select).not.toHaveBeenCalled();
+    expect(softDeleteProject).not.toHaveBeenCalled();
+  });
+
+  it("refuses with a retryable 503, not an impersonation message, when the lookup fails", async () => {
+    (getImpersonationState as jest.Mock).mockResolvedValue("unknown");
+    const response = await DELETE(new NextRequest(`http://localhost/api/projects/${ID}`, { method: "DELETE" }), { params: Promise.resolve({ id: ID }) });
+    expect(response.status).toBe(503);
+    expect(JSON.stringify(await response.json())).not.toMatch(/impersonat/i);
     expect(db.select).not.toHaveBeenCalled();
     expect(softDeleteProject).not.toHaveBeenCalled();
   });
