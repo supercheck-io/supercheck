@@ -29,7 +29,7 @@ describe('CLI authentication', () => {
   beforeEach(() => {
     jest.resetAllMocks()
     getClient.mockReturnValue({ get })
-    storedUrl = 'https://demo.supercheck.io'
+    storedUrl = 'https://supercheck.example.com'
     storedToken = null
     defaultLoggedIn = true
     clearAuth.mockImplementation(() => { storedToken = null; defaultLoggedIn = false })

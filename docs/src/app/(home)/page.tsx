@@ -7,7 +7,6 @@ import { CopyCommand, HeroVideo } from "../../components/landing/interactive";
 import { CheckList, IconChip, Screenshot, SectionHeading, SolutionCards, primaryButton, secondaryButton, textLink, type Area } from "../../components/landing/ui";
 import { SiteFooter } from "../../components/site-footer";
 import { toolGroups } from "../../components/landing/tool-logos";
-import { DEMO_URL } from "../../lib/site-nav";
 import { versioned } from "../../lib/assets";
 
 // Order follows the path of a failure: tested, caught, handled, announced.
@@ -152,10 +151,10 @@ export default async function HomePage() {
             and keeps your users informed on a status page. Self-host today, or join the Cloud waitlist.
           </p>
           <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center">
-            <a href={DEMO_URL} target="_blank" rel="noopener noreferrer" className={primaryButton}>
-              Try the live demo
+            <Link href="/docs/app/deployment/self-hosted" className={primaryButton}>
+              Self-host Supercheck
               <ArrowRight className="size-4" aria-hidden="true" />
-            </a>
+            </Link>
             <Link href="/docs/app/welcome" className={secondaryButton}>
               Read the docs
             </Link>
@@ -336,18 +335,18 @@ export default async function HomePage() {
         <section className="border-t border-fd-border">
           <div className="mx-auto flex max-w-6xl flex-col items-start justify-between gap-8 px-4 py-16 sm:px-6 md:flex-row md:items-center md:py-20">
             <div className="max-w-xl">
-              <h2 className="text-2xl font-semibold tracking-tight sm:text-3xl">Click through a real workspace</h2>
+              <h2 className="text-2xl font-semibold tracking-tight sm:text-3xl">Run it on your own servers</h2>
               <p className="mt-3 text-fd-muted-foreground">
-                Explore a sample workspace in the live demo. No sign-up needed.
+                Self-host with Docker Compose, then install the CLI and run supercheck init.
               </p>
             </div>
             <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row">
-              <a href={DEMO_URL} target="_blank" rel="noopener noreferrer" className={primaryButton}>
-                Open the live demo
-                <ArrowRight className="size-4" aria-hidden="true" />
-              </a>
-              <Link href="/docs/app/deployment/self-hosted" className={secondaryButton}>
+              <Link href="/docs/app/deployment/self-hosted" className={primaryButton}>
                 Self-host Supercheck
+                <ArrowRight className="size-4" aria-hidden="true" />
+              </Link>
+              <Link href="/docs/app/welcome" className={secondaryButton}>
+                Read the docs
               </Link>
             </div>
           </div>

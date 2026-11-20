@@ -12,7 +12,6 @@ import { BreadcrumbDisplay } from "@/components/breadcrumb-display";
 import { CommandSearch } from "@/components/ui/command-search";
 import { redirect } from "next/navigation";
 import { NavUser } from "@/components/nav-user";
-import { DemoBadge } from "@/components/demo-badge";
 import { CommunityLinks } from "@/components/community-links";
 import { isAdmin } from "@/lib/admin";
 import { ProjectContextProvider } from "@/hooks/use-project-context";
@@ -58,9 +57,6 @@ export default async function AdminLayout({
                 </div>
               </div>
               <div className="flex shrink-0 items-center gap-1 px-2 sm:gap-4 sm:px-4">
-                <div className="hidden xl:block">
-                  <DemoBadge />
-                </div>
                 <CommandSearch />
                 <div className="hidden lg:block">
                   <CommunityLinks />

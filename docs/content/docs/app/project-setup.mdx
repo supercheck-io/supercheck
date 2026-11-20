@@ -42,7 +42,7 @@ flowchart LR
 **Requirements and tests (Beta).** AI suggests [requirements](/docs/app/automate/requirements) from your scan; each then offers **Generate test**. **Suggest requirements** costs 1 AI credit, once per project per day, and the cost shows first. The step is locked on a trial and hidden when no AI provider is configured.
 </Step>
 <Step>
-**AI SRE.** Connect GitHub, Sentry, Datadog, Grafana or Prometheus [connectors](/docs/app/investigate/connectors); each shows **Connected** or **Saved, but the token was rejected**. Private-network tools use a private agent from **Organization → Private Agents**. Needs a project admin; editors see **Ask a project admin**.
+**AI SRE.** Connect GitHub, Sentry, Datadog, Grafana or Prometheus [connectors](/docs/app/investigate/connectors); each shows **Connected** or **Saved, but the token was rejected**. Private-network tools use a private agent from **Organization → Private Agents**. Editors can add services but not connectors; members who can do neither see **Ask a project admin**.
 </Step>
 <Step>
 **Review and create.** A heartbeat's ping URL is shown once, here.
@@ -65,7 +65,7 @@ flowchart LR
 
 ## Getting started checklist
 
-Until setup is finished or dismissed, the dashboard shows a **Getting started** card and the sidebar shows **Project setup** with a count such as `4/9`. **Dismiss** hides both for that project. Projects that already have monitors, tests, jobs or status pages see them only after you start setup.
+Until setup is finished or dismissed, the dashboard shows a **Getting started** card and the sidebar shows **Project setup** with a count such as `4/11`. **Dismiss** hides both for that project. Projects that already have monitors, tests, jobs or status pages see them only after you start setup.
 
 Ticks come from what exists: a monitor, notification channel, heartbeat, status page (or "I don't need one"), requirement, test, job, connector or private agent, service, another member or invitation, and a [CLI token](/docs/cli/authentication). Items whose feature is off are hidden. 
 
@@ -74,9 +74,9 @@ Ticks come from what exists: a monitor, notification channel, heartbeat, status 
 <Accordions>
 <Accordion title="Who can run setup?" id="roles">
 
-Organization owners and admins run full setup, and project admins do when it has not started. Editors skip project-admin options such as AI SRE. Viewers see a read-only checklist. Invited members see only the focus question.
+Anyone who can create monitors in the project (editors and above) can run setup. It opens by itself for organization owners and admins, and for others once it is in progress; otherwise start it from **Project setup**. Repeat reminders need a project admin and show **Ask a project admin** for editors; in the AI SRE step editors can add services but not connectors. Viewers see a read-only checklist. On first visit, everyone except organization owners and admins sees only the focus question.
 
-One person runs setup at a time. The [CLI](/docs/cli) and [MCP server](/docs/mcp) create every item setup creates.
+One person runs setup at a time; a lock expires after 15 minutes without activity. The [CLI](/docs/cli) and [MCP server](/docs/mcp) create every item setup creates.
 
 </Accordion>
 <Accordion title="Do plan limits apply?" id="limits">

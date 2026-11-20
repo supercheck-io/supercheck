@@ -15,10 +15,6 @@
   },
   "servers": [
     {
-      "url": "https://demo.supercheck.dev",
-      "description": "Demo"
-    },
-    {
       "url": "https://app.supercheck.io",
       "description": "Production (Cloud)"
     }

@@ -1,12 +1,14 @@
 import { auth } from "@/utils/auth";
 import { toNextJsHandler } from "better-auth/next-js";
+import { withAuthClientIp } from "@/lib/auth/better-auth-rate-limit";
+import { isUuid } from "@/lib/uuid";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/utils/db";
 import { invitation } from "@/db/schema";
 import { eq, and, sql } from "drizzle-orm";
 import { isSelfHosted, isSignupEnabled, isEmailDomainAllowed } from "@/lib/feature-flags";
 
-const betterAuthHandler = toNextJsHandler(auth);
+const betterAuthHandler = toNextJsHandler((request: Request) => auth.handler(withAuthClientIp(request)));
 
 export const GET = betterAuthHandler.GET;
 
@@ -18,7 +20,8 @@ async function validatePendingInvitation(
   email: string,
   inviteToken: string,
 ): Promise<InvitationValidationResult> {
-  const pendingInvite = await db
+  // invitation.id is a uuid column: a malformed token would make Postgres throw instead of matching nothing.
+  const pendingInvite = !isUuid(inviteToken) ? [] : await db
     .select({ id: invitation.id, expiresAt: invitation.expiresAt })
     .from(invitation)
     .where(

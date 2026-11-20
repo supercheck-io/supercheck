@@ -9,30 +9,29 @@ import {
 
 test('accepts every public first-party Supercheck deployment', () => {
   expect(isSupercheckCloudOrigin('https://app.supercheck.io')).toBe(true);
-  expect(isSupercheckCloudOrigin('https://demo.supercheck.dev')).toBe(true);
 });
 
 test('accepts cloud and explicitly configured self-hosted origins', () => {
   expect(isAllowedAppOrigin('https://app.supercheck.io')).toBe(true);
-  expect(isAllowedAppOrigin('https://demo.supercheck.dev')).toBe(true);
   expect(isAllowedAppOrigin('http://localhost:3000', 'http://localhost:3000')).toBe(true);
   expect(isAllowedAppOrigin('https://self-hosted.example.com', 'https://self-hosted.example.com')).toBe(true);
 });
 
 test('rejects insecure and lookalike origins', () => {
   expect(isAllowedAppOrigin('http://app.supercheck.io')).toBe(false);
-  expect(isAllowedAppOrigin('http://demo.supercheck.dev')).toBe(false);
   expect(isAllowedAppOrigin('https://qa.supercheck.io')).toBe(false);
   expect(isAllowedAppOrigin('http://localhost:3000')).toBe(false);
   expect(isAllowedAppOrigin('http://localhost:3000', 'https://app.supercheck.io')).toBe(false);
   expect(isAllowedAppOrigin('http://localhost.example.com')).toBe(false);
   expect(isAllowedAppOrigin('https://supercheck.io.example.com')).toBe(false);
   expect(isAllowedAppOrigin('https://app.supercheck.io.example.com')).toBe(false);
-  expect(isAllowedAppOrigin('https://demo.supercheck.dev.evil.test')).toBe(false);
-  expect(isAllowedAppOrigin('https://evil-demo.supercheck.dev', 'https://app.supercheck.io')).toBe(false);
+  expect(isAllowedAppOrigin('https://evil-app.supercheck.io', 'https://app.supercheck.io')).toBe(false);
   expect(isAllowedAppOrigin('https://app.supercheck.io.evil.test')).toBe(false);
   expect(isAllowedAppOrigin('https://status.supercheck.io')).toBe(false);
   expect(isAllowedAppOrigin('https://demo.supercheck.io')).toBe(false);
+  // The retired public demo server is no longer a first-party origin.
+  expect(isSupercheckCloudOrigin('https://demo.supercheck.dev')).toBe(false);
+  expect(isAllowedAppOrigin('https://demo.supercheck.dev')).toBe(false);
   // Marketing and docs site: no app, never talks to the extension.
   expect(isAllowedAppOrigin('https://supercheck.io')).toBe(false);
   expect(isSupercheckCloudOrigin('https://supercheck.io')).toBe(false);
@@ -47,15 +46,15 @@ test('only trusts origins configured explicitly for self-hosted instances', () =
 
 test('requires auto-connect credentials to target the sender origin', () => {
   const payload = {
-    instanceUrl: 'https://demo.supercheck.dev',
+    instanceUrl: 'https://app.supercheck.io',
     apiKey: 'ext_example',
     userId: 'user-1',
     userEmail: 'user@example.com',
   };
 
-  expect(isValidAutoConnectPayload(payload, 'https://demo.supercheck.dev')).toBe(true);
-  expect(isValidAutoConnectPayload(payload, 'https://app.supercheck.io')).toBe(false);
-  expect(isValidAutoConnectPayload({ ...payload, apiKey: '' }, 'https://demo.supercheck.dev')).toBe(false);
+  expect(isValidAutoConnectPayload(payload, 'https://app.supercheck.io')).toBe(true);
+  expect(isValidAutoConnectPayload(payload, 'https://app.supercheck.io.evil.test')).toBe(false);
+  expect(isValidAutoConnectPayload({ ...payload, apiKey: '' }, 'https://app.supercheck.io')).toBe(false);
 });
 
 test('accepts only bounded recording contexts from the sender origin', () => {
@@ -63,13 +62,13 @@ test('accepts only bounded recording contexts from the sender origin', () => {
     projectId: 'project-1',
     testName: 'Checkout',
     targetUrl: 'https://shop.example.com/checkout',
-    returnUrl: 'https://demo.supercheck.dev/playground',
+    returnUrl: 'https://app.supercheck.io/playground',
   };
 
-  expect(isValidRecordingContextPayload(payload, 'https://demo.supercheck.dev')).toBe(true);
-  expect(isValidRecordingContextPayload({ ...payload, projectId: '' }, 'https://demo.supercheck.dev')).toBe(false);
-  expect(isValidRecordingContextPayload({ ...payload, targetUrl: 'javascript:alert(1)' }, 'https://demo.supercheck.dev')).toBe(false);
-  expect(isValidRecordingContextPayload({ ...payload, returnUrl: 'https://evil.example' }, 'https://demo.supercheck.dev')).toBe(false);
+  expect(isValidRecordingContextPayload(payload, 'https://app.supercheck.io')).toBe(true);
+  expect(isValidRecordingContextPayload({ ...payload, projectId: '' }, 'https://app.supercheck.io')).toBe(false);
+  expect(isValidRecordingContextPayload({ ...payload, targetUrl: 'javascript:alert(1)' }, 'https://app.supercheck.io')).toBe(false);
+  expect(isValidRecordingContextPayload({ ...payload, returnUrl: 'https://evil.example' }, 'https://app.supercheck.io')).toBe(false);
 });
 
 test('retries only idempotent request methods', () => {

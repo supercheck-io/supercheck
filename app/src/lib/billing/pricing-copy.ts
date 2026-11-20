@@ -72,8 +72,6 @@ export const SHARED_PRICING_FAQS = [
   },
 ];
 
-export const DEMO_FAQ_QUESTION = "Can I try Supercheck before subscribing?";
-
 export const PRICING_FAQS = [
   ...SHARED_PRICING_FAQS,
   {
@@ -82,10 +80,6 @@ export const PRICING_FAQS = [
       "The organization owner can change plans in Manage subscription. Review the effective date and any prorated charges in the Polar portal before confirming. If the new plan has lower limits, the newest monitors and published status pages above them are paused or archived; nothing is deleted, and you can choose which ones run by pausing others first.",
   },
   ...trialFaqs(),
-  {
-    question: DEMO_FAQ_QUESTION,
-    answer: "Yes. Try our free demo at demo.supercheck.dev — no signup required. When you are ready, choose a monthly plan. Cancel anytime.",
-  },
   {
     question: "Do you offer enterprise plans?",
     answer:

@@ -16,7 +16,6 @@ export interface AppConfig {
   };
   mcp?: { enabled: boolean };
   setup?: SetupFeatures;
-  demoMode: boolean;
   showCommunityLinks: boolean;
   limits: {
     maxJobNotificationChannels: number;
@@ -45,7 +44,6 @@ const DEFAULT_CONFIG: AppConfig = {
   },
   mcp: { enabled: false },
   setup: DEFAULT_SETUP_FEATURES,
-  demoMode: false,
   showCommunityLinks: false,
   limits: {
     maxJobNotificationChannels: 10,
@@ -97,7 +95,6 @@ export function useAppConfig() {
     isSelfHosted: effectiveConfig.hosting?.selfHosted ?? false,
     isCloudHosted: effectiveConfig.hosting?.cloudHosted ?? true,
     isMcpEnabled: effectiveConfig.mcp?.enabled ?? false,
-    isDemoMode: effectiveConfig.demoMode ?? false,
     setupFeatures: effectiveConfig.setup ?? DEFAULT_SETUP_FEATURES,
     showCommunityLinks: effectiveConfig.showCommunityLinks ?? false,
     isGithubEnabled: effectiveConfig.authProviders?.github?.enabled ?? false,

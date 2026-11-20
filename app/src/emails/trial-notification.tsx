@@ -2,12 +2,14 @@ import { Section, Text } from "@react-email/components";
 import * as React from "react";
 import { BaseLayout, EmailButton, ManageBillingLink } from "./base-layout";
 
-export type TrialNotificationKind = "midway" | "ending" | "ended";
+export type TrialNotificationKind = "midway" | "ending" | "ended" | "browserHalf" | "browserFull";
 
 interface TrialNotificationEmailProps {
   organizationName: string;
   kind: TrialNotificationKind;
   daysRemaining: number;
+  /** Browser-minute allowance, named in the usage emails. */
+  browserMinutes?: number;
   subscribeUrl: string;
   /** Billing page; adds a "Manage billing" footer link. */
   manageBillingUrl?: string;
@@ -15,7 +17,7 @@ interface TrialNotificationEmailProps {
 
 const COPY: Record<
   TrialNotificationKind,
-  (days: number) => {
+  (days: number, minutes: number) => {
     title: string;
     heading: string;
     body: string;
@@ -40,14 +42,27 @@ const COPY: Record<
     body: "Your monitors are paused and your status pages are archived. Nothing was deleted: your tests, monitors, and history are kept. Choose a plan and your monitors and status pages are restored automatically.",
     cta: "Restore my setup",
   }),
+  browserHalf: (_days, minutes) => ({
+    title: "Half of your trial browser minutes are used",
+    heading: "You have used 50% of your trial browser minutes",
+    body: `Your trial includes ${minutes.toLocaleString("en-US")} browser minutes for Playwright tests and synthetic monitors, and half are used. Browser checks keep running until the allowance is used up. Choose a plan for a larger monthly allowance.`,
+    cta: "Choose a plan",
+  }),
+  browserFull: (_days, minutes) => ({
+    title: "Your trial browser minutes are used up",
+    heading: "You have used 100% of your trial browser minutes",
+    body: `All ${minutes.toLocaleString("en-US")} browser minutes in your trial are used, so Playwright tests and synthetic monitors no longer run. Your other monitors keep running. Choose a plan to run browser checks again.`,
+    cta: "Choose a plan",
+  }),
 };
 
 export function trialNotificationSubject(
   kind: TrialNotificationKind,
   organizationName: string,
   daysRemaining: number,
+  browserMinutes = 0,
 ): string {
-  const { title } = COPY[kind](daysRemaining);
+  const { title } = COPY[kind](daysRemaining, browserMinutes);
   return `[Supercheck] ${title}: ${organizationName}`;
 }
 
@@ -55,10 +70,11 @@ export const TrialNotificationEmail = ({
   organizationName = "Acme Corp",
   kind = "midway",
   daysRemaining = 7,
+  browserMinutes = 1000,
   subscribeUrl = "https://app.supercheck.io/subscribe",
   manageBillingUrl,
 }: TrialNotificationEmailProps) => {
-  const copy = COPY[kind](daysRemaining);
+  const copy = COPY[kind](daysRemaining, browserMinutes);
   return (
     <BaseLayout
       preview={copy.heading}
