@@ -17,9 +17,9 @@ const person = (row: { id: string; name: string; email: string } | undefined): P
 
 /**
  * Whether the caller's session is an impersonation, read from the session row (the source of truth).
- * Any failure reads as not impersonating, as the status route always answered.
+ * Null when the lookup failed: callers must not treat that as "not impersonating".
  */
-export async function getImpersonationStatus(): Promise<ImpersonationStatus> {
+export async function getImpersonationStatus(): Promise<ImpersonationStatus | null> {
   try {
     const sessionData = await getCachedAuthSession();
     if (!sessionData?.session?.token) return { isImpersonating: false };
@@ -44,6 +44,6 @@ export async function getImpersonationStatus(): Promise<ImpersonationStatus> {
       (error as { name?: string })?.name ?? "Error",
       (error as { code?: string })?.code ?? "",
     );
-    return { isImpersonating: false };
+    return null;
   }
 }

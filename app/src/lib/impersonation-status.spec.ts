@@ -34,10 +34,10 @@ describe("getImpersonationStatus", () => {
     });
   });
 
-  it("fails as not impersonating and never logs the session token", async () => {
+  it("returns null on a failure, never a confirmed negative, and never logs the session token", async () => {
     const log = jest.spyOn(console, "error").mockImplementation(() => {});
     rows.push(new Error("Failed query: select ... where token = $1\nparams: tok_live") as unknown as unknown[]);
-    expect(await getImpersonationStatus()).toEqual({ isImpersonating: false });
+    expect(await getImpersonationStatus()).toBeNull();
     expect(JSON.stringify(log.mock.calls)).not.toContain("tok_live");
     log.mockRestore();
   });

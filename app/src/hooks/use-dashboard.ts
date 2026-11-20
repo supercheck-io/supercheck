@@ -49,6 +49,12 @@ export async function fetchDashboard(projectId: string | null = null): Promise<D
   }
 }
 
+/** Dashboard data counts as fresh for a minute. */
+export const DASHBOARD_STALE_MS = 60 * 1000;
+
+/** Seeds already written into the cache (each server read is applied at most once). */
+const appliedSeeds = new WeakSet<DashboardSeed>();
+
 export function useDashboard(seed?: DashboardSeed | null) {
   const { currentProject } = useProjectContext();
   const projectId = currentProject?.id ?? null;
@@ -65,12 +71,12 @@ export function useDashboard(seed?: DashboardSeed | null) {
       ? seed
       : undefined;
   // initialData only fills an empty query. On a client navigation back to the dashboard the server has just
-  // read newer data, so it replaces an older cached entry before the mount refetch is decided (the page is
-  // this key's only observer, and it has not subscribed yet on its first render). Idempotent: once applied,
-  // the cached entry is as new as the seed and nothing more happens.
-  if (usableSeed) {
-    const cachedAt = queryClient.getQueryState(queryKey)?.dataUpdatedAt ?? 0;
-    if (cachedAt > 0 && cachedAt < usableSeed.updatedAt) {
+  // read the data again, so that read replaces the cached entry once, before the mount refetch is decided
+  // (the page is this key's only observer, and it has not subscribed yet on its first render). Once per
+  // seed: a later refresh is kept, and server and browser clocks are never compared.
+  if (usableSeed && !appliedSeeds.has(usableSeed)) {
+    appliedSeeds.add(usableSeed);
+    if (queryClient.getQueryState(queryKey)?.data !== undefined) {
       queryClient.setQueryData(queryKey, usableSeed.data, { updatedAt: usableSeed.updatedAt });
     }
   }
@@ -81,7 +87,7 @@ export function useDashboard(seed?: DashboardSeed | null) {
     enabled: !!projectId,
     initialData: usableSeed?.data,
     initialDataUpdatedAt: usableSeed?.updatedAt,
-    staleTime: 60 * 1000,  // Dashboard data refreshes more frequently (60s)
+    staleTime: DASHBOARD_STALE_MS,
     // gcTime uses global default (24h)
     refetchOnWindowFocus: false,
     // Refetch on every visit unless the data is under a minute old (a server seed from this page load).

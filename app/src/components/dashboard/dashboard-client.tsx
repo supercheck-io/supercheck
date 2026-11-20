@@ -53,7 +53,9 @@ import { NeedsAttentionCard } from "@/components/dashboard/dashboard-panels";
 import { SupercheckLogo } from "@/components/logo/supercheck-logo";
 import { SupercheckLoading } from "@/components/shared/supercheck-loading";
 import { formatTestTypeBreakdown } from "@/lib/dashboard/test-types";
-import { useDashboard, type DashboardSeed } from "@/hooks/use-dashboard";
+import { useQueryClient } from "@tanstack/react-query";
+import { DASHBOARD_STALE_MS, getDashboardQueryKey, useDashboard, type DashboardSeed } from "@/hooks/use-dashboard";
+import { useProjectContext } from "@/hooks/use-project-context";
 import { useOpenIncidents } from "@/hooks/use-open-incidents";
 import { useRequirementsStats } from "@/hooks/use-requirements-stats";
 import {
@@ -278,6 +280,16 @@ function DashboardSkeleton() {
 }
 
 export function DashboardClient({ seed }: { seed: Promise<DashboardSeed | null> }) {
+  const queryClient = useQueryClient();
+  const projectId = useProjectContext().currentProject?.id ?? null;
+  // Warm path (a client navigation after a hover prefetch or an earlier visit): fresh cached data for this
+  // project renders at once instead of waiting for the server's read. The cache is cleared on any account
+  // change, so cached data is the signed-in user's. Cold path: wait for the seed, so the browser does not
+  // request the same data in parallel.
+  const cached = queryClient.getQueryCache().find({ queryKey: getDashboardQueryKey(projectId), exact: true });
+  if (cached?.state.data !== undefined && !cached.isStaleByTime(DASHBOARD_STALE_MS)) {
+    return <DashboardView seed={null} />;
+  }
   return (
     <Suspense fallback={<DashboardSkeleton />}>
       <SeededDashboard seed={seed} />

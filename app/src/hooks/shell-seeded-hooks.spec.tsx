@@ -116,8 +116,17 @@ describe("shell hooks seeded by the server layout", () => {
     await waitFor(() => expect(global.fetch).toHaveBeenCalledWith("/api/auth/impersonation-status"));
   });
 
-  it("reads a failed impersonation check as not impersonating, as before", async () => {
-    global.fetch = jest.fn().mockResolvedValue({ ok: false, status: 500 });
+  it("leaves a failed impersonation check unknown, so callers that fail closed keep waiting", async () => {
+    global.fetch = jest.fn().mockResolvedValue({ ok: false, status: 503 });
+    const { wrapper } = setup();
+    const { result } = renderHook(() => useImpersonationStatus(), { wrapper });
+    // The hook retries once (about a second) before reporting the error.
+    await waitFor(() => expect(result.current.error).not.toBeNull(), { timeout: 3000 });
+    expect(result.current.isKnown).toBe(false);
+  });
+
+  it("treats signed out as a known answer: nobody is impersonated", async () => {
+    global.fetch = jest.fn().mockResolvedValue({ ok: false, status: 401 });
     const { wrapper } = setup();
     const { result } = renderHook(() => useImpersonationStatus(), { wrapper });
     await waitFor(() => expect(result.current.isKnown).toBe(true));

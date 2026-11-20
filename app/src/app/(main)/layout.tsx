@@ -34,12 +34,16 @@ import { getUserPreferences } from "@/lib/setup/setup-state";
 import { getSetupSummary } from "@/lib/setup/summary";
 import { resolveSetupFeatures } from "@/lib/setup/features";
 import { isAIProviderConfigured } from "@/lib/ai/ai-provider";
+import { withDeadline } from "@/lib/with-deadline";
 import { getTrialSummary } from "@/lib/execution/trial-limits";
 import { TrialBanner } from "@/components/trial-banner";
 import { SpendingCapBanner } from "@/components/spending-cap-banner";
 import { PendingDeletionBanner } from "@/components/pending-deletion-banner";
 import { checkPermissionWithContext, getUserOrgRole } from "@/lib/rbac/middleware";
 import { Role } from "@/lib/rbac/permissions";
+
+/** How long the layout waits for an optional seed before leaving it to the client. */
+const OPTIONAL_SEED_DEADLINE_MS = 300;
 
 function deriveInitialSubscriptionStatus(
   org: NonNullable<Awaited<ReturnType<typeof getActiveOrganization>>>,
@@ -108,8 +112,7 @@ export default async function MainLayout({
   const orgPendingDeletion = !!org?.deletionRequestedAt;
   let isOrgOwner = false;
   // Values the shell would otherwise request after hydration, read in parallel with the lookups above.
-  // A failed lookup leaves that hook on its own request, except impersonation status, which (like its
-  // route) answers "not impersonating" on an error.
+  // A failed or slow lookup leaves that hook on its own request.
   const bootstrap: ShellBootstrap = { userId: user?.id ?? "", readAt: Date.now() };
 
   if (user && org) {
@@ -125,8 +128,14 @@ export default async function MainLayout({
     const needsSpendingCapRole = !initialIsSelfHosted && initialSubscriptionStatus.isActive;
     // The role, trial and project lookups do not depend on each other, so they run together.
     const rolePromise = getUserOrgRole(user.id, org.id).catch(() => undefined);
-    const impersonationPromise = getImpersonationStatus();
-    const preferencesPromise = getUserPreferences(user.id).catch(() => undefined);
+    // Optional seeds: a slow read must not hold the shell, so each gives up after a short deadline and the
+    // client then requests that value itself.
+    const impersonationPromise = withDeadline(getImpersonationStatus(), OPTIONAL_SEED_DEADLINE_MS, null);
+    const preferencesPromise = withDeadline(
+      getUserPreferences(user.id).catch(() => undefined),
+      OPTIONAL_SEED_DEADLINE_MS,
+      undefined,
+    );
     const trialPromise = !initialIsSelfHosted && !initialSubscriptionStatus.isActive
       ? getTrialSummary(org.id).catch(() => undefined)
       : Promise.resolve(undefined);
@@ -137,7 +146,7 @@ export default async function MainLayout({
     // The sidebar's setup badge, for the project being rendered, once that project is known.
     const userId = user.id;
     const setupSummaryPromise = resolveSetupFeatures({ aiConfigured: isAIProviderConfigured() }).setup
-      ? currentProjectPromise
+      ? withDeadline(currentProjectPromise
           .then(async (project) =>
             project &&
             checkPermissionWithContext("project", "view", {
@@ -149,7 +158,7 @@ export default async function MainLayout({
               ? { projectId: project.id, summary: await getSetupSummary(project.organizationId, project.id, userId) }
               : undefined,
           )
-          .catch(() => undefined)
+          .catch(() => undefined), OPTIONAL_SEED_DEADLINE_MS, undefined)
       : Promise.resolve(undefined);
     // Settled inside the try below; this only avoids an unhandled rejection while role/trial resolve.
     // (getCurrentProjectContext swallows its own errors, so it needs no such guard.)
@@ -169,8 +178,11 @@ export default async function MainLayout({
         isOrgAdmin: role === Role.ORG_ADMIN || role === Role.ORG_OWNER,
       };
     }
-    // Only what the client reads: the original admin's details stay out of the page.
-    bootstrap.impersonation = { isImpersonating: impersonation.isImpersonating, impersonatedUser: impersonation.impersonatedUser };
+    // Only an answer, never a failed or timed-out lookup (null): then the client asks itself. Only what the
+    // client reads: the original admin's details stay out of the page.
+    if (impersonation) {
+      bootstrap.impersonation = { isImpersonating: impersonation.isImpersonating, impersonatedUser: impersonation.impersonatedUser };
+    }
     bootstrap.preferences = preferences;
     bootstrap.setupSummary = setupSummary;
     if (needsSpendingCapRole) {

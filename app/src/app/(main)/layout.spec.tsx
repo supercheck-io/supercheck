@@ -208,6 +208,29 @@ describe("MainLayout data fetching", () => {
       expect(getSetupSummary).toHaveBeenCalledWith("o1", "p1", "u1");
     });
 
+    it("does not seed impersonation status when its lookup failed", async () => {
+      signedIn(cloudOrg());
+      (getImpersonationStatus as jest.Mock).mockResolvedValue(null);
+      expect(bootstrapOf(await MainLayout({ children: null })).impersonation).toBeUndefined();
+    });
+
+    it("does not wait on a slow optional read: that value is left to the client", async () => {
+      jest.useFakeTimers();
+      try {
+        signedIn(cloudOrg());
+        (getUserPreferences as jest.Mock).mockReturnValue(new Promise(() => {}));
+        (getImpersonationStatus as jest.Mock).mockReturnValue(new Promise(() => {}));
+        const pending = MainLayout({ children: null });
+        await jest.advanceTimersByTimeAsync(300);
+        const value = bootstrapOf(await pending);
+        expect(value.preferences).toBeUndefined();
+        expect(value.impersonation).toBeUndefined();
+        expect(value.adminStatus).toBeDefined();
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
     it("reports a plain member as neither admin", async () => {
       signedIn(cloudOrg());
       (getUserOrgRole as jest.Mock).mockResolvedValue("org_member");

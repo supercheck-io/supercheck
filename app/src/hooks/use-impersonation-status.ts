@@ -15,10 +15,9 @@ export const IMPERSONATION_STATUS_QUERY_KEY = ["impersonation-status"] as const;
 
 async function fetchImpersonationStatus(): Promise<ImpersonationInfo> {
   const response = await fetch('/api/auth/impersonation-status');
-  if (!response.ok) {
-    // If not authenticated or error, assume not impersonating
-    return { isImpersonating: false };
-  }
+  // Signed out is an answer (no session, so nobody is impersonated); any other failure is not.
+  if (response.status === 401) return { isImpersonating: false };
+  if (!response.ok) throw new Error(`Impersonation status unavailable (${response.status})`);
   return response.json();
 }
 

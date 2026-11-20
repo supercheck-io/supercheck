@@ -54,4 +54,28 @@ describe("loadDashboardSeed", () => {
     expect(JSON.stringify(log.mock.calls)).not.toContain("secret-value");
     expect(log).toHaveBeenCalledWith("Dashboard seed failed:", "Error", "57014");
   });
+
+  it("stamps the seed with the time the read started", async () => {
+    let finish!: (v: unknown) => void;
+    mockPayload.mockReturnValue(new Promise((r) => { finish = r; }));
+    const before = Date.now();
+    const pending = loadDashboardSeed();
+    await new Promise((r) => setTimeout(r, 30));
+    finish({});
+    const seed = await pending;
+    expect(seed!.updatedAt).toBeGreaterThanOrEqual(before);
+    expect(seed!.updatedAt).toBeLessThan(Date.now() - 20);
+  });
+
+  it("gives up after its deadline so the client requests the data", async () => {
+    jest.useFakeTimers();
+    try {
+      mockPayload.mockReturnValue(new Promise(() => {}));
+      const pending = loadDashboardSeed();
+      await jest.advanceTimersByTimeAsync(5_000);
+      await expect(pending).resolves.toBeNull();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
 });

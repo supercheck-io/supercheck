@@ -1,5 +1,5 @@
 import { createElement, type ReactNode } from "react";
-import { renderHook, waitFor } from "@testing-library/react";
+import { act, renderHook, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fetchDashboard, getDashboardQueryKey, parseSystemHealth, useDashboard, type DashboardData } from "./use-dashboard";
 
@@ -151,12 +151,16 @@ describe("useDashboard with a server seed", () => {
     expect(global.fetch).not.toHaveBeenCalled();
   });
 
-  it("keeps a cached entry that is newer than the seed", () => {
+  it("applies a seed once, so a later refresh is not overwritten on the next render", () => {
     global.fetch = jest.fn();
     const client = new QueryClient();
-    client.setQueryData(getDashboardQueryKey("project-a"), { stats: { runs: 8 } });
+    client.setQueryData(getDashboardQueryKey("project-a"), { stats: { runs: 1 } });
     const wrapper = ({ children }: { children: ReactNode }) => createElement(QueryClientProvider, { client }, children);
-    const { result } = renderHook(() => useDashboard(seed("project-a", Date.now() - 30_000)), { wrapper });
+    const s = seed("project-a");
+    const { result, rerender } = renderHook(() => useDashboard(s), { wrapper });
+    expect(result.current.data?.stats.runs).toBe(3);
+    act(() => { client.setQueryData(getDashboardQueryKey("project-a"), { stats: { runs: 8 } }); });
+    rerender();
     expect(result.current.data?.stats.runs).toBe(8);
   });
 
