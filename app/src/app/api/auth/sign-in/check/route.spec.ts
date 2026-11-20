@@ -24,12 +24,7 @@ import { getClientIP } from "@/lib/session-security";
 import { getRedisConnection } from "@/lib/queue";
 import { POST } from "./route";
 
-const redis = {
-  zremrangebyscore: jest.fn(async () => 0),
-  zcard: jest.fn(async () => 0),
-  zadd: jest.fn(async () => 1),
-  expire: jest.fn(async () => 1),
-};
+const redis = { eval: jest.fn(async () => 1) };
 
 const preCheck = (email = "user@example.test") =>
   POST(new NextRequest("http://localhost/api/auth/sign-in/check", {
@@ -114,7 +109,7 @@ it("rejects a locked identity with the generic 429 message", async () => {
 });
 
 it("uses the shared message for endpoint rate limiting", async () => {
-  redis.zcard.mockResolvedValueOnce(20);
+  redis.eval.mockResolvedValueOnce(0);
 
   const response = await preCheck();
   const body = await response.json();

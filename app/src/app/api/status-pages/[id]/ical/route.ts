@@ -26,7 +26,7 @@ function escapeIcalText(text: string): string {
     .replace(/\\/g, "\\\\")
     .replace(/;/g, "\\;")
     .replace(/,/g, "\\,")
-    .replace(/\n/g, "\\n");
+    .replace(/\r\n?|\n/g, "\\n");
 }
 
 /**
