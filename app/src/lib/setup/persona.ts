@@ -1,4 +1,4 @@
-import { USER_PERSONAS, type UserPersona } from "@/db/schema/project-setup";
+import { USER_PERSONAS, type UserPersona } from "@/db/schema/project-setup-values";
 
 export { USER_PERSONAS, type UserPersona };
 

@@ -1,6 +1,5 @@
 const DEFAULT_CORS_ALLOWED_ORIGINS = [
   "http://localhost:3000",
-  "https://demo.supercheck.dev",
   "https://supercheck.io",
   "https://supercheck.pages.dev",
   "https://docs.supercheck.io",

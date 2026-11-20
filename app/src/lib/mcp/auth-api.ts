@@ -1,4 +1,5 @@
 import { auth } from "@/utils/auth";
+import { withAuthClientIp } from "@/lib/auth/better-auth-rate-limit";
 
 /**
  * The OAuth endpoints Supercheck calls in-process. The MCP plugins are only
@@ -51,11 +52,11 @@ export async function submitConsent(input: {
   }
 
   const response = await auth.handler(
-    new Request(new URL("/api/auth/oauth2/consent", base), {
+    withAuthClientIp(new Request(new URL("/api/auth/oauth2/consent", base), {
       method: "POST",
       headers,
       body: JSON.stringify({ accept: input.accept, oauth_query: input.oauthQuery }),
-    }),
+    })),
   );
   const body = (await response.json().catch(() => null)) as { url?: string; redirect_uri?: string; error?: string } | null;
   const url = body?.url ?? body?.redirect_uri;

@@ -4,6 +4,7 @@ import { getRedisConnection, queueLogger } from "@/lib/queue";
 import { processSreBackgroundAlertTriageJob } from "@/sre/lib/background-alert-triage";
 import { SRE_ALERT_TRIAGE_QUEUE_NAME, type SreAlertTriageQueueJob } from "@/sre/lib/background-alert-triage-queue";
 import { isSreBackgroundAlertTriageEnabled } from "@/sre/lib/feature-gates";
+import { watchConsumer } from "@/lib/consumer-watchdog";
 
 /** How long, and how often, a triage start blocked by the org's run cap is retried. */
 export const ORG_LIMIT_DEFER_WINDOW_MS = 30 * 60_000;
@@ -68,6 +69,7 @@ export async function initializeSreAlertTriageProcessor() {
       }
     );
 
+    watchConsumer(worker);
     worker.on("completed", (job) => queueLogger.info({ jobId: job.id }, "SRE alert triage job completed"));
     worker.on("failed", (job, error) => queueLogger.error({ jobId: job?.id, err: error }, "SRE alert triage job failed"));
     worker.on("error", (error) => queueLogger.error({ err: error }, "SRE alert triage worker error"));

@@ -24,7 +24,7 @@ export const executionEntitlements = pgTable(
     k6MaxVus: integer("k6_max_vus").notNull().default(5),
     playwrightBudgetMs: bigint("playwright_budget_ms", { mode: "number" })
       .notNull()
-      .default(9000000),
+      .default(60000000),
     playwrightUsedMs: bigint("playwright_used_ms", { mode: "number" })
       .notNull()
       .default(0),
@@ -57,6 +57,9 @@ export const executionEntitlements = pgTable(
     midwayNotifiedAt: timestamp("midway_notified_at", { withTimezone: true }),
     endingNotifiedAt: timestamp("ending_notified_at", { withTimezone: true }),
     endedNotifiedAt: timestamp("ended_notified_at", { withTimezone: true }),
+  /** Set when the usage email for 50% / 100% of the browser-minute allowance was sent, so each goes out once. */
+  browserHalfNotifiedAt: timestamp("browser_half_notified_at", { withTimezone: true }),
+  browserFullNotifiedAt: timestamp("browser_full_notified_at", { withTimezone: true }),
   },
   (table) => [
     index("execution_entitlements_open_expiry_idx")

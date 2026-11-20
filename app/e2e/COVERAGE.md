@@ -50,9 +50,9 @@ Verified locally on 2026-07-22:
 Current local check on 2026-10-12: Playwright discovery reports **168 tests in
 39 files**, including three new variable-role tests, and E2E TypeScript
 typecheck passed. [Hosted full E2E](https://github.com/supercheck-io/supercheck/actions/runs/38203439973)
-passed **169 tests**, including revision attestation, against deployed demo SHA
+passed **169 tests**, including revision attestation, against a deployed SHA
 `6b885ad3cc52080d7051ba60597752ba17b88542`. This validates the updated tests
-against the demo; it is not acceptance of the PR's deployed SHA.
+against that deployment; it is not acceptance of the PR's deployed SHA.
 
 ## Capability traceability
 
@@ -80,6 +80,10 @@ against the demo; it is not acceptance of the PR's deployed SHA.
 | Private Agent                           | Registration exchange/replay/heartbeat/revocation | Register/status/rotate/disable                        | Disposable project cascade                         | Management lifecycle covered; runner lab excluded      |
 | Diagnostic recipes                      | Setup contracts                                   | Create/reject/disable lifecycle                        | Isolated recipe data                               | Passed exact-revision full runtime                      |
 | Service topology                        | Service lifecycle and map persistence             | Dependency lifecycle and map persistence              | Soft-deleted isolated project                      | Passed exact-revision full runtime                      |
+| AI endpoint monitor detail | Monitor create/read contract | AI details popover (pending and, with the stub, first token, tokens, requested and served model); header keeps three metric groups | Monitor and stub cleanup | Implemented; checked values need `E2E_AGENT_STUB_URL` |
+| Agent run results | Run status | Agent results button, popover, failure icon note | Test and stub cleanup | Implemented; needs `E2E_AGENT_STUB_URL` |
+| Owner-only spending caps | Admin 403 on every cap field, admin alert save restored | Cap controls disabled for admin, enabled for owner | No cap is ever written | Implemented |
+| Info popovers | None | Incidents list and alert settings icons open a popover, Escape closes | Monitor cleanup | Light check implemented |
 
 ## Workflow and gate
 

@@ -4,19 +4,9 @@ import { deepmergeCustom } from 'deepmerge-ts'
 import { existsSync } from 'node:fs'
 import { resolve, dirname, basename } from 'node:path'
 import { supercheckConfigSchema, type SupercheckConfig } from './schema.js'
+import { CONFIG_FILES, LOCAL_CONFIG_FILES } from './config-files.js'
 import { CLIError, ConfigNotFoundError, ConfigurationError, ExitCode } from '../utils/errors.js'
 
-const CONFIG_FILES = [
-  'supercheck.config.ts',
-  'supercheck.config.js',
-  'supercheck.config.mjs',
-]
-
-const LOCAL_CONFIG_FILES = [
-  'supercheck.config.local.ts',
-  'supercheck.config.local.js',
-  'supercheck.config.local.mjs',
-]
 
 /**
  * Resolve the config file path. Search order:

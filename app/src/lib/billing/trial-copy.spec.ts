@@ -11,7 +11,7 @@ describe("trial copy", () => {
     expect(first).toContain(`${durationDays}-day free trial`);
     expect(first).toContain("Eligible new Cloud accounts get one");
     expect(first).not.toContain("Every new Cloud organization");
-    expect(first).toContain(`${limits.playwrightMinutes} browser minutes`);
+    expect(first).toContain(`${limits.playwrightMinutes.toLocaleString("en-US")} browser minutes`);
     expect(first).toContain(`${limits.k6VuMinutes} virtual-user minutes`);
     expect(first).toContain(`${limits.k6MaxVus} virtual users per run`);
   });
@@ -24,7 +24,7 @@ describe("trial copy", () => {
     const text = trialHighlights().join(" | ");
     const v = trialValues();
     for (const needle of [v.maxMonitors, v.maxStatusPages, v.playwrightMinutes, v.k6VuMinutes, v.sreInvestigations, v.triageRuns, v.aiCredits]) {
-      expect(text).toContain(String(needle));
+      expect(text).toContain(needle.toLocaleString("en-US"));
     }
   });
 
