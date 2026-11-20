@@ -276,15 +276,19 @@ describe("AI endpoint monitor", () => {
       config: { aiEndpoint: { model: "gpt-4o-mini" } }, recentResults: [result({ ai })], ...extra,
     }) as never;
 
-  it("shows first token, tokens per call and served model, with host and model as the subtitle", async () => {
+  it("keeps first token, tokens and models in the AI details popover, with host and model as the subtitle", async () => {
     mockResults = [result({ ai })];
     try {
       render(<MonitorDetailClient monitor={aiMonitor()} />);
+      expect(screen.queryByTestId("ai-endpoint-panel")).toBeNull();
+      fireEvent.click(screen.getByTestId("ai-endpoint-button"));
       expect(screen.getByTestId("ai-stat-first-token")).toHaveTextContent("First token");
       expect(screen.getByTestId("ai-stat-first-token")).toHaveTextContent("420");
       expect(screen.getByTestId("ai-stat-tokens")).toHaveTextContent("Tokens per call");
       expect(screen.getByTestId("ai-stat-tokens")).toHaveTextContent("1,234");
       expect(screen.getByTestId("ai-stat-served-model")).toHaveTextContent("gpt-4o-mini-2024-07-18");
+      expect(screen.getByTestId("ai-stat-requested-model")).toHaveTextContent("gpt-4o-mini");
+      expect(screen.getByTestId("ai-stat-token-split")).toHaveTextContent("15 / 6");
       expect(screen.getByTestId("monitor-ai-subtitle")).toHaveTextContent("api.openai.com · gpt-4o-mini");
       expect(screen.getByRole("columnheader", { name: "First token" })).toBeInTheDocument();
       expect(screen.getByRole("columnheader", { name: "Tokens" })).toBeInTheDocument();
@@ -302,6 +306,7 @@ describe("AI endpoint monitor", () => {
     mockResults = [fractional];
     try {
       render(<MonitorDetailClient monitor={aiMonitor({ recentResults: [fractional] })} />);
+      fireEvent.click(screen.getByTestId("ai-endpoint-button"));
       expect(screen.getByTestId("ai-stat-first-token")).toHaveTextContent("823 ms");
       expect(screen.getByTestId("ai-stat-first-token")).not.toHaveTextContent("823.4");
       expect(chartProps?.data[0].firstToken).toBe(823);
@@ -312,13 +317,15 @@ describe("AI endpoint monitor", () => {
 
   it("shows dashes before the first check and ignores any stored aiEndpointState", () => {
     render(<MonitorDetailClient monitor={aiMonitor({ recentResults: [], config: { aiEndpoint: { model: "m" }, aiEndpointState: { lastServedModel: "stored-model" } } })} />);
+    fireEvent.click(screen.getByTestId("ai-endpoint-button"));
+    expect(screen.getByTestId("ai-endpoint-panel")).toHaveTextContent("Shown after the first check.");
     expect(screen.getByTestId("ai-stat-served-model")).toHaveTextContent("—");
     expect(screen.getByTestId("ai-stat-first-token")).toHaveTextContent("—");
   });
 
   it("adds nothing for a plain HTTP monitor", () => {
     render(<MonitorDetailClient monitor={{ ...(monitor as object), type: "http_request", config: { method: "GET" } } as never} />);
-    expect(screen.queryByTestId("ai-stat-first-token")).toBeNull();
+    expect(screen.queryByTestId("ai-endpoint-button")).toBeNull();
     expect(screen.queryByTestId("monitor-ai-subtitle")).toBeNull();
     expect(screen.queryByRole("columnheader", { name: "First token" })).toBeNull();
     expect(screen.queryByRole("columnheader", { name: "Tokens" })).toBeNull();

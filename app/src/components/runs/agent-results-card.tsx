@@ -1,6 +1,7 @@
-import { Bot } from "lucide-react";
+import { AlertCircle, Bot } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Skeleton } from "@/components/ui/skeleton";
 import { typeText } from "@/lib/type-tones";
 
@@ -31,18 +32,30 @@ function Stat({ label, value }: { label: string; value: string }) {
   );
 }
 
-/** Text-only summary of agent tests (runs.metadata.agent). Renders nothing when the run has none. */
-export function AgentResultsCard({ agent, loading = false, error = false }: { agent?: AgentRunSummary | null; loading?: boolean; error?: boolean }) {
+/** Agent test summary (runs.metadata.agent) behind a header button, like the monitor detail popovers, so the report keeps its height. Renders nothing when the run has none. */
+export function AgentResultsButton({ agent, loading = false, error = false }: { agent?: AgentRunSummary | null; loading?: boolean; error?: boolean }) {
   if (!loading && !error && !agent?.tests?.length) return null;
+  const failing = !loading && !error && agent?.tests.some((t) => t.passRate < 1);
   return (
-    <Card className="mb-4" data-testid="agent-results-card">
-      <CardHeader className="pb-2">
-        <CardTitle className="flex items-center gap-2 text-base">
-          <Bot className={`h-4 w-4 ${typeText("test", "agent")}`} aria-hidden="true" />
+    <Popover>
+      <PopoverTrigger asChild>
+        <Button variant="outline" size="sm" className="h-9 gap-1.5 px-3" data-testid="agent-results-button">
+          {failing ? (
+            <AlertCircle className="h-4 w-4 text-failure" aria-hidden="true" />
+          ) : (
+            <Bot className={`h-4 w-4 ${typeText("test", "agent")}`} aria-hidden="true" />
+          )}
           Agent results
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-4">
+          {failing && <span className="sr-only"> (some attempts failed)</span>}
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent
+        align="end"
+        className="max-h-[min(70vh,36rem)] w-[min(32rem,calc(100vw-2rem))] space-y-4 overflow-y-auto"
+        aria-label="Agent results"
+        data-testid="agent-results-card"
+      >
+        <h4 className="text-sm font-semibold">Agent results</h4>
         {loading ? (
           <Skeleton className="h-16 w-full" data-testid="agent-results-loading" />
         ) : error ? (
@@ -51,7 +64,7 @@ export function AgentResultsCard({ agent, loading = false, error = false }: { ag
           agent?.tests.map((t, i) => (
             <section key={`${t.testId ?? t.title}-${i}`} className="space-y-2" data-testid="agent-results-test">
               <h3 className="break-words text-sm font-medium">{t.title}</h3>
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+              <div className="grid grid-cols-2 gap-3">
                 <Stat label="Pass rate" value={`${Math.round(t.passRate * 100)}%`} />
                 <Stat label="Attempts" value={`${t.passed} of ${t.attempts} passed`} />
                 <Stat label="Tokens" value={String((t.totalTokens ?? 0) + (t.judgeTokens ?? 0))} />
@@ -84,7 +97,7 @@ export function AgentResultsCard({ agent, loading = false, error = false }: { ag
             </section>
           ))
         )}
-      </CardContent>
-    </Card>
+      </PopoverContent>
+    </Popover>
   );
 }

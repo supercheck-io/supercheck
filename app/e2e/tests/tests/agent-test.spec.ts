@@ -66,6 +66,9 @@ test.describe('Agent test @tests', () => {
       expect(stub.requests()).toBeGreaterThan(0);
 
       await page.goto(`/runs/${runId}`);
+      await waitForHydration(page);
+      // The summary sits behind the header's Agent results button.
+      await page.getByTestId('agent-results-button').click({ timeout: 30_000 });
       const card = page.getByTestId('agent-results-card');
       await expect(card).toBeVisible({ timeout: 30_000 });
       await expect(card.getByText('100%')).toBeVisible();
@@ -89,6 +92,9 @@ test.describe('Agent test @tests', () => {
       expect(((await (await request.get(`/api/runs/${runId}`)).json()) as { status: string }).status).toBe('failed');
 
       await page.goto(`/runs/${runId}`);
+      await waitForHydration(page);
+      // The summary sits behind the header's Agent results button.
+      await page.getByTestId('agent-results-button').click({ timeout: 30_000 });
       const card = page.getByTestId('agent-results-card');
       await expect(card).toBeVisible({ timeout: 30_000 });
       await expect(card.getByText('0%')).toBeVisible();
