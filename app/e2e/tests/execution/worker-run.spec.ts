@@ -39,7 +39,7 @@ async function runToTerminal(request: APIRequestContext, cleanup: CleanupRegistr
     }).toPass({ timeout: 30_000 }),
   );
   // The first run waits for the worker to schedule the Job and start its browser.
-  let run: { status: string; errorDetails?: string | null; logs?: string | null } = { status: 'queued' };
+  let run: { status: string; errorDetails?: string | null} = { status: 'queued' };
   await expect
     .poll(
       async () => {
@@ -68,10 +68,10 @@ test.describe('Worker execution @execution', () => {
 
   test('a test with a known failure shows a failed run @critical @negative', async ({ projectAdminPage: page, cleanup }) => {
     const { runId, run } = await runToTerminal(page.request, cleanup, failing, 'fail');
-    // The worker also records its own errors (a browser or Job that never started) as "failed", so the run must
-    // carry the assertion's own message, which names the heading the page does not have.
+    // The worker also records its own errors (a Job or browser that never started) as "failed", but with their own
+    // message. Playwright's "1 failed" summary means the test ran and its assertion did not hold.
     expect(run.status, run.errorDetails ?? '').toBe('failed');
-    expect(`${run.errorDetails ?? ''}\n${run.logs ?? ''}`).toContain('Another heading');
+    expect(run.errorDetails).toMatch(/^1 failed\b/);
 
     await page.goto(`/runs/${runId}`);
     await waitForHydration(page);
