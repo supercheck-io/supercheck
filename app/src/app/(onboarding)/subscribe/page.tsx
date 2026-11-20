@@ -8,6 +8,7 @@ import { useProjectContextSafe } from "@/hooks/use-project-context";
 import { fetchProjectSetup } from "@/hooks/use-project-setup";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
+import { formatOveragePrice } from "@/lib/billing/pricing-defaults";
 import { ENTERPRISE_PLAN, PLAN_BASICS, planFeatureList } from "@/lib/billing/pricing-copy";
 import catalog from "@/lib/billing/plan-catalog.json";
 import { useEffect, useRef, useState, useCallback } from "react";
@@ -520,14 +521,14 @@ export default function SubscribePage() {
                   k6VuMinutesIncluded: Number(plan.features.k6VuMinutes),
                   aiCreditsIncluded: Number(plan.features.aiCredits),
                   sreInvestigationUnitsIncluded: Number(plan.features.sreInvestigationUnits),
-                  // The pricing API does not return the cap; it is the catalog default for new subscriptions.
+                  // The default cap a new subscription starts with; owners can change it later.
                   defaultSpendingLimitCents: catalog[plan.id === "pro" ? "pro" : "plus"].limits.defaultSpendingLimitCents,
                   runningCapacity: Number(plan.features.concurrentExecutions),
                   maxTeamMembers: Number(plan.features.teamMembers),
                   maxProjects: Number(plan.features.projects),
                   maxStatusPages: Number(plan.features.statusPages),
                   maxStatusPageSubscribers: Number(plan.features.statusPageSubscribers ?? 0),
-                })}
+                }, `${formatOveragePrice(plan.overagePricing.playwrightMinutes, "min", true)} Playwright, ${formatOveragePrice(plan.overagePricing.k6VuMinutes, "VU-min")} k6, ${formatOveragePrice(plan.overagePricing.sreInvestigationUnits, "investigation", true)} AI SRE`)}
                 ctaText={
                   expired
                     ? `Resubscribe to ${plan.name}`

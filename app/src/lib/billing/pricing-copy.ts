@@ -113,7 +113,8 @@ export interface PlanFeatureLimits {
 const fmt = (value: number | string) => Number(value).toLocaleString("en-US");
 
 /** The plan card feature lines, shared by the in-app plan picker and the marketing pricing page. */
-export function planFeatureList(id: "plus" | "pro", limits: PlanFeatureLimits): PlanFeature[] {
+/** `overageRates` (e.g. "$0.01/min Playwright") is shown under the cap where no overage table is on the page. */
+export function planFeatureList(id: "plus" | "pro", limits: PlanFeatureLimits, overageRates?: string): PlanFeature[] {
   const members = `${fmt(limits.maxTeamMembers)} team members, ${fmt(limits.maxProjects)} projects`;
   return [
     `${fmt(limits.maxMonitors)} monitors`,
@@ -123,8 +124,8 @@ export function planFeatureList(id: "plus" | "pro", limits: PlanFeatureLimits): 
     },
     `${fmt(limits.k6VuMinutesIncluded)} k6 VU-minutes/month`,
     `${fmt(limits.aiCreditsIncluded)} AI credits/month, fair use`,
-    `${fmt(limits.sreInvestigationUnitsIncluded)} AI SRE investigations/month`,
-    { text: `${usd(limits.defaultSpendingLimitCents)} default overage cap`, hint: "Monthly cap with a hard stop. Owners can change it." },
+    `${fmt(limits.sreInvestigationUnitsIncluded)} completed AI SRE investigations/month`,
+    { text: `${usd(limits.defaultSpendingLimitCents)} default overage cap`, hint: overageRates ? `Overage: ${overageRates}. Hard stop at the cap; owners can change it.` : "Monthly cap with a hard stop. Owners can change it." },
     `${fmt(limits.runningCapacity)} concurrent runs`,
     id === "pro"
       ? { text: members, hint: `Then ${extraMember} per extra member per month, prorated, up to ${fmt(catalog.pro.maxTotalMembers)} members` }

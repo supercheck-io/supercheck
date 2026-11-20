@@ -134,7 +134,7 @@ describe("signup plan selection", () => {
       screen.getAllByText("500 AI credits/month, fair use"),
     ).toHaveLength(2);
     expect(
-      screen.getAllByText("100 AI SRE investigations/month"),
+      screen.getAllByText("100 completed AI SRE investigations/month"),
     ).toHaveLength(2);
     expect(screen.queryByText("Most Popular")).not.toBeInTheDocument();
     expect(screen.getByText("Popular")).toBeVisible();
@@ -142,6 +142,7 @@ describe("signup plan selection", () => {
     expect(screen.getAllByText("5 concurrent runs")).toHaveLength(2);
     expect(screen.getByText("$70 default overage cap")).toBeVisible();
     expect(screen.getByText("$300 default overage cap")).toBeVisible();
+    expect(screen.getAllByText(/^Overage: \$0\.01\/min Playwright, \$2\.00 per 1,000 VU-min k6, \$0\.25\/investigation AI SRE/)).toHaveLength(2);
     expect(screen.getByText(/Priced per organization/)).toBeVisible();
     expect(screen.getByText(/Prices in USD, before tax/)).toBeVisible();
     expect(
@@ -361,8 +362,8 @@ describe("signup plan selection", () => {
         screen.getByRole("heading", { name: "Restore your subscription" }),
       ).toBeVisible();
       expect(
-        screen.queryByText(/activate your organization/),
-      ).not.toBeInTheDocument();
+        screen.getByText("Your subscription has ended. Choose a plan below to restore access."),
+      ).toBeVisible();
     },
   );
 

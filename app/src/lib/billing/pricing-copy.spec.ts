@@ -10,6 +10,9 @@ describe("planFeatureList", () => {
     expect(plus).toContainEqual(expect.objectContaining({ text: "$70 default overage cap" }));
     expect(plus.at(-1)).toBe("Email support");
     expect(pro.at(-1)).toBe("Priority email support");
+    expect(planFeatureList("plus", catalog.plus.limits, "$0.01/min Playwright")).toContainEqual(
+      expect.objectContaining({ hint: expect.stringContaining("Overage: $0.01/min Playwright") }),
+    );
   });
 });
 
