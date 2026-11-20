@@ -120,6 +120,7 @@ function handleCors(request: NextRequest): NextResponse | null {
 // Pre-compile regex patterns for performance
 const VALID_SUBDOMAIN_PATTERN = /^(?:[a-f0-9]{32}|[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})$/i;
 const PORT_PATTERN = /:\d+$/;
+const STATUS_HOST_API = /^\/api\/(?:status-pages\/(?:[^/]+\/(?:rss|ical|badge)|unsubscribe(?:\/[^/]+)?)|assets\/status-pages\/.+)\/?$/;
 const IPV4_PATTERN = /^(?:\d{1,3}\.){3}\d{1,3}$/;
 
 // Cache for hostname parsing (simple LRU-style with max size)
@@ -145,7 +146,8 @@ function getCleanHostname(request: NextRequest): string {
   }
 
   // Remove port if present
-  const cleanHostname = rawHostname.replace(PORT_PATTERN, "").toLowerCase();
+  // A trailing dot is the same DNS name ("staging.example.com." == "staging.example.com").
+  const cleanHostname = rawHostname.replace(PORT_PATTERN, "").toLowerCase().replace(/\.$/, "");
 
   // Cache with eviction
   if (hostnameCache.size >= HOSTNAME_CACHE_MAX_SIZE) {
@@ -266,6 +268,35 @@ export function proxy(request: NextRequest) {
   // Fast path: Skip proxy for internal Next.js routes
   if (pathname.startsWith("/_next/")) {
     return NextResponse.next();
+  }
+
+  // Any name under the status page domain that is neither the app nor a status page (e.g. "staging." or
+  // "login." reaching us through the wildcard DNS record) must not serve the app or its API: it would be a
+  // working look-alike of the real sign-in page. Checked before CORS so /api paths are covered too.
+  const requestHost = getCleanHostname(request);
+  const statusPageDomain = getStatusPageDomainForRouting();
+  if (
+    statusPageDomain &&
+    requestHost.endsWith(`.${statusPageDomain}`) &&
+    requestHost !== getMainAppHostname() &&
+    !extractSubdomain(requestHost)
+  ) {
+    const response = new NextResponse("Not Found", { status: 404 });
+    addSecurityHeaders(response);
+    return response;
+  }
+
+  // Status page and custom-domain hosts get only the public status page API (feeds, unsubscribe, page assets),
+  // never the rest of /api, so they cannot act as a second origin for sign-in or the authenticated API.
+  if (
+    pathname.startsWith("/api/") &&
+    !STATUS_HOST_API.test(pathname) &&
+    requestHost !== getMainAppHostname() &&
+    (extractSubdomain(requestHost) || isCustomDomain(requestHost, getMainAppHostname() ?? ""))
+  ) {
+    const response = new NextResponse("Not Found", { status: 404 });
+    addSecurityHeaders(response);
+    return response;
   }
 
   // Handle CORS for API routes first

@@ -52,11 +52,47 @@ describe("proxy custom domain routing", () => {
     );
   });
 
-  it("keeps ordinary service subdomains out of status routing", async () => {
+  it.each(["www", "staging", "login"])("answers 404 for the non-status-page subdomain %s instead of serving the app", async (label) => {
     process.env.STATUS_PAGE_DOMAIN = "supercheck.example.com";
     const { proxy } = await import("./proxy");
-    const request = new NextRequest("https://www.supercheck.example.com/", { headers: { host: "www.supercheck.example.com" } });
-    expect(proxy(request).headers.get("x-middleware-rewrite")).toBeNull();
+    for (const path of ["/", "/sign-in", "/api/auth/get-session"]) {
+      const request = new NextRequest(`https://${label}.supercheck.example.com${path}`, { headers: { host: `${label}.supercheck.example.com` } });
+      const response = proxy(request);
+      expect(response.status).toBe(404);
+      expect(response.headers.get("x-middleware-rewrite")).toBeNull();
+    }
+  });
+
+  it("treats a trailing-dot host like the plain name", async () => {
+    process.env.STATUS_PAGE_DOMAIN = "supercheck.example.com";
+    const { proxy } = await import("./proxy");
+    const response = proxy(new NextRequest("https://staging.supercheck.example.com./api/auth/get-session", { headers: { host: "staging.supercheck.example.com." } }));
+    expect(response.status).toBe(404);
+  });
+
+  it.each([
+    ["f134b5f9f2b048069deaf7cfb924a0b3.supercheck.example.com"],
+    ["status.customer.com"],
+  ])("on status host %s serves only the public status page API", async (host) => {
+    process.env.STATUS_PAGE_DOMAIN = "supercheck.example.com";
+    const { proxy } = await import("./proxy");
+    const call = (path: string) => proxy(new NextRequest(`https://${host}${path}`, { headers: { host } })).status;
+    expect(call("/api/auth/get-session")).toBe(404);
+    expect(call("/api/auth/sign-in/email")).toBe(404);
+    expect(call("/api/projects")).toBe(404);
+    expect(call("/api/status-pages/f134b5f9f2b048069deaf7cfb924a0b3/rss")).toBe(200);
+    expect(call("/api/status-pages/f134b5f9f2b048069deaf7cfb924a0b3/ical")).toBe(200);
+    expect(call("/api/status-pages/unsubscribe/tok")).toBe(200);
+    expect(call("/api/assets/status-pages/abc/logo.png")).toBe(200);
+    expect(call("/api/status-pages/f134b5f9f2b048069deaf7cfb924a0b3")).toBe(404);
+  });
+
+  it("still serves the main app when its host sits under the status page domain", async () => {
+    process.env.STATUS_PAGE_DOMAIN = "supercheck.dev";
+    const { proxy } = await import("./proxy");
+    const response = proxy(new NextRequest("https://app.supercheck.dev/sign-in", { headers: { host: "app.supercheck.dev" } }));
+    expect(response.status).toBe(200);
+    expect(response.headers.get("x-middleware-rewrite")).toBeNull();
   });
 
   it("does not treat custom domains that merely start with localhost as the app", async () => {
@@ -123,7 +159,7 @@ describe("proxy CORS for the MCP endpoint", () => {
     process.env = {
       ...originalEnv,
       SELF_HOSTED: "true",
-      APP_URL: "https://app.supercheck.dev",
+      APP_URL: "https://app.example.com",
       BETTER_AUTH_URL: "https://app.example.com",
       CORS_ALLOWED_ORIGINS: "https://shared.example.com",
       MCP_ALLOWED_ORIGINS: "https://inspector.example.com",

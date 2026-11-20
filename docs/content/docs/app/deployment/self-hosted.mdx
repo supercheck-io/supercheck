@@ -227,7 +227,7 @@ To issue the wildcard certificate with DNS-01, work from `deploy/docker`:
 <Steps>
 <Step>
 
-Add a wildcard DNS record `*.STATUS_PAGE_DOMAIN` pointing at the server (`STATUS_PAGE_DOMAIN` defaults to your app domain).
+Add a wildcard DNS record `*.STATUS_PAGE_DOMAIN` pointing at the server (`STATUS_PAGE_DOMAIN` defaults to your app domain). Other names under `STATUS_PAGE_DOMAIN` that are not the app host or a status page ID answer 404.
 
 </Step>
 <Step>
