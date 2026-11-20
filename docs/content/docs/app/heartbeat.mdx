@@ -46,11 +46,15 @@ Choose notification channels, save, then copy the ping URL into your job.
 </Step>
 </Steps>
 
+![Create a heartbeat monitor](/screenshots/create-heartbeat-monitor.png)
+
 From the terminal, use `supercheck monitor create --name "Nightly backup" --type heartbeat --every 1d --grace 1h`. The CLI prints the URL once and omits it with `--json` or `--quiet`. See [CLI commands](/docs/cli/commands#monitors).
 
 ## The ping URL
 
 The URL looks like `https://<your-app>/api/heartbeat/hb_<32 characters>`. Anyone holding it can ping the monitor, so keep it in your job's secret store.
+
+![Heartbeat monitor with ping URL, ping history and availability](/screenshots/heartbeat-monitor-details.png)
 
 - **Reveal** and **Copy** show it again. Editors and above see it; viewers see it masked.
 - **Rotate URL** issues a new URL and the old one stops working at once.

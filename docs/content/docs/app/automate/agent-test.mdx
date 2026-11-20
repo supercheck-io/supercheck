@@ -18,12 +18,14 @@ Open **Create → Agent Test**. The **Quick start** template calls a tool on Dee
 Select **Run**. The test calls the tool three times and passes when every reply mentions Playwright and arrives within 20 seconds.
 </Step>
 <Step>
-Open the run. The **Agent results** card shows the pass rate, slowest call, tool called and any failures. Token counts appear for chat agents. MCP servers report none.
+Open the run and select **Agent results** in the header. It shows the pass rate, slowest call, tool called and any failures, and turns red when an attempt failed. Token counts appear for chat agents. MCP servers report none.
 </Step>
 <Step>
 Select **Templates** and pick one for your own agent. Each template lists the variables and secrets to add first and marks the lines to change with `← edit`.
 </Step>
 </Steps>
+
+![Agent test in the editor](/screenshots/agent-test-editor.png)
 
 ## How a run works
 
@@ -33,7 +35,7 @@ flowchart LR
     A[Agent test script] --> B[Run in the cloud sandbox]
     B --> C[agent.connect and send call your agent]
     C --> D[expect and repeat decide pass or fail]
-    D --> E[Agent results card and report]
+    D --> E[Agent results and report]
     E --> F[Save, add to a job or monitor]
 
     classDef action fill:#1d4ed8,stroke:#60a5fa,color:#fff
@@ -98,7 +100,7 @@ test('support bot states the refund policy', async ({ agent }) => {
 | `agent.judge(text, rubric, { url, apiKey, model })` | Asks your own OpenAI-compatible model to grade the text against the rubric. Returns `{ pass, reason }` |
 | `expect` | Playwright's `expect`, unchanged |
 
-The run page shows an **Agent results** card with the pass rate, attempts, tokens, slowest attempt, tools called and the failures. Failure messages are clipped to 200 characters and may quote the agent's reply. Prompts and replies are left out of the run record, the API and MCP, but the saved Playwright report keeps the full transcript (with your project secrets, API key and credential headers redacted, also when the agent echoes them URL- or base64-encoded; values under 4 characters are not redacted, and a common value such as `true` also blanks matching ordinary text), like any other report content.
+The **Agent results** button on the run page opens a summary with the pass rate, attempts, tokens, slowest attempt, tools called and the failures. Failure messages are clipped to 200 characters and may quote the agent's reply. Prompts and replies are left out of the run record, the API and MCP, but the saved Playwright report keeps the full transcript (with your project secrets, API key and credential headers redacted, also when the agent echoes them URL- or base64-encoded; values under 4 characters are not redacted, and a common value such as `true` also blanks matching ordinary text), like any other report content.
 
 ## Limits
 
