@@ -85,6 +85,7 @@ app/.yarn/*
 app/coverage
 app/e2e/test-results/
 app/e2e/playwright-report/
+app/e2e/docs-shots-output/
 app/e2e/auth-state.json
 test-results/
 # Keep the Next.js API route sources trackable (path shares the test-results name).
