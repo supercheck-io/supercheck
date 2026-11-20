@@ -420,7 +420,7 @@ After a Redis restart or failover, the app and worker detect queue consumers tha
 sudo docker compose restart app worker
 ```
 
-Kubernetes installs restart the pod on the liveness probe. A Redis or database outage alone never fails the probe.
+A Redis or database outage alone never fails these endpoints.
 
 </Accordion>
 <Accordion title="Compose says a secret is missing from .env" id="missing-secret">

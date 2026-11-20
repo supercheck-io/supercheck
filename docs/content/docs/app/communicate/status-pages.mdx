@@ -236,7 +236,7 @@ A new webhook stays **Pending** until the endpoint proves it owns the URL. The s
 
 Supercheck sends one `POST` (10-second timeout) with `type` `supercheck.webhook.verification`, a single-use `token`, `statusPageId` and `createdAt`. Reply with any `2xx` and echo the token in the `x-supercheck-verification` header or as `{ "challenge": "<token>" }` in a body under 4 KiB. Otherwise it stays pending; resend the challenge from **Subscribers**.
 
-If the endpoint never answers, a public visitor only sees **Could not reach the endpoint**. When you resend verification from **Subscribers**, you also see a coarse reason: **Endpoint timed out**, **Connection refused**, or **Host could not be resolved to an allowed public address**.
+If the endpoint never answers, a public visitor only sees **Could not reach the endpoint**. When you resend verification from **Subscribers**, you also see a coarse reason: **Endpoint timed out**, **Connection refused** or **Host could not be resolved to an allowed public address**. A non-2xx answer shows its HTTP status, and a 2xx answer without the token says so.
 
 Deliveries are signed in `X-Webhook-Signature` (HMAC-SHA256 of the raw JSON body) with a secret shown once after subscribing; rotate it in **Subscribers**. Delivery is at least once, so deduplicate by `incident_update_id`.
 
