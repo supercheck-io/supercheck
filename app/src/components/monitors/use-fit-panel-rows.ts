@@ -18,10 +18,20 @@ export function rowsThatFit(panelPx: number, rowPx = ROW_PX, headPx = HEAD_PX, n
 
 const DEBOUNCE_MS = 150;
 
+/** Median, so one taller row (a wrapped cell, an error message) never changes the typical row height. */
+function median(values: number[]): number {
+  const sorted = values.filter((v) => v > 0).sort((a, b) => a - b);
+  return sorted.length ? sorted[Math.floor((sorted.length - 1) / 2)] : 0;
+}
+
 /**
  * Reports how many rows fit the panel's own height (desktop only). The panel must have a height that does not
  * depend on its rows (a fixed flex child or an absolutely filled box), or more rows would grow it forever.
  * Attach the returned ref to the element that holds the table and pager.
+ *
+ * Fit invariant: the size never comes from the rows it produces. The row height is the median of the rendered
+ * rows, taken once when the first real rows appear and again only on a panel resize. Row content changes (a
+ * page change, a taller row) never re-fit, so the page size cannot flip between two values and refetch each time.
  */
 export function useFitPanelRows(onFitRows: ((rows: number) => void) | undefined, rowSelector: string) {
   const panelRef = useRef<HTMLDivElement>(null);
@@ -30,18 +40,24 @@ export function useFitPanelRows(onFitRows: ((rows: number) => void) | undefined,
     if (!onFitRows || !panel || typeof ResizeObserver === "undefined" || typeof window.matchMedia !== "function") return;
     const desktop = window.matchMedia("(min-width: 1024px)");
     let last = 0;
-    // Skeletons replacing the rows (a page change) don't match rowSelector; keep the last real height meanwhile.
-    let lastRowPx = 0;
+    let fittedHeight = 0;
+    // 0 until real rows have rendered; skeletons don't match rowSelector, so the last real height is kept.
+    let rowPx = 0;
     let timer: ReturnType<typeof setTimeout> | undefined;
+    let rowsObserver: MutationObserver | undefined;
     const measure = () => {
       if (!desktop.matches) return;
       const head = panel.querySelector<HTMLElement>("thead");
       const pager = panel.querySelector<HTMLElement>("[data-fit-pager]");
-      // The tallest rendered row, so one taller row (a wrapped cell, zoomed text) never pushes the last row out.
-      const measuredRowPx = Math.max(0, ...Array.from(panel.querySelectorAll<HTMLElement>(rowSelector), (r) => r.offsetHeight));
-      if (measuredRowPx) lastRowPx = measuredRowPx;
-      const rowPx = lastRowPx || ROW_PX;
-      const rows = rowsThatFit(panel.clientHeight, rowPx, head?.offsetHeight || HEAD_PX, pager?.offsetHeight || NAV_PX);
+      const measured = median(Array.from(panel.querySelectorAll<HTMLElement>(rowSelector), (r) => r.offsetHeight));
+      if (measured) {
+        rowPx = measured;
+        // The real height is known: from here only a panel resize re-fits.
+        rowsObserver?.disconnect();
+        rowsObserver = undefined;
+      }
+      fittedHeight = panel.clientHeight;
+      const rows = rowsThatFit(fittedHeight, rowPx || ROW_PX, head?.offsetHeight || HEAD_PX, pager?.offsetHeight || NAV_PX);
       // Only a real change in page size reaches the caller, so the results are not refetched for nothing.
       if (rows !== last) {
         last = rows;
@@ -53,11 +69,16 @@ export function useFitPanelRows(onFitRows: ((rows: number) => void) | undefined,
       clearTimeout(timer);
       timer = setTimeout(measure, DEBOUNCE_MS);
     };
-    const observer = new ResizeObserver(schedule);
+    // The initial notification (and any other with the same height) is not a resize.
+    const observer = new ResizeObserver(() => {
+      if (panel.clientHeight !== fittedHeight) schedule();
+    });
     observer.observe(panel);
-    // New rows (a first load, the next page) can be taller than the ones measured without resizing the fixed panel.
-    const rowsObserver = typeof MutationObserver === "undefined" ? undefined : new MutationObserver(schedule);
-    rowsObserver?.observe(panel, { childList: true, subtree: true });
+    // The first rows render after mount and can differ from the fallback height without resizing the fixed panel.
+    if (!rowPx && typeof MutationObserver !== "undefined") {
+      rowsObserver = new MutationObserver(schedule);
+      rowsObserver.observe(panel, { childList: true, subtree: true });
+    }
     return () => {
       clearTimeout(timer);
       observer.disconnect();
