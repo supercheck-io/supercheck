@@ -1,12 +1,11 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ArrowRight, Bot, Braces, CalendarClock, Globe, Lock, Network, Share2, ShieldHalf, type LucideIcon } from "lucide-react";
+import { ArrowUpRight } from "lucide-react";
 import { OG_IMAGE } from "../../lib/assets";
 import { SiteHeader } from "../../components/site-header";
 import { SiteFooter } from "../../components/site-footer";
-import { IconChip } from "../../components/landing/ui";
+import { ToolChip } from "../../components/tools/tool-chip";
 import { tools } from "../../lib/tools";
-import type { ToolId } from "../../lib/tools-funnel";
 
 const title = "Free website and API checking tools | Supercheck";
 const description = "Eight quick checks for any public site: uptime, API, HTTPS, security headers, AI agent readiness, DNS, social preview and domain expiry. No account needed.";
@@ -19,17 +18,6 @@ export const metadata: Metadata = {
   twitter: { card: "summary_large_image", title, description, images: [OG_IMAGE] },
 };
 
-const TOOL_ICONS: Record<ToolId, LucideIcon> = {
-  uptime: Globe,
-  api: Braces,
-  https: Lock,
-  headers: ShieldHalf,
-  agents: Bot,
-  dns: Network,
-  social: Share2,
-  domain: CalendarClock,
-};
-
 export default function ToolsHub() {
   return (
     <div className="min-h-screen w-full overflow-x-clip bg-fd-background text-fd-foreground">
@@ -39,22 +27,22 @@ export default function ToolsHub() {
           <p className="text-sm font-medium text-monitor">Free tools</p>
           <h1 className="mt-3 max-w-3xl text-balance text-4xl font-semibold tracking-tight sm:text-5xl">Check a site in seconds</h1>
           <p className="mt-5 max-w-2xl text-pretty text-lg leading-relaxed text-fd-muted-foreground">
-            Eight quick checks for any public site. No account needed. Each runs once from Cloudflare&apos;s edge and says plainly what one check can&apos;t tell you.
+            Eight quick checks for any public site. No account needed.
           </p>
           <ul className="mt-12 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {tools.map((tool) => (
               <li key={tool.slug}>
                 <Link
                   href={`/tools/${tool.slug}`}
-                  className="group flex h-full flex-col rounded-xl border border-fd-border bg-fd-card p-5 transition-colors hover:border-fd-primary/50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fd-primary"
+                  className="group relative flex h-full flex-col rounded-xl border border-fd-border bg-fd-card p-5 transition-colors hover:border-fd-foreground/25 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fd-primary"
                 >
-                  <IconChip icon={TOOL_ICONS[tool.id]} area={tool.id === "agents" ? "ai" : "monitor"} />
+                  <ToolChip tool={tool.id} />
                   <span className="mt-4 font-semibold">{tool.name}</span>
-                  <span className="mt-1.5 flex-1 text-sm leading-relaxed text-fd-muted-foreground">{tool.summary}</span>
-                  <span className="mt-4 inline-flex items-center gap-1 text-sm font-medium text-fd-primary">
-                    Open
-                    <ArrowRight className="size-3.5 transition-transform group-hover:translate-x-0.5 motion-reduce:transition-none" aria-hidden="true" />
-                  </span>
+                  <span className="mt-1.5 text-sm leading-relaxed text-fd-muted-foreground">{tool.summary}</span>
+                  <ArrowUpRight
+                    className="absolute top-5 right-5 size-4 text-fd-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100 motion-reduce:transition-none"
+                    aria-hidden="true"
+                  />
                 </Link>
               </li>
             ))}

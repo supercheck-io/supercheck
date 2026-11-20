@@ -4,11 +4,9 @@ description: Set up notification channels, thresholds and warnings for failed ch
 icon: BellRing
 ---
 
-Notifications tell your team when monitors fail, jobs break or services recover. Set up a channel, attach it to a monitor or job, and use thresholds to avoid noise.
+Notifications tell your team when monitors fail, jobs break or services recover. **Communicate → Notifications** has two tabs: **Channels** and **Delivery history**.
 
 ![Notification Channels](/screenshots/notification-channels.png)
-
-**Communicate → Notifications** has two tabs: **Channels** and **Delivery history**. Each failure alert also opens an incident unless you turn that off in the check's **Incidents** settings. See [How alerts become incidents](/docs/app/investigate/incidents#how-alerts-become-incidents).
 
 ## Set up a channel
 
@@ -16,24 +14,32 @@ Notifications tell your team when monitors fail, jobs break or services recover.
 
 ![Create a notification channel](/screenshots/notification-channel-dialog.png)
 
-Email uses your SMTP provider. The others use the service's webhook or bot token. Paging services (PagerDuty, Jira Service Management, Splunk On-Call, Better Stack, incident.io) are webhook channels with a preset: Supercheck opens a page when a check fails and resolves it on recovery. See [Webhook presets](#webhook-presets).
+Email uses your SMTP provider; the others use the service's webhook or bot token. Paging services (PagerDuty, Jira Service Management, Splunk On-Call, Better Stack, incident.io) are webhook channels with a [preset](#webhook-presets): a failure opens a page and the recovery resolves it.
 
 <Steps>
 <Step>
+### Create the channel
 Open **Communicate → Notifications → Channels** and select **Create channel**.
 </Step>
 <Step>
-Pick the **Channel type** (email, Slack, Teams, Discord, Telegram, a paging service preset or a custom webhook) and enter its credentials (see [Provider configuration](#provider-configuration)).
+### Pick the type and enter its credentials
+Email, Slack, Teams, Discord, Telegram, a paging service preset or a custom webhook. See [Channel settings](#provider-configuration).
 </Step>
 <Step>
+### Test and save
 Select **Test connection**, then save.
-
-Test sends are rate limited per user: email tests allow 5 per 10 minutes and may only target your own address or members of your organization (at most 5 recipients); other channel types allow 20 tests per 10 minutes. A channel used by a monitor or job cannot be deleted until you remove it from them.
 </Step>
 <Step>
-Select the channel in a monitor's or job's **Alert Settings**. Channels linked through the API appear in the monitor's **Alert Settings**. Saving the settings replaces the linked channels with your selection.
+### Attach it
+Select the channel in a monitor's or job's **Alert Settings**. Saving replaces the linked channels with your selection; channels linked through the API show there too.
 </Step>
 </Steps>
+
+| Limit | Value |
+|---|---|
+| Email test sends | 5 per 10 minutes per user, only to your own address or members of your organization, at most 5 recipients |
+| Other test sends | 20 per 10 minutes per user |
+| Deleting a channel | Blocked while a monitor or job uses it; remove it from them first |
 
 ```mermaid
 sequenceDiagram
@@ -57,99 +63,7 @@ sequenceDiagram
     end
 ```
 
-## Alert types
-
-<Tabs items={['Monitors', 'Jobs']}>
-<Tab value="Monitors">
-
-| Alert | Trigger | Severity |
-|-------|---------|----------|
-| **Failure** | Consecutive failures reach threshold | Error |
-| **Recovery** | Consecutive successes reach threshold after the failure threshold was reached | Success |
-| **SSL Expiring** | Website monitor's certificate is within its warning window, has expired, or could not be read for 24 hours | Warning; at most once every 24 hours |
-| **SSL Renewed** | A certificate you were warned about is healthy again: valid with more days left than the warning window, or a later expiry date than the one warned about | Success; once per warning |
-| **Warning** | A warning you turned on for the monitor, such as **Ping is late** on a [heartbeat monitor](/docs/app/heartbeat) | Warning; once per episode, never opens an incident |
-
-A down MCP monitor, including a rejected login, is a normal **Failure** and opens a `sev2` incident by default.
-
-</Tab>
-<Tab value="Jobs">
-
-| Alert | Trigger | Severity |
-|-------|---------|----------|
-| **Failure** | One or more tests in the job failed | Error |
-| **Success** | All tests passed and consecutive successes reach the recovery threshold (optional) | Success |
-| **Timeout** | Job exceeded maximum execution time | Warning |
-
-</Tab>
-</Tabs>
-
-## Threshold configuration
-
-Thresholds keep transient issues such as network blips from alerting.
-
-### Thresholds
-
-**Failure Threshold** is the number of consecutive failures before the first failure alert. **Recovery Threshold** is the number of consecutive healthy checks before the recovery alert after the monitor was down. The app accepts 1–5 for both and the API 1–100. A monitor that was never down, or whose failures stayed below the failure threshold, sends no recovery alert.
-
-**Configuration:** Failure Threshold = 3, Recovery Threshold = 2
-
-| Check | Result | Consecutive Count | Alert Sent |
-|-------|--------|-------------------|------------|
-| 1 | ❌ Fail | 1 failure | — |
-| 2 | ❌ Fail | 2 failures | — |
-| 3 | ❌ Fail | 3 failures ✓ | **Failure Alert** |
-| 4 | ❌ Fail | 4 failures | — |
-| 5 | ✅ Pass | 1 success | — |
-| 6 | ✅ Pass | 2 successes ✓ | **Recovery Alert** |
-
-**Notes:**
-- Check 3: Failure threshold (3) reached → first failure alert sent
-- Check 4: Already alerted; the next reminder waits for the reminder spacing described above
-- Check 5: Status changed to passing, failure counter resets, recovery counter starts
-- Check 6: Recovery threshold (2) reached → recovery alert sent
-
-### SSL alerts
-
-SSL warnings are separate from the monitor's up/down result. Turning on **SSL Check** on a website monitor switches on **Alert on SSL certificate expiration** (you can switch it off). It uses the monitor's **Alert in _N_ days** window and sends at most one warning every 24 hours while the certificate is inside it. A single failed certificate read sends nothing. If the site stays up but the certificate cannot be read for 24 hours, a warning is sent, repeated at most daily.
-
-After a warning, the next check that finds a valid certificate outside the warning window (or with a later expiry date) sends one **SSL certificate renewed (valid until _date_)** notice to the same channels. It appears in delivery history as **SSL Renewed** and is sent once per warning. If the warning was that the certificate could not be read, the notice says **SSL certificate readable again**. Turning off SSL alerts or SSL Check discards a pending notice. The notice does not open or resolve an incident. A failing channel is retried up to 5 times and then skipped. Webhook channels receive it as a resolve event with the same `ssl:` key as the warning.
-
-Failure, recovery, SSL and SSL renewed notices are held back while a scheduled maintenance window covers the monitor, and an SSL renewed notice is sent after the window. Checks still run and count toward uptime.
-
-### Alert limiting
-
-At most **3 failure alerts** go out per failure streak, for monitors and jobs. The first goes out when the failure threshold is reached, then come reminders. Let `N = max(5, 2 × threshold)`.
-
-- **Jobs:** a reminder follows every further `N` failures.
-- **Monitors:** the gap doubles. The first reminder comes `N` failures after the first alert and the second `2N` after that. An alert that cannot be delivered is retried on the next checks for up to `N` checks, and the following gap counts from when it was sent.
-
-The interval is not configurable. A passing run resets the streak, and each recovery sends one alert.
-
-Each channel normally gets an alert once. If one channel fails while others succeed, only the failed channel is retried (up to 5 attempts), and a retried check or several workers evaluating the same alert do not send it twice. In rare failure cases (a worker stopping mid-send, a database error while recording the delivery, or an upgrade) a channel can receive an alert twice, so integrations should de-duplicate on the alert's dedup key.
-
-
-## Warnings
-
-Warnings tell your channels about a problem that is not an outage yet. They never open or resolve an incident, are never sent to paging services (PagerDuty, Jira Service Management, Splunk On-Call, Better Stack, incident.io) and are not counted toward failure or recovery thresholds. They are held back during [maintenance windows](/docs/app/monitor#maintenance-windows).
-
-Turn them on or off per monitor under **Warnings** in the alert settings. Only the warnings that apply to the monitor are listed; the AI endpoint warnings appear only for AI Endpoint Monitors. **Ping is late** is off until you turn it on. The MCP and AI endpoint warnings are on, but the slow and token warnings send nothing until you set their limit.
-
-| Warning | Monitor type | Sent when |
-|---|---|---|
-| **Ping is late** | Heartbeat | A ping has not arrived on time, but the grace period has not ended. Sent once per late period. If the grace period ends without a ping, the monitor goes down and the normal failure alert follows |
-| **Tools changed** (`mcp_tools_changed`) | MCP | The server's tool list, a tool description or an input schema changed since the last check. Sent once per change |
-| **MCP slow** (`mcp_slow`) | MCP | Checks were slower than **Slow after (ms)** for 3 checks in a row. Sent once per slow stretch |
-| **Slow first token** (`ai_slow_first_token`) | AI Endpoint | The first token was slower than **Warn when first token is slower than (ms)** for 3 checks in a row. Sent once per slow stretch |
-| **Model changed** (`ai_model_changed`) | AI Endpoint | The reply came from a different model than the last check. Sent once per new model |
-| **Single failed agent run** (`agent_run_failed`) | Synthetic, agent test | A run of an agent test failed but the failure threshold is not reached yet. On by default. Sent once per failed streak; the incident follows when the threshold is reached |
-| **Tokens high** (`ai_tokens_high`) | AI Endpoint | A reply used more tokens than **Warn when a call uses more tokens than**. Sent once per stretch |
-
-A warning shows as **Warning** in delivery history. Email subjects start with "Warning:", and every message says "This is a warning. No incident was opened." Custom webhooks receive `type: "monitor_warning"`, `severity: "warning"`, `warningKind` (for example `heartbeat_late`), action `trigger` and the dedup key `warning:<monitor id>:<kind>`.
-
-In monitors-as-code, warnings are `alertConfig.warnings`, for example `warnings: { heartbeat_late: true }`.
-
-## Provider configuration
+## Channel settings [#provider-configuration]
 
 <Tabs items={['Email', 'Slack', 'Discord', 'Telegram', 'Microsoft Teams', 'Webhook']}>
 <Tab value="Email">
@@ -159,30 +73,18 @@ Select **Email** and enter the recipients.
 <Accordions>
 <Accordion title="Self-hosted" id="self-hosted-smtp">
 
-For self-hosted deployments, an administrator configures SMTP. Set these variables:
+An administrator configures SMTP. Set `SMTP_USER` and `SMTP_PASSWORD` only when the server requires authentication; `SMTP_FROM_EMAIL` is always required.
 
 ```bash
 SMTP_HOST=smtp.resend.com
 SMTP_PORT=587
 SMTP_FROM_EMAIL=alerts@yourdomain.com
-
-# Optional: set BOTH only when SMTP authentication is required
-SMTP_USER=resend
-SMTP_PASSWORD=your-api-key
+SMTP_USER=resend            # optional, set both or neither
+SMTP_PASSWORD=your-api-key  # optional
+SMTP_BLOCKED_RECIPIENT_DOMAINS=qa.yourdomain.com  # optional, comma-separated, subdomains included
 ```
 
-If your SMTP server does not require auth, leave `SMTP_USER` and `SMTP_PASSWORD` empty,
-but keep `SMTP_FROM_EMAIL` set.
-
-Supercheck never sends to reserved domains that cannot receive mail (`example.com`,
-`example.net`, `example.org`, and anything under `.example`, `.invalid`, `.test` or `.localhost`).
-Those recipients are skipped rather than bounced, which keeps your bounce rate down. To skip
-more domains, such as a test domain without an MX record, list them in
-`SMTP_BLOCKED_RECIPIENT_DOMAINS` (comma-separated; subdomains are included):
-
-```bash
-SMTP_BLOCKED_RECIPIENT_DOMAINS=qa.yourdomain.com
-```
+Reserved domains that cannot receive mail are always skipped, not bounced: `example.com`, `example.net`, `example.org`, and anything under `.example`, `.invalid`, `.test` or `.localhost`. Use `SMTP_BLOCKED_RECIPIENT_DOMAINS` for more, such as a test domain without an MX record.
 
 **Supported providers:** Resend, SendGrid, Mailgun, Amazon SES, Gmail, Office 365
 
@@ -228,7 +130,7 @@ Add both in Supercheck.
 </Tab>
 <Tab value="Microsoft Teams">
 
-Teams uses Power Automate Workflows to receive webhook notifications.
+Teams receives webhooks through Power Automate Workflows.
 
 <Steps>
 <Step>
@@ -242,49 +144,52 @@ Copy the generated webhook URL and add it in Supercheck.
 </Step>
 </Steps>
 
-Accepted URL hosts (HTTPS only):
-
-| Source | Host |
+| Accepted host (HTTPS only) | Source |
 |---|---|
-| Power Automate Workflows | `*.powerplatform.com` |
-| Azure Logic Apps | `*.logic.azure.com` |
-| Legacy Office 365 connectors | `*.webhook.office.com` |
+| `*.powerplatform.com` | Power Automate Workflows |
+| `*.logic.azure.com` | Azure Logic Apps |
+| `*.webhook.office.com` | Legacy Office 365 connectors |
 
 Other Microsoft hosts, such as `outlook.office.com` or `*.azurewebsites.net`, are rejected.
 
 </Tab>
 <Tab value="Webhook">
 
-**Configuration:**
-- **URL:** Your endpoint
-- **Advanced** (collapsed by default; it starts open when you edit a custom webhook with saved headers or a body template, and opens by itself when a field inside it has an error):
-  - **Method:** GET, POST, or PUT (default: POST)
-  - **Headers JSON:** Optional string-valued headers for provider authentication such as `Authorization`
-  - **Body template:** Optional custom JSON body with template variables (used for POST and PUT requests)
-  - **Rendered sample payload:** Preview of the JSON body generated from sample alert values before you test or save
-- **Test diagnostics:** Redacted test results showing method, target host, sent header names, HTTP status, elapsed time, request hash, and response hash
+| Field | Notes |
+|---|---|
+| **URL** | Public HTTPS endpoint. Plain HTTP and private or internal targets are rejected |
+| **Method** (Advanced) | GET, POST or PUT. Default POST |
+| **Headers JSON** (Advanced) | Optional string-valued headers, such as `Authorization` |
+| **Body template** (Advanced) | Optional JSON body with [template variables](#body-template), for POST and PUT |
+| **Rendered sample payload** (Advanced) | Preview of the body built from sample alert values |
+| **Test diagnostics** | Redacted method, target host, sent header names, HTTP status, elapsed time, request hash and response hash |
 
-Use a publicly reachable HTTPS webhook endpoint (plain HTTP is rejected); private and internal targets are blocked. On a self-hosted install with `SELF_HOSTED=true` and `ALLOW_INTERNAL_TARGETS=true`, webhook channels (not Slack, Teams, Discord or Telegram) may also use internal hosts and plain `http://` URLs. Cloud metadata and link-local addresses such as `169.254.169.254` stay blocked. Enter credentials in the channel settings and use **Test connection** before relying on delivery.
+- **Advanced** is collapsed by default. It starts open when you edit a custom webhook with saved headers or a body template, and opens by itself when one of its fields has an error.
+- Self-hosted with `SELF_HOSTED=true` and `ALLOW_INTERNAL_TARGETS=true`: webhook channels (not Slack, Teams, Discord or Telegram) may use internal hosts and `http://` URLs. Cloud metadata and link-local addresses such as `169.254.169.254` stay blocked.
+- URLs, headers and other credentials are secrets and are cleared when you reopen a channel. Leave a field blank to keep its value. Saved headers survive only while the URL and preset stay the same; after changing either, enter the API key (Jira Service Management), the API token (incident.io) or the headers again (`{}` for none).
 
-Webhook URLs, custom headers and other channel credentials are secrets, so they are cleared when you reopen a channel to edit it. Leave one blank to keep its value, or enter a replacement and use **Test connection**. Saved headers are kept only while the URL and preset stay the same. After changing either, enter the API key (Jira Service Management) or API token (incident.io) again; for other webhooks, enter the headers again, or `{}` for none.
+See [Webhooks and paging services](#webhook-presets) for presets and templates.
 
-### Webhook presets
+</Tab>
+</Tabs>
 
-The webhook channel includes presets that fill the method, headers, and JSON body template for common SRE and incident-management tools. Enter the notification credentials separately from any [read-only investigation connector](/docs/app/investigate/connectors).
+Notifications hide credentials in a monitor's target URL: the user name and password, and values of parameters such as `token`, `key` or `password`, are replaced with `REDACTED`.
 
-| Preset | Use case | Setup docs |
-|--------|----------|------------|
-| Custom webhook | Default Supercheck payload or a custom JSON template | [Supercheck alerts](/docs/app/communicate/alerts) |
-| PagerDuty Events API v2 | Trigger and resolve incidents using `{{pagerDutyEventAction}}` and `{{dedupKey}}` | [PagerDuty Events API v2](https://developer.pagerduty.com/docs/events-api-v2/overview/) |
-| Jira Service Management | Creates alerts with an alias, sent to `api.atlassian.com/jsm/ops/integration/v2/alerts` with `Authorization: GenieKey <integration key>`; recovery closes the alert by alias | [JSM integration events](https://developer.atlassian.com/cloud/jira/service-desk-ops/rest/v1/api-group-integration-events/) |
-| Splunk On-Call REST endpoint | Send VictorOps/Splunk On-Call `CRITICAL` and `RECOVERY` events | [Splunk On-Call REST Endpoint](https://help.victorops.com/knowledge-base/rest-endpoint-integration-guide/) |
-| Better Stack webhook | Sends `status: alert` on failure and `status: resolved` on recovery with `dedup_key`. In Better Stack, set the create rule to "status contains alert", the resolve rule to "status contains resolved" and the alert id to `dedup_key` | [Better Stack incoming webhooks](https://betterstack.com/docs/uptime/incoming-webhooks/) |
-| incident.io alert source | Sends `status: firing` on failure and `status: resolved` on recovery with `deduplication_key` | [incident.io alert sources](https://docs.incident.io/alerts/alert-sources) |
+## Webhooks and paging services [#webhook-presets]
 
-Each paging service asks only for its own credential: the **Routing key** for PagerDuty (written into the body template), the **API key** for Jira Service Management and the **API token** for incident.io (sent as the `Authorization` header), and the endpoint **URL** for Splunk On-Call, Better Stack and incident.io. The URL, method, headers and body template stay editable under **Advanced**.
+Presets fill the method, headers and JSON body for common incident tools. Each asks only for its own credential; the URL, method, headers and body stay editable under **Advanced**. Notification credentials are separate from any [read-only investigation connector](/docs/app/investigate/connectors).
+
+| Preset | Use case | Credential | Setup docs |
+|---|---|---|---|
+| Custom webhook | Default Supercheck payload or a custom JSON template | Optional headers | [Supercheck alerts](/docs/app/communicate/alerts) |
+| PagerDuty Events API v2 | Trigger and resolve incidents using `{{pagerDutyEventAction}}` and `{{dedupKey}}` | **Routing key** (written into the body template) | [PagerDuty Events API v2](https://developer.pagerduty.com/docs/events-api-v2/overview/) |
+| Jira Service Management | Creates alerts with an alias, sent to `api.atlassian.com/jsm/ops/integration/v2/alerts` with `Authorization: GenieKey <integration key>`; recovery closes the alert by alias | **API key** (sent as `Authorization`) | [JSM integration events](https://developer.atlassian.com/cloud/jira/service-desk-ops/rest/v1/api-group-integration-events/) |
+| Splunk On-Call REST endpoint | Send VictorOps/Splunk On-Call `CRITICAL` and `RECOVERY` events | Endpoint **URL** | [Splunk On-Call REST Endpoint](https://help.victorops.com/knowledge-base/rest-endpoint-integration-guide/) |
+| Better Stack webhook | Sends `status: alert` on failure and `status: resolved` on recovery with `dedup_key`. In Better Stack, set the create rule to "status contains alert", the resolve rule to "status contains resolved" and the alert id to `dedup_key` | Endpoint **URL** | [Better Stack incoming webhooks](https://betterstack.com/docs/uptime/incoming-webhooks/) |
+| incident.io alert source | Sends `status: firing` on failure and `status: resolved` on recovery with `deduplication_key` | Endpoint **URL** and **API token** (sent as `Authorization`) | [incident.io alert sources](https://docs.incident.io/alerts/alert-sources) |
 
 <Callout type="warn">
-Preset payloads include placeholders such as `REPLACE_WITH_PAGERDUTY_ROUTING_KEY` and `REPLACE_WITH_JSM_INTEGRATION_KEY`. The typed credential fields replace them; a channel that still holds one is rejected. Verify the endpoint URL in the vendor documentation because some providers generate tenant-specific webhook URLs.
+Preset payloads include placeholders such as `REPLACE_WITH_PAGERDUTY_ROUTING_KEY` and `REPLACE_WITH_JSM_INTEGRATION_KEY`. The typed credential fields replace them; a channel that still holds one is rejected. Check the endpoint URL in the vendor docs, because some providers generate tenant-specific URLs.
 </Callout>
 
 <Accordions>
@@ -331,7 +236,7 @@ When no body template is provided, Supercheck sends a JSON payload similar to th
 
 ### Body template
 
-Use a custom body template to match the format required by third-party services. Templates must be valid JSON, and template variables use `{{variableName}}` syntax. Keep placeholders inside JSON string values such as `"summary": "{{title}}"`.
+Templates must be valid JSON. Variables use `{{variableName}}` and go inside JSON strings, such as `"summary": "{{title}}"`.
 
 <Accordions>
 <Accordion title="Available template variables" id="template-variables">
@@ -363,21 +268,17 @@ Use a custom body template to match the format required by third-party services.
 | `{{dedupKey}}` | Stable key for correlating related events | `monitor:uuid`, `job:uuid`, `ssl:uuid` |
 
 </Accordion>
-</Accordions>
-
-<Accordions>
 <Accordion title="PagerDuty Integration" id="pagerduty-integration">
 
-Use a webhook with a body template to send alerts to the [PagerDuty Events API v2](https://developer.pagerduty.com/api-reference/368ae3d938c9e-send-an-event-to-pager-duty):
-
-1. In PagerDuty, go to **Services → Service Directory → select your service**
-2. Go to the **Integrations** tab and click **Add Integration**
-3. Search for **Events API V2** and add it
-4. Copy the **Integration Key** (also called Routing Key)
-5. In Supercheck, create a Webhook notification channel with:
-   - **URL:** `https://events.pagerduty.com/v2/enqueue`
-   - **Method:** POST
-   - **Body template:**
+<Steps>
+<Step>
+In PagerDuty, open **Services → Service Directory**, select your service, then **Integrations → Add Integration → Events API V2**.
+</Step>
+<Step>
+Copy the **Integration Key** (also called Routing Key).
+</Step>
+<Step>
+In Supercheck, create a Webhook channel: URL `https://events.pagerduty.com/v2/enqueue`, method POST, and this body template:
 
 ```json
 {
@@ -399,19 +300,20 @@ Use a webhook with a body template to send alerts to the [PagerDuty Events API v
   }
 }
 ```
+</Step>
+</Steps>
 
-PagerDuty resolves an alert only when the resolve event has the same `dedup_key` as the original trigger event. Use `{{pagerDutyEventAction}}` and `{{dedupKey}}` together so Supercheck sends `trigger` for failures and `resolve` for recoveries using the same key. PagerDuty expects `severity` to be one of `critical`, `error`, `warning` or `info`; `{{normalizedSeverity}}` maps Supercheck `success` alerts to `info`.
+PagerDuty resolves only a resolve event with the same `dedup_key` as the trigger, so use `{{pagerDutyEventAction}}` with `{{dedupKey}}`. `severity` must be `critical`, `error`, `warning` or `info`; `{{normalizedSeverity}}` maps `success` to `info`. API reference: [Events API v2](https://developer.pagerduty.com/api-reference/368ae3d938c9e-send-an-event-to-pager-duty).
 
 </Accordion>
 <Accordion title="Splunk On-Call / VictorOps Integration" id="splunk-on-call-victorops-integration">
 
-Use a webhook with a body template to send alerts to the [Splunk On-Call REST endpoint](https://help.splunk.com/en/splunk-enterprise/alert-and-respond/splunk-on-call/integrations-with-splunk-on-call/rest-endpoint-integration-for-splunk-on-call):
-
-1. In Splunk On-Call, create a **REST Endpoint** integration and copy the routing key.
-2. In Supercheck, create a Webhook notification channel and select the **Splunk On-Call REST endpoint** preset, or use:
-   - **URL:** `https://alert.victorops.com/integrations/generic/20131114/alert/<routing_key>/<entity_id>`
-   - **Method:** POST
-   - **Body template:**
+<Steps>
+<Step>
+In Splunk On-Call, create a **REST Endpoint** integration and copy the routing key ([guide](https://help.splunk.com/en/splunk-enterprise/alert-and-respond/splunk-on-call/integrations-with-splunk-on-call/rest-endpoint-integration-for-splunk-on-call)).
+</Step>
+<Step>
+In Supercheck, create a Webhook channel with the **Splunk On-Call REST endpoint** preset, or use URL `https://alert.victorops.com/integrations/generic/20131114/alert/<routing_key>/<entity_id>`, method POST and:
 
 ```json
 {
@@ -423,38 +325,162 @@ Use a webhook with a body template to send alerts to the [Splunk On-Call REST en
   "timestamp": "{{timestamp}}"
 }
 ```
+</Step>
+</Steps>
 
-Splunk On-Call only treats `CRITICAL` as an incident-opening event and `RECOVERY` as a resolve event. `{{victorOpsMessageType}}` (or its `{{splunkOnCallMessageType}}` alias) maps Supercheck trigger alerts to `CRITICAL` and recoveries to `RECOVERY`. Use `{{dedupKey}}` as `entity_id` so the resolve event closes the same incident. Do not send `trigger` or `resolve` in `message_type`: those values are treated as INFO and never auto-resolve.
+Only `CRITICAL` opens and `RECOVERY` resolves an incident. `{{victorOpsMessageType}}` (alias `{{splunkOnCallMessageType}}`) maps triggers to `CRITICAL` and recoveries to `RECOVERY`; `{{dedupKey}}` as `entity_id` lets the recovery close the same incident. Never send `trigger` or `resolve` in `message_type`: they count as INFO and never auto-resolve.
 
 </Accordion>
 </Accordions>
 
+## Alert types
+
+Each failure alert also opens an incident unless you turn that off in the check's **Incidents** settings. See [How alerts become incidents](/docs/app/investigate/incidents#how-alerts-become-incidents).
+
+<Tabs items={['Monitors', 'Jobs']}>
+<Tab value="Monitors">
+
+| Alert | Trigger | Severity |
+|-------|---------|----------|
+| **Failure** | Consecutive failures reach threshold | Error |
+| **Recovery** | Consecutive successes reach threshold after the failure threshold was reached | Success |
+| **SSL Expiring** | Website monitor's certificate is within its warning window, has expired, or could not be read for 24 hours | Warning; at most once every 24 hours |
+| **SSL Renewed** | A certificate you were warned about is healthy again: valid with more days left than the warning window, or a later expiry date than the one warned about | Success; once per warning |
+| **Warning** | A warning you turned on for the monitor, such as **Ping is late** on a [heartbeat monitor](/docs/app/heartbeat) | Warning; once per episode, never opens an incident |
+
+A down MCP monitor, including a rejected login, is a normal **Failure** and opens a `sev2` incident by default.
+
+</Tab>
+<Tab value="Jobs">
+
+| Alert | Trigger | Severity |
+|-------|---------|----------|
+| **Failure** | One or more tests in the job failed | Error |
+| **Success** | All tests passed and consecutive successes reach the recovery threshold (optional) | Success |
+| **Timeout** | Job exceeded maximum execution time | Warning |
+
 </Tab>
 </Tabs>
 
-Notifications hide credentials in a monitor's target URL: user name and password, and values of parameters such as `token`, `key` or `password`, are replaced with `REDACTED`.
+## Threshold configuration
+
+**Failure Threshold** is the number of consecutive failures before the first failure alert; **Recovery Threshold** is the number of consecutive healthy checks before the recovery alert. Both accept 1–5 in the app and 1–100 in the API. A monitor that never reached the failure threshold sends no recovery alert. Thresholds keep network blips from alerting.
+
+Example with Failure Threshold 3 and Recovery Threshold 2:
+
+| Check | Result | Consecutive Count | Alert Sent |
+|-------|--------|-------------------|------------|
+| 1 | Fail | 1 failure | — |
+| 2 | Fail | 2 failures | — |
+| 3 | Fail | 3 failures | **Failure Alert** |
+| 4 | Fail | 4 failures | — |
+| 5 | Pass | 1 success | — |
+| 6 | Pass | 2 successes | **Recovery Alert** |
+
+Check 4 sends nothing because the next reminder waits for the [alert limiting](#alert-limiting) gap. Check 5 resets the failure counter and starts the recovery counter.
+
+### SSL alerts
+
+Turning on **SSL Check** on a website monitor also turns on **Alert on SSL certificate expiration** (you can switch it off). SSL notices are separate from the monitor's up/down result and use its **Alert in _N_ days** window.
+
+| Notice | Sent when | How often |
+|---|---|---|
+| **SSL Expiring** | The certificate is inside the window or expired | At most once every 24 hours |
+| **SSL Expiring** (unreadable) | The site is up but the certificate could not be read for 24 hours. A single failed read sends nothing | At most daily |
+| **SSL certificate renewed (valid until _date_)** | After a warning, a check finds a valid certificate outside the window or with a later expiry | Once per warning |
+| **SSL certificate readable again** | After an unreadable warning, the certificate can be read | Once per warning |
+
+- Renewed and readable notices show as **SSL Renewed** in delivery history, go to the same channels, and never open or resolve an incident. Webhooks receive them as a resolve event with the same `ssl:` key as the warning.
+- A failing channel is retried up to 5 times, then skipped. Turning off SSL alerts or **SSL Check** discards a pending notice.
+- During a [maintenance window](/docs/app/monitor#maintenance-windows), failure, recovery, SSL and SSL renewed notices are held back (renewed notices are sent after the window). Checks still run and count toward uptime.
+
+### Alert limiting
+
+At most **3 failure alerts** go out per failure streak, for monitors and jobs: the first at the failure threshold, then reminders. With `N = max(5, 2 × threshold)`:
+
+- **Jobs:** a reminder after every further `N` failures.
+- **Monitors:** the first reminder `N` failures after the first alert, the second `2N` after that. An undeliverable alert is retried on the next checks for up to `N` checks, and the next gap counts from when it was sent.
+- The interval is not configurable. A passing run resets the streak, and each recovery sends one alert.
+
+Each channel normally gets an alert once: if one channel fails, only it is retried (up to 5 attempts), and retried checks or parallel workers do not resend. In rare failures (a worker stopping mid-send, a database error while recording the delivery, an upgrade) a channel can get an alert twice, so integrations should de-duplicate on the alert's dedup key.
+
+## Warnings
+
+Warnings report a problem that is not an outage yet. They:
+
+- never open or resolve an incident and are never sent to paging services;
+- don't count toward failure or recovery thresholds;
+- are held back during [maintenance windows](/docs/app/monitor#maintenance-windows).
+
+Turn them on per monitor under **Warnings** in the alert settings; only warnings that apply to the monitor type are listed. **Ping is late** is off by default. The MCP and AI endpoint warnings are on, but the slow and token warnings send nothing until you set their limit.
+
+| Warning | Monitor type | Sent when |
+|---|---|---|
+| **Ping is late** | Heartbeat | A ping has not arrived on time, but the grace period has not ended. Sent once per late period. If the grace period ends without a ping, the monitor goes down and the normal failure alert follows |
+| **Tools changed** (`mcp_tools_changed`) | MCP | The server's tool list, a tool description or an input schema changed since the last check. Sent once per change |
+| **MCP slow** (`mcp_slow`) | MCP | Checks were slower than **Slow after (ms)** for 3 checks in a row. Sent once per slow stretch |
+| **Slow first token** (`ai_slow_first_token`) | AI Endpoint | The first token was slower than **Warn when first token is slower than (ms)** for 3 checks in a row. Sent once per slow stretch |
+| **Model changed** (`ai_model_changed`) | AI Endpoint | The reply came from a different model than the last check. Sent once per new model |
+| **Single failed agent run** (`agent_run_failed`) | Synthetic, agent test | A run of an agent test failed but the failure threshold is not reached yet. On by default. Sent once per failed streak; the incident follows when the threshold is reached |
+| **Tokens high** (`ai_tokens_high`) | AI Endpoint | A reply used more tokens than **Warn when a call uses more tokens than**. Sent once per stretch |
+
+| Where | What a warning looks like |
+|---|---|
+| Delivery history | Type **Warning** |
+| Email | Subject starts with "Warning:" |
+| Every message | "This is a warning. No incident was opened." |
+| Custom webhook | `type: "monitor_warning"`, `severity: "warning"`, `warningKind` (e.g. `heartbeat_late`), action `trigger`, dedup key `warning:<monitor id>:<kind>` |
+| Monitors-as-code | `alertConfig.warnings`, e.g. `warnings: { heartbeat_late: true }` |
+
+## Test and troubleshoot delivery
 
 ### Test a page
 
-On **Communicate → Notifications → Channels**, open a channel's menu and select **Send test page** (webhooks and paging services) or **Send test message** (other channels). The test goes through the saved channel, so you do not re-enter its secrets. Nothing is sent until you select **Send test page** in the dialog: a test page is a real page and can wake whoever is on call. For a webhook, the dialog shows the receiver's HTTP status, the time it took, the first 1,024 characters of its response (credentials redacted) and the dedup key `test:<channel id>`; for a paging service, **Resolve test page** closes the test page again, also one left open from an earlier test. A successful test clears the channel's **Check the integration key** badge. Editors and above can send tests, within the same per-user limits as **Test connection**. From the CLI: `supercheck notification test <id>` and `supercheck notification test <id> --resolve`.
+<Steps>
+<Step>
+On **Communicate → Notifications → Channels**, open the channel's menu and select **Send test page** (webhooks and paging services) or **Send test message** (other channels). Saved secrets are reused.
+</Step>
+<Step>
+Confirm with **Send test page** in the dialog. A test page is a real page and can wake whoever is on call.
+</Step>
+<Step>
+For a paging service, **Resolve test page** closes it again, including one left open by an earlier test.
+</Step>
+</Steps>
 
-A channel whose latest delivery in the past 7 days was rejected with HTTP 401 or 403 shows **Check the integration key**; any other failed latest delivery shows **Last delivery failed**.
+- A webhook test shows the receiver's HTTP status, the time it took, the first 1,024 characters of its response (credentials redacted) and the dedup key `test:<channel id>`.
+- Editors and above can send tests, within the same per-user limits as **Test connection**. A successful test clears **Check the integration key**.
+- CLI: `supercheck notification test <id>` and `supercheck notification test <id> --resolve`.
 
 ### If a page fails
 
-Webhook deliveries, including paging services, are retried up to 3 times on HTTP 429, 5xx and network errors, honouring the receiver's `Retry-After` for up to 10 seconds. HTTP 400, 401, 403 and 404 are not retried. A 401 or 403 means the integration key was rejected: it is never retried on later checks either, and the channel shows **Check the integration key** until a delivery succeeds.
+| Response | Retried? | Result |
+|---|---|---|
+| HTTP 429, 5xx or network error | Up to 3 times, honouring `Retry-After` up to 10 seconds | — |
+| HTTP 400 or 404 | No | Delivery fails |
+| HTTP 401 or 403 | No, and not on later checks either | Channel shows **Check the integration key** until a delivery succeeds |
 
-When a paging service still fails and the check opens an incident, the incident timeline records the failed page and Supercheck sends the incident message to the project's Default policy channels; if nothing reaches anyone and the incident has no owner who can act, the project's owners and admins are emailed. Monitors that alert only to a paging service and do not open incidents have no fallback, so add an email or chat channel to them too.
+A channel whose latest delivery in the past 7 days was rejected with 401 or 403 shows **Check the integration key**; any other failed latest delivery shows **Last delivery failed**.
+
+When a paging service still fails and the check opens an incident:
+
+- the incident timeline records the failed page;
+- the incident message goes to the project's Default policy channels;
+- if nothing reaches anyone and the incident has no owner who can act, the project's owners and admins are emailed.
+
+<Callout>
+Monitors that page only a paging service and open no incidents have no fallback. Add an email or chat channel to them too.
+</Callout>
 
 ### One-way paging
 
-Supercheck sends trigger and resolve events only. Acknowledging or closing the page in PagerDuty or another service does not change the Supercheck incident, and incident reminders and escalation are never sent to paging services, because the service already repeats and escalates its own page. Acknowledge or resolve the incident in Supercheck too.
-
-A job's page is resolved once, on the first passing run after the failure (past its recovery threshold), whether or not **Alert on success** is on; later passing runs send the paging service nothing.
+- Supercheck sends trigger and resolve events only. Acknowledging or closing the page in the paging service does not change the Supercheck incident, so acknowledge or resolve it in Supercheck too.
+- Incident reminders and escalation are never sent to paging services; the service repeats and escalates its own page.
+- A job's page resolves once, on the first passing run after the failure (past its recovery threshold), whether or not **Alert on success** is on. Later passing runs send nothing.
 
 ## Delivery history
 
-**Notifications → Delivery history** lists the latest 200 alert notifications. Incident update notifications are not listed. Each row shows:
+**Notifications → Delivery history** lists the latest 200 alert notifications (not incident updates).
 
 ![Alert History](/screenshots/alert-history.png)
 
@@ -468,9 +494,7 @@ A job's page is resolved once, on the first passing run after the failure (past 
 | **Provider** | Channel type or preset used |
 | **Sent At** | When it was sent |
 
-Each row also stores delivery metadata for AI SRE correlation: provider type or preset, dedup key, event action, response status, attempt count and response hash when available.
-
-Use delivery status and HTTP diagnostics to troubleshoot failed notifications. Raw provider response bodies and credential values are not displayed.
+Each row also keeps delivery metadata for AI SRE correlation (provider or preset, dedup key, event action, response status, attempt count, response hash). Raw provider response bodies and credentials are never shown.
 
 <Accordions>
 <Accordion title="Alert samples" id="alert-samples">

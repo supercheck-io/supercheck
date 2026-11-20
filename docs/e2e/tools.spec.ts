@@ -55,7 +55,7 @@ for (const c of CASES) {
       await open(page, `/tools/${c.slug}`);
       await expect(page.getByTestId("tool-limits")).toContainText(c.limit);
       await page.getByTestId("tool-form").getByRole("textbox").fill(c.input);
-      await page.getByTestId("tool-form").getByRole("button").click();
+      await page.getByTestId("tool-form").locator("button[type=submit]").click();
       await expect(page.getByTestId("tool-verdict")).toContainText(c.verdict);
       await expect(page.getByTestId("tool-checked-from")).toContainText("Checked from Cloudflare FRA");
       expect(requests[0]).toMatchObject({ tool: c.tool, input: c.input, token: "tok", method: "POST" });
@@ -76,11 +76,11 @@ for (const c of CASES) {
       await open(page, `/tools/${c.slug}`);
       const form = page.getByTestId("tool-form");
       await form.getByRole("textbox").fill(c.input);
-      await form.getByRole("button").click();
+      await form.locator("button[type=submit]").click();
       await expect(page.getByTestId("tool-invalid")).toContainText("80 and 443");
-      await form.getByRole("button").click();
+      await form.locator("button[type=submit]").click();
       await expect(page.getByTestId("tool-status")).toContainText("Try again in 40 seconds");
-      await form.getByRole("button").click();
+      await form.locator("button[type=submit]").click();
       await expect(page.getByTestId("tool-status")).toContainText("busy right now");
     });
   });
@@ -92,11 +92,11 @@ test("captcha failure resets and never calls the API; disabled shows paused", as
   await page.evaluate(() => ((window as unknown as { __tsFail: boolean }).__tsFail = true));
   const form = page.getByTestId("tool-form");
   await form.getByRole("textbox").fill("example.com");
-  await form.getByRole("button").click();
+  await form.locator("button[type=submit]").click();
   await expect(page.getByTestId("tool-status")).toContainText("couldn't verify you're human");
   expect(requests).toHaveLength(0);
   await page.evaluate(() => ((window as unknown as { __tsFail: boolean }).__tsFail = false));
-  await form.getByRole("button").click();
+  await form.locator("button[type=submit]").click();
   await expect(page.getByTestId("tool-status")).toContainText("This tool is paused");
 });
 
@@ -105,7 +105,7 @@ test("busy-state hand-off links the target that was just submitted", async ({ pa
   await open(page, "/tools/website-uptime-checker");
   const form = page.getByTestId("tool-form");
   await form.getByRole("textbox").fill("first.example");
-  await form.getByRole("button").click();
+  await form.locator("button[type=submit]").click();
   await expect(page.getByTestId("tool-status")).toContainText("busy right now");
   const href = await page.getByTestId("tool-status").getByRole("link").getAttribute("href");
   expect(href).toContain(encodeURIComponent("https://first.example/"));
@@ -119,13 +119,13 @@ test("a blocked Turnstile script shows the busy state, not a failed human check"
   await page.waitForLoadState("networkidle");
   const form = page.getByTestId("tool-form");
   await form.getByRole("textbox").fill("example.com");
-  await form.getByRole("button").click();
+  await form.locator("button[type=submit]").click();
   await expect(page.getByTestId("tool-status")).toContainText("busy right now");
   expect(requests).toHaveLength(0);
   // Connectivity returns: the next submit downloads the script again and the check runs.
   await page.unroute("https://challenges.cloudflare.com/**");
   await page.route("https://challenges.cloudflare.com/**", (route) => route.fulfill({ contentType: "text/javascript", body: FAKE_TURNSTILE }));
-  await form.getByRole("button").click();
+  await form.locator("button[type=submit]").click();
   await expect.poll(() => requests.length).toBe(1);
 });
 
@@ -150,7 +150,7 @@ test("target-controlled strings render as text, and og:image loads only on click
   });
   await open(page, "/tools/social-preview-checker");
   await page.getByTestId("tool-form").getByRole("textbox").fill("example.com");
-  await page.getByTestId("tool-form").getByRole("button").click();
+  await page.getByTestId("tool-form").locator("button[type=submit]").click();
   await expect(page.getByTestId("social-card")).toContainText(evil);
   expect(await page.evaluate(() => (window as unknown as { __xss?: number }).__xss)).toBeUndefined();
   await expect(page.getByTestId("tool-result").locator('a[href^="javascript:"]')).toHaveCount(0);
@@ -164,10 +164,10 @@ test("share link is offered only for inputs without a query string and pre-fills
   await open(page, "/tools/website-uptime-checker?url=example.com");
   await expect(page.getByTestId("tool-form").getByRole("textbox")).toHaveValue("example.com");
   expect(requests).toHaveLength(0);
-  await page.getByTestId("tool-form").getByRole("button").click();
+  await page.getByTestId("tool-form").locator("button[type=submit]").click();
   await expect(page.getByRole("button", { name: "Copy link" })).toBeVisible();
   await page.getByTestId("tool-form").getByRole("textbox").fill("https://example.com/?token=secret");
-  await page.getByTestId("tool-form").getByRole("button").click();
+  await page.getByTestId("tool-form").locator("button[type=submit]").click();
   await expect(page.getByTestId("tool-verdict")).toBeVisible();
   await expect(page.getByRole("button", { name: "Copy link" })).toHaveCount(0);
 });
