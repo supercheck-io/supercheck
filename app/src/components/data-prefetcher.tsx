@@ -13,8 +13,8 @@ import { getRequirementsListQueryKey } from "@/hooks/use-requirements";
 import { getStatusPagesListQueryKey } from "@/hooks/use-status-pages";
 import { getNotificationProvidersQueryKey, fetchNotificationProviders } from "@/hooks/use-alerts";
 import {
-  ORG_STATS_QUERY_KEY, ORG_DETAILS_QUERY_KEY, ORG_MEMBERS_QUERY_KEY, ORG_PROJECTS_QUERY_KEY,
-  fetchOrgStats, fetchOrgDetails, fetchOrgMembers, fetchOrgProjects,
+  ORG_DETAILS_QUERY_KEY, ORG_MEMBERS_QUERY_KEY, ORG_PROJECTS_QUERY_KEY,
+  fetchOrgDetails, fetchOrgMembers, fetchOrgProjects,
 } from "@/hooks/use-organization";
 const STALE_TIME = {
   INFINITE: Infinity,
@@ -77,7 +77,8 @@ export function DataPrefetcher() {
       prefetch(getRequirementsListQueryKey(projectId), fetchWithProject("/api/requirements"), STALE_TIME.LONG);
       prefetch(getStatusPagesListQueryKey(projectId), fetchWithProject("/api/status-pages"), STALE_TIME.LONG);
       prefetch(getNotificationProvidersQueryKey(projectId), () => fetchNotificationProviders(projectId), STALE_TIME.LONG);
-      prefetch(ORG_STATS_QUERY_KEY, fetchOrgStats, STALE_TIME.LONG);
+      // No org stats here: it counts every resource in the org, 403s for non-admins, and only the org admin
+      // page reads it (its sidebar link prefetches it on hover).
       prefetch(ORG_DETAILS_QUERY_KEY, fetchOrgDetails, STALE_TIME.LONG);
       prefetch(ORG_MEMBERS_QUERY_KEY, fetchOrgMembers, STALE_TIME.LONG);
       prefetch(ORG_PROJECTS_QUERY_KEY, fetchOrgProjects, STALE_TIME.LONG);
