@@ -1,5 +1,6 @@
 import { Queue, Worker } from "bullmq";
 import { getRedisConnection } from "@/lib/queue";
+import { watchConsumer } from "@/lib/consumer-watchdog";
 import { GLOBAL_CONCURRENCY, findDueDeletions, enqueueOrphanedDeletions, pruneCompletedDeletions } from "./jobs";
 import { runDeletion } from "./runner";
 import { continueQuiescing, retryPendingBillingCancels } from "./organization";
@@ -44,6 +45,7 @@ export async function initializeDeletionWorker(): Promise<void> {
     const outcome = await runDeletion(job.data.id as string);
     if (outcome.retryInMs !== undefined) await triggerDeletion(job.data.id as string, outcome.retryInMs);
   }, { connection: (await getRedisConnection()).duplicate(), concurrency: GLOBAL_CONCURRENCY, lockDuration: 5 * 60_000 });
+  watchConsumer(worker);
   worker.on("error", (error) => console.error("[DELETION] worker error:", error));
 }
 

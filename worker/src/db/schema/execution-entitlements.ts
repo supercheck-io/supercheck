@@ -24,7 +24,7 @@ export const executionEntitlements = pgTable(
     k6MaxVus: integer('k6_max_vus').notNull().default(5),
     playwrightBudgetMs: bigint('playwright_budget_ms', { mode: 'number' })
       .notNull()
-      .default(9000000),
+      .default(60000000),
     playwrightUsedMs: bigint('playwright_used_ms', { mode: 'number' })
       .notNull()
       .default(0),

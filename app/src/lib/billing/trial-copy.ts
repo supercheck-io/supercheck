@@ -16,7 +16,7 @@ export function fillTrialText(text: string, values: TrialValues = trialValues())
   return text.replace(/\{(\w+)\}/g, (_match, name: string) => {
     const value = (values as Record<string, unknown>)[name];
     if (value === undefined) throw new Error(`Unknown trial copy placeholder: {${name}}`);
-    return String(value);
+    return typeof value === "number" ? value.toLocaleString("en-US") : String(value);
   });
 }
 
@@ -30,7 +30,7 @@ export function trialHighlights(values: TrialValues = trialValues()): string[] {
   return [
     `${values.maxMonitors} monitors, checked at most every ${values.minCheckIntervalMinutes} minutes`,
     `${values.maxStatusPages} status pages with up to ${values.maxStatusPageSubscribers} subscribers each`,
-    `${values.playwrightMinutes} browser minutes for Playwright tests and synthetic monitors`,
+    `${values.playwrightMinutes.toLocaleString("en-US")} browser minutes for Playwright tests and synthetic monitors`,
     `k6 load tests of up to ${values.k6MaxVus} virtual users per run (${values.k6VuMinutes} virtual-user minutes in total)`,
     `${values.sreInvestigations} AI SRE investigations, ${values.triageRuns} AI triage runs and ${values.aiCredits} AI credits (AI SRE chat and evidence briefs are on paid plans)`,
     `${values.maxTeamMembers} team members and ${values.maxProjects} projects`,

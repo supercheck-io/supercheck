@@ -19,6 +19,8 @@ jest.mock("bullmq", () => ({
 }));
 jest.mock("@/lib/monitor-aggregation-service", () => ({ monitorAggregationService: {} }));
 jest.mock("@/utils/db", () => ({ db: {} }));
+const watchConsumer = jest.fn(<T,>(c: T) => c);
+jest.mock("@/lib/consumer-watchdog", () => ({ watchConsumer: (c: unknown) => watchConsumer(c) }));
 jest.mock("@/lib/queue", () => ({ buildRedisOptions: (o: object) => ({ host: "redis-opts", ...o }) }));
 
 import type { Redis } from "ioredis";
@@ -85,6 +87,21 @@ describe("repeat setup", () => {
     await new DataLifecycleService([config]).initialize(redis);
     expect(queue.removeRepeatableByKey).not.toHaveBeenCalled();
     expect(queue.upsertJobScheduler).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("consumer watchdog", () => {
+  it("watches the cleanup Worker at startup and the lazily created QueueEvents", async () => {
+    queue.add.mockResolvedValue({ waitUntilFinished: jest.fn().mockResolvedValue({ success: true }) });
+    const service = new DataLifecycleService([config]);
+    await service.initialize(redis);
+    expect(watchConsumer).toHaveBeenCalledTimes(1);
+    expect(watchConsumer).toHaveBeenCalledWith(worker);
+
+    await service.triggerManualCleanup("monitor_results");
+    await service.triggerManualCleanup("monitor_results");
+    expect(watchConsumer).toHaveBeenCalledTimes(2);
+    expect(watchConsumer).toHaveBeenLastCalledWith(events);
   });
 });
 

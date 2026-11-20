@@ -10,6 +10,7 @@ import {
   processDelivery,
 } from "./incident-notifications/delivery-worker";
 import { checkedTick } from "@/lib/sentry-lazy";
+import { watchConsumer } from "@/lib/consumer-watchdog";
 import { advanceMaintenanceWindows } from "@/lib/maintenance/windows";
 
 let worker: Worker | undefined;
@@ -72,6 +73,7 @@ export async function initializeStatusPageScheduler() {
     },
     { connection: redis.duplicate(), concurrency: 5, lockDuration: 120000 },
   );
+  watchConsumer(worker);
   worker.on("error", (error) =>
     console.error("Status page worker error", error),
   );

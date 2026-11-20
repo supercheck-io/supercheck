@@ -5,6 +5,7 @@ import { HealthService } from './health.service';
 import { DbService } from '../execution/services/db.service';
 import { RedisService } from '../execution/services/redis.service';
 import { HeartbeatService } from '../common/heartbeat/heartbeat.service';
+import { ConsumerWatchdogService } from '../common/consumer-watchdog.service';
 
 describe('HealthService', () => {
   let service: HealthService;
@@ -35,6 +36,8 @@ describe('HealthService', () => {
       .mockReturnValue(['playwright-global', 'k6-global', 'monitor-local']),
   };
 
+  const mockWatchdog = { isHealthy: jest.fn().mockReturnValue(true) };
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -43,6 +46,7 @@ describe('HealthService', () => {
         { provide: RedisService, useValue: mockRedisService },
         { provide: ConfigService, useValue: mockConfigService },
         { provide: HeartbeatService, useValue: mockHeartbeatService },
+        { provide: ConsumerWatchdogService, useValue: mockWatchdog },
       ],
     }).compile();
 
@@ -171,10 +175,15 @@ describe('HealthService', () => {
   });
 
   describe('getLivenessStatus', () => {
-    it('should always return alive', () => {
+    it('is alive while every queue consumer is healthy', () => {
       const result = service.getLivenessStatus();
       expect(result.alive).toBe(true);
       expect(result.status).toBe('alive');
+    });
+
+    it('is not alive once a consumer stalled and cannot recover', () => {
+      mockWatchdog.isHealthy.mockReturnValueOnce(false);
+      expect(service.getLivenessStatus().alive).toBe(false);
     });
   });
 });

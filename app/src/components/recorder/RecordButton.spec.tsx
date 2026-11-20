@@ -39,7 +39,7 @@ describe("RecordButton", () => {
       "href",
       "https://chromewebstore.google.com/detail/supercheck-recorder/gfmbcelfhhfmifdkccnbgdadibdfhioe",
     );
-    expect(within(dialog).getByText(/demo \/ self-hosted/i)).toBeInTheDocument();
+    expect(within(dialog).getByText(/or self-hosting\?/i)).toBeInTheDocument();
     expect(within(dialog).getByText(window.location.origin)).toBeInTheDocument();
   });
 

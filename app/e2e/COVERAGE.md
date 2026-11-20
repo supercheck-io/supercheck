@@ -50,9 +50,9 @@ Verified locally on 2026-07-22:
 Current local check on 2026-10-12: Playwright discovery reports **168 tests in
 39 files**, including three new variable-role tests, and E2E TypeScript
 typecheck passed. [Hosted full E2E](https://github.com/supercheck-io/supercheck/actions/runs/38203439973)
-passed **169 tests**, including revision attestation, against deployed demo SHA
+passed **169 tests**, including revision attestation, against a deployed SHA
 `6b885ad3cc52080d7051ba60597752ba17b88542`. This validates the updated tests
-against the demo; it is not acceptance of the PR's deployed SHA.
+against that deployment; it is not acceptance of the PR's deployed SHA.
 
 ## Capability traceability
 

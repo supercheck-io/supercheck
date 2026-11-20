@@ -37,9 +37,10 @@ jest.mock("./analytics/playwright-analytics-tab", () => ({
 
 describe.each(["k6", "playwright"])("%s project switching", (view) => {
   beforeEach(() => { mockView = view; mockProjectId = "project-a"; });
-  it("clears old jobs, selection and comparison before accepting the new project's jobs", () => {
+  it("clears old jobs, selection and comparison before accepting the new project's jobs", async () => {
     const { rerender } = render(<RunsViewTabs />);
-    fireEvent.click(screen.getByText("Load jobs"));
+    // The analytics views are loaded on demand.
+    fireEvent.click(await screen.findByText("Load jobs"));
     expect(screen.getByTestId("selection")).toHaveTextContent("project-a");
     if (view === "k6") {
       fireEvent.click(screen.getByText("Compare Runs"));
@@ -54,9 +55,9 @@ describe.each(["k6", "playwright"])("%s project switching", (view) => {
     expect(screen.getByTestId("selection")).toHaveTextContent("project-b");
     expect(screen.getByTestId("jobs")).toHaveTextContent("project-b");
   });
-  it("keeps an empty destination project empty", () => {
+  it("keeps an empty destination project empty", async () => {
     const { rerender } = render(<RunsViewTabs />);
-    fireEvent.click(screen.getByText("Load jobs"));
+    fireEvent.click(await screen.findByText("Load jobs"));
     mockProjectId = "empty-project";
     rerender(<RunsViewTabs />);
     fireEvent.click(screen.getByText("Load empty"));
