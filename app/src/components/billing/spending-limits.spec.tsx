@@ -207,4 +207,26 @@ describe("SpendingLimits loading recovery", () => {
     expect(body).not.toHaveProperty("monthlySpendingLimitDollars");
     expect(body).not.toHaveProperty("hardStopOnLimit");
   });
+
+  it("keeps the cap read-only and out of the save payload for non-owners", async () => {
+    const settings = {
+      organizationId: "org_1", enableSpendingLimit: true, monthlySpendingLimitDollars: 12.34,
+      hardStopOnLimit: false, notifyAt50Percent: true,
+      notifyAt80Percent: false, notifyAt90Percent: false, notifyAt100Percent: false,
+      notificationEmails: [],
+    };
+    const fetchMock = jest.fn().mockImplementation(async (url: string) => ({
+      ok: true, json: async () => (url.endsWith("/settings") ? settings : { organizationId: "org_1", spending: null }),
+    }));
+    global.fetch = fetchMock;
+    render(<SpendingLimits organizationId="org_1" canEditLimit={false} onSaved={jest.fn()} />);
+    expect(await screen.findByRole("switch", { name: "Enable overage spending limit" })).toBeDisabled();
+    expect(screen.getByRole("spinbutton", { name: "Monthly overage limit in USD" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(fetchMock.mock.calls.some((c) => c[1]?.method === "PATCH")).toBe(true));
+    const body = JSON.parse(fetchMock.mock.calls.find((c) => c[1]?.method === "PATCH")![1].body);
+    expect(body).not.toHaveProperty("enableSpendingLimit");
+    expect(body).not.toHaveProperty("monthlySpendingLimitDollars");
+    expect(body).not.toHaveProperty("hardStopOnLimit");
+  });
 });
