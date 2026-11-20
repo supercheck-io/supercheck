@@ -124,7 +124,7 @@ describe('ConsumerWatchdogService', () => {
 
   const hung = () => jest.fn().mockReturnValue(new Promise(() => undefined));
 
-  it('keeps the stall clock through a reconnect it forced, so a slow reconnect still ends in a restart', async () => {
+  it('resets the stall clock while ioredis reconnects, so a long Redis outage alone never restarts the pod', async () => {
     jest.useFakeTimers();
     const { worker, redis } = fakeWorker({ ping: hung() });
     watch(worker);
@@ -133,7 +133,18 @@ describe('ConsumerWatchdogService', () => {
     await first;
     redis.status = 'reconnecting';
     await service.probe(2 * MIN);
-    expect(service.isHealthy(5 * MIN)).toBe(false);
+    expect(service.isHealthy(10 * MIN)).toBe(true);
+  });
+
+  it('does not kick a client that started connecting while its PING was pending', async () => {
+    jest.useFakeTimers();
+    const { worker, redis } = fakeWorker({ ping: hung() });
+    watch(worker);
+    const probing = service.probe(0);
+    redis.status = 'connecting';
+    await jest.advanceTimersByTimeAsync(6_000);
+    await probing;
+    expect(redis.disconnect).not.toHaveBeenCalled();
   });
 
   it('kicks a dead connection while paused or draining, but does not count it', async () => {

@@ -49,8 +49,8 @@ function withTimeout<T>(work: Promise<T>, what: string): Promise<T> {
  * pending commands). That kick also runs while draining or paused, because in-flight jobs still need
  * the connection to finish. A consumer reports unhealthy while its connection is unresponsive, ended,
  * or its run loop exited, and liveness fails once that has lasted DEAD_AFTER_MS without a successful
- * ping in between. A connection that is reconnecting keeps the clock as it is: a real outage that
- * Redis ends resumes on its own, one that outlasts DEAD_AFTER_MS after a stall restarts the pod.
+ * ping in between. A connection that is reconnecting resets the clock: ioredis is already retrying,
+ * so a long Redis outage alone never restarts the pod.
  */
 @Injectable()
 export class ConsumerWatchdogService implements OnModuleInit, OnModuleDestroy {
@@ -148,7 +148,11 @@ export class ConsumerWatchdogService implements OnModuleInit, OnModuleDestroy {
           this.markBroken(worker, now, 'Redis connection unresponsive');
         } else if (status === 'ok') {
           this.brokenSince.delete(worker);
-        } // reconnecting: ioredis is working on it; keep the clock where it is
+        } else {
+          // reconnecting: ioredis is working on it, so a long Redis outage alone never fails liveness
+          // (restarting would not help); the clock starts again only if the connection ends or hangs.
+          this.brokenSince.delete(worker);
+        }
       }
     } finally {
       this.probing = false;
@@ -201,7 +205,9 @@ export class ConsumerWatchdogService implements OnModuleInit, OnModuleDestroy {
       this.logger.warn(
         'Redis PING timed out on a ready connection; forcing reconnect',
       );
-      client.disconnect(true);
+      // Only a still-ready socket is kicked: disconnecting a client that meanwhile started connecting
+      // through Sentinel aborts its connector and ends it for good (the failure this service guards).
+      if (client.status === 'ready') client.disconnect(true);
       return 'unresponsive';
     }
   }
