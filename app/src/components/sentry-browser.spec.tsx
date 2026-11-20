@@ -54,6 +54,14 @@ describe("SentryBrowser", () => {
     expect(sdkLoaded).not.toHaveBeenCalled();
   });
 
+  it("uses the config the server layout passed in, without asking the route", async () => {
+    global.fetch = jest.fn();
+    render(<SentryBrowser config={CONFIG} />);
+    await waitFor(() => expect(setUser).toHaveBeenCalledWith({ id: "u1" }));
+    expect(init.mock.calls[0][0]).toMatchObject({ dsn: CONFIG.dsn });
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
   it("does not load the SDK when the config has no DSN", async () => {
     global.fetch = jest.fn().mockResolvedValue({ json: async () => ({}) });
     render(<SentryBrowser />);

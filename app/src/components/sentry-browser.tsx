@@ -3,12 +3,13 @@
 /**
  * Browser Sentry (errors, traces, session replay), Supercheck Cloud only.
  *
- * Config comes from /api/client-config/sentry at runtime (the image is shared
- * with self-hosted, so NEXT_PUBLIC values can't carry it). The SDK chunk is
- * imported only after that route returns a DSN, so self-hosted and status-page
- * hosts never fetch it. Scrubbing rules are shared with the server SDK.
+ * Config is read at runtime (the image is shared with self-hosted, so
+ * NEXT_PUBLIC values can't carry it): the server layout passes it in, and
+ * /api/client-config/sentry serves it otherwise. The SDK chunk is imported only
+ * when the config has a DSN, so self-hosted and status-page hosts never fetch it. Scrubbing rules are shared with the server SDK.
  */
 import { useEffect } from "react";
+import type { SentryBrowserConfig } from "@/lib/sentry-client-config";
 import { usePathname } from "next/navigation";
 import { useSession } from "@/utils/auth-client";
 import {
@@ -59,14 +60,6 @@ export function isExcludedPath(pathname: string): boolean {
 const onExcludedPage = () =>
   typeof window !== "undefined" && isExcludedPath(window.location.pathname);
 
-type BrowserConfig = {
-  dsn?: string;
-  environment?: string;
-  release?: string;
-  tracesSampleRate?: number;
-  replaysSessionSampleRate?: number;
-  replaysOnErrorSampleRate?: number;
-};
 type SentryReact = typeof import("@sentry/react");
 
 let sdkPromise: Promise<SentryReact | null> | null = null;
@@ -79,9 +72,11 @@ export function resetSentryBrowserForTest(): void {
   loadAttempts = 0;
 }
 
-async function loadSentry(): Promise<SentryReact | null> {
-  const res = await fetch("/api/client-config/sentry", { cache: "no-store" });
-  const config = (await res.json()) as BrowserConfig;
+async function loadSentry(initialConfig?: SentryBrowserConfig): Promise<SentryReact | null> {
+  // The server layout passes the config in; only a shell rendered without it asks the route.
+  const config =
+    initialConfig ??
+    ((await (await fetch("/api/client-config/sentry", { cache: "no-store" })).json()) as SentryBrowserConfig);
   if (!config.dsn) return null;
   const Sentry = await import("@sentry/react");
   const traces = config.tracesSampleRate ?? 0;
@@ -169,7 +164,7 @@ async function loadSentry(): Promise<SentryReact | null> {
   return Sentry;
 }
 
-export function SentryBrowser() {
+export function SentryBrowser({ config }: { config?: SentryBrowserConfig } = {}) {
   const pathname = usePathname();
   const userId = useSession().data?.user.id;
   const excluded = isExcludedPath(pathname ?? "");
@@ -185,7 +180,7 @@ export function SentryBrowser() {
     // A failed config fetch is retried on later navigations, at most MAX_LOAD_ATTEMPTS times per page load.
     if (!sdkPromise && loadAttempts < MAX_LOAD_ATTEMPTS) {
       loadAttempts++;
-      sdkPromise = loadSentry().catch(() => {
+      sdkPromise = loadSentry(config).catch(() => {
         sdkPromise = null;
         return null;
       });
@@ -195,7 +190,7 @@ export function SentryBrowser() {
       // shortcut: a replay stopped on an excluded page is not resumed when the user comes back
       // (a manual start() would ignore the sample rates); the next full page load samples again.
       .catch(() => undefined);
-  }, [excluded, userId]);
+  }, [excluded, userId, config]);
 
   return null;
 }

@@ -255,6 +255,8 @@ function getRouteConfigs(projectId: string): Record<string, RouteConfig> {
       queryKey: getDashboardQueryKey(projectId),
       queryFn: () => fetchDashboard(projectId),
       staleTime: 60000,
+      // Same as the hook: a saved copy restored on the next full load would replace the server's data.
+      persist: false,
     },
     "/tests": {
       queryKey: ["tests", projectId, "{}"],

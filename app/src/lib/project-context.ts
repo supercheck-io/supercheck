@@ -6,6 +6,7 @@
 import { auth } from "@/utils/auth";
 import { safeErrorFields } from "@/lib/log-safe-error";
 import { headers } from "next/headers";
+import { cache } from "react";
 import { db } from "@/utils/db";
 import {
   projects,
@@ -53,9 +54,13 @@ export interface ProjectAuthContext {
 }
 
 /**
- * Get current project context from session - single source of truth
+ * Get current project context from session - single source of truth.
+ * Memoized per page render: it can write the default project selection, and the layout and the page both
+ * resolve it, so they must share one call (route handlers and server actions still call through).
  */
-export async function getCurrentProjectContext(): Promise<ProjectContext | null> {
+export const getCurrentProjectContext = cache(loadCurrentProjectContext);
+
+async function loadCurrentProjectContext(): Promise<ProjectContext | null> {
   try {
     // Use cached session to avoid duplicate DB round-trips in Docker
     const sessionData = await getCachedAuthSession();

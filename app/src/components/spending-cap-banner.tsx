@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { PauseCircle } from "lucide-react";
+import { useIdle } from "@/hooks/use-idle";
 
 export const BILLING_SETTINGS_SAVED_EVENT = "supercheck:billing-settings-saved";
 
@@ -18,10 +19,12 @@ async function fetchSpending(): Promise<UsageResponse> {
 
 /** Tells org admins which work is paused while the hard-stop overage cap is reached. */
 export function SpendingCapBanner({ enabled }: { enabled: boolean }) {
+  // A notice, not page content: ask once the page's own requests have gone out.
+  const idle = useIdle();
   const { data, refetch } = useQuery({
     queryKey: ["billing-usage", "spending-cap-banner"],
     queryFn: fetchSpending,
-    enabled,
+    enabled: enabled && idle,
     staleTime: 60_000,
     // Picks up a cap raised elsewhere or a billing period reset while the app stays open.
     refetchInterval: 5 * 60_000,

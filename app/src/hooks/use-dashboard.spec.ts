@@ -1,4 +1,13 @@
-import { fetchDashboard, parseSystemHealth } from "./use-dashboard";
+import { createElement, type ReactNode } from "react";
+import { act, renderHook, waitFor } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { fetchDashboard, getDashboardQueryKey, parseSystemHealth, useDashboard, type DashboardData } from "./use-dashboard";
+
+jest.mock("./use-project-context", () => ({ useProjectContext: () => ({ currentProject: { id: "project-a" } }) }));
+let mockSessionUserId: string | undefined = "u1";
+jest.mock("@/utils/auth-client", () => ({
+  useSession: () => ({ data: mockSessionUserId ? { user: { id: mockSessionUserId } } : null }),
+}));
 
 describe("dashboard data contract", () => {
   afterEach(() => jest.restoreAllMocks());
@@ -85,5 +94,98 @@ describe("parseSystemHealth", () => {
   it("is healthy with no issues and tolerates a missing block", () => {
     expect(parseSystemHealth({ issues: [] }).healthy).toBe(true);
     expect(parseSystemHealth(undefined).issues).toEqual([]);
+  });
+});
+
+describe("useDashboard with a server seed", () => {
+  const originalFetch = global.fetch;
+  afterEach(() => { global.fetch = originalFetch; mockSessionUserId = "u1"; });
+
+  const seed = (projectId: string, updatedAt = Date.now()) => ({
+    userId: "u1",
+    projectId,
+    updatedAt,
+    data: { stats: { runs: 3 } } as unknown as DashboardData,
+  });
+  const run = (s: ReturnType<typeof seed> | null) => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const wrapper = ({ children }: { children: ReactNode }) => createElement(QueryClientProvider, { client }, children);
+    return { client, ...renderHook(() => useDashboard(s), { wrapper }) };
+  };
+
+  it("shows the seed for the current project without requesting it", async () => {
+    global.fetch = jest.fn();
+    const { result } = run(seed("project-a"));
+    expect(result.current.data?.stats.runs).toBe(3);
+    await new Promise((r) => setTimeout(r, 20));
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  it("ignores a seed for another project and requests the current one", async () => {
+    global.fetch = jest.fn().mockResolvedValue({ ok: true, json: async () => ({ jobs: { recentRuns30d: 9 } }) });
+    const { result } = run(seed("project-b"));
+    await waitFor(() => expect(result.current.data?.stats.runs).toBe(9));
+  });
+
+  it("refreshes a seed older than a minute", async () => {
+    global.fetch = jest.fn().mockResolvedValue({ ok: true, json: async () => ({ jobs: { recentRuns30d: 5 } }) });
+    const { result } = run(seed("project-a", Date.now() - 2 * 60_000));
+    expect(result.current.data?.stats.runs).toBe(3);
+    await waitFor(() => expect(result.current.data?.stats.runs).toBe(5));
+  });
+
+  it("is kept out of the saved cache", () => {
+    global.fetch = jest.fn();
+    const { client } = run(seed("project-a"));
+    expect(client.getQueryCache().getAll()[0]?.meta).toEqual({ persist: false });
+  });
+
+  it("replaces an older cached entry with a newer server seed, without requesting it", async () => {
+    global.fetch = jest.fn();
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    client.setQueryData(getDashboardQueryKey("project-a"), { stats: { runs: 1 } }, { updatedAt: Date.now() - 5 * 60_000 });
+    const wrapper = ({ children }: { children: ReactNode }) => createElement(QueryClientProvider, { client }, children);
+    const { result } = renderHook(() => useDashboard(seed("project-a")), { wrapper });
+    expect(result.current.data?.stats.runs).toBe(3);
+    await new Promise((r) => setTimeout(r, 20));
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  it("applies a seed once, so a later refresh is not overwritten on the next render", () => {
+    global.fetch = jest.fn();
+    const client = new QueryClient();
+    client.setQueryData(getDashboardQueryKey("project-a"), { stats: { runs: 1 } });
+    const wrapper = ({ children }: { children: ReactNode }) => createElement(QueryClientProvider, { client }, children);
+    const s = seed("project-a");
+    const { result, rerender } = renderHook(() => useDashboard(s), { wrapper });
+    expect(result.current.data?.stats.runs).toBe(3);
+    act(() => { client.setQueryData(getDashboardQueryKey("project-a"), { stats: { runs: 8 } }); });
+    rerender();
+    expect(result.current.data?.stats.runs).toBe(8);
+  });
+
+  it("ignores a seed read for another account (account changed in another tab)", async () => {
+    mockSessionUserId = "u2";
+    global.fetch = jest.fn().mockResolvedValue({ ok: true, json: async () => ({ jobs: { recentRuns30d: 6 } }) });
+    const { result } = run(seed("project-a"));
+    expect(result.current.data).toBeUndefined();
+    await waitFor(() => expect(result.current.data?.stats.runs).toBe(6));
+  });
+
+  it("uses the seed while the browser's session check is pending", () => {
+    mockSessionUserId = undefined;
+    global.fetch = jest.fn();
+    const { result } = run(seed("project-a"));
+    expect(result.current.data?.stats.runs).toBe(3);
+  });
+
+  it("refreshes fresh cached data in the background on a warm visit", async () => {
+    global.fetch = jest.fn().mockResolvedValue({ ok: true, json: async () => ({ jobs: { recentRuns30d: 9 } }) });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    client.setQueryData(getDashboardQueryKey("project-a"), { stats: { runs: 1 } });
+    const wrapper = ({ children }: { children: ReactNode }) => createElement(QueryClientProvider, { client }, children);
+    const { result } = renderHook(() => useDashboard(null, { refreshOnMount: true }), { wrapper });
+    expect(result.current.data?.stats.runs).toBe(1);
+    await waitFor(() => expect(result.current.data?.stats.runs).toBe(9));
   });
 });

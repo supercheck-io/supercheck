@@ -1,4 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
+import { useShellBootstrap } from "@/components/shell-bootstrap";
+import { seededQueryOptions } from "@/lib/query-seed";
 
 interface AdminStatus {
   isAdmin: boolean;
@@ -25,6 +27,7 @@ export async function fetchAdminStatus(): Promise<AdminStatus> {
 }
 
 export function useAdminStatus() {
+  const bootstrap = useShellBootstrap();
   const { data, isPending, isFetching, error, isFetched } = useQuery({
     queryKey: ADMIN_STATUS_QUERY_KEY,
     queryFn: fetchAdminStatus,
@@ -37,6 +40,9 @@ export function useAdminStatus() {
     refetchOnWindowFocus: false,
     refetchOnReconnect: false,
     retry: 1,
+    // Never saved to localStorage: each full page load gets it fresh from the server layout.
+    meta: { persist: false },
+    ...seededQueryOptions(bootstrap?.adminStatus, bootstrap?.readAt),
   });
 
   // Loading when pending and fetching (initial load)

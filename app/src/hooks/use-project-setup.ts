@@ -1,6 +1,8 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
+import { useShellBootstrap } from "@/components/shell-bootstrap";
+import { seededQueryOptions } from "@/lib/query-seed";
 import type { UserPersona } from "@/db/schema/project-setup";
 import type {
   SetupResponse,
@@ -75,10 +77,14 @@ export function useProjectSetup(projectId: string | null | undefined) {
 
 /** Light read for the sidebar: status, counts and whether the project is empty. */
 export function useProjectSetupSummary(projectId: string | null | undefined) {
+  const bootstrap = useShellBootstrap();
+  // The layout's summary is for the project it rendered; any other project is requested as before.
+  const seed = projectId && bootstrap?.setupSummary?.projectId === projectId ? bootstrap.setupSummary.summary : undefined;
   return useQuery({
     queryKey: getProjectSetupSummaryQueryKey(projectId),
     queryFn: async (): Promise<SetupSummary> => readJson(await fetch(`/api/projects/${projectId}/setup?summary=1`, { cache: "no-store" })),
     enabled: Boolean(projectId),
+    ...seededQueryOptions(seed, bootstrap?.readAt),
     staleTime: 30_000,
     retry: 1,
     meta: MEMORY_ONLY,
@@ -90,9 +96,11 @@ export async function fetchUserPreferences(): Promise<UserPreferencesDto> {
 }
 
 export function useUserPreferences() {
+  const bootstrap = useShellBootstrap();
   return useQuery({
     queryKey: USER_PREFERENCES_QUERY_KEY,
     queryFn: fetchUserPreferences,
+    ...seededQueryOptions(bootstrap?.preferences, bootstrap?.readAt),
     staleTime: 5 * 60_000,
     retry: 1,
     meta: MEMORY_ONLY,

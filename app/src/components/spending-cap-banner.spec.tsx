@@ -3,6 +3,9 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act } from "@testing-library/react";
 import { BILLING_SETTINGS_SAVED_EVENT, SpendingCapBanner } from "./spending-cap-banner";
 
+let mockIdle = true;
+jest.mock("@/hooks/use-idle", () => ({ useIdle: () => mockIdle }));
+
 const renderBanner = (enabled: boolean) =>
   render(
     <QueryClientProvider client={new QueryClient()}>
@@ -67,5 +70,14 @@ describe("SpendingCapBanner", () => {
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(client.getQueryState(["billing-usage", "spending-cap-banner"])?.fetchStatus).toBe("idle"));
     expect(screen.getByRole("status")).toBeInTheDocument();
+  });
+
+  it("waits for the browser to be idle before asking", async () => {
+    mockIdle = false;
+    global.fetch = jest.fn();
+    renderBanner(true);
+    await new Promise((r) => setTimeout(r, 10));
+    expect(global.fetch).not.toHaveBeenCalled();
+    mockIdle = true;
   });
 });

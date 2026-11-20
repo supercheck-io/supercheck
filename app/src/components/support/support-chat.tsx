@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useHydrated } from "@/hooks/use-hydrated";
+import { useIdle } from "@/hooks/use-idle";
 import { usePathname } from "next/navigation";
 import { useSession } from "@/utils/auth-client";
 import { useImpersonationStatus } from "@/hooks/use-impersonation-status";
@@ -53,8 +54,9 @@ interface ChatwootConfigResponse {
  */
 export function SupportChat() {
     const { data: session } = useSession();
-    const { isImpersonating, isLoading: isImpersonationLoading } = useImpersonationStatus();
     const isHydrated = useHydrated();
+    // The widget is not page content: its config is read once the page's own requests have gone out.
+    const idle = useIdle();
     const pathname = usePathname();
     const [chatwootConfig, setChatwootConfig] = useState<ChatwootConfigResponse | null>(null);
     // Identity token is per user: store it with the id it was issued for
@@ -68,7 +70,7 @@ export function SupportChat() {
     // Fetch Chatwoot config from server (runtime values from K8s secrets)
     // This replaces the build-time NEXT_PUBLIC_* env vars which don't work in K8s
     useEffect(() => {
-        if (!isHydrated) return;
+        if (!isHydrated || !idle) return;
 
         const fetchConfig = async () => {
             try {
@@ -85,10 +87,12 @@ export function SupportChat() {
         };
 
         fetchConfig();
-    }, [isHydrated]);
+    }, [isHydrated, idle]);
 
     // Fetch the identity-validation HMAC for the current user (re-run when the user changes)
     const chatEnabled = !!chatwootConfig?.enabled;
+    // Only needed to hide an enabled chat during impersonation, so it is not requested otherwise.
+    const { isImpersonating, isKnown: isImpersonationKnown } = useImpersonationStatus({ enabled: chatEnabled });
     useEffect(() => {
         if (!chatEnabled || !userId || isExternalPage) return;
 
@@ -127,7 +131,7 @@ export function SupportChat() {
     // 3. Still loading config
     // 4. Chat not enabled (self-hosted or missing config)
     // 5. No authenticated user
-    // 6. Still loading impersonation status (wait for it)
+    // 6. Impersonation status not known yet (fail closed until it is)
     // 7. Admin is impersonating a user (SECURITY: prevent cross-contamination)
     if (
         !isHydrated ||
@@ -138,7 +142,7 @@ export function SupportChat() {
         !chatwootConfig.websiteToken ||
         identity?.userId !== userId ||
         !session?.user ||
-        isImpersonationLoading ||
+        !isImpersonationKnown ||
         isImpersonating
     ) {
         return null;
