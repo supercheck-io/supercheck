@@ -50,6 +50,8 @@ export function buildRedisOptions(
     maxRetriesPerRequest: null,
     enableReadyCheck: false,
     connectTimeout: 10000,
+    // Idle sockets get TCP keepalive probes (about 11 min on Linux defaults); the consumer watchdog covers the rest.
+    keepAlive: 10000,
     retryStrategy: (attempt: number) => Math.min(attempt * 250, 3000),
     ...(tlsEnabled && {
       tls: {
