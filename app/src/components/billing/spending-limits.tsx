@@ -19,6 +19,8 @@ interface SpendingLimitsProps {
   onSaveButton?: (button: React.ReactNode) => void;
   className?: string;
   onSaved?: () => void | Promise<void>;
+  /** Only the organization owner may change spending caps; others see them read-only. */
+  canEditLimit?: boolean;
 }
 
 interface BillingSettings {
@@ -54,7 +56,7 @@ interface SpendingStatus {
   remainingDollars: number | null;
 }
 
-export function SpendingLimits({ organizationId, className, onSaved }: SpendingLimitsProps) {
+export function SpendingLimits({ organizationId, className, onSaved, canEditLimit = true }: SpendingLimitsProps) {
   const [settings, setSettings] = useState<BillingSettings | null>(null);
   const [spending, setSpending] = useState<SpendingStatus | null>(null);
   const [loading, setLoading] = useState(true);
@@ -144,7 +146,7 @@ export function SpendingLimits({ organizationId, className, onSaved }: SpendingL
       });
       return;
     }
-    if (!resetCap && (capEdited || capSource !== "plan_default") && limitAmountInvalid) {
+    if (canEditLimit && !resetCap && (capEdited || capSource !== "plan_default") && limitAmountInvalid) {
       toast.error("Spending limit is required", {
         description: "Enter a positive monthly overage cap before saving.",
         duration: 4000,
@@ -160,7 +162,8 @@ export function SpendingLimits({ organizationId, className, onSaved }: SpendingL
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           organizationId: settings.organizationId,
-          ...(resetCap
+          // Non-owners never send cap fields: the API rejects them.
+          ...(!canEditLimit ? {} : resetCap
             ? { resetSpendingLimitToPlanDefault: true }
             : (capEdited || capSource !== "plan_default") && {
               enableSpendingLimit: enableLimit,
@@ -299,7 +302,7 @@ export function SpendingLimits({ organizationId, className, onSaved }: SpendingL
           </div>
           <Button
             onClick={() => void handleSave()}
-            disabled={saving || limitAmountInvalid || tooManyEmails}
+            disabled={saving || (canEditLimit && limitAmountInvalid) || tooManyEmails}
             size="sm"
           >
             {saving ? (
@@ -336,7 +339,7 @@ export function SpendingLimits({ organizationId, className, onSaved }: SpendingL
                         {capSource === "plan_default" ? "Plan default" : "Custom"}
                       </Badge>
                     )}
-                    {planDefaultDollars !== null && (capSource === "custom" || capEdited) && (
+                    {canEditLimit && planDefaultDollars !== null && (capSource === "custom" || capEdited) && (
                       <Button type="button" variant="link" size="sm" className="block h-auto p-0 text-xs"
                         disabled={saving || loading || loadError}
                         onClick={() => void handleSave(true)}>
@@ -346,6 +349,7 @@ export function SpendingLimits({ organizationId, className, onSaved }: SpendingL
                   </div>
                   <Switch
                     aria-label="Enable overage spending limit"
+                    disabled={!canEditLimit}
                     checked={enableLimit}
                     onCheckedChange={(checked) => { setEnableLimit(checked); setCapEdited(true); }}
                   />
@@ -366,6 +370,7 @@ export function SpendingLimits({ organizationId, className, onSaved }: SpendingL
                           value={limitAmount}
                           onChange={(e) => { setLimitAmount(e.target.value); setCapEdited(true); }}
                           aria-invalid={limitAmountInvalid}
+                          disabled={!canEditLimit}
                           className={cn(
                             "h-8 pl-7 text-sm",
                             limitAmountInvalid && "border-destructive",
@@ -388,7 +393,7 @@ export function SpendingLimits({ organizationId, className, onSaved }: SpendingL
 
                     <label className="flex items-center justify-between gap-3 text-xs">
                       Stop new billable executions and full investigations at the limit
-                      <Switch checked={hardStop} onCheckedChange={(checked) => { setHardStop(checked); setCapEdited(true); }}
+                      <Switch checked={hardStop} disabled={!canEditLimit} onCheckedChange={(checked) => { setHardStop(checked); setCapEdited(true); }}
                         aria-label="Stop execution at spending limit" />
                     </label>
                     {spending && spending.limitEnabled && (

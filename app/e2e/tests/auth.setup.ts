@@ -1,6 +1,6 @@
 import { test as setup } from '@playwright/test';
 import { env } from '../utils/env';
-import { CAPTCHA_TEST_HEADERS } from '../utils/api-auth';
+import { CAPTCHA_TEST_HEADERS, preferredProjectId } from '../utils/api-auth';
 
 const authFile = 'user-auth-state.json';
 
@@ -25,6 +25,17 @@ setup('authenticate as regular test user', async ({ request }) => {
         `(${signInResponse.status()}): ${responseBody}. ` +
         'Verify that the GitHub E2E_TEST_USER_EMAIL and E2E_TEST_USER_PASSWORD secrets match an existing invited user.',
     );
+  }
+
+  // Keep E2E records in the dedicated test project when one is configured.
+  const projects = await request.get('/api/projects');
+  const current = projects.ok() ? ((await projects.json()) as { currentProject?: { id?: string } }).currentProject?.id : undefined;
+  if (current) {
+    const target = await preferredProjectId(request, current);
+    if (target !== current) {
+      const switched = await request.post('/api/projects/switch', { data: { projectId: target } });
+      if (!switched.ok()) throw new Error(`Switching to E2E_TEST_PROJECT_ID failed (${switched.status()})`);
+    }
   }
 
   await request.storageState({ path: authFile });

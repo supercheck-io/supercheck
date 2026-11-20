@@ -1,5 +1,6 @@
 import type { Browser, Page } from '@playwright/test';
 import type { APIRequest, APIRequestContext, APIResponse } from 'playwright-core';
+import { env } from './env';
 
 type Credentials = {
   email: string;
@@ -184,7 +185,7 @@ export async function authenticateWithApi(
     // active tenant must go through the application API, which sets the
     // organization and project scopes together under app RBAC.
     const activeProject = await api.post('/api/projects/switch', {
-      data: { projectId: currentProject.id },
+      data: { projectId: await preferredProjectId(api, currentProject.id) },
     });
     if (!activeProject.ok()) {
       throw new Error(
@@ -197,6 +198,19 @@ export async function authenticateWithApi(
   } finally {
     await api.dispose();
   }
+}
+
+/**
+ * The project E2E writes go to: E2E_TEST_PROJECT_ID when this identity can open it, so a shared
+ * org keeps test records out of its other projects; otherwise the identity's current project.
+ */
+export async function preferredProjectId(api: APIRequestContext, fallback: string): Promise<string> {
+  const wanted = env.testData.projectId;
+  if (!wanted || wanted === fallback) return fallback;
+  const response = await api.get('/api/projects');
+  if (!response.ok()) return fallback;
+  const { data } = (await response.json()) as { data?: Array<{ id?: string }> };
+  return data?.some((p) => p.id === wanted) ? wanted : fallback;
 }
 
 export async function newAuthenticatedPage(

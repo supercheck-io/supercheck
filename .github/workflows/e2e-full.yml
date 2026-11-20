@@ -142,6 +142,8 @@ jobs:
           # When omitted, the conditional revision-attestation test is not
           # registered. Functional E2E coverage still runs in full.
           E2E_EXPECTED_BUILD_SHA: ${{ inputs.expected_build_sha }}
+          # Optional: the project E2E records go to, so a shared staging org keeps them out of real projects.
+          E2E_TEST_PROJECT_ID: ${{ secrets.E2E_TEST_PROJECT_ID }}
           E2E_TEST_USER_EMAIL: ${{ secrets.E2E_TEST_USER_EMAIL }}
           E2E_TEST_USER_PASSWORD: ${{ secrets.E2E_TEST_USER_PASSWORD }}
           E2E_INVITEE_EMAIL: ${{ secrets.E2E_INVITEE_EMAIL }}

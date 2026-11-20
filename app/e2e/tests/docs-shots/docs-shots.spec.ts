@@ -13,6 +13,7 @@
  */
 import { test, expect, type Page } from '@playwright/test';
 import { assertStagingTarget, capture, DOCS_SIZE, LANDING_SIZE, lookupIds, open, SRE_SIZE, stagingHosts, useProject, visit, type Ids, type Output } from './lib';
+import { seedShowcase } from './seed';
 
 type Ctx = { page: Page; ids: Ids };
 type Shot = {
@@ -174,7 +175,12 @@ test.describe('docs screenshots', () => {
       const { baseUrl, host } = assertStagingTarget();
       const project = shot.project ?? 'Storefront';
       await useProject(page, baseUrl, project);
-      if (!idsByProject.has(project)) idsByProject.set(project, lookupIds(page.request));
+      if (!idsByProject.has(project)) {
+        // The first shot of a project seeds what the showcase lacks, then looks up the route ids.
+        test.setTimeout(900_000); // two k6 job runs on a first seed
+        const seed = project === 'Storefront' ? seedShowcase(page, baseUrl) : Promise.resolve();
+        idsByProject.set(project, seed.then(() => lookupIds(page.request)));
+      }
       await shot.go({ page, ids: await (idsByProject.get(project) as Promise<Ids>) });
       const outputs: Output[] = shot.files.map((file) => ({ file, size: file.endsWith('.webp') ? LANDING_SIZE : shot.sre ? SRE_SIZE : DOCS_SIZE }));
       await capture(page, await stagingHosts(page.request, host), outputs);
