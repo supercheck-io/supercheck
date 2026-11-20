@@ -19,12 +19,7 @@ import { sql } from "drizzle-orm";
 import { organization, projects } from "./organization";
 import { user } from "./auth";
 
-import {
-  PROJECT_SETUP_STATUSES,
-  USER_PERSONAS,
-  type ProjectSetupStatus,
-  type UserPersona,
-} from "./project-setup-values";
+import type { ProjectSetupStatus, UserPersona } from "./project-setup-values";
 
 export {
   PROJECT_SETUP_STATUSES,
