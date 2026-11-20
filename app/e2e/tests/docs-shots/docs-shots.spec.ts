@@ -42,15 +42,20 @@ const runForReport = (route: Parameters<typeof at>[0]) => async (c: Ctx) => {
   await at(route)(c);
   const running = c.page.getByRole('button', { name: /running/i });
   const location = c.page.getByRole('dialog', { name: 'Select Execution Location' });
-  // k6 Run only toasts "Loading locations…" until locations load, so retry the click.
+  const validating = c.page.getByRole('button', { name: /validating/i });
+  // k6 Run only toasts "Loading locations…" until locations load, so retry the click,
+  // but never while an earlier click is still validating or has already started.
   await expect(async () => {
-    if (!(await location.isVisible())) await c.page.getByRole('button', { name: 'Run', exact: true }).click();
+    if (await running.isVisible()) return;
+    if (!(await location.isVisible()) && !(await validating.isVisible())) {
+      await c.page.getByRole('button', { name: 'Run', exact: true }).click({ timeout: 5_000 });
+    }
     // k6 tests ask for a location first when the project has more than one.
     if (await location.waitFor({ state: 'visible', timeout: 3_000 }).then(() => true, () => false)) {
       await location.getByRole('button', { name: 'Run Test' }).click();
     }
     await expect(running).toBeVisible({ timeout: 5_000 });
-  }).toPass({ timeout: 45_000 });
+  }).toPass({ timeout: 90_000 });
   await expect(running).toHaveCount(0, { timeout: 180_000 });
   await expect(c.page.frameLocator('iframe').first().locator('body')).not.toBeEmpty({ timeout: 60_000 });
 };
