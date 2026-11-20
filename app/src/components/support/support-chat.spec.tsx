@@ -12,9 +12,12 @@ jest.mock("@/utils/auth-client", () => ({
       : null,
   }),
 }));
+const mockImpersonation = jest.fn();
+let mockIdle = true;
 jest.mock("@/hooks/use-impersonation-status", () => ({
-  useImpersonationStatus: () => ({ isImpersonating: false, isLoading: false }),
+  useImpersonationStatus: (opts: unknown) => mockImpersonation(opts),
 }));
+jest.mock("@/hooks/use-idle", () => ({ useIdle: () => mockIdle }));
 jest.mock("./chatwoot-widget", () => ({
   ChatwootWidget: jest.fn(() => null),
   resetChatwootSession: jest.fn(),
@@ -30,6 +33,8 @@ describe("SupportChat identity requests", () => {
     jest.clearAllMocks();
     fetchMock.mockReset();
     mockUserId = "u1";
+    mockIdle = true;
+    mockImpersonation.mockReturnValue({ isImpersonating: false, isKnown: true });
     global.fetch = fetchMock;
   });
 
@@ -68,5 +73,38 @@ describe("SupportChat identity requests", () => {
     } else {
       expect(widgetMock).not.toHaveBeenCalled();
     }
+  });
+
+  it("reads its config only once the browser is idle", async () => {
+    mockIdle = false;
+    fetchMock.mockResolvedValue(response({ enabled: false, baseUrl: null, websiteToken: null }));
+    const { rerender } = render(<SupportChat />);
+    await new Promise((r) => setTimeout(r, 10));
+    expect(fetchMock).not.toHaveBeenCalled();
+    mockIdle = true;
+    rerender(<SupportChat />);
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/config/chatwoot"));
+  });
+
+  it("asks for impersonation status only when chat is enabled", async () => {
+    fetchMock.mockResolvedValue(response({ enabled: false, baseUrl: null, websiteToken: null }));
+    render(<SupportChat />);
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    expect(mockImpersonation).toHaveBeenLastCalledWith({ enabled: false });
+  });
+
+  it.each([
+    ["while the impersonation status is unknown", { isImpersonating: false, isKnown: false }],
+    ["while an admin impersonates", { isImpersonating: true, isKnown: true }],
+  ])("stays hidden %s", async (_label, status) => {
+    mockImpersonation.mockReturnValue(status);
+    fetchMock
+      .mockResolvedValueOnce(response({ enabled: true, baseUrl: "https://app.chatwoot.com", websiteToken: "test" }))
+      .mockResolvedValueOnce(response({ token: "hash" }));
+    render(<SupportChat />);
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    await new Promise((r) => setTimeout(r, 10));
+    expect(mockImpersonation).toHaveBeenLastCalledWith({ enabled: true });
+    expect(widgetMock).not.toHaveBeenCalled();
   });
 });

@@ -22,7 +22,8 @@ async function fetchImpersonationStatus(): Promise<ImpersonationInfo> {
   return response.json();
 }
 
-export function useImpersonationStatus() {
+/** `enabled: false` skips the request (for callers that only need it in some states). */
+export function useImpersonationStatus({ enabled = true }: { enabled?: boolean } = {}) {
   const queryClient = useQueryClient();
   const isRestoring = useIsRestoring();
   const bootstrap = useShellBootstrap();
@@ -30,6 +31,7 @@ export function useImpersonationStatus() {
   const { data, isPending, isFetching, error } = useQuery({
     queryKey: IMPERSONATION_STATUS_QUERY_KEY,
     queryFn: fetchImpersonationStatus,
+    enabled,
     // Security-sensitive: always refetch on mount to detect impersonation changes
     // Cannot use staleTime since impersonation state changes on page reload after redirect
     staleTime: 0,
@@ -59,6 +61,8 @@ export function useImpersonationStatus() {
 
   return {
     isImpersonating: data?.isImpersonating ?? false,
+    /** True once the status is known; callers that must fail closed wait for it. */
+    isKnown: data !== undefined,
     impersonatedUser: data?.impersonatedUser,
     isLoading: isInitialLoading,
     error: error as Error | null,

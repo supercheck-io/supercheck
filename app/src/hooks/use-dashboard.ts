@@ -69,6 +69,9 @@ export function useDashboard(seed?: DashboardSeed | null) {
     refetchOnWindowFocus: false,
     // Refetch on every visit unless the data is under a minute old (a server seed from this page load).
     refetchOnMount: true,
+    // Never saved to localStorage: a full page load gets it from the server, and an older saved
+    // entry restored after mount would replace that fresher value.
+    meta: { persist: false },
     refetchOnReconnect: false,
     retry: 2,
     // Note: Removed placeholderData to ensure fresh data is shown immediately after fetch

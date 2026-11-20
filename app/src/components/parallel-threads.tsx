@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Skeleton } from "./ui/skeleton";
 import { ExecutionsDialog } from "./executions/executions-dialog";
 import { useExecutions } from "@/hooks/use-executions";
+import { useMediaQuery } from "@/hooks/use-media-query";
 
 /**
  * ParallelThreads component - Top bar indicator for running/queued executions
@@ -11,7 +12,18 @@ import { useExecutions } from "@/hooks/use-executions";
  * Uses the shared useExecutions hook (SINGLE SOURCE OF TRUTH)
  * Same data source as the ExecutionsDialog for consistency.
  */
+// The header shows the indicator from Tailwind's xl breakpoint up (the layout wraps it in `hidden xl:block`).
+const XL_QUERY = "(min-width: 1280px)";
+
+/**
+ * The live indicator opens an event stream and polls, so it only mounts where it is visible. Below xl
+ * (and until hydration) the placeholder renders instead; CSS hides it below xl.
+ */
 export function ParallelThreads() {
+  return useMediaQuery(XL_QUERY) ? <LiveParallelThreads /> : <LoadingSkeleton />;
+}
+
+function LiveParallelThreads() {
   const {
     runningCount,
     queuedCount,

@@ -1,4 +1,9 @@
-import { fetchDashboard, parseSystemHealth } from "./use-dashboard";
+import { createElement, type ReactNode } from "react";
+import { renderHook, waitFor } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { fetchDashboard, parseSystemHealth, useDashboard, type DashboardData } from "./use-dashboard";
+
+jest.mock("./use-project-context", () => ({ useProjectContext: () => ({ currentProject: { id: "project-a" } }) }));
 
 describe("dashboard data contract", () => {
   afterEach(() => jest.restoreAllMocks());
@@ -85,5 +90,48 @@ describe("parseSystemHealth", () => {
   it("is healthy with no issues and tolerates a missing block", () => {
     expect(parseSystemHealth({ issues: [] }).healthy).toBe(true);
     expect(parseSystemHealth(undefined).issues).toEqual([]);
+  });
+});
+
+describe("useDashboard with a server seed", () => {
+  const originalFetch = global.fetch;
+  afterEach(() => { global.fetch = originalFetch; });
+
+  const seed = (projectId: string, updatedAt = Date.now()) => ({
+    projectId,
+    updatedAt,
+    data: { stats: { runs: 3 } } as unknown as DashboardData,
+  });
+  const run = (s: ReturnType<typeof seed> | null) => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const wrapper = ({ children }: { children: ReactNode }) => createElement(QueryClientProvider, { client }, children);
+    return { client, ...renderHook(() => useDashboard(s), { wrapper }) };
+  };
+
+  it("shows the seed for the current project without requesting it", async () => {
+    global.fetch = jest.fn();
+    const { result } = run(seed("project-a"));
+    expect(result.current.data?.stats.runs).toBe(3);
+    await new Promise((r) => setTimeout(r, 20));
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  it("ignores a seed for another project and requests the current one", async () => {
+    global.fetch = jest.fn().mockResolvedValue({ ok: true, json: async () => ({ jobs: { recentRuns30d: 9 } }) });
+    const { result } = run(seed("project-b"));
+    await waitFor(() => expect(result.current.data?.stats.runs).toBe(9));
+  });
+
+  it("refreshes a seed older than a minute", async () => {
+    global.fetch = jest.fn().mockResolvedValue({ ok: true, json: async () => ({ jobs: { recentRuns30d: 5 } }) });
+    const { result } = run(seed("project-a", Date.now() - 2 * 60_000));
+    expect(result.current.data?.stats.runs).toBe(3);
+    await waitFor(() => expect(result.current.data?.stats.runs).toBe(5));
+  });
+
+  it("is kept out of the saved cache", () => {
+    global.fetch = jest.fn();
+    const { client } = run(seed("project-a"));
+    expect(client.getQueryCache().getAll()[0]?.meta).toEqual({ persist: false });
   });
 });
