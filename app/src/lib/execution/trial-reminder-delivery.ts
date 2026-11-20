@@ -22,6 +22,7 @@ export const deliverTrialReminder: DeliverTrialReminder = async (delivery) => {
     organizationName: delivery.organizationName,
     kind: delivery.kind,
     daysRemaining: delivery.daysRemaining,
+    browserMinutes: delivery.browserMinutes,
     subscribeUrl: trialSubscribeUrl(),
     manageBillingUrl: `${trialAppUrl(process.env)}/org-admin?tab=subscription`,
   });

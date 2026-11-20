@@ -60,11 +60,8 @@ export async function GET(request: NextRequest) {
     // Project setup (onboarding) flags: code registry, AI steps need a configured provider
     setup: resolveSetupFeatures({ aiConfigured: isAIProviderConfigured() }),
 
-    // Demo mode flag
-    demoMode: process.env.DEMO_MODE === "true",
-
     // Community links visibility (GitHub star, Discord invite)
-    // Independent setting that can be controlled separately from demo/self-hosted mode
+    // Independent setting that can be controlled separately from self-hosted mode
     showCommunityLinks: process.env.SHOW_COMMUNITY_LINKS === "true",
 
     // Application limits

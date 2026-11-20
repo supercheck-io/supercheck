@@ -1,3 +1,4 @@
+import { registerConsumer } from '../../common/consumer-watchdog.service';
 import { ExecutionCapacityError } from '../../execution/services/execution-admission.service';
 import { deferForCapacity } from '../../common/capacity-deferral';
 import {
@@ -928,6 +929,7 @@ export class K6ExecutionProcessor
   onApplicationBootstrap(): void {
     // k6-global has no location: the consuming worker's own location decides.
     if (!consumesWorkerQueue('global-k6')) return;
+    registerConsumer(() => [this.worker]);
     registerIntakeStopper(() => {
       this.capabilityGuard?.stop(); // a resume after the pause would restart intake
       return this.worker.pause(true);

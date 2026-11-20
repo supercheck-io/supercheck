@@ -44,7 +44,26 @@ it("activates the current successful challenge", async () => {
   expect(db.update).toHaveBeenCalledTimes(2);
 });
 it("does not activate on an unsuccessful ownership check", async () => {
-  jest.mocked(sendWebhookVerificationChallenge).mockResolvedValue({ success: false, error: "No echo" });
+  jest.mocked(sendWebhookVerificationChallenge).mockResolvedValue({ success: false, statusCode: 200, error: "No echo" });
   await expect(sendWebhookChallenge(params)).resolves.toEqual({ verified: false, error: "No echo" });
   expect(insertWithinPlanLimit).not.toHaveBeenCalled();
+});
+it("hides network and address-policy detail when the endpoint never answered", async () => {
+  jest.spyOn(console, "warn").mockImplementation(() => {});
+  jest.mocked(sendWebhookVerificationChallenge).mockResolvedValue({
+    success: false,
+    error: "Direct cloud connectors cannot target private or reserved IP ranges",
+  });
+  await expect(sendWebhookChallenge(params)).resolves.toEqual({ verified: false, error: "Could not reach the endpoint" });
+});
+it.each([
+  ["The operation was aborted due to timeout", "Endpoint timed out"],
+  ["getaddrinfo ENOTFOUND hook.example.com", "Host could not be resolved to an allowed public address"],
+  ["connect ECONNREFUSED 93.184.216.34:443", "Connection refused"],
+  ["Direct cloud connectors cannot target private or reserved IP ranges", "Host could not be resolved to an allowed public address"],
+  ["something odd 10.0.0.1", "Could not reach the endpoint"],
+])("gives authenticated owners a safe category for %s", async (error, category) => {
+  jest.spyOn(console, "warn").mockImplementation(() => {});
+  jest.mocked(sendWebhookVerificationChallenge).mockResolvedValue({ success: false, error });
+  await expect(sendWebhookChallenge({ ...params, revealReason: true })).resolves.toEqual({ verified: false, error: category });
 });

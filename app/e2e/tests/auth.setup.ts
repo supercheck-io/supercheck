@@ -4,7 +4,7 @@ import { CAPTCHA_TEST_HEADERS, preferredProjectId } from '../utils/api-auth';
 
 const authFile = 'user-auth-state.json';
 
-setup('authenticate as regular test user', async ({ request }) => {
+setup('authenticate as regular test user', async ({ request, baseURL }) => {
   if (!env.testUser.email || !env.testUser.password) {
     throw new Error('E2E_TEST_USER credentials required for setup');
   }
@@ -33,7 +33,9 @@ setup('authenticate as regular test user', async ({ request }) => {
   if (current) {
     const target = await preferredProjectId(request, current);
     if (target !== current) {
-      const switched = await request.post('/api/projects/switch', { data: { projectId: target } });
+      // Project switching is same-origin guarded; an API request context sends no Origin by itself.
+      const origin = new URL(baseURL as string).origin;
+      const switched = await request.post('/api/projects/switch', { headers: { origin, referer: `${origin}/` }, data: { projectId: target } });
       if (!switched.ok()) throw new Error(`Switching to E2E_TEST_PROJECT_ID failed (${switched.status()})`);
     }
   }
