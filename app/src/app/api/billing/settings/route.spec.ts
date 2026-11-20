@@ -122,10 +122,9 @@ describe("PATCH /api/billing/settings", () => {
     expect(billingSettingsService.updateSettings).not.toHaveBeenCalled();
   });
 
-  it("allows an admin to save controls for the displayed organization", async () => {
+  it("allows the owner to save controls for the displayed organization", async () => {
     const organizationId = "019a0000-0000-7000-8000-000000000001";
     (requireUserAuthContext as jest.Mock).mockResolvedValue({ userId: "user_123", organizationId });
-    (getUserOrgRole as jest.Mock).mockResolvedValue("org_admin");
     const response = await PATCH(settingsRequest(JSON.stringify({
       organizationId, enableSpendingLimit: true,
       monthlySpendingLimitDollars: 12.34, hardStopOnLimit: true,
@@ -134,6 +133,25 @@ describe("PATCH /api/billing/settings", () => {
     expect(billingSettingsService.updateSettings).toHaveBeenCalledWith(organizationId, {
       enableSpendingLimit: true, monthlySpendingLimitCents: 1234, hardStopOnLimit: true,
     });
+  });
+
+  it.each([
+    { enableSpendingLimit: false },
+    { monthlySpendingLimitDollars: 5 },
+    { hardStopOnLimit: false },
+    { resetSpendingLimitToPlanDefault: true },
+  ])("denies an admin changing spending caps (%j)", async (body) => {
+    (getUserOrgRole as jest.Mock).mockResolvedValue("org_admin");
+    const response = await PATCH(settingsRequest(JSON.stringify(body)));
+    expect(response.status).toBe(403);
+    expect(billingSettingsService.updateSettings).not.toHaveBeenCalled();
+  });
+
+  it("still lets an admin change usage alerts", async () => {
+    (getUserOrgRole as jest.Mock).mockResolvedValue("org_admin");
+    const response = await PATCH(settingsRequest(JSON.stringify({ notifyAt80Percent: false })));
+    expect(response.status).toBe(200);
+    expect(billingSettingsService.updateSettings).toHaveBeenCalledWith("org_123", { notifyAt80Percent: false });
   });
 
   it("denies a project member permission to modify billing controls", async () => {

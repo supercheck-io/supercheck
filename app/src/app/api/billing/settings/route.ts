@@ -150,6 +150,13 @@ export async function PATCH(request: NextRequest) {
       );
     }
 
+    // Spending caps change what the organization can be billed, so only the owner may edit them (admins keep alerts).
+    const changesCap = data.monthlySpendingLimitDollars !== undefined || data.enableSpendingLimit !== undefined ||
+      data.hardStopOnLimit !== undefined || data.resetSpendingLimitToPlanDefault !== undefined;
+    if (changesCap && orgRole !== Role.ORG_OWNER) {
+      return await permissionDeniedResponse(organizationId, "Only the organization owner can change spending limits");
+    }
+
     const reset = data.resetSpendingLimitToPlanDefault === true;
     if (reset && (data.monthlySpendingLimitDollars !== undefined ||
       data.enableSpendingLimit !== undefined || data.hardStopOnLimit !== undefined)) {

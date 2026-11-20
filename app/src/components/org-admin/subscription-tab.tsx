@@ -558,7 +558,7 @@ export function SubscriptionTab({ currentUserRole }: SubscriptionTabProps) {
 
       {/* Billing Controls - Only for cloud plans */}
       {hasSubscription && data.subscription.plan !== "unlimited" && (
-          <SpendingLimits key={data.organizationId} organizationId={data.organizationId} onSaved={fetchSubscriptionData} />
+          <SpendingLimits key={data.organizationId} organizationId={data.organizationId} onSaved={fetchSubscriptionData} canEditLimit={canManageSubscription} />
       )}
     </div>
   );
