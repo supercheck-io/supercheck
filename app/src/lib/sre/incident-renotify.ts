@@ -12,6 +12,7 @@ import { isPagingWebhook } from "@/lib/sre/notification-policy";
 import { sweepSreIncidents } from "@/sre/lib/incident-sweep";
 import { db } from "@/utils/db";
 import { checkedTick } from "@/lib/sentry-lazy";
+import { watchConsumer } from "@/lib/consumer-watchdog";
 
 const QUEUE_NAME = "sre-incident-renotify";
 const TICK_MS = 60_000;
@@ -447,6 +448,7 @@ export async function initializeIncidentRenotifyScheduler() {
     },
     { connection: redis.duplicate(), concurrency: 1, lockDuration: 120_000 },
   );
+  watchConsumer(worker);
   worker.on("error", (error) => queueLogger.error({ err: error }, "Incident re-notify worker error"));
   await queue.upsertJobScheduler(
     "incident-renotify",

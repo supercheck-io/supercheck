@@ -311,7 +311,7 @@ x-common-env: &common-env # Database Configuration - External PostgreSQL
   # Queue Alerting Configuration (optional)
   QUEUE_ALERTING_ENABLED: ${QUEUE_ALERTING_ENABLED:-true}
   # Alerts: High depth (>70%), Long wait (>15m), High failure (>5%), Stall detection
-  QUEUE_ALERT_SLACK_WEBHOOK_URL: ${QUEUE_ALERT_SLACK_WEBHOOK_URL:-}
+  QUEUE_ALERT_SLACK_WEBHOOK_URL: ${QUEUE_ALERT_SLACK_WEBHOOK_URL:-} # Slack webhook, or a Discord webhook URL + /slack
   QUEUE_ALERT_WEBHOOK_URL: ${QUEUE_ALERT_WEBHOOK_URL:-} # JSON payload { type: 'queue_alert', alert: ... }
 
   # Threshold Configuration

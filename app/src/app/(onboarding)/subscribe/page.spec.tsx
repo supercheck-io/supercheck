@@ -51,7 +51,7 @@ const pricing = {
   ],
   trial: {
     durationDays: 30,
-    highlights: ["5 monitors, checked at most every 5 minutes", "150 browser minutes for Playwright tests and synthetic monitors"],
+    highlights: ["5 monitors, checked at most every 5 minutes", "1,000 browser minutes for Playwright tests and synthetic monitors"],
   },
 };
 
@@ -131,36 +131,38 @@ describe("signup plan selection", () => {
       screen.getByRole("heading", { name: "Plus", level: 2 }),
     ).toBeVisible();
     expect(
-      screen.getAllByText("500 AI credits/month · fair use"),
+      screen.getAllByText("500 AI credits/month, fair use"),
     ).toHaveLength(2);
     expect(
       screen.getAllByText("100 completed AI SRE investigations/month"),
     ).toHaveLength(2);
     expect(screen.queryByText("Most Popular")).not.toBeInTheDocument();
-    expect(screen.getByText("Recommended")).toBeVisible();
-    expect(screen.getAllByText("5 status pages · 1,000 subscribers each")).toHaveLength(2);
+    expect(screen.getByText("Popular")).toBeVisible();
+    expect(screen.getAllByText("5 status pages with custom domains, 1,000 subscribers each")).toHaveLength(2);
     expect(screen.getAllByText("5 concurrent runs")).toHaveLength(2);
-    expect(screen.getAllByText("Monitor data: 7 days raw / 30 days metrics")).toHaveLength(2);
-    expect(screen.getByText(/per organization, not per seat/)).toBeVisible();
-    expect(screen.getByText(/Plus \$70, Pro \$300\) that you can change later/)).toBeVisible();
+    expect(screen.getByText("$70 default overage cap")).toBeVisible();
+    expect(screen.getByText("$300 default overage cap")).toBeVisible();
+    expect(screen.getAllByText(/^Overage: \$0\.01\/min Playwright, \$2\.00 per 1,000 VU-min k6, \$0\.25\/investigation AI SRE/)).toHaveLength(2);
+    expect(screen.getByText(/Priced per organization/)).toBeVisible();
+    expect(screen.getByText(/Prices in USD, before tax/)).toBeVisible();
     expect(
       screen.queryByRole("heading", { name: "Compare plans in detail" }),
     ).not.toBeInTheDocument();
     expect(
-      screen.getByRole("link", { name: /Compare all features and pricing/ }),
+      screen.getByRole("link", { name: /Compare all features and overage rates/ }),
     ).toHaveAttribute("href", "https://supercheck.io/pricing#compare");
     expect(
       screen.getByRole("link", { name: "Terms of service" }),
     ).toHaveAttribute("href", "https://supercheck.io/terms");
     expect(
-      screen.getByRole("link", { name: "Contact us about Enterprise" }),
+      screen.getByRole("link", { name: "Contact sales" }),
     ).toHaveAttribute("href", "mailto:hello@supercheck.io?subject=Supercheck%20Cloud%20Enterprise%20enquiry");
   });
 
   it("keeps the external-tab notice accessible without repeating it visually", async () => {
     await openPage();
     const comparison = screen.getByRole("link", {
-      name: /Compare all features and pricing/,
+      name: /Compare all features and overage rates/,
     });
     expect(comparison).toHaveAttribute("target", "_blank");
     expect(comparison.querySelector("svg")).toHaveAttribute(
@@ -360,8 +362,8 @@ describe("signup plan selection", () => {
         screen.getByRole("heading", { name: "Restore your subscription" }),
       ).toBeVisible();
       expect(
-        screen.queryByText(/activate your organization/),
-      ).not.toBeInTheDocument();
+        screen.getByText("Your subscription has ended. Choose a plan below to restore access."),
+      ).toBeVisible();
     },
   );
 
@@ -418,7 +420,7 @@ describe("signup plan selection", () => {
       expect(screen.getByText("Free trial · 6 days left")).toBeVisible();
       expect(screen.getAllByText(/6 days left/)).toHaveLength(1);
       pricing.faqs.forEach(({ question }) => expect(screen.getByText(question)).toBeInTheDocument());
-      expect(screen.getByText("What your free trial includes")).toBeVisible();
+      expect(screen.getByText("Your 30-day free trial includes")).toBeVisible();
       expect(screen.getByText("5 monitors, checked at most every 5 minutes")).toBeVisible();
       expect(screen.getByText(/Custom domains are on paid\s+plans/)).toBeVisible();
       expect(screen.queryByText(/single sign-on/i)).not.toBeInTheDocument();
@@ -535,7 +537,7 @@ describe("signup plan selection", () => {
     ).toBeVisible();
     expect(screen.getByText(/keep your existing subscription/)).toBeVisible();
     expect(
-      screen.queryByText(/Billed monthly per organization/),
+      screen.queryByText(/Prices in USD, before tax/),
     ).not.toBeInTheDocument();
     expect(
       screen.getByRole("link", { name: "Manage subscription" }),

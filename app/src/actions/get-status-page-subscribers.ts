@@ -88,6 +88,7 @@ export async function resendWebhookVerification(subscriberId: string) {
       subscriberId: subscriber.id,
       endpoint: subscriber.endpoint,
       statusPageId: subscriber.statusPageId,
+      revealReason: true,
     });
     return challenge.verified
       ? { success: true, message: "Webhook endpoint verified" }

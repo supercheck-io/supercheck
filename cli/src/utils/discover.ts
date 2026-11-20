@@ -1,3 +1,4 @@
+import { CONFIG_FILES } from '../config/config-files.js'
 import { readdirSync } from 'node:fs'
 import { readSmallFile } from './safe-read.js'
 import { join, relative, resolve } from 'node:path'
@@ -39,7 +40,6 @@ const FRAMEWORKS: [string, string, string | null][] = [
   ['@sveltejs/kit', 'sveltekit', '5173'], ['vite', 'vite', '5173'], ['react-scripts', 'create-react-app', '3000'],
   ['@nestjs/core', 'nestjs', '3000'], ['fastify', 'fastify', null], ['express', 'express', null],
 ]
-const CONFIG_NAMES = ['supercheck.config.ts', 'supercheck.config.mjs', 'supercheck.config.js']
 const ROUTE_HINTS: [RegExp, string][] = [[/login|sign-?in|auth/i, 'auth'], [/sign-?up|register/i, 'signup'], [/checkout|cart|pay|billing/i, 'payments'], [/dashboard|account|settings/i, 'account']]
 
 function readJson(path: string): Record<string, unknown> | null {
@@ -143,7 +143,7 @@ export function discoverRepository(rootInput: string): DiscoverResult {
   const pwTests = relFiles.filter((f) => /\.(spec|test)\.(ts|js|mjs)$/.test(f) && /(e2e|tests?|playwright)/i.test(f) && !f.startsWith('_supercheck_/'))
   const storageState = relFiles.filter((f) => /(^|\/)\.auth\/.+\.json$/.test(f) || /storage-?state.*\.json$/i.test(f))
   const k6Files = relFiles.filter((f) => /\.k6\.(ts|js)$/.test(f) && !f.startsWith('_supercheck_/'))
-  const config = CONFIG_NAMES.find((n) => rootNames.has(n)) ?? null
+  const config = CONFIG_FILES.find((n) => rootNames.has(n)) ?? null
   const scPw = relFiles.filter((f) => f.startsWith('_supercheck_/playwright/') && /\.pw\.ts$/.test(f)).length
   const scK6 = relFiles.filter((f) => f.startsWith('_supercheck_/k6/') && /\.k6\.ts$/.test(f)).length
 

@@ -107,8 +107,8 @@ export class SignInPage extends BasePage {
   /**
    * Sign in and wait for redirect away from sign-in page
    *
-   * The shared demo identity can be under a login lockout left by other specs
-   * (or by anyone else using the demo), which the page pre-check rejects before
+   * The shared test identity can be under a login lockout left by other specs
+   * (or by anyone else using the account), which the page pre-check rejects before
    * sending credentials. Wait that out, and retry once when a lock lands
    * between the pre-check and the submit, instead of failing on the redirect
    * wait with no explanation.

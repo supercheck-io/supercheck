@@ -26,3 +26,12 @@ it("invalidates the dashboard as well as the tests list after a delete", async (
   await waitFor(() => expect(mockQc.invalidateQueries).toHaveBeenCalledWith(expect.objectContaining({ queryKey: DASHBOARD_QUERY_KEY })));
   expect(mockQc.invalidateQueries).toHaveBeenCalledWith(expect.objectContaining({ queryKey: TESTS_QUERY_KEY }));
 });
+
+it.each([
+  [{ id: "t1", title: "Checkout flow" }, "Checkout flow"],
+  [{ id: "t2" }, "Untitled Test"],
+])("names the test in the delete dialog (%o)", async (original, name) => {
+  render(<DataTableRowActions row={{ original } as never} />);
+  fireEvent.click(screen.getByRole("menuitem", { name: /delete/i }));
+  expect(await screen.findByText(new RegExp(name))).toBeInTheDocument();
+});

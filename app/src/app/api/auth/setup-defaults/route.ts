@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { safeErrorFields } from "@/lib/log-safe-error";
 import { getCachedAuthSession } from "@/lib/session-cache";
 import { db } from "@/utils/db";
 import {
@@ -279,7 +280,7 @@ export async function POST(request: NextRequest) {
     if (error instanceof Error && error.message === "SESSION_CHANGED") {
       return NextResponse.json({ success: false, error: "Session changed. Please sign in again." }, { status: 401 });
     }
-    console.error("❌ Failed to create default org/project:", error);
+    console.error("❌ Failed to create default org/project:", safeErrorFields(error));
     return NextResponse.json(
       { success: false, error: "Failed to setup defaults" },
       { status: 500 },

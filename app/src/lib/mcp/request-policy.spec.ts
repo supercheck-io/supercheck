@@ -17,11 +17,11 @@ beforeEach(() => {
   mockLimit.mockResolvedValue({ allowed: true });
 });
 
-it("gives Better Auth the resolved client address rather than an untrusted chain", async () => {
-  const prepared = await prepareMcpOAuthRequest(request());
-  expect(prepared).toBeInstanceOf(Request);
-  expect(prepared.headers.get("x-forwarded-for")).toBe("192.0.2.5");
-  expect(prepared.headers.has("cf-connecting-ip")).toBe(false);
+it("leaves the forwarded chain intact so Better Auth's limiter resolves the same trusted address", async () => {
+  const original = request();
+  const prepared = await prepareMcpOAuthRequest(original);
+  expect(prepared).toBe(original);
+  expect(prepared.headers.get("x-forwarded-for")).toBe("203.0.113.66, 10.0.0.1");
   expect(mockLimit).toHaveBeenCalledWith(expect.any(String), { enabled: true, timeWindow: 60, maxRequests: 5 });
 });
 

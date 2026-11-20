@@ -14,6 +14,7 @@ jest.mock("better-auth/next-js", () => {
   };
 });
 
+jest.mock("@/lib/auth/better-auth-rate-limit", () => ({ withAuthClientIp: (request: Request) => request }));
 jest.mock("@/utils/auth", () => ({
   auth: {},
 }));
@@ -106,7 +107,7 @@ describe("Email sign-up invite enforcement", () => {
         method: "POST",
         headers: {
           "content-type": "application/json",
-          "x-invite-token": "invite-token-1",
+          "x-invite-token": "00000000-0000-4000-8000-0000000000a1",
         },
         body: JSON.stringify({ email: "user@example.com", password: "secret" }),
       });
@@ -138,7 +139,7 @@ describe("Email sign-up invite enforcement", () => {
         method: "POST",
         headers: {
           "content-type": "application/json",
-          "x-invite-token": "invite-token-1",
+          "x-invite-token": "00000000-0000-4000-8000-0000000000a1",
         },
         body: JSON.stringify({ email: "user@example.com", password: "secret" }),
       });
@@ -170,7 +171,7 @@ describe("Email sign-up invite enforcement", () => {
         method: "POST",
         headers: {
           "content-type": "application/json",
-          "x-invite-token": "invite-token-1",
+          "x-invite-token": "00000000-0000-4000-8000-0000000000a1",
         },
         body: JSON.stringify({ email: "user@example.com", password: "secret" }),
       });
@@ -201,7 +202,7 @@ describe("Email sign-up invite enforcement", () => {
         method: "POST",
         headers: {
           "content-type": "application/json",
-          "x-invite-token": "invite-token-1",
+          "x-invite-token": "00000000-0000-4000-8000-0000000000a1",
         },
         body: JSON.stringify({ email: "user@example.com", password: "secret" }),
       });
@@ -297,7 +298,7 @@ describe("Email sign-up invite enforcement", () => {
           method: "POST",
           headers: {
             "content-type": "application/json",
-            "x-invite-token": "invite-token-1",
+            "x-invite-token": "00000000-0000-4000-8000-0000000000a1",
           },
           body: JSON.stringify({
             email: "user@example.com",
@@ -332,7 +333,7 @@ describe("Email sign-up invite enforcement", () => {
           method: "POST",
           headers: {
             "content-type": "application/json",
-            "x-invite-token": "invite-token-1",
+            "x-invite-token": "00000000-0000-4000-8000-0000000000a1",
           },
           body: JSON.stringify({
             email: "user@example.com",
@@ -377,6 +378,8 @@ describe("Email sign-up invite enforcement", () => {
         expect(response.status).toBe(403);
         expect(body.code).toBe("INVITE_REQUIRED");
         expect(mockBetterAuthHandlers.POST).not.toHaveBeenCalled();
+        // A non-uuid token never reaches the uuid column, so it cannot surface as a 500.
+        expect(mockDb.select).not.toHaveBeenCalled();
       });
     });
 
@@ -444,7 +447,7 @@ describe("Email sign-up invite enforcement", () => {
           method: "POST",
           headers: {
             "content-type": "application/json",
-            "x-invite-token": "invite-token-1",
+            "x-invite-token": "00000000-0000-4000-8000-0000000000a1",
           },
           body: JSON.stringify({
             email: "user@evil.com",

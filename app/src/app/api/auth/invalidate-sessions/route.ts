@@ -6,6 +6,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
+import { safeErrorFields } from "@/lib/log-safe-error";
 import { auth } from "@/utils/auth";
 import { headers } from "next/headers";
 import { db } from "@/utils/db";
@@ -132,7 +133,7 @@ export async function POST(request: NextRequest) {
       },
     });
   } catch (error) {
-    logger.error({ err: error }, "Failed to invalidate sessions");
+    logger.error({ err: safeErrorFields(error) }, "Failed to invalidate sessions");
     
     return NextResponse.json(
       { 
@@ -204,7 +205,7 @@ export async function GET() {
       },
     });
   } catch (error) {
-    logger.error({ err: error }, "Failed to get sessions");
+    logger.error({ err: safeErrorFields(error) }, "Failed to get sessions");
     
     return NextResponse.json(
       { error: "Failed to get sessions" },

@@ -116,7 +116,7 @@ export const products: Product[] = [
     ],
     closing: {
       title: "Add your first monitor",
-      body: "Explore the live demo to see monitors, results and alerts with sample data.",
+      body: "Self-host Supercheck to set up monitors, see results and get alerts.",
     },
   },
   {
@@ -205,7 +205,7 @@ export const products: Product[] = [
     ],
     closing: {
       title: "Watch a user journey run on a schedule",
-      body: "Explore the live demo to see synthetic monitors and reports with sample data.",
+      body: "Self-host Supercheck to run synthetic monitors and read their reports.",
     },
   },
   {
@@ -311,7 +311,7 @@ export const products: Product[] = [
     ],
     closing: {
       title: "See an investigation end to end",
-      body: "Explore the live demo to see incidents and evidence with sample data.",
+      body: "Self-host Supercheck to see incidents and the evidence behind them.",
     },
   },
   {
@@ -401,7 +401,7 @@ export const products: Product[] = [
     ],
     closing: {
       title: "Publish a status page",
-      body: "Explore the live demo to see a status page with sample incidents.",
+      body: "Self-host Supercheck to publish a status page for your incidents.",
     },
   },
 ];

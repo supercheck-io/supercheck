@@ -495,6 +495,8 @@ export interface TrialReminderDelivery {
   organizationId: string;
   organizationName: string;
   daysRemaining: number;
+  /** Browser minutes the trial includes; named in the browser usage emails. */
+  browserMinutes: number;
   recipients: string[];
 }
 
@@ -507,6 +509,8 @@ export interface TrialReminderResult {
   midway: number;
   ending: number;
   ended: number;
+  browserHalf: number;
+  browserFull: number;
 }
 
 const DAY_MS = 86_400_000;
@@ -516,6 +520,8 @@ const REMINDER_COLUMN = {
   midway: executionEntitlements.midwayNotifiedAt,
   ending: executionEntitlements.endingNotifiedAt,
   ended: executionEntitlements.endedNotifiedAt,
+  browserHalf: executionEntitlements.browserHalfNotifiedAt,
+  browserFull: executionEntitlements.browserFullNotifiedAt,
 } as const;
 
 /** Trials that currently qualify for the reminder, never one already sent. */
@@ -536,12 +542,33 @@ function reminderCondition(kind: TrialNotificationKind, now: Date) {
       isNull(executionEntitlements.endingNotifiedAt),
     );
   }
+  const used = executionEntitlements.playwrightUsedMs;
+  const budget = executionEntitlements.playwrightBudgetMs;
+  // Usage emails only matter while the trial runs. Half excludes a fully used allowance, so a jump straight
+  // past 100% sends the one email that is true, not two at once.
+  if (kind === "browserHalf") {
+    return and(
+      gt(ends, now),
+      sql`${used} * 2 >= ${budget} AND ${budget} - ${used} >= ${MIN_BROWSER_RUN_MS}`,
+      isNull(executionEntitlements.browserHalfNotifiedAt),
+    );
+  }
+  if (kind === "browserFull") {
+    return and(
+      gt(ends, now),
+      sql`${budget} - ${used} < ${MIN_BROWSER_RUN_MS}`,
+      isNull(executionEntitlements.browserFullNotifiedAt),
+    );
+  }
   return and(
     lte(ends, now),
     isNotNull(executionEntitlements.lifecycleEndedAt),
     isNull(executionEntitlements.endedNotifiedAt),
   );
 }
+
+/** Mirrors the worker's MIN_RESERVED_RUN_MS: below this much allowance no browser run is admitted, so the allowance counts as used up. */
+const MIN_BROWSER_RUN_MS = 5_000;
 
 const MARK_SENT_ATTEMPTS = 3;
 
@@ -575,13 +602,14 @@ export async function sendTrialReminders(options: {
 }): Promise<TrialReminderResult> {
   const now = options.now ?? new Date();
   const database = options.database ?? db;
-  const result: TrialReminderResult = { midway: 0, ending: 0, ended: 0 };
+  const result: TrialReminderResult = { midway: 0, ending: 0, ended: 0, browserHalf: 0, browserFull: 0 };
 
-  for (const kind of ["midway", "ending", "ended"] as const) {
+  for (const kind of ["midway", "ending", "ended", "browserHalf", "browserFull"] as const) {
     const due = await database
       .select({
         organizationId: executionEntitlements.organizationId,
         expiresAt: executionEntitlements.expiresAt,
+        playwrightBudgetMs: executionEntitlements.playwrightBudgetMs,
         name: organization.name,
         polarCustomerId: organization.polarCustomerId,
         subscriptionPlan: organization.subscriptionPlan,
@@ -641,6 +669,7 @@ export async function sendTrialReminders(options: {
           0,
           Math.ceil((entry.expiresAt.getTime() - now.getTime()) / DAY_MS),
         ),
+        browserMinutes: Math.floor(entry.playwrightBudgetMs / 60_000),
         recipients,
       });
       if (!delivered) continue;
@@ -653,9 +682,11 @@ export async function sendTrialReminders(options: {
 }
 
 function columnKey(kind: TrialNotificationKind) {
-  return kind === "midway"
-    ? "midwayNotifiedAt"
-    : kind === "ending"
-      ? "endingNotifiedAt"
-      : "endedNotifiedAt";
+  return {
+    midway: "midwayNotifiedAt",
+    ending: "endingNotifiedAt",
+    ended: "endedNotifiedAt",
+    browserHalf: "browserHalfNotifiedAt",
+    browserFull: "browserFullNotifiedAt",
+  }[kind];
 }

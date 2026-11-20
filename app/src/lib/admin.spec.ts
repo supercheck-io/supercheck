@@ -10,9 +10,10 @@ jest.mock("@/lib/rbac/middleware", () => ({
   getUserOrgRole: jest.fn(),
 }));
 
-import { requireAdmin, AdminAccessDeniedError, adminDeniedResponse } from "./admin";
+import { requireAdmin, isOrgAdmin, AdminAccessDeniedError, adminDeniedResponse } from "./admin";
 
-const { getCurrentUser } = jest.requireMock("@/lib/session") as { getCurrentUser: jest.Mock };
+const { getCurrentUser, getActiveOrganization } = jest.requireMock("@/lib/session") as { getCurrentUser: jest.Mock; getActiveOrganization: jest.Mock };
+const { getUserOrgRole } = jest.requireMock("@/lib/rbac/middleware") as { getUserOrgRole: jest.Mock };
 const { getUserRole } = jest.requireMock("@/lib/rbac/middleware") as { getUserRole: jest.Mock };
 
 describe("requireAdmin", () => {
@@ -55,5 +56,18 @@ describe("adminDeniedResponse", () => {
     expect(adminDeniedResponse(new AdminAccessDeniedError(401))?.status).toBe(401);
     expect(adminDeniedResponse(new AdminAccessDeniedError())?.status).toBe(403);
     expect(adminDeniedResponse(new Error("boom"))).toBeNull();
+  });
+});
+
+describe("isOrgAdmin logging", () => {
+  it("never logs the session token carried in a drizzle query error", async () => {
+    const spy = jest.spyOn(console, "error").mockImplementation(() => undefined);
+    getCurrentUser.mockResolvedValue({ id: "u1" });
+    getActiveOrganization.mockResolvedValue({ id: "o1" });
+    getUserOrgRole.mockRejectedValue(new Error("Failed query: select ... where token = $1\nparams: tok_secret"));
+    expect(await isOrgAdmin()).toBe(false);
+    expect(spy).toHaveBeenCalled();
+    expect(JSON.stringify(spy.mock.calls)).not.toContain("tok_secret");
+    spy.mockRestore();
   });
 });

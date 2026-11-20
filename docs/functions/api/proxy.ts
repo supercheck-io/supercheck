@@ -8,7 +8,6 @@
  */
 
 const ALLOWED_ORIGINS = [
-  'https://demo.supercheck.dev',
   'https://app.supercheck.io',
 ];
 

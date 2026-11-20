@@ -47,7 +47,7 @@ Password reset requests are rate-limited by `checkPasswordResetRateLimit()`:
 | ID | Status | What the current E2E suite verifies |
 |----|--------|-------------------------------------|
 | `AUTH-009` | Automated | `/forgot-password` loads with email field and submit button |
-| `AUTH-009` | Skipped | Success-state request test exists but is skipped because demo-site rate limiting makes it flaky |
+| `AUTH-009` | Skipped | Success-state request test exists but is skipped because shared-site rate limiting makes it flaky |
 | `AUTH-010` | Automated | Invalid / expired / missing token states are handled without crashing |
 | `AUTH-011` | Skipped | Full reset flow requires deterministic token provisioning and is not currently automated |
 | `AUTH-046` | Automated (best effort) | Repeated requests eventually surface rate-limit messaging when the environment enforces it |

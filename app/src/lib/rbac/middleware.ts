@@ -11,6 +11,7 @@
  */
 
 import { cache } from "react";
+import { safeErrorFields } from "@/lib/log-safe-error";
 import { NextRequest, NextResponse } from "next/server";
 import { headers } from "next/headers";
 import { db } from "@/utils/db";
@@ -127,7 +128,7 @@ async function getEffectiveUserId(
     // No impersonation - use the auth session's user ID
     return authSession.user.id;
   } catch (error) {
-    console.error("Error checking impersonation state:", error);
+    console.error("Error checking impersonation state:", safeErrorFields(error));
     // On error, fall back to auth session user ID (safer default)
     return authSession.user.id;
   }
@@ -196,7 +197,7 @@ export async function hasPermission(
 
     return checkPermission(permissionContext, resource, action);
   } catch (error) {
-    console.error("Error checking permission:", error);
+    console.error("Error checking permission:", safeErrorFields(error));
     return false;
   }
 }
@@ -266,7 +267,7 @@ export async function hasPermissionForUser(
 
     return checkPermission(permissionContext, resource, action);
   } catch (error) {
-    console.error("Error checking permission for user:", error);
+    console.error("Error checking permission for user:", safeErrorFields(error));
     return false;
   }
 }
@@ -582,8 +583,7 @@ export async function getImpersonationState(): Promise<"none" | "impersonated" |
     // parameter is the caller's live session token.
     console.error(
       "Could not determine impersonation state; refusing the request:",
-      (error as { name?: string })?.name ?? "Error",
-      (error as { code?: string })?.code ?? "",
+      safeErrorFields(error),
     );
     return "unknown";
   }
@@ -611,7 +611,7 @@ export async function requireSuperAdmin(): Promise<{
 
     return { userId: session.user.id };
   } catch (error) {
-    console.error("Error in requireSuperAdmin:", error);
+    console.error("Error in requireSuperAdmin:", safeErrorFields(error));
     return { userId: "", error: "Authentication failed" };
   }
 }
@@ -830,14 +830,14 @@ export function withPermissions(
           metadata: {
             url: req.url,
             method: req.method,
-            error: error instanceof Error ? error.message : "Unknown error",
+            error: safeErrorFields(error).message,
             duration: Date.now() - startTime,
           },
           success: false,
         });
       }
 
-      console.error("Permission middleware error:", error);
+      console.error("Permission middleware error:", safeErrorFields(error));
 
       if (error instanceof Error) {
         if (error.message === "Authentication required") {
@@ -1192,7 +1192,7 @@ export async function canPerformAdminOperation(
     // Check system-level admin permissions using custom RBAC
     return await hasPermission("system", operation);
   } catch (error) {
-    console.error("Admin permission check failed:", error);
+    console.error("Admin permission check failed:", safeErrorFields(error));
     return false;
   }
 }

@@ -1,4 +1,5 @@
 import { isUuid } from "@/lib/uuid";
+import { safeErrorFields } from "@/lib/log-safe-error";
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/utils/db';
 import {
@@ -50,7 +51,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   } catch (error) {
     const denied = adminDeniedResponse(error);
     if (denied) return denied;
-    console.error('Admin user GET error:', error);
+    console.error('Admin user GET error:', safeErrorFields(error));
     return NextResponse.json(
       { success: false, error: 'Failed to fetch user' },
       { status: error instanceof Error && error.message === 'Admin privileges required' ? 403 : 500 }
@@ -154,7 +155,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
   } catch (error) {
     const denied = adminDeniedResponse(error);
     if (denied) return denied;
-    console.error('Admin user PUT error:', error);
+    console.error('Admin user PUT error:', safeErrorFields(error));
     return NextResponse.json(
       { success: false, error: 'Failed to update user' },
       { status: error instanceof Error && error.message === 'Admin privileges required' ? 403 : 500 }
@@ -257,7 +258,7 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
               organizationName: org.name, reason: 'sole_member_user_deleted', userId, purgeAfter: requested.purgeAfter.toISOString(), billing: requested.billing,
             });
           } catch (error) {
-            console.error('Failed to audit organization deletion:', error);
+            console.error('Failed to audit organization deletion:', safeErrorFields(error));
           }
         }
       } catch (error) {
@@ -336,7 +337,7 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
     if (error instanceof OrganizationCancelledDuringUserDeletionError) {
       return NextResponse.json({ success: false, error: error.message, ...(deletedOrganizationIds.length ? { deletedOrganizationIds } : {}) }, { status: 409 });
     }
-    console.error('Admin user DELETE error:', error);
+    console.error('Admin user DELETE error:', safeErrorFields(error));
     return NextResponse.json(
       { success: false, error: 'Failed to delete user', ...(deletedOrganizationIds.length ? { deletedOrganizationIds } : {}) },
       { status: 500 }
@@ -538,7 +539,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   } catch (error) {
     const denied = adminDeniedResponse(error);
     if (denied) return denied;
-    console.error('Admin user POST error:', error);
+    console.error('Admin user POST error:', safeErrorFields(error));
     return NextResponse.json(
       { success: false, error: 'Failed to perform action' },
       { status: 500 }
