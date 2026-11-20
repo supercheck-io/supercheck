@@ -7,6 +7,7 @@ The CLI is versioned separately; see [cli/CHANGELOG.md](cli/CHANGELOG.md). Prere
 ## [Unreleased]
 
 ### Upgrade notes
+- **Migration `0088`, then the app.** Adds the columns that record which trial usage emails were sent and raises active trials still on the old 150-minute browser budget to 1,000 minutes. Apply it before you update the app. No new environment variable.
 
 - **Default email sender name.** With `SMTP_FROM_NAME` unset, the app and the worker now send as `Supercheck <SMTP_FROM_EMAIL>` instead of the bare address, so every email shows the same sender. Set `SMTP_FROM_NAME` to use another name; a name already in `SMTP_FROM_EMAIL` still wins.
 - **Email subjects changed (mail filters).** Sign-up, password reset, invitation and test emails now share the `[Supercheck]` prefix with alerts (alerts and invitations read `<Event>: <Name>`): `[Supercheck] Verify your email address`, `[Supercheck] Reset your password`, `[Supercheck] You're invited: <organization>`, `[Supercheck] Test email`. Update any mail rule that matched the old subjects. No new environment variable.
@@ -28,6 +29,8 @@ The CLI is versioned separately; see [cli/CHANGELOG.md](cli/CHANGELOG.md). Prere
 - **Monitor check groups: migration `0074` and rollback.** Migration `0074` adds `monitor_group_evaluations`, which now holds the alert receipt of each worker-aggregated check group instead of `monitor_results.details`. Apply it before you update the worker. `MONITOR_GROUP_EVALUATION_RETENTION_DAYS` (default 14, minimum 2) sets how long receipts are kept. For this release the worker also writes the old receipt into one `monitor_results` row when it sends a group's alerts, so rolling back to an earlier worker neither re-counts nor re-alerts a group. A group's alerts are sent under a 2-minute lease: a retry never double-sends (one that meets a live lease fails as busy and retries after it), and if a worker dies between claiming and sending, the next retry after the lease delivers the alert, which can duplicate it in that rare window (logged as `monitor_group_notification_lease_expired`). That second write is temporary and is removed in the next release; after that, rolling back below this version is not safe.
 
 ### Added
+- **Trial: 1,000 browser minutes and usage emails (Cloud).** The free trial now includes 1,000 browser minutes for Playwright tests and synthetic monitors (was 150). Trial owners get an email when 50% and again when 100% of them are used, each with a link to choose a plan, once per threshold. k6 and AI limits are unchanged.
+- **Simpler pricing page.** One plan grid, shared by the public pricing page and the in-app plan picker, with the same allowances, overage rates and wording.
 
 - **MCP: more maintenance and incident tools.** `get_maintenance_window` (read), and with `mcp:incidents:write`: `update_maintenance_window`, `delete_maintenance_window` (needs monitor delete permission; refused while the window is on a status page) and `update_incident_resources`. `get_context` reports whether the organization is scheduled for deletion.
 - **API reference.** Projects and project members (`/api/projects`, `/api/projects/{id}`, `/api/projects/{id}/members`) are now in the OpenAPI document, and the `ORG_PENDING_DELETION` error is documented.
@@ -58,6 +61,11 @@ The CLI is versioned separately; see [cli/CHANGELOG.md](cli/CHANGELOG.md). Prere
 - Single-test runs (CLI `test execute`, playground) report their `testId` and test count, and their report is found by `GET /api/runs/{runId}`.
 
 ### Changed
+- **Only the organization owner can change spending limits.** Admins see the cap read-only and still choose usage alert thresholds and billing contacts. The API answers `403` to an admin who sends cap fields.
+- **AI details and Agent results are popovers.** On an AI endpoint monitor, first token, tokens per call, the prompt/completion split and the requested and served model are in an **AI details** button beside the availability chart; the header keeps the same three groups as HTTP monitors. On a run, **Agent results** is a button in the run header and turns red when an attempt failed.
+- **Faster first load.** The dashboard streams with the page, the app shell reads admin, impersonation, preference and setup state once instead of through five requests, and the runs analytics charts load only when their tab opens. Critical JavaScript is about 27% to 33% smaller on the dashboard and the monitor list.
+- **Public sign-in limits are shared across replicas.** Sign-in and other authentication rate limits count in Redis and key on the client IP resolved by `TRUSTED_PROXY_HOPS`. If Redis is down they allow requests. A draft status page answers like a missing one, and an anonymous status-page webhook subscriber only sees **Could not reach the endpoint** (owners resending verification see a coarse reason).
+- **CLI configuration lookup order.** `link`, `discover` and the config loader now look for `supercheck.config.ts`, then `.js`, then `.mjs`. Before, `link` preferred `.mjs`, so a project with both files could be linked to a file the CLI then ignored.
 
 - Page and section info icons now open the same click-to-open popover (icon and title, then short items) instead of a hover tooltip or a long paragraph.
 - **The notification channel dialog is easier to scan.** Every channel type and paging preset (PagerDuty, Jira Service Management, Splunk On-Call, Better Stack, incident.io, custom webhook) now has a logo in the type picker, the preset picker and the Provider column. The picker has group headings and separators, labels use sentence case, fields show example placeholders and helper text, required fields are marked, Enter no longer submits by accident, and the Test connection result shows inline in the dialog.
@@ -87,6 +95,7 @@ The CLI is versioned separately; see [cli/CHANGELOG.md](cli/CHANGELOG.md). Prere
 - The incident summary card shows a short AI summary and says when it comes from the evidence brief or triage. Only a completed investigation shows a confidence rating. Summaries end on a whole sentence, the Overview tab no longer repeats the resolution above the summary, and AI actions on the incident page use subtly coloured buttons.
 
 ### Removed
+- The public demo server. The `DEMO_MODE` setting and demo badge, the demo origin in the recorder extension and the demo entry in the OpenAPI servers are gone; the recorder dialog now reads "Cloud connects automatically". Self-hosted installs lose nothing.
 
 - Opsgenie alert channel and AI SRE connector (Atlassian has ended Opsgenie sign-ups)). Switch any existing Opsgenie channel to the Jira Service Management preset or a custom webhook, and delete any Opsgenie connector.
 - The unused `type: "file"` attachment option on `POST /api/sre/chat` (it now returns `400`) and the `S3_SRE_ATTACHMENTS_BUCKET_NAME` setting. Nothing could upload to that bucket. You can delete an empty `sre-chat-attachments` bucket.
@@ -96,6 +105,11 @@ The CLI is versioned separately; see [cli/CHANGELOG.md](cli/CHANGELOG.md). Prere
 - `NEXT_PUBLIC_BASE_URL` (use `NEXT_PUBLIC_APP_URL`), `NEXTAUTH_SECRET` and `AUTH_SECRET` (use `BETTER_AUTH_SECRET`), `PRIVATE_AGENT_POLL_INTERVAL_MS` (use `PRIVATE_AGENT_RETRY_INTERVAL_MS`) and `STATUS_PAGE_CNAME_TARGET` (derived from `STATUS_PAGE_DOMAIN`) still work but log a warning once and will be removed in a future release. `NEXT_PUBLIC_APP_URL` now takes precedence over `NEXT_PUBLIC_BASE_URL` for the job trigger URL. `app/.env.example` and `worker/.env.example` now list the advanced tunables.
 
 ### Fixed
+- **Queue consumers recover after a Redis failover.** After Redis and Sentinel were replaced, the app and worker stayed up while their queue consumers silently stopped, so runs queued with nothing active. A watchdog now revives them. A consumer that cannot recover within 5 minutes makes `/api/health/live` (app) and `/health/live` (worker) return `503` so Kubernetes restarts the pod; a plain Redis outage never does. Compose health checks use other endpoints, so on Compose restart `app` and `worker` if runs stay queued.
+- Super admins can no longer delete a user's project while impersonating that user.
+- Session tokens no longer reach server error logs when a database query fails; logs keep only the error name, code and a scrubbed message.
+- A malformed invite token on email sign-up answers `INVITE_REQUIRED` instead of a server error, and status page iCal feeds escape stray carriage returns in incident text.
+- **Free tools.** The Turnstile hostname list matches exactly, and the DNS check refuses names that point at reserved, platform or Supercheck hostnames.
 
 - **AI Analyze on k6 job runs.** The analysis now reads the run's k6 summary (thresholds, error rate, response times, VUs) instead of reporting that no metrics were provided.
 - **AI reports.** The report dialog renders formatted Markdown by default; a Source tab keeps the raw view. Copy and Download still return the raw Markdown.

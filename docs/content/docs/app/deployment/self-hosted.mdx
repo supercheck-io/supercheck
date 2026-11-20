@@ -412,6 +412,17 @@ sudo docker save --platform "linux/$(dpkg --print-architecture)" "$WORKER_IMAGE"
 A worker reports the `agent-test` capability unless its execution image (`WORKER_IMAGE`) has an older full version tag than the worker, so keep both on the same version.
 
 </Accordion>
+<Accordion title="Runs stay queued after Redis restarted" id="queue-stalled">
+
+After a Redis restart or failover, the app and worker detect queue consumers that stopped fetching jobs and reconnect them. If a consumer cannot recover within 5 minutes, `/health/live` on the worker and `/api/health/live` on the app return `503`. The Compose health checks use `/api/health` and `/health/ready`, so they do not restart the container. If runs stay queued with nothing active, restart the services:
+
+```bash
+sudo docker compose restart app worker
+```
+
+A Redis or database outage alone never fails these endpoints.
+
+</Accordion>
 <Accordion title="Compose says a secret is missing from .env" id="missing-secret">
 
 `docker-compose.yml` refuses to start without `DB_PASSWORD`, `REDIS_PASSWORD`, `BETTER_AUTH_SECRET` and the storage keys. On a new install, run `./init-secrets.sh`. On an existing install, restore the `.env` you installed with (the installer keeps `.env.bak-*` copies next to it, and each backup has one). Never generate new secrets for existing data: the database password and encryption key would no longer match.
