@@ -79,12 +79,17 @@ An administrator configures SMTP. Set `SMTP_USER` and `SMTP_PASSWORD` only when 
 SMTP_HOST=smtp.resend.com
 SMTP_PORT=587
 SMTP_FROM_EMAIL=alerts@yourdomain.com
-SMTP_USER=resend            # optional, set both or neither
-SMTP_PASSWORD=your-api-key  # optional
-SMTP_BLOCKED_RECIPIENT_DOMAINS=qa.yourdomain.com  # optional, comma-separated, subdomains included
+
+# Optional: set BOTH only when SMTP authentication is required
+SMTP_USER=resend
+SMTP_PASSWORD=your-api-key
 ```
 
-Reserved domains that cannot receive mail are always skipped, not bounced: `example.com`, `example.net`, `example.org`, and anything under `.example`, `.invalid`, `.test` or `.localhost`. Use `SMTP_BLOCKED_RECIPIENT_DOMAINS` for more, such as a test domain without an MX record.
+Reserved domains that cannot receive mail are always skipped, not bounced: `example.com`, `example.net`, `example.org`, and anything under `.example`, `.invalid`, `.test` or `.localhost`. To skip more, such as a test domain without an MX record, list them comma-separated (subdomains included):
+
+```bash
+SMTP_BLOCKED_RECIPIENT_DOMAINS=qa.yourdomain.com
+```
 
 **Supported providers:** Resend, SendGrid, Mailgun, Amazon SES, Gmail, Office 365
 
@@ -166,9 +171,9 @@ Other Microsoft hosts, such as `outlook.office.com` or `*.azurewebsites.net`, ar
 
 - **Advanced** is collapsed by default. It starts open when you edit a custom webhook with saved headers or a body template, and opens by itself when one of its fields has an error.
 - Self-hosted with `SELF_HOSTED=true` and `ALLOW_INTERNAL_TARGETS=true`: webhook channels (not Slack, Teams, Discord or Telegram) may use internal hosts and `http://` URLs. Cloud metadata and link-local addresses such as `169.254.169.254` stay blocked.
-- URLs, headers and other credentials are secrets and are cleared when you reopen a channel. Leave a field blank to keep its value. Saved headers survive only while the URL and preset stay the same; after changing either, enter the API key (Jira Service Management), the API token (incident.io) or the headers again (`{}` for none).
+- URLs, headers and other credentials are secrets and are cleared when you reopen a channel. Leave a field blank to keep its value, or enter a replacement and use **Test connection**. Saved headers survive only while the URL and preset stay the same; after changing either, enter the API key (Jira Service Management), the API token (incident.io) or the headers again (`{}` for none).
 
-See [Webhooks and paging services](#webhook-presets) for presets and templates.
+Use **Test connection** before relying on delivery. See [Webhooks and paging services](#webhook-presets) for presets and templates.
 
 </Tab>
 </Tabs>
@@ -388,7 +393,7 @@ Turning on **SSL Check** on a website monitor also turns on **Alert on SSL certi
 | **SSL Expiring** | The certificate is inside the window or expired | At most once every 24 hours |
 | **SSL Expiring** (unreadable) | The site is up but the certificate could not be read for 24 hours. A single failed read sends nothing | At most daily |
 | **SSL certificate renewed (valid until _date_)** | After a warning, a check finds a valid certificate outside the window or with a later expiry | Once per warning |
-| **SSL certificate readable again** | After an unreadable warning, the certificate can be read | Once per warning |
+| **SSL certificate readable again** | After an unreadable warning, a check finds a valid certificate outside the window | Once per warning |
 
 - Renewed and readable notices show as **SSL Renewed** in delivery history, go to the same channels, and never open or resolve an incident. Webhooks receive them as a resolve event with the same `ssl:` key as the warning.
 - A failing channel is retried up to 5 times, then skipped. Turning off SSL alerts or **SSL Check** discards a pending notice.
@@ -412,7 +417,7 @@ Warnings report a problem that is not an outage yet. They:
 - don't count toward failure or recovery thresholds;
 - are held back during [maintenance windows](/docs/app/monitor#maintenance-windows).
 
-Turn them on per monitor under **Warnings** in the alert settings; only warnings that apply to the monitor type are listed. **Ping is late** is off by default. The MCP and AI endpoint warnings are on, but the slow and token warnings send nothing until you set their limit.
+Turn them on or off per monitor under **Warnings** in the alert settings; only warnings that apply to the monitor type are listed. **Ping is late** is off by default. The MCP and AI endpoint warnings are on, but the slow and token warnings send nothing until you set their limit.
 
 | Warning | Monitor type | Sent when |
 |---|---|---|
@@ -441,7 +446,7 @@ Turn them on per monitor under **Warnings** in the alert settings; only warnings
 On **Communicate → Notifications → Channels**, open the channel's menu and select **Send test page** (webhooks and paging services) or **Send test message** (other channels). Saved secrets are reused.
 </Step>
 <Step>
-Confirm with **Send test page** in the dialog. A test page is a real page and can wake whoever is on call.
+Confirm with **Send test page** in the dialog; nothing is sent before that. A test page is a real page and can wake whoever is on call.
 </Step>
 <Step>
 For a paging service, **Resolve test page** closes it again, including one left open by an earlier test.
@@ -494,7 +499,7 @@ Monitors that page only a paging service and open no incidents have no fallback.
 | **Provider** | Channel type or preset used |
 | **Sent At** | When it was sent |
 
-Each row also keeps delivery metadata for AI SRE correlation (provider or preset, dedup key, event action, response status, attempt count, response hash). Raw provider response bodies and credentials are never shown.
+Each row also keeps delivery metadata for AI SRE correlation (provider or preset, dedup key, event action, response status, attempt count, and response hash when available). Raw provider response bodies and credentials are never shown.
 
 <Accordions>
 <Accordion title="Alert samples" id="alert-samples">

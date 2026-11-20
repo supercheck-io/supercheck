@@ -181,3 +181,22 @@ test("result region is aria-live and the form works by keyboard", async ({ page 
   await page.keyboard.press("Enter");
   await expect(page.getByTestId("tool-verdict")).toContainText("Domain does not resolve");
 });
+
+test("the info popover opens without submitting the form", async ({ page }) => {
+  const requests = await setup(page, () => ok("uptime", {}));
+  await open(page, "/tools/website-uptime-checker");
+  await page.getByTestId("tool-form").getByRole("textbox").fill("example.com");
+  await page.getByRole("button", { name: "About this check" }).click();
+  await expect(page.getByRole("link", { name: "About SupercheckBot" })).toBeVisible();
+  expect(requests).toHaveLength(0);
+});
+
+test("the landing band pre-fills the uptime checker without running a check", async ({ page }) => {
+  const requests = await setup(page, () => ok("uptime", {}));
+  await page.goto("/");
+  await page.getByLabel("Website to check").fill("example.com");
+  await page.getByLabel("Website to check").press("Enter");
+  await expect(page).toHaveURL(/\/tools\/website-uptime-checker\/?\?url=example\.com$/);
+  await expect(page.getByTestId("tool-form").getByRole("textbox")).toHaveValue("example.com");
+  expect(requests).toHaveLength(0);
+});
