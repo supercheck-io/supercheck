@@ -30,7 +30,7 @@ import { NotificationProviderForm, NOTIFICATION_PROVIDER_DIALOG_CLASS } from "@/
 import { Switch } from "@/components/ui/switch";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Label } from "@/components/ui/label";
-import { InfoTip } from "@/components/ui/info-tip";
+import { InfoPopover } from "@/components/ui/info-popover";
 import { Checkbox } from "@/components/ui/checkbox";
 import { getNotificationProviderConfig } from "@/components/alerts/data";
 import { toast } from "sonner";
@@ -771,9 +771,7 @@ export function AlertSettings({
               <Label htmlFor="incident-enabled" className="text-sm">
                 Open an incident when this alerts
               </Label>
-              <InfoTip label="About incidents">
-                Track the problem in Incidents so it can be assigned, acknowledged and resolved.
-              </InfoTip>
+              <InfoPopover label="About incidents" title="Incidents" description="Track the problem in Incidents so it can be assigned, acknowledged and resolved." contentClassName="w-80" />
             </div>
             <Switch
               id="incident-enabled"
@@ -790,9 +788,7 @@ export function AlertSettings({
                   <Label htmlFor="incident-severity" className="text-sm">
                     Severity
                   </Label>
-                  <InfoTip label="About incident severity">
-                    Auto picks SEV1 to SEV4 from the alert; choose a level to always use it.
-                  </InfoTip>
+                  <InfoPopover label="About incident severity" title="Severity" description="Auto picks SEV1 to SEV4 from the alert; choose a level to always use it." contentClassName="w-80" />
                 </div>
                 <Select
                   value={config.incidentSeverity ?? "auto"}
@@ -823,9 +819,7 @@ export function AlertSettings({
                     <Label htmlFor="incident-auto-resolve" className="text-sm">
                       Resolve automatically on recovery if nobody acknowledged it
                     </Label>
-                    <InfoTip label="About automatic resolution">
-                      When the check recovers and nobody acknowledged the incident, it resolves itself; acknowledged incidents wait for you.
-                    </InfoTip>
+                    <InfoPopover label="About automatic resolution" title="Automatic resolution" description="When the check recovers and nobody acknowledged the incident, it resolves itself; acknowledged incidents wait for you." contentClassName="w-80" />
                   </div>
                   <Switch
                     id="incident-auto-resolve"

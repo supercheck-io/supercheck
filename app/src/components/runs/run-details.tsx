@@ -45,7 +45,7 @@ import { PerformanceTestReport } from "@/components/playground/performance-test-
 import type { K6RunStatus } from "@/lib/k6-runs";
 import { AIJobAnalyzeButton } from "./ai-job-analyze-button";
 import { useLocationMetadata } from "@/hooks/use-locations";
-import { AgentResultsCard, type AgentRunSummary } from "./agent-results-card";
+import { AgentResultsButton, type AgentRunSummary } from "./agent-results-card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { formatBillingBlockedMessage, isBillingBlockedStatus } from "@/lib/billing-errors";
 
@@ -391,6 +391,8 @@ export function RunDetails({
               </div>
             </div>
           </div>
+          <div className="flex items-center gap-2">
+          {showAgentCard ? <AgentResultsButton agent={agent} loading={agentLoading} error={agentError} /> : null}
           {!isNotificationView && (
             <div className="flex items-center gap-2">
               {/* Loading permissions */}
@@ -435,6 +437,7 @@ export function RunDetails({
 
             </div>
           )}
+          </div>
         </div>
 
         {/* Status cards - similar to monitor details but with appropriate content */}
@@ -598,7 +601,6 @@ export function RunDetails({
 	        </Alert>
 	      ) : null}
 
-	      {showAgentCard ? <AgentResultsCard agent={agent} loading={agentLoading} error={agentError} /> : null}
 
 
 	      <div className={`bg-card rounded-lg border overflow-hidden ${isNotificationView ? "" : reportFitClass}`}>

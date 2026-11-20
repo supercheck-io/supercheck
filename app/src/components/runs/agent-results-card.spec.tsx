@@ -1,5 +1,12 @@
-import { render, screen, within } from "@testing-library/react";
-import { AgentResultsCard } from "./agent-results-card";
+import { fireEvent, render, screen, within } from "@testing-library/react";
+import { AgentResultsButton } from "./agent-results-card";
+
+/** The summary lives in a popover, so tests open it first. */
+const renderOpen = (ui: React.ReactElement) => {
+  const view = render(ui);
+  fireEvent.click(screen.getByTestId("agent-results-button"));
+  return view;
+};
 
 const agent = {
   tests: [
@@ -19,13 +26,13 @@ const agent = {
 
 it("renders repeated attempt numbers and tool names without duplicate key warnings", () => {
   const spy = jest.spyOn(console, "error").mockImplementation(() => {});
-  render(<AgentResultsCard agent={{ tests: [{ title: "t", attempts: 2, passed: 0, passRate: 0, toolNames: ["a", "a"], failures: [{ attempt: 1, message: "x" }, { attempt: 1, message: "y" }] }] }} />);
+  renderOpen(<AgentResultsButton agent={{ tests: [{ title: "t", attempts: 2, passed: 0, passRate: 0, toolNames: ["a", "a"], failures: [{ attempt: 1, message: "x" }, { attempt: 1, message: "y" }] }] }} />);
   expect(spy.mock.calls.flat().join(" ")).not.toMatch(/same key/);
   spy.mockRestore();
 });
 
 it("shows pass rate, attempts, tokens, slowest attempt, tools and failures as text", () => {
-  render(<AgentResultsCard agent={agent} />);
+  renderOpen(<AgentResultsButton agent={agent} />);
   const card = screen.getByTestId("agent-results-card");
   expect(within(card).getByText("80%")).toBeInTheDocument();
   expect(within(card).getByText("8 of 10 passed")).toBeInTheDocument();
@@ -37,22 +44,30 @@ it("shows pass rate, attempts, tokens, slowest attempt, tools and failures as te
 });
 
 it("renders nothing without a summary", () => {
-  const { container, rerender } = render(<AgentResultsCard agent={null} />);
+  const { container, rerender } = render(<AgentResultsButton agent={null} />);
   expect(container).toBeEmptyDOMElement();
-  rerender(<AgentResultsCard agent={{ tests: [] }} />);
+  rerender(<AgentResultsButton agent={{ tests: [] }} />);
   expect(container).toBeEmptyDOMElement();
 });
 
 it("shows a skeleton while loading and a message on error", () => {
-  const { rerender } = render(<AgentResultsCard loading />);
+  const { rerender } = renderOpen(<AgentResultsButton loading />);
   expect(screen.getByTestId("agent-results-loading")).toBeInTheDocument();
-  rerender(<AgentResultsCard error />);
+  rerender(<AgentResultsButton error />);
   expect(screen.getByText("Could not load agent results.")).toBeInTheDocument();
 });
 
 it("says so when no tools were reported and wraps long text for narrow screens", () => {
-  render(<AgentResultsCard agent={{ tests: [{ title: "t", attempts: 1, passed: 1, passRate: 1 }] }} />);
+  renderOpen(<AgentResultsButton agent={{ tests: [{ title: "t", attempts: 1, passed: 1, passRate: 1 }] }} />);
   expect(screen.getByText("None reported")).toBeInTheDocument();
   expect(screen.getByRole("heading", { name: "t" })).toHaveClass("break-words");
   expect(screen.getByText("Pass rate").parentElement?.parentElement).toHaveClass("grid-cols-2");
+});
+
+it("keeps the summary in a popover and flags failed attempts on the button", () => {
+  render(<AgentResultsButton agent={agent} />);
+  expect(screen.queryByTestId("agent-results-card")).toBeNull();
+  expect(screen.getByTestId("agent-results-button")).toHaveTextContent("(some attempts failed)");
+  fireEvent.click(screen.getByTestId("agent-results-button"));
+  expect(screen.getByTestId("agent-results-card")).toHaveTextContent("Agent results");
 });

@@ -3,7 +3,7 @@ import { render, screen, fireEvent } from "@testing-library/react";
 
 jest.mock("@/hooks/use-project-context", () => ({ useProjectContext: () => ({ currentProject: { userRole: "project_admin" } }) }));
 jest.mock("@/hooks/use-app-config", () => ({ useAppConfig: () => ({ maxJobNotificationChannels: 5, maxMonitorNotificationChannels: 5 }) }));
-jest.mock("@/components/ui/info-tip", () => ({ InfoTip: ({ label }: { label: string }) => <button aria-label={label} type="button" /> }));
+jest.mock("@/components/ui/info-popover", () => ({ InfoPopover: ({ label }: { label: string }) => <button aria-label={label} type="button" /> }));
 jest.mock("@/components/alerts/notification-provider-form", () => ({ NotificationProviderForm: () => null }));
 jest.mock("sonner", () => ({ toast: { error: jest.fn(), success: jest.fn() } }));
 

@@ -13,7 +13,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { formatAge } from "@/components/sre/incidents/incident-age";
-import { InfoTip } from "@/components/ui/info-tip";
+import { InfoPopover } from "@/components/ui/info-popover";
 import { getDisplayStatus, INCIDENT_DISPLAY_STATUSES } from "@/lib/sre/incident-status-display";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useRouter } from "next/navigation";
@@ -130,7 +130,7 @@ const columns: ColumnDef<SreIncidentListItem>[] = [
       <div className="flex items-center gap-1">
         <DataTableColumnHeader column={column} title="Severity" />
         {/* Phones keep the column narrow; the tip is one tap away on the incident page. */}
-        <span className="hidden sm:inline-flex"><InfoTip label="About severity">SEV1 is a customer-facing outage; SEV4 is minor with no customer impact.</InfoTip></span>
+        <span className="hidden sm:inline-flex"><InfoPopover label="About severity" title="Severity" description="SEV1 is a customer-facing outage; SEV4 is minor with no customer impact." contentClassName="w-80" /></span>
       </div>
     ),
     cell: ({ row }) => (
@@ -150,7 +150,7 @@ const columns: ColumnDef<SreIncidentListItem>[] = [
       <div className="flex items-center gap-1">
         <DataTableColumnHeader column={column} title="Status" />
         {/* Phones keep the column narrow; the tip is one tap away on the incident page. */}
-        <span className="hidden sm:inline-flex"><InfoTip label="About status">Triggered, Acknowledged, Investigating, Fixing, Monitoring or Resolved. Hover a status on the incident page for details.</InfoTip></span>
+        <span className="hidden sm:inline-flex"><InfoPopover label="About status" title="Status" description="Triggered, Acknowledged, Investigating, Fixing, Monitoring or Resolved. Hover a status on the incident page for details." contentClassName="w-80" /></span>
       </div>
     ),
     cell: ({ row }) => {

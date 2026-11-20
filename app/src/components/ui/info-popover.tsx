@@ -43,7 +43,7 @@ type InfoPopoverProps = {
 /**
  * The one info icon for page, section and form-group help: a click-to-open popover
  * (Escape and outside click close it) with a header, a list of items and an optional docs link.
- * One-sentence field hints use `InfoTip` (a tooltip) instead. See DESIGN.md.
+ * One-sentence field hints pass only a title and description. See DESIGN.md.
  */
 export function InfoPopover({
   label,

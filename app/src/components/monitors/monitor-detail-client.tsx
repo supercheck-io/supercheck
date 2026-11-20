@@ -32,11 +32,13 @@ import {
   ChartNoAxesCombined,
   CalendarClock,
   Timer,
+  BrainCircuit,
 } from "lucide-react";
 import { PlaywrightLogo } from "@/components/logo/playwright-logo";
 import { ReportViewer } from "@/components/shared/report-viewer";
 import { AIMonitorAnalyzeButton } from "@/components/monitors/ai-monitor-analyze-button";
 import { McpToolsButton } from "@/components/monitors/mcp-tools-panel";
+import { typeText } from "@/lib/type-tones";
 
 import {
   Card,
@@ -267,6 +269,46 @@ const aiDetails = (result?: { details?: DBMonitorResultDetailsType | null } | nu
 
 const formatTokens = (ai?: AiResultDetails) =>
   typeof ai?.totalTokens === "number" ? ai.totalTokens.toLocaleString("en-US") : "N/A";
+
+/** AI endpoint details of the latest check in a popover, like the MCP Tools button, so the header keeps the standard three groups. */
+function AiEndpointButton({ requestedModel, latest, pending }: { requestedModel?: string; latest?: AiResultDetails; pending: boolean }) {
+  const rows: Array<[label: string, testId: string, value: string | null]> = [
+    ["First token", "ai-stat-first-token", typeof latest?.firstTokenMs === "number" ? formatResponseTime(latest.firstTokenMs) : null],
+    ["Tokens per call", "ai-stat-tokens", naToNull(formatTokens(latest))],
+    ["Prompt / completion", "ai-stat-token-split",
+      typeof latest?.promptTokens === "number" && typeof latest?.completionTokens === "number"
+        ? `${latest.promptTokens.toLocaleString("en-US")} / ${latest.completionTokens.toLocaleString("en-US")}`
+        : null],
+    ["Requested model", "ai-stat-requested-model", requestedModel || null],
+    ["Served model", "ai-stat-served-model", latest?.servedModel ?? null],
+  ];
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <Button variant="outline" size="sm" className="h-8 shrink-0 gap-1.5" data-testid="ai-endpoint-button">
+          <BrainCircuit className={`h-4 w-4 ${typeText("monitor", "ai_endpoint")}`} aria-hidden />
+          AI details
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent align="end" className="w-[min(22rem,calc(100vw-2rem))]" data-testid="ai-endpoint-panel">
+        <div className="space-y-1">
+          <h4 className="text-sm font-semibold">AI endpoint</h4>
+          <p className="text-xs text-muted-foreground">{pending ? "Shown after the first check." : "From the latest check."}</p>
+        </div>
+        <dl className="mt-3 divide-y text-sm">
+          {rows.map(([label, testId, value]) => (
+            <div key={testId} className="flex items-center justify-between gap-4 py-2" data-testid={testId}>
+              <dt className="text-muted-foreground">{label}</dt>
+              <dd className="min-w-0 truncate font-medium tabular-nums" title={value ?? undefined}>
+                {value ?? <span className="text-muted-foreground">—</span>}
+              </dd>
+            </div>
+          ))}
+        </dl>
+      </PopoverContent>
+    </Popover>
+  );
+}
 
 export function MonitorDetailClient({
   monitor: initialMonitor,
@@ -617,7 +659,6 @@ export function MonitorDetailClient({
   // AI endpoint preset: extra stats from the latest check; a plain HTTP monitor shows none of this
   const aiEndpoint = monitor.config?.aiEndpoint as { model?: string } | undefined;
   const latestAi = aiEndpoint ? aiDetails(latestResult) : undefined;
-  const servedModel = latestAi?.servedModel ?? null;
   const aiHost = (() => {
     try {
       return new URL(monitor.target || monitor.url || "").hostname;
@@ -1187,14 +1228,7 @@ export function MonitorDetailClient({
             </MetricGroup>
           </div>
           ) : !isHeartbeat && (
-          <div
-            className={
-              aiEndpoint
-                ? // Four groups stay on one row on desktop, set tighter, so the page still fits the window.
-                  "mt-4 grid grid-cols-[repeat(auto-fit,minmax(280px,1fr))] gap-3 lg:grid-cols-4 lg:gap-2 lg:[&>div]:px-3 lg:[&>div>div]:gap-2 lg:[&_[data-metric-value]]:text-base 2xl:[&_[data-metric-value]]:text-xl lg:[&_[data-metric-label]>svg]:hidden"
-                : "mt-4 grid grid-cols-[repeat(auto-fit,minmax(280px,1fr))] gap-3 lg:[&>div>.grid]:gap-2"
-            }
-          >
+          <div className="mt-4 grid grid-cols-[repeat(auto-fit,minmax(280px,1fr))] gap-3 lg:[&>div>.grid]:gap-2">
             <MetricGroup title="Current">
               <MetricStat
                 icon={<StatusHeaderIcon status={currentActualStatus} />}
@@ -1220,29 +1254,6 @@ export function MonitorDetailClient({
                 value={currentResponseTime === "N/A" ? null : currentResponseTime}
               />
             </MetricGroup>
-
-            {aiEndpoint && (
-              <MetricGroup title="AI endpoint">
-                <MetricStat
-                  icon={<Zap className="h-4 w-4 text-muted-foreground" />}
-                  label="First token"
-                  testId="ai-stat-first-token"
-                  value={typeof latestAi?.firstTokenMs === "number" ? formatResponseTime(latestAi.firstTokenMs) : null}
-                />
-                <MetricStat
-                  icon={<Activity className="h-4 w-4 text-muted-foreground" />}
-                  label="Tokens per call"
-                  testId="ai-stat-tokens"
-                  value={naToNull(formatTokens(latestAi))}
-                />
-                <MetricStat
-                  icon={<ChartNoAxesCombined className="h-4 w-4 text-muted-foreground" />}
-                  label="Served model"
-                  testId="ai-stat-served-model"
-                  value={servedModel}
-                />
-              </MetricGroup>
-            )}
 
             <MetricGroup title="Last 24 hours">
               <MetricStat
@@ -1348,15 +1359,18 @@ export function MonitorDetailClient({
         ) : (
         // Desktop: the page fits the window; the charts share the left column and the wider results fill the right one.
         <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,min(58%,44rem))] lg:grid-rows-[minmax(22rem,1fr)]">
-          {/* Both charts share the column height (1:2), so a taller header (an AI endpoint's fourth stat group) shrinks them instead of scrolling the page. */}
+          {/* Both charts share the column height, so the results panel sets the page height. */}
           <div className="flex min-h-0 min-w-0 flex-col gap-4">
             <div className="shrink-0">
               <AvailabilityBarChart
                 data={availabilityTimelineData}
                 fill={fitResults}
                 headerActions={
-                  isMcp || locationFilter ? (
+                  isMcp || aiEndpoint || locationFilter ? (
                     <div className="flex items-center gap-2">
+                      {aiEndpoint && (
+                        <AiEndpointButton requestedModel={aiEndpoint.model} latest={latestAi} pending={!latestResult} />
+                      )}
                       {isMcp && (
                         <McpToolsButton
                           baseline={monitor.config?.mcpState?.baseline}
