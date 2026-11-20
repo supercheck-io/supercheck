@@ -12,6 +12,7 @@ import {
 import { db } from "@/utils/db";
 import { runs } from "@/db/schema";
 import { createLogger } from "./logger/index";
+import { watchConsumer } from "./consumer-watchdog";
 
 // UUID validation regex - defined once to avoid duplication
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -143,6 +144,8 @@ class QueueEventHub extends EventEmitter {
       connection: buildRedisOptions({ lazyConnect: false }),
     });
     this.queueEvents.push(events);
+    watchConsumer(events);
+    watchConsumer(events);
 
     events.on("error", (error) => {
       eventHubLogger.error({ err: error }, 

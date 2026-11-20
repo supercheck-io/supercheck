@@ -3,6 +3,7 @@ import { getExecutionPolicy, assertExecutionWorkload, ExecutionWorkloadError, ty
 import crypto from "crypto";
 import { FlowProducer, Queue, QueueEvents, type JobsOptions } from "bullmq";
 import Redis, { RedisOptions } from "ioredis";
+import { watchConsumer } from "./consumer-watchdog";
 import type {
   LocationConfig,
   MonitorConfig,
@@ -395,6 +396,8 @@ export function buildRedisOptions(
     maxRetriesPerRequest: null,
     enableReadyCheck: false,
     connectTimeout: 10000,
+    // TCP keepalive drops a half-open socket after a node loss; the consumer watchdog covers the rest.
+    keepAlive: 10000,
     // NOTE: Do NOT add commandTimeout here. QueueEvents connections are created
     // via queueState.redisClient.duplicate() and inherit these options. commandTimeout would
     // conflict with QueueEvents' blocking XREAD commands (10s default block),
@@ -446,6 +449,7 @@ export async function getRedisConnection(): Promise<Redis> {
   const connectionOpts = buildRedisOptions();
 
   queueState.redisClient = new Redis(connectionOpts);
+  watchConsumer(queueState.redisClient);
 
   queueState.redisClient.on("error", (err) =>
     queueLogger.error({ err: err }, "[Queue Client] Redis Error:")
