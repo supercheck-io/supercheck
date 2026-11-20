@@ -6,6 +6,7 @@
  *
  * Configuration:
  * - Set `QUEUE_ALERT_SLACK_WEBHOOK_URL` to receive Slack notifications (Recommended).
+ *   For Discord, use the channel webhook URL with `/slack` appended (Discord's Slack-compatible endpoint).
  * - Set `QUEUE_ALERT_WEBHOOK_URL` for generic JSON webhooks.
  *
  * Alert Types:
