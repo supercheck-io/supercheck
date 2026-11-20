@@ -86,3 +86,65 @@ export const PRICING_FAQS = [
       "Get in touch at hello@supercheck.io to discuss your requirements, usage allowances, support, SLA, and onboarding.",
   },
 ];
+
+export type PlanFeature = string | { text: string; hint: string };
+
+/** Plan limits the feature list needs; the catalog's `limits` and the pricing API both supply them. */
+export interface PlanFeatureLimits {
+  maxMonitors: number;
+  playwrightMinutesIncluded: number;
+  k6VuMinutesIncluded: number;
+  aiCreditsIncluded: number;
+  sreInvestigationUnitsIncluded: number | string; // a decimal string in the catalog
+  defaultSpendingLimitCents: number;
+  runningCapacity: number;
+  maxTeamMembers: number;
+  maxProjects: number;
+  maxStatusPages: number;
+  maxStatusPageSubscribers: number;
+}
+
+const fmt = (value: number | string) => Number(value).toLocaleString("en-US");
+
+/** The plan card feature lines, shared by the in-app plan picker and the marketing pricing page. */
+/** `overageRates` (e.g. "$0.01/min Playwright") is shown under the cap where no overage table is on the page. */
+export function planFeatureList(id: "plus" | "pro", limits: PlanFeatureLimits, overageRates?: string): PlanFeature[] {
+  const members = `${fmt(limits.maxTeamMembers)} team members, ${fmt(limits.maxProjects)} projects`;
+  return [
+    `${fmt(limits.maxMonitors)} monitors`,
+    {
+      text: `${fmt(limits.playwrightMinutesIncluded)} Playwright minutes/month`,
+      hint: `About ${fmt(limits.playwrightMinutesIncluded * 12)} five-second Playwright runs`,
+    },
+    `${fmt(limits.k6VuMinutesIncluded)} k6 VU-minutes/month`,
+    `${fmt(limits.aiCreditsIncluded)} AI credits/month, fair use`,
+    `${fmt(limits.sreInvestigationUnitsIncluded)} completed AI SRE investigations/month`,
+    { text: `${usd(limits.defaultSpendingLimitCents)} default overage cap`, hint: overageRates ? `Overage: ${overageRates}. Hard stop at the cap; owners can change it.` : "Monthly cap with a hard stop. Owners can change it." },
+    `${fmt(limits.runningCapacity)} concurrent runs`,
+    id === "pro"
+      ? { text: members, hint: `Then ${extraMember} per extra member per month, prorated, up to ${fmt(catalog.pro.maxTotalMembers)} members` }
+      : members,
+    `${fmt(limits.maxStatusPages)} status pages with custom domains, ${fmt(limits.maxStatusPageSubscribers)} subscribers each`,
+    id === "pro" ? "Priority email support" : "Email support",
+  ];
+}
+
+export const ENTERPRISE_PLAN = {
+  name: "Enterprise",
+  description: "For organizations with custom volume, locations or compliance needs",
+  features: [
+    "Custom allowances for monitors, minutes and investigations",
+    "Custom monitoring and execution locations",
+    "Bring your own AI provider",
+    "Custom data retention",
+    "SLA with a dedicated account manager",
+    "Onboarding and training",
+  ] as PlanFeature[],
+};
+
+/** One-line plan basics shown under the plan grid on both pricing pages. */
+export const PLAN_BASICS = [
+  `Priced per organization; extra ${catalog.pro.name} seats billed per seat`,
+  "Spending limits and usage alerts",
+  "Cancel anytime",
+];

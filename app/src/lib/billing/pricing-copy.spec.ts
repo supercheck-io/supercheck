@@ -1,4 +1,20 @@
-import { PRICING_FAQS } from "./pricing-copy";
+import catalog from "./plan-catalog.json";
+import { PRICING_FAQS, planFeatureList } from "./pricing-copy";
+
+describe("planFeatureList", () => {
+  it("gives Pro the extra-seat hint and Plus a plain members line", () => {
+    const plus = planFeatureList("plus", catalog.plus.limits);
+    const pro = planFeatureList("pro", catalog.pro.limits);
+    expect(plus).toContain(`${catalog.plus.limits.maxTeamMembers} team members, ${catalog.plus.limits.maxProjects} projects`);
+    expect(pro).toContainEqual(expect.objectContaining({ hint: expect.stringContaining("per extra member") }));
+    expect(plus).toContainEqual(expect.objectContaining({ text: "$70 default overage cap" }));
+    expect(plus.at(-1)).toBe("Email support");
+    expect(pro.at(-1)).toBe("Priority email support");
+    expect(planFeatureList("plus", catalog.plus.limits, "$0.01/min Playwright")).toContainEqual(
+      expect.objectContaining({ hint: expect.stringContaining("Overage: $0.01/min Playwright") }),
+    );
+  });
+});
 
 describe("PRICING_FAQS", () => {
   it("has unique, non-empty questions and answers", () => {

@@ -9,6 +9,7 @@ import { fetchProjectSetup } from "@/hooks/use-project-setup";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { formatOveragePrice } from "@/lib/billing/pricing-defaults";
+import { ENTERPRISE_PLAN, PLAN_BASICS, planFeatureList } from "@/lib/billing/pricing-copy";
 import catalog from "@/lib/billing/plan-catalog.json";
 import { useEffect, useRef, useState, useCallback } from "react";
 import { Card } from "@/components/ui/card";
@@ -25,11 +26,11 @@ import {
   AlertCircle,
   ExternalLink,
   ArrowRight,
+  Check,
   CreditCard,
   Mail,
 } from "lucide-react";
 
-const usd = (cents: number) => `$${(cents / 100).toLocaleString("en-US")}`;
 
 // Every trial FAQ except the last one ("What happens when the free trial ends?") offers the trial.
 const TRIAL_OFFER_QUESTIONS = new Set(trialFaqs().slice(0, -1).map((faq) => faq.question));
@@ -342,7 +343,7 @@ export default function SubscribePage() {
 
   return (
     <div
-      className={`mx-auto py-6 md:py-8 px-4 space-y-8 ${hasBillingContext ? "max-w-2xl" : "max-w-4xl"}`}
+      className={`mx-auto py-6 md:py-8 px-4 space-y-8 ${hasBillingContext ? "max-w-2xl" : "max-w-6xl"}`}
     >
       <header className="space-y-3">
         <h1 className="text-2xl md:text-3xl font-bold tracking-tight">
@@ -477,13 +478,11 @@ export default function SubscribePage() {
             </div>
           </>
         ) : (
-          activeOrganization && !trialActive && (
+          activeOrganization && (trialEnded || expired) && (
             <p className="text-sm leading-relaxed text-muted-foreground">
               {trialEnded
                 ? "Your monitors are paused and your status pages are archived. Nothing was deleted: choose a plan below and they are restored."
-                : expired
-                    ? "Your subscription has ended. Choose a plan below to restore access."
-                    : "Choose a plan below to activate your organization."}
+                : "Your subscription has ended. Choose a plan below to restore access."}
             </p>
           )
         )}
@@ -505,15 +504,9 @@ export default function SubscribePage() {
         )}
       </Card>
 
-      {/* Free trial allowances while it is active */}
-      {!hasBillingContext && pricingData?.trial && trialActive && (
-        <TrialCard durationDays={pricingData.trial.durationDays} highlights={pricingData.trial.highlights} />
-      )}
-
-      {/* Pricing Tier Cards */}
       {!hasBillingContext && (
-        <section className="max-w-4xl mx-auto">
-          <div className="grid gap-6 md:grid-cols-2 max-w-4xl mx-auto">
+        <section aria-label="Plans">
+          <div className="grid overflow-hidden rounded-xl border lg:grid-cols-3">
             {plans.map((plan) => (
               <PricingTierCard
                 key={plan.id}
@@ -521,23 +514,21 @@ export default function SubscribePage() {
                 price={plan.price}
                 priceInterval={plan.interval}
                 tagline={plan.description}
-                badge={plan.id === "pro" ? "Recommended" : undefined}
-                ctaVariant="outline"
-                keyFeatures={[
-                  `${Number(plan.features.monitors).toLocaleString("en-US")} monitors`,
-                  `${Number(plan.features.playwrightMinutes).toLocaleString("en-US")} Playwright minutes/month`,
-                  `${Number(plan.features.k6VuMinutes).toLocaleString("en-US")} k6 VU-minutes/month`,
-                  `${Number(plan.features.aiCredits).toLocaleString("en-US")} AI credits/month · fair use`,
-                  `${Number(plan.features.sreInvestigationUnits).toLocaleString("en-US")} completed AI SRE investigations/month`,
-                  `${Number(plan.features.concurrentExecutions).toLocaleString("en-US")} concurrent runs`,
-                  `${plan.features.teamMembers} team members${plan.id === "pro" ? ` (then ${usd(catalog.pro.extraMemberPriceCents)}/month per extra member, up to ${catalog.pro.maxTotalMembers})` : ""} · ${plan.features.projects} projects`,
-                  plan.features.statusPageSubscribers === undefined
-                    ? `${plan.features.statusPages} status pages`
-                    : `${plan.features.statusPages} status pages · ${Number(plan.features.statusPageSubscribers).toLocaleString("en-US")} subscribers each`,
-                  `Monitor data: ${plan.features.monitorDataRetention}`,
-                  ...(plan.features.support ? [plan.features.support] : []),
-                ]}
-                overageText={`Overage: ${formatOveragePrice(plan.overagePricing.playwrightMinutes, "min", true)} Playwright · ${formatOveragePrice(plan.overagePricing.k6VuMinutes, "VU-min")} k6 · ${formatOveragePrice(plan.overagePricing.sreInvestigationUnits, "completed AI SRE investigation")} · AI credits included, fair use`}
+                badge={plan.id === "pro" ? "Popular" : undefined}
+                features={planFeatureList(plan.id === "pro" ? "pro" : "plus", {
+                  maxMonitors: Number(plan.features.monitors),
+                  playwrightMinutesIncluded: Number(plan.features.playwrightMinutes),
+                  k6VuMinutesIncluded: Number(plan.features.k6VuMinutes),
+                  aiCreditsIncluded: Number(plan.features.aiCredits),
+                  sreInvestigationUnitsIncluded: Number(plan.features.sreInvestigationUnits),
+                  // The default cap a new subscription starts with; owners can change it later.
+                  defaultSpendingLimitCents: catalog[plan.id === "pro" ? "pro" : "plus"].limits.defaultSpendingLimitCents,
+                  runningCapacity: Number(plan.features.concurrentExecutions),
+                  maxTeamMembers: Number(plan.features.teamMembers),
+                  maxProjects: Number(plan.features.projects),
+                  maxStatusPages: Number(plan.features.statusPages),
+                  maxStatusPageSubscribers: Number(plan.features.statusPageSubscribers ?? 0),
+                }, `${formatOveragePrice(plan.overagePricing.playwrightMinutes, "min", true)} Playwright, ${formatOveragePrice(plan.overagePricing.k6VuMinutes, "VU-min")} k6, ${formatOveragePrice(plan.overagePricing.sreInvestigationUnits, "investigation", true)} AI SRE`)}
                 ctaText={
                   expired
                     ? `Resubscribe to ${plan.name}`
@@ -552,32 +543,40 @@ export default function SubscribePage() {
                 highlighted={plan.id === "pro"}
               />
             ))}
+            <PricingTierCard
+              name={ENTERPRISE_PLAN.name}
+              tagline={ENTERPRISE_PLAN.description}
+              features={ENTERPRISE_PLAN.features}
+              ctaText="Contact sales"
+              ctaHref="mailto:hello@supercheck.io?subject=Supercheck%20Cloud%20Enterprise%20enquiry"
+            />
           </div>
-          <p className="mt-5 text-center text-xs leading-relaxed text-muted-foreground">
-            Billed monthly per organization, not per seat, in USD before tax; only extra Pro seats you buy above the included members are billed per seat, even when unfilled. Cancel anytime.
-            <br />
-            Usage overages are shown above. Each plan starts with a monthly overage cap and hard stop (Plus {usd(catalog.plus.limits.defaultSpendingLimitCents)}, Pro {usd(catalog.pro.limits.defaultSpendingLimitCents)}) that you can change later. Review your total at checkout.
-          </p>
-          <p className="mt-6 text-center text-sm text-muted-foreground">
+          <ul aria-label="Plan basics" className="mt-6 flex flex-wrap justify-center gap-x-6 gap-y-2 text-sm text-muted-foreground">
+            {PLAN_BASICS.map((item) => (
+              <li key={item} className="flex items-center gap-2">
+                <Check aria-hidden="true" className="size-4" />
+                {item}
+              </li>
+            ))}
+          </ul>
+          <p className="mt-3 text-center text-xs text-muted-foreground">
+            Prices in USD, before tax. Review your total at checkout.{" "}
             <a
               href="https://supercheck.io/pricing#compare"
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 underline underline-offset-4"
+              className="inline-flex items-center gap-1 underline underline-offset-4"
             >
-              Compare all features and pricing
-              <ExternalLink aria-hidden="true" className="h-3.5 w-3.5" />
+              Compare all features and overage rates
+              <ExternalLink aria-hidden="true" className="h-3 w-3" />
               <span className="sr-only"> (opens in a new tab)</span>
-            </a>
-            {" · "}
-            <a
-              href="mailto:hello@supercheck.io?subject=Supercheck%20Cloud%20Enterprise%20enquiry"
-              className="underline underline-offset-4"
-            >
-              Contact us about Enterprise
             </a>
           </p>
         </section>
+      )}
+
+      {!hasBillingContext && pricingData?.trial && trialActive && (
+        <TrialCard durationDays={pricingData.trial.durationDays} highlights={pricingData.trial.highlights} />
       )}
 
       {!hasBillingContext && pricingData?.faqs && pricingData.faqs.length > 0 && (
@@ -621,11 +620,11 @@ function SubscribeSkeleton() {
     <div
       role="status"
       aria-label="Loading plans"
-      className="max-w-4xl mx-auto p-4 space-y-6"
+      className="max-w-6xl mx-auto p-4 space-y-6"
     >
       <Skeleton className="h-10 w-64 max-w-full mx-auto" />
-      <div className="grid gap-6 md:grid-cols-2">
-        {[1, 2].map((i) => (
+      <div className="grid gap-6 lg:grid-cols-3">
+        {[1, 2, 3].map((i) => (
           <Card key={i} className="p-6 space-y-4">
             <Skeleton className="h-8 w-24" />
             <Skeleton className="h-14 w-36" />

@@ -65,5 +65,5 @@ test('small plan limits are not written as literal numbers next to their unit', 
 
 test('plan cards are built from the catalog', () => {
   const page = sources['pricing/page.tsx'];
-  for (const id of paidPlans) assert.match(page, new RegExp(`planFeatures\\('${id}'`));
+  for (const id of paidPlans) assert.match(page, new RegExp(`planFeatureList\\('${id}', catalog\\.${id}\\.limits\\)`));
 });

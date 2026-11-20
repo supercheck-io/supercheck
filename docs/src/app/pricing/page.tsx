@@ -1,6 +1,6 @@
 import catalog from "../../../../app/src/lib/billing/plan-catalog.json";
 import { trialFaqs, trialHighlights } from '../../../../app/src/lib/billing/trial-copy';
-import { SHARED_PRICING_FAQS } from '../../../../app/src/lib/billing/pricing-copy';
+import { ENTERPRISE_PLAN, PLAN_BASICS, SHARED_PRICING_FAQS, planFeatureList, type PlanFeature } from '../../../../app/src/lib/billing/pricing-copy';
 import React from 'react';
 import Link from 'next/link';
 import { Bot, Check, ChevronDown, Database, Gauge, LifeBuoy, Users, type LucideIcon } from 'lucide-react';
@@ -8,10 +8,6 @@ import { SiteHeader } from '../../lib/layout.shared';
 import { SiteFooter } from '../../components/site-footer';
 import { primaryButton, secondaryButton } from '../../components/landing/ui';
 import { VendorComparison } from '../../components/pricing/vendor-comparison';
-import { CopyEmail } from '../../components/pricing/copy-email';
-import { planCrossoverMinutes } from '../../lib/pricing-estimate';
-
-type Feature = string | { text: string; hint: string };
 
 const WAITLIST_EMAIL = 'hello@supercheck.io';
 
@@ -36,33 +32,12 @@ const enterpriseHref = mailtoHref(
 const fmt = (value: number | string) => Number(value).toLocaleString("en-US");
 const usd = (cents: number) => `$${fmt(cents / 100)}`;
 
-function planFeatures(id: 'plus' | 'pro', support: string): Feature[] {
-    const limits = catalog[id].limits;
-    return [
-        `${fmt(limits.maxMonitors)} monitors`,
-        {
-            text: `${fmt(limits.playwrightMinutesIncluded)} Playwright minutes/month`,
-            hint: `About ${fmt(limits.playwrightMinutesIncluded * 12)} five-second Playwright runs`,
-        },
-        `${fmt(limits.k6VuMinutesIncluded)} k6 VU-minutes/month`,
-        `${fmt(limits.aiCreditsIncluded)} AI credits/month, fair use`,
-        `${fmt(limits.sreInvestigationUnitsIncluded)} AI SRE investigations/month`,
-        { text: `${usd(limits.defaultSpendingLimitCents)} default overage cap`, hint: 'Monthly cap with a hard stop. Owners can change it.' },
-        `${fmt(limits.runningCapacity)} concurrent runs`,
-        id === 'pro'
-            ? { text: `${fmt(limits.maxTeamMembers)} team members, ${fmt(limits.maxProjects)} projects`, hint: `Then ${usd(catalog.pro.extraMemberPriceCents)} per extra member per month, prorated, up to ${fmt(catalog.pro.maxTotalMembers)} members` }
-            : `${fmt(limits.maxTeamMembers)} team members, ${fmt(limits.maxProjects)} projects`,
-        `${fmt(limits.maxStatusPages)} status pages with custom domains, ${fmt(limits.maxStatusPageSubscribers)} subscribers each`,
-        support,
-    ];
-}
-
 const plans: {
     name: string;
     price?: string;
     period?: string;
     description: string;
-    features: Feature[];
+    features: PlanFeature[];
     cta: string;
     ctaLink: string;
     highlighted: boolean;
@@ -73,7 +48,7 @@ const plans: {
         price: `$${catalog.plus.monthlyPriceCents / 100}`,
         period: '/month',
         description: catalog.plus.description,
-        features: planFeatures('plus', 'Email support'),
+        features: planFeatureList('plus', catalog.plus.limits),
         cta: 'Join the Plus waitlist',
         ctaLink: waitlistHref('Plus'),
         highlighted: false,
@@ -83,23 +58,14 @@ const plans: {
         price: `$${catalog.pro.monthlyPriceCents / 100}`,
         period: '/month',
         description: catalog.pro.description,
-        features: planFeatures('pro', 'Priority email support'),
+        features: planFeatureList('pro', catalog.pro.limits),
         cta: 'Join the Pro waitlist',
         ctaLink: waitlistHref('Pro'),
         highlighted: true,
         badge: 'Popular',
     },
     {
-        name: 'Enterprise',
-        description: 'For organizations with custom volume, locations or compliance needs',
-        features: [
-            'Custom allowances for monitors, minutes and investigations',
-            'Custom monitoring and execution locations',
-            'Bring your own AI provider',
-            'Custom data retention',
-            'SLA with a dedicated account manager',
-            'Onboarding and training',
-        ],
+        ...ENTERPRISE_PLAN,
         cta: 'Contact sales',
         ctaLink: enterpriseHref,
         highlighted: false,
@@ -245,8 +211,6 @@ const productJsonLd = {
     })),
 };
 
-const CROSSOVER_MINUTES = planCrossoverMinutes();
-
 const faqJsonLd = {
     '@context': 'https://schema.org',
     '@type': 'FAQPage',
@@ -347,30 +311,23 @@ export default function PricingPage() {
                     ))}
                 </div>
 
-                <p className="mt-4 text-center text-xs text-fd-muted-foreground">
-                    Priced per organization, not per seat; only extra {catalog.pro.name} seats you buy above the included members are billed per seat, even when unfilled. Prices in USD per month, before taxes. Playwright minutes, k6 VU-minutes, and completed AI SRE investigations beyond the included allowance are billed at the{' '}
-                    <a href="#overage" className="underline underline-offset-4 hover:text-fd-foreground">overage rates</a>.
-                </p>
-
-                <CopyEmail email={WAITLIST_EMAIL} />
-
-                <p className="mt-4 text-center text-sm text-fd-muted-foreground">
-                    Not sure which plan? {catalog.pro.name} costs less than {catalog.plus.name} above about {CROSSOVER_MINUTES.toLocaleString('en-US')} browser minutes a month, not counting extra member seats. Choose {catalog.pro.name} if you need more than {fmt(catalog.plus.limits.maxMonitors)} monitors or {fmt(catalog.plus.limits.maxTeamMembers)} team members.
-                </p>
-
                 <ul aria-label="Plan basics" className="mt-6 flex flex-wrap justify-center gap-x-6 gap-y-2 text-sm text-fd-muted-foreground">
-                    {[`Priced per organization; extra ${catalog.pro.name} seats billed per seat`, 'Spending limits and usage alerts', 'Cancel anytime'].map((item) => (
+                    {PLAN_BASICS.map((item) => (
                         <li key={item} className="flex items-center gap-2">
                             <Check aria-hidden="true" className="size-4 text-fd-muted-foreground" />
                             {item}
                         </li>
                     ))}
                 </ul>
+                <p className="mt-3 text-center text-xs text-fd-muted-foreground">
+                    Prices in USD, before tax. Usage above the allowance is billed at the{' '}
+                    <a href="#overage" className="underline underline-offset-4 hover:text-fd-foreground">overage rates</a>.
+                </p>
 
-                <section aria-labelledby="trial-heading" className="mt-6 rounded-xl border border-fd-border p-6 sm:p-8">
+                <section aria-labelledby="trial-heading" className="mt-12 rounded-xl border border-fd-border p-6 sm:p-8">
                     <h2 id="trial-heading" className="text-lg font-semibold">{trial.durationDays}-day free trial, no card required</h2>
                     <p className="mt-1 text-sm text-fd-muted-foreground">
-                        Most of the product, with limits that keep the trial safe for everyone. Custom domains are on paid plans. Trials start when Cloud signups open.
+                        Custom domains are on paid plans. Trials start when Cloud signups open.
                     </p>
                     <ul className="mt-5 grid gap-2 text-sm sm:grid-cols-2 lg:grid-cols-3">
                         {trialHighlights().map((highlight) => (
@@ -380,9 +337,6 @@ export default function PricingPage() {
                             </li>
                         ))}
                     </ul>
-                    <p className="mt-5 text-xs text-fd-muted-foreground">
-                        When the trial ends, monitors are paused and status pages are archived. Nothing is deleted, and subscribing restores them.
-                    </p>
                 </section>
 
                 <section id="compare" aria-labelledby="compare-heading" className="mt-24 scroll-mt-20">
