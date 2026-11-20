@@ -39,7 +39,6 @@ function makeAppConfig(
         signupEnabled: true,
         allowedEmailDomains: [],
       },
-      demoMode: false,
       showCommunityLinks: false,
       limits: {
         maxJobNotificationChannels: 10,
@@ -58,7 +57,6 @@ function makeAppConfig(
     isSelfHosted: false,
     isCloudHosted: true,
     isMcpEnabled: false,
-    isDemoMode: false,
     setupFeatures: SETUP_FEATURES,
     showCommunityLinks: false,
     isGithubEnabled: false,

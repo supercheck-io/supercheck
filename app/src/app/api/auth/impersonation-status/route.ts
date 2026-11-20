@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { safeErrorFields } from "@/lib/log-safe-error";
 import { db } from '@/utils/db';
 import { session, user } from '@/db/schema';
 import { auth } from '@/utils/auth';
@@ -58,7 +59,7 @@ export async function GET() {
       } : null
     });
   } catch (error) {
-    console.error('Error checking impersonation status:', error);
+    console.error('Error checking impersonation status:', safeErrorFields(error));
     return NextResponse.json({
       isImpersonating: false
     });

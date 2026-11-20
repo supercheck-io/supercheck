@@ -992,4 +992,17 @@ describe('Session Management', () => {
     expect(mockDbModule.select).toHaveBeenCalledTimes(1);
   });
 
+  it('getCurrentUser never logs the session token carried in a drizzle query error', async () => {
+    const spy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    mockDbModule.select.mockReturnValue({
+      from: jest.fn().mockReturnThis(),
+      where: jest.fn().mockReturnThis(),
+      limit: jest.fn().mockRejectedValue(new Error('Failed query: select ... where token = $1\nparams: tok_secret')),
+    });
+    await expect(getCurrentUser()).resolves.toBeNull();
+    expect(spy).toHaveBeenCalled();
+    expect(JSON.stringify(spy.mock.calls)).not.toContain('tok_secret');
+    spy.mockRestore();
+  });
+
 });

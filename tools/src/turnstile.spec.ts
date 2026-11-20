@@ -5,14 +5,16 @@ import { call, mockFetch, testEnv } from "./test-helpers";
 afterEach(() => vi.restoreAllMocks());
 
 const body = { tool: "uptime", input: "https://site.com/", token: "tok" };
-const strict = { TURNSTILE_SECRET: "s", TURNSTILE_HOSTNAMES: "supercheck.io,supercheck.pages.dev" };
+const strict = { TURNSTILE_SECRET: "s", TURNSTILE_HOSTNAMES: "supercheck.io,www.supercheck.io,.supercheck.pages.dev" };
 
-describe("hostname suffix match", () => {
-  it("accepts the apex, www and preview hosts but not look-alikes", () => {
-    const allowed = ["supercheck.io", "supercheck.pages.dev"];
+describe("hostname match", () => {
+  it("accepts listed hosts exactly and dot-prefixed entries as suffixes, but not other subdomains or look-alikes", () => {
+    const allowed = ["supercheck.io", "www.supercheck.io", ".supercheck.pages.dev"];
     expect(hostnameAllowed("supercheck.io", allowed)).toBe(true);
     expect(hostnameAllowed("www.supercheck.io", allowed)).toBe(true);
     expect(hostnameAllowed("abc.supercheck.pages.dev", allowed)).toBe(true);
+    expect(hostnameAllowed("status.supercheck.io", allowed)).toBe(false);
+    expect(hostnameAllowed("supercheck.pages.dev", allowed)).toBe(false);
     expect(hostnameAllowed("evilsupercheck.io", allowed)).toBe(false);
     expect(hostnameAllowed("supercheck.io.evil.com", allowed)).toBe(false);
   });

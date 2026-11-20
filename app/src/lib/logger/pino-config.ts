@@ -13,6 +13,7 @@
 
 import pino, { type Logger as PinoLogger } from 'pino';
 import pinoPretty from 'pino-pretty';
+import { scrubSerializedError } from '@/lib/log-safe-error';
 
 /**
  * Determine log level based on environment
@@ -54,10 +55,10 @@ const createPrettyStream = () => {
 export const pinoConfig = {
   level: getLogLevel(),
 
-  // Serialize errors properly
+  // Serialize errors, minus a failed query's parameter values (they can be session tokens or PII).
   serializers: {
-    err: pino.stdSerializers.err,
-    error: pino.stdSerializers.err,
+    err: (e: Error) => scrubSerializedError(pino.stdSerializers.err(e)),
+    error: (e: Error) => scrubSerializedError(pino.stdSerializers.err(e)),
     req: pino.stdSerializers.req,
     res: pino.stdSerializers.res,
   },

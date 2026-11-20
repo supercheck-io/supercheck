@@ -6,6 +6,7 @@ import { RedisService } from '../execution/services/redis.service';
 import { ErrorHandler } from '../common/utils/error-handler';
 import { HeartbeatService } from '../common/heartbeat/heartbeat.service';
 import { getServiceVersion } from '../common/version';
+import { ConsumerWatchdogService } from '../common/consumer-watchdog.service';
 import { user } from '../db/schema';
 import { PLAYWRIGHT_QUEUE } from '../execution/constants';
 import { K6_QUEUE, k6QueueName } from '../k6/k6.constants';
@@ -44,6 +45,7 @@ export class HealthService {
     private readonly redisService: RedisService,
     private readonly configService: ConfigService,
     private readonly heartbeatService: HeartbeatService,
+    private readonly consumerWatchdog: ConsumerWatchdogService,
   ) {}
 
   async getHealthStatus(): Promise<HealthStatus> {
@@ -91,11 +93,9 @@ export class HealthService {
   }
 
   getLivenessStatus(): { status: string; alive: boolean } {
-    // Basic liveness check - service is running
-    return {
-      status: 'alive',
-      alive: true,
-    };
+    // A queue consumer that stopped and cannot recover must fail liveness so Kubernetes restarts the pod.
+    const alive = this.consumerWatchdog.isHealthy();
+    return { status: alive ? 'alive' : 'consumer stalled', alive };
   }
 
   private async checkDatabase(): Promise<ComponentHealth> {

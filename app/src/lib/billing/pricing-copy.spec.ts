@@ -26,10 +26,10 @@ describe("PRICING_FAQS", () => {
     }
   });
 
-  it("carries the trial questions from the shared catalog, once, before the generic try-it question", () => {
+  it("carries the trial questions from the shared catalog, once", () => {
     const questions = PRICING_FAQS.map((faq) => faq.question);
     expect(questions).toEqual(expect.arrayContaining(["Is there a free trial?", "What happens when the free trial ends?"]));
-    expect(questions.indexOf("Is there a free trial?")).toBeLessThan(questions.indexOf("Can I try Supercheck before subscribing?"));
+    expect(questions.filter((question) => question === "Is there a free trial?")).toHaveLength(1);
     expect(questions.some((question) => /self-host/i.test(question))).toBe(false);
   });
 

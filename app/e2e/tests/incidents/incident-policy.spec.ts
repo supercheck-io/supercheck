@@ -3,7 +3,7 @@ import { waitForHydration } from '../../utils/hydration';
 
 test.describe('Incident policy: repeat and escalation @incidents @alerts', () => {
   test('org owner sets reminders and an escalation; an impossible schedule blocks Save @critical', async ({ orgOwnerPage: page, cleanup }) => {
-    const name = `E2E policy ${Date.now()}`.slice(0, 20);
+    const name = `E2E pol ${Date.now()}`; // 20 chars, full stamp, so the stale-project sweep matches it
     const create = await page.request.post('/api/projects', { data: { name, description: 'E2E incident policy' } });
     expect(create.status(), await create.text()).toBe(201);
     const project = ((await create.json()) as { data: { id: string } }).data;

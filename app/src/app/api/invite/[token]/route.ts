@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { safeErrorFields } from "@/lib/log-safe-error";
 import { getCachedAuthSession } from "@/lib/session-cache";
 import { getActiveTrial, hasPaidAccess } from "@/lib/execution/trial-limits";
 import { db } from '@/utils/db';
@@ -90,7 +91,7 @@ export async function GET(
       }
     }, { headers: { 'Cache-Control': 'private, no-store' } });
   } catch (error) {
-    console.error('Error fetching invitation:', error);
+    console.error('Error fetching invitation:', safeErrorFields(error));
     return NextResponse.json(
       { error: 'Failed to fetch invitation details' },
       { status: 500 }
@@ -436,7 +437,7 @@ export async function POST(
       );
     }
 
-    console.error('Error accepting invitation:', error);
+    console.error('Error accepting invitation:', safeErrorFields(error));
     return NextResponse.json(
       { error: 'Failed to accept invitation' },
       { status: 500 }

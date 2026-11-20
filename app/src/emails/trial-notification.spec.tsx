@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import {
   TrialNotificationEmail,
   trialNotificationSubject,
+  type TrialNotificationKind,
 } from "./trial-notification";
 
 const base = {
@@ -10,9 +11,9 @@ const base = {
   daysRemaining: 7,
   subscribeUrl: "https://app.supercheck.io/subscribe",
 };
-const html = (kind: "midway" | "ending" | "ended", daysRemaining = 7) =>
+const html = (kind: TrialNotificationKind, daysRemaining = 7) =>
   renderToStaticMarkup(
-    TrialNotificationEmail({ ...base, kind, daysRemaining }),
+    TrialNotificationEmail({ ...base, kind, daysRemaining, browserMinutes: 1000 }),
   );
 
 describe("TrialNotificationEmail", () => {
@@ -40,8 +41,22 @@ describe("TrialNotificationEmail", () => {
     expect(markup).toContain("Restore my setup");
   });
 
+  it("tells a 50% browser-minute user what is used and links to subscribe", () => {
+    const markup = html("browserHalf");
+    expect(markup).toContain("used 50% of your trial browser minutes");
+    expect(markup).toContain("1,000 browser minutes");
+    expect(markup).toContain('href="https://app.supercheck.io/subscribe"');
+  });
+
+  it("tells a 100% browser-minute user that browser checks stopped and links to subscribe", () => {
+    const markup = html("browserFull");
+    expect(markup).toContain("used 100% of your trial browser minutes");
+    expect(markup).toContain("no longer run");
+    expect(markup).toContain('href="https://app.supercheck.io/subscribe"');
+  });
+
   it("does not use fear-based or countdown pressure copy", () => {
-    for (const kind of ["midway", "ending", "ended"] as const) {
+    for (const kind of ["midway", "ending", "ended", "browserHalf", "browserFull"] as const) {
       expect(html(kind).toLowerCase()).not.toMatch(
         /last chance|act now|hurry|don't miss/,
       );
@@ -52,7 +67,9 @@ describe("TrialNotificationEmail", () => {
     ["midway", "[Supercheck] Your trial is halfway through: Acme"],
     ["ending", "[Supercheck] Your trial ends tomorrow: Acme"],
     ["ended", "[Supercheck] Your trial has ended: Acme"],
+    ["browserHalf", "[Supercheck] Half of your trial browser minutes are used: Acme"],
+    ["browserFull", "[Supercheck] Your trial browser minutes are used up: Acme"],
   ] as const)("uses a clear %s subject", (kind, subject) => {
-    expect(trialNotificationSubject(kind, "Acme", 5)).toBe(subject);
+    expect(trialNotificationSubject(kind, "Acme", 5, 1000)).toBe(subject);
   });
 });
