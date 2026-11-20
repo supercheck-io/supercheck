@@ -40,8 +40,11 @@ function withTimeout<T>(work: Promise<T>, what: string): Promise<T> {
 
 /**
  * Detects a BullMQ consumer that silently stopped pulling jobs after a Redis or Sentinel failover.
- * The command connection a Worker uses can stay `ready` on a half-open socket: no reply, no error and
- * no reconnect, so the queue fills with nothing active. Each probe PINGs every distinct command
+ * Two failures leave a worker Ready and quiet. (1) The blocking connection ends for good: BullMQ's
+ * block-timeout guard calls `disconnect(true)` on it while ioredis is still resolving a master through
+ * unreachable Sentinels, the connector aborts, and ioredis sets status `end` without a retry; the main
+ * loop then waits on a dead client forever. An `end` client is revived with `connect()`. (2) The command
+ * connection stays `ready` on a half-open socket: no reply, no error and no reconnect. Each probe PINGs every distinct command
  * connection; one that stops answering while `ready` is forced to reconnect (ioredis resends the
  * pending commands). That kick also runs while draining or paused, because in-flight jobs still need
  * the connection to finish. A consumer reports unhealthy while its connection is unresponsive, ended,
@@ -111,14 +114,31 @@ export class ConsumerWatchdogService implements OnModuleInit, OnModuleDestroy {
       const state = new Map<Redis, 'ok' | 'unresponsive' | 'reconnecting'>();
       await Promise.all(
         [...new Set(clients.values())].map(async (client) => {
-          if (client) state.set(client, await this.pingClient(client));
+          if (!client) return;
+          // An ended client is only revived while it is still wanted: not during shutdown.
+          const reviveOk =
+            !isDraining() &&
+            ![...live].some(
+              (w) => clients.get(w) === client && Boolean(w.closing),
+            );
+          state.set(client, await this.pingClient(client, reviveOk));
+        }),
+      );
+
+      // Never PING the blocking client: the PING would queue behind the blocked BZPOPMIN.
+      const blockingEnded = new Set<Worker>();
+      await Promise.all(
+        [...live].map(async (worker) => {
+          if (!worker.closing && (await this.reviveIfEnded(worker)))
+            blockingEnded.add(worker);
         }),
       );
 
       const counted = !isDraining();
       for (const worker of live) {
         const client = clients.get(worker) ?? null;
-        const status = client ? state.get(client) : 'unresponsive';
+        let status = client ? state.get(client) : 'unresponsive';
+        if (blockingEnded.has(worker)) status = 'unresponsive';
         // Draining, paused and closing consumers are stopped on purpose; the kick above still ran.
         if (!counted || worker.closing || worker.isPaused()) {
           this.brokenSince.delete(worker);
@@ -135,6 +155,28 @@ export class ConsumerWatchdogService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
+  /** True when the worker's blocking client had ended (it is revived here). */
+  private async reviveIfEnded(worker: Worker): Promise<boolean> {
+    try {
+      const blocking = (
+        worker as unknown as {
+          blockingConnection?: { client: Promise<Redis> };
+        }
+      ).blockingConnection;
+      if (!blocking) return false;
+      const client = await withTimeout(blocking.client, 'blocking client init');
+      if (client.status !== 'end') return false;
+      if (isDraining()) return true;
+      this.logger.warn(
+        `[${worker.name}] blocking Redis connection ended; reconnecting`,
+      );
+      client.connect().catch(() => undefined);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   private markBroken(worker: Worker, now: number, problem: string): void {
     if (this.brokenSince.has(worker)) return;
     this.brokenSince.set(worker, now);
@@ -143,8 +185,12 @@ export class ConsumerWatchdogService implements OnModuleInit, OnModuleDestroy {
 
   private async pingClient(
     client: Redis,
+    reviveOk: boolean,
   ): Promise<'ok' | 'unresponsive' | 'reconnecting'> {
-    if (client.status === 'end') return 'unresponsive';
+    if (client.status === 'end') {
+      if (reviveOk) client.connect().catch(() => undefined);
+      return 'unresponsive';
+    }
     if (client.status !== 'ready') return 'reconnecting';
     try {
       await withTimeout(client.ping(), 'PING');

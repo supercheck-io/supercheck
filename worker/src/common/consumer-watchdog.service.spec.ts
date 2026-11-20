@@ -7,6 +7,7 @@ import {
 
 type FakeClient = {
   status: string;
+  connect: jest.Mock;
   ping: jest.Mock;
   disconnect: jest.Mock;
 };
@@ -19,6 +20,7 @@ function fakeWorker(
     status: 'ready',
     ping: jest.fn().mockResolvedValue('PONG'),
     disconnect: jest.fn(),
+    connect: jest.fn().mockResolvedValue(undefined),
     ...client,
   };
   const w = {
@@ -181,6 +183,63 @@ describe('ConsumerWatchdogService', () => {
     await probing;
     expect(dead.redis.disconnect).toHaveBeenCalledWith(true);
     expect(service.isHealthy(5 * MIN)).toBe(false);
+  });
+
+  const blockingOf = (status: string) => ({
+    status,
+    ping: jest.fn(),
+    connect: jest.fn().mockResolvedValue(undefined),
+  });
+
+  it('revives an ended blocking connection, the silent stall after a Sentinel outage, and counts it', async () => {
+    const blocking = blockingOf('end');
+    const { worker } = fakeWorker(
+      {},
+      { blockingConnection: { client: Promise.resolve(blocking) } },
+    );
+    watch(worker);
+    await service.probe(0);
+    expect(blocking.connect).toHaveBeenCalledTimes(1);
+    expect(service.isHealthy(5 * MIN)).toBe(false);
+
+    blocking.status = 'ready';
+    await service.probe(MIN);
+    expect(service.isHealthy(10 * MIN)).toBe(true);
+  });
+
+  it('never pings a ready blocking connection: the PING would queue behind BZPOPMIN', async () => {
+    const blocking = blockingOf('ready');
+    const { worker } = fakeWorker(
+      {},
+      { blockingConnection: { client: Promise.resolve(blocking) } },
+    );
+    watch(worker);
+    await service.probe(0);
+    expect(blocking.ping).not.toHaveBeenCalled();
+    expect(blocking.connect).not.toHaveBeenCalled();
+  });
+
+  it('revives an ended command connection', async () => {
+    const { worker, redis } = fakeWorker({ status: 'end' });
+    watch(worker);
+    await service.probe(0);
+    expect(redis.connect).toHaveBeenCalledTimes(1);
+  });
+
+  it('leaves the ended connections of a closing worker alone', async () => {
+    const blocking = blockingOf('end');
+    const { worker, redis } = fakeWorker(
+      { status: 'end' },
+      {
+        closing: Promise.resolve(),
+        blockingConnection: { client: Promise.resolve(blocking) },
+      },
+    );
+    watch(worker);
+    await service.probe(0);
+    expect(blocking.connect).not.toHaveBeenCalled();
+    expect(redis.connect).not.toHaveBeenCalled();
+    expect(service.isHealthy(10 * MIN)).toBe(true);
   });
 
   it('forgets a consumer that was removed', async () => {
