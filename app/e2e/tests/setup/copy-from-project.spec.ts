@@ -39,7 +39,7 @@ test.describe('Project setup copy from project @setup', SIGN_UP_GATED, () => {
     const origin = new URL(baseURL!).origin;
 
     // A second project in the same organization, with one email channel to copy from.
-    const created = await page.request.post('/api/projects', { data: { name: `Copy source ${Date.now()}` }, headers: { Origin: origin } });
+    const created = await page.request.post('/api/projects', { data: { name: `E2E copy source ${Date.now()}` }, headers: { Origin: origin } });
     expect(created.status(), await created.text()).toBe(201);
     source = ((await created.json()) as { data: { id: string; name: string } }).data;
     const channelName = `Ops email ${Date.now()}`;
