@@ -197,13 +197,13 @@ export default async function HomePage() {
               – <span className="hero-accent">as code</span>
             </span>
           </h1>
-          <div className="mt-6 grid gap-10 lg:grid-cols-[minmax(0,1fr)_24rem] lg:items-start lg:gap-12">
-            <div>
-              <p className="max-w-2xl text-lg leading-relaxed text-fd-muted-foreground">
-                Playwright and k6 tests, uptime monitors, AI incident response and status pages in one
-                platform. Self-host today, or join the Cloud waitlist.
-              </p>
-              <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center">
+          <p className="mt-6 max-w-2xl text-lg leading-relaxed text-fd-muted-foreground">
+            Playwright and k6 tests, uptime monitors, AI incident response and status pages in one
+            platform. Self-host today, or join the Cloud waitlist.
+          </p>
+          <div className="mt-8 grid gap-10 lg:grid-cols-[auto_minmax(0,1fr)] lg:gap-0">
+            <div className="flex flex-col items-start lg:pr-12">
+              <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row sm:items-center">
                 <a href={DEMO_URL} target="_blank" rel="noopener noreferrer" className={primaryButton}>
                   Try the live demo
                   <ArrowRight className="size-4" aria-hidden="true" />
@@ -212,12 +212,12 @@ export default async function HomePage() {
                   Read the docs
                 </Link>
               </div>
-              <div className="mt-6 flex flex-wrap items-center gap-x-3 gap-y-2 text-sm text-fd-muted-foreground">
+              <div className="mt-5">
                 <CopyCommand />
-                <span>
-                  then <code className="font-mono text-[13px] text-fd-foreground">supercheck init</code>
-                </span>
               </div>
+              <p className="mt-2 text-sm text-fd-muted-foreground">
+                then <code className="font-mono text-[13px] text-fd-foreground">supercheck init</code>
+              </p>
             </div>
             <ToolsBand />
           </div>
