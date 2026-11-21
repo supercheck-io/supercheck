@@ -817,9 +817,8 @@ export class MonitorResultsCleanupStrategy implements ICleanupStrategy {
           const handled = await this.cleanupBatch(rows, result, limits.signal);
           processed += handled.handled;
           deleted += handled.deleted;
-          // A batch that storage refused entirely ends this monitor's artifact pass for this run, so a stuck
-          // backlog costs one batch per monitor and the plain rows and later monitors still get their turn.
-          if (handled.handled === 0) break;
+          // Refused rows are kept and the cursor moves past them, so healthy reports behind a failing one still
+          // expire this run; the plain rows already went first, and the organization's budget share bounds the time.
           const last = rows[rows.length - 1];
           cursor = { checkedAt: last.checkedAt, id: last.id };
         }

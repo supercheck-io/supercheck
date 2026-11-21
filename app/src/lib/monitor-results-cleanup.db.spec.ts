@@ -369,19 +369,24 @@ describe("monitor_results", () => {
     expect(await countRows(monitorOf.plus)).toBe(3);
   });
 
-  it("a monitor whose artifact batch is refused entirely still gets its plain rows cleaned this run", async () => {
-    for (const offset of [1, 2, 3]) {
-      await client`INSERT INTO monitor_results (id, monitor_id, checked_at, status, is_up, test_report_s3_url) VALUES (uuidv7(), ${monitorOf.plus}, now() - interval '20 days' - make_interval(secs => ${offset}), 'up', true, ${`s3://bucket/refused-${offset}`})`;
-    }
+  it("a refused report does not block the healthy reports behind it or the monitor's plain rows", async () => {
+    // The oldest report is refused on every run; the newer one is healthy.
+    await client`INSERT INTO monitor_results (id, monitor_id, checked_at, status, is_up, test_report_s3_url) VALUES (uuidv7(), ${monitorOf.plus}, now() - interval '20 days' - interval '1 hour', 'up', true, 's3://bucket/refused')`;
+    await client`INSERT INTO monitor_results (id, monitor_id, checked_at, status, is_up, test_report_s3_url) VALUES (uuidv7(), ${monitorOf.plus}, now() - interval '20 days', 'up', true, 's3://bucket/healthy')`;
     await addResults(monitorOf.plus, 20, 2);
-    mockDeleteReports.mockImplementation(async (inputs: Array<{ entityId: string }>) => {
-      mockFailedIds.mockReturnValue(new Set(inputs.map((i) => i.entityId)));
-      return { success: false, deletedObjects: [], failedObjects: inputs };
+    mockDeleteReports.mockImplementation(async (inputs: Array<{ entityId: string; s3Url?: string }>) => {
+      const refused = inputs.filter((i) => i.s3Url === "s3://bucket/refused");
+      mockFailedIds.mockReturnValue(new Set(refused.map((i) => i.entityId)));
+      return { success: refused.length === 0, deletedObjects: inputs.filter((i) => !refused.includes(i)), failedObjects: refused };
     });
-    const result = await resultsStrategy({ batchSize: 1 }).execute(false, { cursor: memoryCursor() });
-    expect(mockDeleteReports).toHaveBeenCalledTimes(1); // one refused batch ends the artifact pass for this run
-    expect(result.recordsDeleted).toBe(2);
+    for (let run = 0; run < 2; run++) {
+      const result = await resultsStrategy({ batchSize: 1 }).execute(false, { cursor: memoryCursor() });
+      expect(result.success).toBe(true);
+    }
+    const left = await client`SELECT test_report_s3_url FROM monitor_results WHERE monitor_id = ${monitorOf.plus}`;
+    expect(left).toEqual([{ test_report_s3_url: "s3://bucket/refused" }]);
   });
+
 
   it("writes nothing for a batch whose lock was lost while storage answered", async () => {
     await client`INSERT INTO monitor_results (id, monitor_id, checked_at, status, is_up, test_report_s3_url) VALUES (uuidv7(), ${monitorOf.plus}, now() - interval '20 days', 'up', true, 's3://bucket/slow')`;
