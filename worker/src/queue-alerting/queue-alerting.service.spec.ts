@@ -207,7 +207,6 @@ describe('QueueAlertingService', () => {
         'job-scheduler',
         'k6-eu-central',
         'k6-global',
-        'k6-job-scheduler',
         'monitor-scheduler',
         'monitor-us-east',
         'playwright-global',

@@ -10,6 +10,5 @@ export { processScheduledMonitor, type MonitorJobData } from './monitor-schedule
 export { getNextRunDate } from './cron-utils';
 export {
   JOB_SCHEDULER_QUEUE,
-  K6_JOB_SCHEDULER_QUEUE,
   MONITOR_SCHEDULER_QUEUE,
 } from './constants';

@@ -99,6 +99,7 @@ The CLI is versioned separately; see [cli/CHANGELOG.md](cli/CHANGELOG.md). Prere
 
 - Opsgenie alert channel and AI SRE connector (Atlassian has ended Opsgenie sign-ups)). Switch any existing Opsgenie channel to the Jira Service Management preset or a custom webhook, and delete any Opsgenie connector.
 - The unused `type: "file"` attachment option on `POST /api/sre/chat` (it now returns `400`) and the `S3_SRE_ATTACHMENTS_BUCKET_NAME` setting. Nothing could upload to that bucket. You can delete an empty `sre-chat-attachments` bucket.
+- Removed the legacy k6-job-scheduler queue; all scheduled jobs use job-scheduler. Upgrading from 1.6.0 with more than one app replica: stop every old app replica before starting the new version, so no old replica edits a k6 schedule in the removed queue. Leftover `bull:k6-job-scheduler:*` keys are never read and can be deleted.
 
 ### Deprecated
 
