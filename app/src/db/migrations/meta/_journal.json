@@ -631,6 +631,13 @@
       "when": 1795262638702,
       "tag": "0089_plan_raw_retention",
       "breakpoints": true
+    },
+    {
+      "idx": 90,
+      "version": "7",
+      "when": 1795290735367,
+      "tag": "0090_tags_case_insensitive_name",
+      "breakpoints": true
     }
   ]
 }
