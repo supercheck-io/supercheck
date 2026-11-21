@@ -81,6 +81,7 @@ async function fetchMonitorResults(
     timezoneOffset?: number;
     timezoneOffsetEnd?: number;
     location?: string;
+    failuresOnly?: boolean;
   }
 ): Promise<MonitorResultsResponse> {
   const params = new URLSearchParams({
@@ -99,6 +100,9 @@ async function fetchMonitorResults(
   }
   if (options.location && options.location !== "all") {
     params.append("location", options.location);
+  }
+  if (options.failuresOnly) {
+    params.append("status", "failed");
   }
 
   const response = await fetch(`/api/monitors/${monitorId}/results?${params}`);
@@ -169,6 +173,7 @@ export function useMonitorResults(
     limit: number;
     date?: Date;
     location?: string;
+    failuresOnly?: boolean;
   }
 ) {
   const queryClient = useQueryClient();
@@ -191,6 +196,7 @@ export function useMonitorResults(
       options.limit,
       dateString,
       options.location,
+      options.failuresOnly ?? false,
     ],
     queryFn: () =>
       fetchMonitorResults(monitorId, {
@@ -200,6 +206,7 @@ export function useMonitorResults(
         timezoneOffset,
         timezoneOffsetEnd,
         location: options.location,
+        failuresOnly: options.failuresOnly,
       }),
     enabled: !!monitorId,
     // Always stale: the table refits its page size after mount, and that key change only refetches a stale entry

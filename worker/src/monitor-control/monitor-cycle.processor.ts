@@ -17,7 +17,9 @@ const REPAIR_GRACE_SECONDS = 60;
 const RETENTION_SWEEP_MS = 10 * 60_000;
 const RETENTION_BATCH = 500;
 const RETENTION_MAX_BATCHES = 20;
-const DEFAULT_RETENTION_DAYS = 14;
+// Covers the stock raw monitor-result windows (Plus 7, Pro 30 days): uptime for an old check needs its cycle's rule.
+// A deployment that keeps raw results longer (custom plan rows) should raise MISSING_CYCLE_RETENTION_DAYS to match.
+const DEFAULT_RETENTION_DAYS = 30;
 const POISON_MAX_BACKOFF_MS = 5 * 60_000;
 /** After this many failed closures (about 1.5 h at the maximum backoff) the cycle is aborted. */
 const POISON_GIVE_UP_AFTER = 20;

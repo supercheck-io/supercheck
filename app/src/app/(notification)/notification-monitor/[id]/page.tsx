@@ -1,4 +1,5 @@
 import { liveMonitor } from "@/lib/deletion/visibility";
+import { getRawResultRetention } from "@/lib/monitor-result-retention";
 import { monitorConfigForRead, monitorResultForRead, monitorTargetForRead } from "@/lib/monitor-read-config";
 import { Metadata } from "next";
 import { cache } from "react";
@@ -67,9 +68,11 @@ const getMonitorDetailsDirectly = cache(async (
     const monitor = monitorData[0];
     if (!monitor.organizationId || !monitor.projectId) return null;
     const permissionScope = { organizationId: monitor.organizationId, projectId: monitor.projectId };
-    const [canView, canUpdate] = await Promise.all([
+    // Retention is read alongside the permission checks; it is only used after the view check passes.
+    const [canView, canUpdate, resultRetention] = await Promise.all([
       hasPermissionForUser(userId, "monitor", "view", permissionScope),
       hasPermissionForUser(userId, "monitor", "update", permissionScope),
+      getRawResultRetention(monitor.organizationId),
     ]);
     if (!canView) return null;
 
@@ -127,6 +130,7 @@ const getMonitorDetailsDirectly = cache(async (
       config: monitorConfigForRead(monitor.config, canUpdate) ?? undefined,
       alertConfig: monitor.alertConfig || undefined,
       projectName: monitor.projectName || undefined,
+      resultRetention,
     };
 
     return transformedMonitor;

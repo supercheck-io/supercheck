@@ -4176,7 +4176,7 @@
       "get": {
         "operationId": "getMonitorResults",
         "summary": "Get monitor check results",
-        "description": "Retrieve paginated check results for a monitor with optional date and location filters.",
+        "description": "Retrieve paginated check results for a monitor with optional date, location and status filters. Results are kept for the organization's raw data retention period.",
         "tags": [
           "Monitors"
         ],
@@ -4232,6 +4232,17 @@
               "maximum": 840
             },
             "description": "Offset in force at the end of `date`, which differs on a daylight-saving change day. Defaults to `timezoneOffset`."
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "failed"
+              ]
+            },
+            "description": "`failed` returns only checks that were not up (down, error or timeout), including failed checks taken during maintenance. The pagination total counts the same filter. Any other value returns 400."
           }
         ],
         "responses": {

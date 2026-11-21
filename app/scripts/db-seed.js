@@ -45,7 +45,7 @@ function logError(message) {
  * Single source of truth for subscription plans
  *
  * Data Retention Model:
- * - dataRetentionDays: Raw monitor check results (7d for all seeded plans)
+ * - dataRetentionDays: Raw monitor check results (Plus: 7d, Pro: 30d, Self-hosted: 7d)
  * - aggregatedDataRetentionDays: Aggregated metrics (Plus: 30d, Pro/Self-hosted: 90d)
  * - jobDataRetentionDays: Job execution logs/results (Plus: 30d, Pro/Self-hosted: 90d)
  *
