@@ -3,7 +3,7 @@
 // exactly one schedule per job/entity. Skipped unless TEST_REDIS_URL is set
 // (throwaway Redis only). Every key lives under a random BullMQ prefix.
 import Redis from "ioredis";
-import { Queue, Worker } from "bullmq";
+import { Queue } from "bullmq";
 
 jest.mock("bullmq", () => {
   const actual = jest.requireActual("bullmq");
@@ -25,7 +25,7 @@ jest.mock("bullmq", () => {
 });
 
 type Row = Record<string, unknown>;
-let jobRows: Row[] = [];
+const jobRows: Row[] = [];
 let monitorSelects: Row[][] = [];
 jest.mock("@/utils/db", () => {
   const schema = jest.requireActual("@/db/schema");
@@ -48,8 +48,6 @@ jest.mock("./queue", () => ({ assertExecutionQueueReady: jest.fn(), getQueues: j
 jest.mock("./scheduler/job-scheduler", () => ({ processScheduledJob: jest.fn() }));
 
 import { getQueues } from "./queue";
-import { initializeJobSchedulers } from "./job-scheduler";
-import { processLegacyK6Tick } from "./scheduler/legacy-k6-tick";
 import { initializeMonitorSchedulers } from "./monitor-scheduler";
 import { DataLifecycleService, type CleanupStrategyConfig } from "./data-lifecycle-service";
 
@@ -58,20 +56,9 @@ const suite = process.env.TEST_REDIS_URL ? describe : describe.skip;
 
 suite("scheduler upgrade (real Redis, BullMQ)", () => {
   let redis: Redis;
-  let jobQueue: Queue;
-  let k6Queue: Queue;
   let monitorQueue: Queue;
   let lifecycleQueue: Queue;
   const services: DataLifecycleService[] = [];
-
-  const JOB = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
-  const JOB2 = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb";
-  const NAME = (id: string) => `scheduled-job-${id}`;
-  const CRON = "*/10 * * * *";
-  const payload = (id: string) => ({ jobId: id, name: "k6 load", retryLimit: 3, projectId: "p", organizationId: "o" });
-  const row = (id: string, extra: Row = {}) => ({
-    id, name: "k6 load", cronSchedule: CRON, scheduledJobId: id, jobType: "k6", projectId: "p", organizationId: "o", ...extra,
-  });
 
   const clear = async () => {
     const keys = await redis.keys(`${prefix}:*`);
@@ -81,13 +68,9 @@ suite("scheduler upgrade (real Redis, BullMQ)", () => {
 
   beforeAll(async () => {
     redis = new Redis(process.env.TEST_REDIS_URL!, { maxRetriesPerRequest: null });
-    jobQueue = new Queue("job-scheduler", { connection: redis });
-    k6Queue = new Queue("k6-job-scheduler", { connection: redis });
     monitorQueue = new Queue("monitor-scheduler", { connection: redis });
     lifecycleQueue = new Queue("data-lifecycle-cleanup", { connection: redis });
     (getQueues as jest.Mock).mockResolvedValue({
-      jobSchedulerQueue: jobQueue,
-      k6JobSchedulerQueue: k6Queue,
       monitorSchedulerQueue: monitorQueue,
       redisConnection: redis,
     });
@@ -95,7 +78,6 @@ suite("scheduler upgrade (real Redis, BullMQ)", () => {
     jest.spyOn(console, "warn").mockImplementation(() => {});
   });
   beforeEach(async () => {
-    jobRows = [];
     monitorSelects = [];
     await clear();
   });
@@ -104,23 +86,11 @@ suite("scheduler upgrade (real Redis, BullMQ)", () => {
   });
   afterAll(async () => {
     await clear();
-    await Promise.all([jobQueue, k6Queue, monitorQueue, lifecycleQueue].map((q) => q.close()));
+    await Promise.all([monitorQueue, lifecycleQueue].map((q) => q.close()));
     await redis.quit();
   });
 
   // ---- what the previous release wrote ------------------------------------
-  const oldScheduleJob = async (id: string, cron = CRON, tz = "UTC") => {
-    const existing = (await k6Queue.getRepeatableJobs()).filter((j) => j.key.includes(id) || j.name === NAME(id));
-    await Promise.all(existing.map((j) => k6Queue.removeRepeatableByKey(j.key)));
-    await k6Queue.add(NAME(id), payload(id), {
-      repeat: { pattern: cron, tz },
-      removeOnComplete: true,
-      removeOnFail: 100,
-      jobId: NAME(id),
-      attempts: 3,
-      backoff: { type: "exponential", delay: 5000 },
-    });
-  };
   const oldScheduleCleanup = async (config: CleanupStrategyConfig) => {
     const existing = (await lifecycleQueue.getRepeatableJobs()).find((j) => j.name === `${config.entityType}-cleanup`);
     if (existing) await lifecycleQueue.removeRepeatableByKey(existing.key);
@@ -138,219 +108,6 @@ suite("scheduler upgrade (real Redis, BullMQ)", () => {
     expect(c.waiting + c.active).toBe(0);
     expect(c.delayed).toBeGreaterThan(0);
   };
-
-  describe("k6 merge", () => {
-    it("moves legacy k6 repeatables to job-scheduler with the same schedule, data and next fire, then is a no-op", async () => {
-      await oldScheduleJob(JOB, "*/10 * * * *", "Asia/Tokyo");
-      await oldScheduleJob(JOB2, "0 3 * * 1", "UTC");
-      jobRows = [row(JOB, { cronSchedule: null }), row(JOB2, { cronSchedule: null })]; // only the migration can move them
-      const before = await shape(k6Queue);
-      expect(before).toHaveLength(2);
-
-      await initializeJobSchedulers();
-
-      expect(await k6Queue.getRepeatableJobs()).toHaveLength(0);
-      expect(await k6Queue.getJobCounts("delayed", "waiting")).toMatchObject({ delayed: 0, waiting: 0 });
-      expect(await shape(jobQueue)).toEqual(before);
-      const data = (await jobQueue.getDelayed()).map((j) => j.data).sort((a, b) => a.jobId.localeCompare(b.jobId));
-      expect(data).toEqual([payload(JOB), payload(JOB2)]);
-      expect((await jobQueue.getDelayed()).every((j) => j.opts.attempts === 3)).toBe(true);
-      await noImmediateFire(jobQueue);
-
-      await initializeJobSchedulers();
-      expect(await shape(jobQueue)).toEqual(before);
-      expect(await k6Queue.getRepeatableJobs()).toHaveLength(0);
-      expect(await jobQueue.getJobCounts("delayed")).toMatchObject({ delayed: 2 });
-    });
-
-    it("reschedules a database job into job-scheduler only, replacing its legacy copy", async () => {
-      await oldScheduleJob(JOB);
-      jobRows = [row(JOB)];
-      const before = await shape(k6Queue);
-      await initializeJobSchedulers();
-      expect(await k6Queue.getRepeatableJobs()).toHaveLength(0);
-      expect(await shape(jobQueue)).toEqual(before);
-      expect(await jobQueue.getJobCounts("delayed", "waiting")).toMatchObject({ delayed: 1, waiting: 0 });
-    });
-
-    it("drops a legacy repeatable for a job that no longer exists", async () => {
-      await oldScheduleJob(JOB);
-      jobRows = [];
-      await initializeJobSchedulers();
-      expect(await k6Queue.getRepeatableJobs()).toHaveLength(0);
-      expect(await jobQueue.getRepeatableJobs()).toHaveLength(0);
-    });
-
-    it("converges to one schedule when an old replica runs concurrently with, and after, a new one", async () => {
-      jobRows = [row(JOB)];
-      await initializeJobSchedulers();
-      await Promise.all([oldScheduleJob(JOB), initializeJobSchedulers()]);
-      await oldScheduleJob(JOB); // old replica restarts after the new one finished
-      expect((await k6Queue.getRepeatableJobs()).length + (await jobQueue.getRepeatableJobs()).length).toBe(2);
-
-      await initializeJobSchedulers(); // the next new-replica init
-      expect(await k6Queue.getRepeatableJobs()).toHaveLength(0);
-      expect(await jobQueue.getRepeatableJobs()).toHaveLength(1);
-      expect(await jobQueue.getJobCounts("delayed", "waiting")).toMatchObject({ delayed: 1, waiting: 0 });
-    });
-  });
-
-  describe("legacy k6 consumer converges a re-added schedule", () => {
-    const workers: Worker[] = [];
-    const connections: Redis[] = [];
-    const run = jest.fn(async (_job: unknown) => "ran");
-    const loadCron = jest.fn(async (_jobId: string): Promise<string | null> => CRON);
-    let done = 0;
-    const startWorkers = async (count: number) => {
-      for (let i = 0; i < count; i++) {
-        const worker = new Worker(
-          "k6-job-scheduler",
-          async (job) => {
-            try {
-              return await processLegacyK6Tick(job, { jobSchedulerQueue: jobQueue, k6JobSchedulerQueue: k6Queue }, run, loadCron);
-            } finally {
-              done++;
-            }
-          },
-          { connection: connections[connections.push(redis.duplicate()) - 1] },
-        );
-        await worker.waitUntilReady();
-        workers.push(worker);
-      }
-    };
-    const fireLegacyTick = async () => {
-      const [tick] = await k6Queue.getDelayed();
-      await tick.promote();
-      workers.forEach((w) => void w.run());
-    };
-    const until = async (cond: () => boolean) => {
-      for (let i = 0; i < 100 && !cond(); i++) await new Promise((r) => setTimeout(r, 50));
-      expect(cond()).toBe(true);
-    };
-    beforeEach(() => {
-      run.mockReset().mockResolvedValue("ran");
-      loadCron.mockReset().mockResolvedValue(CRON);
-      done = 0;
-    });
-    afterEach(async () => {
-      await Promise.all(workers.splice(0).map((w) => w.close(true)));
-      await Promise.all(connections.splice(0).map((c) => c.quit()));
-    });
-
-    it("old replica re-adds a schedule that job-scheduler already has: the legacy tick removes it and hands the slot to the run guard", async () => {
-      jobRows = [row(JOB)];
-      await initializeJobSchedulers();
-      const expected = await shape(jobQueue);
-      await oldScheduleJob(JOB); // old-version pod re-adds the legacy repeatable
-      await startWorkers(1);
-      await fireLegacyTick();
-      await until(() => done === 1);
-
-      expect(run).toHaveBeenCalledTimes(1); // processScheduledJob dedupes it by tick id against the copy's fire
-      expect(await k6Queue.getRepeatableJobs()).toHaveLength(0);
-      expect(await k6Queue.getJobCounts("delayed", "waiting", "active")).toMatchObject({ delayed: 0, waiting: 0, active: 0 });
-      expect(await shape(jobQueue)).toEqual(expected); // only job-scheduler fires from now on
-      expect(await jobQueue.getJobCounts("delayed")).toMatchObject({ delayed: 1 });
-    });
-
-    it("an old-replica cron change (matching the database) replaces the stale copy and its due tick still runs", async () => {
-      jobRows = [row(JOB)];
-      await initializeJobSchedulers();
-      loadCron.mockResolvedValue("0 5 * * *");
-      await oldScheduleJob(JOB, "0 5 * * *", "UTC");
-      await startWorkers(1);
-      await fireLegacyTick();
-      await until(() => done === 1);
-
-      expect(run).toHaveBeenCalledTimes(1);
-      expect(await k6Queue.getRepeatableJobs()).toHaveLength(0);
-      expect((await shape(jobQueue)).map(({ pattern, tz }) => ({ pattern, tz }))).toEqual([{ pattern: "0 5 * * *", tz: "UTC" }]);
-      expect(await jobQueue.getJobCounts("delayed")).toMatchObject({ delayed: 1 });
-    });
-
-    it("a stale in-flight legacy tick does not overwrite a newer reschedule (database wins)", async () => {
-      jobRows = [row(JOB, { cronSchedule: "0 7 * * *" })];
-      await initializeJobSchedulers(); // job-scheduler now holds the new schedule B
-      loadCron.mockResolvedValue("0 7 * * *");
-      await oldScheduleJob(JOB, "*/10 * * * *"); // legacy A, tick queued before the reschedule
-      await startWorkers(1);
-      await fireLegacyTick();
-      await until(() => done === 1);
-
-      expect(await k6Queue.getRepeatableJobs()).toHaveLength(0);
-      expect((await shape(jobQueue)).map(({ pattern }) => pattern)).toEqual(["0 7 * * *"]);
-    });
-
-    it("a legacy tick of a deleted or unscheduled job drops the legacy entry and leaves job-scheduler alone", async () => {
-      jobRows = [row(JOB)];
-      await initializeJobSchedulers();
-      loadCron.mockResolvedValue(null);
-      await oldScheduleJob(JOB, "0 9 * * *");
-      await startWorkers(1);
-      await fireLegacyTick();
-      await until(() => done === 1);
-
-      expect(await k6Queue.getRepeatableJobs()).toHaveLength(0);
-      expect(run).toHaveBeenCalledTimes(1); // the real processor removes the orphan from both queues
-      expect((await shape(jobQueue)).map(({ pattern }) => pattern)).toEqual([CRON]);
-    });
-
-    it("a retried failed legacy tick is processed again after convergence", async () => {
-      await oldScheduleJob(JOB);
-      run.mockRejectedValueOnce(new Error("run failed"));
-      const [tick] = await k6Queue.getDelayed();
-      const queues = { jobSchedulerQueue: jobQueue, k6JobSchedulerQueue: k6Queue };
-      await expect(processLegacyK6Tick(tick, queues, run, loadCron)).rejects.toThrow("run failed");
-      expect(await jobQueue.getRepeatableJobs()).toHaveLength(1); // converged
-      tick.attemptsMade = 1; // BullMQ retry of the same job id
-      await processLegacyK6Tick(tick, queues, run, loadCron);
-      expect(run).toHaveBeenCalledTimes(2);
-    });
-
-    it("a legacy-only schedule migrates on its tick and that tick runs once", async () => {
-      await oldScheduleJob(JOB, "*/10 * * * *", "Asia/Tokyo");
-      const before = await shape(k6Queue);
-      await startWorkers(1);
-      await fireLegacyTick();
-      await until(() => done === 1);
-
-      expect(run).toHaveBeenCalledTimes(1);
-      expect(run.mock.calls[0][0]).toMatchObject({ data: payload(JOB) });
-      expect(await k6Queue.getRepeatableJobs()).toHaveLength(0);
-      expect(await shape(jobQueue)).toEqual(before);
-      expect((await jobQueue.getDelayed()).map((j) => j.data)).toEqual([payload(JOB)]);
-      await noImmediateFire(jobQueue);
-    });
-
-    it("two replicas on the same legacy tick produce exactly one run", async () => {
-      await oldScheduleJob(JOB);
-      await startWorkers(2);
-      await fireLegacyTick();
-      await until(() => done >= 1);
-      await new Promise((r) => setTimeout(r, 300));
-
-      expect(done).toBe(1);
-      expect(run).toHaveBeenCalledTimes(1);
-      expect(await k6Queue.getRepeatableJobs()).toHaveLength(0);
-      expect(await jobQueue.getRepeatableJobs()).toHaveLength(1);
-    });
-
-    it("racing handlers on the same tick still leave one schedule (idempotent)", async () => {
-      await oldScheduleJob(JOB);
-      const [tick] = await k6Queue.getDelayed();
-      const queues = { jobSchedulerQueue: jobQueue, k6JobSchedulerQueue: k6Queue };
-      await Promise.all([processLegacyK6Tick(tick, queues, run, loadCron), processLegacyK6Tick(tick, queues, run, loadCron)]);
-      expect(await k6Queue.getRepeatableJobs()).toHaveLength(0);
-      expect(await jobQueue.getRepeatableJobs()).toHaveLength(1);
-      expect(await jobQueue.getJobCounts("delayed")).toMatchObject({ delayed: 1 });
-    });
-
-    it("processes a non-repeat job untouched", async () => {
-      const job = await k6Queue.add("manual", { a: 1 });
-      await processLegacyK6Tick(job, { jobSchedulerQueue: jobQueue, k6JobSchedulerQueue: k6Queue }, run, loadCron);
-      expect(run).toHaveBeenCalledTimes(1);
-    });
-  });
 
   describe("data-lifecycle repeat", () => {
     const config = { entityType: "monitor_results", enabled: true, cronSchedule: "0 2 * * *", retentionDays: 30 } as CleanupStrategyConfig;

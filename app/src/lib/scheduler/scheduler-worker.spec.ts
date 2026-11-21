@@ -22,26 +22,12 @@ jest.mock("@/lib/queue", () => ({
 }));
 jest.mock("./job-scheduler", () => ({ processScheduledJob: jest.fn() }));
 jest.mock("./monitor-scheduler", () => ({ processScheduledMonitor: jest.fn() }));
-const cronWhere: unknown[] = [];
-jest.mock("@/utils/db", () => ({
-  db: {
-    select: () => ({
-      from: () => ({
-        where: (cond: unknown) => {
-          cronWhere.push(cond);
-          return { limit: async () => [{ cron: "*/5 * * * *" }] };
-        },
-      }),
-    }),
-  },
-}));
-
 const listenersBefore = {
   SIGTERM: process.listeners("SIGTERM"),
   SIGINT: process.listeners("SIGINT"),
 };
 // Loaded after the snapshot (imports are hoisted) so its handlers can be told apart from Jest's.
-const { initializeSchedulerWorkers, isSchedulerWorkersRunning, loadJobCron } =
+const { initializeSchedulerWorkers, isSchedulerWorkersRunning } =
   jest.requireActual<typeof import("./scheduler-worker")>("./scheduler-worker");
 
 // The module registers SIGTERM/SIGINT shutdown handlers on import. Left in place they intercept the
@@ -56,28 +42,15 @@ afterAll(() => {
 
 it("closes created workers and allows a retry after a failed init", async () => {
   await expect(initializeSchedulerWorkers()).rejects.toThrow("redis down");
-  expect(workers).toHaveLength(3);
+  expect(workers).toHaveLength(2);
   workers.forEach((w) => expect(w.close).toHaveBeenCalled());
 
   await expect(initializeSchedulerWorkers()).resolves.toBeUndefined();
-  expect(workers).toHaveLength(6);
+  expect(workers).toHaveLength(4);
   expect(isSchedulerWorkersRunning()).toBe(true);
 });
 
 it("leaves no signal handlers of its own behind after the suite", () => {
   // Checked again in afterAll; here we prove the module did register them, so the cleanup matters.
   expect(process.listeners("SIGTERM").length).toBeGreaterThan(listenersBefore.SIGTERM.length);
-});
-
-it("reads a legacy tick's cron only within the tick's own project and organization", async () => {
-  const { PgDialect } = jest.requireActual<typeof import("drizzle-orm/pg-core")>("drizzle-orm/pg-core");
-  await expect(loadJobCron("j1", { projectId: "p1", organizationId: "o1" })).resolves.toBe("*/5 * * * *");
-  const { sql, params } = new PgDialect().sqlToQuery(cronWhere[0] as never);
-  expect(sql).toMatch(/"project_id" = \$\d/);
-  expect(sql).toMatch(/"organization_id" = \$\d/);
-  expect(params).toEqual(["j1", "p1", "o1"]);
-
-  cronWhere.length = 0;
-  await expect(loadJobCron("j1", { projectId: "p1" })).resolves.toBeNull(); // unscoped payload: never looked up
-  expect(cronWhere).toHaveLength(0);
 });

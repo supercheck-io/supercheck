@@ -343,7 +343,7 @@ describe("queue location refresh", () => {
     expect(setupCapacityManagement.mock.calls[0][1].k6Events["eu-central"]).toBeDefined();
   });
 
-  it("never restores the k6 scheduler as execution capacity", async () => {
+  it("never restores a leftover scheduler queue as execution capacity", async () => {
     scan.mockResolvedValue(["0", ["bull:k6-job-scheduler:delayed"]]);
     jobCounts.set("k6-job-scheduler", { delayed: 1 });
     expect((await queueModule.getCapacityQueues()).k6Queues["job-scheduler"]).toBeUndefined();

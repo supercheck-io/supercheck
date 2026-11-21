@@ -8,7 +8,7 @@ const mockAddRepeatable = jest.fn();
 const selectResults: unknown[][] = [];
 
 const queue = { getRepeatableJobs: () => mockRepeatables(), removeRepeatableByKey: (...a: unknown[]) => mockRemove(...a), client: Promise.resolve({ exists: (...a: unknown[]) => mockExists(...a), set: (...a: unknown[]) => mockSet(...a), eval: (...a: unknown[]) => mockEval(...a) }) };
-jest.mock("./queue", () => ({ assertExecutionQueueReady: async () => undefined, getQueues: async () => ({ jobSchedulerQueue: queue, k6JobSchedulerQueue: { ...queue, getRepeatableJobs: async () => [] } }) }));
+jest.mock("./queue", () => ({ assertExecutionQueueReady: async () => undefined, getQueues: async () => ({ jobSchedulerQueue: queue }) }));
 
 /** A drizzle-like builder: every step returns itself, awaiting it yields the next queued select result. */
 function chain(result: unknown[]) {
@@ -23,8 +23,7 @@ jest.mock("@/utils/db", () => ({
     update: () => ({ set: () => ({ where: () => Promise.resolve() }) }),
   },
 }));
-jest.mock("./scheduler/legacy-k6-tick", () => ({ addJobRepeatable: (...a: unknown[]) => mockAddRepeatable(...a) }));
-jest.mock("./scheduler/job-scheduler", () => ({ processScheduledJob: jest.fn() }));
+jest.mock("./scheduler/job-scheduler", () => ({ addJobRepeatable: (...a: unknown[]) => mockAddRepeatable(...a), processScheduledJob: jest.fn() }));
 jest.mock("./data-lifecycle-service", () => ({ createDataLifecycleService: jest.fn(), setDataLifecycleInstance: jest.fn() }));
 jest.mock("@/lib/sentry-lazy", () => ({ checkedTick: jest.fn() }));
 jest.mock("@/lib/middleware/plan-limit-lock", () => ({ notInDeletedProject: jest.fn() }));

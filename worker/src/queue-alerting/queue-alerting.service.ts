@@ -49,7 +49,6 @@ const STATIC_MONITORED_QUEUES = [
   PLAYWRIGHT_QUEUE,
   'k6-global',
   'job-scheduler',
-  'k6-job-scheduler',
   'monitor-scheduler',
   'data-lifecycle-cleanup',
   'status-page-jobs',
