@@ -347,6 +347,37 @@ describe('UsageTrackerService ledger settlement', () => {
       }
     },
   );
+
+  it('stores only the HTTP status when Polar rejects the event, never the response body', async () => {
+    const f = fixture();
+    f.database.query.organization.findFirst.mockResolvedValue({
+      polarCustomerId: 'polar-cust-1',
+    });
+    const settled = new Promise<unknown[]>((resolve) => {
+      f.database.execute.mockImplementation(async (query: SQL) => {
+        resolve(new PgDialect().sqlToQuery(query).params);
+        return [];
+      });
+    });
+    const originalFetch = global.fetch;
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: false,
+      status: 422,
+      text: jest
+        .fn()
+        .mockResolvedValue('{"detail":"customer jane@example.com"}'),
+    }) as never;
+    try {
+      await f.service.trackPlaywrightExecution('org-1', 60000, {
+        runId: 'run-rejected',
+      });
+      const params = await settled;
+      expect(params).toContain('Polar API error (422)');
+      expect(JSON.stringify(params)).not.toContain('jane@example.com');
+    } finally {
+      global.fetch = originalFetch;
+    }
+  });
 });
 
 describe('UsageTrackerService execution blocking', () => {
