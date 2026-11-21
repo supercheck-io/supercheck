@@ -107,7 +107,7 @@ describe("Artifact retention strategies", () => {
   function jobSelections(mode: "tenant" | "global" | "playground") {
     const report = { id: "report-1", entityType: mode === "playground" ? "k6_test" : "k6_job", entityId: "run-1", reportPath: "run-1/report", s3Url: null };
     const run = { id: "run-1", createdAt: oldCreatedAt, jobId: mode === "playground" ? null : "job-1", artifactPaths: null };
-    if (mode === "global") selections = [[], [], [run], [report]];
+    if (mode === "global") selections = [[], [], [], [run], [report]]; // no organizations, plans, or organization at all
     else selections = [[{ organizationId: "org-1", subscriptionPlan: "plus" }], [{ plan: "plus", jobDataRetentionDays: 30 }],
       mode === "playground" ? [] : [{ id: "job-1" }], [run], [report], []];
   }
@@ -118,6 +118,17 @@ describe("Artifact retention strategies", () => {
     const result = await new JobRunsCleanupStrategy(jobConfig).execute();
     expect(result.success).toBe(false);
     expect(db.delete).not.toHaveBeenCalled();
+  });
+
+  it("does not fall back to global job-run cleanup when organizations exist but every one was skipped", async () => {
+    // One organization whose plan row has an invalid window: skipped, and the global sweep must not run in its place.
+    selections = [[{ organizationId: "org-1", subscriptionPlan: "plus" }], [{ plan: "plus", jobDataRetentionDays: 0 }], [{ id: "org-1" }], []];
+    const result = await new JobRunsCleanupStrategy(jobConfig).execute();
+    expect(result.success).toBe(true);
+    expect(result.details.multiTenant).toBe(true);
+    const queries = predicates.map((p) => new PgDialect().sqlToQuery(p).sql.toLowerCase());
+    expect(queries.some((q) => q.includes('"job_id" is not null'))).toBe(false);
+    expect(deleteReports).not.toHaveBeenCalled();
   });
 
   it.each(["tenant", "global"] as const)("never selects in-flight runs (%s)", async mode => {

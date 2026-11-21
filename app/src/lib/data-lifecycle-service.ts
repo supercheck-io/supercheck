@@ -518,6 +518,12 @@ const ORG_BUDGET_SHARE = 4;
 /** Lag past a class's window, in days, before cleanup is reported as falling behind. */
 export const RETENTION_LAG_ALERT_DAYS = 2;
 const MONITOR_RESULTS_CURSOR_KEY = "cleanup:monitor_results:org-cursor";
+const MONITOR_AGGREGATES_CURSOR_KEY = "cleanup:monitor_aggregates:org-cursor";
+
+/** Organizations after the cursor first, then the ones before it, so a stopped run continues where it ended. */
+function resumeOrder<T extends { organizationId: string }>(orgs: T[], after: string | null): T[] {
+  return after ? [...orgs.filter((o) => o.organizationId > after), ...orgs.filter((o) => o.organizationId <= after)] : orgs;
+}
 /** Artifact rows call object storage per row, so they go in smaller batches than the single-statement fast path. */
 const ARTIFACT_BATCH_SIZE = 500;
 
@@ -651,10 +657,7 @@ export class MonitorResultsCleanupStrategy implements ICleanupStrategy {
         }
         result.details.organizationsProcessed = orgRetentions.length;
       } else {
-        const resumeAfter = (await context.cursor?.get(MONITOR_RESULTS_CURSOR_KEY)) ?? null;
-        const ordered = resumeAfter
-          ? [...orgRetentions.filter((o) => o.organizationId > resumeAfter), ...orgRetentions.filter((o) => o.organizationId <= resumeAfter)]
-          : orgRetentions;
+        const ordered = resumeOrder(orgRetentions, (await context.cursor?.get(MONITOR_RESULTS_CURSOR_KEY)) ?? null);
         let lastFinished: string | null = null;
         let stopped: StopReason | null = null;
 
@@ -779,8 +782,11 @@ export class MonitorResultsCleanupStrategy implements ICleanupStrategy {
             .orderBy(asc(monitorResults.checkedAt), asc(monitorResults.id))
             .limit(Math.min(ARTIFACT_BATCH_SIZE, settings.batchSize, settings.perOrgCap - processed));
           if (rows.length === 0) break;
-          processed += rows.length;
-          deleted += await this.cleanupBatch(rows, result);
+          // Only rows actually handled count against the cap: rows whose storage delete failed stay for the next
+          // run and must not use up the allowance the plain rows and later monitors need.
+          const handled = await this.cleanupBatch(rows, result);
+          processed += handled.handled;
+          deleted += handled.deleted;
           const last = rows[rows.length - 1];
           cursor = { checkedAt: last.checkedAt, id: last.id };
         }
@@ -834,7 +840,7 @@ export class MonitorResultsCleanupStrategy implements ICleanupStrategy {
       reportUrl: string | null;
     }>,
     result: CleanupOperationResult
-  ): Promise<number> {
+  ): Promise<{ deleted: number; handled: number }> {
     const inputs: ReportDeletionInput[] = rows
       .filter(row => row.testReportS3Url || row.reportUrl || (row.status !== "up" && row.testExecutionId))
       .map(row => ({
@@ -855,7 +861,7 @@ export class MonitorResultsCleanupStrategy implements ICleanupStrategy {
     }
 
     rows = rows.filter(row => !failedIds.has(row.id));
-    if (rows.length === 0) return 0;
+    if (rows.length === 0) return { deleted: 0, handled: 0 };
     const executionIds = rows.flatMap(row => row.testExecutionId ? [row.testExecutionId] : []);
     const urls = rows.flatMap(row => !row.testExecutionId && row.testReportS3Url ? [row.testReportS3Url] : []);
     const deleteIds = rows.filter(row => !row.isStatusChange).map(row => row.id);
@@ -882,7 +888,7 @@ export class MonitorResultsCleanupStrategy implements ICleanupStrategy {
       }
     });
     result.details.statusArtifactsExpired = Number(result.details.statusArtifactsExpired || 0) + statusIds.length;
-    return deleteIds.length;
+    return { deleted: deleteIds.length, handled: rows.length };
   }
 }
 
@@ -999,9 +1005,11 @@ export class MonitorAggregatesCleanupStrategy implements ICleanupStrategy {
 
       let totalDeleted = 0;
       let processed = 0;
-      const orgStats: Record<string, { deleted: number; hourlyDays: number; dailyDays: number }> = {};
+      const orgStats: Record<string, { deleted: number; hourlyDays: number; dailyDays: number; capped?: boolean }> = {};
+      const ordered = dryRun ? windows : resumeOrder(windows, (await context.cursor?.get(MONITOR_AGGREGATES_CURSOR_KEY)) ?? null);
+      let lastFinished: string | null = null;
 
-      for (const org of windows) {
+      for (const org of ordered) {
         const stopped = stopReason(limits);
         if (stopped) {
           result.details.partial = true;
@@ -1010,28 +1018,44 @@ export class MonitorAggregatesCleanupStrategy implements ICleanupStrategy {
         }
         try {
           let deleted: number;
+          let capped = false;
           if (dryRun) {
             deleted = await this.countOldAggregatesForOrg(org.organizationId, org.hourlyDays, org.dailyDays);
           } else {
+            // Each organization gets at most its share of the budget, like raw results.
+            const orgDeadline = Math.min(limits.deadline, Date.now() + settings.budgetMs / ORG_BUDGET_SHARE);
             const outcome = await monitorAggregationService.cleanupOldAggregatesForOrg(
               org.organizationId,
               org.hourlyDays,
               org.dailyDays,
-              { batchSize: settings.batchSize, maxRows: settings.perOrgCap, pauseMs: limits.pauseMs, shouldStop: () => stopReason(limits) !== null }
+              {
+                batchSize: settings.batchSize,
+                maxRows: settings.perOrgCap,
+                pauseMs: limits.pauseMs,
+                shouldStop: () => Date.now() >= orgDeadline || stopReason(limits) !== null,
+              }
             );
             deleted = outcome.deleted;
             const stoppedInside = stopReason(limits);
             if (!outcome.complete && stoppedInside) {
               result.details.partial = true;
               result.details.stopReason = stoppedInside;
+            } else if (!outcome.complete) {
+              capped = true; // row cap or its share of the budget: the next run carries on
             }
           }
-          if (deleted > 0) {
-            orgStats[org.organizationId.substring(0, 8)] = { deleted, hourlyDays: org.hourlyDays, dailyDays: org.dailyDays };
+          if (deleted > 0 || capped) {
+            orgStats[org.organizationId.substring(0, 8)] = {
+              deleted,
+              hourlyDays: org.hourlyDays,
+              dailyDays: org.dailyDays,
+              ...(capped ? { capped: true } : {}),
+            };
           }
           totalDeleted += deleted;
-          processed++;
           if (result.details.partial) break;
+          processed++;
+          lastFinished = org.organizationId;
         } catch (orgError) {
           result.success = false;
           console.error(
@@ -1042,6 +1066,11 @@ export class MonitorAggregatesCleanupStrategy implements ICleanupStrategy {
             `Org ${org.organizationId.substring(0, 8)}: ${orgError instanceof Error ? orgError.message : String(orgError)}`
           );
         }
+      }
+
+      if (!dryRun) {
+        if (!result.details.partial) await context.cursor?.set(MONITOR_AGGREGATES_CURSOR_KEY, null);
+        else if (result.details.stopReason === "budget" && lastFinished) await context.cursor?.set(MONITOR_AGGREGATES_CURSOR_KEY, lastFinished);
       }
 
       if (!dryRun) {
@@ -1504,7 +1533,8 @@ export class JobRunsCleanupStrategy implements ICleanupStrategy {
     };
     try {
       const orgRetentions = await getOrganizationJobRetentionSettings(this.config.retentionDays!);
-      if (orgRetentions.length === 0) {
+      // Global cleanup only when no organization exists, never when every organization was skipped.
+      if (orgRetentions.length === 0 && (await db.select({ id: organization.id }).from(organization).limit(1)).length === 0) {
         result.details.multiTenant = false;
         await this.cleanupRuns(and(sql`${runs.jobId} IS NOT NULL`, inArray(runs.status, TERMINAL_RUN_STATUSES), lt(runs.createdAt, new Date(
           Date.now() - this.config.retentionDays! * 86400000

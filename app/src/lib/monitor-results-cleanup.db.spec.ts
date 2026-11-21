@@ -354,6 +354,20 @@ describe("monitor_results", () => {
     expect(mockDeleteReports).toHaveBeenCalledTimes(2);
   });
 
+  it("artifact rows whose storage delete fails do not use up the cap, so plain rows still go", async () => {
+    for (const offset of [1, 2, 3]) {
+      await client`INSERT INTO monitor_results (id, monitor_id, checked_at, status, is_up, test_report_s3_url) VALUES (uuidv7(), ${monitorOf.plus}, now() - interval '20 days' - make_interval(secs => ${offset}), 'up', true, ${`s3://bucket/denied-${offset}`})`;
+    }
+    await addResults(monitorOf.plus, 20, 2);
+    mockDeleteReports.mockImplementation(async (inputs: Array<{ entityId: string }>) => {
+      mockFailedIds.mockReturnValue(new Set(inputs.map((i) => i.entityId)));
+      return { success: false, deletedObjects: [], failedObjects: inputs };
+    });
+    const result = await resultsStrategy({ maxRecordsPerRun: 2, batchSize: 1 }).execute(false, { cursor: memoryCursor() });
+    expect(result.recordsDeleted).toBe(2);
+    expect(await countRows(monitorOf.plus)).toBe(3);
+  });
+
   it("a run whose lock is lost stops before deleting and leaves the cursor to the new owner", async () => {
     await addResults(monitorOf.plus, 20, 5);
     const controller = new AbortController();
@@ -488,6 +502,47 @@ describe("monitor_aggregates", () => {
   it("refuses a window that is not a positive number of days", async () => {
     await expect(monitorAggregationService.cleanupOldAggregatesForOrg(ORG.plus, 0, 90)).rejects.toThrow("Invalid aggregate retention");
   });
+
+  it("resumes after the last finished organization and passes over one that uses up its share of the budget", async () => {
+    for (const age of [100, 101, 102, 103, 104, 105]) await addAggregate(monitorOf.pro, "daily", age);
+    await addAggregate(monitorOf.plus, "daily", 100);
+    const cursor = memoryCursor(ORG.pro);
+    const strategy = new MonitorAggregatesCleanupStrategy({
+      entityType: "monitor_aggregates", enabled: true, cronSchedule: "30 2 * * *", retentionDays: 365, batchSize: 1,
+      maxRecordsPerRun: 100_000, customConfig: { pauseMs: 400, timeBudgetMs: 4000 },
+    });
+    const result = await strategy.execute(false, { cursor });
+    // Plus first (after the cursor), then Pro, which stops after its 1 s share.
+    expect(await kept(monitorOf.plus)).toEqual([]);
+    expect((await kept(monitorOf.pro)).length).toBeGreaterThan(0);
+    expect(result.details.partial).toBe(false);
+    expect(result.details.perOrgStats).toEqual(expect.objectContaining({ [ORG.pro.substring(0, 8)]: expect.objectContaining({ capped: true }) }));
+    expect(cursor.value).toBeNull();
+  }, 30_000);
+
+  it("a run out of budget saves the last finished organization", async () => {
+    await addAggregate(monitorOf.pro, "daily", 100);
+    await addAggregate(monitorOf.plus, "daily", 100);
+    const cursor = memoryCursor();
+    const original = monitorAggregationService.cleanupOldAggregatesForOrg.bind(monitorAggregationService);
+    const spy = jest.spyOn(monitorAggregationService, "cleanupOldAggregatesForOrg").mockImplementation(async (...args) => {
+      const outcome = await original(...args);
+      await new Promise((resolve) => setTimeout(resolve, 1200)); // the first organization takes the whole budget
+      return outcome;
+    });
+    try {
+      const strategy = new MonitorAggregatesCleanupStrategy({
+        entityType: "monitor_aggregates", enabled: true, cronSchedule: "30 2 * * *", retentionDays: 365,
+        customConfig: { pauseMs: 0, timeBudgetMs: 1000 },
+      });
+      const result = await strategy.execute(false, { cursor });
+      expect(result.details).toEqual(expect.objectContaining({ partial: true, stopReason: "budget" }));
+      expect(cursor.value).toBe(ORG.pro);
+      expect(await kept(monitorOf.plus)).toEqual(["daily:100"]);
+    } finally {
+      spy.mockRestore();
+    }
+  }, 30_000);
 
   it("a dry run counts without deleting", async () => {
     await addAggregate(monitorOf.plus, "hourly", 40);
