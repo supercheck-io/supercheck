@@ -10,6 +10,7 @@ import { primaryButton, secondaryButton } from '../../components/landing/ui';
 import { VendorComparison } from '../../components/pricing/vendor-comparison';
 
 const WAITLIST_EMAIL = 'hello@supercheck.io';
+const DEMO_URL = process.env.NEXT_PUBLIC_DEMO_URL || 'https://demo.supercheck.dev';
 
 function mailtoHref(subject: string, body?: string) {
     const params = [`subject=${encodeURIComponent(subject)}`];
@@ -176,7 +177,7 @@ const trial = catalog.trial;
 const faqs = [
     {
         question: 'Can I try Supercheck before Cloud launches?',
-        answer: 'Yes. Self-host Supercheck on your own servers today. Cloud plans are coming soon; signups are not open yet. Join the waitlist from a plan above and we will reply when they open.',
+        answer: 'Yes. Explore the free live demo without signing up. Cloud plans are coming soon; signups are not open yet. Join the waitlist from a plan above and we will reply when they open.',
     },
     ...trialFaqs(),
     ...SHARED_PRICING_FAQS,
@@ -444,8 +445,8 @@ export default function PricingPage() {
                         <p className="mt-3 text-fd-muted-foreground">
                             Something else? Email{' '}
                             <a href={mailtoHref('Supercheck question')} className="underline underline-offset-4 hover:text-fd-foreground">{WAITLIST_EMAIL}</a>
-                            {' '}or read the{' '}
-                            <Link href="/docs/app/deployment/self-hosted" className="underline underline-offset-4 hover:text-fd-foreground">self-hosting guide</Link>.
+                            {' '}or try the{' '}
+                            <a href={DEMO_URL} target="_blank" rel="noopener noreferrer" className="underline underline-offset-4 hover:text-fd-foreground">live demo</a>.
                         </p>
                     </div>
                     <div className="rounded-xl border border-fd-border">

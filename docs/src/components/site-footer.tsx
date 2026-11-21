@@ -1,6 +1,6 @@
 import Link from "next/link";
 import Image from "next/image";
-import { GITHUB_URL, developersMenu, solutionsMenu } from "../lib/site-nav";
+import { DEMO_URL, GITHUB_URL, developersMenu, solutionsMenu } from "../lib/site-nav";
 import { tools } from "../lib/tools";
 
 function GithubIcon({ className }: { className?: string }) {
@@ -43,7 +43,7 @@ const sections = [
             { name: "Respond", href: "/docs/app/investigate" },
             { name: "Communicate", href: "/docs/app/communicate" },
             { name: "Pricing", href: "/pricing" },
-            { name: "Self-hosting", href: "/docs/app/deployment/self-hosted" },
+            { name: "Live demo", href: DEMO_URL },
         ],
     },
     {
