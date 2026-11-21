@@ -84,7 +84,7 @@ export default function PrivacyPage() {
                         </p>
                         <ul className="mb-4 list-disc space-y-2 pl-6">
                             <li><strong>Playground artifacts:</strong> 24 hours</li>
-                            <li><strong>Monitor raw data:</strong> 7 days on Plus and Pro</li>
+                            <li><strong>Monitor raw data:</strong> 30 days on Plus; 90 days on Pro</li>
                             <li><strong>Aggregated metrics:</strong> 30 days on Plus; 90 days on Pro</li>
                             <li><strong>Job run history:</strong> 30 days on Plus; 90 days on Pro</li>
                         </ul>

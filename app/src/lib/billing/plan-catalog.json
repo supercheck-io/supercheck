@@ -20,7 +20,7 @@
       "maxStatusPages": 5,
       "maxStatusPageSubscribers": 1000,
       "customDomains": true,
-      "dataRetentionDays": 7,
+      "dataRetentionDays": 30,
       "aggregatedDataRetentionDays": 30,
       "jobDataRetentionDays": 30
     },
@@ -53,7 +53,7 @@
       "maxStatusPages": 20,
       "maxStatusPageSubscribers": 10000,
       "customDomains": true,
-      "dataRetentionDays": 7,
+      "dataRetentionDays": 90,
       "aggregatedDataRetentionDays": 90,
       "jobDataRetentionDays": 90
     },

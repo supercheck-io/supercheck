@@ -4,7 +4,7 @@
    Pre-computed hourly and daily aggregations for long-term metrics visibility.
    
    Industry Best Practice (based on Checkly, Better Stack):
-   - Raw data: Short-term retention (7-30 days)
+   - Raw data: plan-based retention (7-90 days)
    - Aggregated data: Long-term retention (30 days - 12+ months)
    
    Benefits:
