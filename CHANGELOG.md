@@ -34,6 +34,7 @@ The CLI is versioned separately; see [cli/CHANGELOG.md](cli/CHANGELOG.md). Prere
 - **Monitor check groups: migration `0074` and rollback.** Migration `0074` adds `monitor_group_evaluations`, which now holds the alert receipt of each worker-aggregated check group instead of `monitor_results.details`. Apply it before you update the worker. `MONITOR_GROUP_EVALUATION_RETENTION_DAYS` (default 14, minimum 2) sets how long receipts are kept. For this release the worker also writes the old receipt into one `monitor_results` row when it sends a group's alerts, so rolling back to an earlier worker neither re-counts nor re-alerts a group. A group's alerts are sent under a 2-minute lease: a retry never double-sends (one that meets a live lease fails as busy and retries after it), and if a worker dies between claiming and sending, the next retry after the lease delivers the alert, which can duplicate it in that rare window (logged as `monitor_group_notification_lease_expired`). That second write is temporary and is removed in the next release; after that, rolling back below this version is not safe.
 
 ### Added
+- **Check results filters.** The **Recent Check Results** table on a monitor has a **Failures only** switch, and its date filter offers only the days whose check details are still kept (the calendar says how many). The API takes `status=failed` on `GET /api/monitors/{id}/results`; the pagination total counts the same filter.
 - **Trial: 1,000 browser minutes and usage emails (Cloud).** The free trial now includes 1,000 browser minutes for Playwright tests and synthetic monitors (was 150). Trial owners get an email when 50% and again when 100% of them are used, each with a link to choose a plan, once per threshold. k6 and AI limits are unchanged.
 - **Simpler pricing page.** One plan grid, shared by the public pricing page and the in-app plan picker, with the same allowances, overage rates and wording.
 
@@ -106,6 +107,7 @@ The CLI is versioned separately; see [cli/CHANGELOG.md](cli/CHANGELOG.md). Prere
 
 - Opsgenie alert channel and AI SRE connector (Atlassian has ended Opsgenie sign-ups)). Switch any existing Opsgenie channel to the Jira Service Management preset or a custom webhook, and delete any Opsgenie connector.
 - The unused `type: "file"` attachment option on `POST /api/sre/chat` (it now returns `400`) and the `S3_SRE_ATTACHMENTS_BUCKET_NAME` setting. Nothing could upload to that bucket. You can delete an empty `sre-chat-attachments` bucket.
+- Removed the legacy k6-job-scheduler queue; all scheduled jobs use job-scheduler. Upgrading from 1.6.0 with more than one app replica: stop every old app replica before starting the new version, so no old replica edits a k6 schedule in the removed queue. Leftover `bull:k6-job-scheduler:*` keys are never read and can be deleted.
 
 ### Deprecated
 

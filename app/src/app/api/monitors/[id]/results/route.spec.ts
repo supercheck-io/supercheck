@@ -16,6 +16,7 @@ jest.mock("@/utils/db", () => ({
 jest.mock("@/lib/auth-context", () => ({
   requireAuthContext: jest.fn(),
   isAuthError: jest.fn(),
+  authErrorStatus: () => 401,
 }));
 
 jest.mock("@/lib/rbac/middleware", () => ({
@@ -222,6 +223,78 @@ describe("GET /api/monitors/[id]/results validation", () => {
       expect(response.status).toBe(200);
       // Only the count and page queries ran: no location existence lookup.
       expect(mockDb.select).toHaveBeenCalledTimes(2);
+    });
+  });
+  describe("status filter", () => {
+    const monitorUuid = "00000000-0000-4000-8000-000000000001";
+    const url = (query: string) => new NextRequest(`http://localhost/api/monitors/${monitorUuid}/results${query}`);
+    const ctx = () => ({ params: Promise.resolve({ id: monitorUuid }) });
+    const captureWheres = () => {
+      const wheres: unknown[] = [];
+      const chain = (rows: unknown[]) => {
+        const c: Record<string, unknown> = {};
+        for (const key of ["from", "orderBy", "limit", "offset"]) c[key] = () => c;
+        c.where = (w: unknown) => (wheres.push(w), c);
+        c.then = (resolve: (v: unknown) => unknown) => Promise.resolve(rows).then(resolve);
+        return c;
+      };
+      mockDb.select.mockReturnValueOnce(chain([{ count: 3 }])).mockReturnValueOnce(chain([]));
+      return wheres;
+    };
+    const sqlOf = async (where: unknown) => {
+      const { PgDialect } = await import("drizzle-orm/pg-core");
+      return new PgDialect().sqlToQuery(where as never);
+    };
+
+    it("filters the page and the count to checks that were not up", async () => {
+      const wheres = captureWheres();
+      const response = await GET(url("?status=failed&limit=10"), ctx());
+      expect(response.status).toBe(200);
+      expect((await response.json()).pagination).toEqual(expect.objectContaining({ total: 3, totalPages: 1 }));
+      expect(wheres).toHaveLength(2);
+      for (const where of wheres) {
+        const { sql, params } = await sqlOf(where);
+        expect(sql).toContain('"monitor_results"."is_up" = $');
+        expect(params).toContain(false);
+      }
+    });
+
+    it("adds no status condition without the parameter", async () => {
+      const wheres = captureWheres();
+      const response = await GET(url(""), ctx());
+      expect(response.status).toBe(200);
+      for (const where of wheres) expect((await sqlOf(where)).sql).not.toContain('"is_up" = $');
+    });
+
+    it.each(["up", "down", "FAILED", "", "failed,up"])("rejects status=%j with 400 before auth or data access", async (value) => {
+      const response = await GET(url(`?status=${encodeURIComponent(value)}`), ctx());
+      expect(response.status).toBe(400);
+      expect((await response.json()).error).toBe('Invalid status parameter. Must be "failed"');
+      expect(mockRequireAuthContext).not.toHaveBeenCalled();
+      expect(mockDb.query.monitors.findFirst).not.toHaveBeenCalled();
+    });
+
+    it("still answers 403 without view permission and runs no query", async () => {
+      mockCheckPermissionWithContext.mockReturnValue(false);
+      const response = await GET(url("?status=failed"), ctx());
+      expect(response.status).toBe(403);
+      expect(mockDb.query.monitors.findFirst).not.toHaveBeenCalled();
+      expect(mockDb.select).not.toHaveBeenCalled();
+    });
+
+    it("still answers 401 for a missing identity", async () => {
+      mockRequireAuthContext.mockRejectedValue(new Error("Authentication required"));
+      mockIsAuthError.mockReturnValue(true);
+      const response = await GET(url("?status=failed"), ctx());
+      expect(response.status).toBe(401);
+      expect(mockDb.select).not.toHaveBeenCalled();
+    });
+
+    it("hides another project's monitor as 404 before reading results", async () => {
+      mockDb.query.monitors.findFirst.mockResolvedValue({ id: monitorUuid, organizationId: "org-1", projectId: "project-2" });
+      const response = await GET(url("?status=failed"), ctx());
+      expect(response.status).toBe(404);
+      expect(mockDb.select).not.toHaveBeenCalled();
     });
   });
 });

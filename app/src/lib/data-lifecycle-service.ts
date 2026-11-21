@@ -71,6 +71,9 @@ import { AGGREGATION_CONFIG, monitorAggregationService } from "./monitor-aggrega
 import { endExpiredTrials, reconcilePaidTrialSuspensions, sendTrialReminders, suspendLapsedOrganizations } from "@/lib/execution/trial-lifecycle";
 import { AUDIT_RETENTION_DAYS, scrubAuditEmails } from "@/lib/audit-scrub";
 import { reportProblem } from "@/lib/sentry-lazy";
+import { resolveRawRetention, SHORTEST_RAW_RETENTION_DAYS, type RawRetentionDecision } from "@/lib/raw-retention";
+
+export { SHORTEST_RAW_RETENTION_DAYS };
 import { deliverTrialReminder } from "@/lib/execution/trial-reminder-delivery";
 
 const QUEUE_EVENTS_READY_TIMEOUT_MS = 10_000;
@@ -233,12 +236,6 @@ function isOnFreeTrial(
   return !org.subscriptionStatus && activeTrials.has(org.organizationId);
 }
 
-/**
- * Raw retention for an organization with no plan (an active or ended trial, or never subscribed): the shortest raw
- * window, which is the trial's.
- */
-export const SHORTEST_RAW_RETENTION_DAYS = TRIAL_RETENTION.dataRetentionDays;
-
 /** Drops settings whose window is not a positive number of days: a 0 or a negative value would delete everything. */
 function withValidDays<T extends { organizationId: string }>(rows: T[], days: (row: T) => number, kind: string): T[] {
   return rows.filter((row) => {
@@ -250,30 +247,31 @@ function withValidDays<T extends { organizationId: string }>(rows: T[], days: (r
 }
 
 /**
- * Raw monitor-result retention of every organization, ordered by organization id.
- * - Self-hosted: the unlimited plan row.
- * - Cloud: an organization with a plan uses its plan row; a plan with no row is skipped (logged as an error). One
- *   with no plan (trial, ended trial, never subscribed) gets the shortest raw window. One with a live subscription
- *   status (active, past_due) but no plan yet is skipped this run: its plan is being set by a webhook, and guessing
- *   could delete days a paid plan keeps.
+ * Raw monitor-result retention of every organization, ordered by organization id, by the shared rule in
+ * `resolveRawRetention` (also used by the UI). Skipped organizations are logged and left out.
  * A failed lookup throws, so the caller skips cleanup rather than guessing.
  */
 export async function getOrganizationRetentionSettings(): Promise<OrganizationRetention[]> {
   try {
-    // In self-hosted mode, use the unlimited plan's retention from database
+    const settings: OrganizationRetention[] = [];
+    const add = (organizationId: string, plan: string, decision: RawRetentionDecision) => {
+      if ("skip" in decision) {
+        console.warn(`[DATA_LIFECYCLE] Skipping monitor_results cleanup of org ${organizationId.substring(0, 8)}: ${decision.skip}`);
+      } else {
+        settings.push({ organizationId, retentionDays: decision.days, plan });
+      }
+    };
+
     if (!isPolarEnabled()) {
       const orgs = await db.select({ id: organization.id }).from(organization).orderBy(asc(organization.id));
-      const unlimitedPlan = await db
+      const [unlimited] = await db
         .select({ dataRetentionDays: planLimits.dataRetentionDays })
         .from(planLimits)
         .where(eq(planLimits.plan, "unlimited"))
         .limit(1);
-      const retentionDays = unlimitedPlan[0]?.dataRetentionDays ?? SHORTEST_RAW_RETENTION_DAYS;
-      return withValidDays(
-        orgs.map((org) => ({ organizationId: org.id, retentionDays, plan: "unlimited" })),
-        (row) => row.retentionDays,
-        "monitor_results",
-      );
+      const decision = resolveRawRetention({ selfHosted: true, unlimitedDays: unlimited?.dataRetentionDays });
+      for (const org of orgs) add(org.id, "unlimited", decision);
+      return settings;
     }
 
     const orgsWithPlans = await db
@@ -287,27 +285,19 @@ export async function getOrganizationRetentionSettings(): Promise<OrganizationRe
     const plans = await db.select().from(planLimits);
     const planRetentionMap = new Map(plans.map((p) => [p.plan, p.dataRetentionDays]));
 
-    const settings: OrganizationRetention[] = [];
     for (const org of orgsWithPlans) {
-      if (org.subscriptionPlan) {
-        const days = planRetentionMap.get(org.subscriptionPlan);
-        if (days === undefined) {
-          // A paid plan whose row is missing: never guess the most destructive window.
-          console.error(
-            `[DATA_LIFECYCLE] Skipping monitor_results cleanup of org ${org.organizationId.substring(0, 8)}: no plan_limits row for plan ${org.subscriptionPlan}`
-          );
-          continue;
-        }
-        settings.push({ organizationId: org.organizationId, retentionDays: days, plan: org.subscriptionPlan });
-      } else if (org.subscriptionStatus === "active" || org.subscriptionStatus === "past_due") {
-        console.warn(
-          `[DATA_LIFECYCLE] Skipping monitor_results cleanup of org ${org.organizationId.substring(0, 8)}: subscription ${org.subscriptionStatus} but no plan yet`
-        );
-      } else {
-        settings.push({ organizationId: org.organizationId, retentionDays: SHORTEST_RAW_RETENTION_DAYS, plan: "none" });
-      }
+      add(
+        org.organizationId,
+        org.subscriptionPlan ?? "none",
+        resolveRawRetention({
+          selfHosted: false,
+          subscriptionPlan: org.subscriptionPlan,
+          subscriptionStatus: org.subscriptionStatus,
+          planDays: org.subscriptionPlan ? planRetentionMap.get(org.subscriptionPlan) : undefined,
+        }),
+      );
     }
-    return withValidDays(settings, (row) => row.retentionDays, "monitor_results");
+    return settings;
   } catch (error) {
     console.warn(
       "[DATA_LIFECYCLE] Failed to fetch organization retention settings, skipping cleanup:",

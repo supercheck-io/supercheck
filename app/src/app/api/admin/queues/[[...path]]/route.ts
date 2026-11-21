@@ -128,7 +128,6 @@ const initializeBullBoard = async (): Promise<NextBullBoardAdapterState> => {
     playwrightQueues,
     monitorExecutionQueue,
     jobSchedulerQueue,
-    k6JobSchedulerQueue,
     monitorSchedulerQueue,
     dataLifecycleCleanupQueue,
     dataLifecycleUrgentQueue,
@@ -159,9 +158,6 @@ const initializeBullBoard = async (): Promise<NextBullBoardAdapterState> => {
       ),
       new BullMQAdapter(jobSchedulerQueue, {
         displayName: "Playwright Job Scheduler",
-      }),
-      new BullMQAdapter(k6JobSchedulerQueue, {
-        displayName: "K6 Job Scheduler",
       }),
       new BullMQAdapter(monitorSchedulerQueue, {
         displayName: "Monitor Scheduler",

@@ -36,12 +36,6 @@ const mockQueuesModule = {
       removeRepeatableByKey: mockQueueRemoveRepeatableByKey,
       client: Promise.resolve(mockRedisClient),
     },
-    k6JobSchedulerQueue: {
-      add: mockQueueAdd,
-      getRepeatableJobs: mockQueueGetRepeatableJobs,
-      removeRepeatableByKey: mockQueueRemoveRepeatableByKey,
-      client: Promise.resolve(mockRedisClient),
-    },
     redisConnection: {},
   }),
 };
@@ -98,6 +92,8 @@ jest.mock("./data-lifecycle-service", () => ({
 }));
 
 jest.mock("./scheduler/job-scheduler", () => ({
+  addJobRepeatable: (queue: { add: (...a: unknown[]) => unknown }, name: string, data: unknown, pattern: string, tz: string) =>
+    queue.add(name, data, { repeat: { pattern, tz }, removeOnComplete: true, removeOnFail: 100, jobId: name, attempts: 3, backoff: { type: "exponential", delay: 5000 } }),
   processScheduledJob: jest.fn(),
 }));
 

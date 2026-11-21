@@ -8,7 +8,7 @@ import { isOrgPendingDeletion } from '@/lib/deletion/org-state';
  * respect concurrency limits.
  */
 
-import { Job } from 'bullmq';
+import { Job, type Queue } from 'bullmq';
 import crypto from 'crypto';
 import { db } from '@/utils/db';
 import { jobs, runs, projects } from '@/db/schema';
@@ -30,6 +30,27 @@ import { getSafeExecutionQueueErrorDetails } from '@/lib/execution-api-responses
 import { isDeletingError } from '@/lib/deletion/errors';
 
 const logger = queueLogger;
+
+/**
+ * Adds the cron repeatable for a scheduled job. The deterministic jobId makes
+ * re-adding the same schedule idempotent and removal by key easy.
+ */
+export function addJobRepeatable(
+  queue: Queue,
+  schedulerJobName: string,
+  data: Record<string, unknown>,
+  pattern: string,
+  tz: string
+) {
+  return queue.add(schedulerJobName, data, {
+    repeat: { pattern, tz },
+    removeOnComplete: true,
+    removeOnFail: 100,
+    jobId: schedulerJobName,
+    attempts: 3,
+    backoff: { type: "exponential", delay: 5000 },
+  });
+}
 
 // A run queued this long never reached the worker; stop it blocking future ticks.
 

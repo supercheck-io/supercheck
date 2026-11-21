@@ -60,7 +60,6 @@ interface CleanupQueues {
   k6Queues: Record<string, Queue>;
   monitorExecution: Record<string, Queue>;
   jobSchedulerQueue: Queue;
-  k6JobSchedulerQueue: Queue;
   monitorSchedulerQueue: Queue;
   dataLifecycleCleanupQueue: Queue;
 }
@@ -194,7 +193,6 @@ export interface K6ExecutionTask {
 
 // Scheduler-related queues
 export const JOB_SCHEDULER_QUEUE = "job-scheduler";
-export const K6_JOB_SCHEDULER_QUEUE = "k6-job-scheduler";
 export const MONITOR_SCHEDULER_QUEUE = "monitor-scheduler";
 
 // Data lifecycle cleanup queue
@@ -294,7 +292,6 @@ type QueueSingleton = {
   retiredK6At: Record<string, number>;
   monitorExecution: Record<string, Queue> | null;
   jobSchedulerQueue: Queue | null;
-  k6JobSchedulerQueue: Queue | null;
   monitorSchedulerQueue: Queue | null;
   dataLifecycleCleanupQueue: Queue | null;
   dataLifecycleUrgentQueue: Queue | null;
@@ -325,7 +322,6 @@ function createQueueSingleton(): QueueSingleton {
     retiredK6At: {},
     monitorExecution: null,
     jobSchedulerQueue: null,
-    k6JobSchedulerQueue: null,
     monitorSchedulerQueue: null,
     dataLifecycleCleanupQueue: null,
     dataLifecycleUrgentQueue: null,
@@ -499,7 +495,6 @@ export async function getQueues(): Promise<{
   k6Queues: Record<string, Queue>;
   monitorExecutionQueue: Record<string, Queue>;
   jobSchedulerQueue: Queue;
-  k6JobSchedulerQueue: Queue;
   monitorSchedulerQueue: Queue;
   dataLifecycleCleanupQueue: Queue;
   dataLifecycleUrgentQueue: Queue;
@@ -580,7 +575,6 @@ export async function getQueues(): Promise<{
 
         // Schedulers
         queueState.jobSchedulerQueue = new Queue(JOB_SCHEDULER_QUEUE, queueSettings);
-        queueState.k6JobSchedulerQueue = new Queue(K6_JOB_SCHEDULER_QUEUE, queueSettings);
         queueState.monitorSchedulerQueue = new Queue(
           MONITOR_SCHEDULER_QUEUE,
           queueSettings
@@ -644,9 +638,6 @@ export async function getQueues(): Promise<{
         queueState.jobSchedulerQueue.on("error", (error) =>
           queueLogger.error({ err: error }, "Job Scheduler Queue Error")
         );
-        queueState.k6JobSchedulerQueue.on("error", (error) =>
-          queueLogger.error({ err: error }, "k6 Job Scheduler Queue Error")
-        );
         queueState.monitorSchedulerQueue.on("error", (error) =>
           queueLogger.error({ err: error }, "Monitor Scheduler Queue Error")
         );
@@ -666,7 +657,6 @@ export async function getQueues(): Promise<{
           k6Queues: queueState.capacityK6Queues,
           monitorExecution: queueState.monitorExecution!,
           jobSchedulerQueue: queueState.jobSchedulerQueue,
-          k6JobSchedulerQueue: queueState.k6JobSchedulerQueue,
           monitorSchedulerQueue: queueState.monitorSchedulerQueue,
           dataLifecycleCleanupQueue: queueState.dataLifecycleCleanupQueue,
         });
@@ -741,7 +731,6 @@ export async function getQueues(): Promise<{
     !queueState.monitorExecution || // Must be initialized (can be empty if no locations)
     !queueState.monitorExecutionEvents || // Must be initialized (can be empty if no locations)
     !queueState.jobSchedulerQueue ||
-    !queueState.k6JobSchedulerQueue ||
     !queueState.monitorSchedulerQueue ||
     !queueState.dataLifecycleCleanupQueue ||
     !queueState.dataLifecycleUrgentQueue ||
@@ -765,7 +754,6 @@ export async function getQueues(): Promise<{
     k6Queues: queueState.k6Queues,
     monitorExecutionQueue: queueState.monitorExecution,
     jobSchedulerQueue: queueState.jobSchedulerQueue,
-    k6JobSchedulerQueue: queueState.k6JobSchedulerQueue,
     monitorSchedulerQueue: queueState.monitorSchedulerQueue,
     dataLifecycleCleanupQueue: queueState.dataLifecycleCleanupQueue,
     dataLifecycleUrgentQueue: queueState.dataLifecycleUrgentQueue,
@@ -886,7 +874,6 @@ async function performQueueCleanup(connection: Redis): Promise<void> {
   // Running queue cleanup
   const queuesToClean = [
     { name: JOB_SCHEDULER_QUEUE, queue: queueState.jobSchedulerQueue },
-    { name: K6_JOB_SCHEDULER_QUEUE, queue: queueState.k6JobSchedulerQueue },
     { name: MONITOR_SCHEDULER_QUEUE, queue: queueState.monitorSchedulerQueue },
     ...Object.entries(queueState.playwrightQueues).map(([region, queue]) => ({
       name: `playwright-${region}`,
@@ -1509,7 +1496,8 @@ async function restoreDisabledCapacityQueues(
     cursor = next;
     for (const key of keys) {
       const queueName = key.split(":")[1];
-      if (queueName === K6_JOB_SCHEDULER_QUEUE) continue;
+      // Leftover keys of the removed k6 scheduler queue, not a location.
+      if (queueName === "k6-job-scheduler") continue;
       const code = queueName?.slice(3);
       if (code && !queueState.capacityK6Queues[code]) codes.add(code);
     }
@@ -1756,7 +1744,6 @@ export async function closeQueue(): Promise<void> {
     }
   }
   if (queueState.jobSchedulerQueue) promises.push(queueState.jobSchedulerQueue.close());
-  if (queueState.k6JobSchedulerQueue) promises.push(queueState.k6JobSchedulerQueue.close());
   if (queueState.monitorSchedulerQueue) promises.push(queueState.monitorSchedulerQueue.close());
   if (queueState.dataLifecycleCleanupQueue) promises.push(queueState.dataLifecycleCleanupQueue.close());
   if (queueState.dataLifecycleUrgentQueue) promises.push(queueState.dataLifecycleUrgentQueue.close());
@@ -1789,7 +1776,6 @@ export async function closeQueue(): Promise<void> {
     queueState.retiredK6At = {};
     queueState.monitorExecution = null;
     queueState.jobSchedulerQueue = null;
-    queueState.k6JobSchedulerQueue = null;
     queueState.monitorSchedulerQueue = null;
     queueState.dataLifecycleCleanupQueue = null;
     queueState.dataLifecycleUrgentQueue = null;

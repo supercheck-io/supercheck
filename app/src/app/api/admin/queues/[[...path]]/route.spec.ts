@@ -69,7 +69,6 @@ function queuesFor(codes: string[]) {
     k6Queues: Object.fromEntries(["global", ...codes].map((code) => [code, queue(`k6-${code}`)])),
     monitorExecutionQueue: Object.fromEntries(codes.map((code) => [code, queue(`monitor-${code}`)])),
     jobSchedulerQueue: queue("job-scheduler"),
-    k6JobSchedulerQueue: queue("k6-job-scheduler"),
     monitorSchedulerQueue: queue("monitor-scheduler"),
     dataLifecycleCleanupQueue: queue("data-lifecycle"),
     dataLifecycleUrgentQueue: queue("data-lifecycle-urgent"),
