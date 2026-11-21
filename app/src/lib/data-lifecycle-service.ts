@@ -641,7 +641,7 @@ export class MonitorResultsCleanupStrategy implements ICleanupStrategy {
       if (dryRun) {
         for (const org of orgRetentions) {
           const count = await this.countResultsToClean(org, settings.perOrgCap);
-          if (count.deleted > 0) orgStats[org.organizationId.substring(0, 8)] = { deleted: count.deleted, retentionDays: org.retentionDays };
+          if (count.deleted > 0) orgStats[org.organizationId] = { deleted: count.deleted, retentionDays: org.retentionDays };
           result.recordsDeleted += count.deleted;
           result.details.recordsProcessed = Number(result.details.recordsProcessed ?? 0) + count.processed;
         }
@@ -654,7 +654,7 @@ export class MonitorResultsCleanupStrategy implements ICleanupStrategy {
         for (const org of ordered) {
           const outcome = await this.cleanOrganization(org, settings, limits, result);
           if (outcome.deleted > 0 || outcome.capped) {
-            orgStats[org.organizationId.substring(0, 8)] = {
+            orgStats[org.organizationId] = {
               deleted: outcome.deleted,
               retentionDays: org.retentionDays,
               ...(outcome.capped ? { capped: true } : {}),
@@ -678,14 +678,17 @@ export class MonitorResultsCleanupStrategy implements ICleanupStrategy {
           await context.cursor?.set(MONITOR_RESULTS_CURSOR_KEY, null);
         }
 
-        try {
-          result.details.lag = await measureRetentionLag(
-            "monitor_results",
-            await oldestRawResultByOrg(),
-            new Map(orgRetentions.map((o) => [o.organizationId, o.retentionDays])),
-          );
-        } catch (error) {
-          console.error("[DATA_LIFECYCLE] [monitor_results] Lag check failed:", error);
+        // A stopped run leaves the worker at once; the next full run measures lag.
+        if (!stopped) {
+          try {
+            result.details.lag = await measureRetentionLag(
+              "monitor_results",
+              await oldestRawResultByOrg(),
+              new Map(orgRetentions.map((o) => [o.organizationId, o.retentionDays])),
+            );
+          } catch (error) {
+            console.error("[DATA_LIFECYCLE] [monitor_results] Lag check failed:", error);
+          }
         }
       }
 
@@ -774,9 +777,12 @@ export class MonitorResultsCleanupStrategy implements ICleanupStrategy {
           if (rows.length === 0) break;
           // Only rows actually handled count against the cap: rows whose storage delete failed stay for the next
           // run and must not use up the allowance the plain rows and later monitors need.
-          const handled = await this.cleanupBatch(rows, result);
+          const handled = await this.cleanupBatch(rows, result, limits.signal);
           processed += handled.handled;
           deleted += handled.deleted;
+          // A batch that storage refused entirely ends this monitor's artifact pass for this run, so a stuck
+          // backlog costs one batch per monitor and the plain rows and later monitors still get their turn.
+          if (handled.handled === 0) break;
           const last = rows[rows.length - 1];
           cursor = { checkedAt: last.checkedAt, id: last.id };
         }
@@ -829,7 +835,8 @@ export class MonitorResultsCleanupStrategy implements ICleanupStrategy {
       testReportS3Url: string | null;
       reportUrl: string | null;
     }>,
-    result: CleanupOperationResult
+    result: CleanupOperationResult,
+    signal?: AbortSignal,
   ): Promise<{ deleted: number; handled: number }> {
     const inputs: ReportDeletionInput[] = rows
       .filter(row => row.testReportS3Url || row.reportUrl || (row.status !== "up" && row.testExecutionId))
@@ -851,7 +858,8 @@ export class MonitorResultsCleanupStrategy implements ICleanupStrategy {
     }
 
     rows = rows.filter(row => !failedIds.has(row.id));
-    if (rows.length === 0) return { deleted: 0, handled: 0 };
+    // A run that lost its lock while storage answered writes nothing more; deleting stored reports twice is harmless.
+    if (rows.length === 0 || signal?.aborted) return { deleted: 0, handled: 0 };
     const executionIds = rows.flatMap(row => row.testExecutionId ? [row.testExecutionId] : []);
     const urls = rows.flatMap(row => !row.testExecutionId && row.testReportS3Url ? [row.testReportS3Url] : []);
     const deleteIds = rows.filter(row => !row.isStatusChange).map(row => row.id);
@@ -1010,7 +1018,8 @@ export class MonitorAggregatesCleanupStrategy implements ICleanupStrategy {
           let deleted: number;
           let capped = false;
           if (dryRun) {
-            deleted = await this.countOldAggregatesForOrg(org.organizationId, org.hourlyDays, org.dailyDays);
+            // What one run can remove: the per-organization cap applies.
+            deleted = Math.min(await this.countOldAggregatesForOrg(org.organizationId, org.hourlyDays, org.dailyDays), settings.perOrgCap);
           } else {
             // Each organization gets at most its share of the budget, like raw results.
             const orgDeadline = Math.min(limits.deadline, Date.now() + settings.budgetMs / ORG_BUDGET_SHARE);
@@ -1035,7 +1044,7 @@ export class MonitorAggregatesCleanupStrategy implements ICleanupStrategy {
             }
           }
           if (deleted > 0 || capped) {
-            orgStats[org.organizationId.substring(0, 8)] = {
+            orgStats[org.organizationId] = {
               deleted,
               hourlyDays: org.hourlyDays,
               dailyDays: org.dailyDays,
@@ -1058,12 +1067,13 @@ export class MonitorAggregatesCleanupStrategy implements ICleanupStrategy {
         }
       }
 
-      if (!dryRun) {
+      // An empty list (no organizations, or a failed lookup) leaves the saved position alone.
+      if (!dryRun && windows.length > 0) {
         if (!result.details.partial) await context.cursor?.set(MONITOR_AGGREGATES_CURSOR_KEY, null);
         else if (result.details.stopReason === "budget" && lastFinished) await context.cursor?.set(MONITOR_AGGREGATES_CURSOR_KEY, lastFinished);
       }
 
-      if (!dryRun) {
+      if (!dryRun && !result.details.partial) {
         try {
           const oldest = await oldestAggregateByOrg();
           result.details.lag = {
@@ -2746,8 +2756,8 @@ export class DataLifecycleService {
       this.urgentWorker = new Worker<CleanupJobData, CleanupOperationResult>(
         DATA_LIFECYCLE_URGENT_QUEUE,
         processor,
-        // Each urgent strategy holds its own lock, so they may run side by side.
-        { connection: redisConnection, concurrency: URGENT_CLEANUP_ENTITY_TYPES.size }
+        // One at a time, like the heavy queue: a second job of the same strategy waits instead of being skipped.
+        { connection: redisConnection, concurrency: 1 }
       );
 
       for (const worker of [this.cleanupWorker, this.urgentWorker]) {
@@ -2802,15 +2812,12 @@ export class DataLifecycleService {
     const redis = this.redisConnection;
     let lock: OwnedLock | null = null;
     if (redis) {
-      try {
-        lock = await acquireOwnedLock(redis, `cleanup:${entityType}:lock`, {
-          ttlMs: CLEANUP_LOCK_TTL_MS,
-          renewEveryMs: CLEANUP_LOCK_RENEW_MS,
-          maxHoldMs: CLEANUP_LOCK_MAX_HOLD_MS,
-        });
-      } catch (error) {
-        console.error(`[DATA_LIFECYCLE] Failed to acquire lock for ${entityType}:`, error);
-      }
+      // A Redis error throws, so BullMQ retries; only a held lock is a successful skip.
+      lock = await acquireOwnedLock(redis, `cleanup:${entityType}:lock`, {
+        ttlMs: CLEANUP_LOCK_TTL_MS,
+        renewEveryMs: CLEANUP_LOCK_RENEW_MS,
+        maxHoldMs: CLEANUP_LOCK_MAX_HOLD_MS,
+      });
       if (!lock) {
         console.log(`[DATA_LIFECYCLE] Skipping ${entityType} - another instance is running cleanup`);
         return {
@@ -2829,7 +2836,7 @@ export class DataLifecycleService {
     try {
       const result = await strategy.execute(data.dryRun || false, {
         signal: lock?.signal,
-        cursor: redis ? redisCursorStore(redis) : undefined,
+        cursor: redis && lock ? redisCursorStore(redis, lock) : undefined,
       });
       if (!result.success) {
         throw new Error(result.errors.join("; ") || `${entityType} cleanup failed`);
@@ -3034,13 +3041,20 @@ export class DataLifecycleService {
   }
 }
 
-/** Cleanup resume cursors kept in Redis; they expire after a week so a removed strategy leaves nothing behind. */
-export function redisCursorStore(redis: Redis): CleanupCursorStore {
+// Writes or clears the cursor only while KEYS[1] still holds this owner's token.
+const FENCED_CURSOR_SCRIPT = `if redis.call("get", KEYS[1]) ~= ARGV[1] then return 0 end
+if ARGV[2] == "" then redis.call("del", KEYS[2]) else redis.call("set", KEYS[2], ARGV[2], "EX", ARGV[3]) end
+return 1`;
+
+/**
+ * Cleanup resume cursors kept in Redis, fenced on the run's lock: a run that lost its lock cannot overwrite the
+ * position its successor saved. They expire after a week so a removed strategy leaves nothing behind.
+ */
+export function redisCursorStore(redis: Redis, lock: Pick<OwnedLock, "key" | "token">): CleanupCursorStore {
   return {
     get: (key) => redis.get(key),
     async set(key, value) {
-      if (value === null) await redis.del(key);
-      else await redis.set(key, value, "EX", 7 * 24 * 3600);
+      await redis.eval(FENCED_CURSOR_SCRIPT, 2, lock.key, key, lock.token, value ?? "", String(7 * 24 * 3600));
     },
   };
 }

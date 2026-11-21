@@ -3,9 +3,13 @@ import type Redis from "ioredis";
 
 // Extend or delete the key only while it still holds this owner's token.
 const RENEW_SCRIPT = `if redis.call("get", KEYS[1]) == ARGV[1] then return redis.call("pexpire", KEYS[1], ARGV[2]) else return 0 end`;
+const RELEASE_TIMEOUT_MS = 5_000;
 const RELEASE_SCRIPT = `if redis.call("get", KEYS[1]) == ARGV[1] then return redis.call("del", KEYS[1]) else return 0 end`;
 
 export interface OwnedLock {
+  /** The key and this owner's token, so other writes can be fenced on still holding the lock. */
+  key: string;
+  token: string;
   /** Aborted once the lock is lost (renewal found another token, the key expired, or Redis failed). */
   signal: AbortSignal;
   /** Stops renewal and deletes the key only if this owner still holds it. Never throws. */
@@ -47,14 +51,25 @@ export async function acquireOwnedLock(
   timer.unref?.();
 
   return {
+    key,
+    token,
     signal: controller.signal,
     async release() {
       clearInterval(timer);
+      let timeout: ReturnType<typeof setTimeout> | undefined;
       try {
-        await redis.eval(RELEASE_SCRIPT, 1, key, token);
+        // Bounded: a Redis that does not answer must not hold the worker; the key then lapses by its TTL.
+        await Promise.race([
+          redis.eval(RELEASE_SCRIPT, 1, key, token),
+          new Promise((_, reject) => {
+            timeout = setTimeout(() => reject(new Error("release timed out")), RELEASE_TIMEOUT_MS);
+          }),
+        ]);
       } catch (error) {
         // The key expires by its TTL.
         console.error(`[DATA_LIFECYCLE] Failed to release lock ${key}:`, error);
+      } finally {
+        clearTimeout(timeout);
       }
     },
   };

@@ -37,7 +37,7 @@ jest.mock("@/lib/queue", () => ({
   DATA_LIFECYCLE_CLEANUP_QUEUE: "data-lifecycle-cleanup",
   DATA_LIFECYCLE_URGENT_QUEUE: "data-lifecycle-urgent",
 }));
-const mockLock = { signal: new AbortController().signal, release: jest.fn() };
+const mockLock = { key: "cleanup:monitor_results:lock", token: "t-1", signal: new AbortController().signal, release: jest.fn() };
 const mockAcquire = jest.fn();
 jest.mock("@/lib/cleanup-lock", () => ({ acquireOwnedLock: (...args: unknown[]) => mockAcquire(...args) }));
 
@@ -276,11 +276,11 @@ describe("urgent queue split", () => {
     expect(queue.removeJobScheduler).not.toHaveBeenCalled();
   });
 
-  it("runs the heavy queue one job at a time and the urgent queue one job per urgent strategy", async () => {
+  it("runs each queue one job at a time, so a second job of a strategy waits instead of being skipped", async () => {
     const { Worker } = jest.requireMock("bullmq") as { Worker: jest.Mock };
     await new DataLifecycleService([config]).initialize(redis);
     const concurrency = Object.fromEntries(Worker.mock.calls.map(([name, , opts]) => [name, opts.concurrency]));
-    expect(concurrency).toEqual({ "data-lifecycle-cleanup": 1, "data-lifecycle-urgent": 3 });
+    expect(concurrency).toEqual({ "data-lifecycle-cleanup": 1, "data-lifecycle-urgent": 1 });
   });
 
   it("manual cleanup of an urgent strategy goes to the urgent queue with its own QueueEvents", async () => {
@@ -336,11 +336,11 @@ describe("cleanup job processor", () => {
     expect(execute).not.toHaveBeenCalled();
   });
 
-  it("skips when acquiring the lock fails", async () => {
+  it("fails (so BullMQ retries) when acquiring the lock errors, without running", async () => {
     mockAcquire.mockRejectedValue(new Error("redis down"));
     const execute = jest.fn();
     await serviceWith(execute).initialize(redis);
-    await processors.get("data-lifecycle-cleanup")!({ data: { entityType: "monitor_results" } });
+    await expect(processors.get("data-lifecycle-cleanup")!({ data: { entityType: "monitor_results" } })).rejects.toThrow("redis down");
     expect(execute).not.toHaveBeenCalled();
   });
 
@@ -380,13 +380,13 @@ describe("cleanup job processor", () => {
 });
 
 describe("redisCursorStore", () => {
-  it("reads, writes with a one-week expiry, and clears on null", async () => {
-    const client = { get: jest.fn().mockResolvedValue("org-1"), set: jest.fn(), del: jest.fn() };
-    const store = redisCursorStore(client as unknown as Redis);
+  it("reads, and writes or clears only through the lock-fenced script", async () => {
+    const client = { get: jest.fn().mockResolvedValue("org-1"), eval: jest.fn() };
+    const store = redisCursorStore(client as unknown as Redis, { key: "cleanup:x:lock", token: "t-1" });
     await expect(store.get("k")).resolves.toBe("org-1");
     await store.set("k", "org-2");
-    expect(client.set).toHaveBeenCalledWith("k", "org-2", "EX", 7 * 24 * 3600);
+    expect(client.eval).toHaveBeenCalledWith(expect.stringContaining('"get", KEYS[1]'), 2, "cleanup:x:lock", "k", "t-1", "org-2", String(7 * 24 * 3600));
     await store.set("k", null);
-    expect(client.del).toHaveBeenCalledWith("k");
+    expect(client.eval).toHaveBeenLastCalledWith(expect.any(String), 2, "cleanup:x:lock", "k", "t-1", "", String(7 * 24 * 3600));
   });
 });

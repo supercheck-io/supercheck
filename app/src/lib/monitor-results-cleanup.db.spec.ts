@@ -232,7 +232,7 @@ describe("monitor_results", () => {
     const first = await run();
     expect(first.recordsDeleted).toBe(1010);
     expect(first.details.perOrgStats).toEqual(
-      expect.objectContaining({ [ORG.pro.substring(0, 8)]: expect.objectContaining({ deleted: 1000, capped: true }) }),
+      expect.objectContaining({ [ORG.pro]: expect.objectContaining({ deleted: 1000, capped: true }) }),
     );
     expect(await countRows(monitorOf.plus)).toBe(0);
     expect(await countRows(monitorOf.pro)).toBe(1500);
@@ -286,7 +286,7 @@ describe("monitor_results", () => {
     // Budget 4 s, so each organization gets 1 s: two slow batches for Pro, then Plus.
     const result = await resultsStrategy({ batchSize: 1 }, { timeBudgetMs: 4000 }).execute(false, { cursor });
     expect(result.details.partial).toBe(false);
-    expect(result.details.perOrgStats).toEqual(expect.objectContaining({ [ORG.pro.substring(0, 8)]: expect.objectContaining({ capped: true }) }));
+    expect(result.details.perOrgStats).toEqual(expect.objectContaining({ [ORG.pro]: expect.objectContaining({ capped: true }) }));
     expect(await countRows(monitorOf.pro)).toBeGreaterThan(0);
     expect(await countRows(monitorOf.plus)).toBe(0);
   }, 30_000);
@@ -366,6 +366,32 @@ describe("monitor_results", () => {
     const result = await resultsStrategy({ maxRecordsPerRun: 2, batchSize: 1 }).execute(false, { cursor: memoryCursor() });
     expect(result.recordsDeleted).toBe(2);
     expect(await countRows(monitorOf.plus)).toBe(3);
+  });
+
+  it("a monitor whose artifact batch is refused entirely still gets its plain rows cleaned this run", async () => {
+    for (const offset of [1, 2, 3]) {
+      await client`INSERT INTO monitor_results (id, monitor_id, checked_at, status, is_up, test_report_s3_url) VALUES (uuidv7(), ${monitorOf.plus}, now() - interval '20 days' - make_interval(secs => ${offset}), 'up', true, ${`s3://bucket/refused-${offset}`})`;
+    }
+    await addResults(monitorOf.plus, 20, 2);
+    mockDeleteReports.mockImplementation(async (inputs: Array<{ entityId: string }>) => {
+      mockFailedIds.mockReturnValue(new Set(inputs.map((i) => i.entityId)));
+      return { success: false, deletedObjects: [], failedObjects: inputs };
+    });
+    const result = await resultsStrategy({ batchSize: 1 }).execute(false, { cursor: memoryCursor() });
+    expect(mockDeleteReports).toHaveBeenCalledTimes(1); // one refused batch ends the artifact pass for this run
+    expect(result.recordsDeleted).toBe(2);
+  });
+
+  it("writes nothing for a batch whose lock was lost while storage answered", async () => {
+    await client`INSERT INTO monitor_results (id, monitor_id, checked_at, status, is_up, test_report_s3_url) VALUES (uuidv7(), ${monitorOf.plus}, now() - interval '20 days', 'up', true, 's3://bucket/slow')`;
+    const controller = new AbortController();
+    mockDeleteReports.mockImplementation(async (inputs: unknown[]) => {
+      controller.abort();
+      return { success: true, deletedObjects: inputs, failedObjects: [] };
+    });
+    const result = await resultsStrategy().execute(false, { cursor: memoryCursor(), signal: controller.signal });
+    expect(result.details).toEqual(expect.objectContaining({ partial: true, stopReason: "lock" }));
+    expect(await countRows(monitorOf.plus)).toBe(1);
   });
 
   it("a run whose lock is lost stops before deleting and leaves the cursor to the new owner", async () => {
@@ -516,7 +542,7 @@ describe("monitor_aggregates", () => {
     expect(await kept(monitorOf.plus)).toEqual([]);
     expect((await kept(monitorOf.pro)).length).toBeGreaterThan(0);
     expect(result.details.partial).toBe(false);
-    expect(result.details.perOrgStats).toEqual(expect.objectContaining({ [ORG.pro.substring(0, 8)]: expect.objectContaining({ capped: true }) }));
+    expect(result.details.perOrgStats).toEqual(expect.objectContaining({ [ORG.pro]: expect.objectContaining({ capped: true }) }));
     expect(cursor.value).toBeNull();
   }, 30_000);
 
@@ -548,6 +574,7 @@ describe("monitor_aggregates", () => {
     await addAggregate(monitorOf.plus, "hourly", 40);
     await addAggregate(monitorOf.plus, "daily", 100);
     expect((await aggregatesStrategy().execute(true)).recordsDeleted).toBe(2);
+    expect((await aggregatesStrategy(1).execute(true)).recordsDeleted).toBe(1); // what one run can remove
     expect(await kept(monitorOf.plus)).toHaveLength(2);
   });
 

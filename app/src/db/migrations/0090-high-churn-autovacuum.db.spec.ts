@@ -1,7 +1,7 @@
 /** @jest-environment node */
 // CI-only: needs TEST_DATABASE_URL (run with `npm run test:db`).
 // 0090 tunes autovacuum on the high-churn monitor tables when the migrating role owns them, and otherwise (another
-// owner, or a table locked past the timeout) leaves a NOTICE and changes nothing, without failing the deploy.
+// owner, or a table locked past the timeout) leaves a WARNING (printed by the migration runner) and changes nothing, without failing the deploy.
 import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
@@ -76,7 +76,7 @@ it("applies the settings as the owner, and a rerun is a no-op", async () => {
   expect(notices).toEqual([]);
 });
 
-it("as a role that does not own the tables: NOTICE, unchanged, no error", async () => {
+it("as a role that does not own the tables: WARNING, unchanged, no error", async () => {
   await reset();
   await client.begin(async (tx) => {
     await tx.unsafe(`SET LOCAL ROLE "${outsider}"`);

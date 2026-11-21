@@ -54,7 +54,7 @@ jest.mock("./scheduler/job-scheduler", () => ({ processScheduledJob: jest.fn() }
 
 import { getQueues } from "./queue";
 import { initializeMonitorSchedulers } from "./monitor-scheduler";
-import { DataLifecycleService, type CleanupStrategyConfig } from "./data-lifecycle-service";
+import { DataLifecycleService, redisCursorStore, type CleanupStrategyConfig } from "./data-lifecycle-service";
 import { acquireOwnedLock } from "./cleanup-lock";
 
 const prefix: string = jest.requireMock("bullmq").__prefix;
@@ -222,6 +222,26 @@ suite("scheduler upgrade (real Redis, BullMQ)", () => {
       const own = (await acquireOwnedLock(redis, key, options))!;
       await own.release();
       expect(await redis.exists(key)).toBe(0);
+    });
+
+    it("writes the resume cursor only while holding the lock", async () => {
+      const cursorKey = `${prefix}:cleanup:test:cursor`;
+      const lock = (await acquireOwnedLock(redis, key, options))!;
+      const store = redisCursorStore(redis, lock);
+      await store.set(cursorKey, "org-1");
+      expect(await redis.get(cursorKey)).toBe("org-1");
+      expect(await redis.ttl(cursorKey)).toBeGreaterThan(6 * 24 * 3600);
+
+      await redis.set(key, "successor", "PX", 60_000); // another owner took over
+      await store.set(cursorKey, "org-0");
+      await store.set(cursorKey, null);
+      expect(await redis.get(cursorKey)).toBe("org-1");
+
+      await redis.set(key, lock.token, "PX", 60_000);
+      await store.set(cursorKey, null);
+      expect(await redis.exists(cursorKey)).toBe(0);
+      jest.spyOn(console, "error").mockImplementation(() => {});
+      await lock.release();
     });
   });
 

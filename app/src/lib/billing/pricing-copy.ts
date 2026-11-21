@@ -11,7 +11,6 @@ const extraMember = usd(catalog.pro.extraMemberPriceCents);
 const days = (n: number) => `${n.toLocaleString("en-US")} days`;
 const plusLimits = catalog.plus.limits;
 const proLimits = catalog.pro.limits;
-const dailyUptimeDays = (aggregated: number) => Math.max(aggregated, catalog.minDailyAggregateRetentionDays);
 
 /** Usage and billing answers shown on both the in-app plan picker and the marketing pricing page. */
 export const SHARED_PRICING_FAQS = [

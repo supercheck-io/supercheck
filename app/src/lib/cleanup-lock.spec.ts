@@ -91,6 +91,8 @@ it("release deletes its own key, stops renewal and tolerates a Redis failure", a
   expect(redis.eval.mock.calls.length).toBe(calls);
 
   const again = (await acquireOwnedLock(redis as unknown as Redis, "cleanup:x:lock", options))!;
+  expect(again.key).toBe("cleanup:x:lock");
+  expect(again.token).toBe(redis.store.get("cleanup:x:lock")!.value);
   redis.failEval = true;
   await expect(again.release()).resolves.toBeUndefined();
 });
@@ -105,4 +107,13 @@ it("stops renewing and aborts once held past maxHoldMs, so a hung holder lets th
   expect(lock.signal.aborted).toBe(true);
   expect(redis.eval.mock.calls.length).toBe(renewals);
   await lock.release();
+});
+
+it("release gives up after a bounded wait when Redis does not answer", async () => {
+  const redis = fakeRedis();
+  const lock = (await acquireOwnedLock(redis as unknown as Redis, "cleanup:x:lock", options))!;
+  redis.eval.mockImplementationOnce(() => new Promise<0 | 1>(() => {}));
+  const released = lock.release();
+  await jest.advanceTimersByTimeAsync(5_000);
+  await expect(released).resolves.toBeUndefined();
 });
