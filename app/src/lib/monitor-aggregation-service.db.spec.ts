@@ -375,6 +375,73 @@ it("never shrinks the aggregate of the period holding the oldest raw row (partly
   expect(await read()).toEqual([110, 110]);
 });
 
+describe("raw purge watermark (monitors.raw_purged_before)", () => {
+  const older = (days: number, minutes = 0) => new Date(day.getTime() - days * 86_400_000 + minutes * 60_000);
+  const dailyOf = async (id: string, periodStart: Date) =>
+    (
+      await mockDatabase
+        .select({ location: schema.monitorAggregates.location, totalChecks: schema.monitorAggregates.totalChecks, successfulChecks: schema.monitorAggregates.successfulChecks })
+        .from(schema.monitorAggregates)
+        .where(and(eq(schema.monitorAggregates.monitorId, id), eq(schema.monitorAggregates.periodType, "daily"), eq(schema.monitorAggregates.periodStart, periodStart)))
+    ).sort((a, b) => String(a.location).localeCompare(String(b.location)));
+  const seed = (id: string, periodStart: Date, totalChecks: number, successfulChecks: number) =>
+    mockDatabase.insert(schema.monitorAggregates).values([null, "local"].map((location) => ({
+      monitorId: id, periodType: "daily" as const, periodStart, location, totalChecks, successfulChecks,
+      uptimePercentage: ((successfulChecks / totalChecks) * 100).toFixed(2),
+    })));
+
+  it("never rewrites a day before the watermark whose only survivors are a status change and a refused report, and still recomputes a later day", async () => {
+    // Day -5 was aggregated from 12 checks; cleanup then purged it except a status change and a report storage refused.
+    // An older refused report (day -6) is the oldest ordinary row, so the oldest-row rule alone would rewrite day -5.
+    await mockDatabase.insert(schema.monitorResults).values([
+      { monitorId, checkedAt: older(6, 60), location: "local", status: "up", isUp: true, testReportS3Url: "s3://bucket/refused-old" },
+      { monitorId, checkedAt: older(5, 5), location: "local", status: "down", isUp: false, isStatusChange: true },
+      { monitorId, checkedAt: older(5, 125), location: "local", status: "up", isUp: true, testReportS3Url: "s3://bucket/refused" },
+      { monitorId, checkedAt: at(10), location: "local", status: "up", isUp: true, responseTimeMs: 50 },
+      { monitorId, checkedAt: at(20), location: "local", status: "up", isUp: true, responseTimeMs: 50 },
+      { monitorId, checkedAt: at(30), location: "local", status: "down", isUp: false },
+    ]);
+    await seed(monitorId, older(5), 12, 8);
+    await seed(monitorId, day, 1, 1);
+    await mockDatabase.update(schema.monitors).set({ rawPurgedBefore: older(4) }).where(eq(schema.monitors.id, monitorId));
+
+    expect((await monitorAggregationService.runDailyAggregation()).errors).toEqual([]);
+
+    expect(await dailyOf(monitorId, older(5))).toEqual([
+      { location: "local", totalChecks: 12, successfulChecks: 8 },
+      { location: null, totalChecks: 12, successfulChecks: 8 },
+    ]);
+    expect(await dailyOf(monitorId, day)).toEqual([
+      { location: "local", totalChecks: 3, successfulChecks: 2 },
+      { location: null, totalChecks: 3, successfulChecks: 2 },
+    ]);
+  });
+
+  it.each([
+    ["no watermark yet", null],
+    ["a watermark older than the day", 10],
+  ] as const)("still updates a synthetic monitor's day whose every row carries a test execution, with %s", async (_label, watermarkDaysAgo) => {
+    await mockDatabase
+      .update(schema.monitors)
+      .set({ type: "synthetic_test", rawPurgedBefore: watermarkDaysAgo === null ? null : older(watermarkDaysAgo) })
+      .where(eq(schema.monitors.id, monitorId));
+    await mockDatabase.insert(schema.monitorResults).values(
+      [true, true, false].map((isUp, i) => ({
+        monitorId, checkedAt: at(10 * (i + 1)), location: "local" as const, status: isUp ? ("up" as const) : ("down" as const), isUp,
+        responseTimeMs: isUp ? 900 : null, testExecutionId: `exec-${i}`,
+      })),
+    );
+    await seed(monitorId, day, 1, 1);
+
+    expect((await monitorAggregationService.runDailyAggregation()).errors).toEqual([]);
+
+    expect(await dailyOf(monitorId, day)).toEqual([
+      { location: "local", totalChecks: 3, successfulChecks: 2 },
+      { location: null, totalChecks: 3, successfulChecks: 2 },
+    ]);
+  });
+});
+
 it("counts today's checks for several monitors in one pass, matching getWindowMetrics (aggregated hours + raw tail)", async () => {
   const [other] = await mockDatabase.insert(schema.monitors).values({
     organizationId: (await mockDatabase.select().from(schema.monitors).where(eq(schema.monitors.id, monitorId)))[0].organizationId,

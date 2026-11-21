@@ -565,6 +565,7 @@ export async function measureRetentionLag(
  *
  * Deletes raw monitor_results past each organization's raw retention (getOrganizationRetentionSettings):
  * - Organizations are walked in id order, each organization's monitors once per run.
+ * - Per monitor, the raw purge watermark moves forward to the cutoff first (advanceRawPurgeWatermark).
  * - Per monitor, plain rows go in single-statement batches on (monitor_id, checked_at), then rows that may hold a
  *   report (object storage, then one transaction). Status-change rows are kept; their reports expire.
  * - A per-organization row cap keeps one heavy organization from starving the rest, and a time budget ends the
@@ -716,6 +717,8 @@ export class MonitorResultsCleanupStrategy implements ICleanupStrategy {
     let processed = 0;
     for (const { id: monitorId } of orgMonitors) {
       try {
+        // Record the purge before it starts: a crash after this freezes days that were not purged yet, the safe way.
+        await advanceRawPurgeWatermark(monitorId, cutoff);
         // Plain rows first: one statement per batch, no round trip through the app. They exclude every row that may
         // hold a report, so the order of the two passes does not affect what reaches storage. Kept rows are
         // re-scanned per batch, which is bounded by how many are kept.
@@ -871,6 +874,20 @@ export class MonitorResultsCleanupStrategy implements ICleanupStrategy {
     result.details.statusArtifactsExpired = Number(result.details.statusArtifactsExpired || 0) + statusIds.length;
     return { deleted: deleteIds.length, handled: rows.length };
   }
+}
+
+/**
+ * Moves a monitor's raw purge watermark (`monitors.raw_purged_before`) forward to `cutoff`, never back: a later,
+ * longer window has an earlier cutoff, but the rows before the old one are already gone. Called before the monitor's
+ * rows older than `cutoff` are deleted, so the rollup, which never rewrites an existing aggregate of a period before
+ * the watermark, never recomputes a period from the rows cleanup left there. Writes only when the cutoff advances
+ * (once per UTC day per monitor), so hourly runs add no churn.
+ */
+export async function advanceRawPurgeWatermark(monitorId: string, cutoff: Date): Promise<void> {
+  await db
+    .update(monitors)
+    .set({ rawPurgedBefore: cutoff })
+    .where(and(eq(monitors.id, monitorId), or(isNull(monitors.rawPurgedBefore), lt(monitors.rawPurgedBefore, cutoff))));
 }
 
 /**

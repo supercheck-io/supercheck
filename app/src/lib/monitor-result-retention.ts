@@ -54,7 +54,7 @@ export async function getRawResultRetention(organizationId: string): Promise<Raw
 
 /**
  * The raw-retention decision of every organization, in id order, from two queries (organizations and plan rows).
- * Used by cleanup, and by the rollup to know which days cleanup may have purged. Throws on a failed lookup.
+ * Used by cleanup. Throws on a failed lookup.
  */
 export async function getRawRetentionByOrganization(): Promise<Map<string, { plan: string; decision: RawRetentionDecision }>> {
   const out = new Map<string, { plan: string; decision: RawRetentionDecision }>();

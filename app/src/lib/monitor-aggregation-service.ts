@@ -27,8 +27,6 @@
 import { liveMonitor } from "@/lib/deletion/visibility";
 import { db } from "@/utils/db";
 import catalog from "@/lib/billing/plan-catalog.json";
-import { getRawRetentionByOrganization } from "@/lib/monitor-result-retention";
-import { rawCutoff } from "@/lib/raw-cutoff";
 import {
   monitorResults,
   monitors,
@@ -712,15 +710,12 @@ export class MonitorAggregationService {
         where r.monitor_id = ${monitors.id}
           and r.checked_at >= ${lookbackStart.toISOString()}::timestamptz
       )`;
-      // Days before an organization's raw cutoff may be partly purged by retention cleanup (rows it keeps, such
-      // as status changes or reports storage refused, survive), so their existing aggregates are never rewritten.
-      const purgedBefore = await this.rawPurgeBoundaries();
       let offset = 0;
       let hasMore = true;
 
       while (hasMore) {
         const monitorBatch = await db
-          .select({ id: monitors.id, organizationId: monitors.organizationId })
+          .select({ id: monitors.id })
           .from(monitors)
           .where(and(liveMonitor(), or(eq(monitors.enabled, true), hasRecentRows)))
           // Stable order, or offset paging can skip or repeat monitors between batches.
@@ -735,7 +730,6 @@ export class MonitorAggregationService {
               periodType,
               lookbackStart,
               end,
-              monitor.organizationId ? purgedBefore.get(monitor.organizationId) : undefined,
             );
             result.aggregatesCreated += created;
             result.aggregatesUpdated += updated;
@@ -782,29 +776,11 @@ export class MonitorAggregationService {
    * (plus a margin so cycles that straddle a boundary are seen whole). Idempotent: upserts the
    * periods that have rows and deletes stale rows of periods that no longer do.
    */
-  /** Per organization, the instant before which retention cleanup may have deleted raw rows. Empty when unknown. */
-  private async rawPurgeBoundaries(): Promise<Map<string, number>> {
-    const boundaries = new Map<string, number>();
-    // With monitor result cleanup off nothing is purged.
-    if (/^(false|0|no)$/.test((process.env.MONITOR_CLEANUP_ENABLED ?? "").trim().toLowerCase())) return boundaries;
-    try {
-      const now = Date.now();
-      for (const [organizationId, { decision }] of await getRawRetentionByOrganization()) {
-        if (!("skip" in decision)) boundaries.set(organizationId, rawCutoff(decision.days, now).getTime());
-      }
-    } catch (error) {
-      // The oldest-raw-row rule below still applies.
-      console.error("[AGGREGATION] Raw retention lookup failed; relying on the oldest raw row only:", error);
-    }
-    return boundaries;
-  }
-
   private async aggregateMonitor(
     monitorId: string,
     periodType: AggregationPeriod,
     start: Date,
     end: Date,
-    purgedBefore?: number,
   ): Promise<{ created: number; updated: number }> {
     const unit = PERIOD_MS[periodType];
     const from = start.getTime();
@@ -906,16 +882,27 @@ export class MonitorAggregationService {
       combined.push(build(periodStart, null, periodRows, counts));
     }
 
-    // Raw rows are purged by retention (shorter than aggregate retention) but status-change rows are kept, so
-    // the oldest ordinary row marks how far raw history really reaches. A period older than that, which
-    // already has an aggregate (the period holding the oldest row is still recomputed), is never rewritten or deleted: its raw rows may be partly or wholly purged.
-    const [oldestRaw] = await db
-      .select({ checkedAt: monitorResults.checkedAt })
-      .from(monitorResults)
-      .where(and(eq(monitorResults.monitorId, monitorId), eq(monitorResults.isStatusChange, false)))
-      .orderBy(monitorResults.checkedAt)
-      .limit(1);
-    const rawFloor = oldestRaw ? oldestRaw.checkedAt.getTime() : Infinity;
+    // How far raw history really reaches, read after the raw rows (never before: cleanup advances the watermark before
+    // it deletes, so a row missing from the scan above is always covered by the watermark read here).
+    // - The oldest ordinary row: retention purges raw rows but keeps status-change rows.
+    // - raw_purged_before, the instant before which cleanup has deleted rows: rows it keeps there (status changes,
+    //   reports storage refused) are not the whole period, and can be ordinary rows, so the oldest row alone misses it.
+    const [bounds] = await db
+      .select({
+        rawPurgedBefore: monitors.rawPurgedBefore,
+        // Aliased and parameterised: drizzle renders columns of a select unqualified, which would bind inside here.
+        oldestRaw: sql<Date | null>`(
+          SELECT r.checked_at FROM monitor_results r
+          WHERE r.monitor_id = ${monitorId} AND NOT r.is_status_change
+          ORDER BY r.monitor_id, r.checked_at LIMIT 1
+        )`.mapWith(monitorResults.checkedAt),
+      })
+      .from(monitors)
+      .where(eq(monitors.id, monitorId));
+    const rawFloor = bounds?.oldestRaw ? bounds.oldestRaw.getTime() : Infinity;
+    // An existing aggregate of a period before either bound is never rewritten or deleted (the period holding the
+    // oldest row is still recomputed, under the never-shrink guard below).
+    const freezeBefore = Math.max(periodOf(rawFloor), bounds?.rawPurgedBefore?.getTime() ?? -Infinity);
     const existing = await db
       .select({
         id: monitorAggregates.id,
@@ -932,12 +919,8 @@ export class MonitorAggregationService {
           lt(monitorAggregates.periodStart, end),
         ),
       );
-    // Also frozen: periods that start before the organization's raw cutoff (cleanup may have purged them partly,
-    // and a kept row there must not make the rollup rewrite them from what survived).
     const frozen = new Set(
-      existing
-        .map((row) => row.periodStart.getTime())
-        .filter((t) => t < periodOf(rawFloor) || (purgedBefore !== undefined && t < purgedBefore)),
+      existing.map((row) => row.periodStart.getTime()).filter((t) => t < freezeBefore),
     );
 
     let created = 0;

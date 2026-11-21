@@ -1,7 +1,9 @@
 /** @jest-environment node */
 // CI-only: needs TEST_DATABASE_URL (run with `npm run test:db`).
-// 0090 tunes autovacuum on the high-churn monitor tables when the migrating role owns them, and otherwise (another
-// owner, or a table locked past the timeout) leaves a WARNING (printed by the migration runner) and changes nothing, without failing the deploy.
+// 0090 adds monitors.raw_purged_before (the raw purge watermark the rollup relies on, so it is required: a locked
+// table fails the migration within the bounded lock timeout). It then tunes autovacuum on the high-churn monitor
+// tables when the migrating role owns them, and otherwise (another owner, or a table locked past the timeout) leaves
+// a WARNING (printed by the migration runner) and changes nothing, without failing the deploy.
 import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
@@ -17,6 +19,11 @@ const outsider = `autovacuum_outsider_${suffix}`;
 const TABLES = ["monitor_results", "monitor_aggregates", "monitor_cycles"];
 const TUNED = ["autovacuum_vacuum_scale_factor=0.02", "autovacuum_analyze_scale_factor=0.01"];
 const migrationSql = readFileSync(path.join(APP_ROOT, "src/db/migrations/0090_high_churn_autovacuum.sql"), "utf8");
+// The runner applies a file statement by statement (split on the breakpoint), as here.
+const statements = migrationSql.split("--> statement-breakpoint").map((s) => s.trim()).filter(Boolean);
+const columnSql = statements.find((s) => s.includes("raw_purged_before"))!;
+const autovacuumSql = statements.find((s) => s.includes("autovacuum_vacuum_scale_factor"))!;
+const COLUMN_EXISTS = 'column "raw_purged_before" of relation "monitors" already exists, skipping';
 let maintenance: ReturnType<typeof postgres>;
 let client: ReturnType<typeof postgres>;
 let url: URL;
@@ -67,25 +74,79 @@ it("a fresh database has the tuned settings on all three tables", async () => {
   for (const table of TABLES) expect(options[table]).toEqual(TUNED);
 });
 
+it("a fresh database has monitors.raw_purged_before as a nullable timestamptz", async () => {
+  const columns = await client`
+    SELECT data_type, is_nullable, column_default FROM information_schema.columns
+    WHERE table_schema = current_schema() AND table_name = 'monitors' AND column_name = 'raw_purged_before'`;
+  expect(columns).toEqual([{ data_type: "timestamp with time zone", is_nullable: "YES", column_default: null }]);
+});
+
 it("applies the settings as the owner, and a rerun is a no-op", async () => {
   await reset();
-  await client.unsafe(migrationSql);
-  await client.unsafe(migrationSql);
+  await client.begin(async (tx) => {
+    await tx.unsafe(migrationSql);
+    await tx.unsafe(migrationSql);
+  });
   const options = await reloptions();
   for (const table of TABLES) expect(options[table]).toEqual(TUNED);
-  expect(notices).toEqual([]);
+  // The column is already there: PostgreSQL says so and skips it; the autovacuum step is silent.
+  expect(notices).toEqual([COLUMN_EXISTS, COLUMN_EXISTS]);
 });
+
+it("the column step fails within the bounded lock timeout while monitors stays locked, and restores the caller's timeout otherwise", async () => {
+  const holder = postgres(url.toString(), { max: 1, onnotice: () => {} });
+  let release!: () => void;
+  const held = new Promise<void>((resolve) => (release = resolve));
+  let locked!: () => void;
+  const isLocked = new Promise<void>((resolve) => (locked = resolve));
+  const holding = holder.begin(async (tx) => {
+    await tx`LOCK TABLE monitors IN ACCESS EXCLUSIVE MODE`;
+    locked();
+    await held;
+  });
+  try {
+    await Promise.race([isLocked, holding]);
+    const started = Date.now();
+    await expect(
+      client.begin(async (tx) => {
+        await tx`SET LOCAL lock_timeout = '30s'`;
+        await tx.unsafe(columnSql);
+      }),
+    ).rejects.toMatchObject({ code: "55P03" });
+    expect(Date.now() - started).toBeLessThan(20_000);
+  } finally {
+    release();
+    try {
+      await holding;
+    } finally {
+      await holder.end({ timeout: 5 });
+    }
+  }
+  const [after] = await client.begin(async (tx) => {
+    await tx`SET LOCAL lock_timeout = '30s'`;
+    await tx.unsafe(columnSql);
+    return tx`SELECT current_setting('lock_timeout') AS value`;
+  });
+  expect(after.value).toBe("30s");
+}, 30_000);
 
 it("as a role that does not own the tables: WARNING, unchanged, no error", async () => {
   await reset();
   await client.begin(async (tx) => {
     await tx.unsafe(`SET LOCAL ROLE "${outsider}"`);
-    await tx.unsafe(migrationSql);
+    await tx.unsafe(autovacuumSql);
   });
   const options = await reloptions();
   for (const table of TABLES) expect(options[table]).toEqual([]);
   expect(notices).toHaveLength(3);
   expect(notices[0]).toContain("does not own it");
+  // The column is required, so its step is not optional: a role that cannot alter monitors fails the migration.
+  await expect(
+    client.begin(async (tx) => {
+      await tx.unsafe(`SET LOCAL ROLE "${outsider}"`);
+      await tx.unsafe(columnSql);
+    }),
+  ).rejects.toMatchObject({ code: "42501" });
 });
 
 it("skips a table that stays locked, tunes the others and restores the caller's lock timeout", async () => {
@@ -121,7 +182,7 @@ it("skips a table that stays locked, tunes the others and restores the caller's 
   expect(options.monitor_results).toEqual(TUNED);
   expect(options.monitor_cycles).toEqual(TUNED);
   expect(options.monitor_aggregates).toEqual([]);
-  expect(notices).toEqual([expect.stringContaining("monitor_aggregates not applied: table is locked")]);
+  expect(notices).toEqual([COLUMN_EXISTS, expect.stringContaining("monitor_aggregates not applied: table is locked")]);
 }, 30_000);
 
 it("passes the migration safety check", async () => {

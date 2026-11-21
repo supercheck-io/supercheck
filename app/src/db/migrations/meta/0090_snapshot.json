@@ -7415,6 +7415,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "raw_purged_before": {
+          "name": "raw_purged_before",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
