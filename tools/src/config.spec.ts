@@ -25,6 +25,6 @@ describe("wrangler config", () => {
   });
 
   it("keeps invocation logs (request headers, client IP) off", () => {
-    expect(config.observability).toEqual({ enabled: true, invocation_logs: false });
+    expect(config.observability).toEqual({ enabled: true, logs: { enabled: true, invocation_logs: false } });
   });
 });
