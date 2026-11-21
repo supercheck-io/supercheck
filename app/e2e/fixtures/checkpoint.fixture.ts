@@ -72,10 +72,10 @@ export async function captureFixturePage(page: Page, label: string): Promise<voi
 }
 
 /**
- * True in the screenshot app, which runs without a worker: specs that need a run to
+ * True in the screenshot app, which runs without a worker (a checkpoint run sets E2E_WORKER=1 when it has one): specs that need a run to
  * execute skip there with `test.skip(NO_WORKER, NO_WORKER_REASON)` and still run everywhere else.
  */
-export const NO_WORKER = ENABLED;
+export const NO_WORKER = ENABLED && process.env.E2E_WORKER !== '1';
 export const NO_WORKER_REASON = 'the PR screenshot app has no worker to execute runs';
 
 /** Saves a named mid-flow frame. A no-op unless checkpoints are on. */

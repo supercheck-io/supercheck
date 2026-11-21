@@ -30,36 +30,54 @@ export type FreshCreator = {
  */
 export async function signUpFreshCreator(browser: Browser, baseURL: string, label: string): Promise<FreshCreator> {
   test.skip(await signUpIsClosed(baseURL), SIGN_UP_REASON);
-  // The default 60 s hook budget is too tight for a sign-up that waits out the auth rate limit.
-  test.setTimeout(180_000);
+  // Each attempt waits for the form and the request; a submit that sends nothing or is rate limited is tried again.
+  test.setTimeout(300_000);
   // Playwright applies the project's signed-in storageState to new contexts; start signed out.
   const context = await browser.newContext({ baseURL, storageState: { cookies: [], origins: [] } });
   const page = await context.newPage();
   const signUp = new SignUpPage(page);
-  // Better Auth allows 3 sign-up calls per 10 s per address, and earlier specs in the same run use it too:
-  // on a 429 wait out the window instead of sitting on the form until the hook times out.
+  const isSignUp = (url: string, method: string) => url.includes('/api/auth/sign-up/email') && method === 'POST';
+  // What the page did, so a failure says whether the click, the request or the answer went missing.
+  const trail: string[] = [];
+  page.on('request', (r) => { if (r.method() !== 'GET' && !r.url().includes('/_next/')) trail.push(`${r.method()} ${new URL(r.url()).pathname}`); });
+  page.on('console', (m) => { if (m.type() === 'error') trail.push(`console.error ${m.text().slice(0, 160)}`); });
+  page.on('framenavigated', (f) => { if (f === page.mainFrame()) trail.push(`navigated ${new URL(f.url()).pathname}`); });
   let email = '';
   for (let attempt = 0; ; attempt++) {
     email = `setup-${label}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}@example.com`;
+    const password = generateTestPassword();
+    trail.length = 0;
     await signUp.navigate();
     await waitForHydration(page);
-    const answered = page
-      .waitForResponse((r) => r.url().includes('/api/auth/sign-up/email') && r.request().method() === 'POST', { timeout: 30_000 })
-      .catch(() => null);
-    await signUp.signUpWithEmail(`Setup ${label}`, email, generateTestPassword());
-    const res = await answered;
-    // A submit dropped before the form was ready sends no request: load the form again and retry.
-    if (!res) {
-      expect(attempt, 'sign-up never sent its request').toBeLessThan(3);
+    // The form mounts once the app config says sign-up is open; fill and keep the values before submitting.
+    await signUp.expectEmailFormMode();
+    await expect(signUp.submitButton).toBeEnabled();
+    await signUp.nameInput.fill(`Setup ${label}`);
+    await signUp.emailInput.fill(email);
+    await signUp.passwordInput.fill(password);
+    await expect(signUp.emailInput).toHaveValue(email);
+    await expect(signUp.passwordInput).toHaveValue(password);
+    // Wait on the real request: it is sent as soon as the click is handled, and its answer can take longer.
+    const sent = page.waitForRequest((r) => isSignUp(r.url(), r.method()), { timeout: 20_000 }).catch(() => null);
+    await signUp.submitButton.click();
+    const request = await sent;
+    if (!request) {
+      const shown = (await signUp.errorMessage.first().textContent({ timeout: 1000 }).catch(() => null)) ?? 'none';
+      const why = `sign-up never sent its request (attempt ${attempt + 1}; page ${new URL(page.url()).pathname}; form error: ${shown}; page activity: ${trail.join(' | ') || 'none'})`;
+      expect(attempt, why).toBeLessThan(2);
       continue;
     }
-    if (res.status() !== 429) {
-      expect(res.ok(), `sign-up answered ${res.status()}`).toBe(true);
+    const res = await request.response();
+    expect(res, `sign-up request got no answer (${trail.join(' | ')})`).not.toBeNull();
+    if (res!.status() !== 429) {
+      expect(res!.ok(), `sign-up answered ${res!.status()}`).toBe(true);
       break;
     }
+    // Every Compose sign-up shares one address, and Better Auth allows 10 per 60 s per address: wait out the
+    // window the server names (X-Retry-After) instead of failing the spec that happened to be the eleventh.
     expect(attempt, 'sign-up kept answering 429').toBeLessThan(3);
-    const wait = Number(res.headers()['retry-after']) || 10;
-    await new Promise((resolve) => setTimeout(resolve, (wait + 1) * 1000));
+    const wait = Number(res!.headers()['x-retry-after'] ?? res!.headers()['retry-after']) || 60;
+    await page.waitForTimeout((Math.min(wait, 60) + 1) * 1000);
   }
   await page.waitForURL((url) => !url.pathname.startsWith('/sign-up'), { timeout: 60_000 });
 
