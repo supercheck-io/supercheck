@@ -349,6 +349,12 @@ describe("queue location refresh", () => {
     expect((await queueModule.getCapacityQueues()).k6Queues["job-scheduler"]).toBeUndefined();
   });
 
+  it("still restores a location whose code ends in -scheduler", async () => {
+    scan.mockResolvedValue(["0", ["bull:k6-eu-scheduler:delayed"]]);
+    jobCounts.set("k6-eu-scheduler", { delayed: 1 });
+    expect((await queueModule.getCapacityQueues()).k6Queues["eu-scheduler"]).toBeDefined();
+  });
+
   it.each(["addK6TestToQueue", "addK6JobToQueue"] as const)(
     "%s rejects an offline location before reserving capacity", async (method) => {
       await expect(queueModule[method]({

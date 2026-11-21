@@ -1485,8 +1485,8 @@ async function restoreDisabledCapacityQueues(
     cursor = next;
     for (const key of keys) {
       const queueName = key.split(":")[1];
-      // Scheduler queues share the k6- prefix in old installs; a location code never ends in -scheduler.
-      if (queueName?.endsWith("-scheduler")) continue;
+      // Leftover keys of the removed k6 scheduler queue, not a location.
+      if (queueName === "k6-job-scheduler") continue;
       const code = queueName?.slice(3);
       if (code && !queueState.capacityK6Queues[code]) codes.add(code);
     }
