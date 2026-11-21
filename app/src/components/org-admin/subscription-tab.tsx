@@ -1,6 +1,7 @@
 "use client";
 
 import { ceilUsageCostCents } from "@/lib/billing/usage-cost";
+import catalog from "@/lib/billing/plan-catalog.json";
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
@@ -370,13 +371,11 @@ export function SubscriptionTab({ currentUserRole }: SubscriptionTabProps) {
                 <span>•</span>
                 <span
                   className="flex items-center gap-2"
-                  title="Aggregated metrics retention (P95, avg, uptime)"
+                  title="Hourly metrics retention (P95, avg, uptime); daily uptime is kept at least this long"
                 >
                   <TrendingUp className="h-4 w-4" />
-                  {data.planFeatures.aggregatedDataRetentionDays >= 365
-                    ? `${Math.round(data.planFeatures.aggregatedDataRetentionDays / 365)}yr`
-                    : `${data.planFeatures.aggregatedDataRetentionDays}d`}{" "}
-                  metrics
+                  {retentionLabel(data.planFeatures.aggregatedDataRetentionDays)} hourly,{" "}
+                  {retentionLabel(Math.max(data.planFeatures.aggregatedDataRetentionDays, catalog.minDailyAggregateRetentionDays))} daily
                 </span>
               </div>
             )}
@@ -571,6 +570,10 @@ export function SubscriptionTab({ currentUserRole }: SubscriptionTabProps) {
  */
 // Usage is metered to four decimals. Keep them for sub-unit values (a
 // five-second run is 0.0833 minutes); two are enough to read larger totals.
+function retentionLabel(days: number) {
+  return days >= 365 ? `${Math.round(days / 365)}yr` : `${days}d`;
+}
+
 function formatUsage(value: number) {
   return value.toLocaleString("en-US", {
     maximumFractionDigits: Math.abs(value) < 1 ? 4 : 2,

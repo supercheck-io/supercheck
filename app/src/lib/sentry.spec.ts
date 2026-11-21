@@ -8,6 +8,7 @@ jest.mock("@sentry/node", () => ({
   pinoIntegration: jest.fn(() => ({ name: "Pino" })),
   consoleLoggingIntegration: jest.fn(() => ({ name: "ConsoleLogging" })),
   captureException: jest.fn(),
+  captureMessage: jest.fn(),
   close: jest.fn().mockResolvedValue(true),
   onUnhandledRejectionIntegration: jest.fn(() => ({
     name: "OnUnhandledRejection",
@@ -17,6 +18,7 @@ jest.mock("@sentry/node", () => ({
 import * as Sentry from "@sentry/node";
 import {
   captureCheckIn,
+  captureProblem,
   getTraceHeaders,
   getSentryOptions,
   initSentry,
@@ -216,6 +218,15 @@ describe("tracing, logs and check-ins", () => {
     expect(names({})).not.toContain("Pino");
     expect(names({ SENTRY_ENABLE_LOGS: "true" })).toEqual(expect.arrayContaining(["Pino", "ConsoleLogging"]));
     expect(opts({ SENTRY_ENABLE_LOGS: "true" }).enableLogs).toBe(true);
+  });
+
+  it("captures a problem as an error-level message with its fingerprint", () => {
+    captureProblem("Retention cleanup is behind", ["retention-lag", "monitor_results", "7"], { lagDays: 3 });
+    expect(Sentry.captureMessage).toHaveBeenCalledWith("Retention cleanup is behind", {
+      level: "error",
+      fingerprint: ["retention-lag", "monitor_results", "7"],
+      extra: { lagDays: 3 },
+    });
   });
 
   it("exposes trace headers and sends check-ins with a monitor config", () => {

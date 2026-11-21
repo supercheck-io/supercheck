@@ -121,6 +121,11 @@ export function captureRequestError(error: unknown): void {
   Sentry.captureException(error);
 }
 
+/** An error-level message event grouped by `fingerprint`; `extra` carries counts only, never tenant data. */
+export function captureProblem(message: string, fingerprint: string[], extra: Record<string, unknown>): void {
+  Sentry.captureMessage(message, { level: "error", fingerprint, extra });
+}
+
 /** sentry-trace and baggage for the active span, to continue the trace in the worker. */
 export function getTraceHeaders(): { sentryTrace?: string; baggage?: string } {
   const data = Sentry.getTraceData();

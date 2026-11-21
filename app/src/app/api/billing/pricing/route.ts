@@ -13,6 +13,12 @@ import { getEnabledLocations } from "@/lib/location-registry";
 const PLAN_LIMIT_FALLBACKS = { plus: catalog.plus.limits, pro: catalog.pro.limits };
 
 // The catalog stands in only for a missing plan row; a row with no default cap is uncapped.
+/** Raw, hourly and daily windows; daily uptime is kept at least the catalog floor on every plan. */
+function monitorRetentionLabel(row: { dataRetentionDays: number; aggregatedDataRetentionDays: number }) {
+  const daily = Math.max(row.aggregatedDataRetentionDays, catalog.minDailyAggregateRetentionDays);
+  return `${row.dataRetentionDays}d raw / ${row.aggregatedDataRetentionDays}d hourly / ${daily}d daily`;
+}
+
 function formatDefaultCap(row: { defaultSpendingLimitCents: number | null } | undefined, fallbackCents: number) {
   const cents = row ? row.defaultSpendingLimitCents : fallbackCents;
   return cents ? `$${cents / 100}/month` : "None";
@@ -107,7 +113,7 @@ export async function GET() {
             projects: plan.maxProjects,
             statusPages: plan.maxStatusPages,
             statusPageSubscribers: plan.maxStatusPageSubscribers,
-            monitorDataRetention: `${plan.dataRetentionDays} days raw / ${plan.aggregatedDataRetentionDays} days metrics`,
+            monitorDataRetention: `${plan.dataRetentionDays} days raw / ${plan.aggregatedDataRetentionDays} days hourly / ${Math.max(plan.aggregatedDataRetentionDays, catalog.minDailyAggregateRetentionDays)} days daily uptime`,
             jobDataRetention: `${plan.jobDataRetentionDays} days`,
             customDomains: plan.customDomains,
             support:
@@ -260,8 +266,8 @@ export async function GET() {
         features: [
           {
             name: "Monitor Data Retention",
-            plus: `${plans.find((p) => p.plan === "plus")?.dataRetentionDays ?? PLAN_LIMIT_FALLBACKS.plus.dataRetentionDays}d raw / ${plans.find((p) => p.plan === "plus")?.aggregatedDataRetentionDays ?? PLAN_LIMIT_FALLBACKS.plus.aggregatedDataRetentionDays}d metrics`,
-            pro: `${plans.find((p) => p.plan === "pro")?.dataRetentionDays ?? PLAN_LIMIT_FALLBACKS.pro.dataRetentionDays}d raw / ${plans.find((p) => p.plan === "pro")?.aggregatedDataRetentionDays ?? PLAN_LIMIT_FALLBACKS.pro.aggregatedDataRetentionDays}d metrics`,
+            plus: monitorRetentionLabel(plans.find((p) => p.plan === "plus") ?? PLAN_LIMIT_FALLBACKS.plus),
+            pro: monitorRetentionLabel(plans.find((p) => p.plan === "pro") ?? PLAN_LIMIT_FALLBACKS.pro),
             enterprise: "Custom",
           },
           {

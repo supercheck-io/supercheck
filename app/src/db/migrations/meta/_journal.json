@@ -631,6 +631,13 @@
       "when": 1795262638702,
       "tag": "0089_plan_raw_retention",
       "breakpoints": true
+    },
+    {
+      "idx": 90,
+      "version": "7",
+      "when": 1795350000000,
+      "tag": "0090_high_churn_autovacuum",
+      "breakpoints": true
     }
   ]
 }

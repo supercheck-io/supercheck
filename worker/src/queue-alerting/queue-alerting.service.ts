@@ -52,6 +52,7 @@ const STATIC_MONITORED_QUEUES = [
   'k6-job-scheduler',
   'monitor-scheduler',
   'data-lifecycle-cleanup',
+  'data-lifecycle-urgent',
   'status-page-jobs',
   'sre-incident-renotify',
   'sre-alert-triage',

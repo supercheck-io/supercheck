@@ -131,8 +131,9 @@ const comparisonFeatures: { category: string; description: string; icon: LucideI
     },
     {
         category: 'Data retention', description: 'How long results and history are kept.', icon: Database, items: [
-            { name: 'Raw monitor data', plus: `${Number(catalog.plus.limits.dataRetentionDays).toLocaleString("en-US")} days`, pro: `${Number(catalog.pro.limits.dataRetentionDays).toLocaleString("en-US")} days`, enterprise: CUSTOM },
-            { name: 'Aggregated metrics', plus: `${Number(catalog.plus.limits.aggregatedDataRetentionDays).toLocaleString("en-US")} days`, pro: `${Number(catalog.pro.limits.aggregatedDataRetentionDays).toLocaleString("en-US")} days`, enterprise: CUSTOM },
+            { name: 'Raw monitor data', hint: 'Every individual check result with its response and error', plus: `${Number(catalog.plus.limits.dataRetentionDays).toLocaleString("en-US")} days`, pro: `${Number(catalog.pro.limits.dataRetentionDays).toLocaleString("en-US")} days`, enterprise: CUSTOM },
+            { name: 'Hourly metrics', hint: 'Hourly response time and uptime charts', plus: `${Number(catalog.plus.limits.aggregatedDataRetentionDays).toLocaleString("en-US")} days`, pro: `${Number(catalog.pro.limits.aggregatedDataRetentionDays).toLocaleString("en-US")} days`, enterprise: CUSTOM },
+            { name: 'Daily uptime history', hint: 'Daily uptime behind long-range charts and the 90-day status page bar', plus: `${Math.max(catalog.plus.limits.aggregatedDataRetentionDays, catalog.minDailyAggregateRetentionDays).toLocaleString("en-US")} days`, pro: `${Math.max(catalog.pro.limits.aggregatedDataRetentionDays, catalog.minDailyAggregateRetentionDays).toLocaleString("en-US")} days`, enterprise: CUSTOM },
             { name: 'Job run history', plus: `${Number(catalog.plus.limits.jobDataRetentionDays).toLocaleString("en-US")} days`, pro: `${Number(catalog.pro.limits.jobDataRetentionDays).toLocaleString("en-US")} days`, enterprise: CUSTOM },
         ]
     },

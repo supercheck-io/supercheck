@@ -72,6 +72,7 @@ function queuesFor(codes: string[]) {
     k6JobSchedulerQueue: queue("k6-job-scheduler"),
     monitorSchedulerQueue: queue("monitor-scheduler"),
     dataLifecycleCleanupQueue: queue("data-lifecycle"),
+    dataLifecycleUrgentQueue: queue("data-lifecycle-urgent"),
   };
 }
 

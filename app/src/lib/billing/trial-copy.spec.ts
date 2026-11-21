@@ -40,7 +40,10 @@ describe("trial copy", () => {
 
   it("says what happens at the end of the trial", () => {
     const text = trialFaqs().map((faq) => faq.answer).join(" ");
-    expect(text).toContain("Nothing is deleted");
     expect(text).toContain("paused");
+    expect(text).toContain("tests, jobs, monitors, and status pages are kept");
+    // History past the trial's raw window is deleted, so the answer must not promise otherwise.
+    expect(text).toContain(`last ${catalog.trial.retention.dataRetentionDays} days`);
+    expect(text).not.toContain("Nothing is deleted");
   });
 });

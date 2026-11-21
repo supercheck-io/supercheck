@@ -6,7 +6,9 @@
  *
  * Key Features:
  * - Pluggable cleanup strategies for different entities
- * - Unified BullMQ queue for all cleanup operations
+ * - Two BullMQ queues: heavy retention strategies one at a time, short urgent ones (trial lifecycle,
+ *   deletion sweep, credential revocation retry) on their own queue
+ * - Token-owned Redis lock per strategy, renewed while a run is alive
  * - Comprehensive error handling and retry logic
  * - Detailed metrics and logging
  * - Configurable retention policies
@@ -22,6 +24,8 @@
  * - Plus plan: 7 days raw data, 30 days aggregated/job data
  * - Pro plan: 30 days raw data, 90 days aggregated/job data
  * - Unlimited plan: 7 days raw data, 90 days aggregated/job data (self-hosted seed)
+ * - Daily aggregates are kept at least 90 days on every plan (status page uptime bar)
+ * - No plan (trial, ended trial, never subscribed): the shortest raw window (the trial's)
  * - Cleanup is performed per-organization to respect plan limits
  *
  * PostgreSQL TTL Note:
@@ -37,7 +41,7 @@ import {
   retryPendingCredentialRevocations,
 } from "@/lib/security/password-reset-cleanup";
 import { db } from "@/utils/db";
-import { TELEMETRY_RETENTION_RULES, buildCountSql, purgeTelemetryTable, resolveBatchSize, resolveRetentionDays, resolveSafetyLimit } from "@/lib/telemetry-retention";
+import { TELEMETRY_RETENTION_RULES, buildCountSql, clampInt, purgeTelemetryTable, resolveBatchSize, resolveRetentionDays, resolveSafetyLimit } from "@/lib/telemetry-retention";
 import { TRIAL_RETENTION } from "@/lib/execution/trial-limits";
 import {
   monitorResults,
@@ -57,14 +61,16 @@ import {
 import { sql, and, or, isNotNull, isNull, lt, lte, eq, inArray, gt, asc, type SQL } from "drizzle-orm";
 import { Queue, Worker, QueueEvents } from "bullmq";
 import type Redis from "ioredis";
-import { buildRedisOptions } from "@/lib/queue";
+import { buildRedisOptions, DATA_LIFECYCLE_CLEANUP_QUEUE, DATA_LIFECYCLE_URGENT_QUEUE } from "@/lib/queue";
+import { acquireOwnedLock, type OwnedLock } from "@/lib/cleanup-lock";
 import { watchConsumer } from "@/lib/consumer-watchdog";
 import { createS3CleanupService, type ReportDeletionInput } from "./s3-cleanup";
 import { isPolarEnabled } from "@/lib/feature-flags";
 import { removeK6RunLinks } from "@/lib/resource-deletion/linked-records";
-import { monitorAggregationService } from "./monitor-aggregation-service";
+import { AGGREGATION_CONFIG, monitorAggregationService } from "./monitor-aggregation-service";
 import { endExpiredTrials, reconcilePaidTrialSuspensions, sendTrialReminders, suspendLapsedOrganizations } from "@/lib/execution/trial-lifecycle";
 import { AUDIT_RETENTION_DAYS, scrubAuditEmails } from "@/lib/audit-scrub";
+import { reportProblem } from "@/lib/sentry-lazy";
 import { deliverTrialReminder } from "@/lib/execution/trial-reminder-delivery";
 
 const QUEUE_EVENTS_READY_TIMEOUT_MS = 10_000;
@@ -161,6 +167,33 @@ interface CleanupJobData {
   config: CleanupStrategyConfig;
 }
 
+/** Resume state that survives between runs (Redis in production). */
+export interface CleanupCursorStore {
+  get(key: string): Promise<string | null>;
+  /** null clears the key. */
+  set(key: string, value: string | null): Promise<void>;
+}
+
+/** Per-run context the service hands to a strategy. */
+export interface CleanupContext {
+  /** Aborted when the run's lock is lost: stop at the next batch boundary. */
+  signal?: AbortSignal;
+  cursor?: CleanupCursorStore;
+}
+
+/** Short, urgent strategies run on their own queue so a long retention sweep never delays them. */
+export const URGENT_CLEANUP_ENTITY_TYPES: ReadonlySet<CleanupEntityType> = new Set([
+  "trial_lifecycle",
+  "deletion_sweep",
+  "credential_revocation_retry",
+]);
+
+/** Lock TTL is longer than the longest run budget; a live holder renews it well before it lapses. */
+const CLEANUP_LOCK_TTL_MS = 45 * 60_000;
+const CLEANUP_LOCK_RENEW_MS = 5 * 60_000;
+/** A run stuck past its budget stops renewing, so the lock lapses and another replica can take over. */
+const CLEANUP_LOCK_MAX_HOLD_MS = 50 * 60_000;
+
 /**
  * Organization retention info for multi-tenant cleanup
  */
@@ -201,64 +234,80 @@ function isOnFreeTrial(
 }
 
 /**
- * Get retention settings for all organizations based on their subscription plans
- * Seeded raw retention: Plus 7d, Pro 30d, self-hosted 7d; deployments can change plan_limits.
- *
- * @param fallbackRetentionDays - Default retention for missing plan settings
- * @returns Array of organization retention settings
+ * Raw retention for an organization with no plan (an active or ended trial, or never subscribed): the shortest raw
+ * window, which is the trial's.
  */
-export async function getOrganizationRetentionSettings(
-  fallbackRetentionDays: number
-): Promise<OrganizationRetention[]> {
+export const SHORTEST_RAW_RETENTION_DAYS = TRIAL_RETENTION.dataRetentionDays;
+
+/** Drops settings whose window is not a positive number of days: a 0 or a negative value would delete everything. */
+function withValidDays<T extends { organizationId: string }>(rows: T[], days: (row: T) => number, kind: string): T[] {
+  return rows.filter((row) => {
+    const value = days(row);
+    if (Number.isInteger(value) && value >= 1) return true;
+    console.error(`[DATA_LIFECYCLE] Skipping ${kind} cleanup of org ${row.organizationId.substring(0, 8)}: retention ${value} is not a positive number of days`);
+    return false;
+  });
+}
+
+/**
+ * Raw monitor-result retention of every organization, ordered by organization id.
+ * - Self-hosted: the unlimited plan row.
+ * - Cloud: an organization with a plan uses its plan row; a plan with no row is skipped (logged as an error). One
+ *   with no plan (trial, ended trial, never subscribed) gets the shortest raw window. One with a live subscription
+ *   status (active, past_due) but no plan yet is skipped this run: its plan is being set by a webhook, and guessing
+ *   could delete days a paid plan keeps.
+ * A failed lookup throws, so the caller skips cleanup rather than guessing.
+ */
+export async function getOrganizationRetentionSettings(): Promise<OrganizationRetention[]> {
   try {
     // In self-hosted mode, use the unlimited plan's retention from database
     if (!isPolarEnabled()) {
-      const orgs = await db.select({ id: organization.id }).from(organization);
-
-      // Fetch the unlimited plan's retention from database
+      const orgs = await db.select({ id: organization.id }).from(organization).orderBy(asc(organization.id));
       const unlimitedPlan = await db
         .select({ dataRetentionDays: planLimits.dataRetentionDays })
         .from(planLimits)
         .where(eq(planLimits.plan, "unlimited"))
         .limit(1);
-
-      // Use database value if available, otherwise fallback
-      const retentionDays =
-        unlimitedPlan[0]?.dataRetentionDays ?? fallbackRetentionDays;
-
-      return orgs.map((org) => ({
-        organizationId: org.id,
-        retentionDays,
-        plan: "unlimited",
-      }));
+      const retentionDays = unlimitedPlan[0]?.dataRetentionDays ?? SHORTEST_RAW_RETENTION_DAYS;
+      return withValidDays(
+        orgs.map((org) => ({ organizationId: org.id, retentionDays, plan: "unlimited" })),
+        (row) => row.retentionDays,
+        "monitor_results",
+      );
     }
 
-    // In cloud mode, fetch each org's plan and corresponding retention
     const orgsWithPlans = await db
       .select({
         organizationId: organization.id,
         subscriptionPlan: organization.subscriptionPlan,
         subscriptionStatus: organization.subscriptionStatus,
       })
-      .from(organization);
-
-    // Get all plan limits for lookup
+      .from(organization)
+      .orderBy(asc(organization.id));
     const plans = await db.select().from(planLimits);
-    const planRetentionMap = new Map(
-      plans.map((p) => [p.plan, p.dataRetentionDays])
-    );
+    const planRetentionMap = new Map(plans.map((p) => [p.plan, p.dataRetentionDays]));
 
-    const trialOrganizations = await getActiveTrialOrganizationIds();
-
-    return orgsWithPlans.map((org) => ({
-      organizationId: org.organizationId,
-      retentionDays: org.subscriptionPlan
-        ? planRetentionMap.get(org.subscriptionPlan) || fallbackRetentionDays
-        : isOnFreeTrial(org, trialOrganizations)
-          ? TRIAL_RETENTION.dataRetentionDays
-          : fallbackRetentionDays,
-      plan: org.subscriptionPlan || "fallback",
-    }));
+    const settings: OrganizationRetention[] = [];
+    for (const org of orgsWithPlans) {
+      if (org.subscriptionPlan) {
+        const days = planRetentionMap.get(org.subscriptionPlan);
+        if (days === undefined) {
+          // A paid plan whose row is missing: never guess the most destructive window.
+          console.error(
+            `[DATA_LIFECYCLE] Skipping monitor_results cleanup of org ${org.organizationId.substring(0, 8)}: no plan_limits row for plan ${org.subscriptionPlan}`
+          );
+          continue;
+        }
+        settings.push({ organizationId: org.organizationId, retentionDays: days, plan: org.subscriptionPlan });
+      } else if (org.subscriptionStatus === "active" || org.subscriptionStatus === "past_due") {
+        console.warn(
+          `[DATA_LIFECYCLE] Skipping monitor_results cleanup of org ${org.organizationId.substring(0, 8)}: subscription ${org.subscriptionStatus} but no plan yet`
+        );
+      } else {
+        settings.push({ organizationId: org.organizationId, retentionDays: SHORTEST_RAW_RETENTION_DAYS, plan: "none" });
+      }
+    }
+    return withValidDays(settings, (row) => row.retentionDays, "monitor_results");
   } catch (error) {
     console.warn(
       "[DATA_LIFECYCLE] Failed to fetch organization retention settings, skipping cleanup:",
@@ -300,11 +349,11 @@ export async function getOrganizationAggregatedRetentionSettings(
       const aggregatedRetentionDays =
         unlimitedPlan[0]?.aggregatedDataRetentionDays ?? fallbackAggregatedRetentionDays;
 
-      return orgs.map((org) => ({
-        organizationId: org.id,
-        aggregatedRetentionDays,
-        plan: "unlimited",
-      }));
+      return withValidDays(
+        orgs.map((org) => ({ organizationId: org.id, aggregatedRetentionDays, plan: "unlimited" })),
+        (row) => row.aggregatedRetentionDays,
+        "monitor_aggregates",
+      );
     }
 
     // In cloud mode, fetch each org's plan and corresponding aggregated retention
@@ -314,7 +363,8 @@ export async function getOrganizationAggregatedRetentionSettings(
         subscriptionPlan: organization.subscriptionPlan,
         subscriptionStatus: organization.subscriptionStatus,
       })
-      .from(organization);
+      .from(organization)
+      .orderBy(asc(organization.id));
 
     // Get all plan limits for lookup
     const plans = await db.select().from(planLimits);
@@ -324,22 +374,22 @@ export async function getOrganizationAggregatedRetentionSettings(
 
     const trialOrganizations = await getActiveTrialOrganizationIds();
 
-    return orgsWithPlans.map((org) => ({
+    return withValidDays(orgsWithPlans.map((org) => ({
       organizationId: org.organizationId,
       aggregatedRetentionDays: org.subscriptionPlan
-        ? planAggregatedRetentionMap.get(org.subscriptionPlan) ||
+        ? planAggregatedRetentionMap.get(org.subscriptionPlan) ??
           fallbackAggregatedRetentionDays
         : isOnFreeTrial(org, trialOrganizations)
           ? TRIAL_RETENTION.aggregatedDataRetentionDays
           : fallbackAggregatedRetentionDays,
       plan: org.subscriptionPlan || "fallback",
-    }));
+    })), (row) => row.aggregatedRetentionDays, "monitor_aggregates");
   } catch (error) {
     console.warn(
       "[DATA_LIFECYCLE] Failed to fetch organization aggregated retention settings, using fallback:",
       error
     );
-    // Return empty array - will fall back to global cleanup
+    // No settings: this run deletes no aggregates.
     return [];
   }
 }
@@ -358,7 +408,7 @@ export async function getOrganizationAggregatedRetentionSettings(
  * Supercheck values:
  * - Plus: 30 days
  * - Pro: 90 days
- * - Unlimited: 90 days (self-hosted database seed; subscription-service fallback is 180)
+ * - Unlimited: 90 days (self-hosted database seed and subscription-service fallback)
  */
 export async function getOrganizationJobRetentionSettings(
   fallbackJobRetentionDays: number
@@ -385,11 +435,11 @@ export async function getOrganizationJobRetentionSettings(
       const jobRetentionDays =
         unlimitedPlan[0]?.jobDataRetentionDays ?? fallbackJobRetentionDays;
 
-      return orgs.map((org) => ({
-        organizationId: org.id,
-        jobRetentionDays,
-        plan: "unlimited",
-      }));
+      return withValidDays(
+        orgs.map((org) => ({ organizationId: org.id, jobRetentionDays, plan: "unlimited" })),
+        (row) => row.jobRetentionDays,
+        "job_runs",
+      );
     }
 
     // In cloud mode, fetch each org's plan and corresponding job retention
@@ -409,16 +459,16 @@ export async function getOrganizationJobRetentionSettings(
 
     const trialOrganizations = await getActiveTrialOrganizationIds();
 
-    return orgsWithPlans.map((org) => ({
+    return withValidDays(orgsWithPlans.map((org) => ({
       organizationId: org.organizationId,
       jobRetentionDays: org.subscriptionPlan
-        ? planJobRetentionMap.get(org.subscriptionPlan) ||
+        ? planJobRetentionMap.get(org.subscriptionPlan) ??
           fallbackJobRetentionDays
         : isOnFreeTrial(org, trialOrganizations)
           ? TRIAL_RETENTION.jobDataRetentionDays
           : fallbackJobRetentionDays,
       plan: org.subscriptionPlan || "fallback",
-    }));
+    })), (row) => row.jobRetentionDays, "job_runs");
   } catch (error) {
     console.warn(
       "[DATA_LIFECYCLE] Failed to fetch organization job retention settings, skipping cleanup:",
@@ -441,9 +491,9 @@ export interface ICleanupStrategy {
   config: CleanupStrategyConfig;
 
   /**
-   * Execute the cleanup operation
+   * Execute the cleanup operation. Long strategies stop at a batch boundary once `context.signal` aborts.
    */
-  execute(dryRun?: boolean): Promise<CleanupOperationResult>;
+  execute(dryRun?: boolean, context?: CleanupContext): Promise<CleanupOperationResult>;
 
   /**
    * Validate the strategy configuration
@@ -460,24 +510,95 @@ export interface ICleanupStrategy {
 // CLEANUP STRATEGIES
 // ============================================================================
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+/** A run stops at a batch boundary after this long and reports `partial`; the next hourly run resumes. */
+export const RETENTION_RUN_BUDGET_MS = 40 * 60_000;
+/** One organization gets at most this share of a run's budget, so a slow backlog cannot hold up the ones after it. */
+const ORG_BUDGET_SHARE = 4;
+/** Lag past a class's window, in days, before cleanup is reported as falling behind. */
+export const RETENTION_LAG_ALERT_DAYS = 2;
+const MONITOR_RESULTS_CURSOR_KEY = "cleanup:monitor_results:org-cursor";
+/** Artifact rows call object storage per row, so they go in smaller batches than the single-statement fast path. */
+const ARTIFACT_BATCH_SIZE = 500;
+
+/** Rows that may point at a stored report: deleted through object storage first. */
+const hasArtifact = sql`(${monitorResults.testExecutionId} IS NOT NULL OR ${monitorResults.testReportS3Url} IS NOT NULL OR coalesce(${monitorResults.details} ? 'reportUrl', false))`;
+
+type StopReason = "budget" | "lock";
+
+interface RunLimits {
+  deadline: number;
+  signal?: AbortSignal;
+  pauseMs: number;
+}
+
+const stopReason = ({ deadline, signal }: RunLimits): StopReason | null =>
+  signal?.aborted ? "lock" : Date.now() >= deadline ? "budget" : null;
+
+const pause = (ms: number) => (ms > 0 ? new Promise((resolve) => setTimeout(resolve, ms)) : Promise.resolve());
+
+/** Budget, per-organization cap and pause for a run; `customConfig` overrides them (tests). */
+function runSettings(config: CleanupStrategyConfig, defaults: { batchSize: number; perOrgCap: number }) {
+  const custom = config.customConfig ?? {};
+  const positive = (value: unknown, fallback: number) =>
+    typeof value === "number" && Number.isFinite(value) && value > 0 ? value : fallback;
+  return {
+    batchSize: positive(config.batchSize, defaults.batchSize),
+    perOrgCap: positive(config.maxRecordsPerRun, defaults.perOrgCap),
+    budgetMs: positive(custom.timeBudgetMs, RETENTION_RUN_BUDGET_MS),
+    pauseMs: typeof custom.pauseMs === "number" && custom.pauseMs >= 0 ? custom.pauseMs : 100,
+  };
+}
+
+export interface RetentionLag {
+  retentionDays: number;
+  /** Age in days of the oldest row in this class that cleanup should already have removed. */
+  oldestAgeDays: number;
+  lagDays: number;
+  organizations: number;
+}
+
+/**
+ * Lag of each retention class from the oldest row per organization (one indexed top-1 lookup per monitor).
+ * A class whose oldest row is more than RETENTION_LAG_ALERT_DAYS past its window is logged as a structured error
+ * and captured as an error event (Cloud only), so falling behind is seen.
+ */
+export async function measureRetentionLag(
+  table: "monitor_results" | "monitor_aggregates_hourly" | "monitor_aggregates_daily",
+  oldestByOrg: Map<string, Date>,
+  windowByOrg: Map<string, number>,
+  now = Date.now(),
+): Promise<RetentionLag[]> {
+  const classes = new Map<number, RetentionLag>();
+  for (const [organizationId, days] of windowByOrg) {
+    const entry = classes.get(days) ?? { retentionDays: days, oldestAgeDays: 0, lagDays: 0, organizations: 0 };
+    entry.organizations++;
+    const oldest = oldestByOrg.get(organizationId);
+    if (oldest) {
+      const age = (now - oldest.getTime()) / DAY_MS;
+      entry.oldestAgeDays = Math.max(entry.oldestAgeDays, Math.round(age * 100) / 100);
+      entry.lagDays = Math.max(entry.lagDays, Math.round((age - days) * 100) / 100);
+    }
+    classes.set(days, entry);
+  }
+  const lags = [...classes.values()].sort((a, b) => a.retentionDays - b.retentionDays);
+  for (const lag of lags.filter((l) => l.lagDays > RETENTION_LAG_ALERT_DAYS)) {
+    console.error(JSON.stringify({ event: "retention_lag", table, ...lag }));
+    reportProblem(`Retention cleanup is behind: ${table} ${lag.retentionDays}-day class`, ["retention-lag", table, String(lag.retentionDays)], { table, ...lag });
+  }
+  return lags;
+}
+
 /**
  * Monitor Results Cleanup Strategy
  *
- * Manages retention of monitor_results table with:
- * - **Multi-tenant aware**: Cleans up per organization based on plan retention
- * - Time-based retention (plan-specific or global fallback)
- * - Status change preservation
- * - Batch processing
- *
- * Multi-Tenancy Implementation:
- * - Fetches all organizations and their plan-based retention settings
- * - Processes cleanup per organization to respect different retention periods
- * - Skips cleanup on plan lookup errors; global fallback only when no organizations exist
- *
- * Resource Optimization:
- * - Uses batched deletions (default 1000 records) to minimize DB load
- * - 100ms delay between batches to prevent overwhelming the database
- * - Processes organizations sequentially to avoid resource spikes
+ * Deletes raw monitor_results past each organization's raw retention (getOrganizationRetentionSettings):
+ * - Organizations are walked in id order, each organization's monitors once per run.
+ * - Per monitor, rows that may hold a report go first (object storage, then one transaction), then plain rows in
+ *   single-statement batches on (monitor_id, checked_at). Status-change rows are kept; their reports expire.
+ * - A per-organization row cap keeps one heavy organization from starving the rest, and a time budget ends the
+ *   run at a batch boundary with `partial: true` (a success, so no retry). A Redis cursor holding the last
+ *   finished organization lets the next run carry on from there.
  */
 export class MonitorResultsCleanupStrategy implements ICleanupStrategy {
   entityType: CleanupEntityType = "monitor_results";
@@ -490,50 +611,22 @@ export class MonitorResultsCleanupStrategy implements ICleanupStrategy {
     this.validate();
   }
 
-  validate(): void {
-    if (!this.config.retentionDays || this.config.retentionDays <= 0) {
-      throw new Error("Monitor results cleanup requires retentionDays > 0");
-    }
-  }
+  validate(): void {}
 
   async getStats(): Promise<{ totalRecords: number; oldRecords: number }> {
-    // Use the minimum retention period for stats (shows worst case)
-    const cutoffDate = new Date(
-      Date.now() - this.config.retentionDays! * 24 * 60 * 60 * 1000
-    );
-
-    const [total, old] = await Promise.all([
-      db.select({ count: sql<number>`count(*)` }).from(monitorResults),
-      db
-        .select({ count: sql<number>`count(*)` })
-        .from(monitorResults)
-        .where(
-          and(
-            lt(monitorResults.checkedAt, cutoffDate),
-            eq(monitorResults.isStatusChange, false) // Exclude status changes
-          )
-        ),
+    // Planner estimates: exact counts scan the whole table. Old rows are those past the shortest raw window.
+    const cutoff = new Date(Date.now() - SHORTEST_RAW_RETENTION_DAYS * DAY_MS);
+    const [totalRecords, oldRecords] = await Promise.all([
+      estimateTableRows("monitor_results"),
+      estimateRows(sql`SELECT 1 FROM monitor_results WHERE checked_at < ${cutoff.toISOString()}::timestamptz AND NOT is_status_change`),
     ]);
-
-    return {
-      totalRecords: Number(total[0]?.count || 0),
-      oldRecords: Number(old[0]?.count || 0),
-    };
+    return { totalRecords, oldRecords };
   }
 
-  /**
-   * Execute cleanup with multi-tenant awareness
-   *
-   * Strategy:
-   * 1. Fetch all organizations with their plan-based retention settings
-   * 2. For each organization, calculate the appropriate cutoff date
-   * 3. Delete monitor results older than the org's retention period
-   * 4. Process in batches to minimize resource consumption
-   */
-  async execute(dryRun = false): Promise<CleanupOperationResult> {
+  async execute(dryRun = false, context: CleanupContext = {}): Promise<CleanupOperationResult> {
     const startTime = Date.now();
-    const batchSize = this.config.batchSize || 1000;
-    const maxRecords = this.config.maxRecordsPerRun || 1000000;
+    const settings = runSettings(this.config, { batchSize: 5000, perOrgCap: 500_000 });
+    const limits: RunLimits = { deadline: startTime + settings.budgetMs, signal: context.signal, pauseMs: settings.pauseMs };
 
     const result: CleanupOperationResult = {
       success: true,
@@ -542,173 +635,187 @@ export class MonitorResultsCleanupStrategy implements ICleanupStrategy {
       s3ObjectsDeleted: 0,
       duration: 0,
       errors: [],
-      details: { dryRun, multiTenant: true, organizationsProcessed: 0 },
+      details: { dryRun, multiTenant: true, organizationsProcessed: 0, partial: false },
     };
+    const orgStats: Record<string, { deleted: number; retentionDays: number; capped?: boolean }> = {};
 
     try {
-      // Get organization retention settings (plan-based)
-      const orgRetentions = await getOrganizationRetentionSettings(
-        this.config.retentionDays!
-      );
+      const orgRetentions = await getOrganizationRetentionSettings();
 
-      // If no org-specific settings, fall back to global cleanup
-      if (orgRetentions.length === 0) {
-        console.log(
-          "[DATA_LIFECYCLE] [monitor_results] No organization retention settings found, using global fallback"
-        );
-        return this.executeGlobalCleanup(dryRun);
-      }
-
-      let totalDeleted = 0;
-      let totalProcessed = 0;
-      const orgStats: Record<
-        string,
-        { deleted: number; retentionDays: number }
-      > = {};
-
-      // Process each organization with their specific retention period
-      for (const orgRetention of orgRetentions) {
-        if (totalProcessed >= maxRecords) {
-          console.log(
-            `[DATA_LIFECYCLE] [monitor_results] Reached max records limit (${maxRecords}), stopping`
-          );
-          break;
+      if (dryRun) {
+        for (const org of orgRetentions) {
+          const count = await this.countResultsToClean(org, settings.perOrgCap);
+          if (count.deleted > 0) orgStats[org.organizationId.substring(0, 8)] = { deleted: count.deleted, retentionDays: org.retentionDays };
+          result.recordsDeleted += count.deleted;
+          result.details.recordsProcessed = Number(result.details.recordsProcessed ?? 0) + count.processed;
         }
+        result.details.organizationsProcessed = orgRetentions.length;
+      } else {
+        const resumeAfter = (await context.cursor?.get(MONITOR_RESULTS_CURSOR_KEY)) ?? null;
+        const ordered = resumeAfter
+          ? [...orgRetentions.filter((o) => o.organizationId > resumeAfter), ...orgRetentions.filter((o) => o.organizationId <= resumeAfter)]
+          : orgRetentions;
+        let lastFinished: string | null = null;
+        let stopped: StopReason | null = null;
 
-        const cutoffDate = new Date(
-          Date.now() - orgRetention.retentionDays * 24 * 60 * 60 * 1000
-        );
-
-        let orgDeleted = 0;
-        // Keep PostgreSQL microseconds; Date truncation can reselect retained failures.
-        let cursor: { checkedAt: string; id: string } | undefined;
-        let iterations = 0;
-        const maxIterations = Math.ceil(
-          (maxRecords - totalProcessed) / batchSize
-        );
-
-        while (iterations < maxIterations) {
-          // Find monitor IDs belonging to this organization
-          const monitorsInOrg = await db
-            .select({ id: monitors.id })
-            .from(monitors)
-            .where(eq(monitors.organizationId, orgRetention.organizationId));
-
-          if (monitorsInOrg.length === 0) break;
-
-          const monitorIds = monitorsInOrg.map((m) => m.id);
-
-          if (dryRun) {
-            // Count records that would be deleted for this org
-            const count = await this.countResultsToClean(and(
-              inArray(monitorResults.monitorId, monitorIds),
-              lt(monitorResults.checkedAt, cutoffDate),
-              or(
-                eq(monitorResults.isStatusChange, false),
-                isNotNull(monitorResults.testExecutionId),
-                isNotNull(monitorResults.testReportS3Url)
-              )
-            )!, maxRecords - totalProcessed);
-            orgDeleted += count.deleted;
-            totalProcessed += count.processed;
-            result.details.recordsProcessed = totalProcessed;
-            break; // In dry-run, just count once
-          } else {
-            // Get IDs to delete for this organization
-            const idsToDelete = await db
-              .select({
-                id: monitorResults.id,
-                checkedAt: sql<string>`${monitorResults.checkedAt}::text`,
-                isStatusChange: monitorResults.isStatusChange,
-                status: monitorResults.status,
-                testExecutionId: monitorResults.testExecutionId,
-                testReportS3Url: monitorResults.testReportS3Url,
-              })
-              .from(monitorResults)
-              .where(
-                and(
-                  inArray(monitorResults.monitorId, monitorIds),
-                  lt(monitorResults.checkedAt, cutoffDate),
-                  cursor ? or(
-                    gt(monitorResults.checkedAt, sql`${cursor.checkedAt}::timestamptz`),
-                    and(eq(monitorResults.checkedAt, sql`${cursor.checkedAt}::timestamptz`), gt(monitorResults.id, cursor.id))
-                  ) : undefined,
-                  or(
-                    eq(monitorResults.isStatusChange, false),
-                    isNotNull(monitorResults.testExecutionId),
-                    isNotNull(monitorResults.testReportS3Url)
-                  )
-                )
-              )
-              .orderBy(asc(monitorResults.checkedAt), asc(monitorResults.id))
-              .limit(Math.min(batchSize, maxRecords - totalProcessed));
-
-            if (idsToDelete.length === 0) break;
-
-            totalProcessed += idsToDelete.length;
-            result.details.recordsProcessed = totalProcessed;
-            try {
-              orgDeleted += await this.cleanupBatch(idsToDelete, result);
-              const last = idsToDelete[idsToDelete.length - 1];
-              cursor = { checkedAt: last.checkedAt, id: last.id };
-              result.recordsDeleted = totalDeleted + orgDeleted;
-            } catch (error) {
-              // Preserve this failed batch for retry without starving other tenants.
-              result.success = false;
-              result.errors.push(error instanceof Error ? error.message : String(error));
-              break;
-            }
-
-            // Small delay between batches
-            if (idsToDelete.length === batchSize) {
-              await new Promise((resolve) => setTimeout(resolve, 100));
-            }
+        for (const org of ordered) {
+          const outcome = await this.cleanOrganization(org, settings, limits, result);
+          if (outcome.deleted > 0 || outcome.capped) {
+            orgStats[org.organizationId.substring(0, 8)] = {
+              deleted: outcome.deleted,
+              retentionDays: org.retentionDays,
+              ...(outcome.capped ? { capped: true } : {}),
+            };
           }
-
-          iterations++;
-          if (totalProcessed >= maxRecords) break;
+          result.recordsDeleted += outcome.deleted;
+          if (outcome.stopped) {
+            stopped = outcome.stopped;
+            break;
+          }
+          lastFinished = org.organizationId;
+          result.details.organizationsProcessed = Number(result.details.organizationsProcessed) + 1;
         }
 
-        if (orgDeleted > 0) {
-          orgStats[orgRetention.organizationId.substring(0, 8)] = {
-            deleted: orgDeleted,
-            retentionDays: orgRetention.retentionDays,
-          };
+        if (stopped) {
+          result.details.partial = true;
+          result.details.stopReason = stopped;
+          // A run that lost its lock leaves the cursor to the new owner.
+          if (stopped === "budget" && lastFinished) await context.cursor?.set(MONITOR_RESULTS_CURSOR_KEY, lastFinished);
+        } else {
+          await context.cursor?.set(MONITOR_RESULTS_CURSOR_KEY, null);
         }
-        totalDeleted += orgDeleted;
+
+        try {
+          result.details.lag = await measureRetentionLag(
+            "monitor_results",
+            await oldestRawResultByOrg(),
+            new Map(orgRetentions.map((o) => [o.organizationId, o.retentionDays])),
+          );
+        } catch (error) {
+          console.error("[DATA_LIFECYCLE] [monitor_results] Lag check failed:", error);
+        }
       }
 
-      result.recordsDeleted = totalDeleted;
-      result.duration = Date.now() - startTime;
-      result.details.organizationsProcessed = orgRetentions.length;
       result.details.perOrgStats = orgStats;
-
-      if (totalDeleted > 0) {
+      if (result.recordsDeleted > 0) {
         console.log(
-          `[DATA_LIFECYCLE] ${this.entityType}: ${
-            dryRun ? "Would delete" : "Deleted"
-          } ${totalDeleted} records across ${Object.keys(orgStats).length} organizations`
+          `[DATA_LIFECYCLE] ${this.entityType}: ${dryRun ? "Would delete" : "Deleted"} ${result.recordsDeleted} records across ${Object.keys(orgStats).length} organizations${result.details.partial ? " (partial run)" : ""}`
         );
       }
     } catch (error) {
       result.success = false;
-      result.errors.push(
-        error instanceof Error ? error.message : String(error)
-      );
-      result.duration = Date.now() - startTime;
-      console.error(
-        `[DATA_LIFECYCLE] [${this.entityType}] Cleanup failed:`,
-        error
-      );
+      result.errors.push(error instanceof Error ? error.message : String(error));
+      console.error(`[DATA_LIFECYCLE] [${this.entityType}] Cleanup failed:`, error);
     }
 
+    result.duration = Date.now() - startTime;
     return result;
   }
 
-  private async countResultsToClean(condition: SQL, limit: number) {
+  /** One organization's monitors, each once, within its share of the budget, the per-org cap and the lock. */
+  private async cleanOrganization(
+    org: OrganizationRetention,
+    settings: ReturnType<typeof runSettings>,
+    runLimits: RunLimits,
+    result: CleanupOperationResult,
+  ): Promise<{ deleted: number; capped: boolean; stopped: StopReason | null }> {
+    const outcome = await this.cleanOrganizationWithin(org, settings, {
+      ...runLimits,
+      deadline: Math.min(runLimits.deadline, Date.now() + settings.budgetMs / ORG_BUDGET_SHARE),
+    }, result);
+    // Out of its own slice, not the run's budget: treat like the row cap and move on to the next organization.
+    if (outcome.stopped === "budget" && Date.now() < runLimits.deadline) return { ...outcome, capped: true, stopped: null };
+    return outcome;
+  }
+
+  private async cleanOrganizationWithin(
+    org: OrganizationRetention,
+    settings: ReturnType<typeof runSettings>,
+    limits: RunLimits,
+    result: CleanupOperationResult,
+  ): Promise<{ deleted: number; capped: boolean; stopped: StopReason | null }> {
+    const cutoff = new Date(Date.now() - org.retentionDays * DAY_MS);
+    const orgMonitors = await db
+      .select({ id: monitors.id })
+      .from(monitors)
+      .where(eq(monitors.organizationId, org.organizationId))
+      .orderBy(asc(monitors.id));
+
+    let deleted = 0;
+    let processed = 0;
+    for (const { id: monitorId } of orgMonitors) {
+      try {
+        // Artifact rows first: their reports must leave object storage before the row that points at them.
+        let cursor: { checkedAt: string; id: string } | undefined;
+        for (;;) {
+          const stopped = stopReason(limits);
+          if (stopped) return { deleted, capped: false, stopped };
+          if (processed >= settings.perOrgCap) return { deleted, capped: true, stopped: null };
+          const rows = await db
+            .select({
+              id: monitorResults.id,
+              checkedAt: sql<string>`${monitorResults.checkedAt}::text`,
+              isStatusChange: monitorResults.isStatusChange,
+              status: monitorResults.status,
+              testExecutionId: monitorResults.testExecutionId,
+              testReportS3Url: monitorResults.testReportS3Url,
+              reportUrl: sql<string | null>`${monitorResults.details}->>'reportUrl'`,
+            })
+            .from(monitorResults)
+            .where(
+              and(
+                eq(monitorResults.monitorId, monitorId),
+                lt(monitorResults.checkedAt, cutoff),
+                hasArtifact,
+                // Keep PostgreSQL microseconds; Date truncation can reselect a row whose storage delete failed.
+                cursor
+                  ? or(
+                      gt(monitorResults.checkedAt, sql`${cursor.checkedAt}::timestamptz`),
+                      and(eq(monitorResults.checkedAt, sql`${cursor.checkedAt}::timestamptz`), gt(monitorResults.id, cursor.id))
+                    )
+                  : undefined,
+              )
+            )
+            .orderBy(asc(monitorResults.checkedAt), asc(monitorResults.id))
+            .limit(Math.min(ARTIFACT_BATCH_SIZE, settings.batchSize, settings.perOrgCap - processed));
+          if (rows.length === 0) break;
+          processed += rows.length;
+          deleted += await this.cleanupBatch(rows, result);
+          const last = rows[rows.length - 1];
+          cursor = { checkedAt: last.checkedAt, id: last.id };
+        }
+
+        // Plain rows: one statement per batch, no round trip through the app.
+        for (;;) {
+          const stopped = stopReason(limits);
+          if (stopped) return { deleted, capped: false, stopped };
+          if (processed >= settings.perOrgCap) return { deleted, capped: true, stopped: null };
+          const size = Math.min(settings.batchSize, settings.perOrgCap - processed);
+          const removed = await deletePlainResults(monitorId, cutoff, size);
+          processed += removed;
+          deleted += removed;
+          if (removed < size) break;
+          await pause(limits.pauseMs);
+        }
+      } catch (error) {
+        // Keep this monitor's remaining rows for the next run; other monitors and organizations still run.
+        result.success = false;
+        result.errors.push(error instanceof Error ? error.message : String(error));
+      }
+    }
+    return { deleted, capped: false, stopped: null };
+  }
+
+  private async countResultsToClean(org: OrganizationRetention, limit: number) {
+    const cutoff = new Date(Date.now() - org.retentionDays * DAY_MS);
+    const orgMonitors = db.select({ id: monitors.id }).from(monitors).where(eq(monitors.organizationId, org.organizationId));
     const candidates = db.select({ isStatusChange: monitorResults.isStatusChange })
-      .from(monitorResults).where(condition)
-      .orderBy(asc(monitorResults.checkedAt), asc(monitorResults.id))
+      .from(monitorResults)
+      .where(and(
+        inArray(monitorResults.monitorId, orgMonitors),
+        lt(monitorResults.checkedAt, cutoff),
+        or(eq(monitorResults.isStatusChange, false), hasArtifact),
+      ))
       .limit(limit).as("expired_monitor_results");
     const [count] = await db.select({
       count: sql<number>`count(*)`,
@@ -724,16 +831,17 @@ export class MonitorResultsCleanupStrategy implements ICleanupStrategy {
       status: string;
       testExecutionId: string | null;
       testReportS3Url: string | null;
+      reportUrl: string | null;
     }>,
     result: CleanupOperationResult
   ): Promise<number> {
     const inputs: ReportDeletionInput[] = rows
-      .filter(row => row.testReportS3Url || (row.status !== "up" && row.testExecutionId))
+      .filter(row => row.testReportS3Url || row.reportUrl || (row.status !== "up" && row.testExecutionId))
       .map(row => ({
         entityType: "monitor",
         entityId: row.id,
         reportPath: row.testExecutionId || undefined,
-        s3Url: row.testReportS3Url || undefined,
+        s3Url: row.testReportS3Url || row.reportUrl || undefined,
       }));
     let failedIds = new Set<string>();
     if (inputs.length > 0) {
@@ -741,7 +849,7 @@ export class MonitorResultsCleanupStrategy implements ICleanupStrategy {
       result.s3ObjectsDeleted! += s3Result.deletedObjects.length;
       if (!s3Result.success) {
         failedIds = this.s3Service.getFailedReportEntityIds(inputs, s3Result);
-        result.success = false;
+        // Not a run failure: the pointers stay and the next hourly run retries them.
         result.errors.push(`Monitor artifact cleanup had ${s3Result.failedObjects.length} S3 failures; preserving failed pointers for retry`);
       }
     }
@@ -776,141 +884,69 @@ export class MonitorResultsCleanupStrategy implements ICleanupStrategy {
     result.details.statusArtifactsExpired = Number(result.details.statusArtifactsExpired || 0) + statusIds.length;
     return deleteIds.length;
   }
+}
 
-  /**
-   * Fallback global cleanup (original behavior)
-   * Used when no organization retention settings exist
-   */
-  private async executeGlobalCleanup(
-    dryRun: boolean
-  ): Promise<CleanupOperationResult> {
-    const startTime = Date.now();
-    const cutoffDate = new Date(
-      Date.now() - this.config.retentionDays! * 24 * 60 * 60 * 1000
-    );
-    const batchSize = this.config.batchSize || 1000;
-    const maxRecords = this.config.maxRecordsPerRun || 1000000;
+/**
+ * Deletes up to `limit` plain rows of one monitor older than `cutoff`: no status change and nothing that may point at
+ * a report. Rows another transaction holds are skipped (SKIP LOCKED) and picked up by a later run.
+ */
+async function deletePlainResults(monitorId: string, cutoff: Date, limit: number): Promise<number> {
+  const rows = await db.execute<{ id: string }>(sql`
+    WITH picked AS (
+      SELECT id FROM monitor_results
+      WHERE monitor_id = ${monitorId} AND checked_at < ${cutoff.toISOString()}::timestamptz
+        AND NOT is_status_change AND test_execution_id IS NULL AND test_report_s3_url IS NULL
+        AND NOT coalesce(details ? 'reportUrl', false)
+      -- Leading monitor_id keeps the planner on (monitor_id, checked_at), never the global checked_at index.
+      ORDER BY monitor_id, checked_at
+      LIMIT ${limit}
+      FOR UPDATE SKIP LOCKED
+    )
+    DELETE FROM monitor_results r USING picked WHERE r.id = picked.id
+    RETURNING r.id`);
+  return rows.length;
+}
 
-    const result: CleanupOperationResult = {
-      success: true,
-      entityType: this.entityType,
-      recordsDeleted: 0,
-      s3ObjectsDeleted: 0,
-      duration: 0,
-      errors: [],
-      details: {
-        cutoffDate: cutoffDate.toISOString(),
-        dryRun,
-        multiTenant: false,
-      },
-    };
+/** Oldest non-status-change row per organization, one top-1 index probe per monitor. */
+async function oldestRawResultByOrg(): Promise<Map<string, Date>> {
+  const rows = await db.execute<{ organization_id: string; oldest: string }>(sql`
+    SELECT m.organization_id, min(o.checked_at)::text AS oldest
+    FROM monitors m
+    CROSS JOIN LATERAL (
+      SELECT r.checked_at FROM monitor_results r
+      WHERE r.monitor_id = m.id AND NOT r.is_status_change
+      ORDER BY r.monitor_id, r.checked_at LIMIT 1
+    ) o
+    WHERE m.organization_id IS NOT NULL
+    GROUP BY m.organization_id`);
+  return new Map(rows.map((row) => [row.organization_id, new Date(row.oldest)]));
+}
 
-    try {
-      let totalDeleted = 0;
-      let totalProcessed = 0;
-      let cursor: { checkedAt: string; id: string } | undefined;
-      let iterations = 0;
-      const maxIterations = Math.ceil(maxRecords / batchSize);
+/** Planner row estimate for a table (pg_class.reltuples); 0 before the first ANALYZE. */
+async function estimateTableRows(table: string): Promise<number> {
+  const [row] = await db.execute<{ n: string | number }>(
+    sql`SELECT greatest(reltuples, 0)::bigint AS n FROM pg_class WHERE oid = to_regclass(${table})`
+  );
+  return Number(row?.n ?? 0);
+}
 
-      if (dryRun) {
-        // Dry-run: count matching records once (no loop needed since data isn't modified)
-        const count = await this.countResultsToClean(and(
-          lt(monitorResults.checkedAt, cutoffDate),
-          or(
-            eq(monitorResults.isStatusChange, false),
-            isNotNull(monitorResults.testExecutionId),
-            isNotNull(monitorResults.testReportS3Url)
-          )
-        )!, maxRecords);
-        totalDeleted = count.deleted;
-        result.details.recordsProcessed = count.processed;
-      } else {
-        while (iterations < maxIterations) {
-          const idsToDelete = await db
-            .select({
-              id: monitorResults.id,
-              checkedAt: sql<string>`${monitorResults.checkedAt}::text`,
-              isStatusChange: monitorResults.isStatusChange,
-              status: monitorResults.status,
-              testExecutionId: monitorResults.testExecutionId,
-              testReportS3Url: monitorResults.testReportS3Url,
-            })
-            .from(monitorResults)
-            .where(
-              and(
-                lt(monitorResults.checkedAt, cutoffDate),
-                cursor ? or(
-                  gt(monitorResults.checkedAt, sql`${cursor.checkedAt}::timestamptz`),
-                  and(eq(monitorResults.checkedAt, sql`${cursor.checkedAt}::timestamptz`), gt(monitorResults.id, cursor.id))
-                ) : undefined,
-                or(
-                eq(monitorResults.isStatusChange, false),
-                isNotNull(monitorResults.testExecutionId),
-                isNotNull(monitorResults.testReportS3Url)
-              )
-              )
-            )
-            .orderBy(asc(monitorResults.checkedAt), asc(monitorResults.id))
-            .limit(Math.min(batchSize, maxRecords - totalProcessed));
-
-          if (idsToDelete.length === 0) break;
-
-          totalDeleted += await this.cleanupBatch(idsToDelete, result);
-          const last = idsToDelete[idsToDelete.length - 1];
-          cursor = { checkedAt: last.checkedAt, id: last.id };
-          totalProcessed += idsToDelete.length;
-          result.details.recordsProcessed = totalProcessed;
-          result.recordsDeleted = totalDeleted;
-
-          if (idsToDelete.length === batchSize) {
-            await new Promise((resolve) => setTimeout(resolve, 100));
-          }
-
-          iterations++;
-          if (totalProcessed >= maxRecords) break;
-        }
-      }
-
-      result.recordsDeleted = totalDeleted;
-      result.duration = Date.now() - startTime;
-      result.details.iterations = iterations;
-
-      if (totalDeleted > 0) {
-        console.log(
-          `[DATA_LIFECYCLE] ${this.entityType}: ${
-            dryRun ? "Would delete" : "Deleted"
-          } ${totalDeleted} records (global fallback)`
-        );
-      }
-    } catch (error) {
-      result.success = false;
-      result.errors.push(
-        error instanceof Error ? error.message : String(error)
-      );
-      result.duration = Date.now() - startTime;
-      console.error(
-        `[DATA_LIFECYCLE] [${this.entityType}] Global cleanup failed:`,
-        error
-      );
-    }
-
-    return result;
-  }
+/** Planner row estimate for a query, without running it. */
+async function estimateRows(query: SQL): Promise<number> {
+  const [row] = await db.execute<{ "QUERY PLAN": Array<{ Plan: { "Plan Rows": number } }> }>(
+    sql`EXPLAIN (FORMAT JSON) ${query}`
+  );
+  return Number(row?.["QUERY PLAN"]?.[0]?.Plan?.["Plan Rows"] ?? 0);
 }
 
 /**
  * Monitor Aggregates Cleanup Strategy
  *
- * Manages retention of monitor_aggregates table with:
- * - **Multi-tenant aware**: Cleans up per organization based on plan's aggregatedDataRetentionDays
- * - Hourly aggregates: Kept for 7 days, then rolled into daily aggregates
- * - Daily aggregates: Kept according to plan (Plus: 30 days, Pro: 365 days, Unlimited: 180 days)
- * - Uses the MonitorAggregationService for actual cleanup
- *
- * Industry Standard (Checkly-inspired):
- * - Plus plan: 30 days aggregated data retention
- * - Pro plan: 365 days (1 year) aggregated data retention
- * - Unlimited plan: 180 days (6 months) aggregated data retention
+ * Deletes monitor_aggregates past each organization's aggregated retention (plan aggregatedDataRetentionDays):
+ * - Hourly aggregates: the plan's window (Plus 30 days, Pro and self-hosted 90 by default).
+ * - Daily aggregates: the plan's window, but never less than 90 days, so the status page's 90-day uptime bar is
+ *   complete on every plan.
+ * Batched per monitor with the same time budget and per-organization cap as raw results; a run that stops early
+ * reports `partial: true` and the next run carries on.
  */
 export class MonitorAggregatesCleanupStrategy implements ICleanupStrategy {
   entityType: CleanupEntityType = "monitor_aggregates";
@@ -929,57 +965,20 @@ export class MonitorAggregatesCleanupStrategy implements ICleanupStrategy {
   }
 
   async getStats(): Promise<{ totalRecords: number; oldRecords: number }> {
-    // Use minimum retention for stats (hourly aggregates at 7 days)
-    const hourlyCutoffDate = new Date(
-      Date.now() - 7 * 24 * 60 * 60 * 1000 // 7 days for hourly
-    );
-
-    const [total, oldHourly, oldDaily] = await Promise.all([
-      db.select({ count: sql<number>`count(*)` }).from(monitorAggregates),
-      db
-        .select({ count: sql<number>`count(*)` })
-        .from(monitorAggregates)
-        .where(
-          and(
-            eq(monitorAggregates.periodType, "hourly"),
-            lt(monitorAggregates.periodStart, hourlyCutoffDate)
-          )
-        ),
-      db
-        .select({ count: sql<number>`count(*)` })
-        .from(monitorAggregates)
-        .where(
-          and(
-            eq(monitorAggregates.periodType, "daily"),
-            lt(
-              monitorAggregates.periodStart,
-              new Date(
-                Date.now() - this.config.retentionDays! * 24 * 60 * 60 * 1000
-              )
-            )
-          )
-        ),
+    // Planner estimates against the shortest windows (hourly: the trial's, daily: the 90-day floor).
+    const hourlyCutoff = new Date(Date.now() - TRIAL_RETENTION.aggregatedDataRetentionDays * DAY_MS);
+    const dailyCutoff = new Date(Date.now() - AGGREGATION_CONFIG.MIN_DAILY_RETENTION_DAYS * DAY_MS);
+    const [totalRecords, oldRecords] = await Promise.all([
+      estimateTableRows("monitor_aggregates"),
+      estimateRows(sql`SELECT 1 FROM monitor_aggregates WHERE (period_type = 'hourly' AND period_start < ${hourlyCutoff.toISOString()}::timestamptz) OR (period_type = 'daily' AND period_start < ${dailyCutoff.toISOString()}::timestamptz)`),
     ]);
-
-    return {
-      totalRecords: Number(total[0]?.count || 0),
-      oldRecords:
-        Number(oldHourly[0]?.count || 0) + Number(oldDaily[0]?.count || 0),
-    };
+    return { totalRecords, oldRecords };
   }
 
-  /**
-   * Execute cleanup with multi-tenant awareness
-   *
-   * Strategy:
-   * 1. Delegate to MonitorAggregationService which handles:
-   *    - Per-organization retention based on aggregatedDataRetentionDays
-   *    - Hourly aggregates cleaned up after 7 days (always)
-   *    - Daily aggregates cleaned up per org's plan settings
-   * 2. Process in batches to minimize resource consumption
-   */
-  async execute(dryRun = false): Promise<CleanupOperationResult> {
+  async execute(dryRun = false, context: CleanupContext = {}): Promise<CleanupOperationResult> {
     const startTime = Date.now();
+    const settings = runSettings(this.config, { batchSize: 5000, perOrgCap: 500_000 });
+    const limits: RunLimits = { deadline: startTime + settings.budgetMs, signal: context.signal, pauseMs: settings.pauseMs };
 
     const result: CleanupOperationResult = {
       success: true,
@@ -987,68 +986,78 @@ export class MonitorAggregatesCleanupStrategy implements ICleanupStrategy {
       recordsDeleted: 0,
       duration: 0,
       errors: [],
-      details: { dryRun, multiTenant: true },
+      details: { dryRun, multiTenant: true, partial: false },
     };
 
     try {
-      // Get organization retention settings for aggregated data
-      const orgRetentions = await getOrganizationAggregatedRetentionSettings(
-        this.config.retentionDays!
-      );
+      const orgRetentions = await getOrganizationAggregatedRetentionSettings(this.config.retentionDays!);
+      const windows = orgRetentions.map((org) => ({
+        organizationId: org.organizationId,
+        hourlyDays: org.aggregatedRetentionDays,
+        dailyDays: Math.max(org.aggregatedRetentionDays, AGGREGATION_CONFIG.MIN_DAILY_RETENTION_DAYS),
+      }));
 
       let totalDeleted = 0;
-      const orgStats: Record<
-        string,
-        { deleted: number; aggregatedRetentionDays: number }
-      > = {};
+      let processed = 0;
+      const orgStats: Record<string, { deleted: number; hourlyDays: number; dailyDays: number }> = {};
 
-      // Process each organization with their specific aggregated retention period
-      for (const orgRetention of orgRetentions) {
+      for (const org of windows) {
+        const stopped = stopReason(limits);
+        if (stopped) {
+          result.details.partial = true;
+          result.details.stopReason = stopped;
+          break;
+        }
         try {
+          let deleted: number;
           if (dryRun) {
-            // In dry-run, just count what would be deleted
-            const stats = await this.countOldAggregatesForOrg(
-              orgRetention.organizationId,
-              orgRetention.aggregatedRetentionDays
-            );
-            if (stats > 0) {
-              orgStats[orgRetention.organizationId.substring(0, 8)] = {
-                deleted: stats,
-                aggregatedRetentionDays: orgRetention.aggregatedRetentionDays,
-              };
-            }
-            totalDeleted += stats;
+            deleted = await this.countOldAggregatesForOrg(org.organizationId, org.hourlyDays, org.dailyDays);
           } else {
-            // Actual cleanup using the aggregation service
-            const deleted =
-              await monitorAggregationService.cleanupOldAggregatesForOrg(
-                orgRetention.organizationId,
-                7, // Always 7 days for hourly
-                orgRetention.aggregatedRetentionDays
-              );
-
-            if (deleted > 0) {
-              orgStats[orgRetention.organizationId.substring(0, 8)] = {
-                deleted,
-                aggregatedRetentionDays: orgRetention.aggregatedRetentionDays,
-              };
+            const outcome = await monitorAggregationService.cleanupOldAggregatesForOrg(
+              org.organizationId,
+              org.hourlyDays,
+              org.dailyDays,
+              { batchSize: settings.batchSize, maxRows: settings.perOrgCap, pauseMs: limits.pauseMs, shouldStop: () => stopReason(limits) !== null }
+            );
+            deleted = outcome.deleted;
+            const stoppedInside = stopReason(limits);
+            if (!outcome.complete && stoppedInside) {
+              result.details.partial = true;
+              result.details.stopReason = stoppedInside;
             }
-            totalDeleted += deleted;
           }
+          if (deleted > 0) {
+            orgStats[org.organizationId.substring(0, 8)] = { deleted, hourlyDays: org.hourlyDays, dailyDays: org.dailyDays };
+          }
+          totalDeleted += deleted;
+          processed++;
+          if (result.details.partial) break;
         } catch (orgError) {
+          result.success = false;
           console.error(
-            `[DATA_LIFECYCLE] [monitor_aggregates] Error cleaning up org ${orgRetention.organizationId.substring(0, 8)}:`,
+            `[DATA_LIFECYCLE] [monitor_aggregates] Error cleaning up org ${org.organizationId.substring(0, 8)}:`,
             orgError
           );
           result.errors.push(
-            `Org ${orgRetention.organizationId.substring(0, 8)}: ${orgError instanceof Error ? orgError.message : String(orgError)}`
+            `Org ${org.organizationId.substring(0, 8)}: ${orgError instanceof Error ? orgError.message : String(orgError)}`
           );
         }
       }
 
+      if (!dryRun) {
+        try {
+          const oldest = await oldestAggregateByOrg();
+          result.details.lag = {
+            hourly: await measureRetentionLag("monitor_aggregates_hourly", oldest.hourly, new Map(windows.map((w) => [w.organizationId, w.hourlyDays]))),
+            daily: await measureRetentionLag("monitor_aggregates_daily", oldest.daily, new Map(windows.map((w) => [w.organizationId, w.dailyDays]))),
+          };
+        } catch (error) {
+          console.error("[DATA_LIFECYCLE] [monitor_aggregates] Lag check failed:", error);
+        }
+      }
+
       result.recordsDeleted = totalDeleted;
-      result.duration = Date.now() - startTime;
-      result.details.organizationsProcessed = orgRetentions.length;
+      result.details.organizationsProcessed = processed;
       result.details.perOrgStats = orgStats;
 
       if (totalDeleted > 0) {
@@ -1063,13 +1072,13 @@ export class MonitorAggregatesCleanupStrategy implements ICleanupStrategy {
       result.errors.push(
         error instanceof Error ? error.message : String(error)
       );
-      result.duration = Date.now() - startTime;
       console.error(
         `[DATA_LIFECYCLE] [${this.entityType}] Cleanup failed:`,
         error
       );
     }
 
+    result.duration = Date.now() - startTime;
     return result;
   }
 
@@ -1078,54 +1087,51 @@ export class MonitorAggregatesCleanupStrategy implements ICleanupStrategy {
    */
   private async countOldAggregatesForOrg(
     organizationId: string,
+    hourlyRetentionDays: number,
     dailyRetentionDays: number
   ): Promise<number> {
-    const hourlyRetentionDays = 7; // Always 7 days for hourly
+    const hourlyCutoff = new Date(Date.now() - hourlyRetentionDays * DAY_MS);
+    const dailyCutoff = new Date(Date.now() - dailyRetentionDays * DAY_MS);
+    const orgMonitors = db.select({ id: monitors.id }).from(monitors).where(eq(monitors.organizationId, organizationId));
 
-    const hourlyCutoff = new Date(
-      Date.now() - hourlyRetentionDays * 24 * 60 * 60 * 1000
-    );
-    const dailyCutoff = new Date(
-      Date.now() - dailyRetentionDays * 24 * 60 * 60 * 1000
-    );
-
-    // Get monitors for this organization
-    const orgMonitors = await db
-      .select({ id: monitors.id })
-      .from(monitors)
-      .where(eq(monitors.organizationId, organizationId));
-
-    if (orgMonitors.length === 0) return 0;
-
-    const monitorIds = orgMonitors.map((m) => m.id);
-
-    const [hourlyCount, dailyCount] = await Promise.all([
-      db
-        .select({ count: sql<number>`count(*)` })
-        .from(monitorAggregates)
-        .where(
-          and(
-            inArray(monitorAggregates.monitorId, monitorIds),
-            eq(monitorAggregates.periodType, "hourly"),
-            lt(monitorAggregates.periodStart, hourlyCutoff)
+    const [row] = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(monitorAggregates)
+      .where(
+        and(
+          inArray(monitorAggregates.monitorId, orgMonitors),
+          or(
+            and(eq(monitorAggregates.periodType, "hourly"), lt(monitorAggregates.periodStart, hourlyCutoff)),
+            and(eq(monitorAggregates.periodType, "daily"), lt(monitorAggregates.periodStart, dailyCutoff))
           )
-        ),
-      db
-        .select({ count: sql<number>`count(*)` })
-        .from(monitorAggregates)
-        .where(
-          and(
-            inArray(monitorAggregates.monitorId, monitorIds),
-            eq(monitorAggregates.periodType, "daily"),
-            lt(monitorAggregates.periodStart, dailyCutoff)
-          )
-        ),
-    ]);
-
-    return (
-      Number(hourlyCount[0]?.count || 0) + Number(dailyCount[0]?.count || 0)
-    );
+        )
+      );
+    return Number(row?.count || 0);
   }
+}
+
+/** Oldest hourly and daily aggregate per organization, top-1 index probes per monitor. */
+async function oldestAggregateByOrg(): Promise<{ hourly: Map<string, Date>; daily: Map<string, Date> }> {
+  const rows = await db.execute<{ organization_id: string; hourly: string | null; daily: string | null }>(sql`
+    SELECT m.organization_id, min(h.period_start)::text AS hourly, min(d.period_start)::text AS daily
+    FROM monitors m
+    LEFT JOIN LATERAL (
+      SELECT a.period_start FROM monitor_aggregates a
+      WHERE a.monitor_id = m.id AND a.period_type = 'hourly' ORDER BY a.monitor_id, a.period_start LIMIT 1
+    ) h ON true
+    LEFT JOIN LATERAL (
+      SELECT a.period_start FROM monitor_aggregates a
+      WHERE a.monitor_id = m.id AND a.period_type = 'daily' ORDER BY a.monitor_id, a.period_start LIMIT 1
+    ) d ON true
+    WHERE m.organization_id IS NOT NULL
+    GROUP BY m.organization_id`);
+  const hourly = new Map<string, Date>();
+  const daily = new Map<string, Date>();
+  for (const row of rows) {
+    if (row.hourly) hourly.set(row.organization_id, new Date(row.hourly));
+    if (row.daily) daily.set(row.organization_id, new Date(row.daily));
+  }
+  return { hourly, daily };
 }
 
 /**
@@ -1331,7 +1337,7 @@ export class MonitorAggregationDailyStrategy implements ICleanupStrategy {
  * Plan-Based Retention (industry standards):
  * - Plus: 30 days (matches CircleCI)
  * - Pro: 90 days (matches GitHub Actions default)
- * - Unlimited: 90 days (self-hosted database seed; subscription-service fallback is 180)
+ * - Unlimited: 90 days (self-hosted database seed and subscription-service fallback)
  *
  * Note: This strategy handles ALL runs in the database:
  * - Job runs (where jobId is not null)
@@ -2607,10 +2613,14 @@ export class TrialLifecycleStrategy implements ICleanupStrategy {
  */
 export class DataLifecycleService {
   private strategies: Map<CleanupEntityType, ICleanupStrategy> = new Map();
+  /** Heavy retention strategies, one at a time. */
   private cleanupQueue: Queue<CleanupJobData> | null = null;
+  /** Short urgent strategies (URGENT_CLEANUP_ENTITY_TYPES). */
+  private urgentQueue: Queue<CleanupJobData> | null = null;
   private cleanupWorker: Worker<CleanupJobData, CleanupOperationResult> | null =
     null;
-  private cleanupQueueEvents: QueueEvents | null = null;
+  private urgentWorker: Worker<CleanupJobData, CleanupOperationResult> | null = null;
+  private queueEvents = new Map<string, QueueEvents>();
   private redisConnection: Redis | null = null;
 
   constructor(strategyConfigs: CleanupStrategyConfig[]) {
@@ -2685,85 +2695,59 @@ export class DataLifecycleService {
     this.redisConnection = redisConnection;
 
     try {
-      // Create unified cleanup queue
-      this.cleanupQueue = new Queue<CleanupJobData>("data-lifecycle-cleanup", {
-        connection: redisConnection,
-        defaultJobOptions: {
-          removeOnComplete: 20,
-          removeOnFail: 50,
-          attempts: 2,
-          backoff: {
-            type: "exponential",
-            delay: 60000,
-          },
+      const defaultJobOptions = {
+        removeOnComplete: 20,
+        removeOnFail: 50,
+        attempts: 2,
+        backoff: {
+          type: "exponential",
+          delay: 60000,
         },
+      };
+      this.cleanupQueue = new Queue<CleanupJobData>(DATA_LIFECYCLE_CLEANUP_QUEUE, {
+        connection: redisConnection,
+        defaultJobOptions,
+      });
+      this.urgentQueue = new Queue<CleanupJobData>(DATA_LIFECYCLE_URGENT_QUEUE, {
+        connection: redisConnection,
+        defaultJobOptions,
       });
 
-      // Create worker with distributed locking
+      // Both workers dispatch by entity type, so a job an older replica still schedules on the heavy queue runs too.
+      const processor = (job: { data: CleanupJobData }) => this.runCleanupJob(job.data);
       this.cleanupWorker = new Worker<CleanupJobData, CleanupOperationResult>(
-        "data-lifecycle-cleanup",
-        async (job) => {
-          const entityType = job.data.entityType;
-          
-          // Acquire distributed lock to prevent concurrent cleanup across instances
-          const lockAcquired = await this.acquireCleanupLock(entityType);
-          if (!lockAcquired) {
-            console.log(
-              `[DATA_LIFECYCLE] Skipping ${entityType} - another instance is running cleanup`
-            );
-            return {
-              success: true,
-              entityType,
-              recordsDeleted: 0,
-              duration: 0,
-              errors: [],
-              details: { skipped: true, reason: "Lock held by another instance" },
-            };
-          }
-
-          try {
-            const strategy = this.strategies.get(entityType);
-            if (!strategy) {
-              throw new Error(
-                `No strategy found for entity type: ${entityType}`
-              );
-            }
-
-            const result = await strategy.execute(job.data.dryRun || false);
-            if (!result.success) {
-              throw new Error(result.errors.join("; ") || `${entityType} cleanup failed`);
-            }
-            return result;
-          } finally {
-            // Always release lock, even on failure
-            await this.releaseCleanupLock(entityType);
-          }
-        },
+        DATA_LIFECYCLE_CLEANUP_QUEUE,
+        processor,
         {
           connection: redisConnection,
-          concurrency: 1, // Process one cleanup at a time
+          concurrency: 1, // Process one heavy cleanup at a time
         }
       );
+      this.urgentWorker = new Worker<CleanupJobData, CleanupOperationResult>(
+        DATA_LIFECYCLE_URGENT_QUEUE,
+        processor,
+        // Each urgent strategy holds its own lock, so they may run side by side.
+        { connection: redisConnection, concurrency: URGENT_CLEANUP_ENTITY_TYPES.size }
+      );
 
-      // A cleanup Worker whose blocking connection ended after a failover would stall trial expiry silently.
-      watchConsumer(this.cleanupWorker);
-
-      // Event handlers
-      this.cleanupWorker.on("completed", (job, result) => {
-        if (!result.success || result.errors.length > 0) {
-          console.error(
-            `[DATA_LIFECYCLE] Job ${job.id} completed with errors:`,
-            {
-              entityType: result.entityType,
-              errors: result.errors,
-            }
-          );
-        }
-      });
-
-      this.cleanupWorker.on("failed", (job, err) => {
-        console.error(`[DATA_LIFECYCLE] Job ${job?.id} failed:`, err.message);
-      });
+      for (const worker of [this.cleanupWorker, this.urgentWorker]) {
+        // A cleanup Worker whose blocking connection ended after a failover would stall trial expiry silently.
+        watchConsumer(worker);
+        worker.on("completed", (job, result) => {
+          if (!result.success || result.errors.length > 0) {
+            console.error(
+              `[DATA_LIFECYCLE] Job ${job.id} completed with errors:`,
+              {
+                entityType: result.entityType,
+                errors: result.errors,
+              }
+            );
+          }
+        });
+        worker.on("failed", (job, err) => {
+          console.error(`[DATA_LIFECYCLE] Job ${job?.id} failed:`, err.message);
+        });
+      }
 
       // Schedule all enabled strategies
       for (const strategy of this.strategies.values()) {
@@ -2783,8 +2767,62 @@ export class DataLifecycleService {
     }
   }
 
+  private queueFor(entityType: CleanupEntityType): Queue<CleanupJobData> | null {
+    return URGENT_CLEANUP_ENTITY_TYPES.has(entityType) ? this.urgentQueue : this.cleanupQueue;
+  }
+
+  /** Runs one cleanup job under the entity's owned lock. */
+  private async runCleanupJob(data: CleanupJobData): Promise<CleanupOperationResult> {
+    const entityType = data.entityType;
+    const strategy = this.strategies.get(entityType);
+    if (!strategy) {
+      throw new Error(`No strategy found for entity type: ${entityType}`);
+    }
+
+    const redis = this.redisConnection;
+    let lock: OwnedLock | null = null;
+    if (redis) {
+      try {
+        lock = await acquireOwnedLock(redis, `cleanup:${entityType}:lock`, {
+          ttlMs: CLEANUP_LOCK_TTL_MS,
+          renewEveryMs: CLEANUP_LOCK_RENEW_MS,
+          maxHoldMs: CLEANUP_LOCK_MAX_HOLD_MS,
+        });
+      } catch (error) {
+        console.error(`[DATA_LIFECYCLE] Failed to acquire lock for ${entityType}:`, error);
+      }
+      if (!lock) {
+        console.log(`[DATA_LIFECYCLE] Skipping ${entityType} - another instance is running cleanup`);
+        return {
+          success: true,
+          entityType,
+          recordsDeleted: 0,
+          duration: 0,
+          errors: [],
+          details: { skipped: true, reason: "Lock held by another instance" },
+        };
+      }
+    } else {
+      console.warn("[DATA_LIFECYCLE] No Redis connection - skipping distributed lock");
+    }
+
+    try {
+      const result = await strategy.execute(data.dryRun || false, {
+        signal: lock?.signal,
+        cursor: redis ? redisCursorStore(redis) : undefined,
+      });
+      if (!result.success) {
+        throw new Error(result.errors.join("; ") || `${entityType} cleanup failed`);
+      }
+      return result;
+    } finally {
+      await lock?.release();
+    }
+  }
+
   private async scheduleCleanup(config: CleanupStrategyConfig): Promise<void> {
-    if (!this.cleanupQueue) {
+    const queue = this.queueFor(config.entityType);
+    if (!queue || !this.cleanupQueue) {
       throw new Error("Cleanup queue not initialized");
     }
 
@@ -2792,7 +2830,7 @@ export class DataLifecycleService {
       const name = `${config.entityType}-cleanup`;
 
       // upsertJobScheduler is atomic, so replicas starting together cannot drop a firing.
-      await this.cleanupQueue.upsertJobScheduler(
+      await queue.upsertJobScheduler(
         name,
         { pattern: config.cronSchedule },
         {
@@ -2808,6 +2846,10 @@ export class DataLifecycleService {
       );
 
       // Removed after the upsert so a failed upsert never leaves nothing scheduled.
+      if (queue !== this.cleanupQueue) {
+        // Moved to the urgent queue: drop its old scheduler from the heavy queue (a no-op once gone).
+        await this.cleanupQueue.removeJobScheduler(name);
+      }
       // One-time, idempotent removal of the legacy repeatable (added with
       // `repeat` + jobId `<entity>-cleanup-recurring`). Scheduler entries share
       // this zset and the same name, but their key is the scheduler id.
@@ -2826,73 +2868,11 @@ export class DataLifecycleService {
     }
   }
 
-  /**
-   * Acquire a distributed lock for cleanup operation
-   * Uses Redis SET NX (only set if not exists) with TTL for safety
-   * 
-   * @param entityType - The cleanup entity type to lock
-   * @param ttlSeconds - Lock TTL (default 1 hour to handle long cleanups)
-   * @returns true if lock acquired, false if already held by another instance
-   */
-  private async acquireCleanupLock(
-    entityType: CleanupEntityType,
-    ttlSeconds: number = 3600
-  ): Promise<boolean> {
-    if (!this.redisConnection) {
-      console.warn("[DATA_LIFECYCLE] No Redis connection - skipping distributed lock");
-      return true; // Allow execution if Redis not available
-    }
-
-    const lockKey = `cleanup:${entityType}:lock`;
-    try {
-      // SET key value EX ttl NX - only sets if key doesn't exist
-      const result = await this.redisConnection.set(
-        lockKey,
-        JSON.stringify({ 
-          acquiredAt: new Date().toISOString(),
-          pid: process.pid 
-        }),
-        "EX",
-        ttlSeconds,
-        "NX"
-      );
-      
-      const acquired = result === "OK";
-      if (acquired) {
-        console.log(`[DATA_LIFECYCLE] Acquired lock for ${entityType} (TTL: ${ttlSeconds}s)`);
-      }
-      return acquired;
-    } catch (error) {
-      console.error(`[DATA_LIFECYCLE] Failed to acquire lock for ${entityType}:`, error);
-      return false; // Don't proceed if lock acquisition fails
-    }
-  }
-
-  /**
-   * Release the distributed lock for cleanup operation
-   * 
-   * @param entityType - The cleanup entity type to unlock
-   */
-  private async releaseCleanupLock(entityType: CleanupEntityType): Promise<void> {
-    if (!this.redisConnection) {
-      return;
-    }
-
-    const lockKey = `cleanup:${entityType}:lock`;
-    try {
-      await this.redisConnection.del(lockKey);
-      console.log(`[DATA_LIFECYCLE] Released lock for ${entityType}`);
-    } catch (error) {
-      console.error(`[DATA_LIFECYCLE] Failed to release lock for ${entityType}:`, error);
-      // Don't throw - lock will expire via TTL
-    }
-  }
-
   async triggerManualCleanup(
     entityType: CleanupEntityType,
     dryRun = false
   ): Promise<CleanupOperationResult> {
-    const queue = this.cleanupQueue;
+    const queue = this.queueFor(entityType);
     if (!queue || !this.redisConnection) {
       throw new Error("Cleanup queue not initialized");
     }
@@ -2902,32 +2882,34 @@ export class DataLifecycleService {
       throw new Error(`No strategy found for entity type: ${entityType}`);
     }
 
-    // Created on the first manual run only: QueueEvents holds a permanent blocking Redis connection.
+    // Created on the first manual run of a queue only: QueueEvents holds a permanent blocking Redis connection.
     // Ready before add, so the completion event cannot be missed. shutdown() closes it.
     // Options, not the shared client: BullMQ then owns the blocking connection and close() quits it (AGENTS.md gotcha 5).
-    if (!this.cleanupQueueEvents) {
-      this.cleanupQueueEvents = watchConsumer(new QueueEvents("data-lifecycle-cleanup", {
+    let events = this.queueEvents.get(queue.name);
+    if (!events) {
+      events = watchConsumer(new QueueEvents(queue.name, {
         connection: buildRedisOptions({ lazyConnect: false }),
       }));
-      this.cleanupQueueEvents.on("error", (error) => {
+      events.on("error", (error) => {
         console.error("[DATA LIFECYCLE] Cleanup QueueEvents error:", error);
       });
+      this.queueEvents.set(queue.name, events);
     }
-    const events = this.cleanupQueueEvents;
+    const created = events;
     let readyTimer: ReturnType<typeof setTimeout> | undefined;
     try {
       // Bounded: a Redis that refuses new connections must fail this call, not hang it (and every later one).
       await Promise.race([
-        events.waitUntilReady(),
+        created.waitUntilReady(),
         new Promise<never>((_, reject) => {
           readyTimer = setTimeout(() => reject(new Error("Cleanup QueueEvents not ready")), QUEUE_EVENTS_READY_TIMEOUT_MS);
         }),
       ]);
     } catch (error) {
       // Do not cache a broken instance; a concurrent caller may already have cached a fresh one.
-      if (this.cleanupQueueEvents === events) this.cleanupQueueEvents = null;
+      if (this.queueEvents.get(queue.name) === created) this.queueEvents.delete(queue.name);
       // Not awaited: close() first awaits a client that may never connect, which would void the deadline.
-      void events.close().catch(() => {});
+      void created.close().catch(() => {});
       throw error;
     } finally {
       clearTimeout(readyTimer);
@@ -2947,7 +2929,7 @@ export class DataLifecycleService {
       }
     );
 
-    const result = await job.waitUntilFinished(events);
+    const result = await job.waitUntilFinished(created);
     return result;
   }
 
@@ -2963,19 +2945,17 @@ export class DataLifecycleService {
   }> {
     let queueStatus = null;
 
-    if (this.cleanupQueue) {
-      const [waiting, active, completed, failed] = await Promise.all([
-        this.cleanupQueue.getWaiting(),
-        this.cleanupQueue.getActive(),
-        this.cleanupQueue.getCompleted(),
-        this.cleanupQueue.getFailed(),
-      ]);
-
+    const queues = [this.cleanupQueue, this.urgentQueue].filter((queue) => queue !== null);
+    if (queues.length > 0) {
+      const counts = await Promise.all(
+        queues.map((queue) => queue.getJobCounts("waiting", "active", "completed", "failed")),
+      );
+      const sum = (state: string) => counts.reduce((total, c) => total + (c[state] ?? 0), 0);
       queueStatus = {
-        waiting: waiting.length,
-        active: active.length,
-        completed: completed.length,
-        failed: failed.length,
+        waiting: sum("waiting"),
+        active: sum("active"),
+        completed: sum("completed"),
+        failed: sum("failed"),
       };
     }
 
@@ -3010,16 +2990,21 @@ export class DataLifecycleService {
   }
 
   async shutdown(): Promise<void> {
-    const { cleanupWorker, cleanupQueue, cleanupQueueEvents } = this;
+    const { cleanupWorker, urgentWorker, cleanupQueue, urgentQueue } = this;
+    const events = [...this.queueEvents.values()];
     // Reset first so a repeated shutdown is a no-op.
     this.cleanupWorker = null;
+    this.urgentWorker = null;
     this.cleanupQueue = null;
-    this.cleanupQueueEvents = null;
+    this.urgentQueue = null;
+    this.queueEvents = new Map();
 
     const results = await Promise.allSettled([
       cleanupWorker?.close(),
+      urgentWorker?.close(),
       cleanupQueue?.close(),
-      cleanupQueueEvents?.close(),
+      urgentQueue?.close(),
+      ...events.map((e) => e.close()),
     ]);
     for (const result of results) {
       if (result.status === "rejected") {
@@ -3027,6 +3012,17 @@ export class DataLifecycleService {
       }
     }
   }
+}
+
+/** Cleanup resume cursors kept in Redis; they expire after a week so a removed strategy leaves nothing behind. */
+export function redisCursorStore(redis: Redis): CleanupCursorStore {
+  return {
+    get: (key) => redis.get(key),
+    async set(key, value) {
+      if (value === null) await redis.del(key);
+      else await redis.set(key, value, "EX", 7 * 24 * 3600);
+    },
+  };
 }
 
 // ============================================================================
@@ -3092,16 +3088,14 @@ export function createDataLifecycleService(): DataLifecycleService {
     {
       entityType: "monitor_results",
       enabled: parseBooleanEnv(process.env.MONITOR_CLEANUP_ENABLED, true),
+      // Hourly: each run is bounded by a time budget and a per-organization cap, so frequent runs keep up.
       cronSchedule: parseCronSchedule(
         process.env.MONITOR_CLEANUP_CRON,
-        "0 2 * * *"
+        "10 * * * *"
       ),
-      retentionDays: 30, // Fallback if plan settings unavailable
-      batchSize: parseInt(process.env.MONITOR_CLEANUP_BATCH_SIZE || "1000", 10),
-      maxRecordsPerRun: parseInt(
-        process.env.MONITOR_CLEANUP_SAFETY_LIMIT || "1000000",
-        10
-      ),
+      batchSize: clampInt(process.env.MONITOR_CLEANUP_BATCH_SIZE, { min: 1, max: 10_000, fallback: 5000, name: "MONITOR_CLEANUP_BATCH_SIZE" }),
+      // Rows per organization per run.
+      maxRecordsPerRun: clampInt(process.env.MONITOR_CLEANUP_SAFETY_LIMIT, { min: 1, max: 100_000_000, fallback: 500_000, name: "MONITOR_CLEANUP_SAFETY_LIMIT" }),
     },
 
     // Monitor Aggregates Cleanup
@@ -3116,15 +3110,10 @@ export function createDataLifecycleService(): DataLifecycleService {
         process.env.MONITOR_AGGREGATES_CLEANUP_CRON,
         "30 2 * * *"
       ),
-      retentionDays: 365,
-      batchSize: parseInt(
-        process.env.MONITOR_AGGREGATES_CLEANUP_BATCH_SIZE || "1000",
-        10
-      ),
-      maxRecordsPerRun: parseInt(
-        process.env.MONITOR_AGGREGATES_CLEANUP_SAFETY_LIMIT || "500000",
-        10
-      ),
+      retentionDays: 365, // Organizations without a plan row
+      batchSize: clampInt(process.env.MONITOR_AGGREGATES_CLEANUP_BATCH_SIZE, { min: 1, max: 10_000, fallback: 5000, name: "MONITOR_AGGREGATES_CLEANUP_BATCH_SIZE" }),
+      // Rows per organization per run.
+      maxRecordsPerRun: clampInt(process.env.MONITOR_AGGREGATES_CLEANUP_SAFETY_LIMIT, { min: 1, max: 100_000_000, fallback: 500_000, name: "MONITOR_AGGREGATES_CLEANUP_SAFETY_LIMIT" }),
     },
 
     // Monitor Hourly Aggregation

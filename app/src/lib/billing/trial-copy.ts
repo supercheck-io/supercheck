@@ -1,12 +1,13 @@
 import catalog from "./plan-catalog.json";
 
 type TrialLimits = typeof catalog.trial.limits;
-type TrialValues = TrialLimits & { durationDays: number };
+type TrialValues = TrialLimits & typeof catalog.trial.retention & { durationDays: number };
 
 /** The numbers trial copy may mention, taken from the plan catalog so the text can never disagree with the limits. */
 export function trialValues(source: typeof catalog.trial = catalog.trial): TrialValues {
   return {
     ...source.limits,
+    ...source.retention,
     durationDays: source.durationDays,
   };
 }
