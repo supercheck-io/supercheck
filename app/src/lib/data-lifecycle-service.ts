@@ -20,7 +20,7 @@
  * Multi-Tenancy Design (Checkly-aligned):
  * - Each organization's data is cleaned based on their subscription plan's dataRetentionDays
  * - Plus plan: 7 days raw data, 30 days aggregated/job data
- * - Pro plan: 7 days raw data, 90 days aggregated/job data
+ * - Pro plan: 30 days raw data, 90 days aggregated/job data
  * - Unlimited plan: 7 days raw data, 90 days aggregated/job data (self-hosted seed)
  * - Cleanup is performed per-organization to respect plan limits
  *
@@ -202,7 +202,7 @@ function isOnFreeTrial(
 
 /**
  * Get retention settings for all organizations based on their subscription plans
- * Seeded raw retention is 7 days on all plans; deployments can change plan_limits.
+ * Seeded raw retention: Plus 7d, Pro 30d, self-hosted 7d; deployments can change plan_limits.
  *
  * @param fallbackRetentionDays - Default retention for missing plan settings
  * @returns Array of organization retention settings

@@ -10,7 +10,7 @@ import { expect, test, type Page, type TestInfo } from '@playwright/test';
 import { captureFailure, captureScreenshot, SCREENSHOT_SEED } from '../../utils/screenshot';
 import { waitForHydration } from '../../utils/hydration';
 
-type Seed = { statusPage: string };
+type Seed = { statusPage: string; monitor: string };
 const seed = (): Seed => JSON.parse(readFileSync(SCREENSHOT_SEED, 'utf8')) as Seed;
 
 test.afterEach(async ({ page }, testInfo) => captureFailure(page, testInfo));
@@ -103,6 +103,18 @@ test('create status page', async ({ page }, testInfo) => {
   await dialog.getByPlaceholder('My Service Status').fill('Checkout status');
   await dialog.getByPlaceholder('Service Status Dashboard').fill('Checkout and payments');
   await frame('dialog');
+});
+
+test('monitor check results filters', async ({ page }, testInfo) => {
+  const frame = frames(page, testInfo, 'monitor-results-filters');
+  await open(page, `/monitors/${seed().monitor}`);
+  await page.getByRole('button', { name: 'Filter by date' }).click();
+  await expect(page.getByTestId('results-retention-hint')).toBeVisible();
+  await frame('date-window');
+  await page.keyboard.press('Escape');
+  await page.getByRole('switch', { name: 'Failures only' }).click();
+  await expect(page.getByText(/^Showing \d+ of \d+ recent failed checks\.$/)).toBeVisible();
+  await frame('failures-only');
 });
 
 // Error paths: each submits bad input, which the app must reject without saving anything.
