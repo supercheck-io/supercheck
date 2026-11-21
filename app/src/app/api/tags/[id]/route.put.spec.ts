@@ -62,4 +62,11 @@ describe("tag rename", () => {
     expect((await put({ name: "legacy tag", color: "#FFFFFF" })).status).toBe(200);
     expect(mockSet).toHaveBeenCalledWith(expect.objectContaining({ name: "legacy tag", color: "#FFFFFF" }));
   });
+
+  it.each(["red", "#FFF", "#GGGGGG", "#3B82F6; x"])("rejects color %p", async (color) => {
+    mockSelectQueue.push([{ id: TAG, name: "prod", color: "#000000" }], []);
+    const res = await put({ name: "prod", color });
+    expect(res.status).toBe(400);
+    expect(mockSet).not.toHaveBeenCalled();
+  });
 });

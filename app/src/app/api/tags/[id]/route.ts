@@ -7,7 +7,7 @@ import { liveMonitor } from '@/lib/deletion/visibility';
 import { checkPermissionWithContext } from '@/lib/rbac/middleware';
 import { requireAuthContext, isAuthError, authErrorStatus } from '@/lib/auth-context';
 import { createLogger } from '@/lib/logger/index';
-import { tagNameError } from '@/lib/tag-validation';
+import { tagNameError, tagColorError } from '@/lib/tag-validation';
 
 import { permissionDeniedResponse } from "@/lib/deletion/org-state";
 import { requireSessionSameOrigin } from "@/lib/security/same-origin";
@@ -240,6 +240,8 @@ export async function PUT(
       const nameError = tagNameError(name.trim());
       if (nameError) return NextResponse.json({ error: nameError }, { status: 400 });
     }
+    const colorError = tagColorError(color);
+    if (colorError) return NextResponse.json({ error: colorError }, { status: 400 });
 
     // Check if another tag with the same name exists in the same project
     const duplicateTag = await db

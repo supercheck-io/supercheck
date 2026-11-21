@@ -3096,8 +3096,8 @@ paths:
                 $ref: "#/components/schemas/Tag"
         "400":
           description: Tag name is missing or breaks the name rules (3 to 20 characters of
-            letters, numbers, underscores and hyphens, no spaces), or the
-            project already has 50 tags
+            letters, numbers, underscores and hyphens, no spaces), the color is
+            not a `#RRGGBB` hex value, or the project already has 50 tags
         "401":
           $ref: "#/components/responses/Unauthorized"
         "409":
@@ -3188,9 +3188,9 @@ paths:
               schema:
                 $ref: "#/components/schemas/Tag"
         "400":
-          description: "Tag name is missing, or a new name breaks the create rules: 3 to
-            20 characters of letters, numbers, underscores and hyphens, no
-            spaces"
+          description: Tag name is missing, or a new name breaks the create rules (3 to 20
+            characters of letters, numbers, underscores and hyphens, no spaces),
+            or the color is not a `#RRGGBB` hex value
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":

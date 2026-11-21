@@ -4,7 +4,7 @@ import { tags } from '@/db/schema';
 import { eq, and } from 'drizzle-orm';
 import { checkPermissionWithContext } from '@/lib/rbac/middleware';
 import { requireAuthContext, isAuthError, authErrorStatus } from '@/lib/auth-context';
-import { tagNameError } from '@/lib/tag-validation';
+import { tagNameError, tagColorError } from '@/lib/tag-validation';
 
 import { permissionDeniedResponse } from "@/lib/deletion/org-state";
 import { requireSessionSameOrigin } from "@/lib/security/same-origin";
@@ -72,7 +72,7 @@ export async function POST(request: NextRequest) {
 
     const trimmedName = name.trim();
 
-    const nameError = tagNameError(trimmedName);
+    const nameError = tagNameError(trimmedName) ?? tagColorError(color);
     if (nameError) {
       return NextResponse.json({ error: nameError }, { status: 400 });
     }
