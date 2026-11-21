@@ -14,7 +14,10 @@ import { db } from "@/utils/db";
 import { tagNameError } from "@/lib/tag-validation";
 
 // Either the shared pool or a transaction handle, so a caller can make the tag writes part of its own transaction.
-export type Executor = Pick<typeof db, "select" | "selectDistinctOn" | "selectDistinct" | "insert" | "delete" | "update">;
+export type Executor = Pick<
+  typeof db,
+  "select" | "selectDistinctOn" | "selectDistinct" | "insert" | "delete" | "update" | "execute"
+>;
 
 /** Raised when a requirement would exceed the tag cap; services map it to a validation failure (not a 500). */
 export class TagLimitError extends Error {
@@ -101,13 +104,15 @@ export async function syncRequirementTagsByName(
   if (tagNames.length === 0) return;
 
   // "AI" and "ai" are one tag (two rows differing only in case would collide), so dedupe case-insensitively and
-  // keep the first spelling given for any tag that has to be created.
+  // keep the first spelling given for any tag that has to be created. Lenient names dedupe on their normalised
+  // form, so "smoke!" and "smoke!!" count once and cannot crowd later distinct names out of the 10-name cap.
   const seen = new Set<string>();
   const requestedNames: string[] = [];
   for (const raw of tagNames) {
     const name = raw.trim();
-    const key = name.toLowerCase();
-    if (!name || seen.has(key)) continue;
+    if (!name) continue;
+    const key = ((lenient && normalizeTagName(name)) || name).toLowerCase();
+    if (seen.has(key)) continue;
     seen.add(key);
     requestedNames.push(name);
     // syncRequirementTags rejects more than 10, so 11 already fails it; stop before an oversized lookup.
@@ -121,6 +126,13 @@ export async function syncRequirementTagsByName(
     if (lenient) lookupKeys.add(normalizeTagName(name).toLowerCase());
   }
   lookupKeys.delete("");
+
+  // Two concurrent calls could both pass the project-limit count (or both miss a tag) and insert past the cap.
+  // Inside the caller's transaction, serialise lookup -> count -> insert per project; the lock is released on
+  // commit or rollback. On the shared pool there is no transaction to hold it, so that path stays unlocked.
+  if (lookupKeys.size > 0 && executor !== db) {
+    await executor.execute(sql`select pg_advisory_xact_lock(hashtext(${`project-tags:${organizationId}:${projectId}`}))`);
+  }
 
   // Match existing tags case-insensitively so "Smoke" reuses the stored "smoke" (or "Smoke") instead of adding a twin.
   const existingTags =

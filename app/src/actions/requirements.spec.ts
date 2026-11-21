@@ -629,12 +629,14 @@ describe("Requirements Server Actions", () => {
           }),
         })),
         delete: jest.fn(() => ({ where: () => Promise.resolve() })),
+        execute: jest.fn(() => Promise.resolve([])),
       };
       (mockDb.transaction as jest.Mock).mockImplementation(async (run: (t: typeof tx) => unknown) => run(tx));
 
       const result = await createRequirement({ title: "Tagged", id: clientId, tags: "ai, Auth, ai" });
 
       expect(result).toEqual({ id: clientId, success: true });
+      expect(tx.execute).toHaveBeenCalledTimes(1); // per-project tag lock, held by the transaction
       expect(tx.select).toHaveBeenCalled(); // existing-tag lookup
       expect(tx.delete).toHaveBeenCalled(); // tag association replace
       expect(mockDb.select).not.toHaveBeenCalled();
