@@ -12,6 +12,8 @@ import { SupportChat } from "@/components/support/support-chat";
 export const metadata: Metadata = {
   title: "Dashboard | Supercheck",
   description: "Open-source testing, monitoring, and AI SRE — as code",
+  // The app is behind sign-in; only public status pages (see (public)/layout.tsx) belong in search results.
+  robots: { index: false, follow: false },
   // The app has its own dark theme; this stops Dark Reader rewriting SVGs before hydration.
   other: { "darkreader-lock": "true" },
 };
