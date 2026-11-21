@@ -129,8 +129,10 @@ export async function syncRequirementTagsByName(
   }
 
   // Serialise with every other writer of this project's tags (POST /api/tags too), so the lookup, the project cap
-  // count and the insert below see each other's rows.
-  await acquireXactLock(executor, projectTagsLockKey(organizationId, projectId));
+  // count and the insert below see each other's rows. Nothing to look up means nothing can be created.
+  if (requestedNames.length > 0) {
+    await acquireXactLock(executor, projectTagsLockKey(organizationId, projectId));
+  }
 
   // Lenient lookups also try the normalised spelling, so "Login Flow" reuses a stored "login-flow" instead of colliding.
   const lookupKeys = new Set<string>();

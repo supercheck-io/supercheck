@@ -17,19 +17,23 @@ import {
 const R = "44444444-4444-4444-8444-444444444444";
 
 // `projectTagCount` answers the per-project count, which is queried only when a tag would be created.
+// `events` records the order of execute (lock), select and insert calls.
 function makeExecutor(existing: { id: string; name: string }[], projectTagCount = 0) {
   const inserted: unknown[] = [];
   const wheres: SQL[] = [];
   const executed: { sql: string; params: unknown[] }[] = [];
+  const events: string[] = [];
   const executor = {
     execute: jest.fn(async (q: SQL) => {
       executed.push(new PgDialect().sqlToQuery(q));
+      events.push("execute");
       return [];
     }),
     select: () => ({
       from: () => ({
         where: (w: SQL) => {
           wheres.push(w);
+          events.push("select");
           return Object.assign(Promise.resolve([{ count: projectTagCount }]), { orderBy: () => Promise.resolve(existing) });
         },
       }),
@@ -38,6 +42,7 @@ function makeExecutor(existing: { id: string; name: string }[], projectTagCount 
     insert: () => ({
       values: (v: unknown) => {
         inserted.push(v);
+        events.push("insert");
         return {
           returning: () => Promise.resolve((v as { name: string }[]).map((t, i) => ({ id: `new-${i}`, name: t.name }))),
           onConflictDoNothing: () => Promise.resolve(),
@@ -45,7 +50,7 @@ function makeExecutor(existing: { id: string; name: string }[], projectTagCount 
       },
     }),
   };
-  return { executor: executor as never, inserted, wheres, executed, raw: executor };
+  return { executor: executor as never, inserted, wheres, executed, events, raw: executor };
 }
 
 describe("syncRequirementTagsByName", () => {
@@ -241,6 +246,66 @@ describe("syncRequirementTagsByName tag rules (only for tags it would create)", 
     const { executor, inserted } = makeExecutor([]);
     await syncRequirementTagsByName(R, ["!!!"], "o", "p", "u", executor, true);
     expect(inserted).toHaveLength(0);
+  });
+});
+
+describe("syncRequirementTagsByName 10-name cap", () => {
+  const created = (inserted: unknown[]) =>
+    inserted.length > 1 ? (inserted[0] as { name: string }[]).map((t) => t.name) : [];
+  const lookupParams = (wheres: SQL[]) => new PgDialect().sqlToQuery(wheres[0]).params.slice(2);
+
+  it("lenient: names that normalise alike count once, so a later distinct name is kept", async () => {
+    const { executor, inserted, wheres } = makeExecutor([]);
+    const variants = Array.from({ length: 11 }, (_, i) => `smoke${"!".repeat(i + 1)}`);
+    await syncRequirementTagsByName(R, [...variants, "ai"], "o", "p", "u", executor, true);
+    expect(created(inserted)).toEqual(["smoke", "ai"]);
+    expect(lookupParams(wheres)).toEqual(expect.arrayContaining(["smoke!", "smoke", "ai"]));
+  });
+
+  it("lenient: the lookup stays bounded to 11 distinct names", async () => {
+    const { executor, wheres } = makeExecutor([]);
+    const names = Array.from({ length: 30 }, (_, i) => `tag-${i}`);
+    await expect(syncRequirementTagsByName(R, names, "o", "p", "u", executor, true)).rejects.toBeInstanceOf(TagLimitError);
+    expect(lookupParams(wheres)).toHaveLength(11);
+  });
+
+  it("strict: still rejects more than 10 requested names, with a bounded lookup", async () => {
+    const { executor, wheres } = makeExecutor([]);
+    const names = Array.from({ length: 12 }, (_, i) => `tag-${i}`);
+    await expect(syncRequirementTagsByName(R, names, "o", "p", "u", executor)).rejects.toBeInstanceOf(TagLimitError);
+    expect(lookupParams(wheres)).toHaveLength(11);
+  });
+
+  it("strict: dedupes raw names only, so variants that would normalise alike are still rejected", async () => {
+    const { executor, inserted } = makeExecutor([]);
+    await expect(syncRequirementTagsByName(R, ["smoke", "smoke!"], "o", "p", "u", executor)).rejects.toThrow(
+      'Invalid tag "smoke!"'
+    );
+    expect(inserted).toHaveLength(0);
+  });
+});
+
+describe("syncRequirementTagsByName project tag lock", () => {
+  it.each([false, true])(
+    "takes a per-project transaction lock before the lookup, count and insert (lenient=%p)",
+    async (lenient) => {
+      const { executor, executed, events } = makeExecutor([], 10);
+      await syncRequirementTagsByName(R, ["smoke"], "o", "p", "u", executor, lenient);
+      // Every lock statement (timeout, lock, restore) runs before the lookup, the count and the insert.
+      const firstSelect = events.indexOf("select");
+      expect(firstSelect).toBeGreaterThan(0);
+      expect(events.slice(0, firstSelect).every((e) => e === "execute")).toBe(true);
+      expect(events.slice(firstSelect, firstSelect + 3)).toEqual(["select", "select", "insert"]);
+      const lock = executed.find((q) => q.sql.includes("pg_advisory_xact_lock"));
+      expect(lock?.sql).toContain("hashtext(");
+      expect(lock?.params).toEqual(["project-tags:o:p"]);
+    }
+  );
+
+  it("does not lock when there is no name to look up", async () => {
+    const { executor, raw } = makeExecutor([]);
+    await syncRequirementTagsByName(R, ["  "], "o", "p", "u", executor);
+    expect(raw.execute).not.toHaveBeenCalled();
   });
 });
 
