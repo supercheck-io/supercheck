@@ -594,6 +594,7 @@ export class UsageTrackerService implements OnModuleInit, OnModuleDestroy {
 
       if (!response.ok) {
         // Status only, like the app's sender: Polar bodies can echo customer identifiers into sync_error.
+        await response.body?.cancel().catch(() => undefined);
         throw new Error(`Polar API error (${response.status})`);
       }
       const result: unknown = await response.json();
