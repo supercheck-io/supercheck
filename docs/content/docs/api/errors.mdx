@@ -32,7 +32,7 @@ Some add context:
 | `201` | Created | — |
 | `400` | Bad request | Fix the request body or parameters |
 | `401` | Unauthorized | Credentials are missing, invalid, expired or revoked |
-| `402` | Subscription required | Cloud only: the organization needs an active subscription for this action (for example resuming a monitor after a trial ended, declaring an incident, or scheduling, changing or extending a maintenance window). The body is `{ error, code }` with `code: "subscription_required"` |
+| `402` | Subscription required | Cloud only: the organization needs an active subscription for this action (for example resuming a monitor after a trial ended, declaring an incident, or scheduling, changing or extending a maintenance window). The body is `{ error, code }`. `code: "subscription_required"` means subscribing fixes it; any other `code` means the organization's billing record needs attention, so contact support |
 | `403` | Forbidden | Not permitted: role, project scope or browser-only operation. `/api/admin/*` returns `401` when signed out and `403` for non-admins |
 | `404` | Not found | Check the resource ID. A resource in another organization also returns `404` |
 | `409` | Conflict | Duplicate resource, such as a token name |
@@ -72,6 +72,7 @@ The CLI falls back to exponential backoff for non-numeric or negative values.
 | `3` | Configuration error | Missing config, invalid schema |
 | `4` | Network / API error | API unreachable, 5xx response |
 | `5` | Timeout | Operation exceeded `--timeout` |
+| `130` | Interrupted | Cancelled with Ctrl-C |
 
 ### CI/CD usage
 

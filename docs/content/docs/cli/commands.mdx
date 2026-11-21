@@ -263,7 +263,7 @@ If waiting fails, resume with `supercheck run wait <run-id>`. It does not trigge
 | `run status <run-id>` | Quick status check | — |
 | `run wait <run-id>` | Wait for an existing run to finish; never starts or retriggers a run | `--timeout <seconds>` (300) |
 | `run stream <run-id>` | Watch live console output | `--idle-timeout` (60, min 10) |
-| `run cancel <run-id>` | Cancel a running execution | — |
+| `run cancel <run-id>` | Cancel a running execution | Exits `4` when the stop signal could not be sent; the run may still be executing, so retry |
 | `run delete <run-id>` | Delete a run and its stored artifacts (active runs are refused) | `--force` |
 | `dashboard` | Project dashboard metrics (monitors, jobs, runs, queue) | — |
 
@@ -382,11 +382,11 @@ supercheck monitor update <monitor-id> --interval-minutes 1 --active false
 | `--test-id` | Synthetic tests | — | UUID of an existing test |
 | `--port` | Port checks | — | Port number (1-65535) |
 | `--protocol` | No | `tcp` (`auto` for `mcp_server`) | Port check protocol (`tcp` or `udp`), or MCP protocol (`auto`, `2025`, `2026`) |
-| `--interval-minutes` | No | `5` | Check interval in minutes (1–1440) |
+| `--interval-minutes` | No | `5` | Check interval in minutes (1–1440; at least 5 for `synthetic_test`) |
 | `--every` | Heartbeat | — | Expected ping interval: `5m`, `1h`, `1d` (1 minute to 31 days) |
 | `--grace` | No | 20% of the interval, 5 min to 1 day | How late a ping may be before the monitor goes down (1 minute to 1 day). Heartbeat only |
-| `--timeout` | No | `30` (`60` with the preset) | Request timeout in seconds (1-3600; 5-120 with the preset; 5-60 for MCP monitors). Must not exceed `--interval-minutes` × 60 |
-| `--method` | No | `GET` | `GET`, `POST`, `PUT`, `DELETE`, `PATCH`, `HEAD`, `OPTIONS`. Not allowed with `--preset` (the preset always sends `POST`) |
+| `--timeout` | No | `30` (`60` with the preset) | Request timeout in seconds (1-3600; 5-120 with the preset; 5-60 for MCP monitors). Must not exceed `--interval-minutes` × 60. On update, only a change that widens an existing excess is refused |
+| `--method` | No | `GET` | `GET`, `POST`, `PUT`, `DELETE`, `PATCH`, `HEAD`, `OPTIONS`. Only `POST` is accepted with `--preset`; other methods are refused |
 | `--preset` | No | — | `ai-endpoint`: check an OpenAI-compatible chat-completions endpoint (`http_request` only) |
 | `--model` | With `--preset` | — | Model name to request |
 | `--secret` | No | — | Name of the project secret that holds the API key (preset) or the MCP login (`mcp_server`); omit to send none. Never pass the value |
@@ -424,7 +424,7 @@ supercheck heartbeat ping "$PING_URL"
 
 `heartbeat ping` checks that the URL path ends in `/api/heartbeat/hb_…` (an app served under a sub-path works) and sends the ping (`/start` with `--start`, `/fail` with `--fail`) with a 10-second timeout per request.
 
-- It retries `429`, `503`, network errors and timeouts up to 3 times. It waits as long as the server's `Retry-After` asks (at most 30 seconds) or else 1, 2 and 4 seconds, and gives up within about 60 seconds. Other HTTP errors are not retried.
+- It retries `429`, `503`, network errors and timeouts up to 3 times. It waits as long as the server's `Retry-After` asks (at most 30 seconds) or else about 1, 2 and 4 seconds (exponential backoff with 50–100% jitter), and gives up within about 60 seconds. Other HTTP errors are not retried.
 - Exit codes: `0` on a 2xx answer, `4` on another HTTP status, `5` on timeout, `1` when it cannot connect.
 - The endpoint answers `200` even for an unknown or rotated URL, so check that the monitor turns **Up**. See [Heartbeat monitors](/docs/app/heartbeat).
 
