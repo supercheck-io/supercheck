@@ -26,6 +26,7 @@ import { db } from "@/utils/db";
 import { httpUrlSchema } from "@/lib/requirements/http-url-schema";
 import { logAuditEvent } from "@/lib/audit-logger";
 import { PlanLimitBusyError } from "@/lib/middleware/plan-limit-lock";
+import { isTagNameConflict } from "@/lib/tag-validation";
 import {
   syncRequirementTags,
   syncRequirementTagsByName,
@@ -52,6 +53,10 @@ export type ServiceFailureCode = "not_found" | "invalid" | "conflict" | "busy";
 
 // Another request held the project's tag lock past its timeout; the caller should retry.
 const TAG_LOCK_BUSY = "Another request is updating tags in this project. Please retry.";
+
+// The lock timed out, or a writer outside the lock (an older pod, a tag rename) took a new tag's name first.
+// Both are retryable: a retry links the winner's tag instead of creating it.
+const isTagBusyError = (error: unknown) => error instanceof PlanLimitBusyError || isTagNameConflict(error);
 
 export type ServiceResult = {
   success: boolean;
@@ -278,7 +283,7 @@ export async function createRequirementRecord(
     if (isTagLimitError(error)) {
       return { id: "", success: false, error: (error as Error).message, code: "invalid" };
     }
-    if (error instanceof PlanLimitBusyError) {
+    if (isTagBusyError(error)) {
       return { id: "", success: false, error: TAG_LOCK_BUSY, code: "busy" };
     }
     throw error;
@@ -430,7 +435,7 @@ export async function updateRequirementRecord(
     if (isTagLimitError(error)) {
       return { success: false, error: (error as Error).message, code: "invalid" };
     }
-    if (error instanceof PlanLimitBusyError) {
+    if (isTagBusyError(error)) {
       return { success: false, error: TAG_LOCK_BUSY, code: "busy" };
     }
     throw error;

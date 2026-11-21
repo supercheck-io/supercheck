@@ -117,13 +117,21 @@ export async function syncRequirementTagsByName(
   // become "smoke" (distinct stored names that merely normalise alike are still both looked up).
   const capKeys = new Set<string>();
   const requestedNames: string[] = [];
+  let unusable = 0;
   for (const raw of tagNames) {
     const name = raw.trim();
     const key = name.toLowerCase();
     if (!name || seen.has(key)) continue;
     seen.add(key);
+    // Lenient: a name that normalises to nothing is never created, so it takes no cap slot. It is still looked
+    // up (a stored legacy tag of that exact name keeps its link), at most 10 of them to keep the lookup bounded.
+    if (lenient && !normalizeTagName(name)) {
+      if (unusable < 10) requestedNames.push(name);
+      unusable++;
+      continue;
+    }
     requestedNames.push(name);
-    capKeys.add((lenient ? normalizeTagName(name) : name).toLowerCase() || key);
+    capKeys.add((lenient ? normalizeTagName(name) : name).toLowerCase());
     // syncRequirementTags rejects more than 10, so 11 distinct tags already fail it; stop before an oversized lookup.
     if (capKeys.size > 10) break;
   }

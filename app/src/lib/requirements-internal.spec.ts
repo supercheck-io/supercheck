@@ -262,6 +262,27 @@ describe("syncRequirementTagsByName 10-name cap", () => {
     expect(lookupParams(wheres)).toEqual(expect.arrayContaining(["smoke!", "smoke", "ai"]));
   });
 
+  it("lenient: names with nothing usable left do not take a cap slot from a later valid name", async () => {
+    const { executor, inserted } = makeExecutor([]);
+    const valid = Array.from({ length: 10 }, (_, i) => `t${i + 1}-tag`);
+    await syncRequirementTagsByName(R, ["!!!", "@@@", ...valid], "o", "p", "u", executor, true);
+    expect(created(inserted)).toEqual(valid);
+    expect(inserted[1]).toHaveLength(10);
+  });
+
+  it("lenient: a stored legacy tag whose name normalises to nothing is still linked", async () => {
+    const { executor, inserted } = makeExecutor([{ id: "legacy", name: "テスト" }]);
+    await syncRequirementTagsByName(R, ["テスト"], "o", "p", "u", executor, true);
+    expect(inserted).toEqual([[expect.objectContaining({ tagId: "legacy" })]]);
+  });
+
+  it("lenient: looks up at most 10 names that normalise to nothing", async () => {
+    const { executor, wheres } = makeExecutor([]);
+    const junk = Array.from({ length: 15 }, (_, i) => "!".repeat(i + 1));
+    await syncRequirementTagsByName(R, [...junk, "smoke"], "o", "p", "u", executor, true);
+    expect(lookupParams(wheres)).toEqual([...junk.slice(0, 10), "smoke"]);
+  });
+
   it("lenient: the lookup stays bounded to 11 distinct names", async () => {
     const { executor, wheres } = makeExecutor([]);
     const names = Array.from({ length: 30 }, (_, i) => `tag-${i}`);

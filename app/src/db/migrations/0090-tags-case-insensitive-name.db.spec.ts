@@ -51,8 +51,11 @@ it("renames later case-twins to free names, keeps links, and makes the index cas
 
   const [org, project, other, requirement] = [randomUUID(), randomUUID(), randomUUID(), randomUUID()];
   const long = "a".repeat(50);
-  const rows: [string, string, string][] = [
+  const rows: [string, string, string | null][] = [
     // [project, name, created_at]
+    // A legacy row with no created_at ranks oldest and keeps its name.
+    [project, "Legacy", null],
+    [project, "legacy", "2026-01-01"],
     [project, "smoke", "2026-01-01"],
     [project, "Smoke", "2026-01-02"],
     [project, "SMOKE", "2026-01-03"],
@@ -86,6 +89,8 @@ it("renames later case-twins to free names, keeps links, and makes the index cas
   expect(await nameOf(`${project}:SMOKE-2`)).toBe("SMOKE-2-2");
   expect(await nameOf(`${project}:${long}`)).toBe(long);
   expect(await nameOf(`${project}:${long.toUpperCase()}`)).toBe(`${"A".repeat(48)}-2`);
+  expect(await nameOf(`${project}:Legacy`)).toBe("Legacy");
+  expect(await nameOf(`${project}:legacy`)).toBe("legacy-2");
   expect(await nameOf(`${other}:Smoke`)).toBe("Smoke"); // other projects are untouched
   const [link] = await client<{ tag_id: string }[]>`SELECT tag_id FROM requirement_tags WHERE requirement_id = ${requirement}`;
   expect(link.tag_id).toBe(ids.get(`${project}:Smoke`));
