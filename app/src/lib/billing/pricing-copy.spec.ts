@@ -1,5 +1,5 @@
 import catalog from "./plan-catalog.json";
-import { PRICING_FAQS, planFeatureList } from "./pricing-copy";
+import { PRICING_FAQS, SHARED_PRICING_FAQS, planFeatureList } from "./pricing-copy";
 
 describe("planFeatureList", () => {
   it("gives Pro the extra-seat hint and Plus a plain members line", () => {
@@ -33,11 +33,20 @@ describe("PRICING_FAQS", () => {
     expect(questions.some((question) => /self-host/i.test(question))).toBe(false);
   });
 
-  it("says a plan that ends pauses resources without deleting them", () => {
+  it("says a plan that ends pauses resources, keeps them, and deletes check details past the no-plan window", () => {
     const answer = PRICING_FAQS.find((faq) => faq.question === "What happens if I cancel?")?.answer;
     expect(answer).toContain("end of the period you paid for");
-    expect(answer).toContain("Nothing is deleted");
-    expect(answer).toContain("normal data retention still applies");
+    expect(answer).toContain("tests, jobs, monitors, and status pages are kept");
+    expect(answer).toContain(`Check details older than ${catalog.trial.retention.dataRetentionDays} days are deleted`);
+    expect(answer).not.toContain("Nothing is deleted");
+  });
+
+  it("explains check history retention with the catalog's windows, including the daily uptime floor", () => {
+    const answer = SHARED_PRICING_FAQS.find((faq) => faq.question === "How long is check history kept?")?.answer ?? "";
+    expect(answer).toContain(`${catalog.plus.limits.dataRetentionDays} days on Plus and ${catalog.pro.limits.dataRetentionDays} days on Pro`);
+    expect(answer).toContain(`${catalog.plus.limits.aggregatedDataRetentionDays} days on Plus and ${catalog.pro.limits.aggregatedDataRetentionDays} days on Pro`);
+    expect(answer).toContain(`at least ${catalog.minDailyAggregateRetentionDays} days on every plan`);
+    expect(answer).toContain("deleted automatically");
   });
 
   it("states three monitoring regions and Europe-only browser and k6 execution", () => {

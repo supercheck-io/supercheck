@@ -204,6 +204,7 @@ describe('QueueAlertingService', () => {
 
       return expect(names).resolves.toEqual([
         'data-lifecycle-cleanup',
+        'data-lifecycle-urgent',
         'job-scheduler',
         'k6-eu-central',
         'k6-global',

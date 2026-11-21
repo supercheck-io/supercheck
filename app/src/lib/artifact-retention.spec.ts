@@ -26,7 +26,6 @@ jest.mock("bullmq", () => ({
 const monitorConfig = { entityType: "monitor_results" as const, enabled: true, cronSchedule: "0 2 * * *", retentionDays: 30, batchSize: 10, maxRecordsPerRun: 10 };
 const jobConfig = { ...monitorConfig, entityType: "job_runs" as const, retentionDays: 90 };
 const oldCreatedAt = "2026-01-01 00:00:00.123456";
-const oldResult = { checkedAt: oldCreatedAt, id: "result-1", monitorId: "monitor-1", status: "down", isStatusChange: false, testExecutionId: "test-ab12", testReportS3Url: "http://storage:9000/monitors/test-ab12/report/index.html" };
 const s3Success = { success: true, deletedObjects: ["test-ab12/report/index.html"], failedObjects: [], totalAttempted: 1 };
 
 describe("Artifact retention strategies", () => {
@@ -94,162 +93,7 @@ describe("Artifact retention strategies", () => {
 
   afterEach(() => jest.restoreAllMocks());
 
-  function monitorSelections(rows = [oldResult]) {
-    selections = [[{ organizationId: "org-1", subscriptionPlan: "plus" }], [{ plan: "plus", dataRetentionDays: 7 }], [{ id: "monitor-1" }], rows, []];
-  }
-
-  it("deletes monitor artifacts and report metadata before deleting results", async () => {
-    monitorSelections();
-    const result = await new MonitorResultsCleanupStrategy(monitorConfig).execute();
-    expect(deleteReports).toHaveBeenCalledWith([expect.objectContaining({ entityType: "monitor", reportPath: "test-ab12", s3Url: oldResult.testReportS3Url })]);
-    expect(events).toEqual(["s3", "delete-reports", "delete-results"]);
-    expect(result).toMatchObject({ success: true, recordsDeleted: 1, s3ObjectsDeleted: 1 });
-    expect(db.transaction).toHaveBeenCalled();
-  });
-
-  it.each([false, true])("preserves monitor DB pointers after S3 failure (status change: %s)", async isStatusChange => {
-    monitorSelections([{ ...oldResult, isStatusChange }]);
-    deleteReports.mockResolvedValue({ ...s3Success, success: false, failedObjects: [{ key: "test-ab12/report/index.html", error: "Access denied" }] });
-    const result = await new MonitorResultsCleanupStrategy(monitorConfig).execute();
-    expect(result.success).toBe(false);
-    expect(db.delete).not.toHaveBeenCalled();
-    expect(db.update).not.toHaveBeenCalled();
-  });
-
-  it("expires status-change artifacts but preserves the historical result", async () => {
-    monitorSelections([{ ...oldResult, isStatusChange: true }]);
-    const result = await new MonitorResultsCleanupStrategy(monitorConfig).execute();
-    expect(deleteReports).toHaveBeenCalled();
-    expect(db.delete).not.toHaveBeenCalledWith(monitorResults);
-    expect(updateSet).toHaveBeenCalledWith(expect.objectContaining({ testExecutionId: null, testReportS3Url: null }));
-    expect(result.recordsDeleted).toBe(0);
-    expect(result.s3ObjectsDeleted).toBe(1);
-  });
-
-  it("cleans successful synthetic metadata without sending S3 requests", async () => {
-    monitorSelections([{ ...oldResult, status: "up", testReportS3Url: null } as unknown as typeof oldResult]);
-    const result = await new MonitorResultsCleanupStrategy(monitorConfig).execute();
-    expect(result.recordsDeleted).toBe(1);
-    expect(deleteReports).not.toHaveBeenCalled();
-  });
-
-  it("honors plan-specific cutoffs and scopes both organization and monitor queries", async () => {
-    jest.spyOn(Date, "now").mockReturnValue(Date.parse("2026-10-15T12:00:00Z"));
-    selections = [[{ organizationId: "org-plus", subscriptionPlan: "plus" }, { organizationId: "org-pro", subscriptionPlan: "pro" }],
-      [{ plan: "plus", dataRetentionDays: 7 }, { plan: "pro", dataRetentionDays: 30 }],
-      [{ id: "monitor-plus" }], [], [{ id: "monitor-pro" }], []];
-    await new MonitorResultsCleanupStrategy(monitorConfig).execute();
-    const queries = predicates.map(p => new PgDialect().sqlToQuery(p));
-    expect(queries.some(q => q.params.includes("org-plus"))).toBe(true);
-    expect(queries.some(q => q.params.includes("org-pro"))).toBe(true);
-    expect(queries.some(q => q.params.includes("monitor-plus") && q.params.includes("2026-10-08T12:00:00.000Z"))).toBe(true);
-    expect(queries.some(q => q.params.includes("monitor-pro") && q.params.includes("2026-09-15T12:00:00.000Z"))).toBe(true);
-  });
-
-  it("uses the database unlimited retention in self-hosted mode", async () => {
-    jest.mocked(isPolarEnabled).mockReturnValue(false);
-    selections = [[{ id: "org-1" }], [{ dataRetentionDays: 7 }], [{ id: "monitor-1" }], [oldResult]];
-    const result = await new MonitorResultsCleanupStrategy({ ...monitorConfig, maxRecordsPerRun: 1 }).execute();
-    expect(result.recordsDeleted).toBe(1);
-    expect(limits.at(-1)).toBe(1);
-  });
-
-  it("includes monitor artifact cleanup in the global fallback", async () => {
-    selections = [[], [], [oldResult]];
-    const result = await new MonitorResultsCleanupStrategy({ ...monitorConfig, maxRecordsPerRun: 1 }).execute();
-    expect(deleteReports).toHaveBeenCalled();
-    expect(result).toMatchObject({ success: true, recordsDeleted: 1, s3ObjectsDeleted: 1 });
-  });
-
-  it("reports global dry-run processed rows separately from deletions", async () => {
-    selections = [[], [], [{ count: 2, deleteCount: 1 }]];
-    const result = await new MonitorResultsCleanupStrategy({ ...monitorConfig, maxRecordsPerRun: 2 }).execute(true);
-    expect(result.recordsDeleted).toBe(1);
-    expect(result.details.recordsProcessed).toBe(2);
-    expect(deleteReports).not.toHaveBeenCalled();
-    expect(db.delete).not.toHaveBeenCalled();
-  });
-
-  it.each(["tenant", "global"])("bounds the ordered %s dry-run subset before counting historical rows", async mode => {
-    if (mode === "tenant") {
-      monitorSelections();
-      selections[3] = [{ count: 2, deleteCount: 0 }];
-    } else selections = [[], [], [{ count: 2, deleteCount: 0 }]];
-    const result = await new MonitorResultsCleanupStrategy({ ...monitorConfig, maxRecordsPerRun: 2 }).execute(true);
-    expect(result).toMatchObject({ recordsDeleted: 0, details: { recordsProcessed: 2 } });
-    expect(limits).toEqual([2]);
-    const ordering = orderings.flat().map(column => new PgDialect().sqlToQuery(column).sql).join(" ");
-    expect(ordering).toContain("checked_at");
-    expect(ordering).toContain('"id"');
-  });
-
-  it.each(["tenant", "global"])("orders the %s live subset identically to dry-run", async mode => {
-    if (mode === "tenant") monitorSelections();
-    else selections = [[], [], [oldResult]];
-    const result = await new MonitorResultsCleanupStrategy({ ...monitorConfig, maxRecordsPerRun: 1 }).execute();
-    expect(result.success).toBe(true);
-    expect(orderings).toHaveLength(1);
-    const ordering = orderings[0].map(column => new PgDialect().sqlToQuery(column).sql).join(" ");
-    expect(ordering).toContain("checked_at");
-    expect(ordering).toContain('"id"');
-  });
-
-  it("continues later monitor tenants after a failed batch while retaining retry pointers", async () => {
-    selections = [[{ organizationId: "org-1", subscriptionPlan: "plus" }, { organizationId: "org-2", subscriptionPlan: "plus" }],
-      [{ plan: "plus", dataRetentionDays: 7 }], [{ id: "monitor-1" }], [oldResult],
-      [{ id: "monitor-2" }], [{ ...oldResult, id: "result-2", testExecutionId: "test-good" }]];
-    deleteReports.mockResolvedValueOnce({ ...s3Success, success: false, failedObjects: [{ key: "test-ab12/report/index.html", error: "Denied" }] })
-      .mockResolvedValueOnce(s3Success);
-    const result = await new MonitorResultsCleanupStrategy({ ...monitorConfig, maxRecordsPerRun: 2 }).execute();
-    expect(result).toMatchObject({ success: false, recordsDeleted: 1, details: { recordsProcessed: 2 } });
-    expect(deleteReports).toHaveBeenCalledTimes(2);
-    const deleted = deleteWhere.mock.calls.map(([condition]) => new PgDialect().sqlToQuery(condition).params).flat();
-    expect(deleted).toContain("result-2");
-    expect(deleted).not.toContain("result-1");
-  });
-
-  it("cleans healthy monitor rows in a partially failed S3 batch", async () => {
-    monitorSelections([oldResult, { ...oldResult, id: "result-2", testExecutionId: "test-good" }]);
-    deleteReports.mockResolvedValue({ ...s3Success, success: false, failedObjects: [{ key: "test-ab12/report", error: "Denied" }] });
-    getFailedReportEntityIds.mockReturnValue(new Set(["result-1"]));
-    const result = await new MonitorResultsCleanupStrategy(monitorConfig).execute();
-    expect(result).toMatchObject({ success: false, recordsDeleted: 1 });
-    const deleted = deleteWhere.mock.calls.map(([condition]) => new PgDialect().sqlToQuery(condition).params).flat();
-    expect(deleted).toContain("result-2");
-    expect(deleted).not.toContain("result-1");
-    expect(deleted).not.toContain("test-ab12");
-  });
-
-  it("advances past a failed monitor report to healthy rows in the same tenant", async () => {
-    selections = [[{ organizationId: "org-1", subscriptionPlan: "plus" }], [{ plan: "plus", dataRetentionDays: 7 }],
-      [{ id: "monitor-1" }], [oldResult], [{ id: "monitor-1" }], [{ ...oldResult, id: "result-2", testExecutionId: "test-good" }]];
-    deleteReports.mockResolvedValueOnce({ ...s3Success, success: false, failedObjects: [{ key: "test-ab12", error: "Denied" }] })
-      .mockResolvedValueOnce(s3Success);
-    const result = await new MonitorResultsCleanupStrategy({ ...monitorConfig, batchSize: 1, maxRecordsPerRun: 2 }).execute();
-    expect(result).toMatchObject({ success: false, recordsDeleted: 1, details: { recordsProcessed: 2 } });
-    expect(predicates.some(p => {
-      const q = new PgDialect().sqlToQuery(p);
-      return q.sql.includes(" > ") && q.params.includes("result-1");
-    })).toBe(true);
-  });
-
-  it("charges failed monitor batches against the shared safety limit", async () => {
-    selections = [[{ organizationId: "org-1", subscriptionPlan: "plus" }, { organizationId: "org-2", subscriptionPlan: "plus" }],
-      [{ plan: "plus", dataRetentionDays: 7 }], [{ id: "monitor-1" }], [oldResult]];
-    deleteReports.mockResolvedValue({ ...s3Success, success: false, failedObjects: [{ key: "test-ab12", error: "Denied" }] });
-    const result = await new MonitorResultsCleanupStrategy({ ...monitorConfig, maxRecordsPerRun: 1 }).execute();
-    expect(result).toMatchObject({ success: false, recordsDeleted: 0, details: { recordsProcessed: 1 } });
-    expect(deleteReports).toHaveBeenCalledTimes(1);
-  });
-
-  it("makes no S3 or DB mutations in dry-run mode", async () => {
-    monitorSelections();
-    selections[3] = [{ count: 3, deleteCount: 2 }];
-    await new MonitorResultsCleanupStrategy(monitorConfig).execute(true);
-    expect(deleteReports).not.toHaveBeenCalled();
-    expect(db.delete).not.toHaveBeenCalled();
-    expect(db.update).not.toHaveBeenCalled();
-  });
+  // Monitor result cleanup runs against real PostgreSQL in monitor-results-cleanup.db.spec.ts.
 
   it.each(["monitor", "job"])("fails closed when %s plan lookup fails", async entity => {
     jest.mocked(db.select).mockImplementationOnce(() => { throw new Error("DB unavailable"); });
@@ -263,7 +107,7 @@ describe("Artifact retention strategies", () => {
   function jobSelections(mode: "tenant" | "global" | "playground") {
     const report = { id: "report-1", entityType: mode === "playground" ? "k6_test" : "k6_job", entityId: "run-1", reportPath: "run-1/report", s3Url: null };
     const run = { id: "run-1", createdAt: oldCreatedAt, jobId: mode === "playground" ? null : "job-1", artifactPaths: null };
-    if (mode === "global") selections = [[], [], [run], [report]];
+    if (mode === "global") selections = [[], [], [], [run], [report]]; // no organizations, plans, or organization at all
     else selections = [[{ organizationId: "org-1", subscriptionPlan: "plus" }], [{ plan: "plus", jobDataRetentionDays: 30 }],
       mode === "playground" ? [] : [{ id: "job-1" }], [run], [report], []];
   }
@@ -274,6 +118,17 @@ describe("Artifact retention strategies", () => {
     const result = await new JobRunsCleanupStrategy(jobConfig).execute();
     expect(result.success).toBe(false);
     expect(db.delete).not.toHaveBeenCalled();
+  });
+
+  it("does not fall back to global job-run cleanup when organizations exist but every one was skipped", async () => {
+    // One organization whose plan row has an invalid window: skipped, and the global sweep must not run in its place.
+    selections = [[{ organizationId: "org-1", subscriptionPlan: "plus" }], [{ plan: "plus", jobDataRetentionDays: 0 }], [{ id: "org-1" }], []];
+    const result = await new JobRunsCleanupStrategy(jobConfig).execute();
+    expect(result.success).toBe(true);
+    expect(result.details.multiTenant).toBe(true);
+    const queries = predicates.map((p) => new PgDialect().sqlToQuery(p).sql.toLowerCase());
+    expect(queries.some((q) => q.includes('"job_id" is not null'))).toBe(false);
+    expect(deleteReports).not.toHaveBeenCalled();
   });
 
   it.each(["tenant", "global"] as const)("never selects in-flight runs (%s)", async mode => {
@@ -399,19 +254,10 @@ describe("Artifact retention strategies", () => {
     expect(db.transaction).toHaveBeenCalledTimes(2);
   });
 
-  it("counts preserved monitor history as updates, not deletions, in dry-run", async () => {
-    monitorSelections();
-    selections[3] = [{ count: 3, deleteCount: 0 }];
-    const result = await new MonitorResultsCleanupStrategy(monitorConfig).execute(true);
-    expect(result.recordsDeleted).toBe(0);
-    expect(result.details.recordsProcessed).toBe(3);
-    expect(db.update).not.toHaveBeenCalled();
-  });
-
-  it.each(["monitor", "job"])("reports %s database transaction failures", async entity => {
-    if (entity === "monitor") monitorSelections(); else jobSelections("tenant");
+  it("reports job database transaction failures", async () => {
+    jobSelections("tenant");
     jest.mocked(db.transaction).mockRejectedValueOnce(new Error("Transaction failed"));
-    const strategy = entity === "monitor" ? new MonitorResultsCleanupStrategy(monitorConfig) : new JobRunsCleanupStrategy(jobConfig);
+    const strategy = new JobRunsCleanupStrategy(jobConfig);
     const result = await strategy.execute();
     expect(result.success).toBe(false);
     expect(result.recordsDeleted).toBe(0);
@@ -473,7 +319,7 @@ describe("Artifact retention strategies", () => {
   });
 
   it("throws failed cleanup results to activate BullMQ retries and releases the lock", async () => {
-    const redis = { set: jest.fn().mockResolvedValue("OK"), del: jest.fn().mockResolvedValue(1) };
+    const redis = { set: jest.fn().mockResolvedValue("OK"), eval: jest.fn().mockResolvedValue(1) };
     const service = new DataLifecycleService([monitorConfig]);
     await service.initialize(redis as unknown as Redis);
     const processor = jest.mocked(Worker).mock.calls[0][1];
@@ -484,8 +330,9 @@ describe("Artifact retention strategies", () => {
     });
     const job = { data: { entityType: "monitor_results", dryRun: false } } as Parameters<typeof processor>[0];
     await expect(processor(job)).rejects.toThrow("S3 cleanup denied");
-    expect(execute).toHaveBeenCalledWith(false);
-    expect(redis.del).toHaveBeenCalledWith("cleanup:monitor_results:lock");
+    expect(execute).toHaveBeenCalledWith(false, expect.objectContaining({ signal: expect.any(AbortSignal) }));
+    // Compare-and-delete release of this run's own token.
+    expect(redis.eval).toHaveBeenCalledWith(expect.stringContaining('"del"'), 1, "cleanup:monitor_results:lock", redis.set.mock.calls[0][1]);
     expect(jest.mocked(Queue).mock.calls[0][1]?.defaultJobOptions?.attempts).toBe(2);
   });
 });

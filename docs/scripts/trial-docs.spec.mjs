@@ -18,8 +18,8 @@ test('the docs pricing page takes its trial text from the shared plan catalog', 
   assert.ok(!/Is there a free trial\?/.test(pricingPage), 'trial questions come from catalog.trial.faqs');
 });
 
-test('every placeholder in the trial FAQs names a trial limit', () => {
-  const known = new Set([...Object.keys(catalog.trial.limits), 'durationDays']);
+test('every placeholder in the trial FAQs names a trial limit or retention value', () => {
+  const known = new Set([...Object.keys(catalog.trial.limits), ...Object.keys(catalog.trial.retention), 'durationDays']);
   assert.ok(catalog.trial.faqs.length >= 3);
   for (const { answer } of catalog.trial.faqs) {
     for (const [, name] of answer.matchAll(/\{(\w+)\}/g)) assert.ok(known.has(name), `unknown placeholder {${name}}`);

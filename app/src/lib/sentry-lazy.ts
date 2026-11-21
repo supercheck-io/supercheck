@@ -77,3 +77,13 @@ export async function checkedTick<T>(
     throw error;
   }
 }
+
+/**
+ * Captures an error event that is not an exception (for example a background job falling behind), grouped by
+ * `fingerprint`. Best effort: a no-op when Sentry is off, and never throws into the caller.
+ */
+export function reportProblem(message: string, fingerprint: string[], extra: Record<string, unknown>): void {
+  void load()
+    .then((sdk) => sdk?.captureProblem(message, fingerprint, extra))
+    .catch(() => undefined);
+}
