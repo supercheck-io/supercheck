@@ -74,7 +74,7 @@ Select **Approve**. The tool returns to your editor, connected.
 </Step>
 </Steps>
 
-The approval screen lists what the app asked for, including the optional `mcp:incidents:write` or `mcp:sre` scopes. Approving grants every scope the app asked for; you cannot approve only `mcp:read`. If an app asks for more than you want to grant, deny it and connect a client that asks for read access only. Approving the same app and project again adds to what you approved before and never narrows it. To remove access, disconnect.
+The approval screen lists what the app asked for, including the optional `mcp:incidents:write` or `mcp:sre` scopes. Approving grants every scope the app asked for; you cannot approve only `mcp:read`. If an app asks for more than you want to grant, deny it and connect a client that asks for read access only. Approving the same app and project again normally adds to what you approved before. Two approvals for the same app and project at the same moment can drop a scope; if a scope you approved is missing, approve the app again. To remove access, disconnect.
 
 Then try: "Use Supercheck to list the failed runs from today", "Which monitors are down right now?" or "Summarize the most recent incident and its root cause."
 
