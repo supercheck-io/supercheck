@@ -1,6 +1,7 @@
 import { liveMonitor } from "@/lib/deletion/visibility";
 import { isUuid } from "@/lib/uuid";
 import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
 import { db } from "@/utils/db";
 import { monitors, monitorResults } from "@/db/schema";
 import { monitorResultForRead } from "@/lib/monitor-read-config";
@@ -21,6 +22,9 @@ import type { MonitoringLocation } from "@/lib/location-service";
 import { buildMonitorResultsDateRange } from "./date-range";
 
 const MAX_TIMEZONE_OFFSET_MINUTES = 14 * 60;
+
+// "failed" is every check that was not up (down, error, timeout): the same `is_up` flag the table icon and uptime read.
+const statusFilterSchema = z.enum(["failed"]).optional();
 
 function parsePositiveInteger(value: string | null, fallback: number): number {
   if (value === null) {
@@ -69,6 +73,11 @@ export async function GET(
   const locationParam = searchParams.get("location"); // Optional location filter
   // "" and "all" mean no filter (older API clients send them).
   const locationFilter = (locationParam === "" || locationParam === "all" ? null : locationParam) as MonitoringLocation | null;
+
+  const statusFilter = statusFilterSchema.safeParse(searchParams.get("status") ?? undefined);
+  if (!statusFilter.success) {
+    return NextResponse.json({ error: "Invalid status parameter. Must be \"failed\"" }, { status: 400 });
+  }
 
   // Validate pagination parameters
   if (!Number.isInteger(page) || !Number.isInteger(limit) || page < 1 || limit < 1 || limit > 100) {
@@ -143,6 +152,10 @@ export async function GET(
 
     if (locationFilter) {
       conditions.push(eq(monitorResults.location, locationFilter));
+    }
+
+    if (statusFilter.data === "failed") {
+      conditions.push(eq(monitorResults.isUp, false));
     }
 
     const whereCondition = conditions.length > 1 ? and(...conditions) : conditions[0];

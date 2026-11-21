@@ -52,6 +52,8 @@ import { Monitor } from "./schema";
 import {
   format,
   parseISO,
+  startOfDay,
+  subDays,
 } from "date-fns";
 import {
   Popover,
@@ -59,6 +61,8 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { Calendar as CalendarComponent } from "@/components/ui/calendar";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 
 import {
   AlertDialog,
@@ -129,6 +133,8 @@ export interface MonitorResultItem {
 
 export type MonitorWithResults = Monitor & {
   recentResults?: MonitorResultItem[];
+  /** Days of raw check results the organization keeps; undefined when unknown. `onPlan` is false when billing is off. */
+  resultRetention?: { days: number; onPlan: boolean };
 };
 
 interface MonitorDetailClientProps {
@@ -325,6 +331,7 @@ export function MonitorDetailClient({
   const [currentPage, setCurrentPage] = useState(1);
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined);
   const [isCalendarOpen, setIsCalendarOpen] = useState(false);
+  const [failuresOnly, setFailuresOnly] = useState(false);
   const [reportModalOpen, setReportModalOpen] = useState(false);
   const [hasHydrated, setHasHydrated] = useState(false);
   const [selectedReportUrl, setSelectedReportUrl] = useState<string | null>(
@@ -353,6 +360,7 @@ export function MonitorDetailClient({
     limit: resultsPerPage,
     date: selectedDate,
     location: selectedLocation,
+    failuresOnly,
   });
   const {
     canEdit: canEditMonitor,
@@ -436,16 +444,19 @@ export function MonitorDetailClient({
     return Array.from(locationSet).sort((a, b) => a.localeCompare(b));
   }, [configuredLocations, monitor.recentResults, paginatedTableResults]);
 
-  // Reset location filter if selected location is no longer available
+  // Reset location filter if selected location is no longer available. A filtered page (failures only or one
+  // day) can lack the selected location's rows without the location being gone, so only an unfiltered page counts.
   useEffect(() => {
     if (
+      !failuresOnly &&
+      !selectedDate &&
       selectedLocation !== "all" &&
       availableLocations.length > 0 &&
       !availableLocations.includes(selectedLocation)
     ) {
       setSelectedLocation("all");
     }
-  }, [availableLocations, selectedLocation]);
+  }, [availableLocations, selectedLocation, failuresOnly, selectedDate]);
 
   const handleDelete = async () => {
     if (!canDeleteMonitor) {
@@ -833,12 +844,49 @@ export function MonitorDetailClient({
   // Reset page when filters change
   useEffect(() => {
     setCurrentPage(1);
-  }, [selectedDate, selectedLocation]);
+  }, [selectedDate, selectedLocation, failuresOnly]);
 
   // A larger fitted page size can leave the current page past the end
   useEffect(() => {
     if (totalPages > 0 && currentPage > totalPages) setCurrentPage(totalPages);
   }, [totalPages, currentPage]);
+
+  // Days the date filter can pick: today back to the oldest kept day (local time). With retention unknown, back to
+  // the monitor's creation day.
+  const retentionDays = monitor.resultRetention?.days;
+  const createdAt = toValidDate(monitor.createdAt);
+  const today = startOfDay(new Date());
+  // Cleanup deletes rows older than N x 24h, so the day N days back still holds part of its checks. Never before
+  // the monitor existed.
+  const retentionStart = retentionDays ? subDays(today, retentionDays) : undefined;
+  const createdDay = createdAt ? startOfDay(createdAt) : undefined;
+  const firstSelectableDay =
+    retentionStart && createdDay
+      ? (retentionStart > createdDay ? retentionStart : createdDay)
+      : retentionStart ?? createdDay;
+  const retentionHint = retentionDays
+    ? `Check details are kept for ${retentionDays} days${monitor.resultRetention?.onPlan ? " on your plan" : ""}.`
+    : undefined;
+  const checksNoun = failuresOnly ? "failed checks" : "checks";
+  // A failed request must not read as "every check passed".
+  const emptyTitle = resultsError
+    ? "Could not load check results"
+    : failuresOnly
+    ? "No failed checks"
+    : selectedDate
+      ? "No checks on this day"
+      : "No check results available";
+  const emptyDescription = resultsError
+    ? "Refresh the page to try again."
+    : failuresOnly
+    ? selectedDate
+      ? `No failed checks on ${format(selectedDate, "MMMM d, yyyy")}.`
+      : retentionDays
+        ? `No check failed in the last ${retentionDays} days.`
+        : "No recent check failed."
+    : selectedDate
+      ? "Pick another day or clear the date filter."
+      : "Check results will appear here once monitoring begins.";
 
   const clearDateFilter = () => {
     setSelectedDate(undefined);
@@ -1398,11 +1446,22 @@ export function MonitorDetailClient({
           <FitPanel fit={fitResults} minHeight="lg:min-h-[16rem]">
           <Card className="shadow-sm flex h-full flex-col overflow-hidden">
             <CardHeader className="flex-shrink-0">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-wrap items-center justify-between gap-2">
                 <CardTitle className="text-lg font-semibold flex items-center">
                   Recent Check Results
                 </CardTitle>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="flex items-center gap-2 pr-1">
+                    <Switch
+                      id="monitor-results-failures-only"
+                      checked={failuresOnly}
+                      onCheckedChange={setFailuresOnly}
+                      data-testid="failures-only-toggle"
+                    />
+                    <Label htmlFor="monitor-results-failures-only" className="text-sm font-normal">
+                      Failures only
+                    </Label>
+                  </div>
                   {selectedDate && (
                     <Button
                       variant="outline"
@@ -1435,10 +1494,17 @@ export function MonitorDetailClient({
                           setIsCalendarOpen(false);
                         }}
                         disabled={(date: Date) =>
-                          date > new Date() || date < new Date("2020-01-01")
+                          date > new Date() || (firstSelectableDay !== undefined && date < firstSelectableDay)
                         }
+                        startMonth={firstSelectableDay}
+                        endMonth={today}
                         initialFocus
                       />
+                      {retentionHint && (
+                        <p className="max-w-[16rem] border-t px-3 py-2 text-xs text-muted-foreground" data-testid="results-retention-hint">
+                          {retentionHint}
+                        </p>
+                      )}
                     </PopoverContent>
                   </Popover>
                 </div>
@@ -1447,11 +1513,11 @@ export function MonitorDetailClient({
                 {showResultsSkeleton
                   ? "Loading checks…"
                   : selectedDate
-                  ? `Showing ${currentResultsCount} of ${totalResultsCount} checks for ${format(
+                  ? `Showing ${currentResultsCount} of ${totalResultsCount} ${checksNoun} for ${format(
                     selectedDate,
-                    "MMMM dd, yyyy"
+                    "MMMM d, yyyy"
                   )}`
-                  : `Showing ${currentResultsCount} of ${totalResultsCount} recent checks.`}
+                  : `Showing ${currentResultsCount} of ${totalResultsCount} recent ${checksNoun}.`}
               </CardDescription>
             </CardHeader>
             <CardContent ref={resultsPanelRef} className="p-0 flex-1 flex min-h-0 flex-col">
@@ -1742,11 +1808,10 @@ export function MonitorDetailClient({
                               </div>
                               <div>
                                 <p className="text-muted-foreground font-medium">
-                                  No check results available
+                                  {emptyTitle}
                                 </p>
                                 <p className="text-sm text-muted-foreground mt-1">
-                                  Check results will appear here once monitoring
-                                  begins.
+                                  {emptyDescription}
                                 </p>
                               </div>
                             </div>
