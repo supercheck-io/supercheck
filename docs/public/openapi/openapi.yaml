@@ -3102,6 +3102,9 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "409":
           description: A tag with this name (ignoring case) already exists in this project
+        "503":
+          description: Another request is updating tags in this project; retry after the
+            `Retry-After` interval
   /api/tags/{id}:
     parameters:
       - name: id
@@ -6171,6 +6174,9 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Another request is updating tags in this project; retry after the
+            `Retry-After` interval
   /api/requirements/{id}:
     parameters:
       - name: id
@@ -6242,6 +6248,9 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Another request is updating tags in this project; retry after the
+            `Retry-After` interval
     delete:
       operationId: deleteRequirement
       summary: Delete a requirement

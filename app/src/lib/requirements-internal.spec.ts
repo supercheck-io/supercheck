@@ -3,6 +3,8 @@ jest.mock("@/utils/db", () => ({ db: {} }));
 
 import { PgDialect } from "drizzle-orm/pg-core";
 import type { SQL } from "drizzle-orm";
+import { db } from "@/utils/db";
+import { PlanLimitBusyError } from "@/lib/middleware/plan-limit-lock";
 import {
   normalizeTagName,
   syncRequirementTags,
@@ -18,7 +20,12 @@ const R = "44444444-4444-4444-8444-444444444444";
 function makeExecutor(existing: { id: string; name: string }[], projectTagCount = 0) {
   const inserted: unknown[] = [];
   const wheres: SQL[] = [];
+  const executed: { sql: string; params: unknown[] }[] = [];
   const executor = {
+    execute: jest.fn(async (q: SQL) => {
+      executed.push(new PgDialect().sqlToQuery(q));
+      return [];
+    }),
     select: () => ({
       from: () => ({
         where: (w: SQL) => {
@@ -38,7 +45,7 @@ function makeExecutor(existing: { id: string; name: string }[], projectTagCount 
       },
     }),
   };
-  return { executor: executor as never, inserted, wheres };
+  return { executor: executor as never, inserted, wheres, executed, raw: executor };
 }
 
 describe("syncRequirementTagsByName", () => {
@@ -85,6 +92,76 @@ describe("syncRequirementTagsByName", () => {
       expect.objectContaining({ name: "Smoke", projectId: "p", organizationId: "o" }),
       expect.objectContaining({ name: "Auth" }),
     ]);
+  });
+});
+
+describe("syncRequirementTagsByName cap and project-tag lock", () => {
+  const created = (inserted: unknown[]) =>
+    inserted.length > 1 ? (inserted[0] as { name: string }[]).map((t) => t.name) : [];
+
+  it("lenient: names that normalise alike count once, so a later distinct tag is kept", async () => {
+    const { executor, inserted } = makeExecutor([]);
+    const names = [...Array.from({ length: 11 }, (_, i) => `smoke${"!".repeat(i + 1)}`), "ai"];
+    await syncRequirementTagsByName(R, names, "o", "p", "u", executor, true);
+    expect(created(inserted)).toEqual(["smoke", "ai"]);
+  });
+
+  it("lenient: links two distinct stored tags whose names normalise alike", async () => {
+    const { executor, inserted } = makeExecutor([
+      { id: "spaced", name: "Login Flow" },
+      { id: "dashed", name: "login-flow" },
+    ]);
+    await syncRequirementTagsByName(R, ["Login Flow", "login-flow"], "o", "p", "u", executor, true);
+    expect(inserted).toEqual([[expect.objectContaining({ tagId: "spaced" }), expect.objectContaining({ tagId: "dashed" })]]);
+  });
+
+  it("strict: case-twins count once, so a later distinct tag is kept", async () => {
+    const { executor, inserted } = makeExecutor([]);
+    const names = [...Array.from({ length: 11 }, (_, i) => (i % 2 ? "SMOKE" : "smoke")), "auth"];
+    await syncRequirementTagsByName(R, names, "o", "p", "u", executor);
+    expect(created(inserted)).toEqual(["smoke", "auth"]);
+  });
+
+  it("still stops past 10 distinct tags (the requirement cap rejects 11)", async () => {
+    const { executor, inserted } = makeExecutor([]);
+    const names = Array.from({ length: 15 }, (_, i) => `tag${i}`);
+    await expect(syncRequirementTagsByName(R, names, "o", "p", "u", executor)).rejects.toBeInstanceOf(TagLimitError);
+    expect(inserted[0]).toHaveLength(11); // the lookup and creates were bounded at 11, not 15
+  });
+
+  it("takes the project-tag advisory lock on the same executor before the lookup", async () => {
+    const { executor, executed, wheres } = makeExecutor([]);
+    await syncRequirementTagsByName(R, ["smoke"], "o", "p", "u", executor);
+    const lock = executed.find((q) => q.sql.includes("pg_advisory_xact_lock"));
+    expect(lock?.params).toEqual(["project-tags:o:p"]);
+    expect(executed.some((q) => q.sql.includes("lock_timeout"))).toBe(true);
+    expect(wheres).toHaveLength(2); // lookup + count both ran after the lock
+  });
+
+  it("surfaces a lock timeout as PlanLimitBusyError before any write", async () => {
+    const { executor, inserted, raw } = makeExecutor([]);
+    raw.execute.mockImplementation(async (q: SQL) => {
+      if (new PgDialect().sqlToQuery(q).sql.includes("pg_advisory_xact_lock")) {
+        throw Object.assign(new Error("canceling statement due to lock timeout"), { code: "55P03" });
+      }
+      return [];
+    });
+    await expect(syncRequirementTagsByName(R, ["smoke"], "o", "p", "u", executor)).rejects.toBeInstanceOf(PlanLimitBusyError);
+    expect(inserted).toHaveLength(0);
+  });
+
+  it("opens its own transaction when called on the shared pool, so the lock spans the writes", async () => {
+    const { executor, executed, inserted } = makeExecutor([]);
+    const transaction = jest.fn((fn: (tx: unknown) => Promise<unknown>) => fn(executor));
+    Object.assign(db, { transaction });
+    try {
+      await syncRequirementTagsByName(R, ["smoke"], "o", "p", "u");
+    } finally {
+      delete (db as { transaction?: unknown }).transaction;
+    }
+    expect(transaction).toHaveBeenCalledTimes(1);
+    expect(executed.some((q) => q.sql.includes("pg_advisory_xact_lock"))).toBe(true);
+    expect(created(inserted)).toEqual(["smoke"]);
   });
 });
 

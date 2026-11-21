@@ -12,9 +12,13 @@ import { computeCoverageStatus } from "@/lib/requirements/coverage-status";
 import { RUN_CANCELLATION_MARKER } from "@/lib/run-cancellation-marker";
 import { db } from "@/utils/db";
 import { tagNameError } from "@/lib/tag-validation";
+import { acquireXactLock, projectTagsLockKey } from "@/lib/middleware/plan-limit-lock";
 
 // Either the shared pool or a transaction handle, so a caller can make the tag writes part of its own transaction.
-export type Executor = Pick<typeof db, "select" | "selectDistinctOn" | "selectDistinct" | "insert" | "delete" | "update">;
+export type Executor = Pick<
+  typeof db,
+  "select" | "selectDistinctOn" | "selectDistinct" | "insert" | "delete" | "update" | "execute"
+>;
 
 /** Raised when a requirement would exceed the tag cap; services map it to a validation failure (not a 500). */
 export class TagLimitError extends Error {
@@ -99,10 +103,19 @@ export async function syncRequirementTagsByName(
   lenient = false
 ): Promise<void> {
   if (tagNames.length === 0) return;
+  // The project-tag lock below is transaction-scoped, so it needs a transaction to live in.
+  if (executor === db) {
+    return db.transaction((tx) =>
+      syncRequirementTagsByName(requirementId, tagNames, organizationId, projectId, userId, tx as unknown as Executor, lenient)
+    );
+  }
 
   // "AI" and "ai" are one tag (two rows differing only in case would collide), so dedupe case-insensitively and
   // keep the first spelling given for any tag that has to be created.
   const seen = new Set<string>();
+  // The cap counts distinct tags: lenient mode keys on the normalised name, since "smoke!" and "smoke!!" both
+  // become "smoke" (distinct stored names that merely normalise alike are still both looked up).
+  const capKeys = new Set<string>();
   const requestedNames: string[] = [];
   for (const raw of tagNames) {
     const name = raw.trim();
@@ -110,9 +123,14 @@ export async function syncRequirementTagsByName(
     if (!name || seen.has(key)) continue;
     seen.add(key);
     requestedNames.push(name);
-    // syncRequirementTags rejects more than 10, so 11 already fails it; stop before an oversized lookup.
-    if (requestedNames.length > 10) break;
+    capKeys.add((lenient ? normalizeTagName(name) : name).toLowerCase() || key);
+    // syncRequirementTags rejects more than 10, so 11 distinct tags already fail it; stop before an oversized lookup.
+    if (capKeys.size > 10) break;
   }
+
+  // Serialise with every other writer of this project's tags (POST /api/tags too), so the lookup, the project cap
+  // count and the insert below see each other's rows.
+  await acquireXactLock(executor, projectTagsLockKey(organizationId, projectId));
 
   // Lenient lookups also try the normalised spelling, so "Login Flow" reuses a stored "login-flow" instead of colliding.
   const lookupKeys = new Set<string>();

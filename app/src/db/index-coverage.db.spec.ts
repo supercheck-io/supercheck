@@ -58,6 +58,7 @@ afterAll(async () => {
 describe("index coverage", () => {
   it("every foreign key column leads a usable index", async () => {
     // A partial index counts only when it is `col IS NOT NULL`, which any `col = $1` lookup implies.
+    // Expressions after the leading column are fine (indkey[0] is 0 only when the leading key is an expression).
     const rows = await db<{ ref: string }[]>`
       SELECT c.conrelid::regclass::text || '.' || a.attname AS ref
       FROM pg_constraint c
@@ -66,7 +67,6 @@ describe("index coverage", () => {
         AND NOT EXISTS (
           SELECT 1 FROM pg_index i
           WHERE i.indrelid = c.conrelid AND i.indkey[0] = c.conkey[1] AND i.indisvalid
-            AND i.indexprs IS NULL
             AND (i.indpred IS NULL
                  OR pg_get_expr(i.indpred, i.indrelid) = '(' || a.attname || ' IS NOT NULL)')
         )

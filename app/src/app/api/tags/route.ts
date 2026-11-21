@@ -8,6 +8,8 @@ import { tagNameError, tagColorError, isTagNameConflict } from '@/lib/tag-valida
 
 import { permissionDeniedResponse } from "@/lib/deletion/org-state";
 import { requireSessionSameOrigin } from "@/lib/security/same-origin";
+import { acquireXactLock, PlanLimitBusyError, projectTagsLockKey } from "@/lib/middleware/plan-limit-lock";
+
 export async function GET() {
   try {
     const context = await requireAuthContext();
@@ -77,34 +79,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: nameError }, { status: 400 });
     }
 
-    // Check if tag already exists within the project (case-insensitively, as requirement tags are matched)
-    const existingTag = await db
-      .select()
-      .from(tags)
-      .where(and(
-        eq(sql`lower(${tags.name})`, trimmedName.toLowerCase()),
-        eq(tags.organizationId, context.organizationId),
-        eq(tags.projectId, context.project.id)
-      ))
-      .limit(1);
-
-    if (existingTag.length > 0) {
-      return NextResponse.json({ error: 'Tag already exists in this project' }, { status: 409 });
-    }
-
-    // Check if we've reached the maximum number of tags (50) per project
-    const totalTags = await db
-      .select({ count: tags.id })
-      .from(tags)
-      .where(and(
-        eq(tags.organizationId, context.organizationId),
-        eq(tags.projectId, context.project.id)
-      ));
-
-    if (totalTags.length >= 50) {
-      return NextResponse.json({ error: 'Maximum of 50 tags allowed per project' }, { status: 400 });
-    }
-
     // Generate a default color if not provided
     const defaultColors = [
       '#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6',
@@ -113,19 +87,53 @@ export async function POST(request: NextRequest) {
     ];
     const tagColor = color || defaultColors[Math.floor(Math.random() * defaultColors.length)];
 
-    // Create the tag
-    const [newTag] = await db
-      .insert(tags)
-      .values({
-        name: trimmedName,
-        color: tagColor,
-        organizationId: context.organizationId,
-        projectId: context.project.id,
-        createdByUserId: context.userId,
-      })
-      .returning();
+    // The duplicate check, the 50-per-project count and the insert run under one project-tag lock (shared with
+    // requirement tag sync), so concurrent creates cannot both pass the cap.
+    const outcome = await db.transaction(async (tx) => {
+      await acquireXactLock(tx, projectTagsLockKey(context.organizationId, context.project.id));
 
-    return NextResponse.json(newTag, { status: 201 });
+      // Check if tag already exists within the project (case-insensitively, as requirement tags are matched)
+      const existingTag = await tx
+        .select()
+        .from(tags)
+        .where(and(
+          eq(sql`lower(${tags.name})`, trimmedName.toLowerCase()),
+          eq(tags.organizationId, context.organizationId),
+          eq(tags.projectId, context.project.id)
+        ))
+        .limit(1);
+      if (existingTag.length > 0) return { status: 409 as const };
+
+      // Check if we've reached the maximum number of tags (50) per project
+      const [{ count }] = await tx
+        .select({ count: sql<number>`count(*)::int` })
+        .from(tags)
+        .where(and(
+          eq(tags.organizationId, context.organizationId),
+          eq(tags.projectId, context.project.id)
+        ));
+      if (count >= 50) return { status: 400 as const };
+
+      const [newTag] = await tx
+        .insert(tags)
+        .values({
+          name: trimmedName,
+          color: tagColor,
+          organizationId: context.organizationId,
+          projectId: context.project.id,
+          createdByUserId: context.userId,
+        })
+        .returning();
+      return { status: 201 as const, newTag };
+    });
+
+    if (outcome.status === 409) {
+      return NextResponse.json({ error: 'Tag already exists in this project' }, { status: 409 });
+    }
+    if (outcome.status === 400) {
+      return NextResponse.json({ error: 'Maximum of 50 tags allowed per project' }, { status: 400 });
+    }
+    return NextResponse.json(outcome.newTag, { status: 201 });
   } catch (error) {
     if (isAuthError(error)) {
       return NextResponse.json(
@@ -135,6 +143,12 @@ export async function POST(request: NextRequest) {
     }
     if (isTagNameConflict(error)) {
       return NextResponse.json({ error: 'Tag already exists in this project' }, { status: 409 });
+    }
+    if (error instanceof PlanLimitBusyError) {
+      return NextResponse.json(
+        { error: 'Another request is updating tags in this project. Please retry.' },
+        { status: 503, headers: { 'Retry-After': '2' } }
+      );
     }
     console.error('Error creating tag:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

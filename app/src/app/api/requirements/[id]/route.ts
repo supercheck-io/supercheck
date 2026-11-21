@@ -67,6 +67,9 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
     const result = await updateRequirementWithRelations(serviceCtx, id, parsed.data);
     if (!result.success) {
       if (result.code === "not_found") return notFound();
+      if (result.code === "busy") {
+        return NextResponse.json({ error: result.error }, { status: 503, headers: { "Retry-After": "2" } });
+      }
       return NextResponse.json(
         { error: result.error ?? "Failed to update requirement" },
         { status: 400 }

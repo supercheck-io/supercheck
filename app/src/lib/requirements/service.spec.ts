@@ -45,6 +45,7 @@ jest.mock("@/lib/requirements-internal", () => ({
 
 import { db } from "@/utils/db";
 import { logAuditEvent } from "@/lib/audit-logger";
+import { PlanLimitBusyError } from "@/lib/middleware/plan-limit-lock";
 import {
   syncRequirementTagsByName,
   updateCoverageSnapshot,
@@ -192,6 +193,16 @@ describe("requirements service", () => {
     );
     const updated = await updateRequirementWithRelations(ctx, R, { tags: ["smoke"] });
     expect(updated).toEqual({ success: false, error: "Maximum of 50 tags allowed per project", code: "invalid" });
+    expect(logAuditEvent).not.toHaveBeenCalled();
+  });
+
+  it("maps a project-tag lock timeout to a busy result the routes answer with 503", async () => {
+    (syncRequirementTagsByName as jest.Mock).mockRejectedValueOnce(new PlanLimitBusyError());
+    const created = await createRequirementWithRelations(ctx, { title: "x", tags: ["smoke"] });
+    expect(created).toMatchObject({ id: "", success: false, code: "busy" });
+    (syncRequirementTagsByName as jest.Mock).mockRejectedValueOnce(new PlanLimitBusyError());
+    const updated = await updateRequirementWithRelations(ctx, R, { tags: ["smoke"] });
+    expect(updated).toMatchObject({ success: false, code: "busy" });
     expect(logAuditEvent).not.toHaveBeenCalled();
   });
 

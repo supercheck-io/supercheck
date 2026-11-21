@@ -79,6 +79,14 @@ describe("POST /api/requirements", () => {
     expect(res.status).toBe(400);
   });
 
+  it("503 with Retry-After when the project's tags are locked by another request", async () => {
+    (createRequirementWithRelations as jest.Mock).mockResolvedValue({ id: "", success: false, error: "busy", code: "busy" });
+    const res = await post({ title: "x", tags: ["smoke"] });
+    expect(res.status).toBe(503);
+    expect(res.headers.get("Retry-After")).toBe("2");
+    expect(await res.json()).toEqual({ error: "busy" });
+  });
+
   it("201 with the created requirement scoped to the caller's project", async () => {
     (createRequirementWithRelations as jest.Mock).mockResolvedValue({ id: "r1", success: true });
     (getRequirementDto as jest.Mock).mockResolvedValue({ id: "r1", title: "x" });

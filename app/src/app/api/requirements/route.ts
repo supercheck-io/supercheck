@@ -277,6 +277,9 @@ export async function POST(request: NextRequest) {
     const serviceCtx = toServiceContext(context);
     const result = await createRequirementWithRelations(serviceCtx, parsed.data);
     if (!result.success) {
+      if (result.code === 'busy') {
+        return NextResponse.json({ error: result.error }, { status: 503, headers: { 'Retry-After': '2' } });
+      }
       return NextResponse.json(
         { error: result.error ?? 'Failed to create requirement' },
         { status: result.code === 'conflict' ? 409 : 400 }

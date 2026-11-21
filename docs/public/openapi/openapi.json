@@ -4458,6 +4458,9 @@
           },
           "409": {
             "description": "A tag with this name (ignoring case) already exists in this project"
+          },
+          "503": {
+            "description": "Another request is updating tags in this project; retry after the `Retry-After` interval"
           }
         }
       }
@@ -8889,6 +8892,9 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Another request is updating tags in this project; retry after the `Retry-After` interval"
           }
         }
       }
@@ -8991,6 +8997,9 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Another request is updating tags in this project; retry after the `Retry-After` interval"
           }
         }
       },
