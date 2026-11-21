@@ -53,7 +53,6 @@ import {
   format,
   parseISO,
   startOfDay,
-  subDays,
 } from "date-fns";
 import {
   Popover,
@@ -114,6 +113,7 @@ import { HeartbeatStateBadge } from "./heartbeat-state-badge";
 import { useFitPanelRows } from "./use-fit-panel-rows";
 import { formatHeartbeatMinutes, formatPingAgo, formatPingDue, formatRunDuration } from "./heartbeat-format";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { rawCutoff } from "@/lib/raw-cutoff";
 
 export interface MonitorResultItem {
   id: string;
@@ -858,7 +858,8 @@ export function MonitorDetailClient({
   const today = startOfDay(new Date());
   // Cleanup deletes rows older than N x 24h, so the day N days back still holds part of its checks. Never before
   // the monitor existed.
-  const retentionStart = retentionDays ? subDays(today, retentionDays) : undefined;
+  // Cleanup keeps rows from the UTC start of the day `retentionDays` ago: the first selectable local day holds that instant.
+  const retentionStart = retentionDays ? startOfDay(rawCutoff(retentionDays)) : undefined;
   const createdDay = createdAt ? startOfDay(createdAt) : undefined;
   const firstSelectableDay =
     retentionStart && createdDay

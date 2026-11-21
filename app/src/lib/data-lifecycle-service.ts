@@ -72,9 +72,11 @@ import { endExpiredTrials, reconcilePaidTrialSuspensions, sendTrialReminders, su
 import { AUDIT_RETENTION_DAYS, scrubAuditEmails } from "@/lib/audit-scrub";
 import { reportProblem } from "@/lib/sentry-lazy";
 import planCatalog from "@/lib/billing/plan-catalog.json";
-import { resolveRawRetention, SHORTEST_RAW_RETENTION_DAYS, type RawRetentionDecision } from "@/lib/raw-retention";
+import { rawCutoff } from "@/lib/raw-cutoff";
+import { SHORTEST_RAW_RETENTION_DAYS } from "@/lib/raw-retention";
+import { getRawRetentionByOrganization } from "@/lib/monitor-result-retention";
 
-export { SHORTEST_RAW_RETENTION_DAYS };
+export { SHORTEST_RAW_RETENTION_DAYS, rawCutoff };
 import { deliverTrialReminder } from "@/lib/execution/trial-reminder-delivery";
 
 const QUEUE_EVENTS_READY_TIMEOUT_MS = 10_000;
@@ -255,48 +257,12 @@ function withValidDays<T extends { organizationId: string }>(rows: T[], days: (r
 export async function getOrganizationRetentionSettings(): Promise<OrganizationRetention[]> {
   try {
     const settings: OrganizationRetention[] = [];
-    const add = (organizationId: string, plan: string, decision: RawRetentionDecision) => {
+    for (const [organizationId, { plan, decision }] of await getRawRetentionByOrganization()) {
       if ("skip" in decision) {
         console.warn(`[DATA_LIFECYCLE] Skipping monitor_results cleanup of org ${organizationId.substring(0, 8)}: ${decision.skip}`);
       } else {
         settings.push({ organizationId, retentionDays: decision.days, plan });
       }
-    };
-
-    if (!isPolarEnabled()) {
-      const orgs = await db.select({ id: organization.id }).from(organization).orderBy(asc(organization.id));
-      const [unlimited] = await db
-        .select({ dataRetentionDays: planLimits.dataRetentionDays })
-        .from(planLimits)
-        .where(eq(planLimits.plan, "unlimited"))
-        .limit(1);
-      const decision = resolveRawRetention({ selfHosted: true, unlimitedDays: unlimited?.dataRetentionDays });
-      for (const org of orgs) add(org.id, "unlimited", decision);
-      return settings;
-    }
-
-    const orgsWithPlans = await db
-      .select({
-        organizationId: organization.id,
-        subscriptionPlan: organization.subscriptionPlan,
-        subscriptionStatus: organization.subscriptionStatus,
-      })
-      .from(organization)
-      .orderBy(asc(organization.id));
-    const plans = await db.select().from(planLimits);
-    const planRetentionMap = new Map(plans.map((p) => [p.plan, p.dataRetentionDays]));
-
-    for (const org of orgsWithPlans) {
-      add(
-        org.organizationId,
-        org.subscriptionPlan ?? "none",
-        resolveRawRetention({
-          selfHosted: false,
-          subscriptionPlan: org.subscriptionPlan,
-          subscriptionStatus: org.subscriptionStatus,
-          planDays: org.subscriptionPlan ? planRetentionMap.get(org.subscriptionPlan) : undefined,
-        }),
-      );
     }
     return settings;
   } catch (error) {
@@ -539,18 +505,6 @@ interface RunLimits {
 
 const stopReason = ({ deadline, signal }: RunLimits): StopReason | null =>
   signal?.aborted ? "lock" : Date.now() >= deadline ? "budget" : null;
-
-/**
- * Raw rows older than the start (UTC) of the day `days` ago. Deleting whole UTC days only keeps the oldest
- * remaining day complete, so the daily rollup, which recomputes the last 7 days, never rewrites a day from partly
- * purged rows. Correct for every window, including one shorter than the rollup's lookback; it keeps up to one
- * extra day of raw results.
- */
-export function rawCutoff(days: number, now = Date.now()): Date {
-  const cutoff = new Date(now - days * DAY_MS);
-  cutoff.setUTCHours(0, 0, 0, 0);
-  return cutoff;
-}
 
 const pause = (ms: number) => (ms > 0 ? new Promise((resolve) => setTimeout(resolve, ms)) : Promise.resolve());
 
@@ -817,6 +771,8 @@ export class MonitorResultsCleanupStrategy implements ICleanupStrategy {
           const handled = await this.cleanupBatch(rows, result, limits.signal);
           processed += handled.handled;
           deleted += handled.deleted;
+          // Lost the lock while storage answered: stop here as a lock stop, not as the end of the pass.
+          if (limits.signal?.aborted) return { deleted, capped: false, stopped: "lock" };
           // Refused rows are kept and the cursor moves past them, so healthy reports behind a failing one still
           // expire this run; the plain rows already went first, and the organization's budget share bounds the time.
           const last = rows[rows.length - 1];
@@ -1095,6 +1051,10 @@ export class MonitorAggregatesCleanupStrategy implements ICleanupStrategy {
         }
       }
 
+      // An organization that failed makes the run partial (a success): it is tried again next run, and like any
+      // partial run it skips the lag query.
+      if (result.details.failedOrganizations) result.details.partial = true;
+
       // An empty list (no organizations, or a failed lookup) leaves the saved position alone.
       if (!dryRun && windows.length > 0) {
         if (!result.details.partial) await context.cursor?.set(MONITOR_AGGREGATES_CURSOR_KEY, null);
@@ -1113,8 +1073,6 @@ export class MonitorAggregatesCleanupStrategy implements ICleanupStrategy {
         }
       }
 
-      // An organization that failed makes the run partial (a success): it is tried again next run.
-      if (result.details.failedOrganizations) result.details.partial = true;
       result.recordsDeleted = totalDeleted;
       result.details.organizationsProcessed = processed;
       result.details.perOrgStats = orgStats;

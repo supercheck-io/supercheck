@@ -162,3 +162,39 @@ it("release gives up after a bounded wait when Redis does not answer", async () 
   await jest.advanceTimersByTimeAsync(5_000);
   await expect(released).resolves.toBeUndefined();
 });
+
+it("fails acquisition after a bounded wait when Redis does not answer, and queues an undo of the SET", async () => {
+  const redis = fakeRedis();
+  redis.set.mockImplementationOnce(() => new Promise<"OK" | null>(() => {}));
+  const pending = acquireOwnedLock(redis as unknown as Redis, "cleanup:x:lock", options);
+  const assertion = expect(pending).rejects.toThrow("acquisition timed out");
+  await jest.advanceTimersByTimeAsync(10_000);
+  await assertion;
+  // Compare-and-delete with the abandoned token, queued after the SET on the same client.
+  expect(redis.eval).toHaveBeenCalledWith(expect.stringContaining('"del"'), 1, "cleanup:x:lock", redis.set.mock.calls[0][1]);
+});
+
+it("refuses a lease whose reply came too late to be safe, and releases it", async () => {
+  const redis = fakeRedis();
+  redis.set.mockImplementationOnce(async (key: string, value: string, _px: string, ttl: number) => {
+    jest.setSystemTime(Date.now() + 2_500); // the reply arrives 2.5 s after the send
+    redis.store.set(key, { value, ttl });
+    return "OK";
+  });
+  await expect(acquireOwnedLock(redis as unknown as Redis, "cleanup:x:lock", { ttlMs: 3_000, renewEveryMs: 1_000 })).rejects.toThrow("too late");
+  await jest.advanceTimersByTimeAsync(0);
+  expect(redis.store.has("cleanup:x:lock")).toBe(false);
+});
+
+it("counts the lease from the send time, so a slow renewal reply cannot stretch it", async () => {
+  const redis = fakeRedis();
+  // TTL 3 s, renew every 1 s: each renewal reply comes 0.9 s after its send.
+  const lock = (await acquireOwnedLock(redis as unknown as Redis, "cleanup:x:lock", { ttlMs: 3_000, renewEveryMs: 1_000 }))!;
+  redis.eval.mockImplementation(() => new Promise<0 | 1>((resolve) => setTimeout(() => resolve(1), 900)));
+  await jest.advanceTimersByTimeAsync(1_000); // renewal sent at 1.0 s, confirmed as of 1.0 s (reply at 1.9 s)
+  await jest.advanceTimersByTimeAsync(1_000); // at 2.0 s: 2.0 - 1.0 + 1.0 < 3.0, keep going
+  expect(lock.signal.aborted).toBe(false);
+  redis.eval.mockImplementation(() => new Promise<0 | 1>(() => {})); // renewals stop answering
+  await jest.advanceTimersByTimeAsync(2_000); // last confirmation is from 2.0 s; by 4.0 s it may lapse
+  expect(lock.signal.aborted).toBe(true);
+});

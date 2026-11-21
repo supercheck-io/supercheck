@@ -268,8 +268,26 @@ describe("monitor_results", () => {
     expect(cursor.value).toBe(ORG.pro);
     expect(await countRows(monitorOf.trial)).toBe(3); // not reached
 
-    const resumed = await resultsStrategy().execute(false, { cursor });
-    expect(resumed.details.partial).toBe(false);
+    // Pro gets new work: a run that ignored the cursor would visit Pro first.
+    await addResults(monitorOf.pro, 40, 2);
+    const order: string[] = [];
+    const execute = mockDatabase.execute.bind(mockDatabase);
+    const spy = jest.spyOn(mockDatabase, "execute").mockImplementation((async (query: Parameters<typeof execute>[0]) => {
+      const rows = await execute(query);
+      const text = JSON.stringify(query);
+      if (text.includes("DELETE FROM monitor_results") && rows.length > 0) {
+        order.push(Object.entries(monitorOf).find(([, id]) => text.includes(id))?.[0] ?? "?");
+      }
+      return rows;
+    }) as unknown as typeof mockDatabase.execute);
+    try {
+      const resumed = await resultsStrategy().execute(false, { cursor });
+      expect(resumed.details.partial).toBe(false);
+    } finally {
+      spy.mockRestore();
+    }
+    expect(order[0]).toBe("trial"); // resumed after Pro, which comes last
+    expect(order.at(-1)).toBe("pro");
     expect(await countRows(monitorOf.trial)).toBe(0);
     expect(cursor.value).toBeNull();
   });
@@ -355,19 +373,27 @@ describe("monitor_results", () => {
     expect(mockDeleteReports).toHaveBeenCalledTimes(2);
   });
 
-  it("artifact rows whose storage delete fails do not use up the cap, so plain rows still go", async () => {
+  it("artifact rows whose storage delete fails do not use up the cap, so a later monitor still gets it", async () => {
+    // A second Plus monitor, created after the first so it is visited second.
+    const [second] = await client`
+      INSERT INTO monitors (id, organization_id, project_id, name, type, target, status)
+      SELECT uuidv7(), organization_id, project_id, 'second', 'http_request', 'https://example.com', 'up' FROM monitors WHERE id = ${monitorOf.plus}
+      RETURNING id`;
     for (const offset of [1, 2, 3]) {
       await client`INSERT INTO monitor_results (id, monitor_id, checked_at, status, is_up, test_report_s3_url) VALUES (uuidv7(), ${monitorOf.plus}, now() - interval '20 days' - make_interval(secs => ${offset}), 'up', true, ${`s3://bucket/denied-${offset}`})`;
     }
-    await addResults(monitorOf.plus, 20, 2);
+    await addResults(second.id, 20, 2);
     mockDeleteReports.mockImplementation(async (inputs: Array<{ entityId: string }>) => {
       mockFailedIds.mockReturnValue(new Set(inputs.map((i) => i.entityId)));
       return { success: false, deletedObjects: [], failedObjects: inputs };
     });
     const result = await resultsStrategy({ maxRecordsPerRun: 2, batchSize: 1 }).execute(false, { cursor: memoryCursor() });
-    expect(result.recordsDeleted).toBe(2);
+    expect(mockDeleteReports).toHaveBeenCalledTimes(3); // every refused row was tried
+    expect(result.recordsDeleted).toBe(2); // and the cap of 2 was still there for the second monitor
     expect(await countRows(monitorOf.plus)).toBe(3);
+    expect(await countRows(second.id)).toBe(0);
   });
+
 
   it("a refused report does not block the healthy reports behind it or the monitor's plain rows", async () => {
     // The oldest report is refused on every run; the newer one is healthy.
@@ -490,6 +516,48 @@ describe("raw cleanup and the daily rollup", () => {
   });
 });
 
+describe("rollup over days that cleanup purged around a kept row", () => {
+  afterEach(async () => {
+    jest.useRealTimers();
+    await client`UPDATE plan_limits SET data_retention_days = 7 WHERE plan = 'plus'`;
+  });
+  const at = (ms: number) =>
+    jest.useFakeTimers({ now: ms, doNotFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "setImmediate", "clearImmediate", "nextTick", "queueMicrotask", "hrtime", "performance"] });
+
+  it("never rewrites a purged day of a 3-day organization because a refused report older than it survived", async () => {
+    await client`UPDATE plan_limits SET data_retention_days = 3 WHERE plan = 'plus'`;
+    const DAY = 86_400_000;
+    const dayC = Math.floor(Date.now() / DAY) * DAY;
+    const dayC4 = new Date(dayC - 4 * DAY);
+    const dayC5 = new Date(dayC - 5 * DAY);
+    const m = monitorOf.plus;
+    // Day C-5: a report storage will refuse. Day C-4: twelve checks, four down, and one status change.
+    await client`INSERT INTO monitor_results (id, monitor_id, checked_at, status, is_up, test_report_s3_url) VALUES (uuidv7(), ${m}, ${new Date(dayC5.getTime() + 3_600_000).toISOString()}, 'up', true, 's3://bucket/refused')`;
+    await client`
+      INSERT INTO monitor_results (id, monitor_id, checked_at, status, is_up, is_status_change, details)
+      SELECT uuidv7(), ${m}, ${dayC4.toISOString()}::timestamptz + make_interval(hours => h * 2, mins => 5),
+             CASE WHEN h < 4 THEN 'down' ELSE 'up' END, h >= 4, h = 0, '{}'::jsonb
+      FROM generate_series(0, 11) h`;
+
+    at(dayC - 2 * DAY + 15 * 60_000); // C-2 00:15: C-4 is inside the window and complete
+    expect((await monitorAggregationService.runDailyAggregation()).errors).toEqual([]);
+    const daily = async () =>
+      client`SELECT total_checks, successful_checks FROM monitor_aggregates WHERE monitor_id = ${m} AND period_type = 'daily' AND location IS NULL AND period_start = ${dayC4.toISOString()}`;
+    const before = await daily();
+    expect(before).toEqual([{ total_checks: 12, successful_checks: 8 }]);
+
+    at(dayC + 30 * 60_000); // C 00:30: cleanup purges C-4 except the status change; the C-5 report is refused
+    mockDeleteReports.mockImplementation(async (inputs: Array<{ entityId: string }>) => {
+      mockFailedIds.mockReturnValue(new Set(inputs.map((i) => i.entityId)));
+      return { success: false, deletedObjects: [], failedObjects: inputs };
+    });
+    await resultsStrategy().execute(false, { cursor: memoryCursor() });
+    expect(Number((await client`SELECT count(*)::int AS n FROM monitor_results WHERE monitor_id = ${m}`)[0].n)).toBe(2);
+    expect((await monitorAggregationService.runDailyAggregation()).errors).toEqual([]);
+    expect(await daily()).toEqual(before);
+  });
+});
+
 describe("monitor_aggregates", () => {
   const aggregatesStrategy = (maxRecordsPerRun = 100_000) =>
     new MonitorAggregatesCleanupStrategy({
@@ -559,8 +627,11 @@ describe("monitor_aggregates", () => {
       orgId === ORG.pro ? Promise.reject(new Error("boom")) : original(orgId, ...rest),
     );
     const execute = mockDatabase.execute.bind(mockDatabase);
-    const lagSpy = jest.spyOn(mockDatabase, "execute").mockImplementation(((query: Parameters<typeof execute>[0]) =>
-      JSON.stringify(query).includes("LEFT JOIN LATERAL") ? Promise.reject(new Error("lag query failed")) : execute(query)) as unknown as typeof mockDatabase.execute);
+    let lagQueries = 0;
+    const lagSpy = jest.spyOn(mockDatabase, "execute").mockImplementation(((query: Parameters<typeof execute>[0]) => {
+      if (JSON.stringify(query).includes("LEFT JOIN LATERAL")) lagQueries++;
+      return execute(query);
+    }) as unknown as typeof mockDatabase.execute);
     try {
       const result = await aggregatesStrategy().execute();
       expect(result.success).toBe(true);
@@ -568,6 +639,7 @@ describe("monitor_aggregates", () => {
       expect(result.errors).toEqual([expect.stringContaining("boom")]);
       expect(result.recordsDeleted).toBe(1);
       expect(result.details.lag).toBeUndefined();
+      expect(lagQueries).toBe(0); // a partial run skips the lag query
       expect(await kept(monitorOf.pro)).toEqual(["daily:100"]);
     } finally {
       spy.mockRestore();

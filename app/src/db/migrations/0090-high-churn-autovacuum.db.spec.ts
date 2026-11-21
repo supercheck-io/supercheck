@@ -100,8 +100,9 @@ it("skips a table that stays locked, tunes the others and restores the caller's 
     locked();
     await held;
   });
-  await isLocked;
   try {
+    // A failed LOCK rejects the holder instead of leaving the test waiting for its timeout.
+    await Promise.race([isLocked, holding]);
     const [after] = await client.begin(async (tx) => {
       await tx`SET LOCAL lock_timeout = '30s'`;
       await tx.unsafe(migrationSql);
@@ -110,8 +111,11 @@ it("skips a table that stays locked, tunes the others and restores the caller's 
     expect(after.value).toBe("30s");
   } finally {
     release();
-    await holding;
-    await holder.end({ timeout: 5 });
+    try {
+      await holding;
+    } finally {
+      await holder.end({ timeout: 5 });
+    }
   }
   const options = await reloptions();
   expect(options.monitor_results).toEqual(TUNED);

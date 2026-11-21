@@ -27,6 +27,8 @@
 import { liveMonitor } from "@/lib/deletion/visibility";
 import { db } from "@/utils/db";
 import catalog from "@/lib/billing/plan-catalog.json";
+import { getRawRetentionByOrganization } from "@/lib/monitor-result-retention";
+import { rawCutoff } from "@/lib/raw-cutoff";
 import {
   monitorResults,
   monitors,
@@ -710,6 +712,9 @@ export class MonitorAggregationService {
         where r.monitor_id = ${monitors.id}
           and r.checked_at >= ${lookbackStart.toISOString()}::timestamptz
       )`;
+      // Days before an organization's raw cutoff may be partly purged by retention cleanup (rows it keeps, such
+      // as status changes or reports storage refused, survive), so their existing aggregates are never rewritten.
+      const purgedBefore = await this.rawPurgeBoundaries();
       let offset = 0;
       let hasMore = true;
 
@@ -730,6 +735,7 @@ export class MonitorAggregationService {
               periodType,
               lookbackStart,
               end,
+              monitor.organizationId ? purgedBefore.get(monitor.organizationId) : undefined,
             );
             result.aggregatesCreated += created;
             result.aggregatesUpdated += updated;
@@ -776,11 +782,29 @@ export class MonitorAggregationService {
    * (plus a margin so cycles that straddle a boundary are seen whole). Idempotent: upserts the
    * periods that have rows and deletes stale rows of periods that no longer do.
    */
+  /** Per organization, the instant before which retention cleanup may have deleted raw rows. Empty when unknown. */
+  private async rawPurgeBoundaries(): Promise<Map<string, number>> {
+    const boundaries = new Map<string, number>();
+    // With monitor result cleanup off nothing is purged.
+    if (/^(false|0|no)$/.test((process.env.MONITOR_CLEANUP_ENABLED ?? "").trim().toLowerCase())) return boundaries;
+    try {
+      const now = Date.now();
+      for (const [organizationId, { decision }] of await getRawRetentionByOrganization()) {
+        if (!("skip" in decision)) boundaries.set(organizationId, rawCutoff(decision.days, now).getTime());
+      }
+    } catch (error) {
+      // The oldest-raw-row rule below still applies.
+      console.error("[AGGREGATION] Raw retention lookup failed; relying on the oldest raw row only:", error);
+    }
+    return boundaries;
+  }
+
   private async aggregateMonitor(
     monitorId: string,
     periodType: AggregationPeriod,
     start: Date,
     end: Date,
+    purgedBefore?: number,
   ): Promise<{ created: number; updated: number }> {
     const unit = PERIOD_MS[periodType];
     const from = start.getTime();
@@ -908,8 +932,12 @@ export class MonitorAggregationService {
           lt(monitorAggregates.periodStart, end),
         ),
       );
+    // Also frozen: periods that start before the organization's raw cutoff (cleanup may have purged them partly,
+    // and a kept row there must not make the rollup rewrite them from what survived).
     const frozen = new Set(
-      existing.map((row) => row.periodStart.getTime()).filter((t) => t < periodOf(rawFloor)),
+      existing
+        .map((row) => row.periodStart.getTime())
+        .filter((t) => t < periodOf(rawFloor) || (purgedBefore !== undefined && t < purgedBefore)),
     );
 
     let created = 0;
@@ -982,6 +1010,7 @@ export class MonitorAggregationService {
       .filter(
         (row) =>
           row.periodStart.getTime() > rawReachesBack &&
+          !frozen.has(row.periodStart.getTime()) &&
           !keep.has(`${row.periodStart.getTime()}|${row.location ?? ""}`),
       )
       .map((row) => row.id);

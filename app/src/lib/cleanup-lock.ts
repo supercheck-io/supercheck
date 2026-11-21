@@ -4,6 +4,7 @@ import type Redis from "ioredis";
 // Extend or delete the key only while it still holds this owner's token.
 const RENEW_SCRIPT = `if redis.call("get", KEYS[1]) == ARGV[1] then return redis.call("pexpire", KEYS[1], ARGV[2]) else return 0 end`;
 const RELEASE_TIMEOUT_MS = 5_000;
+const ACQUIRE_TIMEOUT_MS = 10_000;
 const RELEASE_SCRIPT = `if redis.call("get", KEYS[1]) == ARGV[1] then return redis.call("del", KEYS[1]) else return 0 end`;
 
 export interface OwnedLock {
@@ -20,7 +21,8 @@ export interface OwnedLock {
  * Token-owned Redis lock: `SET NX PX` with a random token, renewed on a timer while the holder runs, released by
  * compare-and-delete. A holder that loses the lock sees `signal.aborted` and stops at its next safe point, so two
  * runs never keep working under the same key. After `maxHoldMs` renewal stops, so a hung holder cannot keep the key
- * forever. Returns null when another owner holds the key.
+ * forever. Returns null when another owner holds the key; throws when Redis does not answer within 10 s (a queued
+ * SET is then undone) or answers too late for the lease to be safe.
  */
 export async function acquireOwnedLock(
   redis: Redis,
@@ -28,7 +30,30 @@ export async function acquireOwnedLock(
   { ttlMs, renewEveryMs, maxHoldMs = Number.POSITIVE_INFINITY }: { ttlMs: number; renewEveryMs: number; maxHoldMs?: number },
 ): Promise<OwnedLock | null> {
   const token = randomUUID();
-  if ((await redis.set(key, token, "PX", ttlMs, "NX")) !== "OK") return null;
+  // The lease is counted from before the command was sent: Redis may have started it any time after that.
+  const sentAt = Date.now();
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  let acquired: unknown;
+  try {
+    acquired = await Promise.race([
+      redis.set(key, token, "PX", ttlMs, "NX"),
+      new Promise((_, reject) => {
+        timeout = setTimeout(() => reject(new Error(`lock ${key} acquisition timed out`)), ACQUIRE_TIMEOUT_MS);
+      }),
+    ]);
+  } catch (error) {
+    // A SET still queued on the client may run later: a compare-and-delete queued after it removes that lease.
+    void redis.eval(RELEASE_SCRIPT, 1, key, token).catch(() => undefined);
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
+  if (acquired !== "OK") return null;
+  if (Date.now() - sentAt + renewEveryMs >= ttlMs) {
+    // The reply came so late that the lease could lapse before the first renewal: do not run on it.
+    void redis.eval(RELEASE_SCRIPT, 1, key, token).catch(() => undefined);
+    throw new Error(`lock ${key} acquired too late to be safe`);
+  }
 
   const controller = new AbortController();
   let released = false;
@@ -39,18 +64,20 @@ export async function acquireOwnedLock(
     console.error(`[DATA_LIFECYCLE] Lost lock ${key}: ${reason}; stopping at the next batch boundary`);
     controller.abort(new Error(reason));
   };
-  const acquiredAt = Date.now();
-  let confirmedAt = acquiredAt;
+  const acquiredAt = sentAt;
+  let confirmedAt = sentAt;
   // Without a confirmed renewal, the key may lapse before the next attempt: stop before that can happen.
   const mayLapse = () => Date.now() - confirmedAt + renewEveryMs >= ttlMs;
   const timer = setInterval(() => {
     // A holder stuck in one call past its budget stops renewing: the key lapses after its TTL.
     if (Date.now() - acquiredAt >= maxHoldMs) return lose("held past its maximum time");
     if (mayLapse()) return lose("no confirmed renewal within its TTL");
+    const renewSentAt = Date.now();
     redis.eval(RENEW_SCRIPT, 1, key, token, String(ttlMs)).then(
       (renewed) => {
         if (Number(renewed) !== 1) lose("held by another owner or expired");
-        else confirmedAt = Date.now();
+        // From the send time: the new TTL started no earlier than that.
+        else confirmedAt = renewSentAt;
       },
       // One failed call is tolerated; the TTL check above stops the run before the key can lapse.
       (error: unknown) => {

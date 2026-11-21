@@ -276,7 +276,9 @@ describe("urgent queue split", () => {
     expect(queue.removeJobScheduler).not.toHaveBeenCalled();
   });
 
-  it("runs each queue one job at a time, so a second job of a strategy waits instead of being skipped", async () => {
+  // Per worker: two jobs of a strategy on the same queue wait for each other. Across queues (only while an older
+  // replica still schedules urgent jobs on the heavy queue) the second one finds the lock held and is skipped.
+  it("runs each worker one job at a time", async () => {
     const { Worker } = jest.requireMock("bullmq") as { Worker: jest.Mock };
     await new DataLifecycleService([config]).initialize(redis);
     const concurrency = Object.fromEntries(Worker.mock.calls.map(([name, , opts]) => [name, opts.concurrency]));

@@ -1,5 +1,7 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { MonitorDetailClient } from "./monitor-detail-client";
+import { format, startOfDay, subDays } from "date-fns";
+import { rawCutoff } from "@/lib/raw-cutoff";
 
 jest.mock("@/components/sre/incidents/new-incident-action", () => ({ NewIncidentAction: () => null }));
 jest.mock("@/components/maintenance/maintenance-windows-panel", () => ({
@@ -65,6 +67,9 @@ const renderMonitor = (extra: Record<string, unknown> = {}) =>
 
 const day = (label: RegExp) => screen.getByRole("button", { name: label });
 const openCalendar = () => fireEvent.click(screen.getByRole("button", { name: /Filter by date/ }));
+const label = (d: Date) => new RegExp(format(d, "MMMM do, yyyy"));
+// The first selectable local day holds cleanup's UTC boundary (it depends on the time zone the tests run in).
+const firstKept = (days: number) => startOfDay(rawCutoff(days));
 const lastCall = () => resultsCalls[resultsCalls.length - 1];
 const row = (id: string, isUp: boolean) => ({ id, monitorId: "m1", checkedAt: new Date().toISOString(), isUp, responseTimeMs: 10, location: null, details: null });
 
@@ -85,14 +90,21 @@ describe("check results date filter", () => {
     renderMonitor({ resultRetention: { days: 7, onPlan: true } });
     openCalendar();
     expect(day(/November 20th, 2026/)).toBeEnabled();
-    // Cleanup removes rows older than 7 x 24h, so the 13th still holds its later checks.
-    expect(day(/November 13th, 2026/)).toBeEnabled();
-    expect(day(/November 12th, 2026/)).toBeDisabled();
+    // Cleanup keeps rows from 13 November 00:00 UTC: that local day is the first one offered.
+    expect(day(label(firstKept(7)))).toBeEnabled();
+    expect(day(label(subDays(firstKept(7), 1)))).toBeDisabled();
     expect(day(/November 21st, 2026/)).toBeDisabled();
     expect(screen.getByTestId("results-retention-hint")).toHaveTextContent("Check details are kept for 7 days on your plan.");
     // No month before the window or after today to page to.
     expect(screen.getByRole("button", { name: /previous month/i })).toHaveAttribute("aria-disabled", "true");
     expect(screen.getByRole("button", { name: /next month/i })).toHaveAttribute("aria-disabled", "true");
+  });
+
+  it("starts at the local day that holds the cleanup's UTC boundary, in any time zone", () => {
+    renderMonitor({ createdAt: "2026-09-01T09:00:00.000Z", resultRetention: { days: 7, onPlan: true } });
+    openCalendar();
+    expect(day(label(firstKept(7)))).toBeEnabled();
+    expect(day(label(subDays(firstKept(7), 1)))).toBeDisabled();
   });
 
   it("opens the previous month too with a 30-day window", () => {
@@ -101,8 +113,8 @@ describe("check results date filter", () => {
     expect(day(/November 1st, 2026/)).toBeEnabled();
     expect(day(/November 21st, 2026/)).toBeDisabled();
     fireEvent.click(screen.getByRole("button", { name: /previous month/i }));
-    expect(day(/October 21st, 2026/)).toBeEnabled();
-    expect(day(/October 20th, 2026/)).toBeDisabled();
+    expect(day(label(firstKept(30)))).toBeEnabled();
+    expect(day(label(subDays(firstKept(30), 1)))).toBeDisabled();
   });
 
   it("never offers days before the monitor existed", () => {
