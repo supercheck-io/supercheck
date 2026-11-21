@@ -23,7 +23,8 @@ beforeAll(async () => {
     CREATE TABLE tags (id uuid PRIMARY KEY DEFAULT uuidv7(), organization_id uuid, project_id uuid NOT NULL,
       created_by_user_id uuid, name varchar(100) NOT NULL, color varchar(50), created_at timestamptz DEFAULT now(),
       updated_at timestamptz DEFAULT now());
-    CREATE UNIQUE INDEX tags_project_name_idx ON tags (project_id, lower(name));
+    CREATE UNIQUE INDEX tags_project_name_idx ON tags (project_id, name);
+    CREATE UNIQUE INDEX tags_project_lower_name_idx ON tags (project_id, lower(name));
     CREATE TABLE requirement_tags (requirement_id uuid, tag_id uuid, assigned_at timestamptz,
       PRIMARY KEY (requirement_id, tag_id));
   `);

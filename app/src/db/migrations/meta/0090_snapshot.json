@@ -1,5 +1,5 @@
 {
-  "id": "b043681a-6cc8-4fff-ae0e-d2cbd5d63b60",
+  "id": "2f22c2f8-f4af-4c9c-a208-2d580eddc826",
   "prevId": "3320c436-7b3c-4410-9cd1-610e22d223d2",
   "version": "7",
   "dialect": "postgresql",
@@ -9438,6 +9438,27 @@
       "indexes": {
         "tags_project_name_idx": {
           "name": "tags_project_name_idx",
+          "columns": [
+            {
+              "expression": "project_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "name",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "tags_project_lower_name_idx": {
+          "name": "tags_project_lower_name_idx",
           "columns": [
             {
               "expression": "project_id",

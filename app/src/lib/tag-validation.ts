@@ -14,9 +14,12 @@ export function tagColorError(color: unknown): string | null {
   return null;
 }
 
+/** Either unique index on a tag name: exact (project, name) or case-insensitive (project, lower(name)). */
+const TAG_NAME_UNIQUE_INDEXES = new Set(["tags_project_name_idx", "tags_project_lower_name_idx"]);
+
 /** A concurrent create or rename won the race for the name: unique violation 23505 on (project, name). Drizzle wraps the driver error in `cause`. */
 export const isTagNameConflict = (e: unknown) =>
   [e, (e as { cause?: unknown } | null)?.cause].some((x) => {
     const pg = x as { code?: string; constraint_name?: string } | null | undefined;
-    return pg?.code === "23505" && pg.constraint_name === "tags_project_name_idx";
+    return pg?.code === "23505" && TAG_NAME_UNIQUE_INDEXES.has(pg.constraint_name ?? "");
   });

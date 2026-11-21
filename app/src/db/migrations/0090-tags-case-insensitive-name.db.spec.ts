@@ -46,7 +46,7 @@ afterAll(async () => {
 it("renames later case-twins to free names, keeps links, and makes the index case-insensitive", async () => {
   await migrate();
   // Replay 0090 over a database that still has the old case-sensitive index and holds case-twins.
-  await client.unsafe(`DROP INDEX tags_project_name_idx; CREATE UNIQUE INDEX tags_project_name_idx ON tags (project_id, name)`);
+  await client.unsafe(`DROP INDEX tags_project_lower_name_idx`);
   await client`DELETE FROM "__drizzle_migrations" WHERE hash = ${fileHash()}`;
 
   const [org, project, other, requirement] = [randomUUID(), randomUUID(), randomUUID(), randomUUID()];
@@ -90,8 +90,8 @@ it("renames later case-twins to free names, keeps links, and makes the index cas
   const [link] = await client<{ tag_id: string }[]>`SELECT tag_id FROM requirement_tags WHERE requirement_id = ${requirement}`;
   expect(link.tag_id).toBe(ids.get(`${project}:Smoke`));
 
-  const [{ indexdef }] = await client<{ indexdef: string }[]>`SELECT indexdef FROM pg_indexes WHERE indexname = 'tags_project_name_idx'`;
-  expect(indexdef).toContain("UNIQUE INDEX tags_project_name_idx ON public.tags USING btree (project_id, lower((name)::text))");
+  const [{ indexdef }] = await client<{ indexdef: string }[]>`SELECT indexdef FROM pg_indexes WHERE indexname = 'tags_project_lower_name_idx'`;
+  expect(indexdef).toContain("UNIQUE INDEX tags_project_lower_name_idx ON public.tags USING btree (project_id, lower((name)::text))");
 
   const error = await client
     .begin(async (tx) => {
