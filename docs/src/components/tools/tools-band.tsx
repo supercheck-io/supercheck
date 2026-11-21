@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { ArrowRight, Globe } from "lucide-react";
 import { textLink } from "../landing/buttons";
+import { tools } from "../../lib/tools";
 
 /** Hero entry to the free tools. A plain GET form: it pre-fills the uptime checker, which never runs a check by itself. */
 export function ToolsBand() {
@@ -36,7 +37,7 @@ export function ToolsBand() {
       <p className="mt-2 text-sm text-fd-muted-foreground">
         Free site check, no account needed.{" "}
         <Link href="/tools" className={textLink}>
-          See all 8 free tools
+          See all {tools.length} free tools
           <ArrowRight className="size-3.5" aria-hidden="true" />
         </Link>
       </p>

@@ -8,13 +8,13 @@ import { SiteFooter } from "../../../components/site-footer";
 import { StepVisual, CheckList, primaryButton, secondaryButton, textLink } from "../../../components/landing/ui";
 import { getProduct, products } from "../../../lib/products";
 import { tools } from "../../../lib/tools";
+import { DEMO_URL } from "../../../lib/site-nav";
 
 // Free tools that check what each product monitors.
 const RELATED_TOOLS: Record<string, string[]> = {
   "uptime-monitoring": ["website-uptime-checker", "https-checker", "security-headers-checker", "domain-expiry-checker"],
   "ai-sre": ["agent-readiness-checker"],
 };
-import { DEMO_URL } from "../../../lib/site-nav";
 
 export const dynamicParams = false;
 

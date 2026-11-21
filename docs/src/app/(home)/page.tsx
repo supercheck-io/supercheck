@@ -51,7 +51,7 @@ const products = [
     title: "Respond",
     area: "respond" as Area,
     icon: Siren,
-    summary: "Failing checks open an incident you can work from.",
+    summary: "Failing checks with alerts on open an incident you can work from.",
     href: "/docs/app/investigate",
     shot: { src: "/screenshots/site/incident-workspace-overview.webp", alt: "Incident workspace for a Checkout API outage with an AI summary" },
     items: [
@@ -78,7 +78,7 @@ const products = [
 ];
 
 const flow: { step: string; body: string; area: Area; icon: typeof Globe }[] = [
-  { step: "Check", body: "A monitor or job fails past its threshold.", area: "monitor", icon: Globe },
+  { step: "Check", body: "A monitor or job with alerts on fails past its threshold.", area: "monitor", icon: Globe },
   { step: "Alert", body: "Your channels are notified.", area: "communicate", icon: BellRing },
   { step: "Incident", body: "An incident opens with its alerts.", area: "respond", icon: Siren },
   { step: "Investigate", body: "AI SRE investigates and cites evidence. You decide the fix.", area: "ai", icon: Sparkles },
@@ -115,7 +115,7 @@ export default defineConfig({
 const runOptions = [
   {
     title: "Isolated by default",
-    body: "Tests run in Kubernetes workloads sandboxed with gVisor. Private networks, mail and cluster ports are blocked.",
+    body: "Tests run in Kubernetes workloads sandboxed with gVisor. Private networks, mail ports and cluster control ports are blocked.",
     link: { href: "/docs/app/deployment/self-hosted", label: "How execution is isolated" },
   },
   {
