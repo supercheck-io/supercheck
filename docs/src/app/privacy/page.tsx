@@ -17,7 +17,7 @@ export default function PrivacyPage() {
 
             <main className="mx-auto w-full max-w-3xl px-4 py-12 sm:px-6 md:py-16">
                 <h1 className="mb-4 text-3xl font-bold tracking-tight sm:text-4xl">Privacy Policy</h1>
-                <p className="text-fd-muted-foreground mb-8">Last updated: <time dateTime="2026-10-27">October 27, 2026</time></p>
+                <p className="text-fd-muted-foreground mb-8">Last updated: <time dateTime="2026-11-21">November 21, 2026</time></p>
 
                 <div className="leading-7">
                     <section className="mb-10">
@@ -107,14 +107,12 @@ export default function PrivacyPage() {
                             <li><strong>Payment processor:</strong> For subscription billing</li>
                             <li><strong>Notification services:</strong> Email, Slack, Discord, Telegram, Microsoft Teams, and webhooks for alerts you configure</li>
                             <li><strong>Support tools:</strong> Account details and support conversations when support chat is enabled</li>
-                            <li><strong>Error monitoring:</strong> Sentry receives technical error reports from the hosted cloud
-                                service. A report contains the error type, a shortened error message that is
-                                scrubbed to remove secrets, URLs, email addresses, quoted text, and database values,
-                                a stack trace, the service (app or worker), release, and environment, the operating
-                                system and runtime versions, and internal IDs. Hostnames and IP addresses in error
-                                messages may be included. We do not
-                                attach request contents, headers, cookies, form inputs, test scripts, or run logs.
-                                Scrubbing is automated and best effort.</li>
+                            <li><strong>Error and performance monitoring:</strong> Sentry receives diagnostic data from the
+                                hosted cloud service so we can find and fix problems: error reports, performance
+                                timings, and service logs, scrubbed to remove secrets, email addresses, and URLs. When an
+                                error occurs in the web app, it may also receive a short recording of the screen with all
+                                text and form inputs masked and images blocked. We do not send request contents,
+                                cookies, test scripts, or run output. Scrubbing is automated and best effort.</li>
                         </ul>
                         <p className="mb-4">
                             We do not sell your personal information to third parties.
