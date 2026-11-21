@@ -326,7 +326,8 @@ export async function getOrganizationAggregatedRetentionSettings(
   try {
     // In self-hosted mode, use the unlimited plan's retention from database
     if (!isPolarEnabled()) {
-      const orgs = await db.select({ id: organization.id }).from(organization);
+      // Ordered by id: the aggregate cleanup's resume cursor depends on it.
+      const orgs = await db.select({ id: organization.id }).from(organization).orderBy(asc(organization.id));
 
       // Fetch the unlimited plan's aggregated retention from database
       const unlimitedPlan = await db
