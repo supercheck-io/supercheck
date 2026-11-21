@@ -5,7 +5,13 @@ const getPlanLimits = jest.fn();
 const getActiveTrial = jest.fn();
 let polarEnabled = true;
 
-jest.mock("@/utils/db", () => ({ db: { query: { organization: { findFirst: (...args: unknown[]) => findOrg(...args) } } } }));
+const unlimitedRows = jest.fn();
+jest.mock("@/utils/db", () => ({
+  db: {
+    query: { organization: { findFirst: (...args: unknown[]) => findOrg(...args) } },
+    select: () => ({ from: () => ({ where: () => ({ limit: () => unlimitedRows() }) }) }),
+  },
+}));
 jest.mock("@/lib/feature-flags", () => ({ isPolarEnabled: () => polarEnabled }));
 jest.mock("@/lib/services/subscription-service", () => ({
   subscriptionService: { getPlanLimits: (plan: string) => getPlanLimits(plan) },
@@ -17,21 +23,34 @@ jest.mock("@/lib/execution/trial-limits", () => ({
 
 import { getRawResultRetention } from "./monitor-result-retention";
 
-const planDays: Record<string, number> = { unlimited: 7, plus: 7, pro: 30 };
+const planDays: Record<string, number> = { plus: 7, pro: 30 };
 
 beforeEach(() => {
   jest.clearAllMocks();
   polarEnabled = true;
   getPlanLimits.mockImplementation(async (plan: string) => ({ dataRetentionDays: planDays[plan] }));
   getActiveTrial.mockResolvedValue(undefined);
+  unlimitedRows.mockResolvedValue([{ days: 7 }]);
+  delete process.env.MONITOR_CLEANUP_ENABLED;
 });
 
 describe("getRawResultRetention", () => {
   it("reads the unlimited row when billing is off, without the plan wording", async () => {
     polarEnabled = false;
     await expect(getRawResultRetention("org-1")).resolves.toEqual({ days: 7, onPlan: false });
-    expect(getPlanLimits).toHaveBeenCalledWith("unlimited");
     expect(findOrg).not.toHaveBeenCalled();
+  });
+
+  it("is unknown when billing is off and there is no unlimited row", async () => {
+    polarEnabled = false;
+    unlimitedRows.mockResolvedValue([]);
+    await expect(getRawResultRetention("org-1")).resolves.toBeUndefined();
+  });
+
+  it.each(["false", " NO ", "0"])("is unknown while monitor result cleanup is off (%j)", async (value) => {
+    process.env.MONITOR_CLEANUP_ENABLED = value;
+    findOrg.mockResolvedValue({ subscriptionPlan: "plus", subscriptionStatus: "active" });
+    await expect(getRawResultRetention("org-1")).resolves.toBeUndefined();
   });
 
   it.each([["plus", 7], ["pro", 30]])("uses the %s row", async (plan, days) => {
@@ -67,7 +86,9 @@ describe("getRawResultRetention", () => {
     await expect(getRawResultRetention("org-1")).resolves.toBeUndefined();
 
     polarEnabled = false;
-    getPlanLimits.mockResolvedValueOnce({ dataRetentionDays: 0 });
+    unlimitedRows.mockResolvedValueOnce([{ days: 0 }]);
+    await expect(getRawResultRetention("org-1")).resolves.toBeUndefined();
+    unlimitedRows.mockRejectedValueOnce(new Error("db down"));
     await expect(getRawResultRetention("org-1")).resolves.toBeUndefined();
   });
 });

@@ -84,7 +84,7 @@ against that deployment; it is not acceptance of the PR's deployed SHA.
 | Agent run results | Run status | Agent results button, popover, failure icon note | Test and stub cleanup | Implemented; needs `E2E_AGENT_STUB_URL` |
 | Owner-only spending caps | Admin 403 on every cap field, admin alert save restored | Cap controls disabled for admin, enabled for owner | No cap is ever written | Implemented |
 | Info popovers | None | Incidents list and alert settings icons open a popover, Escape closes | Monitor cleanup | Light check implemented |
-| Monitor check results filters | `status=failed` returns only failed rows with a matching total; unknown status is 400 | Failures only switch sends `status=failed` from page 1 and names the filter (calendar window is unit-tested: it depends on the plan) | Monitor cleanup | Implemented |
+| Monitor check results filters | `status=failed` answers 200 and unknown status is 400 (a new monitor has no checks; the SQL filter and count are unit-tested) | Failures only switch sends `status=failed` and names the filter (page reset and the calendar window are unit-tested) | Monitor cleanup | Implemented |
 
 ## Workflow and gate
 
