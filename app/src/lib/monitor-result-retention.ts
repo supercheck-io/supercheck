@@ -5,7 +5,7 @@ import { isPolarEnabled } from "@/lib/feature-flags";
 import { subscriptionService } from "@/lib/services/subscription-service";
 import { getActiveTrial, TRIAL_RETENTION } from "@/lib/execution/trial-limits";
 
-/** How many days of raw check results the organization keeps, and whether billing (plans) is on. */
+/** How many days of raw check results the organization keeps, and whether the window comes from a paid plan. */
 export interface RawResultRetention {
   days: number;
   onPlan: boolean;
@@ -44,7 +44,8 @@ export async function getRawResultRetention(organizationId: string): Promise<Raw
     }
 
     if (!org.subscriptionPlan && !org.subscriptionStatus && (await getActiveTrial(organizationId))) {
-      return { days: TRIAL_RETENTION.dataRetentionDays, onPlan: true };
+      // The trial is not a plan, so the hint drops "on your plan".
+      return { days: TRIAL_RETENTION.dataRetentionDays, onPlan: false };
     }
     return undefined;
   } catch {

@@ -342,8 +342,12 @@ A paginated table of check results:
 | **Checked At** | When the check was performed (relative time) |
 | **Location** | Where the check ran |
 | **Response** | How long the check took |
+| **First token**, **Tokens** | AI endpoint monitors only: time to the first streamed token and the token counts |
+| **Tools** | MCP monitors only |
+| **Pass rate** | Synthetic monitors that run an agent test |
+| **Error** | A failed check's error message, truncated; hover the cell for the full text |
 
-For a failed check, an info icon next to the result opens the error message. Synthetic monitors add a report icon there. MCP monitors add a **Tools** column. The table pages through historical results (10 per page on small screens, as many rows as fit the panel on desktop). Turn on **Failures only** to list only checks that were not up (down, error or timeout, including failed checks during maintenance). **Filter by date** shows one day; you can pick today or any earlier day that is still kept, and the calendar says how many days check details are kept. Use the location menu on the availability chart to show one location. Changing a filter returns to the first page.
+Synthetic monitors add a report icon in **Result**. The table pages through historical results (10 per page on small screens, as many rows as fit the panel on desktop). Turn on **Failures only** to list only checks that were not up (down, error or timeout, including failed checks during maintenance). **Filter by date** shows one day; you can pick today or any earlier day that is still kept, and the calendar says how many days check details are kept. Use the location menu on the availability chart to show one location. Changing a filter returns to the first page.
 
 </Accordion>
 </Accordions>

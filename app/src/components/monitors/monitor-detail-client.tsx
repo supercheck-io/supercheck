@@ -856,11 +856,14 @@ export function MonitorDetailClient({
   const retentionDays = monitor.resultRetention?.days;
   const createdAt = toValidDate(monitor.createdAt);
   const today = startOfDay(new Date());
-  const firstSelectableDay = retentionDays
-    ? subDays(today, retentionDays - 1)
-    : createdAt
-      ? startOfDay(createdAt)
-      : undefined;
+  // Cleanup deletes rows older than N x 24h, so the day N days back still holds part of its checks. Never before
+  // the monitor existed.
+  const retentionStart = retentionDays ? subDays(today, retentionDays) : undefined;
+  const createdDay = createdAt ? startOfDay(createdAt) : undefined;
+  const firstSelectableDay =
+    retentionStart && createdDay
+      ? (retentionStart > createdDay ? retentionStart : createdDay)
+      : retentionStart ?? createdDay;
   const retentionHint = retentionDays
     ? `Check details are kept for ${retentionDays} days${monitor.resultRetention?.onPlan ? " on your plan" : ""}.`
     : undefined;
@@ -877,7 +880,7 @@ export function MonitorDetailClient({
     ? "Refresh the page to try again."
     : failuresOnly
     ? selectedDate
-      ? `Every check on ${format(selectedDate, "MMMM d")} passed.`
+      ? `No failed checks on ${format(selectedDate, "MMMM d, yyyy")}.`
       : retentionDays
         ? `No check failed in the last ${retentionDays} days.`
         : "No recent check failed."
@@ -1512,7 +1515,7 @@ export function MonitorDetailClient({
                   : selectedDate
                   ? `Showing ${currentResultsCount} of ${totalResultsCount} ${checksNoun} for ${format(
                     selectedDate,
-                    "MMMM dd, yyyy"
+                    "MMMM d, yyyy"
                   )}`
                   : `Showing ${currentResultsCount} of ${totalResultsCount} recent ${checksNoun}.`}
               </CardDescription>

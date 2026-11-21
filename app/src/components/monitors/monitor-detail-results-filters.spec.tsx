@@ -85,8 +85,9 @@ describe("check results date filter", () => {
     renderMonitor({ resultRetention: { days: 7, onPlan: true } });
     openCalendar();
     expect(day(/November 20th, 2026/)).toBeEnabled();
-    expect(day(/November 14th, 2026/)).toBeEnabled();
-    expect(day(/November 13th, 2026/)).toBeDisabled();
+    // Cleanup removes rows older than 7 x 24h, so the 13th still holds its later checks.
+    expect(day(/November 13th, 2026/)).toBeEnabled();
+    expect(day(/November 12th, 2026/)).toBeDisabled();
     expect(day(/November 21st, 2026/)).toBeDisabled();
     expect(screen.getByTestId("results-retention-hint")).toHaveTextContent("Check details are kept for 7 days on your plan.");
     // No month before the window or after today to page to.
@@ -95,13 +96,20 @@ describe("check results date filter", () => {
   });
 
   it("opens the previous month too with a 30-day window", () => {
-    renderMonitor({ resultRetention: { days: 30, onPlan: true } });
+    renderMonitor({ createdAt: "2026-09-01T09:00:00.000Z", resultRetention: { days: 30, onPlan: true } });
     openCalendar();
     expect(day(/November 1st, 2026/)).toBeEnabled();
     expect(day(/November 21st, 2026/)).toBeDisabled();
     fireEvent.click(screen.getByRole("button", { name: /previous month/i }));
-    expect(day(/October 22nd, 2026/)).toBeEnabled();
-    expect(day(/October 21st, 2026/)).toBeDisabled();
+    expect(day(/October 21st, 2026/)).toBeEnabled();
+    expect(day(/October 20th, 2026/)).toBeDisabled();
+  });
+
+  it("never offers days before the monitor existed", () => {
+    renderMonitor({ resultRetention: { days: 30, onPlan: true } });
+    openCalendar();
+    expect(day(/November 10th, 2026/)).toBeEnabled();
+    expect(day(/November 9th, 2026/)).toBeDisabled();
   });
 
   it("drops the plan wording when billing is off", () => {
@@ -164,7 +172,7 @@ describe("failures-only toggle", () => {
     act(() => {
       fireEvent.click(day(/November 18th, 2026/));
     });
-    expect(screen.getByText("Every check on November 18 passed.")).toBeInTheDocument();
+    expect(screen.getByText("No failed checks on November 18, 2026.")).toBeInTheDocument();
     expect(screen.getByText("Showing 0 of 0 failed checks for November 18, 2026")).toBeInTheDocument();
   });
 

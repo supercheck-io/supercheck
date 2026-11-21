@@ -61,7 +61,7 @@ describe("getRawResultRetention", () => {
   it("gives a free trial the trial window", async () => {
     findOrg.mockResolvedValue({ subscriptionPlan: null, subscriptionStatus: null });
     getActiveTrial.mockResolvedValue({ expiresAt: new Date(Date.now() + 86_400_000) });
-    await expect(getRawResultRetention("org-1")).resolves.toEqual({ days: 7, onPlan: true });
+    await expect(getRawResultRetention("org-1")).resolves.toEqual({ days: 7, onPlan: false });
   });
 
   it.each([
