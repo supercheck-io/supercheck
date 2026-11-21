@@ -17,7 +17,8 @@ import {
   monitorNotificationSettings,
   notificationProviders,
 } from "@/db/schema";
-import { MonitorType, MonitorStatus } from "@/db/schema/types";
+import { MonitorType, MonitorStatus, WRITABLE_MONITOR_STATUS_VALUES } from "@/db/schema/types";
+import { z } from "zod";
 import { eq, desc, and } from "drizzle-orm";
 import {
   scheduleMonitor,
@@ -183,9 +184,8 @@ const monitorWritableSchema = monitorsUpdateSchema.pick({
   target: true,
   frequencyMinutes: true,
   enabled: true,
-  status: true,
   config: true,
-});
+}).extend({ status: z.enum(WRITABLE_MONITOR_STATUS_VALUES).optional() });
 
 export async function PUT(
   request: NextRequest,
@@ -721,7 +721,7 @@ export async function PATCH(
     const frequencyError = rawData.frequencyMinutes !== undefined ? frequencyMinutesError(rawData.frequencyMinutes, currentMonitor.type) : null;
     if (frequencyError) return NextResponse.json({ error: frequencyError }, { status: 400 });
     if (rawData.status !== undefined) {
-      if (!["paused", "up", "down", "pending"].includes(rawData.status)) {
+      if (!monitorWritableSchema.shape.status.safeParse(rawData.status).success) {
         return NextResponse.json({ error: "Invalid monitor status" }, { status: 400 });
       }
       if (rawData.enabled !== undefined && rawData.enabled !== (rawData.status !== "paused")) {
@@ -941,7 +941,7 @@ export async function DELETE(
     }
     if (!isUuid(id)) return NextResponse.json({ error: "Monitor not found" }, { status: 404 });
     const result = await deleteMonitorWithContext(id, context);
-    const status = result.success ? 200 : result.error?.includes("not found") ? 404 : result.error?.includes("active") ? 409 : 500;
+    const status = result.success ? 200 : result.error?.includes("not found") ? 404 : 500;
     return NextResponse.json(result, { status });
   } catch (error) {
     if (isAuthError(error)) {

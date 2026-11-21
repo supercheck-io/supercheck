@@ -7,6 +7,7 @@ import { liveMonitor } from '@/lib/deletion/visibility';
 import { checkPermissionWithContext } from '@/lib/rbac/middleware';
 import { requireAuthContext, isAuthError, authErrorStatus } from '@/lib/auth-context';
 import { createLogger } from '@/lib/logger/index';
+import { tagNameError } from '@/lib/tag-validation';
 
 import { permissionDeniedResponse } from "@/lib/deletion/org-state";
 import { requireSessionSameOrigin } from "@/lib/security/same-origin";
@@ -232,6 +233,12 @@ export async function PUT(
 
     if (existingTag.length === 0) {
       return NextResponse.json({ error: 'Tag not found' }, { status: 404 });
+    }
+
+    // Same rules as create, checked only on a rename so older tags outside them can still change color.
+    if (name.trim() !== existingTag[0].name) {
+      const nameError = tagNameError(name.trim());
+      if (nameError) return NextResponse.json({ error: nameError }, { status: 400 });
     }
 
     // Check if another tag with the same name exists in the same project

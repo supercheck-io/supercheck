@@ -4450,8 +4450,14 @@
               }
             }
           },
+          "400": {
+            "description": "Tag name is missing or breaks the name rules (3 to 20 characters of letters, numbers, underscores and hyphens, no spaces), or the project already has 50 tags"
+          },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
+          },
+          "409": {
+            "description": "A tag with this name already exists in this project"
           }
         }
       }
@@ -4585,7 +4591,7 @@
             }
           },
           "400": {
-            "description": "Tag name is required"
+            "description": "Tag name is missing, or a new name breaks the create rules: 3 to 20 characters of letters, numbers, underscores and hyphens, no spaces"
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
@@ -4595,6 +4601,9 @@
           },
           "404": {
             "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "description": "Another tag in this project already has this name"
           },
           "500": {
             "description": "Internal server error"
@@ -14534,9 +14543,7 @@
               "up",
               "down",
               "paused",
-              "pending",
-              "maintenance",
-              "error"
+              "pending"
             ]
           },
           "config": {

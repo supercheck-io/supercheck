@@ -57,6 +57,8 @@ export type MonitorType = (typeof MONITOR_TYPE_VALUES)[number];
 
 export const MONITOR_STATUS_VALUES = ["up", "down", "paused", "pending", "maintenance", "error"] as const;
 export type MonitorStatus = (typeof MONITOR_STATUS_VALUES)[number];
+// Statuses a client may set: maintenance comes from maintenance windows and error is set by the system.
+export const WRITABLE_MONITOR_STATUS_VALUES = ["up", "down", "paused", "pending"] as const;
 
 export type MonitorResultStatus = "up" | "down" | "error" | "timeout";
 

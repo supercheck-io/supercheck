@@ -28,6 +28,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { cn } from "@/lib/utils";
+import { tagNameError } from "@/lib/tag-validation";
 import { toast } from "sonner";
 
 export interface Tag {
@@ -116,49 +117,15 @@ export function TagSelector({
     }
   };
 
-  const validateTagName = (
-    name: string
-  ): { isValid: boolean; error?: string } => {
-    if (!name.trim()) {
-      return { isValid: false, error: "Tag name cannot be empty" };
-    }
-
-    const trimmedName = name.trim();
-
-    // Check length (3-20 characters)
-    if (trimmedName.length < 3 || trimmedName.length > 20) {
-      return {
-        isValid: false,
-        error: "Tag name must be between 3 and 20 characters",
-      };
-    }
-
-    // Check for whitespace
-    if (/\s/.test(trimmedName)) {
-      return { isValid: false, error: "Tag name cannot contain spaces" };
-    }
-
-    // Check for special characters - only allow alphanumeric, underscore, and hyphen
-    if (!/^[a-zA-Z0-9_-]+$/.test(trimmedName)) {
-      return {
-        isValid: false,
-        error:
-          "Tag name can only contain letters, numbers, underscores, and hyphens",
-      };
-    }
-
-    return { isValid: true };
-  };
-
   const handleCreateTag = async (color?: string) => {
     if (!inputValue.trim() || isCreating || !onCreateTag) return;
 
     const trimmedInput = inputValue.trim();
 
     // Validate tag name
-    const validation = validateTagName(trimmedInput);
-    if (!validation.isValid) {
-      toast.error(validation.error);
+    const nameError = tagNameError(trimmedInput);
+    if (nameError) {
+      toast.error(nameError);
       return;
     }
 

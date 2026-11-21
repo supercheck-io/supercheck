@@ -4,6 +4,7 @@ import { tags } from '@/db/schema';
 import { eq, and } from 'drizzle-orm';
 import { checkPermissionWithContext } from '@/lib/rbac/middleware';
 import { requireAuthContext, isAuthError, authErrorStatus } from '@/lib/auth-context';
+import { tagNameError } from '@/lib/tag-validation';
 
 import { permissionDeniedResponse } from "@/lib/deletion/org-state";
 import { requireSessionSameOrigin } from "@/lib/security/same-origin";
@@ -71,24 +72,10 @@ export async function POST(request: NextRequest) {
 
     const trimmedName = name.trim();
 
-    // Validate tag name
-    if (!trimmedName) {
-      return NextResponse.json({ error: 'Tag name cannot be empty' }, { status: 400 });
+    const nameError = tagNameError(trimmedName);
+    if (nameError) {
+      return NextResponse.json({ error: nameError }, { status: 400 });
     }
-
-    if (trimmedName.length < 3 || trimmedName.length > 20) {
-      return NextResponse.json({ error: 'Tag name must be between 3 and 20 characters' }, { status: 400 });
-    }
-
-    if (/\s/.test(trimmedName)) {
-      return NextResponse.json({ error: 'Tag name cannot contain spaces' }, { status: 400 });
-    }
-
-    if (!/^[a-zA-Z0-9_-]+$/.test(trimmedName)) {
-      return NextResponse.json({ error: 'Tag name can only contain letters, numbers, underscores, and hyphens' }, { status: 400 });
-    }
-
-
 
     // Check if tag already exists within the project
     const existingTag = await db
