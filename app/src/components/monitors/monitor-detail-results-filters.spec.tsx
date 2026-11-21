@@ -28,19 +28,26 @@ type ResultsOptions = { page: number; limit: number; date?: Date; location?: str
 const resultsCalls: ResultsOptions[] = [];
 let mockResults: unknown[] = [];
 let mockPagination: { total: number; totalPages: number } | null = null;
+let mockError: Error | null = null;
 jest.mock("@/hooks/use-monitor-details", () => ({
   useMonitorStats: () => ({ stats: null }),
   useMonitorResults: (_id: string, options: ResultsOptions) => {
     resultsCalls.push(options);
-    return { results: mockResults, pagination: mockPagination, isFetching: false, isPlaceholderData: false };
+    return { results: mockResults, pagination: mockPagination, isFetching: false, isPlaceholderData: false, error: mockError };
   },
   useMonitorPermissions: () => ({ canEdit: true, canDelete: true, canToggle: true, isLoading: false }),
 }));
 jest.mock("@/components/shared/report-viewer", () => ({ ReportViewer: () => null }));
 jest.mock("@/components/monitors/ai-monitor-analyze-button", () => ({ AIMonitorAnalyzeButton: () => null }));
 jest.mock("@/components/monitors/response-time-line-chart", () => ({ ResponseTimeBarChart: () => null }));
-jest.mock("./AvailabilityBarChart", () => ({ AvailabilityBarChart: () => null }));
-jest.mock("./location-filter-dropdown", () => ({ LocationFilterDropdown: () => null }));
+jest.mock("./AvailabilityBarChart", () => ({
+  AvailabilityBarChart: ({ headerActions }: { headerActions?: React.ReactNode }) => <>{headerActions}</>,
+}));
+jest.mock("./location-filter-dropdown", () => ({
+  LocationFilterDropdown: ({ selectedLocation, onLocationChange }: { selectedLocation: string; onLocationChange: (l: string) => void }) => (
+    <button type="button" data-testid="location" onClick={() => onLocationChange("old-region")}>{selectedLocation}</button>
+  ),
+}));
 jest.mock("@/components/nav-user", () => ({ NavUser: () => null }));
 
 const baseMonitor = {
@@ -67,6 +74,7 @@ beforeEach(() => {
   resultsCalls.length = 0;
   mockResults = [];
   mockPagination = null;
+  mockError = null;
 });
 afterEach(() => {
   jest.useRealTimers();
@@ -168,5 +176,28 @@ describe("failures-only toggle", () => {
       fireEvent.click(day(/November 18th, 2026/));
     });
     expect(screen.getByText("No checks on this day")).toBeInTheDocument();
+  });
+
+  it("says the request failed instead of claiming no failures", () => {
+    mockError = new Error("Failed to fetch monitor results: 500");
+    renderMonitor({ resultRetention: { days: 7, onPlan: true } });
+    fireEvent.click(screen.getByRole("switch", { name: "Failures only" }));
+    expect(screen.getByText("Could not load check results")).toBeInTheDocument();
+    expect(screen.queryByText("No failed checks")).toBeNull();
+  });
+
+  it("keeps a location with history but no failures selected when failures-only is on", () => {
+    // "old-region" is no longer configured: only its rows on the unfiltered page make it selectable.
+    mockResults = [{ ...row("a", true), location: "old-region" }];
+    mockPagination = { total: 1, totalPages: 1 };
+    const view = renderMonitor({ resultRetention: { days: 7, onPlan: true }, config: { locationConfig: { locations: ["eu-central"] } } });
+    fireEvent.click(screen.getByTestId("location"));
+    expect(lastCall().location).toBe("old-region");
+
+    mockResults = [];
+    mockPagination = { total: 0, totalPages: 0 };
+    fireEvent.click(screen.getByRole("switch", { name: "Failures only" }));
+    view.rerender(<MonitorDetailClient monitor={{ ...baseMonitor, resultRetention: { days: 7, onPlan: true }, config: { locationConfig: { locations: ["eu-central"] } } } as never} />);
+    expect(lastCall()).toEqual(expect.objectContaining({ location: "old-region", failuresOnly: true }));
   });
 });

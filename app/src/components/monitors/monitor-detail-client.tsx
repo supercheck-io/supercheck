@@ -444,16 +444,19 @@ export function MonitorDetailClient({
     return Array.from(locationSet).sort((a, b) => a.localeCompare(b));
   }, [configuredLocations, monitor.recentResults, paginatedTableResults]);
 
-  // Reset location filter if selected location is no longer available
+  // Reset location filter if selected location is no longer available. A filtered page (failures only or one
+  // day) can lack the selected location's rows without the location being gone, so only an unfiltered page counts.
   useEffect(() => {
     if (
+      !failuresOnly &&
+      !selectedDate &&
       selectedLocation !== "all" &&
       availableLocations.length > 0 &&
       !availableLocations.includes(selectedLocation)
     ) {
       setSelectedLocation("all");
     }
-  }, [availableLocations, selectedLocation]);
+  }, [availableLocations, selectedLocation, failuresOnly, selectedDate]);
 
   const handleDelete = async () => {
     if (!canDeleteMonitor) {
@@ -862,12 +865,17 @@ export function MonitorDetailClient({
     ? `Check details are kept for ${retentionDays} days${monitor.resultRetention?.onPlan ? " on your plan" : ""}.`
     : undefined;
   const checksNoun = failuresOnly ? "failed checks" : "checks";
-  const emptyTitle = failuresOnly
+  // A failed request must not read as "every check passed".
+  const emptyTitle = resultsError
+    ? "Could not load check results"
+    : failuresOnly
     ? "No failed checks"
     : selectedDate
       ? "No checks on this day"
       : "No check results available";
-  const emptyDescription = failuresOnly
+  const emptyDescription = resultsError
+    ? "Refresh the page to try again."
+    : failuresOnly
     ? selectedDate
       ? `Every check on ${format(selectedDate, "MMMM d")} passed.`
       : retentionDays
