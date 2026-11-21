@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { OG_IMAGE } from '../../../lib/assets';
 import Link from "next/link";
 import { SiteHeader } from "../../../components/site-header";
 import { SiteFooter } from "../../../components/site-footer";
@@ -7,6 +8,7 @@ export const metadata: Metadata = {
   title: { absolute: "SupercheckBot | Supercheck" },
   description: "SupercheckBot runs the Supercheck free tools. What it requests, how to recognise it and how to opt your site out.",
   alternates: { canonical: "/tools/bot" },
+  openGraph: { title: 'SupercheckBot | Supercheck', description: 'SupercheckBot runs the Supercheck free tools. What it requests, how to recognise it and how to opt your site out.', url: '/tools/bot', siteName: 'Supercheck', type: 'website', images: [OG_IMAGE] },
 };
 
 // An existing, monitored mailbox; the ops runbook covers replies.

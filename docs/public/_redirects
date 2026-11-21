@@ -15,5 +15,3 @@
 /docs/app/architecture     /docs/app/deployment    301
 /docs/app/architecture/    /docs/app/deployment    301
 
-# SPA fallback for Next.js dynamic routes
-/*    /index.html   200
