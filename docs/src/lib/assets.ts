@@ -24,4 +24,5 @@ export function versioned(src: string): string {
     : src;
 }
 
-export const OG_IMAGE = versioned("/screenshots/playground-editor.png");
+// Built by src/app/og.png/route.tsx at 1200x630.
+export const OG_IMAGE = "/og.png";

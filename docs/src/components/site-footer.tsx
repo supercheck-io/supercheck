@@ -104,9 +104,9 @@ export function SiteFooter({
 }: FooterProps) {
     return (
         <footer className="relative z-10 border-t border-fd-border bg-fd-background/95 py-12 md:py-16">
-            <div className="mx-auto max-w-6xl px-6">
+            <div className="mx-auto max-w-6xl px-4 sm:px-6">
                 <div className="flex w-full flex-col justify-between gap-10 lg:flex-row lg:items-start lg:text-left">
-                    <div className="flex w-full flex-col justify-between gap-6 lg:max-w-xs lg:items-start">
+                    <div className="flex w-full flex-col justify-between gap-6 lg:max-w-60 lg:items-start">
                         {/* Logo and description */}
                         <div>
                             <div className="flex items-center gap-2 mb-2">
@@ -126,7 +126,7 @@ export function SiteFooter({
 
                     </div>
 
-                    <div className="grid w-full grid-cols-2 gap-8 md:grid-cols-3 lg:grid-cols-5 lg:gap-12">
+                    <div className="grid w-full grid-cols-2 gap-8 md:grid-cols-3 lg:grid-cols-5 lg:gap-8">
                         {sections.map((section, sectionIdx) => (
                             <div key={sectionIdx}>
                                 <h3 className="mb-4 text-sm font-semibold text-fd-foreground">

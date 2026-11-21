@@ -6,11 +6,13 @@ import { tools } from "../../lib/tools";
 /** Hero entry to the free tools. A plain GET form: it pre-fills the uptime checker, which never runs a check by itself. */
 export function ToolsBand() {
   return (
-    <div className="mt-6 max-w-xl">
+    <div className="rounded-xl border border-fd-border bg-fd-card p-5">
+      <h2 className="text-sm font-semibold">Check your site for free</h2>
+      <p className="mt-1 text-sm text-fd-muted-foreground">Uptime, HTTPS, headers and more. No sign-up.</p>
       <form
         action="/tools/website-uptime-checker"
         method="get"
-        className="flex items-center gap-1 rounded-lg border border-fd-border bg-fd-card p-1 focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-fd-primary"
+        className="mt-4 flex items-center gap-1 rounded-lg border border-fd-border bg-fd-background p-1 focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-fd-primary"
       >
         <Globe className="ml-2 size-4 shrink-0 text-fd-muted-foreground" aria-hidden="true" />
         <label htmlFor="free-tools-url" className="sr-only">
@@ -34,8 +36,7 @@ export function ToolsBand() {
           Check site
         </button>
       </form>
-      <p className="mt-2 text-sm text-fd-muted-foreground">
-        Free site check, no account needed.{" "}
+      <p className="mt-3">
         <Link href="/tools" className={textLink}>
           See all {tools.length} free tools
           <ArrowRight className="size-3.5" aria-hidden="true" />

@@ -12,14 +12,14 @@ export const metadata: Metadata = {
     process.env.NEXT_PUBLIC_APP_URL || 'https://supercheck.io'
   ),
   title: {
-    default: 'Supercheck Docs',
-    template: '%s | Supercheck Docs',
+    default: 'Supercheck: open-source testing, monitoring and AI SRE',
+    template: '%s | Supercheck',
   },
-  description: 'Open-source testing, monitoring, and AI SRE — as code',
+  description: 'Open-source platform for Playwright and k6 testing, uptime and synthetic monitoring, AI incident investigation and status pages. Self-host free or use Supercheck Cloud.',
+  applicationName: 'Supercheck',
   openGraph: {
     title: 'Supercheck',
-    description: 'Open-source testing, monitoring, and AI SRE — as code',
-    url: 'https://supercheck.io',
+    description: 'Open-source platform for Playwright and k6 testing, uptime and synthetic monitoring, AI incident investigation and status pages. Self-host free or use Supercheck Cloud.',
     siteName: 'Supercheck',
     type: 'website',
     images: [
@@ -34,7 +34,7 @@ export const metadata: Metadata = {
   twitter: {
     card: 'summary_large_image',
     title: 'Supercheck',
-    description: 'Open-source testing, monitoring, and AI SRE — as code',
+    description: 'Open-source platform for Playwright and k6 testing, uptime and synthetic monitoring, AI incident investigation and status pages. Self-host free or use Supercheck Cloud.',
     images: [OG_IMAGE],
   },
 };

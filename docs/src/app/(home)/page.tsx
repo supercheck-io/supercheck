@@ -9,11 +9,52 @@ import { CheckList, IconChip, Screenshot, SectionHeading, SolutionCards, primary
 import { SiteFooter } from "../../components/site-footer";
 import { toolGroups } from "../../components/landing/tool-logos";
 import { ToolsBand } from "../../components/tools/tools-band";
-import { DEMO_URL } from "../../lib/site-nav";
-import { versioned } from "../../lib/assets";
+import { DEMO_URL, GITHUB_URL } from "../../lib/site-nav";
+import { OG_IMAGE, versioned } from "../../lib/assets";
+
+const TITLE = "Supercheck: open-source testing, monitoring and AI SRE";
+const DESCRIPTION =
+  "Open-source platform for Playwright and k6 testing, uptime and synthetic monitoring, AI incident investigation and status pages. Self-host free or use Supercheck Cloud.";
 
 export const metadata: Metadata = {
+  title: { absolute: TITLE },
+  description: DESCRIPTION,
   alternates: { canonical: "/" },
+  openGraph: { title: TITLE, description: DESCRIPTION, url: "/", siteName: "Supercheck", type: "website", images: [OG_IMAGE] },
+  twitter: { card: "summary_large_image", title: TITLE, description: DESCRIPTION, images: [OG_IMAGE] },
+};
+
+// Organization and software facts for search results. Free to self-host, so the offer price is 0.
+const jsonLd = {
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "Organization",
+      "@id": "https://supercheck.io/#organization",
+      name: "Supercheck",
+      url: "https://supercheck.io",
+      logo: "https://supercheck.io/supercheck-logo.png",
+      sameAs: [GITHUB_URL],
+    },
+    {
+      "@type": "WebSite",
+      "@id": "https://supercheck.io/#website",
+      name: "Supercheck",
+      url: "https://supercheck.io",
+      publisher: { "@id": "https://supercheck.io/#organization" },
+    },
+    {
+      "@type": "SoftwareApplication",
+      name: "Supercheck",
+      url: "https://supercheck.io",
+      description: DESCRIPTION,
+      applicationCategory: "DeveloperApplication",
+      operatingSystem: "Linux",
+      license: "https://www.gnu.org/licenses/agpl-3.0.html",
+      offers: { "@type": "Offer", price: "0", priceCurrency: "USD" },
+      publisher: { "@id": "https://supercheck.io/#organization" },
+    },
+  ],
 };
 
 // Order follows the path of a failure: tested, caught, handled, announced.
@@ -116,7 +157,7 @@ const runOptions = [
   {
     title: "Isolated by default",
     body: "Tests run in Kubernetes workloads sandboxed with gVisor. Private networks, mail ports and cluster control ports are blocked.",
-    link: { href: "/docs/app/deployment/self-hosted", label: "How execution is isolated" },
+    link: { href: "/docs/app/deployment/self-hosted#architecture", label: "How execution is isolated" },
   },
   {
     title: "Self-host for free",
@@ -133,6 +174,10 @@ const runOptions = [
 export default async function HomePage() {
   return (
     <div className="min-h-screen w-full overflow-x-clip bg-fd-background text-fd-foreground">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd).replace(/</g, "\\u003c") }}
+      />
       <SiteHeader />
 
       <main>
@@ -152,26 +197,30 @@ export default async function HomePage() {
               – <span className="hero-accent">as code</span>
             </span>
           </h1>
-          <p className="mt-6 max-w-2xl text-lg leading-relaxed text-fd-muted-foreground">
-            Playwright and k6 tests, uptime monitors, AI incident response and status pages in one
-            platform. Self-host today, or join the Cloud waitlist.
-          </p>
-          <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center">
-            <a href={DEMO_URL} target="_blank" rel="noopener noreferrer" className={primaryButton}>
-              Try the live demo
-              <ArrowRight className="size-4" aria-hidden="true" />
-            </a>
-            <Link href="/docs/app/welcome" className={secondaryButton}>
-              Read the docs
-            </Link>
+          <div className="mt-6 grid gap-10 lg:grid-cols-[minmax(0,1fr)_24rem] lg:items-start lg:gap-12">
+            <div>
+              <p className="max-w-2xl text-lg leading-relaxed text-fd-muted-foreground">
+                Playwright and k6 tests, uptime monitors, AI incident response and status pages in one
+                platform. Self-host today, or join the Cloud waitlist.
+              </p>
+              <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center">
+                <a href={DEMO_URL} target="_blank" rel="noopener noreferrer" className={primaryButton}>
+                  Try the live demo
+                  <ArrowRight className="size-4" aria-hidden="true" />
+                </a>
+                <Link href="/docs/app/welcome" className={secondaryButton}>
+                  Read the docs
+                </Link>
+              </div>
+              <div className="mt-6 flex flex-wrap items-center gap-x-3 gap-y-2 text-sm text-fd-muted-foreground">
+                <CopyCommand />
+                <span>
+                  then <code className="font-mono text-[13px] text-fd-foreground">supercheck init</code>
+                </span>
+              </div>
+            </div>
+            <ToolsBand />
           </div>
-          <div className="mt-6 flex flex-wrap items-center gap-x-3 gap-y-2 text-sm text-fd-muted-foreground">
-            <CopyCommand />
-            <span>
-              then <code className="font-mono text-[13px] text-fd-foreground">supercheck init</code>
-            </span>
-          </div>
-          <ToolsBand />
 
           <div className="mt-14 md:mt-16">
             <div className="relative aspect-video w-full overflow-hidden rounded-xl border border-fd-border bg-fd-card shadow-[0_1px_2px_rgb(0_0_0/0.04),0_24px_48px_-24px_rgb(0_0_0/0.25)]">
