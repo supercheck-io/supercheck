@@ -4,7 +4,7 @@
  * Production-grade service for computing and managing monitor metrics aggregations.
  *
  * Industry Best Practice (Checkly/Better Stack model):
- * - Raw check data: plan-based retention (7-90 days)
+ * - Raw check data: plan-based retention (7-30 days)
  * - Aggregated metrics: Long retention (30 days - 12+ months)
  *
  * Uptime definition: one CHECK (cycle) counts once. Rows that share an execution_group_id are one

@@ -1,6 +1,6 @@
 /** @jest-environment node */
 // CI-only: needs TEST_DATABASE_URL (run with `npm run test:db`).
-// 0089 moves stock Plus/Pro raw retention from 7 days to 30/90, leaves custom values alone, and a rerun changes nothing.
+// 0089 moves stock Pro raw retention from 7 to 30 days, leaves Plus and custom values alone, and a rerun changes nothing.
 import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
@@ -46,13 +46,13 @@ afterAll(async () => {
 });
 
 it("a fresh database seeds the new values", async () => {
-  expect(await retention()).toEqual({ plus: 30, pro: 90 });
+  expect(await retention()).toEqual({ plus: 7, pro: 30 });
 });
 
-it("moves both stock rows from 7 days to 30/90", async () => {
+it("moves stock Pro from 7 to 30 days and leaves Plus at 7", async () => {
   await client`UPDATE plan_limits SET data_retention_days = 7 WHERE plan IN ('plus', 'pro')`;
   await client.unsafe(migrationSql);
-  expect(await retention()).toEqual({ plus: 30, pro: 90 });
+  expect(await retention()).toEqual({ plus: 7, pro: 30 });
 });
 
 it("keeps custom values, and a rerun is a no-op", async () => {

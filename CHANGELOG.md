@@ -7,7 +7,7 @@ The CLI is versioned separately; see [cli/CHANGELOG.md](cli/CHANGELOG.md). Prere
 ## [Unreleased]
 
 ### Upgrade notes
-- **Migration `0089`.** Updates stock `plus` and `pro` `plan_limits` rows still at 7 days of raw monitor-result retention to 30 and 90 days. The `unlimited` plan and edited values are unchanged. No new environment variable.
+- **Migration `0089`.** Updates the stock `pro` `plan_limits` row from 7 to 30 days of raw monitor-result retention. `plus`, `unlimited` and edited values are unchanged. No new environment variable.
 - **Migration `0088`, then the app.** Adds the columns that record which trial usage emails were sent and raises active trials still on the old 150-minute browser budget to 1,000 minutes. Apply it before you update the app. No new environment variable.
 
 - **Default email sender name.** With `SMTP_FROM_NAME` unset, the app and the worker now send as `Supercheck <SMTP_FROM_EMAIL>` instead of the bare address, so every email shows the same sender. Set `SMTP_FROM_NAME` to use another name; a name already in `SMTP_FROM_EMAIL` still wins.
