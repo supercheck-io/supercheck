@@ -123,15 +123,17 @@ export async function syncRequirementTagsByName(
     const key = name.toLowerCase();
     if (!name || seen.has(key)) continue;
     seen.add(key);
-    // Lenient: a name that normalises to nothing is never created, so it takes no cap slot. It is still looked
-    // up (a stored legacy tag of that exact name keeps its link), at most 10 of them to keep the lookup bounded.
-    if (lenient && !normalizeTagName(name)) {
+    // Lenient: a name that normalises to nothing, or to a name the rules still reject, is never created, so it
+    // takes no cap slot. It is still looked up (a stored legacy tag of that exact name keeps its link), at most 10
+    // of them to keep the lookup bounded.
+    const normalized = lenient ? normalizeTagName(name) : name;
+    if (lenient && (!normalized || (normalized !== AI_EXTRACTION_TAG && tagNameError(normalized)))) {
       if (unusable < 10) requestedNames.push(name);
       unusable++;
       continue;
     }
     requestedNames.push(name);
-    capKeys.add((lenient ? normalizeTagName(name) : name).toLowerCase());
+    capKeys.add(normalized.toLowerCase());
     // syncRequirementTags rejects more than 10, so 11 distinct tags already fail it; stop before an oversized lookup.
     if (capKeys.size > 10) break;
   }

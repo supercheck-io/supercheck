@@ -270,6 +270,16 @@ describe("syncRequirementTagsByName 10-name cap", () => {
     expect(inserted[1]).toHaveLength(10);
   });
 
+  it("lenient: names still invalid after normalising do not take a cap slot, and a legacy one stays linked", async () => {
+    const { executor, inserted, wheres } = makeExecutor([{ id: "legacy-a", name: "a" }]);
+    const short = ["a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k"];
+    await syncRequirementTagsByName(R, [...short, "smoke"], "o", "p", "u", executor, true);
+    expect(created(inserted)).toEqual(["smoke"]);
+    expect(inserted[1]).toEqual([expect.objectContaining({ tagId: "legacy-a" }), expect.objectContaining({ tagId: "new-0" })]);
+    // At most 10 unusable names are looked up, as for names that normalise to nothing.
+    expect(lookupParams(wheres)).toEqual([...short.slice(0, 10), "smoke"]);
+  });
+
   it("lenient: a stored legacy tag whose name normalises to nothing is still linked", async () => {
     const { executor, inserted } = makeExecutor([{ id: "legacy", name: "テスト" }]);
     await syncRequirementTagsByName(R, ["テスト"], "o", "p", "u", executor, true);
