@@ -29,5 +29,6 @@ BEGIN
     UPDATE tags SET name = candidate, updated_at = now() WHERE id = twin.id;
   END LOOP;
 END $$;--> statement-breakpoint
+-- migration-safety: allow-destructive issue=#736
 DROP INDEX "tags_project_name_idx";--> statement-breakpoint
 CREATE UNIQUE INDEX "tags_project_name_idx" ON "tags" USING btree ("project_id",lower("name"));
