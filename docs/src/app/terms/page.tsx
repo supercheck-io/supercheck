@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { OG_IMAGE } from '../../lib/assets';
 import Link from 'next/link';
 import { SiteHeader } from '../../lib/layout.shared';
 
@@ -6,6 +7,7 @@ export const metadata: Metadata = {
     title: { absolute: 'Terms of Service | Supercheck' },
     alternates: { canonical: '/terms' },
     description: 'Terms of Service for Supercheck - Open-source testing, monitoring, and AI SRE — as code.',
+    openGraph: { title: 'Terms of Service | Supercheck', description: 'Terms of Service for Supercheck - Open-source testing, monitoring, and AI SRE — as code.', url: '/terms', siteName: 'Supercheck', type: 'website', images: [OG_IMAGE] },
 };
 
 export default function TermsPage() {

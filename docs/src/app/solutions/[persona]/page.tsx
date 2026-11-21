@@ -19,7 +19,7 @@ export async function generateMetadata({ params }: { params: Promise<{ persona: 
   const solution = getSolution((await params).persona);
   if (!solution) return {};
   const url = `/solutions/${solution.slug}`;
-  const title = `${solution.metaTitle} | Supercheck`;
+  const title = solution.metaTitle;
   return {
     title: { absolute: title },
     description: solution.metaDescription,

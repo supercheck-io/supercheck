@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { source } from '../../../lib/source';
+import { OG_IMAGE } from '../../../lib/assets';
 import { getMDXComponents } from '../../../mdx-components';
 import { notFound } from 'next/navigation';
 import { DocsRedirect } from '../../../components/docs-redirect';
@@ -102,16 +103,21 @@ export async function generateMetadata(
 ): Promise<Metadata> {
   const params = await props.params;
   if (isDocsEntry(params.slug)) {
+    // These paths only redirect to the welcome page, so keep them out of the index.
     return {
-      title: 'Supercheck Documentation',
-      description: 'Open Source AI-Powered Test Automation & Monitoring Platform',
+      title: { absolute: 'Supercheck Docs' },
+      robots: { index: false, follow: true },
     };
   }
   const page = source.getPage(params.slug);
   if (!page) notFound();
 
+  const title = `${page.data.title} | Supercheck Docs`;
   return {
-    title: page.data.title,
+    title: { absolute: title },
     description: page.data.description,
+    alternates: { canonical: page.url },
+    openGraph: { title, description: page.data.description, url: page.url, siteName: 'Supercheck', type: 'article', images: [OG_IMAGE] },
+    twitter: { card: 'summary_large_image', title, description: page.data.description, images: [OG_IMAGE] },
   };
 }

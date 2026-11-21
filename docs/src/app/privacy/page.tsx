@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { OG_IMAGE } from '../../lib/assets';
 import Link from 'next/link';
 import { SiteHeader } from '../../lib/layout.shared';
 
@@ -6,6 +7,7 @@ export const metadata: Metadata = {
     title: { absolute: 'Privacy Policy | Supercheck' },
     alternates: { canonical: '/privacy' },
     description: 'Privacy Policy for Supercheck - How we handle your data.',
+    openGraph: { title: 'Privacy Policy | Supercheck', description: 'Privacy Policy for Supercheck - How we handle your data.', url: '/privacy', siteName: 'Supercheck', type: 'website', images: [OG_IMAGE] },
 };
 
 export default function PrivacyPage() {

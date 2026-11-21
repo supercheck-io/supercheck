@@ -60,16 +60,22 @@ test('every solutions page is linked from the site nav', () => {
   for (const s of slugs) assert.match(sources['site-nav.ts'], new RegExp(`href: "/solutions/${s}"`));
 });
 
-test('every product page is linked from the site nav and the sitemap', () => {
-  const sitemap = read('../public/sitemap.xml');
+test('every product page is linked from the site nav', () => {
   const paths = [
     ...[...sources['products.ts'].matchAll(/slug: "([^"]+)"/g)].map(([, s]) => `/product/${s}`),
   ];
   assert.equal(paths.length, 4);
   for (const path of paths) {
     assert.match(sources['site-nav.ts'], new RegExp(`href: "${path}"`));
-    assert.ok(sitemap.includes(`<loc>https://supercheck.io${path}</loc>`), `${path} missing from sitemap`);
   }
+});
+
+test('the sitemap is generated from every page list', () => {
+  // The sitemap maps over these lists, so a new product, solution, tool or docs page is listed by itself.
+  const sitemap = read('../src/app/sitemap.ts');
+  for (const list of ['products.map', 'solutions.map', 'tools.map', 'source.getPages()']) assert.ok(sitemap.includes(list), `sitemap misses ${list}`);
+  for (const path of ['"/pricing"', '"/tools"', '"/tools/bot"']) assert.ok(sitemap.includes(path), `${path} missing from sitemap`);
+  assert.ok(!existsSync(new URL('../public/sitemap.xml', import.meta.url)), 'a static public/sitemap.xml would shadow the generated one');
 });
 
 test('every product screenshot exists', () => {
@@ -111,14 +117,10 @@ test('site screenshots are loaded through the cache-busting version', () => {
   }
 });
 
-test('every free tool page, the hub and the bot page are in the sitemap and llms.txt', () => {
-  const sitemap = read('../public/sitemap.xml');
+test('every free tool page, the hub and the bot page are in llms.txt', () => {
   const llms = read('../public/llms.txt');
   const slugs = [...sources['tools.ts'].matchAll(/slug: "([^"]+)"/g)].map(([, s]) => s);
   assert.equal(slugs.length, 8);
-  for (const path of ['/tools', '/tools/bot', ...slugs.map((s) => `/tools/${s}`)]) {
-    assert.ok(sitemap.includes(`<loc>https://supercheck.io${path}</loc>`), `${path} missing from sitemap`);
-  }
   for (const s of slugs) assert.ok(llms.includes(`https://supercheck.io/tools/${s}`), `${s} missing from llms.txt`);
   assert.match(sources['site-nav.ts'], /href: "\/tools"/);
 });

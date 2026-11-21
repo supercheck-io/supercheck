@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { OG_IMAGE } from '../../lib/assets';
 import Link from 'next/link';
 import { SiteHeader } from '../../lib/layout.shared';
 
@@ -6,6 +7,7 @@ export const metadata: Metadata = {
     title: { absolute: 'Security | Supercheck' },
     alternates: { canonical: '/security' },
     description: 'How Supercheck protects your data: encryption, access control, audit logging, sandboxed test runs and responsible disclosure.',
+    openGraph: { title: 'Security | Supercheck', description: 'How Supercheck protects your data: encryption, access control, audit logging, sandboxed test runs and responsible disclosure.', url: '/security', siteName: 'Supercheck', type: 'website', images: [OG_IMAGE] },
 };
 
 export default function SecurityPage() {
