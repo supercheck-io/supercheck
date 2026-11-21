@@ -8,7 +8,7 @@
 
 ## MCP server
 
-- [Supercheck MCP](https://supercheck.io/docs/mcp): Read-only MCP endpoint (`/api/mcp`) that lets AI clients inspect a project's tests, jobs, runs, monitors and incidents.
+- [Supercheck MCP](https://supercheck.io/docs/mcp): MCP endpoint (`/api/mcp`) that lets AI clients inspect a project's tests, jobs, runs, monitors and incidents. Read-only by default, with opt-in incident and maintenance writes (`mcp:incidents:write`) and AI SRE starts (`mcp:sre`).
 - [Connect a client](https://supercheck.io/docs/mcp/connect): Claude Code, Cursor, VS Code and other clients.
 - [Tools reference](https://supercheck.io/docs/mcp/tools): Tool names, inputs and output limits.
 

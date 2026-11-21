@@ -20,7 +20,7 @@ flowchart LR
 | Chrome | [Chrome Web Store](https://chromewebstore.google.com/detail/supercheck-recorder/gfmbcelfhhfmifdkccnbgdadibdfhioe) |
 | Edge | [Microsoft Edge Add-ons](https://microsoftedge.microsoft.com/addons/detail/supercheck-recorder/ngmlkgfgmdnfpddohcbfdgihennolnem) |
 
-It needs Chrome or Edge with Manifest V3 side-panel support. Store builds update automatically. For air-gapped installs, see [Install without the stores](#install-without-the-stores).
+It needs Chrome or Edge 114 or later (Manifest V3 side-panel support). Store builds update automatically. For air-gapped installs, see [Install without the stores](#install-without-the-stores).
 
 ## Connect Supercheck
 
@@ -93,7 +93,7 @@ Press `Shift+Alt+C` to inspect elements without recording actions.
 
 ## Permissions and data
 
-The extension requests debugger, tabs, storage, side-panel, scripting, and HTTP/HTTPS host access to record the selected tab and hand the code to the Playground. Recordings can capture text typed into forms, so review the code and avoid recording real secrets. The browser profile stores the connection details: disconnect before sharing the profile, and revoke the key in Supercheck if the profile or device is lost.
+The extension requests debugger, tabs, storage, side-panel, scripting, and host access to all sites (`<all_urls>`, shown by the browser as reading and changing data on all websites) because a recording can start on any page. It uses them to record the selected tab and hand the code to the Playground. Recordings can capture text typed into forms, so review the code and avoid recording real secrets. The browser profile stores the connection details: disconnect before sharing the profile, and revoke the key in Supercheck if the profile or device is lost.
 
 The page API is injected only on the [hosted origins](#connect-supercheck) and the URL saved in Options. Other pages cannot use it, read the credential, or start a recording.
 

@@ -8,6 +8,7 @@
     "createJob",
     "triggerJob",
     "runJob",
+    "updateJobByBodyId",
     "replaceJobConfiguration",
     "updateJob",
     "deleteJob"
