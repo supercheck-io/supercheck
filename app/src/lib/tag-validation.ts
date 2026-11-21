@@ -13,3 +13,10 @@ export function tagColorError(color: unknown): string | null {
   if (typeof color !== "string" || !/^#[0-9a-fA-F]{6}$/.test(color)) return "Tag color must be a hex color like #3B82F6";
   return null;
 }
+
+/** A concurrent create or rename won the race for the name: unique violation 23505 on (project, name). Drizzle wraps the driver error in `cause`. */
+export const isTagNameConflict = (e: unknown) =>
+  [e, (e as { cause?: unknown } | null)?.cause].some((x) => {
+    const pg = x as { code?: string; constraint_name?: string } | null | undefined;
+    return pg?.code === "23505" && pg.constraint_name === "tags_project_name_idx";
+  });

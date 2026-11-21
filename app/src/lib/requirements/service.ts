@@ -43,7 +43,9 @@ export type RequirementServiceContext = {
   projectName: string;
 };
 
-const isTagLimitError = (error: unknown) => error instanceof Error && error.name === "TagLimitError";
+// Tag cap per requirement, or a new tag that breaks the tag rules or the project limit: a validation failure, not a 500.
+const isTagLimitError = (error: unknown) =>
+  error instanceof Error && (error.name === "TagLimitError" || error.name === "TagRuleError");
 
 export type ServiceFailureCode = "not_found" | "invalid" | "conflict";
 
@@ -239,14 +241,16 @@ export async function createRequirementRecord(
       if (!row) return false;
 
       // Sync tags if provided (explicit names, else the comma-separated string for backward compatibility)
+      // The comma-separated form (UI and document extraction) has always created lowercase tags, and is lenient:
+      // a new name that breaks the tag rules is normalised or dropped rather than failing the create.
+      const lenient = options?.tagNames === undefined;
       const tagNames =
         options?.tagNames ??
         (validatedData.tags
-          ? // The comma-separated form has always created lowercase tags; keep that for the UI path.
-            validatedData.tags.split(",").map((t) => t.trim().toLowerCase()).filter(Boolean)
+          ? validatedData.tags.split(",").map((t) => t.trim().toLowerCase()).filter(Boolean)
           : []);
       if (tagNames.length > 0) {
-        await syncRequirementTagsByName(newId, tagNames, organizationId, projectId, userId, tx);
+        await syncRequirementTagsByName(newId, tagNames, organizationId, projectId, userId, tx, lenient);
       }
 
       // Create initial coverage snapshot (status: missing)

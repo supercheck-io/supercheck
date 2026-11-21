@@ -3,11 +3,19 @@ jest.mock("@/utils/db", () => ({ db: {} }));
 
 import { PgDialect } from "drizzle-orm/pg-core";
 import type { SQL } from "drizzle-orm";
-import { syncRequirementTags, syncRequirementTagsByName, TagLimitError, updateCoverageSnapshot } from "./requirements-internal";
+import {
+  normalizeTagName,
+  syncRequirementTags,
+  syncRequirementTagsByName,
+  TagLimitError,
+  TagRuleError,
+  updateCoverageSnapshot,
+} from "./requirements-internal";
 
 const R = "44444444-4444-4444-8444-444444444444";
 
-function makeExecutor(existing: { id: string; name: string }[]) {
+// `projectTagCount` answers the per-project count, which is queried only when a tag would be created.
+function makeExecutor(existing: { id: string; name: string }[], projectTagCount = 0) {
   const inserted: unknown[] = [];
   const wheres: SQL[] = [];
   const executor = {
@@ -15,7 +23,7 @@ function makeExecutor(existing: { id: string; name: string }[]) {
       from: () => ({
         where: (w: SQL) => {
           wheres.push(w);
-          return { orderBy: () => Promise.resolve(existing) };
+          return Object.assign(Promise.resolve([{ count: projectTagCount }]), { orderBy: () => Promise.resolve(existing) });
         },
       }),
     }),
@@ -77,6 +85,96 @@ describe("syncRequirementTagsByName", () => {
       expect.objectContaining({ name: "Smoke", projectId: "p", organizationId: "o" }),
       expect.objectContaining({ name: "Auth" }),
     ]);
+  });
+});
+
+describe("syncRequirementTagsByName tag rules (only for tags it would create)", () => {
+  const created = (inserted: unknown[]) =>
+    inserted.length > 1 ? (inserted[0] as { name: string }[]).map((t) => t.name) : [];
+
+  it("strict: links an existing tag whose name predates the rules", async () => {
+    const { executor, inserted, wheres } = makeExecutor([{ id: "legacy", name: "login flow" }]);
+    await syncRequirementTagsByName(R, ["Login Flow"], "o", "p", "u", executor);
+    expect(inserted).toEqual([[expect.objectContaining({ tagId: "legacy" })]]);
+    expect(wheres).toHaveLength(1); // no count query when nothing is created
+  });
+
+  it.each(["ab", "login flow!", "x".repeat(21)])("strict: rejects creating %p before any write", async (name) => {
+    const { executor, inserted } = makeExecutor([]);
+    await expect(syncRequirementTagsByName(R, [name], "o", "p", "u", executor)).rejects.toThrow(TagRuleError);
+    await expect(syncRequirementTagsByName(R, [name], "o", "p", "u", executor)).rejects.toThrow(`Invalid tag "${name}"`);
+    expect(inserted).toHaveLength(0);
+  });
+
+  it("strict: one invalid new name fails the whole set before the count or any insert", async () => {
+    const { executor, inserted, wheres } = makeExecutor([]);
+    await expect(syncRequirementTagsByName(R, ["smoke", "ab"], "o", "p", "u", executor)).rejects.toThrow(TagRuleError);
+    expect(inserted).toHaveLength(0);
+    expect(wheres).toHaveLength(1);
+  });
+
+  it("strict: rejects creating past the project's 50-tag limit, counted in the project", async () => {
+    const { executor, inserted, wheres } = makeExecutor([], 49);
+    await expect(syncRequirementTagsByName(R, ["smoke", "auth"], "o", "p", "u", executor)).rejects.toThrow(
+      "Maximum of 50 tags allowed per project"
+    );
+    expect(inserted).toHaveLength(0);
+    const { sql: text, params } = new PgDialect().sqlToQuery(wheres[1]);
+    expect(text).toContain('"organization_id"');
+    expect(params).toEqual(["o", "p"]);
+  });
+
+  it("strict: creates up to the limit", async () => {
+    const { executor, inserted } = makeExecutor([], 48);
+    await syncRequirementTagsByName(R, ["smoke", "auth"], "o", "p", "u", executor);
+    expect(created(inserted)).toEqual(["smoke", "auth"]);
+  });
+
+  it("lenient: normalises new names, drops what is still too short, and keeps the extraction marker", async () => {
+    const { executor, inserted } = makeExecutor([]);
+    await syncRequirementTagsByName(R, ["ai", "login flow!", "x", "a very long tag name that goes on"], "o", "p", "u", executor, true);
+    expect(created(inserted)).toEqual(["ai", "login-flow", "a-very-long-tag-name"]);
+  });
+
+  it("lenient: reuses an existing tag that matches the normalised name, and dedupes names that normalise alike", async () => {
+    const { executor, inserted, wheres } = makeExecutor([{ id: "t1", name: "login-flow" }]);
+    await syncRequirementTagsByName(R, ["login flow", "login  flow", "new tag", "new-tag"], "o", "p", "u", executor, true);
+    expect(new PgDialect().sqlToQuery(wheres[0]).params).toEqual(expect.arrayContaining(["login flow", "login-flow"]));
+    expect(created(inserted)).toEqual(["new-tag"]);
+    expect(inserted[1]).toEqual([expect.objectContaining({ tagId: "t1" }), expect.objectContaining({ tagId: "new-0" })]);
+  });
+
+  it("lenient: an unchanged legacy name is still linked as-is", async () => {
+    const { executor, inserted } = makeExecutor([{ id: "legacy", name: "qa" }]);
+    await syncRequirementTagsByName(R, ["qa"], "o", "p", "u", executor, true);
+    expect(inserted).toEqual([[expect.objectContaining({ tagId: "legacy" })]]);
+  });
+
+  it("lenient: skips new tags past the project limit instead of failing", async () => {
+    const full = makeExecutor([], 50);
+    await syncRequirementTagsByName(R, ["smoke"], "o", "p", "u", full.executor, true);
+    expect(full.inserted).toHaveLength(0);
+
+    const oneLeft = makeExecutor([], 49);
+    await syncRequirementTagsByName(R, ["smoke", "auth"], "o", "p", "u", oneLeft.executor, true);
+    expect(created(oneLeft.inserted)).toEqual(["smoke"]);
+  });
+
+  it("lenient: a name with nothing usable left is dropped", async () => {
+    const { executor, inserted } = makeExecutor([]);
+    await syncRequirementTagsByName(R, ["!!!"], "o", "p", "u", executor, true);
+    expect(inserted).toHaveLength(0);
+  });
+});
+
+describe("normalizeTagName", () => {
+  it.each([
+    [" Login Flow ", "Login-Flow"],
+    ["a\tb", "a-b"],
+    ["bad!char", "badchar"],
+    ["x".repeat(30), "x".repeat(20)],
+  ])("%p -> %p", (input, output) => {
+    expect(normalizeTagName(input)).toBe(output);
   });
 });
 

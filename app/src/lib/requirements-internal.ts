@@ -11,6 +11,7 @@ import {
 import { computeCoverageStatus } from "@/lib/requirements/coverage-status";
 import { RUN_CANCELLATION_MARKER } from "@/lib/run-cancellation-marker";
 import { db } from "@/utils/db";
+import { tagNameError } from "@/lib/tag-validation";
 
 // Either the shared pool or a transaction handle, so a caller can make the tag writes part of its own transaction.
 export type Executor = Pick<typeof db, "select" | "selectDistinctOn" | "selectDistinct" | "insert" | "delete" | "update">;
@@ -21,6 +22,25 @@ export class TagLimitError extends Error {
     super("Maximum of 10 tags allowed per requirement");
     this.name = "TagLimitError";
   }
+}
+
+/** Raised when a tag the requirement would create breaks the tag rules or the project's tag limit; mapped to a validation failure. */
+export class TagRuleError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "TagRuleError";
+  }
+}
+
+/** Same per-project cap as POST /api/tags. */
+export const MAX_TAGS_PER_PROJECT = 50;
+
+/** The marker document extraction puts on every requirement; shorter than the rules allow, so it is exempt. */
+export const AI_EXTRACTION_TAG = "ai";
+
+/** Bend a name to the tag rules: whitespace to "-", other invalid characters dropped, cut to 20. */
+export function normalizeTagName(name: string): string {
+  return name.trim().replace(/\s+/g, "-").replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 20);
 }
 
 // Internal helpers: deliberately NOT in a "use server" module. Next.js exposes
@@ -72,7 +92,11 @@ export async function syncRequirementTagsByName(
   organizationId: string,
   projectId: string,
   userId: string | null,
-  executor: Executor = db
+  executor: Executor = db,
+  // Existing tags are linked by name whatever their spelling; only tags this call would CREATE must meet the tag
+  // rules and the project limit. Strict (REST) throws TagRuleError. Lenient (the comma-separated server-action form,
+  // used by document extraction) normalises a new name, and drops it when it is still invalid or the project is full.
+  lenient = false
 ): Promise<void> {
   if (tagNames.length === 0) return;
 
@@ -86,37 +110,78 @@ export async function syncRequirementTagsByName(
     if (!name || seen.has(key)) continue;
     seen.add(key);
     requestedNames.push(name);
+    // syncRequirementTags rejects more than 10, so 11 already fails it; stop before an oversized lookup.
+    if (requestedNames.length > 10) break;
   }
+
+  // Lenient lookups also try the normalised spelling, so "Login Flow" reuses a stored "login-flow" instead of colliding.
+  const lookupKeys = new Set<string>();
+  for (const name of requestedNames) {
+    lookupKeys.add(name.toLowerCase());
+    if (lenient) lookupKeys.add(normalizeTagName(name).toLowerCase());
+  }
+  lookupKeys.delete("");
 
   // Match existing tags case-insensitively so "Smoke" reuses the stored "smoke" (or "Smoke") instead of adding a twin.
   const existingTags =
-    requestedNames.length === 0
+    lookupKeys.size === 0
       ? []
       : await executor
           .select({ id: tags.id, name: tags.name })
           .from(tags)
           .where(
             and(
+              eq(tags.organizationId, organizationId),
               eq(tags.projectId, projectId),
-              inArray(
-                sql`lower(${tags.name})`,
-                requestedNames.map((name) => name.toLowerCase())
-              )
+              inArray(sql`lower(${tags.name})`, [...lookupKeys])
             )
           )
           .orderBy(asc(tags.createdAt), asc(tags.id));
 
   // Link ONE tag per requested name (legacy projects may hold case-twins): the exact-case match if any,
   // otherwise the oldest (rows arrive ordered by createdAt, id).
-  const linkedExisting: { id: string; name: string }[] = [];
+  const findExisting = (name: string) => {
+    const candidates = existingTags.filter((t) => t.name.toLowerCase() === name.toLowerCase());
+    return candidates.find((t) => t.name === name) ?? candidates[0];
+  };
+
+  const linkedIds = new Set<string>();
+  const createKeys = new Set<string>();
+  let tagsToCreate: string[] = [];
   for (const requested of requestedNames) {
-    const candidates = existingTags.filter((t) => t.name.toLowerCase() === requested.toLowerCase());
-    const pick = candidates.find((t) => t.name === requested) ?? candidates[0];
-    if (pick) linkedExisting.push(pick);
+    let name = requested;
+    let pick = findExisting(name);
+    if (!pick && lenient) {
+      name = normalizeTagName(requested);
+      pick = findExisting(name);
+    }
+    if (pick) {
+      linkedIds.add(pick.id);
+      continue;
+    }
+    const ruleError = lenient && name === AI_EXTRACTION_TAG ? null : tagNameError(name);
+    if (ruleError) {
+      if (lenient) continue;
+      throw new TagRuleError(`Invalid tag "${name}": ${ruleError}`);
+    }
+    if (createKeys.has(name.toLowerCase())) continue;
+    createKeys.add(name.toLowerCase());
+    tagsToCreate.push(name);
   }
 
-  const existingTagNames = new Set(linkedExisting.map((t) => t.name.toLowerCase()));
-  const tagsToCreate = requestedNames.filter((name) => !existingTagNames.has(name.toLowerCase()));
+  if (tagsToCreate.length > 0) {
+    const [{ count }] = await executor
+      .select({ count: sql<number>`count(*)::int` })
+      .from(tags)
+      .where(and(eq(tags.organizationId, organizationId), eq(tags.projectId, projectId)));
+    const room = Math.max(0, MAX_TAGS_PER_PROJECT - count);
+    if (tagsToCreate.length > room) {
+      if (!lenient) {
+        throw new TagRuleError(`Maximum of ${MAX_TAGS_PER_PROJECT} tags allowed per project`);
+      }
+      tagsToCreate = tagsToCreate.slice(0, room);
+    }
+  }
 
   // Create missing tags
   const newTags: { id: string; name: string }[] = [];
@@ -125,7 +190,7 @@ export async function syncRequirementTagsByName(
       "#3B82F6", "#10B981", "#F59E0B", "#EF4444", "#8B5CF6",
       "#06B6D4", "#84CC16", "#F97316", "#EC4899", "#6B7280",
     ];
-    
+
     const createdTags = await executor
       .insert(tags)
       .values(
@@ -138,18 +203,12 @@ export async function syncRequirementTagsByName(
         }))
       )
       .returning({ id: tags.id, name: tags.name });
-    
+
     newTags.push(...createdTags);
   }
 
-  // Combine all tag IDs
-  const allTagIds = [
-    ...linkedExisting.map((t) => t.id),
-    ...newTags.map((t) => t.id),
-  ];
-
   // Sync requirement tags
-  await syncRequirementTags(requirementId, allTagIds, executor);
+  await syncRequirementTags(requirementId, [...linkedIds, ...newTags.map((t) => t.id)], executor);
 }
 
 /**

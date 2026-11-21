@@ -323,7 +323,7 @@ Remote requirements are compared, and pruned by `deploy --delete`, only when the
 | `title` | `string` | Required, 1-500 characters |
 | `description` | `string` | Requirement description |
 | `priority` | `string` | `low`, `medium`, `high`; `""` clears it |
-| `tags` | `string[]` | Tag names (max 10, 50 characters each). Omit to leave remote tags unchanged; `[]` clears them. Names compare case-insensitively; missing tags are created by the server |
+| `tags` | `string[]` | Tag names (max 10, 50 characters each). Omit to leave remote tags unchanged; `[]` clears them. Names compare case-insensitively, so an existing tag matches whatever its name. Missing tags are created by the server and must be 3-20 characters of letters, numbers, underscores and hyphens, within 50 tags per project |
 | `externalId` | `string` | ID in an external tracker (max 255 characters) |
 | `externalUrl` | `string` | `http://` or `https://` URL in an external tracker |
 | `tests` | `string[]` | Linked tests, referenced like a job's `tests` (file path, filename or UUID; max 100). Omit to leave remote links unchanged; `[]` unlinks all |

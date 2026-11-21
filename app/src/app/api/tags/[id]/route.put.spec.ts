@@ -11,19 +11,37 @@ jest.mock("@/lib/rbac/middleware", () => ({ checkPermissionWithContext: () => tr
 
 // Select order in PUT: tag lookup, then the duplicate-name lookup.
 const mockSelectQueue: unknown[][] = [];
+const mockWheres: unknown[] = [];
 const mockSet = jest.fn();
+let mockUpdateError: unknown;
 jest.mock("@/utils/db", () => ({
   db: {
-    select: () => ({ from: () => ({ where: () => ({ limit: async () => mockSelectQueue.shift() ?? [] }) }) }),
+    select: () => ({
+      from: () => ({
+        where: (w: unknown) => {
+          mockWheres.push(w);
+          return { limit: async () => mockSelectQueue.shift() ?? [] };
+        },
+      }),
+    }),
     update: () => ({
       set: (values: Record<string, unknown>) => {
         mockSet(values);
-        return { where: () => ({ returning: async () => [{ id: TAG, ...values }] }) };
+        return {
+          where: () => ({
+            returning: async () => {
+              if (mockUpdateError) throw mockUpdateError;
+              return [{ id: TAG, ...values }];
+            },
+          }),
+        };
       },
     }),
   },
 }));
 import { NextRequest } from "next/server";
+import { PgDialect } from "drizzle-orm/pg-core";
+import type { SQL } from "drizzle-orm";
 import { tagNameError } from "@/lib/tag-validation";
 import { PUT } from "./route";
 
@@ -33,7 +51,9 @@ const put = (body: object) =>
 
 beforeEach(() => {
   mockSelectQueue.length = 0;
+  mockWheres.length = 0;
   mockSet.mockClear();
+  mockUpdateError = undefined;
 });
 
 describe("tag rename", () => {
@@ -68,5 +88,43 @@ describe("tag rename", () => {
     const res = await put({ name: "prod", color });
     expect(res.status).toBe(400);
     expect(mockSet).not.toHaveBeenCalled();
+  });
+
+  it("lets a tag keep a stored color that predates the rules while it is renamed", async () => {
+    mockSelectQueue.push([{ id: TAG, name: "prod", color: "red" }], []);
+    expect((await put({ name: "production", color: "red" })).status).toBe(200);
+    expect(mockSet).toHaveBeenCalledWith(expect.objectContaining({ name: "production", color: "red" }));
+  });
+
+  it("checks duplicates case-insensitively and excludes the tag itself", async () => {
+    mockSelectQueue.push([{ id: TAG, name: "prod", color: "#000000" }], [{ id: "77777777-7777-4777-8777-777777777777", name: "Staging" }]);
+    expect((await put({ name: "staging" })).status).toBe(409);
+    const { sql: text, params } = new PgDialect().sqlToQuery(mockWheres[1] as SQL);
+    expect(text).toContain("lower(");
+    expect(text).toContain("<>");
+    expect(params).toEqual(expect.arrayContaining(["staging", TAG]));
+  });
+
+  it("skips the duplicate check when the name is unchanged, so a legacy case-twin can still change color", async () => {
+    mockSelectQueue.push([{ id: TAG, name: "smoke", color: "#000000" }], [{ id: "77777777-7777-4777-8777-777777777777", name: "Smoke" }]);
+    expect((await put({ name: "smoke", color: "#FFFFFF" })).status).toBe(200);
+    expect(mockWheres).toHaveLength(1);
+  });
+
+  it("answers 409 when a concurrent rename wins the unique name index", async () => {
+    mockSelectQueue.push([{ id: TAG, name: "prod", color: "#000000" }], []);
+    mockUpdateError = Object.assign(new Error("dup"), { cause: { code: "23505", constraint_name: "tags_project_name_idx" } });
+    const res = await put({ name: "staging" });
+    expect(res.status).toBe(409);
+    expect((await res.json()).error).toBe("Tag with this name already exists");
+  });
+
+  it.each([
+    ["another unique index", { code: "23505", constraint_name: "tags_pkey" }],
+    ["another error", { code: "57014" }],
+  ])("answers 500 for %s", async (_label, cause) => {
+    mockSelectQueue.push([{ id: TAG, name: "prod", color: "#000000" }], []);
+    mockUpdateError = Object.assign(new Error("boom"), { cause });
+    expect((await put({ name: "staging" })).status).toBe(500);
   });
 });

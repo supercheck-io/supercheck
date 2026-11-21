@@ -12,12 +12,15 @@ jest.mock("@/lib/rbac/middleware", () => ({ checkPermissionWithContext: () => tr
 
 // Select order in POST: the duplicate-name lookup (limit), then the per-project count (no limit).
 const mockSelectQueue: unknown[][] = [];
+const mockWheres: unknown[] = [];
 const mockInsert = jest.fn();
+let mockInsertError: unknown;
 jest.mock("@/utils/db", () => ({
   db: {
     select: () => ({
       from: () => ({
-        where: () => {
+        where: (w: unknown) => {
+          mockWheres.push(w);
           const rows = mockSelectQueue.shift() ?? [];
           return Object.assign(Promise.resolve(rows), { limit: async () => rows });
         },
@@ -26,12 +29,19 @@ jest.mock("@/utils/db", () => ({
     insert: () => ({
       values: (values: Record<string, unknown>) => {
         mockInsert(values);
-        return { returning: async () => [{ id: "t", ...values }] };
+        return {
+          returning: async () => {
+            if (mockInsertError) throw mockInsertError;
+            return [{ id: "t", ...values }];
+          },
+        };
       },
     }),
   },
 }));
 import { NextRequest } from "next/server";
+import { PgDialect } from "drizzle-orm/pg-core";
+import type { SQL } from "drizzle-orm";
 import { tagColorError, tagNameError } from "@/lib/tag-validation";
 import { POST } from "./route";
 
@@ -39,7 +49,9 @@ const post = (body: object) => POST(new NextRequest("http://localhost/api/tags",
 
 beforeEach(() => {
   mockSelectQueue.length = 0;
+  mockWheres.length = 0;
   mockInsert.mockClear();
+  mockInsertError = undefined;
 });
 
 describe("tag create", () => {
@@ -57,10 +69,30 @@ describe("tag create", () => {
     expect(mockInsert).not.toHaveBeenCalled();
   });
 
-  it("answers 409 for a duplicate name", async () => {
+  it("answers 409 for a duplicate name, compared case-insensitively", async () => {
     mockSelectQueue.push([{ id: "existing" }]);
-    expect((await post({ name: "prod" })).status).toBe(409);
+    expect((await post({ name: "Prod" })).status).toBe(409);
     expect(mockInsert).not.toHaveBeenCalled();
+    const { sql: text, params } = new PgDialect().sqlToQuery(mockWheres[0] as SQL);
+    expect(text).toContain("lower(");
+    expect(params).toContain("prod");
+  });
+
+  it("answers 409 when a concurrent create wins the unique name index", async () => {
+    mockSelectQueue.push([], []);
+    mockInsertError = Object.assign(new Error("dup"), { code: "23505", constraint_name: "tags_project_name_idx" });
+    const res = await post({ name: "prod" });
+    expect(res.status).toBe(409);
+    expect((await res.json()).error).toBe("Tag already exists in this project");
+  });
+
+  it.each([
+    ["another unique index", { code: "23505", constraint_name: "tags_pkey" }],
+    ["another error", { code: "57014" }],
+  ])("answers 500 for %s", async (_label, fields) => {
+    mockSelectQueue.push([], []);
+    mockInsertError = Object.assign(new Error("boom"), fields);
+    expect((await post({ name: "prod" })).status).toBe(500);
   });
 
   it("creates a valid tag with its color", async () => {
