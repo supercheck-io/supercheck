@@ -1,4 +1,5 @@
 import { liveMonitor } from "@/lib/deletion/visibility";
+import { getRawResultRetention } from "@/lib/monitor-result-retention";
 import { hasPermissionForUser, requireAuth } from "@/lib/rbac/middleware";
 import { monitorConfigForRead, monitorResultForRead, monitorTargetForRead } from "@/lib/monitor-read-config";
 import { heartbeatSummary } from "@/lib/heartbeat/state";
@@ -119,6 +120,7 @@ const getMonitorDetailsDirectly = cache(async (id: string): Promise<MonitorWithR
       alertConfig: monitor.alertConfig || undefined,
       projectName: monitor.projectName || undefined,
       heartbeat: heartbeatSummary({ ...monitor, frequencyMinutes }),
+      resultRetention: await getRawResultRetention(monitor.organizationId),
     };
 
     return transformedMonitor;

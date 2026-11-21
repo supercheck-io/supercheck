@@ -1,6 +1,7 @@
 import { expect } from '@playwright/test';
 
 import { test } from '../../fixtures';
+import { waitForHydration } from '../../utils/hydration';
 import { createMonitor, deleteMonitor } from '../../utils/test-data';
 
 test.describe('Monitors UI lifecycle @monitors', () => {
@@ -44,5 +45,28 @@ test.describe('Monitors UI lifecycle @monitors', () => {
     await expect(dialog).toBeHidden();
     const persisted = await request.get(`/api/monitors/${created.id}`);
     expect(persisted.status()).toBe(200);
+  });
+  test('filters check results to failures and rejects an unknown status @high @positive', async ({ projectAdminPage: page, cleanup }) => {
+    const request = page.request;
+    const created = await createMonitor(request, { name: `E2E failures-only monitor ${Date.now()}` });
+    cleanup.add(`monitor ${created.id}`, () => deleteMonitor(request, created.id));
+
+    const invalid = await request.get(`/api/monitors/${created.id}/results?status=down`);
+    expect(invalid.status()).toBe(400);
+    expect(await invalid.json()).toEqual({ error: 'Invalid status parameter. Must be "failed"' });
+
+    const failed = await request.get(`/api/monitors/${created.id}/results?status=failed&limit=100`);
+    expect(failed.status(), await failed.text()).toBe(200);
+    const body = (await failed.json()) as { data: { isUp: boolean }[]; pagination: { total: number } };
+    expect(body.data.every((row) => row.isUp === false)).toBe(true);
+    expect(body.pagination.total).toBe(body.data.length);
+
+    await page.goto(`/monitors/${created.id}`);
+    await waitForHydration(page);
+    const filtered = page.waitForRequest((req) => req.url().includes(`/api/monitors/${created.id}/results?`) && req.url().includes('status=failed'));
+    await page.getByRole('switch', { name: 'Failures only' }).click();
+    const sent = new URL((await filtered).url());
+    expect(sent.searchParams.get('page')).toBe('1');
+    await expect(page.getByText(/^Showing \d+ of \d+ recent failed checks\.$/)).toBeVisible();
   });
 });

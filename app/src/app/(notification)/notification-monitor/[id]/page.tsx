@@ -1,4 +1,5 @@
 import { liveMonitor } from "@/lib/deletion/visibility";
+import { getRawResultRetention } from "@/lib/monitor-result-retention";
 import { monitorConfigForRead, monitorResultForRead, monitorTargetForRead } from "@/lib/monitor-read-config";
 import { Metadata } from "next";
 import { cache } from "react";
@@ -127,6 +128,7 @@ const getMonitorDetailsDirectly = cache(async (
       config: monitorConfigForRead(monitor.config, canUpdate) ?? undefined,
       alertConfig: monitor.alertConfig || undefined,
       projectName: monitor.projectName || undefined,
+      resultRetention: await getRawResultRetention(monitor.organizationId),
     };
 
     return transformedMonitor;
