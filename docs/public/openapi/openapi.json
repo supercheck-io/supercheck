@@ -5782,7 +5782,7 @@
       "post": {
         "operationId": "uploadStatusPageAsset",
         "summary": "Upload status page assets",
-        "description": "Upload a favicon, logo, or cover image for a status page. PNG, JPEG, GIF, SVG or WebP only, at most 5 MB; the file content must match its declared image type. The request must send `Content-Length`. Each user may upload 30 files per 10 minutes.",
+        "description": "Upload a favicon, logo, or cover image for a status page. PNG, JPEG, GIF, SVG or WebP only, at most 5 MB; the file content must match its declared image type. The request must send `Content-Length`. Each user may send 30 upload requests per 10 minutes; rejected requests count too.",
         "tags": [
           "Status Pages"
         ],
@@ -5861,7 +5861,7 @@
             "description": "Request body larger than about 5 MB (a file only slightly over 5 MB returns 400 instead)"
           },
           "429": {
-            "description": "Upload limit reached (30 per 10 minutes per user); see the rate-limit headers"
+            "description": "Upload limit reached (30 requests per 10 minutes per user, including rejected ones); see the rate-limit headers"
           },
           "503": {
             "description": "The upload limiter is unavailable; retry later"
@@ -12637,7 +12637,7 @@
           },
           "cancelled": {
             "type": "boolean",
-            "description": "List only. True when a user cancelled the run (its `status` is `error`)."
+            "description": "List only. True once a user has requested cancellation. It can be set while the run is still `queued` or `running`; the run then ends with `status` `error`."
           }
         }
       },

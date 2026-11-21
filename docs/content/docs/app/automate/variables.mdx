@@ -131,7 +131,7 @@ const configPath = getFile('CONFIG_FILE');
 Execution output masks secret values, but do not log them on purpose. Secrets work normally in Playwright actions, HTTP headers and bodies, URL parameters and comparisons.
 
 <Callout type="warn">
-Masking covers console output, error messages, and text report files (`.html`, `.json`, `.txt`, `.md`, `.xml`, up to 20 MB each). The Playwright HTML report is masked too, including the test data stored compressed inside the page; a report that could not be masked is not uploaded. Masking does not cover traces, screenshots, videos, or other text files over 20 MB. A Playwright HTML report is masked up to 100 MB; a larger one is not uploaded. If a test types a secret into a page, the secret can appear in those artifacts. Do not type secrets into pages whose reports you share.
+Masking covers console output, error messages, and text report files (`.html`, `.json`, `.txt`, `.md`, `.xml`, up to 20 MB each). The Playwright HTML report is masked too, including the test data stored compressed inside the page; a report that could not be masked is not uploaded. Short secrets are an exception (see [What is masked](#secret-masking)). Masking does not cover traces, screenshots, videos, or other text files over 20 MB. A Playwright HTML report is masked up to 100 MB; a larger one is not uploaded. If a test types a secret into a page, the secret can appear in those artifacts. Do not type secrets into pages whose reports you share.
 </Callout>
 
 <Accordions>

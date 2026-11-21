@@ -72,7 +72,7 @@ Write tools behave like the dashboard, with the same notifications, timelines an
 <Accordions>
 <Accordion title="Paging" id="paging">
 
-List tools accept `limit` (1 to 50, default 20) and `cursor`. When more results exist the response has a `nextCursor`; pass it back as `cursor` for the next page. `list_maintenance_windows` is the exception: it takes neither and returns every matching window. `id` and `cursor` values are UUIDs.
+List tools accept `limit` (1 to 50, default 20) and `cursor`. When more results exist the response has a `nextCursor`; pass it back as `cursor` for the next page. `list_maintenance_windows` is the exception: it takes neither and returns at most 200 matching windows (live windows first), with no next-page cursor. `id` and `cursor` values are UUIDs.
 
 </Accordion>
 <Accordion title="Errors" id="errors">
