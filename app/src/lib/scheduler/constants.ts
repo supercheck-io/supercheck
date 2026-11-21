@@ -7,7 +7,6 @@
 
 // Scheduler queues - process scheduling triggers
 export const JOB_SCHEDULER_QUEUE = 'job-scheduler';
-export const K6_JOB_SCHEDULER_QUEUE = 'k6-job-scheduler';
 export const MONITOR_SCHEDULER_QUEUE = 'monitor-scheduler';
 
 // Monitor job name
