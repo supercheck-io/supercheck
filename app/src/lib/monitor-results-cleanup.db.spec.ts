@@ -212,12 +212,13 @@ describe("monitor_results", () => {
     expect(await client`SELECT entity_id FROM reports`).toEqual([]);
   });
 
-  it("a monitor that fails keeps its rows and fails the run, while other organizations are still cleaned", async () => {
+  it("a monitor that fails keeps its rows and makes the run partial (not failed), while other organizations are still cleaned", async () => {
     await client`INSERT INTO monitor_results (id, monitor_id, checked_at, status, is_up, test_report_s3_url) VALUES (uuidv7(), ${monitorOf.pro}, now() - interval '40 days', 'up', true, 's3://bucket/x')`;
     await addResults(monitorOf.plus, 20, 3);
     mockDeleteReports.mockRejectedValueOnce(new Error("storage unreachable"));
     const result = await resultsStrategy().execute(false, { cursor: memoryCursor() });
-    expect(result.success).toBe(false);
+    expect(result.success).toBe(true); // retried by the next hourly run, not by failing this one
+    expect(result.details).toEqual(expect.objectContaining({ partial: true, failedMonitors: 1 }));
     expect(result.errors).toEqual(["storage unreachable"]);
     expect(await countRows(monitorOf.pro)).toBe(1);
     expect(await countRows(monitorOf.plus)).toBe(0);
@@ -441,6 +442,49 @@ describe("monitor_results", () => {
   });
 });
 
+describe("raw cleanup and the daily rollup", () => {
+  afterEach(() => jest.useRealTimers());
+  // Only Date is faked: the database driver keeps its real timers.
+  const at = (ms: number) =>
+    jest.useFakeTimers({ now: ms, doNotFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "setImmediate", "clearImmediate", "nextTick", "queueMicrotask", "hrtime", "performance"] });
+  const daily = async (monitorId: string, dayStart: Date) =>
+    client`SELECT location, total_checks, successful_checks, uptime_percentage::text AS uptime FROM monitor_aggregates
+           WHERE monitor_id = ${monitorId} AND period_type = 'daily' AND period_start = ${dayStart.toISOString()} ORDER BY location NULLS FIRST`;
+
+  it("deletes whole UTC days only, so the hourly cleanup before the 00:15 rollup never shrinks the oldest day of a 7-day organization", async () => {
+    const DAY = 86_400_000;
+    const dayC = Math.floor(Date.now() / DAY) * DAY; // day C, UTC midnight
+    const dayC7 = new Date(dayC - 7 * DAY);
+    const m = monitorOf.plus; // Plus: 7 days raw
+    // Day C-7: one check an hour, the first four hours down; plus a day older than the window.
+    await client`
+      INSERT INTO monitor_results (id, monitor_id, checked_at, status, is_up, details)
+      SELECT uuidv7(), ${m}, ${dayC7.toISOString()}::timestamptz + make_interval(hours => h, mins => 5),
+             CASE WHEN h < 4 THEN 'down' ELSE 'up' END, h >= 4, '{}'::jsonb
+      FROM generate_series(0, 23) h`;
+    await client`UPDATE monitor_results SET is_status_change = true WHERE monitor_id = ${m} AND checked_at IN (${new Date(dayC7.getTime() + 5 * 60_000).toISOString()}::timestamptz, ${new Date(dayC7.getTime() + 4 * 3_600_000 + 5 * 60_000).toISOString()}::timestamptz)`;
+    // A plain down check at 00:20 that a cutoff of "now minus 7 days" would delete at 00:30.
+    await client`INSERT INTO monitor_results (id, monitor_id, checked_at, status, is_up, details) VALUES (uuidv7(), ${m}, ${new Date(dayC7.getTime() + 20 * 60_000).toISOString()}, 'down', false, '{}'::jsonb)`;
+    await addResults(m, 9, 3);
+
+    at(dayC - DAY + 15 * 60_000); // day C-1 00:15: the rollup sees all of C-7
+    expect((await monitorAggregationService.runDailyAggregation()).errors).toEqual([]);
+    const before = await daily(m, dayC7);
+    expect(before.find((row) => row.location === null)).toEqual(expect.objectContaining({ total_checks: 25, successful_checks: 20 }));
+
+    at(dayC + 30 * 60_000); // day C 00:30: hourly cleanup, then the daily rollup
+    const cleanup = await resultsStrategy().execute(false, { cursor: memoryCursor() });
+    expect(cleanup.recordsDeleted).toBe(3); // only the older day
+    expect(Number((await client`SELECT count(*)::int AS n FROM monitor_results WHERE monitor_id = ${m} AND checked_at >= ${dayC7.toISOString()}::timestamptz`)[0].n)).toBe(25);
+    expect((await monitorAggregationService.runDailyAggregation()).errors).toEqual([]);
+    expect(await daily(m, dayC7)).toEqual(before);
+
+    at(dayC + DAY + 30 * 60_000); // day C+1: C-7 leaves both the window and the rollup lookback
+    await resultsStrategy().execute(false, { cursor: memoryCursor() });
+    expect(await daily(m, dayC7)).toEqual(before);
+  });
+});
+
 describe("monitor_aggregates", () => {
   const aggregatesStrategy = (maxRecordsPerRun = 100_000) =>
     new MonitorAggregatesCleanupStrategy({
@@ -502,7 +546,7 @@ describe("monitor_aggregates", () => {
     }
   });
 
-  it("an organization that fails is reported and the others are still cleaned; a failed lag check does not fail the run", async () => {
+  it("an organization that fails is reported, the run is partial, and the others are still cleaned", async () => {
     await addAggregate(monitorOf.pro, "daily", 100);
     await addAggregate(monitorOf.plus, "daily", 100);
     const original = monitorAggregationService.cleanupOldAggregatesForOrg.bind(monitorAggregationService);
@@ -514,7 +558,8 @@ describe("monitor_aggregates", () => {
       JSON.stringify(query).includes("LEFT JOIN LATERAL") ? Promise.reject(new Error("lag query failed")) : execute(query)) as unknown as typeof mockDatabase.execute);
     try {
       const result = await aggregatesStrategy().execute();
-      expect(result.success).toBe(false);
+      expect(result.success).toBe(true);
+      expect(result.details).toEqual(expect.objectContaining({ partial: true, failedOrganizations: 1 }));
       expect(result.errors).toEqual([expect.stringContaining("boom")]);
       expect(result.recordsDeleted).toBe(1);
       expect(result.details.lag).toBeUndefined();

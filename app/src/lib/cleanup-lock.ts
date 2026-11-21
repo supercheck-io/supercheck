@@ -10,7 +10,7 @@ export interface OwnedLock {
   /** The key and this owner's token, so other writes can be fenced on still holding the lock. */
   key: string;
   token: string;
-  /** Aborted once the lock is lost (renewal found another token, the key expired, or Redis failed). */
+  /** Aborted once the lock is lost (another token, the key expired) or renewals failed long enough that it may lapse. */
   signal: AbortSignal;
   /** Stops renewal and deletes the key only if this owner still holds it. Never throws. */
   release(): Promise<void>;
@@ -31,21 +31,32 @@ export async function acquireOwnedLock(
   if ((await redis.set(key, token, "PX", ttlMs, "NX")) !== "OK") return null;
 
   const controller = new AbortController();
+  let released = false;
   const lose = (reason: string) => {
     clearInterval(timer);
-    if (controller.signal.aborted) return;
+    // A renewal that answers after release() is not a lost lock.
+    if (released || controller.signal.aborted) return;
     console.error(`[DATA_LIFECYCLE] Lost lock ${key}: ${reason}; stopping at the next batch boundary`);
     controller.abort(new Error(reason));
   };
   const acquiredAt = Date.now();
+  let confirmedAt = acquiredAt;
+  // Without a confirmed renewal, the key may lapse before the next attempt: stop before that can happen.
+  const mayLapse = () => Date.now() - confirmedAt + renewEveryMs >= ttlMs;
   const timer = setInterval(() => {
     // A holder stuck in one call past its budget stops renewing: the key lapses after its TTL.
     if (Date.now() - acquiredAt >= maxHoldMs) return lose("held past its maximum time");
+    if (mayLapse()) return lose("no confirmed renewal within its TTL");
     redis.eval(RENEW_SCRIPT, 1, key, token, String(ttlMs)).then(
       (renewed) => {
         if (Number(renewed) !== 1) lose("held by another owner or expired");
+        else confirmedAt = Date.now();
       },
-      (error: unknown) => lose(`renewal failed: ${error instanceof Error ? error.message : String(error)}`),
+      // One failed call is tolerated; the TTL check above stops the run before the key can lapse.
+      (error: unknown) => {
+        console.warn(`[DATA_LIFECYCLE] Lock ${key} renewal failed, retrying: ${error instanceof Error ? error.message : String(error)}`);
+        if (mayLapse()) lose("renewal failed and the TTL may lapse");
+      },
     );
   }, renewEveryMs);
   timer.unref?.();
@@ -55,6 +66,7 @@ export async function acquireOwnedLock(
     token,
     signal: controller.signal,
     async release() {
+      released = true;
       clearInterval(timer);
       let timeout: ReturnType<typeof setTimeout> | undefined;
       try {

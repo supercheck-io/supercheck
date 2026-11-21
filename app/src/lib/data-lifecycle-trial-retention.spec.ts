@@ -43,8 +43,10 @@ import {
   getOrganizationAggregatedRetentionSettings,
   getOrganizationJobRetentionSettings,
   getOrganizationRetentionSettings,
+  SHORTEST_AGGREGATED_RETENTION_DAYS,
   SHORTEST_RAW_RETENTION_DAYS,
 } from "./data-lifecycle-service";
+import catalog from "./billing/plan-catalog.json";
 
 const FALLBACK = { raw: 90, aggregated: 365, job: 180 };
 const plus = { plan: "plus", dataRetentionDays: 30, aggregatedDataRetentionDays: 180, jobDataRetentionDays: 120 };
@@ -87,17 +89,17 @@ describe("retention of trial organizations", () => {
     expect(TRIAL_RETENTION.dataRetentionDays).toBe(7);
   });
 
-  it("gives an organization with no plan and no active trial the shortest raw window, and the aggregate/job defaults", async () => {
+  it("gives an organization with no plan and no active trial the shortest raw and aggregated windows, and the job default", async () => {
     seed([{ organizationId: "ended", subscriptionPlan: null }], []);
     const result = await bySetting();
     expect(result.raw.get("ended")).toBe(SHORTEST_RAW_RETENTION_DAYS);
-    expect(result.aggregated.get("ended")).toBe(FALLBACK.aggregated);
+    expect(result.aggregated.get("ended")).toBe(SHORTEST_AGGREGATED_RETENTION_DAYS);
     expect(result.job.get("ended")).toBe(FALLBACK.job);
   });
 
   // Retention deletes data, so only an organization with no billing history at all is treated as a trial.
-  it.each(["active", "past_due", "canceled", "none"])(
-    "keeps the aggregate and job defaults for an organization that has a subscription status (%s) even while its trial row is unexpired",
+  it.each(["active", "past_due"])(
+    "keeps the aggregate and job defaults while a %s subscription has no plan yet, even with an unexpired trial row",
     async (subscriptionStatus) => {
       // Just subscribed before the webhook set the plan, or a plan cleared by a cancellation or customer deletion.
       seed([{ organizationId: "billed", subscriptionPlan: null, subscriptionStatus }], ["billed"]);
@@ -106,6 +108,13 @@ describe("retention of trial organizations", () => {
       expect(result.job.get("billed")).toBe(FALLBACK.job);
     },
   );
+  it.each(["canceled", "none"])("gives a %s organization with no plan the shortest aggregated window and the job default", async (subscriptionStatus) => {
+    seed([{ organizationId: "billed", subscriptionPlan: null, subscriptionStatus }], ["billed"]);
+    const result = await bySetting();
+    expect(result.aggregated.get("billed")).toBe(SHORTEST_AGGREGATED_RETENTION_DAYS);
+    expect(result.job.get("billed")).toBe(FALLBACK.job);
+  });
+
 
   it("uses the plan, not the trial, for an organization that has both", async () => {
     seed([{ organizationId: "paid", subscriptionPlan: "plus" }], ["paid"]);
@@ -134,11 +143,16 @@ describe("retention of trial organizations", () => {
     await expect(getOrganizationRetentionSettings()).rejects.toThrow("database unavailable");
   });
 
-  it("returns no per-organization settings, not trial retention, when the trial lookup fails for aggregated data", async () => {
-    // This resolver has always answered [] on a lookup error (the sweep then uses its global default).
+  it("resolves aggregated retention without the trial lookup, so a failing lookup cannot change it", async () => {
     seed([{ organizationId: "trial", subscriptionPlan: null }], ["trial"]);
     entitlementFailure = new Error("database unavailable");
-    await expect(getOrganizationAggregatedRetentionSettings(FALLBACK.aggregated)).resolves.toEqual([]);
+    const settings = await getOrganizationAggregatedRetentionSettings(FALLBACK.aggregated);
+    expect(settings.map((o) => o.aggregatedRetentionDays)).toEqual([SHORTEST_AGGREGATED_RETENTION_DAYS]);
+  });
+
+  it("derives the shortest aggregated window from the catalog", () => {
+    expect(SHORTEST_AGGREGATED_RETENTION_DAYS).toBe(Math.min(catalog.plus.limits.aggregatedDataRetentionDays, catalog.pro.limits.aggregatedDataRetentionDays, TRIAL_RETENTION.aggregatedDataRetentionDays));
+    expect(SHORTEST_AGGREGATED_RETENTION_DAYS).toBe(30);
   });
 });
 

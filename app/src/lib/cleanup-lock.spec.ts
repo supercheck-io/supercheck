@@ -31,7 +31,10 @@ beforeEach(() => {
   jest.useFakeTimers();
   jest.spyOn(console, "error").mockImplementation(() => {});
 });
-afterEach(() => jest.useRealTimers());
+afterEach(() => {
+  jest.useRealTimers();
+  jest.restoreAllMocks();
+});
 
 it("acquires with SET NX PX and a random token, and a second owner is refused", async () => {
   const redis = fakeRedis();
@@ -70,15 +73,57 @@ it("aborts when the key expired before renewal", async () => {
   expect(lock.signal.aborted).toBe(true);
 });
 
-it("aborts when the renewal call fails, and stops renewing", async () => {
+it("tolerates a failed renewal and keeps renewing once Redis answers again", async () => {
+  jest.spyOn(console, "warn").mockImplementation(() => {});
   const redis = fakeRedis();
   const lock = (await acquireOwnedLock(redis as unknown as Redis, "cleanup:x:lock", options))!;
   redis.failEval = true;
   await jest.advanceTimersByTimeAsync(options.renewEveryMs);
+  expect(lock.signal.aborted).toBe(false);
+  redis.failEval = false;
+  redis.store.get("cleanup:x:lock")!.ttl = 1;
+  await jest.advanceTimersByTimeAsync(options.renewEveryMs);
+  expect(redis.store.get("cleanup:x:lock")!.ttl).toBe(options.ttlMs);
+  expect(lock.signal.aborted).toBe(false);
+  await lock.release();
+});
+
+it("aborts before the TTL can lapse when renewals keep failing, and stops renewing", async () => {
+  jest.spyOn(console, "warn").mockImplementation(() => {});
+  const redis = fakeRedis();
+  // TTL 3 intervals: after two failed renewals the next attempt could come after expiry.
+  const lock = (await acquireOwnedLock(redis as unknown as Redis, "cleanup:x:lock", { ttlMs: 3_000, renewEveryMs: 1_000 }))!;
+  redis.failEval = true;
+  await jest.advanceTimersByTimeAsync(1_000);
+  expect(lock.signal.aborted).toBe(false);
+  await jest.advanceTimersByTimeAsync(1_000);
   expect(lock.signal.aborted).toBe(true);
   const calls = redis.eval.mock.calls.length;
-  await jest.advanceTimersByTimeAsync(options.renewEveryMs * 3);
+  await jest.advanceTimersByTimeAsync(5_000);
   expect(redis.eval.mock.calls.length).toBe(calls);
+});
+
+it("aborts when a renewal never answers before the TTL could lapse", async () => {
+  const redis = fakeRedis();
+  const lock = (await acquireOwnedLock(redis as unknown as Redis, "cleanup:x:lock", { ttlMs: 3_000, renewEveryMs: 1_000 }))!;
+  redis.eval.mockImplementation(() => new Promise<0 | 1>(() => {}));
+  await jest.advanceTimersByTimeAsync(2_000);
+  expect(lock.signal.aborted).toBe(true);
+});
+
+it("a renewal that answers after release is not reported as a lost lock", async () => {
+  const errors = jest.spyOn(console, "error").mockImplementation(() => {});
+  errors.mockClear();
+  const redis = fakeRedis();
+  const lock = (await acquireOwnedLock(redis as unknown as Redis, "cleanup:x:lock", options))!;
+  let answer!: (v: 0 | 1) => void;
+  redis.eval.mockImplementationOnce(() => new Promise<0 | 1>((resolve) => (answer = resolve)));
+  await jest.advanceTimersByTimeAsync(options.renewEveryMs); // renewal in flight
+  await lock.release();
+  answer(0);
+  await jest.advanceTimersByTimeAsync(0);
+  expect(lock.signal.aborted).toBe(false);
+  expect(errors).not.toHaveBeenCalled();
 });
 
 it("release deletes its own key, stops renewal and tolerates a Redis failure", async () => {

@@ -76,7 +76,7 @@ export const SHARED_PRICING_FAQS = [
   {
     question: "How long is check history kept?",
     answer:
-      `Check details, the result of every individual check with its response time and error, are kept for ${days(plusLimits.dataRetentionDays)} on ${catalog.plus.name} and ${days(proLimits.dataRetentionDays)} on ${catalog.pro.name}. Uptime history is kept longer as hourly and daily summaries: hourly charts for ${days(plusLimits.aggregatedDataRetentionDays)} on ${catalog.plus.name} and ${days(proLimits.aggregatedDataRetentionDays)} on ${catalog.pro.name}, and daily uptime for at least ${days(catalog.minDailyAggregateRetentionDays)} on every plan, so status pages always show a full 90-day uptime bar. Each status change (a monitor going down or recovering) is kept as well. Older data is deleted automatically and cannot be restored. Enterprise plans can have custom retention.`,
+      `Check details, the result of every individual check with its response time and error, are kept for at least ${days(plusLimits.dataRetentionDays)} on ${catalog.plus.name} and ${days(proLimits.dataRetentionDays)} on ${catalog.pro.name}. Uptime history is kept longer as hourly and daily summaries: hourly charts for ${days(plusLimits.aggregatedDataRetentionDays)} on ${catalog.plus.name} and ${days(proLimits.aggregatedDataRetentionDays)} on ${catalog.pro.name}, and daily uptime for at least ${days(catalog.minDailyAggregateRetentionDays)} on every plan, which is what a status page's 90-day uptime bar shows. Each status change (a monitor going down or recovering) is kept as well. Older data is deleted automatically and cannot be restored. Enterprise plans can have custom retention.`,
   },
 ];
 

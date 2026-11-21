@@ -71,6 +71,7 @@ import { AGGREGATION_CONFIG, monitorAggregationService } from "./monitor-aggrega
 import { endExpiredTrials, reconcilePaidTrialSuspensions, sendTrialReminders, suspendLapsedOrganizations } from "@/lib/execution/trial-lifecycle";
 import { AUDIT_RETENTION_DAYS, scrubAuditEmails } from "@/lib/audit-scrub";
 import { reportProblem } from "@/lib/sentry-lazy";
+import planCatalog from "@/lib/billing/plan-catalog.json";
 import { resolveRawRetention, SHORTEST_RAW_RETENTION_DAYS, type RawRetentionDecision } from "@/lib/raw-retention";
 
 export { SHORTEST_RAW_RETENTION_DAYS };
@@ -308,6 +309,13 @@ export async function getOrganizationRetentionSettings(): Promise<OrganizationRe
   }
 }
 
+/** Aggregated retention for an organization with no plan: the shortest window any plan (or the trial) keeps. */
+export const SHORTEST_AGGREGATED_RETENTION_DAYS = Math.min(
+  planCatalog.plus.limits.aggregatedDataRetentionDays,
+  planCatalog.pro.limits.aggregatedDataRetentionDays,
+  TRIAL_RETENTION.aggregatedDataRetentionDays,
+);
+
 /**
  * Get aggregated data retention settings for all organizations
  *
@@ -363,17 +371,17 @@ export async function getOrganizationAggregatedRetentionSettings(
       plans.map((p) => [p.plan, p.aggregatedDataRetentionDays])
     );
 
-    const trialOrganizations = await getActiveTrialOrganizationIds();
-
     return withValidDays(orgsWithPlans.map((org) => ({
       organizationId: org.organizationId,
       aggregatedRetentionDays: org.subscriptionPlan
         ? planAggregatedRetentionMap.get(org.subscriptionPlan) ??
           fallbackAggregatedRetentionDays
-        : isOnFreeTrial(org, trialOrganizations)
-          ? TRIAL_RETENTION.aggregatedDataRetentionDays
-          : fallbackAggregatedRetentionDays,
-      plan: org.subscriptionPlan || "fallback",
+        : org.subscriptionStatus === "active" || org.subscriptionStatus === "past_due"
+          // Plan not set yet by the webhook: never shorten, keep the long fallback.
+          ? fallbackAggregatedRetentionDays
+          // No plan (trial, ended trial, canceled, never subscribed): the shortest plan's window.
+          : SHORTEST_AGGREGATED_RETENTION_DAYS,
+      plan: org.subscriptionPlan || "none",
     })), (row) => row.aggregatedRetentionDays, "monitor_aggregates");
   } catch (error) {
     console.warn(
@@ -532,6 +540,18 @@ interface RunLimits {
 const stopReason = ({ deadline, signal }: RunLimits): StopReason | null =>
   signal?.aborted ? "lock" : Date.now() >= deadline ? "budget" : null;
 
+/**
+ * Raw rows older than the start (UTC) of the day `days` ago. Deleting whole UTC days only keeps the oldest
+ * remaining day complete, so the daily rollup, which recomputes the last 7 days, never rewrites a day from partly
+ * purged rows. Correct for every window, including one shorter than the rollup's lookback; it keeps up to one
+ * extra day of raw results.
+ */
+export function rawCutoff(days: number, now = Date.now()): Date {
+  const cutoff = new Date(now - days * DAY_MS);
+  cutoff.setUTCHours(0, 0, 0, 0);
+  return cutoff;
+}
+
 const pause = (ms: number) => (ms > 0 ? new Promise((resolve) => setTimeout(resolve, ms)) : Promise.resolve());
 
 /** Budget, per-organization cap and pause for a run; `customConfig` overrides them (tests). */
@@ -591,8 +611,8 @@ export async function measureRetentionLag(
  *
  * Deletes raw monitor_results past each organization's raw retention (getOrganizationRetentionSettings):
  * - Organizations are walked in id order, each organization's monitors once per run.
- * - Per monitor, rows that may hold a report go first (object storage, then one transaction), then plain rows in
- *   single-statement batches on (monitor_id, checked_at). Status-change rows are kept; their reports expire.
+ * - Per monitor, plain rows go in single-statement batches on (monitor_id, checked_at), then rows that may hold a
+ *   report (object storage, then one transaction). Status-change rows are kept; their reports expire.
  * - A per-organization row cap keeps one heavy organization from starving the rest, and a time budget ends the
  *   run at a batch boundary with `partial: true` (a success, so no retry). A Redis cursor holding the last
  *   finished organization lets the next run carry on from there.
@@ -731,7 +751,7 @@ export class MonitorResultsCleanupStrategy implements ICleanupStrategy {
     limits: RunLimits,
     result: CleanupOperationResult,
   ): Promise<{ deleted: number; capped: boolean; stopped: StopReason | null }> {
-    const cutoff = new Date(Date.now() - org.retentionDays * DAY_MS);
+    const cutoff = rawCutoff(org.retentionDays);
     const orgMonitors = await db
       .select({ id: monitors.id })
       .from(monitors)
@@ -742,7 +762,23 @@ export class MonitorResultsCleanupStrategy implements ICleanupStrategy {
     let processed = 0;
     for (const { id: monitorId } of orgMonitors) {
       try {
-        // Artifact rows first: their reports must leave object storage before the row that points at them.
+        // Plain rows first: one statement per batch, no round trip through the app. They exclude every row that may
+        // hold a report, so the order of the two passes does not affect what reaches storage. Kept rows are
+        // re-scanned per batch, which is bounded by how many are kept.
+        for (;;) {
+          const stopped = stopReason(limits);
+          if (stopped) return { deleted, capped: false, stopped };
+          if (processed >= settings.perOrgCap) return { deleted, capped: true, stopped: null };
+          const size = Math.min(settings.batchSize, settings.perOrgCap - processed);
+          const removed = await deletePlainResults(monitorId, cutoff, size);
+          processed += removed;
+          deleted += removed;
+          if (removed < size) break;
+          await pause(limits.pauseMs);
+        }
+        // Then rows that may point at a report: object storage first, then the row. Running after the plain pass
+        // means this scan only walks rows that are kept (status changes, reports whose storage delete failed), not
+        // the whole expired backlog (locally, ~1.2k filtered rows instead of ~150k per batch).
         let cursor: { checkedAt: string; id: string } | undefined;
         for (;;) {
           const stopped = stopReason(limits);
@@ -773,7 +809,7 @@ export class MonitorResultsCleanupStrategy implements ICleanupStrategy {
                   : undefined,
               )
             )
-            .orderBy(asc(monitorResults.checkedAt), asc(monitorResults.id))
+            .orderBy(asc(monitorResults.monitorId), asc(monitorResults.checkedAt), asc(monitorResults.id))
             .limit(Math.min(ARTIFACT_BATCH_SIZE, settings.batchSize, settings.perOrgCap - processed));
           if (rows.length === 0) break;
           // Only rows actually handled count against the cap: rows whose storage delete failed stay for the next
@@ -788,29 +824,20 @@ export class MonitorResultsCleanupStrategy implements ICleanupStrategy {
           cursor = { checkedAt: last.checkedAt, id: last.id };
         }
 
-        // Plain rows: one statement per batch, no round trip through the app.
-        for (;;) {
-          const stopped = stopReason(limits);
-          if (stopped) return { deleted, capped: false, stopped };
-          if (processed >= settings.perOrgCap) return { deleted, capped: true, stopped: null };
-          const size = Math.min(settings.batchSize, settings.perOrgCap - processed);
-          const removed = await deletePlainResults(monitorId, cutoff, size);
-          processed += removed;
-          deleted += removed;
-          if (removed < size) break;
-          await pause(limits.pauseMs);
-        }
       } catch (error) {
-        // Keep this monitor's remaining rows for the next run; other monitors and organizations still run.
-        result.success = false;
+        // Keep this monitor's remaining rows for the next run; other monitors and organizations still run. Not a
+        // run failure (that would retry the whole budgeted run): the next hourly run tries this monitor again.
+        result.details.partial = true;
+        result.details.failedMonitors = Number(result.details.failedMonitors ?? 0) + 1;
         result.errors.push(error instanceof Error ? error.message : String(error));
+        console.error(`[DATA_LIFECYCLE] [monitor_results] Monitor ${monitorId} cleanup failed:`, error);
       }
     }
     return { deleted, capped: false, stopped: null };
   }
 
   private async countResultsToClean(org: OrganizationRetention, limit: number) {
-    const cutoff = new Date(Date.now() - org.retentionDays * DAY_MS);
+    const cutoff = rawCutoff(org.retentionDays);
     const orgMonitors = db.select({ id: monitors.id }).from(monitors).where(eq(monitors.organizationId, org.organizationId));
     const candidates = db.select({ isStatusChange: monitorResults.isStatusChange })
       .from(monitorResults)
@@ -1057,7 +1084,8 @@ export class MonitorAggregatesCleanupStrategy implements ICleanupStrategy {
           processed++;
           lastFinished = org.organizationId;
         } catch (orgError) {
-          result.success = false;
+          // Recorded, not a run failure: the next run tries this organization again.
+          result.details.failedOrganizations = Number(result.details.failedOrganizations ?? 0) + 1;
           console.error(
             `[DATA_LIFECYCLE] [monitor_aggregates] Error cleaning up org ${org.organizationId.substring(0, 8)}:`,
             orgError
@@ -1086,6 +1114,8 @@ export class MonitorAggregatesCleanupStrategy implements ICleanupStrategy {
         }
       }
 
+      // An organization that failed makes the run partial (a success): it is tried again next run.
+      if (result.details.failedOrganizations) result.details.partial = true;
       result.recordsDeleted = totalDeleted;
       result.details.organizationsProcessed = processed;
       result.details.perOrgStats = orgStats;
@@ -1186,15 +1216,8 @@ export class MonitorAggregationHourlyStrategy implements ICleanupStrategy {
   }
 
   async getStats(): Promise<{ totalRecords: number; oldRecords: number }> {
-    // Return aggregate counts instead of "old records"
-    const [total] = await Promise.all([
-      db.select({ count: sql<number>`count(*)` }).from(monitorAggregates),
-    ]);
-
-    return {
-      totalRecords: Number(total[0]?.count || 0),
-      oldRecords: 0, // Not applicable for aggregation
-    };
+    // Planner estimate: an exact count scans the whole table. "Old records" does not apply to aggregation.
+    return { totalRecords: await estimateTableRows("monitor_aggregates"), oldRecords: 0 };
   }
 
   async execute(dryRun = false): Promise<CleanupOperationResult> {
@@ -1281,17 +1304,8 @@ export class MonitorAggregationDailyStrategy implements ICleanupStrategy {
   }
 
   async getStats(): Promise<{ totalRecords: number; oldRecords: number }> {
-    const [total] = await Promise.all([
-      db
-        .select({ count: sql<number>`count(*)` })
-        .from(monitorAggregates)
-        .where(eq(monitorAggregates.periodType, "daily")),
-    ]);
-
-    return {
-      totalRecords: Number(total[0]?.count || 0),
-      oldRecords: 0,
-    };
+    // Planner estimate of the daily rows, without scanning them.
+    return { totalRecords: await estimateRows(sql`SELECT 1 FROM monitor_aggregates WHERE period_type = 'daily'`), oldRecords: 0 };
   }
 
   async execute(dryRun = false): Promise<CleanupOperationResult> {
