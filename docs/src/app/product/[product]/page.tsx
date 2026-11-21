@@ -8,6 +8,7 @@ import { SiteFooter } from "../../../components/site-footer";
 import { StepVisual, CheckList, primaryButton, secondaryButton, textLink } from "../../../components/landing/ui";
 import { getProduct, products } from "../../../lib/products";
 import { tools } from "../../../lib/tools";
+import { DEMO_URL } from "../../../lib/site-nav";
 
 // Free tools that check what each product monitors.
 const RELATED_TOOLS: Record<string, string[]> = {
@@ -63,10 +64,10 @@ export default async function ProductPage({ params }: { params: Promise<{ produc
           </h1>
           <p className="mt-6 max-w-2xl text-pretty text-lg leading-relaxed text-fd-muted-foreground">{product.intro}</p>
           <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-            <Link href="/docs/app/deployment/self-hosted" className={primaryButton}>
-              Self-host Supercheck
+            <a href={DEMO_URL} target="_blank" rel="noopener noreferrer" className={primaryButton}>
+              Try the live demo
               <ArrowRight className="size-4" aria-hidden="true" />
-            </Link>
+            </a>
             <Link href={product.guide.href} className={secondaryButton}>
               {product.guide.label}
             </Link>
@@ -158,9 +159,12 @@ export default async function ProductPage({ params }: { params: Promise<{ produc
               <p className="mt-3 text-fd-muted-foreground">{product.closing.body}</p>
             </div>
             <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row">
-              <Link href="/docs/app/deployment/self-hosted" className={primaryButton}>
-                Self-host Supercheck
+              <a href={DEMO_URL} target="_blank" rel="noopener noreferrer" className={primaryButton}>
+                Open the live demo
                 <ArrowRight className="size-4" aria-hidden="true" />
+              </a>
+              <Link href="/docs/app/deployment/self-hosted" className={secondaryButton}>
+                Self-host Supercheck
               </Link>
             </div>
           </div>

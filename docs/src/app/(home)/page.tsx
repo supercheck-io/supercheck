@@ -9,6 +9,7 @@ import { CheckList, IconChip, Screenshot, SectionHeading, SolutionCards, primary
 import { SiteFooter } from "../../components/site-footer";
 import { toolGroups } from "../../components/landing/tool-logos";
 import { ToolsBand } from "../../components/tools/tools-band";
+import { DEMO_URL } from "../../lib/site-nav";
 import { versioned } from "../../lib/assets";
 
 export const metadata: Metadata = {
@@ -26,8 +27,8 @@ const products = [
     shot: { src: "/screenshots/site/playground-editor.webp", alt: "Playground editor with a Playwright checkout test" },
     items: [
       "Playwright browser, API and database tests",
-      "k6 load tests with streaming logs and run comparison",
-      "Scheduled jobs that run from cron or your CI pipeline",
+      "k6 load tests with live logs and run comparison",
+      "Jobs on a schedule or from CI",
       "Recorder extension for Chrome and Edge",
       "Requirements with coverage tracking",
     ],
@@ -41,24 +42,24 @@ const products = [
     shot: { src: "/screenshots/site/monitors-list.webp", alt: "Monitors list with HTTP, website, ping, port and synthetic monitors" },
     items: [
       "HTTP, website, ping and port checks",
-      "Uptime checks from several regions, including Europe, North America and Asia Pacific on Cloud",
+      "Checks from Europe, North America and Asia Pacific on Cloud",
       "Synthetic monitors that replay Playwright journeys",
-      "Failure and recovery thresholds to cut noisy alerts",
+      "Thresholds that cut noisy alerts",
     ],
   },
   {
     title: "Respond",
     area: "respond" as Area,
     icon: Siren,
-    summary: "Monitor and job alerts open an incident you can work from (on by default, per check).",
+    summary: "Failing checks with alerts on open an incident you can work from.",
     href: "/docs/app/investigate",
     shot: { src: "/screenshots/site/incident-workspace-overview.webp", alt: "Incident workspace for a Checkout API outage with an AI summary" },
     items: [
-      "One incident per failing source, resolved on recovery unless someone has acknowledged it",
-      "AI SRE investigations that cite their evidence",
-      "Copilot chat and a service catalog for ownership and context",
-      "Read-only connectors for GitHub, Kubernetes, Prometheus, Grafana, Sentry and Datadog",
-      "Private Agent for systems inside your network",
+      "One incident per failing source, resolved on recovery unless acknowledged",
+      "AI SRE investigations that cite evidence",
+      "Copilot chat and a service catalog",
+      "Read-only connectors: GitHub, Kubernetes, Prometheus, Grafana, Sentry, Datadog",
+      "Private Agent for internal systems",
     ],
   },
   {
@@ -71,17 +72,17 @@ const products = [
     items: [
       "Notifications by email, Slack, Teams, Discord, Telegram and webhooks",
       "Public status pages on your own domain",
-      "Email, Slack and webhook subscribers, plus RSS and calendar feeds",
+      "Email, Slack, webhook, RSS and calendar subscribers",
     ],
   },
 ];
 
 const flow: { step: string; body: string; area: Area; icon: typeof Globe }[] = [
-  { step: "Check", body: "A monitor or scheduled job with alerts on fails past its threshold.", area: "monitor", icon: Globe },
-  { step: "Alert", body: "Your notification channels get the failure.", area: "communicate", icon: BellRing },
-  { step: "Incident", body: "An incident opens for that source, with its alerts attached.", area: "respond", icon: Siren },
-  { step: "Investigate", body: "Run an AI SRE investigation that cites what it found. You decide the fix.", area: "ai", icon: Sparkles },
-  { step: "Recover", body: "The check passes, a recovery is sent, and an unacknowledged incident resolves.", area: "monitor", icon: CircleCheck },
+  { step: "Check", body: "A monitor or job with alerts on fails past its threshold.", area: "monitor", icon: Globe },
+  { step: "Alert", body: "Your channels are notified.", area: "communicate", icon: BellRing },
+  { step: "Incident", body: "An incident opens with its alerts.", area: "respond", icon: Siren },
+  { step: "Investigate", body: "AI SRE investigates and cites evidence. You decide the fix.", area: "ai", icon: Sparkles },
+  { step: "Recover", body: "The check passes and an unacknowledged incident resolves.", area: "monitor", icon: CircleCheck },
 ];
 
 const configExample = `import { defineConfig } from '@supercheck/cli'
@@ -114,17 +115,17 @@ export default defineConfig({
 const runOptions = [
   {
     title: "Isolated by default",
-    body: "Tests run in isolated Kubernetes workloads sandboxed with gVisor. Private networks, mail ports and cluster control ports are blocked; public addresses stay reachable.",
+    body: "Tests run in Kubernetes workloads sandboxed with gVisor. Private networks, mail ports and cluster control ports are blocked.",
     link: { href: "/docs/app/deployment/self-hosted", label: "How execution is isolated" },
   },
   {
     title: "Self-host for free",
-    body: "The core is open source under AGPLv3. Run it on your own servers with Docker Compose and K3s, with no license fee and no usage limits.",
+    body: "Open source under AGPLv3. Run it with Docker Compose and K3s, with no license fee or usage limits.",
     link: { href: "/docs/app/deployment/self-hosted", label: "Self-hosting guide" },
   },
   {
     title: "Or let us run it",
-    body: "Supercheck Cloud is a managed service with monitoring locations in Europe, North America and Asia Pacific. It is coming soon; the waitlist is open.",
+    body: "Managed hosting with monitoring in Europe, North America and Asia Pacific. Coming soon; join the waitlist.",
     link: { href: "/pricing", label: "See Cloud plans" },
   },
 ];
@@ -152,15 +153,14 @@ export default async function HomePage() {
             </span>
           </h1>
           <p className="mt-6 max-w-2xl text-lg leading-relaxed text-fd-muted-foreground">
-            Test with Playwright and k6 and monitor your sites and APIs. When a check fails,
-            Supercheck opens an incident, lets you investigate it with AI that cites its evidence,
-            and keeps your users informed on a status page. Self-host today, or join the Cloud waitlist.
+            Playwright and k6 tests, uptime monitors, AI incident response and status pages in one
+            platform. Self-host today, or join the Cloud waitlist.
           </p>
           <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center">
-            <Link href="/docs/app/deployment/self-hosted" className={primaryButton}>
-              Self-host Supercheck
+            <a href={DEMO_URL} target="_blank" rel="noopener noreferrer" className={primaryButton}>
+              Try the live demo
               <ArrowRight className="size-4" aria-hidden="true" />
-            </Link>
+            </a>
             <Link href="/docs/app/welcome" className={secondaryButton}>
               Read the docs
             </Link>
@@ -171,6 +171,7 @@ export default async function HomePage() {
               then <code className="font-mono text-[13px] text-fd-foreground">supercheck init</code>
             </span>
           </div>
+          <ToolsBand />
 
           <div className="mt-14 md:mt-16">
             <div className="relative aspect-video w-full overflow-hidden rounded-xl border border-fd-border bg-fd-card shadow-[0_1px_2px_rgb(0_0_0/0.04),0_24px_48px_-24px_rgb(0_0_0/0.25)]">
@@ -212,14 +213,12 @@ export default async function HomePage() {
           </div>
         </section>
 
-        <ToolsBand />
 
         {/* Product */}
         <section className="border-t border-fd-border">
           <div className="mx-auto max-w-6xl px-4 py-20 sm:px-6 md:py-24">
             <SectionHeading eyebrow="Platform" title="One place for the work between deploy and incident">
-              Most teams stitch together a test runner, an uptime service, an incident tool and a status
-              page. Supercheck covers all four, sharing one set of projects, alerts and history.
+              Tests, uptime, incidents and status pages, sharing one set of projects, alerts and history.
             </SectionHeading>
             <ol className="mt-12 grid gap-px overflow-hidden rounded-xl border border-fd-border bg-fd-border lg:grid-cols-5">
               {flow.map((item, index) => (
@@ -262,7 +261,7 @@ export default async function HomePage() {
         <section className="border-t border-fd-border bg-fd-card/40">
           <div className="mx-auto max-w-6xl px-4 py-20 sm:px-6 md:py-24">
             <SectionHeading eyebrow="Solutions" title="Built for the people who keep software working">
-              See how developers, SRE and platform teams, QA engineers and engineering leaders use Supercheck.
+              How developers, SRE, QA and engineering leaders use Supercheck.
             </SectionHeading>
             <SolutionCards className="mt-12" />
           </div>
@@ -273,8 +272,8 @@ export default async function HomePage() {
           <div className="mx-auto grid max-w-6xl items-start gap-12 px-4 py-20 sm:px-6 md:py-24 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]">
             <div>
               <SectionHeading eyebrow="As code" title="Keep tests and monitors in your repository">
-                Define Playwright and k6 tests, monitors and scheduled jobs in one TypeScript file.
-                Review changes in pull requests, then apply them from your terminal or CI pipeline.
+                Define tests, monitors and jobs in one TypeScript file. Review in pull requests, deploy from
+                your terminal or CI.
               </SectionHeading>
               <div className="mt-8 overflow-hidden rounded-lg border border-fd-border">
                 <table className="w-full text-sm">
@@ -301,8 +300,8 @@ export default async function HomePage() {
               <div className="mt-8 rounded-lg border border-fd-border p-4">
                 <p className="text-sm font-medium">Ask your AI tools about it</p>
                 <p className="mt-1 text-sm text-fd-muted-foreground">
-                  An MCP server, read-only by default, lets Claude, Cursor, VS Code and other MCP clients look at
-                  a project&apos;s tests, runs, monitors and incidents. Off by default when self-hosting.
+                  An MCP server, read-only by default, lets Claude, Cursor and VS Code read tests, runs, monitors and
+                  incidents. Off by default when self-hosting.
                 </p>
               </div>
               <div className="mt-6 flex flex-wrap gap-x-6 gap-y-2">
@@ -343,18 +342,18 @@ export default async function HomePage() {
         <section className="border-t border-fd-border">
           <div className="mx-auto flex max-w-6xl flex-col items-start justify-between gap-8 px-4 py-16 sm:px-6 md:flex-row md:items-center md:py-20">
             <div className="max-w-xl">
-              <h2 className="text-2xl font-semibold tracking-tight sm:text-3xl">Run it on your own servers</h2>
+              <h2 className="text-2xl font-semibold tracking-tight sm:text-3xl">Click through a real workspace</h2>
               <p className="mt-3 text-fd-muted-foreground">
-                Self-host with Docker Compose, then install the CLI and run supercheck init.
+                Sample data, no sign-up.
               </p>
             </div>
             <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row">
-              <Link href="/docs/app/deployment/self-hosted" className={primaryButton}>
-                Self-host Supercheck
+              <a href={DEMO_URL} target="_blank" rel="noopener noreferrer" className={primaryButton}>
+                Open the live demo
                 <ArrowRight className="size-4" aria-hidden="true" />
-              </Link>
-              <Link href="/docs/app/welcome" className={secondaryButton}>
-                Read the docs
+              </a>
+              <Link href="/docs/app/deployment/self-hosted" className={secondaryButton}>
+                Self-host Supercheck
               </Link>
             </div>
           </div>
