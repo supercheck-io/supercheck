@@ -50,6 +50,7 @@ import {
   updateCoverageSnapshot,
 } from "@/lib/requirements-internal";
 import {
+  createRequirementRecord,
   createRequirementWithRelations,
   escapeCSV,
   linkTestsRecord,
@@ -85,7 +86,8 @@ describe("requirements service", () => {
       "o",
       "p",
       "u",
-      expect.objectContaining({ isTx: true })
+      expect.objectContaining({ isTx: true }),
+      false // REST names are strict: a new tag that breaks the rules is a 400
     );
     // requirement row + coverage snapshot, both inside the transaction
     expect(db.insert).toHaveBeenCalledTimes(2);
@@ -176,6 +178,41 @@ describe("requirements service", () => {
     const updated = await updateRequirementWithRelations(ctx, R, { tags: ["a"] });
     expect(updated).toMatchObject({ success: false, code: "invalid" });
     expect(logAuditEvent).not.toHaveBeenCalled();
+  });
+
+  it("maps a tag rule or project-limit failure to an invalid result, rolling back the create", async () => {
+    const ruleError = Object.assign(new Error('Invalid tag "ab": Tag name must be between 3 and 20 characters'), {
+      name: "TagRuleError",
+    });
+    (syncRequirementTagsByName as jest.Mock).mockRejectedValueOnce(ruleError);
+    const created = await createRequirementWithRelations(ctx, { title: "x", tags: ["ab"] });
+    expect(created).toEqual({ id: "", success: false, error: ruleError.message, code: "invalid" });
+    (syncRequirementTagsByName as jest.Mock).mockRejectedValueOnce(
+      Object.assign(new Error("Maximum of 50 tags allowed per project"), { name: "TagRuleError" })
+    );
+    const updated = await updateRequirementWithRelations(ctx, R, { tags: ["smoke"] });
+    expect(updated).toEqual({ success: false, error: "Maximum of 50 tags allowed per project", code: "invalid" });
+    expect(logAuditEvent).not.toHaveBeenCalled();
+  });
+
+  it("update syncs REST tag names strictly (default mode)", async () => {
+    await updateRequirementWithRelations(ctx, R, { tags: ["smoke"] });
+    const call = (syncRequirementTagsByName as jest.Mock).mock.calls[0];
+    expect(call).toHaveLength(6);
+    expect(call[1]).toEqual(["smoke"]);
+  });
+
+  it("create with the comma-separated form lowercases names and syncs them leniently", async () => {
+    await createRequirementRecord(ctx, { title: "x", tags: "AI, Login Flow" } as never);
+    expect(syncRequirementTagsByName).toHaveBeenCalledWith(
+      expect.any(String),
+      ["ai", "login flow"],
+      "o",
+      "p",
+      "u",
+      expect.objectContaining({ isTx: true }),
+      true
+    );
   });
 
   it("update reports not_found when no row matched and does not sync or audit", async () => {

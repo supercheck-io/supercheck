@@ -4450,8 +4450,14 @@
               }
             }
           },
+          "400": {
+            "description": "Tag name is missing or breaks the name rules (3 to 20 characters of letters, numbers, underscores and hyphens, no spaces), the color is not a `#RRGGBB` hex value, or the project already has 50 tags"
+          },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
+          },
+          "409": {
+            "description": "A tag with this name (ignoring case) already exists in this project"
           }
         }
       }
@@ -4585,7 +4591,7 @@
             }
           },
           "400": {
-            "description": "Tag name is required"
+            "description": "Tag name is missing, or a new name breaks the create rules (3 to 20 characters of letters, numbers, underscores and hyphens, no spaces), or a changed color is not a `#RRGGBB` hex value"
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
@@ -4595,6 +4601,9 @@
           },
           "404": {
             "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "description": "Another tag in this project already has this name (ignoring case)"
           },
           "500": {
             "description": "Internal server error"
@@ -8846,7 +8855,7 @@
             }
           },
           "400": {
-            "description": "Invalid request body or JSON",
+            "description": "Invalid request body or JSON, or a tag the request would create breaks the tag name rules (3 to 20 characters of letters, numbers, underscores and hyphens, no spaces) or would take the project past 50 tags",
             "content": {
               "application/json": {
                 "schema": {
@@ -8955,7 +8964,7 @@
             }
           },
           "400": {
-            "description": "Invalid request body or JSON",
+            "description": "Invalid request body or JSON, or a tag the request would create breaks the tag name rules (3 to 20 characters of letters, numbers, underscores and hyphens, no spaces) or would take the project past 50 tags",
             "content": {
               "application/json": {
                 "schema": {
@@ -14534,9 +14543,7 @@
               "up",
               "down",
               "paused",
-              "pending",
-              "maintenance",
-              "error"
+              "pending"
             ]
           },
           "config": {
@@ -15396,7 +15403,7 @@
               "minLength": 1,
               "maxLength": 50
             },
-            "description": "Tag names. Matched case-insensitively; missing tags are created. Duplicates (ignoring case) are collapsed. On update, replaces the whole tag set."
+            "description": "Tag names. Matched case-insensitively, so an existing tag is linked whatever its name; missing tags are created and must follow the tag name rules (3 to 20 characters of letters, numbers, underscores and hyphens, no spaces), within the limit of 50 tags per project. Duplicates (ignoring case) are collapsed. On update, replaces the whole tag set."
           },
           "externalId": {
             "type": "string",
@@ -15455,7 +15462,7 @@
               "minLength": 1,
               "maxLength": 50
             },
-            "description": "Tag names. Matched case-insensitively; missing tags are created. Duplicates (ignoring case) are collapsed. On update, replaces the whole tag set."
+            "description": "Tag names. Matched case-insensitively, so an existing tag is linked whatever its name; missing tags are created and must follow the tag name rules (3 to 20 characters of letters, numbers, underscores and hyphens, no spaces), within the limit of 50 tags per project. Duplicates (ignoring case) are collapsed. On update, replaces the whole tag set."
           },
           "externalId": {
             "type": "string",

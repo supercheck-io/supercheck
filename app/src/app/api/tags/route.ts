@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/utils/db';
 import { tags } from '@/db/schema';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, sql } from 'drizzle-orm';
 import { checkPermissionWithContext } from '@/lib/rbac/middleware';
 import { requireAuthContext, isAuthError, authErrorStatus } from '@/lib/auth-context';
+import { tagNameError, tagColorError, isTagNameConflict } from '@/lib/tag-validation';
 
 import { permissionDeniedResponse } from "@/lib/deletion/org-state";
 import { requireSessionSameOrigin } from "@/lib/security/same-origin";
@@ -71,31 +72,17 @@ export async function POST(request: NextRequest) {
 
     const trimmedName = name.trim();
 
-    // Validate tag name
-    if (!trimmedName) {
-      return NextResponse.json({ error: 'Tag name cannot be empty' }, { status: 400 });
+    const nameError = tagNameError(trimmedName) ?? tagColorError(color);
+    if (nameError) {
+      return NextResponse.json({ error: nameError }, { status: 400 });
     }
 
-    if (trimmedName.length < 3 || trimmedName.length > 20) {
-      return NextResponse.json({ error: 'Tag name must be between 3 and 20 characters' }, { status: 400 });
-    }
-
-    if (/\s/.test(trimmedName)) {
-      return NextResponse.json({ error: 'Tag name cannot contain spaces' }, { status: 400 });
-    }
-
-    if (!/^[a-zA-Z0-9_-]+$/.test(trimmedName)) {
-      return NextResponse.json({ error: 'Tag name can only contain letters, numbers, underscores, and hyphens' }, { status: 400 });
-    }
-
-
-
-    // Check if tag already exists within the project
+    // Check if tag already exists within the project (case-insensitively, as requirement tags are matched)
     const existingTag = await db
       .select()
       .from(tags)
       .where(and(
-        eq(tags.name, trimmedName),
+        eq(sql`lower(${tags.name})`, trimmedName.toLowerCase()),
         eq(tags.organizationId, context.organizationId),
         eq(tags.projectId, context.project.id)
       ))
@@ -145,6 +132,9 @@ export async function POST(request: NextRequest) {
         { error: error instanceof Error ? error.message : 'Authentication required' },
         { status: authErrorStatus(error) }
       );
+    }
+    if (isTagNameConflict(error)) {
+      return NextResponse.json({ error: 'Tag already exists in this project' }, { status: 409 });
     }
     console.error('Error creating tag:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
