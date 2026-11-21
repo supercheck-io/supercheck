@@ -1,9 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useId, useRef, useState } from "react";
-import Link from "next/link";
-import { ArrowRight, Link2, Loader2 } from "lucide-react";
+import { ArrowRight, Check, Link2, Loader2 } from "lucide-react";
 import { primaryButton, secondaryButton } from "../landing/buttons";
+import { InfoPopover } from "./info-popover";
 import {
   CHECKS_API_URL,
   TOOLS_SITE_KEY,
@@ -215,9 +215,21 @@ export function Checker({ tool, slug, input, placeholder, submitLabel, ctaTitle,
   return (
     <div>
       <form onSubmit={run} noValidate className="rounded-xl border border-fd-border bg-fd-card p-4 sm:p-6" data-testid="tool-form">
-        <label htmlFor={inputId} className="text-sm font-medium">
-          {input === "domain" ? "Domain" : "Page URL"}
-        </label>
+        <div className="flex items-center gap-1.5">
+          <label htmlFor={inputId} className="text-sm font-medium">
+            {input === "domain" ? "Domain" : "Page URL"}
+          </label>
+          <InfoPopover
+            label="About this check"
+            title="About this check"
+            bullets={[
+              "One request from Cloudflare's edge, usually the data center nearest you.",
+              "No account. A quick bot check runs in the background.",
+              "Results may be cached for 10 minutes.",
+            ]}
+            link={{ href: "/tools/bot", label: "About SupercheckBot" }}
+          />
+        </div>
         <div className="mt-2 flex flex-col gap-3 sm:flex-row">
           {tool === "api" && (
             <select
@@ -244,7 +256,7 @@ export function Checker({ tool, slug, input, placeholder, submitLabel, ctaTitle,
             aria-describedby={phase.kind === "invalid" ? errorId : undefined}
             className="min-w-0 flex-1 rounded-md border border-fd-border bg-fd-background px-3 py-2.5 text-sm focus-visible:outline-2 focus-visible:outline-fd-primary"
           />
-          <button type="submit" disabled={busy} className={`${primaryButton} disabled:opacity-60`}>
+          <button type="submit" disabled={busy} className={`${primaryButton} shrink-0 whitespace-nowrap disabled:opacity-60 sm:min-w-32`}>
             {busy && <Loader2 className="size-4 animate-spin motion-reduce:animate-none" aria-hidden="true" />}
             {busy ? "Checking…" : submitLabel}
           </button>
@@ -254,13 +266,8 @@ export function Checker({ tool, slug, input, placeholder, submitLabel, ctaTitle,
             {invalidMessage(phase.reason)}
           </p>
         )}
-        <div ref={widgetEl} className="mt-3" />
-        <p className="mt-3 text-xs text-fd-muted-foreground">
-          One request from Cloudflare&apos;s edge, usually the data center nearest you. No account. Results may be cached for 10 minutes.{" "}
-          <Link href="/tools/bot" className="text-fd-primary hover:underline">
-            About SupercheckBot
-          </Link>
-        </p>
+        {/* Turnstile shows here only when it needs the visitor (appearance: interaction-only). */}
+        <div ref={widgetEl} className="empty:hidden mt-3" />
       </form>
 
       <div aria-live="polite" className="mt-6" data-testid="tool-status">
@@ -285,44 +292,40 @@ export function Checker({ tool, slug, input, placeholder, submitLabel, ctaTitle,
           </Notice>
         )}
         {phase.kind === "result" && checked && (
-          <div className="rounded-xl border border-fd-border bg-fd-background" data-testid="tool-result">
+          <div className="overflow-hidden rounded-xl border border-fd-border bg-fd-background" data-testid="tool-result">
             <ToolResult tool={tool} result={phase.result} />
-            <div className="flex flex-col gap-3 border-t border-fd-border p-4 sm:flex-row sm:items-center sm:justify-between sm:p-6">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-t border-fd-border px-4 py-3 sm:px-6">
               <p className="text-xs text-fd-muted-foreground" data-testid="tool-checked-from">
                 {phase.colo ? `Checked from Cloudflare ${phase.colo}` : "Checked"} at {formatTime(phase.checkedAt)}
                 {phase.cached ? " (cached result)" : ""}
               </p>
-              <div className="flex flex-col gap-2 sm:flex-row">
-                {share && (
-                  <button
-                    type="button"
-                    className={secondaryButton}
-                    onClick={() => {
-                      void navigator.clipboard?.writeText(`${window.location.origin}${share}`).then(() => setCopied(true));
-                    }}
-                  >
-                    <Link2 className="size-4" aria-hidden="true" />
-                    {copied ? "Link copied" : "Copy link"}
-                  </button>
-                )}
+              {share && (
+                <button
+                  type="button"
+                  className="inline-flex shrink-0 items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-fd-muted-foreground transition-colors hover:bg-fd-accent hover:text-fd-foreground focus-visible:outline-2 focus-visible:outline-fd-primary"
+                  onClick={() => {
+                    void navigator.clipboard?.writeText(`${window.location.origin}${share}`).then(() => setCopied(true));
+                  }}
+                >
+                  {copied ? <Check className="size-3.5" aria-hidden="true" /> : <Link2 className="size-3.5" aria-hidden="true" />}
+                  {copied ? "Link copied" : "Copy link"}
+                </button>
+              )}
+            </div>
+            <div className="flex flex-col gap-4 border-t border-fd-border bg-fd-card p-4 sm:flex-row sm:items-center sm:justify-between sm:p-6">
+              <div className="min-w-0">
+                <p className="font-semibold">{ctaTitle}</p>
+                <p className="mt-1 text-sm text-fd-muted-foreground">{ctaBody}</p>
               </div>
+              <a href={monitorHref} className={`${primaryButton} shrink-0 whitespace-nowrap`} data-testid="tool-monitor-this">
+                Monitor this
+                <ArrowRight className="size-4" aria-hidden="true" />
+              </a>
             </div>
           </div>
         )}
       </div>
 
-      {phase.kind === "result" && (
-        <div className="mt-6 flex flex-col items-start gap-4 rounded-xl border border-fd-border bg-fd-card p-6 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <p className="font-semibold">{ctaTitle}</p>
-            <p className="mt-1 text-sm text-fd-muted-foreground">{ctaBody}</p>
-          </div>
-          <a href={monitorHref} className={primaryButton} data-testid="tool-monitor-this">
-            Monitor this
-            <ArrowRight className="size-4" aria-hidden="true" />
-          </a>
-        </div>
-      )}
     </div>
   );
 }

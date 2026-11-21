@@ -1,13 +1,13 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowRight } from "lucide-react";
+import { Check, ChevronDown, Info } from "lucide-react";
 import { OG_IMAGE } from "../../../lib/assets";
 import { SiteHeader } from "../../../components/site-header";
 import { SiteFooter } from "../../../components/site-footer";
-import { CheckList, textLink } from "../../../components/landing/ui";
 import { Checker } from "../../../components/tools/checker";
 import { GradeMethod } from "../../../components/tools/grade-method";
+import { TOOL_LOOK, ToolChip } from "../../../components/tools/tool-chip";
 import { getTool, tools } from "../../../lib/tools";
 
 export const dynamicParams = false;
@@ -40,12 +40,13 @@ export default async function ToolPage({ params }: { params: Promise<{ tool: str
       <SiteHeader />
       <main>
         <section className="mx-auto max-w-6xl px-4 pt-16 pb-12 sm:px-6 md:pt-20">
-          <p className={`text-sm font-medium ${tool.id === "agents" ? "text-ai" : "text-monitor"}`}>
-            <Link href="/tools" className="hover:underline">
-              Free tool
+          <div className="flex items-center gap-2.5 text-sm font-medium">
+            <ToolChip tool={tool.id} size="sm" />
+            <Link href="/tools" className="text-fd-muted-foreground hover:text-fd-foreground hover:underline">
+              Free tools
             </Link>
-          </p>
-          <h1 className="mt-3 max-w-3xl text-balance text-4xl font-semibold tracking-tight sm:text-5xl">{tool.title}</h1>
+          </div>
+          <h1 className="mt-4 max-w-3xl text-balance text-4xl font-semibold tracking-tight sm:text-5xl">{tool.title}</h1>
           <p className="mt-5 max-w-2xl text-pretty text-lg leading-relaxed text-fd-muted-foreground">{tool.intro}</p>
           <div className="mt-8 max-w-3xl">
             <Checker
@@ -60,19 +61,29 @@ export default async function ToolPage({ params }: { params: Promise<{ tool: str
           </div>
         </section>
 
-        <section aria-labelledby="how-heading" className="border-t border-fd-border bg-fd-card/40">
-          <div className="mx-auto grid max-w-6xl gap-10 px-4 py-16 sm:px-6 md:grid-cols-2">
-            <div>
-              <h2 id="how-heading" className="text-2xl font-semibold tracking-tight">
+        <section aria-labelledby="how-heading" className="border-t border-fd-border">
+          <div className="mx-auto grid max-w-6xl gap-4 px-4 py-16 sm:px-6 md:grid-cols-2">
+            <div className="rounded-xl border border-fd-border bg-fd-card p-6">
+              <h2 id="how-heading" className="text-lg font-semibold tracking-tight">
                 How we check
               </h2>
-              <CheckList items={tool.howWeCheck} area={tool.id === "agents" ? "ai" : "monitor"} className="mt-6" />
+              <ul className="mt-4 space-y-3 text-sm">
+                {tool.howWeCheck.map((item) => (
+                  <li key={item} className="flex gap-2.5">
+                    <Check className={`mt-0.5 size-4 shrink-0 ${TOOL_LOOK[tool.id].text}`} aria-hidden="true" />
+                    <span>{item}</span>
+                  </li>
+                ))}
+              </ul>
             </div>
-            <div>
-              <h2 className="text-2xl font-semibold tracking-tight">What this check can&apos;t tell you</h2>
-              <ul className="mt-6 space-y-2.5 text-sm text-fd-muted-foreground" data-testid="tool-limits">
+            <div className="rounded-xl border border-fd-border bg-fd-card p-6">
+              <h2 className="text-lg font-semibold tracking-tight">What this check can&apos;t tell you</h2>
+              <ul className="mt-4 space-y-3 text-sm text-fd-muted-foreground" data-testid="tool-limits">
                 {tool.limits.map((limit) => (
-                  <li key={limit}>{limit}</li>
+                  <li key={limit} className="flex gap-2.5">
+                    <Info className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+                    <span>{limit}</span>
+                  </li>
                 ))}
               </ul>
             </div>
@@ -81,22 +92,26 @@ export default async function ToolPage({ params }: { params: Promise<{ tool: str
         </section>
 
         <section aria-labelledby="faq-heading" className="border-t border-fd-border">
-          <div className="mx-auto max-w-6xl px-4 py-16 sm:px-6">
+          <div className="mx-auto grid max-w-6xl gap-8 px-4 py-16 sm:px-6 md:grid-cols-[1fr_2fr]">
             <h2 id="faq-heading" className="text-2xl font-semibold tracking-tight">
               Questions
             </h2>
-            <dl className="mt-8 grid gap-x-8 gap-y-8 md:grid-cols-2">
+            {/* Native details: answers stay in the static HTML for search engines, and it works without JS. */}
+            <div className="divide-y divide-fd-border overflow-hidden rounded-xl border border-fd-border bg-fd-card">
               {tool.faq.map((item) => (
-                <div key={item.question} className="border-t border-fd-border pt-6">
-                  <dt className="font-semibold">{item.question}</dt>
-                  <dd className="mt-2 text-sm leading-relaxed text-fd-muted-foreground">{item.answer}</dd>
-                </div>
+                <details key={item.question} className="group">
+                  <summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-5 py-4 text-sm font-medium focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-fd-primary [&::-webkit-details-marker]:hidden">
+                    {item.question}
+                    <ChevronDown className="size-4 shrink-0 text-fd-muted-foreground transition-transform group-open:rotate-180 motion-reduce:transition-none" aria-hidden="true" />
+                  </summary>
+                  <p className="px-5 pb-4 text-sm leading-relaxed text-fd-muted-foreground">{item.answer}</p>
+                </details>
               ))}
-            </dl>
+            </div>
           </div>
         </section>
 
-        <nav aria-labelledby="more-tools-heading" className="border-t border-fd-border bg-fd-card/40">
+        <nav aria-labelledby="more-tools-heading" className="border-t border-fd-border">
           <div className="mx-auto max-w-6xl px-4 py-16 sm:px-6">
             <h2 id="more-tools-heading" className="text-2xl font-semibold tracking-tight">
               More free tools
@@ -106,9 +121,12 @@ export default async function ToolPage({ params }: { params: Promise<{ tool: str
                 .filter((other) => other.slug !== tool.slug)
                 .map((other) => (
                   <li key={other.slug}>
-                    <Link href={`/tools/${other.slug}`} className={textLink}>
+                    <Link
+                      href={`/tools/${other.slug}`}
+                      className="flex items-center gap-3 rounded-lg border border-fd-border bg-fd-card p-3 text-sm font-medium transition-colors hover:border-fd-foreground/25 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fd-primary"
+                    >
+                      <ToolChip tool={other.id} size="sm" />
                       {other.name}
-                      <ArrowRight className="size-3.5" aria-hidden="true" />
                     </Link>
                   </li>
                 ))}

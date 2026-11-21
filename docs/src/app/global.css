@@ -10,12 +10,20 @@
   --automate: oklch(0.5 0.134 242.749);
   --monitor: oklch(0.52 0.2 262);
   --respond: oklch(0.553 0.195 38.402);
-  --communicate: oklch(0.525 0.223 3.958);
+  --communicate: oklch(0.511 0.262 276.966);
   --ai: oklch(0.541 0.281 293.009);
   /* Status, same strong values as the app (text on cards). Free tool results only, always beside a word. */
   --success: oklch(0.527 0.154 150.069);
   --warning: oklch(0.555 0.163 48.998);
   --failure: oklch(0.505 0.213 27.518);
+  /* Type tones, same values as app/src/app/globals.css. One per free tool (icon chips only). */
+  --type-sky: oklch(0.588 0.158 241.966);
+  --type-teal: oklch(0.6 0.118 184.704);
+  --type-cyan: oklch(0.609 0.126 221.723);
+  --type-indigo: oklch(0.511 0.262 276.966);
+  --type-cobalt: oklch(0.48 0.17 255);
+  --type-orchid: oklch(0.57 0.25 320);
+  --type-fuchsia: oklch(0.59 0.24 338);
 }
 
 .dark {
@@ -23,11 +31,18 @@
   --automate: oklch(0.746 0.16 232.661);
   --monitor: oklch(0.72 0.17 258);
   --respond: oklch(0.75 0.183 55.934);
-  --communicate: oklch(0.718 0.202 349.761);
+  --communicate: oklch(0.673 0.182 276.935);
   --ai: oklch(0.702 0.183 293.541);
   --success: oklch(0.696 0.17 162.48);
   --warning: oklch(0.769 0.188 70.08);
   --failure: oklch(0.637 0.237 25.331);
+  --type-sky: oklch(0.746 0.16 232.661);
+  --type-teal: oklch(0.777 0.152 181.912);
+  --type-cyan: oklch(0.789 0.154 211.53);
+  --type-indigo: oklch(0.673 0.182 276.935);
+  --type-cobalt: oklch(0.74 0.11 250);
+  --type-orchid: oklch(0.73 0.2 320);
+  --type-fuchsia: oklch(0.74 0.18 340);
 }
 
 @theme inline {
@@ -38,6 +53,13 @@
   --color-respond: var(--respond);
   --color-communicate: var(--communicate);
   --color-ai: var(--ai);
+  --color-type-sky: var(--type-sky);
+  --color-type-teal: var(--type-teal);
+  --color-type-cyan: var(--type-cyan);
+  --color-type-indigo: var(--type-indigo);
+  --color-type-cobalt: var(--type-cobalt);
+  --color-type-orchid: var(--type-orchid);
+  --color-type-fuchsia: var(--type-fuchsia);
   --color-success: var(--success);
   --color-warning: var(--warning);
   --color-failure: var(--failure);

@@ -8,6 +8,7 @@ import { CopyCommand, HeroVideo } from "../../components/landing/interactive";
 import { CheckList, IconChip, Screenshot, SectionHeading, SolutionCards, primaryButton, secondaryButton, textLink, type Area } from "../../components/landing/ui";
 import { SiteFooter } from "../../components/site-footer";
 import { toolGroups } from "../../components/landing/tool-logos";
+import { ToolsBand } from "../../components/tools/tools-band";
 import { versioned } from "../../lib/assets";
 
 export const metadata: Metadata = {
@@ -210,6 +211,8 @@ export default async function HomePage() {
             </div>
           </div>
         </section>
+
+        <ToolsBand />
 
         {/* Product */}
         <section className="border-t border-fd-border">
