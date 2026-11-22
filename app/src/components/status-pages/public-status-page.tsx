@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
+import { useHydrated } from "@/hooks/use-hydrated";
 import Image from "next/image";
 import {
   CheckCircle2,
@@ -175,6 +176,7 @@ export function PublicStatusPage({
   // force-dynamic page: the first render is when the data was read; kept so paging incidents does not move it.
   // The zone name keeps the server's text honest after hydration.
   const [renderedAt] = useState(() => new Date());
+  const hydrated = useHydrated();
   const updatedAtLabel = t.lastUpdated.replace(
     "{time}",
     new Intl.DateTimeFormat(locale, { hour: "2-digit", minute: "2-digit", timeZoneName: "short" }).format(renderedAt),
@@ -768,7 +770,11 @@ export function PublicStatusPage({
             {t.pastIncidents}
           </h2>
 
-          {(() => {
+          {/* Days follow the viewer's time zone, which the server does not know: render them after hydration so the
+              day list and the "today" text never differ from the server HTML (#418 when the zones are on different dates). */}
+          {!hydrated ? (
+            <div className="min-h-24" aria-busy="true" data-testid="past-incidents-pending" />
+          ) : (() => {
             // Group incidents by date
             const incidentsByDate = new Map<string, Incident[]>();
             // Unresolved incidents are listed above, not here.

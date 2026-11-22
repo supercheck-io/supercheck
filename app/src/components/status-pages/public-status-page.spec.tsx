@@ -1,4 +1,5 @@
 import { render, screen } from "@testing-library/react";
+import { renderToString } from "react-dom/server";
 import { PublicStatusPage } from "./public-status-page";
 import { getTranslations } from "@/lib/status-page-translations";
 
@@ -158,4 +159,13 @@ describe("uptime explanation and banner", () => {
 it("draws the bars from the server's read time, so a render after midnight UTC shows the same days", () => {
   render(<PublicStatusPage statusPage={{ ...page, createdAt: new Date("2026-11-01T00:00:00Z") }} components={[{ ...component, createdAt: new Date("2026-11-01T00:00:00Z") }]} incidents={[]} idOrSubdomain="page" readAt="2026-11-10T23:59:00Z" />);
   expect(screen.getByText(/10 of 90 days with data/)).toBeInTheDocument();
+});
+
+it("leaves the time-zone-dependent day list out of the server HTML, so a viewer in another zone hydrates without a mismatch", () => {
+  const html = renderToString(<PublicStatusPage statusPage={page} components={[component]} incidents={[]} idOrSubdomain="page" />);
+  expect(html).toContain('data-testid="past-incidents-pending"');
+  expect(html).not.toContain(getTranslations("en").noIncidentsReportedToday);
+  // In the browser the days render as before.
+  render(<PublicStatusPage statusPage={page} components={[component]} incidents={[]} idOrSubdomain="page" />);
+  expect(screen.getByText(getTranslations("en").noIncidentsReportedToday)).toBeInTheDocument();
 });
