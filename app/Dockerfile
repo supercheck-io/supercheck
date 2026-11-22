@@ -43,7 +43,10 @@ COPY . .
 
 # Build the Next.js application
 # Note: CHATWOOT_* variables are read at runtime via /api/config/chatwoot (not build-time)
-ENV NODE_OPTIONS="--max-old-space-size=4096"
+# 6 GB: the release build (Sentry source maps) peaked above 4 GB and OOMed in run
+# 45015452580; it needs about 5 GB per build worker. Both platforms build at once
+# on a 16 GB runner, so do not raise this further without splitting arm64 out.
+ENV NODE_OPTIONS="--max-old-space-size=6144"
 ENV NODE_ENV=production
 ARG NEXT_PUBLIC_SOURCE_URL=https://github.com/supercheck-io/supercheck
 ENV NEXT_PUBLIC_SOURCE_URL=${NEXT_PUBLIC_SOURCE_URL}

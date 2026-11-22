@@ -128,6 +128,11 @@ const createNextConfig = (phase: string): NextConfig => {
     // Default is 1MB, we need to support up to MAX_DOCUMENT_SIZE_MB (10MB default)
     experimental: {
       serverSourceMaps: process.env.SENTRY_SOURCEMAPS === "1",
+      // The custom `webpack` hook below makes Next drop its build worker and compile
+      // server, client and edge in one process; with source maps that ran out of
+      // heap at 4 GB (release run 45015452580). Each compile now gets its own process.
+      webpackBuildWorker: true,
+      webpackMemoryOptimizations: true,
       serverActions: {
         bodySizeLimit: "12mb", // Slightly higher than MAX_DOCUMENT_SIZE_MB to account for encoding overhead
       },
