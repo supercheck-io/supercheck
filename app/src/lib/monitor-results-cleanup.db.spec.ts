@@ -7,6 +7,7 @@ import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { promisify } from "node:util";
 import postgres from "postgres";
+import { eq, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import * as schema from "@/db/schema";
 
@@ -565,8 +566,14 @@ describe("raw purge watermark (monitors.raw_purged_before)", () => {
   });
   const at = (ms: number) =>
     jest.useFakeTimers({ now: ms, doNotFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "setImmediate", "clearImmediate", "nextTick", "queueMicrotask", "hrtime", "performance"] });
+  // Read through drizzle, the service's path: the raw driver may return timestamptz as text, drizzle maps it to a Date.
   const watermark = async (monitorId: string) =>
-    (await client`SELECT raw_purged_before, xmin::text AS version FROM monitors WHERE id = ${monitorId}`)[0] as { raw_purged_before: Date | null; version: string };
+    (
+      await mockDatabase
+        .select({ rawPurgedBefore: schema.monitors.rawPurgedBefore, version: sql<string>`xmin::text` })
+        .from(schema.monitors)
+        .where(eq(schema.monitors.id, monitorId))
+    )[0] as { rawPurgedBefore: Date | null; version: string };
 
   it("moves to the cutoff's UTC midnight, never back when the window grows, and only when the cutoff advances; a dry run and a skipped organization leave it", async () => {
     const DAY = 86_400_000;
@@ -577,15 +584,15 @@ describe("raw purge watermark (monitors.raw_purged_before)", () => {
 
     // A dry run counts only.
     expect((await resultsStrategy().execute(true, { cursor: memoryCursor() })).recordsDeleted).toBe(2);
-    expect((await watermark(monitorOf.plus)).raw_purged_before).toBeNull();
+    expect((await watermark(monitorOf.plus)).rawPurgedBefore).toBeNull();
 
     // 3-day window: the watermark is the cutoff, the UTC midnight three days back. The skipped organization has none.
     await resultsStrategy().execute(false, { cursor: memoryCursor() });
     const threeDays = new Date(dayC - 3 * DAY);
     const first = await watermark(monitorOf.plus);
-    expect(first.raw_purged_before).toEqual(threeDays);
-    expect((await watermark(monitorOf.pro)).raw_purged_before).toEqual(new Date(dayC - 30 * DAY));
-    expect((await watermark(monitorOf.billing)).raw_purged_before).toBeNull();
+    expect(first.rawPurgedBefore).toEqual(threeDays);
+    expect((await watermark(monitorOf.pro)).rawPurgedBefore).toEqual(new Date(dayC - 30 * DAY));
+    expect((await watermark(monitorOf.billing)).rawPurgedBefore).toBeNull();
 
     // The next hourly run has the same cutoff: the row is not written again.
     at(dayC + 13 * 3_600_000);
@@ -595,14 +602,14 @@ describe("raw purge watermark (monitors.raw_purged_before)", () => {
     // A longer window (7 days) has an earlier cutoff; the rows before the old one are gone, so the watermark stays.
     await client`UPDATE plan_limits SET data_retention_days = 7 WHERE plan = 'plus'`;
     await resultsStrategy().execute(false, { cursor: memoryCursor() });
-    expect((await watermark(monitorOf.plus)).raw_purged_before).toEqual(threeDays);
+    expect((await watermark(monitorOf.plus)).rawPurgedBefore).toEqual(threeDays);
 
     // A dry run with a shorter window (1 day) does not move it either; a real run with that window does.
     await client`UPDATE plan_limits SET data_retention_days = 1 WHERE plan = 'plus'`;
     await resultsStrategy().execute(true, { cursor: memoryCursor() });
-    expect((await watermark(monitorOf.plus)).raw_purged_before).toEqual(threeDays);
+    expect((await watermark(monitorOf.plus)).rawPurgedBefore).toEqual(threeDays);
     await resultsStrategy().execute(false, { cursor: memoryCursor() });
-    expect((await watermark(monitorOf.plus)).raw_purged_before).toEqual(new Date(dayC - DAY));
+    expect((await watermark(monitorOf.plus)).rawPurgedBefore).toEqual(new Date(dayC - DAY));
   });
 });
 
