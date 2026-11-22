@@ -212,6 +212,8 @@ sudo docker compose exec app node scripts/bootstrap-admin.js your-email@example.
 
 Off by default. Set `MCP_SERVER_ENABLED=true` and recreate the app to let [MCP clients](/docs/mcp) such as Claude, Cursor and VS Code connect over OAuth. `BETTER_AUTH_URL` must be the public HTTPS URL (Docker derives it from `APP_DOMAIN`).
 
+Two optional settings: `MCP_DYNAMIC_CLIENT_REGISTRATION` (default `true`) accepts clients that register themselves; set it to `false` to refuse them (clients that publish a Client ID Metadata Document can still connect). `MCP_JWKS_URL` sets where the server loads its own token-signing keys; it defaults to `http://localhost:$PORT/api/auth/jwks` in the same process, and an override must serve this app's own keys.
+
 </Accordion>
 <Accordion title="Status page HTTPS" id="status-page-https">
 
