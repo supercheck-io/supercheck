@@ -221,3 +221,27 @@ describe("failures-only toggle", () => {
     expect(lastCall()).toEqual(expect.objectContaining({ location: "old-region", failuresOnly: true }));
   });
 });
+
+describe("heartbeat ping history filters", () => {
+  const renderHeartbeat = () =>
+    renderMonitor({ type: "heartbeat", target: "", resultRetention: { days: 7, onPlan: true } });
+
+  it("offers the same date and failures-only filters as the other monitor types", () => {
+    renderHeartbeat();
+    fireEvent.click(screen.getByRole("switch", { name: "Failures only" }));
+    expect(lastCall()).toEqual(expect.objectContaining({ failuresOnly: true, page: 1 }));
+    expect(screen.getByTestId("heartbeat-ping-history-filtered-empty")).toHaveTextContent("No failed or missed pings");
+    // The "no pings yet" setup hint only shows without a filter.
+    expect(screen.queryByTestId("heartbeat-ping-history-empty")).toBeNull();
+    openCalendar();
+    expect(screen.getByTestId("results-retention-hint")).toBeInTheDocument();
+  });
+
+  it("names filtered pings in the summary", () => {
+    mockResults = [{ ...row("a", false), status: "missed" }];
+    mockPagination = { total: 3, totalPages: 1 };
+    renderHeartbeat();
+    fireEvent.click(screen.getByRole("switch", { name: "Failures only" }));
+    expect(screen.getByText("Showing 1 of 3 failed pings.")).toBeInTheDocument();
+  });
+});

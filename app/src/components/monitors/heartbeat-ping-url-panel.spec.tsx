@@ -134,6 +134,17 @@ describe("HeartbeatPingUrlPanel", () => {
     expect(screen.getByText(/to report a failure straight away/)).toBeInTheDocument();
   });
 
+  it("keeps every snippet mounted so switching tabs never changes the card height", () => {
+    render(<HeartbeatPingUrlPanel monitorId="m1" canManage pending={false} />);
+    const curl = screen.getByTestId("heartbeat-snippet-curl").parentElement!;
+    const cron = screen.getByTestId("heartbeat-snippet-cron").parentElement!;
+    expect(curl).toHaveAttribute("data-state", "active");
+    expect(cron).toHaveAttribute("data-state", "inactive");
+    expect(cron).toHaveClass("lg:data-[state=inactive]:invisible");
+    fireEvent.mouseDown(screen.getByRole("tab", { name: "cron" }));
+    expect(screen.getByTestId("heartbeat-snippet-curl")).toBeInTheDocument();
+  });
+
   it("builds curl, cron and CLI snippets", () => {
     expect(pingSnippets(URL)).toEqual({
       curl: `curl -fsS -m 10 --retry 5 ${URL}`,

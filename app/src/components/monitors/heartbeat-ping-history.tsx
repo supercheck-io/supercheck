@@ -1,5 +1,6 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { format } from "date-fns";
 import { ChevronsLeft, ChevronsRight, HeartPulse } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -69,6 +70,10 @@ interface HeartbeatPingHistoryProps {
    * flex child, so it is measured directly; useFitPageSize measures the page and would shrink forever here.
    */
   onFitRows?: (rows: number) => void;
+  /** Date and failures-only filters, shared with the other monitor types. */
+  headerActions?: ReactNode;
+  /** Set while a filter is on: replaces the "no pings yet" empty state and names the filtered rows. */
+  filter?: { noun: string; emptyTitle: string; emptyDescription: string };
 }
 
 export function HeartbeatPingHistory({
@@ -81,16 +86,21 @@ export function HeartbeatPingHistory({
   total,
   onPageChange,
   onFitRows,
+  headerActions,
+  filter,
 }: HeartbeatPingHistoryProps) {
   const panelRef = useFitPanelRows(onFitRows, '[data-testid="heartbeat-ping-row"]');
 
   return (
     <Card className="flex h-full min-h-0 flex-col overflow-hidden shadow-sm" data-testid="heartbeat-ping-history">
       <CardHeader className="flex-shrink-0">
-        <CardTitle className="text-lg font-semibold">Ping history</CardTitle>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <CardTitle className="text-lg font-semibold">Ping history</CardTitle>
+          {headerActions}
+        </div>
         <CardDescription>
           {!error && results.length > 0
-            ? `Showing ${results.length} of ${total} recent ${total === 1 ? "ping" : "pings"}.`
+            ? `Showing ${results.length} of ${total} ${filter ? filter.noun : `recent ${total === 1 ? "ping" : "pings"}`}.`
             : "Pings, failures and missed runs for this monitor."}
         </CardDescription>
       </CardHeader>
@@ -111,6 +121,11 @@ export function HeartbeatPingHistory({
             <Skeleton className="h-4 w-full" />
             <Skeleton className="h-4 w-4/5" />
             <Skeleton className="h-4 w-3/5" />
+          </div>
+        ) : results.length === 0 && filter ? (
+          <div className="flex flex-1 flex-col items-center justify-center px-6 py-8 text-center" data-testid="heartbeat-ping-history-filtered-empty">
+            <p className="font-medium text-muted-foreground">{filter.emptyTitle}</p>
+            <p className="mt-1 text-sm text-muted-foreground">{filter.emptyDescription}</p>
           </div>
         ) : results.length === 0 ? (
           <div className="flex flex-1 flex-col items-center justify-center space-y-3 px-6 py-8 text-center" data-testid="heartbeat-ping-history-empty">
