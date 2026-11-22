@@ -28,7 +28,8 @@ test.describe('Status-page component lifecycle @status-pages @components', () =>
     const row = page.getByRole('row').filter({ hasText: originalName });
     await expect(row).toContainText('Operational');
     await expect(row).toContainText('Original component description');
-    await row.getByTitle('Edit component').click();
+    await row.getByRole('button', { name: /^Actions for / }).click();
+    await page.getByRole('menuitem', { name: 'Edit' }).click();
 
     const editDialog = page.getByRole('dialog', { name: 'Edit Component' });
     await editDialog.getByLabel('Title *').fill(updatedName);
@@ -44,7 +45,8 @@ test.describe('Status-page component lifecycle @status-pages @components', () =>
       'Persisted component description',
     );
 
-    await page.getByRole('row').filter({ hasText: updatedName }).getByTitle('Delete component').click();
+    await page.getByRole('row').filter({ hasText: updatedName }).getByRole('button', { name: /^Actions for / }).click();
+    await page.getByRole('menuitem', { name: 'Delete' }).click();
     const deleteDialog = page.getByRole('alertdialog', { name: 'Delete Component' });
     await expect(deleteDialog).toContainText(updatedName);
     await deleteDialog.getByRole('button', { name: 'Delete', exact: true }).click();

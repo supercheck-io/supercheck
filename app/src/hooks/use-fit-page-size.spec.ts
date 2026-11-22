@@ -87,12 +87,15 @@ describe("useFitPageSize layout feedback", () => {
       return size;
     };
 
-    const expected = Math.floor((window.innerHeight - 100 - 1) / 49);
-    expect(sizeFor(true)).toBe(expected);
-    // Without the marker the stretched card counts as content below the table.
-    expect(sizeFor(false)).toBe(5);
-    jest.restoreAllMocks();
-    global.ResizeObserver = originalResizeObserver;
+    try {
+      const expected = Math.floor((window.innerHeight - 100 - 1) / 49);
+      expect(sizeFor(true)).toBe(expected);
+      // Without the marker the stretched card counts as content below the table.
+      expect(sizeFor(false)).toBe(5);
+    } finally {
+      jest.restoreAllMocks();
+      global.ResizeObserver = originalResizeObserver;
+    }
   });
 
   it("stops resizing when the measured size flips on every frame", () => {

@@ -599,13 +599,15 @@ export function IncidentsTab({
                         )}
                       </TableCell>
                       <TableCell className="text-right">
+                        {canUpdate && (
                         <RowActionsMenu
                           label={`Actions for ${incident.name}`}
                           actions={[
-                            { label: "Edit", icon: Pencil, disabled: !canUpdate, onSelect: () => handleUpdateClick(incident) },
-                            { label: "Delete", icon: Trash2, destructive: true, disabled: !canUpdate, onSelect: () => handleDeleteClick(incident) },
+                            { label: "Edit", icon: Pencil, onSelect: () => handleUpdateClick(incident) },
+                            { label: "Delete", icon: Trash2, destructive: true, onSelect: () => handleDeleteClick(incident) },
                           ]}
                         />
+                        )}
                       </TableCell>
                     </TableRow>
                   ))}

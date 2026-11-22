@@ -655,13 +655,15 @@ export function ComponentsTab({
                           </div>
                         </TableCell>
                         <TableCell className="text-right">
+                          {canUpdate && (
                           <RowActionsMenu
                             label={`Actions for ${component.name}`}
                             actions={[
-                              { label: "Edit", icon: Pencil, disabled: !canUpdate, onSelect: () => handleEditComponent(component) },
-                              { label: "Delete", icon: Trash2, destructive: true, disabled: !canUpdate, onSelect: () => handleDeleteClick(component) },
+                              { label: "Edit", icon: Pencil, onSelect: () => handleEditComponent(component) },
+                              { label: "Delete", icon: Trash2, destructive: true, onSelect: () => handleDeleteClick(component) },
                             ]}
                           />
+                          )}
                         </TableCell>
                       </TableRow>
                     ))}
