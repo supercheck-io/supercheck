@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useRef, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Check, Sparkles, X, Loader2 } from "lucide-react";
@@ -35,7 +35,6 @@ export function AIDiffViewer({
   isStreaming = false,
   streamingContent = "",
 }: AIDiffViewerProps) {
-  const [currentFixedScript, setCurrentFixedScript] = useState(fixedScript);
   const editorRef = useRef<editor.IStandaloneDiffEditor | null>(null);
   const monaco = useMonaco();
   const isMountedRef = useRef(true);
@@ -51,65 +50,20 @@ export function AIDiffViewer({
     originalEditor?.setScrollPosition({ scrollTop: 0, scrollLeft: 0 });
   }, []);
 
-  // Update editor during streaming - avoid setState to prevent re-renders
+  // The `modified` prop carries the text (streaming or final). Writing the model here as well
+  // raced the library's own edit and threw "Illegal value for lineNumber". Child effects run
+  // first, so the library has applied the final text when this scrolls.
   useEffect(() => {
-    if (!isStreaming || !streamingContent) return;
-
-    const modifiedEditor = editorRef.current?.getModifiedEditor?.();
-    if (modifiedEditor) {
-      try {
-        const model = modifiedEditor.getModel();
-        if (model && !model.isDisposed?.()) {
-          model.setValue(streamingContent);
-        }
-      } catch {
-        // Silently ignore model errors during streaming
-      }
-    }
-
-    // Return cleanup function to suppress promise rejection warnings
-    return () => {
-      // Cleanup
-    };
-  }, [streamingContent, isStreaming]);
-
-  // Update editor when streaming ends
-  useEffect(() => {
-    if (isStreaming) return;
-
-    if (fixedScript) {
-      // Defer state update to avoid synchronous setState in effect
-      setTimeout(() => setCurrentFixedScript(fixedScript), 0);
-      const modifiedEditor = editorRef.current?.getModifiedEditor?.();
-      if (modifiedEditor) {
-        try {
-          const model = modifiedEditor.getModel();
-          if (model && !model.isDisposed?.()) {
-            model.setValue(fixedScript);
-          }
-        } catch {
-          // Silently ignore model errors
-        }
-      }
-      scrollEditorsToTop();
-    }
+    if (isStreaming || !fixedScript) return;
+    scrollEditorsToTop();
   }, [isStreaming, fixedScript, scrollEditorsToTop]);
 
-  // Cleanup on unmount
   useEffect(() => {
+    // Set again on mount: Strict Mode (dev) runs this cleanup once before the real mount.
+    isMountedRef.current = true;
     return () => {
       isMountedRef.current = false;
-      // Clean up editor - let the editor handle its own model disposal
-      if (editorRef.current) {
-        try {
-          // Dispose the editor itself - it will handle model cleanup
-          if (typeof editorRef.current.dispose === "function") {
-            editorRef.current.dispose();
-          }
-        } catch {
-          // Silently ignore cleanup errors
-        }
-      }
+      editorRef.current = null;
     };
   }, []);
 
@@ -142,6 +96,17 @@ export function AIDiffViewer({
     }
 
     editorRef.current = editor;
+    // keepCurrent*Model stops the library disposing the models before the editor, which threw
+    // "TextModel got disposed before DiffEditorWidget model got reset". They are disposed here,
+    // after the editor, on every unmount (closing the dialog unmounts only the DiffEditor).
+    const models = editor.getModel();
+    editor.onDidDispose(() =>
+      queueMicrotask(() => {
+        for (const model of [models?.original, models?.modified]) {
+          if (model && !model.isDisposed()) model.dispose();
+        }
+      }),
+    );
 
     try {
       // Configure diff editor options properly
@@ -212,7 +177,7 @@ export function AIDiffViewer({
 
   const handleAccept = () => {
     try {
-      let acceptedScript = currentFixedScript; // Default to the fixed script
+      let acceptedScript = fixedScript; // Default to the fixed script
 
       // Try to get content from the modified editor if available
       if (editorRef.current) {
@@ -235,7 +200,7 @@ export function AIDiffViewer({
     } catch (error) {
       console.error("Error accepting AI fix:", error);
       // Let parent handle error toast, just fallback to the fixed script
-      onAccept(currentFixedScript);
+      onAccept(fixedScript);
     }
   };
 
@@ -370,8 +335,10 @@ export function AIDiffViewer({
             height="100%"
             language="typescript"
             original={originalScript}
-            modified={isStreaming ? streamingContent : currentFixedScript}
+            modified={isStreaming ? streamingContent : fixedScript}
             onMount={handleEditorDidMount}
+            keepCurrentOriginalModel
+            keepCurrentModifiedModel
             options={{
               fontSize: 12,
               fontFamily: 'Monaco, Menlo, "Ubuntu Mono", monospace',

@@ -11,8 +11,41 @@ jest.mock("@monaco-editor/react", () => ({
   Editor: ({ value, onChange }: { value: string; onChange?: (value: string) => void }) => (
     <textarea aria-label="Generated code" value={value} onChange={(event) => onChange?.(event.target.value)} />
   ),
-  DiffEditor: ({ modified }: { modified: string }) => <pre>{modified}</pre>,
+  // Like the library: onMount with the editor, and on unmount dispose the models (unless kept), then the editor.
+  DiffEditor: (props: { modified: string; onMount?: (e: unknown) => void; keepCurrentOriginalModel?: boolean; keepCurrentModifiedModel?: boolean }) => {
+    const { useEffect } = jest.requireActual("react");
+    useEffect(() => {
+      const editor = mockDiffEditor();
+      props.onMount?.(editor);
+      return () => {
+        if (!props.keepCurrentOriginalModel) editor.getModel().original.dispose();
+        if (!props.keepCurrentModifiedModel) editor.getModel().modified.dispose();
+        editor.dispose();
+      };
+      // eslint-disable-next-line react-hooks/exhaustive-deps -- mount/unmount only, like the library
+    }, []);
+    return <pre>{props.modified}</pre>;
+  },
 }));
+
+const disposeOrder: string[] = [];
+function mockModel(name: string) {
+  let disposed = false;
+  return { isDisposed: () => disposed, dispose: () => { disposed = true; disposeOrder.push(name); } };
+}
+function mockDiffEditor() {
+  const listeners: (() => void)[] = [];
+  const models = { original: mockModel("original"), modified: mockModel("modified") };
+  const inner = { updateOptions: jest.fn(), focus: jest.fn(), setScrollPosition: jest.fn(), getValue: () => "" };
+  return {
+    getModel: () => models,
+    getModifiedEditor: () => inner,
+    getOriginalEditor: () => inner,
+    updateOptions: jest.fn(),
+    onDidDispose: (fn: () => void) => listeners.push(fn),
+    dispose: () => { disposeOrder.push("editor"); listeners.forEach((fn) => fn()); },
+  };
+}
 
 describe("AI create dialog", () => {
   const props = { currentScript: "existing script", testType: "api", isVisible: true, initialIsOpen: true, onAICreateSuccess: jest.fn() };
@@ -85,5 +118,13 @@ describe("AI review dialogs", () => {
     expect(screen.getByRole("button", { name: kind === "create" ? "Generating..." : "Accept & Apply" })).toBeDisabled();
     fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
     expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it("disposes the diff models after the editor each time the fix dialog closes", async () => {
+    disposeOrder.length = 0;
+    const common = { originalScript: "a", fixedScript: "b", explanation: "", onAccept: jest.fn(), onReject: jest.fn(), onClose: jest.fn() };
+    const { rerender } = render(<AIDiffViewer {...common} isVisible />);
+    rerender(<AIDiffViewer {...common} isVisible={false} />);
+    await waitFor(() => expect(disposeOrder).toEqual(["editor", "original", "modified"]));
   });
 });

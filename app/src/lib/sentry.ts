@@ -98,12 +98,13 @@ export function getSentryOptions(
         ignoreIncomingRequestBody: () => true,
       }),
       Sentry.nativeNodeFetchIntegration({ breadcrumbs: false }),
-      ...(logs
-        ? [
-            Sentry.pinoIntegration({ log: { levels: ["warn", "error", "fatal"] }, error: { levels: [] } }),
-            Sentry.consoleLoggingIntegration({ levels: ["warn", "error"] }),
-          ]
-        : []),
+      // logger.error/fatal become issues: most routes and schedulers catch, log and carry on, so
+      // without this a handled failure never alerts. scrubEvent drops the pino context.
+      Sentry.pinoIntegration({
+        log: { levels: logs ? ["warn", "error", "fatal"] : [] },
+        error: { levels: ["error", "fatal"] },
+      }),
+      ...(logs ? [Sentry.consoleLoggingIntegration({ levels: ["warn", "error"] })] : []),
     ],
   };
 }

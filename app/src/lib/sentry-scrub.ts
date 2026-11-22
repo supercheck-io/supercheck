@@ -512,9 +512,21 @@ function scrubAttributes(
   return out;
 }
 
-/** beforeSendLog: drops trace/debug, scrubs the message, keeps allow-listed attributes only. */
+// Customer run output (Playwright stdout/stderr and failure text in execution.service, k6 stderr
+// in k6-execution.service, synthetic failures in monitor.service). It stays in Loki and never
+// reaches Sentry. New log lines carrying customer output must start with "[run-output]".
+const RUN_OUTPUT_MARKERS = [
+  "[run-output]",
+  "--- STDOUT START ---",
+  "--- STDERR START ---",
+  "stderr output:",
+];
+
+/** beforeSendLog: drops trace/debug and run output, scrubs the message, keeps allow-listed attributes only. */
 export function scrubLog(log: Log): Log | null {
   if (log.level === "trace" || log.level === "debug") return null;
+  const message = String(log.message ?? "");
+  if (RUN_OUTPUT_MARKERS.some((m) => message.includes(m))) return null;
   log.message = scrubString(String(log.message ?? ""));
   log.attributes = scrubAttributes(log.attributes, LOG_ATTRS);
   return log;

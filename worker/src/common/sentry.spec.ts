@@ -20,6 +20,7 @@ import {
   scrubEvent,
   scrubString,
 } from './sentry';
+import { scrubLog } from './sentry-scrub';
 
 const DSN = 'https://abc@o1.ingest.sentry.io/1';
 
@@ -256,6 +257,29 @@ describe('runJobInSpan', () => {
       { sentryTrace: 't-s-1', baggage: undefined },
       expect.any(Function),
     );
+  });
+});
+
+describe('scrubLog', () => {
+  const log = (message: string) =>
+    ({ level: 'error', message, attributes: {} }) as Parameters<
+      typeof scrubLog
+    >[0];
+
+  it.each([
+    '[t1] Playwright stdout:\n--- STDOUT START ---\nsecret page text\n--- STDOUT END ---\n',
+    '[t1] Playwright stderr:\n--- STDERR START ---\nboom\n--- STDERR END ---\n',
+    '[r1] k6 stderr output:\nERRO customer script line',
+    '[run-output] [t1] Playwright execution failed: Received: Welcome John Smith',
+    '[run-output] [m1] Synthetic test failed: Checkout - expected 200',
+  ])('drops customer run output: %s', (message) => {
+    expect(scrubLog(log(message))).toBeNull();
+  });
+
+  it('keeps other error logs', () => {
+    expect(
+      scrubLog(log('[Container] Container execution failed: exit 1'))?.message,
+    ).toBe('[Container] Container execution failed: exit 1');
   });
 });
 
