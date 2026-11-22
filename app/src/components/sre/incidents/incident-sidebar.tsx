@@ -159,6 +159,9 @@ export function IncidentSidebar({
                   <Link
                     className={PANEL_LINK}
                     href={`/status-pages/${detail.publicIncident.statusPageId}/public/incidents/${detail.publicIncident.id}`}
+                    // The preview has no app navigation, so it opens beside the incident.
+                    target="_blank"
+                    rel="noopener noreferrer"
                   >
                     <span className="capitalize">{detail.publicIncident.status.replace(/_/g, " ")}</span>
                   </Link>

@@ -141,6 +141,8 @@ export async function withDailyMetrics<T extends ComponentForMetrics>(
       }
       return {
         ...component,
+        // Linked monitors set this component's status and bars; without any, bars come from status updates.
+        monitored: links.some((link) => link.componentId === component.id),
         dailyMetrics: [...byDate].map(([date, monitors]) => ({
           date,
           ...combineMonitorDay(monitors, aggregationMethod, failureThreshold),

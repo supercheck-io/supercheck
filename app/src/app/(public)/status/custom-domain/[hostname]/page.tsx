@@ -1,4 +1,5 @@
 import { PublicStatusPage } from "@/components/status-pages/public-status-page";
+import { decodeHostnameParam, requestHostname } from "@/lib/status-page-domain";
 import { getPublicStatusPageByCustomDomain } from "@/actions/get-public-status-page-by-custom-domain";
 import { getPublicComponents } from "@/actions/get-public-components";
 import { getPublicIncidents } from "@/actions/get-public-incidents";
@@ -33,7 +34,7 @@ export async function generateMetadata({
   params,
 }: CustomDomainStatusPageProps): Promise<Metadata> {
   const resolvedParams = await params;
-  const hostname = decodeURIComponent(resolvedParams.hostname);
+  const hostname = decodeHostnameParam(resolvedParams.hostname);
 
   const result = await getStatusPageByCustomDomain(hostname);
 
@@ -84,7 +85,7 @@ export default async function CustomDomainStatusPage({
   params,
 }: CustomDomainStatusPageProps) {
   const resolvedParams = await params;
-  const hostname = decodeURIComponent(resolvedParams.hostname);
+  const hostname = decodeHostnameParam(resolvedParams.hostname);
 
   const result = await getStatusPageByCustomDomain(hostname);
 
@@ -100,10 +101,8 @@ export default async function CustomDomainStatusPage({
   // proxy rewrites them. When accessed directly, links need the full internal
   // route prefix so Next.js can route them without the proxy.
   const headersList = await headers();
-  const requestHost = (headersList.get("x-forwarded-host") || headersList.get("host") || "")
-    .replace(/:\d+$/, "")
-    .toLowerCase();
-  const isProxied = requestHost === hostname.toLowerCase();
+  const requestHost = requestHostname(headersList);
+  const isProxied = requestHost === hostname;
   const customDomainRoutePrefix = isProxied
     ? ""
     : `/status/custom-domain/${hostname}`;
@@ -122,7 +121,8 @@ export default async function CustomDomainStatusPage({
       statusPage={statusPage}
       components={componentsResult.components}
       incidents={incidentsResult.incidents}
-      idOrSubdomain={hostname}
+      readAt={new Date().toISOString()}
+        idOrSubdomain={hostname}
       hideBranding={isStatusPageBrandingHidden()}
       isPublicView
       isCustomDomain

@@ -45,9 +45,15 @@ describe("scheduled incident updates", () => {
     expect(
       incidentScheduleFields("investigating", new Date(), new Date()),
     ).toEqual({ scheduledFor: null, scheduledUntil: null });
-    expect(
-      incidentScheduleFields("resolved", new Date(), new Date()),
-    ).toEqual({ scheduledFor: null, scheduledUntil: null });
+  });
+
+  it("clears an old window when a resolved incident is reopened, so it is not ended again", () => {
+    expect(incidentScheduleFields("monitoring", undefined, undefined, "resolved")).toEqual({ scheduledFor: null, scheduledUntil: null });
+    expect(incidentScheduleFields("monitoring", undefined, undefined, "scheduled")).toEqual({});
+  });
+
+  it("keeps the window on resolve as the record of when maintenance ran", () => {
+    expect(incidentScheduleFields("resolved", new Date(), new Date())).toEqual({});
   });
 
   it("keeps the maintenance window while maintenance is in progress", () => {

@@ -15,7 +15,7 @@ it("ignores hidden outages in banner and hides healthy degraded-only components"
 });
 
 it("shows check-based uptime without incidents and supports Arabic direction", () => {
-  const { container } = render(<PublicStatusPage statusPage={{ ...page, language: "ar" }} components={[{ ...component, dailyMetrics: [{ date: new Date().toISOString().slice(0, 10), totalChecks: 100, successfulChecks: 99 }] }]} incidents={[]} idOrSubdomain="page" />);
+  const { container } = render(<PublicStatusPage statusPage={{ ...page, language: "ar" }} components={[{ ...component, monitored: true, dailyMetrics: [{ date: new Date().toISOString().slice(0, 10), totalChecks: 100, successfulChecks: 99 }] }]} incidents={[]} idOrSubdomain="page" />);
   expect(screen.getByText(/99\.00%/)).toBeInTheDocument();
   expect(container.firstChild).toHaveAttribute("dir", "rtl");
 });
@@ -119,17 +119,33 @@ describe("uptime explanation and banner", () => {
   const today = new Date().toISOString().slice(0, 10);
   const metrics = [{ date: today, totalChecks: 100, successfulChecks: 95 }];
 
-  it("shows a legend, the days the uptime covers and when the page was read", () => {
-    render(<PublicStatusPage statusPage={page} components={[{ ...component, dailyMetrics: metrics }]} incidents={[]} idOrSubdomain="page" />);
+  it("shows a legend of the colours on screen, the days the uptime covers and when the page was read", () => {
+    render(<PublicStatusPage statusPage={page} components={[{ ...component, monitored: true, dailyMetrics: metrics }]} incidents={[]} idOrSubdomain="page" />);
     const legend = screen.getByTestId("uptime-legend");
-    for (const label of [t.operational, t.legendSomeDowntime, t.legendDown, t.legendNoData]) expect(legend).toHaveTextContent(label);
+    for (const label of [t.operational, t.legendSomeDowntime, t.legendNoData]) expect(legend).toHaveTextContent(label);
+    expect(legend).not.toHaveTextContent(t.legendDown);
     expect(screen.getByText(/1 of 90 days with data/)).toBeInTheDocument();
     expect(screen.getByTestId("status-updated-at")).toHaveTextContent(/^Updated \d{2}:\d{2}/);
   });
 
-  it("uses dark text on the default green banner so it meets 4.5:1", () => {
+  it("darkens the default green banner just enough for white text", () => {
     render(<PublicStatusPage statusPage={page} components={[component]} incidents={[]} idOrSubdomain="page" />);
-    expect(screen.getByText(t.allSystemsOperational).closest("[style]")).toHaveStyle({ color: "#111827" });
+    const banner = screen.getByText(t.allSystemsOperational).closest("[style]");
+    expect(banner).toHaveStyle({ color: "#ffffff" });
+    expect(banner?.parentElement).toHaveStyle({ backgroundColor: "#1e874b" });
+  });
+
+  it("manual components are green since the page started and coloured by incidents, with no monitors involved", () => {
+    // Fixed times: the one-hour outage stays inside one UTC day whenever the suite runs.
+    const started = new Date("2026-11-12T12:00:00Z");
+    const incident = { id: "i1", name: "Login errors", status: "resolved" as const, impact: "critical" as const, createdAt: new Date("2026-11-20T10:00:00Z"), resolvedAt: new Date("2026-11-20T11:00:00Z"), latestUpdate: null, affectedComponents: [{ id: "public", name: "Public API" }] };
+    render(<PublicStatusPage statusPage={page} components={[{ ...component, createdAt: started }]} incidents={[incident]} idOrSubdomain="page" readAt="2026-11-22T12:00:00Z" />);
+    const legend = screen.getByTestId("uptime-legend");
+    expect(legend).toHaveTextContent(t.operational);
+    expect(legend).toHaveTextContent(t.legendDown);
+    expect(legend).toHaveTextContent(t.legendNoData);
+    expect(screen.getByText(/% uptime/)).not.toHaveTextContent(/^100\.00%/);
+    expect(screen.getByText(/11 of 90 days with data/)).toBeInTheDocument();
   });
 
   it("says no incidents reported today without a capitalised Today", () => {
@@ -137,4 +153,9 @@ describe("uptime explanation and banner", () => {
     expect(screen.getByText(t.noIncidentsReportedToday)).toBeInTheDocument();
     expect(screen.queryByText(/reported Today/)).not.toBeInTheDocument();
   });
+});
+
+it("draws the bars from the server's read time, so a render after midnight UTC shows the same days", () => {
+  render(<PublicStatusPage statusPage={{ ...page, createdAt: new Date("2026-11-01T00:00:00Z") }} components={[{ ...component, createdAt: new Date("2026-11-01T00:00:00Z") }]} incidents={[]} idOrSubdomain="page" readAt="2026-11-10T23:59:00Z" />);
+  expect(screen.getByText(/10 of 90 days with data/)).toBeInTheDocument();
 });

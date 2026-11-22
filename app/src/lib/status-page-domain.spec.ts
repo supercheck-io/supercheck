@@ -377,3 +377,18 @@ describe("status page domain utilities", () => {
     });
   });
 });
+
+describe("custom-domain route helpers", () => {
+  it("decodes the hostname segment and gives an empty name for a malformed escape", () => {
+    const { decodeHostnameParam } = jest.requireActual("./status-page-domain");
+    expect(decodeHostnameParam("Status.Example.com.")).toBe("status.example.com");
+    expect(decodeHostnameParam("%E0%A4%A")).toBe("");
+  });
+
+  it("reads the client-facing host like the proxy: first forwarded entry, no port or trailing dot", () => {
+    const { requestHostname } = jest.requireActual("./status-page-domain");
+    const headers = (values: Record<string, string>) => ({ get: (name: string) => values[name] ?? null });
+    expect(requestHostname(headers({ "x-forwarded-host": "Status.Example.com:443, internal:3000" }))).toBe("status.example.com");
+    expect(requestHostname(headers({ host: "status.example.com." }))).toBe("status.example.com");
+  });
+});

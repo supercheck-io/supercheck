@@ -65,7 +65,10 @@ export function SupportChat() {
     const previousUserId = useRef<string | null>(null);
 
     // Check if current route is an external/public page
-    const isExternalPage = HIDDEN_ROUTES.some(route => pathname?.startsWith(route));
+    // The in-app status page preview renders the public page, so it hides the widget too.
+    const isExternalPage =
+        HIDDEN_ROUTES.some(route => pathname?.startsWith(route)) ||
+        /^\/status-pages\/[^/]+\/public(\/|$)/.test(pathname ?? "");
 
     // Fetch Chatwoot config from server (runtime values from K8s secrets)
     // This replaces the build-time NEXT_PUBLIC_* env vars which don't work in K8s

@@ -47,6 +47,7 @@ flowchart LR
 
 | Action | Effect |
 |---|---|
+| **Preview** | Opens the page full screen inside the app, drafts included. **Open in new tab** shows it on its own |
 | **Unpublish** | Returns to draft and stops serving. Components, incidents and subscribers are kept (both actions ask for confirmation) |
 | **Archive** | Stops serving the page. Publishing again restores access |
 
@@ -64,7 +65,7 @@ Selecting an incident opens its full timeline.
 | **Components** | Status and 90-day uptime per public component |
 | **Scheduled maintenance** | Maintenance not yet started, apart from active incidents |
 | **Incident history** | Active incidents and up to 500 from the last 90 days, grouped by date, never earlier than the page's creation day |
-| **Subscribe** | Sign-up for incident notifications |
+| **Subscribe** | Sign-up for incident notifications. An open incident's page also has **Subscribe**, to follow only that incident |
 
 The page supports 24 languages, with right-to-left layout for Arabic. Automatic messages (outage, recovery, maintenance) use the page language; text you write is never translated. Unknown codes fall back to English.
 
@@ -97,9 +98,9 @@ A component is a public service. It can link to an internal service without publ
 
 | Field | Purpose |
 |---|---|
-| **Basics** | Name, optional description, status. Status is manual until you link a monitor |
+| **Basics** | Name, optional description, status. Without linked monitors, you and your status updates set it |
 | **Monitors** | Linked monitors, aggregation method and **Failing monitors required**. **Weighted average** takes a weight of 1 to 100 per monitor |
-| **Publish outage and recovery incidents automatically** | Optional, off by default |
+| **Publish outage and recovery incidents automatically** | Optional, off by default. Posts a public update and notifies subscribers |
 | **Visibility** | Show on the public page, show only while degraded, link an internal service (never published) |
 
 ![Add Component](/screenshots/status-page-add-component.png)
@@ -123,7 +124,14 @@ flowchart LR
 
 Component statuses: **Operational** (green), **Degraded Performance** (yellow), **Partial Outage** (orange), **Major Outage** (red), **Under Maintenance** (blue, scheduled maintenance in progress).
 
-**Uptime** is successful checks divided by total checks over the last 90 UTC days. Days without checks show no data. It is check-based, not a time-weighted SLA. The banner and badge use showcased components, including those hidden while healthy.
+Each component shows 90 UTC days of bars and an uptime figure. The legend lists only the colours on screen.
+
+| Component | Bars | Uptime |
+|---|---|---|
+| **With linked monitors** | Coloured by the day's checks. Days without checks show no data | Successful checks divided by total checks |
+| **Without monitors** | Green unless a status update affected it. Yellow for any downtime or degraded time, red from an hour of downtime in a day, blue for maintenance. Grey before the component was created | Time in the status the update set: **Major Outage** counts fully, **Partial Outage** 30%, degraded and maintenance not at all |
+
+Without monitors, a status you set by hand with no open update colours only today and is not counted in uptime, and an update posted already resolved has no duration, so it is listed but not drawn. The banner and badge use showcased components, including those hidden while healthy.
 
 <Accordions>
 <Accordion title="Edge cases" id="component-edge-cases">
@@ -190,7 +198,7 @@ A linked SRE incident stays private: investigation notes and evidence are never 
 
 ## Subscribers
 
-Visitors can follow the whole page or pick components and incidents. Turn channels on or off in **Settings → Subscriptions**. Subscribers are notified of created, updated and resolved updates and maintenance updates, only when **Notify subscribers** was selected.
+Visitors can follow the whole page or choose **Only specific components** (shown when the page has more than one). To follow a single incident, they open it and choose **Subscribe**; this needs incident subscriptions in **Settings → Subscriptions**. Turn channels on or off in **Settings → Subscriptions**. Subscribers are notified of created, updated and resolved updates and maintenance updates, only when **Notify subscribers** was selected.
 
 ```mermaid
 sequenceDiagram

@@ -29,7 +29,7 @@ test.describe('public pages', () => {
 });
 
 /**
- * One frame per app route, keyed by its folder under app/src/app/(main). `dark` adds a
+ * One frame per app route, keyed by its folder under app/src/app/(main) or (preview). `dark` adds a
  * dark-theme frame for the pages people look at most. Every route must appear here or in
  * SKIPPED, so a new page cannot silently miss the review gallery.
  */
@@ -94,8 +94,9 @@ async function firstId(api: APIRequestContext, url: string, key: string): Promis
   return id as string;
 }
 
-const APP_ROUTES = path.resolve(__dirname, '../../../src/app/(main)');
-function appRoutes(dir = APP_ROUTES, prefix = ''): string[] {
+// Signed-in app pages: the app shell, and the status page preview shown without it.
+const APP_ROUTE_GROUPS = ['(main)', '(preview)'].map((group) => path.resolve(__dirname, '../../../src/app', group));
+function appRoutes(dir: string, prefix = ''): string[] {
   return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
     if (!entry.isDirectory()) return /^page\.(tsx?|jsx?|mdx)$/.test(entry.name) ? [prefix || '/'] : [];
     // Private folders and parallel-route slots are not URL segments of their own pages.
@@ -109,7 +110,7 @@ function appRoutes(dir = APP_ROUTES, prefix = ''): string[] {
 
 test('every app route is in the tour or skipped with a reason', () => {
   const covered = new Set([...PAGES.map((p) => p.route), ...Object.keys(SKIPPED)]);
-  const routes = appRoutes();
+  const routes = APP_ROUTE_GROUPS.flatMap((group) => appRoutes(group));
   expect(routes.length).toBeGreaterThan(10);
   expect(routes.filter((route) => !covered.has(route)), 'Add these routes to PAGES or SKIPPED in app-tour.spec.ts').toEqual([]);
   expect([...covered].filter((route) => !routes.includes(route)), 'These routes no longer exist').toEqual([]);

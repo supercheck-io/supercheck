@@ -4,6 +4,7 @@ import { useState } from "react";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
@@ -39,7 +40,8 @@ import {
 
 type SubscribeDialogProps = {
   components?: Array<{ id: string; name: string }>;
-  incidents?: Array<{ id: string; name: string }>;
+  /** Follow one incident only (from its page): no scope choice and no page-wide feeds. */
+  incident?: { id: string; name: string };
   allowIncidentSubscribers?: boolean;
   allowPageSubscribers?: boolean;
   allowEmailSubscribers?: boolean;
@@ -89,7 +91,7 @@ const createSlackSchema = (t: TranslationKeys) =>
 
 export function SubscribeDialog({
   components = [],
-  incidents = [],
+  incident,
   allowIncidentSubscribers = false,
   allowPageSubscribers = true,
   allowEmailSubscribers = true,
@@ -102,8 +104,9 @@ export function SubscribeDialog({
   trigger,
 }: SubscribeDialogProps) {
   const [scoped, setScoped] = useState(false);
-  const [selectedComponentIds, setSelectedComponentIds] = useState<string[]>([]);
-  const [selectedIncidentIds, setSelectedIncidentIds] = useState<string[]>([]);
+  const [selectedComponentIds, setSelectedComponentIds] = useState<string[]>(
+    [],
+  );
   const [open, setOpen] = useState(false);
   const [mode, setMode] = useState<SubscriptionMode>(
     allowPageSubscribers && allowEmailSubscribers
@@ -124,6 +127,69 @@ export function SubscribeDialog({
     useState(false);
 
   const t = getTranslations(language);
+  // One incident, the chosen components (with their incidents), or the whole page.
+  const scope = incident
+    ? {
+        subscribeToAllComponents: false,
+        subscribeToAllIncidents: false,
+        selectedComponentIds: [],
+        selectedIncidentIds: [incident.id],
+      }
+    : {
+        subscribeToAllComponents: !scoped,
+        subscribeToAllIncidents: allowIncidentSubscribers && !scoped,
+        selectedComponentIds: scoped ? selectedComponentIds : [],
+        selectedIncidentIds: [],
+      };
+  const showFeeds = allowRssFeed && !incident;
+  const tabCount = [
+    allowPageSubscribers && allowEmailSubscribers,
+    allowPageSubscribers && allowSlackSubscribers,
+    allowPageSubscribers && allowWebhookSubscribers,
+    showFeeds,
+    showFeeds,
+  ].filter(Boolean).length;
+  // Choosing components only makes sense with several of them, and never when following one incident.
+  const scopePicker = !incident && components.length > 1 && (
+    <div className="space-y-3 rounded-lg border p-3">
+      <div className="flex items-center gap-2">
+        <Checkbox
+          id="subscription-scope"
+          checked={scoped}
+          onCheckedChange={(value) => setScoped(value === true)}
+        />
+        <Label htmlFor="subscription-scope" className="font-normal">
+          {t.chooseSubscriptions}
+        </Label>
+      </div>
+      {scoped && (
+        <div className="grid max-h-48 gap-x-4 gap-y-2 overflow-y-auto border-t pt-3 sm:grid-cols-2">
+          {components.map((component) => (
+            <div key={component.id} className="flex min-w-0 items-center gap-2">
+              <Checkbox
+                id={`subscribe-component-${component.id}`}
+                checked={selectedComponentIds.includes(component.id)}
+                onCheckedChange={(value) =>
+                  setSelectedComponentIds((ids) =>
+                    value
+                      ? [...ids, component.id]
+                      : ids.filter((id) => id !== component.id),
+                  )
+                }
+              />
+              <Label
+                htmlFor={`subscribe-component-${component.id}`}
+                className="truncate font-normal"
+                title={component.name}
+              >
+                {component.name}
+              </Label>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 
   const emailSchema = createEmailSchema(t);
   const webhookSchema = createWebhookSchema(t);
@@ -150,7 +216,8 @@ export function SubscribeDialog({
     slackForm.reset();
     setCopiedToClipboard(null);
     setIsSuccess(false);
-    setScoped(false); setSelectedComponentIds([]); setSelectedIncidentIds([]);
+    setScoped(false);
+    setSelectedComponentIds([]);
     setWebhookSecret(null);
     setWebhookVerificationPending(false);
   };
@@ -167,16 +234,16 @@ export function SubscribeDialog({
     data: z.infer<ReturnType<typeof createEmailSchema>>,
   ) => {
     if (!allowPageSubscribers || !allowEmailSubscribers) return;
-    if (scoped && selectedComponentIds.length === 0 && selectedIncidentIds.length === 0) { toast.error(t.selectSubscriptionTarget); return; }
+    if (!incident && scoped && selectedComponentIds.length === 0) {
+      toast.error(t.selectSubscriptionTarget);
+      return;
+    }
     setIsSubmitting(true);
     try {
       const result = await subscribeToStatusPage({
         statusPageId,
         email: data.email,
-        subscribeToAllComponents: !scoped,
-        subscribeToAllIncidents: allowIncidentSubscribers && !scoped,
-        selectedComponentIds: scoped ? selectedComponentIds : [],
-        selectedIncidentIds: scoped && allowIncidentSubscribers ? selectedIncidentIds : [],
+        ...scope,
         subscriptionMode: "email",
       });
 
@@ -208,7 +275,10 @@ export function SubscribeDialog({
     data: z.infer<ReturnType<typeof createWebhookSchema>>,
   ) => {
     if (!allowPageSubscribers || !allowWebhookSubscribers) return;
-    if (scoped && selectedComponentIds.length === 0 && selectedIncidentIds.length === 0) { toast.error(t.selectSubscriptionTarget); return; }
+    if (!incident && scoped && selectedComponentIds.length === 0) {
+      toast.error(t.selectSubscriptionTarget);
+      return;
+    }
     setIsSubmitting(true);
     try {
       const result = await subscribeToStatusPage({
@@ -216,10 +286,7 @@ export function SubscribeDialog({
         endpoint: data.webhookUrl,
         subscriptionMode: "webhook",
         description: data.webhookDescription,
-        subscribeToAllComponents: !scoped,
-        subscribeToAllIncidents: allowIncidentSubscribers && !scoped,
-        selectedComponentIds: scoped ? selectedComponentIds : [],
-        selectedIncidentIds: scoped && allowIncidentSubscribers ? selectedIncidentIds : [],
+        ...scope,
       });
 
       if (result.success) {
@@ -248,17 +315,17 @@ export function SubscribeDialog({
     data: z.infer<ReturnType<typeof createSlackSchema>>,
   ) => {
     if (!allowPageSubscribers || !allowSlackSubscribers) return;
-    if (scoped && selectedComponentIds.length === 0 && selectedIncidentIds.length === 0) { toast.error(t.selectSubscriptionTarget); return; }
+    if (!incident && scoped && selectedComponentIds.length === 0) {
+      toast.error(t.selectSubscriptionTarget);
+      return;
+    }
     setIsSubmitting(true);
     try {
       const result = await subscribeToStatusPage({
         statusPageId,
         endpoint: data.slackWebhookUrl,
         subscriptionMode: "slack",
-        subscribeToAllComponents: !scoped,
-        subscribeToAllIncidents: allowIncidentSubscribers && !scoped,
-        selectedComponentIds: scoped ? selectedComponentIds : [],
-        selectedIncidentIds: scoped && allowIncidentSubscribers ? selectedIncidentIds : [],
+        ...scope,
       });
 
       if (result.success) {
@@ -314,7 +381,7 @@ export function SubscribeDialog({
         allowWebhookSubscribers ||
         allowSlackSubscribers
       )) &&
-    !allowRssFeed
+    !showFeeds
   )
     return null;
 
@@ -334,6 +401,11 @@ export function SubscribeDialog({
           <DialogTitle className="text-xl font-semibold">
             {t.subscribeToUpdates}
           </DialogTitle>
+          {incident && (
+            <DialogDescription className="line-clamp-2">
+              {incident.name}
+            </DialogDescription>
+          )}
         </DialogHeader>
 
         {isSuccess ? (
@@ -385,17 +457,16 @@ export function SubscribeDialog({
           </div>
         ) : (
           <div className="space-y-4">
-            {mode !== "rss" && mode !== "ical" && (components.length > 0 || (allowIncidentSubscribers && incidents.length > 0)) && <fieldset className="space-y-2 rounded-md border p-3">
-              <legend className="px-1 text-sm font-medium">{t.subscribeToUpdates}</legend>
-              <div className="flex items-center gap-2"><Checkbox id="subscription-scope" checked={scoped} onCheckedChange={(value) => setScoped(value === true)} /><Label htmlFor="subscription-scope">{t.chooseSubscriptions}</Label></div>
-              {!scoped && <p className="text-sm text-muted-foreground">{t.allPageUpdates}</p>}
-              {scoped && <div className="max-h-40 space-y-2 overflow-y-auto">{components.map((component) => <div key={component.id} className="flex items-center gap-2"><Checkbox id={`subscribe-component-${component.id}`} checked={selectedComponentIds.includes(component.id)} onCheckedChange={(value) => setSelectedComponentIds((ids) => value ? [...ids, component.id] : ids.filter((id) => id !== component.id))} /><Label htmlFor={`subscribe-component-${component.id}`}>{component.name}</Label></div>)}{allowIncidentSubscribers && incidents.map((incident) => <div key={incident.id} className="flex items-center gap-2"><Checkbox id={`subscribe-incident-${incident.id}`} checked={selectedIncidentIds.includes(incident.id)} onCheckedChange={(value) => setSelectedIncidentIds((ids) => value ? [...ids, incident.id] : ids.filter((id) => id !== incident.id))} /><Label htmlFor={`subscribe-incident-${incident.id}`}>{incident.name}</Label></div>)}</div>}
-            </fieldset>}
             <Tabs
               value={mode}
               onValueChange={(v) => setMode(v as SubscriptionMode)}
             >
-              <TabsList className="grid h-auto w-full grid-cols-2 gap-1 bg-muted/80 p-1 text-foreground sm:flex sm:flex-wrap">
+              <TabsList
+                className="grid h-auto w-full gap-1 bg-muted/80 p-1 text-foreground"
+                style={{
+                  gridTemplateColumns: `repeat(${tabCount}, minmax(0, 1fr))`,
+                }}
+              >
                 {allowPageSubscribers && allowEmailSubscribers && (
                   <TabsTrigger
                     value="email"
@@ -403,7 +474,9 @@ export function SubscribeDialog({
                     title={t.email}
                   >
                     <Mail className={tabIconClassName} />
-                    <span className="truncate">{t.email}</span>
+                    <span className="sr-only truncate sm:not-sr-only">
+                      {t.email}
+                    </span>
                   </TabsTrigger>
                 )}
                 {allowPageSubscribers && allowSlackSubscribers && (
@@ -413,7 +486,9 @@ export function SubscribeDialog({
                     title={t.slack}
                   >
                     <Slack className={tabIconClassName} />
-                    <span className="truncate">{t.slack}</span>
+                    <span className="sr-only truncate sm:not-sr-only">
+                      {t.slack}
+                    </span>
                   </TabsTrigger>
                 )}
                 {allowPageSubscribers && allowWebhookSubscribers && (
@@ -423,27 +498,33 @@ export function SubscribeDialog({
                     title={t.webhook}
                   >
                     <Webhook className={tabIconClassName} />
-                    <span className="truncate">{t.webhook}</span>
+                    <span className="sr-only truncate sm:not-sr-only">
+                      {t.webhook}
+                    </span>
                   </TabsTrigger>
                 )}
-                {allowRssFeed && (
+                {showFeeds && (
                   <TabsTrigger
                     value="rss"
                     className={tabTriggerClassName}
                     title={t.rssFeed}
                   >
                     <Rss className={tabIconClassName} />
-                    <span className="truncate">{t.rssFeed}</span>
+                    <span className="sr-only truncate sm:not-sr-only">
+                      {t.rssFeed}
+                    </span>
                   </TabsTrigger>
                 )}
-                {allowRssFeed && (
+                {showFeeds && (
                   <TabsTrigger
                     value="ical"
                     className={tabTriggerClassName}
                     title={t.calendarFeed}
                   >
                     <Calendar className={tabIconClassName} />
-                    <span className="truncate">{t.calendarFeed}</span>
+                    <span className="sr-only truncate sm:not-sr-only">
+                      {t.calendarFeed}
+                    </span>
                   </TabsTrigger>
                 )}
               </TabsList>
@@ -460,6 +541,7 @@ export function SubscribeDialog({
                   onSubmit={emailForm.handleSubmit(handleEmailSubscribe)}
                   className="space-y-4"
                 >
+                  {scopePicker}
                   <div className="space-y-2">
                     <Label htmlFor="email" className="text-sm font-medium">
                       {t.emailAddress}
@@ -510,6 +592,7 @@ export function SubscribeDialog({
                   onSubmit={slackForm.handleSubmit(handleSlackSubscribe)}
                   className="space-y-4"
                 >
+                  {scopePicker}
                   <div className="space-y-2">
                     <Label
                       htmlFor="slack-webhook-url"
@@ -599,6 +682,7 @@ export function SubscribeDialog({
                   onSubmit={webhookForm.handleSubmit(handleWebhookSubscribe)}
                   className="space-y-4"
                 >
+                  {scopePicker}
                   <div className="space-y-2">
                     <Label
                       htmlFor="webhook-url"

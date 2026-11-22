@@ -185,10 +185,16 @@ export async function GET(
 
         const startDate = incident.scheduledFor || incident.createdAt || new Date();
         // Open incidents get a stable one-hour DTEND; "now" would change on every poll.
+        // Maintenance resolved before it began was cancelled; resolved early, it ends at the resolution.
+        const cancelled = Boolean(incident.scheduledFor && incident.resolvedAt && incident.resolvedAt <= incident.scheduledFor);
         const endDate =
-          incident.scheduledUntil ||
+          (!cancelled && incident.scheduledUntil && incident.resolvedAt && incident.resolvedAt < incident.scheduledUntil
+            ? incident.resolvedAt
+            : incident.scheduledUntil) ||
           incident.resolvedAt ||
           new Date(startDate.getTime() + 60 * 60 * 1000);
+        // RFC 5545 needs DTEND after DTSTART; an update posted already resolved has no duration.
+        const safeEndDate = endDate > startDate ? endDate : new Date(startDate.getTime() + 60 * 60 * 1000);
 
         // Build description
         const descriptionParts: string[] = [];
@@ -209,14 +215,14 @@ export async function GET(
             `UID:${generateUid(incident.id, domain)}`
           ),
           `DTSTART:${toICalDate(startDate)}`,
-          `DTEND:${toICalDate(endDate)}`,
+          `DTEND:${toICalDate(safeEndDate)}`,
           `DTSTAMP:${toICalDate(new Date())}`,
           foldLine(
             `SUMMARY:${escapeIcalText(`[${incident.impact.toUpperCase()}] ${incident.name}`)}`
           ),
           foldLine(`DESCRIPTION:${escapeIcalText(description)}`),
           foldLine(`URL:${incidentUrl}`),
-          `STATUS:${incident.status === "resolved" ? "CONFIRMED" : "TENTATIVE"}`,
+          `STATUS:${cancelled ? "CANCELLED" : incident.status === "resolved" ? "CONFIRMED" : "TENTATIVE"}`,
           `CATEGORIES:${escapeIcalText(incident.impact)}`,
           "END:VEVENT",
         ];

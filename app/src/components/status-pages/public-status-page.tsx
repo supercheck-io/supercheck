@@ -26,12 +26,14 @@ import {
 } from "@/lib/status-page-translations";
 import { SupportContactButton } from "./support-contact-button";
 import {
-  checkUptimePercentage,
+  buildUptimeDays,
+  type BarLevel,
   type DailyCheckCounts,
+  type UptimeDay,
 } from "@/lib/status-page-uptime";
 import { StatusPageBranding } from "./status-page-branding";
 import { formatMaintenanceWindow } from "@/lib/incident-schedule";
-import { readableTextOn, resolveBranding } from "@/lib/status-page-branding";
+import { bannerColors, resolveBranding } from "@/lib/status-page-branding";
 import { IMPACT_BANNER_STATUS } from "@/lib/incident-impact";
 
 // Hex, because component colors get a hex alpha suffix below.
@@ -84,6 +86,10 @@ type StatusPage = {
 
 type Component = {
   dailyMetrics?: DailyCheckCounts[];
+  /** Linked monitors set the status and the bars; otherwise the bars come from status updates. */
+  monitored?: boolean;
+  startDate?: Date | null;
+  createdAt?: Date | null;
   /** Every linked monitor stopped reporting, so the stored status is stale; it does not count toward the page status. */
   noRecentData?: boolean;
   id: string;
@@ -110,7 +116,9 @@ type Incident = {
   affectedComponents?: Array<{
     id: string;
     name: string;
+    newStatus?: string | null;
   }>;
+  updatedAt?: Date | null;
 };
 
 // Overrides the themed Tailwind colours when the owner configured a custom background.
@@ -129,6 +137,8 @@ type PublicStatusPageProps = {
   idOrSubdomain: string;
   hideBranding?: boolean;
   isPublicView?: boolean;
+  /** When the server read the data; the bars use it so server and browser draw the same days. */
+  readAt?: string;
   isCustomDomain?: boolean;
   /** URL prefix for custom-domain links. Empty string for proxy-rewritten requests, full internal path for direct access. */
   customDomainRoutePrefix?: string;
@@ -145,6 +155,7 @@ export function PublicStatusPage({
   isCustomDomain = false,
   customDomainRoutePrefix = "",
   language,
+  readAt,
 }: PublicStatusPageProps) {
   const [currentPage, setCurrentPage] = useState(1);
   const DAYS_PER_PAGE = 7;
@@ -307,15 +318,23 @@ export function PublicStatusPage({
 
   const statusDisplay = getSystemStatusDisplay();
   const StatusIcon = statusDisplay.icon;
-  // Owner colours are bright mid-tones; white text on them is often below 4.5:1.
-  const bannerText = readableTextOn(statusDisplay.bgColor);
+  // Bright status colours fail 4.5:1 with white text; the banner darkens them slightly instead.
+  const banner = bannerColors(statusDisplay.bgColor);
   const noDataColor = branding.noData || NO_DATA_COLOR;
-  const legend = [
-    { label: t.operational, color: colors.green },
-    { label: t.legendSomeDowntime, color: colors.yellow },
-    { label: t.legendDown, color: colors.red },
-    { label: t.legendNoData, color: noDataColor },
-  ];
+  const levelColor: Record<BarLevel, string> = {
+    operational: colors.green,
+    minor: colors.yellow,
+    critical: colors.red,
+    maintenance: colors.blue,
+    nodata: noDataColor,
+  };
+  const levelLabel: Record<BarLevel, string> = {
+    operational: t.operational,
+    minor: t.legendSomeDowntime,
+    critical: t.legendDown,
+    maintenance: t.legendMaintenance,
+    nodata: t.legendNoData,
+  };
 
   // Filter components to show
   const visibleComponents = components.filter((component) => {
@@ -325,50 +344,67 @@ export function PublicStatusPage({
     return true;
   });
 
-  // UTC days with observed checks. Missing checks never imply 100% uptime.
-  const generateUptimeData = (componentId?: string): UptimeDayData[] => {
-    const metrics =
-      components.find((component) => component.id === componentId)
-        ?.dailyMetrics ?? [];
-    const today = new Date();
-    today.setUTCHours(0, 0, 0, 0);
-    return Array.from({ length: 90 }, (_, index) => {
-      const date = new Date(today);
-      date.setUTCDate(date.getUTCDate() - 89 + index);
-      const metric = metrics.find(
-        (day) => day.date === date.toISOString().slice(0, 10),
-      );
-      const uptime = checkUptimePercentage(metric ? [metric] : []);
-      return {
-        date,
-        uptime,
-        status: uptime === null ? "nodata" : uptime === 100 ? "up" : "incident",
-      };
+  // Monitored components: the checks of their linked monitors. Others: the status updates that affected them.
+  const now = readAt ? new Date(readAt) : renderedAt;
+  const openStatuses = new Set(
+    activeIncidents.flatMap((incident) => incident.affectedComponents?.map((affected) => affected.id) ?? []),
+  );
+  const uptimeFor = (component: Component) =>
+    buildUptimeDays({
+      now,
+      startedAt: component.startDate ?? component.createdAt ?? statusPage.createdAt,
+      incidents: incidents.flatMap((incident) => {
+        const affected = incident.affectedComponents?.find((entry) => entry.id === component.id);
+        return affected ? [{ ...incident, componentStatus: affected.newStatus }] : [];
+      }),
+      metrics: component.monitored ? (component.dailyMetrics ?? []) : undefined,
+      // An open update already times the current status; otherwise it was set by hand.
+      currentStatus: component.monitored || openStatuses.has(component.id) ? undefined : component.status,
     });
-  };
 
-  type UptimeDayData = {
-    date: Date;
-    uptime: number | null;
-    status: "up" | "incident" | "nodata";
+  const uptimeRows = new Map(visibleComponents.map((component) => [component.id, uptimeFor(component)]));
+  // Operational always; the rest only when a bar uses them, so the legend explains what is on screen.
+  const legendLevels = (["operational", "minor", "critical", "maintenance", "nodata"] as BarLevel[]).filter(
+    (level) => level === "operational" || [...uptimeRows.values()].some((row) => row.days.some((day) => day.level === level)),
+  );
+
+  const DayDetails = ({ day }: { day: UptimeDay }) => {
+    if (day.level === "nodata") {
+      return <div className="text-gray-300">{t.noDataAvailable}</div>;
+    }
+    return (
+      <div className="space-y-1.5">
+        {day.uptime !== null ? (
+          <div>
+            {day.uptime.toFixed(2)}% {t.uptime}
+          </div>
+        ) : day.incidents.length === 0 ? (
+          <div className="text-gray-300">{t.noDowntimeRecorded}</div>
+        ) : null}
+        {day.incidents.slice(0, 3).map((incident) => (
+          <div key={incident.id} className="flex items-start gap-2">
+            <span
+              className="mt-1 h-2 w-2 flex-shrink-0 rounded-full"
+              style={{
+                backgroundColor: levelColor[incident.level] }}
+              aria-hidden="true"
+            />
+            <span className="line-clamp-2">{incident.name}</span>
+          </div>
+        ))}
+        {day.incidents.length > 3 && (
+          <div className="text-gray-300">+{day.incidents.length - 3}</div>
+        )}
+      </div>
+    );
   };
 
   const UptimeBar = ({
     data,
   }: {
-    data: ReturnType<typeof generateUptimeData>;
+    data: UptimeDay[];
   }) => {
     const [hoveredDay, setHoveredDay] = useState<number | null>(null);
-
-    const getBarColor = (day: UptimeDayData) => {
-      if (day.status === "nodata") {
-        return "bg-gray-400 dark:bg-gray-600 hover:bg-gray-500 dark:hover:bg-gray-500";
-      }
-
-      if (day.uptime === 100) return colors.green;
-      if (day.uptime === 0) return colors.red;
-      return colors.yellow;
-    };
 
     return (
       <div className="relative">
@@ -378,8 +414,7 @@ export function PublicStatusPage({
               key={index}
               className="h-6 sm:h-8 md:h-10 flex-1 relative cursor-pointer transition-all duration-200 hover:opacity-80 rounded-[1px]"
               style={{
-                backgroundColor:
-                  day.status === "nodata" ? noDataColor : getBarColor(day),
+                backgroundColor: levelColor[day.level],
               }}
               onMouseEnter={() => setHoveredDay(index)}
               onMouseLeave={() => setHoveredDay(null)}
@@ -410,15 +445,7 @@ export function PublicStatusPage({
               {uptimeDateFormatter.format(data[hoveredDay].date)}
             </div>
 
-            {data[hoveredDay].status === "nodata" ? (
-              <div className="text-gray-300 dark:text-gray-400">
-                {t.noDataAvailable}
-              </div>
-            ) : (
-              <div>
-                {data[hoveredDay].uptime?.toFixed(2)}% {t.uptime}
-              </div>
-            )}
+            <DayDetails day={data[hoveredDay]} />
 
             {/* Tooltip arrow */}
             <div className="absolute -top-1.5 left-1/2 transform -translate-x-1/2 w-3 h-3 rotate-45 bg-gray-900 dark:bg-gray-800"></div>
@@ -568,7 +595,6 @@ export function PublicStatusPage({
             />
             <SubscribeDialog
               components={components.filter((component) => component.showcase)}
-              incidents={incidents}
               allowIncidentSubscribers={
                 statusPage.allowIncidentSubscribers ?? false
               }
@@ -601,9 +627,9 @@ export function PublicStatusPage({
         {/* Current Status Banner */}
         <div
           className="rounded-xl p-4 sm:p-6 shadow-sm"
-          style={{ backgroundColor: statusDisplay.bgColor }}
+          style={{ backgroundColor: banner.background }}
         >
-          <div className="flex flex-wrap items-center gap-3 sm:flex-nowrap sm:gap-4" style={{ color: bannerText }}>
+          <div className="flex flex-wrap items-center gap-3 sm:flex-nowrap sm:gap-4" style={{ color: banner.text }}>
             <div className="flex items-center justify-center w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-white/25 flex-shrink-0">
               <StatusIcon className="h-5 w-5 sm:h-6 sm:w-6" />
             </div>
@@ -611,9 +637,9 @@ export function PublicStatusPage({
               <h2 className="text-lg sm:text-2xl font-semibold truncate">
                 {statusDisplay.text}
               </h2>
-              <p className="text-xs sm:text-sm mt-0.5 opacity-90">{statusDisplay.subtext}</p>
+              <p className="text-xs sm:text-sm mt-0.5">{statusDisplay.subtext}</p>
             </div>
-            <p className="w-full shrink-0 text-xs opacity-90 sm:w-auto sm:self-end" suppressHydrationWarning data-testid="status-updated-at">
+            <p className="w-full shrink-0 text-xs sm:w-auto sm:self-end" suppressHydrationWarning data-testid="status-updated-at">
               {updatedAtLabel}
             </p>
           </div>
@@ -667,14 +693,8 @@ export function PublicStatusPage({
                 const componentStatus = component.noRecentData
                   ? { icon: CircleDashed, text: t.noRecentData, color: NO_DATA_COLOR }
                   : getComponentStatusDisplay(component.status);
-                // Generate uptime data specific to this component
-                const uptimeData = generateUptimeData(component.id);
-                // Same 90 days as the bar, so the percentage and the day count never disagree.
-                const windowDates = new Set(uptimeData.map((day) => day.date.toISOString().slice(0, 10)));
-                const uptimePercentage = checkUptimePercentage(
-                  (component.dailyMetrics ?? []).filter((day) => windowDates.has(day.date)),
-                );
-                const daysWithData = uptimeData.filter((day) => day.status !== "nodata").length;
+                const { days: uptimeData, uptime: uptimePercentage } = uptimeRows.get(component.id)!;
+                const daysWithData = uptimeData.filter((day) => day.level !== "nodata").length;
 
                 return (
                   <div key={component.id} className="p-3 sm:p-5">
@@ -708,9 +728,10 @@ export function PublicStatusPage({
                       <UptimeBar data={uptimeData} />
                       <div className="flex items-center justify-between text-[10px] sm:text-xs sp-muted text-gray-500 dark:text-gray-400">
                         <span>{t.daysAgo}</span>
-                        <span className="text-center">
+                        {/* Time-based uptime moves between the server render and hydration. */}
+                        <span className="text-center" suppressHydrationWarning>
                           {uptimePercentage === null
-                            ? t.noDataAvailable
+                            ? t.legendNoData
                             : `${uptimePercentage.toFixed(2)}% ${t.uptime}`}
                           {/* Grey days are left out of the percentage, so say how many days it covers. */}
                           {uptimePercentage !== null && daysWithData < 90 && (
@@ -731,10 +752,10 @@ export function PublicStatusPage({
           )}
           {visibleComponents.length > 0 && (
             <ul className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs sp-muted text-gray-600 dark:text-gray-400" data-testid="uptime-legend">
-              {legend.map(({ label, color }) => (
-                <li key={label} className="flex items-center gap-1.5">
-                  <span className="h-3 w-3 rounded-[2px]" style={{ backgroundColor: color }} aria-hidden="true" />
-                  {label}
+              {legendLevels.map((level) => (
+                <li key={level} className="flex items-center gap-1.5">
+                  <span className="h-3 w-3 rounded-[2px]" style={{ backgroundColor: levelColor[level] }} aria-hidden="true" />
+                  {levelLabel[level]}
                 </li>
               ))}
             </ul>
@@ -773,6 +794,8 @@ export function PublicStatusPage({
               const date = subDays(new Date(), i);
               const dateKey = format(date, "yyyy-MM-dd");
               const dayIncidents = incidentsByDate.get(dateKey) || [];
+              // Today with nothing resolved yet but an open incident above: no empty heading.
+              if (i === 0 && dayIncidents.length === 0 && activeIncidents.length > 0) continue;
               allDays.push({ date, incidents: dayIncidents });
             }
 
@@ -798,8 +821,7 @@ export function PublicStatusPage({
                       </h3>
 
                       {dayIncidents.length === 0 ? (
-                        // Today is not "incident free" while an unresolved incident is listed above.
-                        isSameDay(date, new Date()) && activeIncidents.length > 0 ? null : <p className="sp-muted text-gray-500 dark:text-gray-400 text-sm">
+                        <p className="sp-muted text-gray-500 dark:text-gray-400 text-sm">
                           {isSameDay(date, new Date()) ? t.noIncidentsReportedToday : `${t.noIncidentsReported}.`}
                         </p>
                       ) : (

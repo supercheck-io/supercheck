@@ -7,7 +7,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
-  ExternalLink,
   Upload,
   EyeOff,
   Loader2,
@@ -21,12 +20,12 @@ import {
   Settings2,
   AlertTriangle,
 } from "lucide-react";
-import Link from "next/link";
 import { ComponentsTab } from "./components-tab";
 import { IncidentsTab } from "./incidents-tab";
 import { SubscribersTab } from "./subscribers-tab";
 import { SettingsTab } from "./settings-tab";
 import { StatusPageInfoPopover } from "./status-page-info-popover";
+import { StatusPagePreview } from "./status-page-preview";
 
 import {
   publishStatusPage,
@@ -331,18 +330,10 @@ export function StatusPageDetail({
             ) : null}
           </div>
           <div className="flex flex-wrap gap-2 sm:flex-shrink-0 sm:justify-end sm:gap-3">
-            <Button
-              asChild
-              variant="outline"
-              size="default"
-              className="border-2 hover:bg-muted"
-            >
-              <Link href={`/status-pages/${statusPage.id}/public`}>
-                <ExternalLink className="h-4 w-4 mr-2" />
-                <span className="hidden sm:inline">Preview</span>
-                <span className="sm:hidden">View</span>
-              </Link>
-            </Button>
+            <StatusPagePreview
+              statusPageId={statusPage.id}
+              statusPageName={statusPage.name}
+            />
             {statusPage.status !== "archived" && (
               <Button
                 variant="outline"

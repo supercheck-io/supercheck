@@ -64,6 +64,20 @@ export function readableTextOn(background: string | null | undefined): string {
 }
 
 /**
+ * Fill and text for a solid status banner. Darkens the owner's colour (at most 35%, so the hue stays recognisable)
+ * until white text reaches 4.5:1; colours that would need more, such as yellow, keep their fill with dark text.
+ */
+export function bannerColors(background: string | null | undefined): { background: string; text: string } {
+  const hex = normalizeHexColor(background);
+  if (!hex) return { background: background ?? "#111827", text: readableTextOn(background) };
+  for (let darken = 0; darken <= 35; darken++) {
+    const fill = mix(hex, "#000000", 1 - darken / 100);
+    if (contrastRatio("#ffffff", fill) >= MIN_TEXT_CONTRAST) return { background: fill, text: "#ffffff" };
+  }
+  return { background: hex, text: readableTextOn(hex) };
+}
+
+/**
  * Colours are applied only when the owner customised the page background: a custom font
  * alone cannot be checked against the viewer's light/dark theme, so it keeps the theme.
  * Text that fails WCAG AA against the custom background falls back to black or white.

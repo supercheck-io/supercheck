@@ -226,3 +226,18 @@ export function isReservedStatusPageHostname(
     normalizedHostname.endsWith(`.${normalizedBaseDomain}`)
   );
 }
+
+/** The `[hostname]` route segment; a malformed escape gives "" so the lookup 404s instead of throwing. */
+export function decodeHostnameParam(raw: string): string {
+  try {
+    return decodeURIComponent(raw).trim().toLowerCase().replace(/\.$/, "");
+  } catch {
+    return "";
+  }
+}
+
+/** The client-facing host, cleaned the way the proxy cleans it: first forwarded entry, no port, no trailing dot. */
+export function requestHostname(headers: { get(name: string): string | null }): string {
+  const raw = headers.get("x-forwarded-host")?.split(",")[0].trim() || headers.get("host") || "";
+  return raw.replace(/:\d+$/, "").toLowerCase().replace(/\.$/, "");
+}

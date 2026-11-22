@@ -1,4 +1,4 @@
-import { contrastRatio, normalizeHexColor, readableTextOn, resolveBranding } from "./status-page-branding";
+import { bannerColors, contrastRatio, normalizeHexColor, readableTextOn, resolveBranding } from "./status-page-branding";
 
 describe("resolveBranding", () => {
   it("keeps the theme for stored defaults and nulls", () => {
@@ -68,4 +68,25 @@ describe("readableTextOn", () => {
     expect(readableTextOn("#14532d")).toBe("#ffffff");
     expect(readableTextOn("green")).toBe("#111827");
   });
+});
+
+describe("bannerColors", () => {
+  it("darkens the default status colours just enough for white text", () => {
+    for (const bg of ["#2ecc71", "#e67e22", "#3498db", "#e74c3c"]) {
+      const { background, text } = bannerColors(bg);
+      expect(text).toBe("#ffffff");
+      expect(contrastRatio(text, background)).toBeGreaterThanOrEqual(4.5);
+    }
+    expect(bannerColors("#e74c3c").background).not.toBe("#1e874b");
+  });
+
+  it("keeps a light colour such as yellow with dark text instead of turning it brown", () => {
+    const { background, text } = bannerColors("#f1c40f");
+    expect(background).toBe("#f1c40f");
+    expect(contrastRatio(text, background)).toBeGreaterThanOrEqual(4.5);
+  });
+});
+
+it("bannerColors keeps an unparseable colour and picks readable text", () => {
+  expect(bannerColors("red")).toEqual({ background: "red", text: readableTextOn("red") });
 });

@@ -9,7 +9,7 @@ import {
   incidentComponents,
   statusPages,
 } from "@/db/schema";
-import { eq, and } from "drizzle-orm";
+import { eq, and, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireProjectContext } from "@/lib/project-context";
@@ -119,7 +119,8 @@ export async function updateIncidentStatus(
         .set({
           status: validatedData.status,
           updatedAt: new Date(),
-          resolvedAt: validatedData.status === "resolved" ? new Date() : null,
+          // A follow-up note on an already resolved incident keeps when it ended.
+          resolvedAt: validatedData.status === "resolved" ? sql`coalesce(${incidents.resolvedAt}, now())` : null,
           ...(validatedData.status === "monitoring"
             ? { monitoringAt: new Date() }
             : {}),
@@ -127,6 +128,7 @@ export async function updateIncidentStatus(
             validatedData.status,
             validatedData.scheduledFor,
             validatedData.scheduledUntil,
+            existingIncident.status,
           ),
         })
         .where(

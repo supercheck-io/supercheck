@@ -1,5 +1,6 @@
 "use server";
 
+import { withOpenIntervals } from "@/lib/status-page-incident-intervals";
 import { db } from "@/utils/db";
 import { incidents, statusPages } from "@/db/schema";
 import { eq, desc, and, or, gte, ne } from "drizzle-orm";
@@ -59,7 +60,7 @@ export async function getPublicIncidents(statusPageId: string) {
     // Previously: fetched components and updates individually per incident in a loop
     // SECURITY: Only select public-safe fields
     const incidentsList = await db.query.incidents.findMany({
-      where: and(eq(incidents.statusPageId, statusPageId), or(ne(incidents.status, "resolved"), gte(incidents.createdAt, new Date(Date.now() - 90 * 86400000)))),
+      where: and(eq(incidents.statusPageId, statusPageId), or(ne(incidents.status, "resolved"), gte(incidents.createdAt, new Date(Date.now() - 90 * 86400000)), gte(incidents.resolvedAt, new Date(Date.now() - 90 * 86400000)))),
       limit: 500,
       columns: {
         id: true,
@@ -113,13 +114,15 @@ export async function getPublicIncidents(statusPageId: string) {
     const incidentsWithDetails = incidentsList.map((incident) => ({
       ...incident,
       affectedComponentsCount: incident.affectedComponents.filter((ic) => ic.component?.showcase).length,
-      affectedComponents: incident.affectedComponents.flatMap((ic) => (ic.component?.showcase ? [{ id: ic.component.id, name: ic.component.name }] : [])),
+      // newStatus: what the component showed during the incident, for the uptime bars.
+      affectedComponents: incident.affectedComponents.flatMap((ic) => (ic.component?.showcase ? [{ id: ic.component.id, name: ic.component.name, newStatus: ic.newStatus }] : [])),
       latestUpdate: incident.updates[0] ? { ...incident.updates[0], createdAt: incident.updates[0].displayAt ?? incident.updates[0].createdAt } : null,
     }));
 
     return {
       success: true,
-      incidents: incidentsWithDetails,
+      // Open periods from the status history, so a reopened incident's resolved gap is not counted as downtime.
+      incidents: await withOpenIntervals(incidentsWithDetails),
     };
   } catch (error) {
     console.error("Error fetching public incidents:", error);

@@ -29,6 +29,7 @@ jest.mock("./incident-notifications/send-slack-notifications", () => ({
 jest.mock("@/lib/project-context", () => ({ requireProjectContext: jest.fn() }));
 jest.mock("@/lib/rbac/middleware", () => ({
   requirePermissions: jest.fn(async () => undefined),
+  checkPermissionWithContext: jest.fn(() => true),
 }));
 jest.mock("@/lib/middleware/plan-enforcement", () => ({ checkSubscriberLimit: jest.fn() }));
 jest.mock("@/lib/webhook-delivery.service", () => ({ sendWebhookVerificationChallenge: jest.fn() }));
@@ -36,8 +37,10 @@ jest.mock("next/cache", () => ({ revalidatePath: jest.fn() }));
 jest.mock("@/lib/audit-logger", () => ({ logAuditEvent: jest.fn() }));
 import { reconcileStatusPages } from "./status-page-reconciliation";
 import { updateIncidentStatus } from "@/actions/update-incident-status";
+import { createStatusPageIncident } from "./status-page-incident-core";
 import { requireProjectContext } from "@/lib/project-context";
 import { getPublicComponents } from "@/actions/get-public-components";
+import { getPublicIncidents } from "@/actions/get-public-incidents";
 import { checkUptimePercentage } from "@/lib/status-page-uptime";
 import { monitorAggregationService } from "@/lib/monitor-aggregation-service";
 import {
@@ -207,6 +210,7 @@ it("uses failed checks for uptime even with no incident", async () => {
   expect(result.components[0].dailyMetrics).toEqual([
     expect.objectContaining({ totalChecks: 1, successfulChecks: 0 }),
   ]);
+  expect(result.components[0].monitored).toBe(true);
 });
 
 it("uses historical location rows when a single-location monitor has no combined row", async () => {
@@ -644,4 +648,38 @@ it("links an automatic status update to the open incident for its monitor", asyn
   expect(publicIncident.sreIncidentId).toBe(sre.id);
   const linked = await mockDatabase.query.sreIncidents.findFirst({ where: eq(schema.sreIncidents.id, sre.id) });
   expect(linked?.statusPageIncidentId).toBe(publicIncident.id);
+});
+
+it("posts an already resolved update as over: resolvedAt set and component health unchanged", async () => {
+  const page = await mockDatabase.query.statusPages.findFirst();
+  const result = await createStatusPageIncident(
+    { userId: (await mockDatabase.query.user.findFirst())!.id, organizationId: page!.organizationId, orgPendingDeletion: false, project: { id: page!.projectId!, userRole: "org_owner" } },
+    { statusPageId: pageId, name: "Yesterday's checkout errors", status: "resolved", impact: "critical", body: "Fixed", affectedComponentIds: [componentId], componentStatus: "major_outage", deliverNotifications: false },
+  );
+  expect(result.success).toBe(true);
+  const incident = await mockDatabase.query.incidents.findFirst();
+  expect(incident?.resolvedAt).toBeInstanceOf(Date);
+  expect((await mockDatabase.query.statusPageComponents.findFirst())?.status).toBe("operational");
+});
+
+it("keeps when an incident ended when a follow-up note is posted as resolved", async () => {
+  const [incident] = await mockDatabase.insert(schema.incidents).values({ statusPageId: pageId, name: "Errors", status: "investigating", impact: "major" }).returning();
+  const update = (body: string) => updateIncidentStatus({ incidentId: incident.id, statusPageId: pageId, status: "resolved", body, deliverNotifications: false, restoreComponentStatus: false });
+  expect((await update("Fixed")).success).toBe(true);
+  const ended = (await mockDatabase.query.incidents.findFirst())!.resolvedAt!;
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  expect((await update("Root cause: an expired certificate")).success).toBe(true);
+  expect((await mockDatabase.query.incidents.findFirst())!.resolvedAt!.getTime()).toBe(ended.getTime());
+
+  // Reopened and resolved again: it ends at the new resolution.
+  await updateIncidentStatus({ incidentId: incident.id, statusPageId: pageId, status: "investigating", body: "Back", deliverNotifications: false, restoreComponentStatus: false });
+  expect((await mockDatabase.query.incidents.findFirst())!.resolvedAt).toBeNull();
+  await update("Fixed again");
+  expect((await mockDatabase.query.incidents.findFirst())!.resolvedAt!.getTime()).toBeGreaterThan(ended.getTime());
+
+  // The public list carries both open periods, split at the first resolution.
+  const listed = await getPublicIncidents(pageId);
+  const intervals = listed.incidents.find((entry) => entry.id === incident.id)!.openIntervals;
+  expect(intervals).toHaveLength(2);
+  expect(intervals.every(([, end]) => end !== null)).toBe(true);
 });
