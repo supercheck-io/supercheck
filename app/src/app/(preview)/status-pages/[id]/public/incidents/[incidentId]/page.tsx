@@ -18,7 +18,12 @@ export default async function IncidentDetailPage({
   const result = await getIncidentDetail(resolvedParams.incidentId);
   const statusPageResult = await getStatusPage(resolvedParams.id);
 
-  if (!result.success || !result.incident) {
+  // An incident of another page in the same project must not show under this page's header.
+  if (
+    !result.success ||
+    !result.incident ||
+    result.incident.statusPage?.id !== resolvedParams.id
+  ) {
     redirect(`/status-pages/${resolvedParams.id}/public`);
   }
 
