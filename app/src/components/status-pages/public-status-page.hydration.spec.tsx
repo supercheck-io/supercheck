@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { act } from "@testing-library/react";
 import { renderToString } from "react-dom/server";
 import { hydrateRoot } from "react-dom/client";
@@ -18,8 +19,25 @@ afterEach(() => {
   jest.useRealTimers();
 });
 
-// The test runner's zone stands in for the viewer's: run with TZ=Asia/Kolkata to put it on a different date than UTC.
+// A process reads its time zone once at start (setting process.env.TZ inside Jest changes nothing), and CI runs in UTC,
+// where this check cannot fail. So the test below also runs in a child Jest started in a zone ahead of UTC.
+const VIEWER_ZONE = "Asia/Kolkata";
+const IN_CHILD = process.env.HYDRATION_ZONE_CHILD === "1";
+
+it("passes in a viewer zone that is already on the next day", () => {
+  if (IN_CHILD) return;
+  const run = () =>
+    execFileSync(process.execPath, [require.resolve("jest/bin/jest"), __filename, "--runInBand", "--coverage=false", "-t", "renders UTC days"], {
+      cwd: process.cwd(),
+      env: { ...process.env, TZ: VIEWER_ZONE, HYDRATION_ZONE_CHILD: "1" },
+      stdio: "pipe",
+    });
+  expect(run).not.toThrow();
+}, 120_000);
+
 it("renders UTC days from the read time in the server HTML and hydrates them without a mismatch", async () => {
+  // In the child the process zone must really be ahead of UTC, or the check below proves nothing.
+  if (IN_CHILD) expect(new Date(readAt).getDate()).toBe(23);
   const html = renderToString(ui);
   // UTC days whatever zone the server runs in, and the incident links stay in the HTML for crawlers and no-JS readers.
   expect(html).toContain("Login failures");
@@ -30,6 +48,8 @@ it("renders UTC days from the read time in the server HTML and hydrates them wit
   const container = document.createElement("div");
   container.innerHTML = html;
   document.body.appendChild(container);
+  // Server render and hydration share this process zone, so this only catches other mismatches;
+  // the zone split itself is covered by the server-HTML assertions above, run in the child.
   const onRecoverableError = jest.fn();
   await act(async () => {
     hydrateRoot(container, ui, { onRecoverableError });
