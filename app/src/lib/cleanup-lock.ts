@@ -22,16 +22,22 @@ export interface OwnedLock {
  * compare-and-delete. A holder that loses the lock sees `signal.aborted` and stops at its next safe point, so two
  * runs never keep working under the same key. After `maxHoldMs` renewal stops, so a hung holder cannot keep the key
  * forever. Returns null when another owner holds the key; throws when Redis does not answer within 10 s (a queued
- * SET is then undone) or answers too late for the lease to be safe.
+ * SET is then undone) or answers too late for the lease to be safe. Elapsed time uses a monotonic clock (`now`), so a
+ * wall-clock step backwards cannot extend the lease past the Redis TTL.
  */
 export async function acquireOwnedLock(
   redis: Redis,
   key: string,
-  { ttlMs, renewEveryMs, maxHoldMs = Number.POSITIVE_INFINITY }: { ttlMs: number; renewEveryMs: number; maxHoldMs?: number },
+  {
+    ttlMs,
+    renewEveryMs,
+    maxHoldMs = Number.POSITIVE_INFINITY,
+    now = () => performance.now(),
+  }: { ttlMs: number; renewEveryMs: number; maxHoldMs?: number; now?: () => number },
 ): Promise<OwnedLock | null> {
   const token = randomUUID();
   // The lease is counted from before the command was sent: Redis may have started it any time after that.
-  const sentAt = Date.now();
+  const sentAt = now();
   let timeout: ReturnType<typeof setTimeout> | undefined;
   let acquired: unknown;
   try {
@@ -49,7 +55,7 @@ export async function acquireOwnedLock(
     clearTimeout(timeout);
   }
   if (acquired !== "OK") return null;
-  if (Date.now() - sentAt + renewEveryMs >= ttlMs) {
+  if (now() - sentAt + renewEveryMs >= ttlMs) {
     // The reply came so late that the lease could lapse before the first renewal: do not run on it.
     void redis.eval(RELEASE_SCRIPT, 1, key, token).catch(() => undefined);
     throw new Error(`lock ${key} acquired too late to be safe`);
@@ -67,12 +73,12 @@ export async function acquireOwnedLock(
   const acquiredAt = sentAt;
   let confirmedAt = sentAt;
   // Without a confirmed renewal, the key may lapse before the next attempt: stop before that can happen.
-  const mayLapse = () => Date.now() - confirmedAt + renewEveryMs >= ttlMs;
+  const mayLapse = () => now() - confirmedAt + renewEveryMs >= ttlMs;
   const timer = setInterval(() => {
     // A holder stuck in one call past its budget stops renewing: the key lapses after its TTL.
-    if (Date.now() - acquiredAt >= maxHoldMs) return lose("held past its maximum time");
+    if (now() - acquiredAt >= maxHoldMs) return lose("held past its maximum time");
     if (mayLapse()) return lose("no confirmed renewal within its TTL");
-    const renewSentAt = Date.now();
+    const renewSentAt = now();
     redis.eval(RENEW_SCRIPT, 1, key, token, String(ttlMs)).then(
       (renewed) => {
         if (Number(renewed) !== 1) lose("held by another owner or expired");

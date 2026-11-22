@@ -174,27 +174,58 @@ it("fails acquisition after a bounded wait when Redis does not answer, and queue
   expect(redis.eval).toHaveBeenCalledWith(expect.stringContaining('"del"'), 1, "cleanup:x:lock", redis.set.mock.calls[0][1]);
 });
 
+/** A clock the lock reads through `now`, moved explicitly together with the fake timers in 100 ms steps. */
+function manualClock() {
+  const clock = {
+    ms: 0,
+    now: () => clock.ms,
+    async advance(ms: number) {
+      for (let elapsed = 0; elapsed < ms; elapsed += 100) {
+        clock.ms += 100;
+        await jest.advanceTimersByTimeAsync(100);
+      }
+    },
+  };
+  return clock;
+}
+
 it("refuses a lease whose reply came too late to be safe, and releases it", async () => {
   const redis = fakeRedis();
+  const clock = manualClock();
   redis.set.mockImplementationOnce(async (key: string, value: string, _px: string, ttl: number) => {
-    jest.setSystemTime(Date.now() + 2_500); // the reply arrives 2.5 s after the send
+    clock.ms += 2_500; // the reply arrives 2.5 s after the send
     redis.store.set(key, { value, ttl });
     return "OK";
   });
-  await expect(acquireOwnedLock(redis as unknown as Redis, "cleanup:x:lock", { ttlMs: 3_000, renewEveryMs: 1_000 })).rejects.toThrow("too late");
+  await expect(acquireOwnedLock(redis as unknown as Redis, "cleanup:x:lock", { ttlMs: 3_000, renewEveryMs: 1_000, now: clock.now })).rejects.toThrow(
+    "too late",
+  );
   await jest.advanceTimersByTimeAsync(0);
   expect(redis.store.has("cleanup:x:lock")).toBe(false);
 });
 
 it("counts the lease from the send time, so a slow renewal reply cannot stretch it", async () => {
   const redis = fakeRedis();
+  const clock = manualClock();
   // TTL 3 s, renew every 1 s: each renewal reply comes 0.9 s after its send.
-  const lock = (await acquireOwnedLock(redis as unknown as Redis, "cleanup:x:lock", { ttlMs: 3_000, renewEveryMs: 1_000 }))!;
+  const lock = (await acquireOwnedLock(redis as unknown as Redis, "cleanup:x:lock", { ttlMs: 3_000, renewEveryMs: 1_000, now: clock.now }))!;
   redis.eval.mockImplementation(() => new Promise<0 | 1>((resolve) => setTimeout(() => resolve(1), 900)));
-  await jest.advanceTimersByTimeAsync(1_000); // renewal sent at 1.0 s, confirmed as of 1.0 s (reply at 1.9 s)
-  await jest.advanceTimersByTimeAsync(1_000); // at 2.0 s: 2.0 - 1.0 + 1.0 < 3.0, keep going
+  await clock.advance(1_000); // renewal sent at 1.0 s, confirmed as of 1.0 s (reply at 1.9 s)
+  await clock.advance(1_000); // at 2.0 s: 2.0 - 1.0 + 1.0 < 3.0, keep going
   expect(lock.signal.aborted).toBe(false);
   redis.eval.mockImplementation(() => new Promise<0 | 1>(() => {})); // renewals stop answering
-  await jest.advanceTimersByTimeAsync(2_000); // last confirmation is from 2.0 s; by 4.0 s it may lapse
+  await clock.advance(2_000); // last confirmation is from 2.0 s; by 4.0 s it may lapse
+  expect(lock.signal.aborted).toBe(true);
+});
+
+it("a wall-clock step backwards does not extend the lease", async () => {
+  const redis = fakeRedis();
+  const clock = manualClock();
+  const lock = (await acquireOwnedLock(redis as unknown as Redis, "cleanup:x:lock", { ttlMs: 3_000, renewEveryMs: 1_000, now: clock.now }))!;
+  redis.eval.mockImplementation(() => new Promise<0 | 1>(() => {})); // renewals never answer
+  await clock.advance(1_000);
+  jest.setSystemTime(Date.now() - 3_600_000); // NTP steps the wall clock back an hour
+  // Nothing confirmed since 0 s: by 2.0 s the next renewal could come after the TTL, whatever the wall clock says.
+  await clock.advance(1_000);
   expect(lock.signal.aborted).toBe(true);
 });
