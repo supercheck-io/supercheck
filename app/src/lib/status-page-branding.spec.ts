@@ -86,3 +86,7 @@ describe("bannerColors", () => {
     expect(contrastRatio(text, background)).toBeGreaterThanOrEqual(4.5);
   });
 });
+
+it("bannerColors keeps an unparseable colour and picks readable text", () => {
+  expect(bannerColors("red")).toEqual({ background: "red", text: readableTextOn("red") });
+});

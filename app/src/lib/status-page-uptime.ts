@@ -78,8 +78,6 @@ export type UptimeDay = {
   level: BarLevel;
   /** Check-weighted uptime for the day; only components that follow their monitors have it. */
   uptime: number | null;
-  /** Days with checks (automatic) or with observed history (manual); grey otherwise. */
-  hasData: boolean;
   incidents: Array<{ id: string; name: string; impact: string; maintenance: boolean }>;
 };
 
@@ -160,14 +158,14 @@ export function buildUptimeDays({
       const uptime = checkUptimePercentage(metric ? [metric] : []);
       if (uptime === null) {
         const level: BarLevel = dayEnd <= start ? "nodata" : maintenance ? "maintenance" : "operational";
-        return { date, level, uptime, hasData: false, incidents: dayIncidents };
+        return { date, level, uptime, incidents: dayIncidents };
       }
       const level: BarLevel = uptime === 100 ? "operational" : uptime === 0 ? "critical" : "minor";
-      return { date, level, uptime, hasData: true, incidents: dayIncidents };
+      return { date, level, uptime, incidents: dayIncidents };
     }
-    if (dayEnd <= start) return { date, level: "nodata", uptime: null, hasData: false, incidents: [] };
+    if (dayEnd <= start) return { date, level: "nodata", uptime: null, incidents: [] };
     const level: BarLevel = worstIncident && worstIncident !== "operational" ? worstIncident : maintenance ? "maintenance" : "operational";
-    return { date, level, uptime: null, hasData: true, incidents: dayIncidents };
+    return { date, level, uptime: null, incidents: dayIncidents };
   });
 
   if (automatic) {
