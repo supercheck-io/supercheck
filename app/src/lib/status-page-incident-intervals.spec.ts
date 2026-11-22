@@ -25,3 +25,9 @@ it("keeps an incident posted already resolved closed, but opens it when reopened
     { status: "investigating", at: at("2026-11-21T08:00:00Z") },
   ])).toEqual([["2026-11-21T08:00:00.000Z", null]]);
 });
+
+it("still counts an incident resolved later even when it has no earlier update", () => {
+  expect(openIntervals(at("2026-11-20T10:00:00Z"), [{ status: "resolved", at: at("2026-11-20T12:00:00Z") }])).toEqual([
+    ["2026-11-20T10:00:00.000Z", "2026-11-20T12:00:00.000Z"],
+  ]);
+});
