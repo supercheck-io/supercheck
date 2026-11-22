@@ -3303,7 +3303,7 @@ export class MonitorService {
         };
       } else {
         this.logger.warn(
-          `[${monitorId}] Synthetic test failed: ${test.title} - ${testResult.error}`,
+          `[run-output] [${monitorId}] Synthetic test failed: ${test.title} - ${testResult.error}`,
         );
 
         return {

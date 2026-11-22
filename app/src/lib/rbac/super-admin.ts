@@ -5,6 +5,7 @@
  * built-in capabilities instead of relying on environment variables.
  */
 
+import { cache } from "react";
 import { db } from "@/utils/db";
 import { user } from "@/db/schema";
 import { eq } from "drizzle-orm";
@@ -12,10 +13,7 @@ import { auth } from "@/utils/auth";
 import { Role } from "./permissions";
 import { normalizeRole } from "./role-normalizer";
 
-/**
- * Check if a user is a super admin using database role
- */
-export async function isSuperAdmin(userId: string): Promise<boolean> {
+async function loadIsSuperAdmin(userId: string): Promise<boolean> {
   try {
     // Query the user's role directly from the database
     const userRecord = await db
@@ -34,6 +32,12 @@ export async function isSuperAdmin(userId: string): Promise<boolean> {
     return false;
   }
 }
+
+/**
+ * Check if a user is a super admin using database role. Cached per request, like getUserRole,
+ * so a route checking several permissions reads the role once.
+ */
+export const isSuperAdmin = cache(loadIsSuperAdmin);
 
 /**
  * Get all super admin users

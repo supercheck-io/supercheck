@@ -1,10 +1,7 @@
 import { liveMonitor } from "@/lib/deletion/visibility";
 import { isUuid } from "@/lib/uuid";
 import { NextRequest, NextResponse } from 'next/server';
-import { hasPermissionForUser, forbiddenOrNotFound } from '@/lib/rbac/middleware';
-import { getUserProjectRole } from '@/lib/session';
-import { isSuperAdmin } from '@/lib/rbac/super-admin';
-import { Role } from '@/lib/rbac/permissions-client';
+import { resolveProjectPermissionContext, checkPermissionWithContext, forbiddenOrNotFound } from '@/lib/rbac/middleware';
 import { requireUserAuthContext, isAuthError, authErrorStatus } from '@/lib/auth-context';
 import { createLogger } from "@/lib/logger/index";
 
@@ -55,32 +52,16 @@ export async function GET(
       return NextResponse.json({ error: "Monitor not found" }, { status: 404 });
     }
 
-    const [canView, canEdit, canDelete, canToggle, userRole] = await Promise.all([
-      hasPermissionForUser(userId, 'monitor', 'view', {
-        organizationId: monitor.organizationId,
-        projectId: monitor.projectId,
-      }),
-      hasPermissionForUser(userId, 'monitor', 'update', {
-        organizationId: monitor.organizationId,
-        projectId: monitor.projectId,
-      }),
-      hasPermissionForUser(userId, 'monitor', 'delete', {
-        organizationId: monitor.organizationId,
-        projectId: monitor.projectId,
-      }),
-      hasPermissionForUser(userId, 'monitor', 'manage', {
-        organizationId: monitor.organizationId,
-        projectId: monitor.projectId,
-      }),
-      // A super admin without membership has no org role; report the role their permissions come from.
-      isSuperAdmin(userId).then((isSA) =>
-        isSA ? Role.SUPER_ADMIN : getUserProjectRole(userId, monitor.organizationId!, monitor.projectId!),
-      ),
-    ]);
-
-    if (!canView) {
+    // One role resolution for all four checks (hasPermissionForUser per action re-read the user's role each time).
+    const permCtx = await resolveProjectPermissionContext(userId, monitor.projectId);
+    if (!permCtx || !checkPermissionWithContext('monitor', 'view', permCtx)) {
       return await forbiddenOrNotFound(userId, monitor.organizationId, 'Insufficient permissions', 'Monitor not found');
     }
+    // A super admin without membership reports super_admin, the role their permissions come from.
+    const userRole = permCtx.project.userRole;
+    const canEdit = checkPermissionWithContext('monitor', 'update', permCtx);
+    const canDelete = checkPermissionWithContext('monitor', 'delete', permCtx);
+    const canToggle = checkPermissionWithContext('monitor', 'manage', permCtx);
 
     return NextResponse.json({
       success: true,

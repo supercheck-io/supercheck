@@ -5,15 +5,18 @@ jest.mock("@/db/schema", () => ({ monitors: {} }));
 jest.mock("drizzle-orm", () => ({ eq: jest.fn(), and: jest.fn(), isNull: jest.fn() }));
 const mockStanding = { value: true };
 jest.mock("@/lib/rbac/middleware", () => ({
-  hasPermissionForUser: jest.fn(),
+  resolveProjectPermissionContext: jest.fn(),
+  // A viewer may only view; any other role passed here may do everything.
+  checkPermissionWithContext: jest.fn(
+    (_r: string, action: string, ctx: { project: { userRole: string } }) =>
+      action === "view" || ctx.project.userRole !== "project_viewer",
+  ),
   // Stands in for the real helper: 403 for an org member, 404 for a caller with no standing in the org.
   forbiddenOrNotFound: jest.fn(async (_u: string, _o: string, forbidden: string, notFound: string) => {
     const { NextResponse } = jest.requireActual("next/server");
     return mockStanding.value ? NextResponse.json({ error: forbidden }, { status: 403 }) : NextResponse.json({ error: notFound }, { status: 404 });
   }),
 }));
-jest.mock("@/lib/rbac/super-admin", () => ({ isSuperAdmin: jest.fn() }));
-jest.mock("@/lib/session", () => ({ getUserProjectRole: jest.fn() }));
 jest.mock("@/lib/auth-context", () => ({
   requireUserAuthContext: jest.fn().mockResolvedValue({ userId: "u1", projectId: "p1", isCliAuth: false }),
   isAuthError: () => false,
@@ -25,9 +28,10 @@ jest.mock("@/lib/logger/index", () => ({
 
 import { NextRequest } from "next/server";
 import { GET } from "./route";
-import { hasPermissionForUser } from "@/lib/rbac/middleware";
-import { isSuperAdmin } from "@/lib/rbac/super-admin";
-import { getUserProjectRole } from "@/lib/session";
+import { resolveProjectPermissionContext } from "@/lib/rbac/middleware";
+
+const ctx = (userRole: string) =>
+  ({ userId: "u1", organizationId: "o1", orgPendingDeletion: false, project: { id: "p1", userRole } }) as never;
 
 const call = () =>
   GET(new NextRequest("http://localhost/api/monitors/x/permissions"), {
@@ -38,26 +42,35 @@ beforeEach(() => {
   jest.clearAllMocks();
   mockStanding.value = true;
   findFirst.mockResolvedValue({ organizationId: "o1", projectId: "p1" });
-  jest.mocked(isSuperAdmin).mockResolvedValue(false);
-  jest.mocked(getUserProjectRole).mockResolvedValue("project_editor" as never);
+  jest.mocked(resolveProjectPermissionContext).mockResolvedValue(ctx("project_editor"));
 });
 
 describe("GET /api/monitors/[id]/permissions", () => {
   it("reports super_admin, matching the granted flags, for a super admin without membership", async () => {
-    jest.mocked(isSuperAdmin).mockResolvedValue(true);
-    jest.mocked(hasPermissionForUser).mockResolvedValue(true);
+    jest.mocked(resolveProjectPermissionContext).mockResolvedValue(ctx("super_admin"));
     const body = await (await call()).json();
     expect(body.data).toMatchObject({ userRole: "super_admin", canEdit: true, canDelete: true });
-    expect(getUserProjectRole).not.toHaveBeenCalled();
+    // One role resolution for every flag (it used to be one per flag).
+    expect(resolveProjectPermissionContext).toHaveBeenCalledTimes(1);
+    expect(resolveProjectPermissionContext).toHaveBeenCalledWith("u1", "p1");
   });
 
   it("reports the project role for an ordinary member", async () => {
-    jest.mocked(hasPermissionForUser).mockResolvedValue(true);
     expect((await (await call()).json()).data.userRole).toBe("project_editor");
   });
 
+  it("grants a viewer view only", async () => {
+    jest.mocked(resolveProjectPermissionContext).mockResolvedValue(ctx("project_viewer"));
+    expect((await (await call()).json()).data).toMatchObject({
+      userRole: "project_viewer",
+      canEdit: false,
+      canDelete: false,
+      canToggle: false,
+    });
+  });
+
   it("answers 403 to an organization member without view and 404 to another tenant", async () => {
-    jest.mocked(hasPermissionForUser).mockResolvedValue(false);
+    jest.mocked(resolveProjectPermissionContext).mockResolvedValue(null);
     expect((await call()).status).toBe(403);
     mockStanding.value = false;
     expect((await call()).status).toBe(404);
@@ -66,6 +79,6 @@ describe("GET /api/monitors/[id]/permissions", () => {
   it("answers 404, like a missing monitor, for a row with no organization or project", async () => {
     findFirst.mockResolvedValue({ organizationId: null, projectId: "p1" });
     expect((await call()).status).toBe(404);
-    expect(hasPermissionForUser).not.toHaveBeenCalled();
+    expect(resolveProjectPermissionContext).not.toHaveBeenCalled();
   });
 });

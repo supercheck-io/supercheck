@@ -683,7 +683,7 @@ export class ExecutionService implements OnModuleDestroy {
           execResult.error ||
           'Playwright execution failed with an unknown error.';
         this.logger.error(
-          `[${testId}] Playwright execution failed: ${specificError}`,
+          `[run-output] [${testId}] Playwright execution failed: ${specificError}`,
         );
 
         // Log stdout and stderr specifically on failure *before* upload attempt
@@ -743,7 +743,7 @@ export class ExecutionService implements OnModuleDestroy {
           billableMs,
         };
         this.logger.error(
-          `[Playwright Test] ${testId} failed: ${specificError} (${execResult.executionTimeMs ?? 0}ms)`,
+          `[run-output] [Playwright Test] ${testId} failed: ${specificError} (${execResult.executionTimeMs ?? 0}ms)`,
         );
 
         // <<< REMOVED: Do not throw error here; return the result object >>>

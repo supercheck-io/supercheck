@@ -75,7 +75,7 @@ describe("enable gate", () => {
         { name: "Dedupe" },
       ])
       .map((i: { name: string }) => i.name);
-    expect(names).toEqual(["Dedupe", "OnUnhandledRejection", "Http", "NodeFetch"]);
+    expect(names).toEqual(["Dedupe", "OnUnhandledRejection", "Http", "NodeFetch", "Pino"]);
     expect(opts.tracesSampler).toBeUndefined(); // no rate: tracing fully off
     expect(opts.enableLogs).toBe(false);
     // warn: Next's own listener keeps the app alive on stray rejections; strict would exit the pod.
@@ -212,11 +212,15 @@ describe("tracing, logs and check-ins", () => {
     expect(opts({ SENTRY_TRACES_SAMPLE_RATE: "0.25" }).tracePropagationTargets).toEqual([]);
   });
 
-  it("adds log integrations only when logs are enabled", () => {
+  it("captures logger.error as issues always, and ships logs only when enabled", () => {
     const names = (env: Record<string, string>) =>
       (opts(env).integrations as (d: { name: string }[]) => { name: string }[])([]).map((i) => i.name);
-    expect(names({})).not.toContain("Pino");
+    const pinoOptions = () => (Sentry.pinoIntegration as unknown as jest.Mock).mock.calls.at(-1)[0];
+    expect(names({})).toContain("Pino");
+    expect(names({})).not.toContain("ConsoleLogging");
+    expect(pinoOptions()).toEqual({ log: { levels: [] }, error: { levels: ["error", "fatal"] } });
     expect(names({ SENTRY_ENABLE_LOGS: "true" })).toEqual(expect.arrayContaining(["Pino", "ConsoleLogging"]));
+    expect(pinoOptions().log.levels).toEqual(["warn", "error", "fatal"]);
     expect(opts({ SENTRY_ENABLE_LOGS: "true" }).enableLogs).toBe(true);
   });
 
