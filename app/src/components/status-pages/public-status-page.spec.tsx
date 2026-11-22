@@ -136,9 +136,10 @@ describe("uptime explanation and banner", () => {
   });
 
   it("manual components are green since the page started and coloured by incidents, with no monitors involved", () => {
-    const started = new Date(Date.now() - 10 * 86_400_000);
-    const incident = { id: "i1", name: "Login errors", status: "resolved" as const, impact: "critical" as const, createdAt: new Date(Date.now() - 2 * 86_400_000), resolvedAt: new Date(Date.now() - 2 * 86_400_000 + 3_600_000), latestUpdate: null, affectedComponents: [{ id: "public", name: "Public API" }] };
-    render(<PublicStatusPage statusPage={page} components={[{ ...component, createdAt: started }]} incidents={[incident]} idOrSubdomain="page" />);
+    // Fixed times: the one-hour outage stays inside one UTC day whenever the suite runs.
+    const started = new Date("2026-11-12T12:00:00Z");
+    const incident = { id: "i1", name: "Login errors", status: "resolved" as const, impact: "critical" as const, createdAt: new Date("2026-11-20T10:00:00Z"), resolvedAt: new Date("2026-11-20T11:00:00Z"), latestUpdate: null, affectedComponents: [{ id: "public", name: "Public API" }] };
+    render(<PublicStatusPage statusPage={page} components={[{ ...component, createdAt: started }]} incidents={[incident]} idOrSubdomain="page" readAt="2026-11-22T12:00:00Z" />);
     const legend = screen.getByTestId("uptime-legend");
     expect(legend).toHaveTextContent(t.operational);
     expect(legend).toHaveTextContent(t.legendDown);

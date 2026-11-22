@@ -1,5 +1,6 @@
 "use server";
 
+import { withOpenIntervals } from "@/lib/status-page-incident-intervals";
 import { db } from "@/utils/db";
 import { incidents, statusPages } from "@/db/schema";
 import { eq, desc, and, or, gte, ne } from "drizzle-orm";
@@ -120,7 +121,8 @@ export async function getPublicIncidents(statusPageId: string) {
 
     return {
       success: true,
-      incidents: incidentsWithDetails,
+      // Open periods from the status history, so a reopened incident's resolved gap is not counted as downtime.
+      incidents: await withOpenIntervals(incidentsWithDetails),
     };
   } catch (error) {
     console.error("Error fetching public incidents:", error);

@@ -18,9 +18,15 @@ export function incidentScheduleFields(
   status: IncidentStatus,
   scheduledFor?: Date,
   scheduledUntil?: Date,
+  previousStatus?: string,
 ): { scheduledFor?: Date | null; scheduledUntil?: Date | null } {
   if (status === "scheduled") {
     return { scheduledFor, scheduledUntil };
+  }
+
+  // Reopening a resolved incident must not carry its old window back in, or the reconciler ends it again.
+  if (status === "monitoring" && previousStatus === "resolved") {
+    return { scheduledFor: null, scheduledUntil: null };
   }
 
   // Monitoring keeps the window in progress; resolved keeps it as the record of when maintenance ran (resolved

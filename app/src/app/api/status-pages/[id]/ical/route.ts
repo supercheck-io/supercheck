@@ -193,6 +193,8 @@ export async function GET(
             : incident.scheduledUntil) ||
           incident.resolvedAt ||
           new Date(startDate.getTime() + 60 * 60 * 1000);
+        // RFC 5545 needs DTEND after DTSTART; an update posted already resolved has no duration.
+        const safeEndDate = endDate > startDate ? endDate : new Date(startDate.getTime() + 60 * 60 * 1000);
 
         // Build description
         const descriptionParts: string[] = [];
@@ -213,7 +215,7 @@ export async function GET(
             `UID:${generateUid(incident.id, domain)}`
           ),
           `DTSTART:${toICalDate(startDate)}`,
-          `DTEND:${toICalDate(endDate)}`,
+          `DTEND:${toICalDate(safeEndDate)}`,
           `DTSTAMP:${toICalDate(new Date())}`,
           foldLine(
             `SUMMARY:${escapeIcalText(`[${incident.impact.toUpperCase()}] ${incident.name}`)}`

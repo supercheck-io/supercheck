@@ -40,6 +40,7 @@ import { updateIncidentStatus } from "@/actions/update-incident-status";
 import { createStatusPageIncident } from "./status-page-incident-core";
 import { requireProjectContext } from "@/lib/project-context";
 import { getPublicComponents } from "@/actions/get-public-components";
+import { getPublicIncidents } from "@/actions/get-public-incidents";
 import { checkUptimePercentage } from "@/lib/status-page-uptime";
 import { monitorAggregationService } from "@/lib/monitor-aggregation-service";
 import {
@@ -675,4 +676,10 @@ it("keeps when an incident ended when a follow-up note is posted as resolved", a
   expect((await mockDatabase.query.incidents.findFirst())!.resolvedAt).toBeNull();
   await update("Fixed again");
   expect((await mockDatabase.query.incidents.findFirst())!.resolvedAt!.getTime()).toBeGreaterThan(ended.getTime());
+
+  // The public list carries both open periods, split at the first resolution.
+  const listed = await getPublicIncidents(pageId);
+  const intervals = listed.incidents.find((entry) => entry.id === incident.id)!.openIntervals;
+  expect(intervals).toHaveLength(2);
+  expect(intervals.every(([, end]) => end !== null)).toBe(true);
 });

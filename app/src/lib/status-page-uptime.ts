@@ -77,6 +77,8 @@ export type BarIncident = {
   scheduledUntil?: Date | string | null;
   /** What the component showed while the incident was open. Older rows without it fall back to the impact. */
   componentStatus?: string | null;
+  /** Periods the incident was open (ISO start, end or null while open), from its status history. */
+  openIntervals?: Array<[string, string | null]>;
 };
 
 export type UptimeDay = {
@@ -113,7 +115,23 @@ function kindOf(incident: BarIncident): Kind {
     : (IMPACT_KIND[incident.impact] ?? "none");
 }
 
-/** When the incident affected the component, or null for maintenance that has not started. */
+/** When the incident affected the component: its open periods, or none for maintenance that has not started. */
+function incidentSpans(incident: BarIncident, now: number): Array<[number, number]> {
+  if (incident.status === "scheduled") return [];
+  // A resolved incident's last open period ends at its resolution; an open one's runs until now.
+  const finalEnd =
+    time(incident.resolvedAt) ?? (incident.status === "resolved" ? (time(incident.updatedAt) ?? null) : now);
+  if (!incident.scheduledFor && incident.openIntervals?.length) {
+    return incident.openIntervals.flatMap(([from, to]): Array<[number, number]> => {
+      const start = time(from)!;
+      const end = Math.min(time(to) ?? finalEnd ?? start, now);
+      return end > start ? [[start, end]] : [];
+    });
+  }
+  const span = incidentSpan(incident, now);
+  return span ? [span] : [];
+}
+
 function incidentSpan(incident: BarIncident, now: number): [number, number] | null {
   const maintenance = Boolean(incident.scheduledFor);
   const start = maintenance ? time(incident.scheduledFor) : time(incident.createdAt);
@@ -168,9 +186,9 @@ export function buildUptimeDays({
   const today = new Date(nowDate);
   today.setUTCHours(0, 0, 0, 0);
   const windowStart = today.getTime() - 89 * DAY_MS;
-  const spans = incidents
-    .map((incident) => ({ incident, kind: kindOf(incident), span: incidentSpan(incident, now) }))
-    .filter((entry): entry is { incident: BarIncident; kind: Kind; span: [number, number] } => entry.span !== null);
+  const spans = incidents.flatMap((incident) =>
+    incidentSpans(incident, now).map((span) => ({ incident, kind: kindOf(incident), span })),
+  );
   const of = (...kinds: Kind[]) => spans.filter((entry) => kinds.includes(entry.kind)).map((entry) => entry.span);
   const weightedDowntime = (from: number, to: number) => {
     const major = covered(of("major"), from, to);
@@ -183,9 +201,13 @@ export function buildUptimeDays({
     const dayStart = windowStart + index * DAY_MS;
     const date = new Date(dayStart);
     const dayEnd = Math.min(dayStart + DAY_MS, now);
-    const dayIncidents = spans
-      .filter(({ span }) => span[0] < dayEnd && span[1] > dayStart)
-      .map(({ incident, kind }) => ({ id: incident.id, name: incident.name, level: KIND_LEVEL[kind] }));
+    const dayIncidents = [
+      ...new Map(
+        spans
+          .filter(({ span }) => span[0] < dayEnd && span[1] > dayStart)
+          .map(({ incident, kind }) => [incident.id, { id: incident.id, name: incident.name, level: KIND_LEVEL[kind] }]),
+      ).values(),
+    ];
     if (metrics) {
       const metric = byDate.get(date.toISOString().slice(0, 10));
       const uptime = checkUptimePercentage(metric ? [metric] : []);

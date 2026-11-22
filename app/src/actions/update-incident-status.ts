@@ -128,6 +128,7 @@ export async function updateIncidentStatus(
             validatedData.status,
             validatedData.scheduledFor,
             validatedData.scheduledUntil,
+            existingIncident.status,
           ),
         })
         .where(

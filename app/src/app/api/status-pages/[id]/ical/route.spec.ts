@@ -51,3 +51,10 @@ describe("maintenance resolved before its planned end", () => {
     expect(await event(new Date("2030-01-01T12:00:00Z"))).toEqual({ end: "20300102T040000Z", status: "CANCELLED" });
   });
 });
+
+it("gives an update posted already resolved a positive duration", async () => {
+  const { db } = jest.requireMock("@/utils/db");
+  db.query.incidents.findMany.mockResolvedValueOnce([{ id: "r", name: "Retro", impact: "major", status: "resolved", body: null, createdAt: created, resolvedAt: new Date(created.getTime() - 5), scheduledFor: null, scheduledUntil: null, affectedComponents: [] }]);
+  const res = await GET({} as never, { params: Promise.resolve({ id: "00000000-0000-4000-8000-000000000001" }) });
+  expect((await res.text()).match(/DTEND:(\S+)/)?.[1]).toBe("20300101T110000Z");
+});

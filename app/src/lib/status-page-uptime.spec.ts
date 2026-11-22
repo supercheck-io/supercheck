@@ -158,4 +158,19 @@ describe("buildUptimeDays", () => {
     expect(buildUptimeDays({ now, startedAt: "2026-12-01T00:00:00Z", incidents: [] }).uptime).toBeNull();
     expect(buildUptimeDays({ now, startedAt: null, incidents: [], metrics: [] }).uptime).toBeNull();
   });
+
+  it("manual: a reopened incident counts only its open periods, not the resolved gap", () => {
+    const { days, uptime } = buildUptimeDays({
+      now,
+      startedAt: "2026-11-19T12:00:00Z",
+      incidents: [incident({
+        status: "investigating", componentStatus: "major_outage", createdAt: "2026-11-20T10:00:00Z", resolvedAt: null,
+        openIntervals: [["2026-11-20T10:00:00Z", "2026-11-20T12:00:00Z"], ["2026-11-22T11:00:00Z", null]],
+      })],
+    });
+    expect(day(days, "2026-11-21").level).toBe("operational");
+    expect(day(days, "2026-11-20").incidents).toHaveLength(1);
+    expect(uptime).toBeCloseTo((1 - 3 / 72) * 100);
+  });
 });
+
