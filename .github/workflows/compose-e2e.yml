@@ -146,8 +146,12 @@ jobs:
           platforms: linux/amd64
           load: true
           tags: ${{ env.APP_IMAGE }}:ci
+          # SENTRY_SOURCEMAPS=1 builds the same way a release does: source maps are emitted (the
+          # heaviest part of the build), then deleted, with no upload because there is no token. A
+          # change that pushes the build past its memory limit then fails here, not at release.
           build-args: |
             SUPERCHECK_BUILD_SHA=${{ github.sha }}
+            SENTRY_SOURCEMAPS=1
           cache-from: type=registry,ref=${{ env.APP_IMAGE }}:buildcache
 
       - name: Build worker image from this ref
