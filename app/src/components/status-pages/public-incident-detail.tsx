@@ -5,7 +5,7 @@ import Image from "next/image";
 import { formatMaintenanceWindow } from "@/lib/incident-schedule";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Clock } from "lucide-react";
+import { ArrowLeft, Bell, Clock } from "lucide-react";
 import Link from "next/link";
 import { useStatusPageFavicon } from "./use-status-page-favicon";
 import {
@@ -16,6 +16,7 @@ import {
 } from "@/lib/status-page-translations";
 import { SupportContactButton } from "./support-contact-button";
 import { StatusPageBranding } from "./status-page-branding";
+import { SubscribeDialog } from "./subscribe-dialog";
 
 type IncidentStatus =
   | "investigating"
@@ -51,8 +52,21 @@ type Incident = {
   };
 };
 
+/** The page's public subscription settings; given only on the public page, never in the in-app preview. */
+type SubscriptionSettings = {
+  id: string;
+  name: string;
+  headline?: string | null;
+  allowPageSubscribers?: boolean | null;
+  allowIncidentSubscribers?: boolean | null;
+  allowEmailSubscribers?: boolean | null;
+  allowWebhookSubscribers?: boolean | null;
+  allowSlackSubscribers?: boolean | null;
+};
+
 type PublicIncidentDetailProps = {
   incident: Incident;
+  subscription?: SubscriptionSettings;
   idOrSubdomain: string;
   faviconLogo?: string | null;
   transactionalLogo?: string | null;
@@ -68,6 +82,7 @@ type PublicIncidentDetailProps = {
 
 export function PublicIncidentDetail({
   incident,
+  subscription,
   idOrSubdomain,
   faviconLogo,
   transactionalLogo,
@@ -169,6 +184,27 @@ export function PublicIncidentDetail({
               supportUrl={supportUrl}
               language={language}
             />
+            {subscription?.allowPageSubscribers &&
+              subscription.allowIncidentSubscribers &&
+              incident.status !== "resolved" && (
+                <SubscribeDialog
+                  incident={{ id: incident.id, name: incident.name }}
+                  allowIncidentSubscribers
+                  allowPageSubscribers
+                  allowEmailSubscribers={subscription.allowEmailSubscribers ?? false}
+                  allowWebhookSubscribers={subscription.allowWebhookSubscribers ?? false}
+                  allowSlackSubscribers={subscription.allowSlackSubscribers ?? false}
+                  statusPageId={subscription.id}
+                  statusPageName={subscription.headline || subscription.name}
+                  language={language}
+                  trigger={
+                    <Button variant="outline" className="gap-2 shadow-sm w-full sm:w-auto">
+                      <Bell className="h-4 w-4" />
+                      {t.subscribe}
+                    </Button>
+                  }
+                />
+              )}
             <Badge
               className={`${getImpactColor(incident.impact)} text-xs sm:text-sm px-2.5 sm:px-3 py-0.5 sm:py-1 font-medium border w-fit`}
             >

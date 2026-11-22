@@ -156,7 +156,7 @@ export async function repointSreStatusPageSlot(tx: Tx, resolvedIncidentId: strin
  * already be resolved in `tx`, so it no longer counts as active. A component is left alone when
  * - its status was not set by an incident (this one, or another that already started and is now resolved): someone changed it by hand since;
  * - another open incident still affects it (reconciliation derives its status from that one);
- * - a linked monitor is reporting (not paused or pending): reconciliation recomputes it from their current health, and
+ * - it follows its monitors (automateStatus) and one is reporting (not paused or pending): reconciliation recomputes it from their current health, and
  *   this incident's update triggers that, so writing "operational" here would only flicker while a monitor is failing.
  *   With only paused or pending monitors it would keep the incident's status for good (calculateFromMonitors falls
  *   back to the previous one), so those are restored here.
@@ -182,7 +182,8 @@ export async function restoreResolvedIncidentComponents(tx: Tx, incidentId: stri
     .select({ componentId: statusPageComponentMonitors.componentId })
     .from(statusPageComponentMonitors)
     .innerJoin(monitors, eq(monitors.id, statusPageComponentMonitors.monitorId))
-    .where(and(inArray(statusPageComponentMonitors.componentId, ids), liveMonitor(), notInArray(monitors.status, ["pending", "paused"])));
+    .innerJoin(statusPageComponents, eq(statusPageComponents.id, statusPageComponentMonitors.componentId))
+    .where(and(inArray(statusPageComponentMonitors.componentId, ids), eq(statusPageComponents.automateStatus, true), liveMonitor(), notInArray(monitors.status, ["pending", "paused"])));
   const others = await tx
     .select({ componentId: incidentComponents.componentId, newStatus: incidentComponents.newStatus, incidentStatus: incidents.status, startedAt: incidents.createdAt, resolvedAt: incidents.resolvedAt })
     .from(incidentComponents)
@@ -300,7 +301,7 @@ export async function reconcileStatusPages(): Promise<boolean> {
       with: { monitors: { with: { monitor: true } } },
     });
     for (const component of components) {
-      // Components without linked checks retain their manual status.
+      // Manual components (automateStatus off, or no linked checks) keep their status; open incidents still set it.
 
       // Lock the component row and re-read the suppression flag. The manual
       // resolve action updates this same row; without the fresh read, the batch
@@ -346,8 +347,10 @@ export async function reconcileStatusPages(): Promise<boolean> {
         manualStatuses.includes(status),
       );
       const manual = manualStatuses.length > 0;
-      // A monitor being deleted no longer counts toward the component.
-      const liveLinks = component.monitors.filter((association) => notFoundIfDeleting(association.monitor));
+      // Monitors drive the status only when the owner opted in; a deleted monitor never counts.
+      const liveLinks = component.automateStatus
+        ? component.monitors.filter((association) => notFoundIfDeleting(association.monitor))
+        : [];
       const calculated = statusAggregationService.calculateFromMonitors(
         liveLinks.map((association) => ({
           status: association.monitor.status,
@@ -389,6 +392,7 @@ export async function reconcileStatusPages(): Promise<boolean> {
         !automatic &&
         !manual &&
         !suppressed &&
+        component.automateStatus &&
         component.autoCreateIncidents &&
         component.showcase &&
         page?.status === "published" &&
@@ -442,7 +446,7 @@ export async function reconcileStatusPages(): Promise<boolean> {
             updateId: update.id,
             isCreation: true,
           });
-      } else if (!failing && automatic && calculated === "operational") {
+      } else if (component.automateStatus && !failing && automatic && calculated === "operational") {
         await tx
           .update(incidents)
           .set({

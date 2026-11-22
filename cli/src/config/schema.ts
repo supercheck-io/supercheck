@@ -127,6 +127,8 @@ export const statusPageComponentDefinitionSchema = z.object({
   name: z.string().min(1).max(255),
   description: z.string().max(2000).optional(),
   monitors: z.array(z.string()).max(100).optional(),
+  /** Let the linked monitors set the public status and uptime bars. Off by default. */
+  automateStatus: z.boolean().optional(),
   position: z.number().int().min(0).max(1000).optional(),
 }).strict()
 

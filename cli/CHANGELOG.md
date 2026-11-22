@@ -6,6 +6,7 @@ Notable changes to `@supercheck/cli`. The format follows [Keep a Changelog](http
 
 ### Added
 
+- Status page components take `automateStatus` in `supercheck.config.ts`. `true` lets linked monitors set the public status; omit it to leave the setting unchanged. `pull` writes it only when on.
 - `notification create --type pagerduty` creates a PagerDuty Events API v2 channel (a webhook with the `pagerduty` preset). The routing key comes from `PAGERDUTY_ROUTING_KEY` or `--routing-key-stdin`, is never an argument, and is masked in output unless `--show-secrets`. `notification update --type pagerduty` rotates it, `notification list` shows a Preset column, and `deploy` fills the template of a PagerDuty provider it creates from `PAGERDUTY_ROUTING_KEY` (an update keeps the saved key).
 - `pull` no longer writes a webhook body template that holds a credential (a PagerDuty routing key) into `supercheck.config.ts`; it says which providers were left out, and `deploy` keeps the saved template. Output redaction masks credential values inside a body template by field name.
 - `monitor update` takes the AI endpoint options of `monitor create` (`--model`, `--secret`, `--key-header`, `--prompt`, `--expect`, `--max-tokens`, `--first-token-timeout`, `--warn-first-token-ms`, `--warn-tokens`) and the MCP monitor options (`--secret`, `--header`, `--protocol`, `--require-tool`, `--call-tool`, `--call-args`, `--expect`, `--slow-ms`). Only the options you pass change; an option that does not fit the monitor is refused.

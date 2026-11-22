@@ -4,6 +4,7 @@ import { db } from "@/utils/db";
 import { statusPages } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
 import { generateProxyUrl } from "@/lib/asset-proxy";
+import { checkFeatureAvailability } from "@/lib/middleware/plan-enforcement";
 
 /**
  * Public action to get a status page by custom domain without authentication
@@ -76,11 +77,27 @@ export async function getPublicStatusPageByCustomDomain(hostname: string) {
         language: true,
         createdAt: true,
         updatedAt: true,
-        // EXCLUDED: organizationId, projectId, createdByUserId, notification settings
+        // Read for the plan check only and removed before returning.
+        organizationId: true,
+        // EXCLUDED: projectId, createdByUserId, notification settings
       },
     });
 
     if (!statusPage) {
+      return {
+        success: false,
+        message: "Status page not found or custom domain not verified",
+      };
+    }
+
+    // A custom domain is a paid feature: stop serving it when the plan no longer includes it (the subdomain keeps
+    // working). An unexpected lookup error keeps the page up rather than taking a customer's status page offline.
+    const { organizationId, ...publicPage } = statusPage;
+    const plan = await checkFeatureAvailability(organizationId, "customDomains").catch((error) => {
+      console.error("[status-page] custom domain plan check failed:", error);
+      return { available: true };
+    });
+    if (!plan.available) {
       return {
         success: false,
         message: "Status page not found or custom domain not verified",
@@ -95,7 +112,7 @@ export async function getPublicStatusPageByCustomDomain(hostname: string) {
     return {
       success: true,
       statusPage: {
-        ...statusPage,
+        ...publicPage,
         faviconLogo: faviconUrl,
         transactionalLogo: logoUrl,
         heroCover: coverUrl,

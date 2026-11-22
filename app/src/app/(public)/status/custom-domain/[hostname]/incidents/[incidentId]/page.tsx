@@ -1,4 +1,5 @@
 import { getPublicIncidentDetail } from "@/actions/get-public-incident-detail";
+import { decodeHostnameParam, requestHostname } from "@/lib/status-page-domain";
 import { getPublicStatusPageByCustomDomain } from "@/actions/get-public-status-page-by-custom-domain";
 import { PublicIncidentDetail } from "@/components/status-pages/public-incident-detail";
 import { isStatusPageBrandingHidden } from "@/lib/feature-flags";
@@ -29,7 +30,7 @@ export async function generateMetadata({
   params,
 }: CustomDomainIncidentDetailPageProps): Promise<Metadata> {
   const resolvedParams = await params;
-  const hostname = decodeURIComponent(resolvedParams.hostname);
+  const hostname = decodeHostnameParam(resolvedParams.hostname);
 
   const statusPageResult = await getStatusPageByCustomDomain(hostname);
 
@@ -61,7 +62,7 @@ export default async function CustomDomainIncidentDetailPage({
   params,
 }: CustomDomainIncidentDetailPageProps) {
   const resolvedParams = await params;
-  const hostname = decodeURIComponent(resolvedParams.hostname);
+  const hostname = decodeHostnameParam(resolvedParams.hostname);
 
   const statusPageResult = await getStatusPageByCustomDomain(hostname);
 
@@ -81,10 +82,8 @@ export default async function CustomDomainIncidentDetailPage({
 
   // Detect proxy rewrite vs direct internal route access (see page.tsx sibling)
   const headersList = await headers();
-  const requestHost = (headersList.get("x-forwarded-host") || headersList.get("host") || "")
-    .replace(/:\d+$/, "")
-    .toLowerCase();
-  const isProxied = requestHost === hostname.toLowerCase();
+  const requestHost = requestHostname(headersList);
+  const isProxied = requestHost === hostname;
   const customDomainRoutePrefix = isProxied
     ? ""
     : `/status/custom-domain/${hostname}`;
@@ -92,6 +91,7 @@ export default async function CustomDomainIncidentDetailPage({
   return (
     <PublicIncidentDetail
       incident={result.incident}
+      subscription={statusPage}
       idOrSubdomain={hostname}
       faviconLogo={statusPage.faviconLogo}
       transactionalLogo={statusPage.transactionalLogo}

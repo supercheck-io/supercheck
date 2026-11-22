@@ -1,6 +1,6 @@
 import { liveMonitor } from "@/lib/deletion/visibility";
 import { db } from "@/utils/db";
-import { monitors, statusPageComponentMonitors } from "@/db/schema";
+import { monitors, statusPageComponentMonitors, statusPageComponents } from "@/db/schema";
 import { and, eq, inArray } from "drizzle-orm";
 import { staleComponentIds } from "./stale-components";
 
@@ -28,5 +28,7 @@ function loadLinks(componentIds: string[]) {
     })
     .from(statusPageComponentMonitors)
     .innerJoin(monitors, eq(monitors.id, statusPageComponentMonitors.monitorId))
-    .where(and(inArray(statusPageComponentMonitors.componentId, componentIds), liveMonitor()));
+    .innerJoin(statusPageComponents, eq(statusPageComponents.id, statusPageComponentMonitors.componentId))
+    // Only components that follow their monitors can go stale; manual ones show what the owner set.
+    .where(and(inArray(statusPageComponentMonitors.componentId, componentIds), eq(statusPageComponents.automateStatus, true), liveMonitor()));
 }

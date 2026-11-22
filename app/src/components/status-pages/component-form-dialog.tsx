@@ -21,6 +21,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import {
   Popover,
@@ -73,6 +74,7 @@ type Component = {
     | "majority_vote"
     | "weighted_average";
   failureThreshold?: number;
+  automateStatus?: boolean;
   autoCreateIncidents?: boolean;
   serviceId?: string | null;
   showcase: boolean;
@@ -116,6 +118,7 @@ const componentFormSchema = z.object({
     "weighted_average",
   ]),
   failureThreshold: z.number().int().min(1).max(100),
+  automateStatus: z.boolean(),
   autoCreateIncidents: z.boolean(),
   serviceId: z.string(),
 });
@@ -208,6 +211,7 @@ export function ComponentFormDialog({
       onlyShowIfDegraded: false,
       aggregationMethod: "worst_case",
       failureThreshold: 1,
+      automateStatus: false,
       autoCreateIncidents: false,
       serviceId: "",
     },
@@ -217,6 +221,8 @@ export function ComponentFormDialog({
   const monitorWeights = watch("monitorWeights");
   const aggregationMethod = watch("aggregationMethod");
   const showcase = watch("showcase");
+  const automateStatus = watch("automateStatus");
+  const automated = automateStatus && monitorIds.length > 0;
 
   const [services, setServices] = useState<Array<{ id: string; name: string }>>(
     [],
@@ -247,6 +253,7 @@ export function ComponentFormDialog({
         onlyShowIfDegraded: component?.onlyShowIfDegraded ?? false,
         aggregationMethod: component?.aggregationMethod ?? "worst_case",
         failureThreshold: component?.failureThreshold ?? 1,
+        automateStatus: component?.automateStatus ?? false,
         autoCreateIncidents: component?.autoCreateIncidents ?? false,
         serviceId: component?.serviceId ?? "",
       });
@@ -274,6 +281,8 @@ export function ComponentFormDialog({
     setIsSubmitting(true);
 
     try {
+      // Monitors set the status only when linked and opted in; automatic incidents need both.
+      const automateStatus = data.automateStatus && data.monitorIds.length > 0;
       // Degraded-only visibility has no effect while the component is hidden.
       const onlyShowIfDegraded = data.showcase
         ? data.onlyShowIfDegraded
@@ -292,7 +301,8 @@ export function ComponentFormDialog({
           onlyShowIfDegraded,
           aggregationMethod: data.aggregationMethod,
           failureThreshold: data.failureThreshold,
-          autoCreateIncidents: data.autoCreateIncidents,
+          automateStatus,
+          autoCreateIncidents: automateStatus && data.autoCreateIncidents,
           serviceId: data.serviceId || null,
         };
 
@@ -320,7 +330,8 @@ export function ComponentFormDialog({
           position: 0,
           aggregationMethod: data.aggregationMethod,
           failureThreshold: data.failureThreshold,
-          autoCreateIncidents: data.autoCreateIncidents,
+          automateStatus,
+          autoCreateIncidents: automateStatus && data.autoCreateIncidents,
           serviceId: data.serviceId || null,
         };
 
@@ -441,9 +452,9 @@ export function ComponentFormDialog({
                   )}
                 />
                 <p className="text-xs text-muted-foreground">
-                  {monitorIds.length > 0
-                    ? "Linked monitors recalculate this automatically."
-                    : "Manual status until a monitor is linked."}
+                  {automated
+                    ? "Set automatically from linked monitors."
+                    : "Set by you and by the incidents you post."}
                 </p>
               </div>
             </section>
@@ -454,8 +465,9 @@ export function ComponentFormDialog({
                 <h3 className="text-sm font-semibold">Monitors</h3>
                 <InfoHint label="Monitor linking" title="Monitor linking">
                   <InfoHintText>
-                    Linked monitors drive component health. Components without
-                    monitors keep the status you set manually.
+                    Linked monitors follow this component&apos;s maintenance
+                    windows. They change its public status only when you turn on
+                    automatic status.
                   </InfoHintText>
                 </InfoHint>
               </div>
@@ -557,163 +569,194 @@ export function ComponentFormDialog({
                 </div>
               )}
 
-              {monitorIds.length === 0 ? (
-                <p className="text-xs text-muted-foreground">
-                  No monitors linked. Status stays manual.
-                </p>
-              ) : (
+              {monitorIds.length > 0 && (
                 <div className="space-y-4 rounded-lg border bg-muted/20 p-4">
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    <div className="space-y-1.5">
-                      <div className="flex items-center gap-1.5">
-                        <Label htmlFor="component-aggregation">
-                          Aggregation
-                        </Label>
-                        <InfoHint label="Status aggregation" title="Status aggregation">
-                          <InfoHintText>
-                            How monitor states combine into one component
-                            status.
-                          </InfoHintText>
-                        </InfoHint>
-                      </div>
-                      <Controller
-                        control={control}
-                        name="aggregationMethod"
-                        render={({ field }) => (
-                          <Select
-                            value={field.value}
-                            onValueChange={field.onChange}
-                            disabled={isSubmitting}
-                          >
-                            <SelectTrigger id="component-aggregation">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {aggregationOptions.map((option) => (
-                                <SelectItem
-                                  key={option.value}
-                                  value={option.value}
-                                >
-                                  {option.label}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        )}
-                      />
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="space-y-0.5">
+                      <Label
+                        htmlFor="component-automate-status"
+                        className="font-medium"
+                      >
+                        Update status from monitors
+                      </Label>
                       <p className="text-xs text-muted-foreground">
-                        {
-                          aggregationOptions.find(
-                            (option) => option.value === aggregationMethod,
-                          )?.description
-                        }
+                        Off: visitors only see changes you make. On: a failing
+                        monitor changes the public status and uptime bars.
                       </p>
                     </div>
-
-                    <div className="space-y-1.5">
-                      <div className="flex items-center gap-1.5">
-                        <Label htmlFor="component-threshold">
-                          Failing monitors required
-                        </Label>
-                        <InfoHint label="Failure threshold" title="Failure threshold">
-                          <InfoHintText>
-                            Counts failing monitors, not consecutive checks. At
-                            or above this number, the aggregation above decides
-                            the component status. Monitor alert thresholds are
-                            configured on each monitor.
-                          </InfoHintText>
-                        </InfoHint>
-                      </div>
-                      <Input
-                        id="component-threshold"
-                        type="number"
-                        min={1}
-                        max={100}
-                        {...register("failureThreshold", {
-                          valueAsNumber: true,
-                        })}
-                        disabled={isSubmitting}
-                        aria-invalid={Boolean(errors.failureThreshold)}
-                        aria-describedby={
-                          errors.failureThreshold
-                            ? "component-threshold-error"
-                            : undefined
-                        }
-                      />
-                      {errors.failureThreshold && (
-                        <p
-                          id="component-threshold-error"
-                          className="text-xs text-red-500"
-                        >
-                          Enter a whole number from 1 to 100.
-                        </p>
-                      )}
-                    </div>
-                  </div>
-
-                  {aggregationMethod === "weighted_average" && (
-                    <div className="space-y-3 border-t pt-3">
-                      <p className="text-xs text-muted-foreground">
-                        Weight each monitor from 1 to 100.
-                      </p>
-                      <div className="grid gap-3 sm:grid-cols-2">
-                        {monitorIds.map((monitorId) => {
-                          const monitor = monitors.find(
-                            (m) => m.id === monitorId,
-                          );
-                          if (!monitor) return null;
-                          return (
-                            <div key={monitorId} className="space-y-1">
-                              <Label
-                                htmlFor={`monitor-weight-${monitorId}`}
-                                className="text-xs font-normal text-muted-foreground"
-                              >
-                                {monitor.name}
-                              </Label>
-                              <Controller
-                                control={control}
-                                name={`monitorWeights.${monitorId}`}
-                                render={({ field }) => (
-                                  <MonitorWeightInput
-                                    id={`monitor-weight-${monitorId}`}
-                                    value={field.value}
-                                    onChange={field.onChange}
-                                    onBlur={field.onBlur}
-                                    disabled={isSubmitting}
-                                  />
-                                )}
-                              />
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
-
-                  <div className="flex items-start gap-3 border-t pt-3">
-                    <Checkbox
-                      id="component-auto-incidents"
-                      checked={watch("autoCreateIncidents")}
+                    <Switch
+                      id="component-automate-status"
+                      checked={automateStatus}
                       onCheckedChange={(value) =>
-                        setValue("autoCreateIncidents", value === true, {
-                          shouldDirty: true,
-                        })
+                        setValue("automateStatus", value, { shouldDirty: true })
                       }
                       disabled={isSubmitting}
                       className="mt-0.5"
                     />
-                    <div className="space-y-0.5">
-                      <Label
-                        htmlFor="component-auto-incidents"
-                        className="font-medium"
-                      >
-                        Publish outage and recovery incidents automatically
-                      </Label>
-                      <p className="text-xs text-muted-foreground">
-                        Creates a public incident when this component degrades.
-                      </p>
-                    </div>
                   </div>
+                  {automateStatus && (
+                    <>
+                      <div className="grid gap-4 border-t pt-4 sm:grid-cols-2">
+                        <div className="space-y-1.5">
+                          <div className="flex items-center gap-1.5">
+                            <Label htmlFor="component-aggregation">
+                              Aggregation
+                            </Label>
+                            <InfoHint
+                              label="Status aggregation"
+                              title="Status aggregation"
+                            >
+                              <InfoHintText>
+                                How monitor states combine into one component
+                                status.
+                              </InfoHintText>
+                            </InfoHint>
+                          </div>
+                          <Controller
+                            control={control}
+                            name="aggregationMethod"
+                            render={({ field }) => (
+                              <Select
+                                value={field.value}
+                                onValueChange={field.onChange}
+                                disabled={isSubmitting}
+                              >
+                                <SelectTrigger id="component-aggregation">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {aggregationOptions.map((option) => (
+                                    <SelectItem
+                                      key={option.value}
+                                      value={option.value}
+                                    >
+                                      {option.label}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            )}
+                          />
+                          <p className="text-xs text-muted-foreground">
+                            {
+                              aggregationOptions.find(
+                                (option) => option.value === aggregationMethod,
+                              )?.description
+                            }
+                          </p>
+                        </div>
+
+                        <div className="space-y-1.5">
+                          <div className="flex items-center gap-1.5">
+                            <Label htmlFor="component-threshold">
+                              Failing monitors required
+                            </Label>
+                            <InfoHint
+                              label="Failure threshold"
+                              title="Failure threshold"
+                            >
+                              <InfoHintText>
+                                Counts failing monitors, not consecutive checks.
+                                At or above this number, the aggregation above
+                                decides the component status. Monitor alert
+                                thresholds are configured on each monitor.
+                              </InfoHintText>
+                            </InfoHint>
+                          </div>
+                          <Input
+                            id="component-threshold"
+                            type="number"
+                            min={1}
+                            max={100}
+                            {...register("failureThreshold", {
+                              valueAsNumber: true,
+                            })}
+                            disabled={isSubmitting}
+                            aria-invalid={Boolean(errors.failureThreshold)}
+                            aria-describedby={
+                              errors.failureThreshold
+                                ? "component-threshold-error"
+                                : undefined
+                            }
+                          />
+                          {errors.failureThreshold && (
+                            <p
+                              id="component-threshold-error"
+                              className="text-xs text-red-500"
+                            >
+                              Enter a whole number from 1 to 100.
+                            </p>
+                          )}
+                        </div>
+                      </div>
+
+                      {aggregationMethod === "weighted_average" && (
+                        <div className="space-y-3 border-t pt-3">
+                          <p className="text-xs text-muted-foreground">
+                            Weight each monitor from 1 to 100.
+                          </p>
+                          <div className="grid gap-3 sm:grid-cols-2">
+                            {monitorIds.map((monitorId) => {
+                              const monitor = monitors.find(
+                                (m) => m.id === monitorId,
+                              );
+                              if (!monitor) return null;
+                              return (
+                                <div key={monitorId} className="space-y-1">
+                                  <Label
+                                    htmlFor={`monitor-weight-${monitorId}`}
+                                    className="text-xs font-normal text-muted-foreground"
+                                  >
+                                    {monitor.name}
+                                  </Label>
+                                  <Controller
+                                    control={control}
+                                    name={`monitorWeights.${monitorId}`}
+                                    render={({ field }) => (
+                                      <MonitorWeightInput
+                                        id={`monitor-weight-${monitorId}`}
+                                        value={field.value}
+                                        onChange={field.onChange}
+                                        onBlur={field.onBlur}
+                                        disabled={isSubmitting}
+                                      />
+                                    )}
+                                  />
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+
+                      <div className="flex items-start gap-3 border-t pt-3">
+                        <Checkbox
+                          id="component-auto-incidents"
+                          checked={watch("autoCreateIncidents")}
+                          onCheckedChange={(value) =>
+                            setValue("autoCreateIncidents", value === true, {
+                              shouldDirty: true,
+                            })
+                          }
+                          disabled={isSubmitting}
+                          className="mt-0.5"
+                        />
+                        <div className="space-y-0.5">
+                          <Label
+                            htmlFor="component-auto-incidents"
+                            className="font-medium"
+                          >
+                            Publish outage and recovery incidents automatically
+                          </Label>
+                          <p className="text-xs text-muted-foreground">
+                            Posts a public incident and notifies subscribers
+                            when this component degrades, and resolves it on
+                            recovery.
+                          </p>
+                        </div>
+                      </div>
+                    </>
+                  )}
                 </div>
               )}
             </section>

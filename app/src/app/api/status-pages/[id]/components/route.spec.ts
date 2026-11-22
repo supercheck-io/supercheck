@@ -45,7 +45,7 @@ const params = (pageId = id) => ({ params: Promise.resolve({ id: pageId }) });
 const post = (body: unknown, pageId = id) =>
   POST(new NextRequest("http://localhost/x", { method: "POST", body: JSON.stringify(body) }), params(pageId));
 const get = (pageId = id) => GET(new NextRequest("http://localhost/x"), params(pageId));
-const componentRow = { id: "c1", name: "API", description: null, position: 0, status: "operational", showcase: true, onlyShowIfDegraded: false, aggregationMethod: "worst_case", failureThreshold: 1, autoCreateIncidents: false, serviceId: null };
+const componentRow = { id: "c1", name: "API", description: null, position: 0, status: "operational", showcase: true, onlyShowIfDegraded: false, aggregationMethod: "worst_case", failureThreshold: 1, automateStatus: false, autoCreateIncidents: false, serviceId: null };
 
 describe("status page components collection route", () => {
   beforeEach(() => {

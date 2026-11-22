@@ -188,6 +188,7 @@ export const createComponentFieldsSchema = z.object({
   onlyShowIfDegraded: z.boolean().default(false),
   position: z.number().int().min(0).max(1000).default(0),
   aggregationMethod: aggregationMethodEnum.default("worst_case"),
+  automateStatus: z.boolean().optional(),
   autoCreateIncidents: z.boolean().optional(),
   serviceId: z.string().uuid().nullable().optional(),
   monitorWeights: monitorWeightMap.optional(),
@@ -203,6 +204,7 @@ export const updateComponentFieldsSchema = z.object({
   onlyShowIfDegraded: z.boolean().optional(),
   position: z.number().int().min(0).max(1000).optional(),
   aggregationMethod: aggregationMethodEnum.optional(),
+  automateStatus: z.boolean().optional(),
   autoCreateIncidents: z.boolean().optional(),
   serviceId: z.string().uuid().nullable().optional(),
   monitorWeights: monitorWeightMap.optional(),
@@ -253,6 +255,7 @@ export interface ComponentDto {
   onlyShowIfDegraded: boolean | null;
   aggregationMethod: string;
   failureThreshold: number;
+  automateStatus: boolean;
   autoCreateIncidents: boolean;
   serviceId: string | null;
 }
@@ -269,6 +272,7 @@ export function toComponentDto(row: ComponentRow, monitorIds: string[]): Compone
     onlyShowIfDegraded: row.onlyShowIfDegraded,
     aggregationMethod: row.aggregationMethod,
     failureThreshold: row.failureThreshold,
+    automateStatus: row.automateStatus,
     autoCreateIncidents: row.autoCreateIncidents,
     serviceId: row.serviceId ?? null,
   };
@@ -776,6 +780,7 @@ export async function createComponent(
           position: validatedData.position,
           aggregationMethod: validatedData.aggregationMethod,
           failureThreshold: validatedData.failureThreshold,
+          automateStatus: validatedData.automateStatus ?? false,
           autoCreateIncidents: validatedData.autoCreateIncidents ?? false,
           serviceId: validatedData.serviceId,
           createdAt: new Date(),
@@ -882,6 +887,8 @@ export async function updateComponent(
       updateData.aggregationMethod = validatedData.aggregationMethod;
     if (validatedData.failureThreshold !== undefined)
       updateData.failureThreshold = validatedData.failureThreshold;
+    if (validatedData.automateStatus !== undefined)
+      updateData.automateStatus = validatedData.automateStatus;
     if (validatedData.autoCreateIncidents !== undefined)
       updateData.autoCreateIncidents = validatedData.autoCreateIncidents;
     if (validatedData.serviceId !== undefined) updateData.serviceId = validatedData.serviceId;

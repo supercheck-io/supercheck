@@ -95,6 +95,8 @@ export type TranslationKeys = {
   legendSomeDowntime: string;
   legendDown: string;
   legendNoData: string;
+  legendPartialOutage: string;
+  legendMaintenance: string;
   impact: string;
   status: string;
 
@@ -313,7 +315,6 @@ export type TranslationKeys = {
   feedbackHelperText: string;
 
   chooseSubscriptions: string;
-  allPageUpdates: string;
   selectSubscriptionTarget: string;
   webhookSigningSecret: string;
   webhookVerificationPending: string;
@@ -329,9 +330,8 @@ export type TranslationKeys = {
 const translations: Record<SupportedLanguage, TranslationKeys> = {
   en: {
     webhookVerificationPending: "Check your webhook endpoint for the verification challenge. Notifications start after it is verified.",
-    chooseSubscriptions: "Choose components or incidents",
-    allPageUpdates: "Receive all page updates.",
-    selectSubscriptionTarget: "Select at least one component or incident.",
+    chooseSubscriptions: "Only specific components",
+    selectSubscriptionTarget: "Select at least one component.",
     webhookSigningSecret: "Webhook signing secret",
     webhookSecretDescription: "Shown only once. Copy it now and use it to verify X-Webhook-Signature.",
     copySecret: "Copy secret",
@@ -367,6 +367,8 @@ const translations: Record<SupportedLanguage, TranslationKeys> = {
     legendSomeDowntime: "Some downtime",
     legendDown: "Down",
     legendNoData: "No data",
+    legendPartialOutage: "Partial outage",
+    legendMaintenance: "Maintenance",
     impact: "Impact",
     status: "Status",
     investigating: "Investigating",
@@ -562,9 +564,8 @@ const translations: Record<SupportedLanguage, TranslationKeys> = {
 
   ar: {
     webhookVerificationPending: "تحقق من نقطة نهاية الـ webhook بحثًا عن تحدي التحقق. تبدأ الإشعارات بعد التحقق منها.",
-    chooseSubscriptions: "اختر المكوّنات أو الحوادث",
-    allPageUpdates: "تلقي جميع تحديثات الصفحة.",
-    selectSubscriptionTarget: "اختر مكوّناً أو حادثاً واحداً على الأقل.",
+    chooseSubscriptions: "مكونات محددة فقط",
+    selectSubscriptionTarget: "اختر مكونًا واحدًا على الأقل.",
     webhookSigningSecret: "سر توقيع Webhook",
     webhookSecretDescription: "يُعرض مرة واحدة فقط. انسخه الآن واستخدمه للتحقق من X-Webhook-Signature.",
     copySecret: "نسخ السر",
@@ -600,6 +601,8 @@ const translations: Record<SupportedLanguage, TranslationKeys> = {
     legendSomeDowntime: "بعض التوقف",
     legendDown: "متوقف",
     legendNoData: "لا توجد بيانات",
+    legendPartialOutage: "انقطاع جزئي",
+    legendMaintenance: "صيانة",
     impact: "التأثير",
     status: "الحالة",
     investigating: "قيد التحقيق",
@@ -789,9 +792,8 @@ const translations: Record<SupportedLanguage, TranslationKeys> = {
 
   cs: {
     webhookVerificationPending: "Zkontrolujte koncový bod webhooku, zda obdržel ověřovací výzvu. Oznámení začnou po ověření.",
-    chooseSubscriptions: "Vyberte komponenty nebo incidenty",
-    allPageUpdates: "Dostávat všechny aktualizace stránky.",
-    selectSubscriptionTarget: "Vyberte alespoň jednu komponentu nebo incident.",
+    chooseSubscriptions: "Pouze vybrané komponenty",
+    selectSubscriptionTarget: "Vyberte alespoň jednu komponentu.",
     webhookSigningSecret: "Podpisový tajný klíč webhooku",
     webhookSecretDescription: "Zobrazí se pouze jednou. Zkopírujte jej nyní a ověřujte jím X-Webhook-Signature.",
     copySecret: "Kopírovat tajný klíč",
@@ -827,6 +829,8 @@ const translations: Record<SupportedLanguage, TranslationKeys> = {
     legendSomeDowntime: "Částečný výpadek",
     legendDown: "Výpadek",
     legendNoData: "Bez dat",
+    legendPartialOutage: "Částečný výpadek",
+    legendMaintenance: "Údržba",
     impact: "Dopad",
     status: "Stav",
     investigating: "Vyšetřování",
@@ -1016,9 +1020,8 @@ const translations: Record<SupportedLanguage, TranslationKeys> = {
 
   da: {
     webhookVerificationPending: "Tjek webhook-endpointet for verifikationsudfordringen. Underretninger starter, når det er verificeret.",
-    chooseSubscriptions: "Vælg komponenter eller hændelser",
-    allPageUpdates: "Modtag alle sideopdateringer.",
-    selectSubscriptionTarget: "Vælg mindst én komponent eller hændelse.",
+    chooseSubscriptions: "Kun bestemte komponenter",
+    selectSubscriptionTarget: "Vælg mindst én komponent.",
     webhookSigningSecret: "Webhook-signaturhemmelighed",
     webhookSecretDescription: "Vises kun én gang. Kopiér den nu, og brug den til at verificere X-Webhook-Signature.",
     copySecret: "Kopiér hemmelighed",
@@ -1054,6 +1057,8 @@ const translations: Record<SupportedLanguage, TranslationKeys> = {
     legendSomeDowntime: "Noget nedetid",
     legendDown: "Nede",
     legendNoData: "Ingen data",
+    legendPartialOutage: "Delvist nedbrud",
+    legendMaintenance: "Vedligeholdelse",
     impact: "Konsekvens",
     status: "Status",
     investigating: "Undersøger",
@@ -1243,9 +1248,8 @@ const translations: Record<SupportedLanguage, TranslationKeys> = {
 
   de: {
     webhookVerificationPending: "Prüfen Sie den Webhook-Endpunkt auf die Verifizierungsaufforderung. Benachrichtigungen beginnen nach der Verifizierung.",
-    chooseSubscriptions: "Komponenten oder Vorfälle auswählen",
-    allPageUpdates: "Alle Seitenaktualisierungen erhalten.",
-    selectSubscriptionTarget: "Wähle mindestens eine Komponente oder einen Vorfall aus.",
+    chooseSubscriptions: "Nur bestimmte Komponenten",
+    selectSubscriptionTarget: "Wählen Sie mindestens eine Komponente aus.",
     webhookSigningSecret: "Webhook-Signaturschlüssel",
     webhookSecretDescription: "Wird nur einmal angezeigt. Kopiere ihn jetzt und verwende ihn, um X-Webhook-Signature zu überprüfen.",
     copySecret: "Schlüssel kopieren",
@@ -1281,6 +1285,8 @@ const translations: Record<SupportedLanguage, TranslationKeys> = {
     legendSomeDowntime: "Teilweise Ausfall",
     legendDown: "Ausgefallen",
     legendNoData: "Keine Daten",
+    legendPartialOutage: "Teilausfall",
+    legendMaintenance: "Wartung",
     impact: "Auswirkung",
     status: "Status",
     investigating: "Wird untersucht",
@@ -1470,9 +1476,8 @@ const translations: Record<SupportedLanguage, TranslationKeys> = {
 
   es: {
     webhookVerificationPending: "Comprueba si el endpoint del webhook recibió el desafío de verificación. Las notificaciones empiezan cuando se verifique.",
-    chooseSubscriptions: "Elige componentes o incidentes",
-    allPageUpdates: "Recibe todas las actualizaciones de la página.",
-    selectSubscriptionTarget: "Selecciona al menos un componente o incidente.",
+    chooseSubscriptions: "Solo componentes específicos",
+    selectSubscriptionTarget: "Selecciona al menos un componente.",
     webhookSigningSecret: "Secreto de firma del webhook",
     webhookSecretDescription: "Solo se muestra una vez. Cópialo ahora y úsalo para verificar X-Webhook-Signature.",
     copySecret: "Copiar secreto",
@@ -1508,6 +1513,8 @@ const translations: Record<SupportedLanguage, TranslationKeys> = {
     legendSomeDowntime: "Algo de inactividad",
     legendDown: "Caído",
     legendNoData: "Sin datos",
+    legendPartialOutage: "Interrupción parcial",
+    legendMaintenance: "Mantenimiento",
     impact: "Impacto",
     status: "Estado",
     investigating: "Investigando",
@@ -1697,9 +1704,8 @@ const translations: Record<SupportedLanguage, TranslationKeys> = {
 
   fi: {
     webhookVerificationPending: "Tarkista webhook-päätepisteestä vahvistushaaste. Ilmoitukset alkavat, kun se on vahvistettu.",
-    chooseSubscriptions: "Valitse komponentit tai häiriöt",
-    allPageUpdates: "Vastaanota kaikki sivun päivitykset.",
-    selectSubscriptionTarget: "Valitse vähintään yksi komponentti tai häiriö.",
+    chooseSubscriptions: "Vain tietyt komponentit",
+    selectSubscriptionTarget: "Valitse vähintään yksi komponentti.",
     webhookSigningSecret: "Webhook-allekirjoituksen salaisuus",
     webhookSecretDescription: "Näytetään vain kerran. Kopioi se nyt ja käytä sitä X-Webhook-Signature-otsakkeen tarkistamiseen.",
     copySecret: "Kopioi salaisuus",
@@ -1735,6 +1741,8 @@ const translations: Record<SupportedLanguage, TranslationKeys> = {
     legendSomeDowntime: "Osittainen katkos",
     legendDown: "Poissa käytöstä",
     legendNoData: "Ei tietoja",
+    legendPartialOutage: "Osittainen katkos",
+    legendMaintenance: "Huolto",
     impact: "Vaikutus",
     status: "Tila",
     investigating: "Tutkitaan",
@@ -1924,9 +1932,8 @@ const translations: Record<SupportedLanguage, TranslationKeys> = {
 
   fr: {
     webhookVerificationPending: "Vérifiez que votre point de terminaison webhook a reçu le défi de vérification. Les notifications commencent après validation.",
-    chooseSubscriptions: "Choisissez des composants ou des incidents",
-    allPageUpdates: "Recevez toutes les mises à jour de la page.",
-    selectSubscriptionTarget: "Sélectionnez au moins un composant ou un incident.",
+    chooseSubscriptions: "Uniquement certains composants",
+    selectSubscriptionTarget: "Sélectionnez au moins un composant.",
     webhookSigningSecret: "Secret de signature du webhook",
     webhookSecretDescription: "Affiché une seule fois. Copiez-le maintenant pour vérifier X-Webhook-Signature.",
     copySecret: "Copier le secret",
@@ -1962,6 +1969,8 @@ const translations: Record<SupportedLanguage, TranslationKeys> = {
     legendSomeDowntime: "Interruption partielle",
     legendDown: "Hors service",
     legendNoData: "Aucune donnée",
+    legendPartialOutage: "Panne partielle",
+    legendMaintenance: "Maintenance",
     impact: "Impact",
     status: "Statut",
     investigating: "En cours d'investigation",
@@ -2151,9 +2160,8 @@ const translations: Record<SupportedLanguage, TranslationKeys> = {
 
   hi: {
     webhookVerificationPending: "सत्यापन चुनौती के लिए अपने webhook एंडपॉइंट की जाँच करें। सत्यापित होने के बाद सूचनाएँ शुरू होंगी।",
-    chooseSubscriptions: "कॉम्पोनेंट या घटनाएँ चुनें",
-    allPageUpdates: "पेज के सभी अपडेट पाएँ।",
-    selectSubscriptionTarget: "कम से कम एक कॉम्पोनेंट या घटना चुनें।",
+    chooseSubscriptions: "केवल चुने हुए कंपोनेंट",
+    selectSubscriptionTarget: "कम से कम एक कंपोनेंट चुनें।",
     webhookSigningSecret: "Webhook हस्ताक्षर सीक्रेट",
     webhookSecretDescription: "यह केवल एक बार दिखेगा। इसे अभी कॉपी करें और X-Webhook-Signature की पुष्टि के लिए इस्तेमाल करें।",
     copySecret: "सीक्रेट कॉपी करें",
@@ -2189,6 +2197,8 @@ const translations: Record<SupportedLanguage, TranslationKeys> = {
     legendSomeDowntime: "कुछ डाउनटाइम",
     legendDown: "डाउन",
     legendNoData: "कोई डेटा नहीं",
+    legendPartialOutage: "आंशिक आउटेज",
+    legendMaintenance: "रखरखाव",
     impact: "प्रभाव",
     status: "स्थिति",
     investigating: "जांच जारी",
@@ -2378,9 +2388,8 @@ const translations: Record<SupportedLanguage, TranslationKeys> = {
 
   hr: {
     webhookVerificationPending: "Provjerite je li webhook endpoint primio izazov za provjeru. Obavijesti počinju nakon provjere.",
-    chooseSubscriptions: "Odaberite komponente ili incidente",
-    allPageUpdates: "Primajte sva ažuriranja stranice.",
-    selectSubscriptionTarget: "Odaberite barem jednu komponentu ili incident.",
+    chooseSubscriptions: "Samo određene komponente",
+    selectSubscriptionTarget: "Odaberite barem jednu komponentu.",
     webhookSigningSecret: "Tajni ključ za potpisivanje webhooka",
     webhookSecretDescription: "Prikazuje se samo jednom. Kopirajte ga sada i upotrijebite za provjeru zaglavlja X-Webhook-Signature.",
     copySecret: "Kopiraj tajni ključ",
@@ -2416,6 +2425,8 @@ const translations: Record<SupportedLanguage, TranslationKeys> = {
     legendSomeDowntime: "Djelomični prekid",
     legendDown: "Ne radi",
     legendNoData: "Nema podataka",
+    legendPartialOutage: "Djelomični prekid",
+    legendMaintenance: "Održavanje",
     impact: "Utjecaj",
     status: "Status",
     investigating: "Istraživanje",
@@ -2601,9 +2612,8 @@ const translations: Record<SupportedLanguage, TranslationKeys> = {
 
   hu: {
     webhookVerificationPending: "Ellenőrizze a webhook végpontján az ellenőrzési kihívást. Az értesítések az ellenőrzés után indulnak.",
-    chooseSubscriptions: "Válassz összetevőket vagy incidenseket",
-    allPageUpdates: "Kapd meg az oldal összes frissítését.",
-    selectSubscriptionTarget: "Válassz legalább egy összetevőt vagy incidenst.",
+    chooseSubscriptions: "Csak bizonyos összetevők",
+    selectSubscriptionTarget: "Válasszon legalább egy összetevőt.",
     webhookSigningSecret: "Webhook-aláírási titok",
     webhookSecretDescription: "Csak egyszer jelenik meg. Másold ki most, és ezzel ellenőrizd az X-Webhook-Signature értékét.",
     copySecret: "Titok másolása",
@@ -2639,6 +2649,8 @@ const translations: Record<SupportedLanguage, TranslationKeys> = {
     legendSomeDowntime: "Részleges kiesés",
     legendDown: "Leállás",
     legendNoData: "Nincs adat",
+    legendPartialOutage: "Részleges kiesés",
+    legendMaintenance: "Karbantartás",
     impact: "Hatás",
     status: "Állapot",
     investigating: "Vizsgálat alatt",
@@ -2828,9 +2840,8 @@ const translations: Record<SupportedLanguage, TranslationKeys> = {
 
   it: {
     webhookVerificationPending: "Controlla che l'endpoint webhook abbia ricevuto la sfida di verifica. Le notifiche iniziano dopo la verifica.",
-    chooseSubscriptions: "Scegli componenti o incidenti",
-    allPageUpdates: "Ricevi tutti gli aggiornamenti della pagina.",
-    selectSubscriptionTarget: "Seleziona almeno un componente o incidente.",
+    chooseSubscriptions: "Solo componenti specifici",
+    selectSubscriptionTarget: "Seleziona almeno un componente.",
     webhookSigningSecret: "Segreto di firma del webhook",
     webhookSecretDescription: "Viene mostrato una sola volta. Copialo ora e usalo per verificare X-Webhook-Signature.",
     copySecret: "Copia segreto",
@@ -2866,6 +2877,8 @@ const translations: Record<SupportedLanguage, TranslationKeys> = {
     legendSomeDowntime: "Interruzione parziale",
     legendDown: "Non disponibile",
     legendNoData: "Nessun dato",
+    legendPartialOutage: "Interruzione parziale",
+    legendMaintenance: "Manutenzione",
     impact: "Impatto",
     status: "Stato",
     investigating: "In fase di indagine",
@@ -3055,9 +3068,8 @@ const translations: Record<SupportedLanguage, TranslationKeys> = {
 
   ja: {
     webhookVerificationPending: "Webhook エンドポイントで確認チャレンジを受け取ってください。確認後に通知が開始されます。",
-    chooseSubscriptions: "コンポーネントまたはインシデントを選択",
-    allPageUpdates: "ページのすべての更新を受け取る",
-    selectSubscriptionTarget: "コンポーネントまたはインシデントを1つ以上選択してください。",
+    chooseSubscriptions: "特定のコンポーネントのみ",
+    selectSubscriptionTarget: "コンポーネントを1つ以上選択してください。",
     webhookSigningSecret: "Webhook署名シークレット",
     webhookSecretDescription: "このシークレットは一度だけ表示されます。今すぐコピーして、X-Webhook-Signatureの検証に使用してください。",
     copySecret: "シークレットをコピー",
@@ -3093,6 +3105,8 @@ const translations: Record<SupportedLanguage, TranslationKeys> = {
     legendSomeDowntime: "一部停止",
     legendDown: "停止",
     legendNoData: "データなし",
+    legendPartialOutage: "一部停止",
+    legendMaintenance: "メンテナンス",
     impact: "影響",
     status: "状態",
     investigating: "調査中",
@@ -3282,9 +3296,8 @@ const translations: Record<SupportedLanguage, TranslationKeys> = {
 
   ko: {
     webhookVerificationPending: "webhook 엔드포인트에서 확인 챌린지를 확인하세요. 확인이 완료되면 알림이 시작됩니다.",
-    chooseSubscriptions: "컴포넌트 또는 인시던트 선택",
-    allPageUpdates: "페이지의 모든 업데이트 받기",
-    selectSubscriptionTarget: "컴포넌트 또는 인시던트를 하나 이상 선택하세요.",
+    chooseSubscriptions: "특정 구성 요소만",
+    selectSubscriptionTarget: "구성 요소를 하나 이상 선택하세요.",
     webhookSigningSecret: "Webhook 서명 시크릿",
     webhookSecretDescription: "한 번만 표시됩니다. 지금 복사해 X-Webhook-Signature를 검증하는 데 사용하세요.",
     copySecret: "시크릿 복사",
@@ -3320,6 +3333,8 @@ const translations: Record<SupportedLanguage, TranslationKeys> = {
     legendSomeDowntime: "일부 중단",
     legendDown: "중단",
     legendNoData: "데이터 없음",
+    legendPartialOutage: "부분 장애",
+    legendMaintenance: "유지 보수",
     impact: "영향",
     status: "상태",
     investigating: "조사 중",
@@ -3509,9 +3524,8 @@ const translations: Record<SupportedLanguage, TranslationKeys> = {
 
   nl: {
     webhookVerificationPending: "Controleer je webhook-endpoint op de verificatie-uitdaging. Meldingen starten na verificatie.",
-    chooseSubscriptions: "Kies componenten of incidenten",
-    allPageUpdates: "Ontvang alle pagina-updates.",
-    selectSubscriptionTarget: "Selecteer ten minste één component of incident.",
+    chooseSubscriptions: "Alleen specifieke onderdelen",
+    selectSubscriptionTarget: "Selecteer ten minste één onderdeel.",
     webhookSigningSecret: "Webhook-handtekeningsgeheim",
     webhookSecretDescription: "Wordt maar één keer getoond. Kopieer het nu en gebruik het om X-Webhook-Signature te verifiëren.",
     copySecret: "Geheim kopiëren",
@@ -3547,6 +3561,8 @@ const translations: Record<SupportedLanguage, TranslationKeys> = {
     legendSomeDowntime: "Gedeeltelijke uitval",
     legendDown: "Storing",
     legendNoData: "Geen gegevens",
+    legendPartialOutage: "Gedeeltelijke storing",
+    legendMaintenance: "Onderhoud",
     impact: "Impact",
     status: "Status",
     investigating: "Onderzoek",
@@ -3736,9 +3752,8 @@ const translations: Record<SupportedLanguage, TranslationKeys> = {
 
   no: {
     webhookVerificationPending: "Sjekk webhook-endepunktet for verifiseringsutfordringen. Varsler starter etter verifisering.",
-    chooseSubscriptions: "Velg komponenter eller hendelser",
-    allPageUpdates: "Motta alle sideoppdateringer.",
-    selectSubscriptionTarget: "Velg minst én komponent eller hendelse.",
+    chooseSubscriptions: "Bare bestemte komponenter",
+    selectSubscriptionTarget: "Velg minst én komponent.",
     webhookSigningSecret: "Signeringshemmelighet for webhook",
     webhookSecretDescription: "Vises bare én gang. Kopier den nå, og bruk den til å bekrefte X-Webhook-Signature.",
     copySecret: "Kopier hemmelighet",
@@ -3774,6 +3789,8 @@ const translations: Record<SupportedLanguage, TranslationKeys> = {
     legendSomeDowntime: "Noe nedetid",
     legendDown: "Nede",
     legendNoData: "Ingen data",
+    legendPartialOutage: "Delvis nedetid",
+    legendMaintenance: "Vedlikehold",
     impact: "Konsekvens",
     status: "Status",
     investigating: "Undersøker",
@@ -3963,9 +3980,8 @@ const translations: Record<SupportedLanguage, TranslationKeys> = {
 
   pl: {
     webhookVerificationPending: "Sprawdź punkt końcowy webhooka pod kątem wyzwania weryfikacyjnego. Powiadomienia rozpoczną się po weryfikacji.",
-    chooseSubscriptions: "Wybierz komponenty lub incydenty",
-    allPageUpdates: "Otrzymuj wszystkie aktualizacje strony.",
-    selectSubscriptionTarget: "Wybierz co najmniej jeden komponent lub incydent.",
+    chooseSubscriptions: "Tylko wybrane komponenty",
+    selectSubscriptionTarget: "Wybierz co najmniej jeden komponent.",
     webhookSigningSecret: "Klucz tajny do podpisywania webhooka",
     webhookSecretDescription: "Jest wyświetlany tylko raz. Skopiuj go teraz i użyj do weryfikacji X-Webhook-Signature.",
     copySecret: "Kopiuj klucz tajny",
@@ -4001,6 +4017,8 @@ const translations: Record<SupportedLanguage, TranslationKeys> = {
     legendSomeDowntime: "Częściowa niedostępność",
     legendDown: "Niedostępne",
     legendNoData: "Brak danych",
+    legendPartialOutage: "Częściowa awaria",
+    legendMaintenance: "Konserwacja",
     impact: "Wpływ",
     status: "Status",
     investigating: "Badanie",
@@ -4190,9 +4208,8 @@ const translations: Record<SupportedLanguage, TranslationKeys> = {
 
   pt: {
     webhookVerificationPending: "Verifique se o endpoint do webhook recebeu o desafio de verificação. As notificações começam após a verificação.",
-    chooseSubscriptions: "Escolha componentes ou incidentes",
-    allPageUpdates: "Receba todas as atualizações da página.",
-    selectSubscriptionTarget: "Selecione pelo menos um componente ou incidente.",
+    chooseSubscriptions: "Apenas componentes específicos",
+    selectSubscriptionTarget: "Selecione pelo menos um componente.",
     webhookSigningSecret: "Segredo de assinatura do webhook",
     webhookSecretDescription: "É exibido apenas uma vez. Copie-o agora e use-o para verificar X-Webhook-Signature.",
     copySecret: "Copiar segredo",
@@ -4228,6 +4245,8 @@ const translations: Record<SupportedLanguage, TranslationKeys> = {
     legendSomeDowntime: "Alguma indisponibilidade",
     legendDown: "Fora do ar",
     legendNoData: "Sem dados",
+    legendPartialOutage: "Interrupção parcial",
+    legendMaintenance: "Manutenção",
     impact: "Impacto",
     status: "Status",
     investigating: "Investigando",
@@ -4417,9 +4436,8 @@ const translations: Record<SupportedLanguage, TranslationKeys> = {
 
   ro: {
     webhookVerificationPending: "Verificați endpointul webhook pentru provocarea de verificare. Notificările încep după verificare.",
-    chooseSubscriptions: "Alege componente sau incidente",
-    allPageUpdates: "Primește toate actualizările paginii.",
-    selectSubscriptionTarget: "Selectează cel puțin o componentă sau un incident.",
+    chooseSubscriptions: "Doar anumite componente",
+    selectSubscriptionTarget: "Selectați cel puțin o componentă.",
     webhookSigningSecret: "Secret pentru semnarea webhookului",
     webhookSecretDescription: "Este afișat o singură dată. Copiază-l acum și folosește-l pentru a verifica X-Webhook-Signature.",
     copySecret: "Copiază secretul",
@@ -4455,6 +4473,8 @@ const translations: Record<SupportedLanguage, TranslationKeys> = {
     legendSomeDowntime: "Întreruperi parțiale",
     legendDown: "Indisponibil",
     legendNoData: "Fără date",
+    legendPartialOutage: "Întrerupere parțială",
+    legendMaintenance: "Mentenanță",
     impact: "Impact",
     status: "Stare",
     investigating: "În investigare",
@@ -4644,9 +4664,8 @@ const translations: Record<SupportedLanguage, TranslationKeys> = {
 
   ru: {
     webhookVerificationPending: "Проверьте, получил ли вебхук-эндпоинт запрос на подтверждение. Уведомления начнутся после проверки.",
-    chooseSubscriptions: "Выберите компоненты или инциденты",
-    allPageUpdates: "Получать все обновления страницы.",
-    selectSubscriptionTarget: "Выберите хотя бы один компонент или инцидент.",
+    chooseSubscriptions: "Только выбранные компоненты",
+    selectSubscriptionTarget: "Выберите хотя бы один компонент.",
     webhookSigningSecret: "Секрет подписи вебхука",
     webhookSecretDescription: "Показывается только один раз. Скопируйте его сейчас и используйте для проверки X-Webhook-Signature.",
     copySecret: "Копировать секрет",
@@ -4682,6 +4701,8 @@ const translations: Record<SupportedLanguage, TranslationKeys> = {
     legendSomeDowntime: "Частичный простой",
     legendDown: "Недоступно",
     legendNoData: "Нет данных",
+    legendPartialOutage: "Частичный сбой",
+    legendMaintenance: "Обслуживание",
     impact: "Влияние",
     status: "Статус",
     investigating: "Расследование",
@@ -4871,9 +4892,8 @@ const translations: Record<SupportedLanguage, TranslationKeys> = {
 
   sv: {
     webhookVerificationPending: "Kontrollera webhook-endpointen efter verifieringsutmaningen. Aviseringar börjar efter verifiering.",
-    chooseSubscriptions: "Välj komponenter eller incidenter",
-    allPageUpdates: "Ta emot alla siduppdateringar.",
-    selectSubscriptionTarget: "Välj minst en komponent eller incident.",
+    chooseSubscriptions: "Endast vissa komponenter",
+    selectSubscriptionTarget: "Välj minst en komponent.",
     webhookSigningSecret: "Signeringshemlighet för webhook",
     webhookSecretDescription: "Visas bara en gång. Kopiera den nu och använd den för att verifiera X-Webhook-Signature.",
     copySecret: "Kopiera hemlighet",
@@ -4909,6 +4929,8 @@ const translations: Record<SupportedLanguage, TranslationKeys> = {
     legendSomeDowntime: "Viss driftstörning",
     legendDown: "Nere",
     legendNoData: "Inga data",
+    legendPartialOutage: "Delvis avbrott",
+    legendMaintenance: "Underhåll",
     impact: "Påverkan",
     status: "Status",
     investigating: "Undersöker",
@@ -5098,9 +5120,8 @@ const translations: Record<SupportedLanguage, TranslationKeys> = {
 
   tr: {
     webhookVerificationPending: "Webhook uç noktasında doğrulama sorgusunu kontrol edin. Bildirimler doğrulandıktan sonra başlar.",
-    chooseSubscriptions: "Bileşenleri veya olayları seçin",
-    allPageUpdates: "Sayfadaki tüm güncellemeleri alın.",
-    selectSubscriptionTarget: "En az bir bileşen veya olay seçin.",
+    chooseSubscriptions: "Yalnızca belirli bileşenler",
+    selectSubscriptionTarget: "En az bir bileşen seçin.",
     webhookSigningSecret: "Webhook imzalama gizli anahtarı",
     webhookSecretDescription: "Yalnızca bir kez gösterilir. Şimdi kopyalayın ve X-Webhook-Signature değerini doğrulamak için kullanın.",
     copySecret: "Gizli anahtarı kopyala",
@@ -5136,6 +5157,8 @@ const translations: Record<SupportedLanguage, TranslationKeys> = {
     legendSomeDowntime: "Kısmi kesinti",
     legendDown: "Çalışmıyor",
     legendNoData: "Veri yok",
+    legendPartialOutage: "Kısmi kesinti",
+    legendMaintenance: "Bakım",
     impact: "Etki",
     status: "Durum",
     investigating: "Araştırılıyor",
@@ -5325,9 +5348,8 @@ const translations: Record<SupportedLanguage, TranslationKeys> = {
 
   uk: {
     webhookVerificationPending: "Перевірте, чи отримав вебхук-ендпоінт запит на підтвердження. Сповіщення почнуться після перевірки.",
-    chooseSubscriptions: "Виберіть компоненти або інциденти",
-    allPageUpdates: "Отримувати всі оновлення сторінки.",
-    selectSubscriptionTarget: "Виберіть принаймні один компонент або інцидент.",
+    chooseSubscriptions: "Лише вибрані компоненти",
+    selectSubscriptionTarget: "Виберіть принаймні один компонент.",
     webhookSigningSecret: "Секрет підпису вебхука",
     webhookSecretDescription: "Показується лише один раз. Скопіюйте його зараз і використовуйте для перевірки X-Webhook-Signature.",
     copySecret: "Копіювати секрет",
@@ -5363,6 +5385,8 @@ const translations: Record<SupportedLanguage, TranslationKeys> = {
     legendSomeDowntime: "Частковий простій",
     legendDown: "Недоступно",
     legendNoData: "Немає даних",
+    legendPartialOutage: "Частковий збій",
+    legendMaintenance: "Обслуговування",
     impact: "Вплив",
     status: "Статус",
     investigating: "Розслідування",
@@ -5552,9 +5576,8 @@ const translations: Record<SupportedLanguage, TranslationKeys> = {
 
   zh: {
     webhookVerificationPending: "请检查 Webhook 端点是否收到验证挑战。验证通过后将开始发送通知。",
-    chooseSubscriptions: "选择组件或事件",
-    allPageUpdates: "接收页面的所有更新。",
-    selectSubscriptionTarget: "请至少选择一个组件或事件。",
+    chooseSubscriptions: "仅特定组件",
+    selectSubscriptionTarget: "请至少选择一个组件。",
     webhookSigningSecret: "Webhook 签名密钥",
     webhookSecretDescription: "此密钥仅显示一次。请立即复制，并使用它验证 X-Webhook-Signature。",
     copySecret: "复制密钥",
@@ -5590,6 +5613,8 @@ const translations: Record<SupportedLanguage, TranslationKeys> = {
     legendSomeDowntime: "部分停机",
     legendDown: "停机",
     legendNoData: "无数据",
+    legendPartialOutage: "部分中断",
+    legendMaintenance: "维护",
     impact: "影响",
     status: "状态",
     investigating: "调查中",

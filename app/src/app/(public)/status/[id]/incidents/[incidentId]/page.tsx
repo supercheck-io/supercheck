@@ -105,6 +105,7 @@ export default async function PublicIncidentDetailPage({
   return (
     <PublicIncidentDetail
       incident={result.incident}
+      subscription={statusPage}
       idOrSubdomain={resolvedParams.id}
       faviconLogo={statusPage.faviconLogo}
       transactionalLogo={statusPage.transactionalLogo}

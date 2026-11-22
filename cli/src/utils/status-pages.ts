@@ -39,6 +39,8 @@ export interface StatusPageComponent {
   description?: string
   /** Omitted = leave the component's monitor links unchanged; `[]` unlinks all. */
   monitors?: string[]
+  /** Linked monitors set the public status (off by default). Omitted = leave it unchanged. */
+  automateStatus?: boolean
   position: number
 }
 
@@ -60,6 +62,7 @@ export function normalizeRemoteComponents(components: Rec[]): StatusPageComponen
         name: String(component.name ?? ''),
         ...(description !== undefined ? { description } : {}),
         monitors: uniqueSorted(ids),
+        ...(component.automateStatus === true ? { automateStatus: true } : {}),
         position: typeof component.position === 'number' ? component.position : index,
       }
     })
@@ -193,6 +196,7 @@ function componentChanges(local: StatusPageComponent, remote: StatusPageComponen
   // An omitted description leaves the remote one alone; an explicit "" clears it.
   if (local.description !== undefined && local.description !== (remote.description ?? '')) changes.push('description')
   if (local.monitors !== undefined && JSON.stringify(uniqueSorted(local.monitors)) !== JSON.stringify(uniqueSorted(remote.monitors ?? []))) changes.push('monitors')
+  if (local.automateStatus !== undefined && local.automateStatus !== (remote.automateStatus ?? false)) changes.push('automateStatus')
   if (local.position !== remote.position) changes.push('position')
   return changes
 }
@@ -356,6 +360,7 @@ export async function applyStatusPage(client: ApiClient, opts: ApplyStatusPageOp
             name: local.name,
             ...(local.description !== undefined ? { description: local.description } : {}),
             ...(local.monitors !== undefined ? { monitorIds: local.monitors } : {}),
+            ...(local.automateStatus !== undefined ? { automateStatus: local.automateStatus } : {}),
             position: local.position,
           }))
           continue
@@ -366,6 +371,7 @@ export async function applyStatusPage(client: ApiClient, opts: ApplyStatusPageOp
         if (changed.includes('name')) body.name = local.name
         if (changed.includes('description')) body.description = local.description
         if (changed.includes('monitors')) body.monitorIds = local.monitors
+        if (changed.includes('automateStatus')) body.automateStatus = local.automateStatus
         if (changed.includes('position')) body.position = local.position
         await call(() => client.put(`/api/status-pages/${encodeURIComponent(pageId)}/components/${encodeURIComponent(String(remote.id))}`, body))
       }

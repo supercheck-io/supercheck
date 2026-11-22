@@ -645,6 +645,13 @@
       "when": 1795350000000,
       "tag": "0091_high_churn_autovacuum",
       "breakpoints": true
+    },
+    {
+      "idx": 92,
+      "version": "7",
+      "when": 1795327254218,
+      "tag": "0092_status_page_automate_status",
+      "breakpoints": true
     }
   ]
 }

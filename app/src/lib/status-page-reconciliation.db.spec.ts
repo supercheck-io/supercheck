@@ -136,7 +136,7 @@ beforeEach(async () => {
   monitorId = monitor.id;
   const [component] = await mockDatabase
     .insert(schema.statusPageComponents)
-    .values({ statusPageId: pageId, name: "API" })
+    .values({ statusPageId: pageId, name: "API", automateStatus: true })
     .returning();
   componentId = component.id;
   await mockDatabase
@@ -174,6 +174,23 @@ it("drives component health automatically and creates public incidents only when
   expect(
     (await mockDatabase.query.statusPageComponents.findFirst())?.status,
   ).toBe("operational");
+});
+
+it("leaves a manual component alone: a failing monitor changes neither status, bars nor incidents", async () => {
+  await mockDatabase
+    .update(schema.statusPageComponents)
+    .set({ automateStatus: false, autoCreateIncidents: true, status: "operational", updatedAt: new Date() })
+    .where(eq(schema.statusPageComponents.id, componentId));
+  await mockDatabase
+    .update(schema.monitors)
+    .set({ status: "down", lastCheckAt: new Date() })
+    .where(eq(schema.monitors.id, monitorId));
+  await reconcileStatusPages();
+  expect((await mockDatabase.query.statusPageComponents.findFirst())?.status).toBe("operational");
+  expect(await mockDatabase.query.incidents.findMany()).toHaveLength(0);
+  const result = await getPublicComponents(pageId);
+  expect(result.components[0].dailyMetrics).toBeUndefined();
+  expect(result.components[0].noRecentData).toBe(false);
 });
 
 it("does not publish an outage for an unrun pending monitor", async () => {
@@ -229,7 +246,7 @@ it("uses historical location rows when a single-location monitor has no combined
   expect(result.components[0].dailyMetrics).toEqual([
     { date: day.toISOString().slice(0, 10), totalChecks: 10, successfulChecks: 9 },
   ]);
-  expect(checkUptimePercentage(result.components[0].dailyMetrics)).toBe(90);
+  expect(checkUptimePercentage(result.components[0].dailyMetrics ?? [])).toBe(90);
 
   await mockDatabase.insert(schema.monitorAggregates).values({
     monitorId,

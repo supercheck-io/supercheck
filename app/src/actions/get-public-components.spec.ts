@@ -16,6 +16,7 @@ jest.mock("@/utils/db", () => ({
             id: "c1",
             name: "API",
             status: "operational",
+            automateStatus: true,
             ...(args.with?.monitors
               ? { monitors: [{ weight: 1, monitor: { id: "m1", name: "prod-payments-db-eu1", status: "up" } }] }
               : {}),
@@ -42,7 +43,7 @@ it("does not expose linked monitor names, ids or status to anonymous visitors", 
 it("honours the component aggregation method when combining monitor uptime", async () => {
   const { db } = jest.requireMock("@/utils/db");
   (db.query.statusPageComponents.findMany as jest.Mock).mockResolvedValueOnce([
-    { id: "c1", name: "API", status: "operational", aggregationMethod: "best_case", failureThreshold: 1, monitors: [] },
+    { id: "c1", name: "API", status: "operational", automateStatus: true, aggregationMethod: "best_case", failureThreshold: 1, monitors: [] },
   ]);
   const day = new Date();
   day.setUTCHours(0, 0, 0, 0);
@@ -85,4 +86,21 @@ it("shows no recent data when every linked monitor stopped reporting", async () 
   const byId = Object.fromEntries(result.components.map((component: { id: string; noRecentData?: boolean }) => [component.id, component.noRecentData]));
   expect(byId).toEqual({ browser: true, api: false });
   expect(JSON.stringify(result.components)).not.toContain("lastCheckAt");
+});
+
+it("gives manual components no check metrics, so their bars come from incidents", async () => {
+  const { db } = jest.requireMock("@/utils/db");
+  (db.query.statusPageComponents.findMany as jest.Mock).mockResolvedValueOnce([
+    { id: "c1", name: "API", status: "operational", automateStatus: false, aggregationMethod: "worst_case", failureThreshold: 1, monitors: [] },
+  ]);
+  const selects: unknown[] = [];
+  db.select = (columns: unknown) => {
+    selects.push(columns);
+    const c: Record<string, unknown> = {};
+    for (const m of ["from", "innerJoin", "where", "groupBy"]) c[m] = () => c;
+    c.then = (r: (v: unknown) => unknown) => Promise.resolve([]).then(r);
+    return c;
+  };
+  const result = await getPublicComponents("00000000-0000-4000-8000-000000000001");
+  expect(result.components[0].dailyMetrics).toBeUndefined();
 });

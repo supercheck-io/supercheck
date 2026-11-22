@@ -5,7 +5,6 @@ import { getIncidents } from "@/actions/get-incidents";
 import { isStatusPageBrandingHidden } from "@/lib/feature-flags";
 import { withDailyMetrics } from "@/lib/status-page-daily-metrics";
 import { redirect } from "next/navigation";
-import { PageBreadcrumbs } from "@/components/page-breadcrumbs";
 
 type PublicStatusPagePageProps = {
   params: Promise<{
@@ -27,28 +26,21 @@ export default async function PublicStatusPagePage({
   const componentsResult = await getComponents(resolvedParams.id);
   const incidentsResult = await getIncidents(resolvedParams.id);
   // getComponents has already checked status_page:view; the preview needs the same uptime bars as the public page.
-  const components = await withDailyMetrics(componentsResult.components).catch((error) => {
-    console.error("Error loading status page preview uptime:", error);
-    return componentsResult.components;
-  });
-
-  const breadcrumbs = [
-    { label: "Home", href: "/" },
-    { label: "Status Pages", href: "/status-pages" },
-    { label: result.statusPage.name, isCurrentPage: true },
-  ];
+  const components = await withDailyMetrics(componentsResult.components).catch(
+    (error) => {
+      console.error("Error loading status page preview uptime:", error);
+      return componentsResult.components;
+    },
+  );
 
   return (
-    <>
-      <PageBreadcrumbs items={breadcrumbs} />
-      <PublicStatusPage
-        statusPage={result.statusPage}
-        components={components}
-        incidents={incidentsResult.incidents}
-        idOrSubdomain={resolvedParams.id}
-        hideBranding={isStatusPageBrandingHidden()}
-        isPublicView={false}
-      />
-    </>
+    <PublicStatusPage
+      statusPage={result.statusPage}
+      components={components}
+      incidents={incidentsResult.incidents}
+      idOrSubdomain={resolvedParams.id}
+      hideBranding={isStatusPageBrandingHidden()}
+      isPublicView={false}
+    />
   );
 }

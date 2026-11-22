@@ -134,6 +134,7 @@ export const statusPageComponents = pgTable(
       .default('worst_case')
       .notNull(),
     failureThreshold: integer('failure_threshold').default(1).notNull(),
+    automateStatus: boolean('automate_status').default(false).notNull(),
     autoCreateIncidents: boolean('auto_create_incidents')
       .default(false)
       .notNull(),

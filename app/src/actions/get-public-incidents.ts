@@ -59,7 +59,7 @@ export async function getPublicIncidents(statusPageId: string) {
     // Previously: fetched components and updates individually per incident in a loop
     // SECURITY: Only select public-safe fields
     const incidentsList = await db.query.incidents.findMany({
-      where: and(eq(incidents.statusPageId, statusPageId), or(ne(incidents.status, "resolved"), gte(incidents.createdAt, new Date(Date.now() - 90 * 86400000)))),
+      where: and(eq(incidents.statusPageId, statusPageId), or(ne(incidents.status, "resolved"), gte(incidents.createdAt, new Date(Date.now() - 90 * 86400000)), gte(incidents.resolvedAt, new Date(Date.now() - 90 * 86400000)))),
       limit: 500,
       columns: {
         id: true,

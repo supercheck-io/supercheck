@@ -23,12 +23,13 @@ import { monitorAggregationService } from "@/lib/monitor-aggregation-service";
 
 type ComponentForMetrics = {
   id: string;
+  automateStatus: boolean;
   aggregationMethod: string;
   failureThreshold: number;
 };
 
 /**
- * Adds 90 days of combined uptime to each component, shared by the public page and the in-app preview.
+ * Adds 90 days of combined uptime to each component that follows its monitors, shared by the public page and the in-app preview.
  * Linked monitor names/ids/status are internal; only the aggregated metrics are returned.
  */
 export async function withDailyMetrics<T extends ComponentForMetrics>(
@@ -38,7 +39,8 @@ export async function withDailyMetrics<T extends ComponentForMetrics>(
   today.setUTCHours(0, 0, 0, 0);
   const from = new Date(today);
   from.setUTCDate(from.getUTCDate() - 89);
-  const componentIds = components.map((component) => component.id);
+  // Manual components draw their bars from incidents; only those following their monitors need check counts.
+  const componentIds = components.filter((component) => component.automateStatus).map((component) => component.id);
   const combinedAggregate = alias(monitorAggregates, "combined_aggregate");
   const historical =
     componentIds.length === 0
@@ -141,7 +143,7 @@ export async function withDailyMetrics<T extends ComponentForMetrics>(
       }
       return {
         ...component,
-        dailyMetrics: [...byDate].map(([date, monitors]) => ({
+        dailyMetrics: !component.automateStatus ? undefined : [...byDate].map(([date, monitors]) => ({
           date,
           ...combineMonitorDay(monitors, aggregationMethod, failureThreshold),
         })),

@@ -89,7 +89,7 @@ export default defineConfig({
       branding: { bodyBackgroundColor: '#FFFFFF', fontColor: '#111827', greens: '#16A34A', reds: '#DC2626' },
       notifications: { allowEmailSubscribers: true, allowRssFeed: true },
       components: [
-        { name: 'API', description: 'Public REST API', monitors: ['API Health Monitor'], position: 0 },
+        { name: 'API', description: 'Public REST API', monitors: ['API Health Monitor'], automateStatus: true, position: 0 },
       ],
     },
   ],
@@ -357,6 +357,7 @@ Each entry in `components`:
 | `name` | `string` | Component name (max 255 characters, unique within the page) |
 | `description` | `string` | Component description (max 2000 characters; omit to leave unchanged, `""` clears it) |
 | `monitors` | `string[]` | Up to 100 monitor UUIDs, or names of monitors defined in this config. Deploy checks that each one exists before writing. Omit to leave links unchanged; `[]` unlinks all |
+| `automateStatus` | `boolean` | `true` lets the linked monitors set the public status and uptime bars. Off by default. Omit to leave unchanged |
 | `position` | `number` | Display order (integer, 0 to 1000) |
 
 Remote components missing from a declared `components` list are removed only with `deploy --delete`. Omitting `components` leaves every remote component alone, even with `--delete`. A new `published` page must declare at least one component.

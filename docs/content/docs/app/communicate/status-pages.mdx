@@ -15,7 +15,7 @@ Open **Communicate → Status Pages**, then **Manage** on a page to edit it.
 ```mermaid
 flowchart LR
     A[Create page<br/>draft] --> B[Add components]
-    B --> C[Link monitors]
+    B --> C[Link monitors<br/>optional]
     C --> D[Configure Settings]
     D --> E[Publish]
     E --> F[Post incidents]
@@ -47,6 +47,7 @@ flowchart LR
 
 | Action | Effect |
 |---|---|
+| **Preview** | Opens the page full screen inside the app, drafts included. **Open in new tab** shows it on its own |
 | **Unpublish** | Returns to draft and stops serving. Components, incidents and subscribers are kept (both actions ask for confirmation) |
 | **Archive** | Stops serving the page. Publishing again restores access |
 
@@ -64,7 +65,7 @@ Selecting an incident opens its full timeline.
 | **Components** | Status and 90-day uptime per public component |
 | **Scheduled maintenance** | Maintenance not yet started, apart from active incidents |
 | **Incident history** | Active incidents and up to 500 from the last 90 days, grouped by date, never earlier than the page's creation day |
-| **Subscribe** | Sign-up for incident notifications |
+| **Subscribe** | Sign-up for incident notifications. An open incident's page also has **Subscribe**, to follow only that incident |
 
 The page supports 24 languages, with right-to-left layout for Arabic. Automatic messages (outage, recovery, maintenance) use the page language; text you write is never translated. Unknown codes fall back to English.
 
@@ -91,22 +92,26 @@ Badge colors follow **Status colors**. With no recent data on any showcased comp
 
 ## Components
 
-A component is a public service. It can link to an internal service without publishing service details.
+A component is a public service. Its status is **manual** by default: you set it, and the status updates you post change it while they are open. A failing monitor never changes a manual component, so an internal alert does not reach the public page or its subscribers. It can link to an internal service without publishing service details.
 
 ![Components Tab](/screenshots/status-page-components.png)
 
 | Field | Purpose |
 |---|---|
-| **Basics** | Name, optional description, status. Status is manual until you link a monitor |
-| **Monitors** | Linked monitors, aggregation method and **Failing monitors required**. **Weighted average** takes a weight of 1 to 100 per monitor |
-| **Publish outage and recovery incidents automatically** | Optional, off by default |
+| **Basics** | Name, optional description, status |
+| **Monitors** | Linked monitors. They follow the component's maintenance windows |
+| **Update status from monitors** | Off by default. On: the monitors set the status and uptime bars, with an aggregation method and **Failing monitors required**. **Weighted average** takes a weight of 1 to 100 per monitor |
+| **Publish outage and recovery incidents automatically** | Needs **Update status from monitors**. Off by default. Posts a public update and notifies subscribers |
 | **Visibility** | Show on the public page, show only while degraded, link an internal service (never published) |
 
 ![Add Component](/screenshots/status-page-add-component.png)
 
 ```mermaid
 flowchart LR
-    M[Linked monitors] --> T{Failing monitors<br/>at or above threshold?}
+    U{Update status<br/>from monitors?} -- Off --> H[Set by you<br/>and status updates]
+    U -- On --> M[Linked monitors]
+    H --> C
+    M --> T{Failing monitors<br/>at or above threshold?}
     T -- No --> O[Operational]
     T -- Yes --> A[Aggregation method<br/>decides status]
     A --> C[Component status]
@@ -123,11 +128,19 @@ flowchart LR
 
 Component statuses: **Operational** (green), **Degraded Performance** (yellow), **Partial Outage** (orange), **Major Outage** (red), **Under Maintenance** (blue, scheduled maintenance in progress).
 
-**Uptime** is successful checks divided by total checks over the last 90 UTC days. Days without checks show no data. It is check-based, not a time-weighted SLA. The banner and badge use showcased components, including those hidden while healthy.
+Each component shows 90 UTC days of bars and an uptime figure. The legend lists only the colours on screen.
+
+| Component | Bars | Uptime |
+|---|---|---|
+| **Manual** (default) | Green unless a status update affected it that day, then the worst impact: **Minor** yellow, **Major** orange, **Critical** red. Maintenance is blue. Grey before the component was created | Time-based: **Critical** updates count as full downtime, **Major** as 30%, **Minor** and maintenance as none |
+| **Update status from monitors** | Coloured by the day's checks. Grey before the first check; a later day without checks (monitor paused) is green | Successful checks divided by total checks |
+
+The banner and badge use showcased components, including those hidden while healthy.
 
 <Accordions>
 <Accordion title="Edge cases" id="component-edge-cases">
 
+- The rest of this list applies only with **Update status from monitors** on. Turning it off keeps the current status until you change it.
 - Linked components refresh every 10 seconds. **Failing monitors required** is separate from a monitor's own alert threshold.
 - If you resolve an automatic incident while its monitors still fail, it reopens only after the component returns to **Operational**.
 - When every running linked monitor has missed three checks in a row (at least 15 minutes), the component shows **No recent data** and does not count toward the banner or badge. Paused monitors keep their last status.
@@ -190,7 +203,7 @@ A linked SRE incident stays private: investigation notes and evidence are never 
 
 ## Subscribers
 
-Visitors can follow the whole page or pick components and incidents. Turn channels on or off in **Settings → Subscriptions**. Subscribers are notified of created, updated and resolved updates and maintenance updates, only when **Notify subscribers** was selected.
+Visitors can follow the whole page or choose **Only specific components** (shown when the page has more than one). To follow a single incident, they open it and choose **Subscribe**; this needs incident subscriptions in **Settings → Subscriptions**. Turn channels on or off in **Settings → Subscriptions**. Subscribers are notified of created, updated and resolved updates and maintenance updates, only when **Notify subscribers** was selected.
 
 ```mermaid
 sequenceDiagram
@@ -288,7 +301,7 @@ flowchart LR
     class Share complete
 ```
 
-Add the **CNAME** target and **TXT** proof (at `_supercheck-challenge.<custom-hostname>`) shown in Settings. Publish the page before **Verify DNS**. Keep the TXT record: the records are rechecked daily, and a failed recheck does not unverify or detach the domain. To remove the domain, clear the field and save; the default URL keeps working.
+Add the **CNAME** target and **TXT** proof (at `_supercheck-challenge.<custom-hostname>`) shown in Settings. Publish the page before **Verify DNS**. Keep the TXT record: the records are rechecked daily, and a failed recheck does not unverify or detach the domain. To remove the domain, clear the field and save; the default URL keeps working. Custom domains need a plan that includes them. If the plan stops including them, the custom domain returns 404 and the default URL keeps working.
 
 <Callout type="warn">
 On Cloudflare, use **DNS only** while verifying. Turn on the proxy only after the origin serves HTTPS for the hostname, with **Full** or **Full (Strict)** TLS.

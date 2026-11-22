@@ -54,3 +54,42 @@ it("starts on a feed when page subscriptions are disabled", () => {
   expect(screen.queryByRole("tab", { name: /email/i })).not.toBeInTheDocument();
   expect(screen.getByRole("tab", { name: /rss/i })).toHaveAttribute("data-state", "active");
 });
+
+it("lets visitors pick components (not incidents) and sends only those", async () => {
+  jest.mocked(subscribeToStatusPage).mockResolvedValue({ success: true, message: "Check email" });
+  const components = [{ id: "00000000-0000-4000-8000-00000000000a", name: "API" }, { id: "00000000-0000-4000-8000-00000000000b", name: "Dashboard" }];
+  render(<SubscribeDialog {...props} allowIncidentSubscribers components={components} />);
+  fireEvent.click(screen.getByRole("button"));
+  fireEvent.click(screen.getByLabelText(/only specific components/i));
+  fireEvent.click(screen.getByLabelText("Dashboard"));
+  fireEvent.change(screen.getByRole("textbox"), { target: { value: "test@example.com" } });
+  fireEvent.click(screen.getByRole("button", { name: /subscribe via email/i }));
+  await waitFor(() =>
+    expect(subscribeToStatusPage).toHaveBeenLastCalledWith(
+      expect.objectContaining({ subscribeToAllComponents: false, selectedComponentIds: [components[1].id], selectedIncidentIds: [] }),
+    ),
+  );
+});
+
+it("offers no component choice with a single component", () => {
+  render(<SubscribeDialog {...props} components={[{ id: "c", name: "API" }]} />);
+  fireEvent.click(screen.getByRole("button"));
+  expect(screen.queryByLabelText(/only specific components/i)).not.toBeInTheDocument();
+});
+
+it("follows one incident from its page, without page-wide feeds or a component choice", async () => {
+  jest.mocked(subscribeToStatusPage).mockResolvedValue({ success: true, message: "Check email" });
+  const incident = { id: "00000000-0000-4000-8000-0000000000aa", name: "Login errors" };
+  render(<SubscribeDialog {...props} allowRssFeed allowIncidentSubscribers incident={incident} components={[{ id: "a", name: "A" }, { id: "b", name: "B" }]} />);
+  fireEvent.click(screen.getByRole("button"));
+  expect(screen.getByText("Login errors")).toBeInTheDocument();
+  expect(screen.queryByRole("tab", { name: /rss/i })).not.toBeInTheDocument();
+  expect(screen.queryByLabelText(/only specific components/i)).not.toBeInTheDocument();
+  fireEvent.change(screen.getByRole("textbox"), { target: { value: "test@example.com" } });
+  fireEvent.click(screen.getByRole("button", { name: /subscribe via email/i }));
+  await waitFor(() =>
+    expect(subscribeToStatusPage).toHaveBeenLastCalledWith(
+      expect.objectContaining({ subscribeToAllComponents: false, subscribeToAllIncidents: false, selectedComponentIds: [], selectedIncidentIds: [incident.id] }),
+    ),
+  );
+});
