@@ -42,7 +42,7 @@ Tests, logs and incidents can contain text written by someone else. Tool descrip
 </Accordion>
 <Accordion title="Limits" id="limits">
 
-Each connected app may send up to 300 requests a minute, and all of your connected apps together up to 600 (every call in a batch counts as one request). An app may have at most 4 requests running at a time, and you at most 8 across your apps. A batch carries at most 20 calls. Over a limit, the server answers `429` with `Retry-After`.
+Each connected app may send up to 300 requests a minute, and all of your connected apps together up to 600 (every call in a batch counts as one request). An app may have at most 4 requests running at a time, and you at most 8 across your apps. These two caps apply per server process, so a self-hosted deployment with several app replicas allows that many per replica. Over a rate or concurrency limit, the server answers `429` with `Retry-After`. A batch carries at most 20 calls; a larger batch gets `400 batch_too_large` with no `Retry-After`, so split it instead of retrying.
 
 Resetting your password signs you out everywhere and disconnects every connected app. Reconnect the ones you still use. Job trigger keys used by pipelines are not affected.
 

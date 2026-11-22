@@ -189,6 +189,16 @@ describe("monitor PUT write boundary", () => {
     expect(set).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ["PUT", PUT, "maintenance"],
+    ["PUT", PUT, "error"],
+    ["PATCH", PATCH, "maintenance"],
+    ["PATCH", PATCH, "error"],
+  ] as const)("%s rejects the system-set status %s", async (method, handler, status) => {
+    expect((await call(handler, method, { status })).status).toBe(400);
+    expect(set).not.toHaveBeenCalled();
+  });
+
   it.each([{ status: "paused", enabled: true }, { status: "up", enabled: false }])("rejects disagreeing %j", async (body) => {
     expect((await call(PUT, "PUT", body)).status).toBe(400);
     expect(set).not.toHaveBeenCalled();

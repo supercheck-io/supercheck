@@ -1,5 +1,5 @@
 {
-  "id": "66cfcca0-9959-4672-9b30-81102b7b9bcf",
+  "id": "2f22c2f8-f4af-4c9c-a208-2d580eddc826",
   "prevId": "3320c436-7b3c-4410-9cd1-610e22d223d2",
   "version": "7",
   "dialect": "postgresql",
@@ -7415,12 +7415,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "raw_purged_before": {
-          "name": "raw_purged_before",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -9455,6 +9449,27 @@
               "expression": "name",
               "isExpression": false,
               "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "tags_project_lower_name_idx": {
+          "name": "tags_project_lower_name_idx",
+          "columns": [
+            {
+              "expression": "project_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "lower(\"name\")",
+              "asc": true,
+              "isExpression": true,
               "nulls": "last"
             }
           ],

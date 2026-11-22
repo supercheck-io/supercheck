@@ -1806,6 +1806,110 @@
             "description": "Access denied by deployment policy"
           }
         }
+      },
+      "put": {
+        "operationId": "updateJobByBodyId",
+        "summary": "Update a job (collection PUT)",
+        "description": "Compatibility update that requires `id` in the JSON body. Prefer `PATCH /api/jobs/{id}` or `PUT /api/jobs/{id}` for new integrations. The job must belong to the current project. `name` and a non-empty `tests` list are required and replace the stored ones. Omit `cronSchedule` or `description` to keep the stored value; send `\"\"` to clear it. `jobType` cannot change. The caller needs `job:update`.",
+        "tags": [
+          "Jobs"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/JobUpdateRequest"
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "format": "uuid",
+                        "description": "Job to update"
+                      },
+                      "jobType": {
+                        "type": "string",
+                        "description": "Optional; must equal the stored job type"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "name",
+                      "tests"
+                    ]
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Job updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "job": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "description": {
+                          "type": "string"
+                        },
+                        "cronSchedule": {
+                          "type": "string",
+                          "nullable": true
+                        },
+                        "nextRunAt": {
+                          "type": "string",
+                          "format": "date-time",
+                          "nullable": true
+                        },
+                        "warning": {
+                          "type": "string",
+                          "description": "Present when the job saved with a caveat"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Job ID missing, invalid payload, or `jobType` differs from the stored type"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "description": "The job changed since it was read; reload and retry"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
       }
     },
     "/api/jobs/{id}": {
@@ -2090,7 +2194,7 @@
       "get": {
         "operationId": "getJobTriggerInfo",
         "summary": "Get job trigger information",
-        "description": "Retrieve the authenticated trigger URL and usage instructions for a job.",
+        "description": "Retrieve the trigger endpoint URL (the URL carries no key) and a usage example for a job. Create a trigger key with `POST /api/jobs/{id}/api-keys` and send it as a Bearer token.",
         "tags": [
           "Jobs"
         ],
@@ -2589,6 +2693,9 @@
           },
           "400": {
             "description": "The jobId filter is not a canonical UUID."
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
           }
         }
       }
@@ -2609,7 +2716,7 @@
       "get": {
         "operationId": "getRun",
         "summary": "Get run details",
-        "description": "Retrieve full details for a specific run including logs, report URL, and execution metadata. Runs of agent tests also return `agent` (pass rate, attempts, tokens, tool names and failure messages per test).",
+        "description": "Retrieve full details for a specific run including logs, report URL, and execution metadata. Runs of agent tests also return `agent` (pass rate, attempts, tokens, tool names and failure messages per test). The detail response does not include `jobType`, `location`, `triggerKeyName`, `triggeredByName`, `triggeredByImage`, `duration` or `cancelled`; those come from `GET /api/runs`.",
         "tags": [
           "Runs"
         ],
@@ -2629,6 +2736,9 @@
           },
           "404": {
             "$ref": "#/components/responses/NotFound"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
           }
         }
       },
@@ -2976,6 +3086,9 @@
                 }
               }
             }
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
           }
         }
       },
@@ -3066,6 +3179,12 @@
                 }
               }
             }
+          },
+          "402": {
+            "description": "Cloud only: the organization needs an active subscription. Body is `{ error, code }`"
+          },
+          "413": {
+            "description": "Request body or script too large"
           }
         }
       }
@@ -3086,7 +3205,7 @@
       "get": {
         "operationId": "getTest",
         "summary": "Get test details",
-        "description": "Retrieve full details for a test including its script content.",
+        "description": "Retrieve full details for a test including its script content. The response carries `id`, `title`, `description`, `script`, `priority`, `type`, `createdAt` and `updatedAt`; `name`, `tags`, `projectId`, `organizationId` and the creator fields come only from `GET /api/tests`.",
         "tags": [
           "Tests"
         ],
@@ -3193,6 +3312,9 @@
                 }
               }
             }
+          },
+          "413": {
+            "description": "Request body or script too large"
           }
         }
       },
@@ -3314,6 +3436,9 @@
                 }
               }
             }
+          },
+          "413": {
+            "description": "Request body or script too large"
           }
         }
       }
@@ -3829,6 +3954,9 @@
           },
           "503": {
             "description": "The monitor was saved but the check schedule could not be updated (repeat the request to reconcile it)."
+          },
+          "409": {
+            "description": "The monitor was changed by someone else while this update ran; reload it and retry"
           }
         }
       }
@@ -3925,6 +4053,9 @@
                 }
               }
             }
+          },
+          "409": {
+            "description": "The monitor was changed by someone else while this update ran; reload it and retry"
           }
         }
       },
@@ -4022,6 +4153,9 @@
                 }
               }
             }
+          },
+          "409": {
+            "description": "The monitor was changed by someone else while this update ran; reload it and retry"
           }
         }
       }
@@ -4080,6 +4214,26 @@
             "description": "Filter by execution location"
           },
           {
+            "name": "timezoneOffset",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": -840,
+              "maximum": 840
+            },
+            "description": "Minutes to add to UTC midnight for the start of `date`, as returned by JavaScript `Date.getTimezoneOffset()` (for example `-330` for UTC+5:30). Range -840 to 840."
+          },
+          {
+            "name": "timezoneOffsetEnd",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": -840,
+              "maximum": 840
+            },
+            "description": "Offset in force at the end of `date`, which differs on a daylight-saving change day. Defaults to `timezoneOffset`."
+          },
+          {
             "name": "status",
             "in": "query",
             "schema": {
@@ -4125,6 +4279,9 @@
           },
           "404": {
             "$ref": "#/components/responses/NotFound"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
           }
         }
       }
@@ -4269,6 +4426,15 @@
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "409": {
+            "description": "A variable with this key already exists"
           }
         }
       }
@@ -4436,7 +4602,11 @@
                 "properties": {
                   "name": {
                     "type": "string",
-                    "example": "production"
+                    "example": "production",
+                    "minLength": 3,
+                    "maxLength": 20,
+                    "pattern": "^[a-zA-Z0-9_-]+$",
+                    "description": "3 to 20 letters, numbers, underscores or hyphens; no spaces"
                   },
                   "color": {
                     "type": "string",
@@ -4461,8 +4631,20 @@
               }
             }
           },
+          "400": {
+            "description": "Tag name is missing or breaks the name rules (3 to 20 characters of letters, numbers, underscores and hyphens, no spaces), the color is not a `#RRGGBB` hex value, or the project already has 50 tags"
+          },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "409": {
+            "description": "A tag with this name (ignoring case) already exists in this project"
+          },
+          "503": {
+            "description": "Another request is updating tags in this project; retry after the `Retry-After` interval"
           }
         }
       }
@@ -4596,7 +4778,7 @@
             }
           },
           "400": {
-            "description": "Tag name is required"
+            "description": "Tag name is missing, or a new name breaks the create rules (3 to 20 characters of letters, numbers, underscores and hyphens, no spaces), or a changed color is not a `#RRGGBB` hex value"
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
@@ -4606,6 +4788,9 @@
           },
           "404": {
             "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "description": "Another tag in this project already has this name (ignoring case)"
           },
           "500": {
             "description": "Internal server error"
@@ -4759,7 +4944,7 @@
       "put": {
         "operationId": "updateNotificationProvider",
         "summary": "Update a notification provider",
-        "description": "Update notification provider name, type, or configuration.",
+        "description": "Update a notification provider. Send only the fields to change. Omit `config` to keep the stored configuration (do not send back the masked config from a read); changing `type` requires a complete `config` for the new type, or the request returns 400.",
         "tags": [
           "Notifications"
         ],
@@ -4792,14 +4977,13 @@
                         "description": "Webhook only. Names the paging service the channel is for. It does not fill the request: send `method`, `headers` and `bodyTemplate` too, or create the channel in the app, which fills them from the preset."
                       }
                     },
-                    "description": "Provider-specific configuration. For webhooks, `preset` names the paging service; send the full request settings with it."
+                    "description": "Provider-specific configuration. Omit to keep the stored configuration. For webhooks, `preset` names the paging service; send the full request settings with it."
+                  },
+                  "isEnabled": {
+                    "type": "boolean",
+                    "description": "Turn the channel on or off."
                   }
-                },
-                "required": [
-                  "name",
-                  "type",
-                  "config"
-                ]
+                }
               }
             }
           }
@@ -4820,6 +5004,9 @@
           },
           "404": {
             "$ref": "#/components/responses/NotFound"
+          },
+          "400": {
+            "description": "Invalid input, or `type` changed without a new `config`"
           }
         }
       },
@@ -5082,6 +5269,9 @@
           },
           "500": {
             "description": "Internal server error"
+          },
+          "429": {
+            "description": "Per-user write rate limit reached. No `Retry-After` header is sent"
           }
         }
       }
@@ -5090,7 +5280,7 @@
       "get": {
         "operationId": "getAuditLogs",
         "summary": "Get audit logs",
-        "description": "View audit trail of organization actions. Requires admin permissions.",
+        "description": "View audit trail of organization actions. Requires admin permissions. With a CLI token, only entries of the token's project are returned.",
         "tags": [
           "Audit"
         ],
@@ -5125,6 +5315,28 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            },
+            "description": "Case-insensitive substring match on the action name"
+          },
+          {
+            "name": "sortOrder",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "asc",
+                "desc"
+              ],
+              "default": "desc"
+            },
+            "description": "Sort by time"
           }
         ],
         "responses": {
@@ -5181,7 +5393,23 @@
           "500": {
             "description": "Failed to fetch status pages"
           }
-        }
+        },
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Page"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 100,
+              "minimum": 1,
+              "maximum": 100
+            },
+            "description": "Items per page"
+          }
+        ]
       },
       "post": {
         "operationId": "createStatusPage",
@@ -5571,7 +5799,7 @@
       "post": {
         "operationId": "uploadStatusPageAsset",
         "summary": "Upload status page assets",
-        "description": "Upload favicon, logo, or cover image for a status page.",
+        "description": "Upload a favicon, logo, or cover image for a status page. PNG, JPEG, GIF, SVG or WebP only, at most 5 MB; the file content must match its declared image type. The request must send `Content-Length`. Each user may send 30 upload requests per 10 minutes; rejected requests count too.",
         "tags": [
           "Status Pages"
         ],
@@ -5642,6 +5870,18 @@
           },
           "500": {
             "description": "Failed to upload file"
+          },
+          "411": {
+            "description": "`Content-Length` header missing"
+          },
+          "413": {
+            "description": "Request body larger than about 5 MB (a file only slightly over 5 MB returns 400 instead)"
+          },
+          "429": {
+            "description": "Upload limit reached (30 requests per 10 minutes per user, including rejected ones); see the rate-limit headers"
+          },
+          "503": {
+            "description": "The upload limiter is unavailable; retry later"
           }
         }
       }
@@ -5737,6 +5977,9 @@
           },
           "500": {
             "description": "Validation service error"
+          },
+          "413": {
+            "description": "Request body or script too large"
           }
         }
       }
@@ -6141,7 +6384,20 @@
           "500": {
             "description": "Internal server error"
           }
-        }
+        },
+        "parameters": [
+          {
+            "name": "days",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 7,
+              "minimum": 1,
+              "maximum": 90
+            },
+            "description": "Days to look back. The response echoes it as `daysAnalyzed`."
+          }
+        ]
       }
     },
     "/api/status-pages/{id}/badge": {
@@ -6160,7 +6416,7 @@
       "get": {
         "operationId": "getStatusPageBadge",
         "summary": "Get status page badge",
-        "description": "Returns a public SVG status badge. Successful responses are cached for five minutes.",
+        "description": "Returns a public SVG status badge. Successful responses are cached by shared caches for 30 seconds.",
         "tags": [
           "Status Pages"
         ],
@@ -7973,6 +8229,16 @@
           },
           "500": {
             "description": "Internal server error"
+          },
+          "503": {
+            "description": "Another invitation change for this organization is in progress; retry after `Retry-After`",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -8857,7 +9123,7 @@
             }
           },
           "400": {
-            "description": "Invalid request body or JSON",
+            "description": "Invalid request body or JSON, or a tag the request would create breaks the tag name rules (3 to 20 characters of letters, numbers, underscores and hyphens, no spaces) or would take the project past 50 tags",
             "content": {
               "application/json": {
                 "schema": {
@@ -8891,6 +9157,9 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Another request is updating tags in this project; retry after the `Retry-After` interval"
           }
         }
       }
@@ -8966,7 +9235,7 @@
             }
           },
           "400": {
-            "description": "Invalid request body or JSON",
+            "description": "Invalid request body or JSON, or a tag the request would create breaks the tag name rules (3 to 20 characters of letters, numbers, underscores and hyphens, no spaces) or would take the project past 50 tags",
             "content": {
               "application/json": {
                 "schema": {
@@ -8993,6 +9262,9 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Another request is updating tags in this project; retry after the `Retry-After` interval"
           }
         }
       },
@@ -9208,7 +9480,7 @@
         "tags": [
           "Requirements"
         ],
-        "description": "Download all requirements of the current project as `requirements.csv`. Requires `requirement:view`. Columns: ID, Title, Description, Priority, Status, Tags, Linked Tests, Passed Tests, Failed Tests, External ID, External URL, Created At. Cells that start with `=`, `+`, `-`, `@`, a tab or a carriage return are prefixed with a single quote (`'`) so spreadsheets do not evaluate them as formulas.",
+        "description": "Download all requirements of the current project as a CSV file. Requires `requirement:view`. Columns: ID, Title, Description, Priority, Status, Tags, Linked Tests, Passed Tests, Failed Tests, External ID, External URL, Created At. Cells that start with `=`, `+`, `-`, `@`, a tab or a carriage return are prefixed with a single quote (`'`) so spreadsheets do not evaluate them as formulas.",
         "responses": {
           "200": {
             "description": "CSV file",
@@ -9217,7 +9489,7 @@
                 "schema": {
                   "type": "string"
                 },
-                "description": "`attachment; filename=\"requirements.csv\"`"
+                "description": "`attachment; filename=\"requirements_<project>_<date>.csv\"`"
               }
             },
             "content": {
@@ -12385,6 +12657,10 @@
           "isAgentRun": {
             "type": "boolean",
             "description": "True when the run's test, or a test in its job, is an agent test. Returned by GET /api/runs/{runId} only."
+          },
+          "cancelled": {
+            "type": "boolean",
+            "description": "List only. True once a user has requested cancellation. It can be set while the run is still `queued` or `running`; the run then ends with `status` `error`."
           }
         }
       },
@@ -12590,8 +12866,24 @@
               },
               "totalPages": {
                 "type": "integer"
+              },
+              "hasNextPage": {
+                "type": "boolean"
+              },
+              "hasPrevPage": {
+                "type": "boolean"
               }
             }
+          },
+          "statusPageDomain": {
+            "type": "string",
+            "nullable": true,
+            "description": "Domain that hosts status page subdomains"
+          },
+          "statusPageCnameTarget": {
+            "type": "string",
+            "nullable": true,
+            "description": "CNAME target for a custom status page domain"
           }
         }
       },
@@ -13152,7 +13444,7 @@
           },
           "value": {
             "type": "string",
-            "description": "Plaintext for regular variables, redacted for secrets, and empty for file variables"
+            "description": "Plaintext for regular variables and empty for file variables. For secrets, list and get responses omit `value`; create and update responses return `\"[ENCRYPTED]\"`."
           },
           "isSecret": {
             "type": "boolean"
@@ -13246,6 +13538,10 @@
           "createdAt": {
             "type": "string",
             "format": "date-time"
+          },
+          "isOwner": {
+            "type": "boolean",
+            "description": "True when the current user created this token"
           }
         }
       },
@@ -13315,8 +13611,9 @@
               "teams"
             ]
           },
-          "enabled": {
-            "type": "boolean"
+          "isEnabled": {
+            "type": "boolean",
+            "description": "Whether the channel sends notifications."
           },
           "config": {
             "type": "object"
@@ -14545,9 +14842,7 @@
               "up",
               "down",
               "paused",
-              "pending",
-              "maintenance",
-              "error"
+              "pending"
             ]
           },
           "config": {
@@ -15407,7 +15702,7 @@
               "minLength": 1,
               "maxLength": 50
             },
-            "description": "Tag names. Matched case-insensitively; missing tags are created. Duplicates (ignoring case) are collapsed. On update, replaces the whole tag set."
+            "description": "Tag names. Matched case-insensitively, so an existing tag is linked whatever its name; missing tags are created and must follow the tag name rules (3 to 20 characters of letters, numbers, underscores and hyphens, no spaces), within the limit of 50 tags per project. Duplicates (ignoring case) are collapsed. On update, replaces the whole tag set."
           },
           "externalId": {
             "type": "string",
@@ -15466,7 +15761,7 @@
               "minLength": 1,
               "maxLength": 50
             },
-            "description": "Tag names. Matched case-insensitively; missing tags are created. Duplicates (ignoring case) are collapsed. On update, replaces the whole tag set."
+            "description": "Tag names. Matched case-insensitively, so an existing tag is linked whatever its name; missing tags are created and must follow the tag name rules (3 to 20 characters of letters, numbers, underscores and hyphens, no spaces), within the limit of 50 tags per project. Duplicates (ignoring case) are collapsed. On update, replaces the whole tag set."
           },
           "externalId": {
             "type": "string",

@@ -1,6 +1,6 @@
 /** @jest-environment node */
 // CI-only: needs TEST_DATABASE_URL (run with `npm run test:db`).
-// 0090 adds monitors.raw_purged_before (the raw purge watermark the rollup relies on, so it is required: a locked
+// 0091 adds monitors.raw_purged_before (the raw purge watermark the rollup relies on, so it is required: a locked
 // table fails the migration within the bounded lock timeout). It then tunes autovacuum on the high-churn monitor
 // tables when the migrating role owns them, and otherwise (another owner, or a table locked past the timeout) leaves
 // a WARNING (printed by the migration runner) and changes nothing, without failing the deploy.
@@ -18,7 +18,7 @@ const databaseName = `autovacuum_${suffix}`;
 const outsider = `autovacuum_outsider_${suffix}`;
 const TABLES = ["monitor_results", "monitor_aggregates", "monitor_cycles"];
 const TUNED = ["autovacuum_vacuum_scale_factor=0.02", "autovacuum_analyze_scale_factor=0.01"];
-const migrationSql = readFileSync(path.join(APP_ROOT, "src/db/migrations/0090_high_churn_autovacuum.sql"), "utf8");
+const migrationSql = readFileSync(path.join(APP_ROOT, "src/db/migrations/0091_high_churn_autovacuum.sql"), "utf8");
 // The runner applies a file statement by statement (split on the breakpoint), as here.
 const statements = migrationSql.split("--> statement-breakpoint").map((s) => s.trim()).filter(Boolean);
 const columnSql = statements.find((s) => s.includes("raw_purged_before"))!;
@@ -187,6 +187,6 @@ it("skips a table that stays locked, tunes the others and restores the caller's 
 
 it("passes the migration safety check", async () => {
   await expect(
-    execFileAsync(process.execPath, [path.join(APP_ROOT, "scripts/check-migration-safety.js"), "--journal", "src/db/migrations", "src/db/migrations/0090_high_churn_autovacuum.sql"], { cwd: APP_ROOT }),
+    execFileAsync(process.execPath, [path.join(APP_ROOT, "scripts/check-migration-safety.js"), "--journal", "src/db/migrations", "src/db/migrations/0091_high_churn_autovacuum.sql"], { cwd: APP_ROOT }),
   ).resolves.toEqual(expect.objectContaining({ stdout: expect.stringContaining("passed") }));
 });

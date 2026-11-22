@@ -621,8 +621,15 @@ describe("Requirements Server Actions", () => {
         });
       const tx = {
         insert: jest.fn(() => ({ values: () => chain(rows) })),
-        select: jest.fn(() => ({ from: () => ({ where: () => ({ orderBy: () => Promise.resolve([]), for: () => Promise.resolve([]) }) }) })),
+        // `where` is also awaited directly by the per-project tag count.
+        select: jest.fn(() => ({
+          from: () => ({
+            where: () =>
+              Object.assign(Promise.resolve([{ count: 0 }]), { orderBy: () => Promise.resolve([]), for: () => Promise.resolve([]) }),
+          }),
+        })),
         delete: jest.fn(() => ({ where: () => Promise.resolve() })),
+        execute: jest.fn(() => Promise.resolve([])), // project-tag advisory lock
       };
       (mockDb.transaction as jest.Mock).mockImplementation(async (run: (t: typeof tx) => unknown) => run(tx));
 
@@ -631,6 +638,7 @@ describe("Requirements Server Actions", () => {
       expect(result).toEqual({ id: clientId, success: true });
       expect(tx.select).toHaveBeenCalled(); // existing-tag lookup
       expect(tx.delete).toHaveBeenCalled(); // tag association replace
+      expect(tx.execute).toHaveBeenCalled(); // the lock runs on the same transaction
       expect(mockDb.select).not.toHaveBeenCalled();
       expect(mockDb.insert).not.toHaveBeenCalled();
       expect(mockDb.delete).not.toHaveBeenCalled();

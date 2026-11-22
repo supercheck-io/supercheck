@@ -635,8 +635,15 @@
     {
       "idx": 90,
       "version": "7",
+      "when": 1795293082552,
+      "tag": "0090_tags_case_insensitive_name",
+      "breakpoints": true
+    },
+    {
+      "idx": 91,
+      "version": "7",
       "when": 1795350000000,
-      "tag": "0090_high_churn_autovacuum",
+      "tag": "0091_high_churn_autovacuum",
       "breakpoints": true
     }
   ]
