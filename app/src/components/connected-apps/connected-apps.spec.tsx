@@ -30,11 +30,24 @@ describe("ConnectedApps", () => {
     fetchMock.mockResolvedValue(json(200, { connections: [connection, unverified] }));
     render(<ConnectedApps />);
     expect(await screen.findByText("Agent Co")).toBeInTheDocument();
-    expect(screen.getByText("Metadata hosted at agent.example.com")).toBeInTheDocument();
-    expect(screen.getByText(/unverified \(returns to 127\.0\.0\.1:9000\)/i)).toBeInTheDocument();
+    expect(screen.getByText("agent.example.com")).toBeInTheDocument();
+    expect(screen.getByText("Returns to 127.0.0.1:9000")).toBeInTheDocument();
+    expect(screen.getByText("Verified")).toBeInTheDocument();
+    expect(screen.getByText("Unverified")).toBeInTheDocument();
+    expect(screen.getByText("2 apps connected")).toBeInTheDocument();
+    // Relative time, with the exact moment kept on the <time> element.
+    expect(document.querySelector(`time[datetime="${connection.connectedAt}"]`)).toHaveTextContent(/ago$/);
     expect(screen.getByText("Alpha")).toBeInTheDocument();
     expect(screen.getByText("a project you can no longer access")).toBeInTheDocument();
     expect(screen.getAllByText(/last refreshed never/i)).toHaveLength(2);
+  });
+
+  it("handles one app, a bad date and no return host", async () => {
+    fetchMock.mockResolvedValue(json(200, { connections: [{ ...unverified, connectedAt: "not-a-date", redirectHosts: [] }] }));
+    render(<ConnectedApps />);
+    expect(await screen.findByText("1 app connected")).toBeInTheDocument();
+    expect(screen.getByText(/connected at an unknown time/i)).toBeInTheDocument();
+    expect(screen.getByText("Returns to unknown")).toBeInTheDocument();
   });
 
   it("explains an empty list, a disabled server and a load failure", async () => {
@@ -71,7 +84,7 @@ describe("ConnectedApps", () => {
       .mockResolvedValueOnce(json(200, { success: true }))
       .mockResolvedValueOnce(json(200, { connections: [] }));
     render(<ConnectedApps />);
-    fireEvent.click(await screen.findByRole("button", { name: "Disconnect" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Disconnect Agent Co" }));
 
     const dialog = await screen.findByRole("alertdialog");
     expect(within(dialog).getByText(/disconnect agent co\?/i)).toBeInTheDocument();
@@ -89,7 +102,7 @@ describe("ConnectedApps", () => {
       .mockResolvedValueOnce(json(200, { connections: [connection] }))
       .mockResolvedValueOnce(json(500, {}));
     render(<ConnectedApps />);
-    fireEvent.click(await screen.findByRole("button", { name: "Disconnect" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Disconnect Agent Co" }));
     const dialog = await screen.findByRole("alertdialog");
     fireEvent.click(within(dialog).getByRole("button", { name: "Disconnect" }));
     await waitFor(() => expect(toastError).toHaveBeenCalledWith("Could not disconnect. Try again."));
@@ -100,7 +113,7 @@ describe("ConnectedApps", () => {
   it("does nothing when the dialog is cancelled", async () => {
     fetchMock.mockResolvedValue(json(200, { connections: [connection] }));
     render(<ConnectedApps />);
-    fireEvent.click(await screen.findByRole("button", { name: "Disconnect" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Disconnect Agent Co" }));
     fireEvent.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Cancel" }));
     await waitFor(() => expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument());
     expect(fetchMock).toHaveBeenCalledTimes(1);

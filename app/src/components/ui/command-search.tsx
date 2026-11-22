@@ -28,9 +28,10 @@ import {
   type CreateCapabilities,
 } from "@/lib/create-actions";
 import { useAdminStatus } from "@/hooks/use-admin-status";
+import { useAppConfig } from "@/hooks/use-app-config";
 
 type NavId = keyof typeof NAV;
-type Gate = "investigate" | "configure" | "orgAdmin" | "superAdmin";
+type Gate = "investigate" | "configure" | "orgAdmin" | "superAdmin" | "mcp";
 
 /** Destinations in sidebar order (Respond, Communicate, Automate, Monitor, Settings). */
 export const COMMAND_NAV_SECTIONS: Array<{ heading: string; items: Array<{ id: NavId; url: string; gate?: Gate }> }> = [
@@ -67,6 +68,7 @@ export const COMMAND_NAV_SECTIONS: Array<{ heading: string; items: Array<{ id: N
     items: [
       // Every member can open setup (view access shows the checklist), so it is not gated.
       { id: "projectSetup", url: "/setup" },
+      { id: "connectedApps", url: "/connected-apps", gate: "mcp" },
       { id: "organization", url: "/org-admin", gate: "orgAdmin" },
       { id: "superAdmin", url: "/super-admin", gate: "superAdmin" },
       { id: "integrations", url: "/org-admin?tab=integrations", gate: "configure" },
@@ -91,12 +93,14 @@ export function CommandSearch({
   const [open, setOpen] = React.useState(false);
   const router = useRouter();
   const { isAdmin, isOrgAdmin } = useAdminStatus();
+  const { isMcpEnabled } = useAppConfig();
 
   const allowed: Record<Gate, boolean> = {
     investigate: canInvestigateSre,
     configure: canConfigureSre,
     orgAdmin: Boolean(isOrgAdmin),
     superAdmin: Boolean(isAdmin),
+    mcp: isMcpEnabled,
   };
 
   const go = (url: string) => {

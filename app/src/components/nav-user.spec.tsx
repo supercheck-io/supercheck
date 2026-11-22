@@ -46,10 +46,18 @@ describe("NavUser", () => {
     expect(screen.getByTestId("persona-menu-item")).toHaveAttribute("href", "/setup/welcome?change=1");
   });
 
-  it("no longer has separate Connected apps or Source code items", () => {
+  it("links Connected apps only when MCP is on", () => {
+    const { unmount } = render(<NavUser />);
+    expect(screen.queryByTestId("connected-apps-link")).not.toBeInTheDocument();
+    unmount();
     mockMcpEnabled = true;
     render(<NavUser />);
-    expect(screen.queryByTestId("connected-apps-link")).not.toBeInTheDocument();
+    expect(screen.getByTestId("connected-apps-link")).toHaveAttribute("href", "/connected-apps");
+  });
+
+  it("has no Source code or Leave organization items", () => {
+    mockMcpEnabled = true;
+    render(<NavUser />);
     expect(screen.queryByText("Source code")).not.toBeInTheDocument();
     expect(screen.queryByText(/Leave organization/)).not.toBeInTheDocument();
   });

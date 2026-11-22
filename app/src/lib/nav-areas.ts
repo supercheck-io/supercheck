@@ -14,7 +14,8 @@ import { TYPE_ACTIVE_ICON, TYPE_TEXT, TYPE_TONE } from "@/lib/type-tones";
 type NavEntry = { title: string; icon: LucideIcon; tone: NavTone };
 
 export const NAV = {
-  dashboard: { title: "Dashboard", icon: ChartColumn, tone: "respond" },
+  // Home page, not a Respond tool: blue like the Automate test types.
+  dashboard: { title: "Dashboard", icon: ChartColumn, tone: TYPE_TONE.test.browser },
   incidents: { title: "Incidents", icon: Siren, tone: "respond" },
   services: { title: "Services", icon: Boxes, tone: TYPE_TONE.sre.service },
   integrations: { title: "Integrations", icon: Cable, tone: TYPE_TONE.sre.integration },
@@ -33,8 +34,8 @@ export const NAV = {
   projectSetup: { title: "Project setup", icon: Rocket, tone: "organization" },
   organization: { title: "Organization", icon: UserCog, tone: "organization" },
   superAdmin: { title: "Super Admin", icon: ShieldCheck, tone: "superadmin" },
-  // Account setting (MCP OAuth clients), so slate like other settings.
-  connectedApps: { title: "Connected apps", icon: Blocks, tone: "slate" },
+  // MCP OAuth clients, so orchid like the MCP monitor type.
+  connectedApps: { title: "Connected apps", icon: Blocks, tone: TYPE_TONE.monitor.mcp_server },
 } satisfies Record<string, NavEntry>;
 
 // Static class strings so Tailwind can see them.
