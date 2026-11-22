@@ -417,6 +417,25 @@ describe("raw purge watermark (monitors.raw_purged_before)", () => {
     ]);
   });
 
+  it("recomputes the watermark day itself and never creates a missing day before it", async () => {
+    // Watermark at the start of day -4: day -4 is the oldest kept (complete) day, day -5 was purged and had no aggregate.
+    await mockDatabase.insert(schema.monitorResults).values([
+      { monitorId, checkedAt: older(5, 30), location: "local", status: "down", isUp: false, isStatusChange: true },
+      { monitorId, checkedAt: older(4, 10), location: "local", status: "up", isUp: true, responseTimeMs: 50 },
+      { monitorId, checkedAt: older(4, 20), location: "local", status: "up", isUp: true, responseTimeMs: 50 },
+    ]);
+    await seed(monitorId, older(4), 1, 1);
+    await mockDatabase.update(schema.monitors).set({ rawPurgedBefore: older(4) }).where(eq(schema.monitors.id, monitorId));
+
+    expect((await monitorAggregationService.runDailyAggregation()).errors).toEqual([]);
+
+    expect(await dailyOf(monitorId, older(4))).toEqual([
+      { location: "local", totalChecks: 2, successfulChecks: 2 },
+      { location: null, totalChecks: 2, successfulChecks: 2 },
+    ]);
+    expect(await dailyOf(monitorId, older(5))).toEqual([]);
+  });
+
   it.each([
     ["no watermark yet", null],
     ["a watermark older than the day", 10],

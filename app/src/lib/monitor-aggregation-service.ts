@@ -971,9 +971,12 @@ export class MonitorAggregationService {
       existing.map((row) => [`${row.periodStart.getTime()}|${row.location ?? ""}`, row.totalChecks]),
     );
     const boundary = periodOf(rawFloor);
+    const purgedBefore = bounds?.rawPurgedBefore?.getTime();
     const writable = (row: MonitorAggregateInsert) => {
       const t = row.periodStart.getTime();
       if (frozen.has(t)) return false;
+      // A period cleanup already purged is never created either: its surviving rows are not the whole period.
+      if (purgedBefore !== undefined && t < purgedBefore) return false;
       if (t !== boundary) return true;
       const previous = existingChecks.get(`${t}|${row.location ?? ""}`);
       return previous === undefined || (row.totalChecks ?? 0) >= previous;

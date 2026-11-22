@@ -1,9 +1,9 @@
 /** @jest-environment node */
 // CI-only: needs TEST_DATABASE_URL (run with `npm run test:db`).
-// 0091 adds monitors.raw_purged_before (the raw purge watermark the rollup relies on, so it is required: a locked
-// table fails the migration within the bounded lock timeout). It then tunes autovacuum on the high-churn monitor
-// tables when the migrating role owns them, and otherwise (another owner, or a table locked past the timeout) leaves
-// a WARNING (printed by the migration runner) and changes nothing, without failing the deploy.
+// 0091 tunes autovacuum on the high-churn monitor tables when the migrating role owns them, and otherwise (another owner, or a table locked past the timeout) leaves
+// a WARNING (printed by the migration runner) and changes nothing, without failing the deploy. Last, it adds
+// monitors.raw_purged_before (the raw purge watermark the rollup relies on, so it is required: a locked table fails the
+// migration within the bounded lock timeout); it comes last so the monitors lock is never held while waiting on others.
 import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
@@ -182,11 +182,16 @@ it("skips a table that stays locked, tunes the others and restores the caller's 
   expect(options.monitor_results).toEqual(TUNED);
   expect(options.monitor_cycles).toEqual(TUNED);
   expect(options.monitor_aggregates).toEqual([]);
-  expect(notices).toEqual([COLUMN_EXISTS, expect.stringContaining("monitor_aggregates not applied: table is locked")]);
+  expect(notices).toEqual([expect.stringContaining("monitor_aggregates not applied: table is locked"), COLUMN_EXISTS]);
 }, 30_000);
 
 it("passes the migration safety check", async () => {
   await expect(
     execFileAsync(process.execPath, [path.join(APP_ROOT, "scripts/check-migration-safety.js"), "--journal", "src/db/migrations", "src/db/migrations/0091_high_churn_autovacuum.sql"], { cwd: APP_ROOT }),
   ).resolves.toEqual(expect.objectContaining({ stdout: expect.stringContaining("passed") }));
+});
+
+it("locks monitors only after the autovacuum step, so a wait on another table never holds it", () => {
+  const sql = readFileSync(path.join(APP_ROOT, "src/db/migrations/0091_high_churn_autovacuum.sql"), "utf8");
+  expect(sql.indexOf('ADD COLUMN IF NOT EXISTS "raw_purged_before"')).toBeGreaterThan(sql.lastIndexOf("autovacuum_vacuum_scale_factor"));
 });

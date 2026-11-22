@@ -1,16 +1,3 @@
--- monitors.raw_purged_before: the instant before which retention cleanup has deleted the monitor's raw rows; only
--- moves forward. The rollup never rewrites an existing aggregate of a period before it. Nullable without a default, so
--- no table rewrite. Bounded lock: monitors is written on every check, so a table that stays locked fails the migration
--- (atomically, for a later retry) instead of queueing every check behind it. The caller's lock timeout is restored.
-DO $$
-DECLARE
-  previous_lock_timeout text := current_setting('lock_timeout');
-BEGIN
-  PERFORM set_config('lock_timeout', '5s', true);
-  ALTER TABLE "monitors" ADD COLUMN IF NOT EXISTS "raw_purged_before" timestamp with time zone;
-  PERFORM set_config('lock_timeout', previous_lock_timeout, true);
-END
-$$;--> statement-breakpoint
 -- Autovacuum on the high-churn monitor tables: vacuum after 2% dead rows and analyze after 1% changes (defaults 20% and
 -- 10%), so space freed by hourly retention cleanup is reused steadily. Changing storage parameters needs table ownership:
 -- a role that does not own a table gets a WARNING (printed by the migration runner) and the table keeps its settings (the owner can apply the same
@@ -40,6 +27,20 @@ BEGIN
       RAISE WARNING 'autovacuum settings for % not applied: table is locked', target;
     END;
   END LOOP;
+  PERFORM set_config('lock_timeout', previous_lock_timeout, true);
+END
+$$;--> statement-breakpoint
+-- monitors.raw_purged_before: the instant before which retention cleanup has deleted the monitor's raw rows; only
+-- moves forward. The rollup never rewrites an existing aggregate of a period before it. Nullable without a default, so
+-- no table rewrite. Bounded lock: monitors is written on every check, so a table that stays locked fails the migration
+-- (atomically, for a later retry) instead of queueing every check behind it. Last in the file: the
+-- migration runner commits once at the end, so a lock taken here is held only for what follows it. The caller's lock timeout is restored.
+DO $$
+DECLARE
+  previous_lock_timeout text := current_setting('lock_timeout');
+BEGIN
+  PERFORM set_config('lock_timeout', '5s', true);
+  ALTER TABLE "monitors" ADD COLUMN IF NOT EXISTS "raw_purged_before" timestamp with time zone;
   PERFORM set_config('lock_timeout', previous_lock_timeout, true);
 END
 $$;
