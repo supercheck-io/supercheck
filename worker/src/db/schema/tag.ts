@@ -48,6 +48,11 @@ export const tags = pgTable(
       table.projectId,
       table.name,
     ),
+    // Case-insensitive: "Smoke" and "smoke" are one tag in a project.
+    projectTagLowerNameUnique: uniqueIndex('tags_project_lower_name_idx').on(
+      table.projectId,
+      sql`lower(${table.name})`,
+    ),
     tagsCreatedByUserIdIdx: index('tags_created_by_user_id_idx').on(
       table.createdByUserId,
     ),

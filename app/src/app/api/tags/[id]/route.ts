@@ -2,11 +2,12 @@ import { isUuid } from "@/lib/uuid";
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/utils/db';
 import { tags, testTags, requirementTags, monitorTags, monitors } from '@/db/schema';
-import { eq, count, and } from 'drizzle-orm';
+import { eq, count, and, ne, sql } from 'drizzle-orm';
 import { liveMonitor } from '@/lib/deletion/visibility';
 import { checkPermissionWithContext } from '@/lib/rbac/middleware';
 import { requireAuthContext, isAuthError, authErrorStatus } from '@/lib/auth-context';
 import { createLogger } from '@/lib/logger/index';
+import { tagNameError, tagColorError, isTagNameConflict } from '@/lib/tag-validation';
 
 import { permissionDeniedResponse } from "@/lib/deletion/org-state";
 import { requireSessionSameOrigin } from "@/lib/security/same-origin";
@@ -234,19 +235,32 @@ export async function PUT(
       return NextResponse.json({ error: 'Tag not found' }, { status: 404 });
     }
 
-    // Check if another tag with the same name exists in the same project
-    const duplicateTag = await db
-      .select()
-      .from(tags)
-      .where(and(
-        eq(tags.name, name.trim()),
-        eq(tags.organizationId, organizationId),
-        eq(tags.projectId, project.id)
-      ))
-      .limit(1);
+    // Same rules as create, checked only on a rename so older tags outside them (or legacy case-twins) can still change color.
+    if (name.trim() !== existingTag[0].name) {
+      const nameError = tagNameError(name.trim());
+      if (nameError) return NextResponse.json({ error: nameError }, { status: 400 });
 
-    if (duplicateTag.length > 0 && duplicateTag[0].id !== tagId) {
-      return NextResponse.json({ error: 'Tag with this name already exists' }, { status: 409 });
+      // Check if another tag with the same name exists in the same project (case-insensitively, as requirement tags are matched)
+      const duplicateTag = await db
+        .select()
+        .from(tags)
+        .where(and(
+          eq(sql`lower(${tags.name})`, name.trim().toLowerCase()),
+          ne(tags.id, tagId),
+          eq(tags.organizationId, organizationId),
+          eq(tags.projectId, project.id)
+        ))
+        .limit(1);
+
+      if (duplicateTag.length > 0) {
+        return NextResponse.json({ error: 'Tag with this name already exists' }, { status: 409 });
+      }
+    }
+
+    // Same exemption for an unchanged legacy color (for example "red"), so it cannot block a rename.
+    if (color !== existingTag[0].color) {
+      const colorError = tagColorError(color);
+      if (colorError) return NextResponse.json({ error: colorError }, { status: 400 });
     }
 
     // Update the tag
@@ -267,6 +281,9 @@ export async function PUT(
         { error: error instanceof Error ? error.message : 'Authentication required' },
         { status: authErrorStatus(error) }
       );
+    }
+    if (isTagNameConflict(error)) {
+      return NextResponse.json({ error: 'Tag with this name already exists' }, { status: 409 });
     }
     logger.error({ err: error }, 'Error updating tag');
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

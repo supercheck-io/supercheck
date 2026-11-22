@@ -60,32 +60,46 @@ export async function withPlanLimitLock<T>(
   fn: (tx: PlanLimitTransaction) => Promise<T>
 ): Promise<T> {
   return db.transaction(async (tx) => {
-    try {
-      const previous = await tx.execute(
-        sql`select current_setting('lock_timeout') as value`
-      );
-      const previousTimeout =
-        (previous as unknown as Array<{ value?: string }> | undefined)?.[0]
-          ?.value ?? "0";
-      await tx.execute(
-        sql`select set_config('lock_timeout', ${`${PLAN_LIMIT_LOCK_TIMEOUT_MS}ms`}, true)`
-      );
-      await tx.execute(
-        sql`select pg_advisory_xact_lock(hashtext(${`plan-limit:${resource}:${organizationId}`}))`
-      );
-      // The short timeout is only for acquiring the advisory lock; restore the
-      // session's own setting for everything the callback runs.
-      await tx.execute(
-        sql`select set_config('lock_timeout', ${previousTimeout}, true)`
-      );
-    } catch (error) {
-      // Only a failure to take the lock means "busy"; callback errors pass through.
-      if (isLockTimeout(error)) throw new PlanLimitBusyError();
-      throw error;
-    }
+    await acquireXactLock(tx, `plan-limit:${resource}:${organizationId}`);
     return fn(tx);
   });
 }
+
+/**
+ * Take a transaction-scoped advisory lock on `key` inside the caller's open
+ * transaction, waiting at most PLAN_LIMIT_LOCK_TIMEOUT_MS (then PlanLimitBusyError).
+ * Released on commit/rollback.
+ */
+export async function acquireXactLock(
+  tx: Pick<PlanLimitTransaction, "execute">,
+  key: string
+): Promise<void> {
+  try {
+    const previous = await tx.execute(
+      sql`select current_setting('lock_timeout') as value`
+    );
+    const previousTimeout =
+      (previous as unknown as Array<{ value?: string }> | undefined)?.[0]
+        ?.value ?? "0";
+    await tx.execute(
+      sql`select set_config('lock_timeout', ${`${PLAN_LIMIT_LOCK_TIMEOUT_MS}ms`}, true)`
+    );
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${key}))`);
+    // The short timeout is only for acquiring the advisory lock; restore the
+    // session's own setting for everything the caller runs next.
+    await tx.execute(
+      sql`select set_config('lock_timeout', ${previousTimeout}, true)`
+    );
+  } catch (error) {
+    // Only a failure to take the lock means "busy"; other errors pass through.
+    if (isLockTimeout(error)) throw new PlanLimitBusyError();
+    throw error;
+  }
+}
+
+/** One key for every path that counts and creates a project's tags (POST /api/tags, requirement tag sync). */
+export const projectTagsLockKey = (organizationId: string, projectId: string) =>
+  `project-tags:${organizationId}:${projectId}`;
 
 type LimitCheck = {
   allowed: boolean;

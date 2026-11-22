@@ -3105,8 +3105,17 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Tag"
+        "400":
+          description: Tag name is missing or breaks the name rules (3 to 20 characters of
+            letters, numbers, underscores and hyphens, no spaces), the color is
+            not a `#RRGGBB` hex value, or the project already has 50 tags
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "409":
+          description: A tag with this name (ignoring case) already exists in this project
+        "503":
+          description: Another request is updating tags in this project; retry after the
+            `Retry-After` interval
   /api/tags/{id}:
     parameters:
       - name: id
@@ -3193,13 +3202,17 @@ paths:
               schema:
                 $ref: "#/components/schemas/Tag"
         "400":
-          description: Tag name is required
+          description: Tag name is missing, or a new name breaks the create rules (3 to 20
+            characters of letters, numbers, underscores and hyphens, no spaces),
+            or a changed color is not a `#RRGGBB` hex value
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
           $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
+        "409":
+          description: Another tag in this project already has this name (ignoring case)
         "500":
           description: Internal server error
   /api/notification-providers:
@@ -6148,7 +6161,10 @@ paths:
               schema:
                 $ref: "#/components/schemas/RequirementResponse"
         "400":
-          description: Invalid request body or JSON
+          description: Invalid request body or JSON, or a tag the request would create
+            breaks the tag name rules (3 to 20 characters of letters, numbers,
+            underscores and hyphens, no spaces) or would take the project past
+            50 tags
           content:
             application/json:
               schema:
@@ -6169,6 +6185,9 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Another request is updating tags in this project; retry after the
+            `Retry-After` interval
   /api/requirements/{id}:
     parameters:
       - name: id
@@ -6220,7 +6239,10 @@ paths:
               schema:
                 $ref: "#/components/schemas/RequirementResponse"
         "400":
-          description: Invalid request body or JSON
+          description: Invalid request body or JSON, or a tag the request would create
+            breaks the tag name rules (3 to 20 characters of letters, numbers,
+            underscores and hyphens, no spaces) or would take the project past
+            50 tags
           content:
             application/json:
               schema:
@@ -6237,6 +6259,9 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Another request is updating tags in this project; retry after the
+            `Retry-After` interval
     delete:
       operationId: deleteRequirement
       summary: Delete a requirement
@@ -10280,8 +10305,6 @@ components:
             - down
             - paused
             - pending
-            - maintenance
-            - error
         config:
           $ref: "#/components/schemas/MonitorConfig"
         alertConfig:
@@ -10898,7 +10921,10 @@ components:
             type: string
             minLength: 1
             maxLength: 50
-          description: Tag names. Matched case-insensitively; missing tags are created.
+          description: Tag names. Matched case-insensitively, so an existing tag is linked
+            whatever its name; missing tags are created and must follow the tag
+            name rules (3 to 20 characters of letters, numbers, underscores and
+            hyphens, no spaces), within the limit of 50 tags per project.
             Duplicates (ignoring case) are collapsed. On update, replaces the
             whole tag set.
         externalId:
@@ -10948,7 +10974,10 @@ components:
             type: string
             minLength: 1
             maxLength: 50
-          description: Tag names. Matched case-insensitively; missing tags are created.
+          description: Tag names. Matched case-insensitively, so an existing tag is linked
+            whatever its name; missing tags are created and must follow the tag
+            name rules (3 to 20 characters of letters, numbers, underscores and
+            hyphens, no spaces), within the limit of 50 tags per project.
             Duplicates (ignoring case) are collapsed. On update, replaces the
             whole tag set.
         externalId:

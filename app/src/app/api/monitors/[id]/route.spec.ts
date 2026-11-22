@@ -59,6 +59,8 @@ jest.mock("@/lib/location-registry", () => ({
   PROJECT_RESTRICTED_LOCATIONS_DISABLED_ERROR: "restricted",
 }));
 jest.mock("@/lib/worker-registry", () => ({ getActiveWorkerQueueNames: jest.fn() }));
+const deleteMonitorWithContext = jest.fn();
+jest.mock("@/lib/resource-deletion/monitor", () => ({ deleteMonitorWithContext: (...args: unknown[]) => deleteMonitorWithContext(...args) }));
 
 import { NextRequest, NextResponse } from "next/server";
 jest.mock("@/lib/sre/connectors/endpoint-policy", () => ({
@@ -314,5 +316,21 @@ describe("trial check interval on monitor updates", () => {
   it.each([["PUT", PUT], ["PATCH", PATCH]] as const)("%s does not check the interval when it is not being changed", async (method, handler) => {
     await call(handler, method, { name: "Renamed" });
     expect(trialIntervalErrorResponse).not.toHaveBeenCalled();
+  });
+});
+
+describe("monitor DELETE status mapping", () => {
+  const url = "http://localhost/api/monitors/00000000-0000-4000-8000-000000000002";
+  const del = () => DELETE(new NextRequest(url, { method: "DELETE" }), { params: Promise.resolve({ id: "00000000-0000-4000-8000-000000000002" }) });
+  beforeEach(() => jest.requireMock("@/lib/rbac/middleware").checkPermissionWithContext.mockReturnValue(true));
+
+  it("answers 404 when the monitor is not found", async () => {
+    deleteMonitorWithContext.mockResolvedValue({ success: false, error: "Monitor not found or access denied" });
+    expect((await del()).status).toBe(404);
+  });
+
+  it("answers 500, never 409, for any other failure", async () => {
+    deleteMonitorWithContext.mockResolvedValue({ success: false, error: "monitor still active" });
+    expect((await del()).status).toBe(500);
   });
 });

@@ -1,12 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/utils/db';
 import { tags } from '@/db/schema';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, sql } from 'drizzle-orm';
 import { checkPermissionWithContext } from '@/lib/rbac/middleware';
 import { requireAuthContext, isAuthError, authErrorStatus } from '@/lib/auth-context';
+import { tagNameError, tagColorError, isTagNameConflict } from '@/lib/tag-validation';
 
 import { permissionDeniedResponse } from "@/lib/deletion/org-state";
 import { requireSessionSameOrigin } from "@/lib/security/same-origin";
+import { acquireXactLock, PlanLimitBusyError, projectTagsLockKey } from "@/lib/middleware/plan-limit-lock";
+
 export async function GET() {
   try {
     const context = await requireAuthContext();
@@ -71,51 +74,9 @@ export async function POST(request: NextRequest) {
 
     const trimmedName = name.trim();
 
-    // Validate tag name
-    if (!trimmedName) {
-      return NextResponse.json({ error: 'Tag name cannot be empty' }, { status: 400 });
-    }
-
-    if (trimmedName.length < 3 || trimmedName.length > 20) {
-      return NextResponse.json({ error: 'Tag name must be between 3 and 20 characters' }, { status: 400 });
-    }
-
-    if (/\s/.test(trimmedName)) {
-      return NextResponse.json({ error: 'Tag name cannot contain spaces' }, { status: 400 });
-    }
-
-    if (!/^[a-zA-Z0-9_-]+$/.test(trimmedName)) {
-      return NextResponse.json({ error: 'Tag name can only contain letters, numbers, underscores, and hyphens' }, { status: 400 });
-    }
-
-
-
-    // Check if tag already exists within the project
-    const existingTag = await db
-      .select()
-      .from(tags)
-      .where(and(
-        eq(tags.name, trimmedName),
-        eq(tags.organizationId, context.organizationId),
-        eq(tags.projectId, context.project.id)
-      ))
-      .limit(1);
-
-    if (existingTag.length > 0) {
-      return NextResponse.json({ error: 'Tag already exists in this project' }, { status: 409 });
-    }
-
-    // Check if we've reached the maximum number of tags (50) per project
-    const totalTags = await db
-      .select({ count: tags.id })
-      .from(tags)
-      .where(and(
-        eq(tags.organizationId, context.organizationId),
-        eq(tags.projectId, context.project.id)
-      ));
-
-    if (totalTags.length >= 50) {
-      return NextResponse.json({ error: 'Maximum of 50 tags allowed per project' }, { status: 400 });
+    const nameError = tagNameError(trimmedName) ?? tagColorError(color);
+    if (nameError) {
+      return NextResponse.json({ error: nameError }, { status: 400 });
     }
 
     // Generate a default color if not provided
@@ -126,24 +87,67 @@ export async function POST(request: NextRequest) {
     ];
     const tagColor = color || defaultColors[Math.floor(Math.random() * defaultColors.length)];
 
-    // Create the tag
-    const [newTag] = await db
-      .insert(tags)
-      .values({
-        name: trimmedName,
-        color: tagColor,
-        organizationId: context.organizationId,
-        projectId: context.project.id,
-        createdByUserId: context.userId,
-      })
-      .returning();
+    // The duplicate check, the 50-per-project count and the insert run under one project-tag lock (shared with
+    // requirement tag sync), so concurrent creates cannot both pass the cap.
+    const outcome = await db.transaction(async (tx) => {
+      await acquireXactLock(tx, projectTagsLockKey(context.organizationId, context.project.id));
 
-    return NextResponse.json(newTag, { status: 201 });
+      // Check if tag already exists within the project (case-insensitively, as requirement tags are matched)
+      const existingTag = await tx
+        .select()
+        .from(tags)
+        .where(and(
+          eq(sql`lower(${tags.name})`, trimmedName.toLowerCase()),
+          eq(tags.organizationId, context.organizationId),
+          eq(tags.projectId, context.project.id)
+        ))
+        .limit(1);
+      if (existingTag.length > 0) return { status: 409 as const };
+
+      // Check if we've reached the maximum number of tags (50) per project
+      const [{ count }] = await tx
+        .select({ count: sql<number>`count(*)::int` })
+        .from(tags)
+        .where(and(
+          eq(tags.organizationId, context.organizationId),
+          eq(tags.projectId, context.project.id)
+        ));
+      if (count >= 50) return { status: 400 as const };
+
+      const [newTag] = await tx
+        .insert(tags)
+        .values({
+          name: trimmedName,
+          color: tagColor,
+          organizationId: context.organizationId,
+          projectId: context.project.id,
+          createdByUserId: context.userId,
+        })
+        .returning();
+      return { status: 201 as const, newTag };
+    });
+
+    if (outcome.status === 409) {
+      return NextResponse.json({ error: 'Tag already exists in this project' }, { status: 409 });
+    }
+    if (outcome.status === 400) {
+      return NextResponse.json({ error: 'Maximum of 50 tags allowed per project' }, { status: 400 });
+    }
+    return NextResponse.json(outcome.newTag, { status: 201 });
   } catch (error) {
     if (isAuthError(error)) {
       return NextResponse.json(
         { error: error instanceof Error ? error.message : 'Authentication required' },
         { status: authErrorStatus(error) }
+      );
+    }
+    if (isTagNameConflict(error)) {
+      return NextResponse.json({ error: 'Tag already exists in this project' }, { status: 409 });
+    }
+    if (error instanceof PlanLimitBusyError) {
+      return NextResponse.json(
+        { error: 'Another request is updating tags in this project. Please retry.' },
+        { status: 503, headers: { 'Retry-After': '2' } }
       );
     }
     console.error('Error creating tag:', error);
