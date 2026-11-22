@@ -242,6 +242,8 @@ export async function createStatusPageIncident(
           impact: validatedData.impact,
           body: validatedData.body || null,
           deliverNotifications: validatedData.deliverNotifications,
+          // Posted already resolved (a retrospective): it is over, so uptime and bars never treat it as open.
+          resolvedAt: validatedData.status === "resolved" ? new Date() : null,
           createdAt: new Date(),
           updatedAt: new Date(),
         })
@@ -312,8 +314,8 @@ export async function createStatusPageIncident(
               createdAt: new Date(),
             });
 
-            // Future maintenance does not change health at announcement time.
-            if (validatedData.status !== "scheduled")
+            // Future maintenance and an already resolved post do not change current health.
+            if (validatedData.status !== "scheduled" && validatedData.status !== "resolved")
               await tx
                 .update(statusPageComponents)
                 .set({

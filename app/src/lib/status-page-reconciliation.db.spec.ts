@@ -29,6 +29,7 @@ jest.mock("./incident-notifications/send-slack-notifications", () => ({
 jest.mock("@/lib/project-context", () => ({ requireProjectContext: jest.fn() }));
 jest.mock("@/lib/rbac/middleware", () => ({
   requirePermissions: jest.fn(async () => undefined),
+  checkPermissionWithContext: jest.fn(() => true),
 }));
 jest.mock("@/lib/middleware/plan-enforcement", () => ({ checkSubscriberLimit: jest.fn() }));
 jest.mock("@/lib/webhook-delivery.service", () => ({ sendWebhookVerificationChallenge: jest.fn() }));
@@ -36,6 +37,7 @@ jest.mock("next/cache", () => ({ revalidatePath: jest.fn() }));
 jest.mock("@/lib/audit-logger", () => ({ logAuditEvent: jest.fn() }));
 import { reconcileStatusPages } from "./status-page-reconciliation";
 import { updateIncidentStatus } from "@/actions/update-incident-status";
+import { createStatusPageIncident } from "./status-page-incident-core";
 import { requireProjectContext } from "@/lib/project-context";
 import { getPublicComponents } from "@/actions/get-public-components";
 import { checkUptimePercentage } from "@/lib/status-page-uptime";
@@ -686,5 +688,17 @@ it("hands an open automatic incident to the owner when the component turns manua
   // The monitor still reports, but a manual component is restored on resolve anyway.
   const result = await updateIncidentStatus({ incidentId: automatic.id, statusPageId: pageId, status: "resolved", body: "Fixed", deliverNotifications: false, restoreComponentStatus: true });
   expect(result.success).toBe(true);
+  expect((await mockDatabase.query.statusPageComponents.findFirst())?.status).toBe("operational");
+});
+
+it("posts an already resolved update as over: resolvedAt set and component health unchanged", async () => {
+  const page = await mockDatabase.query.statusPages.findFirst();
+  const result = await createStatusPageIncident(
+    { userId: (await mockDatabase.query.user.findFirst())!.id, organizationId: page!.organizationId, orgPendingDeletion: false, project: { id: page!.projectId, userRole: "org_owner" } },
+    { statusPageId: pageId, name: "Yesterday's checkout errors", status: "resolved", impact: "critical", body: "Fixed", affectedComponentIds: [componentId], componentStatus: "major_outage", deliverNotifications: false },
+  );
+  expect(result.success).toBe(true);
+  const incident = await mockDatabase.query.incidents.findFirst();
+  expect(incident?.resolvedAt).toBeInstanceOf(Date);
   expect((await mockDatabase.query.statusPageComponents.findFirst())?.status).toBe("operational");
 });

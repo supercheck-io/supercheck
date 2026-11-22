@@ -723,9 +723,10 @@ export function PublicStatusPage({
                       <UptimeBar data={uptimeData} />
                       <div className="flex items-center justify-between text-[10px] sm:text-xs sp-muted text-gray-500 dark:text-gray-400">
                         <span>{t.daysAgo}</span>
-                        <span className="text-center">
+                        {/* Time-based uptime moves between the server render and hydration. */}
+                        <span className="text-center" suppressHydrationWarning>
                           {uptimePercentage === null
-                            ? t.noDataAvailable
+                            ? t.legendNoData
                             : `${uptimePercentage.toFixed(2)}% ${t.uptime}`}
                           {/* Grey days are left out of the percentage, so say how many days it covers. */}
                           {uptimePercentage !== null && daysWithData < 90 && (
@@ -788,6 +789,8 @@ export function PublicStatusPage({
               const date = subDays(new Date(), i);
               const dateKey = format(date, "yyyy-MM-dd");
               const dayIncidents = incidentsByDate.get(dateKey) || [];
+              // Today with nothing resolved yet but an open incident above: no empty heading.
+              if (i === 0 && dayIncidents.length === 0 && activeIncidents.length > 0) continue;
               allDays.push({ date, incidents: dayIncidents });
             }
 
@@ -813,8 +816,7 @@ export function PublicStatusPage({
                       </h3>
 
                       {dayIncidents.length === 0 ? (
-                        // Today is not "incident free" while an unresolved incident is listed above.
-                        isSameDay(date, new Date()) && activeIncidents.length > 0 ? null : <p className="sp-muted text-gray-500 dark:text-gray-400 text-sm">
+                        <p className="sp-muted text-gray-500 dark:text-gray-400 text-sm">
                           {isSameDay(date, new Date()) ? t.noIncidentsReportedToday : `${t.noIncidentsReported}.`}
                         </p>
                       ) : (
