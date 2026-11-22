@@ -54,6 +54,8 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { pageSizeOptions, useFitPageSize } from "@/hooks/use-fit-page-size";
+import { RowActionsMenu } from "./row-actions-menu";
 import { toast } from "sonner";
 import { UUIDField } from "@/components/ui/uuid-field";
 import { TruncatedTextWithTooltip } from "@/components/ui/truncated-text-with-tooltip";
@@ -120,8 +122,12 @@ export function IncidentsTab({
   const [deletingIncident, setDeletingIncident] = useState<Incident | null>(
     null
   );
-  const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage, setItemsPerPage] = useState(5);
+  const [pageState, setCurrentPage] = useState(1);
+  const {
+    bodyRef,
+    pageSize: itemsPerPage,
+    setPageSize: setItemsPerPage,
+  } = useFitPageSize();
   const [sortColumn, setSortColumn] = useState<string | null>(null);
   const [sortDirection, setSortDirection] = useState<"asc" | "desc" | null>(
     null
@@ -280,7 +286,9 @@ export function IncidentsTab({
   }, [incidents, sortColumn, sortDirection]);
 
   // Pagination calculations
-  const totalPages = Math.ceil(sortedIncidents.length / itemsPerPage);
+  const totalPages = Math.max(1, Math.ceil(sortedIncidents.length / itemsPerPage));
+  // Auto-fit can grow the page size and leave the old page past the end.
+  const currentPage = Math.min(pageState, totalPages);
   const startIndex = (currentPage - 1) * itemsPerPage;
   const paginatedIncidents = sortedIncidents.slice(
     startIndex,
@@ -493,7 +501,7 @@ export function IncidentsTab({
                     <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
-                <TableBody>
+                <TableBody ref={bodyRef}>
                   {paginatedIncidents.map((incident) => (
                     <TableRow key={incident.id}>
                       <TableCell>
@@ -591,36 +599,13 @@ export function IncidentsTab({
                         )}
                       </TableCell>
                       <TableCell className="text-right">
-                        <div className="flex justify-end gap-1">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleUpdateClick(incident)}
-                            className="h-8 w-8 p-0"
-                            title={
-                              !canUpdate
-                                ? "You don't have permission to edit incidents"
-                                : "Edit incident"
-                            }
-                            disabled={!canUpdate}
-                          >
-                            <Pencil className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleDeleteClick(incident)}
-                            className="h-8 w-8 p-0 text-failure hover:text-failure hover:bg-failure/10"
-                            title={
-                              !canUpdate
-                                ? "You don't have permission to delete incidents"
-                                : "Delete incident"
-                            }
-                            disabled={!canUpdate}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </div>
+                        <RowActionsMenu
+                          label={`Actions for ${incident.name}`}
+                          actions={[
+                            { label: "Edit", icon: Pencil, disabled: !canUpdate, onSelect: () => handleUpdateClick(incident) },
+                            { label: "Delete", icon: Trash2, destructive: true, disabled: !canUpdate, onSelect: () => handleDeleteClick(incident) },
+                          ]}
+                        />
                       </TableCell>
                     </TableRow>
                   ))}
@@ -648,7 +633,7 @@ export function IncidentsTab({
                         <span>{itemsPerPage}</span>
                       </SelectTrigger>
                       <SelectContent side="top">
-                        {[5, 10, 25, 50].map((pageSize) => (
+                        {pageSizeOptions(itemsPerPage).map((pageSize) => (
                           <SelectItem key={pageSize} value={`${pageSize}`}>
                             {pageSize}
                           </SelectItem>
@@ -673,7 +658,7 @@ export function IncidentsTab({
                       variant="outline"
                       className="h-8 w-8 p-0"
                       onClick={() =>
-                        setCurrentPage((prev) => Math.max(1, prev - 1))
+                        setCurrentPage(Math.max(1, currentPage - 1))
                       }
                       disabled={currentPage === 1}
                     >
@@ -684,7 +669,7 @@ export function IncidentsTab({
                       variant="outline"
                       className="h-8 w-8 p-0"
                       onClick={() =>
-                        setCurrentPage((prev) => Math.min(totalPages, prev + 1))
+                        setCurrentPage(Math.min(totalPages, currentPage + 1))
                       }
                       disabled={currentPage === totalPages}
                     >

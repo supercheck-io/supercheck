@@ -50,6 +50,8 @@ import {
 } from "lucide-react";
 import { UUIDField } from "@/components/ui/uuid-field";
 import { TruncatedTextWithTooltip } from "@/components/ui/truncated-text-with-tooltip";
+import { pageSizeOptions, useFitPageSize } from "@/hooks/use-fit-page-size";
+import { RowActionsMenu } from "./row-actions-menu";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import {
@@ -112,8 +114,12 @@ export function SubscribersTab({ statusPageId, canUpdate }: SubscribersTabProps)
     if (result.success && result.webhookSecret) setRotatedSecret(result.webhookSecret);
     else toast.error(result.message);
   };
-  const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage, setItemsPerPage] = useState(5);
+  const [pageState, setCurrentPage] = useState(1);
+  const {
+    bodyRef,
+    pageSize: itemsPerPage,
+    setPageSize: setItemsPerPage,
+  } = useFitPageSize();
   const [sortColumn, setSortColumn] = useState<string | null>(null);
   const [sortDirection, setSortDirection] = useState<"asc" | "desc" | null>(
     null
@@ -279,7 +285,9 @@ export function SubscribersTab({ statusPageId, canUpdate }: SubscribersTabProps)
   };
 
   // Pagination calculations
-  const totalPages = Math.ceil(sortedSubscribers.length / itemsPerPage);
+  const totalPages = Math.max(1, Math.ceil(sortedSubscribers.length / itemsPerPage));
+  // Auto-fit can grow the page size and leave the old page past the end.
+  const currentPage = Math.min(pageState, totalPages);
   const startIndex = (currentPage - 1) * itemsPerPage;
   const paginatedSubscribers = sortedSubscribers.slice(
     startIndex,
@@ -469,7 +477,7 @@ export function SubscribersTab({ statusPageId, canUpdate }: SubscribersTabProps)
         {/* Subscribers Table */}
         {sortedSubscribers.length === 0 ? (
           <DashboardEmptyState
-            className="min-h-[420px]"
+            className="min-h-[240px]"
             icon={<Mail className="h-10 w-10" />}
             title={searchQuery ? "No subscribers found" : "No subscribers yet"}
             description={
@@ -567,7 +575,7 @@ export function SubscribersTab({ statusPageId, canUpdate }: SubscribersTabProps)
                     <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
-                <TableBody>
+                <TableBody ref={bodyRef}>
                   {paginatedSubscribers.map((subscriber) => (
                     <TableRow key={subscriber.id}>
                       <TableCell>
@@ -675,57 +683,36 @@ export function SubscribersTab({ statusPageId, canUpdate }: SubscribersTabProps)
                         </div>
                       </TableCell>
                       <TableCell className="text-right">
-                        <div className="flex justify-end gap-1">
-                          {canUpdate && subscriber.mode === "webhook" && (
-                            <Button variant="ghost" size="sm" className="h-8 w-8 p-0"
-                              aria-label="Rotate webhook signing secret"
-                              title="Rotate webhook signing secret"
-                              disabled={actionLoading === subscriber.id}
-                              onClick={() => setRotateSubscriberId(subscriber.id)}>
-                              <KeyRound className="h-4 w-4" />
-                            </Button>
-                          )}
-                          {canUpdate && !subscriber.verifiedAt && (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() =>
-                                subscriber.mode === "webhook"
-                                  ? handleResendWebhookVerification(
-                                      subscriber.id,
-                                    )
-                                  : handleResendVerification(subscriber.id)
-                              }
-                              disabled={actionLoading === subscriber.id}
-                              className="h-8 w-8 p-0"
-                              title={
-                                subscriber.mode === "webhook"
-                                  ? "Resend verification challenge"
-                                  : "Resend verification"
-                              }
-                            >
-                              {actionLoading === subscriber.id ? (
-                                <Loader2 className="h-4 w-4 animate-spin" />
-                              ) : (
-                                <RefreshCw className="h-4 w-4" />
-                              )}
-                            </Button>
-                          )}
-                          {canUpdate && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => {
-                              setSubscriberToDelete(subscriber.id);
-                              setDeleteDialogOpen(true);
-                            }}
-                            className="h-8 w-8 p-0 text-failure hover:text-failure hover:bg-failure/10"
-                            title="Delete subscriber"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                          )}
-                        </div>
+                        {canUpdate && (
+                          <RowActionsMenu
+                            label={`Actions for ${subscriber.email || subscriber.endpoint || "subscriber"}`}
+                            busy={actionLoading === subscriber.id}
+                            actions={[
+                              ...(subscriber.mode === "webhook"
+                                ? [{ label: "Rotate signing secret", icon: KeyRound, onSelect: () => setRotateSubscriberId(subscriber.id) }]
+                                : []),
+                              ...(!subscriber.verifiedAt
+                                ? [{
+                                    label: subscriber.mode === "webhook" ? "Resend challenge" : "Resend verification",
+                                    icon: RefreshCw,
+                                    onSelect: () =>
+                                      subscriber.mode === "webhook"
+                                        ? handleResendWebhookVerification(subscriber.id)
+                                        : handleResendVerification(subscriber.id),
+                                  }]
+                                : []),
+                              {
+                                label: "Delete",
+                                icon: Trash2,
+                                destructive: true,
+                                onSelect: () => {
+                                  setSubscriberToDelete(subscriber.id);
+                                  setDeleteDialogOpen(true);
+                                },
+                              },
+                            ]}
+                          />
+                        )}
                       </TableCell>
                     </TableRow>
                   ))}
@@ -753,7 +740,7 @@ export function SubscribersTab({ statusPageId, canUpdate }: SubscribersTabProps)
                         <span>{itemsPerPage}</span>
                       </SelectTrigger>
                       <SelectContent side="top">
-                        {[5, 10, 25, 50].map((pageSize) => (
+                        {pageSizeOptions(itemsPerPage).map((pageSize) => (
                           <SelectItem key={pageSize} value={`${pageSize}`}>
                             {pageSize}
                           </SelectItem>
@@ -778,7 +765,7 @@ export function SubscribersTab({ statusPageId, canUpdate }: SubscribersTabProps)
                       variant="outline"
                       className="h-8 w-8 p-0"
                       onClick={() =>
-                        setCurrentPage((prev) => Math.max(1, prev - 1))
+                        setCurrentPage(Math.max(1, currentPage - 1))
                       }
                       disabled={currentPage === 1}
                     >
@@ -789,7 +776,7 @@ export function SubscribersTab({ statusPageId, canUpdate }: SubscribersTabProps)
                       variant="outline"
                       className="h-8 w-8 p-0"
                       onClick={() =>
-                        setCurrentPage((prev) => Math.min(totalPages, prev + 1))
+                        setCurrentPage(Math.min(totalPages, currentPage + 1))
                       }
                       disabled={currentPage === totalPages}
                     >

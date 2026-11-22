@@ -53,6 +53,15 @@ function contentBottom(body: HTMLElement, scroller: HTMLElement | null) {
   let bottom = body.getBoundingClientRect().bottom;
   for (let node = body.parentElement; node && node !== scroller; node = node.parentElement) {
     const style = getComputedStyle(node);
+    // A wrapper stretched to fill the window would count its empty space as content below
+    // the table; count only its own bottom spacing.
+    if (node.hasAttribute("data-fit-fill")) {
+      bottom +=
+        parseFloat(style.paddingBottom || "0") +
+        parseFloat(style.borderBottomWidth || "0") +
+        parseFloat(style.marginBottom || "0");
+      continue;
+    }
     bottom = Math.max(
       bottom,
       node.getBoundingClientRect().bottom + parseFloat(style.marginBottom || "0"),

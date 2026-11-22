@@ -57,6 +57,8 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { pageSizeOptions, useFitPageSize } from "@/hooks/use-fit-page-size";
+import { RowActionsMenu } from "./row-actions-menu";
 import { toast } from "sonner";
 import { UUIDField } from "@/components/ui/uuid-field";
 import { TruncatedTextWithTooltip } from "@/components/ui/truncated-text-with-tooltip";
@@ -223,8 +225,12 @@ export function ComponentsTab({
   const [deletingComponent, setDeletingComponent] = useState<Component | null>(
     null
   );
-  const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage, setItemsPerPage] = useState(5);
+  const [pageState, setCurrentPage] = useState(1);
+  const {
+    bodyRef,
+    pageSize: itemsPerPage,
+    setPageSize: setItemsPerPage,
+  } = useFitPageSize();
   const [sortColumn, setSortColumn] = useState<string | null>(null);
   const [sortDirection, setSortDirection] = useState<"asc" | "desc" | null>(
     null
@@ -386,7 +392,9 @@ export function ComponentsTab({
   }, [components, sortColumn, sortDirection]);
 
   // Pagination calculations
-  const totalPages = Math.ceil(sortedComponents.length / itemsPerPage);
+  const totalPages = Math.max(1, Math.ceil(sortedComponents.length / itemsPerPage));
+  // Auto-fit can grow the page size and leave the old page past the end.
+  const currentPage = Math.min(pageState, totalPages);
   const startIndex = (currentPage - 1) * itemsPerPage;
   const paginatedComponents = sortedComponents.slice(
     startIndex,
@@ -567,7 +575,7 @@ export function ComponentsTab({
                       <TableHead className="text-right">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
-                  <TableBody>
+                  <TableBody ref={bodyRef}>
                     {paginatedComponents.map((component) => (
                       <TableRow key={component.id}>
                         <TableCell>
@@ -647,36 +655,13 @@ export function ComponentsTab({
                           </div>
                         </TableCell>
                         <TableCell className="text-right">
-                          <div className="flex justify-end gap-1">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => handleEditComponent(component)}
-                              className="h-8 w-8 p-0"
-                              title={
-                                !canUpdate
-                                  ? "You don't have permission to edit components"
-                                  : "Edit component"
-                              }
-                              disabled={!canUpdate}
-                            >
-                              <Pencil className="h-4 w-4" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => handleDeleteClick(component)}
-                              className="h-8 w-8 p-0 text-failure hover:text-failure hover:bg-failure/10"
-                              title={
-                                !canUpdate
-                                  ? "You don't have permission to delete components"
-                                  : "Delete component"
-                              }
-                              disabled={!canUpdate}
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </div>
+                          <RowActionsMenu
+                            label={`Actions for ${component.name}`}
+                            actions={[
+                              { label: "Edit", icon: Pencil, disabled: !canUpdate, onSelect: () => handleEditComponent(component) },
+                              { label: "Delete", icon: Trash2, destructive: true, disabled: !canUpdate, onSelect: () => handleDeleteClick(component) },
+                            ]}
+                          />
                         </TableCell>
                       </TableRow>
                     ))}
@@ -704,7 +689,7 @@ export function ComponentsTab({
                           <span>{itemsPerPage}</span>
                         </SelectTrigger>
                         <SelectContent side="top">
-                          {[5, 10, 25, 50].map((pageSize) => (
+                          {pageSizeOptions(itemsPerPage).map((pageSize) => (
                             <SelectItem key={pageSize} value={`${pageSize}`}>
                               {pageSize}
                             </SelectItem>
@@ -729,7 +714,7 @@ export function ComponentsTab({
                         variant="outline"
                         className="h-8 w-8 p-0"
                         onClick={() =>
-                          setCurrentPage((prev) => Math.max(1, prev - 1))
+                          setCurrentPage(Math.max(1, currentPage - 1))
                         }
                         disabled={currentPage === 1}
                       >
@@ -740,9 +725,7 @@ export function ComponentsTab({
                         variant="outline"
                         className="h-8 w-8 p-0"
                         onClick={() =>
-                          setCurrentPage((prev) =>
-                            Math.min(totalPages, prev + 1)
-                          )
+                          setCurrentPage(Math.min(totalPages, currentPage + 1))
                         }
                         disabled={currentPage === totalPages}
                       >

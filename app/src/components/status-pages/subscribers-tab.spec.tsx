@@ -1,6 +1,16 @@
 import { render, screen } from "@testing-library/react";
 import { SubscribersTab } from "./subscribers-tab";
 
+jest.mock("@/components/ui/dropdown-menu", () => ({
+  DropdownMenu: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  DropdownMenuTrigger: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  DropdownMenuContent: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  DropdownMenuSeparator: () => null,
+  DropdownMenuItem: ({ children, onSelect }: { children: React.ReactNode; onSelect?: () => void }) => (
+    <button role="menuitem" onClick={onSelect}>{children}</button>
+  ),
+}));
+
 const getSubscribers = jest.fn();
 jest.mock("@/actions/get-status-page-subscribers", () => ({
   getStatusPageSubscribers: (...a: unknown[]) => getSubscribers(...a),
@@ -29,15 +39,13 @@ beforeEach(() => {
 
 it("shows delete, resend and rotate actions to users who can update", async () => {
   render(<SubscribersTab statusPageId="p1" canUpdate />);
-  expect(await screen.findByTitle("Delete subscriber")).toBeInTheDocument();
-  expect(screen.getByLabelText("Rotate webhook signing secret")).toBeInTheDocument();
-  expect(screen.getByTitle("Resend verification challenge")).toBeInTheDocument();
+  expect(await screen.findByRole("menuitem", { name: "Delete" })).toBeInTheDocument();
+  expect(screen.getByRole("menuitem", { name: "Rotate signing secret" })).toBeInTheDocument();
+  expect(screen.getByRole("menuitem", { name: "Resend challenge" })).toBeInTheDocument();
 });
 
 it("hides mutating actions from viewers", async () => {
   render(<SubscribersTab statusPageId="p1" canUpdate={false} />);
   await screen.findByText("https://example.test/hook");
-  expect(screen.queryByTitle("Delete subscriber")).toBeNull();
-  expect(screen.queryByLabelText("Rotate webhook signing secret")).toBeNull();
-  expect(screen.queryByTitle("Resend verification challenge")).toBeNull();
+  expect(screen.queryByRole("button", { name: /^Actions for/ })).toBeNull();
 });

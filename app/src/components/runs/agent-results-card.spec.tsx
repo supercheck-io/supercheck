@@ -61,7 +61,7 @@ it("says so when no tools were reported and wraps long text for narrow screens",
   renderOpen(<AgentResultsButton agent={{ tests: [{ title: "t", attempts: 1, passed: 1, passRate: 1 }] }} />);
   expect(screen.getByText("None reported")).toBeInTheDocument();
   expect(screen.getByRole("heading", { name: "t" })).toHaveClass("break-words");
-  expect(screen.getByText("Pass rate").parentElement?.parentElement).toHaveClass("grid-cols-2");
+  expect(screen.getByText("Pass rate").closest(".grid")).toHaveClass("grid-cols-2");
 });
 
 it("keeps the summary in a popover and flags failed attempts on the button", () => {

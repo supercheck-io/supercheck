@@ -552,7 +552,6 @@ export function StatusPageDetail({
                       router.push(`/monitors/${row.original.id}`)
                     }
                     hideToolbar={true}
-                    pageSize={5}
                   />
                 </div>
               )}
