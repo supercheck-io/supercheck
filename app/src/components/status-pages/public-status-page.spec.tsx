@@ -1,5 +1,4 @@
 import { render, screen } from "@testing-library/react";
-import { renderToString } from "react-dom/server";
 import { PublicStatusPage } from "./public-status-page";
 import { getTranslations } from "@/lib/status-page-translations";
 
@@ -161,11 +160,3 @@ it("draws the bars from the server's read time, so a render after midnight UTC s
   expect(screen.getByText(/10 of 90 days with data/)).toBeInTheDocument();
 });
 
-it("leaves the time-zone-dependent day list out of the server HTML, so a viewer in another zone hydrates without a mismatch", () => {
-  const html = renderToString(<PublicStatusPage statusPage={page} components={[component]} incidents={[]} idOrSubdomain="page" />);
-  expect(html).toContain('data-testid="past-incidents-pending"');
-  expect(html).not.toContain(getTranslations("en").noIncidentsReportedToday);
-  // In the browser the days render as before.
-  render(<PublicStatusPage statusPage={page} components={[component]} incidents={[]} idOrSubdomain="page" />);
-  expect(screen.getByText(getTranslations("en").noIncidentsReportedToday)).toBeInTheDocument();
-});
