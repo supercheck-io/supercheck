@@ -10,9 +10,9 @@ Supercheck brings Playwright test automation, k6 performance testing, uptime and
 [![License](https://img.shields.io/badge/license-AGPL--3.0--only-blue.svg)](LICENSE)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/supercheck-io/supercheck/badge)](https://scorecard.dev/viewer/?uri=github.com/supercheck-io/supercheck)
 
-<a href="https://www.youtube.com/watch?v=D9dqy93zL9o"><img src="docs/public/supercheck-screenshot.webp" alt="Supercheck dashboard. Select to watch the overview video on YouTube." width="100%"></a>
+<a href="https://www.youtube.com/watch?v=TI6K537E2aE"><img src="docs/public/supercheck-screenshot.webp" alt="Supercheck monitor details with uptime, response time and recent checks. Select to watch the overview video on YouTube." width="100%"></a>
 
-<p align="center"><a href="https://www.youtube.com/watch?v=D9dqy93zL9o">▶ Watch the overview video</a></p>
+<p align="center"><a href="https://www.youtube.com/watch?v=TI6K537E2aE">▶ Watch the overview video</a></p>
 
 ## What Supercheck includes
 
