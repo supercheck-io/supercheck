@@ -211,6 +211,12 @@ export class StatusAggregationService {
    * Update component status based on monitor changes
    */
   async updateComponentStatus(componentId: string): Promise<void> {
+    // Manual components (the default) keep the status their owner set.
+    const component = await db.query.statusPageComponents.findFirst({
+      where: eq(statusPageComponents.id, componentId),
+      columns: { automateStatus: true },
+    });
+    if (!component?.automateStatus) return;
     const newStatus = await this.calculateComponentStatus(componentId);
 
     await db

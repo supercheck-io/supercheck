@@ -198,6 +198,7 @@ export function ComponentFormDialog({
     watch,
     reset,
     setValue,
+    getValues,
     formState: { errors },
   } = useForm<ComponentFormData>({
     resolver: zodResolver(componentFormSchema),
@@ -587,9 +588,13 @@ export function ComponentFormDialog({
                     <Switch
                       id="component-automate-status"
                       checked={automateStatus}
-                      onCheckedChange={(value) =>
-                        setValue("automateStatus", value, { shouldDirty: true })
-                      }
+                      onCheckedChange={(value) => {
+                        setValue("automateStatus", value, { shouldDirty: true });
+                        // Hidden settings still validate: drop an invalid threshold rather than block the save.
+                        const threshold = getValues("failureThreshold");
+                        if (!value && !(Number.isInteger(threshold) && threshold >= 1 && threshold <= 100))
+                          setValue("failureThreshold", 1, { shouldValidate: true });
+                      }}
                       disabled={isSubmitting}
                       className="mt-0.5"
                     />

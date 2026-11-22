@@ -60,6 +60,11 @@ it("makes every component manual and releases what monitors left behind", async 
   const stale = await component("Set by monitors", "major_outage", true);
   const automatic = await component("Automatic incident", "major_outage", true);
   const handSet = await component("Set by hand", "partial_outage", false);
+  const [paused] = await client`INSERT INTO monitors (id, organization_id, project_id, name, type, target, status) VALUES (uuidv7(), ${org.id}, ${project.id}, 'Paused', 'http_request', 'https://example.com', 'paused') RETURNING id`;
+  const [pausedOnly] = await client`INSERT INTO status_page_components (id, status_page_id, name, status) VALUES (uuidv7(), ${page.id}, 'Paused monitors', 'major_outage') RETURNING id`;
+  await client`INSERT INTO status_page_component_monitors (component_id, monitor_id) VALUES (${pausedOnly.id}, ${paused.id})`;
+  const [retro] = await client`INSERT INTO incidents (id, status_page_id, name, status, impact, created_at, updated_at) VALUES (uuidv7(), ${page.id}, 'Retro', 'resolved', 'critical', now() - interval '3 days', now() - interval '2 days') RETURNING id`;
+  await client`INSERT INTO incident_updates (id, incident_id, status, body, created_at, display_at) VALUES (uuidv7(), ${retro.id}, 'resolved', 'Fixed', now() - interval '3 days', now() - interval '3 days' + interval '2 hours')`;
   const [incident] = await client`INSERT INTO incidents (id, status_page_id, name, status, impact, source_component_id) VALUES (uuidv7(), ${page.id}, 'Outage', 'investigating', 'major', ${automatic}) RETURNING id`;
   await client`INSERT INTO incident_components (id, incident_id, component_id, old_status, new_status) VALUES (uuidv7(), ${incident.id}, ${automatic}, 'operational', 'major_outage')`;
 
@@ -72,6 +77,10 @@ it("makes every component manual and releases what monitors left behind", async 
   // An open update still explains the outage, and hand-set statuses are the owner's.
   expect(byId[automatic].status).toBe("major_outage");
   expect(byId[handSet].status).toBe("partial_outage");
+  // Every linked monitor paused: the stored status was the owner's.
+  expect(byId[pausedOnly.id].status).toBe("major_outage");
+  const [ended] = await client`SELECT resolved_at, created_at FROM incidents WHERE id = ${retro.id}`;
+  expect(Math.round((new Date(ended.resolved_at).getTime() - new Date(ended.created_at).getTime()) / 1000)).toBe(2 * 3600);
   const [handedOver] = await client`SELECT status, source_component_id FROM incidents WHERE id = ${incident.id}`;
   expect(handedOver).toEqual({ status: "investigating", source_component_id: null });
 }, 120_000);

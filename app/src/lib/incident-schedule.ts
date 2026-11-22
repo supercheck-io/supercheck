@@ -23,7 +23,9 @@ export function incidentScheduleFields(
     return { scheduledFor, scheduledUntil };
   }
 
-  if (status === "monitoring") {
+  // Monitoring keeps the window in progress; resolved keeps it as the record of when maintenance ran (resolved
+  // incidents are never treated as active, and the uptime history needs the window).
+  if (status === "monitoring" || status === "resolved") {
     return {};
   }
 

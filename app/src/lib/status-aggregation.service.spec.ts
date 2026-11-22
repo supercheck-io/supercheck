@@ -1,5 +1,6 @@
 const findFirst = jest.fn();
-jest.mock("@/utils/db", () => ({ db: { query: { statusPageComponents: { findFirst: (...args: unknown[]) => findFirst(...args) } } } }));
+const update = jest.fn(() => ({ set: () => ({ where: async () => undefined }) }));
+jest.mock("@/utils/db", () => ({ db: { query: { statusPageComponents: { findFirst: (...args: unknown[]) => findFirst(...args) } }, update: () => update() } }));
 import { StatusAggregationService, type ComponentStatus } from "./status-aggregation.service";
 const service = new StatusAggregationService();
 it("honors minimum failing monitor count", () => {
@@ -116,4 +117,21 @@ describe("calculateComponentStatus skips monitors being deleted", () => {
     findFirst.mockResolvedValueOnce(component([{ status: "down", deletingAt: null }, { status: "up", deletingAt: new Date() }]));
     await expect(service.calculateComponentStatus("c1")).resolves.toBe("major_outage");
   });
+});
+
+it("never writes a monitor-derived status to a manual component", async () => {
+  findFirst.mockResolvedValueOnce({ automateStatus: false });
+  const calculate = jest.spyOn(service, "calculateComponentStatus");
+  await service.updateComponentStatus("c1");
+  expect(calculate).not.toHaveBeenCalled();
+  expect(update).not.toHaveBeenCalled();
+  calculate.mockRestore();
+});
+
+it("updates a component that follows its monitors", async () => {
+  findFirst.mockResolvedValueOnce({ automateStatus: true });
+  const calculate = jest.spyOn(service, "calculateComponentStatus").mockResolvedValueOnce("major_outage");
+  await service.updateComponentStatus("c1");
+  expect(update).toHaveBeenCalledTimes(1);
+  calculate.mockRestore();
 });

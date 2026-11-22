@@ -39,3 +39,11 @@ it("offers no automation without a linked monitor", () => {
   renderForm({ monitorIds: [], monitors: [], automateStatus: true });
   expect(screen.queryByRole("switch", { name: /update status from monitors/i })).not.toBeInTheDocument();
 });
+
+it("saves after an invalid threshold is hidden by turning automation off", async () => {
+  renderForm({ automateStatus: true });
+  fireEvent.change(screen.getByLabelText(/failing monitors required/i), { target: { value: "0" } });
+  fireEvent.click(screen.getByRole("switch", { name: /update status from monitors/i }));
+  fireEvent.click(screen.getByRole("button", { name: /update component/i }));
+  await waitFor(() => expect(updateComponent).toHaveBeenLastCalledWith(expect.objectContaining({ automateStatus: false, failureThreshold: 1 })));
+});

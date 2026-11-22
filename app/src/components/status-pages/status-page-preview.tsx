@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
+import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { ExternalLink, Eye, Tally4, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -12,69 +13,58 @@ type StatusPagePreviewProps = {
 /** Opens the signed-in preview of a status page in the full-screen overlay used for test and k6 reports. */
 export function StatusPagePreview({ statusPageId, statusPageName }: StatusPagePreviewProps) {
   const [open, setOpen] = useState(false);
-  const closeRef = useRef<HTMLButtonElement>(null);
   const previewUrl = `/status-pages/${statusPageId}/public`;
 
-  useEffect(() => {
-    if (!open) return;
-    closeRef.current?.focus();
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setOpen(false);
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => {
-      document.body.style.overflow = previousOverflow;
-      window.removeEventListener("keydown", onKeyDown);
-    };
-  }, [open]);
+  // Keys pressed inside the same-origin preview never reach this document, so Escape is also heard there.
+  const listenInFrame = (frame: HTMLIFrameElement) => {
+    frame.contentDocument?.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && !event.defaultPrevented) setOpen(false);
+    });
+  };
 
   return (
-    <>
-      <Button variant="outline" className="border-2 hover:bg-muted" onClick={() => setOpen(true)}>
-        <Eye className="mr-2 h-4 w-4" />
-        Preview
-      </Button>
-      {open && (
-        <div className="fixed inset-0 z-50 bg-card/80 backdrop-blur-sm" onClick={() => setOpen(false)}>
-          <div
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="status-page-preview-title"
-            className="fixed inset-2 flex flex-col overflow-hidden rounded-lg border bg-card shadow-lg sm:inset-8"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <div className="flex items-center justify-between gap-3 border-b p-4">
-              <div className="flex min-w-0 items-center gap-2">
-                <Tally4 className="h-5 w-5 shrink-0 text-muted-foreground" aria-hidden="true" />
-                <h2 id="status-page-preview-title" className="truncate text-xl font-semibold">
-                  {statusPageName}
-                </h2>
-                <span className="hidden shrink-0 text-sm text-muted-foreground sm:inline">Preview</span>
-              </div>
-              <div className="flex shrink-0 items-center gap-2">
-                <Button asChild variant="outline" size="sm">
-                  <a href={previewUrl} target="_blank" rel="noopener noreferrer">
-                    <ExternalLink className="h-4 w-4 sm:mr-1.5" />
-                    <span className="hidden sm:inline">Open in new tab</span>
-                  </a>
-                </Button>
-                <Button
-                  ref={closeRef}
-                  className="cursor-pointer bg-secondary hover:bg-secondary/90"
-                  size="sm"
-                  aria-label="Close preview"
-                  onClick={() => setOpen(false)}
-                >
+    // The dialog primitive traps focus, makes the page behind inert, locks scrolling and closes on Escape.
+    <DialogPrimitive.Root open={open} onOpenChange={setOpen}>
+      <DialogPrimitive.Trigger asChild>
+        <Button variant="outline" className="border-2 hover:bg-muted">
+          <Eye className="mr-2 h-4 w-4" />
+          Preview
+        </Button>
+      </DialogPrimitive.Trigger>
+      <DialogPrimitive.Portal>
+        <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-card/80 backdrop-blur-sm" />
+        <DialogPrimitive.Content
+          aria-describedby={undefined}
+          className="fixed inset-2 z-50 flex flex-col overflow-hidden rounded-lg border bg-card shadow-lg focus:outline-none sm:inset-8"
+        >
+          <div className="flex items-center justify-between gap-3 border-b p-4">
+            <div className="flex min-w-0 items-center gap-2">
+              <Tally4 className="h-5 w-5 shrink-0 text-muted-foreground" aria-hidden="true" />
+              <DialogPrimitive.Title className="truncate text-xl font-semibold">{statusPageName}</DialogPrimitive.Title>
+              <span className="hidden shrink-0 text-sm text-muted-foreground sm:inline">Preview</span>
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              <Button asChild variant="outline" size="sm">
+                <a href={previewUrl} target="_blank" rel="noopener noreferrer" aria-label="Open in new tab">
+                  <ExternalLink className="h-4 w-4 sm:mr-1.5" aria-hidden="true" />
+                  <span className="hidden sm:inline">Open in new tab</span>
+                </a>
+              </Button>
+              <DialogPrimitive.Close asChild>
+                <Button className="cursor-pointer bg-secondary hover:bg-secondary/90" size="sm" aria-label="Close preview">
                   <X className="h-4 w-4 text-secondary-foreground" />
                 </Button>
-              </div>
+              </DialogPrimitive.Close>
             </div>
-            <iframe src={previewUrl} title={`${statusPageName} preview`} className="h-full w-full flex-grow border-0 bg-background" />
           </div>
-        </div>
-      )}
-    </>
+          <iframe
+            src={previewUrl}
+            title={`${statusPageName} preview`}
+            className="h-full w-full flex-grow border-0 bg-background"
+            onLoad={(event) => listenInFrame(event.currentTarget)}
+          />
+        </DialogPrimitive.Content>
+      </DialogPrimitive.Portal>
+    </DialogPrimitive.Root>
   );
 }

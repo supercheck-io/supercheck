@@ -313,7 +313,10 @@ export async function reconcileStatusPages(): Promise<boolean> {
         .where(eq(statusPageComponents.id, component.id))
         .returning({
           autoIncidentSuppressed: statusPageComponents.autoIncidentSuppressed,
+          automateStatus: statusPageComponents.automateStatus,
         });
+      // The opt-in as committed when the row was locked, not as read with the batch.
+      const automateStatus = lockedComponent?.automateStatus ?? component.automateStatus;
       const page = await tx.query.statusPages.findFirst({
         where: eq(statusPages.id, component.statusPageId),
       });
@@ -338,7 +341,7 @@ export async function reconcileStatusPages(): Promise<boolean> {
       ];
       // A manual component owns no automatic incident: one left open (automation turned off mid-outage) becomes an
       // ordinary update the owner resolves, so it keeps setting the status instead of staying open for good.
-      const orphaned = component.automateStatus
+      const orphaned = automateStatus
         ? []
         : active.filter((entry) => entry.incident.sourceComponentId === component.id);
       if (orphaned.length > 0)
@@ -347,7 +350,7 @@ export async function reconcileStatusPages(): Promise<boolean> {
           .set({ sourceComponentId: null, updatedAt: new Date() })
           .where(inArray(incidents.id, orphaned.map((entry) => entry.incident.id)));
       const manualStatuses = active
-        .filter((entry) => !component.automateStatus || entry.incident.sourceComponentId !== component.id)
+        .filter((entry) => !automateStatus || entry.incident.sourceComponentId !== component.id)
         .map((entry) =>
           entry.incident.scheduledFor
             ? "under_maintenance"
@@ -358,7 +361,7 @@ export async function reconcileStatusPages(): Promise<boolean> {
       );
       const manual = manualStatuses.length > 0;
       // Monitors drive the status only when the owner opted in; a deleted monitor never counts.
-      const liveLinks = component.automateStatus
+      const liveLinks = automateStatus
         ? component.monitors.filter((association) => notFoundIfDeleting(association.monitor))
         : [];
       const calculated = statusAggregationService.calculateFromMonitors(
@@ -389,7 +392,7 @@ export async function reconcileStatusPages(): Promise<boolean> {
           .update(statusPageComponents)
           .set({ autoIncidentSuppressed: false, updatedAt: new Date() })
           .where(eq(statusPageComponents.id, component.id));
-      const automatic = component.automateStatus
+      const automatic = automateStatus
         ? active.find((entry) => entry.incident.sourceComponentId === component.id)?.incident
         : undefined;
       const failing = liveLinks.some((association) => ["down", "error", "timeout"].includes(association.monitor.status)) && [
@@ -402,7 +405,7 @@ export async function reconcileStatusPages(): Promise<boolean> {
         !automatic &&
         !manual &&
         !suppressed &&
-        component.automateStatus &&
+        automateStatus &&
         component.autoCreateIncidents &&
         component.showcase &&
         page?.status === "published" &&
@@ -456,7 +459,7 @@ export async function reconcileStatusPages(): Promise<boolean> {
             updateId: update.id,
             isCreation: true,
           });
-      } else if (component.automateStatus && !failing && automatic && calculated === "operational") {
+      } else if (automateStatus && !failing && automatic && calculated === "operational") {
         await tx
           .update(incidents)
           .set({
