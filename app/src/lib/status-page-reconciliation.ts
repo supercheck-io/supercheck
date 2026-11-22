@@ -336,8 +336,18 @@ export async function reconcileStatusPages(): Promise<boolean> {
         "under_maintenance",
         "operational",
       ];
+      // A manual component owns no automatic incident: one left open (automation turned off mid-outage) becomes an
+      // ordinary update the owner resolves, so it keeps setting the status instead of staying open for good.
+      const orphaned = component.automateStatus
+        ? []
+        : active.filter((entry) => entry.incident.sourceComponentId === component.id);
+      if (orphaned.length > 0)
+        await tx
+          .update(incidents)
+          .set({ sourceComponentId: null, updatedAt: new Date() })
+          .where(inArray(incidents.id, orphaned.map((entry) => entry.incident.id)));
       const manualStatuses = active
-        .filter((entry) => entry.incident.sourceComponentId !== component.id)
+        .filter((entry) => !component.automateStatus || entry.incident.sourceComponentId !== component.id)
         .map((entry) =>
           entry.incident.scheduledFor
             ? "under_maintenance"
@@ -379,9 +389,9 @@ export async function reconcileStatusPages(): Promise<boolean> {
           .update(statusPageComponents)
           .set({ autoIncidentSuppressed: false, updatedAt: new Date() })
           .where(eq(statusPageComponents.id, component.id));
-      const automatic = active.find(
-        (entry) => entry.incident.sourceComponentId === component.id,
-      )?.incident;
+      const automatic = component.automateStatus
+        ? active.find((entry) => entry.incident.sourceComponentId === component.id)?.incident
+        : undefined;
       const failing = liveLinks.some((association) => ["down", "error", "timeout"].includes(association.monitor.status)) && [
         "major_outage",
         "partial_outage",

@@ -140,7 +140,7 @@ The banner and badge use showcased components, including those hidden while heal
 <Accordions>
 <Accordion title="Edge cases" id="component-edge-cases">
 
-- The rest of this list applies only with **Update status from monitors** on. Turning it off keeps the current status until you change it.
+- The rest of this list applies only with **Update status from monitors** on. Turning it off keeps the current status until you change it, and an open automatic update becomes an ordinary one you resolve.
 - Linked components refresh every 10 seconds. **Failing monitors required** is separate from a monitor's own alert threshold.
 - If you resolve an automatic incident while its monitors still fail, it reopens only after the component returns to **Operational**.
 - When every running linked monitor has missed three checks in a row (at least 15 minutes), the component shows **No recent data** and does not count toward the banner or badge. Paused monitors keep their last status.

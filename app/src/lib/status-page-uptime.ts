@@ -57,7 +57,7 @@ export function combineMonitorDay(
 }
 
 const DAY_MS = 86_400_000;
-/** Share of a partial outage counted as downtime (major outage counts in full), as on most hosted status pages. */
+/** Share of a major-impact (partial outage) update counted as downtime; critical counts in full, as on most hosted status pages. */
 const PARTIAL_OUTAGE_WEIGHT = 0.3;
 
 export type BarLevel = "operational" | "minor" | "major" | "critical" | "maintenance" | "nodata";
@@ -80,7 +80,7 @@ export type UptimeDay = {
   uptime: number | null;
   /** Days with checks (automatic) or with observed history (manual); grey otherwise. */
   hasData: boolean;
-  incidents: Array<{ id: string; name: string; impact: string }>;
+  incidents: Array<{ id: string; name: string; impact: string; maintenance: boolean }>;
 };
 
 const time = (value: Date | string | null | undefined) => (value ? new Date(value).getTime() : null);
@@ -91,7 +91,8 @@ function incidentSpan(incident: BarIncident, now: number): [number, number] | nu
   const start = maintenance ? time(incident.scheduledFor) : time(incident.createdAt);
   if (start === null || start > now) return null;
   if (maintenance && incident.status === "scheduled") return null;
-  const end = time(incident.resolvedAt) ?? (maintenance ? Math.min(time(incident.scheduledUntil) ?? now, now) : now);
+  // Unresolved means still running, including maintenance that overran its window.
+  const end = time(incident.resolvedAt) ?? now;
   return end > start ? [start, end] : null;
 }
 
@@ -149,7 +150,7 @@ export function buildUptimeDays({
     const date = new Date(dayStart);
     const dayEnd = Math.min(dayStart + DAY_MS, now);
     const onDay = spans.filter(({ span }) => span[0] < dayEnd && span[1] > Math.max(dayStart, start));
-    const dayIncidents = onDay.map(({ incident }) => ({ id: incident.id, name: incident.name, impact: incident.impact }));
+    const dayIncidents = onDay.map(({ incident }) => ({ id: incident.id, name: incident.name, impact: incident.impact, maintenance: Boolean(incident.scheduledFor) }));
     const maintenance = onDay.some(({ incident }) => incident.scheduledFor);
     const worstIncident = LEVEL_RANK.find((level) =>
       onDay.some(({ incident }) => !incident.scheduledFor && IMPACT_LEVEL[incident.impact] === level),

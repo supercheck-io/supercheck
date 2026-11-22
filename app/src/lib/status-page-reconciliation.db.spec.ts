@@ -662,3 +662,29 @@ it("links an automatic status update to the open incident for its monitor", asyn
   const linked = await mockDatabase.query.sreIncidents.findFirst({ where: eq(schema.sreIncidents.id, sre.id) });
   expect(linked?.statusPageIncidentId).toBe(publicIncident.id);
 });
+
+it("hands an open automatic incident to the owner when the component turns manual, and restores it on resolve", async () => {
+  await mockDatabase.update(schema.statusPageComponents).set({ autoCreateIncidents: true, updatedAt: new Date() }).where(eq(schema.statusPageComponents.id, componentId));
+  await mockDatabase.update(schema.monitors).set({ status: "down", lastCheckAt: new Date() }).where(eq(schema.monitors.id, monitorId));
+  await reconcileStatusPages();
+  const [automatic] = await mockDatabase.query.incidents.findMany();
+  expect(automatic.sourceComponentId).toBe(componentId);
+
+  await mockDatabase.update(schema.statusPageComponents).set({ automateStatus: false, updatedAt: new Date() }).where(eq(schema.statusPageComponents.id, componentId));
+  await reconcileStatusPages();
+  const handedOver = await mockDatabase.query.incidents.findFirst();
+  expect(handedOver?.sourceComponentId).toBeNull();
+  expect(handedOver?.status).toBe("investigating");
+  expect((await mockDatabase.query.statusPageComponents.findFirst())?.status).toBe("major_outage");
+
+  // Recovery no longer resolves it or notifies anyone: the owner does, and the component follows the update.
+  await mockDatabase.update(schema.monitors).set({ status: "up", lastCheckAt: new Date() }).where(eq(schema.monitors.id, monitorId));
+  await reconcileStatusPages();
+  expect((await mockDatabase.query.incidents.findFirst())?.status).toBe("investigating");
+  expect(await mockDatabase.query.statusPageNotificationEvents.findMany()).toHaveLength(1);
+
+  // The monitor still reports, but a manual component is restored on resolve anyway.
+  const result = await updateIncidentStatus({ incidentId: automatic.id, statusPageId: pageId, status: "resolved", body: "Fixed", deliverNotifications: false, restoreComponentStatus: true });
+  expect(result.success).toBe(true);
+  expect((await mockDatabase.query.statusPageComponents.findFirst())?.status).toBe("operational");
+});

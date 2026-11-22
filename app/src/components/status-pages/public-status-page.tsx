@@ -377,9 +377,9 @@ export function PublicStatusPage({
               style={{
                 backgroundColor:
                   levelColor[
-                    ({ minor: "minor", major: "major", critical: "critical" } as Record<string, BarLevel>)[
-                      incident.impact
-                    ] ?? "maintenance"
+                    incident.maintenance
+                      ? "maintenance"
+                      : (({ minor: "minor", major: "major", critical: "critical" } as Record<string, BarLevel>)[incident.impact] ?? "operational")
                   ],
               }}
               aria-hidden="true"
