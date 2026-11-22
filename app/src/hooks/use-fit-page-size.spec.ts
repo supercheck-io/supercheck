@@ -58,6 +58,43 @@ describe("useFitPagination", () => {
 });
 
 describe("useFitPageSize layout feedback", () => {
+  it("ignores the empty space of a wrapper stretched to fill the window", () => {
+    const originalResizeObserver = global.ResizeObserver;
+    const frames: FrameRequestCallback[] = [];
+    jest.spyOn(window, "requestAnimationFrame").mockImplementation((cb: FrameRequestCallback) => frames.push(cb));
+    jest.spyOn(window, "cancelAnimationFrame").mockImplementation(() => undefined);
+    global.ResizeObserver = class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    } as unknown as typeof ResizeObserver;
+
+    const sizeFor = (fill: boolean) => {
+      const { result, unmount } = renderHook(() => useFitPageSize());
+      const card = document.createElement("div");
+      if (fill) card.setAttribute("data-fit-fill", "");
+      const body = document.createElement("tbody");
+      card.appendChild(body);
+      document.body.appendChild(card);
+      jest.spyOn(body, "getBoundingClientRect").mockImplementation(() => ({ top: 100, bottom: 110, height: 10 }) as DOMRect);
+      // The card reaches the bottom of the window however few rows render.
+      jest.spyOn(card, "getBoundingClientRect").mockImplementation(() => ({ top: 0, bottom: window.innerHeight, height: window.innerHeight }) as DOMRect);
+      act(() => result.current.bodyRef(body));
+      act(() => frames.splice(0).forEach((cb) => cb(0)));
+      const size = result.current.pageSize;
+      unmount();
+      card.remove();
+      return size;
+    };
+
+    const expected = Math.floor((window.innerHeight - 100 - 1) / 49);
+    expect(sizeFor(true)).toBe(expected);
+    // Without the marker the stretched card counts as content below the table.
+    expect(sizeFor(false)).toBe(5);
+    jest.restoreAllMocks();
+    global.ResizeObserver = originalResizeObserver;
+  });
+
   it("stops resizing when the measured size flips on every frame", () => {
     const originalResizeObserver = global.ResizeObserver;
     const frames: FrameRequestCallback[] = [];
