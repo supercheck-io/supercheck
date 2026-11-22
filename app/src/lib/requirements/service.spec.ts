@@ -45,11 +45,13 @@ jest.mock("@/lib/requirements-internal", () => ({
 
 import { db } from "@/utils/db";
 import { logAuditEvent } from "@/lib/audit-logger";
+import { PlanLimitBusyError } from "@/lib/middleware/plan-limit-lock";
 import {
   syncRequirementTagsByName,
   updateCoverageSnapshot,
 } from "@/lib/requirements-internal";
 import {
+  createRequirementRecord,
   createRequirementWithRelations,
   escapeCSV,
   linkTestsRecord,
@@ -85,7 +87,8 @@ describe("requirements service", () => {
       "o",
       "p",
       "u",
-      expect.objectContaining({ isTx: true })
+      expect.objectContaining({ isTx: true }),
+      false // REST names are strict: a new tag that breaks the rules is a 400
     );
     // requirement row + coverage snapshot, both inside the transaction
     expect(db.insert).toHaveBeenCalledTimes(2);
@@ -176,6 +179,72 @@ describe("requirements service", () => {
     const updated = await updateRequirementWithRelations(ctx, R, { tags: ["a"] });
     expect(updated).toMatchObject({ success: false, code: "invalid" });
     expect(logAuditEvent).not.toHaveBeenCalled();
+  });
+
+  it("maps a tag rule or project-limit failure to an invalid result, rolling back the create", async () => {
+    const ruleError = Object.assign(new Error('Invalid tag "ab": Tag name must be between 3 and 20 characters'), {
+      name: "TagRuleError",
+    });
+    (syncRequirementTagsByName as jest.Mock).mockRejectedValueOnce(ruleError);
+    const created = await createRequirementWithRelations(ctx, { title: "x", tags: ["ab"] });
+    expect(created).toEqual({ id: "", success: false, error: ruleError.message, code: "invalid" });
+    (syncRequirementTagsByName as jest.Mock).mockRejectedValueOnce(
+      Object.assign(new Error("Maximum of 50 tags allowed per project"), { name: "TagRuleError" })
+    );
+    const updated = await updateRequirementWithRelations(ctx, R, { tags: ["smoke"] });
+    expect(updated).toEqual({ success: false, error: "Maximum of 50 tags allowed per project", code: "invalid" });
+    expect(logAuditEvent).not.toHaveBeenCalled();
+  });
+
+  it("maps a project-tag lock timeout to a busy result the routes answer with 503", async () => {
+    (syncRequirementTagsByName as jest.Mock).mockRejectedValueOnce(new PlanLimitBusyError());
+    const created = await createRequirementWithRelations(ctx, { title: "x", tags: ["smoke"] });
+    expect(created).toMatchObject({ id: "", success: false, code: "busy" });
+    (syncRequirementTagsByName as jest.Mock).mockRejectedValueOnce(new PlanLimitBusyError());
+    const updated = await updateRequirementWithRelations(ctx, R, { tags: ["smoke"] });
+    expect(updated).toMatchObject({ success: false, code: "busy" });
+    expect(logAuditEvent).not.toHaveBeenCalled();
+  });
+
+  it("maps a tag-name unique violation from a racing writer to a busy result, not a 500", async () => {
+    const race = () =>
+      Object.assign(new Error("Failed query"), {
+        cause: { code: "23505", constraint_name: "tags_project_lower_name_idx" },
+      });
+    (syncRequirementTagsByName as jest.Mock).mockRejectedValueOnce(race());
+    const created = await createRequirementWithRelations(ctx, { title: "x", tags: ["smoke"] });
+    expect(created).toMatchObject({ id: "", success: false, code: "busy" });
+    (syncRequirementTagsByName as jest.Mock).mockRejectedValueOnce(race());
+    const updated = await updateRequirementWithRelations(ctx, R, { tags: ["smoke"] });
+    expect(updated).toMatchObject({ success: false, code: "busy" });
+    expect(logAuditEvent).not.toHaveBeenCalled();
+  });
+
+  it("still throws a unique violation that is not on a tag-name index", async () => {
+    (syncRequirementTagsByName as jest.Mock).mockRejectedValueOnce(
+      Object.assign(new Error("dup"), { code: "23505", constraint_name: "requirement_tags_pkey" })
+    );
+    await expect(createRequirementWithRelations(ctx, { title: "x", tags: ["smoke"] })).rejects.toThrow("dup");
+  });
+
+  it("update syncs REST tag names strictly (default mode)", async () => {
+    await updateRequirementWithRelations(ctx, R, { tags: ["smoke"] });
+    const call = (syncRequirementTagsByName as jest.Mock).mock.calls[0];
+    expect(call).toHaveLength(6);
+    expect(call[1]).toEqual(["smoke"]);
+  });
+
+  it("create with the comma-separated form lowercases names and syncs them leniently", async () => {
+    await createRequirementRecord(ctx, { title: "x", tags: "AI, Login Flow" } as never);
+    expect(syncRequirementTagsByName).toHaveBeenCalledWith(
+      expect.any(String),
+      ["ai", "login flow"],
+      "o",
+      "p",
+      "u",
+      expect.objectContaining({ isTx: true }),
+      true
+    );
   });
 
   it("update reports not_found when no row matched and does not sync or audit", async () => {

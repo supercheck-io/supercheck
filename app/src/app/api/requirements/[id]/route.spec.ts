@@ -105,6 +105,12 @@ describe("PUT /api/requirements/[id]", () => {
     (updateRequirementWithRelations as jest.Mock).mockResolvedValue({ success: false, code: "invalid", error: "bad" });
     expect((await PUT(req("PUT", { title: "x" }), params())).status).toBe(400);
   });
+  it("503 with Retry-After when the project's tags are locked by another request", async () => {
+    (updateRequirementWithRelations as jest.Mock).mockResolvedValue({ success: false, code: "busy", error: "busy" });
+    const res = await PUT(req("PUT", { tags: ["smoke"] }), params());
+    expect(res.status).toBe(503);
+    expect(res.headers.get("Retry-After")).toBe("2");
+  });
   it("200 returns the updated requirement", async () => {
     (updateRequirementWithRelations as jest.Mock).mockResolvedValue({ success: true });
     (getRequirementDto as jest.Mock).mockResolvedValue({ id: ID, title: "x" });
