@@ -142,6 +142,8 @@ describe("HeartbeatPingUrlPanel", () => {
     expect(cron).toHaveAttribute("data-state", "inactive");
     expect(cron).toHaveClass("lg:data-[state=inactive]:invisible");
     fireEvent.mouseDown(screen.getByRole("tab", { name: "cron" }));
+    expect(cron).toHaveAttribute("data-state", "active");
+    expect(curl).toHaveAttribute("data-state", "inactive");
     expect(screen.getByTestId("heartbeat-snippet-curl")).toBeInTheDocument();
   });
 

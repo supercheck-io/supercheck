@@ -1455,8 +1455,9 @@ export function MonitorDetailClient({
             </div>
             <FitPanel fit={fitResults} minHeight="lg:min-h-[12rem]">
               <HeartbeatPingHistory
-                results={paginatedTableResults}
-                isLoading={isLoadingResults}
+                // Previous rows stay as placeholders while a new page or filter loads; show the skeleton instead so they are never labelled as the new filter.
+                results={showResultsSkeleton ? [] : paginatedTableResults}
+                isLoading={showResultsSkeleton}
                 error={resultsError}
                 onRetry={() => void refetchResults()}
                 page={currentPage}
@@ -1468,7 +1469,7 @@ export function MonitorDetailClient({
                 filter={
                   failuresOnly || selectedDate
                     ? {
-                        noun: `${failuresOnly ? "failed pings" : "pings"}${selectedDate ? ` on ${format(selectedDate, "MMMM d, yyyy")}` : ""}`,
+                        noun: `${failuresOnly ? "failed or missed " : ""}${totalResultsCount === 1 ? "ping" : "pings"}${selectedDate ? ` on ${format(selectedDate, "MMMM d, yyyy")}` : ""}`,
                         emptyTitle: failuresOnly ? "No failed or missed pings" : "No pings on this day",
                         emptyDescription: failuresOnly
                           ? selectedDate
