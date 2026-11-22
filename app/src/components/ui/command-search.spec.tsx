@@ -8,6 +8,8 @@ import { AREA_TEXT, NAV } from "@/lib/nav-areas";
 
 const mockAdmin = { isAdmin: true, isOrgAdmin: true };
 jest.mock("@/hooks/use-admin-status", () => ({ useAdminStatus: () => mockAdmin }));
+let mockMcpEnabled = true;
+jest.mock("@/hooks/use-app-config", () => ({ useAppConfig: () => ({ isMcpEnabled: mockMcpEnabled }) }));
 jest.mock("next/navigation", () => ({ useRouter: () => ({ push: jest.fn() }) }));
 Element.prototype.scrollIntoView = jest.fn();
 
@@ -36,7 +38,10 @@ function openPalette(props: Parameters<typeof CommandSearch>[0]) {
 }
 
 describe("command palette", () => {
-  beforeEach(() => Object.assign(mockAdmin, { isAdmin: true, isOrgAdmin: true }));
+  beforeEach(() => {
+    Object.assign(mockAdmin, { isAdmin: true, isOrgAdmin: true });
+    mockMcpEnabled = true;
+  });
 
   it("orders groups like the sidebar, then Create like Quick Create", () => {
     const sidebar = [...readFileSync(join(__dirname, "../app-sidebar.tsx"), "utf8").matchAll(/groupLabel="(\w+)"/g)].map((m) => m[1]);
@@ -71,9 +76,10 @@ describe("command palette", () => {
 
   it("hides gated entries from users who cannot use them", () => {
     Object.assign(mockAdmin, { isAdmin: false, isOrgAdmin: false });
+    mockMcpEnabled = false;
     const groups = openPalette({});
     const titles = groups.flatMap((g) => g.items.map((i) => i.title));
-    for (const hidden of ["Super Admin", "Organization", "Copilot", "Services", "Integrations", "Project", "Member", "CLI Token", "Service", "Private Agent"]) {
+    for (const hidden of ["Super Admin", "Organization", "Connected apps", "Copilot", "Services", "Integrations", "Project", "Member", "CLI Token", "Service", "Private Agent"]) {
       expect(titles).not.toContain(hidden);
     }
     // Settings keeps only Project setup, which every member can open.
