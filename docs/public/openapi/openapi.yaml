@@ -11393,6 +11393,11 @@ components:
             - majority_vote
         failureThreshold:
           type: integer
+        automateStatus:
+          type: boolean
+          description: "Linked monitors set the component status, uptime bars and
+            automatic incidents. Off by default: the status is set by hand and
+            by incidents."
         autoCreateIncidents:
           type: boolean
         serviceId:
@@ -11449,6 +11454,11 @@ components:
             - weighted_average
             - majority_vote
           default: worst_case
+        automateStatus:
+          type: boolean
+          description: "Linked monitors set the component status, uptime bars and
+            automatic incidents. Off by default: the status is set by hand and
+            by incidents."
         autoCreateIncidents:
           type: boolean
         serviceId:
@@ -11517,6 +11527,11 @@ components:
             - best_case
             - weighted_average
             - majority_vote
+        automateStatus:
+          type: boolean
+          description: "Linked monitors set the component status, uptime bars and
+            automatic incidents. Off by default: the status is set by hand and
+            by incidents."
         autoCreateIncidents:
           type: boolean
         serviceId:
