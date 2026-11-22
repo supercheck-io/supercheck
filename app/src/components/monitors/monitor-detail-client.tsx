@@ -894,6 +894,68 @@ export function MonitorDetailClient({
     setIsCalendarOpen(false);
   };
 
+  // Date and failures-only filters, shared by the check results and the heartbeat ping history.
+  const resultsFilters = (
+    <div className="flex flex-wrap items-center gap-2">
+      <div className="flex items-center gap-2 pr-1">
+        <Switch
+          id="monitor-results-failures-only"
+          checked={failuresOnly}
+          onCheckedChange={setFailuresOnly}
+          data-testid="failures-only-toggle"
+        />
+        <Label htmlFor="monitor-results-failures-only" className="text-sm font-normal">
+          Failures only
+        </Label>
+      </div>
+      {selectedDate && (
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={clearDateFilter}
+          className="h-8"
+        >
+          <X className="h-3 w-3 mr-1" />
+          Clear
+        </Button>
+      )}
+      <Popover
+        open={isCalendarOpen}
+        onOpenChange={setIsCalendarOpen}
+      >
+        <PopoverTrigger asChild>
+          <Button variant="outline" size="sm" className="h-8">
+            <CalendarIcon className="h-3 w-3 mr-1" />
+            {selectedDate
+              ? format(selectedDate, "MMM dd")
+              : "Filter by date"}
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent className="w-auto p-0" align="end">
+          <CalendarComponent
+            mode="single"
+            selected={selectedDate}
+            onSelect={(date: Date | undefined) => {
+              setSelectedDate(date);
+              setIsCalendarOpen(false);
+            }}
+            disabled={(date: Date) =>
+              date > new Date() || (firstSelectableDay !== undefined && date < firstSelectableDay)
+            }
+            startMonth={firstSelectableDay}
+            endMonth={today}
+            initialFocus
+          />
+          {retentionHint && (
+            <p className="max-w-[16rem] border-t px-3 py-2 text-xs text-muted-foreground" data-testid="results-retention-hint">
+              {retentionHint}
+            </p>
+          )}
+        </PopoverContent>
+      </Popover>
+    </div>
+  );
+
   return (
     <>
       <div className={fitResults ? "flex min-h-0 flex-1 flex-col" : "h-full"}>
@@ -1345,7 +1407,7 @@ export function MonitorDetailClient({
 
         {isHeartbeat ? (
           // Desktop: setup and availability on the left, ping history on the right, both filling the window height.
-          <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,min(58%,44rem))] lg:grid-rows-[minmax(22rem,1fr)]" data-testid="heartbeat-layout">
+          <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,min(46%,38rem))] lg:grid-rows-[minmax(22rem,1fr)]" data-testid="heartbeat-layout">
             {/* The row takes the window height like the other layouts (use-fit-panel-rows needs a height that does not depend on its rows); the setup and chart column scrolls inside it instead of growing it. */}
             <div className="flex min-h-0 min-w-0 flex-col gap-4 lg:overflow-y-auto lg:px-px">
               {showHeartbeatSetup && (
@@ -1393,8 +1455,9 @@ export function MonitorDetailClient({
             </div>
             <FitPanel fit={fitResults} minHeight="lg:min-h-[12rem]">
               <HeartbeatPingHistory
-                results={paginatedTableResults}
-                isLoading={isLoadingResults}
+                // Previous rows stay as placeholders while a new page or filter loads; show the skeleton instead so they are never labelled as the new filter.
+                results={showResultsSkeleton ? [] : paginatedTableResults}
+                isLoading={showResultsSkeleton}
                 error={resultsError}
                 onRetry={() => void refetchResults()}
                 page={currentPage}
@@ -1402,12 +1465,26 @@ export function MonitorDetailClient({
                 total={totalResultsCount}
                 onPageChange={setCurrentPage}
                 onFitRows={fitResults ? setFitRows : undefined}
+                headerActions={resultsFilters}
+                filter={
+                  failuresOnly || selectedDate
+                    ? {
+                        noun: `${failuresOnly ? "failed or missed " : ""}${totalResultsCount === 1 ? "ping" : "pings"}${selectedDate ? ` on ${format(selectedDate, "MMMM d, yyyy")}` : ""}`,
+                        emptyTitle: failuresOnly ? "No failed or missed pings" : "No pings on this day",
+                        emptyDescription: failuresOnly
+                          ? selectedDate
+                            ? `No failed or missed pings on ${format(selectedDate, "MMMM d, yyyy")}.`
+                            : "Every ping in the kept history arrived on time."
+                          : "Pick another day or clear the date filter.",
+                      }
+                    : undefined
+                }
               />
             </FitPanel>
           </div>
         ) : (
         // Desktop: the page fits the window; the charts share the left column and the wider results fill the right one.
-        <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,min(58%,44rem))] lg:grid-rows-[minmax(22rem,1fr)]">
+        <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,min(46%,38rem))] lg:grid-rows-[minmax(22rem,1fr)]">
           {/* Both charts share the column height, so the results panel sets the page height. */}
           <div className="flex min-h-0 min-w-0 flex-col gap-4">
             <div className="shrink-0">
@@ -1451,64 +1528,7 @@ export function MonitorDetailClient({
                 <CardTitle className="text-lg font-semibold flex items-center">
                   Recent Check Results
                 </CardTitle>
-                <div className="flex flex-wrap items-center gap-2">
-                  <div className="flex items-center gap-2 pr-1">
-                    <Switch
-                      id="monitor-results-failures-only"
-                      checked={failuresOnly}
-                      onCheckedChange={setFailuresOnly}
-                      data-testid="failures-only-toggle"
-                    />
-                    <Label htmlFor="monitor-results-failures-only" className="text-sm font-normal">
-                      Failures only
-                    </Label>
-                  </div>
-                  {selectedDate && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={clearDateFilter}
-                      className="h-8"
-                    >
-                      <X className="h-3 w-3 mr-1" />
-                      Clear
-                    </Button>
-                  )}
-                  <Popover
-                    open={isCalendarOpen}
-                    onOpenChange={setIsCalendarOpen}
-                  >
-                    <PopoverTrigger asChild>
-                      <Button variant="outline" size="sm" className="h-8">
-                        <CalendarIcon className="h-3 w-3 mr-1" />
-                        {selectedDate
-                          ? format(selectedDate, "MMM dd")
-                          : "Filter by date"}
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0" align="end">
-                      <CalendarComponent
-                        mode="single"
-                        selected={selectedDate}
-                        onSelect={(date: Date | undefined) => {
-                          setSelectedDate(date);
-                          setIsCalendarOpen(false);
-                        }}
-                        disabled={(date: Date) =>
-                          date > new Date() || (firstSelectableDay !== undefined && date < firstSelectableDay)
-                        }
-                        startMonth={firstSelectableDay}
-                        endMonth={today}
-                        initialFocus
-                      />
-                      {retentionHint && (
-                        <p className="max-w-[16rem] border-t px-3 py-2 text-xs text-muted-foreground" data-testid="results-retention-hint">
-                          {retentionHint}
-                        </p>
-                      )}
-                    </PopoverContent>
-                  </Popover>
-                </div>
+                {resultsFilters}
               </div>
               <CardDescription>
                 {showResultsSkeleton

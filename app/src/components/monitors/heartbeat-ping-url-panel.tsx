@@ -141,8 +141,8 @@ export function HeartbeatPingUrlPanel({ monitorId, canManage, pending = false }:
 
   return (
     <Card className="shrink-0 shadow-sm" data-testid="heartbeat-ping-url-panel">
-      <CardContent className="grid gap-5 p-5">
-        <div className="min-w-0 space-y-3">
+      <CardContent className="grid gap-6 p-6">
+        <div className="min-w-0 space-y-4">
           <div className="flex min-h-8 flex-wrap items-center justify-between gap-2">
             <div className="flex items-center gap-1">
               <h2 className="flex items-center gap-2 text-sm font-semibold">
@@ -181,7 +181,7 @@ export function HeartbeatPingUrlPanel({ monitorId, canManage, pending = false }:
           </div>
           {!pingUrl && <span className="sr-only">Ping URL hidden.</span>}
           <code
-            className="block break-all rounded-md border bg-muted/40 px-3.5 py-2.5 font-mono text-xs lg:truncate"
+            className="block break-all rounded-md border bg-muted/40 px-4 py-3 font-mono text-xs lg:truncate"
             aria-hidden={pingUrl ? undefined : true}
             data-testid="heartbeat-ping-url"
             data-revealed={pingUrl ? "true" : "false"}
@@ -200,9 +200,9 @@ export function HeartbeatPingUrlPanel({ monitorId, canManage, pending = false }:
           )}
         </div>
 
-        <Tabs value={snippetTab} onValueChange={(v) => setSnippetTab(v as SnippetKey)} className="min-w-0 gap-3">
-          <div className="flex min-h-8 items-center justify-between gap-2">
-            <TabsList aria-label="Ping snippets" className="h-8">
+        <Tabs value={snippetTab} onValueChange={(v) => setSnippetTab(v as SnippetKey)} className="min-w-0 space-y-3">
+          <div className="flex items-center justify-between gap-2">
+            <TabsList aria-label="Ping snippets">
               <TabsTrigger value="curl">curl</TabsTrigger>
               <TabsTrigger value="cron">cron</TabsTrigger>
               <TabsTrigger value="cli">CLI</TabsTrigger>
@@ -213,13 +213,16 @@ export function HeartbeatPingUrlPanel({ monitorId, canManage, pending = false }:
               </Button>
             )}
           </div>
-          {(Object.keys(snippets) as SnippetKey[]).map((key) => (
-            <TabsContent key={key} value={key} className="mt-0">
-              <pre className="overflow-x-auto whitespace-pre-wrap break-all rounded-md border bg-muted/40 px-3.5 py-3 font-mono text-xs leading-relaxed" data-testid={`heartbeat-snippet-${key}`}>
-                {snippets[key]}
-              </pre>
-            </TabsContent>
-          ))}
+          {/* Every snippet stays mounted in one grid cell, so on desktop the card keeps the tallest snippet's height and the chart below never moves. */}
+          <div className="grid">
+            {(Object.keys(snippets) as SnippetKey[]).map((key) => (
+              <TabsContent key={key} value={key} forceMount className="col-start-1 row-start-1 mt-0 data-[state=inactive]:hidden lg:data-[state=inactive]:invisible lg:data-[state=inactive]:block">
+                <pre className="h-full overflow-x-auto whitespace-pre-wrap break-all rounded-md border bg-muted/40 px-4 py-3 font-mono text-xs leading-relaxed" data-testid={`heartbeat-snippet-${key}`}>
+                  {snippets[key]}
+                </pre>
+              </TabsContent>
+            ))}
+          </div>
         </Tabs>
 
         {pending && (

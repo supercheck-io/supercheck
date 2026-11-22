@@ -31,11 +31,12 @@ const resultsCalls: ResultsOptions[] = [];
 let mockResults: unknown[] = [];
 let mockPagination: { total: number; totalPages: number } | null = null;
 let mockError: Error | null = null;
+let mockPlaceholder = false;
 jest.mock("@/hooks/use-monitor-details", () => ({
   useMonitorStats: () => ({ stats: null }),
   useMonitorResults: (_id: string, options: ResultsOptions) => {
     resultsCalls.push(options);
-    return { results: mockResults, pagination: mockPagination, isFetching: false, isPlaceholderData: false, error: mockError };
+    return { results: mockResults, pagination: mockPagination, isFetching: false, isPlaceholderData: mockPlaceholder, error: mockError };
   },
   useMonitorPermissions: () => ({ canEdit: true, canDelete: true, canToggle: true, isLoading: false }),
 }));
@@ -80,6 +81,7 @@ beforeEach(() => {
   mockResults = [];
   mockPagination = null;
   mockError = null;
+  mockPlaceholder = false;
 });
 afterEach(() => {
   jest.useRealTimers();
@@ -219,5 +221,57 @@ describe("failures-only toggle", () => {
     fireEvent.click(screen.getByRole("switch", { name: "Failures only" }));
     view.rerender(<MonitorDetailClient monitor={{ ...baseMonitor, resultRetention: { days: 7, onPlan: true }, config: { locationConfig: { locations: ["eu-central"] } } } as never} />);
     expect(lastCall()).toEqual(expect.objectContaining({ location: "old-region", failuresOnly: true }));
+  });
+});
+
+describe("heartbeat ping history filters", () => {
+  const renderHeartbeat = () =>
+    renderMonitor({ type: "heartbeat", target: "", resultRetention: { days: 7, onPlan: true } });
+
+  it("offers the same date and failures-only filters as the other monitor types", () => {
+    renderHeartbeat();
+    fireEvent.click(screen.getByRole("switch", { name: "Failures only" }));
+    expect(lastCall()).toEqual(expect.objectContaining({ failuresOnly: true, page: 1 }));
+    expect(screen.getByTestId("heartbeat-ping-history-filtered-empty")).toHaveTextContent("No failed or missed pings");
+    // The "no pings yet" setup hint only shows without a filter.
+    expect(screen.queryByTestId("heartbeat-ping-history-empty")).toBeNull();
+    openCalendar();
+    expect(screen.getByTestId("results-retention-hint")).toBeInTheDocument();
+  });
+
+  it("names filtered pings in the summary", () => {
+    mockResults = [{ ...row("a", false), status: "missed" }];
+    mockPagination = { total: 3, totalPages: 1 };
+    renderHeartbeat();
+    fireEvent.click(screen.getByRole("switch", { name: "Failures only" }));
+    expect(screen.getByText("Showing 1 of 3 failed or missed pings.")).toBeInTheDocument();
+  });
+
+  it("uses the singular for one filtered ping", () => {
+    mockResults = [{ ...row("a", false), status: "missed" }];
+    mockPagination = { total: 1, totalPages: 1 };
+    renderHeartbeat();
+    fireEvent.click(screen.getByRole("switch", { name: "Failures only" }));
+    expect(screen.getByText("Showing 1 of 1 failed or missed ping.")).toBeInTheDocument();
+  });
+
+  it("names the day in the date-filtered empty states", () => {
+    renderHeartbeat();
+    openCalendar();
+    act(() => {
+      fireEvent.click(day(/November 18th, 2026/));
+    });
+    expect(screen.getByText("No pings on this day")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("switch", { name: "Failures only" }));
+    expect(screen.getByText("No failed or missed pings on November 18, 2026.")).toBeInTheDocument();
+  });
+
+  it("shows the skeleton, not stale rows under the new filter, while a filtered page loads", () => {
+    mockResults = [row("a", true)];
+    mockPagination = { total: 50, totalPages: 5 };
+    mockPlaceholder = true;
+    renderHeartbeat();
+    expect(screen.getByLabelText("Loading ping history")).toBeInTheDocument();
+    expect(screen.queryByText(/Showing 1 of 50/)).toBeNull();
   });
 });
