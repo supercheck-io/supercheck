@@ -2,11 +2,16 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
+import { formatDistanceToNow } from "date-fns";
+import { FolderOpen, Link2, RefreshCw, ShieldAlert, ShieldCheck, Unplug } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DashboardEmptyState } from "@/components/dashboard/dashboard-empty-state";
 import { ListErrorState } from "@/components/shared/list-states";
 import { SupercheckLoading } from "@/components/shared/supercheck-loading";
 import { NAV } from "@/lib/nav-areas";
+import { TableBadge } from "@/components/ui/table-badge";
+import { TYPE_CHIP, type TypeTone } from "@/lib/type-tones";
+import { cn } from "@/lib/utils";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -34,10 +39,27 @@ type State =
   | { status: "error" }
   | { status: "ready"; connections: Connection[] };
 
-function formatDate(value: string | null): string {
-  if (!value) return "Never";
+function parseDate(value: string | null): Date | null {
+  if (!value) return null;
   const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? "Unknown" : date.toLocaleString();
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+/** "3 hours ago", with the exact time in a tooltip. */
+function When({ value, fallback }: { value: string | null; fallback: string }) {
+  const date = parseDate(value);
+  if (!date) return <>{fallback}</>;
+  return <time dateTime={date.toISOString()} title={date.toLocaleString()}>{formatDistanceToNow(date, { addSuffix: true })}</time>;
+}
+
+// App tiles (a DESIGN.md exception): no status hues, and not orchid (this page) or sky (Dashboard).
+const MONOGRAM_TONES: TypeTone[] = ["teal", "cobalt", "aqua", "lime", "clay", "olive"];
+
+/** Same app name, same colour, on every load. */
+function monogramTone(name: string): TypeTone {
+  let hash = 0;
+  for (const char of name) hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
+  return MONOGRAM_TONES[hash % MONOGRAM_TONES.length];
 }
 
 /** `page` fills the Connected apps page; `panel` is the compact version in the account dialog. */
@@ -117,27 +139,67 @@ export function ConnectedApps({ variant = "panel" }: { variant?: "page" | "panel
 
   return (
     <>
-      <ul className="divide-y rounded-md border">
-        {state.connections.map((connection) => (
-          <li key={connection.id} className="flex flex-wrap items-center justify-between gap-3 p-4">
-            <div className="min-w-0 space-y-1">
-              <p className="truncate font-medium">{connection.clientName ?? "Unnamed app"}</p>
-              <p className="text-sm text-muted-foreground">
-                {connection.verifiedHost
-                  ? `Metadata hosted at ${connection.verifiedHost}`
-                  : `Unverified (returns to ${connection.redirectHosts.join(", ") || "unknown"})`}
-              </p>
-              <p className="text-sm text-muted-foreground">
-                Can read <span className="font-medium text-foreground">{connection.projectName ?? "a project you can no longer access"}</span>
-                {" · "}Connected {formatDate(connection.connectedAt)}
-                {" · "}Last refreshed {formatDate(connection.lastActiveAt)}
-              </p>
-            </div>
-            <Button variant="outline" size="sm" onClick={() => setPending(connection)}>
-              Disconnect
-            </Button>
-          </li>
-        ))}
+      <p className="mb-3 text-sm text-muted-foreground">
+        {state.connections.length} {state.connections.length === 1 ? "app" : "apps"} connected
+      </p>
+      <ul className="@container grid gap-3">
+        {state.connections.map((connection) => {
+          const name = connection.clientName ?? "Unnamed app";
+          const host = connection.verifiedHost ?? connection.redirectHosts.join(", ");
+          return (
+            <li
+              key={connection.id}
+              className="flex flex-col gap-4 rounded-lg border bg-card p-4 transition-colors hover:border-foreground/20 @md:flex-row @md:items-center"
+            >
+              <div className="flex min-w-0 flex-1 items-start gap-3">
+                <span
+                  aria-hidden
+                  className={cn("flex size-10 shrink-0 items-center justify-center rounded-lg text-base font-semibold", TYPE_CHIP[monogramTone(name)])}
+                >
+                  {[...name.trim()][0]?.toUpperCase() || "?"}
+                </span>
+                <div className="min-w-0 flex-1 space-y-1.5">
+                  <div className="flex min-w-0 flex-wrap items-center gap-2">
+                    <p className="truncate font-medium leading-tight" title={name}>{name}</p>
+                    {connection.verifiedHost ? (
+                      <TableBadge tone="success" compact className="gap-1"><ShieldCheck className="size-3.5" aria-hidden />Verified</TableBadge>
+                    ) : (
+                      <TableBadge tone="warning" compact className="gap-1"><ShieldAlert className="size-3.5" aria-hidden />Unverified</TableBadge>
+                    )}
+                  </div>
+                  <p className="truncate font-mono text-xs text-muted-foreground" title={host}>
+                    {connection.verifiedHost ? host : `Returns to ${host || "unknown"}`}
+                  </p>
+                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                    <span className="inline-flex min-w-0 items-center gap-1.5">
+                      <FolderOpen className="size-3.5 shrink-0" aria-hidden />
+                      Can read
+                      <span className="truncate font-medium text-foreground">{connection.projectName ?? "a project you can no longer access"}</span>
+                    </span>
+                    <span className="inline-flex items-center gap-1.5">
+                      <Link2 className="size-3.5 shrink-0" aria-hidden />
+                      Connected <When value={connection.connectedAt} fallback="at an unknown time" />
+                    </span>
+                    <span className="inline-flex items-center gap-1.5">
+                      <RefreshCw className="size-3.5 shrink-0" aria-hidden />
+                      Last refreshed <When value={connection.lastActiveAt} fallback="never" />
+                    </span>
+                  </div>
+                </div>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                className="self-start @md:self-center"
+                aria-label={`Disconnect ${name}`}
+                onClick={() => setPending(connection)}
+              >
+                <Unplug aria-hidden />
+                Disconnect
+              </Button>
+            </li>
+          );
+        })}
       </ul>
 
       <AlertDialog open={pending !== null} onOpenChange={(open) => !open && !disconnecting && setPending(null)}>

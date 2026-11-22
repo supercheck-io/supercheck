@@ -18,6 +18,8 @@ import { useTheme } from "next-themes";
 import { Moon, Sun, User, UserCog, UserRoundPen, Monitor } from "lucide-react";
 import { AccountDialog } from "@/components/account/account-dialog";
 import { useProjectContextSafe } from "@/hooks/use-project-context";
+import { useAppConfig } from "@/hooks/use-app-config";
+import { NAV } from "@/lib/nav-areas";
 
 export function NavUser() {
   const { data: session, isPending } = useSession();
@@ -25,6 +27,8 @@ export function NavUser() {
   const hasData = user !== undefined && user !== null;
   const { theme, setTheme } = useTheme();
   const [accountOpen, setAccountOpen] = useState(false);
+  const { isMcpEnabled } = useAppConfig();
+  const ConnectedAppsIcon = NAV.connectedApps.icon;
 
   const isMounted = useSyncExternalStore(
     () => () => {},
@@ -98,6 +102,11 @@ export function NavUser() {
         <DropdownMenuItem onSelect={() => setAccountOpen(true)} data-testid="account-menu-item">
           <UserCog className="h-4 w-4 mr-2" />Account
         </DropdownMenuItem>
+        {isMcpEnabled && (
+          <DropdownMenuItem asChild>
+            <Link href="/connected-apps" data-testid="connected-apps-link"><ConnectedAppsIcon className="h-4 w-4 mr-2" />{NAV.connectedApps.title}</Link>
+          </DropdownMenuItem>
+        )}
         <DropdownMenuItem asChild>
           <Link href="/setup/welcome?change=1" data-testid="persona-menu-item"><UserRoundPen className="h-4 w-4 mr-2" />Change focus</Link>
         </DropdownMenuItem>
