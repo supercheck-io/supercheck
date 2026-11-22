@@ -694,7 +694,7 @@ it("hands an open automatic incident to the owner when the component turns manua
 it("posts an already resolved update as over: resolvedAt set and component health unchanged", async () => {
   const page = await mockDatabase.query.statusPages.findFirst();
   const result = await createStatusPageIncident(
-    { userId: (await mockDatabase.query.user.findFirst())!.id, organizationId: page!.organizationId, orgPendingDeletion: false, project: { id: page!.projectId, userRole: "org_owner" } },
+    { userId: (await mockDatabase.query.user.findFirst())!.id, organizationId: page!.organizationId, orgPendingDeletion: false, project: { id: page!.projectId!, userRole: "org_owner" } },
     { statusPageId: pageId, name: "Yesterday's checkout errors", status: "resolved", impact: "critical", body: "Fixed", affectedComponentIds: [componentId], componentStatus: "major_outage", deliverNotifications: false },
   );
   expect(result.success).toBe(true);
