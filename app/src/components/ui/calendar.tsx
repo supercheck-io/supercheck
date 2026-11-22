@@ -85,13 +85,13 @@ function Calendar({
           defaultClassNames.caption_label
         ),
         table: "w-full border-collapse",
-        // A 7-column grid keeps days in their weekday column when react-day-picker drops days past endMonth.
-        weekdays: cn("grid grid-cols-7", defaultClassNames.weekdays),
+        // A 7-column grid (8 with week numbers) keeps days in their weekday column when react-day-picker drops days past endMonth.
+        weekdays: cn("grid", props.showWeekNumber ? "grid-cols-8" : "grid-cols-7", defaultClassNames.weekdays),
         weekday: cn(
           "text-muted-foreground rounded-md font-normal text-[0.8rem] select-none",
           defaultClassNames.weekday
         ),
-        week: cn("grid grid-cols-7 w-full mt-2", defaultClassNames.week),
+        week: cn("grid w-full mt-2", props.showWeekNumber ? "grid-cols-8" : "grid-cols-7", defaultClassNames.week),
         week_number_header: cn(
           "select-none w-(--cell-size)",
           defaultClassNames.week_number_header
