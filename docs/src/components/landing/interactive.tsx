@@ -34,7 +34,7 @@ export function CopyCommand() {
   );
 }
 
-const OVERVIEW_VIDEO_ID = "D9dqy93zL9o";
+const OVERVIEW_VIDEO_ID = "TI6K537E2aE";
 
 /** Hero screenshot that swaps in place for the YouTube player on click, so nothing from YouTube loads until then. */
 export function HeroVideo({ children }: { children: React.ReactNode }) {

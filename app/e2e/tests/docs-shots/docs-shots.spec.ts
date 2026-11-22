@@ -64,9 +64,9 @@ const runForReport = (route: Parameters<typeof at>[0]) => async (c: Ctx) => {
 const ORG = '/org-admin';
 const SHOTS: Record<string, Shot> = {
   // Batch 1 (P1): landing and highest drift.
-  dashboard: { files: ['dashboard.png', 'site/dashboard.webp', 'supercheck-screenshot.webp'], go: at('/') },
+  dashboard: { files: ['dashboard.png', 'site/dashboard.webp'], go: at('/') },
   'monitors-list': { files: ['monitors-list.png', 'site/monitors-list.webp'], go: at('/monitors') },
-  'monitor-details': { files: ['monitor-details.png', 'site/monitor-details.webp'], go: at(id((v) => `/monitors/${v}`, 'monitor')) },
+  'monitor-details': { files: ['monitor-details.png', 'site/monitor-details.webp', 'supercheck-screenshot.webp'], go: at(id((v) => `/monitors/${v}`, 'monitor')) },
   'monitor-report': { files: ['monitor-report.png'], go: async ({ page, ids }) => {
     // The report button shows only on a failed synthetic check with a saved report.
     test.skip(!ids.reportMonitor, 'no synthetic monitor has a failed check with a saved report');
