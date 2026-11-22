@@ -18,6 +18,11 @@ describe("nav areas", () => {
     expect(NAV.copilot.tone).toBe("ai");
   });
 
+  it("colours the Dashboard like the test types and Connected apps like the MCP monitor", () => {
+    expect(NAV.dashboard.tone).toBe(TYPE_TONE.test.browser);
+    expect(NAV.connectedApps.tone).toBe(TYPE_TONE.monitor.mcp_server);
+  });
+
   it("takes AI SRE setup colours from the type registry", () => {
     expect(NAV.services.tone).toBe(TYPE_TONE.sre.service);
     expect(NAV.integrations.tone).toBe(TYPE_TONE.sre.integration);

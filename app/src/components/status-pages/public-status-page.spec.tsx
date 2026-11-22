@@ -159,3 +159,4 @@ it("draws the bars from the server's read time, so a render after midnight UTC s
   render(<PublicStatusPage statusPage={{ ...page, createdAt: new Date("2026-11-01T00:00:00Z") }} components={[{ ...component, createdAt: new Date("2026-11-01T00:00:00Z") }]} incidents={[]} idOrSubdomain="page" readAt="2026-11-10T23:59:00Z" />);
   expect(screen.getByText(/10 of 90 days with data/)).toBeInTheDocument();
 });
+

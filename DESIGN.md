@@ -15,7 +15,9 @@ Every colour has one job. New code uses the token, never a raw palette class or 
 | Main action | `bg-primary` (black; white in dark mode) | Primary buttons. Never give a primary button another colour. |
 | Secondary action | `variant="outline"` / `variant="ghost"` | Everything else that is clickable |
 | Link, focus | blue (`--color-fd-primary` on the site, the `ring` token in the app) | Text links, focus rings |
-| Area: Respond (dashboard, incidents, services) | `respond` (orange) | Same |
+| Dashboard (home page) | `type-sky` (the Browser test blue) | Sidebar, Cmd+K, page header |
+| Area: Respond (incidents, saved queries) | `respond` (orange) | Same |
+| Connected apps (MCP clients) | `type-orchid` (the MCP monitor colour) | Page header, Cmd+K. Each app row also gets a letter tile tinted by a hash of its name (teal, cobalt, aqua, lime, clay, olive), the one place a type tone marks identity rather than type. |
 | Area: Automate (tests, jobs, runs, requirements, variables) | `automate` (sky) | Icon chips, eyebrows, area labels |
 | Area: Monitor (monitors) | `monitor` (electric blue) | Same |
 | Area: Communicate (notifications, delivery history) | `communicate` (indigo) | Same |
