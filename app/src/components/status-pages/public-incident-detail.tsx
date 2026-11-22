@@ -17,7 +17,7 @@ import {
 import { SupportContactButton } from "./support-contact-button";
 import { StatusPageBranding } from "./status-page-branding";
 import { SubscribeDialog } from "./subscribe-dialog";
-import { INCIDENT_PILL, incidentImpactTone, incidentStatusTone, incidentStatusDot } from "./public-incident-tones";
+import { INCIDENT_PILL, incidentImpactTone, INCIDENT_STATUS_PILL, incidentStatusDot } from "./public-incident-tones";
 
 type IncidentStatus =
   | "investigating"
@@ -186,7 +186,8 @@ export function PublicIncidentDetail({
         {/* Summary */}
         <div className="rounded-xl border bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-gray-900 sm:p-6">
           <div className="flex flex-wrap items-center gap-2">
-            <span className={cn(INCIDENT_PILL, incidentStatusTone(incident.status))}>
+            <span className={cn(INCIDENT_PILL, INCIDENT_STATUS_PILL)}>
+              <span aria-hidden="true" className={cn("h-1.5 w-1.5 rounded-full", incidentStatusDot(incident.status))} />
               {formatStatus(incident.status)}
             </span>
             <span className={cn(INCIDENT_PILL, incidentImpactTone(incident.impact))}>
@@ -229,7 +230,8 @@ export function PublicIncidentDetail({
                 )}
               />
               <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                <span className={cn(INCIDENT_PILL, incidentStatusTone(update.status))}>
+                <span className={cn(INCIDENT_PILL, INCIDENT_STATUS_PILL)}>
+                  <span aria-hidden="true" className={cn("h-1.5 w-1.5 rounded-full", incidentStatusDot(update.status))} />
                   {formatStatus(update.status)}
                 </span>
                 <time className="text-xs text-gray-500 dark:text-gray-400">

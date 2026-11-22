@@ -395,6 +395,8 @@ export function ComponentsTab({
   const totalPages = Math.max(1, Math.ceil(sortedComponents.length / itemsPerPage));
   // Auto-fit can grow the page size and leave the old page past the end.
   const currentPage = Math.min(pageState, totalPages);
+  // Store the clamp too, so the page does not jump back when rows are added later.
+  if (pageState !== currentPage) setCurrentPage(currentPage);
   const startIndex = (currentPage - 1) * itemsPerPage;
   const paginatedComponents = sortedComponents.slice(
     startIndex,

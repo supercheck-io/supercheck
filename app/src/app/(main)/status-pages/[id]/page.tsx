@@ -146,6 +146,7 @@ export default function StatusPagePage() {
   }));
 
   return (
+    // data-fit-fill: the card stretches to the window; the table fit must ignore that space.
     <div data-fit-fill className="flex flex-1 flex-col">
       <PageBreadcrumbs items={breadcrumbs} />
       <Card data-fit-fill className="m-4 flex-1 shadow-sm">

@@ -35,7 +35,7 @@ import { StatusPageBranding } from "./status-page-branding";
 import { formatMaintenanceWindow } from "@/lib/incident-schedule";
 import { bannerColors, resolveBranding } from "@/lib/status-page-branding";
 import { IMPACT_BANNER_STATUS } from "@/lib/incident-impact";
-import { INCIDENT_PILL, incidentImpactTone, incidentStatusTone } from "./public-incident-tones";
+import { INCIDENT_PILL, incidentImpactTone, incidentStatusDot, INCIDENT_STATUS_PILL } from "./public-incident-tones";
 
 // Hex, because component colors get a hex alpha suffix below.
 const NO_DATA_COLOR = "#9ca3af";
@@ -492,7 +492,8 @@ export function PublicStatusPage({
           <span className={`${INCIDENT_PILL} ${incidentImpactTone(incident.impact)}`}>
             {translateIncidentImpact(incident.impact, t)}
           </span>
-          <span className={`${INCIDENT_PILL} ${incidentStatusTone(incident.status)}`}>
+          <span className={`${INCIDENT_PILL} ${INCIDENT_STATUS_PILL}`}>
+            <span aria-hidden="true" className={`h-1.5 w-1.5 rounded-full ${incidentStatusDot(incident.status)}`} />
             {translateIncidentStatus(incident.status, t)}
           </span>
           <ChevronRight className="hidden h-4 w-4 sp-muted text-gray-400 transition-transform group-hover:translate-x-0.5 sm:block rtl:rotate-180" aria-hidden="true" />

@@ -120,6 +120,12 @@ export function DeliveryHistory({ statusPageId }: { statusPageId: string }) {
           </Table>
         </div>
       )}
+      {/* Kept visible beside Retry so nobody retries without seeing it. */}
+      {!error && deliveries.some((delivery) => delivery.status === "failed") && (
+        <p className="text-xs text-muted-foreground" data-testid="retry-duplicate-note">
+          Retrying sends the original public update. A recipient may receive a duplicate after an interrupted request.
+        </p>
+      )}
     </section>
   );
 }

@@ -74,6 +74,9 @@ function contentBottom(body: HTMLElement, scroller: HTMLElement | null) {
  * Page size that fills the visible height without a page scrollbar. Pass `bodyRef` as the
  * table's <tbody> ref. Picking a size from the "Rows per page" menu turns auto-fit off;
  * `fixedSize` turns it off from the start.
+ *
+ * A wrapper that stretches to fill the window (flex-1, min-h) must carry `data-fit-fill`,
+ * or its empty space counts as content below the table and the size drops to the minimum.
  */
 export function useFitPageSize(fixedSize?: number) {
   const [body, bodyRef] = useState<HTMLTableSectionElement | null>(null);
