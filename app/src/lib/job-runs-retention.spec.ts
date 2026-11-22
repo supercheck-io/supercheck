@@ -43,6 +43,8 @@ jest.mock("@/utils/db", () => ({
         },
         then: (resolve: (rows: unknown[]) => unknown) =>
           Promise.resolve(rowsFor(table)).then(resolve),
+        orderBy: () => Promise.resolve(rowsFor(table)),
+        limit: async () => rowsFor(table),
       }),
     }),
   },

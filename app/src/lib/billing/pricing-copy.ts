@@ -8,6 +8,9 @@ const plusMax = usd(catalog.plus.monthlyPriceCents + catalog.plus.limits.default
 const proMax = usd(catalog.pro.monthlyPriceCents + catalog.pro.limits.defaultSpendingLimitCents);
 const proPrice = usd(catalog.pro.monthlyPriceCents);
 const extraMember = usd(catalog.pro.extraMemberPriceCents);
+const days = (n: number) => `${n.toLocaleString("en-US")} days`;
+const plusLimits = catalog.plus.limits;
+const proLimits = catalog.pro.limits;
 
 /** Usage and billing answers shown on both the in-app plan picker and the marketing pricing page. */
 export const SHARED_PRICING_FAQS = [
@@ -68,7 +71,12 @@ export const SHARED_PRICING_FAQS = [
   {
     question: "What happens if I cancel?",
     answer:
-      "Your plan stays active until the end of the period you paid for. Once that period ends, your monitors are paused and your status pages are archived, so nothing keeps running without a plan. Nothing is deleted by the plan ending, though normal data retention still applies to old results and artifacts, and when you subscribe again, paused monitors resume and archived status pages are republished automatically.",
+      `Your plan stays active until the end of the period you paid for. Once that period ends, your monitors are paused and your status pages are archived, so nothing keeps running without a plan. Your tests, jobs, monitors, and status pages are kept. Check details older than ${days(catalog.trial.retention.dataRetentionDays)} are deleted, as on an account without a plan, and other history follows normal data retention. When you subscribe again, paused monitors resume and archived status pages are republished automatically.`,
+  },
+  {
+    question: "How long is check history kept?",
+    answer:
+      `Check details, the result of every individual check with its response time and error, are kept for at least ${days(plusLimits.dataRetentionDays)} on ${catalog.plus.name} and ${days(proLimits.dataRetentionDays)} on ${catalog.pro.name}. Uptime history is kept longer as hourly and daily summaries: hourly charts for ${days(plusLimits.aggregatedDataRetentionDays)} on ${catalog.plus.name} and ${days(proLimits.aggregatedDataRetentionDays)} on ${catalog.pro.name}, and daily uptime for at least ${days(catalog.minDailyAggregateRetentionDays)} on every plan, which is what a status page's 90-day uptime bar shows. Each status change (a monitor going down or recovering) is kept as well. Older data is deleted automatically and cannot be restored. Enterprise plans can have custom retention.`,
   },
 ];
 

@@ -44,12 +44,18 @@ jest.mock("@/utils/db", () => {
   };
 });
 jest.mock("@/lib/monitor-aggregation-service", () => ({ monitorAggregationService: {} }));
-jest.mock("./queue", () => ({ assertExecutionQueueReady: jest.fn(), getQueues: jest.fn() }));
+jest.mock("./queue", () => ({
+  assertExecutionQueueReady: jest.fn(),
+  getQueues: jest.fn(),
+  DATA_LIFECYCLE_CLEANUP_QUEUE: "data-lifecycle-cleanup",
+  DATA_LIFECYCLE_URGENT_QUEUE: "data-lifecycle-urgent",
+}));
 jest.mock("./scheduler/job-scheduler", () => ({ processScheduledJob: jest.fn() }));
 
 import { getQueues } from "./queue";
 import { initializeMonitorSchedulers } from "./monitor-scheduler";
-import { DataLifecycleService, type CleanupStrategyConfig } from "./data-lifecycle-service";
+import { DataLifecycleService, redisCursorStore, type CleanupStrategyConfig } from "./data-lifecycle-service";
+import { acquireOwnedLock } from "./cleanup-lock";
 
 const prefix: string = jest.requireMock("bullmq").__prefix;
 const suite = process.env.TEST_REDIS_URL ? describe : describe.skip;
@@ -58,6 +64,7 @@ suite("scheduler upgrade (real Redis, BullMQ)", () => {
   let redis: Redis;
   let monitorQueue: Queue;
   let lifecycleQueue: Queue;
+  let urgentLifecycleQueue: Queue;
   const services: DataLifecycleService[] = [];
 
   const clear = async () => {
@@ -70,6 +77,7 @@ suite("scheduler upgrade (real Redis, BullMQ)", () => {
     redis = new Redis(process.env.TEST_REDIS_URL!, { maxRetriesPerRequest: null });
     monitorQueue = new Queue("monitor-scheduler", { connection: redis });
     lifecycleQueue = new Queue("data-lifecycle-cleanup", { connection: redis });
+    urgentLifecycleQueue = new Queue("data-lifecycle-urgent", { connection: redis });
     (getQueues as jest.Mock).mockResolvedValue({
       monitorSchedulerQueue: monitorQueue,
       redisConnection: redis,
@@ -86,7 +94,7 @@ suite("scheduler upgrade (real Redis, BullMQ)", () => {
   });
   afterAll(async () => {
     await clear();
-    await Promise.all([monitorQueue, lifecycleQueue].map((q) => q.close()));
+    await Promise.all([monitorQueue, lifecycleQueue, urgentLifecycleQueue].map((q) => q.close()));
     await redis.quit();
   });
 
@@ -165,6 +173,75 @@ suite("scheduler upgrade (real Redis, BullMQ)", () => {
       await start();
       const after = await lifecycleQueue.getRepeatableJobs();
       expect(after.map((j) => j.key).sort()).toEqual(["job_runs-cleanup", "monitor_results-cleanup"]);
+    });
+  });
+
+  describe("urgent lifecycle queue", () => {
+    const sweep = { entityType: "deletion_sweep", enabled: true, cronSchedule: "*/2 * * * *" } as CleanupStrategyConfig;
+    const results = { entityType: "monitor_results", enabled: true, cronSchedule: "10 * * * *" } as CleanupStrategyConfig;
+    const start = async () => {
+      const service = new DataLifecycleService([sweep, results]);
+      services.push(service);
+      await service.initialize(redis);
+    };
+    const keys = async (q: Queue) => (await q.getRepeatableJobs()).map((j) => j.key).sort();
+
+    it("moves an urgent schedule the previous release kept on the heavy queue, from a scheduler or a legacy repeatable", async () => {
+      await lifecycleQueue.upsertJobScheduler("deletion_sweep-cleanup", { pattern: "*/2 * * * *" }, { name: "deletion_sweep-cleanup", data: { entityType: "deletion_sweep" } });
+      await start();
+      expect(await keys(lifecycleQueue)).toEqual(["monitor_results-cleanup"]);
+      expect(await keys(urgentLifecycleQueue)).toEqual(["deletion_sweep-cleanup"]);
+
+      await oldScheduleCleanup(sweep); // an old replica re-adds its legacy repeatable on the heavy queue
+      await start();
+      expect(await keys(lifecycleQueue)).toEqual(["monitor_results-cleanup"]);
+      expect(await keys(urgentLifecycleQueue)).toEqual(["deletion_sweep-cleanup"]);
+    });
+  });
+
+  describe("owned cleanup lock (real Redis scripts)", () => {
+    const key = `${prefix}:cleanup:test:lock`;
+    const options = { ttlMs: 60_000, renewEveryMs: 50 };
+
+    it("renews its own key, leaves a foreign token alone and deletes only its own key", async () => {
+      const lock = (await acquireOwnedLock(redis, key, options))!;
+      expect(await acquireOwnedLock(redis, key, options)).toBeNull();
+      await redis.pexpire(key, 1_000);
+      await new Promise((resolve) => setTimeout(resolve, 120));
+      expect(await redis.pttl(key)).toBeGreaterThan(30_000);
+      expect(lock.signal.aborted).toBe(false);
+
+      await redis.set(key, "foreign", "PX", 60_000);
+      jest.spyOn(console, "error").mockImplementation(() => {});
+      await new Promise((resolve) => setTimeout(resolve, 120));
+      expect(lock.signal.aborted).toBe(true);
+      await lock.release();
+      expect(await redis.get(key)).toBe("foreign");
+      await redis.del(key);
+
+      const own = (await acquireOwnedLock(redis, key, options))!;
+      await own.release();
+      expect(await redis.exists(key)).toBe(0);
+    });
+
+    it("writes the resume cursor only while holding the lock", async () => {
+      const cursorKey = `${prefix}:cleanup:test:cursor`;
+      const lock = (await acquireOwnedLock(redis, key, options))!;
+      const store = redisCursorStore(redis, lock);
+      await store.set(cursorKey, "org-1");
+      expect(await redis.get(cursorKey)).toBe("org-1");
+      expect(await redis.ttl(cursorKey)).toBeGreaterThan(6 * 24 * 3600);
+
+      await redis.set(key, "successor", "PX", 60_000); // another owner took over
+      await store.set(cursorKey, "org-0");
+      await store.set(cursorKey, null);
+      expect(await redis.get(cursorKey)).toBe("org-1");
+
+      await redis.set(key, lock.token, "PX", 60_000);
+      await store.set(cursorKey, null);
+      expect(await redis.exists(cursorKey)).toBe(0);
+      jest.spyOn(console, "error").mockImplementation(() => {});
+      await lock.release();
     });
   });
 

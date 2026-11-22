@@ -71,6 +71,7 @@ function queuesFor(codes: string[]) {
     jobSchedulerQueue: queue("job-scheduler"),
     monitorSchedulerQueue: queue("monitor-scheduler"),
     dataLifecycleCleanupQueue: queue("data-lifecycle"),
+    dataLifecycleUrgentQueue: queue("data-lifecycle-urgent"),
   };
 }
 

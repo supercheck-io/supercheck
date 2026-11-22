@@ -130,6 +130,7 @@ const initializeBullBoard = async (): Promise<NextBullBoardAdapterState> => {
     jobSchedulerQueue,
     monitorSchedulerQueue,
     dataLifecycleCleanupQueue,
+    dataLifecycleUrgentQueue,
   } = await getQueues();
   const { k6Queues } = await getCapacityQueues();
   const sreAlertTriageQueue = await getSreAlertTriageQueue();
@@ -163,6 +164,9 @@ const initializeBullBoard = async (): Promise<NextBullBoardAdapterState> => {
       }),
       new BullMQAdapter(dataLifecycleCleanupQueue, {
         displayName: "Data Lifecycle Cleanup",
+      }),
+      new BullMQAdapter(dataLifecycleUrgentQueue, {
+        displayName: "Data Lifecycle (urgent)",
       }),
       // Incident events: opens/resolves incidents; AI triage runs in the background afterwards.
       new BullMQAdapter(sreAlertTriageQueue, { displayName: "Incident Events" }),

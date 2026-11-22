@@ -197,6 +197,8 @@ export const MONITOR_SCHEDULER_QUEUE = "monitor-scheduler";
 
 // Data lifecycle cleanup queue
 export const DATA_LIFECYCLE_CLEANUP_QUEUE = "data-lifecycle-cleanup";
+// Short urgent lifecycle jobs (trial lifecycle, deletion sweep, credential revocation retry); keep in the worker's queue alerting list.
+export const DATA_LIFECYCLE_URGENT_QUEUE = "data-lifecycle-urgent";
 
 // Queue name builders — must stay aligned with worker constants:
 // worker/src/k6/k6.constants.ts and worker/src/monitor/monitor.constants.ts
@@ -292,6 +294,7 @@ type QueueSingleton = {
   jobSchedulerQueue: Queue | null;
   monitorSchedulerQueue: Queue | null;
   dataLifecycleCleanupQueue: Queue | null;
+  dataLifecycleUrgentQueue: Queue | null;
   monitorExecutionEvents: Record<string, QueueEvents> | null;
   executionQueueEvents: QueueEvents[];
   initPromise: Promise<void> | null;
@@ -321,6 +324,7 @@ function createQueueSingleton(): QueueSingleton {
     jobSchedulerQueue: null,
     monitorSchedulerQueue: null,
     dataLifecycleCleanupQueue: null,
+    dataLifecycleUrgentQueue: null,
     monitorExecutionEvents: null,
     executionQueueEvents: [],
     initPromise: null,
@@ -493,6 +497,7 @@ export async function getQueues(): Promise<{
   jobSchedulerQueue: Queue;
   monitorSchedulerQueue: Queue;
   dataLifecycleCleanupQueue: Queue;
+  dataLifecycleUrgentQueue: Queue;
   redisConnection: Redis;
 }> {
   await queueState.refreshPromise?.catch(() => undefined);
@@ -580,6 +585,7 @@ export async function getQueues(): Promise<{
           DATA_LIFECYCLE_CLEANUP_QUEUE,
           queueSettings
         );
+        queueState.dataLifecycleUrgentQueue = new Queue(DATA_LIFECYCLE_URGENT_QUEUE, queueSettings);
 
         // Monitor Execution Events - Dynamic regional (no global)
         const monitorEvents: Record<string, QueueEvents> = {};
@@ -640,6 +646,9 @@ export async function getQueues(): Promise<{
             { err: error },
             "Data Lifecycle Cleanup Queue Error"
           )
+        );
+        queueState.dataLifecycleUrgentQueue.on("error", (error) =>
+          queueLogger.error({ err: error }, "Data Lifecycle Urgent Queue Error")
         );
 
         // Set up periodic cleanup for orphaned Redis keys
@@ -724,6 +733,7 @@ export async function getQueues(): Promise<{
     !queueState.jobSchedulerQueue ||
     !queueState.monitorSchedulerQueue ||
     !queueState.dataLifecycleCleanupQueue ||
+    !queueState.dataLifecycleUrgentQueue ||
     !queueState.redisClient
   ) {
     throw new Error(
@@ -746,6 +756,7 @@ export async function getQueues(): Promise<{
     jobSchedulerQueue: queueState.jobSchedulerQueue,
     monitorSchedulerQueue: queueState.monitorSchedulerQueue,
     dataLifecycleCleanupQueue: queueState.dataLifecycleCleanupQueue,
+    dataLifecycleUrgentQueue: queueState.dataLifecycleUrgentQueue,
     redisConnection: queueState.redisClient,
   };
 }
@@ -1735,6 +1746,7 @@ export async function closeQueue(): Promise<void> {
   if (queueState.jobSchedulerQueue) promises.push(queueState.jobSchedulerQueue.close());
   if (queueState.monitorSchedulerQueue) promises.push(queueState.monitorSchedulerQueue.close());
   if (queueState.dataLifecycleCleanupQueue) promises.push(queueState.dataLifecycleCleanupQueue.close());
+  if (queueState.dataLifecycleUrgentQueue) promises.push(queueState.dataLifecycleUrgentQueue.close());
   if (queueState.redisClient) promises.push(queueState.redisClient.quit());
 
   // Close all regional monitor events
@@ -1766,6 +1778,7 @@ export async function closeQueue(): Promise<void> {
     queueState.jobSchedulerQueue = null;
     queueState.monitorSchedulerQueue = null;
     queueState.dataLifecycleCleanupQueue = null;
+    queueState.dataLifecycleUrgentQueue = null;
     queueState.redisClient = null;
     queueState.initPromise = null;
     queueState.refreshGeneration += 1;

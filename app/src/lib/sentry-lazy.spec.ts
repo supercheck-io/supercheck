@@ -1,12 +1,13 @@
 const loaded = jest.fn();
 const captureCheckIn = jest.fn();
 const getTraceHeaders = jest.fn(() => ({ sentryTrace: "t-s-1", baggage: "b" }));
+const captureProblem = jest.fn();
 jest.mock("@/lib/sentry", () => {
   loaded();
-  return { initSentry: () => true, captureCheckIn, getTraceHeaders };
+  return { initSentry: () => true, captureCheckIn, getTraceHeaders, captureProblem };
 });
 
-import { checkedTick, getTraceHeaders as lazyTraceHeaders } from "./sentry-lazy";
+import { checkedTick, getTraceHeaders as lazyTraceHeaders, reportProblem } from "./sentry-lazy";
 
 const DSN = "https://abc@o1.ingest.sentry.io/1";
 const flush = () => new Promise((r) => setTimeout(r, 0));
@@ -61,5 +62,22 @@ describe("sentry-lazy", () => {
     await checkedTick("fast", schedule, async () => 1, () => true, 60_000);
     await flush();
     expect(captureCheckIn).toHaveBeenCalledTimes(1);
+  });
+
+  it("reportProblem captures with its fingerprint when on, is a no-op when off, and never throws", async () => {
+    process.env.SENTRY_DSN = DSN;
+    process.env.SELF_HOSTED = "true";
+    reportProblem("behind", ["retention-lag", "monitor_results", "7"], { lagDays: 3 });
+    await flush();
+    expect(captureProblem).not.toHaveBeenCalled();
+
+    process.env.SELF_HOSTED = "false";
+    reportProblem("behind", ["retention-lag", "monitor_results", "7"], { lagDays: 3 });
+    await flush();
+    expect(captureProblem).toHaveBeenCalledWith("behind", ["retention-lag", "monitor_results", "7"], { lagDays: 3 });
+
+    captureProblem.mockImplementationOnce(() => { throw new Error("sdk"); });
+    expect(() => reportProblem("again", ["x"], {})).not.toThrow();
+    await flush();
   });
 });

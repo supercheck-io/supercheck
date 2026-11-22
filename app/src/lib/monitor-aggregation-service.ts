@@ -26,6 +26,7 @@
 
 import { liveMonitor } from "@/lib/deletion/visibility";
 import { db } from "@/utils/db";
+import catalog from "@/lib/billing/plan-catalog.json";
 import {
   monitorResults,
   monitors,
@@ -59,11 +60,8 @@ export const AGGREGATION_CONFIG = {
   // Minimum checks required to compute meaningful P95
   MIN_CHECKS_FOR_P95: 5,
 
-  // Default retention for hourly aggregates (days)
-  DEFAULT_HOURLY_RETENTION_DAYS: 30,
-
-  // Default retention for daily aggregates (days) - matches plan limits
-  DEFAULT_DAILY_RETENTION_DAYS: 365,
+  // Daily aggregates are kept at least this long on every plan: the status page uptime bar shows 90 days.
+  MIN_DAILY_RETENTION_DAYS: catalog.minDailyAggregateRetentionDays,
 } as const;
 
 // ============================================================================
@@ -717,7 +715,7 @@ export class MonitorAggregationService {
 
       while (hasMore) {
         const monitorBatch = await db
-          .select({ id: monitors.id, organizationId: monitors.organizationId })
+          .select({ id: monitors.id })
           .from(monitors)
           .where(and(liveMonitor(), or(eq(monitors.enabled, true), hasRecentRows)))
           // Stable order, or offset paging can skip or repeat monitors between batches.
@@ -884,16 +882,27 @@ export class MonitorAggregationService {
       combined.push(build(periodStart, null, periodRows, counts));
     }
 
-    // Raw rows are purged by retention (shorter than aggregate retention) but status-change rows are kept, so
-    // the oldest ordinary row marks how far raw history really reaches. A period older than that, which
-    // already has an aggregate (the period holding the oldest row is still recomputed), is never rewritten or deleted: its raw rows may be partly or wholly purged.
-    const [oldestRaw] = await db
-      .select({ checkedAt: monitorResults.checkedAt })
-      .from(monitorResults)
-      .where(and(eq(monitorResults.monitorId, monitorId), eq(monitorResults.isStatusChange, false)))
-      .orderBy(monitorResults.checkedAt)
-      .limit(1);
-    const rawFloor = oldestRaw ? oldestRaw.checkedAt.getTime() : Infinity;
+    // How far raw history really reaches, read after the raw rows (never before: cleanup advances the watermark before
+    // it deletes, so a row missing from the scan above is always covered by the watermark read here).
+    // - The oldest ordinary row: retention purges raw rows but keeps status-change rows.
+    // - raw_purged_before, the instant before which cleanup has deleted rows: rows it keeps there (status changes,
+    //   reports storage refused) are not the whole period, and can be ordinary rows, so the oldest row alone misses it.
+    const [bounds] = await db
+      .select({
+        rawPurgedBefore: monitors.rawPurgedBefore,
+        // Aliased and parameterised: drizzle renders columns of a select unqualified, which would bind inside here.
+        oldestRaw: sql<Date | null>`(
+          SELECT r.checked_at FROM monitor_results r
+          WHERE r.monitor_id = ${monitorId} AND NOT r.is_status_change
+          ORDER BY r.monitor_id, r.checked_at LIMIT 1
+        )`.mapWith(monitorResults.checkedAt),
+      })
+      .from(monitors)
+      .where(eq(monitors.id, monitorId));
+    const rawFloor = bounds?.oldestRaw ? bounds.oldestRaw.getTime() : Infinity;
+    // An existing aggregate of a period before either bound is never rewritten or deleted (the period holding the
+    // oldest row is still recomputed, under the never-shrink guard below).
+    const freezeBefore = Math.max(periodOf(rawFloor), bounds?.rawPurgedBefore?.getTime() ?? -Infinity);
     const existing = await db
       .select({
         id: monitorAggregates.id,
@@ -911,7 +920,7 @@ export class MonitorAggregationService {
         ),
       );
     const frozen = new Set(
-      existing.map((row) => row.periodStart.getTime()).filter((t) => t < periodOf(rawFloor)),
+      existing.map((row) => row.periodStart.getTime()).filter((t) => t < freezeBefore),
     );
 
     let created = 0;
@@ -962,9 +971,12 @@ export class MonitorAggregationService {
       existing.map((row) => [`${row.periodStart.getTime()}|${row.location ?? ""}`, row.totalChecks]),
     );
     const boundary = periodOf(rawFloor);
+    const purgedBefore = bounds?.rawPurgedBefore?.getTime();
     const writable = (row: MonitorAggregateInsert) => {
       const t = row.periodStart.getTime();
       if (frozen.has(t)) return false;
+      // A period cleanup already purged is never created either: its surviving rows are not the whole period.
+      if (purgedBefore !== undefined && t < purgedBefore) return false;
       if (t !== boundary) return true;
       const previous = existingChecks.get(`${t}|${row.location ?? ""}`);
       return previous === undefined || (row.totalChecks ?? 0) >= previous;
@@ -984,6 +996,7 @@ export class MonitorAggregationService {
       .filter(
         (row) =>
           row.periodStart.getTime() > rawReachesBack &&
+          !frozen.has(row.periodStart.getTime()) &&
           !keep.has(`${row.periodStart.getTime()}|${row.location ?? ""}`),
       )
       .map((row) => row.id);
@@ -1435,118 +1448,66 @@ export class MonitorAggregationService {
   }
 
   /**
-   * Clean up old aggregate records based on retention policy
-   */
-  async cleanupOldAggregates(
-    hourlyRetentionDays: number = AGGREGATION_CONFIG.DEFAULT_HOURLY_RETENTION_DAYS,
-    dailyRetentionDays: number = AGGREGATION_CONFIG.DEFAULT_DAILY_RETENTION_DAYS,
-  ): Promise<{ hourlyDeleted: number; dailyDeleted: number }> {
-    const now = new Date();
-
-    // Calculate cutoff dates
-    const hourlyCutoff = new Date(now);
-    hourlyCutoff.setUTCDate(hourlyCutoff.getUTCDate() - hourlyRetentionDays);
-
-    const dailyCutoff = new Date(now);
-    dailyCutoff.setUTCDate(dailyCutoff.getUTCDate() - dailyRetentionDays);
-
-    // Delete old hourly aggregates
-    const hourlyResult = await db
-      .delete(monitorAggregates)
-      .where(
-        and(
-          eq(monitorAggregates.periodType, "hourly"),
-          lt(monitorAggregates.periodStart, hourlyCutoff),
-        ),
-      )
-      .returning({ id: monitorAggregates.id });
-
-    // Delete old daily aggregates
-    const dailyResult = await db
-      .delete(monitorAggregates)
-      .where(
-        and(
-          eq(monitorAggregates.periodType, "daily"),
-          lt(monitorAggregates.periodStart, dailyCutoff),
-        ),
-      )
-      .returning({ id: monitorAggregates.id });
-
-    const hourlyDeleted = hourlyResult.length;
-    const dailyDeleted = dailyResult.length;
-
-    if (hourlyDeleted > 0 || dailyDeleted > 0) {
-      console.log(
-        `[AGGREGATION] Cleanup: deleted ${hourlyDeleted} hourly, ${dailyDeleted} daily aggregates`,
-      );
-    }
-
-    return { hourlyDeleted, dailyDeleted };
-  }
-
-  /**
-   * Clean up old aggregate records for a specific organization
-   * Used by DataLifecycleService for multi-tenant cleanup
+   * Deletes one organization's aggregates past its windows, per monitor and period type in batches of
+   * `batchSize` on (monitor_id, period_start). Stops at a batch boundary when `shouldStop` says so or after
+   * `maxRows`; the next run carries on. Used by DataLifecycleService for multi-tenant cleanup.
    */
   async cleanupOldAggregatesForOrg(
     organizationId: string,
-    hourlyRetentionDays: number = AGGREGATION_CONFIG.DEFAULT_HOURLY_RETENTION_DAYS,
-    dailyRetentionDays: number = AGGREGATION_CONFIG.DEFAULT_DAILY_RETENTION_DAYS,
-  ): Promise<number> {
-    const now = new Date();
+    hourlyRetentionDays: number,
+    dailyRetentionDays: number,
+    { batchSize = 5000, maxRows = Number.POSITIVE_INFINITY, pauseMs = 100, shouldStop = () => false }: {
+      batchSize?: number;
+      maxRows?: number;
+      pauseMs?: number;
+      shouldStop?: () => boolean;
+    } = {},
+  ): Promise<{ deleted: number; complete: boolean }> {
+    for (const days of [hourlyRetentionDays, dailyRetentionDays]) {
+      if (!Number.isInteger(days) || days < 1) throw new Error(`Invalid aggregate retention: ${days}`);
+    }
+    const now = Date.now();
+    const cutoffs: Array<[AggregationPeriod, Date]> = [
+      ["hourly", new Date(now - hourlyRetentionDays * 24 * 60 * 60 * 1000)],
+      ["daily", new Date(now - dailyRetentionDays * 24 * 60 * 60 * 1000)],
+    ];
 
-    // Calculate cutoff dates
-    const hourlyCutoff = new Date(now);
-    hourlyCutoff.setUTCDate(hourlyCutoff.getUTCDate() - hourlyRetentionDays);
-
-    const dailyCutoff = new Date(now);
-    dailyCutoff.setUTCDate(dailyCutoff.getUTCDate() - dailyRetentionDays);
-
-    // Get monitors for this organization
     const orgMonitors = await db
       .select({ id: monitors.id })
       .from(monitors)
-      .where(eq(monitors.organizationId, organizationId));
+      .where(eq(monitors.organizationId, organizationId))
+      .orderBy(monitors.id);
 
-    if (orgMonitors.length === 0) return 0;
-
-    const monitorIds = orgMonitors.map((m) => m.id);
-
-    // Delete old hourly aggregates for org's monitors
-    const hourlyResult = await db
-      .delete(monitorAggregates)
-      .where(
-        and(
-          inArray(monitorAggregates.monitorId, monitorIds),
-          eq(monitorAggregates.periodType, "hourly"),
-          lt(monitorAggregates.periodStart, hourlyCutoff),
-        ),
-      )
-      .returning({ id: monitorAggregates.id });
-
-    // Delete old daily aggregates for org's monitors
-    const dailyResult = await db
-      .delete(monitorAggregates)
-      .where(
-        and(
-          inArray(monitorAggregates.monitorId, monitorIds),
-          eq(monitorAggregates.periodType, "daily"),
-          lt(monitorAggregates.periodStart, dailyCutoff),
-        ),
-      )
-      .returning({ id: monitorAggregates.id });
-
-    const hourlyDeleted = hourlyResult.length;
-    const dailyDeleted = dailyResult.length;
-    const totalDeleted = hourlyDeleted + dailyDeleted;
-
-    if (totalDeleted > 0) {
-      console.log(
-        `[AGGREGATION] Cleanup for org ${organizationId.substring(0, 8)}: deleted ${hourlyDeleted} hourly, ${dailyDeleted} daily aggregates`,
-      );
+    let deleted = 0;
+    for (const { id: monitorId } of orgMonitors) {
+      for (const [periodType, cutoff] of cutoffs) {
+        for (;;) {
+          if (shouldStop() || deleted >= maxRows) return { deleted, complete: false };
+          const size = Math.min(batchSize, maxRows - deleted);
+          const removed = await db.execute<{ id: string }>(sql`
+            WITH picked AS (
+              SELECT id FROM monitor_aggregates
+              WHERE monitor_id = ${monitorId} AND period_type = ${periodType}
+                AND period_start < ${cutoff.toISOString()}::timestamptz
+              ORDER BY monitor_id, period_start
+              LIMIT ${size}
+              FOR UPDATE SKIP LOCKED
+            )
+            DELETE FROM monitor_aggregates a USING picked WHERE a.id = picked.id
+            RETURNING a.id`);
+          deleted += removed.length;
+          if (removed.length < size) break;
+          if (pauseMs > 0) await new Promise((resolve) => setTimeout(resolve, pauseMs));
+        }
+      }
     }
 
-    return totalDeleted;
+    if (deleted > 0) {
+      console.log(
+        `[AGGREGATION] Cleanup for org ${organizationId.substring(0, 8)}: deleted ${deleted} aggregates`,
+      );
+    }
+    return { deleted, complete: true };
   }
 }
 

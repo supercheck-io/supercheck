@@ -18,6 +18,7 @@ export const MONITOR_READ_COLUMNS = (() => {
 type MonitorRowLike = Parameters<typeof heartbeatSummary>[0] & {
   heartbeatTokenHash?: unknown;
   heartbeatTokenEncrypted?: unknown;
+  rawPurgedBefore?: unknown;
 };
 
 /**
@@ -25,7 +26,14 @@ type MonitorRowLike = Parameters<typeof heartbeatSummary>[0] & {
  * read-only `heartbeat` summary (undefined for other types, so it is dropped from JSON).
  */
 export function monitorForResponse<T extends MonitorRowLike>(monitor: T) {
-  const { heartbeatTokenHash: _hash, heartbeatTokenEncrypted: _encrypted, heartbeatState: _state, ...rest } = monitor;
+  // rawPurgedBefore is cleanup's internal watermark, not part of the API.
+  const {
+    heartbeatTokenHash: _hash,
+    heartbeatTokenEncrypted: _encrypted,
+    heartbeatState: _state,
+    rawPurgedBefore: _rawPurgedBefore,
+    ...rest
+  } = monitor;
   return { ...rest, heartbeat: heartbeatSummary(monitor) };
 }
 

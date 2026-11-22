@@ -5,7 +5,7 @@ import { HEARTBEAT_ANCHOR_ON_RESUME, MONITOR_READ_COLUMNS, monitorForResponse, W
 
 const base = {
   id: "m1", type: "heartbeat", status: "up", enabled: true, frequencyMinutes: 60, config: null, createdAt: "2026-01-01T00:00:00.000Z",
-  heartbeatTokenHash: "hash-secret", heartbeatTokenEncrypted: "cipher-secret",
+  heartbeatTokenHash: "hash-secret", heartbeatTokenEncrypted: "cipher-secret", rawPurgedBefore: new Date("2026-01-01T00:00:00.000Z"),
   heartbeatState: { lastPingAt: "2026-01-01T10:00:00.000Z", lastPingKind: "ping" as const, lastUserAgent: "agent", leaseUntil: "x" },
 };
 
@@ -13,7 +13,7 @@ describe("monitorForResponse (B7)", () => {
   it("drops the token columns and the raw runtime state and adds the summary", () => {
     const out = monitorForResponse(base);
     const json = JSON.stringify(out);
-    for (const leaked of ["heartbeatTokenHash", "heartbeatTokenEncrypted", "hash-secret", "cipher-secret", "heartbeatState", "leaseUntil", "agent"]) {
+    for (const leaked of ["heartbeatTokenHash", "heartbeatTokenEncrypted", "hash-secret", "cipher-secret", "heartbeatState", "leaseUntil", "agent", "rawPurgedBefore"]) {
       expect(json).not.toContain(leaked);
     }
     expect(out.heartbeat).toMatchObject({ lastPingAt: "2026-01-01T10:00:00.000Z", lastPingKind: "ping" });

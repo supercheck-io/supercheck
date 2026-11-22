@@ -79,6 +79,11 @@ export const monitors = pgTable(
     heartbeatTokenEncrypted: text("heartbeat_token_encrypted"),
     /** Heartbeat runtime state written only by the ping route and the worker sweep (never by edit paths). */
     heartbeatState: jsonb("heartbeat_state").$type<HeartbeatState>(),
+    /**
+     * The instant before which retention cleanup has deleted this monitor's raw rows; only moves forward. Written
+     * only by raw-result cleanup; the rollup never rewrites an existing aggregate of a period before it.
+     */
+    rawPurgedBefore: timestamp("raw_purged_before", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }),
   },
@@ -174,11 +179,12 @@ export const monitorResults = pgTable(
 
 
 // Zod schemas for monitors
-// Heartbeat token and runtime columns are server-owned: no client write schema may accept them.
+// Heartbeat token, heartbeat runtime and retention columns are server-owned: no client write schema may accept them.
 const SERVER_OWNED_MONITOR_COLUMNS = {
   heartbeatTokenHash: true,
   heartbeatTokenEncrypted: true,
   heartbeatState: true,
+  rawPurgedBefore: true,
 } as const;
 export const monitorsInsertSchema = createInsertSchema(monitors, {
   type: z.enum(MONITOR_TYPE_VALUES),

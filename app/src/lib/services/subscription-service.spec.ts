@@ -386,7 +386,7 @@ describe("SubscriptionService", () => {
 
           expect(result.maxMonitors).toBe(999999);
           expect(result.playwrightMinutesIncluded).toBe(999999);
-          expect(result.jobDataRetentionDays).toBe(180);
+          expect(result.jobDataRetentionDays).toBe(90);
         });
       });
     });

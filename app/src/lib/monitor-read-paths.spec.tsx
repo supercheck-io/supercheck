@@ -40,6 +40,7 @@ const stored = {
   frequencyMinutes: 5, enabled: true, alertConfig: null, lastCheckAt: null,
   lastStatusChangeAt: null, scheduledJobId: null, deletingAt: null,
   heartbeatTokenHash: 'private-hb-hash', heartbeatTokenEncrypted: 'private-hb-ciphertext', heartbeatState: null,
+  rawPurgedBefore: null,
   config: { method: 'POST', auth: { type: 'bearer', token: 'private-token' }, headers: { 'X-Key': 'private-key' }, body: 'private-body' },
 } satisfies typeof monitors.$inferSelect;
 const storedResult = {
