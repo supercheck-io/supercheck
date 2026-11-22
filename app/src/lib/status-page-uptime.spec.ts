@@ -172,5 +172,10 @@ describe("buildUptimeDays", () => {
     expect(day(days, "2026-11-20").incidents).toHaveLength(1);
     expect(uptime).toBeCloseTo((1 - 3 / 72) * 100);
   });
+
+  it("manual: an incident posted already resolved draws no downtime", () => {
+    const { days } = buildUptimeDays({ now, startedAt: "2026-11-01T00:00:00Z", incidents: [incident({ componentStatus: "major_outage", createdAt: "2026-11-21T10:00:00Z", resolvedAt: "2026-11-21T10:00:00Z", openIntervals: [] })] });
+    expect(day(days, "2026-11-21").level).toBe("operational");
+  });
 });
 

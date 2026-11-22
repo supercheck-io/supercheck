@@ -17,3 +17,11 @@ it("opens at creation, closes on resolved and reopens on a later update", () => 
 it("leaves an incident without updates open from creation", () => {
   expect(openIntervals(at("2026-11-20T10:00:00Z"), [])).toEqual([["2026-11-20T10:00:00.000Z", null]]);
 });
+
+it("keeps an incident posted already resolved closed, but opens it when reopened later", () => {
+  expect(openIntervals(at("2026-11-20T10:00:00.000Z"), [{ status: "resolved", at: at("2026-11-20T10:00:00.004Z") }])).toEqual([]);
+  expect(openIntervals(at("2026-11-20T10:00:00.000Z"), [
+    { status: "resolved", at: at("2026-11-20T10:00:00.004Z") },
+    { status: "investigating", at: at("2026-11-21T08:00:00Z") },
+  ])).toEqual([["2026-11-21T08:00:00.000Z", null]]);
+});

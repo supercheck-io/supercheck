@@ -11,7 +11,8 @@ export type StatusChange = { incidentId: string; status: string; at: Date };
  */
 export function openIntervals(createdAt: Date, changes: Array<{ status: string; at: Date }>): Array<[string, string | null]> {
   const intervals: Array<[string, string | null]> = [];
-  let openedAt: Date | null = createdAt;
+  // Posted already resolved: never open, though its first update is stored a moment after the incident.
+  let openedAt: Date | null = changes[0]?.status === "resolved" ? null : createdAt;
   for (const change of changes) {
     if (change.status === "resolved" && openedAt) {
       intervals.push([openedAt.toISOString(), change.at.toISOString()]);

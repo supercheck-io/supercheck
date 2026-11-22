@@ -121,7 +121,8 @@ function incidentSpans(incident: BarIncident, now: number): Array<[number, numbe
   // A resolved incident's last open period ends at its resolution; an open one's runs until now.
   const finalEnd =
     time(incident.resolvedAt) ?? (incident.status === "resolved" ? (time(incident.updatedAt) ?? null) : now);
-  if (!incident.scheduledFor && incident.openIntervals?.length) {
+  // With history loaded, an empty list means it was never open (posted already resolved).
+  if (!incident.scheduledFor && incident.openIntervals) {
     return incident.openIntervals.flatMap(([from, to]): Array<[number, number]> => {
       const start = time(from)!;
       const end = Math.min(time(to) ?? finalEnd ?? start, now);
