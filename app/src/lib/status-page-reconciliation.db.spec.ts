@@ -664,6 +664,8 @@ it("posts an already resolved update as over: resolvedAt set and component healt
 
 it("keeps when an incident ended when a follow-up note is posted as resolved", async () => {
   const [incident] = await mockDatabase.insert(schema.incidents).values({ statusPageId: pageId, name: "Errors", status: "investigating", impact: "major" }).returning();
+  // Every post starts with its first update, as createStatusPageIncident writes it.
+  await mockDatabase.insert(schema.incidentUpdates).values({ incidentId: incident.id, status: "investigating", body: "Looking" });
   const update = (body: string) => updateIncidentStatus({ incidentId: incident.id, statusPageId: pageId, status: "resolved", body, deliverNotifications: false, restoreComponentStatus: false });
   expect((await update("Fixed")).success).toBe(true);
   const ended = (await mockDatabase.query.incidents.findFirst())!.resolvedAt!;

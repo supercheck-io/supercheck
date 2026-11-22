@@ -2,6 +2,9 @@ import { asc, inArray } from "drizzle-orm";
 import { db } from "@/utils/db";
 import { incidentUpdates } from "@/db/schema";
 
+/** An incident and its first update are written in one request; a later first update is a real change. */
+const POSTED_TOGETHER_MS = 60_000;
+
 export type StatusChange = { incidentId: string; status: string; at: Date };
 
 /**
@@ -12,7 +15,9 @@ export type StatusChange = { incidentId: string; status: string; at: Date };
 export function openIntervals(createdAt: Date, changes: Array<{ status: string; at: Date }>): Array<[string, string | null]> {
   const intervals: Array<[string, string | null]> = [];
   // Posted already resolved: never open, though its first update is stored a moment after the incident.
-  let openedAt: Date | null = changes[0]?.status === "resolved" ? null : createdAt;
+  const postedResolved =
+    changes[0]?.status === "resolved" && changes[0].at.getTime() - createdAt.getTime() < POSTED_TOGETHER_MS;
+  let openedAt: Date | null = postedResolved ? null : createdAt;
   for (const change of changes) {
     if (change.status === "resolved" && openedAt) {
       intervals.push([openedAt.toISOString(), change.at.toISOString()]);
