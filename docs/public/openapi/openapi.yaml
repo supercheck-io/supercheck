@@ -6732,10 +6732,10 @@ paths:
       tags:
         - Status Pages
       description: Partially update a component. Requires `status_page:update`. When
-        `monitorIds` is present the monitor links are replaced atomically. With
-        `automateStatus` on, if `monitorIds` lists at least one monitor and
-        `status` is omitted, the status is re-derived from the linked monitors;
-        otherwise the status changes only when you set it.
+        `monitorIds` is present the monitor links are replaced atomically. If
+        `monitorIds` lists at least one monitor and `status` is omitted, the
+        status is re-derived from the linked monitors; clearing all monitors
+        keeps the current status.
       requestBody:
         required: true
         content:
@@ -11393,11 +11393,6 @@ components:
             - majority_vote
         failureThreshold:
           type: integer
-        automateStatus:
-          type: boolean
-          description: "Linked monitors set the component status, uptime bars and
-            automatic incidents. Off by default: the status is set by hand and
-            by incidents."
         autoCreateIncidents:
           type: boolean
         serviceId:
@@ -11431,8 +11426,8 @@ components:
             - partial_outage
             - major_outage
             - under_maintenance
-          description: Status shown to visitors. With `automateStatus` on and `status`
-            omitted, it is derived from the linked monitors.
+          description: Manual status. When omitted while monitors are linked, the status
+            is derived from the monitors.
           default: operational
         showcase:
           type: boolean
@@ -11454,11 +11449,6 @@ components:
             - weighted_average
             - majority_vote
           default: worst_case
-        automateStatus:
-          type: boolean
-          description: "Linked monitors set the component status, uptime bars and
-            automatic incidents. Off by default: the status is set by hand and
-            by incidents."
         autoCreateIncidents:
           type: boolean
         serviceId:
@@ -11509,8 +11499,8 @@ components:
             - partial_outage
             - major_outage
             - under_maintenance
-          description: Status shown to visitors. With `automateStatus` on and `status`
-            omitted, it is derived from the linked monitors.
+          description: Manual status. When omitted while monitors are linked, the status
+            is derived from the monitors.
         showcase:
           type: boolean
           description: Show the component on the public page.
@@ -11527,11 +11517,6 @@ components:
             - best_case
             - weighted_average
             - majority_vote
-        automateStatus:
-          type: boolean
-          description: "Linked monitors set the component status, uptime bars and
-            automatic incidents. Off by default: the status is set by hand and
-            by incidents."
         autoCreateIncidents:
           type: boolean
         serviceId:

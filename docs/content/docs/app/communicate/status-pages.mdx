@@ -15,7 +15,7 @@ Open **Communicate → Status Pages**, then **Manage** on a page to edit it.
 ```mermaid
 flowchart LR
     A[Create page<br/>draft] --> B[Add components]
-    B --> C[Link monitors<br/>optional]
+    B --> C[Link monitors]
     C --> D[Configure Settings]
     D --> E[Publish]
     E --> F[Post incidents]
@@ -92,26 +92,22 @@ Badge colors follow **Status colors**. With no recent data on any showcased comp
 
 ## Components
 
-A component is a public service. Its status is **manual** by default: you set it, and the status updates you post change it while they are open. A failing monitor never changes a manual component, so an internal alert does not reach the public page or its subscribers. It can link to an internal service without publishing service details.
+A component is a public service. It can link to an internal service without publishing service details.
 
 ![Components Tab](/screenshots/status-page-components.png)
 
 | Field | Purpose |
 |---|---|
-| **Basics** | Name, optional description, status |
-| **Monitors** | Linked monitors. They follow the component's maintenance windows |
-| **Update status from monitors** | Off by default. On: the monitors set the status and uptime bars, with an aggregation method and **Failing monitors required**. **Weighted average** takes a weight of 1 to 100 per monitor |
-| **Publish outage and recovery incidents automatically** | Needs **Update status from monitors**. Off by default. Posts a public update and notifies subscribers |
+| **Basics** | Name, optional description, status. Without linked monitors, you and your status updates set it |
+| **Monitors** | Linked monitors, aggregation method and **Failing monitors required**. **Weighted average** takes a weight of 1 to 100 per monitor |
+| **Publish outage and recovery incidents automatically** | Optional, off by default. Posts a public update and notifies subscribers |
 | **Visibility** | Show on the public page, show only while degraded, link an internal service (never published) |
 
 ![Add Component](/screenshots/status-page-add-component.png)
 
 ```mermaid
 flowchart LR
-    U{Update status<br/>from monitors?} -- Off --> H[Set by you<br/>and status updates]
-    U -- On --> M[Linked monitors]
-    H --> C
-    M --> T{Failing monitors<br/>at or above threshold?}
+    M[Linked monitors] --> T{Failing monitors<br/>at or above threshold?}
     T -- No --> O[Operational]
     T -- Yes --> A[Aggregation method<br/>decides status]
     A --> C[Component status]
@@ -132,15 +128,14 @@ Each component shows 90 UTC days of bars and an uptime figure. The legend lists 
 
 | Component | Bars | Uptime |
 |---|---|---|
-| **Manual** (default) | Green unless a status update affected it that day, then the worst impact: **Minor** yellow, **Major** orange, **Critical** red. Maintenance is blue. Grey before the component was created | Time-based: **Critical** updates count as full downtime, **Major** as 30%, **Minor** and maintenance as none |
-| **Update status from monitors** | Coloured by the day's checks. Grey before the first check; a later day without checks (monitor paused) is green | Successful checks divided by total checks |
+| **With linked monitors** | Coloured by the day's checks. Days without checks show no data | Successful checks divided by total checks |
+| **Without monitors** | Green unless a status update affected it. Yellow for any downtime or degraded time, red from an hour of downtime in a day, blue for maintenance. Grey before the component was created | Time in the status the update set: **Major Outage** counts fully, **Partial Outage** 30%, degraded and maintenance not at all |
 
-The banner and badge use showcased components, including those hidden while healthy.
+Without monitors, a status you set by hand with no open update colours only today and is not counted in uptime, and an update posted already resolved has no duration, so it is listed but not drawn. The banner and badge use showcased components, including those hidden while healthy.
 
 <Accordions>
 <Accordion title="Edge cases" id="component-edge-cases">
 
-- The rest of this list applies only with **Update status from monitors** on. Turning it off keeps the current status until you change it, and an open automatic update becomes an ordinary one you resolve.
 - Linked components refresh every 10 seconds. **Failing monitors required** is separate from a monitor's own alert threshold.
 - If you resolve an automatic incident while its monitors still fail, it reopens only after the component returns to **Operational**.
 - When every running linked monitor has missed three checks in a row (at least 15 minutes), the component shows **No recent data** and does not count toward the banner or badge. Paused monitors keep their last status.
@@ -301,7 +296,7 @@ flowchart LR
     class Share complete
 ```
 
-Add the **CNAME** target and **TXT** proof (at `_supercheck-challenge.<custom-hostname>`) shown in Settings. Publish the page before **Verify DNS**. Keep the TXT record: the records are rechecked daily, and a failed recheck does not unverify or detach the domain. To remove the domain, clear the field and save; the default URL keeps working. Custom domains need a plan that includes them. If the plan stops including them, the custom domain returns 404 and the default URL keeps working.
+Add the **CNAME** target and **TXT** proof (at `_supercheck-challenge.<custom-hostname>`) shown in Settings. Publish the page before **Verify DNS**. Keep the TXT record: the records are rechecked daily, and a failed recheck does not unverify or detach the domain. To remove the domain, clear the field and save; the default URL keeps working.
 
 <Callout type="warn">
 On Cloudflare, use **DNS only** while verifying. Turn on the proxy only after the origin serves HTTPS for the hostname, with **Full** or **Full (Strict)** TLS.

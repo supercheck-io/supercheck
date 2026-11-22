@@ -162,24 +162,6 @@ describe('applyStatusPage', () => {
     expect(compareComponents(cleared.components, remote.components)).toEqual(['components: ~ "Web" (monitors)'])
   })
 
-  it('opts a component into automatic status only when the config says so, and pulls it back stably', async () => {
-    const remoteComponents = [{ id: 'c1', name: 'Web', position: 0, monitorIds: [M1], automateStatus: false }]
-    const remote = statusPageToDefinition({ id: PAGE, name: 'Acme' }, remoteComponents)
-    expect((remote.components as Array<Record<string, unknown>>)[0]).not.toHaveProperty('automateStatus')
-    const untouched = normalizeLocalStatusPage({ name: 'Acme', components: [{ name: 'Web', monitors: [M1] }] })
-    expect(compareComponents(untouched.components, remote.components)).toEqual([])
-
-    const optIn = normalizeLocalStatusPage({ name: 'Acme', components: [{ name: 'Web', monitors: [M1], automateStatus: true }] })
-    expect(compareComponents(optIn.components, remote.components)).toEqual(['components: ~ "Web" (automateStatus)'])
-    const { client, calls } = fakeClient({ remoteComponents })
-    await applyStatusPage(client, { action: 'update', id: PAGE, name: 'Acme', definition: optIn, remote: { name: 'Acme' }, deleteMissing: false, resolveMonitor })
-    expect(calls.find((c) => c.method === 'PUT' && c.path.includes('/components/'))?.body).toEqual({ automateStatus: true })
-
-    const pulled = statusPageToDefinition({ id: PAGE, name: 'Acme' }, [{ ...remoteComponents[0], automateStatus: true }])
-    expect((pulled.components as Array<Record<string, unknown>>)[0].automateStatus).toBe(true)
-    expect(compareComponents(optIn.components, pulled.components)).toEqual([])
-  })
-
   it('normalizes values the server normalizes', () => {
     const def = normalizeLocalStatusPage({ name: ' Acme ', headline: ' Hi ', description: ' d ', customDomain: ' Status.EXAMPLE.com ', supportUrl: 'help@example.com' })
     expect(def).toMatchObject({ name: 'Acme', headline: 'Hi', description: 'd', customDomain: 'status.example.com', supportUrl: 'mailto:help@example.com' })

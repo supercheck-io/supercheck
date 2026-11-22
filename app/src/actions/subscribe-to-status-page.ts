@@ -357,6 +357,11 @@ export async function subscribeToStatusPage(data: SubscribeInput): Promise<{ suc
       const selected = await db.select({ id: statusPageComponents.id }).from(statusPageComponents).where(and(eq(statusPageComponents.statusPageId, statusPage.id), eq(statusPageComponents.showcase, true), inArray(statusPageComponents.id, validatedData.selectedComponentIds)));
       if (selected.length !== new Set(validatedData.selectedComponentIds).size) return { success: false, message: "A selected component is unavailable." };
     }
+    // An empty incident list means "every incident", so a vanished one must not widen the subscription.
+    if (validatedData.selectedIncidentIds?.length) {
+      const selected = await db.select({ id: incidents.id }).from(incidents).where(and(eq(incidents.statusPageId, statusPage.id), inArray(incidents.id, validatedData.selectedIncidentIds)));
+      if (selected.length !== new Set(validatedData.selectedIncidentIds).size) return { success: false, message: "This incident is no longer available." };
+    }
 
     // Respect page-level subscription toggle
     if (!statusPage.allowPageSubscribers) {

@@ -86,8 +86,8 @@ type StatusPage = {
 
 type Component = {
   dailyMetrics?: DailyCheckCounts[];
-  /** Linked monitors set the status and the bars; otherwise the bars come from incidents. */
-  automateStatus?: boolean | null;
+  /** Linked monitors set the status and the bars; otherwise the bars come from status updates. */
+  monitored?: boolean;
   startDate?: Date | null;
   createdAt?: Date | null;
   /** Every linked monitor stopped reporting, so the stored status is stale; it does not count toward the page status. */
@@ -116,7 +116,9 @@ type Incident = {
   affectedComponents?: Array<{
     id: string;
     name: string;
+    newStatus?: string | null;
   }>;
+  updatedAt?: Date | null;
 };
 
 // Overrides the themed Tailwind colours when the owner configured a custom background.
@@ -135,6 +137,8 @@ type PublicStatusPageProps = {
   idOrSubdomain: string;
   hideBranding?: boolean;
   isPublicView?: boolean;
+  /** When the server read the data; the bars use it so server and browser draw the same days. */
+  readAt?: string;
   isCustomDomain?: boolean;
   /** URL prefix for custom-domain links. Empty string for proxy-rewritten requests, full internal path for direct access. */
   customDomainRoutePrefix?: string;
@@ -151,6 +155,7 @@ export function PublicStatusPage({
   isCustomDomain = false,
   customDomainRoutePrefix = "",
   language,
+  readAt,
 }: PublicStatusPageProps) {
   const [currentPage, setCurrentPage] = useState(1);
   const DAYS_PER_PAGE = 7;
@@ -319,7 +324,6 @@ export function PublicStatusPage({
   const levelColor: Record<BarLevel, string> = {
     operational: colors.green,
     minor: colors.yellow,
-    major: colors.orange,
     critical: colors.red,
     maintenance: colors.blue,
     nodata: noDataColor,
@@ -327,7 +331,6 @@ export function PublicStatusPage({
   const levelLabel: Record<BarLevel, string> = {
     operational: t.operational,
     minor: t.legendSomeDowntime,
-    major: t.legendPartialOutage,
     critical: t.legendDown,
     maintenance: t.legendMaintenance,
     nodata: t.legendNoData,
@@ -341,19 +344,27 @@ export function PublicStatusPage({
     return true;
   });
 
-  // Manual components: green unless an incident affected them. Automatic ones: the checks of their linked monitors.
+  // Monitored components: the checks of their linked monitors. Others: the status updates that affected them.
+  const now = readAt ? new Date(readAt) : renderedAt;
+  const openStatuses = new Set(
+    activeIncidents.flatMap((incident) => incident.affectedComponents?.map((affected) => affected.id) ?? []),
+  );
   const uptimeFor = (component: Component) =>
     buildUptimeDays({
+      now,
       startedAt: component.startDate ?? component.createdAt ?? statusPage.createdAt,
-      incidents: incidents.filter((incident) =>
-        incident.affectedComponents?.some((affected) => affected.id === component.id),
-      ),
-      metrics: component.automateStatus ? (component.dailyMetrics ?? []) : undefined,
+      incidents: incidents.flatMap((incident) => {
+        const affected = incident.affectedComponents?.find((entry) => entry.id === component.id);
+        return affected ? [{ ...incident, componentStatus: affected.newStatus }] : [];
+      }),
+      metrics: component.monitored ? (component.dailyMetrics ?? []) : undefined,
+      // An open update already times the current status; otherwise it was set by hand.
+      currentStatus: component.monitored || openStatuses.has(component.id) ? undefined : component.status,
     });
 
   const uptimeRows = new Map(visibleComponents.map((component) => [component.id, uptimeFor(component)]));
   // Operational always; the rest only when a bar uses them, so the legend explains what is on screen.
-  const legendLevels = (["operational", "minor", "major", "critical", "maintenance", "nodata"] as BarLevel[]).filter(
+  const legendLevels = (["operational", "minor", "critical", "maintenance", "nodata"] as BarLevel[]).filter(
     (level) => level === "operational" || [...uptimeRows.values()].some((row) => row.days.some((day) => day.level === level)),
   );
 
@@ -375,13 +386,7 @@ export function PublicStatusPage({
             <span
               className="mt-1 h-2 w-2 flex-shrink-0 rounded-full"
               style={{
-                backgroundColor:
-                  levelColor[
-                    incident.maintenance
-                      ? "maintenance"
-                      : (({ minor: "minor", major: "major", critical: "critical" } as Record<string, BarLevel>)[incident.impact] ?? "operational")
-                  ],
-              }}
+                backgroundColor: levelColor[incident.level] }}
               aria-hidden="true"
             />
             <span className="line-clamp-2">{incident.name}</span>

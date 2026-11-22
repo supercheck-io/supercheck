@@ -15,6 +15,7 @@ jest.mock("@/utils/db", () => ({
     delete: jest.fn(),
     insert: jest.fn(),
     update: jest.fn(),
+    select: jest.fn(),
   },
 }));
 
@@ -259,4 +260,15 @@ describe("public subscribe hardening", () => {
       expect(result.message).toMatch(/hooks\.slack\.com/);
     },
   );
+
+  it("refuses a single-incident subscription when the incident is gone, instead of subscribing to everything", async () => {
+    (mockDb.query.statusPages.findFirst as unknown as jest.Mock).mockResolvedValue({ id: pageId, status: "published", allowPageSubscribers: true, allowIncidentSubscribers: true, allowEmailSubscribers: true } as never);
+    (mockDb.select as jest.Mock).mockReturnValue({ from: () => ({ where: async () => [] }) });
+    const result = await subscribeToStatusPage({
+      statusPageId: pageId, email: "a@example.com", subscriptionMode: "email",
+      subscribeToAllComponents: false, subscribeToAllIncidents: false, selectedComponentIds: [], selectedIncidentIds: ["00000000-0000-4000-8000-0000000000aa"],
+    });
+    expect(result).toEqual({ success: false, message: "This incident is no longer available." });
+    expect(mockDb.insert).not.toHaveBeenCalled();
+  });
 });

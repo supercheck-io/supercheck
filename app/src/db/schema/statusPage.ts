@@ -146,8 +146,6 @@ export const statusPageComponents = pgTable("status_page_components", {
     .default("worst_case")
     .notNull(),
   failureThreshold: integer("failure_threshold").default(1).notNull(),
-  // Opt-in: linked monitors set the status, uptime bars and automatic incidents. Off, the status is managed by hand.
-  automateStatus: boolean("automate_status").default(false).notNull(),
   autoCreateIncidents: boolean("auto_create_incidents").default(false).notNull(),
   // A manual resolve keeps automatic incidents off until the component recovers.
   autoIncidentSuppressed: boolean("auto_incident_suppressed").default(false).notNull(),

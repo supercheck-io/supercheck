@@ -73,7 +73,6 @@ export async function getPublicComponents(statusPageId: string) {
         startDate: true,
         aggregationMethod: true,
         failureThreshold: true,
-        automateStatus: true,
         createdAt: true,
         updatedAt: true,
         // EXCLUDED: statusPageId (redundant), automationEmail (internal)

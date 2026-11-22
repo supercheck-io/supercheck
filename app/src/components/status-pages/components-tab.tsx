@@ -175,7 +175,6 @@ type Component = {
   status: ComponentStatus;
   monitorId: string | null;
   monitorIds: string[];
-  automateStatus?: boolean;
   showcase: boolean;
   onlyShowIfDegraded: boolean;
   position: number;
@@ -404,8 +403,8 @@ export function ComponentsTab({
               <CardTitle className="text-lg">Service Components</CardTitle>
             </div>
             <CardDescription>
-              The parts of your service visitors see. Status is set by hand
-              unless a component follows its monitors.
+              Manage the components that make up your service. Link monitors to
+              automatically track status.
             </CardDescription>
           </div>
           <Button disabled size="sm">
@@ -456,8 +455,8 @@ export function ComponentsTab({
               <CardTitle className="text-lg">Service Components</CardTitle>
             </div>
             <CardDescription>
-              The parts of your service visitors see. Status is set by hand
-              unless a component follows its monitors.
+              Manage the components that make up your service. Link monitors to
+              automatically track status.
             </CardDescription>
           </div>
           {components.length > 0 && (
@@ -605,12 +604,6 @@ export function ComponentsTab({
                           >
                             {getStatusLabel(component.status)}
                           </Badge>
-                          {component.automateStatus &&
-                            (component.monitors?.length ?? 0) > 0 && (
-                              <span className="ml-2 text-xs text-muted-foreground">
-                                From monitors
-                              </span>
-                            )}
                         </TableCell>
                         <TableCell>
                           {component.description ? (

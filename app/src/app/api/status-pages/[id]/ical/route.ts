@@ -185,8 +185,12 @@ export async function GET(
 
         const startDate = incident.scheduledFor || incident.createdAt || new Date();
         // Open incidents get a stable one-hour DTEND; "now" would change on every poll.
+        // Maintenance resolved before it began was cancelled; resolved early, it ends at the resolution.
+        const cancelled = Boolean(incident.scheduledFor && incident.resolvedAt && incident.resolvedAt <= incident.scheduledFor);
         const endDate =
-          incident.scheduledUntil ||
+          (!cancelled && incident.scheduledUntil && incident.resolvedAt && incident.resolvedAt < incident.scheduledUntil
+            ? incident.resolvedAt
+            : incident.scheduledUntil) ||
           incident.resolvedAt ||
           new Date(startDate.getTime() + 60 * 60 * 1000);
 
@@ -216,7 +220,7 @@ export async function GET(
           ),
           foldLine(`DESCRIPTION:${escapeIcalText(description)}`),
           foldLine(`URL:${incidentUrl}`),
-          `STATUS:${incident.status === "resolved" ? "CONFIRMED" : "TENTATIVE"}`,
+          `STATUS:${cancelled ? "CANCELLED" : incident.status === "resolved" ? "CONFIRMED" : "TENTATIVE"}`,
           `CATEGORIES:${escapeIcalText(incident.impact)}`,
           "END:VEVENT",
         ];

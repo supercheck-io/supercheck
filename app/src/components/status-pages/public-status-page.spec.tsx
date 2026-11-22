@@ -15,7 +15,7 @@ it("ignores hidden outages in banner and hides healthy degraded-only components"
 });
 
 it("shows check-based uptime without incidents and supports Arabic direction", () => {
-  const { container } = render(<PublicStatusPage statusPage={{ ...page, language: "ar" }} components={[{ ...component, automateStatus: true, dailyMetrics: [{ date: new Date().toISOString().slice(0, 10), totalChecks: 100, successfulChecks: 99 }] }]} incidents={[]} idOrSubdomain="page" />);
+  const { container } = render(<PublicStatusPage statusPage={{ ...page, language: "ar" }} components={[{ ...component, monitored: true, dailyMetrics: [{ date: new Date().toISOString().slice(0, 10), totalChecks: 100, successfulChecks: 99 }] }]} incidents={[]} idOrSubdomain="page" />);
   expect(screen.getByText(/99\.00%/)).toBeInTheDocument();
   expect(container.firstChild).toHaveAttribute("dir", "rtl");
 });
@@ -120,7 +120,7 @@ describe("uptime explanation and banner", () => {
   const metrics = [{ date: today, totalChecks: 100, successfulChecks: 95 }];
 
   it("shows a legend of the colours on screen, the days the uptime covers and when the page was read", () => {
-    render(<PublicStatusPage statusPage={page} components={[{ ...component, automateStatus: true, dailyMetrics: metrics }]} incidents={[]} idOrSubdomain="page" />);
+    render(<PublicStatusPage statusPage={page} components={[{ ...component, monitored: true, dailyMetrics: metrics }]} incidents={[]} idOrSubdomain="page" />);
     const legend = screen.getByTestId("uptime-legend");
     for (const label of [t.operational, t.legendSomeDowntime, t.legendNoData]) expect(legend).toHaveTextContent(label);
     expect(legend).not.toHaveTextContent(t.legendDown);
@@ -152,4 +152,9 @@ describe("uptime explanation and banner", () => {
     expect(screen.getByText(t.noIncidentsReportedToday)).toBeInTheDocument();
     expect(screen.queryByText(/reported Today/)).not.toBeInTheDocument();
   });
+});
+
+it("draws the bars from the server's read time, so a render after midnight UTC shows the same days", () => {
+  render(<PublicStatusPage statusPage={{ ...page, createdAt: new Date("2026-11-01T00:00:00Z") }} components={[{ ...component, createdAt: new Date("2026-11-01T00:00:00Z") }]} incidents={[]} idOrSubdomain="page" readAt="2026-11-10T23:59:00Z" />);
+  expect(screen.getByText(/10 of 90 days with data/)).toBeInTheDocument();
 });

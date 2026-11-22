@@ -113,7 +113,8 @@ export async function getPublicIncidents(statusPageId: string) {
     const incidentsWithDetails = incidentsList.map((incident) => ({
       ...incident,
       affectedComponentsCount: incident.affectedComponents.filter((ic) => ic.component?.showcase).length,
-      affectedComponents: incident.affectedComponents.flatMap((ic) => (ic.component?.showcase ? [{ id: ic.component.id, name: ic.component.name }] : [])),
+      // newStatus: what the component showed during the incident, for the uptime bars.
+      affectedComponents: incident.affectedComponents.flatMap((ic) => (ic.component?.showcase ? [{ id: ic.component.id, name: ic.component.name, newStatus: ic.newStatus }] : [])),
       latestUpdate: incident.updates[0] ? { ...incident.updates[0], createdAt: incident.updates[0].displayAt ?? incident.updates[0].createdAt } : null,
     }));
 

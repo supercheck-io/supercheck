@@ -156,7 +156,7 @@ export async function repointSreStatusPageSlot(tx: Tx, resolvedIncidentId: strin
  * already be resolved in `tx`, so it no longer counts as active. A component is left alone when
  * - its status was not set by an incident (this one, or another that already started and is now resolved): someone changed it by hand since;
  * - another open incident still affects it (reconciliation derives its status from that one);
- * - it follows its monitors (automateStatus) and one is reporting (not paused or pending): reconciliation recomputes it from their current health, and
+ * - a linked monitor is reporting (not paused or pending): reconciliation recomputes it from their current health, and
  *   this incident's update triggers that, so writing "operational" here would only flicker while a monitor is failing.
  *   With only paused or pending monitors it would keep the incident's status for good (calculateFromMonitors falls
  *   back to the previous one), so those are restored here.
@@ -182,8 +182,7 @@ export async function restoreResolvedIncidentComponents(tx: Tx, incidentId: stri
     .select({ componentId: statusPageComponentMonitors.componentId })
     .from(statusPageComponentMonitors)
     .innerJoin(monitors, eq(monitors.id, statusPageComponentMonitors.monitorId))
-    .innerJoin(statusPageComponents, eq(statusPageComponents.id, statusPageComponentMonitors.componentId))
-    .where(and(inArray(statusPageComponentMonitors.componentId, ids), eq(statusPageComponents.automateStatus, true), liveMonitor(), notInArray(monitors.status, ["pending", "paused"])));
+    .where(and(inArray(statusPageComponentMonitors.componentId, ids), liveMonitor(), notInArray(monitors.status, ["pending", "paused"])));
   const others = await tx
     .select({ componentId: incidentComponents.componentId, newStatus: incidentComponents.newStatus, incidentStatus: incidents.status, startedAt: incidents.createdAt, resolvedAt: incidents.resolvedAt })
     .from(incidentComponents)
@@ -301,7 +300,7 @@ export async function reconcileStatusPages(): Promise<boolean> {
       with: { monitors: { with: { monitor: true } } },
     });
     for (const component of components) {
-      // Manual components (automateStatus off, or no linked checks) keep their status; open incidents still set it.
+      // Components without linked checks retain their manual status.
 
       // Lock the component row and re-read the suppression flag. The manual
       // resolve action updates this same row; without the fresh read, the batch
@@ -313,10 +312,7 @@ export async function reconcileStatusPages(): Promise<boolean> {
         .where(eq(statusPageComponents.id, component.id))
         .returning({
           autoIncidentSuppressed: statusPageComponents.autoIncidentSuppressed,
-          automateStatus: statusPageComponents.automateStatus,
         });
-      // The opt-in as committed when the row was locked, not as read with the batch.
-      const automateStatus = lockedComponent?.automateStatus ?? component.automateStatus;
       const page = await tx.query.statusPages.findFirst({
         where: eq(statusPages.id, component.statusPageId),
       });
@@ -339,18 +335,8 @@ export async function reconcileStatusPages(): Promise<boolean> {
         "under_maintenance",
         "operational",
       ];
-      // A manual component owns no automatic incident: one left open (automation turned off mid-outage) becomes an
-      // ordinary update the owner resolves, so it keeps setting the status instead of staying open for good.
-      const orphaned = automateStatus
-        ? []
-        : active.filter((entry) => entry.incident.sourceComponentId === component.id);
-      if (orphaned.length > 0)
-        await tx
-          .update(incidents)
-          .set({ sourceComponentId: null, updatedAt: new Date() })
-          .where(inArray(incidents.id, orphaned.map((entry) => entry.incident.id)));
       const manualStatuses = active
-        .filter((entry) => !automateStatus || entry.incident.sourceComponentId !== component.id)
+        .filter((entry) => entry.incident.sourceComponentId !== component.id)
         .map((entry) =>
           entry.incident.scheduledFor
             ? "under_maintenance"
@@ -360,10 +346,8 @@ export async function reconcileStatusPages(): Promise<boolean> {
         manualStatuses.includes(status),
       );
       const manual = manualStatuses.length > 0;
-      // Monitors drive the status only when the owner opted in; a deleted monitor never counts.
-      const liveLinks = automateStatus
-        ? component.monitors.filter((association) => notFoundIfDeleting(association.monitor))
-        : [];
+      // A monitor being deleted no longer counts toward the component.
+      const liveLinks = component.monitors.filter((association) => notFoundIfDeleting(association.monitor));
       const calculated = statusAggregationService.calculateFromMonitors(
         liveLinks.map((association) => ({
           status: association.monitor.status,
@@ -392,9 +376,9 @@ export async function reconcileStatusPages(): Promise<boolean> {
           .update(statusPageComponents)
           .set({ autoIncidentSuppressed: false, updatedAt: new Date() })
           .where(eq(statusPageComponents.id, component.id));
-      const automatic = automateStatus
-        ? active.find((entry) => entry.incident.sourceComponentId === component.id)?.incident
-        : undefined;
+      const automatic = active.find(
+        (entry) => entry.incident.sourceComponentId === component.id,
+      )?.incident;
       const failing = liveLinks.some((association) => ["down", "error", "timeout"].includes(association.monitor.status)) && [
         "major_outage",
         "partial_outage",
@@ -405,7 +389,6 @@ export async function reconcileStatusPages(): Promise<boolean> {
         !automatic &&
         !manual &&
         !suppressed &&
-        automateStatus &&
         component.autoCreateIncidents &&
         component.showcase &&
         page?.status === "published" &&
@@ -459,7 +442,7 @@ export async function reconcileStatusPages(): Promise<boolean> {
             updateId: update.id,
             isCreation: true,
           });
-      } else if (automateStatus && !failing && automatic && calculated === "operational") {
+      } else if (!failing && automatic && calculated === "operational") {
         await tx
           .update(incidents)
           .set({

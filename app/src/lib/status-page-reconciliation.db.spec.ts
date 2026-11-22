@@ -138,7 +138,7 @@ beforeEach(async () => {
   monitorId = monitor.id;
   const [component] = await mockDatabase
     .insert(schema.statusPageComponents)
-    .values({ statusPageId: pageId, name: "API", automateStatus: true })
+    .values({ statusPageId: pageId, name: "API" })
     .returning();
   componentId = component.id;
   await mockDatabase
@@ -178,23 +178,6 @@ it("drives component health automatically and creates public incidents only when
   ).toBe("operational");
 });
 
-it("leaves a manual component alone: a failing monitor changes neither status, bars nor incidents", async () => {
-  await mockDatabase
-    .update(schema.statusPageComponents)
-    .set({ automateStatus: false, autoCreateIncidents: true, status: "operational", updatedAt: new Date() })
-    .where(eq(schema.statusPageComponents.id, componentId));
-  await mockDatabase
-    .update(schema.monitors)
-    .set({ status: "down", lastCheckAt: new Date() })
-    .where(eq(schema.monitors.id, monitorId));
-  await reconcileStatusPages();
-  expect((await mockDatabase.query.statusPageComponents.findFirst())?.status).toBe("operational");
-  expect(await mockDatabase.query.incidents.findMany()).toHaveLength(0);
-  const result = await getPublicComponents(pageId);
-  expect(result.components[0].dailyMetrics).toBeUndefined();
-  expect(result.components[0].noRecentData).toBe(false);
-});
-
 it("does not publish an outage for an unrun pending monitor", async () => {
   await mockDatabase.update(schema.monitors).set({ status: "pending" }).where(eq(schema.monitors.id, monitorId));
   await mockDatabase.update(schema.statusPageComponents).set({ autoCreateIncidents: true, updatedAt: new Date() }).where(eq(schema.statusPageComponents.id, componentId));
@@ -226,6 +209,7 @@ it("uses failed checks for uptime even with no incident", async () => {
   expect(result.components[0].dailyMetrics).toEqual([
     expect.objectContaining({ totalChecks: 1, successfulChecks: 0 }),
   ]);
+  expect(result.components[0].monitored).toBe(true);
 });
 
 it("uses historical location rows when a single-location monitor has no combined row", async () => {
@@ -248,7 +232,7 @@ it("uses historical location rows when a single-location monitor has no combined
   expect(result.components[0].dailyMetrics).toEqual([
     { date: day.toISOString().slice(0, 10), totalChecks: 10, successfulChecks: 9 },
   ]);
-  expect(checkUptimePercentage(result.components[0].dailyMetrics ?? [])).toBe(90);
+  expect(checkUptimePercentage(result.components[0].dailyMetrics)).toBe(90);
 
   await mockDatabase.insert(schema.monitorAggregates).values({
     monitorId,
@@ -665,32 +649,6 @@ it("links an automatic status update to the open incident for its monitor", asyn
   expect(linked?.statusPageIncidentId).toBe(publicIncident.id);
 });
 
-it("hands an open automatic incident to the owner when the component turns manual, and restores it on resolve", async () => {
-  await mockDatabase.update(schema.statusPageComponents).set({ autoCreateIncidents: true, updatedAt: new Date() }).where(eq(schema.statusPageComponents.id, componentId));
-  await mockDatabase.update(schema.monitors).set({ status: "down", lastCheckAt: new Date() }).where(eq(schema.monitors.id, monitorId));
-  await reconcileStatusPages();
-  const [automatic] = await mockDatabase.query.incidents.findMany();
-  expect(automatic.sourceComponentId).toBe(componentId);
-
-  await mockDatabase.update(schema.statusPageComponents).set({ automateStatus: false, updatedAt: new Date() }).where(eq(schema.statusPageComponents.id, componentId));
-  await reconcileStatusPages();
-  const handedOver = await mockDatabase.query.incidents.findFirst();
-  expect(handedOver?.sourceComponentId).toBeNull();
-  expect(handedOver?.status).toBe("investigating");
-  expect((await mockDatabase.query.statusPageComponents.findFirst())?.status).toBe("major_outage");
-
-  // Recovery no longer resolves it or notifies anyone: the owner does, and the component follows the update.
-  await mockDatabase.update(schema.monitors).set({ status: "up", lastCheckAt: new Date() }).where(eq(schema.monitors.id, monitorId));
-  await reconcileStatusPages();
-  expect((await mockDatabase.query.incidents.findFirst())?.status).toBe("investigating");
-  expect(await mockDatabase.query.statusPageNotificationEvents.findMany()).toHaveLength(1);
-
-  // The monitor still reports, but a manual component is restored on resolve anyway.
-  const result = await updateIncidentStatus({ incidentId: automatic.id, statusPageId: pageId, status: "resolved", body: "Fixed", deliverNotifications: false, restoreComponentStatus: true });
-  expect(result.success).toBe(true);
-  expect((await mockDatabase.query.statusPageComponents.findFirst())?.status).toBe("operational");
-});
-
 it("posts an already resolved update as over: resolvedAt set and component health unchanged", async () => {
   const page = await mockDatabase.query.statusPages.findFirst();
   const result = await createStatusPageIncident(
@@ -701,4 +659,20 @@ it("posts an already resolved update as over: resolvedAt set and component healt
   const incident = await mockDatabase.query.incidents.findFirst();
   expect(incident?.resolvedAt).toBeInstanceOf(Date);
   expect((await mockDatabase.query.statusPageComponents.findFirst())?.status).toBe("operational");
+});
+
+it("keeps when an incident ended when a follow-up note is posted as resolved", async () => {
+  const [incident] = await mockDatabase.insert(schema.incidents).values({ statusPageId: pageId, name: "Errors", status: "investigating", impact: "major" }).returning();
+  const update = (body: string) => updateIncidentStatus({ incidentId: incident.id, statusPageId: pageId, status: "resolved", body, deliverNotifications: false, restoreComponentStatus: false });
+  expect((await update("Fixed")).success).toBe(true);
+  const ended = (await mockDatabase.query.incidents.findFirst())!.resolvedAt!;
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  expect((await update("Root cause: an expired certificate")).success).toBe(true);
+  expect((await mockDatabase.query.incidents.findFirst())!.resolvedAt!.getTime()).toBe(ended.getTime());
+
+  // Reopened and resolved again: it ends at the new resolution.
+  await updateIncidentStatus({ incidentId: incident.id, statusPageId: pageId, status: "investigating", body: "Back", deliverNotifications: false, restoreComponentStatus: false });
+  expect((await mockDatabase.query.incidents.findFirst())!.resolvedAt).toBeNull();
+  await update("Fixed again");
+  expect((await mockDatabase.query.incidents.findFirst())!.resolvedAt!.getTime()).toBeGreaterThan(ended.getTime());
 });

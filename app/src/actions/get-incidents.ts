@@ -86,7 +86,7 @@ export async function getIncidents(statusPageId: string) {
     const incidentsWithDetails = incidentsList.map((incident) => ({
       ...incident,
       affectedComponentsCount: incident.affectedComponents.length,
-      affectedComponents: incident.affectedComponents.map((ic) => ic.component),
+      affectedComponents: incident.affectedComponents.map((ic) => ({ ...ic.component, newStatus: ic.newStatus })),
       latestUpdate: incident.updates[0] || null,
     }));
 

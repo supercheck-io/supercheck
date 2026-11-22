@@ -53,52 +53,90 @@ describe("combineMonitorDay", () => {
 
 describe("buildUptimeDays", () => {
   const now = new Date("2026-11-22T12:00:00Z");
-  const incident = (over: Partial<Parameters<typeof buildUptimeDays>[0]["incidents"][number]>) => ({
+  type Input = Parameters<typeof buildUptimeDays>[0]["incidents"][number];
+  const incident = (over: Partial<Input>): Input => ({
     id: "i1", name: "API errors", impact: "major", status: "resolved",
     createdAt: "2026-11-20T10:00:00Z", resolvedAt: "2026-11-20T12:00:00Z", ...over,
   });
-  const level = (days: ReturnType<typeof buildUptimeDays>["days"], date: string) =>
-    days.find((day) => day.date.toISOString().startsWith(date))?.level;
+  const day = (days: ReturnType<typeof buildUptimeDays>["days"], date: string) =>
+    days.find((entry) => entry.date.toISOString().startsWith(date))!;
 
   it("manual: green by default, grey only before the component started", () => {
     const { days, uptime } = buildUptimeDays({ now, startedAt: "2026-11-01T08:00:00Z", incidents: [] });
     expect(days).toHaveLength(90);
-    expect(level(days, "2026-10-31")).toBe("nodata");
-    expect(level(days, "2026-11-01")).toBe("operational");
-    expect(level(days, "2026-11-22")).toBe("operational");
+    expect(day(days, "2026-10-31").level).toBe("nodata");
+    expect(day(days, "2026-11-01").level).toBe("operational");
     expect(uptime).toBe(100);
   });
 
-  it("manual: colours every day an incident ran by its impact, maintenance blue", () => {
+  it("manual: times the component's own status, weighting major fully and partial at 30%", () => {
+    const start = "2026-11-21T12:00:00Z"; // a 24-hour window
+    const major = buildUptimeDays({ now, startedAt: start, incidents: [incident({ impact: "minor", componentStatus: "major_outage", createdAt: "2026-11-22T00:00:00Z", resolvedAt: "2026-11-22T06:00:00Z" })] });
+    expect(major.uptime).toBeCloseTo(75);
+    const partial = buildUptimeDays({ now, startedAt: start, incidents: [incident({ impact: "critical", componentStatus: "partial_outage", createdAt: "2026-11-22T00:00:00Z", resolvedAt: "2026-11-22T12:00:00Z" })] });
+    expect(partial.uptime).toBeCloseTo(85);
+    const degraded = buildUptimeDays({ now, startedAt: start, incidents: [incident({ impact: "critical", componentStatus: "degraded_performance", createdAt: "2026-11-22T00:00:00Z", resolvedAt: "2026-11-22T12:00:00Z" })] });
+    expect(degraded.uptime).toBe(100);
+    expect(day(degraded.days, "2026-11-22").level).toBe("minor");
+  });
+
+  it("manual: an update that left the component operational is not downtime, whatever its impact", () => {
+    const { days, uptime } = buildUptimeDays({ now, startedAt: "2026-11-21T12:00:00Z", incidents: [incident({ impact: "critical", componentStatus: "operational", createdAt: "2026-11-22T00:00:00Z", resolvedAt: "2026-11-22T06:00:00Z" })] });
+    expect(uptime).toBe(100);
+    expect(day(days, "2026-11-22").level).toBe("operational");
+  });
+
+  it("manual: older rows without a component status fall back to the impact", () => {
+    const { uptime } = buildUptimeDays({ now, startedAt: "2026-11-21T12:00:00Z", incidents: [incident({ impact: "critical", createdAt: "2026-11-22T00:00:00Z", resolvedAt: "2026-11-22T06:00:00Z" })] });
+    expect(uptime).toBeCloseTo(75);
+  });
+
+  it("manual: a short blip is yellow, an hour of weighted downtime is red, overlaps count once", () => {
     const { days } = buildUptimeDays({
       now,
       startedAt: "2026-01-01T00:00:00Z",
       incidents: [
-        incident({ impact: "critical", createdAt: "2026-11-18T22:00:00Z", resolvedAt: "2026-11-19T02:00:00Z" }),
-        incident({ id: "m", impact: "none", scheduledFor: "2026-11-21T01:00:00Z", scheduledUntil: "2026-11-21T02:00:00Z", status: "completed", resolvedAt: null }),
+        incident({ id: "blip", componentStatus: "major_outage", createdAt: "2026-11-18T10:00:00Z", resolvedAt: "2026-11-18T10:01:00Z" }),
+        incident({ id: "hour", componentStatus: "major_outage", createdAt: "2026-11-19T10:00:00Z", resolvedAt: "2026-11-19T11:00:00Z" }),
+        incident({ id: "dup", componentStatus: "major_outage", createdAt: "2026-11-19T10:30:00Z", resolvedAt: "2026-11-19T11:00:00Z" }),
+      ],
+    });
+    expect(day(days, "2026-11-18").level).toBe("minor");
+    expect(day(days, "2026-11-19").level).toBe("critical");
+    expect(day(days, "2026-11-19").uptime).toBeCloseTo((1 - 60 / 1440) * 100);
+  });
+
+  it("manual: an outage across midnight colours both days; maintenance is blue and not downtime", () => {
+    const { days, uptime } = buildUptimeDays({
+      now,
+      startedAt: "2026-11-21T12:00:00Z",
+      incidents: [
+        incident({ componentStatus: "major_outage", createdAt: "2026-11-21T22:00:00Z", resolvedAt: "2026-11-22T02:00:00Z" }),
+        incident({ id: "m", impact: "none", scheduledFor: "2026-11-22T05:00:00Z", scheduledUntil: "2026-11-22T06:00:00Z", status: "resolved", resolvedAt: "2026-11-22T06:00:00Z" }),
         incident({ id: "future", impact: "none", scheduledFor: "2026-11-25T01:00:00Z", status: "scheduled", resolvedAt: null }),
       ],
     });
-    expect(level(days, "2026-11-18")).toBe("critical");
-    expect(level(days, "2026-11-19")).toBe("critical");
-    expect(level(days, "2026-11-20")).toBe("operational");
-    expect(level(days, "2026-11-21")).toBe("maintenance");
+    expect(day(days, "2026-11-21").level).toBe("critical");
+    expect(day(days, "2026-11-22").level).toBe("critical");
+    expect(day(days, "2026-11-22").incidents.map((entry) => entry.level)).toEqual(["critical", "maintenance"]);
+    expect(uptime).toBeCloseTo((1 - 4 / 24) * 100);
   });
 
-  it("manual: counts a critical incident fully and a major one partly, without double counting overlaps", () => {
-    const start = "2026-11-21T12:00:00Z"; // one day window
-    const critical = buildUptimeDays({ now, startedAt: start, incidents: [incident({ impact: "critical", createdAt: "2026-11-22T00:00:00Z", resolvedAt: "2026-11-22T06:00:00Z" })] });
-    expect(critical.uptime).toBeCloseTo(75);
-    const major = buildUptimeDays({ now, startedAt: start, incidents: [incident({ impact: "major", createdAt: "2026-11-22T00:00:00Z", resolvedAt: "2026-11-22T12:00:00Z" })] });
-    expect(major.uptime).toBeCloseTo(85);
-    const overlap = buildUptimeDays({ now, startedAt: start, incidents: [
-      incident({ impact: "critical", createdAt: "2026-11-22T00:00:00Z", resolvedAt: "2026-11-22T06:00:00Z" }),
-      incident({ id: "i2", impact: "critical", createdAt: "2026-11-22T03:00:00Z", resolvedAt: "2026-11-22T06:00:00Z" }),
-    ] });
-    expect(overlap.uptime).toBeCloseTo(75);
+  it("manual: open incidents run until now; legacy resolved rows end at their last change", () => {
+    const open = buildUptimeDays({ now, startedAt: "2026-11-21T12:00:00Z", incidents: [incident({ status: "investigating", componentStatus: "major_outage", createdAt: "2026-11-22T06:00:00Z", resolvedAt: null })] });
+    expect(open.uptime).toBeCloseTo(75);
+    const legacy = buildUptimeDays({ now, startedAt: "2026-11-21T12:00:00Z", incidents: [incident({ componentStatus: "major_outage", createdAt: "2026-11-22T00:00:00Z", resolvedAt: null, updatedAt: "2026-11-22T06:00:00Z" })] });
+    expect(legacy.uptime).toBeCloseTo(75);
   });
 
-  it("automatic: bars follow checks, grey before the first check, green on a later day with none", () => {
+  it("manual: a status set by hand colours today only and stays out of uptime", () => {
+    const { days, uptime } = buildUptimeDays({ now, startedAt: "2026-11-01T00:00:00Z", incidents: [], currentStatus: "major_outage" });
+    expect(day(days, "2026-11-22").level).toBe("critical");
+    expect(day(days, "2026-11-21").level).toBe("operational");
+    expect(uptime).toBe(100);
+  });
+
+  it("monitored: bars follow checks, and a day without checks has no data", () => {
     const { days, uptime } = buildUptimeDays({
       now,
       startedAt: null,
@@ -109,44 +147,15 @@ describe("buildUptimeDays", () => {
         { date: "2026-11-13", totalChecks: 100, successfulChecks: 0 },
       ],
     });
-    expect(level(days, "2026-11-09")).toBe("nodata");
-    expect(level(days, "2026-11-10")).toBe("operational");
-    expect(level(days, "2026-11-11")).toBe("operational");
-    expect(level(days, "2026-11-12")).toBe("minor");
-    expect(level(days, "2026-11-13")).toBe("critical");
+    expect(["2026-11-09", "2026-11-10", "2026-11-11", "2026-11-12", "2026-11-13"].map((date) => day(days, date).level)).toEqual([
+      "nodata", "operational", "nodata", "minor", "critical",
+    ]);
+    expect(days.filter((entry) => entry.level !== "nodata")).toHaveLength(3);
     expect(uptime).toBe(50);
   });
 
-  it("automatic with no checks yet is all grey with no uptime", () => {
-    const { days, uptime } = buildUptimeDays({ now, startedAt: null, incidents: [], metrics: [] });
-    expect(days.every((day) => day.level === "nodata")).toBe(true);
-    expect(uptime).toBeNull();
-  });
-});
-
-describe("buildUptimeDays edge cases", () => {
-  const now = new Date("2026-11-22T12:00:00Z");
-  const level = (days: ReturnType<typeof buildUptimeDays>["days"], date: string) =>
-    days.find((day) => day.date.toISOString().startsWith(date))?.level;
-
-  it("keeps an open incident colouring every day up to now, and marks maintenance on a day without checks", () => {
-    const manual = buildUptimeDays({ now, startedAt: "2026-11-01T00:00:00Z", incidents: [
-      { id: "open", name: "Errors", impact: "minor", status: "investigating", createdAt: "2026-11-20T08:00:00Z", resolvedAt: null },
-    ] });
-    expect(["2026-11-20", "2026-11-21", "2026-11-22"].map((d) => level(manual.days, d))).toEqual(["minor", "minor", "minor"]);
-    expect(manual.uptime).toBe(100); // minor counts as no downtime
-
-    const automatic = buildUptimeDays({
-      now,
-      startedAt: null,
-      incidents: [{ id: "m", name: "Upgrade", impact: "none", status: "completed", createdAt: null, resolvedAt: "2026-11-21T03:00:00Z", scheduledFor: "2026-11-21T01:00:00Z" }],
-      metrics: [{ date: "2026-11-20", totalChecks: 10, successfulChecks: 10 }],
-    });
-    expect(level(automatic.days, "2026-11-21")).toBe("maintenance");
-    expect(automatic.days.find((day) => day.level === "maintenance")?.incidents[0].maintenance).toBe(true);
-  });
-
-  it("has no uptime before the component starts", () => {
+  it("has no uptime before the component starts, or without checks", () => {
     expect(buildUptimeDays({ now, startedAt: "2026-12-01T00:00:00Z", incidents: [] }).uptime).toBeNull();
+    expect(buildUptimeDays({ now, startedAt: null, incidents: [], metrics: [] }).uptime).toBeNull();
   });
 });

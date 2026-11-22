@@ -121,7 +121,8 @@ export default async function CustomDomainStatusPage({
       statusPage={statusPage}
       components={componentsResult.components}
       incidents={incidentsResult.incidents}
-      idOrSubdomain={hostname}
+      readAt={new Date().toISOString()}
+        idOrSubdomain={hostname}
       hideBranding={isStatusPageBrandingHidden()}
       isPublicView
       isCustomDomain
