@@ -14,6 +14,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { RefreshCw } from "lucide-react";
+import { InfoHint, InfoHintList } from "./info-hint";
 import { toast } from "sonner";
 
 type Delivery = Awaited<
@@ -37,16 +39,21 @@ export function DeliveryHistory({ statusPageId }: { statusPageId: string }) {
   return (
     <section className="space-y-3">
       <div className="flex items-center justify-between gap-3">
-        <h3 className="text-base font-semibold">Notification deliveries</h3>
-        <Button variant="outline" size="sm" onClick={() => void load()}>
+        <div className="flex items-center gap-1.5">
+          <h3 className="text-base font-semibold">Notification deliveries</h3>
+          <InfoHint label="About notification deliveries" title="Notification deliveries">
+            <InfoHintList>
+              <li>Shows the latest 100 deliveries.</li>
+              <li>Retrying a failed delivery sends the original public update.</li>
+              <li>A recipient may receive a duplicate after an interrupted request.</li>
+            </InfoHintList>
+          </InfoHint>
+        </div>
+        <Button variant="outline" size="sm" className="h-8 gap-1.5" onClick={() => void load()}>
+          <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />
           Refresh
         </Button>
       </div>
-      <p className="text-sm text-muted-foreground">
-        Latest 100 deliveries. Retrying a failed delivery sends the original
-        public update. A recipient may receive a duplicate after an interrupted
-        request.
-      </p>
       {error ? (
         <p role="alert" className="text-sm text-destructive">
           {error}
@@ -112,6 +119,12 @@ export function DeliveryHistory({ statusPageId }: { statusPageId: string }) {
             </TableBody>
           </Table>
         </div>
+      )}
+      {/* Kept visible beside Retry so nobody retries without seeing it. */}
+      {!error && deliveries.some((delivery) => delivery.status === "failed") && (
+        <p className="text-xs text-muted-foreground" data-testid="retry-duplicate-note">
+          Retrying sends the original public update. A recipient may receive a duplicate after an interrupted request.
+        </p>
       )}
     </section>
   );

@@ -146,9 +146,10 @@ export default function StatusPagePage() {
   }));
 
   return (
-    <div>
+    // data-fit-fill: the card stretches to the window; the table fit must ignore that space.
+    <div data-fit-fill className="flex flex-1 flex-col">
       <PageBreadcrumbs items={breadcrumbs} />
-      <Card className="shadow-sm hover:shadow-md transition-shadow duration-200 m-4">
+      <Card data-fit-fill className="m-4 flex-1 shadow-sm">
         <CardContent className="p-0">
           <StatusPageDetail
             statusPage={statusPageForDetail}

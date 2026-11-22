@@ -784,7 +784,8 @@ export function SettingsTab({
             status.example.com.
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-4">
+        <CardContent className="grid gap-6 lg:grid-cols-2 lg:items-start">
+          <div className="min-w-0 space-y-4">
           <Label htmlFor="customDomain">Hostname</Label>
           <div className="flex flex-col gap-2 sm:flex-row">
             <Input
@@ -792,7 +793,7 @@ export function SettingsTab({
               placeholder={CUSTOM_DOMAIN_EXAMPLE_HOSTNAME}
               {...register("customDomain")}
               disabled={!canUpdate}
-              className="font-mono text-sm sm:max-w-md"
+              className="font-mono text-sm"
             />
             {customDomainValue ? (
               <Button
@@ -871,9 +872,10 @@ export function SettingsTab({
               DNS.
             </p>
           )}
+          </div>
 
           {!customDomainConfigMessage && (
-            <Collapsible open={dnsOpen} onOpenChange={setDnsOpen}>
+            <Collapsible open={dnsOpen} onOpenChange={setDnsOpen} className="min-w-0">
               <CollapsibleTrigger asChild>
                 <Button
                   type="button"

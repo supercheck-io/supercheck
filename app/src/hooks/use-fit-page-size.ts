@@ -53,6 +53,15 @@ function contentBottom(body: HTMLElement, scroller: HTMLElement | null) {
   let bottom = body.getBoundingClientRect().bottom;
   for (let node = body.parentElement; node && node !== scroller; node = node.parentElement) {
     const style = getComputedStyle(node);
+    // A wrapper stretched to fill the window would count its empty space as content below
+    // the table; count only its own bottom spacing.
+    if (node.hasAttribute("data-fit-fill")) {
+      bottom +=
+        parseFloat(style.paddingBottom || "0") +
+        parseFloat(style.borderBottomWidth || "0") +
+        parseFloat(style.marginBottom || "0");
+      continue;
+    }
     bottom = Math.max(
       bottom,
       node.getBoundingClientRect().bottom + parseFloat(style.marginBottom || "0"),
@@ -65,6 +74,9 @@ function contentBottom(body: HTMLElement, scroller: HTMLElement | null) {
  * Page size that fills the visible height without a page scrollbar. Pass `bodyRef` as the
  * table's <tbody> ref. Picking a size from the "Rows per page" menu turns auto-fit off;
  * `fixedSize` turns it off from the start.
+ *
+ * A wrapper that stretches to fill the window (flex-1, min-h) must carry `data-fit-fill`,
+ * or its empty space counts as content below the table and the size drops to the minimum.
  */
 export function useFitPageSize(fixedSize?: number) {
   const [body, bodyRef] = useState<HTMLTableSectionElement | null>(null);

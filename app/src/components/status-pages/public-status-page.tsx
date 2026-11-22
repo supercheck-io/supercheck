@@ -36,6 +36,7 @@ import { StatusPageBranding } from "./status-page-branding";
 import { formatMaintenanceWindow } from "@/lib/incident-schedule";
 import { bannerColors, resolveBranding } from "@/lib/status-page-branding";
 import { IMPACT_BANNER_STATUS } from "@/lib/incident-impact";
+import { INCIDENT_PILL, incidentImpactTone, incidentStatusDot, INCIDENT_STATUS_PILL } from "./public-incident-tones";
 
 // Hex, because component colors get a hex alpha suffix below.
 const NO_DATA_COLOR = "#9ca3af";
@@ -466,38 +467,6 @@ export function PublicStatusPage({
   };
 
   const renderIncident = (incident: Incident) => {
-    // Status color mapping for badges
-    const getStatusColor = (status: IncidentStatus) => {
-      switch (status) {
-        case "resolved":
-          return "bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-100";
-        case "investigating":
-        case "identified":
-        case "monitoring":
-          return "bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-100";
-        case "scheduled":
-          return "bg-purple-100 dark:bg-purple-900 text-purple-800 dark:text-purple-100";
-        default:
-          return "bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-100";
-      }
-  };
-
-  // Impact badge color mapping
-  const getImpactBadgeColor = (
-    impact: IncidentImpact,
-  ) => {
-    switch (impact) {
-      case "critical":
-        return "bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-100";
-      case "major":
-        return "bg-orange-100 dark:bg-orange-900 text-orange-800 dark:text-orange-100";
-      case "minor":
-        return "bg-amber-100 dark:bg-amber-900 text-amber-800 dark:text-amber-100";
-      default:
-        return "bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-100";
-    }
-  };
-
   const incidentLinkBase = isPublicView
     ? isCustomDomain
       ? `${customDomainRoutePrefix}/incidents`
@@ -508,11 +477,11 @@ export function PublicStatusPage({
     <Link
       key={incident.id}
       href={`${incidentLinkBase}/${incident.id}`}
-      className="block px-3 sm:px-4 py-2.5 sm:py-3 rounded-lg sp-card bg-white dark:bg-gray-900 sp-border border dark:border-gray-800 transition-all duration-200 hover:shadow-md hover:border-gray-300 dark:hover:border-gray-700"
+      className="group block px-4 py-3 sm:py-3.5 rounded-xl sp-card bg-white dark:bg-gray-900 sp-border border dark:border-gray-800 transition-all duration-200 hover:shadow-md hover:border-gray-300 dark:hover:border-gray-700"
     >
       <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 sm:gap-3">
         <div className="flex-1 min-w-0">
-          <h4 className="font-semibold text-sm sm:text-base sp-fg text-gray-900 dark:text-gray-100 truncate">
+          <h4 className="font-medium text-sm sm:text-base sp-fg text-gray-900 dark:text-gray-100 truncate">
             {incident.name}
           </h4>
           {incident.scheduledFor && incident.scheduledUntil && (
@@ -529,27 +498,15 @@ export function PublicStatusPage({
             </p>
           )}
         </div>
-        <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 sm:flex-nowrap sm:flex-shrink-0">
-          <span
-            className={`text-[10px] sm:text-xs font-semibold px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-full ${getImpactBadgeColor(
-              incident.impact,
-            )}`}
-          >
-            {translateIncidentImpact(
-              incident.impact,
-              t,
-            )}
+        <div className="flex flex-wrap items-center gap-1.5 sm:flex-nowrap sm:flex-shrink-0">
+          <span className={`${INCIDENT_PILL} ${incidentImpactTone(incident.impact)}`}>
+            {translateIncidentImpact(incident.impact, t)}
           </span>
-          <span
-            className={`text-[10px] sm:text-xs font-semibold px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-full ${getStatusColor(
-              incident.status,
-            )}`}
-          >
-            {translateIncidentStatus(
-              incident.status,
-              t,
-            )}
+          <span className={`${INCIDENT_PILL} ${INCIDENT_STATUS_PILL}`}>
+            <span aria-hidden="true" className={`h-1.5 w-1.5 rounded-full ${incidentStatusDot(incident.status)}`} />
+            {translateIncidentStatus(incident.status, t)}
           </span>
+          <ChevronRight className="hidden h-4 w-4 sp-muted text-gray-400 transition-transform group-hover:translate-x-0.5 sm:block rtl:rotate-180" aria-hidden="true" />
         </div>
       </div>
     </Link>

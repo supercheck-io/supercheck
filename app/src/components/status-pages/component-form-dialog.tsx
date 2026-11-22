@@ -352,7 +352,7 @@ export function ComponentFormDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="flex max-h-[90vh] w-[calc(100vw-2rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-2xl">
+      <DialogContent className="flex max-h-[90vh] w-[calc(100vw-2rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-2xl lg:max-w-5xl">
         <DialogHeader className="border-b px-6 py-4">
           <DialogTitle>
             {component ? "Edit Component" : "Add Component"}
@@ -368,7 +368,9 @@ export function ComponentFormDialog({
           onSubmit={handleSubmit(onSubmit)}
           className="flex min-h-0 flex-1 flex-col"
         >
-          <div className="min-h-0 flex-1 space-y-6 overflow-y-auto px-6 py-5">
+          <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
+            <div className="grid gap-x-8 gap-y-6 lg:grid-cols-2">
+            <div className="min-w-0 space-y-6">
             {/* Basics */}
             <section className="space-y-4">
               <div>
@@ -448,8 +450,122 @@ export function ComponentFormDialog({
               </div>
             </section>
 
+            {/* Visibility */}
+            <section className="space-y-4 border-t pt-5">
+              <div>
+                <h3 className="text-sm font-semibold">Visibility</h3>
+                <p className="text-xs text-muted-foreground">
+                  Control where this component appears.
+                </p>
+              </div>
+
+              <div className="space-y-4 rounded-lg border p-4">
+                <div className="flex items-start gap-3">
+                  <Checkbox
+                    id="component-showcase"
+                    checked={showcase}
+                    onCheckedChange={(value) => {
+                      const nextValue = value === true;
+                      setValue("showcase", nextValue, { shouldDirty: true });
+                      if (!nextValue) {
+                        setValue("onlyShowIfDegraded", false, {
+                          shouldDirty: true,
+                        });
+                      }
+                    }}
+                    disabled={isSubmitting}
+                    className="mt-0.5"
+                  />
+                  <div className="space-y-0.5">
+                    <Label htmlFor="component-showcase" className="font-medium">
+                      Show on the public status page
+                    </Label>
+                    <p className="text-xs text-muted-foreground">
+                      Hidden components leave the public component list but keep
+                      tracking health in the dashboard.
+                    </p>
+                  </div>
+                </div>
+
+                <div
+                  className={cn(
+                    "flex items-start gap-3",
+                    !showcase && "opacity-50",
+                  )}
+                >
+                  <Checkbox
+                    id="component-degraded-only"
+                    checked={watch("onlyShowIfDegraded")}
+                    onCheckedChange={(value) =>
+                      setValue("onlyShowIfDegraded", value === true, {
+                        shouldDirty: true,
+                      })
+                    }
+                    disabled={isSubmitting || !showcase}
+                    className="mt-0.5"
+                  />
+                  <div className="space-y-0.5">
+                    <Label
+                      htmlFor="component-degraded-only"
+                      className="font-medium"
+                    >
+                      Show only when degraded
+                    </Label>
+                    <p className="text-xs text-muted-foreground">
+                      Keeps the list quiet while everything is operational.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <div className="flex items-center gap-1.5">
+                  <Label htmlFor="component-service">
+                    Linked internal service
+                  </Label>
+                  <InfoHint label="Service linking" title="Service linking">
+                    <InfoHintText>
+                      Services hold internal ownership and dependencies. Linking
+                      one does not publish any service details.
+                    </InfoHintText>
+                  </InfoHint>
+                </div>
+                <Controller
+                  control={control}
+                  name="serviceId"
+                  render={({ field }) => (
+                    <Select
+                      value={field.value || "none"}
+                      onValueChange={(value) =>
+                        field.onChange(value === "none" ? "" : value)
+                      }
+                      disabled={isSubmitting}
+                    >
+                      <SelectTrigger id="component-service">
+                        <SelectValue placeholder="No linked service" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">No linked service</SelectItem>
+                        {services.map((service) => (
+                          <SelectItem key={service.id} value={service.id}>
+                            {service.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                />
+                {linkedService && (
+                  <p className="text-xs text-muted-foreground">
+                    Linked to {linkedService.name}. Internal only.
+                  </p>
+                )}
+              </div>
+            </section>
+            </div>
+            <div className="min-w-0 space-y-6 lg:border-l lg:pl-8">
             {/* Monitors */}
-            <section className="space-y-3 border-t pt-5">
+            <section className="space-y-3 border-t pt-5 lg:border-t-0 lg:pt-0">
               <div className="flex items-center gap-1.5">
                 <h3 className="text-sm font-semibold">Monitors</h3>
                 <InfoHint label="Monitor linking" title="Monitor linking">
@@ -718,118 +834,8 @@ export function ComponentFormDialog({
               )}
             </section>
 
-            {/* Visibility */}
-            <section className="space-y-4 border-t pt-5">
-              <div>
-                <h3 className="text-sm font-semibold">Visibility</h3>
-                <p className="text-xs text-muted-foreground">
-                  Control where this component appears.
-                </p>
-              </div>
-
-              <div className="space-y-4 rounded-lg border p-4">
-                <div className="flex items-start gap-3">
-                  <Checkbox
-                    id="component-showcase"
-                    checked={showcase}
-                    onCheckedChange={(value) => {
-                      const nextValue = value === true;
-                      setValue("showcase", nextValue, { shouldDirty: true });
-                      if (!nextValue) {
-                        setValue("onlyShowIfDegraded", false, {
-                          shouldDirty: true,
-                        });
-                      }
-                    }}
-                    disabled={isSubmitting}
-                    className="mt-0.5"
-                  />
-                  <div className="space-y-0.5">
-                    <Label htmlFor="component-showcase" className="font-medium">
-                      Show on the public status page
-                    </Label>
-                    <p className="text-xs text-muted-foreground">
-                      Hidden components leave the public component list but keep
-                      tracking health in the dashboard.
-                    </p>
-                  </div>
-                </div>
-
-                <div
-                  className={cn(
-                    "flex items-start gap-3",
-                    !showcase && "opacity-50",
-                  )}
-                >
-                  <Checkbox
-                    id="component-degraded-only"
-                    checked={watch("onlyShowIfDegraded")}
-                    onCheckedChange={(value) =>
-                      setValue("onlyShowIfDegraded", value === true, {
-                        shouldDirty: true,
-                      })
-                    }
-                    disabled={isSubmitting || !showcase}
-                    className="mt-0.5"
-                  />
-                  <div className="space-y-0.5">
-                    <Label
-                      htmlFor="component-degraded-only"
-                      className="font-medium"
-                    >
-                      Show only when degraded
-                    </Label>
-                    <p className="text-xs text-muted-foreground">
-                      Keeps the list quiet while everything is operational.
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="space-y-1.5">
-                <div className="flex items-center gap-1.5">
-                  <Label htmlFor="component-service">
-                    Linked internal service
-                  </Label>
-                  <InfoHint label="Service linking" title="Service linking">
-                    <InfoHintText>
-                      Services hold internal ownership and dependencies. Linking
-                      one does not publish any service details.
-                    </InfoHintText>
-                  </InfoHint>
-                </div>
-                <Controller
-                  control={control}
-                  name="serviceId"
-                  render={({ field }) => (
-                    <Select
-                      value={field.value || "none"}
-                      onValueChange={(value) =>
-                        field.onChange(value === "none" ? "" : value)
-                      }
-                      disabled={isSubmitting}
-                    >
-                      <SelectTrigger id="component-service">
-                        <SelectValue placeholder="No linked service" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="none">No linked service</SelectItem>
-                        {services.map((service) => (
-                          <SelectItem key={service.id} value={service.id}>
-                            {service.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  )}
-                />
-                {linkedService && (
-                  <p className="text-xs text-muted-foreground">
-                    Linked to {linkedService.name}. Internal only.
-                  </p>
-                )}
-              </div>
-            </section>
+            </div>
+            </div>
           </div>
 
           <DialogFooter className="border-t bg-muted/30 px-6 py-3">
