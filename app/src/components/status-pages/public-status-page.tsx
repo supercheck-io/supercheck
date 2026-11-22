@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
+import { useHydrated } from "@/hooks/use-hydrated";
 import Image from "next/image";
 import {
   CheckCircle2,
@@ -13,7 +14,7 @@ import {
   Bell,
   CircleDashed,
 } from "lucide-react";
-import { format, subDays, isSameDay, differenceInCalendarDays } from "date-fns";
+import { format, subDays, differenceInCalendarDays } from "date-fns";
 import { SubscribeDialog } from "./subscribe-dialog";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
@@ -171,10 +172,20 @@ export function PublicStatusPage({
     day: "numeric",
     year: "numeric",
   });
+  const fullDateFormatterUtc = new Intl.DateTimeFormat(locale, {
+    weekday: "long",
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    timeZone: "UTC",
+  });
 
   // force-dynamic page: the first render is when the data was read; kept so paging incidents does not move it.
   // The zone name keeps the server's text honest after hydration.
   const [renderedAt] = useState(() => new Date());
+  const hydrated = useHydrated();
+  // The time the data was read: server render and hydration agree on it, so clock-dependent markup matches.
+  const now = readAt ? new Date(readAt) : renderedAt;
   const updatedAtLabel = t.lastUpdated.replace(
     "{time}",
     new Intl.DateTimeFormat(locale, { hour: "2-digit", minute: "2-digit", timeZoneName: "short" }).format(renderedAt),
@@ -188,7 +199,7 @@ export function PublicStatusPage({
   // Calculate overall system status from components
   // Every unresolved incident, of any age, is "active"; maintenance never degrades the banner.
   const isUpcomingMaintenance = (i: Incident) =>
-    i.status === "scheduled" && !!i.scheduledFor && new Date(i.scheduledFor) > new Date();
+    i.status === "scheduled" && !!i.scheduledFor && new Date(i.scheduledFor) > now;
   const activeIncidents = incidents.filter((i) => i.status !== "resolved" && !isUpcomingMaintenance(i));
   const upcomingMaintenance = incidents.filter(isUpcomingMaintenance);
   const openIssueStatuses = activeIncidents
@@ -345,7 +356,6 @@ export function PublicStatusPage({
   });
 
   // Monitored components: the checks of their linked monitors. Others: the status updates that affected them.
-  const now = readAt ? new Date(readAt) : renderedAt;
   const openStatuses = new Set(
     activeIncidents.flatMap((incident) => incident.affectedComponents?.map((affected) => affected.id) ?? []),
   );
@@ -769,15 +779,19 @@ export function PublicStatusPage({
           </h2>
 
           {(() => {
+            // The server does not know the viewer's time zone: the server HTML and the hydrating render group days in
+            // UTC from the read time, then the browser switches to its local days (otherwise #418 near midnight).
+            const local = hydrated;
+            const dayKey = (d: Date) => (local ? format(d, "yyyy-MM-dd") : d.toISOString().slice(0, 10));
+            const today = local ? new Date() : now;
+            const dayAt = (i: number) => (local ? subDays(today, i) : new Date(today.getTime() - i * 86_400_000));
+            const dayFormatter = local ? fullDateFormatter : fullDateFormatterUtc;
             // Group incidents by date
             const incidentsByDate = new Map<string, Incident[]>();
             // Unresolved incidents are listed above, not here.
             incidents.filter((i) => i.status === "resolved").forEach((incident) => {
               if (incident.createdAt) {
-                const dateKey = format(
-                  new Date(incident.createdAt),
-                  "yyyy-MM-dd",
-                );
+                const dateKey = dayKey(new Date(incident.createdAt));
                 if (!incidentsByDate.has(dateKey)) {
                   incidentsByDate.set(dateKey, []);
                 }
@@ -787,16 +801,18 @@ export function PublicStatusPage({
 
             // Up to 90 days, but never earlier than the page itself: a new page has no empty history.
             const pageAgeDays = statusPage.createdAt
-              ? differenceInCalendarDays(new Date(), new Date(statusPage.createdAt)) + 1
+              ? (local
+                ? differenceInCalendarDays(today, new Date(statusPage.createdAt))
+                : (Date.parse(dayKey(today)) - Date.parse(dayKey(new Date(statusPage.createdAt)))) / 86_400_000) + 1
               : 90;
             const allDays = [];
             for (let i = 0; i < Math.min(90, Math.max(1, pageAgeDays)); i++) {
-              const date = subDays(new Date(), i);
-              const dateKey = format(date, "yyyy-MM-dd");
+              const date = dayAt(i);
+              const dateKey = dayKey(date);
               const dayIncidents = incidentsByDate.get(dateKey) || [];
               // Today with nothing resolved yet but an open incident above: no empty heading.
               if (i === 0 && dayIncidents.length === 0 && activeIncidents.length > 0) continue;
-              allDays.push({ date, incidents: dayIncidents });
+              allDays.push({ date, key: dateKey, isToday: i === 0, incidents: dayIncidents });
             }
 
             // Calculate pagination
@@ -808,21 +824,21 @@ export function PublicStatusPage({
             return (
               <>
                 <div className="space-y-6">
-                  {paginatedDays.map(({ date, incidents: dayIncidents }) => (
+                  {paginatedDays.map(({ date, key, isToday, incidents: dayIncidents }) => (
                     <div
-                      key={format(date, "yyyy-MM-dd")}
+                      key={key}
                       className="pb-5 sp-border border-b dark:border-gray-800 last:border-b-0"
                     >
                       <h3
                         className="text-sm sm:text-base font-semibold sp-fg text-gray-900 dark:text-gray-100 mb-3"
                         suppressHydrationWarning
                       >
-                        {fullDateFormatter.format(date)}
+                        {dayFormatter.format(date)}
                       </h3>
 
                       {dayIncidents.length === 0 ? (
                         <p className="sp-muted text-gray-500 dark:text-gray-400 text-sm">
-                          {isSameDay(date, new Date()) ? t.noIncidentsReportedToday : `${t.noIncidentsReported}.`}
+                          {isToday ? t.noIncidentsReportedToday : `${t.noIncidentsReported}.`}
                         </p>
                       ) : (
                         <div className="space-y-2">
