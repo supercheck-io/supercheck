@@ -13,7 +13,7 @@ jest.mock("@/utils/db", () => ({
   db: {
     query: {
       statusPages: { findFirst: jest.fn(async () => ({ id: "p" })) },
-      incidents: { findFirst: jest.fn(async () => ({ id: "i", sourceComponentId: null })) },
+      incidents: { findFirst: jest.fn(async () => ({ id: "00000000-0000-4000-8000-000000000001", statusPageId: "00000000-0000-4000-8000-000000000002", sourceComponentId: null })) },
     },
     transaction: jest.fn(async (run: (t: unknown) => unknown) => run(tx)),
   },
@@ -25,7 +25,7 @@ jest.mock("@/lib/project-context", () => ({
     project: { id: "00000000-0000-4000-8000-000000000003" },
   })),
 }));
-jest.mock("@/lib/rbac/middleware", () => ({ requirePermissions: jest.fn(async () => undefined) }));
+jest.mock("@/lib/rbac/middleware", () => ({ requirePermissions: jest.fn(async () => undefined), checkPermissionWithContext: jest.fn(() => true) }));
 jest.mock("next/cache", () => ({ revalidatePath: jest.fn() }));
 jest.mock("@/lib/audit-logger", () => ({ logAuditEvent: jest.fn() }));
 jest.mock("@/lib/status-page-reconciliation", () => ({

@@ -32,11 +32,15 @@ it("scopes the for-update locks on the status page and SRE incident to the org a
       from: () => ({
         where: (condition: unknown) => {
           wheres.push(condition);
-          return { for: async () => [{ statusPageIncidentId: "already-linked" }] };
+          return { for: async () => [{ statusPageIncidentId: null }] };
         },
       }),
     }),
     query: { incidents: { findFirst: jest.fn().mockResolvedValue(undefined) } },
+    // Only the two locks are under test: stop at the first write.
+    insert: () => {
+      throw new Error("stop after the locks");
+    },
   };
   (db.transaction as jest.Mock).mockImplementation((callback: (t: typeof tx) => unknown) => callback(tx));
   const result = await createIncident({

@@ -5,6 +5,7 @@ import { db } from "@/utils/db";
 import { incidents, statusPages } from "@/db/schema";
 import { eq, desc, and, or, gte, ne } from "drizzle-orm";
 import { z } from "zod";
+import { PUBLIC_INCIDENT_COLUMNS, PUBLIC_UPDATE_COLUMNS, pickPublicIncident, toPublicUpdate } from "@/lib/status-pages/public-incident-dto";
 
 // UUID validation schema
 const uuidSchema = z.string().uuid("Invalid status page ID format");
@@ -62,23 +63,7 @@ export async function getPublicIncidents(statusPageId: string) {
     const incidentsList = await db.query.incidents.findMany({
       where: and(eq(incidents.statusPageId, statusPageId), or(ne(incidents.status, "resolved"), gte(incidents.createdAt, new Date(Date.now() - 90 * 86400000)), gte(incidents.resolvedAt, new Date(Date.now() - 90 * 86400000)))),
       limit: 500,
-      columns: {
-        id: true,
-        name: true,
-        status: true,
-        impact: true,
-        impactOverride: true,
-        body: true,
-        scheduledFor: true,
-        scheduledUntil: true,
-        shortlink: true,
-        monitoringAt: true,
-        resolvedAt: true,
-        createdAt: true,
-        updatedAt: true,
-        // EXCLUDED: statusPageId (redundant), createdByUserId, deliverNotifications,
-        // backfillDate, backfilled, metadata, reminder/auto-transition settings
-      },
+      columns: PUBLIC_INCIDENT_COLUMNS,
       orderBy: [desc(incidents.createdAt)],
       with: {
         // Eager load affected components
@@ -96,14 +81,7 @@ export async function getPublicIncidents(statusPageId: string) {
         // Eager load updates (only the latest)
         updates: {
           where: (updates, { lte }) => lte(updates.displayAt, new Date()),
-          columns: {
-            id: true,
-            body: true,
-            status: true,
-            displayAt: true,
-            createdAt: true,
-            // EXCLUDED: incidentId (redundant), createdByUserId, deliverNotifications
-          },
+          columns: PUBLIC_UPDATE_COLUMNS,
           orderBy: (updates, { desc }) => [desc(updates.displayAt)],
           limit: 1,
         },
@@ -112,11 +90,11 @@ export async function getPublicIncidents(statusPageId: string) {
 
     // Transform to expected format
     const incidentsWithDetails = incidentsList.map((incident) => ({
-      ...incident,
+      ...pickPublicIncident(incident),
       affectedComponentsCount: incident.affectedComponents.filter((ic) => ic.component?.showcase).length,
       // newStatus: what the component showed during the incident, for the uptime bars.
       affectedComponents: incident.affectedComponents.flatMap((ic) => (ic.component?.showcase ? [{ id: ic.component.id, name: ic.component.name, newStatus: ic.newStatus }] : [])),
-      latestUpdate: incident.updates[0] ? { ...incident.updates[0], createdAt: incident.updates[0].displayAt ?? incident.updates[0].createdAt } : null,
+      latestUpdate: incident.updates[0] ? toPublicUpdate(incident.updates[0]) : null,
     }));
 
     return {

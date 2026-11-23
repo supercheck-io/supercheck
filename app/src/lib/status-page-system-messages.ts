@@ -15,6 +15,7 @@ export type StatusPageSystemMessages = {
   maintenanceStartBody: string;
   maintenanceEndBody: string;
   incidentCreatedBody: string;
+  componentRemovedBody: string;
 };
 
 const SYSTEM_MESSAGES: Record<SupportedLanguage, StatusPageSystemMessages> = {
@@ -25,6 +26,7 @@ const SYSTEM_MESSAGES: Record<SupportedLanguage, StatusPageSystemMessages> = {
     maintenanceStartBody: "Scheduled maintenance is in progress.",
     maintenanceEndBody: "Scheduled maintenance completed.",
     incidentCreatedBody: "Incident created: {name}",
+    componentRemovedBody: "This component was removed from the status page.",
   },
   ar: {
     autoOutageTitle: "{component} يواجه انقطاعًا في الخدمة",
@@ -33,6 +35,7 @@ const SYSTEM_MESSAGES: Record<SupportedLanguage, StatusPageSystemMessages> = {
     maintenanceStartBody: "الصيانة المجدولة قيد التنفيذ.",
     maintenanceEndBody: "اكتملت الصيانة المجدولة.",
     incidentCreatedBody: "تم إنشاء الحادث: {name}",
+    componentRemovedBody: "تمت إزالة هذا المكوّن من صفحة الحالة.",
   },
   cs: {
     autoOutageTitle: "{component} má výpadek",
@@ -41,6 +44,7 @@ const SYSTEM_MESSAGES: Record<SupportedLanguage, StatusPageSystemMessages> = {
     maintenanceStartBody: "Probíhá plánovaná údržba.",
     maintenanceEndBody: "Plánovaná údržba byla dokončena.",
     incidentCreatedBody: "Incident vytvořen: {name}",
+    componentRemovedBody: "Tato komponenta byla odebrána ze stavové stránky.",
   },
   da: {
     autoOutageTitle: "{component} oplever et nedbrud",
@@ -49,6 +53,7 @@ const SYSTEM_MESSAGES: Record<SupportedLanguage, StatusPageSystemMessages> = {
     maintenanceStartBody: "Planlagt vedligeholdelse er i gang.",
     maintenanceEndBody: "Planlagt vedligeholdelse er afsluttet.",
     incidentCreatedBody: "Hændelse oprettet: {name}",
+    componentRemovedBody: "Denne komponent er fjernet fra statussiden.",
   },
   de: {
     autoOutageTitle: "{component} hat eine Störung",
@@ -57,6 +62,7 @@ const SYSTEM_MESSAGES: Record<SupportedLanguage, StatusPageSystemMessages> = {
     maintenanceStartBody: "Die geplante Wartung läuft.",
     maintenanceEndBody: "Die geplante Wartung ist abgeschlossen.",
     incidentCreatedBody: "Vorfall erstellt: {name}",
+    componentRemovedBody: "Diese Komponente wurde von der Statusseite entfernt.",
   },
   es: {
     autoOutageTitle: "{component} está experimentando una interrupción",
@@ -65,6 +71,7 @@ const SYSTEM_MESSAGES: Record<SupportedLanguage, StatusPageSystemMessages> = {
     maintenanceStartBody: "El mantenimiento programado está en curso.",
     maintenanceEndBody: "El mantenimiento programado ha finalizado.",
     incidentCreatedBody: "Incidente creado: {name}",
+    componentRemovedBody: "Este componente se ha eliminado de la página de estado.",
   },
   fi: {
     autoOutageTitle: "{component}-palvelussa on käyttökatko",
@@ -73,6 +80,7 @@ const SYSTEM_MESSAGES: Record<SupportedLanguage, StatusPageSystemMessages> = {
     maintenanceStartBody: "Suunniteltu huolto on käynnissä.",
     maintenanceEndBody: "Suunniteltu huolto on valmis.",
     incidentCreatedBody: "Tapaus luotu: {name}",
+    componentRemovedBody: "Tämä komponentti poistettiin tilasivulta.",
   },
   fr: {
     autoOutageTitle: "{component} connaît une panne",
@@ -81,6 +89,7 @@ const SYSTEM_MESSAGES: Record<SupportedLanguage, StatusPageSystemMessages> = {
     maintenanceStartBody: "La maintenance planifiée est en cours.",
     maintenanceEndBody: "La maintenance planifiée est terminée.",
     incidentCreatedBody: "Incident créé : {name}",
+    componentRemovedBody: "Ce composant a été retiré de la page de statut.",
   },
   hi: {
     autoOutageTitle: "{component} में आउटेज आ रहा है",
@@ -89,6 +98,7 @@ const SYSTEM_MESSAGES: Record<SupportedLanguage, StatusPageSystemMessages> = {
     maintenanceStartBody: "निर्धारित रखरखाव जारी है।",
     maintenanceEndBody: "निर्धारित रखरखाव पूरा हुआ।",
     incidentCreatedBody: "घटना बनाई गई: {name}",
+    componentRemovedBody: "यह घटक स्थिति पृष्ठ से हटा दिया गया है।",
   },
   hr: {
     autoOutageTitle: "{component} ima prekid rada",
@@ -97,6 +107,7 @@ const SYSTEM_MESSAGES: Record<SupportedLanguage, StatusPageSystemMessages> = {
     maintenanceStartBody: "Planirano održavanje je u tijeku.",
     maintenanceEndBody: "Planirano održavanje je dovršeno.",
     incidentCreatedBody: "Incident stvoren: {name}",
+    componentRemovedBody: "Ova je komponenta uklonjena sa stranice statusa.",
   },
   hu: {
     autoOutageTitle: "{component} kimaradást tapasztal",
@@ -105,6 +116,7 @@ const SYSTEM_MESSAGES: Record<SupportedLanguage, StatusPageSystemMessages> = {
     maintenanceStartBody: "Az ütemezett karbantartás folyamatban van.",
     maintenanceEndBody: "Az ütemezett karbantartás befejeződött.",
     incidentCreatedBody: "Incidens létrehozva: {name}",
+    componentRemovedBody: "Ezt az összetevőt eltávolították az állapotoldalról.",
   },
   it: {
     autoOutageTitle: "{component} sta subendo un'interruzione",
@@ -113,6 +125,7 @@ const SYSTEM_MESSAGES: Record<SupportedLanguage, StatusPageSystemMessages> = {
     maintenanceStartBody: "La manutenzione programmata è in corso.",
     maintenanceEndBody: "La manutenzione programmata è completata.",
     incidentCreatedBody: "Incidente creato: {name}",
+    componentRemovedBody: "Questo componente è stato rimosso dalla pagina di stato.",
   },
   ja: {
     autoOutageTitle: "{component} で障害が発生しています",
@@ -121,6 +134,7 @@ const SYSTEM_MESSAGES: Record<SupportedLanguage, StatusPageSystemMessages> = {
     maintenanceStartBody: "定期メンテナンスを実施中です。",
     maintenanceEndBody: "定期メンテナンスが完了しました。",
     incidentCreatedBody: "インシデントを作成しました: {name}",
+    componentRemovedBody: "このコンポーネントはステータスページから削除されました。",
   },
   ko: {
     autoOutageTitle: "{component}에 장애가 발생했습니다",
@@ -129,6 +143,7 @@ const SYSTEM_MESSAGES: Record<SupportedLanguage, StatusPageSystemMessages> = {
     maintenanceStartBody: "예정된 유지보수가 진행 중입니다.",
     maintenanceEndBody: "예정된 유지보수가 완료되었습니다.",
     incidentCreatedBody: "인시던트 생성됨: {name}",
+    componentRemovedBody: "이 구성 요소는 상태 페이지에서 제거되었습니다.",
   },
   nl: {
     autoOutageTitle: "{component} ondervindt een storing",
@@ -137,6 +152,7 @@ const SYSTEM_MESSAGES: Record<SupportedLanguage, StatusPageSystemMessages> = {
     maintenanceStartBody: "Gepland onderhoud is bezig.",
     maintenanceEndBody: "Gepland onderhoud is voltooid.",
     incidentCreatedBody: "Incident aangemaakt: {name}",
+    componentRemovedBody: "Dit onderdeel is van de statuspagina verwijderd.",
   },
   no: {
     autoOutageTitle: "{component} opplever en driftsforstyrrelse",
@@ -145,6 +161,7 @@ const SYSTEM_MESSAGES: Record<SupportedLanguage, StatusPageSystemMessages> = {
     maintenanceStartBody: "Planlagt vedlikehold pågår.",
     maintenanceEndBody: "Planlagt vedlikehold er fullført.",
     incidentCreatedBody: "Hendelse opprettet: {name}",
+    componentRemovedBody: "Denne komponenten er fjernet fra statussiden.",
   },
   pl: {
     autoOutageTitle: "{component} ma awarię",
@@ -153,6 +170,7 @@ const SYSTEM_MESSAGES: Record<SupportedLanguage, StatusPageSystemMessages> = {
     maintenanceStartBody: "Trwa zaplanowana konserwacja.",
     maintenanceEndBody: "Zaplanowana konserwacja została zakończona.",
     incidentCreatedBody: "Utworzono incydent: {name}",
+    componentRemovedBody: "Ten komponent został usunięty ze strony statusu.",
   },
   pt: {
     autoOutageTitle: "{component} está passando por uma interrupção",
@@ -161,6 +179,7 @@ const SYSTEM_MESSAGES: Record<SupportedLanguage, StatusPageSystemMessages> = {
     maintenanceStartBody: "A manutenção programada está em andamento.",
     maintenanceEndBody: "A manutenção programada foi concluída.",
     incidentCreatedBody: "Incidente criado: {name}",
+    componentRemovedBody: "Este componente foi removido da página de status.",
   },
   ro: {
     autoOutageTitle: "{component} se confruntă cu o întrerupere",
@@ -169,6 +188,7 @@ const SYSTEM_MESSAGES: Record<SupportedLanguage, StatusPageSystemMessages> = {
     maintenanceStartBody: "Întreținerea programată este în curs.",
     maintenanceEndBody: "Întreținerea programată s-a încheiat.",
     incidentCreatedBody: "Incident creat: {name}",
+    componentRemovedBody: "Această componentă a fost eliminată de pe pagina de stare.",
   },
   ru: {
     autoOutageTitle: "{component}: наблюдается сбой",
@@ -177,6 +197,7 @@ const SYSTEM_MESSAGES: Record<SupportedLanguage, StatusPageSystemMessages> = {
     maintenanceStartBody: "Идёт плановое техническое обслуживание.",
     maintenanceEndBody: "Плановое техническое обслуживание завершено.",
     incidentCreatedBody: "Инцидент создан: {name}",
+    componentRemovedBody: "Этот компонент удалён со страницы статуса.",
   },
   sv: {
     autoOutageTitle: "{component} har en driftstörning",
@@ -185,6 +206,7 @@ const SYSTEM_MESSAGES: Record<SupportedLanguage, StatusPageSystemMessages> = {
     maintenanceStartBody: "Planerat underhåll pågår.",
     maintenanceEndBody: "Planerat underhåll är slutfört.",
     incidentCreatedBody: "Incident skapad: {name}",
+    componentRemovedBody: "Den här komponenten har tagits bort från statussidan.",
   },
   tr: {
     autoOutageTitle: "{component} kesinti yaşıyor",
@@ -193,6 +215,7 @@ const SYSTEM_MESSAGES: Record<SupportedLanguage, StatusPageSystemMessages> = {
     maintenanceStartBody: "Planlı bakım sürüyor.",
     maintenanceEndBody: "Planlı bakım tamamlandı.",
     incidentCreatedBody: "Olay oluşturuldu: {name}",
+    componentRemovedBody: "Bu bileşen durum sayfasından kaldırıldı.",
   },
   uk: {
     autoOutageTitle: "{component}: спостерігається збій",
@@ -201,6 +224,7 @@ const SYSTEM_MESSAGES: Record<SupportedLanguage, StatusPageSystemMessages> = {
     maintenanceStartBody: "Триває планове технічне обслуговування.",
     maintenanceEndBody: "Планове технічне обслуговування завершено.",
     incidentCreatedBody: "Інцидент створено: {name}",
+    componentRemovedBody: "Цей компонент видалено зі сторінки статусу.",
   },
   zh: {
     autoOutageTitle: "{component} 正在发生故障",
@@ -209,6 +233,7 @@ const SYSTEM_MESSAGES: Record<SupportedLanguage, StatusPageSystemMessages> = {
     maintenanceStartBody: "计划维护正在进行中。",
     maintenanceEndBody: "计划维护已完成。",
     incidentCreatedBody: "已创建事件：{name}",
+    componentRemovedBody: "此组件已从状态页面中移除。",
   },
 };
 

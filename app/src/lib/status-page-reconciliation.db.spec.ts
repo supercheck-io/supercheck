@@ -37,7 +37,9 @@ jest.mock("next/cache", () => ({ revalidatePath: jest.fn() }));
 jest.mock("@/lib/audit-logger", () => ({ logAuditEvent: jest.fn() }));
 import { reconcileStatusPages } from "./status-page-reconciliation";
 import { updateIncidentStatus } from "@/actions/update-incident-status";
-import { createStatusPageIncident } from "./status-page-incident-core";
+import { createStatusPageIncident, publishSreResolutionToStatusPages } from "./status-page-incident-core";
+import { deleteComponent } from "@/lib/status-pages/service";
+import { deleteIncident } from "@/actions/delete-incident";
 import { requireProjectContext } from "@/lib/project-context";
 import { getPublicComponents } from "@/actions/get-public-components";
 import { getPublicIncidents } from "@/actions/get-public-incidents";
@@ -659,6 +661,105 @@ it("posts an already resolved update as over: resolvedAt set and component healt
   expect(result.success).toBe(true);
   const incident = await mockDatabase.query.incidents.findFirst();
   expect(incident?.resolvedAt).toBeInstanceOf(Date);
+  expect((await mockDatabase.query.statusPageComponents.findFirst())?.status).toBe("operational");
+});
+
+describe("SRE incident linked to several status pages", () => {
+  async function scope() {
+    const page = (await mockDatabase.query.statusPages.findFirst({ where: eq(schema.statusPages.id, pageId) }))!;
+    const user = (await mockDatabase.query.user.findFirst())!;
+    const actor = { userId: user.id, organizationId: page.organizationId, orgPendingDeletion: false, project: { id: page.projectId!, userRole: "org_owner" } };
+    const [second] = await mockDatabase.insert(schema.statusPages).values({ organizationId: page.organizationId, projectId: page.projectId, name: "Enterprise", subdomain: randomUUID().replaceAll("-", ""), status: "published" }).returning();
+    const [secondComponent] = await mockDatabase.insert(schema.statusPageComponents).values({ statusPageId: second.id, name: "API" }).returning();
+    const [sre] = await mockDatabase.insert(schema.sreIncidents).values({ organizationId: page.organizationId, projectId: page.projectId!, incidentNumber: 1, title: "Checkout errors", severity: "sev2", status: "triggered" }).returning();
+    const post = (statusPageId: string, component: string, deliverNotifications = false) =>
+      createStatusPageIncident(actor, { sreIncidentId: sre.id, statusPageId, name: "Checkout errors", status: "investigating", impact: "major", body: "Looking", affectedComponentIds: [component], componentStatus: "major_outage", deliverNotifications });
+    return { page, actor, second, secondComponent, sre, post };
+  }
+
+  it("posts one SRE incident to two status pages and keeps the legacy pointer on the first", async () => {
+    const { second, secondComponent, sre, post } = await scope();
+    const first = await post(pageId, componentId);
+    const other = await post(second.id, secondComponent.id);
+    expect(first).toMatchObject({ success: true });
+    expect(other).toMatchObject({ success: true });
+    // Still one post per page.
+    expect(await post(second.id, secondComponent.id)).toMatchObject({ success: false, message: "This incident already has a public incident on this status page." });
+    const linked = await mockDatabase.query.incidents.findMany({ where: eq(schema.incidents.sreIncidentId, sre.id) });
+    expect(linked).toHaveLength(2);
+    const pointer = await mockDatabase.query.sreIncidents.findFirst({ where: eq(schema.sreIncidents.id, sre.id) });
+    expect(pointer?.statusPageIncidentId).toBe(first.success ? first.incident.id : null);
+  });
+
+  it("publishes an SRE resolution to every open linked public incident with its own notify setting", async () => {
+    const { actor, second, secondComponent, sre, post } = await scope();
+    await post(pageId, componentId, true);
+    await post(second.id, secondComponent.id, false);
+    const result = await publishSreResolutionToStatusPages(actor, sre.id, "Rolled back the deploy.");
+    expect(result).toEqual({ published: expect.arrayContaining(["Status", "Enterprise"]), failed: [], forbidden: false });
+    const rows = await mockDatabase.query.incidents.findMany({ where: eq(schema.incidents.sreIncidentId, sre.id), with: { updates: true } });
+    expect(rows.map((row) => row.status)).toEqual(["resolved", "resolved"]);
+    for (const row of rows) {
+      const resolution = row.updates.find((update) => update.status === "resolved")!;
+      expect(resolution.body).toBe("Rolled back the deploy.");
+      expect(resolution.deliverNotifications).toBe(row.deliverNotifications);
+    }
+    // Components of hand-posted incidents (no monitors) return to operational.
+    const component = await mockDatabase.query.statusPageComponents.findFirst({ where: eq(schema.statusPageComponents.id, secondComponent.id) });
+    expect(component?.status).toBe("operational");
+    // Nothing left open, so a second call publishes nothing.
+    expect(await publishSreResolutionToStatusPages(actor, sre.id, "Again")).toEqual({ published: [], failed: [], forbidden: false });
+  });
+
+  it("publishes nothing without status page permission or outside the actor's project", async () => {
+    const { actor, sre, post } = await scope();
+    await post(pageId, componentId);
+    const { checkPermissionWithContext } = jest.requireMock("@/lib/rbac/middleware") as { checkPermissionWithContext: jest.Mock };
+    checkPermissionWithContext.mockReturnValueOnce(false);
+    expect(await publishSreResolutionToStatusPages(actor, sre.id, "Fixed")).toEqual({ published: [], failed: [], forbidden: true });
+    // Same SRE incident id, but the actor belongs to another project: its rows are invisible.
+    const [otherProject] = await mockDatabase.insert(schema.projects).values({ organizationId: actor.organizationId, name: "Other" }).returning();
+    expect(await publishSreResolutionToStatusPages({ ...actor, project: { ...actor.project, id: otherProject.id } }, sre.id, "Fixed")).toEqual({ published: [], failed: [], forbidden: false });
+    expect((await mockDatabase.query.incidents.findFirst({ where: eq(schema.incidents.sreIncidentId, sre.id) }))?.status).toBe("investigating");
+  });
+
+  it("does not reopen an automatic public incident resolved from SRE while its monitor still fails", async () => {
+    const { actor, sre } = await scope();
+    await mockDatabase.update(schema.statusPageComponents).set({ autoCreateIncidents: true, updatedAt: new Date() }).where(eq(schema.statusPageComponents.id, componentId));
+    await mockDatabase.update(schema.monitors).set({ status: "down", lastCheckAt: new Date() }).where(eq(schema.monitors.id, monitorId));
+    await reconcileStatusPages();
+    const [automatic] = await mockDatabase.query.incidents.findMany();
+    await mockDatabase.update(schema.incidents).set({ sreIncidentId: sre.id }).where(eq(schema.incidents.id, automatic.id));
+    expect((await publishSreResolutionToStatusPages(actor, sre.id, "Fixed upstream")).published).toEqual(["Status"]);
+    await reconcileStatusPages();
+    const all = await mockDatabase.query.incidents.findMany();
+    expect(all).toHaveLength(1);
+    expect(all[0].status).toBe("resolved");
+  });
+});
+
+it("resolves a component's open automatic incident when the component is deleted", async () => {
+  await mockDatabase.update(schema.statusPageComponents).set({ autoCreateIncidents: true, updatedAt: new Date() }).where(eq(schema.statusPageComponents.id, componentId));
+  await mockDatabase.update(schema.monitors).set({ status: "down", lastCheckAt: new Date() }).where(eq(schema.monitors.id, monitorId));
+  await reconcileStatusPages();
+  const page = (await mockDatabase.query.statusPages.findFirst())!;
+  const result = await deleteComponent({ userId: (await mockDatabase.query.user.findFirst())!.id, organizationId: page.organizationId, projectId: page.projectId! }, pageId, componentId);
+  expect(result.ok).toBe(true);
+  const incident = await mockDatabase.query.incidents.findFirst({ with: { updates: true } });
+  expect(incident?.status).toBe("resolved");
+  expect(incident?.updates.map((update) => update.status)).toContain("resolved");
+});
+
+it("restores component status when an open public incident is deleted", async () => {
+  const page = (await mockDatabase.query.statusPages.findFirst())!;
+  await mockDatabase.delete(schema.statusPageComponentMonitors);
+  const posted = await createStatusPageIncident(
+    { userId: (await mockDatabase.query.user.findFirst())!.id, organizationId: page.organizationId, orgPendingDeletion: false, project: { id: page.projectId!, userRole: "org_owner" } },
+    { statusPageId: pageId, name: "API down", status: "investigating", impact: "major", body: "Looking", affectedComponentIds: [componentId], componentStatus: "major_outage", deliverNotifications: false },
+  );
+  expect(posted).toMatchObject({ success: true });
+  expect((await mockDatabase.query.statusPageComponents.findFirst())?.status).toBe("major_outage");
+  expect(await deleteIncident(posted.success ? posted.incident.id : "", pageId)).toMatchObject({ success: true });
   expect((await mockDatabase.query.statusPageComponents.findFirst())?.status).toBe("operational");
 });
 

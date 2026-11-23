@@ -3,6 +3,7 @@ import { getStatusPage } from "@/actions/get-status-page";
 import { PublicIncidentDetail } from "@/components/status-pages/public-incident-detail";
 import { isStatusPageBrandingHidden } from "@/lib/feature-flags";
 import { redirect } from "next/navigation";
+import { pickPublicIncident, toPublicUpdate } from "@/lib/status-pages/public-incident-dto";
 
 type IncidentDetailPageProps = {
   params: Promise<{
@@ -29,7 +30,12 @@ export default async function IncidentDetailPage({
 
   return (
     <PublicIncidentDetail
-      incident={result.incident}
+      // The same public fields as the public page: the full row would put internal columns in the RSC payload.
+      incident={{
+        ...pickPublicIncident(result.incident),
+        updates: result.incident.updates.map(toPublicUpdate),
+        statusPage: result.incident.statusPage,
+      }}
       idOrSubdomain={resolvedParams.id}
       transactionalLogo={
         statusPageResult.success
@@ -50,6 +56,11 @@ export default async function IncidentDetailPage({
       language={
         statusPageResult.success
           ? statusPageResult.statusPage?.language
+          : undefined
+      }
+      timeZone={
+        statusPageResult.success
+          ? statusPageResult.statusPage?.timezone
           : undefined
       }
       isPublicView={false}

@@ -10,6 +10,13 @@ it("renders the maintenance window of a scheduled incident", () => {
   expect(screen.getByText(/Jan 5, 2030, 02:00 AM UTC.*04:00 AM UTC/)).toBeInTheDocument();
 });
 
+it("shows times in the status page's time zone, as its emails do", () => {
+  const incident = { id: "i2", name: "Login errors", status: "investigating" as const, impact: "major" as const, createdAt: new Date("2030-01-05T02:00:00Z"), resolvedAt: null, updates: [{ id: "u1", status: "investigating" as const, body: "Looking", createdAt: new Date("2030-01-05T02:00:00Z") }] };
+  render(<PublicIncidentDetail incident={incident} idOrSubdomain="page" timeZone="Asia/Kolkata" />);
+  expect(screen.getAllByText(/07:30 AM GMT\+5:30/).length).toBeGreaterThan(0);
+  expect(screen.queryByText(/02:00 AM UTC/)).toBeNull();
+});
+
 describe("follow this incident", () => {
   const open = { id: "i1", name: "Login errors", status: "investigating" as const, impact: "major" as const, createdAt: new Date(), resolvedAt: null, updates: [] };
   const settings = { id: "p1", name: "Acme", allowPageSubscribers: true, allowIncidentSubscribers: true, allowEmailSubscribers: true };
