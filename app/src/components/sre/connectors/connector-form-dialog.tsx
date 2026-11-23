@@ -491,7 +491,7 @@ export function ConnectorFormDialog({
                       /^http:\/\//i.test(endpointUrl.trim()) && (
                         <div
                           role="status"
-                          className="mt-1 flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 p-2.5 text-xs text-amber-700 dark:text-amber-300"
+                          className="mt-1 flex items-start gap-2 rounded-md border border-warning/30 bg-warning/10 p-2.5 text-xs text-warning"
                         >
                           <ShieldAlert className="h-4 w-4 shrink-0" aria-hidden="true" />
                           <p>
