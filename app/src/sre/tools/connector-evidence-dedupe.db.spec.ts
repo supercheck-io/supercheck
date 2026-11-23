@@ -86,13 +86,21 @@ const collect = (jobId: string) =>
   });
 
 it("stores one evidence row when several runs persist the same result at once", async () => {
-  const results = await Promise.all(Array.from({ length: 20 }, (_, i) => collect(`job-${i}`)));
+  // Several rounds, each on a fresh incident, so a missing lock shows up reliably rather than by chance.
+  for (let round = 0; round < 10; round++) {
+    const [incident] = await mockDatabase
+      .insert(schema.sreIncidents)
+      .values({ organizationId: scope.organizationId, projectId: scope.projectId, incidentNumber: 100 + round, title: "Down", severity: "sev2" })
+      .returning();
+    scope = { ...scope, incidentId: incident.id };
+    const results = await Promise.all(Array.from({ length: 20 }, (_, i) => collect(`job-${round}-${i}`)));
 
-  const rows = await mockDatabase
-    .select()
-    .from(schema.sreEvidenceItems)
-    .where(eq(schema.sreEvidenceItems.incidentId, scope.incidentId));
-  expect(rows).toHaveLength(1);
-  // Every caller gets the same stored row back.
-  expect(new Set(results.map(([row]) => row.id))).toEqual(new Set([rows[0].id]));
+    const rows = await mockDatabase
+      .select()
+      .from(schema.sreEvidenceItems)
+      .where(eq(schema.sreEvidenceItems.incidentId, scope.incidentId));
+    expect(rows).toHaveLength(1);
+    // Every caller gets the same stored row back.
+    expect(new Set(results.map(([row]) => row.id))).toEqual(new Set([rows[0].id]));
+  }
 });

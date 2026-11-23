@@ -251,6 +251,23 @@ describe("regenerate request", () => {
     expect(request("regenerate-message").messageId).toBe("a9");
     expect(request("regenerate-message", "a3").messageId).toBe("a3");
   });
+
+  it("keeps naming the original reply after a regeneration stopped before any text", () => {
+    const { request, runtimeOptions } = prepare([
+      { id: "u1", role: "user", content: "q", modelId: null },
+      { id: "a1", role: "assistant", content: "a", modelId: null },
+    ]);
+    request("regenerate-message");
+    runtimeOptions.onFinish({ message: { id: "a2", role: "assistant", parts: [] }, messages: [], isAbort: true });
+    expect(request("regenerate-message").messageId).toBe("a1");
+    // A stopped regeneration that produced text is stored and replaces a1.
+    runtimeOptions.onFinish({ message: { id: "a3", role: "assistant", parts: [{ type: "text", text: "par" }] }, messages: [], isAbort: true });
+    expect(request("regenerate-message").messageId).toBe("a3");
+    // A new message stopped before any text is stored as a stub under its own id.
+    request("submit-message");
+    runtimeOptions.onFinish({ message: { id: "a4", role: "assistant", parts: [] }, messages: [], isAbort: true });
+    expect(request("regenerate-message").messageId).toBe("a4");
+  });
 });
 
 describe("InterruptedNotice", () => {
