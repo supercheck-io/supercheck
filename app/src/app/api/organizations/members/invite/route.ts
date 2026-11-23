@@ -19,6 +19,7 @@ import { withRedisDeadline } from "@/lib/security/redis-deadline";
 
 import { isOrgPendingDeletion, pendingDeletionResponse, permissionDeniedResponse } from "@/lib/deletion/org-state";
 import { requireSessionSameOrigin } from "@/lib/security/same-origin";
+import { emailAppUrl } from "@/emails/base-layout";
 // Redis-based rate limiting for distributed/serverless environments
 const INVITE_RATE_LIMIT_KEY_PREFIX = "supercheck:invite:ratelimit";
 const configuredInviteRateLimitMax = Number.parseInt(
@@ -368,7 +369,7 @@ export async function POST(request: NextRequest) {
 
     // Send email invitation
     const emailService = EmailService.getInstance();
-    const inviteUrl = `${process.env.NEXT_PUBLIC_APP_URL}/invite/${newInvitation.id}`;
+    const inviteUrl = `${emailAppUrl()}/invite/${newInvitation.id}`;
 
     const projectInfo = buildInvitationProjectInfo(role, selectedProjectDetails.map((p) => p.name));
 

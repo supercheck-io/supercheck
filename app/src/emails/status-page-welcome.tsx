@@ -1,22 +1,20 @@
-import {
-  Heading,
-  Hr,
-  Link,
-  Section,
-  Text,
-} from "@react-email/components";
+import { Section, Text } from "@react-email/components";
 import * as React from "react";
-import { BaseLayout, EmailButton } from "./base-layout";
+import { BaseLayout, EmailButton, SubscriberFooter } from "./base-layout";
 import { getTranslations } from "../lib/status-page-translations";
 
 interface StatusPageWelcomeEmailProps {
+  /** The status page\'s email logo (absolute URL); the header shows only the page name without it. */
+  logoUrl?: string;
   statusPageName: string;
   statusPageUrl: string;
   unsubscribeUrl: string;
   language?: string;
 }
 
+/** Sent once a subscriber confirms their address: what they will get, and how to stop it. */
 export const StatusPageWelcomeEmail = ({
+  logoUrl,
   statusPageName = "Example Status Page",
   statusPageUrl = "https://example.supercheck.io",
   unsubscribeUrl = "https://example.supercheck.io/unsubscribe?token=abc123",
@@ -25,177 +23,55 @@ export const StatusPageWelcomeEmail = ({
   const t = getTranslations(language);
   return (
     <BaseLayout
-      preview={`${t.emailNowSubscribed} ${statusPageName}`}
-      title={t.emailSubscriptionConfirmed}
+      preview={`${t.emailNowSubscribed} ${statusPageName}. ${t.verifiedWillReceive}`}
+      title={statusPageName}
       lang={language}
       showBrand={false}
+      headerLogoUrl={logoUrl}
       showStandardFooter={false}
       footer={
-        <>
-            <Text style={footerText}>
-              {t.emailNowSubscribed} {statusPageName}.
-            </Text>
-            <Text style={footerLinks}>
-              <Link href={statusPageUrl} style={footerLink}>
-                {t.emailViewStatusPage}
-              </Link>
-              {" • "}
-              <Link href={unsubscribeUrl} style={footerLink}>
-                {t.unsubscribe}
-              </Link>
-            </Text>
-            <Text style={copyright}>
-              {t.poweredBy}{" "}
-              <Link href="https://supercheck.io" style={footerLink}>
-                Supercheck
-              </Link>
-            </Text>
-          </>
+        <SubscriberFooter
+          notice={`${t.emailSubscriptionNotice} ${statusPageName}.`}
+          links={[
+            { href: statusPageUrl, label: t.emailViewStatusPage },
+            { href: unsubscribeUrl, label: t.unsubscribe },
+          ]}
+          poweredBy={t.poweredBy}
+        />
       }
     >
+      <Section style={contentSection}>
+        <Text style={heading}>{t.emailSubscriptionConfirmed}</Text>
+        <Text style={paragraph}>
+          {t.emailNowSubscribed} <strong style={highlight}>{statusPageName}</strong>.
+        </Text>
+        <Text style={paragraph}>{t.verifiedWillReceive}</Text>
+      </Section>
 
-          {/* Success Icon */}
-          <Section style={iconSection}>
-            <div style={iconCircle}>
-              <span style={iconText}>✓</span>
-            </div>
-          </Section>
-
-          {/* Main Content */}
-          <Section style={contentSection}>
-            <Heading as="h2" style={heading}>
-              {t.emailAllSet}
-            </Heading>
-
-            <Text style={paragraph}>
-              {t.emailWelcomeMessage}
-              {/* Some translations end mid-sentence and expect the page name; others are complete. */}
-              {!/[.!?。।]$/.test(t.emailWelcomeMessage.trim()) && (
-                <>
-                  {" "}
-                  <strong style={highlight}>{statusPageName}</strong>.
-                </>
-              )}
-            </Text>
-          </Section>
-
-          {/* Success Box */}
-          <Section style={contentSection}>
-            <table style={successBox} cellPadding="0" cellSpacing="0">
-              <tbody>
-                <tr>
-                  <td style={{ padding: "20px 24px" }}>
-                    <Text style={successTitle}>🎉 {t.emailWhatsNext}</Text>
-                    <Text style={successText}>
-                      {t.emailWhatsNextDescription}
-                    </Text>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </Section>
-
-          {/* Notification Types Box */}
-          <Section style={contentSection}>
-            <table style={infoBox} cellPadding="0" cellSpacing="0">
-              <tbody>
-                <tr>
-                  <td style={{ padding: "20px 24px" }}>
-                    <Text style={infoTitle}>
-                      {t.emailNotificationsFor}
-                    </Text>
-                    <Text style={listItem}>
-                      • {t.emailNotifIncidents}
-                    </Text>
-                    <Text style={listItem}>
-                      • {t.emailNotifMaintenance}
-                    </Text>
-                    <Text style={listItem}>
-                      • {t.emailNotifResolutions}
-                    </Text>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </Section>
-
-          {/* CTA Button */}
-          <Section style={buttonSection}>
-            <EmailButton href={statusPageUrl}>{t.emailViewStatusPage}</EmailButton>
-          </Section>
-
-          <Hr style={divider} />
-
-          {/* Pro Tip */}
-          <Section style={contentSection}>
-            <table style={tipBox} cellPadding="0" cellSpacing="0">
-              <tbody>
-                <tr>
-                  <td style={{ padding: "16px 20px" }}>
-                    <Text style={tipText}>
-                      <strong>💡 {t.emailProTip}</strong>
-                    </Text>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </Section>
-
-          {/* Spacer */}
-          <Section style={{ height: "24px" }} />
-
-
-          </BaseLayout>
+      <Section style={buttonSection}>
+        <EmailButton href={statusPageUrl}>{t.emailViewStatusPage}</EmailButton>
+      </Section>
+    </BaseLayout>
   );
 };
 
-// ============================================================================
-// STYLES
-// ============================================================================
-
-
-
-
-
-const iconSection = {
-  textAlign: "center" as const,
-  padding: "32px 32px 0",
-};
-
-const iconCircle = {
-  display: "inline-block",
-  backgroundColor: "#f3f4f6",
-  borderRadius: "50%",
-  width: "64px",
-  height: "64px",
-  lineHeight: "64px",
-  textAlign: "center" as const,
-};
-
-const iconText = {
-  color: "#111827",
-  fontSize: "32px",
-  fontWeight: "700" as const,
-};
-
 const contentSection = {
-  padding: "0 32px",
+  padding: "32px 32px 0",
 };
 
 const heading = {
   color: "#111827",
-  fontSize: "22px",
+  fontSize: "20px",
   fontWeight: "700" as const,
-  margin: "24px 0 16px",
-  lineHeight: "1.3",
-  letterSpacing: "-0.02em",
+  margin: "0 0 16px",
+  lineHeight: "1.4",
 };
 
 const paragraph = {
   color: "#4b5563",
   fontSize: "15px",
-  lineHeight: "1.65",
-  margin: "0 0 24px",
+  lineHeight: "1.6",
+  margin: "0 0 16px",
 };
 
 const highlight = {
@@ -203,102 +79,9 @@ const highlight = {
   fontWeight: "600" as const,
 };
 
-const successBox = {
-  width: "100%",
-  backgroundColor: "#ecfdf5",
-  border: "1px solid #a7f3d0",
-  borderRadius: "8px",
-  marginBottom: "16px",
-};
-
-const successTitle = {
-  color: "#047857",
-  fontSize: "15px",
-  fontWeight: "600" as const,
-  margin: "0 0 8px",
-};
-
-const successText = {
-  color: "#047857",
-  fontSize: "14px",
-  lineHeight: "1.5",
-  margin: "0",
-};
-
-const infoBox = {
-  width: "100%",
-  backgroundColor: "#f9fafb",
-  border: "1px solid #e5e7eb",
-  borderRadius: "8px",
-  marginBottom: "24px",
-};
-
-const infoTitle = {
-  color: "#4b5563",
-  fontSize: "14px",
-  fontWeight: "600" as const,
-  margin: "0 0 12px",
-};
-
-const listItem = {
-  color: "#4b5563",
-  fontSize: "14px",
-  lineHeight: "1.6",
-  margin: "0 0 4px",
-};
-
 const buttonSection = {
   textAlign: "center" as const,
   padding: "8px 32px 32px",
-};
-
-const divider = {
-  borderColor: "#e5e7eb",
-  margin: "0 32px",
-};
-
-const tipBox = {
-  width: "100%",
-  backgroundColor: "#f9fafb",
-  border: "1px solid #e5e7eb",
-  borderRadius: "8px",
-  marginTop: "24px",
-};
-
-const tipText = {
-  color: "#4b5563",
-  fontSize: "13px",
-  lineHeight: "1.5",
-  margin: "0",
-};
-
-
-
-const footerText = {
-  color: "#6b7280",
-  fontSize: "13px",
-  lineHeight: "1.5",
-  margin: "0 0 12px",
-  textAlign: "center" as const,
-};
-
-const footerLinks = {
-  color: "#6b7280",
-  fontSize: "13px",
-  margin: "0 0 12px",
-  textAlign: "center" as const,
-};
-
-const footerLink = {
-  color: "#4b5563",
-  textDecoration: "underline",
-};
-
-const copyright = {
-  color: "#9ca3af",
-  fontSize: "12px",
-  margin: "0",
-  textAlign: "center" as const,
 };
 
 export default StatusPageWelcomeEmail;

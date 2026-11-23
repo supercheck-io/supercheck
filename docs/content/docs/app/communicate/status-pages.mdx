@@ -226,7 +226,7 @@ sequenceDiagram
 <Tabs items={['Email', 'Slack', 'Webhook']}>
 <Tab value="Email">
 
-Choose **Subscribe**, enter an email, select **Subscribe via Email** and open the verification link. Unsubscribe links are signed. Resubmitting an unverified address within 5 minutes sends no new email.
+Choose **Subscribe**, enter an email, select **Subscribe via Email** and open the verification link within 24 hours. A confirmation email follows. Subscriber emails carry the page's logo, or only its name when none is set. Each update email links to the incident's public page and carries a signed unsubscribe link. Without `SECRET_ENCRYPTION_KEY`, update emails are not sent and their deliveries are marked failed. Resubmitting an unverified address within 5 minutes sends no new email.
 
 ![Email Subscription](/screenshots/status-page-subscribe-email.png)
 
@@ -274,7 +274,7 @@ The **Subscribers** tab lists subscribers with verification status, search, CSV 
 | **General** | Internal name, public headline, description, support contact, language |
 | **Custom domain** | Hostname, verification status, DNS records |
 | **Subscriptions** | Page and incident subscriptions; email, webhook and Slack channels; **RSS and iCal feeds** |
-| **Branding** | Logo (630 × 420 px recommended, max 5 MB), favicon (96 × 96 px recommended, max 5 MB), status colors |
+| **Branding** | Logo (630 × 420 px recommended, max 5 MB; also shown at the top of subscriber emails), favicon (96 × 96 px recommended, max 5 MB), status colors |
 
 **Reset** in Branding applies at once, without **Save changes**.
 

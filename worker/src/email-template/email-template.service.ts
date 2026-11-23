@@ -28,8 +28,10 @@ interface AlertParams {
   fields: Field[];
   footer: string;
   type: AlertType;
-  /** Absolute app origin; enables the "View incidents" button on failure emails. */
+  /** Absolute app origin; enables the "View incidents" link on failure emails. */
   appUrl?: string;
+  /** The monitor or run page: the email's main button. */
+  resource?: { url: string; label: string };
 }
 
 /** 1s, 59s, 1m 05s, 1h 02m. */
@@ -71,6 +73,8 @@ export class EmailTemplateService {
         footer: params.footer,
         type: params.type,
         incidentsUrl: this.appLink(params.appUrl, '/incidents'),
+        resourceUrl: params.resource?.url,
+        resourceLabel: params.resource?.label,
         manageUrl: this.appLink(params.appUrl, '/notifications'),
         appUrl: params.appUrl,
       });
@@ -101,13 +105,16 @@ export class EmailTemplateService {
           `<tr><td style="padding:6px 12px;color:#6b7280"><b>${escapeHtml(f.title)}</b></td><td style="padding:6px 12px">${escapeHtml(f.value)}</td></tr>`,
       )
       .join('');
-    const html = `<!DOCTYPE html><html><body style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto"><div style="background:${PALETTE.neutral};color:#fff;padding:20px"><h2 style="margin:0">${escapeHtml(params.title)}</h2></div><div style="padding:20px"><p style="margin:0 0 12px;font-size:12px;font-weight:bold;color:#374151">${FALLBACK_LABEL[params.type] ?? 'Alert'}</p><p>${escapeHtml(params.message)}</p><table>${rows}</table><p style="color:#6b7280;font-size:12px">${escapeHtml(params.footer)}</p></div></body></html>`;
+    const html = `<!DOCTYPE html><html><body style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto"><div style="background:${PALETTE.neutral};color:#fff;padding:20px"><h2 style="margin:0">${escapeHtml(params.title)}</h2></div><div style="padding:20px"><p style="margin:0 0 12px;font-size:12px;font-weight:bold;color:#374151">${FALLBACK_LABEL[params.type] ?? 'Alert'}</p><p>${escapeHtml(params.message)}</p><table>${rows}</table>${params.resource ? `<p><a href="${escapeHtml(params.resource.url)}">${escapeHtml(params.resource.label)}</a></p>` : ''}<p style="color:#6b7280;font-size:12px">${escapeHtml(params.footer)}</p></div></body></html>`;
     const text = [
       params.title,
       '',
       params.message,
       '',
       ...params.fields.map((f) => `${f.title}: ${f.value}`),
+      ...(params.resource
+        ? ['', `${params.resource.label}: ${params.resource.url}`]
+        : []),
       '',
       params.footer,
     ].join('\n');

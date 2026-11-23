@@ -127,6 +127,8 @@ export interface NotificationPayload {
     checkFrequency?: string;
     lastCheckTime?: string;
     duration?: number;
+    /** Recovery: seconds from the outage's first failure alert to the recovery check. */
+    outageSeconds?: number;
     details?: any;
     totalTests?: number;
     passedTests?: number;
@@ -273,31 +275,61 @@ const TYPE_LABELS = new Map<string, string>([
 export const formatAlertType = (type: string) =>
   TYPE_LABELS.get(type) ?? sentenceCase(type.replace(/_/g, ' '));
 
+/** The monitor or run page for the email's main button (the other channels show it as a field). */
+export function emailResourceLink(
+  payload: NotificationPayload,
+): { url: string; label: string } | undefined {
+  const url = payload.metadata?.dashboardUrl;
+  if (typeof url !== 'string' || !url) return undefined;
+  const label = isMonitorNotificationType(payload.type)
+    ? 'Open monitor'
+    : payload.metadata?.runId
+      ? 'Open run'
+      : 'Open jobs';
+  return { url, label };
+}
+
 /**
  * Email detail rows for monitor and job alerts alike: the shared formatted
  * fields (emoji link labels and SHOUTING status normalised), then duration,
- * run id and a clipped error, then the links.
+ * outage duration and a clipped error, then the target link. The dashboard
+ * link is the email's button instead (emailResourceLink), and the run id is
+ * an internal id, so neither is a row.
  */
 export function buildEmailFields(
   fields: FormattedNotification['fields'],
   payload: NotificationPayload,
 ): Array<{ title: string; value: string }> {
-  const rows = fields.map((f) => ({
-    title: f.title.replace(/^\p{Extended_Pictographic}\uFE0F?\s*/u, ''),
-    value:
-      f.title === 'Status'
-        ? sentenceCase(f.value)
-        : f.title === 'Time'
-          ? formatEmailTime(observedTime(payload))
-          : f.value,
-    raw: f.raw,
-  }));
+  const dashboardUrl = payload.metadata?.dashboardUrl;
+  const rows = fields
+    .filter((f) => !(f.raw && dashboardUrl && f.value === dashboardUrl))
+    .map((f) => ({
+      // Emoji off, sentence case on ("Response Time" -> "Response time"); acronyms such as URL stay.
+      title: f.title
+        .replace(/^\p{Extended_Pictographic}\uFE0F?\s*/u, '')
+        .replace(
+          / ([A-Z])([a-z]+)/g,
+          (_m, first: string, rest: string) => ` ${first.toLowerCase()}${rest}`,
+        ),
+      value:
+        f.title === 'Status'
+          ? sentenceCase(f.value)
+          : f.title === 'Time'
+            ? formatEmailTime(observedTime(payload))
+            : f.value,
+      raw: f.raw,
+    }));
   const extras: Array<{ title: string; value: string }> = [];
   const md = payload.metadata;
   if (typeof md?.duration === 'number') {
     extras.push({ title: 'Duration', value: formatDuration(md.duration) });
   }
-  if (md?.runId) extras.push({ title: 'Run ID', value: md.runId });
+  if (typeof md?.outageSeconds === 'number') {
+    extras.push({
+      title: 'Outage duration',
+      value: `${formatDuration(md.outageSeconds)} from the first alert`,
+    });
+  }
   if (md?.errorMessage) {
     extras.push({
       title: 'Error',
@@ -934,6 +966,8 @@ export class NotificationService implements OnApplicationShutdown {
         footer: formatted.footer,
         type: this.emailAlertType(payload),
         appUrl,
+        // No configured app URL: the dashboard link would point at localhost, so no button.
+        resource: appUrl ? emailResourceLink(payload) : undefined,
       });
 
       const emailContent = {
