@@ -35,6 +35,7 @@ import {
   applySourceRecovery,
   findOpenIncidentForSource,
   noteFailureReturned,
+  firedInCurrentOpenPeriod,
   recordRepeatAlert,
   getDefaultAssigneeId,
   reopenRecentlyAutoResolved,
@@ -152,13 +153,13 @@ type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
 /**
  * A more severe alert joining an open incident raises its severity, recorded like a person's edit. Never after a
- * person lowered it (renotifyStoppedAt), and never lowers.
+ * person lowered it (renotifyStoppedAt), never for a late alert from a closed open period, and never lowers.
  */
-async function escalateSeverity(tx: Tx, incidentId: string, severity: SreSeverity) {
+async function escalateSeverity(tx: Tx, incidentId: string, severity: SreSeverity, firedAt: Date) {
   const [current] = await tx
     .select({ severity: sreIncidents.severity })
     .from(sreIncidents)
-    .where(and(eq(sreIncidents.id, incidentId), ne(sreIncidents.status, "resolved"), isNull(sreIncidents.renotifyStoppedAt)))
+    .where(and(eq(sreIncidents.id, incidentId), ne(sreIncidents.status, "resolved"), isNull(sreIncidents.renotifyStoppedAt), firedInCurrentOpenPeriod(firedAt)))
     .limit(1)
     .for("update");
   if (!current || !isMoreSevere(severity, current.severity)) return;
@@ -612,7 +613,7 @@ async function createOrGetIncidentForAlertHistory(alertHistoryId: string, failur
       // A late or retried failure absorbed by an incident that is already resolved: handled, never triaged.
       if (existingIncident.status === "resolved") return { skipped: true as const, reason: "resolved_incident" as const };
       await recordRepeatAlert(tx, existingIncident.id, firedAt);
-      await escalateSeverity(tx, existingIncident.id, severity);
+      await escalateSeverity(tx, existingIncident.id, severity, firedAt);
       if (RECOVERABLE_FAILURE_TYPES.has(alert.type)) {
         await noteFailureReturned(tx, existingIncident.id, firedAt);
       }
@@ -659,7 +660,7 @@ async function createOrGetIncidentForAlertHistory(alertHistoryId: string, failur
         createdAt: new Date(),
       });
       await recordRepeatAlert(tx, declared.id, firedAt);
-      await escalateSeverity(tx, declared.id, severity);
+      await escalateSeverity(tx, declared.id, severity, firedAt);
       return {
         skipped: false as const,
         organizationId,
@@ -687,7 +688,7 @@ async function createOrGetIncidentForAlertHistory(alertHistoryId: string, failur
         })
         .onConflictDoNothing();
       await recordRepeatAlert(tx, openForSource.id, firedAt);
-      await escalateSeverity(tx, openForSource.id, severity);
+      await escalateSeverity(tx, openForSource.id, severity, firedAt);
       await noteFailureReturned(tx, openForSource.id, firedAt);
       return {
         skipped: false as const,
@@ -742,7 +743,7 @@ async function createOrGetIncidentForAlertHistory(alertHistoryId: string, failur
     }
     if (reopened) {
       await recordRepeatAlert(tx, reopened.incidentId, firedAt);
-      await escalateSeverity(tx, reopened.incidentId, severity);
+      await escalateSeverity(tx, reopened.incidentId, severity, firedAt);
       return {
         skipped: false as const,
         organizationId,
@@ -862,7 +863,7 @@ async function createOrGetIncidentForAlertHistory(alertHistoryId: string, failur
             })
             .onConflictDoNothing();
           await recordRepeatAlert(correlationTx, correlation.candidate.incidentId, firedAt);
-          await escalateSeverity(correlationTx, correlation.candidate.incidentId, severity);
+          await escalateSeverity(correlationTx, correlation.candidate.incidentId, severity, firedAt);
 
           await correlationTx.insert(sreIncidentTimelineEvents).values({
             incidentId: correlation.candidate.incidentId,
