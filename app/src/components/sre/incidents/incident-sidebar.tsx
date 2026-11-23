@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { useQueryClient } from "@tanstack/react-query";
 import { Bell, ListTree } from "lucide-react";
 
 import type { SreIncidentDetail } from "@/actions/sre-incidents";
@@ -11,6 +12,9 @@ import { TableBadge, type TableBadgeTone } from "@/components/ui/table-badge";
 import { useNow } from "@/components/sre/incidents/incident-age";
 import { Metric, PANEL_CARD, PANEL_CONTENT, PANEL_HEADER, SectionTitle } from "@/components/sre/incidents/incident-ui";
 import { WatchSreIncidentButton } from "@/components/sre/incidents/watch-sre-incident-button";
+import { IncidentFormDialog } from "@/components/status-pages/incident-form-dialog";
+import { useProjectContext } from "@/hooks/use-project-context";
+import { getSreIncidentDetailQueryKey, getSreIncidentTimelineQueryKey } from "@/lib/sre/query-keys";
 
 const ALERTS_COLLAPSED = 3;
 
@@ -42,12 +46,38 @@ export const SEVERITY_TONES: Record<SreIncidentDetail["incident"]["severity"], T
   sev4: "slate",
 };
 
-function Row({ label, children }: { label: string; children: React.ReactNode }) {
+function Row({ label, children, multiline = false }: { label: string; children: React.ReactNode; multiline?: boolean }) {
+  // A multi-line value starts level with its label, at the same height a one-line row centres on.
+  const align = multiline ? "items-start [&>*]:py-1.5" : "items-center";
   return (
-    <div className="grid min-h-8 grid-cols-[6.5rem_minmax(0,1fr)] items-center gap-x-3 text-sm">
+    <div className={`grid min-h-8 grid-cols-[6.5rem_minmax(0,1fr)] gap-x-3 text-sm ${align}`}>
       <dt className="text-muted-foreground">{label}</dt>
       <dd className="min-w-0 break-words" suppressHydrationWarning>{children}</dd>
     </div>
+  );
+}
+
+/** Posts a new public incident linked to this one, on a page that has none yet; also the retry for a failed declare-time post. */
+function PostToStatusPage({ incident, excludeStatusPageIds }: { incident: { id: string; title: string }; excludeStatusPageIds: string[] }) {
+  const [open, setOpen] = useState(false);
+  const queryClient = useQueryClient();
+  const { projectId } = useProjectContext();
+  return (
+    <>
+      <button type="button" className={PANEL_LINK} onClick={() => setOpen(true)}>
+        Post to status page
+      </button>
+      <IncidentFormDialog
+        open={open}
+        onOpenChange={setOpen}
+        sreIncident={{ id: incident.id, title: incident.title }}
+        excludeStatusPageIds={excludeStatusPageIds}
+        onSuccess={() => {
+          void queryClient.invalidateQueries({ queryKey: getSreIncidentDetailQueryKey(projectId, incident.id) });
+          void queryClient.invalidateQueries({ queryKey: getSreIncidentTimelineQueryKey(projectId, incident.id) });
+        }}
+      />
+    </>
   );
 }
 
@@ -68,6 +98,8 @@ export function IncidentSidebar({
   const alerts = allAlerts ? detail.linkedAlerts : detail.linkedAlerts.slice(0, ALERTS_COLLAPSED);
   const now = useNow();
   const firing = detail.linkedAlerts.filter((alert) => alert.status === "firing").length;
+  const publicIncidents = detail.publicIncidents ?? [];
+  const canPost = Boolean(detail.permissions.canPostToStatusPage);
 
   return (
     <div className="flex flex-col gap-4">
@@ -153,31 +185,38 @@ export function IncidentSidebar({
               {incident.alertCount} {incident.alertCount === 1 ? "time" : "times"}
               {incident.lastAlertAt ? ` (last ${formatDate(incident.lastAlertAt)})` : ""}
             </Row>
-            <Row label="Status page">
-              {detail.publicIncident ? (
-                <span className="flex flex-wrap items-center gap-x-2">
-                  <Link
-                    className={PANEL_LINK}
-                    href={`/status-pages/${detail.publicIncident.statusPageId}/public/incidents/${detail.publicIncident.id}`}
-                    // The preview has no app navigation, so it opens beside the incident.
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    <span className="capitalize">{detail.publicIncident.status.replace(/_/g, " ")}</span>
-                  </Link>
-                  {canUpdate && (
-                    <>
-                      <span aria-hidden="true" className="text-muted-foreground">·</span>
-                      <Link className={PANEL_LINK} href={`/status-pages/${detail.publicIncident.statusPageId}`}>
-                        Post update
-                      </Link>
-                    </>
-                  )}
-                </span>
-              ) : editable ? (
-                <Link className={PANEL_LINK} href="/status-pages">Post update</Link>
-              ) : (
+            <Row label={publicIncidents.length > 1 ? "Status pages" : "Status page"} multiline={publicIncidents.length > 0}>
+              {publicIncidents.length === 0 && !(editable && canPost) ? (
                 <span className="text-muted-foreground">Not published</span>
+              ) : (
+                <ul className="flex flex-col gap-0.5" data-testid="incident-status-pages">
+                  {publicIncidents.map((post) => (
+                    <li key={post.id} className="flex min-w-0 flex-wrap items-center gap-x-2">
+                      {/* The page's Status updates tab, where its post is updated; the status opens the public post. */}
+                      <Link className={`${PANEL_LINK} min-w-0 truncate`} href={`/status-pages/${post.statusPageId}?tab=incidents`}>
+                        {post.statusPageName}
+                      </Link>
+                      <span aria-hidden="true" className="text-muted-foreground">·</span>
+                      <Link
+                        className={PANEL_LINK}
+                        href={`/status-pages/${post.statusPageId}/public/incidents/${post.id}`}
+                        // The preview has no app navigation, so it opens beside the incident.
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        <span className="capitalize">{post.status.replace(/_/g, " ")}</span>
+                      </Link>
+                    </li>
+                  ))}
+                  {editable && canPost && (
+                    <li>
+                      <PostToStatusPage
+                        incident={incident}
+                        excludeStatusPageIds={publicIncidents.map((post) => post.statusPageId)}
+                      />
+                    </li>
+                  )}
+                </ul>
               )}
             </Row>
             <Row label="Notifications">

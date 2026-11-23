@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 
 import type { SreIncidentDetail } from "@/actions/sre-incidents";
 
@@ -14,6 +14,13 @@ jest.mock("@/components/sre/incidents/watch-sre-incident-button", () => ({
   WatchSreIncidentButton: ({ watching }: { watching: boolean }) => <button type="button">{watching ? "Unwatch" : "Watch"}</button>,
 }));
 
+jest.mock("@/components/status-pages/incident-form-dialog", () => ({
+  IncidentFormDialog: ({ open, sreIncident, excludeStatusPageIds }: { open: boolean; sreIncident: { id: string }; excludeStatusPageIds: string[] }) =>
+    open ? <div data-testid="post-dialog">{sreIncident.id} excluding {excludeStatusPageIds.join(",") || "none"}</div> : null,
+}));
+jest.mock("@/hooks/use-project-context", () => ({ useProjectContext: () => ({ projectId: "p1" }) }));
+jest.mock("@tanstack/react-query", () => ({ useQueryClient: () => ({ invalidateQueries: jest.fn() }) }));
+
 const now = new Date("2026-06-24T12:00:00Z");
 function detailFixture(): SreIncidentDetail {
   return {
@@ -24,8 +31,8 @@ function detailFixture(): SreIncidentDetail {
       primaryServiceId: null, primaryServiceName: null,
     },
     linkedAlerts: [],
-    publicIncident: null,
-    permissions: { canUpdate: true, canInvestigate: true, canUseLiveConnectors: true },
+    publicIncidents: [],
+    permissions: { canUpdate: true, canInvestigate: true, canUseLiveConnectors: true, canPostToStatusPage: true },
   } as unknown as SreIncidentDetail;
 }
 const alerts = (n: number) =>
@@ -54,38 +61,49 @@ describe("IncidentSidebar", () => {
     expect(screen.queryByTestId("picker-Commander")).not.toBeInTheDocument();
   });
 
-  it("status page: offers Post update when not published", () => {
+  it("status page: offers Post to status page when nothing is published yet", () => {
     render(<IncidentSidebar detail={detailFixture()} />);
-    expect(screen.getByRole("link", { name: "Post update" })).toHaveAttribute("href", "/status-pages");
+    fireEvent.click(screen.getByRole("button", { name: "Post to status page" }));
+    expect(screen.getByTestId("post-dialog")).toHaveTextContent("inc-1 excluding none");
   });
 
-  it("status page: published links its status to the public incident and editors to the status page", () => {
+  it("status page: one row per linked page, plus Post to status page for the rest", () => {
     const detail = detailFixture();
-    detail.publicIncident = { id: "pub-1", statusPageId: "sp-1", status: "in_progress" } as never;
+    detail.publicIncidents = [
+      { id: "pub-1", statusPageId: "sp-1", statusPageName: "Public status", status: "investigating", deliverNotifications: true },
+      { id: "pub-2", statusPageId: "sp-2", statusPageName: "Enterprise status", status: "resolved", deliverNotifications: false },
+    ];
     const view = render(<IncidentSidebar detail={detail} />);
-    expect(screen.getByRole("link", { name: "in progress" })).toHaveAttribute("href", "/status-pages/sp-1/public/incidents/pub-1");
-    expect(screen.getByRole("link", { name: "Post update" })).toHaveAttribute("href", "/status-pages/sp-1");
+    const rows = within(screen.getByTestId("incident-status-pages"));
+    // The page name opens where its post is updated; the status opens the public post.
+    expect(rows.getByRole("link", { name: "Public status" })).toHaveAttribute("href", "/status-pages/sp-1?tab=incidents");
+    expect(rows.getByRole("link", { name: "investigating" })).toHaveAttribute("href", "/status-pages/sp-1/public/incidents/pub-1");
+    expect(rows.getByRole("link", { name: "Enterprise status" })).toHaveAttribute("href", "/status-pages/sp-2?tab=incidents");
+    expect(rows.getByRole("link", { name: "resolved" })).toHaveAttribute("href", "/status-pages/sp-2/public/incidents/pub-2");
+    fireEvent.click(rows.getByRole("button", { name: "Post to status page" }));
+    expect(screen.getByTestId("post-dialog")).toHaveTextContent("excluding sp-1,sp-2");
     view.unmount();
-    detail.permissions.canUpdate = false;
+    detail.permissions.canPostToStatusPage = false;
     render(<IncidentSidebar detail={detail} />);
-    expect(screen.queryByRole("link", { name: "Post update" })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Public status" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Post to status page" })).not.toBeInTheDocument();
   });
 
-  it("status page: no Post update on a resolved incident that was never published", () => {
+  it("status page: nothing to post on a resolved incident that was never published", () => {
     const detail = detailFixture();
     detail.incident.status = "resolved";
     detail.incident.resolvedAt = new Date();
     render(<IncidentSidebar detail={detail} />);
     expect(screen.getByText("Not published")).toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: "Post update" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Post to status page" })).not.toBeInTheDocument();
   });
 
-  it("status page: no Post update without canUpdate", () => {
+  it("status page: nothing to post without status page permission", () => {
     const detail = detailFixture();
-    detail.permissions.canUpdate = false;
+    detail.permissions.canPostToStatusPage = false;
     render(<IncidentSidebar detail={detail} />);
     expect(screen.getByText("Not published")).toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: "Post update" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Post to status page" })).not.toBeInTheDocument();
   });
 
   it("collapses more than 3 alerts behind View all", () => {

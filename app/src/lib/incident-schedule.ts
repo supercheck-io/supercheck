@@ -38,11 +38,26 @@ export function incidentScheduleFields(
   return { scheduledFor: null, scheduledUntil: null };
 }
 
-/** "Jan 5, 2030, 02:00 UTC – Jan 5, 2030, 04:00 UTC"; UTC keeps server and client renders identical. */
+/** The status page's time zone, or UTC when it is unset or not a zone Intl knows (it would throw). */
+export function statusPageTimeZone(timeZone?: string | null): string {
+  if (!timeZone) return "UTC";
+  try {
+    new Intl.DateTimeFormat("en", { timeZone });
+    return timeZone;
+  } catch {
+    return "UTC";
+  }
+}
+
+/**
+ * "Jan 5, 2030, 02:00 UTC – Jan 5, 2030, 04:00 UTC", in the status page's time zone (as its emails use) with the
+ * zone named; a fixed zone keeps server and client renders identical.
+ */
 export function formatMaintenanceWindow(
   locale: string,
   scheduledFor: Date | string,
   scheduledUntil: Date | string,
+  timeZone?: string | null,
 ): string {
   const fmt = new Intl.DateTimeFormat(locale, {
     year: "numeric",
@@ -50,7 +65,7 @@ export function formatMaintenanceWindow(
     day: "numeric",
     hour: "2-digit",
     minute: "2-digit",
-    timeZone: "UTC",
+    timeZone: statusPageTimeZone(timeZone),
     timeZoneName: "short",
   });
   return `${fmt.format(new Date(scheduledFor))} – ${fmt.format(new Date(scheduledUntil))}`;
