@@ -27,6 +27,8 @@ for (const [address, prefix] of [
   ['fd00:ec2::254', 128],
   // IPv4 embedded in IPv6 (NAT64, 6to4, IPv4-compatible) can reach the blocked IPv4 ranges.
   ['64:ff9b::', 96],
+  // Local-use NAT64: the embedded address position varies, so the whole /48 is blocked (as in the app).
+  ['64:ff9b:1::', 48],
   ['2002::', 16],
   ['::', 96],
 ] as const) {
@@ -51,6 +53,38 @@ function assertAllowedAddress(address: LookupAddress): void {
     throw new Error(
       'Private Agent connector endpoints cannot target localhost or cloud metadata endpoints',
     );
+  }
+}
+
+const DNS_LOOKUP_TIMEOUT_MS = 10_000;
+
+/** DNS lookup bounded by a timeout and the request's abort signal, like the app's lookupBounded. */
+export async function lookupBounded(
+  hostname: string,
+  signal?: AbortSignal | null,
+): Promise<LookupAddress[]> {
+  let timer: NodeJS.Timeout | undefined;
+  let onAbort: (() => void) | undefined;
+  const bound = new Promise<never>((_, reject) => {
+    timer = setTimeout(
+      () => reject(new Error(`DNS lookup for ${hostname} timed out`)),
+      DNS_LOOKUP_TIMEOUT_MS,
+    );
+    if (signal) {
+      onAbort = () => reject(new Error('DNS lookup aborted'));
+      if (signal.aborted) onAbort();
+      else signal.addEventListener('abort', onAbort, { once: true });
+    }
+  });
+  try {
+    return await Promise.race([
+      lookup(hostname, { all: true, verbatim: true }),
+      bound,
+    ]);
+  } finally {
+    clearTimeout(timer);
+    if (onAbort) signal?.removeEventListener('abort', onAbort);
+    bound.catch(() => undefined);
   }
 }
 
@@ -122,7 +156,7 @@ export async function requestPrivateAgentEndpoint<T>(
   const family = isIP(hostname);
   const addresses: LookupAddress[] = family
     ? [{ address: hostname, family }]
-    : await lookup(hostname, { all: true, verbatim: true });
+    : await lookupBounded(hostname, init.signal);
   if (addresses.length === 0)
     throw new Error('Connector endpoint did not resolve');
   addresses.forEach(assertAllowedAddress);

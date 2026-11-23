@@ -902,6 +902,10 @@ export async function createSreConnector(
         fieldErrors: formatValidationErrors(parsed.error),
       };
     }
+    // Native evidence is read directly from Supercheck; the catalog marks it not addable.
+    if (parsed.data.type === "supercheck_native") {
+      return { success: false, error: "Supercheck evidence is built in and cannot be added as a connector" };
+    }
 
     const { userId, organizationId, orgPendingDeletion, project } = await requireProjectContext();
     if (expectedProjectId && expectedProjectId !== project.id) return { success: false, error: PROJECT_MISMATCH_MESSAGE };
