@@ -401,6 +401,15 @@ export async function writeStatusPageIncidentUpdate(
   userId: string | null,
   expectedStatus?: string,
 ) {
+  const suppresses = data.status === "resolved" && existing.sourceComponentId;
+  // Lock the component before the incident, matching reconciliation order (component, then its automatic incident).
+  if (suppresses) {
+    await tx
+      .select({ id: statusPageComponents.id })
+      .from(statusPageComponents)
+      .where(eq(statusPageComponents.id, existing.sourceComponentId!))
+      .for("update");
+  }
   if (expectedStatus) {
     const [current] = await tx
       .select({ status: incidents.status })
@@ -409,14 +418,13 @@ export async function writeStatusPageIncidentUpdate(
       .for("update");
     if (current?.status !== expectedStatus) return null;
   }
-  // Lock the component before the incident, matching reconciliation order.
   // A manual resolve of an automatically detected incident must not be
   // undone by the next reconciliation tick while the monitor is still down.
-  if (data.status === "resolved" && existing.sourceComponentId) {
+  if (suppresses) {
     await tx
       .update(statusPageComponents)
       .set({ autoIncidentSuppressed: true, updatedAt: new Date() })
-      .where(eq(statusPageComponents.id, existing.sourceComponentId));
+      .where(eq(statusPageComponents.id, existing.sourceComponentId!));
   }
 
   const [incident] = await tx

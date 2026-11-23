@@ -608,7 +608,7 @@ it("locks the automatic component before its incident to avoid deadlocking recon
     action = updateIncidentStatus({ incidentId: incident.id, statusPageId: pageId, status: "resolved", body: "Resolved manually", deliverNotifications: false, restoreComponentStatus: false });
     let waiting = false;
     for (let attempt = 0; attempt < 100; attempt++) {
-      const rows = await client`SELECT pid FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock' AND query LIKE '%update "status_page_components"%'`;
+      const rows = await client`SELECT pid FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock' AND query LIKE '%status_page_components%'`;
       if (rows.length) { waiting = true; break; }
       await new Promise((resolve) => setTimeout(resolve, 10));
     }
@@ -721,6 +721,27 @@ describe("SRE incident linked to several status pages", () => {
     const [otherProject] = await mockDatabase.insert(schema.projects).values({ organizationId: actor.organizationId, name: "Other" }).returning();
     expect(await publishSreResolutionToStatusPages({ ...actor, project: { ...actor.project, id: otherProject.id } }, sre.id, "Fixed")).toEqual({ published: [], failed: [], forbidden: false });
     expect((await mockDatabase.query.incidents.findFirst({ where: eq(schema.incidents.sreIncidentId, sre.id) }))?.status).toBe("investigating");
+  });
+
+  it("publishes a resolution while reconciliation holds the component, without deadlocking", async () => {
+    const { actor, sre } = await scope();
+    const [incident] = await mockDatabase.insert(schema.incidents).values({ statusPageId: pageId, sourceComponentId: componentId, sreIncidentId: sre.id, name: "Automatic outage", status: "investigating" }).returning();
+    let publish!: ReturnType<typeof publishSreResolutionToStatusPages>;
+    await client.begin(async (reconciler) => {
+      await reconciler`SELECT id FROM status_page_components WHERE id = ${componentId} FOR UPDATE`;
+      publish = publishSreResolutionToStatusPages(actor, sre.id, "Fixed");
+      let waiting = false;
+      for (let attempt = 0; attempt < 100; attempt++) {
+        const rows = await client`SELECT pid FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock' AND query LIKE '%status_page_components%'`;
+        if (rows.length) { waiting = true; break; }
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+      expect(waiting).toBe(true);
+      await reconciler`SET LOCAL lock_timeout = '500ms'`;
+      // The publisher waits for the component before it locks the incident, so reconciliation still gets it.
+      await reconciler`SELECT id FROM incidents WHERE id = ${incident.id} FOR UPDATE`;
+    });
+    await expect(publish).resolves.toEqual({ published: ["Status"], failed: [], forbidden: false });
   });
 
   it("does not reopen an automatic public incident resolved from SRE while its monitor still fails", async () => {

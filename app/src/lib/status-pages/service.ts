@@ -1001,6 +1001,8 @@ export async function deleteComponent(
     if (!component) return fail("not_found", "Component not found or access denied");
 
     await db.transaction(async (tx) => {
+      // Locked first, as reconciliation does, so a tick cannot open an automatic incident the lookup below misses.
+      await tx.select({ id: statusPageComponents.id }).from(statusPageComponents).where(eq(statusPageComponents.id, componentId)).for("update");
       // Reconciliation finds an automatic incident by its component, so once the component is gone it would stay open forever.
       const automatic = await tx.query.incidents.findMany({
         where: and(eq(incidents.sourceComponentId, componentId), eq(incidents.statusPageId, statusPageId), ne(incidents.status, "resolved")),
