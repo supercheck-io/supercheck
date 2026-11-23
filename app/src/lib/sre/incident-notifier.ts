@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { and, desc, eq, gte, inArray } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 
 import {
@@ -550,9 +550,10 @@ export async function notifyIncidentEvent(input: IncidentNotifyInput): Promise<b
         serviceId: sreIncidents.primaryServiceId,
         serviceName: sreServices.name,
         // The alert that opened the incident explains a `created` message: what failed, when, on which service.
-        triggerTitle: sreAlertEvents.title,
-        triggerDescription: sreAlertEvents.description,
-        triggerFiredAt: sreAlertEvents.firedAt,
+        // The link's snapshot first: the shared alert event row moves on with later failures. Older links have none.
+        triggerTitle: sql<string | null>`coalesce(${sreIncidentAlerts.alertTitle}, ${sreAlertEvents.title})`,
+        triggerDescription: sql<string | null>`coalesce(${sreIncidentAlerts.alertDescription}, ${sreAlertEvents.description})`,
+        triggerFiredAt: sql<Date | null>`coalesce(${sreIncidentAlerts.alertFiredAt}, ${sreAlertEvents.firedAt})`.mapWith(sreIncidentAlerts.alertFiredAt),
         triggerServiceName: triggerService.name,
       })
       .from(sreIncidents)

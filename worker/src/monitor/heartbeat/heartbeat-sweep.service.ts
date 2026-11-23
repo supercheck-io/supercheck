@@ -515,7 +515,7 @@ export class HeartbeatSweepService implements OnModuleInit, OnModuleDestroy {
         await this.monitorAlertService.sendWarning(
           monitor,
           'heartbeat_late',
-          `No ping from "${monitor.name}" yet: it was due ${formatMinutes(monitor.frequencyMinutes)} after the last one. The monitor goes down if none arrives within the grace period (${formatMinutes(heartbeatGraceMinutes(monitor))}).`,
+          `No ping from "${monitor.name}" yet, and the next one is overdue. The monitor goes down if none arrives within the grace period (${formatMinutes(heartbeatGraceMinutes(monitor))}).`,
           decision.lateEpisodeKey,
         );
       }

@@ -724,7 +724,10 @@ describe('HeartbeatSweepService.sweep', () => {
     expect(ctx.alerts.sendWarning).toHaveBeenCalledWith(
       expect.objectContaining({ id: 'm1' }),
       'heartbeat_late',
-      expect.stringContaining('grace period (12 minutes).'),
+      // No claimed due time: a deadline shift after an ingest outage would make it wrong.
+      expect.stringMatching(
+        /^No ping from "[^"]+" yet, and the next one is overdue\. .*grace period \(12 minutes\)\.$/,
+      ),
       expect.stringMatching(/^heartbeat_late:m1:/),
     );
     expect(ctx.monitors.recordExternalResult).not.toHaveBeenCalled();

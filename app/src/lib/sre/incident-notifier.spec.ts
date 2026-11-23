@@ -149,6 +149,18 @@ it("a created email explains the trigger alert (redacted), its service and the a
   expect(props.occurredAt).toEqual(firedAt);
 });
 
+it("reads the trigger's text and time from the link snapshot first, not the shared alert row later failures update", async () => {
+  selectQueue.push([incident], people, []);
+  await notifyIncidentEvent({ ...base, event: "created", actorUserId: null });
+  const { db } = jest.requireMock("@/utils/db") as { db: { select: jest.Mock } };
+  const fields = db.select.mock.calls[0][0] as Record<string, unknown>;
+  const dialect = new (jest.requireActual("drizzle-orm/pg-core").PgDialect)();
+  for (const [key, snapshot] of [["triggerTitle", "alert_title"], ["triggerDescription", "alert_description"], ["triggerFiredAt", "alert_fired_at"]]) {
+    const query = dialect.sqlToQuery(fields[key]).sql as string;
+    expect(query).toMatch(new RegExp(`^coalesce\\("sre_incident_alerts"."${snapshot}", "sre_alert_events"`));
+  }
+});
+
 it("uses the event time, not the render time, for other events", async () => {
   renderIncidentUpdateEmail.mockResolvedValueOnce({ subject: "s", html: "h", text: "t" });
   selectQueue.push([{ ...incident, triggerFiredAt: new Date("2020-01-01T00:00:00Z"), triggerDescription: "old alert" }], people, []);

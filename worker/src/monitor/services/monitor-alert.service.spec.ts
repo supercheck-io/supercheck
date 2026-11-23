@@ -161,6 +161,15 @@ describe('MonitorAlertService', () => {
         ),
       ).resolves.toBe(1925);
       expect(where).toHaveBeenCalledTimes(1);
+      // Only window 0's finished rows: pending claims and later windows carry other times.
+      const { PgDialect } = jest.requireActual('drizzle-orm/pg-core');
+      const query = new PgDialect().sqlToQuery(where.mock.calls[0][0]);
+      expect(query.sql).toContain('"alert_ordinal" = $');
+      expect(query.sql).toMatch(/"status" in \(\$\d+, \$\d+\)/);
+      expect(query.params).toEqual(
+        expect.arrayContaining([0, 'sent', 'failed', 'o-1']),
+      );
+      expect(query.params).not.toContain('pending');
     });
 
     it('is unknown without an outage key, without a failure row, or when the lookup fails', async () => {

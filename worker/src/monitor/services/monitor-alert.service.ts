@@ -536,8 +536,9 @@ export class MonitorAlertService {
   }
 
   /**
-   * Seconds from this outage's first failure alert (its time is the failing check's) to the recovery.
-   * Only outages with a key: a recovery shares the key of the failures it ends. Undefined when unknown.
+   * Seconds from this outage's first failure alert (a finished row of window 0, stamped with the failing
+   * check's time) to the recovery. Only outages with a key: a recovery shares the key of the failures it
+   * ends. Undefined when that first alert is not on record.
    */
   private async outageSeconds(
     monitorId: string,
@@ -556,6 +557,10 @@ export class MonitorAlertService {
             eq(schema.alertHistory.monitorId, monitorId),
             eq(schema.alertHistory.outageKey, claim.outageKey),
             eq(schema.alertHistory.type, 'monitor_failure'),
+            // The first window only, and only finished rows: a pending claim's sentAt is its claim
+            // time, and later windows or retries are not when the outage started.
+            eq(schema.alertHistory.alertOrdinal, 0),
+            inArray(schema.alertHistory.status, ['sent', 'failed']),
           ),
         );
       if (!row?.first) return undefined;

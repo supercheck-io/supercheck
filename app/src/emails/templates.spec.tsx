@@ -190,9 +190,10 @@ describe("email shell rules", () => {
     expect(emailLogoUrl({ APP_URL: "http://localhost:3000" } as unknown as NodeJS.ProcessEnv)).toBe("http://localhost:3000/supercheck-logo.png");
     expect(emailLogoUrl({} as NodeJS.ProcessEnv)).toBeUndefined();
     expect(emailLogoUrl({ APP_URL: "not-a-url" } as unknown as NodeJS.ProcessEnv)).toBeUndefined();
-    const prev = { a: process.env.NEXT_PUBLIC_APP_URL, b: process.env.APP_URL };
+    const prev = { a: process.env.NEXT_PUBLIC_APP_URL, b: process.env.APP_URL, c: process.env.BETTER_AUTH_URL };
     delete process.env.NEXT_PUBLIC_APP_URL;
     delete process.env.APP_URL;
+    delete process.env.BETTER_AUTH_URL;
     try {
       const html = render(<TestEmail />);
       expect(html).not.toContain("<img");
@@ -201,6 +202,7 @@ describe("email shell rules", () => {
     } finally {
       if (prev.a !== undefined) process.env.NEXT_PUBLIC_APP_URL = prev.a;
       if (prev.b !== undefined) process.env.APP_URL = prev.b;
+      if (prev.c !== undefined) process.env.BETTER_AUTH_URL = prev.c;
     }
   });
 
@@ -211,9 +213,10 @@ describe("email shell rules", () => {
   });
 
   it("logo URL prefers an explicit appUrl, then env vars, then no image", () => {
-    const prev = { a: process.env.NEXT_PUBLIC_APP_URL, b: process.env.APP_URL };
+    const prev = { a: process.env.NEXT_PUBLIC_APP_URL, b: process.env.APP_URL, c: process.env.BETTER_AUTH_URL };
     delete process.env.NEXT_PUBLIC_APP_URL;
     delete process.env.APP_URL;
+    delete process.env.BETTER_AUTH_URL;
     try {
       expect(render(<MonitorAlertEmail title="t" message="m" fields={[]} footer="" type="failure" appUrl="https://explicit.test/" />)).toContain('src="https://explicit.test/supercheck-logo.png"');
       process.env.APP_URL = "https://env.test";
@@ -224,6 +227,7 @@ describe("email shell rules", () => {
     } finally {
       if (prev.a === undefined) delete process.env.NEXT_PUBLIC_APP_URL; else process.env.NEXT_PUBLIC_APP_URL = prev.a;
       if (prev.b === undefined) delete process.env.APP_URL; else process.env.APP_URL = prev.b;
+      if (prev.c === undefined) delete process.env.BETTER_AUTH_URL; else process.env.BETTER_AUTH_URL = prev.c;
     }
   });
 
