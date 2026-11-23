@@ -12620,7 +12620,8 @@
         "type": "object",
         "properties": {
           "success": {
-            "type": "boolean"
+            "type": "boolean",
+            "const": true
           },
           "data": {
             "type": "object",
@@ -12636,9 +12637,18 @@
                 "type": "string",
                 "format": "uuid"
               }
-            }
+            },
+            "required": [
+              "userRole",
+              "projectId",
+              "organizationId"
+            ]
           }
-        }
+        },
+        "required": [
+          "success",
+          "data"
+        ]
       },
       "StatusPage": {
         "type": "object",
@@ -14967,7 +14977,8 @@
         "type": "object",
         "properties": {
           "success": {
-            "type": "boolean"
+            "type": "boolean",
+            "const": true
           },
           "data": {
             "type": "object",

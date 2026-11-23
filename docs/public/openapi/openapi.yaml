@@ -8863,6 +8863,7 @@ components:
       properties:
         success:
           type: boolean
+          const: true
         data:
           type: object
           properties:
@@ -8874,6 +8875,13 @@ components:
             organizationId:
               type: string
               format: uuid
+          required:
+            - userRole
+            - projectId
+            - organizationId
+      required:
+        - success
+        - data
     StatusPage:
       type: object
       properties:
@@ -10613,6 +10621,7 @@ components:
       properties:
         success:
           type: boolean
+          const: true
         data:
           type: object
           properties:
