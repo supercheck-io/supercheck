@@ -1,5 +1,11 @@
 /** @jest-environment node */
 
+// The organization run cap needs a real transaction; it is covered in auto-investigate.db.spec.ts.
+jest.mock("@/sre/lib/run-insert", () => ({
+  ...jest.requireActual("@/sre/lib/run-insert"),
+  insertSreRun: (database: { insert: (table: unknown) => { values: (row: unknown) => { returning: () => unknown } } }, values: unknown) =>
+    database.insert(jest.requireActual("@/db/schema").sreInvestigationRuns).values(values).returning(),
+}));
 jest.mock("@/utils/db", () => ({
   db: {
     select: jest.fn(),

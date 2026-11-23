@@ -48,7 +48,8 @@ describe("SRE session store", () => {
 
   it("flags a reply as superseded only inside the caller's own conversation", async () => {
     const conversationId = "018f0000-0000-7000-8000-000000000004";
-    const where = jest.fn().mockResolvedValue(undefined);
+    const returning = jest.fn().mockResolvedValue([{ id: "018f0000-0000-7000-8000-000000000005" }]);
+    const where = jest.fn(() => ({ returning }));
     const set = jest.fn(() => ({ where }));
     mockDb.update.mockReturnValue({ set });
     mockDb.query.sreChatConversations.findFirst.mockResolvedValueOnce({ id: conversationId });

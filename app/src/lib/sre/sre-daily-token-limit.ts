@@ -4,7 +4,10 @@
  * starts and incremented from the usage the model reports after each step.
  *
  * The check is not atomic with the increment, so concurrent in-flight calls can
- * overshoot the cap by their own usage. That is acceptable for a cost guard.
+ * overshoot the cap by their own usage. The overshoot is bounded: insertSreRun
+ * (`app/src/sre/lib/run-insert.ts`) keeps at most 10 investigation or triage runs
+ * of an organization in progress (an automatic one starts only below 3), each
+ * with a fixed step and output budget. That is acceptable for a cost guard.
  * Fails closed when Redis is unavailable, like the SRE rate limiter.
  */
 

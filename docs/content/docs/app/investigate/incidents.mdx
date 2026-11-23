@@ -98,7 +98,7 @@ The summary card shows a short version; the Investigation tab shows the full rep
 
 | Control | What it does |
 |---|---|
-| **Run investigation** / **Run again** | Starts a bounded, read-only AI pass over stored evidence and optional live connectors. One run per incident at a time; another start returns `409` until it finishes |
+| **Run investigation** / **Run again** | Starts a bounded, read-only AI pass over stored evidence and optional live connectors. One run per incident at a time, and at most 10 AI runs in progress per organization; another start returns `409` until one finishes |
 | **Run options** | **Include live sources** (on by default when the project has a valid connector; needs a linked service and connector investigation permission; the run is told each connector's id, type and query language, and the service's OTel name) and **Re-run with my note** |
 | **Right** / **Wrong** | On the whole investigation or one hypothesis, with an optional note up to 500 characters. Needs permission to update incidents |
 | **Re-run with my note** | Starts a new investigation that also sees your note, plus notes from earlier runs |

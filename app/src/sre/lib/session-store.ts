@@ -75,7 +75,7 @@ export type AppendSreMessageInput = z.infer<typeof appendMessageSchema>;
 export class SreSessionStoreError extends Error {
   constructor(
     message: string,
-    readonly code: "invalid_input" | "not_found" | "incident_not_found",
+    readonly code: "invalid_input" | "not_found" | "incident_not_found" | "already_superseded",
   ) {
     super(message);
     this.name = "SreSessionStoreError";
@@ -282,13 +282,28 @@ export async function markSreMessageSuperseded(
   await flagSuperseded(db, conversation.id, messageId);
 }
 
-function flagSuperseded(executor: Pick<typeof db, "update">, conversationId: string, messageId: string) {
-  return executor
+/**
+ * Claims the reply for one regeneration: only a reply not yet superseded is flagged. When two tabs regenerate the
+ * same reply, the second claim finds no row and throws, rolling back that tab's appended reply (no duplicate).
+ */
+async function flagSuperseded(executor: Pick<typeof db, "update">, conversationId: string, messageId: string) {
+  const supersededMarker = JSON.stringify([{ type: SRE_MESSAGE_SUPERSEDED }]);
+  const [claimed] = await executor
     .update(sreChatMessages)
     .set({
-      attachments: sql`coalesce(${sreChatMessages.attachments}, '[]'::jsonb) || ${JSON.stringify([{ type: SRE_MESSAGE_SUPERSEDED }])}::jsonb`,
+      attachments: sql`coalesce(${sreChatMessages.attachments}, '[]'::jsonb) || ${supersededMarker}::jsonb`,
     })
-    .where(and(eq(sreChatMessages.id, messageId), eq(sreChatMessages.conversationId, conversationId)));
+    .where(
+      and(
+        eq(sreChatMessages.id, messageId),
+        eq(sreChatMessages.conversationId, conversationId),
+        sql`not (coalesce(${sreChatMessages.attachments}, '[]'::jsonb) @> ${supersededMarker}::jsonb)`,
+      ),
+    )
+    .returning({ id: sreChatMessages.id });
+  if (!claimed) {
+    throw new SreSessionStoreError("The reply was already replaced or is not in this conversation", "already_superseded");
+  }
 }
 
 export async function archiveSreConversation(
