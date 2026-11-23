@@ -392,14 +392,22 @@ describe("a late failure with a recovery threshold above 1 (INC-4)", () => {
     expect((await incidents())[0].status).toBe("resolved");
   });
 
-  it("reads a multi-location monitor's aggregated pass count", async () => {
+  it("reads a multi-location monitor's aggregated pass count, bounded by the check cycles since it came up", async () => {
     const config = (count: number) => ({ locationConfig: { enabled: true, locations: ["us-east", "eu-central"] }, aggregatedAlertState: { consecutiveSuccessCount: count } }) as never;
+    const cycle = (group: string, at: Date) =>
+      mockDatabase.insert(schema.monitorResults).values(
+        (["us-east", "eu-central"] as const).map((location) => ({ monitorId, location, executionGroupId: group, checkedAt: at, status: "up" as const, isUp: true, consecutiveSuccessCount: 5 })),
+      );
     await mockDatabase.update(schema.monitors).set({ status: "up", lastStatusChangeAt: minutes(5), alertConfig: threshold(2), config: config(1) }).where(eq(schema.monitors.id, monitorId));
-    await passes(5); // a per-location row does not count for a multi-location monitor
+    await cycle("g1", minutes(5)); // a per-location row's own count does not count for a multi-location monitor
     await alert("monitor_failure", minutes(0));
     expect((await incidents())[0].status).toBe("triggered");
-    await mockDatabase.update(schema.monitors).set({ config: config(2) }).where(eq(schema.monitors.id, monitorId));
+    // A count kept from before this recovery (10) is bounded by the one cycle run since the monitor came up.
+    await mockDatabase.update(schema.monitors).set({ config: config(10) }).where(eq(schema.monitors.id, monitorId));
     await alert("monitor_failure", minutes(1));
+    expect((await incidents())[0].status).toBe("triggered");
+    await cycle("g2", minutes(6));
+    await alert("monitor_failure", minutes(2));
     expect((await incidents())[0].status).toBe("resolved");
   });
 

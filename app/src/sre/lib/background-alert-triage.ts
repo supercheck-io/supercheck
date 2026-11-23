@@ -314,7 +314,13 @@ export async function sourceRecoveredSince(
     let passes: number;
     if (multiLocation) {
       const state = (row.config as { aggregatedAlertState?: { consecutiveSuccessCount?: unknown } } | null)?.aggregatedAlertState;
-      passes = typeof state?.consecutiveSuccessCount === "number" ? state.consecutiveSuccessCount : 0;
+      // The stored count can predate this recovery (kept across a switch to one location and back), so it counts only
+      // up to the check cycles actually run since the monitor came up.
+      const [cycles] = await db
+        .select({ count: sql<number>`count(distinct coalesce(${monitorResults.executionGroupId}, ${monitorResults.id}::text))::int` })
+        .from(monitorResults)
+        .where(and(eq(monitorResults.monitorId, sourceId), gte(monitorResults.checkedAt, row.at)));
+      passes = Math.min(typeof state?.consecutiveSuccessCount === "number" ? state.consecutiveSuccessCount : 0, cycles?.count ?? 0);
     } else {
       const [latest] = await db
         .select({ passes: monitorResults.consecutiveSuccessCount })
