@@ -530,6 +530,7 @@ export async function notifyIncidentEvent(input: IncidentNotifyInput): Promise<b
         status: sreIncidents.status,
         acknowledgedAt: sreIncidents.acknowledgedAt,
         renotifyStoppedAt: sreIncidents.renotifyStoppedAt,
+        reopenedAt: sreIncidents.reopenedAt,
         assigneeUserId: sreIncidents.assigneeUserId,
         commanderUserId: sreIncidents.commanderUserId,
         serviceId: sreIncidents.primaryServiceId,
@@ -693,7 +694,7 @@ export async function notifyIncidentEvent(input: IncidentNotifyInput): Promise<b
     // `created` for a monitor or job whose own alert reached nobody: add the policy channels as a fallback.
     let addPolicyFallback = false;
     if (fromMonitorOrJob && (input.event === "created" || reopenedByAlert)) {
-      if (await triggerAlertDelivered(source.sourceType as "monitor" | "job", source.sourceId as string, source.dedupKey, input.triggerAlertHistoryId, source.firedAt)) {
+      if (await triggerAlertDelivered(source.sourceType as "monitor" | "job", source.sourceId as string, source.dedupKey, input.triggerAlertHistoryId, reopenedByAlert ? incident.reopenedAt : source.firedAt)) {
         return attempted === 0 || sent > 0;
       }
       addPolicyFallback = true;

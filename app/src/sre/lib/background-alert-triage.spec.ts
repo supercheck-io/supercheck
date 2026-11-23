@@ -229,7 +229,7 @@ describe("processSreBackgroundAlertTriageJob", () => {
 
     it.each([{ status: "paused", enabled: true }, { status: "up", enabled: false }])("ignores a queued failure for a paused or disabled monitor %j", async (state) => {
       selectQueue.push([{ ...monitorRow({ enabled: false, incidentEnabled: true }), ...state }]);
-      expect(await processSreBackgroundAlertTriageJob(FAILURE_JOB)).toEqual({ success: true, skipped: true, reason: "alert_not_found" });
+      expect(await processSreBackgroundAlertTriageJob(FAILURE_JOB)).toEqual({ success: true, skipped: true, reason: "source_paused" });
       expect(insertedIncident()).toBeUndefined();
     });
 
@@ -554,12 +554,17 @@ describe("startAutomaticIncidentTriage (shared with the recovery sweep)", () => 
     expect(startSreIncidentTriage).toHaveBeenLastCalledWith({ ...scope, userId: null, origin: "auto" });
   });
   describe("records a terminal skip on the incident timeline, once (INC-6)", () => {
-    const skipped = () =>
-      inserts.filter((value) => (value as { eventData?: { state?: string } }).eventData?.state === "triage_skipped") as Array<{
-        incidentId: string;
-        actorType: string;
-        eventData: { reason: string; comment: string };
-      }>;
+    // The entry is one guarded INSERT ... SELECT (atomic, once per open period; covered against a real database).
+    const skipped = () => {
+      const { PgDialect } = jest.requireActual("drizzle-orm/pg-core");
+      return tx.execute.mock.calls
+        .map(([query]) => new PgDialect().sqlToQuery(query))
+        .filter(({ sql }: { sql: string }) => sql.includes("triage_skipped"))
+        .map(({ params }: { params: unknown[] }) => ({
+          incidentId: params.find((p) => p === "inc-1"),
+          eventData: JSON.parse(params.find((p) => typeof p === "string" && p.startsWith("{")) as string),
+        }));
+    };
     beforeEach(() => {
       selectQueue.length = 0;
       inserts.length = 0;
@@ -577,16 +582,7 @@ describe("startAutomaticIncidentTriage (shared with the recovery sweep)", () => 
     ])("%s", async (reason, arrange, message) => {
       arrange();
       expect(await startAutomaticIncidentTriage(scope)).toEqual({ skipped: true, reason });
-      expect(skipped()).toEqual([
-        { incidentId: "inc-1", eventType: "state_change", actorType: "system", createdAt: expect.any(Date), eventData: { state: "triage_skipped", reason, comment: expect.stringMatching(message) } },
-      ]);
-    });
-
-    it("not again when the incident already has one", async () => {
-      selectQueue.push([{ id: "event-1" }]);
-      (sreDailyTokenLimitResponse as jest.Mock).mockResolvedValueOnce({ status: 429 });
-      await startAutomaticIncidentTriage(scope);
-      expect(skipped()).toEqual([]);
+      expect(skipped()).toEqual([{ incidentId: "inc-1", eventData: { state: "triage_skipped", reason, comment: expect.stringMatching(message) } }]);
     });
 
     it("not for automation off, a busy incident or a deferrable skip", async () => {

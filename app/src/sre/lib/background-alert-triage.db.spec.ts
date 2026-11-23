@@ -22,7 +22,7 @@ jest.mock("@/lib/ai/ai-provider", () => ({ validateAIConfiguration: jest.fn() })
 jest.mock("@/lib/auth-context", () => ({ requireAuthContext: jest.fn(), isAuthError: () => false }));
 jest.mock("@/lib/rbac/middleware", () => ({ checkPermissionWithContext: () => true }));
 
-import { processSreBackgroundAlertTriageJob } from "./background-alert-triage";
+import { processSreBackgroundAlertTriageJob, recordTriageSkipped } from "./background-alert-triage";
 import { GET as getAlertHistory } from "@/app/api/alerts/history/route";
 import { requireAuthContext } from "@/lib/auth-context";
 import { resolveIncident } from "@/lib/sre/incident-lifecycle";
@@ -620,4 +620,28 @@ it("leaves the alert firing when the recovery is older than the latest failure",
   await alert("monitor_recovery", minutes(10));
   const rows = await mockDatabase.select({ status: schema.sreAlertEvents.status }).from(schema.sreAlertEvents);
   expect(rows.map((r) => r.status)).toEqual(["firing"]);
+});
+
+it("records a skipped AI triage once per open period, also when two writers race (INC-6)", async () => {
+  await alert("monitor_failure", minutes(0));
+  const [row] = await incidents();
+  const skips = async () => (await states(row.id)).filter((state) => state === "triage_skipped");
+  await Promise.all([recordTriageSkipped(row.id, "daily_limit"), recordTriageSkipped(row.id, "daily_limit")]);
+  await recordTriageSkipped(row.id, "ai_not_configured");
+  expect(await skips()).toHaveLength(1);
+  // A reopened incident is a new open period: it says why it got no triage either.
+  await mockDatabase.update(schema.sreIncidents).set({ reopenedAt: new Date(Date.now() + 1000) }).where(eq(schema.sreIncidents.id, row.id));
+  await new Promise((resolve) => setTimeout(resolve, 1100));
+  await recordTriageSkipped(row.id, "daily_limit");
+  expect(await skips()).toHaveLength(2);
+});
+
+it("raises severity when a more severe failure reopens an incident (INC-8)", async () => {
+  await alert("job_failed", minutes(0), { job: true });
+  await alert("job_success", minutes(10), { job: true });
+  expect((await incidents())[0]).toMatchObject({ status: "resolved", severity: "sev2" });
+  await alert("job_timeout", minutes(15), { job: true });
+  const rows = await incidents();
+  expect(rows).toHaveLength(1);
+  expect(rows[0]).toMatchObject({ status: "triggered", severity: "sev1" });
 });

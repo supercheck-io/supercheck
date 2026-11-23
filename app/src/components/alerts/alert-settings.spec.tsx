@@ -137,11 +137,14 @@ describe("AlertSettings job incident toggle", () => {
     expect(toggle()).toBeInTheDocument();
   });
 
-  it("saves incidentEnabled=false when the last failure/timeout alert is cleared", () => {
+  it("restores the toggle as it was when a failure alert is turned back on", () => {
     const onChange = jest.fn();
     render(<AlertSettings value={base} context="job" onChange={onChange} />);
     fireEvent.click(screen.getByLabelText(/Job failures/));
-    expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ alertOnFailure: false, incidentEnabled: false }));
+    expect(toggle()).not.toBeInTheDocument();
+    fireEvent.click(screen.getByLabelText(/Job failures/));
+    expect(toggle()).toBeChecked();
+    expect(onChange).toHaveBeenLastCalledWith(expect.not.objectContaining({ incidentEnabled: false }));
   });
 
   it("keeps the toggle for a monitor without a failure alert", () => {

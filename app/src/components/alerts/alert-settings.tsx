@@ -175,15 +175,11 @@ export function AlertSettings({
   const updateConfig = useCallback(
     (updates: Partial<AlertConfig>) => {
       const newConfig = { ...config, ...updates };
-      // A job opens incidents only from a delivered failure or timeout alert; never save a flag that cannot fire.
-      if (context === "job" && !newConfig.alertOnFailure && !newConfig.alertOnTimeout && newConfig.incidentEnabled !== false) {
-        newConfig.incidentEnabled = false;
-      }
       setConfig(newConfig);
       // Validation is handled by the useEffect below
       onChange?.(newConfig);
     },
-    [config, onChange, context]
+    [config, onChange]
   );
 
   // Auto-enable SSL alerts when SSL checking is enabled, disable when disabled
@@ -287,6 +283,8 @@ export function AlertSettings({
   const recoveryAlertsOn =
     context === "job" ? !!config.alertOnSuccess : !!config.alertOnRecovery;
   // Monitors follow the shared rule (opt-in with alerts off); jobs keep their own default.
+  // A job opens incidents only from a failure or timeout alert: without one the toggle is hidden (its stored value
+  // cannot fire, and is kept so turning the alert back on restores it).
   const jobHasNoIncidentTrigger = context === "job" && !config.alertOnFailure && !config.alertOnTimeout;
   const incidentsOn =
     context === "monitor"

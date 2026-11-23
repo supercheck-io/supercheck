@@ -193,25 +193,24 @@ const TRIAGE_SKIP_MESSAGES: Record<TriageSkipReason, string> = {
  * repeat the same skip. Best effort.
  */
 export async function recordTriageSkipped(incidentId: string, reason: TriageSkipReason, message?: string) {
+  const eventData = { state: "triage_skipped", reason, comment: message ?? TRIAGE_SKIP_MESSAGES[reason] };
   try {
-    const [existing] = await db
-      .select({ id: sreIncidentTimelineEvents.id })
-      .from(sreIncidentTimelineEvents)
-      .where(
-        and(
-          eq(sreIncidentTimelineEvents.incidentId, incidentId),
-          eq(sreIncidentTimelineEvents.eventType, "state_change"),
-          sql`${sreIncidentTimelineEvents.eventData}->>'state' = 'triage_skipped'`,
-        ),
-      )
-      .limit(1);
-    if (existing) return;
-    await db.insert(sreIncidentTimelineEvents).values({
-      incidentId,
-      eventType: "state_change",
-      eventData: { state: "triage_skipped", reason, comment: message ?? TRIAGE_SKIP_MESSAGES[reason] },
-      actorType: "system",
-      createdAt: new Date(),
+    // One statement under a per-incident lock, so two replicas cannot both write it; a reopened incident's new open
+    // period gets its own entry.
+    await db.transaction(async (tx) => {
+      await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`triage-skipped:${incidentId}`}))`);
+      await tx.execute(sql`
+        insert into ${sreIncidentTimelineEvents} (id, incident_id, event_type, event_data, actor_type, created_at)
+        select uuidv7(), i.id, 'state_change', ${JSON.stringify(eventData)}::jsonb, 'system', now()
+        from ${sreIncidents} i
+        where i.id = ${incidentId}
+          and not exists (
+            select 1 from ${sreIncidentTimelineEvents} e
+            where e.incident_id = i.id
+              and e.event_type = 'state_change'
+              and e.event_data->>'state' = 'triage_skipped'
+              and e.created_at >= coalesce(i.reopened_at, i.created_at)
+          )`);
     });
   } catch (error) {
     logger.warn({ error, incidentId }, "Triage-skipped timeline write failed");
@@ -353,8 +352,6 @@ async function syntheticFailureAlert(failure: SourceFailureInput) {
     .from(monitors)
     .where(and(eq(monitors.id, failure.sourceId), liveMonitor()))
     .limit(1);
-  // A failure queued before the monitor was paused or disabled must not open or update an incident.
-  if (monitor && (monitor.status === "paused" || !monitor.enabled)) return undefined;
   // Only a monitor that opted in to incidents without alerts, or one that alerts with incidents on, opens one here.
   if (!monitor || !incidentsEnabled(monitor.alertConfig)) return undefined;
   return {
@@ -467,8 +464,9 @@ async function createOrGetIncidentForAlertHistory(alertHistoryId: string, failur
     return { skipped: true as const, reason: "recovery_handled" as const };
   }
 
-  // After the recovery branch, so a paused monitor's open incident still resolves: a failure queued before the
-  // monitor was paused or disabled must not open or update an incident (the sweep never resolves paused monitors).
+  // After the recovery branch, so a paused monitor's open incident still resolves: a failure (alert row or source
+  // signal) queued before the monitor was paused or disabled must not open or update an incident (the sweep never
+  // resolves paused monitors).
   if (sourceType === "monitor" && (alert.monitorStatus === "paused" || alert.monitorEnabled === false)) {
     return { skipped: true as const, reason: "source_paused" as const };
   }
@@ -737,6 +735,7 @@ async function createOrGetIncidentForAlertHistory(alertHistoryId: string, failur
     }
     if (reopened) {
       await recordRepeatAlert(tx, reopened.incidentId, firedAt);
+      await escalateSeverity(tx, reopened.incidentId, severity);
       return {
         skipped: false as const,
         organizationId,
