@@ -14,10 +14,32 @@ describe('EmailTemplateService (local render)', () => {
       type: 'failure',
       appUrl: 'https://app.example.com/',
     });
-    expect(r.subject).toBe('[Supercheck] Monitor Down: API');
+    expect(r.subject).toBe('[Supercheck] Monitor down: API');
     expect(r.html).toContain('View incidents');
     expect(r.html).toContain('https://app.example.com/incidents');
     expect(r.text).toContain('API is down');
+  });
+
+  it('makes the monitor or run the main button and keeps incidents as a text link', async () => {
+    const r = await service.renderMonitorAlertEmail({
+      title: 'Monitor Down - API',
+      message: 'API is down',
+      fields: [],
+      footer: '',
+      type: 'failure',
+      appUrl: 'https://app.example.com',
+      resource: {
+        url: 'https://app.example.com/notification-monitor/m1',
+        label: 'Open monitor',
+      },
+    });
+    expect(r.html).toMatch(
+      /<a[^>]*href="https:\/\/app.example.com\/notification-monitor\/m1"[^>]*background-color:#111827/,
+    );
+    expect(r.html).toContain('Open monitor');
+    expect(r.html).toMatch(
+      /<a[^>]*href="https:\/\/app.example.com\/incidents"[^>]*>View incidents<\/a>/,
+    );
   });
 
   it('Job Completed email: inbox preview is a short summary and the text part keeps one detail per line', async () => {
@@ -100,7 +122,7 @@ describe('EmailTemplateService (local render)', () => {
       type: 'failure',
       appUrl: 'https://app.example.com',
     });
-    expect(r.subject).toBe('[Supercheck] Job Failed: Owner\'s "nightly" & co');
+    expect(r.subject).toBe('[Supercheck] Job failed: Owner\'s "nightly" & co');
     expect(r.html).toContain('Owner&#x27;s');
     expect(r.html).not.toMatch(/&amp;(#|quot;|amp;)/);
     expect(r.text).toContain('Owner\'s "nightly" & co');
@@ -117,7 +139,7 @@ describe('EmailTemplateService (local render)', () => {
       footer: '',
       type: 'failure',
     });
-    expect(r.subject).toBe('[Supercheck] Job Failed: Nightly');
+    expect(r.subject).toBe('[Supercheck] Job failed: Nightly');
     expect(r.html).toContain('boom');
     expect(r.html).not.toContain('View incidents');
   });
@@ -156,9 +178,14 @@ describe('EmailTemplateService (local render)', () => {
       fields: [{ title: 'k', value: '<script>' }],
       footer: 'f',
       type: 'failure',
+      resource: { url: 'https://app.io/runs/"x"', label: 'Open run' },
     });
     expect(r.subject).toBe('[Supercheck] T <b>');
     expect(r.html).toContain('&lt;script&gt;');
+    expect(r.html).toContain(
+      '<a href="https://app.io/runs/&quot;x&quot;">Open run</a>',
+    );
+    expect(r.text).toContain('Open run: https://app.io/runs/"x"');
     expect(r.html).toContain('background:#1f2937');
     expect(r.html).toContain('>Failing<');
     expect(r.text).toContain('k: <script>');

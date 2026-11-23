@@ -13,6 +13,10 @@ jest.mock("next/cache", () => ({ revalidatePath: jest.fn() }));
 jest.mock("@/lib/middleware/plan-enforcement", () => ({
   checkSubscriberLimit: jest.fn(),
 }));
+const sendSubscriberWelcome = jest.fn().mockResolvedValue(true);
+jest.mock("@/lib/incident-notifications/send-subscriber-welcome", () => ({
+  sendSubscriberWelcome: (...args: unknown[]) => sendSubscriberWelcome(...args),
+}));
 
 import { db } from "@/utils/db";
 import { checkSubscriberLimit } from "@/lib/middleware/plan-enforcement";
@@ -30,7 +34,8 @@ const mockDb = db as unknown as {
 };
 const limit = checkSubscriberLimit as jest.Mock;
 
-const updateWhere = jest.fn().mockResolvedValue(undefined);
+const updateReturning = jest.fn().mockResolvedValue([{ id: "sub-1" }]);
+const updateWhere = jest.fn(() => ({ returning: updateReturning }));
 
 function useTransaction(execute: jest.Mock) {
   mockDb.transaction.mockImplementation((cb: (tx: unknown) => unknown) =>
@@ -57,6 +62,7 @@ beforeEach(() => {
   });
   mockDb.update.mockReturnValue({ set: () => ({ where: updateWhere }) });
   useTransaction(jest.fn().mockResolvedValue([{ value: "0" }]));
+  updateReturning.mockResolvedValue([{ id: "sub-1" }]);
 });
 
 afterEach(() => jest.restoreAllMocks());
@@ -97,6 +103,31 @@ describe("verifySubscriber", () => {
     expect(result.success).toBe(false);
     expect(result.message).toMatch(/retry/i);
     expect(updateWhere).not.toHaveBeenCalled();
+  });
+
+  it("sends the welcome email once, after it activated the subscriber (F10)", async () => {
+    limit.mockResolvedValue({ allowed: true, limit: 5 });
+    const result = await verifySubscriber(token);
+    expect(result.success).toBe(true);
+    expect(sendSubscriberWelcome).toHaveBeenCalledTimes(1);
+    expect(sendSubscriberWelcome).toHaveBeenCalledWith("sub-1");
+  });
+
+  it("sends no welcome when a concurrent request already activated the row", async () => {
+    limit.mockResolvedValue({ allowed: true, limit: 5 });
+    updateReturning.mockResolvedValue([]);
+    const result = await verifySubscriber(token);
+    expect(result.success).toBe(true);
+    expect(sendSubscriberWelcome).not.toHaveBeenCalled();
+  });
+
+  it("sends no welcome for an already verified subscriber or when the limit blocks activation", async () => {
+    mockDb.query.statusPageSubscribers.findFirst.mockResolvedValue({ id: "sub-1", statusPageId: "page-1", verifiedAt: new Date(), createdAt: new Date() });
+    await verifySubscriber(token);
+    mockDb.query.statusPageSubscribers.findFirst.mockResolvedValue({ id: "sub-1", statusPageId: "page-1", verifiedAt: null, createdAt: new Date(), updatedAt: new Date() });
+    limit.mockResolvedValueOnce({ allowed: false, error: "Subscriber limit reached." });
+    await verifySubscriber(token);
+    expect(sendSubscriberWelcome).not.toHaveBeenCalled();
   });
 
   it("activates without a limit check when the page has no organization", async () => {

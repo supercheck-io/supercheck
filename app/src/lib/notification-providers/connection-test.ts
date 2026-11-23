@@ -119,10 +119,7 @@ async function testSMTPConnection(
     const emailService = EmailService.getInstance();
 
     // Render email using react-email template
-    const emailContent = await renderTestEmail({
-      testMessage:
-        "This is a test email to verify your SMTP configuration is working correctly.",
-    });
+    const emailContent = await renderTestEmail();
 
     // Send sequentially via a single SMTP connection so all recipients are
     // reached even on servers that rate-limit concurrent connections

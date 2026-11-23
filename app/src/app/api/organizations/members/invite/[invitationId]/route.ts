@@ -16,6 +16,7 @@ import { getRedisConnection } from "@/lib/queue";
 
 import { isOrgPendingDeletion, pendingDeletionResponse, permissionDeniedResponse } from "@/lib/deletion/org-state";
 import { requireSessionSameOrigin } from "@/lib/security/same-origin";
+import { emailAppUrl } from "@/emails/base-layout";
 // Rate limiting for resend operations (more restrictive than invite creation)
 const RESEND_RATE_LIMIT_KEY_PREFIX = "supercheck:invite:resend:ratelimit";
 const RESEND_RATE_LIMIT_MAX = 5; // Max 5 resends per hour per user
@@ -317,7 +318,7 @@ export async function POST(
 
     // Send email invitation
     const emailService = EmailService.getInstance();
-    const inviteUrl = `${process.env.NEXT_PUBLIC_APP_URL}/invite/${invite.id}`;
+    const inviteUrl = `${emailAppUrl()}/invite/${invite.id}`;
 
     const assignedIds = Array.isArray(invite.selectedProjects)
       ? invite.selectedProjects.filter((id): id is string => typeof id === "string" && isUuid(id))

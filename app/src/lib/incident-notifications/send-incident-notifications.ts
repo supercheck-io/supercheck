@@ -6,12 +6,15 @@ import { incidents, statusPages, incidentComponents } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { EmailService } from "@/lib/email-service";
 import { renderIncidentNotificationEmail } from "@/lib/email-renderer";
+import { statusPageEmailLogoUrl } from "@/lib/incident-notifications/status-page-email-logo";
 import {
   getTranslations,
   getLocaleForLanguage,
 } from "@/lib/status-page-translations";
 import { getPublicStatusPageUrl } from "@/lib/domain-utils";
 import { getEffectiveStatusPageDomain } from "@/lib/status-page-domain";
+import { formatMaintenanceWindow, statusPageTimeZone } from "@/lib/incident-schedule";
+import { emailAppUrl } from "@/emails/base-layout";
 
 /**
  * Send incident notification emails to all verified subscribers
@@ -123,10 +126,7 @@ export async function sendIncidentNotifications(
     }
 
     // Construct notification URLs
-    const baseUrl =
-      process.env.NEXT_PUBLIC_APP_URL ||
-      process.env.APP_URL ||
-      "http://localhost:3000";
+    const baseUrl = emailAppUrl();
     const statusPageUrl = getPublicStatusPageUrl({
       subdomain: statusPage.subdomain,
       customDomain: statusPage.customDomain,
@@ -144,16 +144,24 @@ export async function sendIncidentNotifications(
         ? new Intl.DateTimeFormat(getLocaleForLanguage(language), {
             dateStyle: "long",
             timeStyle: "long", // "long" includes the time zone name; timeZoneName cannot be combined with timeStyle
-            timeZone: statusPage.timezone || "UTC",
+            timeZone,
           }).format(date)
         : t.emailJustNow;
     };
 
+    const incidentStatus = update?.status ?? incident.status;
+    const timeZone = statusPageTimeZone(statusPage.timezone);
     const emailParamsTemplate = {
       statusPageName: statusPage.name,
+      logoUrl: statusPageEmailLogoUrl(statusPage.transactionalLogo),
       statusPageUrl,
+      incidentUrl: `${statusPageUrl.replace(/\/+$/, "")}/incidents/${incident.id}`,
+      scheduledWindow:
+        incidentStatus === "scheduled" && incident.scheduledFor && incident.scheduledUntil
+          ? formatMaintenanceWindow(getLocaleForLanguage(language), incident.scheduledFor, incident.scheduledUntil, timeZone)
+          : undefined,
       incidentName: incident.name,
-      incidentStatus: update?.status ?? incident.status,
+      incidentStatus,
       incidentImpact: incident.impact,
       incidentDescription:
         (update ? update.body : incident.body) || t.emailNoDetails,
@@ -170,12 +178,18 @@ export async function sendIncidentNotifications(
     let successCount = 0;
     let failureCount = 0;
 
-    // Signed links need SECRET_ENCRYPTION_KEY; without it the emails carry no unsubscribe link.
-    const canSign = Boolean(process.env.SECRET_ENCRYPTION_KEY);
-    if (!canSign) {
-      console.warn(
-        "[Incident Notifications] SECRET_ENCRYPTION_KEY is not set; omitting unsubscribe links",
+    // Signed links need SECRET_ENCRYPTION_KEY. A subscriber email without a working unsubscribe link (and
+    // List-Unsubscribe header) must not be sent, so the delivery fails loudly until the key is configured.
+    if (!process.env.SECRET_ENCRYPTION_KEY) {
+      console.error(
+        "[Incident Notifications] SECRET_ENCRYPTION_KEY is not set; subscriber emails need a signed unsubscribe link, so none were sent",
       );
+      return {
+        success: false,
+        message: "SECRET_ENCRYPTION_KEY is not set; subscriber emails were not sent",
+        sentCount: 0,
+        failedCount: verifiedSubscribers.length,
+      };
     }
 
     const sendPromises = verifiedSubscribers.map(async (subscriber) => {
@@ -188,10 +202,8 @@ export async function sendIncidentNotifications(
         }
 
         // Use per-subscriber unsubscribe token
-        const unsubscribeToken = canSign ? signUnsubscribeToken(subscriber.id) : null;
-        const unsubscribeUrl = unsubscribeToken
-          ? `${baseUrl}/status/unsubscribe/${unsubscribeToken}`
-          : undefined;
+        const unsubscribeToken = signUnsubscribeToken(subscriber.id);
+        const unsubscribeUrl = `${baseUrl}/status/unsubscribe/${unsubscribeToken}`;
 
         const emailParams = {
           ...emailParamsTemplate,
@@ -206,12 +218,10 @@ export async function sendIncidentNotifications(
           subject: emailContent.subject,
           text: emailContent.text,
           html: emailContent.html,
-          headers: unsubscribeToken
-            ? {
-                "List-Unsubscribe": `<${baseUrl}/api/status-pages/unsubscribe/${unsubscribeToken}>`,
-                "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
-              }
-            : undefined,
+          headers: {
+            "List-Unsubscribe": `<${baseUrl}/api/status-pages/unsubscribe/${unsubscribeToken}>`,
+            "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+          },
         });
 
         if (result.success) {

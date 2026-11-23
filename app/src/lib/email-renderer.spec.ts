@@ -33,7 +33,7 @@ describe("renderIncidentUpdateEmail", () => {
       incidentUrl: "https://app.io/incidents/12",
       actorName: "Dana",
     });
-    expect(r.subject).toBe("[Supercheck] Incident resolved by Dana: #12 API errors (SEV2)");
+    expect(r.subject).toBe("[SEV2] #12 API errors: Incident resolved by Dana");
     expect(r.html).toContain("Open incident #12");
     expect(r.text).toContain("API errors");
   });
@@ -48,7 +48,7 @@ describe("render* functions", () => {
     ["status page welcome", () => renderStatusPageWelcomeEmail({ statusPageName: "Acme Status", statusPageUrl: "https://s.io", unsubscribeUrl: "https://s.io/unsub/5" }), /Acme Status$/, "https://s.io/unsub/5"],
     ["status page incident", () => renderIncidentNotificationEmail({ statusPageName: "Acme Status", statusPageUrl: "https://s.io", incidentName: "DB outage", incidentStatus: "investigating", incidentImpact: "major", incidentDescription: "Looking into it", affectedComponents: ["API"], updateTimestamp: "2026-01-01T00:00:00Z", unsubscribeUrl: "https://s.io/unsub/6" }), /^\[INVESTIGATING\] DB outage - Acme Status$/, "DB outage"],
     ["test email", () => renderTestEmail({ testMessage: "hello world" }), "[Supercheck] Test email", "hello world"],
-    ["usage notification", () => renderUsageNotificationEmail({ organizationName: "Acme", notificationType: "usage_80_percent", resourceType: "playwright", usageAmount: 80, usageLimit: 100, usagePercentage: 80, billingPageUrl: "https://app.io/billing", periodEndDate: "2026-02-01" }), "[Supercheck] 80% usage warning: Acme", "Acme"],
+    ["usage notification", () => renderUsageNotificationEmail({ organizationName: "Acme", notificationType: "usage_80_percent", resourceType: "playwright", usageAmount: 80, usageLimit: 100, usagePercentage: 80, billingPageUrl: "https://app.io/billing", periodEndDate: "2026-02-01" }), "[Supercheck] Usage at 80% of your plan: Acme", "Acme"],
     ["trial notification", () => renderTrialNotificationEmail({ organizationName: "Acme", kind: "midway", daysRemaining: 7, subscribeUrl: "https://app.io/subscribe" }), /^\[Supercheck\] .+: Acme$/, "https://app.io/subscribe"],
   ];
 
@@ -73,6 +73,6 @@ describe("render* functions", () => {
       billingPageUrl: "https://app.io/billing",
       periodEndDate: "2026-02-01",
     });
-    expect(r.subject).toBe("[Supercheck] Usage alert: Acme");
+    expect(r.subject).toBe("[Supercheck] Usage update: Acme");
   });
 });
