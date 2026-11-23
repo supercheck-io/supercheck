@@ -429,4 +429,32 @@ describe("SreAiConsole", () => {
     rerender(<SreAiConsole initialHistories={[...history]} onRequestHistoryRefresh={refresh} />);
     expect(screen.queryByText("first chat question")).not.toBeInTheDocument();
   });
+
+  it("drops a pending reload when the user opens another saved chat before the refresh lands", () => {
+    const histories = (aReply: string) => [
+      {
+        conversationId: "chat-a",
+        incidentId: null,
+        title: "Chat A",
+        updatedAt: "2026-10-09",
+        messages: [{ id: "a0", role: "assistant" as const, content: aReply, modelId: null }],
+      },
+      {
+        conversationId: "chat-b",
+        incidentId: null,
+        title: "Chat B",
+        updatedAt: "2026-10-08",
+        messages: [{ id: "b0", role: "assistant" as const, content: "chat B reply", modelId: null }],
+      },
+    ];
+    const refresh = jest.fn();
+    const { rerender } = render(<SreAiConsole initialHistories={histories("chat A reply")} onRequestHistoryRefresh={refresh} />);
+    fireEvent.click(screen.getByRole("button", { name: "Reply replaced" }));
+    fireEvent.click(screen.getByRole("button", { name: "History" }));
+    fireEvent.click(screen.getByText("Chat B"));
+    rerender(<SreAiConsole initialHistories={histories("chat A saved reply")} onRequestHistoryRefresh={refresh} />);
+    const thread = screen.getByTestId("chat-thread");
+    expect(thread).toHaveTextContent("chat B reply");
+    expect(thread).not.toHaveTextContent("chat A");
+  });
 });
