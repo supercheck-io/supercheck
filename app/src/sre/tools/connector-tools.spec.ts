@@ -774,9 +774,11 @@ describe("Copilot connector service scope", () => {
       const evidenceValues = jest.fn(() => ({
         returning: async () => [{ id: "saved-evidence", title: "Health" }],
       }));
+      const txExecute = jest.fn();
       db.transaction.mockImplementation(
         async (callback: (tx: unknown) => unknown) =>
           callback({
+            execute: txExecute,
             select: () => ({
               from: () => ({ where: () => ({ limit: async () => [] }) }),
             }),
@@ -794,6 +796,8 @@ describe("Copilot connector service scope", () => {
       });
       if (incidentId) {
         expect(db.transaction).toHaveBeenCalled();
+        // The per-incident dedupe lock is taken before the existing-row lookup.
+        expect(txExecute).toHaveBeenCalledTimes(1);
         expect(evidenceValues).toHaveBeenCalledWith(expect.objectContaining({ title: expectedTitle }));
       } else expect(result.evidence[0]).toMatchObject({ title: expectedTitle });
       if (incidentId) expect(db.transaction).toHaveBeenCalled();

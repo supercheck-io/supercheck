@@ -1,4 +1,4 @@
-import { and, desc, DrizzleQueryError, eq, ilike, inArray, isNull, like, or } from "drizzle-orm";
+import { and, desc, DrizzleQueryError, eq, ilike, inArray, isNull, like, or, sql } from "drizzle-orm";
 import { tool } from "ai";
 import { z } from "zod";
 
@@ -437,7 +437,7 @@ const KNOWLEDGE_TITLE_LABELS: Partial<Record<string, string>> = {
   notion: "Notion",
 };
 
-async function collectPrivateAgentEvidence(input: {
+export async function collectPrivateAgentEvidence(input: {
   scope: SreConnectorToolScope;
   connector: ConnectorRow;
   jobId: string;
@@ -471,6 +471,9 @@ async function collectPrivateAgentEvidence(input: {
   }
 
   return db.transaction(async (tx) => {
+    // No unique index backs the dedupe: serialize per incident so two runs persisting the same result cannot both
+    // miss the existing row and insert it twice.
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`sre-evidence-dedupe:${incidentId}`}))`);
     const persisted = [];
     for (const item of summaries) {
       const [existing] = await tx
