@@ -6,6 +6,7 @@ import { incidents, statusPages, incidentComponents } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { EmailService } from "@/lib/email-service";
 import { renderIncidentNotificationEmail } from "@/lib/email-renderer";
+import { statusPageEmailLogoUrl } from "@/lib/incident-notifications/status-page-email-logo";
 import {
   getTranslations,
   getLocaleForLanguage,
@@ -152,6 +153,7 @@ export async function sendIncidentNotifications(
     const timeZone = statusPageTimeZone(statusPage.timezone);
     const emailParamsTemplate = {
       statusPageName: statusPage.name,
+      logoUrl: statusPageEmailLogoUrl(statusPage.transactionalLogo),
       statusPageUrl,
       incidentUrl: `${statusPageUrl.replace(/\/+$/, "")}/incidents/${incident.id}`,
       scheduledWindow:

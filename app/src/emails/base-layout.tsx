@@ -21,8 +21,10 @@ interface BaseLayoutProps {
   children: React.ReactNode;
   footer?: React.ReactNode;
   showStandardFooter?: boolean;
-  /** Header wordmark; false for status-page emails, which carry the customer's page name. */
+  /** Supercheck logo and wordmark in the header; false for status-page emails, which are the customer's brand. */
   showBrand?: boolean;
+  /** Customer logo (absolute URL) shown in the header instead of the Supercheck lockup, when showBrand is false. */
+  headerLogoUrl?: string;
   /** Document language (status-page emails); RTL languages also set dir="rtl". */
   lang?: string;
   /** Why this email was sent, shown above the standard footer links. */
@@ -74,6 +76,7 @@ export const BaseLayout = ({
   footer,
   showStandardFooter = true,
   showBrand = true,
+  headerLogoUrl,
   lang = "en",
   reason,
   manage,
@@ -113,6 +116,9 @@ export const BaseLayout = ({
                   </tr>
                 </tbody>
               </table>
+            )}
+            {!showBrand && headerLogoUrl && (
+              <Img src={headerLogoUrl} height="40" alt="" style={customLogo} />
             )}
             <Heading style={headerTitle}>{title}</Heading>
           </Section>
@@ -201,6 +207,15 @@ const header = {
 const logo = {
   display: "block",
   borderRadius: "6px",
+};
+
+// Customer logos have any aspect ratio: fixed height, width follows, capped so a wide logo stays in the header.
+const customLogo = {
+  display: "block",
+  margin: "0 auto 14px",
+  height: "40px",
+  width: "auto",
+  maxWidth: "200px",
 };
 
 const brandRow = {

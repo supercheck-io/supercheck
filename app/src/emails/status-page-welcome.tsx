@@ -4,6 +4,8 @@ import { BaseLayout, EmailButton, SubscriberFooter } from "./base-layout";
 import { getTranslations } from "../lib/status-page-translations";
 
 interface StatusPageWelcomeEmailProps {
+  /** The status page\'s email logo (absolute URL); the header shows only the page name without it. */
+  logoUrl?: string;
   statusPageName: string;
   statusPageUrl: string;
   unsubscribeUrl: string;
@@ -12,6 +14,7 @@ interface StatusPageWelcomeEmailProps {
 
 /** Sent once a subscriber confirms their address: what they will get, and how to stop it. */
 export const StatusPageWelcomeEmail = ({
+  logoUrl,
   statusPageName = "Example Status Page",
   statusPageUrl = "https://example.supercheck.io",
   unsubscribeUrl = "https://example.supercheck.io/unsubscribe?token=abc123",
@@ -23,6 +26,8 @@ export const StatusPageWelcomeEmail = ({
       preview={`${t.emailNowSubscribed} ${statusPageName}. ${t.verifiedWillReceive}`}
       title={statusPageName}
       lang={language}
+      showBrand={false}
+      headerLogoUrl={logoUrl}
       showStandardFooter={false}
       footer={
         <SubscriberFooter

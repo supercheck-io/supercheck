@@ -7,9 +7,11 @@ footer, preheader), so changes to the look happen in one place.
 House style (the `incident-update` email is the reference): one neutral header (`PALETTE.neutral`, white
 text) for every email, never a per-type colour. Severity shows only in the body: a small `StatusBadge` (tones in
 `palette.ts`) or a tinted `Callout`. Body text is left-aligned 15px `#4b5563`, buttons are `EmailButton`
-(`#111827`), details go in `DetailsTable`. Every email starts with the same header: the Supercheck
-lockup (logo tile beside the wordmark, as on the landing page), then the title. Status-page subscriber emails use
-the customer's page name as the title and keep the "Powered by" footer.
+(`#111827`), details go in `DetailsTable`. Every email starts with the same header shape: a logo,
+then the title. Supercheck emails use the Supercheck lockup (logo tile beside the wordmark, as on the landing page).
+Status-page subscriber emails are the customer's brand: they pass `showBrand={false}` and the page's own logo
+(`headerLogoUrl`, from the page's Logo setting) when it has one, otherwise only the page name; the "Powered by"
+footer stays.
 
 ```
 app (Next.js)                         worker (NestJS)

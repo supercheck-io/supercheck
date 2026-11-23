@@ -4,12 +4,15 @@ import { BaseLayout, Callout, EmailButton, FallbackLink, SubscriberFooter } from
 import { getTranslations } from "../lib/status-page-translations";
 
 interface StatusPageVerificationEmailProps {
+  /** The status page\'s email logo (absolute URL); the header shows only the page name without it. */
+  logoUrl?: string;
   verificationUrl: string;
   statusPageName: string;
   language?: string;
 }
 
 export const StatusPageVerificationEmail = ({
+  logoUrl,
   verificationUrl = "https://supercheck.io/verify?token=abc123",
   statusPageName = "Example Status Page",
   language = "en",
@@ -21,6 +24,8 @@ export const StatusPageVerificationEmail = ({
       preview={`${t.emailSubjectVerify} ${statusPageName}. ${t.emailVerifyExpiry}.`}
       title={statusPageName}
       lang={language}
+      showBrand={false}
+      headerLogoUrl={logoUrl}
       showStandardFooter={false}
       footer={
         <SubscriberFooter notice={`${t.emailVerifySentNotice} ${statusPageName}.`} links={[]} poweredBy={t.poweredBy} />

@@ -44,6 +44,9 @@ const templates: Array<[string, React.ReactElement]> = [
   ],
 ];
 
+/** Status-page subscriber emails carry the customer's brand, never Supercheck's, in the header. */
+const SUBSCRIBER = new Set(["status-page-verification", "status-page-welcome", "incident-notification"]);
+
 const preheader = (html: string) => /data-skip-in-text="true">([^<]*)</.exec(html)?.[1] ?? "";
 const hrefs = (html: string) => [...html.matchAll(/href="([^"]*)"/g)].map((m) => m[1]);
 /** EmailButton is the only dark #111827 link; there must be exactly one per email. */
@@ -79,10 +82,11 @@ describe.each(templates)("%s follows the transactional email checklist", (_name,
     expect(visible).not.toContain("!");
   });
 
-  it("opens with the same Supercheck header lockup as every other email", () => {
+  it("opens with the right header: Supercheck lockup, or only the page's brand on subscriber emails", () => {
     const header = html.slice(html.indexOf("<body"), html.indexOf("<h1"));
-    // Wordmark sits in its own middle-aligned cell of the lockup row, not as a stacked label.
-    expect(header).toMatch(/<td[^>]*vertical-align:middle[^>]*>\s*<p[^>]*>Supercheck<\/p>\s*<\/td>/);
+    const lockup = /<td[^>]*vertical-align:middle[^>]*>\s*<p[^>]*>Supercheck<\/p>\s*<\/td>/;
+    if (SUBSCRIBER.has(_name)) expect(header).not.toMatch(/Supercheck/);
+    else expect(header).toMatch(lockup);
   });
 
   it("says why it was sent", () => {
@@ -245,11 +249,24 @@ describe("header logo", () => {
     if (prev === undefined) delete process.env.NEXT_PUBLIC_APP_URL;
     else process.env.NEXT_PUBLIC_APP_URL = prev;
   });
+  const header = (html: string) => html.slice(html.indexOf("<body"), html.indexOf("<h1"));
 
-  it("puts the landing-page logo beside the wordmark, on subscriber emails too", () => {
+  it("puts the landing-page logo beside the wordmark on Supercheck emails", () => {
+    process.env.NEXT_PUBLIC_APP_URL = "https://app.io";
+    const html = renderToStaticMarkup(<TestEmail sentAt={at} />);
+    expect(header(html)).toMatch(/<tr[^>]*>\s*<td[^>]*padding-right:10px[^>]*>\s*<img[^>]*src="https:\/\/app\.io\/supercheck-logo\.png"[^>]*>\s*<\/td>\s*<td[^>]*>\s*<p[^>]*>Supercheck<\/p>/);
+  });
+
+  it("shows the status page's own email logo on subscriber emails", () => {
+    process.env.NEXT_PUBLIC_APP_URL = "https://app.io";
+    const html = renderToStaticMarkup(<StatusPageVerificationEmail verificationUrl="https://app.io/status/verify/t" statusPageName="Acme Status" logoUrl="https://app.io/api/assets/status-pages/p/logo.png" />);
+    expect(header(html)).toMatch(/<img[^>]*src="https:\/\/app\.io\/api\/assets\/status-pages\/p\/logo\.png"/);
+    expect(header(html)).not.toMatch(/supercheck-logo|>Supercheck</);
+  });
+
+  it("shows only the page name on subscriber emails without a logo", () => {
     process.env.NEXT_PUBLIC_APP_URL = "https://app.io";
     const html = renderToStaticMarkup(<StatusPageVerificationEmail verificationUrl="https://app.io/status/verify/t" statusPageName="Acme Status" />);
-    const header = html.slice(html.indexOf("<body"), html.indexOf("<h1"));
-    expect(header).toMatch(/<tr[^>]*>\s*<td[^>]*padding-right:10px[^>]*>\s*<img[^>]*src="https:\/\/app\.io\/supercheck-logo\.png"[^>]*>\s*<\/td>\s*<td[^>]*>\s*<p[^>]*>Supercheck<\/p>/);
+    expect(header(html)).not.toMatch(/<img/);
   });
 });

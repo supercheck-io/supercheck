@@ -4,6 +4,7 @@ import { statusPageSubscribers, statusPages } from "@/db/schema";
 import { emailAppUrl } from "@/emails/base-layout";
 import { getPublicStatusPageUrl } from "@/lib/domain-utils";
 import { renderStatusPageWelcomeEmail } from "@/lib/email-renderer";
+import { statusPageEmailLogoUrl } from "@/lib/incident-notifications/status-page-email-logo";
 import { EmailService } from "@/lib/email-service";
 import { getEffectiveStatusPageDomain } from "@/lib/status-page-domain";
 import { signUnsubscribeToken } from "@/lib/subscriber-tokens";
@@ -32,6 +33,7 @@ export async function sendSubscriberWelcome(subscriberId: string): Promise<boole
     const token = signUnsubscribeToken(subscriber.id);
     const content = await renderStatusPageWelcomeEmail({
       statusPageName: page.name,
+      logoUrl: statusPageEmailLogoUrl(page.transactionalLogo),
       statusPageUrl: getPublicStatusPageUrl({
         subdomain: page.subdomain,
         customDomain: page.customDomain,

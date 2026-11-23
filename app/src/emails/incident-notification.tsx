@@ -14,6 +14,8 @@ import {
 } from "../lib/status-page-support";
 
 interface IncidentNotificationEmailProps {
+  /** The status page\'s email logo (absolute URL); the header shows only the page name without it. */
+  logoUrl?: string;
   statusPageName: string;
   statusPageUrl: string;
   /** Public page for this incident: the main button. Falls back to the status page. */
@@ -64,6 +66,7 @@ const introFor = (status: string, t: TranslationKeys) => {
 };
 
 export const IncidentNotificationEmail = ({
+  logoUrl,
   statusPageName = "Status Page",
   statusPageUrl = "https://status.example.com",
   incidentUrl,
@@ -90,6 +93,8 @@ export const IncidentNotificationEmail = ({
       preview={`${incidentName}: ${statusLabel}${scheduledWindow ? ` (${scheduledWindow})` : ""}`}
       title={statusPageName}
       lang={language}
+      showBrand={false}
+      headerLogoUrl={logoUrl}
       showStandardFooter={false}
       footer={
         <SubscriberFooter

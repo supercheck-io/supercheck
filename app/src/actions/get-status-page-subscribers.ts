@@ -8,6 +8,7 @@ import { requireProjectContext } from "@/lib/project-context";
 import { requirePermissions } from "@/lib/rbac/middleware";
 import { EmailService } from "@/lib/email-service";
 import { renderStatusPageVerificationEmail } from "@/lib/email-renderer";
+import { statusPageEmailLogoUrl } from "@/lib/incident-notifications/status-page-email-logo";
 import { z } from "zod";
 import { generateWebhookSecret } from "@/lib/webhook-utils";
 import { sendWebhookChallenge } from "@/lib/incident-notifications/webhook-verification";
@@ -116,6 +117,7 @@ async function verifyStatusPageOwnership(
   headline: string | null;
   subdomain: string;
   language: string;
+  transactionalLogo: string | null;
 } | null> {
   const statusPage = await db.query.statusPages.findFirst({
     where: and(
@@ -129,6 +131,7 @@ async function verifyStatusPageOwnership(
       headline: true,
       subdomain: true,
       language: true,
+      transactionalLogo: true,
     },
   });
   return statusPage ?? null;
@@ -388,6 +391,7 @@ export async function resendVerificationEmail(subscriberId: string) {
         verificationUrl,
         statusPageName: statusPage.headline || statusPage.name,
         language: statusPage.language,
+        logoUrl: statusPageEmailLogoUrl(statusPage.transactionalLogo),
       });
 
       const result = await emailService.sendEmail({

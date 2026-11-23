@@ -113,6 +113,7 @@ export async function renderOrganizationInvitationEmail(params: {
  * Status Page Verification Email
  */
 export async function renderStatusPageVerificationEmail(params: {
+  logoUrl?: string;
   verificationUrl: string;
   statusPageName: string;
   language?: string;
@@ -131,6 +132,7 @@ export async function renderStatusPageVerificationEmail(params: {
  * Status Page Welcome Email
  */
 export async function renderStatusPageWelcomeEmail(params: {
+  logoUrl?: string;
   statusPageName: string;
   statusPageUrl: string;
   unsubscribeUrl: string;
@@ -150,6 +152,7 @@ export async function renderStatusPageWelcomeEmail(params: {
  * Incident Notification Email
  */
 export async function renderIncidentNotificationEmail(params: {
+  logoUrl?: string;
   statusPageName: string;
   statusPageUrl: string;
   incidentName: string;
