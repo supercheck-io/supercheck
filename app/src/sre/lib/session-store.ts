@@ -243,6 +243,10 @@ export async function appendSreMessage(input: AppendSreMessageInput, options: { 
     }
 
     const now = new Date();
+    // A regenerated reply takes the replaced reply's place in the transcript, so a reload keeps it after its question.
+    const replaced = options.supersedeMessageId
+      ? await flagSuperseded(tx, conversation.id, options.supersedeMessageId)
+      : null;
     const [message] = await tx
       .insert(sreChatMessages)
       .values({
@@ -256,7 +260,7 @@ export async function appendSreMessage(input: AppendSreMessageInput, options: { 
         investigationRunId: parsed.investigationRunId ?? null,
         modelId: parsed.modelId ?? null,
         tokenCount: parsed.tokenCount ?? null,
-        createdAt: now,
+        createdAt: replaced?.createdAt ?? now,
       })
       .returning();
 
@@ -264,10 +268,6 @@ export async function appendSreMessage(input: AppendSreMessageInput, options: { 
       .update(sreChatConversations)
       .set({ updatedAt: now })
       .where(eq(sreChatConversations.id, conversation.id));
-
-    if (options.supersedeMessageId) {
-      await flagSuperseded(tx, conversation.id, options.supersedeMessageId);
-    }
 
     return message;
   });
@@ -300,10 +300,11 @@ async function flagSuperseded(executor: Pick<typeof db, "update">, conversationI
         sql`not (coalesce(${sreChatMessages.attachments}, '[]'::jsonb) @> ${supersededMarker}::jsonb)`,
       ),
     )
-    .returning({ id: sreChatMessages.id });
+    .returning({ id: sreChatMessages.id, createdAt: sreChatMessages.createdAt });
   if (!claimed) {
     throw new SreSessionStoreError("The reply was already replaced or is not in this conversation", "already_superseded");
   }
+  return claimed;
 }
 
 export async function archiveSreConversation(

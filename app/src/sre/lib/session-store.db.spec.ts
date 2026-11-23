@@ -15,7 +15,7 @@ jest.mock("@/utils/db", () => ({
   },
 }));
 
-import { appendSreMessage, isSreMessageSuperseded, SreSessionStoreError } from "./session-store";
+import { appendSreMessage, isSreMessageSuperseded, listSreMessages, SreSessionStoreError } from "./session-store";
 
 const execFileAsync = promisify(execFile);
 const name = `session_store_${randomUUID().replaceAll("-", "")}`;
@@ -104,4 +104,17 @@ it("refuses a reply id from another conversation", async () => {
     appendSreMessage({ ...scope, conversationId: other.id, role: "assistant", content: "x" }, { supersedeMessageId: originalReplyId }),
   ).rejects.toMatchObject({ code: "already_superseded" });
   expect(await mockDatabase.select().from(schema.sreChatMessages).where(eq(schema.sreChatMessages.conversationId, other.id))).toEqual([]);
+});
+
+it("keeps a regenerated reply in the replaced reply's place when the transcript is reloaded", async () => {
+  // U1, A1 (seeded), then U2, A2 later; regenerate A1.
+  await mockDatabase.update(schema.sreChatMessages).set({ createdAt: new Date("2026-11-20T10:00:01Z") }).where(eq(schema.sreChatMessages.id, originalReplyId));
+  await mockDatabase.insert(schema.sreChatMessages).values([
+    { conversationId: scope.conversationId, role: "user", content: "U1", createdAt: new Date("2026-11-20T10:00:00Z") },
+    { conversationId: scope.conversationId, role: "user", content: "U2", createdAt: new Date("2026-11-20T10:05:00Z") },
+    { conversationId: scope.conversationId, role: "assistant", content: "A2", createdAt: new Date("2026-11-20T10:05:01Z") },
+  ]);
+  await regenerated("A1 again");
+  const visible = (await listSreMessages({ ...scope })).filter((row) => !isSreMessageSuperseded(row)).map((row) => row.content);
+  expect(visible).toEqual(["U1", "A1 again", "U2", "A2"]);
 });

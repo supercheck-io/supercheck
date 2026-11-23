@@ -240,14 +240,16 @@ describe("MCP connectors in the AI tool layer", () => {
 
     it("anchors the window on a supplied end time, never past now, still clamped to the connector maximum", async () => {
       const { execute } = setup(lokiRow);
+      // Relative to now so the 30-day bound never makes this fixture expire.
+      const anchor = new Date(Math.floor((Date.now() - 2 * 24 * 60 * 60_000) / 60_000) * 60_000).toISOString();
       const result = await searchIncidentLiveConnectorEvidence(
         { ...scope, serviceId },
-        { ...search, query: '{service_name="checkout-api"}', timeWindowMinutes: 360, endAt: "2026-11-20T10:15:00+00:00" },
+        { ...search, query: '{service_name="checkout-api"}', timeWindowMinutes: 360, endAt: anchor.replace("Z", "+00:00") },
       );
       const { timeWindow } = execute.mock.calls[0][0];
-      expect(timeWindow.end.toISOString()).toBe("2026-11-20T10:15:00.000Z");
-      expect(timeWindow.start.toISOString()).toBe("2026-11-20T09:15:00.000Z");
-      expect(result.message).toContain("searched 60 minutes ending 2026-11-20T10:15:00.000Z");
+      expect(timeWindow.end.toISOString()).toBe(anchor);
+      expect(timeWindow.start.getTime()).toBe(Date.parse(anchor) - 60 * 60_000);
+      expect(result.message).toContain(`searched 60 minutes ending ${anchor}`);
 
       const { execute: executeFuture } = setup(lokiRow);
       const before = Date.now();
@@ -268,7 +270,15 @@ describe("MCP connectors in the AI tool layer", () => {
           { ...scope, serviceId },
           { ...search, query: '{service_name="checkout-api"}', endAt: new Date(Date.now() - 31 * 24 * 60 * 60_000).toISOString() },
         ),
-      ).rejects.toThrow("endAt must be within the last 30 days");
+      ).rejects.toThrow("must start within the last 30 days");
+      // An end inside the bound whose window would start past it is refused too.
+      setup(lokiRow);
+      await expect(
+        searchIncidentLiveConnectorEvidence(
+          { ...scope, serviceId },
+          { ...search, query: '{service_name="checkout-api"}', timeWindowMinutes: 60, endAt: new Date(Date.now() - (30 * 24 * 60 - 30) * 60_000).toISOString() },
+        ),
+      ).rejects.toThrow("must start within the last 30 days");
       expect(execute).not.toHaveBeenCalled();
     });
 

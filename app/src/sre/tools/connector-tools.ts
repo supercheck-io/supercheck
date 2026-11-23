@@ -139,7 +139,7 @@ const connectorSearchInputSchema = z.object({
     .datetime({ offset: true })
     .optional()
     .describe(
-      "Optional ISO 8601 end of the time window, for example a few minutes after the incident's startedAt. Defaults to now; a future time is treated as now; at most 30 days ago. The window still ends here and spans at most timeWindowMinutes, capped by the connector.",
+      "Optional ISO 8601 end of the time window, for example a few minutes after the incident's startedAt. Defaults to now; a future time is treated as now; the window must start within the last 30 days. The window still ends here and spans at most timeWindowMinutes, capped by the connector.",
     ),
   maxRows: z.number().int().min(1).max(MAX_TOOL_ROWS).optional().default(5),
   maxBytes: z.number().int().min(1024).max(256_000).optional().default(256_000),
@@ -836,9 +836,7 @@ export async function searchIncidentLiveConnectorEvidence(
   const now = new Date();
   // The model may anchor the window on the incident start; never past now, and the length cap below still applies.
   const windowEnd = input.endAt ? new Date(Math.min(Date.parse(input.endAt), now.getTime())) : now;
-  if (now.getTime() - windowEnd.getTime() > MAX_END_AT_LOOKBACK_MS) {
-    throw new ConnectorQueryRejectedError("endAt must be within the last 30 days");
-  }
+
   // The connector's window is the policy maximum; clamp instead of failing the connector.
   const requestedWindowMinutes = Math.min(
     input.timeWindowMinutes,
@@ -848,6 +846,9 @@ export async function searchIncidentLiveConnectorEvidence(
   const effectiveTimeWindowMinutes = stagedStage
     ? boundedStageWindowMinutes(stagedStage, requestedWindowMinutes)
     : requestedWindowMinutes;
+  if (now.getTime() - (windowEnd.getTime() - effectiveTimeWindowMinutes * 60_000) > MAX_END_AT_LOOKBACK_MS) {
+    throw new ConnectorQueryRejectedError("The search window must start within the last 30 days");
+  }
   const searchedWindow = input.endAt
     ? `${effectiveTimeWindowMinutes} minutes ending ${windowEnd.toISOString()}`
     : `the last ${effectiveTimeWindowMinutes} minutes`;
