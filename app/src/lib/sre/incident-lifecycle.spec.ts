@@ -86,6 +86,14 @@ describe("assignIncident", () => {
     expect(await assignIncident(actor, incidentId, assignee)).toMatchObject({ ok: false, code: "not_found" });
   });
 
+  it("refuses to assign or set a commander on a resolved incident", async () => {
+    selectQueue.push([{ id: assignee }], [{ current: null, status: "resolved" }]);
+    expect(await assignIncident(actor, incidentId, assignee)).toMatchObject({ ok: false, code: "conflict", error: expect.stringMatching(/reopen/i) });
+    expect(executor.update).not.toHaveBeenCalled();
+    expect(inserts).toHaveLength(0);
+    expect(notifyIncidentEvent).not.toHaveBeenCalled();
+  });
+
   it("assigns, records the timeline, audits and notifies once", async () => {
     selectQueue.push([{ id: assignee }], [{ current: null }]);
     updateQueue.push([ref]);

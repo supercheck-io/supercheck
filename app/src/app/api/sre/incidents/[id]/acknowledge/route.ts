@@ -13,7 +13,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   const auth = await requireSreApiPermissions([{ resource: "sre_incident", action: "update" }]);
   if (!auth.success) return auth.response;
   try {
-    const parsedId = z.string().uuid().safeParse((await params).id);
+    const parsedId = z.string().uuid().transform((id) => id.toLowerCase()).safeParse((await params).id);
     if (!parsedId.success) return NextResponse.json({ error: "Invalid incident ID" }, { status: 400 });
     const limited = await requireSreIncidentUpdateRateLimit(auth.context.userId, parsedId.data);
     if (limited) return limited;

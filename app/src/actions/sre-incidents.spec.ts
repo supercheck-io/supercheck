@@ -121,7 +121,7 @@ describe("getSreIncidentDetails investigation summary", () => {
     }));
     await expect(updateSreIncident({
       id: incidentId, title: "Updated title", severity: "sev2", status: "identified", primaryServiceId: null,
-    })).resolves.toEqual({ success: false, error: "Incident changed by another request — reload and try again" });
+    })).resolves.toEqual({ success: false, error: "This incident was changed by someone else. Refresh and try again." });
     expect(insert).not.toHaveBeenCalled();
     expect(jest.requireMock("@/lib/audit-logger").logAuditEvent).not.toHaveBeenCalled();
   });
@@ -257,22 +257,26 @@ describe("getSreIncidentDetails investigation summary", () => {
   it("guards the edit on the severity that was read, so a stale read loses with the conflict error", async () => {
     const { PgDialect } = jest.requireActual("drizzle-orm/pg-core");
     const incidentId = "00000000-0000-4000-8000-000000000001";
-    (db.query.sreIncidents.findFirst as jest.Mock).mockResolvedValue({ id: incidentId, status: "investigating", severity: "sev3" });
+    (db.query.sreIncidents.findFirst as jest.Mock).mockResolvedValue({ id: incidentId, status: "investigating", severity: "sev3", title: "old", primaryServiceId: null });
     let guard: unknown;
     (db.transaction as jest.Mock).mockImplementation(async (callback) => callback({
       update: () => ({ set: () => ({ where: (condition: unknown) => { guard = condition; return { returning: async () => [] }; } }) }),
       insert: () => ({ values: async () => undefined }),
     }));
     const result = await updateSreIncident({ id: incidentId, title: "t", severity: "sev1", status: "investigating", primaryServiceId: null });
-    expect(result).toMatchObject({ success: false, error: expect.stringContaining("changed by another request") });
+    expect(result).toMatchObject({ success: false, error: expect.stringContaining("changed by someone else") });
     const query = new PgDialect().sqlToQuery(guard as never);
     expect(query.sql).toContain('"severity" = $');
     expect(query.params).toContain("sev3");
+    // Title and (null-safe) service are guarded too; updatedAt is not.
+    expect(query.sql).toContain('"title" = $');
+    expect(query.sql).toContain('"primary_service_id" is null');
+    expect(query.sql).not.toContain('"updated_at" =');
   });
 
   it("notifies watchers only when the severity actually changes", async () => {
     const incidentId = "00000000-0000-4000-8000-000000000001";
-    (db.query.sreIncidents.findFirst as jest.Mock).mockResolvedValue({ id: incidentId, status: "investigating", severity: "sev3" });
+    (db.query.sreIncidents.findFirst as jest.Mock).mockResolvedValue({ id: incidentId, status: "investigating", severity: "sev3", title: "old", primaryServiceId: null });
     (db.transaction as jest.Mock).mockImplementation(async (callback) => callback({
       update: () => ({ set: () => ({ where: () => ({ returning: async () => [{ id: incidentId, incidentNumber: 4, title: "t" }] }) }) }),
       insert: () => ({ values: async () => undefined }),

@@ -16,6 +16,7 @@ jest.mock("@/lib/services/subscription-service", () => ({
 
 jest.mock("@/lib/auth-context", () => ({
   requireAuthContext: jest.fn(),
+  authErrorStatus: jest.fn(() => 401),
   isAuthError: jest.fn((error: unknown) => error instanceof Error && error.message === "Authentication required"),
 }));
 jest.mock("@/lib/rbac/middleware", () => ({ checkPermissionWithContext: jest.fn() }));
@@ -82,6 +83,24 @@ describe("SRE evidence brief stream API", () => {
 
     expect(response.status).toBe(403);
     expect(mockRequireProjectContext).not.toHaveBeenCalled();
+  });
+
+  it("authenticates before reading the body and caps it afterwards", async () => {
+    mockRequireProjectContext.mockRejectedValueOnce(new Error("Authentication required"));
+    const anonymous = request();
+    const text = jest.spyOn(anonymous, "text");
+    const json = jest.spyOn(anonymous, "json");
+    expect((await POST(anonymous)).status).toBe(401);
+    expect(text).not.toHaveBeenCalled();
+    expect(json).not.toHaveBeenCalled();
+
+    const huge = new NextRequest("https://app.supercheck.example/api/sre/evidence-brief/stream", {
+      method: "POST",
+      headers: { origin: "https://app.supercheck.example", "content-type": "application/json" },
+      body: JSON.stringify({ incidentId, padding: "x".repeat(10_000) }),
+    });
+    expect((await POST(huge)).status).toBe(413);
+    expect(mockRateLimit).not.toHaveBeenCalled();
   });
 
   it("requires both incident and investigation permissions", async () => {

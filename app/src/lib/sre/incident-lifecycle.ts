@@ -244,11 +244,12 @@ export async function assignIncident(
   const now = new Date();
   const result = await db.transaction(async (tx) => {
     const [before] = await tx
-      .select({ current: column })
+      .select({ current: column, status: sreIncidents.status })
       .from(sreIncidents)
       .where(scope(actor, incidentId))
       .limit(1);
     if (!before) return null;
+    if (before.status === "resolved") return "resolved" as const;
 
     const [updated] = await tx
       .update(sreIncidents)
@@ -295,6 +296,9 @@ export async function assignIncident(
   });
   if (!result) {
     return { ok: false, code: "not_found", error: "Incident not found or access denied" };
+  }
+  if (result === "resolved") {
+    return { ok: false, code: "conflict", error: "Incident is resolved. Reopen it before changing its assignee." };
   }
 
   if (result.changed) {

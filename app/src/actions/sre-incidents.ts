@@ -10,6 +10,7 @@ import {
   gte,
   inArray,
   isNotNull,
+  isNull,
   lt,
   ne,
   or,
@@ -681,7 +682,7 @@ export async function getSreIncidents(
         sreIncidents.updatedAt,
         sreIncidents.resolvedAt,
       )
-      .orderBy(desc(sreIncidents.updatedAt))
+      .orderBy(desc(sreIncidents.updatedAt), desc(sreIncidents.id))
       // One extra row tells us the list was cut off.
       .limit(SRE_INCIDENT_LIST_LIMIT + 1);
 
@@ -1421,6 +1422,11 @@ export async function updateSreIncident(
             eq(sreIncidents.status, current.status),
             // Same for severity, so a stale read cannot report or store the wrong previous value.
             eq(sreIncidents.severity, current.severity),
+            // Title and service too: updatedAt would conflict with unrelated bumps (new notes, watchers).
+            eq(sreIncidents.title, current.title),
+            current.primaryServiceId === null
+              ? isNull(sreIncidents.primaryServiceId)
+              : eq(sreIncidents.primaryServiceId, current.primaryServiceId),
           ),
         )
         .returning({
@@ -1470,7 +1476,7 @@ export async function updateSreIncident(
     });
 
     if (!incident) {
-      return { success: false, error: "Incident changed by another request — reload and try again" };
+      return { success: false, error: "This incident was changed by someone else. Refresh and try again." };
     }
 
     await logAuditEvent({

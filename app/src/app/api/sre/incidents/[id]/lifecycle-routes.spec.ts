@@ -81,6 +81,29 @@ describe("incident lifecycle routes", () => {
     }
   });
 
+  it("lowercases the incident id and assignee id before calling the lifecycle", async () => {
+    const upper = { params: Promise.resolve({ id: id.toUpperCase() }) };
+    lifecycle.acknowledgeIncident.mockResolvedValue({ ok: true, incident: { id, incidentNumber: 3, title: "t" }, changed: true, autoAssigned: false });
+    lifecycle.resolveIncident.mockResolvedValue({ ok: true, incident: { id, incidentNumber: 3, title: "t" }, changed: true });
+    lifecycle.assignIncident.mockResolvedValue({ ok: true, incident: { id, incidentNumber: 3, title: "t" }, changed: true });
+    await acknowledge(post(), upper);
+    expect(lifecycle.acknowledgeIncident).toHaveBeenCalledWith(scope, id);
+    await resolve(post({ comment: "ok" }), upper);
+    expect(lifecycle.resolveIncident).toHaveBeenCalledWith(scope, id, "ok");
+    await assign(post({ assigneeUserId: id.toUpperCase() }), upper);
+    expect(lifecycle.assignIncident).toHaveBeenCalledWith(scope, id, id, "assignee");
+  });
+
+  it("assign maps conflict to 409 and words the message by role", async () => {
+    lifecycle.assignIncident.mockResolvedValueOnce({ ok: false, code: "conflict", error: "Incident is resolved" });
+    expect((await assign(post({ assigneeUserId: null }), params)).status).toBe(409);
+    lifecycle.assignIncident.mockResolvedValue({ ok: true, incident: { id, incidentNumber: 3, title: "t" }, changed: true });
+    const commander = await (await assign(post({ assigneeUserId: id, role: "commander" }), params)).json();
+    expect(commander.message).toBe("Incident #3 commander set");
+    const cleared = await (await assign(post({ assigneeUserId: null, role: "commander" }), params)).json();
+    expect(cleared.message).toBe("Incident #3 commander cleared");
+  });
+
   it("resolve accepts the legacy comment field and the new resolutionSummary field", async () => {
     lifecycle.resolveIncident.mockResolvedValue({ ok: true, incident: { id, incidentNumber: 3, title: "t" }, changed: true });
     expect((await resolve(post({ comment: " fixed " }), params)).status).toBe(200);
