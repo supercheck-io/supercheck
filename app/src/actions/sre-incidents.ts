@@ -5,11 +5,13 @@ import { createHash } from "crypto";
 import { revalidatePath } from "next/cache";
 import {
   and,
+  asc,
   desc,
   eq,
   gte,
   inArray,
   isNotNull,
+  isNull,
   lt,
   ne,
   or,
@@ -43,6 +45,7 @@ import {
 } from "@/db/schema";
 import { logAuditEvent } from "@/lib/audit-logger";
 import { alertIncidentTitle } from "@/lib/sre/alert-labels";
+import { alertSeverity } from "@/lib/sre/alert-severity";
 import { createLogger } from "@/lib/logger/index";
 import {
   ALERT_CORRELATION_LIMITS,
@@ -225,7 +228,8 @@ export type SreIncidentDetail = {
   watching?: boolean;
   /** Set when the source's checks passed again after the incident opened and no failure has returned since. */
   recoveredAt?: string | null;
-  publicIncident?: { id: string; statusPageId: string; status: string } | null;
+  /** Public incidents linked to this incident, one per status page, oldest first. */
+  publicIncidents?: Array<{ id: string; statusPageId: string; statusPageName: string; status: string; deliverNotifications: boolean }>;
   /** Services and monitors a person listed as affected (deleted ones left out). */
   affectedResources?: IncidentResourceView[];
   incident: SreIncidentListItem & {
@@ -512,29 +516,6 @@ export async function getSreIncidentAnalytics(): Promise<
   }
 }
 
-function deriveSeverity(type: string, message: string): SreSeverity {
-  const normalizedType = type.toLowerCase();
-  const normalizedMessage = message.toLowerCase();
-
-  if (
-    normalizedMessage.includes("sev1") ||
-    normalizedMessage.includes("critical") ||
-    normalizedType.includes("timeout")
-  ) {
-    return "sev1";
-  }
-
-  if (normalizedType.includes("failure") || normalizedType.includes("failed")) {
-    return "sev2";
-  }
-
-  if (normalizedType.includes("ssl") || normalizedMessage.includes("expir")) {
-    return "sev3";
-  }
-
-  return "sev4";
-}
-
 function deriveAlertStatus(type: string): SreAlertStatus {
   const normalizedType = type.toLowerCase();
   return normalizedType.includes("recovery") ||
@@ -681,7 +662,7 @@ export async function getSreIncidents(
         sreIncidents.updatedAt,
         sreIncidents.resolvedAt,
       )
-      .orderBy(desc(sreIncidents.updatedAt))
+      .orderBy(desc(sreIncidents.updatedAt), desc(sreIncidents.id))
       // One extra row tells us the list was cut off.
       .limit(SRE_INCIDENT_LIST_LIMIT + 1);
 
@@ -1178,7 +1159,12 @@ export async function getSreIncidentDetails(
       )
       .orderBy(desc(linkedAlertFields.firedAt))
       .limit(20);
-    const [publicIncident] = incident.statusPageIncidentId ? await db.select({ id: statusPageIncidents.id, statusPageId: statusPageIncidents.statusPageId, status: statusPageIncidents.status }).from(statusPageIncidents).innerJoin(statusPages, eq(statusPages.id, statusPageIncidents.statusPageId)).where(and(eq(statusPageIncidents.id, incident.statusPageIncidentId), eq(statusPages.organizationId, organizationId), eq(statusPages.projectId, project.id))) : [];
+    const publicIncidents = await db
+      .select({ id: statusPageIncidents.id, statusPageId: statusPageIncidents.statusPageId, statusPageName: statusPages.name, status: statusPageIncidents.status, deliverNotifications: sql<boolean>`coalesce(${statusPageIncidents.deliverNotifications}, true)` })
+      .from(statusPageIncidents)
+      .innerJoin(statusPages, eq(statusPages.id, statusPageIncidents.statusPageId))
+      .where(and(eq(statusPageIncidents.sreIncidentId, incident.id), eq(statusPages.organizationId, organizationId), eq(statusPages.projectId, project.id)))
+      .orderBy(asc(statusPageIncidents.createdAt));
 
     const watching = await isWatchingIncident(incident.id, userId);
     const recoveredAt = await getSourceRecoveredAt(incident.id);
@@ -1189,7 +1175,7 @@ export async function getSreIncidentDetails(
       detail: {
         watching,
         recoveredAt,
-        publicIncident: publicIncident ?? null,
+        publicIncidents,
         affectedResources,
         linkedAlerts,
         currentUserId: userId,
@@ -1400,6 +1386,8 @@ export async function updateSreIncident(
                 renotifyRetryAt: null,
                 escalateFailures: 0,
                 escalateRetryAt: null,
+                // A new open period counts its own alerts (none yet).
+                alertCount: 0,
                 reopenedAt: now,
               }
             : {}),
@@ -1421,6 +1409,11 @@ export async function updateSreIncident(
             eq(sreIncidents.status, current.status),
             // Same for severity, so a stale read cannot report or store the wrong previous value.
             eq(sreIncidents.severity, current.severity),
+            // Title and service too: updatedAt would conflict with unrelated bumps (new notes, watchers).
+            eq(sreIncidents.title, current.title),
+            current.primaryServiceId === null
+              ? isNull(sreIncidents.primaryServiceId)
+              : eq(sreIncidents.primaryServiceId, current.primaryServiceId),
           ),
         )
         .returning({
@@ -1459,7 +1452,12 @@ export async function updateSreIncident(
         await tx.insert(sreIncidentTimelineEvents).values({
           incidentId: parsed.data.id,
           eventType: "state_change",
-          eventData: { state: "reopened", comment: "Reopened from the incident editor" },
+          eventData: {
+            state: "reopened",
+            comment: "Reopened from the incident editor",
+            // Failures from before this resolve belong to the closed period (see recordRepeatAlert).
+            ...(current.resolvedAt ? { previousResolvedAt: current.resolvedAt.toISOString() } : {}),
+          },
           actorType: "user",
           actorUserId: userId,
           createdAt: now,
@@ -1470,7 +1468,7 @@ export async function updateSreIncident(
     });
 
     if (!incident) {
-      return { success: false, error: "Incident changed by another request — reload and try again" };
+      return { success: false, error: "This incident was changed by someone else. Refresh and try again." };
     }
 
     await logAuditEvent({
@@ -1609,7 +1607,7 @@ export async function createSreIncidentFromAlert(
     const severity =
       configuredSeverity && ["sev1", "sev2", "sev3", "sev4"].includes(configuredSeverity)
         ? configuredSeverity
-        : deriveSeverity(alert.type, alert.message);
+        : alertSeverity(alert.type);
     const alertStatus = deriveAlertStatus(alert.type);
     const firedAt = alert.sentAt ?? new Date();
     // Same identity as automatic incidents: source plus alert type (not the per-channel key).

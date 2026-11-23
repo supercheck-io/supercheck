@@ -475,6 +475,8 @@ export function buildJobDefinitions(
     // Pass alertConfig through, stripping only defaults
     if (j.alertConfig && typeof j.alertConfig === 'object') {
       const alert = { ...j.alertConfig } as Record<string, unknown>
+      // Jobs have no recovery alert; a legacy stored key would only be dropped again on deploy.
+      delete alert.alertOnRecovery
 
       // Remove empty/default values
       if (alert.customMessage === '' || alert.customMessage === null) delete alert.customMessage

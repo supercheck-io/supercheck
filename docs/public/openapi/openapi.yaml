@@ -431,6 +431,15 @@ paths:
                   minLength: 1
                   maxLength: 2000
                   description: Original field name; equivalent to `resolutionSummary`.
+                publishToStatusPages:
+                  type: boolean
+                  default: false
+                  description: Also post the resolution summary as a resolved update on every open
+                    status page incident linked to this incident, each with its
+                    own subscriber notification setting. Needs status page
+                    update permission; without it the incident still resolves
+                    and nothing is published. A failed post is reported in
+                    `warning` and never undoes the resolve.
               anyOf:
                 - required:
                     - resolutionSummary
@@ -439,7 +448,10 @@ paths:
       responses:
         "200":
           description: Incident resolved; timeline and audit events recorded, assignee and
-            project notification channels notified
+            project notification channels notified. With `publishToStatusPages`,
+            the body also has `statusPages` (`published` and `failed` page
+            names, `forbidden`), `statusPageMessage`, and `warning` when
+            something was not published.
         "400":
           description: Invalid ID or missing/oversized resolution summary
         "403":

@@ -59,12 +59,61 @@ export function redactConnectorText(value: string): string {
   return REDACTION_PATTERNS.reduce((current, [pattern, replacement]) => current.replace(pattern, replacement), bounded);
 }
 
+const MIN_EXACT_SECRET_CHARS = 6;
+const MIN_CLIPPED_SECRET_CHARS = 4;
+
+// Credential fields that hold a secret. Identifiers (region, tenant, subscription, header name, user) appear in
+// legitimate evidence and links, so they are left to the patterns.
+const SECRET_CREDENTIAL_KEY = /secret|token|password|passwd|pwd|apikey|api_key|key$|credential|private/i;
+
+/** Secret values of a connector credential (raw and trimmed), for exact-match redaction of output that echoes them. */
+export function connectorCredentialSecrets(credential: Record<string, unknown> | null | undefined): string[] {
+  const values = Object.entries(credential ?? {})
+    .filter(([key, value]) => typeof value === "string" && SECRET_CREDENTIAL_KEY.test(key))
+    .flatMap(([, value]) => [value as string, (value as string).trim()]);
+  return [...new Set(values)];
+}
+
+/**
+ * Replaces every occurrence of the connector's own secrets, which patterns cannot recognise (a short
+ * opaque password, a custom header value). Overlapping matches are merged so no fragment is left behind;
+ * the same approach as the Private Agent's redactMcpText.
+ */
+export function redactExactSecrets(value: string, secrets: readonly string[]): string {
+  const spans: Array<[number, number]> = [];
+  for (const secret of secrets) {
+    if (secret.length < MIN_EXACT_SECRET_CHARS) continue;
+    for (let i = value.indexOf(secret); i !== -1; i = value.indexOf(secret, i + 1)) spans.push([i, i + secret.length]);
+    // Providers clip long text before it gets here, which can cut a secret short: catch its leading part at the end.
+    for (let len = Math.min(secret.length - 1, value.length); len >= MIN_CLIPPED_SECRET_CHARS; len--) {
+      if (value.endsWith(secret.slice(0, len))) {
+        spans.push([value.length - len, value.length]);
+        break;
+      }
+    }
+  }
+  if (spans.length === 0) return value;
+  spans.sort((a, b) => a[0] - b[0]);
+  let redacted = "";
+  let cursor = 0;
+  for (const [start, end] of spans) {
+    if (start < cursor) {
+      cursor = Math.max(cursor, end);
+      continue;
+    }
+    redacted += `${value.slice(cursor, start)}[REDACTED]`;
+    cursor = end;
+  }
+  return redacted + value.slice(cursor);
+}
+
 export function sanitizeConnectorEvidence(
   items: ConnectorEvidenceItem[],
-  limits: Partial<ConnectorOutputLimits> = {}
+  limits: Partial<ConnectorOutputLimits> = {},
+  secrets: readonly string[] = [],
 ): SanitizedConnectorOutput {
   const effectiveLimits = { ...DEFAULT_CONNECTOR_OUTPUT_LIMITS, ...limits };
-  const rows = items.slice(0, effectiveLimits.maxRows).map(redactEvidenceItem);
+  const rows = items.slice(0, effectiveLimits.maxRows).map((item) => redactEvidenceItem(item, secrets));
   const budgetedRows: ConnectorEvidenceItem[] = [];
   let byteLength = 0;
   let truncated = items.length > rows.length;
@@ -88,19 +137,21 @@ export function sanitizeConnectorEvidence(
   };
 }
 
-function redactEvidenceItem(item: ConnectorEvidenceItem): ConnectorEvidenceItem {
-  const rawContent = item.rawContent ? redactConnectorText(item.rawContent) : undefined;
+function redactEvidenceItem(item: ConnectorEvidenceItem, secrets: readonly string[]): ConnectorEvidenceItem {
+  // Exact secrets first: a pattern rewrite could split a secret and hide it from the exact match.
+  const redact = (value: string) => redactConnectorText(redactExactSecrets(value, secrets));
+  const rawContent = item.rawContent ? redact(item.rawContent) : undefined;
 
   return {
     ...item,
-    sourceUri: safeEvidenceSourceUri(redactConnectorText(item.sourceUri)),
+    sourceUri: safeEvidenceSourceUri(redact(item.sourceUri)),
     // Clip after redacting so a secret cut at the limit cannot escape its pattern.
-    title: redactConnectorText(item.title).slice(0, MAX_EVIDENCE_TITLE_CHARS),
-    summary: redactConnectorText(item.summary),
+    title: redact(item.title).slice(0, MAX_EVIDENCE_TITLE_CHARS),
+    summary: redact(item.summary),
     rawContent,
     citation: {
       ...item.citation,
-      query: redactConnectorText(item.citation.query),
+      query: redact(item.citation.query),
     },
   };
 }

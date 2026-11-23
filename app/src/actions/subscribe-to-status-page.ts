@@ -18,11 +18,13 @@ import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { EmailService } from "@/lib/email-service";
 import { renderStatusPageVerificationEmail } from "@/lib/email-renderer";
+import { statusPageEmailLogoUrl } from "@/lib/incident-notifications/status-page-email-logo";
 import { generateWebhookSecret } from "@/lib/webhook-utils";
 import { encryptWebhookSecret, hashVerificationToken } from "@/lib/subscriber-tokens";
 import { sendWebhookChallenge } from "@/lib/incident-notifications/webhook-verification";
 import { checkSubscriberLimit } from "@/lib/middleware/plan-enforcement";
 import { insertWithinPlanLimit } from "@/lib/middleware/plan-limit-lock";
+import { emailAppUrl } from "@/emails/base-layout";
 
 const subscribeSchema = z.union([
   // Email subscription
@@ -76,12 +78,13 @@ async function sendVerificationEmail(params: {
   verificationToken: string;
   subdomain: string;
   language?: string;
+  transactionalLogo?: string | null;
 }): Promise<{ success: boolean; error?: string }> {
   try {
     const emailService = EmailService.getInstance();
 
     // Construct verification URL
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+    const baseUrl = emailAppUrl();
     const verificationUrl = `${baseUrl}/status/verify/${params.verificationToken}`;
 
     // Render email using react-email template
@@ -89,6 +92,7 @@ async function sendVerificationEmail(params: {
       verificationUrl,
       statusPageName: params.statusPageName,
       language: params.language,
+      logoUrl: statusPageEmailLogoUrl(params.transactionalLogo),
     });
 
     const result = await emailService.sendEmail({
@@ -513,6 +517,7 @@ async function handleEmailSubscription(
         verificationToken: newVerificationToken,
         subdomain: statusPage.subdomain as string,
         language: (statusPage.language as string) ?? "en",
+        transactionalLogo: statusPage.transactionalLogo as string | null,
       });
 
       if (!emailResult.success) {
@@ -589,6 +594,7 @@ async function handleEmailSubscription(
         verificationToken: newVerificationToken,
         subdomain: statusPage.subdomain as string,
         language: (statusPage.language as string) ?? "en",
+        transactionalLogo: statusPage.transactionalLogo as string | null,
       });
 
       if (!emailResult.success) {

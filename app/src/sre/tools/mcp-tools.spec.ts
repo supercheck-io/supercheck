@@ -168,8 +168,9 @@ describe("executeMcpToolCall", () => {
       operation: { kind: "call_tool", tool: "get_errors", arguments: { limit: 3, namespace: "prod" } },
     });
     const persisted = collectEvidence.mock.calls[0][0].resultSummary as {
-      evidence: Array<{ summary: string }>;
+      evidence: Array<{ summary: string; title: string }>;
     };
+    expect(persisted.evidence[0].title).toBe("[Untrusted MCP title] MCP tool result: get_errors");
     const summary = persisted.evidence[0].summary;
     expect(summary.startsWith(MCP_FENCE_OPEN)).toBe(true);
     expect(summary.endsWith(MCP_FENCE_CLOSE)).toBe(true);

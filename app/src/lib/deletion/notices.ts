@@ -5,6 +5,7 @@ import { EmailService, isEmailConfigured } from "@/lib/email-service";
 import { renderOrganizationDeletionEmail } from "@/lib/email-renderer";
 import type { OrganizationDeletionKind } from "@/emails";
 import { metaPatch, type DeletionMeta } from "./org-state";
+import { emailAppUrl } from "@/emails/base-layout";
 
 /**
  * Emails to organization owners about a deletion: on request, 7 and 1 day before the purge, and on completion.
@@ -18,7 +19,7 @@ const DAYS: Partial<Record<NoticeKey, number>> = { notice7d: 7, notice1d: 1 };
 const SWEEP_PAGE = 500;
 const DAY_MS = 24 * 60 * 60_000;
 
-const appUrl = () => (process.env.NEXT_PUBLIC_APP_URL || process.env.BETTER_AUTH_URL || "").replace(/\/+$/, "");
+const appUrl = () => emailAppUrl();
 
 const CLAIM_TTL_MS = 10 * 60_000;
 const sentKey = (key: NoticeKey) => `${key}Sent` as const;

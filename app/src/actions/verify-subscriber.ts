@@ -7,6 +7,7 @@ import { eq, and, ne, isNull, isNotNull, count } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { checkSubscriberLimit } from "@/lib/middleware/plan-enforcement";
 import { insertWithinPlanLimit } from "@/lib/middleware/plan-limit-lock";
+import { sendSubscriberWelcome } from "@/lib/incident-notifications/send-subscriber-welcome";
 
 export async function verifySubscriber(token: string) {
   try {
@@ -106,8 +107,11 @@ export async function verifySubscriber(token: string) {
             eq(statusPageSubscribers.id, subscriber.id),
             isNull(statusPageSubscribers.verifiedAt)
           )
-        );
+        )
+        .returning({ id: statusPageSubscribers.id });
 
+    // Only the request that actually verified the row sends the welcome email (a double click sends one).
+    let activatedRows: { id: string }[] = [];
     if (statusPage?.organizationId) {
       const activated = await insertWithinPlanLimit({
         organizationId: statusPage.organizationId,
@@ -142,9 +146,12 @@ export async function verifySubscriber(token: string) {
               "Subscriber limit reached for this status page.",
         };
       }
+      activatedRows = activated.row;
     } else {
-      await activate(db);
+      activatedRows = await activate(db);
     }
+
+    if (activatedRows.length > 0) await sendSubscriberWelcome(subscriber.id);
 
     // Revalidate both public and internal paths
     revalidatePath(`/status/${subscriber.statusPageId}`);

@@ -239,11 +239,13 @@ describe("SRE chat API", () => {
       tools: expect.objectContaining({
         listNativeEvidence: expect.any(Object),
         listConnectorEvidence: expect.any(Object),
+        getIncident: expect.any(Object),
       }),
     }));
     expect(mockRunSreAgent.mock.calls[0][0].tools).not.toHaveProperty(
       "searchLiveConnectorEvidence",
     );
+    expect(mockRunSreAgent.mock.calls[0][0].prompt).toContain("Call getIncident first");
   });
 
   it.each([
@@ -366,6 +368,50 @@ describe("SRE chat API", () => {
 
     expect(response.status).toBe(400);
     expect(mockRunSreAgent).not.toHaveBeenCalled();
+  });
+
+  it("passes the organization to the agent so every step's token usage counts against its daily cap", async () => {
+    await responseText(await POST(new NextRequest("http://localhost/api/sre/chat", {
+      method: "POST",
+      body: JSON.stringify({ message: "check" }),
+    })));
+    // runSreAgent records each step's usage for this organization (asserted in agent-runner.spec).
+    expect(mockRunSreAgent).toHaveBeenCalledWith(expect.objectContaining({
+      organizationId: "018f0000-0000-7000-8000-000000000002",
+    }));
+  });
+
+  it("stores no failure reply when the user stops the chat", async () => {
+    mockRunSreAgent.mockImplementationOnce(
+      (input: { abortSignal: AbortSignal }) =>
+        new Promise((_, reject) => {
+          input.abortSignal.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")));
+        }),
+    );
+    const response = await POST(new NextRequest("http://localhost/api/sre/chat", {
+      method: "POST",
+      body: JSON.stringify({ message: "check" }),
+    }));
+    for (let i = 0; i < 50 && mockRunSreAgent.mock.calls.length === 0; i++) await new Promise((r) => setImmediate(r));
+    expect(mockRunSreAgent).toHaveBeenCalledTimes(1);
+    await response.body!.cancel();
+    for (let i = 0; i < 10; i++) await new Promise((r) => setImmediate(r));
+
+    expect(mockAppendSreMessage).toHaveBeenCalledTimes(1);
+    expect(mockAppendSreMessage).toHaveBeenCalledWith(expect.objectContaining({ role: "user" }));
+  });
+
+  it("still stores the fallback reply when the agent fails without a stop", async () => {
+    mockRunSreAgent.mockRejectedValueOnce(new Error("provider down"));
+    const text = await responseText(await POST(new NextRequest("http://localhost/api/sre/chat", {
+      method: "POST",
+      body: JSON.stringify({ message: "check" }),
+    })));
+    expect(text).toContain("agent.fallback");
+    expect(mockAppendSreMessage).toHaveBeenLastCalledWith(expect.objectContaining({
+      role: "assistant",
+      content: expect.stringContaining("temporarily unavailable"),
+    }));
   });
 
   it("streams sanitized agent step metadata without raw tool payloads", async () => {

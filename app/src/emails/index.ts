@@ -18,11 +18,12 @@ export { MonitorAlertEmail, alertEmailSubject } from "./monitor-alert";
 export {
   IncidentUpdateEmail,
   incidentUpdateHeadline,
+  incidentUpdateSubject,
   type IncidentUpdateEmailProps,
   type IncidentUpdateEvent,
   type IncidentUpdateSeverity,
 } from "./incident-update";
 export { TestEmail } from "./test-email";
-export { UsageNotificationEmail } from "./usage-notification";
+export { UsageNotificationEmail, usageNotificationTitle } from "./usage-notification";
 export { TrialNotificationEmail, trialNotificationSubject, type TrialNotificationKind } from "./trial-notification";
 export { OrganizationDeletionEmail, organizationDeletionSubject, type OrganizationDeletionKind } from "./organization-deletion";

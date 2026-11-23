@@ -43,6 +43,24 @@ it("keeps the project assignment text in a resent invitation email", async () =>
   expect(renderOrganizationInvitationEmail).toHaveBeenCalledWith(expect.objectContaining({ projectInfo: expect.stringContaining("Alpha") }));
 });
 
+it("builds an absolute invite link even when NEXT_PUBLIC_APP_URL is unset (never 'undefined/invite/...')", async () => {
+  const prev = { a: process.env.NEXT_PUBLIC_APP_URL, b: process.env.APP_URL, c: process.env.BETTER_AUTH_URL };
+  delete process.env.NEXT_PUBLIC_APP_URL;
+  delete process.env.APP_URL;
+  process.env.BETTER_AUTH_URL = "https://auth.example.com/";
+  try {
+    (EmailService.getInstance as jest.Mock).mockReturnValue({ sendEmail: async () => ({ success: true }) });
+    await POST(req("POST"), ctx);
+    const { inviteUrl } = (renderOrganizationInvitationEmail as jest.Mock).mock.calls.at(-1)[0];
+    expect(inviteUrl).toMatch(/^https:\/\/auth\.example\.com\/invite\/[^/]+$/);
+  } finally {
+    for (const [key, value] of [["NEXT_PUBLIC_APP_URL", prev.a], ["APP_URL", prev.b], ["BETTER_AUTH_URL", prev.c]] as const) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
+});
+
 it("does not consume the resend rate limit for an invitation that cannot be resent", async () => {
   const zadd = jest.fn();
   (getRedisConnection as jest.Mock).mockResolvedValueOnce({ zremrangebyscore: jest.fn(), zcard: async () => 0, zadd, expire: jest.fn() });

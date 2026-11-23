@@ -21,8 +21,10 @@ interface BaseLayoutProps {
   children: React.ReactNode;
   footer?: React.ReactNode;
   showStandardFooter?: boolean;
-  /** Header wordmark; false for status-page emails, which carry the customer's page name. */
+  /** Supercheck logo and wordmark in the header; false for status-page emails, which are the customer's brand. */
   showBrand?: boolean;
+  /** Customer logo (absolute URL) shown in the header instead of the Supercheck lockup, when showBrand is false. */
+  headerLogoUrl?: string;
   /** Document language (status-page emails); RTL languages also set dir="rtl". */
   lang?: string;
   /** Why this email was sent, shown above the standard footer links. */
@@ -39,7 +41,7 @@ interface BaseLayoutProps {
  * never makes recipients' mail clients contact supercheck.io.
  */
 export const emailLogoUrl = (env: NodeJS.ProcessEnv = process.env, appUrl?: string): string | undefined => {
-  const base = (appUrl || env.NEXT_PUBLIC_APP_URL || env.APP_URL || "").trim();
+  const base = (appUrl || configuredAppUrl(env)).trim();
   try {
     const url = new URL(base);
     return /^https?:$/.test(url.protocol) ? `${url.origin}${url.pathname.replace(/\/+$/, "")}/supercheck-logo.png` : undefined;
@@ -47,6 +49,19 @@ export const emailLogoUrl = (env: NodeJS.ProcessEnv = process.env, appUrl?: stri
     return undefined;
   }
 };
+
+const configuredAppUrl = (env: NodeJS.ProcessEnv) => env.NEXT_PUBLIC_APP_URL || env.APP_URL || env.BETTER_AUTH_URL || "";
+
+/**
+ * Public app origin for links in emails (no trailing slash): the configured app URL, else the local dev
+ * origin the rest of the app falls back to. Every email link is built from this, so none is relative.
+ */
+export const emailAppUrl = (env: NodeJS.ProcessEnv = process.env): string =>
+  (configuredAppUrl(env).trim() || "http://localhost:3000").replace(/\/+$/, "");
+
+/** Same rule as the app's isSelfHosted(): SELF_HOSTED "true" or "1". Self-hosted emails carry no supercheck.io links. */
+const isSelfHostedEnv = (env: NodeJS.ProcessEnv = process.env) =>
+  ["true", "1"].includes(env.SELF_HOSTED?.trim().toLowerCase() ?? "");
 
 /** "Wed, 18 Nov 2026 06:02:36 UTC": one timestamp format, with an explicit zone, in every email. */
 export const formatEmailTime = (date: Date): string =>
@@ -61,6 +76,7 @@ export const BaseLayout = ({
   footer,
   showStandardFooter = true,
   showBrand = true,
+  headerLogoUrl,
   lang = "en",
   reason,
   manage,
@@ -84,10 +100,26 @@ export const BaseLayout = ({
         <Container className="sc-container" style={container}>
           {/* Header */}
           <Section style={header}>
-            {showBrand && logoUrl && (
-              <Img src={logoUrl} width="32" height="32" alt="" style={logo} />
+            {/* Same lockup as the landing page: logo tile beside the wordmark. A table keeps it on one row in Outlook. */}
+            {showBrand && (
+              <table role="presentation" cellPadding={0} cellSpacing={0} border={0} align="center" style={brandRow}>
+                <tbody>
+                  <tr>
+                    {logoUrl && (
+                      <td style={brandLogoCell}>
+                        <Img src={logoUrl} width="28" height="28" alt="" style={logo} />
+                      </td>
+                    )}
+                    <td style={brandTextCell}>
+                      <Text style={brand}>Supercheck</Text>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
             )}
-            {showBrand && <Text style={brand}>Supercheck</Text>}
+            {!showBrand && headerLogoUrl && (
+              <Img src={headerLogoUrl} height="40" alt="" style={customLogo} />
+            )}
             <Heading style={headerTitle}>{title}</Heading>
           </Section>
 
@@ -111,18 +143,18 @@ export const BaseLayout = ({
                   )}
                 </Text>
               )}
-              {showStandardFooter && (
+              {showStandardFooter && !isSelfHostedEnv() && (
                 <Text style={standardFooterText}>
                   <Link href="https://supercheck.io" style={footerLink}>
                     Supercheck
                   </Link>
                   {" • "}
                   <Link href="https://supercheck.io/privacy" style={footerLink}>
-                    Privacy Policy
+                    Privacy policy
                   </Link>
                   {" • "}
                   <Link href="https://supercheck.io/terms" style={footerLink}>
-                    Terms of Service
+                    Terms of service
                   </Link>
                   <br />
                   <span style={{ color: "#6b7280" }}>
@@ -173,9 +205,30 @@ const header = {
 };
 
 const logo = {
-  margin: "0 auto 8px",
-  display: "inline-block",
-  borderRadius: "8px",
+  display: "block",
+  borderRadius: "6px",
+};
+
+// Customer logos have any aspect ratio: fixed height, width follows, capped so a wide logo stays in the header.
+const customLogo = {
+  display: "block",
+  margin: "0 auto 14px",
+  height: "40px",
+  width: "auto",
+  maxWidth: "200px",
+};
+
+const brandRow = {
+  margin: "0 auto 14px",
+};
+
+const brandLogoCell = {
+  verticalAlign: "middle" as const,
+  paddingRight: "10px",
+};
+
+const brandTextCell = {
+  verticalAlign: "middle" as const,
 };
 
 const reasonText = {
@@ -192,12 +245,11 @@ const reasonLink = {
 
 const brand = {
   color: "#ffffff",
-  margin: "0 0 8px",
-  fontSize: "13px",
+  margin: "0",
+  fontSize: "18px",
   fontWeight: "700" as const,
-  letterSpacing: "0.12em",
-  textTransform: "uppercase" as const,
-  opacity: 0.85,
+  lineHeight: "28px",
+  letterSpacing: "-0.02em",
 };
 
 const headerTitle = {
@@ -266,6 +318,60 @@ export const EmailButton = ({ href, children }: { href: string; children: React.
     {children}
   </Button>
 );
+
+/**
+ * Footer for public status-page subscriber emails: why it was sent, the page and unsubscribe links,
+ * and "Powered by Supercheck". Strings come translated from the caller.
+ */
+export const SubscriberFooter = ({
+  notice,
+  links,
+  poweredBy,
+}: {
+  notice: string;
+  links: Array<{ href?: string; label: string }>;
+  poweredBy: string;
+}) => {
+  const shown = links.filter((link): link is { href: string; label: string } => Boolean(link.href));
+  return (
+    <>
+      <Text style={reasonText}>{notice}</Text>
+      {shown.length > 0 && (
+        <Text style={reasonText}>
+          {shown.map((link, i) => (
+            <React.Fragment key={link.href}>
+              {i > 0 && " • "}
+              <Link href={link.href} style={reasonLink}>
+                {link.label}
+              </Link>
+            </React.Fragment>
+          ))}
+        </Text>
+      )}
+      <Text style={standardFooterText}>
+        {poweredBy}{" "}
+        <Link href="https://supercheck.io" style={footerLink}>
+          Supercheck
+        </Link>
+      </Text>
+    </>
+  );
+};
+
+/** "Or copy this link" under a button, for clients that block buttons. */
+export const FallbackLink = ({ href, label = "If the button does not work, copy this link into your browser:" }: { href: string; label?: string }) => (
+  <>
+    <Text style={fallbackLabel}>{label}</Text>
+    <Text style={fallbackUrl}>
+      <Link href={href} style={reasonLink}>
+        {href}
+      </Link>
+    </Text>
+  </>
+);
+
+const fallbackLabel = { color: "#6b7280", fontSize: "13px", lineHeight: "1.5", margin: "0 0 4px", textAlign: "center" as const };
+const fallbackUrl = { fontSize: "13px", lineHeight: "1.5", margin: "0 0 24px", textAlign: "center" as const, wordBreak: "break-all" as const };
 
 /** Footer line for owner-facing billing emails; only rendered when a billing URL exists. */
 export const ManageBillingLink = ({ href }: { href?: string }) =>

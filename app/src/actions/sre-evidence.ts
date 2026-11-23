@@ -22,7 +22,7 @@ export type GenerateSreEvidenceBriefResult =
       brief: {
         suspectedFailureDomain: string;
         summary: string;
-        confidenceScore: number;
+        confidenceScore: number | null;
         citedEvidenceIds: string[];
         provider: "ai" | "fallback";
       };

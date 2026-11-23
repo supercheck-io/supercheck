@@ -4,7 +4,10 @@
  */
 import type { ConfigService } from '@nestjs/config';
 import { UnrecoverableError } from 'bullmq';
-import { WORKER_INTERRUPTED_ERROR } from '../../common/security/container-executor.service';
+import {
+  EXECUTION_QUOTA_ERROR,
+  WORKER_INTERRUPTED_ERROR,
+} from '../../common/security/container-executor.service';
 import { RUN_CANCELLATION_MARKER } from '../../common/services/cancellation.service';
 import { getBillableMs } from '../../common/billable-ms';
 import { ExecutionService } from './execution.service';
@@ -91,6 +94,25 @@ describe.each([
     expect(dbService.storeReportMetadata).not.toHaveBeenCalledWith(
       expect.objectContaining({ status: 'failed' }),
     );
+    expect(dbService.storeReportMetadata).not.toHaveBeenCalledWith(
+      expect.objectContaining({ status: 'error' }),
+    );
+  });
+
+  it('delays a run the full execution quota kept from starting, without recording a failure', async () => {
+    jest
+      .spyOn(service, '_executePlaywrightNativeRunner' as never)
+      .mockResolvedValue({
+        success: false,
+        capacityExhausted: true,
+        started: false,
+        error: EXECUTION_QUOTA_ERROR,
+        stdout: '',
+        stderr: EXECUTION_QUOTA_ERROR,
+        billableMs: 0,
+      } as never);
+
+    await expect(run()).rejects.toBeInstanceOf(ExecutionCapacityError);
     expect(dbService.storeReportMetadata).not.toHaveBeenCalledWith(
       expect.objectContaining({ status: 'error' }),
     );
@@ -269,6 +291,36 @@ describe('ExecutionService.executePlaywrightDirectly interrupted result', () => 
 
     expect(result.interrupted).toBe(true);
     expect(result.error).toBe(WORKER_INTERRUPTED_ERROR);
+    service.onModuleDestroy();
+  });
+});
+
+describe('ExecutionService.executePlaywrightDirectly quota result', () => {
+  it('passes the capacity flag from the container through to the run', async () => {
+    const { service } = createService();
+    Object.assign(service, {
+      containerExecutorService: {
+        resolveWorkerDir: async () => '/worker',
+        resolveBrowsersPath: async () => '/browsers',
+      },
+    });
+    jest.spyOn(service, 'executeCommandSafely' as never).mockResolvedValue({
+      success: false,
+      capacityExhausted: true,
+      started: false,
+      error: EXECUTION_QUOTA_ERROR,
+      stdout: '',
+      stderr: EXECUTION_QUOTA_ERROR,
+    } as never);
+
+    const result = await service['executePlaywrightDirectly'](
+      { scriptContent: 'test', fileName: 'test.spec.ts' },
+      '/tmp/reports',
+      false,
+    );
+
+    expect(result.capacityExhausted).toBe(true);
+    expect(result.error).toBe(EXECUTION_QUOTA_ERROR);
     service.onModuleDestroy();
   });
 });

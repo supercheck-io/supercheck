@@ -244,11 +244,14 @@ export async function assignIncident(
   const now = new Date();
   const result = await db.transaction(async (tx) => {
     const [before] = await tx
-      .select({ current: column })
+      .select({ current: column, status: sreIncidents.status })
       .from(sreIncidents)
       .where(scope(actor, incidentId))
-      .limit(1);
+      .limit(1)
+      // Locked so a resolve committing in between cannot leave a resolved incident reassigned.
+      .for("update");
     if (!before) return null;
+    if (before.status === "resolved") return "resolved" as const;
 
     const [updated] = await tx
       .update(sreIncidents)
@@ -295,6 +298,9 @@ export async function assignIncident(
   });
   if (!result) {
     return { ok: false, code: "not_found", error: "Incident not found or access denied" };
+  }
+  if (result === "resolved") {
+    return { ok: false, code: "conflict", error: "Incident is resolved. Reopen it before changing its assignee." };
   }
 
   if (result.changed) {
@@ -575,6 +581,7 @@ export async function applySourceRecovery(
       incidentNumber: sreIncidents.incidentNumber,
       title: sreIncidents.title,
       createdAt: sreIncidents.createdAt,
+      reopenedAt: sreIncidents.reopenedAt,
       acknowledgedAt: sreIncidents.acknowledgedAt,
       assigneeUserId: sreIncidents.assigneeUserId,
     })
@@ -647,7 +654,7 @@ export async function applySourceRecovery(
     seen.add(incident.id);
     const now = source.recoveredAt;
     if (source.autoResolve && !incident.acknowledgedAt) {
-      const summary = `Recovered automatically: ${source.targetName} passed again after ${describeDuration(now.getTime() - incident.createdAt.getTime())}.`;
+      const summary = `Recovered automatically: ${source.targetName} passed again after ${describeDuration(now.getTime() - (incident.reopenedAt ?? incident.createdAt).getTime())}.`;
       const [updated] = await tx
         .update(sreIncidents)
         .set({
@@ -830,6 +837,13 @@ export async function recordRepeatAlert(tx: Executor, incidentId: string, firedA
         eq(sreIncidents.id, incidentId),
         ne(sreIncidents.status, "resolved"),
         sql`${sreIncidents.lastAlertAt} is distinct from ${fired}`,
+        // A late failure from before an automatic reopen's previous resolve belongs to the closed open period.
+        sql`not exists (
+          select 1 from ${sreIncidentTimelineEvents} e
+          where e.incident_id = ${sreIncidents.id}
+            and e.event_data->>'state' = 'reopened'
+            and (e.event_data->>'previousResolvedAt')::timestamptz > ${fired}
+        )`,
       ),
     )
     .returning({ id: sreIncidents.id });
@@ -942,6 +956,9 @@ export async function reopenRecentlyAutoResolved(
       renotifyRetryAt: null,
       escalateFailures: 0,
       escalateRetryAt: null,
+      // A new open period: it counts its own alerts, starting with the one that reopened it.
+      alertCount: 1,
+      lastAlertAt: source.firedAt,
       reopenedAt: now,
       updatedAt: now,
     })
@@ -952,7 +969,12 @@ export async function reopenRecentlyAutoResolved(
   await tx.insert(sreIncidentTimelineEvents).values({
     incidentId: latest.id,
     eventType: "state_change",
-    eventData: { state: "reopened", comment: "Failure returned within 30 minutes of automatic recovery" },
+    eventData: {
+      state: "reopened",
+      comment: "Failure returned within 30 minutes of automatic recovery",
+      // Where the new open period's alert count starts (see recordRepeatAlert).
+      previousResolvedAt: latest.resolvedAt.toISOString(),
+    },
     actorType: "system",
     createdAt: now,
   });

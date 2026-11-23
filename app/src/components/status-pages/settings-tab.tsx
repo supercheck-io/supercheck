@@ -1019,9 +1019,10 @@ export function SettingsTab({
               <CardTitle className="text-lg">Branding</CardTitle>
               <InfoHint label="Branding assets" title="Branding assets">
                 <InfoHintText>
-                  The logo and favicon appear on the public page and in
-                  subscriber emails. Colors apply to component and incident
-                  states.
+                  The logo appears on the public page and at the top of
+                  subscriber emails, on a dark header; without one, emails
+                  show only the page name. The favicon is the browser tab
+                  icon. Colors apply to component and incident states.
                 </InfoHintText>
               </InfoHint>
             </div>

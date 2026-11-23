@@ -109,7 +109,7 @@ it("emails the new assignee directly with a link, without raw evidence", async (
   expect(mail.text).toContain("Incident #7 assigned");
   expect(mail.text).toContain("Owner: Ada");
   expect(mail.text).toContain("Updated by: Grace");
-  expect(mail.subject).toBe("[Supercheck] Incident assigned to Ada: #7 Checkout down (SEV2)");
+  expect(mail.subject).toBe("[SEV2] #7 Checkout down: Incident assigned to Ada");
 });
 
 it("redacts credentials in the incident title before it reaches email", async () => {
@@ -131,6 +131,51 @@ it("renders the incident email template for direct email", async () => {
   expect(sendEmailToMultiple.mock.calls[0][0]).toEqual(
     expect.objectContaining({ recipients: ["ada@example.com"], subject: "[SEV2] Incident assigned: #7 x", html: "<html>tpl</html>" }),
   );
+});
+
+it("a created email explains the trigger alert (redacted), its service and the alert's time", async () => {
+  renderIncidentUpdateEmail.mockResolvedValueOnce({ subject: "s", html: "h", text: "t" });
+  const firedAt = new Date("2026-11-23T10:15:00Z");
+  selectQueue.push(
+    [{ ...incident, serviceName: null, triggerTitle: "Monitor Down - Checkout", triggerDescription: 'Monitor "Checkout" is down. GET https://user:hunter2@api.example.com failed', triggerFiredAt: firedAt, triggerServiceName: "Payments" }],
+    people,
+    [],
+  );
+  await notifyIncidentEvent({ ...base, event: "created", actorUserId: null });
+  const props = renderIncidentUpdateEmail.mock.calls[0][0];
+  expect(props.detail).toContain('Monitor "Checkout" is down.');
+  expect(props.detail).not.toContain("hunter2");
+  expect(props.serviceName).toBe("Payments");
+  expect(props.occurredAt).toEqual(firedAt);
+});
+
+it("reads the trigger's text and time from the link snapshot first, not the shared alert row later failures update", async () => {
+  selectQueue.push([incident], people, []);
+  await notifyIncidentEvent({ ...base, event: "created", actorUserId: null });
+  const { db } = jest.requireMock("@/utils/db") as { db: { select: jest.Mock } };
+  const fields = db.select.mock.calls[0][0] as Record<string, unknown>;
+  const dialect = new (jest.requireActual("drizzle-orm/pg-core").PgDialect)();
+  for (const [key, snapshot] of [["triggerTitle", "alert_title"], ["triggerDescription", "alert_description"], ["triggerFiredAt", "alert_fired_at"]]) {
+    const query = dialect.sqlToQuery(fields[key]).sql as string;
+    expect(query).toMatch(new RegExp(`^coalesce\\("sre_incident_alerts"."${snapshot}", "sre_alert_events"`));
+  }
+});
+
+it("uses the event time, not the render time, for other events", async () => {
+  renderIncidentUpdateEmail.mockResolvedValueOnce({ subject: "s", html: "h", text: "t" });
+  selectQueue.push([{ ...incident, triggerFiredAt: new Date("2020-01-01T00:00:00Z"), triggerDescription: "old alert" }], people, []);
+  const before = Date.now();
+  await notifyIncidentEvent(base);
+  const props = renderIncidentUpdateEmail.mock.calls[0][0];
+  expect(props.occurredAt.getTime()).toBeGreaterThanOrEqual(before);
+  expect(props.detail).toBeUndefined();
+});
+
+it("names the trigger alert's service when the incident has no primary service", async () => {
+  renderIncidentUpdateEmail.mockResolvedValueOnce({ subject: "s", html: "h", text: "t" });
+  selectQueue.push([{ ...incident, serviceName: null, triggerServiceName: "Payments" }], people, []);
+  await notifyIncidentEvent(base);
+  expect(renderIncidentUpdateEmail.mock.calls[0][0].serviceName).toBe("Payments");
 });
 
 it("does not email the actor about their own assignment", async () => {
@@ -406,6 +451,37 @@ describe("one message per event for alert-triggered incidents", () => {
       .find((p: unknown[]) => p.includes("monitor_failure"));
     expect(params).toBeDefined();
     expect(params).not.toContain("ssl_expiring");
+  });
+
+  it("bounds the delivery check by the incident's own trigger time when it has no alert row (INC-11)", async () => {
+    chains.length = 0;
+    const firedAt = new Date("2026-01-01T10:00:00.000Z");
+    selectQueue.push([incident], people, [{ ...source[0], dedupKey: "project-1:monitor:mon-1:monitor_failure", firedAt }], [], [provider]);
+    await notifyIncidentEvent({ ...base, assigneeUserId: null, event: "created" } as never);
+    const { PgDialect } = jest.requireActual("drizzle-orm/pg-core");
+    const params = chains
+      .filter((node) => node.where.mock.calls.length)
+      .map((node) => new PgDialect().sqlToQuery(node.where.mock.calls[0][0]).params)
+      .find((p: unknown[]) => p.includes("monitor_failure"));
+    // Not "any delivery in the last 15 minutes": only rows sent since this incident's trigger fired.
+    expect(params).toContainEqual(firedAt.toISOString());
+  });
+
+  it("bounds a reopen's delivery check by the reopening alert's fire time, not the later reopen time (INC-11)", async () => {
+    chains.length = 0;
+    const lastAlertAt = new Date("2026-01-01T10:00:00.000Z");
+    const reopenedAt = new Date("2026-01-01T10:00:05.000Z");
+    const firedAt = new Date("2026-01-01T08:00:00.000Z");
+    // The reopening alert row (sent at 10:00:02, between the two) is not found by id: the bound must still include it.
+    selectQueue.push([{ ...incident, lastAlertAt, reopenedAt }], people, [{ ...source[0], dedupKey: "project-1:monitor:mon-1:monitor_failure", firedAt }], [], [], [provider]);
+    await notifyIncidentEvent({ ...base, assigneeUserId: null, event: "reopened", automatic: true, triggerAlertHistoryId: "018f0000-0000-7000-8000-0000000000aa" } as never);
+    const { PgDialect } = jest.requireActual("drizzle-orm/pg-core");
+    const params = chains
+      .filter((node) => node.where.mock.calls.length)
+      .map((node) => new PgDialect().sqlToQuery(node.where.mock.calls[0][0]).params)
+      .find((p: unknown[]) => p.includes("monitor_failure"));
+    expect(params).toContainEqual(lastAlertAt.toISOString());
+    expect(params).not.toContainEqual(reopenedAt.toISOString());
   });
 
   it("posts created to channels when every alert delivery failed", async () => {

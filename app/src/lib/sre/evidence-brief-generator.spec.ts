@@ -129,4 +129,20 @@ describe("streamEvidenceBrief", () => {
     expect(recordSreTokenUsage).toHaveBeenCalledWith("org-a", { totalTokens: 10 });
     expect(recordSreTokenUsage).toHaveBeenCalledWith("org-a", { totalTokens: 7 });
   });
+
+  it("cites only evidence ids the streamed text names and invents no confidence", async () => {
+    const evidence = [
+      { ...input.evidence[0], id: "018f0000-0000-7000-8000-0000000000e1", confidence: "0.9" },
+      { ...input.evidence[0], id: "018f0000-0000-7000-8000-0000000000e2", confidence: "0.3" },
+      { ...input.evidence[0], id: "018f0000-0000-7000-8000-0000000000e3", confidence: null },
+    ];
+    mockStream({ chunks: ["## Summary\nLatency rose."] });
+    const uncited = await streamEvidenceBrief({ ...input, evidence } as never, () => undefined);
+    expect(uncited).toMatchObject({ provider: "ai", citedEvidenceIds: [], confidenceScore: null });
+
+    mockStream({ chunks: ["Pool exhausted (evidence 018f0000-0000-7000-8000-0000000000e1", ", 018f0000-0000-7000-8000-0000000000e3)."] });
+    const cited = await streamEvidenceBrief({ ...input, evidence } as never, () => undefined);
+    expect(cited.citedEvidenceIds).toEqual(["018f0000-0000-7000-8000-0000000000e1", "018f0000-0000-7000-8000-0000000000e3"]);
+    expect(cited.confidenceScore).toBe(0.9);
+  });
 });

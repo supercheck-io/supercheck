@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import {
   Archive,
   History as HistoryIcon,
@@ -95,6 +95,24 @@ export function SreAiConsole({
   const [isArchiving, startArchiveTransition] = useTransition();
   const [confirmingArchive, setConfirmingArchive] = useState(false);
 
+  // Set when another tab replaced a reply in this chat: the next server history (a new `initialHistories`) replaces
+  // the thread's messages, so it names saved reply ids again.
+  const reloadCount = useRef(0);
+  const [pendingReload, setPendingReload] = useState<{
+    conversationId: string;
+    staleHistories: SreCopilotChatHistory[];
+    reloads: number;
+  } | null>(null);
+  if (pendingReload && initialHistories !== pendingReload.staleHistories) {
+    const saved = initialHistories.find((history) => history.conversationId === pendingReload.conversationId);
+    setPendingReload(null);
+    // Only the chat that asked for the reload: a switch while the refresh was pending must not receive its messages.
+    if (saved && conversationId === pendingReload.conversationId) {
+      setActiveMessages(saved.messages);
+      setThreadKey(`${saved.conversationId}:reload-${pendingReload.reloads}`);
+    }
+  }
+
   useEffect(() => {
     setHistories(initialHistories);
   }, [initialHistories]);
@@ -119,6 +137,7 @@ export function SreAiConsole({
   }, [histories, historyQuery]);
 
   const startNewChat = () => {
+    setPendingReload(null);
     setIsHistoryOpen(false);
     setConversationId(null);
     setActiveMessages([]);
@@ -136,6 +155,7 @@ export function SreAiConsole({
   };
 
   const selectHistory = (history: SreCopilotChatHistory) => {
+    setPendingReload(null);
     setIsHistoryOpen(false);
     setConversationId(history.conversationId);
     setIncidentId(history.incidentId);
@@ -337,6 +357,15 @@ export function SreAiConsole({
             onConversationResolved={handleConversationResolved}
             onClearError={() => setError(null)}
             onError={setError}
+            onReplyReplaced={
+              conversationId && onRequestHistoryRefresh
+                ? () => {
+                    reloadCount.current += 1;
+                    setPendingReload({ conversationId, staleHistories: initialHistories, reloads: reloadCount.current });
+                    onRequestHistoryRefresh();
+                  }
+                : undefined
+            }
           />
         </section>
         <footer className="shrink-0 border-t px-3 py-2 text-center text-xs text-muted-foreground sm:px-5">

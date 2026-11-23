@@ -120,6 +120,39 @@ describe("AlertSettings incidents block (extended)", () => {
   });
 });
 
+describe("AlertSettings job incident toggle", () => {
+  const toggle = () => screen.queryByLabelText("Open an incident when this alerts");
+
+  it("hides the toggle for a job with no failure or timeout alert", () => {
+    render(<AlertSettings value={{ ...base, alertOnFailure: false, alertOnTimeout: false }} context="job" />);
+    expect(toggle()).not.toBeInTheDocument();
+    expect(screen.queryByTestId("alert-incident-settings")).not.toBeInTheDocument();
+  });
+
+  it("shows the toggle for a job with a failure or a timeout alert", () => {
+    const view = render(<AlertSettings value={base} context="job" />);
+    expect(toggle()).toBeInTheDocument();
+    view.unmount();
+    render(<AlertSettings value={{ ...base, alertOnFailure: false, alertOnTimeout: true }} context="job" />);
+    expect(toggle()).toBeInTheDocument();
+  });
+
+  it("restores the toggle as it was when a failure alert is turned back on", () => {
+    const onChange = jest.fn();
+    render(<AlertSettings value={base} context="job" onChange={onChange} />);
+    fireEvent.click(screen.getByLabelText(/Job failures/));
+    expect(toggle()).not.toBeInTheDocument();
+    fireEvent.click(screen.getByLabelText(/Job failures/));
+    expect(toggle()).toBeChecked();
+    expect(onChange).toHaveBeenLastCalledWith(expect.not.objectContaining({ incidentEnabled: false }));
+  });
+
+  it("keeps the toggle for a monitor without a failure alert", () => {
+    render(<AlertSettings value={{ ...base, alertOnFailure: false }} context="monitor" />);
+    expect(toggle()).toBeInTheDocument();
+  });
+});
+
 describe("AlertSettings paging-only hint", () => {
   const providers = (rows: unknown[]) => {
     global.fetch = jest.fn().mockResolvedValue({ ok: true, json: async () => rows }) as never;

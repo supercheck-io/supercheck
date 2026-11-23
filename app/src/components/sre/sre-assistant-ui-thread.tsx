@@ -111,13 +111,32 @@ type SreAssistantUiThreadProps = {
   }) => void;
   onClearError: () => void;
   onError: (message: string) => void;
+  /** The reply this chat names was replaced in another tab; reload the saved replies and their ids. */
+  onReplyReplaced?: () => void;
 };
 
-type IdHolder = { get: () => string | undefined; set: (id: string) => void };
+/** Error code the chat route returns when the reply to regenerate was replaced elsewhere. */
+const REPLY_REPLACED_CODE = "reply_replaced";
+
+export function isReplyReplacedError(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error ?? "");
+  try {
+    return (JSON.parse(message) as { code?: unknown }).code === REPLY_REPLACED_CODE;
+  } catch {
+    return false;
+  }
+}
+
+type IdHolder = {
+  get: () => string | undefined;
+  set: (id: string) => void;
+  /** Whether the request in flight regenerates a reply. */
+  regenerating: boolean;
+};
 
 function createIdHolder(initial: string | undefined): IdHolder {
   let id = initial;
-  return { get: () => id, set: (next) => { id = next; } };
+  return { get: () => id, set: (next) => { id = next; }, regenerating: false };
 }
 
 type SendRequestOptions = {
@@ -134,6 +153,7 @@ function buildSendRequest(
   options: SendRequestOptions,
   lastAssistant: IdHolder,
 ) {
+  lastAssistant.regenerating = options.trigger === "regenerate-message";
   return {
     body: {
       ...options.body,
@@ -681,6 +701,7 @@ export function SreAssistantUiThread({
   onConversationResolved,
   onClearError,
   onError,
+  onReplyReplaced,
 }: SreAssistantUiThreadProps) {
   const { currentProject } = useProjectContext();
   const canUseLiveConnectors = canUseSreLiveConnectors(
@@ -716,9 +737,14 @@ export function SreAssistantUiThread({
     id: conversationId ?? undefined,
     messages: uiMessages,
     transport,
-    onError: (error) => onError(formatCopilotError(error)),
-    onFinish: ({ message, messages }) => {
-      if (message.role === "assistant") lastAssistant.set(message.id);
+    onError: (error) => {
+      onError(formatCopilotError(error));
+      if (isReplyReplacedError(error)) onReplyReplaced?.();
+    },
+    onFinish: ({ message, messages, isAbort }) => {
+      // A regeneration stopped before any text is not stored and the replaced reply stays, so keep naming that reply.
+      const emptyStoppedRegeneration = isAbort && lastAssistant.regenerating && !textFromUiMessage(message);
+      if (message.role === "assistant" && !emptyStoppedRegeneration) lastAssistant.set(message.id);
       if (!isActiveRef.current) {
         return;
       }

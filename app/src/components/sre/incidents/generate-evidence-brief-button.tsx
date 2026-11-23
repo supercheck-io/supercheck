@@ -26,7 +26,7 @@ type GenerateEvidenceBriefButtonProps = {
     brief?: {
       summary: string;
       provider: "ai" | "fallback";
-      confidenceScore: number;
+      confidenceScore: number | null;
     };
   }) => void;
   onStreamError?: (message: string) => void;
@@ -118,7 +118,7 @@ export function GenerateEvidenceBriefButton({
                 brief?: {
                   summary: string;
                   provider: "ai" | "fallback";
-                  confidenceScore: number;
+                  confidenceScore: number | null;
                 };
               };
 

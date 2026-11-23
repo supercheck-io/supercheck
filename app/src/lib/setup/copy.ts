@@ -272,7 +272,9 @@ export async function copyConnectors(scope: CopyScope, ids: string[]): Promise<C
           if (source.privateAgentId && !isPrivateAgentConnectorType(source.type as SreConnectorType)) {
             throw new CopyItemError("This connector type does not support a Private Agent");
           }
-          if (providerEndpointRequirementError(source.type, endpoint) || connectorCredentialRequirementError(source.type, plain as ConnectorCredentialValue | null)) {
+          // Only MCP may keep a key in its URL (stored redacted); a query string on any other type predates that rule.
+          const endpointHasQuery = endpoint !== null && /[?#]/.test(endpoint) && source.type !== "mcp";
+          if (endpointHasQuery || providerEndpointRequirementError(source.type, endpoint) || connectorCredentialRequirementError(source.type, plain as ConnectorCredentialValue | null)) {
             throw new CopyItemError("This connector's settings no longer pass validation");
           }
           try {

@@ -84,6 +84,7 @@ type StatusPage = {
   faviconLogo: string | null;
   transactionalLogo: string | null;
   language: string | null;
+  timezone?: string | null;
 };
 
 type Component = {
@@ -488,7 +489,7 @@ export function PublicStatusPage({
             <p className="flex items-center gap-1.5 text-xs sm:text-sm sp-muted text-gray-600 dark:text-gray-300 mt-0.5 sm:mt-1">
               <Wrench className="h-3.5 w-3.5 flex-shrink-0" />
               <span>
-                {formatMaintenanceWindow(locale, incident.scheduledFor, incident.scheduledUntil)}
+                {formatMaintenanceWindow(locale, incident.scheduledFor, incident.scheduledUntil, statusPage.timezone)}
               </span>
             </p>
           )}

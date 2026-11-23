@@ -33,9 +33,13 @@ jest.mock("@/components/sre/incidents/edit-sre-incident-dialog", () => ({
 
 jest.mock("@/components/sre/incidents/resolve-sre-incident-dialog", () => ({
   OPEN_POSTMORTEM_EVENT: "incident:open-postmortem",
-  ResolveSreIncidentDialog: ({ open }: { open?: boolean }) =>
-    open ? <div role="dialog" aria-label="Resolve incident dialog" /> : null,
+  ResolveSreIncidentDialog: ({ open, statusPages = [] }: { open?: boolean; statusPages?: string[] }) =>
+    open ? <div role="dialog" aria-label="Resolve incident dialog">{statusPages.join(", ")}</div> : null,
 }));
+
+jest.mock("@/components/status-pages/incident-form-dialog", () => ({ IncidentFormDialog: () => null }));
+jest.mock("@/hooks/use-project-context", () => ({ useProjectContext: () => ({ projectId: "p1" }) }));
+jest.mock("@tanstack/react-query", () => ({ ...jest.requireActual("@tanstack/react-query"), useQueryClient: () => ({ invalidateQueries: jest.fn() }) }));
 
 jest.mock("@/components/sre/incidents/incident-assignee-picker", () => ({
   IncidentAssigneePicker: ({ label = "Assignee", assigneeName }: { label?: string; assigneeName: string | null }) => (
@@ -52,7 +56,9 @@ jest.mock("@/components/sre/incidents/watch-sre-incident-button", () => ({
 }));
 
 jest.mock("@/components/sre/incidents/incident-timeline", () => ({
-  IncidentTimeline: () => <div>Mock timeline</div>,
+  IncidentTimeline: ({ statusPagePosts = [] }: { statusPagePosts?: Array<{ statusPageName: string }> }) => (
+    <div>Mock timeline{statusPagePosts.length ? ` posting to ${statusPagePosts.map((post) => post.statusPageName).join(", ")}` : ""}</div>
+  ),
 }));
 
 jest.mock("@/components/sre/incidents/investigation-feedback", () => ({
@@ -167,6 +173,7 @@ function detailFixture(): SreIncidentDetail {
       canUpdate: true,
       canInvestigate: true,
       canUseLiveConnectors: true,
+      canPostToStatusPage: true,
     },
     capabilities: {
       investigationEnabled: true,
@@ -588,7 +595,7 @@ describe("SreIncidentDetailView", () => {
     ).toBeTruthy();
     expect(screen.getByText("Assignee: Ada Lovelace")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Acknowledge" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Post update" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Post to status page" })).toBeInTheDocument();
     // Back control matches the monitor and job detail pages.
     expect(screen.getByRole("link", { name: "Back to incidents" })).toHaveAttribute("href", "/incidents");
   });
@@ -614,13 +621,44 @@ describe("SreIncidentDetailView", () => {
     expect(screen.queryByText(/No AI analysis yet/)).not.toBeInTheDocument();
   });
 
+  it("offers the timeline and resolve dialog only the open linked public posts", () => {
+    const detail = detailFixture();
+    detail.incident.acknowledgedAt = new Date();
+    detail.publicIncidents = [
+      { id: "p1", statusPageId: "s1", statusPageName: "Public status", status: "monitoring", deliverNotifications: true },
+      { id: "p2", statusPageId: "s2", statusPageName: "Enterprise status", status: "resolved", deliverNotifications: true },
+    ];
+    render(<SreIncidentDetailView detail={detail} services={[]} />);
+    expect(screen.getByText("Mock timeline posting to Public status")).toBeInTheDocument();
+    expect(screen.queryByTestId("public-resolved-banner")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Resolve incident" }));
+    expect(screen.getByRole("dialog", { name: "Resolve incident dialog" })).toHaveTextContent("Public status");
+  });
+
+  it("prompts to resolve once every public post is resolved, and never without edit rights", () => {
+    const detail = detailFixture();
+    detail.publicIncidents = [
+      { id: "p1", statusPageId: "s1", statusPageName: "Public status", status: "resolved", deliverNotifications: true },
+      { id: "p2", statusPageId: "s2", statusPageName: "Enterprise status", status: "resolved", deliverNotifications: true },
+    ];
+    const view = render(<SreIncidentDetailView detail={detail} services={[]} />);
+    const banner = screen.getByTestId("public-resolved-banner");
+    expect(banner).toHaveTextContent("All public posts are resolved.");
+    fireEvent.click(within(banner).getByRole("button", { name: "Resolve incident" }));
+    expect(screen.getByRole("dialog", { name: "Resolve incident dialog" })).toBeInTheDocument();
+    view.unmount();
+    detail.permissions.canUpdate = false;
+    render(<SreIncidentDetailView detail={detail} services={[]} />);
+    expect(screen.queryByTestId("public-resolved-banner")).not.toBeInTheDocument();
+  });
+
   it("hides ownership actions for read-only users", () => {
     const detail = detailFixture();
     detail.permissions.canUpdate = false;
     detail.incident.status = "resolved";
     render(<SreIncidentDetailView detail={detail} services={[]} />);
     expect(screen.queryByRole("button", { name: "Acknowledge" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: "Post update" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Post to status page" })).not.toBeInTheDocument();
   });
 });
 

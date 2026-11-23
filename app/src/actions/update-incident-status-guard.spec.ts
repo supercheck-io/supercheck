@@ -29,7 +29,7 @@ jest.mock("@/utils/db", () => ({
 jest.mock("@/lib/project-context", () => ({
   requireProjectContext: jest.fn(async () => ({ userId: "u", organizationId: "o", project: { id: "pr", name: "n" } })),
 }));
-jest.mock("@/lib/rbac/middleware", () => ({ requirePermissions: jest.fn(async () => undefined) }));
+jest.mock("@/lib/rbac/middleware", () => ({ requirePermissions: jest.fn(async () => undefined), checkPermissionWithContext: jest.fn(() => true) }));
 jest.mock("next/cache", () => ({ revalidatePath: jest.fn() }));
 jest.mock("@/lib/audit-logger", () => ({ logAuditEvent: jest.fn() }));
 const repoint = jest.fn();

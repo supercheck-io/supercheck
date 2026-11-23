@@ -2,6 +2,8 @@ import { DelayedError, UnrecoverableError } from 'bullmq';
 import {
   CAPACITY_DEFERRAL_LIMIT,
   CAPACITY_RETRY_MAX_DELAY_MS,
+  EXECUTION_QUOTA_ERROR,
+  QUOTA_WAIT_BUDGET_MS,
   capacityRetryDelayMs,
   deferForCapacity,
 } from './capacity-deferral';
@@ -77,5 +79,35 @@ describe('deferForCapacity', () => {
     await expect(deferForCapacity(job as never)).rejects.toBeInstanceOf(
       UnrecoverableError,
     );
+  });
+});
+
+describe('deferForCapacity with a full execution quota', () => {
+  const quotaError = () => new Error(EXECUTION_QUOTA_ERROR);
+
+  it('starts a time budget on the first quota wait', async () => {
+    const job = fakeJob({ runId: 'run' });
+    await expect(
+      deferForCapacity(job as never, undefined, quotaError()),
+    ).rejects.toBeInstanceOf(DelayedError);
+    expect(job.updateData).toHaveBeenCalledWith(
+      expect.objectContaining({ _quotaWaitSince: expect.any(Number) }),
+    );
+  });
+
+  it('gives up with a quota message once the budget is spent, long before the organization limit', async () => {
+    const job = fakeJob({
+      runId: 'run',
+      _capacityDeferrals: 5,
+      _quotaWaitSince: Date.now() - QUOTA_WAIT_BUDGET_MS - 1,
+    });
+    const onGiveUp = jest.fn().mockResolvedValue(undefined);
+    await expect(
+      deferForCapacity(job as never, onGiveUp, quotaError()),
+    ).rejects.toBeInstanceOf(UnrecoverableError);
+    expect(onGiveUp).toHaveBeenCalledWith(
+      expect.stringMatching(/execution capacity stayed full/i),
+    );
+    expect(job.moveToDelayed).not.toHaveBeenCalled();
   });
 });

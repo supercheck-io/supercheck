@@ -227,7 +227,7 @@ Run `supercheck config validate`, preview with `supercheck diff`, apply with `su
 | `jobType` | `string` | Job runner type (`playwright`, `k6`) |
 | `cronSchedule` | `string` | Cron expression |
 | `tests` | `string[]` | Test file paths or IDs |
-| `alertConfig` | `object` | Alert config with `notificationProviders` (UUIDs), `alertOnFailure`, `alertOnSuccess`, `alertOnTimeout`, `failureThreshold`, `recoveryThreshold` (positive integers), `customMessage`. Incident fields: `incidentEnabled`, `incidentSeverity`, `autoResolveIncident` (see below) |
+| `alertConfig` | `object` | Alert config with `notificationProviders` (UUIDs), `alertOnFailure`, `alertOnSuccess`, `alertOnTimeout`, `failureThreshold`, `recoveryThreshold` (positive integers), `customMessage`. Incident fields: `incidentEnabled`, `incidentSeverity`, `autoResolveIncident` (see below). Jobs have no recovery alert: `alertOnRecovery` is ignored (use `alertOnSuccess`) |
 
 </Accordion>
 <Accordion title="monitors[]" id="monitors">

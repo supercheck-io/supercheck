@@ -1,94 +1,44 @@
 import { Section, Text } from "@react-email/components";
 import * as React from "react";
-import { BaseLayout, formatEmailTime } from "./base-layout";
+import { BaseLayout, DetailsTable, formatEmailTime } from "./base-layout";
 
 interface TestEmailProps {
   testMessage?: string;
+  /** Send time; defaults to now. */
+  sentAt?: Date;
 }
 
 export const TestEmail = ({
-  testMessage = "This is a test email to verify your SMTP configuration is working correctly.",
+  testMessage,
+  sentAt,
 }: TestEmailProps) => {
   return (
     <BaseLayout
-      preview="Your email configuration is working."
-      title="Email Configuration Test"
+      preview="Your email channel works. Supercheck alerts to this address will arrive like this one."
+      title="Test email"
+      reason="You received this because someone sent a test from a Supercheck email notification channel."
     >
       <Section style={contentSection}>
-        <Text style={heading}>Email Test Successful</Text>
-
         <Text style={paragraph}>
-          Your email configuration is working properly.
+          Your email channel works. Supercheck alerts sent to this address will arrive like this one.
         </Text>
-
-        <Text style={paragraph}>{testMessage}</Text>
-
-        <Section style={infoBox}>
-          <Text style={infoTitle}>Email Details</Text>
-          <Text style={infoText}>
-            • Status: Sent
-            <br />• Sent at: {formatEmailTime(new Date())}
-          </Text>
-        </Section>
-
-        <Text style={smallText}>
-          This is an automated test email from Supercheck. If you received this, your email
-          notifications are configured correctly.
-        </Text>
+        {testMessage && <Text style={paragraph}>{testMessage}</Text>}
       </Section>
+
+      <DetailsTable heading="Test details" fields={[{ title: "Sent at", value: formatEmailTime(sentAt ?? new Date()) }]} />
     </BaseLayout>
   );
 };
 
 const contentSection = {
-  padding: "32px",
-};
-
-const heading = {
-  color: "#111827",
-  fontSize: "22px",
-  fontWeight: "700" as const,
-  margin: "0 0 20px",
-  letterSpacing: "-0.025em",
+  padding: "32px 32px 8px",
 };
 
 const paragraph = {
   color: "#4b5563",
   fontSize: "15px",
   lineHeight: "1.6",
-  margin: "0 0 24px",
-};
-
-const infoBox = {
-  backgroundColor: "#f9fafb",
-  border: "1px solid #e5e7eb",
-  borderRadius: "8px",
-  padding: "24px",
-  margin: "32px 0",
-};
-
-const infoTitle = {
-  color: "#1f2937",
-  fontSize: "14px",
-  fontWeight: "600" as const,
-  margin: "0 0 12px",
-  textTransform: "uppercase" as const,
-  letterSpacing: "0.05em",
-};
-
-const infoText = {
-  color: "#4b5563",
-  fontSize: "14px",
-  lineHeight: "1.8",
-  margin: "0",
-};
-
-const smallText = {
-  color: "#9ca3af",
-  fontSize: "13px",
-  lineHeight: "1.5",
-  margin: "32px 0 0",
-  textAlign: "center" as const,
+  margin: "0 0 16px",
 };
 
 export default TestEmail;

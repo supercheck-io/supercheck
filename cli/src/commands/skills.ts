@@ -43,6 +43,8 @@ function describeSchema(schema: z.ZodType): unknown {
     const catchall = (def.catchall as z.ZodType | undefined)?.def.type
     return { type: 'object', unknownKeys: catchall === 'never' ? 'strict' : catchall ? 'passthrough' : 'strip', properties: Object.fromEntries(Object.entries(schema.shape).map(([key, value]) => [key, describeSchema(value as z.ZodType)])) }
   }
+  // A transform (e.g. jobs[].alertConfig) accepts its input schema.
+  if (schema instanceof z.ZodPipe) return describeSchema(schema.in as z.ZodType)
   if (schema instanceof z.ZodOptional) return { optional: true, value: describeSchema(schema.unwrap() as z.ZodType) }
   if (schema instanceof z.ZodDefault) return { default: schema.def.defaultValue, value: describeSchema(schema.removeDefault() as z.ZodType) }
   if (schema instanceof z.ZodArray) return { type: 'array', items: describeSchema(schema.element as z.ZodType) }

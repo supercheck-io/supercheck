@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { and, desc, eq, gte, inArray } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, sql } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 
 import {
   alertHistory,
@@ -21,7 +22,9 @@ import {
   INCIDENT_EVENT_MESSAGE,
   incidentUpdateFields,
   incidentUpdateHeadline,
+  incidentUpdateSubject,
 } from "@/emails/incident-update";
+import { emailAppUrl } from "@/emails/base-layout";
 import { renderIncidentUpdateEmail } from "@/lib/email-renderer";
 import { EmailService } from "@/lib/email-service";
 import { getDisplayStatus } from "@/lib/sre/incident-status-display";
@@ -104,6 +107,8 @@ const EVENT_LABEL: Record<IncidentNotifyEvent, string> = {
 const PEOPLE_ONLY_EVENTS: IncidentNotifyEvent[] = ["commented", "severity_changed"];
 const MAX_POLICY_OWNERS = 5;
 
+const triggerService = alias(sreServices, "trigger_service");
+
 const DEDUPE_TTL_SECONDS = 600;
 const SEND_TIMEOUT_MS = 8000;
 const MAX_DETAIL_LENGTH = 300;
@@ -112,8 +117,7 @@ const MAX_EMAIL_RECIPIENTS = 20;
 const MAX_DIRECT_RECIPIENTS = 120;
 
 export function buildIncidentUrl(incidentId: string) {
-  const base = (process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000").replace(/\/+$/, "");
-  return `${base}/incidents/${incidentId}`;
+  return `${emailAppUrl()}/incidents/${incidentId}`;
 }
 
 /** Returns true when this incident+event has not been announced recently. Fails open without Redis. */
@@ -166,6 +170,8 @@ type Message = {
   /** Event detail, or the standard explanation for the event. */
   body: string;
   fields: DetailField[];
+  /** When the event happened (the trigger alert's time for `created`). */
+  occurredAt: Date;
   email: {
     title: string;
     statusLabel: string;
@@ -256,6 +262,7 @@ async function sendEmailBatch(unique: string[], message: Message): Promise<numbe
       incidentUrl: message.url,
       actorName: message.email.actorName,
       assigneeName: message.email.assigneeName,
+      occurredAt: message.occurredAt,
     });
   } catch (error) {
     // Never drop the email because a template failed; send the plain version with the same facts.
@@ -264,7 +271,14 @@ async function sendEmailBatch(unique: string[], message: Message): Promise<numbe
       .map((field) => `<tr><td style="padding:4px 12px 4px 0;color:#6b7280"><b>${escapeHtml(field.title)}</b></td><td>${escapeHtml(field.value)}</td></tr>`)
       .join("");
     rendered = {
-      subject: `[Supercheck] ${message.headline}: #${message.incident.number} ${message.email.title} (${message.incident.severity.toUpperCase()})`,
+      subject: incidentUpdateSubject({
+        event: message.event,
+        incidentNumber: message.incident.number,
+        title: message.email.title,
+        severity: message.incident.severity as "sev1" | "sev2" | "sev3" | "sev4",
+        actorName: message.email.actorName,
+        assigneeName: message.email.assigneeName,
+      }),
       text: plainText(message),
       html: `<p><b>${escapeHtml(message.headline)}</b></p><p>${escapeHtml(message.text)}</p><table>${rows}</table><p><a href="${escapeHtml(message.url)}">Open incident #${message.incident.number}</a></p>`,
     };
@@ -444,15 +458,23 @@ const TRIGGER_ALERT_TYPES = ["monitor_failure", "job_failed", "job_timeout", "ss
 /**
  * True when the triggering alert (its own type, not any alert for the source) was delivered (status `sent`) to some
  * channel. With the triggering row known, only rows of the same outage (monitors) or run (jobs) count, so a delivery
- * from an earlier outage cannot hide a failed page; otherwise any such row in the last 15 minutes.
+ * from an earlier outage cannot hide a failed page; otherwise only rows sent since that row (one without an outage
+ * key) or since the incident's own trigger fired (opened without an alert row), and the last 15 minutes only when
+ * neither time is known.
  */
-async function triggerAlertDelivered(sourceType: "monitor" | "job", sourceId: string, dedupKey: string | null, triggerAlertHistoryId?: string) {
+async function triggerAlertDelivered(
+  sourceType: "monitor" | "job",
+  sourceId: string,
+  dedupKey: string | null,
+  triggerAlertHistoryId: string | undefined,
+  triggerFiredAt: Date | null,
+) {
   // Alert event dedup keys end with the alert type (see background-alert-triage).
   const keyType = dedupKey?.split(":").pop();
   const types = TRIGGER_ALERT_TYPES.filter((type) => type === keyType);
   const [trigger] = triggerAlertHistoryId && isUuid(triggerAlertHistoryId)
     ? await db
-        .select({ outageKey: alertHistory.outageKey, runId: alertHistory.runId })
+        .select({ outageKey: alertHistory.outageKey, runId: alertHistory.runId, sentAt: alertHistory.sentAt })
         .from(alertHistory)
         .where(and(eq(alertHistory.id, triggerAlertHistoryId), sourceType === "monitor" ? eq(alertHistory.monitorId, sourceId) : eq(alertHistory.jobId, sourceId)))
         .limit(1)
@@ -462,7 +484,7 @@ async function triggerAlertDelivered(sourceType: "monitor" | "job", sourceId: st
       ? eq(alertHistory.outageKey, trigger.outageKey)
       : sourceType === "job" && trigger?.runId
         ? eq(alertHistory.runId, trigger.runId)
-        : gte(alertHistory.sentAt, new Date(Date.now() - 15 * 60_000));
+        : gte(alertHistory.sentAt, trigger?.sentAt ?? triggerFiredAt ?? new Date(Date.now() - 15 * 60_000));
   const rows = await db
     .select({ status: alertHistory.status })
     .from(alertHistory)
@@ -522,13 +544,31 @@ export async function notifyIncidentEvent(input: IncidentNotifyInput): Promise<b
         status: sreIncidents.status,
         acknowledgedAt: sreIncidents.acknowledgedAt,
         renotifyStoppedAt: sreIncidents.renotifyStoppedAt,
+        lastAlertAt: sreIncidents.lastAlertAt,
         assigneeUserId: sreIncidents.assigneeUserId,
         commanderUserId: sreIncidents.commanderUserId,
         serviceId: sreIncidents.primaryServiceId,
         serviceName: sreServices.name,
+        // The alert that opened the incident explains a `created` message: what failed, when, on which service.
+        // The link's snapshot first: the shared alert event row moves on with later failures. Older links have none.
+        triggerTitle: sql<string | null>`coalesce(${sreIncidentAlerts.alertTitle}, ${sreAlertEvents.title})`,
+        triggerDescription: sql<string | null>`coalesce(${sreIncidentAlerts.alertDescription}, ${sreAlertEvents.description})`,
+        triggerFiredAt: sql<Date | null>`coalesce(${sreIncidentAlerts.alertFiredAt}, ${sreAlertEvents.firedAt})`.mapWith(sreIncidentAlerts.alertFiredAt),
+        triggerServiceName: triggerService.name,
       })
       .from(sreIncidents)
       .leftJoin(sreServices, eq(sreServices.id, sreIncidents.primaryServiceId))
+      .leftJoin(sreIncidentAlerts, and(eq(sreIncidentAlerts.incidentId, sreIncidents.id), eq(sreIncidentAlerts.role, "trigger")))
+      // Tenant-bound joins: alert text from another org or project must never reach this org's channels.
+      .leftJoin(
+        sreAlertEvents,
+        and(
+          eq(sreAlertEvents.id, sreIncidentAlerts.alertEventId),
+          eq(sreAlertEvents.organizationId, sreIncidents.organizationId),
+          eq(sreAlertEvents.projectId, sreIncidents.projectId),
+        ),
+      )
+      .leftJoin(triggerService, and(eq(triggerService.id, sreAlertEvents.serviceId), eq(triggerService.organizationId, sreIncidents.organizationId)))
       .where(
         and(
           eq(sreIncidents.id, input.incidentId),
@@ -536,6 +576,7 @@ export async function notifyIncidentEvent(input: IncidentNotifyInput): Promise<b
           eq(sreIncidents.projectId, input.projectId),
         ),
       )
+      .orderBy(sreIncidentAlerts.createdAt)
       .limit(1);
     if (!incident) {
       if (input.report) input.report.skipped = true;
@@ -549,7 +590,14 @@ export async function notifyIncidentEvent(input: IncidentNotifyInput): Promise<b
     }
 
     const url = buildIncidentUrl(incident.id);
-    const detail = input.detail?.replace(/\s+/g, " ").trim().slice(0, MAX_DETAIL_LENGTH);
+    // A new incident is explained by the alert that opened it: what failed, when, and on which service.
+    const created = input.event === "created";
+    const occurredAt = (created && incident.triggerFiredAt) || new Date();
+    const serviceName = incident.serviceName ?? incident.triggerServiceName ?? undefined;
+    // Alert text can carry URLs with credentials: redact before it reaches email or chat.
+    // Leaves room for safeText's "… [truncated]" marker within MAX_DETAIL_LENGTH.
+    const triggerDetail = created ? safeText(incident.triggerDescription || incident.triggerTitle, MAX_DETAIL_LENGTH - 15) : null;
+    const detail = (input.detail ?? triggerDetail ?? undefined)?.replace(/\s+/g, " ").trim().slice(0, MAX_DETAIL_LENGTH);
 
     // Participants (owner, commander, and the owner being replaced) get a direct email for
     // every lifecycle change, like ticket watchers; never the person who made the change.
@@ -603,7 +651,7 @@ export async function notifyIncidentEvent(input: IncidentNotifyInput): Promise<b
     const title = safeText(incident.title, 300) ?? "";
     const text =
       `[${incident.severity.toUpperCase()}] Incident #${incident.number} ${EVENT_LABEL[input.event]}: ${title}` +
-      (incident.serviceName ? ` (${incident.serviceName})` : "") +
+      (serviceName ? ` (${serviceName})` : "") +
       (detail ? `\n${detail}` : "");
     const message: Message = {
       title: `Incident #${incident.number} ${EVENT_LABEL[input.event]}`,
@@ -617,14 +665,16 @@ export async function notifyIncidentEvent(input: IncidentNotifyInput): Promise<b
         incidentNumber: incident.number,
         severity: incident.severity as "sev1" | "sev2" | "sev3" | "sev4",
         statusLabel,
-        serviceName: incident.serviceName ?? undefined,
+        serviceName,
         assigneeName,
         actorName,
+        occurredAt,
       }),
+      occurredAt,
       email: {
         title,
         statusLabel,
-        serviceName: incident.serviceName ?? undefined,
+        serviceName,
         detail,
         actorName,
         assigneeName,
@@ -661,7 +711,12 @@ export async function notifyIncidentEvent(input: IncidentNotifyInput): Promise<b
 
     // Providers linked to the monitor/job that raised the alert; other incidents use the project policy.
     const [source] = await db
-      .select({ sourceType: sreAlertEvents.sourceType, sourceId: sreAlertEvents.sourceId, dedupKey: sreAlertEvents.dedupKey })
+      .select({
+        sourceType: sreAlertEvents.sourceType,
+        sourceId: sreAlertEvents.sourceId,
+        dedupKey: sreAlertEvents.dedupKey,
+        firedAt: sreIncidentAlerts.alertFiredAt,
+      })
       .from(sreIncidentAlerts)
       .innerJoin(sreAlertEvents, eq(sreAlertEvents.id, sreIncidentAlerts.alertEventId))
       .where(and(eq(sreIncidentAlerts.incidentId, incident.id), eq(sreIncidentAlerts.role, "trigger")))
@@ -680,7 +735,7 @@ export async function notifyIncidentEvent(input: IncidentNotifyInput): Promise<b
     // `created` for a monitor or job whose own alert reached nobody: add the policy channels as a fallback.
     let addPolicyFallback = false;
     if (fromMonitorOrJob && (input.event === "created" || reopenedByAlert)) {
-      if (await triggerAlertDelivered(source.sourceType as "monitor" | "job", source.sourceId as string, source.dedupKey, input.triggerAlertHistoryId)) {
+      if (await triggerAlertDelivered(source.sourceType as "monitor" | "job", source.sourceId as string, source.dedupKey, input.triggerAlertHistoryId, reopenedByAlert ? incident.lastAlertAt : source.firedAt)) {
         return attempted === 0 || sent > 0;
       }
       addPolicyFallback = true;

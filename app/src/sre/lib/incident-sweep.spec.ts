@@ -60,7 +60,7 @@ describe("reconcileRecoveries", () => {
     mockResults.push([monitorRow()], []);
     mockRecoveredSince.mockResolvedValue(recoveredAt);
     expect(await reconcileRecoveries()).toBe(1);
-    expect(mockRecoveredSince).toHaveBeenCalledWith("monitor", "mon-1", new Date(lastAlertAt));
+    expect(mockRecoveredSince).toHaveBeenCalledWith("monitor", "mon-1", new Date(lastAlertAt), undefined);
     expect(mockHandleRecovery).toHaveBeenCalledWith({
       organizationId: "org-1", projectId: "proj-1", sourceType: "monitor", sourceId: "mon-1", targetName: "API",
       autoResolve: true, recoveredAt, discriminator: `monitor:mon-1:${recoveredAt.toISOString()}:sweep`,
@@ -89,15 +89,19 @@ describe("reconcileRecoveries", () => {
     expect(await reconcileRecoveries()).toBe(0);
   });
 
-  it("skips autoResolve off and a recovery threshold above 1 (worker signal only)", async () => {
-    mockResults.push(
-      [monitorRow({ alertConfig: { autoResolveIncident: false } }), monitorRow({ sourceId: "mon-2", alertConfig: { recoveryThreshold: 3 } })],
-      [],
-    );
+  it("skips autoResolve off", async () => {
+    mockResults.push([monitorRow({ alertConfig: { autoResolveIncident: false } })], []);
     mockRecoveredSince.mockResolvedValue(recoveredAt);
     expect(await reconcileRecoveries()).toBe(0);
     expect(mockRecoveredSince).not.toHaveBeenCalled();
     expect(mockHandleRecovery).not.toHaveBeenCalled();
+  });
+
+  it("checks a recovery threshold above 1 against the source's pass streak", async () => {
+    mockResults.push([monitorRow({ sourceId: "mon-2", alertConfig: { recoveryThreshold: 3 } })], []);
+    mockRecoveredSince.mockResolvedValue(recoveredAt);
+    expect(await reconcileRecoveries()).toBe(1);
+    expect(mockRecoveredSince).toHaveBeenCalledWith("monitor", "mon-2", new Date(lastAlertAt), 3);
   });
 
   it("stops at the tick's wall-clock budget", async () => {

@@ -1,15 +1,11 @@
-import {
-  Section,
-  Text,
-  Hr,
-} from "@react-email/components";
+import { Section, Text } from "@react-email/components";
 import * as React from "react";
 import { PALETTE } from "./palette";
-import { BaseLayout, EmailButton } from "./base-layout";
+import { BaseLayout, Callout, EmailButton } from "./base-layout";
 
 interface UsageNotificationEmailProps {
   organizationName: string;
-  notificationType: 
+  notificationType:
     | "usage_50_percent"
     | "usage_80_percent"
     | "usage_90_percent"
@@ -25,8 +21,21 @@ interface UsageNotificationEmailProps {
   /** The cap stops billable work at 100%; the email says what pauses. */
   hardStop?: boolean;
   billingPageUrl: string;
-  periodEndDate: string;
+  /** End of the billing period, already formatted with a time zone; omitted when unknown. */
+  periodEndDate?: string;
 }
+
+const TITLES: Record<UsageNotificationEmailProps["notificationType"], string> = {
+  usage_50_percent: "Usage at 50% of your plan",
+  usage_80_percent: "Usage at 80% of your plan",
+  usage_90_percent: "Usage at 90% of your plan",
+  usage_100_percent: "Included usage used up",
+  spending_limit_warning: "Spending limit almost reached",
+  spending_limit_reached: "Spending limit reached",
+};
+
+export const usageNotificationTitle = (type: UsageNotificationEmailProps["notificationType"]): string =>
+  TITLES[type] ?? "Usage update";
 
 export const UsageNotificationEmail = ({
   organizationName = "Acme Inc",
@@ -39,26 +48,9 @@ export const UsageNotificationEmail = ({
   spendingLimitDollars,
   hardStop,
   billingPageUrl = "https://app.supercheck.io/billing",
-  periodEndDate = "December 1, 2026",
+  periodEndDate,
 }: UsageNotificationEmailProps) => {
-  const getTitle = () => {
-    switch (notificationType) {
-      case "usage_50_percent":
-        return "50% Usage Alert";
-      case "usage_80_percent":
-        return "80% Usage Warning";
-      case "usage_90_percent":
-        return "90% Usage Critical";
-      case "usage_100_percent":
-        return "Usage Limit Reached";
-      case "spending_limit_warning":
-        return "Spending Limit Warning";
-      case "spending_limit_reached":
-        return "Spending Limit Reached";
-      default:
-        return "Usage Notification";
-    }
-  };
+  const getTitle = () => usageNotificationTitle(notificationType);
 
   const filledPercent = Number.isFinite(usagePercentage)
     ? Math.round(Math.max(Math.min(usagePercentage, 100), 0))
@@ -83,17 +75,17 @@ export const UsageNotificationEmail = ({
   const getResourceLabel = () => {
     switch (resourceType) {
       case "playwright":
-        return "Playwright Execution Minutes";
+        return "Playwright execution minutes";
       case "k6":
-        return "K6 Virtual User Minutes";
+        return "k6 virtual user minutes";
       case "ai":
-        return "AI Credits";
+        return "AI credits";
       case "sre":
-        return "AI SRE Investigation Units";
+        return "AI SRE investigation units";
       case "combined":
-        return "Combined Usage";
+        return "Combined usage";
       case "spending":
-        return "Overage Spending";
+        return "Overage spending";
       default:
         return "Usage";
     }
@@ -115,113 +107,118 @@ export const UsageNotificationEmail = ({
   };
 
   const isSpendingNotification = notificationType.includes("spending");
+  // A spending email needs both amounts; without them it falls back to the usage wording (never "$ of your $").
+  const hasSpend =
+    typeof currentSpendingDollars === "number" &&
+    Number.isFinite(currentSpendingDollars) &&
+    typeof spendingLimitDollars === "number" &&
+    Number.isFinite(spendingLimitDollars);
+  const hasUsage = Number.isFinite(usageLimit) && usageLimit > 0 && Number.isFinite(usageAmount);
+  const periodText = periodEndDate ? ` (${periodEndDate})` : "";
 
   return (
     <BaseLayout
-      preview={`${getTitle()} for ${organizationName}`}
+      preview={`${getTitle()} for ${organizationName}.${periodEndDate ? ` The billing period ends ${periodEndDate}.` : ""}`}
       title={getTitle()}
       reason="You received this because you manage billing for this organization."
       manage={{ href: billingPageUrl, label: "Manage usage limits and notifications" }}
     >
       <Section style={contentSection}>
-        <Text style={greeting}>
-          Hello,
-        </Text>
-
         <Text style={paragraph}>
-          This is an automated notification for <strong>{organizationName}</strong>.
+          <strong style={strong}>{organizationName}</strong>
         </Text>
 
-        {isSpendingNotification ? (
+        {isSpendingNotification && hasSpend ? (
           <>
             <Text style={paragraph}>
-              Your overage spending has reached{" "}
-              <strong>
-                ${currentSpendingDollars?.toFixed(2)}
-              </strong>{" "}
-              of your{" "}
-              <strong>${spendingLimitDollars?.toFixed(2)}</strong> monthly limit.
+              Overage spending this billing period is <strong style={strong}>${currentSpendingDollars.toFixed(2)}</strong> of
+              your <strong style={strong}>${spendingLimitDollars.toFixed(2)}</strong> monthly limit.
             </Text>
 
             {hardStop ? (
-              <Text style={warningText}>
-                {notificationType === "spending_limit_reached"
-                  ? "⚠️ Your cap has been reached. New browser checks, test and job runs, k6 load tests and full AI SRE investigations are paused"
-                  : "⚠️ At the cap, new browser checks, test and job runs, k6 load tests and full AI SRE investigations will pause"}{" "}
-                until you raise the cap or the billing period resets ({periodEndDate}). HTTP, website, ping and port
-                monitors keep running.
-              </Text>
-            ) : notificationType === "spending_limit_reached" && (
-              <Text style={warningText}>
-                ⚠️ Your spending limit has been reached. Hard stop is off, so usage
-                continues and is billed as overage.
-              </Text>
+              <Callout
+                tone={notificationType === "spending_limit_reached" ? "danger" : "warning"}
+                lines={[
+                  `${
+                    notificationType === "spending_limit_reached"
+                      ? "The limit is reached. New browser checks, test and job runs, k6 load tests and full AI SRE investigations are paused"
+                      : "At the limit, new browser checks, test and job runs, k6 load tests and full AI SRE investigations will pause"
+                  } until you raise the limit or the billing period resets${periodText}. HTTP, website, ping and port monitors keep running.`,
+                ]}
+              />
+            ) : (
+              notificationType === "spending_limit_reached" && (
+                <Callout
+                  tone="warning"
+                  lines={["The limit is reached. Hard stop is off, so usage continues and is billed as overage."]}
+                />
+              )
             )}
           </>
         ) : (
           <>
             <Text style={paragraph}>
-              Your <strong>{getResourceLabel()}</strong> usage has reached{" "}
-              <strong>
-                {usagePercentage}%
-              </strong>{" "}
-              of your included quota.
+              {isSpendingNotification
+                ? "Overage spending is close to or at your monthly limit."
+                : <>Usage of <strong style={strong}>{getResourceLabel()}</strong> has reached{" "}
+                  <strong style={strong}>{Math.round(usagePercentage)}%</strong> of your included quota.</>}
             </Text>
 
-            <Section style={usageBox}>
-              <Text style={usageLabel}>{getResourceLabel()}</Text>
-              <Text style={usageValue}>
-                {usageAmount.toLocaleString("en-US", { maximumFractionDigits: 2 })} /{" "}
-                {usageLimit.toLocaleString("en-US", { maximumFractionDigits: 2 })} {getUnitLabel()}
-              </Text>
-              {/* A two-cell table: <Section> centres its table, which floated the fill. */}
-              <table width="100%" cellPadding={0} cellSpacing={0} style={progressBarContainer}>
-                <tbody>
-                  <tr>
-                    <td
-                      height={8}
-                      width={`${filledPercent}%`}
-                      style={{ ...progressBar, width: `${filledPercent}%`, backgroundColor: getMeterColor() }}
-                    >
-                      &nbsp;
-                    </td>
-                    {filledPercent < 100 ? (
-                      <td height={8} style={progressBar}>
+            {hasUsage && (
+              <Section style={usageBox}>
+                <Text style={usageLabel}>{getResourceLabel()}</Text>
+                <Text style={usageValue}>
+                  {usageAmount.toLocaleString("en-US", { maximumFractionDigits: 2 })} /{" "}
+                  {usageLimit.toLocaleString("en-US", { maximumFractionDigits: 2 })} {getUnitLabel()}
+                </Text>
+                {/* A two-cell table: <Section> centres its table, which floated the fill. */}
+                <table width="100%" cellPadding={0} cellSpacing={0} style={progressBarContainer}>
+                  <tbody>
+                    <tr>
+                      <td
+                        height={8}
+                        width={`${filledPercent}%`}
+                        style={{ ...progressBar, width: `${filledPercent}%`, backgroundColor: getMeterColor() }}
+                      >
                         &nbsp;
                       </td>
-                    ) : null}
-                  </tr>
-                </tbody>
-              </table>
-            </Section>
+                      {filledPercent < 100 ? (
+                        <td height={8} style={progressBar}>
+                          &nbsp;
+                        </td>
+                      ) : null}
+                    </tr>
+                  </tbody>
+                </table>
+              </Section>
+            )}
 
             {notificationType === "usage_100_percent" && (
-              <Text style={warningText}>
-                {resourceType === "ai"
-                  ? "⚠️ You have used all AI credits included in your plan. AI actions are unavailable until your next billing period starts or you upgrade your plan."
-                  : "⚠️ You have used your included quota. Additional usage will be billed at your plan's overage rate."}
-              </Text>
+              <Callout
+                tone="warning"
+                lines={[
+                  resourceType === "ai"
+                    ? "All AI credits included in your plan are used. AI actions are unavailable until the next billing period starts or you upgrade your plan."
+                    : "Your included quota is used. Further usage is billed at your plan's overage rate.",
+                ]}
+              />
             )}
           </>
         )}
 
-        <Text style={paragraph}>
-          Your current billing period ends on <strong>{periodEndDate}</strong>.
-        </Text>
-
-        <Hr style={divider} />
-
-        <Text style={paragraph}>
-          To manage your usage limits, notification preferences, or upgrade your plan:
-        </Text>
+        {periodEndDate && (
+          <Text style={paragraph}>
+            The current billing period ends on <strong style={strong}>{periodEndDate}</strong>.
+          </Text>
+        )}
 
         <Section style={buttonContainer}>
-          <EmailButton href={billingPageUrl}>View Billing Dashboard</EmailButton>
+          <EmailButton href={billingPageUrl}>Open billing</EmailButton>
         </Section>
 
         <Text style={tipText}>
-          💡 <strong>Tip:</strong> You can set a monthly spending limit to control
-          overage costs and receive notifications at custom thresholds.
+          You can set a monthly spending limit and choose the usage levels that send these emails on the billing
+          page.
         </Text>
       </Section>
     </BaseLayout>
@@ -230,13 +227,6 @@ export const UsageNotificationEmail = ({
 
 const contentSection = {
   padding: "32px",
-};
-
-const greeting = {
-  fontSize: "15px",
-  lineHeight: "1.6",
-  color: "#4b5563",
-  margin: "0 0 16px",
 };
 
 const paragraph = {
@@ -284,37 +274,21 @@ const progressBar = {
   lineHeight: "8px",
 };
 
-const warningText = {
-  fontSize: "13px",
-  lineHeight: "1.5",
-  color: "#991b1b",
-  backgroundColor: "#fef2f2",
-  padding: "16px",
-  borderRadius: "8px",
-  border: "1px solid #fecaca",
-  margin: "16px 0",
-};
-
-const divider = {
-  borderColor: "#e5e7eb",
-  margin: "24px 0",
-};
-
 const buttonContainer = {
   textAlign: "center" as const,
   margin: "24px 0",
 };
 
-
 const tipText = {
   fontSize: "13px",
   lineHeight: "1.6",
-  color: "#047857",
-  backgroundColor: "#ecfdf5",
-  padding: "16px",
-  borderRadius: "8px",
-  border: "1px solid #a7f3d0",
+  color: "#6b7280",
   margin: "16px 0 0",
+  textAlign: "center" as const,
+};
+
+const strong = {
+  color: "#111827",
 };
 
 export default UsageNotificationEmail;

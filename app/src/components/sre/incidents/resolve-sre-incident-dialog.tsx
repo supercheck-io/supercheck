@@ -5,6 +5,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Check, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -32,6 +33,7 @@ export function ResolveSreIncidentDialog({
   defaultSummary = "",
   open: controlledOpen,
   onOpenChange,
+  statusPages = [],
 }: {
   incidentId: string;
   /** Pre-fills the summary, for example from the AI root cause. The user still confirms it. */
@@ -39,6 +41,8 @@ export function ResolveSreIncidentDialog({
   /** Controlled mode: the caller owns the open state and supplies its own trigger. */
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
+  /** Names of the status pages with an open post linked to this incident that the user may update. */
+  statusPages?: string[];
 }) {
   const { projectId } = useProjectContext();
   const queryClient = useQueryClient();
@@ -49,9 +53,14 @@ export function ResolveSreIncidentDialog({
   const setOpen = onOpenChange ?? setInternalOpen;
   const [comment, setComment] = useState(defaultSummary.slice(0, 2000));
   const [error, setError] = useState<string | null>(null);
+  const publishId = useId();
+  const [publish, setPublish] = useState(true);
   // The default can change while the page stays mounted (for example a recovery lands); each open starts from the current one.
   useEffect(() => {
-    if (open) setComment(defaultSummary.slice(0, 2000));
+    if (open) {
+      setComment(defaultSummary.slice(0, 2000));
+      setPublish(true);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- only a (re)open should reset the draft, not typing
   }, [open]);
   const [pending, startTransition] = useTransition();
@@ -69,13 +78,18 @@ export function ResolveSreIncidentDialog({
               "content-type": "application/json",
               ...(projectId ? { "x-project-id": projectId } : {}),
             },
-            body: JSON.stringify({ comment: comment.trim() }),
+            body: JSON.stringify({
+              comment: comment.trim(),
+              ...(statusPages.length > 0 && publish ? { publishToStatusPages: true } : {}),
+            }),
           },
         );
         const body = (await response.json().catch(() => null)) as {
           success?: boolean;
           message?: string;
           error?: string;
+          statusPageMessage?: string;
+          warning?: string;
         } | null;
         if (!response.ok || !body?.success) {
           setError(
@@ -85,8 +99,11 @@ export function ResolveSreIncidentDialog({
         }
         setOpen(false);
         setComment(defaultSummary.slice(0, 2000));
+        if (body.warning) toast.warning(body.warning);
         toast.success(body.message ?? "Incident resolved", {
-          description: "You can generate a post-mortem draft in the Post-mortem tab.",
+          description: body.statusPageMessage
+            ? `${body.statusPageMessage}. You can generate a post-mortem draft in the Post-mortem tab.`
+            : "You can generate a post-mortem draft in the Post-mortem tab.",
           action: {
             label: "Post-mortem",
             onClick: () => window.dispatchEvent(new Event(OPEN_POSTMORTEM_EVENT)),
@@ -126,7 +143,7 @@ export function ResolveSreIncidentDialog({
           </Button>
         </DialogTrigger>
       )}
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>Resolve incident</DialogTitle>
           <DialogDescription>
@@ -149,6 +166,28 @@ export function ResolveSreIncidentDialog({
             // Grows with the text up to a cap, then scrolls, so the dialog buttons stay on screen.
             className="max-h-60 overflow-y-auto"
           />
+          {statusPages.length > 0 && (
+            <div className="flex items-start gap-2 pt-2">
+              <Checkbox
+                id={publishId}
+                checked={publish}
+                onCheckedChange={(value) => setPublish(value === true)}
+                disabled={pending}
+                className="mt-0.5"
+              />
+              <div className="min-w-0 space-y-0.5">
+                <Label htmlFor={publishId} className="font-medium">
+                  {statusPages.length === 1
+                    ? "Publish resolution to the status page"
+                    : `Publish resolution to ${statusPages.length} status pages`}
+                </Label>
+                <p className="break-words text-xs text-muted-foreground">
+                  {statusPages.join(", ")}. The summary above is posted as the
+                  public update.
+                </p>
+              </div>
+            </div>
+          )}
           {error && (
             <p id={errorId} role="alert" className="text-sm text-destructive">
               {error}

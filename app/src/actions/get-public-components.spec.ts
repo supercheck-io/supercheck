@@ -60,6 +60,9 @@ it("honours the component aggregation method when combining monitor uptime", asy
   };
   const result = await getPublicComponents("00000000-0000-4000-8000-000000000001");
   expect(result.components[0].dailyMetrics).toEqual([{ date: "2030-01-01", totalChecks: 100, successfulChecks: 100 }]);
+  // Read to combine uptime, never returned: the monitoring config is internal.
+  expect(result.components[0]).not.toHaveProperty("aggregationMethod");
+  expect(result.components[0]).not.toHaveProperty("failureThreshold");
 });
 
 it("shows no recent data when every linked monitor stopped reporting", async () => {

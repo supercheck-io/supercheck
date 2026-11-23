@@ -7,6 +7,7 @@ import { z } from "zod";
 import {
   alertHistory,
   jobs,
+  monitorResults,
   monitors,
   runs,
   sreAlertEvents,
@@ -42,6 +43,8 @@ import { sreDailyTokenLimitResponse } from "@/lib/sre/sre-daily-token-limit";
 import { incidentsEnabled } from "@/lib/incident-settings";
 import { isAttemptedAlertStatus } from "@/lib/alert-escalation";
 import { alertIncidentTitle } from "@/lib/sre/alert-labels";
+import { alertSeverity, isMoreSevere, type SreSeverity } from "@/lib/sre/alert-severity";
+import { sreBillingErrorMessage } from "@/lib/sre/billing-error-messages";
 import { linkStatusPageIncidentsToSreIncident } from "@/lib/status-page-reconciliation";
 import { notifyIncidentEvent, type IncidentFallback } from "@/lib/sre/incident-notifier";
 import { watchIncident } from "@/lib/sre/incident-watchers";
@@ -79,7 +82,6 @@ const backgroundTriageJobSchema = z.union([
   }),
 ]);
 
-type SreSeverity = "sev1" | "sev2" | "sev3" | "sev4";
 type SreAlertStatus = "firing" | "resolved";
 type SreAlertSourceType = "monitor" | "job";
 
@@ -111,6 +113,8 @@ export type SreBackgroundAlertTriageResult =
         | "org_concurrency_limit"
         | "unsupported_source"
         | "incident_disabled"
+        | "source_paused"
+        | "resolved_incident"
         | "recovery_handled"
         | "recovered_before_triage"
         | "in_maintenance"
@@ -119,6 +123,8 @@ export type SreBackgroundAlertTriageResult =
         | "daily_limit"
         | "daily_limit_unavailable"
         | "auto_investigation";
+      /** Set when the skip happened on an incident, so a caller giving up on a deferral can record it. */
+      incidentId?: string;
     }
   | {
       success: false;
@@ -127,29 +133,6 @@ export type SreBackgroundAlertTriageResult =
       investigationRunId?: string;
     };
 
-
-function deriveSeverity(type: string, message: string): SreSeverity {
-  const normalizedType = type.toLowerCase();
-  const normalizedMessage = message.toLowerCase();
-
-  if (
-    normalizedMessage.includes("sev1") ||
-    normalizedMessage.includes("critical") ||
-    normalizedType.includes("timeout")
-  ) {
-    return "sev1";
-  }
-
-  if (normalizedType.includes("failure") || normalizedType.includes("failed")) {
-    return "sev2";
-  }
-
-  if (normalizedType.includes("ssl") || normalizedMessage.includes("expir")) {
-    return "sev3";
-  }
-
-  return "sev4";
-}
 
 const RECOVERABLE_FAILURE_TYPES = new Set(["monitor_failure", "job_failed", "job_timeout"]);
 
@@ -163,6 +146,75 @@ function deriveAlertStatus(type: string): SreAlertStatus {
 
 function sha256(value: string) {
   return createHash("sha256").update(value, "utf8").digest("hex");
+}
+
+type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
+/**
+ * A more severe alert joining an open incident raises its severity, recorded like a person's edit. Never after a
+ * person lowered it (renotifyStoppedAt), and never lowers.
+ */
+async function escalateSeverity(tx: Tx, incidentId: string, severity: SreSeverity) {
+  const [current] = await tx
+    .select({ severity: sreIncidents.severity })
+    .from(sreIncidents)
+    .where(and(eq(sreIncidents.id, incidentId), ne(sreIncidents.status, "resolved"), isNull(sreIncidents.renotifyStoppedAt)))
+    .limit(1)
+    .for("update");
+  if (!current || !isMoreSevere(severity, current.severity)) return;
+  await tx.update(sreIncidents).set({ severity, updatedAt: new Date() }).where(eq(sreIncidents.id, incidentId));
+  await tx.insert(sreIncidentTimelineEvents).values({
+    incidentId,
+    eventType: "state_change",
+    eventData: {
+      state: "incident_updated",
+      previous: { severity: current.severity },
+      current: { severity },
+      comment: "Severity raised by a more severe alert",
+    },
+    actorType: "system",
+    createdAt: new Date(),
+  });
+}
+
+type TriageSkipReason = "daily_limit" | "daily_limit_unavailable" | "triage_billing" | "ai_not_configured" | "org_concurrency_limit";
+
+const TRIAGE_SKIP_MESSAGES: Record<TriageSkipReason, string> = {
+  daily_limit: "Daily AI usage limit reached for the organization. It resets at 00:00 UTC.",
+  daily_limit_unavailable: "The AI usage limit could not be checked. Start triage by hand.",
+  triage_billing: sreBillingErrorMessage(""),
+  ai_not_configured: "No AI provider is configured.",
+  org_concurrency_limit: "Too many AI runs were in progress for the organization. Start triage by hand.",
+};
+
+/**
+ * Automatic triage will not run for this incident (a limit, billing or configuration): leave one trace on the
+ * timeline, so "AI suppressed" is told apart from "automation off". Once per incident: later alerts joining it
+ * repeat the same skip. Best effort.
+ */
+export async function recordTriageSkipped(incidentId: string, reason: TriageSkipReason, message?: string) {
+  const eventData = { state: "triage_skipped", reason, comment: message ?? TRIAGE_SKIP_MESSAGES[reason] };
+  try {
+    // One statement under a per-incident lock, so two replicas cannot both write it; a reopened incident's new open
+    // period gets its own entry.
+    await db.transaction(async (tx) => {
+      await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`triage-skipped:${incidentId}`}))`);
+      await tx.execute(sql`
+        insert into ${sreIncidentTimelineEvents} (id, incident_id, event_type, event_data, actor_type, created_at)
+        select uuidv7(), i.id, 'state_change', ${JSON.stringify(eventData)}::jsonb, 'system', now()
+        from ${sreIncidents} i
+        where i.id = ${incidentId}
+          and not exists (
+            select 1 from ${sreIncidentTimelineEvents} e
+            where e.incident_id = i.id
+              and e.event_type = 'state_change'
+              and e.event_data->>'state' = 'triage_skipped'
+              and e.created_at >= coalesce(i.reopened_at, i.created_at)
+          )`);
+    });
+  } catch (error) {
+    logger.warn({ error, incidentId }, "Triage-skipped timeline write failed");
+  }
 }
 
 
@@ -236,31 +288,58 @@ async function processSourceRecovery(recovery: {
 
 /**
  * When the source is already back up after this failure fired, the time it recovered.
- * Covers a failure processed after its recovery (a retry, or a queue backlog).
- * Used only when recoveryThreshold is 1: a monitor flips to up and a job run passes on the first
- * success, so a longer threshold is left to the worker's recovery signal.
+ * Covers a failure processed after its recovery (a retry, or a queue backlog), and the sweep's lost-signal case.
+ * Honours the recovery threshold N like the worker: a job's last N runs since the failure all passed; a monitor is
+ * up since the failure with at least N passes in a row (the worker's own counter: the aggregated state for a
+ * multi-location monitor, the latest result row otherwise).
  */
 export async function sourceRecoveredSince(
   sourceType: SreAlertSourceType,
   sourceId: string,
   firedAt: Date,
+  recoveryThreshold?: number,
 ): Promise<Date | null> {
+  const needed = Math.max(1, Math.floor(recoveryThreshold ?? 1) || 1);
   // Compared in SQL: these are timestamps without time zone.
   if (sourceType === "monitor") {
     const [row] = await db
-      .select({ at: monitors.lastStatusChangeAt })
+      .select({ at: monitors.lastStatusChangeAt, config: monitors.config })
       .from(monitors)
       .where(and(eq(monitors.id, sourceId), liveMonitor(), eq(monitors.status, "up"), gt(monitors.lastStatusChangeAt, firedAt)))
       .limit(1);
-    return row?.at ?? null;
+    if (!row?.at || needed === 1) return row?.at ?? null;
+    const locationConfig = row.config?.locationConfig;
+    // Mirrors the worker's isMultiLocationEvaluation from config (it also counts results per cycle, unknown here).
+    const multiLocation = Boolean(locationConfig?.enabled && new Set(locationConfig.locations ?? []).size > 1);
+    let passes: number;
+    if (multiLocation) {
+      const state = (row.config as { aggregatedAlertState?: { consecutiveSuccessCount?: unknown } } | null)?.aggregatedAlertState;
+      // The stored count can predate this recovery (kept across a switch to one location and back), so it counts only
+      // up to the check cycles actually run since the monitor came up.
+      const [cycles] = await db
+        .select({ count: sql<number>`count(distinct coalesce(${monitorResults.executionGroupId}, ${monitorResults.id}::text))::int` })
+        .from(monitorResults)
+        .where(and(eq(monitorResults.monitorId, sourceId), gte(monitorResults.checkedAt, row.at)));
+      passes = Math.min(typeof state?.consecutiveSuccessCount === "number" ? state.consecutiveSuccessCount : 0, cycles?.count ?? 0);
+    } else {
+      const [latest] = await db
+        .select({ passes: monitorResults.consecutiveSuccessCount })
+        .from(monitorResults)
+        .where(and(eq(monitorResults.monitorId, sourceId), gt(monitorResults.checkedAt, firedAt)))
+        .orderBy(desc(monitorResults.checkedAt))
+        .limit(1);
+      passes = latest?.passes ?? 0;
+    }
+    return passes >= needed ? row.at : null;
   }
-  const [latest] = await db
+  const latest = await db
     .select({ status: runs.status, at: runs.completedAt })
     .from(runs)
     .where(and(eq(runs.jobId, sourceId), liveRunOfLiveJob(runs.jobId), gt(runs.completedAt, firedAt)))
     .orderBy(desc(runs.completedAt))
-    .limit(1);
-  return latest?.status === "passed" ? latest.at : null;
+    .limit(needed);
+  // shortcut: a cancelled run inside the streak blocks this check (the worker skips it); the worker signal still resolves.
+  return latest.length === needed && latest.every((run) => run.status === "passed") ? latest[0].at : null;
 }
 
 type SourceFailureInput = { sourceId: string; type: string; message: string; firedAt: string };
@@ -279,8 +358,6 @@ async function syntheticFailureAlert(failure: SourceFailureInput) {
     .from(monitors)
     .where(and(eq(monitors.id, failure.sourceId), liveMonitor()))
     .limit(1);
-  // A failure queued before the monitor was paused or disabled must not open or update an incident.
-  if (monitor && (monitor.status === "paused" || !monitor.enabled)) return undefined;
   // Only a monitor that opted in to incidents without alerts, or one that alerts with incidents on, opens one here.
   if (!monitor || !incidentsEnabled(monitor.alertConfig)) return undefined;
   return {
@@ -299,6 +376,8 @@ async function syntheticFailureAlert(failure: SourceFailureInput) {
     monitorOrganizationId: monitor.organizationId as string | null,
     monitorProjectId: monitor.projectId as string | null,
     monitorAlertConfig: monitor.alertConfig,
+    monitorStatus: monitor.status as string | null,
+    monitorEnabled: monitor.enabled as boolean | null,
     jobName: null as string | null,
     jobAlertConfig: null,
     jobOrganizationId: null as string | null,
@@ -326,6 +405,8 @@ async function createOrGetIncidentForAlertHistory(alertHistoryId: string, failur
       monitorOrganizationId: monitors.organizationId,
       monitorProjectId: monitors.projectId,
       monitorAlertConfig: monitors.alertConfig,
+      monitorStatus: monitors.status,
+      monitorEnabled: monitors.enabled,
       jobName: jobs.name,
       jobAlertConfig: jobs.alertConfig,
       jobOrganizationId: jobs.organizationId,
@@ -389,6 +470,13 @@ async function createOrGetIncidentForAlertHistory(alertHistoryId: string, failur
     return { skipped: true as const, reason: "recovery_handled" as const };
   }
 
+  // After the recovery branch, so a paused monitor's open incident still resolves: a failure (alert row or source
+  // signal) queued before the monitor was paused or disabled must not open or update an incident (the sweep never
+  // resolves paused monitors).
+  if (sourceType === "monitor" && (alert.monitorStatus === "paused" || alert.monitorEnabled === false)) {
+    return { skipped: true as const, reason: "source_paused" as const };
+  }
+
   // Incidents off means this monitor never opens one; a person can still list it on a declared incident, and then
   // its alert joins that incident (below) instead of being dropped.
   if (
@@ -409,7 +497,7 @@ async function createOrGetIncidentForAlertHistory(alertHistoryId: string, failur
     alertConfig?.incidentSeverity &&
     ["sev1", "sev2", "sev3", "sev4"].includes(alertConfig.incidentSeverity)
       ? alertConfig.incidentSeverity
-      : deriveSeverity(alert.type, alert.message);
+      : alertSeverity(alert.type);
   // One identity per source and alert type. The delivery correlation key is per
   // channel (webhooks use a type-less "monitor:<id>"), so using it made one
   // failure delivered to Slack and a webhook open two incidents.
@@ -521,8 +609,11 @@ async function createOrGetIncidentForAlertHistory(alertHistoryId: string, failur
       .limit(1);
 
     if (existingIncident) {
-      if (existingIncident.status !== "resolved") await recordRepeatAlert(tx, existingIncident.id, firedAt);
-      if (existingIncident.status !== "resolved" && RECOVERABLE_FAILURE_TYPES.has(alert.type)) {
+      // A late or retried failure absorbed by an incident that is already resolved: handled, never triaged.
+      if (existingIncident.status === "resolved") return { skipped: true as const, reason: "resolved_incident" as const };
+      await recordRepeatAlert(tx, existingIncident.id, firedAt);
+      await escalateSeverity(tx, existingIncident.id, severity);
+      if (RECOVERABLE_FAILURE_TYPES.has(alert.type)) {
         await noteFailureReturned(tx, existingIncident.id, firedAt);
       }
       return {
@@ -568,6 +659,7 @@ async function createOrGetIncidentForAlertHistory(alertHistoryId: string, failur
         createdAt: new Date(),
       });
       await recordRepeatAlert(tx, declared.id, firedAt);
+      await escalateSeverity(tx, declared.id, severity);
       return {
         skipped: false as const,
         organizationId,
@@ -595,6 +687,7 @@ async function createOrGetIncidentForAlertHistory(alertHistoryId: string, failur
         })
         .onConflictDoNothing();
       await recordRepeatAlert(tx, openForSource.id, firedAt);
+      await escalateSeverity(tx, openForSource.id, severity);
       await noteFailureReturned(tx, openForSource.id, firedAt);
       return {
         skipped: false as const,
@@ -649,6 +742,7 @@ async function createOrGetIncidentForAlertHistory(alertHistoryId: string, failur
     }
     if (reopened) {
       await recordRepeatAlert(tx, reopened.incidentId, firedAt);
+      await escalateSeverity(tx, reopened.incidentId, severity);
       return {
         skipped: false as const,
         organizationId,
@@ -768,6 +862,7 @@ async function createOrGetIncidentForAlertHistory(alertHistoryId: string, failur
             })
             .onConflictDoNothing();
           await recordRepeatAlert(correlationTx, correlation.candidate.incidentId, firedAt);
+          await escalateSeverity(correlationTx, correlation.candidate.incidentId, severity);
 
           await correlationTx.insert(sreIncidentTimelineEvents).values({
             incidentId: correlation.candidate.incidentId,
@@ -937,10 +1032,10 @@ async function createOrGetIncidentForAlertHistory(alertHistoryId: string, failur
     });
   }
 
-  // The source already came back: keep the incident as a record, resolve it now and skip AI triage.
-  // Only with a one-check recovery threshold: source state alone cannot tell a longer streak apart.
-  if (!result.skipped && RECOVERABLE_FAILURE_TYPES.has(alert.type) && (alertConfig?.recoveryThreshold ?? 1) <= 1) {
-    const recoveredAt = await sourceRecoveredSince(sourceType, sourceId, firedAt);
+  // The source already came back (its recovery threshold met since this failure): keep the incident as a record,
+  // resolve it now and skip AI triage.
+  if (!result.skipped && RECOVERABLE_FAILURE_TYPES.has(alert.type)) {
+    const recoveredAt = await sourceRecoveredSince(sourceType, sourceId, firedAt, alertConfig?.recoveryThreshold);
     if (recoveredAt) {
       await handleSourceRecovery({
         organizationId,
@@ -986,17 +1081,28 @@ export async function startAutomaticIncidentTriage(incident: {
 
   // Incidents open regardless; AI triage is the optional part on top.
   if (!isSreAutomaticTriageEnabled()) {
+    // Nothing else will try: the project's opt-in was refused for a reason that needs a person.
+    if (auto.reason === "daily_limit" || auto.reason === "ai_not_configured") {
+      await recordTriageSkipped(incident.incidentId, auto.reason);
+    } else if (auto.reason === "billing" || auto.reason === "subscription_required") {
+      await recordTriageSkipped(incident.incidentId, "triage_billing", sreBillingErrorMessage(auto.reason === "subscription_required" ? auto.reason : ""));
+    }
     return { skipped: true, reason: "ai_disabled" };
   }
   try {
     validateAIConfiguration();
   } catch {
+    await recordTriageSkipped(incident.incidentId, "ai_not_configured");
     return { skipped: true, reason: "ai_not_configured" };
   }
   // The org's daily AI token cap applies to every automatic run, like the investigate and triage routes.
   const limited = await sreDailyTokenLimitResponse(incident.organizationId);
   // A limiter that cannot answer (Redis down) is transient: the job defers it like the org run cap.
-  if (limited) return { skipped: true, reason: limited.status === 503 ? "daily_limit_unavailable" : "daily_limit" };
+  if (limited?.status === 503) return { skipped: true, reason: "daily_limit_unavailable" };
+  if (limited) {
+    await recordTriageSkipped(incident.incidentId, "daily_limit");
+    return { skipped: true, reason: "daily_limit" };
+  }
 
   // Only the start (admission, billing and concurrency checks, run row) is awaited: the AI run
   // takes minutes, longer than the job lock. Stale-run recovery fails a run that never settles.
@@ -1025,6 +1131,8 @@ export async function startAutomaticIncidentTriage(incident: {
   if (!triage.success && triage.status === 402) {
     // Plan or credit limits do not clear on retry.
     logger.warn({ incidentId: incident.incidentId }, "Background triage skipped: billing limit");
+    // The runner's error is already the fixed client-facing billing message.
+    await recordTriageSkipped(incident.incidentId, "triage_billing", triage.error);
     return { skipped: true, reason: "triage_billing" };
   }
 
@@ -1077,7 +1185,11 @@ export async function processSreBackgroundAlertTriageJob(
   }
 
   const started = await startAutomaticIncidentTriage(incident);
-  if (started.skipped) return { success: true, skipped: true, reason: started.reason };
+  if (started.skipped) {
+    // A deferred skip carries its incident, so the processor can record it when it stops waiting.
+    const deferred = started.reason === "org_concurrency_limit" || started.reason === "daily_limit_unavailable";
+    return { success: true, skipped: true, reason: started.reason, ...(deferred ? { incidentId: incident.incidentId } : {}) };
+  }
   if (!started.success) return started;
   const triage = started;
 
