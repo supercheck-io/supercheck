@@ -96,7 +96,7 @@ describe("SRE evidence tools", () => {
 
   describe("getIncident", () => {
     const run = () =>
-      createSreIncidentTool(scope).getIncident.execute!({}, { toolCallId: "incident", messages: [] }) as Promise<{
+      createSreIncidentTool(scope).getIncident.execute!({}, { toolCallId: "incident", messages: [] }) as unknown as Promise<{
         incident: Record<string, unknown>;
       }>;
     const mockRow = (rows: unknown[]) => {

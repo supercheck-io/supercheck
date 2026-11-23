@@ -30,7 +30,8 @@ export type BriefEvidenceInput = {
 export type EvidenceBrief = {
   suspectedFailureDomain: string;
   summary: string;
-  confidenceScore: number;
+  /** Null when the brief gives no basis for a score (a streamed brief that cites no rated evidence). */
+  confidenceScore: number | null;
   citedEvidenceIds: string[];
   provider: "ai" | "fallback";
   modelId: string;
@@ -204,19 +205,13 @@ ${JSON.stringify({ incidentTitle: input.incidentTitle, incidentSeverity: input.i
 </UNTRUSTED_INCIDENT_DATA>`;
 }
 
-function estimatedConfidence(evidence: BriefEvidenceInput[]) {
+/** The mean stored confidence of the evidence a brief cites; null when it cites none with a score. */
+function citedConfidence(evidence: BriefEvidenceInput[]) {
   const scores = evidence
-    .map((item) => Number(item.confidence))
+    .map((item) => (item.confidence === null ? NaN : Number(item.confidence)))
     .filter((value) => Number.isFinite(value));
-
-  if (scores.length === 0) {
-    return evidence.length > 0 ? 0.5 : 0.2;
-  }
-
-  return Math.max(
-    0,
-    Math.min(1, scores.reduce((sum, value) => sum + value, 0) / scores.length),
-  );
+  if (scores.length === 0) return null;
+  return Math.max(0, Math.min(1, scores.reduce((sum, value) => sum + value, 0) / scores.length));
 }
 
 export async function generateEvidenceBrief(input: {
@@ -336,11 +331,13 @@ export async function streamEvidenceBrief(
       return streamFallback(new Error("AI provider returned an empty brief"));
     }
 
+    // Only ids the text actually names are citations; the prompt asks for none, so this is usually empty.
+    const cited = input.evidence.filter((item) => summary.includes(item.id)).slice(0, 8);
     return {
       suspectedFailureDomain: "Incident evidence analysis",
       summary,
-      confidenceScore: estimatedConfidence(input.evidence),
-      citedEvidenceIds: input.evidence.slice(0, 8).map((item) => item.id),
+      confidenceScore: citedConfidence(cited),
+      citedEvidenceIds: cited.map((item) => item.id),
       provider: "ai",
       modelId,
     };

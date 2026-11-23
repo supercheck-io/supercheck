@@ -13,6 +13,7 @@ jest.mock("@/utils/db", () => ({
   },
 }));
 
+import type { SQL } from "drizzle-orm";
 import {
   appendSreMessage,
   archiveSreConversation,
@@ -49,7 +50,7 @@ describe("SRE session store", () => {
   it("flags a reply as superseded only inside the caller's own conversation", async () => {
     const conversationId = "018f0000-0000-7000-8000-000000000004";
     const returning = jest.fn().mockResolvedValue([{ id: "018f0000-0000-7000-8000-000000000005" }]);
-    const where = jest.fn(() => ({ returning }));
+    const where = jest.fn((_condition: SQL) => ({ returning }));
     const set = jest.fn(() => ({ where }));
     mockDb.update.mockReturnValue({ set });
     mockDb.query.sreChatConversations.findFirst.mockResolvedValueOnce({ id: conversationId });

@@ -423,7 +423,7 @@ export async function runSreEvidenceBriefGeneration(input: {
         .set({
           status: "completed",
           modelId: brief.modelId,
-          confidenceScore: String(brief.confidenceScore),
+          confidenceScore: brief.confidenceScore === null ? null : String(brief.confidenceScore),
           rootCauseHypothesis: brief.suspectedFailureDomain,
           agentStateSnapshot: {
             provider: brief.provider,
