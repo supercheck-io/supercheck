@@ -194,7 +194,7 @@ export function PostmortemCard({
     startTransition(async () => {
       const result = await generateSrePostmortem({ incidentId }).catch(() => null);
       if (!result?.success) {
-        toast.error(result?.error ?? "Could not generate the draft");
+        toast.error(result?.error ?? "Failed to generate the draft");
         return;
       }
       setSaved(result.postmortem);
@@ -221,7 +221,7 @@ export function PostmortemCard({
     startTransition(async () => {
       const result = await saveSrePostmortem({ incidentId, sections: currentSections() }).catch(() => null);
       if (!result?.success) {
-        toast.error(result?.error ?? "Could not save the post-mortem");
+        toast.error(result?.error ?? "Failed to save the post-mortem");
         return;
       }
       setSaved(result.postmortem);

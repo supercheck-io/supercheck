@@ -52,7 +52,7 @@ export function InvestigationFeedback({
         note: note.trim() || null,
       }).catch(() => null);
       if (!result?.success) {
-        toast.error(result?.error ?? "Could not save feedback");
+        toast.error(result?.error ?? "Failed to save feedback");
         return;
       }
       setSaved({ verdict: draft, note: note.trim() || null });

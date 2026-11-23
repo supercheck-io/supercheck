@@ -133,4 +133,17 @@ describe("SRE evidence brief stream API", () => {
     }
   });
 
+  it("sends Retry-After with a rate-limited or unavailable limiter response", async () => {
+    mockRateLimit.mockResolvedValueOnce({ allowed: false, resetTime: Date.now() + 30_000 });
+    const limited = await POST(request());
+    expect(limited.status).toBe(429);
+    expect(Number(limited.headers.get("Retry-After"))).toBeGreaterThanOrEqual(29);
+    expect(Number(limited.headers.get("Retry-After"))).toBeLessThanOrEqual(30);
+
+    mockRateLimit.mockResolvedValueOnce({ allowed: false, unavailable: true });
+    const unavailable = await POST(request());
+    expect(unavailable.status).toBe(503);
+    expect(unavailable.headers.get("Retry-After")).toBe("60");
+  });
+
 });

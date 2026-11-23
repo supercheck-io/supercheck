@@ -207,9 +207,10 @@ export function EditSreIncidentDialog({
               onChange={(event) => setTitle(event.target.value)}
               maxLength={500}
               aria-invalid={Boolean(firstError(fieldErrors, "title"))}
+              aria-describedby={firstError(fieldErrors, "title") ? "incident-title-error" : undefined}
             />
             {firstError(fieldErrors, "title") && (
-              <p className="text-xs text-destructive">
+              <p id="incident-title-error" className="text-xs text-destructive">
                 {firstError(fieldErrors, "title")}
               </p>
             )}

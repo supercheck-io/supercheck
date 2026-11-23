@@ -133,7 +133,7 @@ export function IncidentTimeline({
     setDrafting(true);
     const result = await draftSreStatusUpdate({ incidentId }).catch(() => null).finally(() => setDrafting(false));
     if (!result?.success) {
-      toast.error(result?.error ?? "Could not draft an update");
+      toast.error(result?.error ?? "Failed to draft an update");
       return;
     }
     setText(result.text);
@@ -197,7 +197,7 @@ export function IncidentTimeline({
             </Button>
           </div>
           <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-          <Button type="button" variant="outline" size="sm" className={`h-7 px-2 ${toneButton("violet")}`} onClick={draft} disabled={drafting || pending}>
+          <Button type="button" variant="outline" size="sm" className={`px-2 ${toneButton("violet")}`} onClick={draft} disabled={drafting || pending}>
             {drafting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
             Draft customer update with AI
           </Button>
@@ -225,7 +225,7 @@ export function IncidentTimeline({
         )}
         <div>
           {query.isPending ? (
-            <p className="text-sm text-muted-foreground">Loading timeline...</p>
+            <p role="status" className="text-sm text-muted-foreground">Loading timeline...</p>
           ) : (query.isError && !query.data) || (query.data && !query.data.success) ? (
             <div role="alert" className="flex items-center gap-2 text-sm text-destructive">
               <span>{query.data && !query.data.success ? query.data.error : "Could not load the timeline."}</span>

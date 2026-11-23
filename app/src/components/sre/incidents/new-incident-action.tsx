@@ -11,8 +11,8 @@ import { useProjectContext } from "@/hooks/use-project-context";
 import { AREA_TEXT, NAV } from "@/lib/nav-areas";
 
 /**
- * "New incident" button (permission gated) plus the declare dialog. On the incidents page `?new=1`
- * (Quick Create and Cmd+K) opens it; service and monitor pages pass `defaults` and a "Declare incident" label.
+ * "Declare incident" button (permission gated) plus the declare dialog. On the incidents page `?new=1`
+ * (Quick Create and Cmd+K) opens it; service and monitor pages pass `defaults` too.
  */
 export function NewIncidentAction({ defaults, variant = "page" }: { defaults?: DeclareIncidentDefaults; variant?: "page" | "detail" }) {
   const router = useRouter();
@@ -57,7 +57,7 @@ export function NewIncidentAction({ defaults, variant = "page" }: { defaults?: D
           onClick={() => setOpen(true)}
         >
           {variant === "detail" ? <Siren className={`h-4 w-4 ${AREA_TEXT[NAV.incidents.tone]}`} /> : <Plus className="h-4 w-4" />}
-          {variant === "detail" ? "Declare incident" : "New incident"}
+          Declare incident
         </Button>
       )}
       {/* Mounted only while open, so each opening starts from the page's prefills. */}

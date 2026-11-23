@@ -6,14 +6,43 @@ icon: Siren
 
 Incidents are the responder queue for issues that need investigation, evidence review or recovery confirmation.
 
+## First response
+
+<Steps>
+<Step>
+### Declare
+Alerts open incidents themselves. For anything else, **Declare incident** (see [Create an incident](#create-an-incident)).
+</Step>
+<Step>
+### Acknowledge or assign
+**Acknowledge** takes it, or assign it from **Properties**, so others know someone is on it.
+</Step>
+<Step>
+### Investigate
+**Run investigation**, or ask [Copilot](/docs/app/investigate/copilot) with the incident in scope.
+</Step>
+<Step>
+### Post to the status page
+Tell customers: **Post to status page** in **Properties**, then updates from **Activity**.
+</Step>
+<Step>
+### Resolve
+**Resolve incident** with what confirmed recovery. Keep **Publish resolution** on to close the linked status page posts too.
+</Step>
+<Step>
+### Write the post-mortem
+**Generate post-mortem draft** in the **Post-mortem** tab (see [Post-mortem](#post-mortem)).
+</Step>
+</Steps>
+
 ## Create an incident
 
 | From | How |
 |---|---|
 | **An alert** | Opens automatically when a monitor or job alert fires. Repeated alerts for the same target join the same incident. You can also select **Open incident** next to a failure in **Communicate → Notifications → Delivery history**. Neither path starts a full AI investigation unless the project turned on **Investigate new incidents automatically** (see [Default policy](#default-policy)) |
-| **By hand** | For a problem no alert caught, such as a customer report: **New incident** on **Respond → Incidents**, **Declare incident** in Quick Create or the command menu (Cmd+K), or **Declare incident** on a service or monitor page (prefilled). Also `supercheck incident create`, `POST /api/sre/incidents` and the MCP tool `create_incident` |
+| **By hand** | For a problem no alert caught, such as a customer report: **Declare incident** on **Respond → Incidents**, in Quick Create or the command menu (Cmd+K), or **Declare incident** on a service or monitor page (prefilled). Also `supercheck incident create`, `POST /api/sre/incidents` and the MCP tool `create_incident` |
 
-Both paths open the incident workspace. If AI triage fails, the **Activity** feed records a *triage failed* event with the error code.
+Both paths open the incident workspace. If AI triage fails, the **Activity** feed records a *triage failed* event with the error code. If triage is not attempted (daily AI limit reached, no paid plan or active trial on Cloud, no AI provider, or too many runs in progress), it records one *AI triage skipped* event per open period.
 
 ![Create Incident Dialog](/screenshots/create-incident-dialog.png)
 
@@ -32,7 +61,7 @@ A declared incident gets the same numbering, Activity entries, Default policy no
 
 ## Incident queue
 
-Open **Incidents** in the sidebar. **Trends** and **New incident** are in the page header. The queue opens on **Active**; use the quick filters **Active**, **Assigned to me**, **Unassigned** and **All**, or narrow by severity (`SEV1` to `SEV4`), status, service or title.
+Open **Incidents** in the sidebar. **Trends** and **Declare incident** are in the page header. The queue opens on **Active**; use the quick filters **Active**, **Assigned to me**, **Unassigned** and **All**, or narrow by severity (`SEV1` to `SEV4`), status, service or title.
 
 | Column | Shows |
 |---|---|
@@ -48,7 +77,7 @@ Open **Incidents** in the sidebar. **Trends** and **New incident** are in the pa
 
 ### Statuses
 
-Six statuses map from the stored status. The API, CLI and MCP return the label as `statusLabel` next to the stored `status`; status filters take the stored values.
+Six statuses map from the stored status. The API, CLI and MCP return the label as `statusLabel` next to the stored `status`; status filters take the stored values, plus `open` for every incident that is not `resolved`.
 
 | Status | Meaning | Stored status |
 |---|---|---|
@@ -155,15 +184,17 @@ When a monitor or job alert fires (alerts enabled, a channel attached, outside a
 | Rule | Behavior |
 |---|---|
 | **One incident per source** | While an incident for a monitor or job is open, further failures join it as linked alerts. If the check fails again after a *recovered* note, the **Activity** feed shows **Failure returned** and the next recovery is noted again |
-| **Severity** | *Auto* derives SEV1 to SEV4 from the alert; a fixed level in the check's settings overrides it |
-| **Auto-resolve** | On recovery, an unacknowledged incident resolves itself with a note, even if recovery alerts are off. An acknowledged one stays open, gets a *recovered* note, and its participants are emailed. Applies to monitor-down and job failed or timed-out alerts; SSL-expiry incidents stay open until someone resolves them |
+| **Severity** | *Auto* derives SEV1 to SEV4 from the alert type; a fixed level in the check's settings overrides it. A more severe alert that joins or reopens the incident raises its severity. Severity is never lowered automatically, and not raised again after a person lowered it |
+| **Auto-resolve** | On recovery, an unacknowledged incident resolves itself with a note, even if recovery alerts are off. An acknowledged one stays open, gets a *recovered* note, and its participants are emailed. Recovery needs as many consecutive passes as the check's recovery threshold. Applies to monitor-down and job failed or timed-out alerts; SSL-expiry incidents stay open until someone resolves them |
+| **Skipped alerts** | An alert from a paused or disabled monitor opens nothing. A delayed retry of an alert the incident already absorbed, arriving after it was resolved, starts no AI triage and adds nothing to it |
+| **Deleted source** | Deleting a monitor or job resolves the open incidents it opened, acknowledged ones included, with the summary *Resolved automatically: the deleted monitor or job's name was deleted.* |
 | **Safety sweep** | Every minute, Supercheck resolves or re-triages incidents that missed a recovery or triage signal, so a restart does not leave one stuck. Hand-made incidents are never touched |
 | **Reopen** | A new failure within 30 minutes of an automatic resolution reopens the same incident and keeps the previous resolution summary. For monitor-down and job failed or timed-out alerts, **Open incident** from delivery history follows the same rules: it joins the open incident or reopens a recently auto-resolved one instead of creating a duplicate. An alert older than 30 minutes only joins an open incident. Changing a resolved incident's status in **Edit** also reopens it and clears its acknowledgement |
 
 Control this per check under **Alert Settings → Incidents**: **Open an incident when this alerts**, **Severity**, and **Resolve automatically on recovery if nobody acknowledged it** (both toggles on by default).
 
 <Callout type="info">
-AI triage is separate and optional. Triage that starts by itself from an alert runs only when an administrator enables it and an AI provider is configured. Running triage manually needs only an AI provider.
+AI work is separate from opening incidents, which needs only `SRE_ENABLED`. Automatic AI triage of every alert-opened incident runs only when a self-hosted operator sets `SRE_AUTOMATION_ENABLED=true` and an AI provider is configured. A project's **Investigate new incidents automatically** works without it. Manual triage needs an AI provider and, on Supercheck Cloud, a paid plan or active trial.
 </Callout>
 
 </Accordion>
@@ -173,7 +204,7 @@ AI triage is separate and optional. Triage that starts by itself from an alert r
 | Action | Behavior |
 |---|---|
 | **Default assignee** | An alert incident is assigned to the linked service's owner, when set and still able to act on incidents. Set it in **Services → Edit → Owner** (project editor or admin). Without an owner, it opens unassigned |
-| **Assign** | Any organization owner or admin, or a project admin or editor of this project. Viewers and people outside the project are rejected |
+| **Assign** | Any organization owner or admin, or a project admin or editor of this project. Viewers and people outside the project are rejected. A resolved incident cannot be assigned (`409`) |
 | **Acknowledge** | Stamps who and when. An unassigned incident is assigned to the acknowledger. A resolved incident cannot be acknowledged |
 | **Commander** | Optional single commander, set from **Properties** or **Add commander** |
 
@@ -205,7 +236,7 @@ Each project has one **Default policy**, edited from **Organization → Projects
 | **Escalate if still unacknowledged** | Once, after 5 to 1,440 minutes, to one channel **or** one project member (by email). A paging service cannot be the target. If the target was removed or lost access, the timeline records that nobody was escalated to and the settings dialog says so; other settings can still be saved |
 | **Investigate new incidents automatically** | Off by default because full investigations count toward your AI SRE investigation allowance. SEV1 and SEV2 get a full investigation, SEV3 and SEV4 a quick triage, under the same plan and usage limits as a manual start. Only incidents opened after you turn it on are covered, and automatic runs use stored evidence, not live sources. A manual run of another type does not block the automatic one. A failed automatic run is retried on a later trigger, up to three attempts. It does not start while three runs are already in progress in the organization |
 
-Reminders and escalation stop when someone acknowledges or resolves the incident, or lowers its severity (raising it does not restart them). A reopen restarts the schedule. They wait during [maintenance windows](/docs/app/monitor#maintenance-windows). Every reminder and escalation, and any send that fails everywhere, is recorded on the timeline. The CLI reads and changes these settings with `supercheck incident policy get` and `supercheck incident policy set`; the MCP tool `get_incident_policy` reads them.
+Reminders and escalation stop when someone acknowledges or resolves the incident, or lowers its severity (raising it does not restart them). A reopen restarts the schedule. They wait during [maintenance windows](/docs/app/monitor#maintenance-windows). An organization sends at most 30 reminders per hour; escalations have their own budget of 30, so reminders never hold back an escalation. Every reminder and escalation, and any send that fails everywhere, is recorded on the timeline. The CLI reads and changes these settings with `supercheck incident policy get` and `supercheck incident policy set`; the MCP tool `get_incident_policy` reads them.
 
 Email, Slack, Teams, Discord, Telegram and plain webhook channels are supported. Paging services (webhooks with a preset or body template) are skipped for incident messages, reminders and escalation, because monitor and job alerts already page them. Each message names the incident, severity and service and links to it, without raw evidence, logs, credentials or AI conclusions. Recovery and reopen emails reach each person at most once every 10 minutes.
 
@@ -220,9 +251,9 @@ Email, Slack, Teams, Discord, Telegram and plain webhook channels are supported.
 | **Decide and fix** | Responder | Evaluates findings and applies remediation in external systems |
 | **Confirm recovery** | Responder | Re-runs synthetic tests, checks monitors or metrics |
 | **Acknowledge** | Responder | **Acknowledge** takes ownership; the incident is assigned to you if nobody holds it |
-| **Resolve** | Responder | **Resolve incident**. A resolution summary is required (up to 2,000 characters), pre-filled from recovery (when the checks that raised the incident pass again) and the AI root cause. State the fix and the checks that confirmed recovery |
+| **Resolve** | Responder | **Resolve incident**. A resolution summary is required (up to 2,000 characters), pre-filled from recovery (when the checks that raised the incident pass again) and the AI root cause. State the fix and the checks that confirmed recovery. When the incident has open status page posts you may update, **Publish resolution to the status page** (on by default, names the pages) posts the summary as their resolved update |
 
-Resolving records your decision and summary on the incident and its **Activity** feed. It does not run checks or apply remediation. Closing an incident through the edit dialog is not available.
+Resolving records your decision and summary on the incident and its **Activity** feed. It does not run checks or apply remediation. A failed status page post is shown as a warning and never undoes the resolve. Over the API, publishing is opt-in (`publishToStatusPages: true`); the MCP `resolve_incident` tool never publishes. When every linked public post is resolved but the incident is still open, a banner offers **Resolve incident**; it never closes the incident by itself. Closing an incident through the edit dialog is not available.
 
 </Accordion>
 
@@ -243,13 +274,13 @@ Resolving records your decision and summary on the incident and its **Activity**
 
 <Accordion title="Rate limits" id="trial-allowance">
 
-Limits apply per person and incident; exceeding one returns `429` with a retry delay. Only one investigation or triage run can be active per incident (`409` otherwise).
+Exceeding a limit returns `429` with a `Retry-After` header. Each incident can run one investigation and one triage at a time; another start of the same type returns `409`.
 
 | Action | Limit |
 |---|---|
-| **Triage** | 10 starts per 5 minutes |
-| **Investigation** | 3 starts per 5 minutes |
-| **Evidence brief** | 3 per minute |
+| **Triage** | 10 starts per 5 minutes per person and incident |
+| **Investigation** | 3 starts per 5 minutes per person and incident |
+| **Evidence brief** | 3 per minute per person and incident |
 | **Copilot chat** | 30 messages per minute per person |
 
 </Accordion>
@@ -263,6 +294,24 @@ Limits apply per person and incident; exceeding one returns `429` with a retry d
 | Project Viewer | ✓ | — | — | — |
 
 The `sre_incident:update` permission covers assign, acknowledge, resolve and updates over the API (`POST /api/sre/incidents/{id}/assign`, `/acknowledge`, `/resolve`). If investigations are disabled, existing evidence and results stay readable, but run and live-source controls are unavailable.
+
+</Accordion>
+
+</Accordions>
+
+## Troubleshooting
+
+<Accordions>
+
+<Accordion title="An action returns an error code" id="error-codes">
+
+| Code | Meaning | What to do |
+|---|---|---|
+| `402` (`subscription_required`) | Supercheck Cloud only: the organization has no paid plan or active trial, or Copilot and evidence briefs need a paid plan | Open **Settings → Organization → Subscription**. Reading, acknowledging and resolving still work |
+| `409` | A run of the same type is already in progress on this incident, the organization has too many AI runs in progress, or the incident is resolved (assign, acknowledge) | Wait for the run to finish, or reopen the incident first |
+| `429` | A [rate limit](#trial-allowance) or the organization's daily AI token limit (`daily_ai_limit`) was reached | Retry after the `Retry-After` seconds |
+| `503` | The rate limiter or subscription check is briefly unavailable | Retry shortly |
+| `503` (`feature_disabled`) | An operator turned AI SRE off (`SRE_ENABLED=false`) | Ask your administrator |
 
 </Accordion>
 

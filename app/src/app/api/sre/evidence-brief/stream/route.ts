@@ -101,6 +101,9 @@ export async function POST(request: NextRequest) {
     parsed.incidentId,
   );
   if (!rateLimit.allowed) {
+    const retryAfter = rateLimit.unavailable || !rateLimit.resetTime
+      ? 60
+      : Math.max(1, Math.ceil((rateLimit.resetTime - Date.now()) / 1000));
     return NextResponse.json(
       {
         success: false,
@@ -108,7 +111,7 @@ export async function POST(request: NextRequest) {
           ? "Evidence brief rate limiter is temporarily unavailable. Try again shortly."
           : "Evidence brief generation rate limit reached. Wait a moment and try again.",
       },
-      { status: rateLimit.unavailable ? 503 : 429 },
+      { status: rateLimit.unavailable ? 503 : 429, headers: { "Retry-After": String(retryAfter) } },
     );
   }
 

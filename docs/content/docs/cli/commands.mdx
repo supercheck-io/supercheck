@@ -537,10 +537,10 @@ AI SRE commands use the active project from the CLI token and follow your role's
 | `sre investigate <ref>` | Start an asynchronous deep investigation | `--live-connectors` |
 | `sre brief <ref>` | Stream an evidence brief | `--idle-timeout` |
 | `sre ask "<question>"` | Ask Copilot (read-only) | `--incident <ref>`, `--live-connectors`, `--idle-timeout` |
-| `sre status <runId>` | Follow a triage or accepted investigation | — |
+| `sre status <runId>` | Show one triage or investigation run's status; it does not wait | — |
 | `service list/get/health/dependencies` | Read-only service catalog; needs `sre_service:view` | — |
 
-`<ref>` is the number shown by `incident list` or a UUID. Numbers resolve within the CLI token's project and are not row positions. Use `incident list --json` to see UUIDs. Manual triage and investigations need a configured AI provider. `503 feature_disabled` means an operator turned the feature off.
+`<ref>` is the number shown by `incident list` or a UUID. Numbers resolve within the CLI token's project and are not row positions. Use `incident list --json` to see UUIDs. Manual triage and investigations need a configured AI provider. On Supercheck Cloud they also need a paid plan and a valid billing customer; the free trial covers them. `503 feature_disabled` means an operator turned the feature off.
 
 ### Incidents
 

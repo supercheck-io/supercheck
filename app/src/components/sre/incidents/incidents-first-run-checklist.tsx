@@ -9,7 +9,7 @@ export function IncidentsFirstRunChecklist() {
     <DashboardEmptyState
       className="min-h-[420px]"
       title="No incidents"
-      description="Incidents open automatically when a monitor alert fires. You can also declare one manually with New incident."
+      description="Incidents open automatically when a monitor alert fires. You can also declare one manually."
       icon={<Siren className="h-10 w-10" aria-hidden="true" />}
       action={
         <Button asChild variant="outline" data-testid="incidents-first-run">

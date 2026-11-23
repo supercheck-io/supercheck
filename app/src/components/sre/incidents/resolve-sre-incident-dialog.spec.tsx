@@ -5,6 +5,7 @@ import {
   waitFor,
   within,
 } from "@testing-library/react";
+import { toast } from "sonner";
 import { ResolveSreIncidentDialog } from "./resolve-sre-incident-dialog";
 
 const invalidateQueries = jest.fn().mockResolvedValue(undefined);
@@ -15,7 +16,6 @@ jest.mock("@/hooks/use-project-context", () => ({
   useProjectContext: () => ({ projectId: "project-1" }),
 }));
 jest.mock("sonner", () => ({ toast: { success: jest.fn(), warning: jest.fn() } }));
-import { toast } from "sonner";
 
 describe("ResolveSreIncidentDialog", () => {
   const originalFetch = global.fetch;
@@ -64,6 +64,12 @@ describe("ResolveSreIncidentDialog", () => {
       }),
     );
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(toast.success).toHaveBeenCalledWith(
+      "Incident resolved",
+      expect.objectContaining({
+        description: "You can generate a post-mortem draft in the Post-mortem tab.",
+      }),
+    );
   });
 
   it("publishes the resolution to the linked status pages by default, and can opt out", async () => {
@@ -126,4 +132,26 @@ describe("ResolveSreIncidentDialog", () => {
       expect(invalidateQueries).not.toHaveBeenCalled();
     },
   );
+
+  it("ties the note field to its error text", async () => {
+    jest
+      .mocked(fetch)
+      .mockResolvedValue({
+        ok: false,
+        json: async () => ({ error: "Access denied" }),
+      } as Response);
+    render(<ResolveSreIncidentDialog incidentId="incident-1" />);
+    fireEvent.click(screen.getByRole("button", { name: "Resolve incident" }));
+    const note = screen.getByLabelText("What confirmed recovery?");
+    expect(note).not.toHaveAttribute("aria-invalid", "true");
+    fireEvent.change(note, { target: { value: "Monitor recovered." } });
+    fireEvent.click(
+      within(screen.getByRole("dialog")).getByRole("button", {
+        name: "Resolve incident",
+      }),
+    );
+    const alert = await screen.findByRole("alert");
+    expect(note).toHaveAttribute("aria-invalid", "true");
+    expect(note).toHaveAttribute("aria-describedby", alert.id);
+  });
 });

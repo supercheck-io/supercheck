@@ -85,6 +85,20 @@ describe("EditSreIncidentDialog", () => {
     expect(screen.getByText(/Saving reopens the incident/)).toBeInTheDocument();
   });
 
+  it("ties the title error to its field", async () => {
+    updateSreIncident.mockResolvedValueOnce({
+      success: false,
+      error: "Check the form",
+      fieldErrors: { title: ["Title is too long"] },
+    });
+    render(<EditSreIncidentDialog incident={incident("triggered")} services={[]} canUpdate open onOpenChange={jest.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: /Save/ }));
+    const title = screen.getByLabelText("Title");
+    const error = await screen.findByText("Title is too long");
+    expect(title).toHaveAttribute("aria-invalid", "true");
+    expect(title).toHaveAttribute("aria-describedby", error.id);
+  });
+
   it("hides deprecated services from the picker except the one already linked", () => {
     const services = [
       { id: "s-active", name: "Checkout", status: "active" },
