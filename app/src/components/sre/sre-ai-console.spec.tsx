@@ -411,4 +411,22 @@ describe("SreAiConsole", () => {
     expect(screen.getByText("saved reply from the other tab")).toBeInTheDocument();
     expect(screen.queryByText("unsaved reply")).not.toBeInTheDocument();
   });
+
+  it("drops a pending reload when the user leaves that chat before the refresh lands", () => {
+    const history = [
+      {
+        conversationId: "chat-1",
+        incidentId: null,
+        title: "Q",
+        updatedAt: "2026-10-09",
+        messages: [{ id: "m0", role: "user" as const, content: "first chat question", modelId: null }],
+      },
+    ];
+    const refresh = jest.fn();
+    const { rerender } = render(<SreAiConsole initialHistories={history} onRequestHistoryRefresh={refresh} />);
+    fireEvent.click(screen.getByRole("button", { name: "Reply replaced" }));
+    fireEvent.click(screen.getByRole("button", { name: "New chat" }));
+    rerender(<SreAiConsole initialHistories={[...history]} onRequestHistoryRefresh={refresh} />);
+    expect(screen.queryByText("first chat question")).not.toBeInTheDocument();
+  });
 });

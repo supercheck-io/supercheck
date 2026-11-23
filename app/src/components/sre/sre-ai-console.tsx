@@ -106,7 +106,8 @@ export function SreAiConsole({
   if (pendingReload && initialHistories !== pendingReload.staleHistories) {
     const saved = initialHistories.find((history) => history.conversationId === pendingReload.conversationId);
     setPendingReload(null);
-    if (saved) {
+    // Only the chat that asked for the reload: a switch while the refresh was pending must not receive its messages.
+    if (saved && conversationId === pendingReload.conversationId) {
       setActiveMessages(saved.messages);
       setThreadKey(`${saved.conversationId}:reload-${pendingReload.reloads}`);
     }
@@ -136,6 +137,7 @@ export function SreAiConsole({
   }, [histories, historyQuery]);
 
   const startNewChat = () => {
+    setPendingReload(null);
     setIsHistoryOpen(false);
     setConversationId(null);
     setActiveMessages([]);
@@ -153,6 +155,7 @@ export function SreAiConsole({
   };
 
   const selectHistory = (history: SreCopilotChatHistory) => {
+    setPendingReload(null);
     setIsHistoryOpen(false);
     setConversationId(history.conversationId);
     setIncidentId(history.incidentId);
