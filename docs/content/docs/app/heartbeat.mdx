@@ -77,7 +77,7 @@ Ping at the end of a successful run:
 
 | URL | Effect |
 |---|---|
-| `<ping URL>/start` | The job started. The next ping records the duration (**Run duration**). State is unchanged |
+| `<ping URL>/start` | The job started. The next ping records the duration (**Run duration**), and the page shows **Running** until it arrives. State is unchanged |
 | `<ping URL>/fail` | The job failed. The monitor goes down at once, without the grace period |
 
 ```bash
@@ -89,6 +89,8 @@ else
   curl -fsS -m 10 --retry 5 -o /dev/null "$URL/fail"
 fi
 ```
+
+Until a job calls `/start`, the monitor page shows **Failed (24h)** (missed or failed pings out of all pings in the last 24 hours) in place of **Last run**, and the ping history has no **Run duration** column.
 
 `supercheck heartbeat ping "$URL"` (with `--start` or `--fail`) does the same with retries and exit codes, and needs no login.
 
