@@ -18,14 +18,14 @@ export default async function ServicesPage() {
   };
 
   return (
-    <div>
+    <div data-fit-fill className="flex flex-1 flex-col">
       <PageBreadcrumbs
         items={[
           { label: "Home", href: "/" },
           { label: "Services", isCurrentPage: true },
         ]}
       />
-      <Card className="m-4 min-w-0 overflow-hidden shadow-sm">
+      <Card data-fit-fill className="m-4 min-w-0 overflow-hidden shadow-sm flex-1">
         <CardContent className="p-6">
           <ServiceCatalog
             key={context.project.id}

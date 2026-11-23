@@ -10,9 +10,9 @@ export default function MonitorsPage() {
     { label: "Monitors", isCurrentPage: true },
   ];
   return (
-    <div>
+    <div data-fit-fill className="flex flex-1 flex-col">
       <PageBreadcrumbs items={breadcrumbs} />
-      <Card className="m-4 shadow-sm">
+      <Card data-fit-fill className="m-4 shadow-sm flex-1">
         <CardContent className="p-6">
           <Suspense fallback={null}>
             <MonitorsPageTabs />

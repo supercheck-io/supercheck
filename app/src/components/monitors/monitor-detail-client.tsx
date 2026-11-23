@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState, useMemo, useCallback } from "react";
+import React, { useEffect, useState, useMemo, useCallback, useRef } from "react";
 import { Spinner } from "@/components/ui/spinner";
 import { Skeleton } from "@/components/ui/skeleton";
 import { NewIncidentAction } from "@/components/sre/incidents/new-incident-action";
@@ -33,11 +33,15 @@ import {
   CalendarClock,
   Timer,
   BrainCircuit,
+  Coins,
+  ArrowRightLeft,
+  Bot,
 } from "lucide-react";
 import { PlaywrightLogo } from "@/components/logo/playwright-logo";
 import { ReportViewer } from "@/components/shared/report-viewer";
 import { AIMonitorAnalyzeButton } from "@/components/monitors/ai-monitor-analyze-button";
 import { McpToolsButton } from "@/components/monitors/mcp-tools-panel";
+import { DetailPopoverHeader, DetailStat } from "@/components/shared/detail-popover";
 import { typeText } from "@/lib/type-tones";
 
 import {
@@ -276,18 +280,17 @@ const aiDetails = (result?: { details?: DBMonitorResultDetailsType | null } | nu
 const formatTokens = (ai?: AiResultDetails) =>
   typeof ai?.totalTokens === "number" ? ai.totalTokens.toLocaleString("en-US") : "N/A";
 
+/** A different model than the one asked for is worth a glance (a provider fallback); a dated snapshot of it ("gpt-4o-2024-08-06") or of an alias ("claude-3-5-sonnet-latest") is the same model. */
+export function sameModel(requested: string, served: string): boolean {
+  const r = requested.toLowerCase().replace(/-latest$/, "");
+  const s = served.toLowerCase();
+  return s === r || (s.startsWith(`${r}-`) && /^-\d{4}-?\d{2}-?\d{2}$/.test(s.slice(r.length)));
+}
+
 /** AI endpoint details of the latest check in a popover, like the MCP Tools button, so the header keeps the standard three groups. */
 function AiEndpointButton({ requestedModel, latest, pending }: { requestedModel?: string; latest?: AiResultDetails; pending: boolean }) {
-  const rows: Array<[label: string, testId: string, value: string | null]> = [
-    ["First token", "ai-stat-first-token", typeof latest?.firstTokenMs === "number" ? formatResponseTime(latest.firstTokenMs) : null],
-    ["Tokens per call", "ai-stat-tokens", naToNull(formatTokens(latest))],
-    ["Prompt / completion", "ai-stat-token-split",
-      typeof latest?.promptTokens === "number" && typeof latest?.completionTokens === "number"
-        ? `${latest.promptTokens.toLocaleString("en-US")} / ${latest.completionTokens.toLocaleString("en-US")}`
-        : null],
-    ["Requested model", "ai-stat-requested-model", requestedModel || null],
-    ["Served model", "ai-stat-served-model", latest?.servedModel ?? null],
-  ];
+  const served = latest?.servedModel ?? null;
+  const modelMismatch = Boolean(served && requestedModel && !sameModel(requestedModel, served));
   return (
     <Popover>
       <PopoverTrigger asChild>
@@ -296,21 +299,35 @@ function AiEndpointButton({ requestedModel, latest, pending }: { requestedModel?
           AI details
         </Button>
       </PopoverTrigger>
-      <PopoverContent align="end" className="w-[min(22rem,calc(100vw-2rem))]" aria-label="AI endpoint details" data-testid="ai-endpoint-panel">
-        <div className="space-y-1">
-          <h4 className="text-sm font-semibold">AI endpoint</h4>
-          <p className="text-xs text-muted-foreground">{pending ? "Shown after the first check." : "From the latest check."}</p>
+      <PopoverContent align="end" className="w-[min(28rem,calc(100vw-2rem))] p-0" aria-label="AI endpoint details" data-testid="ai-endpoint-panel">
+        <DetailPopoverHeader
+          icon={BrainCircuit}
+          iconClass={typeText("monitor", "ai_endpoint")}
+          title="AI endpoint"
+          meta={pending ? "Shown after the first check." : "From the latest check."}
+        />
+        <div className="space-y-3 p-3">
+          <div className="grid grid-cols-2 gap-3 rounded-md border bg-muted/30 p-3 sm:grid-cols-[1fr_1fr_1.4fr]">
+            <DetailStat icon={Zap} iconClass="text-sky-500" label="First token" testId="ai-stat-first-token"
+              value={typeof latest?.firstTokenMs === "number" ? formatResponseTime(latest.firstTokenMs) : null} />
+            <DetailStat icon={Coins} iconClass="text-ai" label="Tokens per call" testId="ai-stat-tokens" value={naToNull(formatTokens(latest))} />
+            <DetailStat icon={ArrowRightLeft} iconClass="text-muted-foreground" label="Prompt / completion" testId="ai-stat-token-split"
+              value={typeof latest?.promptTokens === "number" && typeof latest?.completionTokens === "number"
+                ? `${latest.promptTokens.toLocaleString("en-US")} / ${latest.completionTokens.toLocaleString("en-US")}`
+                : null} />
+          </div>
+          <div className="grid grid-cols-1 gap-3 rounded-md border bg-muted/30 p-3 sm:grid-cols-2">
+            <DetailStat icon={BrainCircuit} iconClass={typeText("monitor", "ai_endpoint")} label="Requested model" testId="ai-stat-requested-model" value={requestedModel || null} />
+            <DetailStat
+              icon={!served ? Bot : modelMismatch ? AlertCircle : CheckCircle}
+              iconClass={!served ? "text-muted-foreground" : modelMismatch ? "text-warning" : "text-success"}
+              label={modelMismatch ? "Served model (differs)" : "Served model"}
+              valueClass={modelMismatch ? "text-warning" : undefined}
+              testId="ai-stat-served-model"
+              value={served}
+            />
+          </div>
         </div>
-        <dl className="mt-3 divide-y text-sm">
-          {rows.map(([label, testId, value]) => (
-            <div key={testId} className="flex items-center justify-between gap-4 py-2" data-testid={testId}>
-              <dt className="text-muted-foreground">{label}</dt>
-              <dd className="min-w-0 truncate font-medium tabular-nums" title={value ?? undefined}>
-                {value ?? <span className="text-muted-foreground">—</span>}
-              </dd>
-            </div>
-          ))}
-        </dl>
       </PopoverContent>
     </Popover>
   );
@@ -655,7 +672,10 @@ export function MonitorDetailClient({
   const [clockNow, setClockNow] = useState(() => Date.now());
   const hasRunDurations = responseTimeData.some((d) => d.time !== null);
   // Duration exists only once the job calls /start (Healthchecks.io and Cronitor work the same way); until then the stat and column stay hidden.
-  const tracksRunDuration = Boolean(heartbeat?.lastStartAt) || hasRunDurations;
+  // The notification view has no summary, so a history page with durations counts too; once seen it stays, so paging never toggles the column.
+  const sawPageDuration = useRef(false);
+  if (paginatedTableResults.some((r) => typeof r.responseTimeMs === "number")) sawPageDuration.current = true;
+  const tracksRunDuration = Boolean(heartbeat?.lastStartAt) || hasRunDurations || sawPageDuration.current;
   // The latest run only: a ping without /start has no duration, and an older run's must not stand in for it. A missed run never ran, so it is skipped.
   const lastRun = monitor.recentResults?.find((r) => heartbeatResultKind(r).kind !== "missed");
   const lastRunDuration = formatRunDuration(lastRun?.responseTimeMs);
@@ -667,6 +687,14 @@ export function MonitorDetailClient({
     clockNow - startedAt.getTime() <= ((monitor.frequencyMinutes ?? 0) + (heartbeat?.graceMinutes ?? 0)) * 60_000
       ? startedAt
       : null;
+  // The summary comes from the server render; while a run is in progress, reload it so the finishing ping ends "Running".
+  const isRunning = runningSince !== null;
+  useEffect(() => {
+    if (!isRunning) return;
+    // A hidden tab skips the server render; the next tick after it is shown catches up.
+    const id = window.setInterval(() => { if (!document.hidden) router.refresh(); }, 30_000);
+    return () => window.clearInterval(id);
+  }, [isRunning, router]);
   // Never pinged: stays pending and never alerts, so there is no deadline to show
   const neverPinged = Boolean(heartbeat && !heartbeat.lastPingAt);
   const nextPingAt = heartbeat && !neverPinged && heartbeat.nextExpectedAt ? new Date(heartbeat.nextExpectedAt) : null;

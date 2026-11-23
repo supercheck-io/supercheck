@@ -172,13 +172,15 @@ export default function AdminDashboard() {
 
   return (
     <div
-      {...(isQueuesTab ? { "data-fit-viewport": "" } : {})}
+      {...(isQueuesTab ? { "data-fit-viewport": "" } : { "data-fit-fill": "" })}
       className={cn("flex min-h-0 flex-1 flex-col", isQueuesTab && "lg:overflow-auto")}
     >
       <Card
+        {...(isQueuesTab ? {} : { "data-fit-fill": "" })}
         className={cn(
           "m-4 shadow-sm transition-shadow duration-200 hover:shadow-md",
-          isQueuesTab ? "flex min-h-0 flex-1 flex-col lg:min-h-[400px]" : "shrink-0",
+          // Every tab fills the window like the other pages; the queues tab also lays out its content in the card.
+          isQueuesTab ? "flex min-h-0 flex-1 flex-col lg:min-h-[400px]" : "flex-1",
         )}
       >
         <CardContent

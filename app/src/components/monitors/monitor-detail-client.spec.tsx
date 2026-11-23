@@ -1,5 +1,5 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { MonitorDetailClient } from "./monitor-detail-client";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { sameModel, MonitorDetailClient } from "./monitor-detail-client";
 
 const invalidateQueries = jest.fn();
 jest.mock("@/components/sre/incidents/new-incident-action", () => ({ NewIncidentAction: () => null }));
@@ -19,7 +19,7 @@ jest.mock("@tanstack/react-query", () => ({
 const mockReplace = jest.fn();
 let mockSearch = "";
 jest.mock("next/navigation", () => ({
-  useRouter: () => ({ push: jest.fn(), refresh: jest.fn(), replace: mockReplace }),
+  useRouter: () => mockRouter,
   usePathname: () => "/monitors/hb1",
   useSearchParams: () => new URLSearchParams(mockSearch),
 }));
@@ -45,6 +45,8 @@ jest.mock("@/hooks/use-monitor-details", () => ({
 jest.mock("@/components/shared/report-viewer", () => ({ ReportViewer: () => null }));
 jest.mock("@/components/monitors/ai-monitor-analyze-button", () => ({ AIMonitorAnalyzeButton: () => null }));
 let mockStats: unknown = null;
+const mockRefresh = jest.fn();
+const mockRouter = { push: jest.fn(), refresh: mockRefresh, replace: (...args: unknown[]) => mockReplace(...args) };
 let chartProps: { data: { firstToken?: number | null }[]; showFirstToken?: boolean } | null = null;
 jest.mock("@/components/monitors/response-time-line-chart", () => ({
   ResponseTimeBarChart: (props: typeof chartProps) => {
@@ -288,6 +290,8 @@ describe("AI endpoint monitor", () => {
       expect(screen.getByTestId("ai-stat-tokens")).toHaveTextContent("Tokens per call");
       expect(screen.getByTestId("ai-stat-tokens")).toHaveTextContent("1,234");
       expect(screen.getByTestId("ai-stat-served-model")).toHaveTextContent("gpt-4o-mini-2024-07-18");
+      // A dated snapshot of the requested model is the same model, not a mismatch.
+      expect(screen.getByTestId("ai-stat-served-model")).not.toHaveTextContent("differs");
       expect(screen.getByTestId("ai-stat-requested-model")).toHaveTextContent("gpt-4o-mini");
       expect(screen.getByTestId("ai-stat-token-split")).toHaveTextContent("15 / 6");
       expect(screen.getByTestId("monitor-ai-subtitle")).toHaveTextContent("api.openai.com · gpt-4o-mini");
@@ -311,6 +315,29 @@ describe("AI endpoint monitor", () => {
       expect(screen.getByTestId("ai-stat-first-token")).toHaveTextContent("823 ms");
       expect(screen.getByTestId("ai-stat-first-token")).not.toHaveTextContent("823.4");
       expect(chartProps?.data[0].firstToken).toBe(823);
+    } finally {
+      mockResults = [];
+    }
+  });
+
+  it.each([
+    ["gpt-4o-mini", "gpt-4o-mini-2024-07-18", true],
+    ["GPT-4o", "gpt-4o-2024-08-06", true],
+    ["claude-3-5-sonnet-latest", "claude-3-5-sonnet-20241022", true],
+    ["lumen-assist-1", "lumen-assist-1", true],
+    ["gpt-4o", "gpt-4o-mini-2024-07-18", false],
+    ["gpt-4", "gpt-4o", false],
+  ])("sameModel(%s, %s) is %s", (requested, served, same) => {
+    expect(sameModel(requested, served)).toBe(same);
+  });
+
+  it("flags a served model from another family than the one requested", () => {
+    mockResults = [result({ ai: { ...ai, servedModel: "gpt-3.5-turbo" } })];
+    try {
+      render(<MonitorDetailClient monitor={aiMonitor({ recentResults: [result({ ai: { ...ai, servedModel: "gpt-3.5-turbo" } })] })} />);
+      fireEvent.click(screen.getByTestId("ai-endpoint-button"));
+      expect(screen.getByTestId("ai-stat-served-model")).toHaveTextContent("Served model (differs)");
+      expect(screen.getByTestId("ai-stat-served-model")).toHaveTextContent("gpt-3.5-turbo");
     } finally {
       mockResults = [];
     }
@@ -487,6 +514,36 @@ describe("heartbeat monitor detail", () => {
   it("does not show a run in progress for a /start older than one interval plus grace", () => {
     render(<MonitorDetailClient monitor={heartbeatMonitor("down", pinged({ lastStartAt: new Date(Date.now() - 2 * 3_600_000).toISOString(), lastPingAt: new Date(Date.now() - 3 * 3_600_000).toISOString() }), [runRow])} />);
     expect(screen.getByTestId("heartbeat-stat-duration")).toHaveTextContent("4 min 08 s");
+  });
+
+  it("reloads the summary every 30 s while a run is in progress, and not otherwise", () => {
+    jest.useFakeTimers();
+    try {
+      mockRefresh.mockClear();
+      const running = pinged({ lastStartAt: new Date(Date.now() - 60_000).toISOString(), lastPingAt: new Date(Date.now() - 3_600_000).toISOString() });
+      const { unmount } = render(<MonitorDetailClient monitor={heartbeatMonitor("up", running, [runRow])} />);
+      act(() => { jest.advanceTimersByTime(30_000); });
+      expect(mockRefresh).toHaveBeenCalled();
+      unmount();
+      mockRefresh.mockClear();
+      render(<MonitorDetailClient monitor={heartbeatMonitor("up", pinged(), [runRow])} />);
+      act(() => { jest.advanceTimersByTime(60_000); });
+      expect(mockRefresh).not.toHaveBeenCalled();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it("shows the duration column in the notification view when the history page has durations", () => {
+    mockResults = [runRow];
+    try {
+      const { heartbeat: omitted, ...bare } = heartbeatMonitor("up", {}, []) as unknown as Record<string, unknown>;
+      void omitted;
+      render(<MonitorDetailClient monitor={bare as never} isNotificationView />);
+      expect(screen.getByRole("columnheader", { name: "Run duration" })).toBeInTheDocument();
+    } finally {
+      mockResults = [];
+    }
   });
 
   it("shows a run in progress while /start is newer than the last ping", () => {

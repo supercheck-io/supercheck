@@ -37,9 +37,9 @@ export default async function CreatePage() {
   };
 
   return (
-    <div>
+    <div data-fit-fill className="flex flex-1 flex-col">
       <PageBreadcrumbs items={breadcrumbs} />
-      <Card className="shadow-sm hover:shadow-md transition-shadow duration-200 m-4">
+      <Card data-fit-fill className="shadow-sm hover:shadow-md transition-shadow duration-200 m-4 flex-1">
         <CardContent>
           <CreatePageContent capabilities={capabilities} />
         </CardContent>

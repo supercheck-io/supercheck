@@ -10,9 +10,9 @@ export default async function SetupWelcomePage({ searchParams }: { searchParams:
     { label: "Welcome", isCurrentPage: true },
   ];
   return (
-    <div>
+    <div data-fit-fill className="flex flex-1 flex-col">
       <PageBreadcrumbs items={breadcrumbs} />
-      <Card className="shadow-sm m-4">
+      <Card data-fit-fill className="shadow-sm m-4 flex-1">
         <CardContent className="p-6">
           <WelcomePage change={change} />
         </CardContent>
