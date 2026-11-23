@@ -192,7 +192,7 @@ flowchart LR
 | **Resolved** | Issue resolved | **Critical** | Complete outage |
 | **Scheduled** | Planned maintenance | | |
 
-**Scheduled maintenance:** use **Scheduled** status, set the window and enable automatic status transitions. It activates at the start and resolves at the end. Monitor alerts, including SSL expiry warnings, are suppressed during the window, while checks still run and count toward uptime. A suppressed SSL warning is not queued: it is sent on the first SSL check after the window that finds the certificate still near expiry, subject to the alert settings and the once-per-24-hours limit.
+**Scheduled maintenance:** use **Scheduled** status, set the window and enable automatic status transitions. It activates at the start and resolves at the end. Monitor alerts, including SSL expiry warnings, are suppressed during the window, while checks still run and are marked as maintenance. Those checks are excluded from uptime on monitor pages, the dashboard and the 90-day status-page bars, the same as a project maintenance window. A suppressed SSL warning is not queued: it is sent on the first SSL check after the window that finds the certificate still near expiry, subject to the alert settings and the once-per-24-hours limit.
 
 A linked SRE incident stays private: investigation notes and evidence are never copied. Use **Internal incident** on the status update row, or the **Status page** row in the incident sidebar, to move between the two.
 

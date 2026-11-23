@@ -1943,7 +1943,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Job"
+                  "$ref": "#/components/schemas/JobDetail"
                 }
               }
             }
@@ -2731,7 +2731,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Run"
+                  "$ref": "#/components/schemas/RunDetail"
                 }
               }
             }
@@ -3220,7 +3220,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Test"
+                  "$ref": "#/components/schemas/TestDetail"
                 }
               }
             }
@@ -3992,7 +3992,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Monitor"
+                  "$ref": "#/components/schemas/MonitorDetail"
                 }
               }
             }
@@ -12371,11 +12371,17 @@
             "type": "string"
           },
           "description": {
-            "type": "string",
+            "type": [
+              "string",
+              "null"
+            ],
             "nullable": true
           },
           "cronSchedule": {
-            "type": "string",
+            "type": [
+              "string",
+              "null"
+            ],
             "nullable": true
           },
           "status": {
@@ -12416,17 +12422,19 @@
               }
             ]
           },
-          "testCount": {
-            "type": "integer",
-            "nullable": true
-          },
           "lastRunAt": {
-            "type": "string",
+            "type": [
+              "string",
+              "null"
+            ],
             "format": "date-time",
             "nullable": true
           },
           "nextRunAt": {
-            "type": "string",
+            "type": [
+              "string",
+              "null"
+            ],
             "format": "date-time",
             "nullable": true
           },
@@ -12485,12 +12493,18 @@
             "format": "uuid"
           },
           "jobId": {
-            "type": "string",
+            "type": [
+              "string",
+              "null"
+            ],
             "format": "uuid",
             "nullable": true
           },
           "jobName": {
-            "type": "string",
+            "type": [
+              "string",
+              "null"
+            ],
             "nullable": true
           },
           "jobType": {
@@ -12521,151 +12535,82 @@
             ]
           },
           "triggeredByName": {
-            "type": "string",
+            "type": [
+              "string",
+              "null"
+            ],
             "nullable": true
           },
           "triggeredByImage": {
-            "type": "string",
+            "type": [
+              "string",
+              "null"
+            ],
             "nullable": true
           },
           "triggerKeyName": {
-            "type": "string",
+            "type": [
+              "string",
+              "null"
+            ],
             "nullable": true
           },
           "duration": {
-            "type": "string",
+            "type": [
+              "string",
+              "null"
+            ],
             "description": "Formatted duration string",
             "nullable": true
           },
           "durationMs": {
-            "type": "integer",
+            "type": [
+              "integer",
+              "null"
+            ],
             "description": "Duration in milliseconds",
             "nullable": true
           },
           "startedAt": {
-            "type": "string",
+            "type": [
+              "string",
+              "null"
+            ],
             "format": "date-time",
             "nullable": true
           },
           "completedAt": {
-            "type": "string",
+            "type": [
+              "string",
+              "null"
+            ],
             "format": "date-time",
             "nullable": true
           },
-          "logs": {
-            "type": "string",
-            "nullable": true
-          },
-          "errorDetails": {
-            "type": "string",
-            "nullable": true
-          },
           "reportUrl": {
-            "type": "string",
+            "type": [
+              "string",
+              "null"
+            ],
             "nullable": true,
             "description": "URL to the run report"
           },
-          "agent": {
-            "type": "object",
-            "description": "Agent test results, present only for runs of agent tests. Numbers, tool names and clipped failure messages; prompts and replies are not included. Returned by GET /api/runs/{runId} only.",
-            "properties": {
-              "tests": {
-                "type": "array",
-                "maxItems": 20,
-                "items": {
-                  "type": "object",
-                  "properties": {
-                    "testId": {
-                      "type": "string"
-                    },
-                    "title": {
-                      "type": "string"
-                    },
-                    "attempts": {
-                      "type": "integer"
-                    },
-                    "passed": {
-                      "type": "integer"
-                    },
-                    "passRate": {
-                      "type": "number",
-                      "description": "Passed attempts divided by attempts (0 to 1)"
-                    },
-                    "totalTokens": {
-                      "type": "integer"
-                    },
-                    "judgeTokens": {
-                      "type": "integer"
-                    },
-                    "cost": {
-                      "type": "number",
-                      "description": "Only when the agent reports it"
-                    },
-                    "toolNames": {
-                      "type": "array",
-                      "maxItems": 50,
-                      "items": {
-                        "type": "string"
-                      }
-                    },
-                    "durationMs": {
-                      "type": "integer"
-                    },
-                    "slowestMs": {
-                      "type": "integer",
-                      "description": "Slowest attempt"
-                    },
-                    "failures": {
-                      "type": "array",
-                      "maxItems": 5,
-                      "items": {
-                        "type": "object",
-                        "properties": {
-                          "attempt": {
-                            "type": "integer"
-                          },
-                          "message": {
-                            "type": "string",
-                            "maxLength": 200
-                          }
-                        }
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "testCount": {
-            "type": "integer",
-            "nullable": true
-          },
-          "testId": {
-            "type": "string",
-            "nullable": true,
-            "description": "Test ID of a single-test run (`test execute`, playground); null for job runs"
-          },
           "location": {
-            "type": "string",
+            "type": [
+              "string",
+              "null"
+            ],
             "nullable": true
-          },
-          "projectId": {
-            "type": "string",
-            "format": "uuid",
-            "nullable": true
-          },
-          "organizationId": {
-            "type": "string",
-            "format": "uuid",
-            "nullable": true
-          },
-          "isAgentRun": {
-            "type": "boolean",
-            "description": "True when the run's test, or a test in its job, is an agent test. Returned by GET /api/runs/{runId} only."
           },
           "cancelled": {
             "type": "boolean",
             "description": "List only. True once a user has requested cancellation. It can be set while the run is still `queued` or `running`; the run then ends with `status` `error`."
+          },
+          "cronSchedule": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         }
       },
@@ -12673,7 +12618,8 @@
         "type": "object",
         "properties": {
           "success": {
-            "type": "boolean"
+            "type": "boolean",
+            "const": true
           },
           "data": {
             "type": "object",
@@ -12689,9 +12635,18 @@
                 "type": "string",
                 "format": "uuid"
               }
-            }
+            },
+            "required": [
+              "userRole",
+              "projectId",
+              "organizationId"
+            ]
           }
-        }
+        },
+        "required": [
+          "success",
+          "data"
+        ]
       },
       "StatusPage": {
         "type": "object",
@@ -13064,7 +13019,10 @@
             "type": "string"
           },
           "description": {
-            "type": "string",
+            "type": [
+              "string",
+              "null"
+            ],
             "nullable": true
           },
           "priority": {
@@ -13163,7 +13121,10 @@
             "type": "string"
           },
           "description": {
-            "type": "string",
+            "type": [
+              "string",
+              "null"
+            ],
             "nullable": true
           },
           "target": {
@@ -13221,12 +13182,18 @@
             ]
           },
           "lastCheckAt": {
-            "type": "string",
+            "type": [
+              "string",
+              "null"
+            ],
             "format": "date-time",
             "nullable": true
           },
           "lastStatusChangeAt": {
-            "type": "string",
+            "type": [
+              "string",
+              "null"
+            ],
             "format": "date-time",
             "nullable": true
           },
@@ -13235,14 +13202,11 @@
             "description": "List responses only. True while a maintenance window covers the monitor; status keeps the real up/down value."
           },
           "scheduledJobId": {
-            "type": "string",
+            "type": [
+              "string",
+              "null"
+            ],
             "nullable": true
-          },
-          "recentResults": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/MonitorResult"
-            }
           },
           "createdAt": {
             "type": "string",
@@ -15010,22 +14974,48 @@
       "MonitorPermissionsResponse": {
         "type": "object",
         "properties": {
-          "canView": {
-            "type": "boolean"
+          "success": {
+            "type": "boolean",
+            "const": true
           },
-          "canEdit": {
-            "type": "boolean"
-          },
-          "canDelete": {
-            "type": "boolean"
-          },
-          "canToggle": {
-            "type": "boolean"
-          },
-          "userRole": {
-            "type": "string"
+          "data": {
+            "type": "object",
+            "properties": {
+              "userRole": {
+                "type": "string"
+              },
+              "canEdit": {
+                "type": "boolean"
+              },
+              "canDelete": {
+                "type": "boolean"
+              },
+              "canToggle": {
+                "type": "boolean"
+              },
+              "projectId": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "organizationId": {
+                "type": "string",
+                "format": "uuid"
+              }
+            },
+            "required": [
+              "userRole",
+              "canEdit",
+              "canDelete",
+              "canToggle",
+              "projectId",
+              "organizationId"
+            ]
           }
-        }
+        },
+        "required": [
+          "success",
+          "data"
+        ]
       },
       "MonitorLocationStats": {
         "type": "object",
@@ -16462,6 +16452,488 @@
             }
           }
         }
+      },
+      "JobDetail": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "nullable": true
+          },
+          "cronSchedule": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "nullable": true
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "running",
+              "passed",
+              "failed",
+              "error"
+            ]
+          },
+          "alertConfig": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/JobAlertConfig"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Alert configuration for this job"
+          },
+          "tests": {
+            "type": "array",
+            "items": {
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/Test"
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "orderPosition": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              ]
+            },
+            "description": "Tests associated with this job"
+          },
+          "lastRunAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "nullable": true
+          },
+          "nextRunAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "nullable": true
+          },
+          "jobType": {
+            "type": "string",
+            "enum": [
+              "playwright",
+              "k6"
+            ],
+            "nullable": true
+          },
+          "organizationId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "projectId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "createdByUserId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "createdByName": {
+            "type": "string",
+            "nullable": true
+          },
+          "createdByImage": {
+            "type": "string",
+            "nullable": true
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          }
+        },
+        "description": "A single job with its ordered tests. The list endpoint adds lastRun."
+      },
+      "RunDetail": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "jobId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "nullable": true
+          },
+          "jobName": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "nullable": true
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "queued",
+              "running",
+              "passed",
+              "failed",
+              "error",
+              "blocked"
+            ]
+          },
+          "trigger": {
+            "type": "string",
+            "enum": [
+              "manual",
+              "remote",
+              "schedule"
+            ]
+          },
+          "durationMs": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "Duration in milliseconds",
+            "nullable": true
+          },
+          "startedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "nullable": true
+          },
+          "completedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "nullable": true
+          },
+          "logs": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "nullable": true
+          },
+          "errorDetails": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "nullable": true
+          },
+          "reportUrl": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "nullable": true,
+            "description": "URL to the run report"
+          },
+          "agent": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Agent test results, present only for runs of agent tests. Numbers, tool names and clipped failure messages; prompts and replies are not included. Returned by GET /api/runs/{runId} only.",
+            "properties": {
+              "tests": {
+                "type": "array",
+                "maxItems": 20,
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "testId": {
+                      "type": "string"
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "attempts": {
+                      "type": "integer"
+                    },
+                    "passed": {
+                      "type": "integer"
+                    },
+                    "passRate": {
+                      "type": "number",
+                      "description": "Passed attempts divided by attempts (0 to 1)"
+                    },
+                    "totalTokens": {
+                      "type": "integer"
+                    },
+                    "judgeTokens": {
+                      "type": "integer"
+                    },
+                    "cost": {
+                      "type": "number",
+                      "description": "Only when the agent reports it"
+                    },
+                    "toolNames": {
+                      "type": "array",
+                      "maxItems": 50,
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "durationMs": {
+                      "type": "integer"
+                    },
+                    "slowestMs": {
+                      "type": "integer",
+                      "description": "Slowest attempt"
+                    },
+                    "failures": {
+                      "type": "array",
+                      "maxItems": 5,
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "attempt": {
+                            "type": "integer"
+                          },
+                          "message": {
+                            "type": "string",
+                            "maxLength": 200
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "testCount": {
+            "type": "integer",
+            "nullable": true
+          },
+          "testId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "nullable": true,
+            "description": "Test ID of a single-test run (`test execute`, playground); null for job runs"
+          },
+          "projectId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "organizationId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "isAgentRun": {
+            "type": "boolean",
+            "description": "True when the run's test, or a test in its job, is an agent test. Returned by GET /api/runs/{runId} only."
+          }
+        },
+        "description": "A single run. List rows add trigger attribution, duration and location."
+      },
+      "TestDetail": {
+        "type": "object",
+        "description": "A single test. List rows also carry tags and creator fields.",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "title": {
+            "type": "string"
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "priority": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          },
+          "script": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "MonitorDetail": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "organizationId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "projectId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "createdByUserId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "nullable": true
+          },
+          "target": {
+            "type": "string",
+            "description": "URL, host, or synthetic test target. Empty (or omitted on create) for `heartbeat` monitors, which receive pings instead."
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "http_request",
+              "website",
+              "ping_host",
+              "port_check",
+              "synthetic_test",
+              "heartbeat",
+              "mcp_server"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "up",
+              "down",
+              "paused",
+              "pending",
+              "maintenance",
+              "error"
+            ]
+          },
+          "frequencyMinutes": {
+            "type": "integer",
+            "description": "Check interval in minutes; for `heartbeat` the expected ping interval"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "config": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MonitorConfig"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "alertConfig": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MonitorAlertConfig"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "lastCheckAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "nullable": true
+          },
+          "lastStatusChangeAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "nullable": true
+          },
+          "scheduledJobId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "nullable": true
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "heartbeat": {
+            "$ref": "#/components/schemas/HeartbeatSummary",
+            "description": "Present for `heartbeat` monitors only."
+          },
+          "recentResults": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MonitorResult"
+            }
+          }
+        },
+        "description": "A single monitor including its most recent results. List rows add inMaintenance instead."
       }
     }
   }
