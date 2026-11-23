@@ -3,6 +3,7 @@ import {
   formatPingAgo,
   formatPingDue,
   formatRunDuration,
+  formatRunningFor,
   heartbeatFormValues,
   heartbeatScheduleLabel,
   heartbeatSplitMinutes,
@@ -57,5 +58,11 @@ describe("heartbeat format helpers", () => {
     expect(formatPingDue(at(30_000), now)).toBe("in <1m");
     expect(formatPingDue(at(2 * 86_400_000), now)).toBe("in 2d");
     expect(formatPingDue(at(-3 * 60_000 - 1_000), now)).toBe("overdue 3m");
+  });
+
+  it("formats a run in progress, clamping a start in the future", () => {
+    const now = Date.parse("2026-11-13T12:00:00Z");
+    expect(formatRunningFor(new Date(now - 12 * 60_000), now)).toBe("Running · 12m");
+    expect(formatRunningFor(new Date(now + 5_000), now)).toBe("Running · <1m");
   });
 });

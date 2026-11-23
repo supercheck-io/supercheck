@@ -484,6 +484,11 @@ describe("heartbeat monitor detail", () => {
     expect(screen.getByTestId("heartbeat-stat-duration")).toHaveTextContent("4 min 08 s");
   });
 
+  it("does not show a run in progress for a /start older than one interval plus grace", () => {
+    render(<MonitorDetailClient monitor={heartbeatMonitor("down", pinged({ lastStartAt: new Date(Date.now() - 2 * 3_600_000).toISOString(), lastPingAt: new Date(Date.now() - 3 * 3_600_000).toISOString() }), [runRow])} />);
+    expect(screen.getByTestId("heartbeat-stat-duration")).toHaveTextContent("4 min 08 s");
+  });
+
   it("shows a run in progress while /start is newer than the last ping", () => {
     render(<MonitorDetailClient monitor={heartbeatMonitor("up", pinged({ lastStartAt: new Date(Date.now() - 5 * 60_000 - 1000).toISOString(), lastPingAt: new Date(Date.now() - 3_600_000).toISOString() }), [runRow])} />);
     expect(screen.getByTestId("heartbeat-stat-duration")).toHaveTextContent(/^Running · 5m$/);

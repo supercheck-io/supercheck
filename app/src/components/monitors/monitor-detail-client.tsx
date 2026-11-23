@@ -651,23 +651,26 @@ export function MonitorDetailClient({
   // Heartbeat: the job pings us, so the stats are about pings, not checks (spec 4.6)
   const heartbeat = monitor.type === "heartbeat" ? monitor.heartbeat : undefined;
   const isHeartbeat = monitor.type === "heartbeat";
+  // Relative ping times ("8h ago", "in 52m") tick every 30 s while a heartbeat is open.
+  const [clockNow, setClockNow] = useState(() => Date.now());
   const hasRunDurations = responseTimeData.some((d) => d.time !== null);
   // Duration exists only once the job calls /start (Healthchecks.io and Cronitor work the same way); until then the stat and column stay hidden.
   const tracksRunDuration = Boolean(heartbeat?.lastStartAt) || hasRunDurations;
   // The latest run only: a ping without /start has no duration, and an older run's must not stand in for it. A missed run never ran, so it is skipped.
   const lastRun = monitor.recentResults?.find((r) => heartbeatResultKind(r).kind !== "missed");
   const lastRunDuration = formatRunDuration(lastRun?.responseTimeMs);
-  // A /start newer than the last ping means the job is running now.
+  // A /start newer than the last ping means the job is running, but only within one interval + grace (the sweep's rule); an older one is a crashed or abandoned run.
+  const startedAt = heartbeat?.lastStartAt ? new Date(heartbeat.lastStartAt) : null;
   const runningSince =
-    heartbeat?.lastStartAt && heartbeat.state !== "paused" && (!heartbeat.lastPingAt || new Date(heartbeat.lastStartAt) > new Date(heartbeat.lastPingAt))
-      ? new Date(heartbeat.lastStartAt)
+    startedAt && heartbeat?.state !== "paused" &&
+    (!heartbeat?.lastPingAt || startedAt > new Date(heartbeat.lastPingAt)) &&
+    clockNow - startedAt.getTime() <= ((monitor.frequencyMinutes ?? 0) + (heartbeat?.graceMinutes ?? 0)) * 60_000
+      ? startedAt
       : null;
   // Never pinged: stays pending and never alerts, so there is no deadline to show
   const neverPinged = Boolean(heartbeat && !heartbeat.lastPingAt);
   const nextPingAt = heartbeat && !neverPinged && heartbeat.nextExpectedAt ? new Date(heartbeat.nextExpectedAt) : null;
   const showHeartbeatSetup = isHeartbeat && !isNotificationView;
-  // Relative ping times ("8h ago", "in 52m") tick every 30 s while a heartbeat is open.
-  const [clockNow, setClockNow] = useState(() => Date.now());
   const [heartbeatChart, setHeartbeatChart] = useState<"availability" | "duration">("availability");
   useEffect(() => {
     if (!isHeartbeat) return;
@@ -1339,7 +1342,7 @@ export function MonitorDetailClient({
                   label="Failed (24h)"
                   valueTestId="heartbeat-stat-failed"
                   value={monitorStats ? `${monitorStats.period24h.totalChecks - monitorStats.period24h.upChecks} of ${monitorStats.period24h.totalChecks}` : null}
-                  tooltip={monitorStats ? "Missed or failed runs out of the runs expected in the last 24 hours" : undefined}
+                  tooltip={monitorStats ? "Missed or failed pings out of all pings recorded in the last 24 hours" : undefined}
                 />
               )}
             </MetricGroup>
