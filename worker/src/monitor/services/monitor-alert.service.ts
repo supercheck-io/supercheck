@@ -535,6 +535,43 @@ export class MonitorAlertService {
     }
   }
 
+  /**
+   * Seconds from this outage's first failure alert (its time is the failing check's) to the recovery.
+   * Only outages with a key: a recovery shares the key of the failures it ends. Undefined when unknown.
+   */
+  private async outageSeconds(
+    monitorId: string,
+    claim: AlertClaim | undefined,
+    recoveredAt: Date | undefined,
+  ): Promise<number | undefined> {
+    if (!claim?.outageKey) return undefined;
+    try {
+      const [row] = await this.dbService.db
+        .select({
+          first: sql<Date | string | null>`min(${schema.alertHistory.sentAt})`,
+        })
+        .from(schema.alertHistory)
+        .where(
+          and(
+            eq(schema.alertHistory.monitorId, monitorId),
+            eq(schema.alertHistory.outageKey, claim.outageKey),
+            eq(schema.alertHistory.type, 'monitor_failure'),
+          ),
+        );
+      if (!row?.first) return undefined;
+      const seconds =
+        ((recoveredAt ?? new Date()).getTime() -
+          new Date(row.first).getTime()) /
+        1000;
+      return Number.isFinite(seconds) && seconds >= 0 ? seconds : undefined;
+    } catch (error) {
+      this.logger.warn(
+        `[NOTIFY] Outage duration lookup failed for monitor ${monitorId}: ${getErrorMessage(error)}`,
+      );
+      return undefined;
+    }
+  }
+
   async sendNotification(
     monitorId: string,
     type: 'recovery' | 'failure',
@@ -676,6 +713,10 @@ export class MonitorAlertService {
     }
 
     const dashboardUrl = `${baseUrl}/monitors/${monitor.id}`;
+    const outageSeconds =
+      type === 'recovery'
+        ? await this.outageSeconds(monitor.id, claim, observedAt)
+        : undefined;
 
     const notificationPayload: NotificationPayload = {
       type: notificationType,
@@ -703,6 +744,7 @@ export class MonitorAlertService {
           ? new Date(monitor.lastCheckAt).toISOString()
           : undefined,
         ...metadata,
+        ...(outageSeconds === undefined ? {} : { outageSeconds }),
         // The check's own time, so the alert shows when the check ran, not when it was sent.
         ...(observedAt ? { observedAt: observedAt.toISOString() } : {}),
       },

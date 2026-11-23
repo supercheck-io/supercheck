@@ -66,6 +66,22 @@ it("invites an existing account owner into the host's project with only the requ
     projectInfo: expect.stringContaining("Other active projects in this team remain visible with read-only access"),
   }));
 });
+it("builds an absolute invite link even when NEXT_PUBLIC_APP_URL is unset (never 'undefined/invite/...')", async () => {
+  const prev = { a: process.env.NEXT_PUBLIC_APP_URL, b: process.env.APP_URL, c: process.env.BETTER_AUTH_URL };
+  delete process.env.NEXT_PUBLIC_APP_URL;
+  delete process.env.APP_URL;
+  process.env.BETTER_AUTH_URL = "https://auth.example.com";
+  try {
+    expect((await POST(request())).status).toBe(200);
+    const { inviteUrl } = (renderOrganizationInvitationEmail as jest.Mock).mock.calls.at(-1)[0];
+    expect(inviteUrl).toMatch(/^https:\/\/auth\.example\.com\/invite\/[^/]+$/);
+  } finally {
+    for (const [key, value] of [["NEXT_PUBLIC_APP_URL", prev.a], ["APP_URL", prev.b], ["BETTER_AUTH_URL", prev.c]] as const) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
+});
 it("rejects a malformed project id with 400 before any database access", async () => {
   mockSelect.mockReset();
   const response = await POST(request("project_editor", ["zzz"]));

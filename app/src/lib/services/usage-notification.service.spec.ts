@@ -96,6 +96,7 @@ import { db } from "@/utils/db";
 import { billingSettingsService } from "./billing-settings.service";
 import { polarUsageService } from "./polar-usage.service";
 import { usageNotificationService } from "./usage-notification.service";
+import { renderUsageNotificationEmail } from "@/lib/email-renderer";
 
 describe("UsageNotificationService", () => {
   beforeEach(() => {
@@ -180,6 +181,24 @@ describe("UsageNotificationService", () => {
       undefined,
       expect.any(Date),
     );
+  });
+
+  it("links to billing with an absolute URL and states the period end with a time zone, with no app URL configured (F3, F14)", async () => {
+    const prev = { a: process.env.NEXT_PUBLIC_APP_URL, b: process.env.APP_URL, c: process.env.BETTER_AUTH_URL };
+    delete process.env.NEXT_PUBLIC_APP_URL;
+    delete process.env.APP_URL;
+    delete process.env.BETTER_AUTH_URL;
+    try {
+      await usageNotificationService.checkAndNotify("org_123");
+      const params = (renderUsageNotificationEmail as jest.Mock).mock.calls.at(-1)[0];
+      expect(params.billingPageUrl).toBe("http://localhost:3000/org-admin?tab=subscription");
+      expect(params.periodEndDate).toBe("Wed, 01 Jul 2026 00:00:00 UTC");
+    } finally {
+      for (const [key, value] of [["NEXT_PUBLIC_APP_URL", prev.a], ["APP_URL", prev.b], ["BETTER_AUTH_URL", prev.c]] as const) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+    }
   });
 
   it("alerts on the plan default cap when the stored cap fields are off", async () => {

@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { and, desc, eq, gte, inArray } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 
 import {
   alertHistory,
@@ -21,7 +22,9 @@ import {
   INCIDENT_EVENT_MESSAGE,
   incidentUpdateFields,
   incidentUpdateHeadline,
+  incidentUpdateSubject,
 } from "@/emails/incident-update";
+import { emailAppUrl } from "@/emails/base-layout";
 import { renderIncidentUpdateEmail } from "@/lib/email-renderer";
 import { EmailService } from "@/lib/email-service";
 import { getDisplayStatus } from "@/lib/sre/incident-status-display";
@@ -104,6 +107,8 @@ const EVENT_LABEL: Record<IncidentNotifyEvent, string> = {
 const PEOPLE_ONLY_EVENTS: IncidentNotifyEvent[] = ["commented", "severity_changed"];
 const MAX_POLICY_OWNERS = 5;
 
+const triggerService = alias(sreServices, "trigger_service");
+
 const DEDUPE_TTL_SECONDS = 600;
 const SEND_TIMEOUT_MS = 8000;
 const MAX_DETAIL_LENGTH = 300;
@@ -112,8 +117,7 @@ const MAX_EMAIL_RECIPIENTS = 20;
 const MAX_DIRECT_RECIPIENTS = 120;
 
 export function buildIncidentUrl(incidentId: string) {
-  const base = (process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000").replace(/\/+$/, "");
-  return `${base}/incidents/${incidentId}`;
+  return `${emailAppUrl()}/incidents/${incidentId}`;
 }
 
 /** Returns true when this incident+event has not been announced recently. Fails open without Redis. */
@@ -166,6 +170,8 @@ type Message = {
   /** Event detail, or the standard explanation for the event. */
   body: string;
   fields: DetailField[];
+  /** When the event happened (the trigger alert's time for `created`). */
+  occurredAt: Date;
   email: {
     title: string;
     statusLabel: string;
@@ -256,6 +262,7 @@ async function sendEmailBatch(unique: string[], message: Message): Promise<numbe
       incidentUrl: message.url,
       actorName: message.email.actorName,
       assigneeName: message.email.assigneeName,
+      occurredAt: message.occurredAt,
     });
   } catch (error) {
     // Never drop the email because a template failed; send the plain version with the same facts.
@@ -264,7 +271,14 @@ async function sendEmailBatch(unique: string[], message: Message): Promise<numbe
       .map((field) => `<tr><td style="padding:4px 12px 4px 0;color:#6b7280"><b>${escapeHtml(field.title)}</b></td><td>${escapeHtml(field.value)}</td></tr>`)
       .join("");
     rendered = {
-      subject: `[Supercheck] ${message.headline}: #${message.incident.number} ${message.email.title} (${message.incident.severity.toUpperCase()})`,
+      subject: incidentUpdateSubject({
+        event: message.event,
+        incidentNumber: message.incident.number,
+        title: message.email.title,
+        severity: message.incident.severity as "sev1" | "sev2" | "sev3" | "sev4",
+        actorName: message.email.actorName,
+        assigneeName: message.email.assigneeName,
+      }),
       text: plainText(message),
       html: `<p><b>${escapeHtml(message.headline)}</b></p><p>${escapeHtml(message.text)}</p><table>${rows}</table><p><a href="${escapeHtml(message.url)}">Open incident #${message.incident.number}</a></p>`,
     };
@@ -526,9 +540,17 @@ export async function notifyIncidentEvent(input: IncidentNotifyInput): Promise<b
         commanderUserId: sreIncidents.commanderUserId,
         serviceId: sreIncidents.primaryServiceId,
         serviceName: sreServices.name,
+        // The alert that opened the incident explains a `created` message: what failed, when, on which service.
+        triggerTitle: sreAlertEvents.title,
+        triggerDescription: sreAlertEvents.description,
+        triggerFiredAt: sreAlertEvents.firedAt,
+        triggerServiceName: triggerService.name,
       })
       .from(sreIncidents)
       .leftJoin(sreServices, eq(sreServices.id, sreIncidents.primaryServiceId))
+      .leftJoin(sreIncidentAlerts, and(eq(sreIncidentAlerts.incidentId, sreIncidents.id), eq(sreIncidentAlerts.role, "trigger")))
+      .leftJoin(sreAlertEvents, eq(sreAlertEvents.id, sreIncidentAlerts.alertEventId))
+      .leftJoin(triggerService, eq(triggerService.id, sreAlertEvents.serviceId))
       .where(
         and(
           eq(sreIncidents.id, input.incidentId),
@@ -549,7 +571,13 @@ export async function notifyIncidentEvent(input: IncidentNotifyInput): Promise<b
     }
 
     const url = buildIncidentUrl(incident.id);
-    const detail = input.detail?.replace(/\s+/g, " ").trim().slice(0, MAX_DETAIL_LENGTH);
+    // A new incident is explained by the alert that opened it: what failed, when, and on which service.
+    const created = input.event === "created";
+    const occurredAt = (created && incident.triggerFiredAt) || new Date();
+    const serviceName = incident.serviceName ?? incident.triggerServiceName ?? undefined;
+    // Alert text can carry URLs with credentials: redact before it reaches email or chat.
+    const triggerDetail = created ? safeText(incident.triggerDescription || incident.triggerTitle, MAX_DETAIL_LENGTH) : null;
+    const detail = (input.detail ?? triggerDetail ?? undefined)?.replace(/\s+/g, " ").trim().slice(0, MAX_DETAIL_LENGTH);
 
     // Participants (owner, commander, and the owner being replaced) get a direct email for
     // every lifecycle change, like ticket watchers; never the person who made the change.
@@ -603,7 +631,7 @@ export async function notifyIncidentEvent(input: IncidentNotifyInput): Promise<b
     const title = safeText(incident.title, 300) ?? "";
     const text =
       `[${incident.severity.toUpperCase()}] Incident #${incident.number} ${EVENT_LABEL[input.event]}: ${title}` +
-      (incident.serviceName ? ` (${incident.serviceName})` : "") +
+      (serviceName ? ` (${serviceName})` : "") +
       (detail ? `\n${detail}` : "");
     const message: Message = {
       title: `Incident #${incident.number} ${EVENT_LABEL[input.event]}`,
@@ -617,14 +645,16 @@ export async function notifyIncidentEvent(input: IncidentNotifyInput): Promise<b
         incidentNumber: incident.number,
         severity: incident.severity as "sev1" | "sev2" | "sev3" | "sev4",
         statusLabel,
-        serviceName: incident.serviceName ?? undefined,
+        serviceName,
         assigneeName,
         actorName,
+        occurredAt,
       }),
+      occurredAt,
       email: {
         title,
         statusLabel,
-        serviceName: incident.serviceName ?? undefined,
+        serviceName,
         detail,
         actorName,
         assigneeName,

@@ -23,7 +23,7 @@ import { emailLogoUrl, formatEmailTime } from "./base-layout";
 // enough to check content. Every email must share the BaseLayout chrome.
 const FOOTER_MARK = "supercheck.io"; // standard footer or status-page "powered by" link
 const cases: Array<[string, React.ReactElement, string[]]> = [
-  ["password-reset", <PasswordResetEmail key="a" resetUrl="https://x.io/r?t=1" userEmail="u@x.io" />, ["Reset Password", "https://x.io/r?t=1"]],
+  ["password-reset", <PasswordResetEmail key="a" resetUrl="https://x.io/r?t=1" userEmail="u@x.io" />, ["Reset password", "https://x.io/r?t=1"]],
   ["existing-account", <ExistingAccountEmail key="x" signInUrl="https://x.io/sign-in?invite=1" resetUrl="https://x.io/forgot-password" userEmail="u@x.io" />, ["https://x.io/sign-in?invite=1", "https://x.io/forgot-password", "Google or GitHub"]],
   ["email-verification", <EmailVerificationEmail key="b" verificationUrl="https://x.io/v" userEmail="u@x.io" />, ["https://x.io/v"]],
   ["org-invitation", <OrganizationInvitationEmail key="c" inviteUrl="https://x.io/i" organizationName="Acme" role="admin" />, ["Acme", "https://x.io/i"]],
@@ -103,7 +103,8 @@ describe("email consistency", () => {
   const render = (el: React.ReactElement) => renderToStaticMarkup(el);
 
   it("alertEmailSubject follows [Supercheck] <Event>: <name>", () => {
-    expect(alertEmailSubject("Job Failed - Nightly")).toBe("[Supercheck] Job Failed: Nightly");
+    expect(alertEmailSubject("Job Failed - Nightly")).toBe("[Supercheck] Job failed: Nightly");
+    expect(alertEmailSubject("SSL Certificate Renewed - Shop API")).toBe("[Supercheck] SSL certificate renewed: Shop API");
     expect(alertEmailSubject("Test alert")).toBe("[Supercheck] Test alert");
   });
 
@@ -131,7 +132,7 @@ describe("email consistency", () => {
     const html = render(
       <OrganizationInvitationEmail inviteUrl="https://x.io/i" organizationName="Acme" role="PROJECT_EDITOR" projectInfo={"Access to <img src=x onerror=1>"} />,
     );
-    expect(html).toContain("Project Editor");
+    expect(html).toContain("Project editor");
     expect(html).not.toContain("PROJECT_EDITOR");
     expect(html).toContain("&lt;img src=x onerror=1&gt;");
     expect(html).not.toContain("<img src=x");
@@ -142,9 +143,11 @@ describe("email consistency", () => {
     expect(render(<BaseLayout preview="p" title="T">x</BaseLayout>)).toContain('dir="ltr" lang="en"');
   });
 
-  it("status-page welcome does not append the page name after a full sentence", () => {
-    const html = render(<StatusPageWelcomeEmail statusPageName="ZZPage" statusPageUrl="https://s.io" unsubscribeUrl="https://s.io/u" />);
-    expect(html).not.toContain("ZZPage</strong>.");
+  it("status-page welcome and verification do not promise maintenance emails", () => {
+    const welcome = render(<StatusPageWelcomeEmail statusPageName="ZZPage" statusPageUrl="https://s.io" unsubscribeUrl="https://s.io/u" />);
+    const verify = render(<StatusPageVerificationEmail statusPageName="ZZPage" verificationUrl="https://s.io/v" />);
+    for (const html of [welcome, verify]) expect(html.toLowerCase()).not.toContain("maintenance");
+    expect(welcome).toContain("ZZPage</strong>.");
   });
 
   it("trial email shows a Manage billing link only when a billing URL is given", () => {

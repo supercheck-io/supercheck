@@ -7,6 +7,7 @@ import {
   INGEST_OUTAGE_KEY,
   HeartbeatSweepService,
   decideHeartbeat,
+  formatMinutes,
   heartbeatGraceMinutes,
   type IngestStatus,
 } from './heartbeat-sweep.service';
@@ -266,7 +267,8 @@ describe('decideHeartbeat', () => {
       kind: 'missed',
       isUp: false,
       checkedAt: new Date(T0),
-      reason: 'No ping received within 1 h plus 12 min grace',
+      reason:
+        'No ping received in the expected interval (1 hour) or the grace period after it (12 minutes).',
     });
     expect(missed.finish).toEqual({ lastMissedAt: new Date(T0).toISOString() });
     const recent = new Date(T0 - 30 * MIN).toISOString();
@@ -293,10 +295,18 @@ describe('decideHeartbeat', () => {
     expect(decideHeartbeat(resumed, T0, UP)).toEqual({ finish: {} });
   });
 
+  it('writes intervals in readable units', () => {
+    expect(formatMinutes(1)).toBe('1 minute');
+    expect(formatMinutes(12)).toBe('12 minutes');
+    expect(formatMinutes(60)).toBe('1 hour');
+    expect(formatMinutes(288)).toBe('4 hours 48 minutes');
+    expect(formatMinutes(2 * 1440 + 61)).toBe('2 days 1 hour 1 minute');
+  });
+
   it('formats day intervals in the reason', () => {
     const daily = { ...pinged(3 * 24 * 60), frequencyMinutes: 1440 };
     expect(decideHeartbeat(daily, T0, UP).result?.reason).toBe(
-      'No ping received within 1 d plus 288 min grace',
+      'No ping received in the expected interval (1 day) or the grace period after it (4 hours 48 minutes).',
     );
   });
 });
@@ -547,7 +557,8 @@ describe('HeartbeatSweepService.sweep', () => {
         isUp: false,
         details: {
           heartbeat: { kind: 'missed' },
-          errorMessage: 'No ping received within 1 h plus 12 min grace',
+          errorMessage:
+            'No ping received in the expected interval (1 hour) or the grace period after it (12 minutes).',
         },
       }),
     );
@@ -713,7 +724,7 @@ describe('HeartbeatSweepService.sweep', () => {
     expect(ctx.alerts.sendWarning).toHaveBeenCalledWith(
       expect.objectContaining({ id: 'm1' }),
       'heartbeat_late',
-      expect.stringContaining('12 min grace period'),
+      expect.stringContaining('grace period (12 minutes).'),
       expect.stringMatching(/^heartbeat_late:m1:/),
     );
     expect(ctx.monitors.recordExternalResult).not.toHaveBeenCalled();

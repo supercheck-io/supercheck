@@ -31,6 +31,7 @@ import * as nodemailer from 'nodemailer';
 import {
   NotificationService,
   buildEmailFields,
+  emailResourceLink,
   formatAlertType,
   NotificationProvider,
   NotificationPayload,
@@ -1886,9 +1887,54 @@ describe('NotificationService', () => {
       expect(byTitle.Project).toBe('Acme');
       expect(byTitle.Status).toBe('Failed');
       expect(byTitle.Duration).toBe('1m 05s');
-      expect(byTitle['Run ID']).toBe('run-1');
+      // The run id is internal; the run page is the email's button instead.
+      expect(byTitle['Run ID']).toBeUndefined();
       expect(byTitle.Error.length).toBeLessThanOrEqual(1000);
       expect(byTitle.Error.endsWith('…')).toBe(true);
+      expect(arg.resource).toEqual({
+        url: expect.stringMatching(/\/notification-run\/run-1$/),
+        label: 'Open run',
+      });
+      expect(
+        arg.fields.some((f: { value: string }) => f.value === arg.resource.url),
+      ).toBe(false);
+    });
+
+    it('a monitor email opens the monitor from its button and shows the outage duration on recovery', async () => {
+      mockEmailTemplateService.renderMonitorAlertEmail.mockClear();
+      await service.sendNotification(emailProvider, {
+        ...basePayload,
+        type: 'monitor_recovery',
+        severity: 'success',
+        metadata: { ...basePayload.metadata, outageSeconds: 1925 },
+      });
+      const arg =
+        mockEmailTemplateService.renderMonitorAlertEmail.mock.calls[0][0];
+      expect(arg.resource).toEqual({
+        url: expect.stringMatching(/\/notification-monitor\//),
+        label: 'Open monitor',
+      });
+      const byTitle = Object.fromEntries(
+        arg.fields.map((f: { title: string; value: string }) => [
+          f.title,
+          f.value,
+        ]),
+      );
+      expect(byTitle['Outage duration']).toBe('32m 05s from the first alert');
+      expect(byTitle['Monitor Details']).toBeUndefined();
+    });
+
+    it('emailResourceLink falls back to the jobs page label without a run', () => {
+      expect(
+        emailResourceLink({
+          ...basePayload,
+          type: 'job_failed',
+          metadata: { dashboardUrl: 'https://a.io/jobs' },
+        }),
+      ).toEqual({ url: 'https://a.io/jobs', label: 'Open jobs' });
+      expect(
+        emailResourceLink({ ...basePayload, metadata: {} }),
+      ).toBeUndefined();
     });
 
     it.each([
@@ -1932,11 +1978,17 @@ describe('NotificationService', () => {
         ],
         { ...basePayload, metadata: { runId: 'r1' } },
       );
-      expect(fields.map((f) => f.title)).toEqual([
-        'Job',
-        'Run ID',
-        'Job Details',
-      ]);
+      expect(fields.map((f) => f.title)).toEqual(['Job', 'Job details']);
+      // The dashboard link becomes the email button, so it is not repeated as a row.
+      expect(
+        buildEmailFields(
+          [
+            { title: '🔗 Job Details', value: 'https://a.io/j', raw: true },
+            { title: 'Target URL', value: 'https://t.io', raw: true },
+          ],
+          { ...basePayload, metadata: { dashboardUrl: 'https://a.io/j' } },
+        ).map((f) => f.title),
+      ).toEqual(['Target URL']);
     });
 
     it('closes the pooled transporter on module destroy', async () => {

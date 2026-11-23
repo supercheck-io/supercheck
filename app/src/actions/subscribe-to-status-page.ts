@@ -23,6 +23,7 @@ import { encryptWebhookSecret, hashVerificationToken } from "@/lib/subscriber-to
 import { sendWebhookChallenge } from "@/lib/incident-notifications/webhook-verification";
 import { checkSubscriberLimit } from "@/lib/middleware/plan-enforcement";
 import { insertWithinPlanLimit } from "@/lib/middleware/plan-limit-lock";
+import { emailAppUrl } from "@/emails/base-layout";
 
 const subscribeSchema = z.union([
   // Email subscription
@@ -81,7 +82,7 @@ async function sendVerificationEmail(params: {
     const emailService = EmailService.getInstance();
 
     // Construct verification URL
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+    const baseUrl = emailAppUrl();
     const verificationUrl = `${baseUrl}/status/verify/${params.verificationToken}`;
 
     // Render email using react-email template

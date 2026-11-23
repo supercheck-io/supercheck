@@ -226,7 +226,7 @@ sequenceDiagram
 <Tabs items={['Email', 'Slack', 'Webhook']}>
 <Tab value="Email">
 
-Choose **Subscribe**, enter an email, select **Subscribe via Email** and open the verification link. Unsubscribe links are signed. Resubmitting an unverified address within 5 minutes sends no new email.
+Choose **Subscribe**, enter an email, select **Subscribe via Email** and open the verification link within 24 hours. A confirmation email follows. Each update email links to the incident's public page and carries a signed unsubscribe link and a one-click unsubscribe header; without `SECRET_ENCRYPTION_KEY` (which signs those links) no subscriber email is sent and the delivery is marked failed. Resubmitting an unverified address within 5 minutes sends no new email.
 
 ![Email Subscription](/screenshots/status-page-subscribe-email.png)
 

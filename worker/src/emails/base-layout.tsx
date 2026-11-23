@@ -39,7 +39,7 @@ interface BaseLayoutProps {
  * never makes recipients' mail clients contact supercheck.io.
  */
 export const emailLogoUrl = (env: NodeJS.ProcessEnv = process.env, appUrl?: string): string | undefined => {
-  const base = (appUrl || env.NEXT_PUBLIC_APP_URL || env.APP_URL || "").trim();
+  const base = (appUrl || configuredAppUrl(env)).trim();
   try {
     const url = new URL(base);
     return /^https?:$/.test(url.protocol) ? `${url.origin}${url.pathname.replace(/\/+$/, "")}/supercheck-logo.png` : undefined;
@@ -47,6 +47,19 @@ export const emailLogoUrl = (env: NodeJS.ProcessEnv = process.env, appUrl?: stri
     return undefined;
   }
 };
+
+const configuredAppUrl = (env: NodeJS.ProcessEnv) => env.NEXT_PUBLIC_APP_URL || env.APP_URL || env.BETTER_AUTH_URL || "";
+
+/**
+ * Public app origin for links in emails (no trailing slash): the configured app URL, else the local dev
+ * origin the rest of the app falls back to. Every email link is built from this, so none is relative.
+ */
+export const emailAppUrl = (env: NodeJS.ProcessEnv = process.env): string =>
+  (configuredAppUrl(env).trim() || "http://localhost:3000").replace(/\/+$/, "");
+
+/** Same rule as the app's isSelfHosted(): SELF_HOSTED "true" or "1". Self-hosted emails carry no supercheck.io links. */
+const isSelfHostedEnv = (env: NodeJS.ProcessEnv = process.env) =>
+  ["true", "1"].includes(env.SELF_HOSTED?.trim().toLowerCase() ?? "");
 
 /** "Wed, 18 Nov 2026 06:02:36 UTC": one timestamp format, with an explicit zone, in every email. */
 export const formatEmailTime = (date: Date): string =>
@@ -111,18 +124,18 @@ export const BaseLayout = ({
                   )}
                 </Text>
               )}
-              {showStandardFooter && (
+              {showStandardFooter && !isSelfHostedEnv() && (
                 <Text style={standardFooterText}>
                   <Link href="https://supercheck.io" style={footerLink}>
                     Supercheck
                   </Link>
                   {" • "}
                   <Link href="https://supercheck.io/privacy" style={footerLink}>
-                    Privacy Policy
+                    Privacy policy
                   </Link>
                   {" • "}
                   <Link href="https://supercheck.io/terms" style={footerLink}>
-                    Terms of Service
+                    Terms of service
                   </Link>
                   <br />
                   <span style={{ color: "#6b7280" }}>
@@ -266,6 +279,60 @@ export const EmailButton = ({ href, children }: { href: string; children: React.
     {children}
   </Button>
 );
+
+/**
+ * Footer for public status-page subscriber emails: why it was sent, the page and unsubscribe links,
+ * and "Powered by Supercheck". Strings come translated from the caller.
+ */
+export const SubscriberFooter = ({
+  notice,
+  links,
+  poweredBy,
+}: {
+  notice: string;
+  links: Array<{ href?: string; label: string }>;
+  poweredBy: string;
+}) => {
+  const shown = links.filter((link): link is { href: string; label: string } => Boolean(link.href));
+  return (
+    <>
+      <Text style={reasonText}>{notice}</Text>
+      {shown.length > 0 && (
+        <Text style={reasonText}>
+          {shown.map((link, i) => (
+            <React.Fragment key={link.href}>
+              {i > 0 && " • "}
+              <Link href={link.href} style={reasonLink}>
+                {link.label}
+              </Link>
+            </React.Fragment>
+          ))}
+        </Text>
+      )}
+      <Text style={standardFooterText}>
+        {poweredBy}{" "}
+        <Link href="https://supercheck.io" style={footerLink}>
+          Supercheck
+        </Link>
+      </Text>
+    </>
+  );
+};
+
+/** "Or copy this link" under a button, for clients that block buttons. */
+export const FallbackLink = ({ href, label = "If the button does not work, copy this link into your browser:" }: { href: string; label?: string }) => (
+  <>
+    <Text style={fallbackLabel}>{label}</Text>
+    <Text style={fallbackUrl}>
+      <Link href={href} style={reasonLink}>
+        {href}
+      </Link>
+    </Text>
+  </>
+);
+
+const fallbackLabel = { color: "#6b7280", fontSize: "13px", lineHeight: "1.5", margin: "0 0 4px", textAlign: "center" as const };
+const fallbackUrl = { fontSize: "13px", lineHeight: "1.5", margin: "0 0 24px", textAlign: "center" as const, wordBreak: "break-all" as const };
 
 /** Footer line for owner-facing billing emails; only rendered when a billing URL exists. */
 export const ManageBillingLink = ({ href }: { href?: string }) =>

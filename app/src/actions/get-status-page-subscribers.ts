@@ -11,6 +11,7 @@ import { renderStatusPageVerificationEmail } from "@/lib/email-renderer";
 import { z } from "zod";
 import { generateWebhookSecret } from "@/lib/webhook-utils";
 import { sendWebhookChallenge } from "@/lib/incident-notifications/webhook-verification";
+import { emailAppUrl } from "@/emails/base-layout";
 
 // UUID validation schema
 const uuidSchema = z.string().uuid("Invalid ID format");
@@ -378,7 +379,7 @@ export async function resendVerificationEmail(subscriberId: string) {
     // Send verification email
     try {
       const emailService = EmailService.getInstance();
-      const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+      const baseUrl = emailAppUrl();
       // FIX: Use correct verification URL path
       const verificationUrl = `${baseUrl}/status/verify/${newVerificationToken}`;
 

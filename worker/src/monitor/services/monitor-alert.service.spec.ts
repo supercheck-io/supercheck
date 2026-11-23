@@ -134,6 +134,63 @@ describe('MonitorAlertService', () => {
     };
   }
 
+  describe('recovery outage duration', () => {
+    type OutageFn = (
+      monitorId: string,
+      claim: { outageKey: string; ordinal: number } | undefined,
+      recoveredAt: Date | undefined,
+    ) => Promise<number | undefined>;
+    const outage = (service: MonitorAlertService) =>
+      (service as unknown as { outageSeconds: OutageFn }).outageSeconds.bind(
+        service,
+      );
+
+    it('measures from the first failure alert of the same outage to the recovery check', async () => {
+      const ctx = createService();
+      const where = jest
+        .fn()
+        .mockResolvedValue([{ first: '2026-06-28T00:00:00.000Z' }]);
+      (ctx.db as { select: unknown }).select = jest.fn(() => ({
+        from: () => ({ where }),
+      }));
+      await expect(
+        outage(ctx.service)(
+          'monitor-1',
+          { outageKey: 'o-1', ordinal: 0 },
+          new Date('2026-06-28T00:32:05.000Z'),
+        ),
+      ).resolves.toBe(1925);
+      expect(where).toHaveBeenCalledTimes(1);
+    });
+
+    it('is unknown without an outage key, without a failure row, or when the lookup fails', async () => {
+      const ctx = createService();
+      await expect(
+        outage(ctx.service)('monitor-1', undefined, new Date()),
+      ).resolves.toBeUndefined();
+      (ctx.db as { select: unknown }).select = jest.fn(() => ({
+        from: () => ({ where: jest.fn().mockResolvedValue([{ first: null }]) }),
+      }));
+      await expect(
+        outage(ctx.service)(
+          'monitor-1',
+          { outageKey: 'o', ordinal: 0 },
+          new Date(),
+        ),
+      ).resolves.toBeUndefined();
+      (ctx.db as { select: unknown }).select = jest.fn(() => ({
+        from: () => ({ where: jest.fn().mockRejectedValue(new Error('db')) }),
+      }));
+      await expect(
+        outage(ctx.service)(
+          'monitor-1',
+          { outageKey: 'o', ordinal: 0 },
+          new Date(),
+        ),
+      ).resolves.toBeUndefined();
+    });
+  });
+
   it('reports zero delivery as retryable and partial success as delivered', async () => {
     const { service, notificationService } = createService();
     notificationService.sendNotificationToMultipleProviders.mockResolvedValueOnce(

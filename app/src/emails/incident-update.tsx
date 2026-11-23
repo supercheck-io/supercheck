@@ -96,6 +96,22 @@ export function incidentUpdateHeadline(
   }
 }
 
+const SUBJECT_MAX = 70;
+
+/**
+ * `[SEV2] #15 Checkout API is failing: New incident opened`. Severity and number lead so the inbox sorts and
+ * scans by them; the title is cut (with an ellipsis) so the whole subject stays within ~70 characters.
+ */
+export function incidentUpdateSubject(
+  props: Pick<IncidentUpdateEmailProps, "event" | "incidentNumber" | "title" | "severity" | "actorName" | "assigneeName">,
+): string {
+  const prefix = `[${String(props.severity).toUpperCase()}] #${props.incidentNumber} `;
+  const suffix = `: ${incidentUpdateHeadline(props.event, props.actorName, props.assigneeName)}`;
+  const room = Math.max(12, SUBJECT_MAX - prefix.length - suffix.length);
+  const title = props.title.replace(/\s+/g, " ").trim();
+  return `${prefix}${title.length > room ? `${title.slice(0, room - 1).trimEnd()}…` : title}${suffix}`;
+}
+
 /** One-line explanation shown under the title when there is no event detail. */
 export const INCIDENT_EVENT_MESSAGE: Record<IncidentUpdateEvent, string> = {
   created: "Supercheck opened an incident. Review the evidence, assign an owner and start the investigation.",
@@ -158,7 +174,7 @@ export const IncidentUpdateEmail = ({
 
   return (
     <BaseLayout
-      preview={`${headline}: #${incidentNumber} ${title}`}
+      preview={`#${incidentNumber} ${title}: ${detail || INCIDENT_EVENT_MESSAGE[event]}`}
       title={headline}
       reason="You received this because you are an owner, participant or notification recipient for this incident."
       manage={notificationsLink(incidentUrl)}

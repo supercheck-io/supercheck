@@ -15,11 +15,12 @@ import {
   StatusPageVerificationEmail,
   StatusPageWelcomeEmail,
   IncidentNotificationEmail,
-    IncidentUpdateEmail,
-  incidentUpdateHeadline,
+  IncidentUpdateEmail,
+  incidentUpdateSubject,
   type IncidentUpdateEmailProps,
   TestEmail,
   UsageNotificationEmail,
+  usageNotificationTitle,
   TrialNotificationEmail,
   trialNotificationSubject,
   OrganizationDeletionEmail,
@@ -209,23 +210,12 @@ export async function renderUsageNotificationEmail(params: {
   spendingLimitDollars?: number;
   hardStop?: boolean;
   billingPageUrl: string;
-  periodEndDate: string;
+  periodEndDate?: string;
 }): Promise<RenderedEmail> {
   const component = UsageNotificationEmail(params);
 
-  const subjectMap: Record<string, string> = {
-    usage_50_percent: `[Supercheck] 50% usage: ${params.organizationName}`,
-    usage_80_percent: `[Supercheck] 80% usage warning: ${params.organizationName}`,
-    usage_90_percent: `[Supercheck] 90% usage critical: ${params.organizationName}`,
-    usage_100_percent: `[Supercheck] Usage limit reached: ${params.organizationName}`,
-    spending_limit_warning: `[Supercheck] Spending warning: ${params.organizationName}`,
-    spending_limit_reached: `[Supercheck] Spending limit reached: ${params.organizationName}`,
-  };
-
   return {
-    subject:
-      subjectMap[params.notificationType] ||
-      `[Supercheck] Usage alert: ${params.organizationName}`,
+    subject: `[Supercheck] ${usageNotificationTitle(params.notificationType)}: ${params.organizationName}`,
     html: await render(component, { pretty: false }),
     text: await render(component, PLAIN_TEXT_RENDER_OPTIONS),
   };
@@ -261,7 +251,7 @@ export async function renderIncidentUpdateEmail(
   const component = IncidentUpdateEmail(params);
 
   return {
-    subject: `[Supercheck] ${incidentUpdateHeadline(params.event, params.actorName, params.assigneeName)}: #${params.incidentNumber} ${params.title} (${params.severity.toUpperCase()})`,
+    subject: incidentUpdateSubject(params),
     html: await render(component, { pretty: false }),
     text: await render(component, PLAIN_TEXT_RENDER_OPTIONS),
   };

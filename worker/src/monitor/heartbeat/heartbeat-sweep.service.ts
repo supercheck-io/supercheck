@@ -96,10 +96,19 @@ export function heartbeatGraceMinutes(
   );
 }
 
-function formatMinutes(minutes: number): string {
-  if (minutes % 1440 === 0) return `${minutes / 1440} d`;
-  if (minutes % 60 === 0) return `${minutes / 60} h`;
-  return `${minutes} min`;
+const unit = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
+
+/** 1440 -> "1 day", 288 -> "4 hours 48 minutes", 12 -> "12 minutes". */
+export function formatMinutes(minutes: number): string {
+  const days = Math.floor(minutes / 1440);
+  const hours = Math.floor((minutes % 1440) / 60);
+  const mins = Math.round(minutes % 60);
+  const parts = [
+    days ? unit(days, 'day') : '',
+    hours ? unit(hours, 'hour') : '',
+    mins ? unit(mins, 'minute') : '',
+  ].filter(Boolean);
+  return parts.length ? parts.join(' ') : unit(0, 'minute');
 }
 
 /**
@@ -217,7 +226,7 @@ export function decideHeartbeat(
         kind: 'missed',
         isUp: false,
         checkedAt: new Date(now),
-        reason: `No ping received within ${formatMinutes(monitor.frequencyMinutes)} plus ${formatMinutes(graceMinutes)} grace`,
+        reason: `No ping received in the expected interval (${formatMinutes(monitor.frequencyMinutes)}) or the grace period after it (${formatMinutes(graceMinutes)}).`,
       },
       finish,
     };
@@ -506,7 +515,7 @@ export class HeartbeatSweepService implements OnModuleInit, OnModuleDestroy {
         await this.monitorAlertService.sendWarning(
           monitor,
           'heartbeat_late',
-          `No ping from "${monitor.name}" yet: it was due ${formatMinutes(monitor.frequencyMinutes)} after the last one. The monitor goes down if none arrives within the ${formatMinutes(heartbeatGraceMinutes(monitor))} grace period.`,
+          `No ping from "${monitor.name}" yet: it was due ${formatMinutes(monitor.frequencyMinutes)} after the last one. The monitor goes down if none arrives within the grace period (${formatMinutes(heartbeatGraceMinutes(monitor))}).`,
           decision.lateEpisodeKey,
         );
       }

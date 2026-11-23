@@ -4,7 +4,7 @@ All transactional emails are React Email components in this folder. Every templa
 renders inside `BaseLayout` (Supercheck wordmark, header, `EmailButton`, `DetailsTable`,
 footer, preheader), so changes to the look happen in one place.
 
-House style (the `email-verification` email is the reference): one neutral header (`PALETTE.neutral`, white
+House style (the `incident-update` email is the reference): one neutral header (`PALETTE.neutral`, white
 text) for every email, never a per-type colour. Severity shows only in the body: a small `StatusBadge` (tones in
 `palette.ts`) or a tinted `Callout`. Body text is left-aligned 15px `#4b5563`, buttons are `EmailButton`
 (`#111827`), details go in `DetailsTable`. Status-page subscriber emails pass `showBrand={false}`; they carry the
@@ -28,14 +28,29 @@ dependency on the app being up.
 |---|---|---|
 | `password-reset`, `email-verification`, `organization-invitation`, `test-email` | user | app |
 | `usage-notification`, `trial-notification` | org owners | app |
-| `status-page-verification`, `status-page-welcome`, `incident-notification` | public status-page subscribers | app |
+| `status-page-verification`, `status-page-welcome` (sent once a subscriber verifies), `incident-notification` | public status-page subscribers | app |
 | `incident-update` | team (incident created/assigned/acknowledged/AI finding/resolved/recovered/reopened) | app (`renderIncidentUpdateEmail`) |
 | `monitor-alert` (also used for job failure/success/timeout) | alert recipients | worker |
 
-Alert subjects are `[Supercheck] <Event>: <name>` (`alertEmailSubject`); status-page emails keep `[STATUS] ...`. Job and monitor alerts share one field builder in the worker (`buildEmailFields`).
+Subjects: account and alert emails are `[Supercheck] <What happened>: <name>` in sentence case
+(`alertEmailSubject` keeps acronyms such as SSL); team incident emails are `[SEV2] #15 <title>: <event>`, cut to
+about 70 characters (`incidentUpdateSubject`); status-page emails use the page's language and `[STATUS] ...`.
+Job and monitor alerts share one field builder in the worker (`buildEmailFields`).
 
-`monitor-alert` takes an optional `incidentsUrl`; failure/warning emails then show a
-"View incidents" button; every alert shows a status badge (recovery: "Resolved").
+Every email follows the same rules (`transactional-checklist.spec.tsx` checks them):
+
+- a specific preheader, `lang` set, and a plain-text part (`PLAIN_TEXT_RENDER_OPTIONS`);
+- one primary `EmailButton` that opens the resource (incident, monitor, run, invitation...), other links as text;
+- absolute links built from `emailAppUrl()` (never a relative or `undefined/...` link);
+- timestamps with an explicit zone (`formatEmailTime`, or the status page's own zone);
+- a `reason` line saying why it was sent, and a manage link where one exists;
+- sentence case, no emoji, no exclamation marks, no internal ids;
+- on self-hosted installs (`SELF_HOSTED`) the footer has no supercheck.io legal links;
+- subscriber emails are never sent without a signed unsubscribe link and `List-Unsubscribe` header.
+
+`monitor-alert` takes `resourceUrl`/`resourceLabel` (the monitor or run, the main button) and an optional
+`incidentsUrl` (failure and warning emails link "View incidents" as text); every alert shows a status badge
+(recovery: "Resolved").
 
 ## Changing a worker-rendered template
 

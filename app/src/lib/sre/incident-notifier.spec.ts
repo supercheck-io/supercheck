@@ -109,7 +109,7 @@ it("emails the new assignee directly with a link, without raw evidence", async (
   expect(mail.text).toContain("Incident #7 assigned");
   expect(mail.text).toContain("Owner: Ada");
   expect(mail.text).toContain("Updated by: Grace");
-  expect(mail.subject).toBe("[Supercheck] Incident assigned to Ada: #7 Checkout down (SEV2)");
+  expect(mail.subject).toBe("[SEV2] #7 Checkout down: Incident assigned to Ada");
 });
 
 it("redacts credentials in the incident title before it reaches email", async () => {
@@ -131,6 +131,32 @@ it("renders the incident email template for direct email", async () => {
   expect(sendEmailToMultiple.mock.calls[0][0]).toEqual(
     expect.objectContaining({ recipients: ["ada@example.com"], subject: "[SEV2] Incident assigned: #7 x", html: "<html>tpl</html>" }),
   );
+});
+
+it("a created email explains the trigger alert (redacted), its service and the alert's time", async () => {
+  renderIncidentUpdateEmail.mockResolvedValueOnce({ subject: "s", html: "h", text: "t" });
+  const firedAt = new Date("2026-11-23T10:15:00Z");
+  selectQueue.push(
+    [{ ...incident, serviceName: null, triggerTitle: "Monitor Down - Checkout", triggerDescription: 'Monitor "Checkout" is down. GET https://user:hunter2@api.example.com failed', triggerFiredAt: firedAt, triggerServiceName: "Payments" }],
+    people,
+    [],
+  );
+  await notifyIncidentEvent({ ...base, event: "created", actorUserId: null });
+  const props = renderIncidentUpdateEmail.mock.calls[0][0];
+  expect(props.detail).toContain('Monitor "Checkout" is down.');
+  expect(props.detail).not.toContain("hunter2");
+  expect(props.serviceName).toBe("Payments");
+  expect(props.occurredAt).toEqual(firedAt);
+});
+
+it("uses the event time, not the render time, for other events", async () => {
+  renderIncidentUpdateEmail.mockResolvedValueOnce({ subject: "s", html: "h", text: "t" });
+  selectQueue.push([{ ...incident, triggerFiredAt: new Date("2020-01-01T00:00:00Z"), triggerDescription: "old alert" }], people, []);
+  const before = Date.now();
+  await notifyIncidentEvent(base);
+  const props = renderIncidentUpdateEmail.mock.calls[0][0];
+  expect(props.occurredAt.getTime()).toBeGreaterThanOrEqual(before);
+  expect(props.detail).toBeUndefined();
 });
 
 it("does not email the actor about their own assignment", async () => {

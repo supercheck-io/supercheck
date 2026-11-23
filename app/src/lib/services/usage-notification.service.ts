@@ -21,6 +21,7 @@ import { billingSettingsService } from "./billing-settings.service";
 import { polarUsageService } from "./polar-usage.service";
 import { isPolarEnabled } from "@/lib/feature-flags";
 import { getActiveTrial } from "@/lib/execution/trial-limits";
+import { emailAppUrl, formatEmailTime } from "@/emails/base-layout";
 
 type NotificationType = 
   | "usage_50_percent"
@@ -325,17 +326,10 @@ class UsageNotificationService {
       }
 
       // Build billing page URL
-      const baseUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.BETTER_AUTH_URL || "";
-      const billingPageUrl = `${baseUrl}/org-admin?tab=subscription`;
+      const billingPageUrl = `${emailAppUrl()}/org-admin?tab=subscription`;
 
       // Format period end date
-      const periodEndDate = periodEnd
-        ? periodEnd.toLocaleDateString("en-US", { 
-            year: "numeric", 
-            month: "long", 
-            day: "numeric" 
-          })
-        : "End of billing period";
+      const periodEndDate = periodEnd ? formatEmailTime(periodEnd) : undefined;
 
       // Render email
       const emailContent = await renderUsageNotificationEmail({
