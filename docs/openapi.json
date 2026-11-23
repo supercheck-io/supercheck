@@ -12390,22 +12390,15 @@
             ]
           },
           "alertConfig": {
-            "oneOf": [
+            "anyOf": [
               {
-                "anyOf": [
-                  {
-                    "$ref": "#/components/schemas/JobAlertConfig"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "description": "Alert configuration for this job"
+                "$ref": "#/components/schemas/JobAlertConfig"
               },
               {
                 "type": "null"
               }
-            ]
+            ],
+            "description": "Alert configuration for this job"
           },
           "tests": {
             "type": "array",
@@ -16490,22 +16483,15 @@
             ]
           },
           "alertConfig": {
-            "oneOf": [
+            "anyOf": [
               {
-                "anyOf": [
-                  {
-                    "$ref": "#/components/schemas/JobAlertConfig"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "description": "Alert configuration for this job"
+                "$ref": "#/components/schemas/JobAlertConfig"
               },
               {
                 "type": "null"
               }
-            ]
+            ],
+            "description": "Alert configuration for this job"
           },
           "tests": {
             "type": "array",

@@ -8699,12 +8699,10 @@ components:
             - failed
             - error
         alertConfig:
-          oneOf:
-            - anyOf:
-                - $ref: "#/components/schemas/JobAlertConfig"
-                - type: "null"
-              description: Alert configuration for this job
+          anyOf:
+            - $ref: "#/components/schemas/JobAlertConfig"
             - type: "null"
+          description: Alert configuration for this job
         tests:
           type: array
           items:
@@ -11773,12 +11771,10 @@ components:
             - failed
             - error
         alertConfig:
-          oneOf:
-            - anyOf:
-                - $ref: "#/components/schemas/JobAlertConfig"
-                - type: "null"
-              description: Alert configuration for this job
+          anyOf:
+            - $ref: "#/components/schemas/JobAlertConfig"
             - type: "null"
+          description: Alert configuration for this job
         tests:
           type: array
           items:
