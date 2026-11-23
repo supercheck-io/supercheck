@@ -33,13 +33,12 @@ import {
 } from '../utils/image-reference';
 import { EGRESS_GUARD_MAX_WAIT_MS, EGRESS_GUARD_SCRIPT } from './egress-guard';
 import { TIMEOUTS } from '../constants/timeouts.constants';
+import { EXECUTION_QUOTA_ERROR } from '../capacity-deferral';
 
 /** Recorded for a run whose execution Job the shutdown drain deleted. */
 export const WORKER_INTERRUPTED_ERROR = 'Interrupted by worker restart';
 
-/** Shown instead of the cluster's raw ResourceQuota text when no execution slot is free. */
-export const EXECUTION_QUOTA_ERROR =
-  'Execution capacity is full: the run did not start and waits for a free slot';
+export { EXECUTION_QUOTA_ERROR };
 
 /** Capacity was full, but the run could not be proven unstarted, so it is not re-queued. */
 export const EXECUTION_QUOTA_UNCONFIRMED_ERROR =
@@ -1040,7 +1039,7 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
       }
 
       const podWaitStartedAt = Date.now();
-      podName = await this.waitForExecutionPod(jobName, trackKey);
+      podName = await this.waitForExecutionPod(jobName, trackKey, () => killed);
       podStartupDurationMs = Date.now() - podWaitStartedAt;
       if (
         podStartupDurationMs > ContainerExecutorService.SLOW_POD_STARTUP_WARN_MS
@@ -1177,6 +1176,21 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
       // Any failure after shutdown deleted this run's Job is the restart, not a fault of the run.
       const deletedByShutdown = this.shutdownDeletedRunIds.has(trackKey);
       const message = error instanceof Error ? error.message : String(error);
+      // Cancelled before the pod existed (e.g. while the quota held it): a cancellation, never a re-queue.
+      if (killed && !deletedByShutdown && !podName) {
+        return {
+          success: false,
+          exitCode: 137,
+          stdout: '',
+          stderr: '',
+          duration: Date.now() - startTime,
+          billableMs: 0,
+          timedOut,
+          started: false,
+          cancelled: true,
+          error: 'Execution cancelled (exit code 137)',
+        };
+      }
       if (
         !deletedByShutdown &&
         !hasStartEvidence(startEvidence) &&
@@ -1186,21 +1200,6 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
         this.logger.warn(
           `[${jobName}] Execution quota is full: ${message.slice(0, 500)}`,
         );
-        // Cancelled while the quota held the pod: a cancellation, never a re-queue.
-        if (killed) {
-          return {
-            success: false,
-            exitCode: 137,
-            stdout: '',
-            stderr: '',
-            duration: Date.now() - startTime,
-            billableMs: 0,
-            timedOut,
-            started: false,
-            cancelled: true,
-            error: 'Execution cancelled (exit code 137)',
-          };
-        }
         const unstarted = await this.confirmNoExecutionPod(
           jobName,
           secretsReady,
@@ -1732,6 +1731,7 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
   private async waitForExecutionPod(
     jobName: string,
     runId?: string,
+    isCancelled?: () => boolean,
   ): Promise<string> {
     const timeoutAt = Date.now() + 120_000;
     const labelSelector = `job-name=${jobName}`;
@@ -1743,6 +1743,8 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
       if (runId && this.shutdownDeletedRunIds.has(runId)) {
         throw new Error(WORKER_INTERRUPTED_ERROR);
       }
+      // A cancel while the quota holds the pod should land now, not after the 120s wait.
+      if (isCancelled?.()) throw new Error('Execution cancelled by user');
       const pods = await this.coreApi!.listNamespacedPod({
         namespace: this.executionNamespace,
         labelSelector,
@@ -1846,7 +1848,16 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
     secretsReady: boolean,
   ): Promise<boolean> {
     if (!secretsReady) return true;
+    const noPods = async () =>
+      (
+        await this.coreApi!.listNamespacedPod({
+          namespace: this.executionNamespace,
+          labelSelector: `job-name=${jobName}`,
+        })
+      ).items.length === 0;
     try {
+      // Listed before the delete: its pods terminate within a second, which would hide a start.
+      if (!(await noPods())) return false;
       // Not deleteExecutionJob: it swallows failures, and a Job that survives could still start a pod.
       await this.batchApi!.deleteNamespacedJob({
         name: jobName,
@@ -1857,15 +1868,11 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
         // Already gone (e.g. deleted by the cancellation poller): nothing can create a pod.
         if ((error as { code?: unknown })?.code !== 404) throw error;
       });
-      const listPods = () =>
-        this.coreApi!.listNamespacedPod({
-          namespace: this.executionNamespace,
-          labelSelector: `job-name=${jobName}`,
-        });
-      if ((await listPods()).items.length > 0) return false;
+      // A pod created just before the delete is still listed (terminating) right after it.
+      if (!(await noPods())) return false;
       // A pod create the Job controller already had in flight can land just after the delete.
       await this.sleep(ContainerExecutorService.QUOTA_POD_RECHECK_MS);
-      return (await listPods()).items.length === 0;
+      return await noPods();
     } catch {
       return false;
     }
