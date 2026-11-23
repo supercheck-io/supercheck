@@ -816,6 +816,21 @@ export async function findOpenIncidentForSource(tx: Executor, source: SourceRef)
 }
 
 /**
+ * SQL condition on an sre_incidents row: the alert fired in the incident's current open period. A late alert from
+ * before an automatic reopen's previous resolve belongs to the closed period, so it neither counts nor escalates.
+ */
+export function firedInCurrentOpenPeriod(firedAt: Date) {
+  // Raw sql fragments are not type-mapped: pass an explicit timestamptz, never a Date.
+  const fired = sql`${firedAt.toISOString()}::timestamptz`;
+  return sql`not exists (
+    select 1 from ${sreIncidentTimelineEvents} e
+    where e.incident_id = ${sreIncidents.id}
+      and e.event_data->>'state' = 'reopened'
+      and (e.event_data->>'previousResolvedAt')::timestamptz > ${fired}
+  )`;
+}
+
+/**
  * Counts one more alert on an open incident. A single atomic statement (no read-then-write), so concurrent
  * repeats each add exactly one. The same alert arriving again (a queue retry, or one row per channel) carries
  * the same firedAt and is not counted twice (a retry interleaved with newer alerts can still double count:
@@ -837,13 +852,7 @@ export async function recordRepeatAlert(tx: Executor, incidentId: string, firedA
         eq(sreIncidents.id, incidentId),
         ne(sreIncidents.status, "resolved"),
         sql`${sreIncidents.lastAlertAt} is distinct from ${fired}`,
-        // A late failure from before an automatic reopen's previous resolve belongs to the closed open period.
-        sql`not exists (
-          select 1 from ${sreIncidentTimelineEvents} e
-          where e.incident_id = ${sreIncidents.id}
-            and e.event_data->>'state' = 'reopened'
-            and (e.event_data->>'previousResolvedAt')::timestamptz > ${fired}
-        )`,
+        firedInCurrentOpenPeriod(firedAt),
       ),
     )
     .returning({ id: sreIncidents.id });

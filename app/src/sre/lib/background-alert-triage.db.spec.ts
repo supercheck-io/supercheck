@@ -660,6 +660,17 @@ it("raises severity when a more severe failure reopens an incident (INC-8)", asy
   expect(rows[0]).toMatchObject({ status: "triggered", severity: "sev1" });
 });
 
+it("does not raise a reopened incident's severity for a late alert from the closed open period (INC-8)", async () => {
+  await alert("job_failed", minutes(0), { job: true });
+  await alert("job_success", minutes(10), { job: true });
+  await alert("job_failed", minutes(15), { job: true }); // reopens at SEV2
+  expect((await incidents())[0]).toMatchObject({ status: "triggered", severity: "sev2" });
+  await alert("job_timeout", minutes(5), { job: true }); // fired before the previous resolve: the closed period's alert
+  const rows = await incidents();
+  expect(rows).toHaveLength(1);
+  expect(rows[0].severity).toBe("sev2");
+});
+
 it("raises a declared incident's severity when a more severe alert of a listed monitor joins it (INC-8)", async () => {
   const [declared] = await mockDatabase
     .insert(schema.sreIncidents)
