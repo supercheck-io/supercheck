@@ -40,6 +40,7 @@ import {
   connectorCredentialRequirementError,
   redactConnectorText,
   sanitizeConnectorEvidence,
+  connectorCredentialSecrets,
   SRE_CONNECTOR_TYPES,
   type ConnectorCredentialValue,
   type ConnectorDefinition,
@@ -901,6 +902,10 @@ export async function createSreConnector(
         error: "Invalid connector data",
         fieldErrors: formatValidationErrors(parsed.error),
       };
+    }
+    // Native evidence is read directly from Supercheck; the catalog marks it not addable.
+    if (parsed.data.type === "supercheck_native") {
+      return { success: false, error: "Supercheck evidence is built in and cannot be added as a connector" };
     }
 
     const { userId, organizationId, orgPendingDeletion, project } = await requireProjectContext();
@@ -1825,6 +1830,7 @@ export async function searchSreConnectorEvidence(
     const sanitized = sanitizeConnectorEvidence(
       rawEvidence,
       decision.effectiveLimits,
+      connectorCredentialSecrets(credential),
     );
     const durationMs = Date.now() - startedAt;
     const inputSummary = JSON.stringify({

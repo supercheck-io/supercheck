@@ -63,6 +63,24 @@ describe("MCP connector creation and search guards", () => {
     expect(JSON.stringify(mcp)).not.toContain("query string");
   });
 
+  it("rejects the built-in Supercheck source, which is not addable", async () => {
+    const result = await createSreConnector({ ...base, type: "supercheck_native" as never, endpointUrl: "", privateAgentId: null });
+    expect(result).toMatchObject({ success: false, error: expect.stringContaining("built in") });
+    expect(db.transaction).not.toHaveBeenCalled();
+  });
+
+  it("rejects MCP protocol headers the Private Agent reserves", async () => {
+    for (const headerName of ["Mcp-Method", "mcp-name"]) {
+      const result = await createSreConnector({
+        ...base,
+        privateAgentId: "018f0000-0000-7000-8000-000000000009",
+        credential: { credentialType: "api_key", value: { secret: "x", headerName } },
+      });
+      expect(result).toMatchObject({ success: false });
+      expect(db.transaction).not.toHaveBeenCalled();
+    }
+  });
+
   it("rejects reserved credential header names", async () => {
     const result = await createSreConnector({
       ...base,

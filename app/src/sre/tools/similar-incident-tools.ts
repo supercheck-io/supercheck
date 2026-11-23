@@ -4,7 +4,7 @@ import { z } from "zod";
 import { findSimilarIncidents } from "@/lib/sre/similar-incidents";
 
 /** Past incident text is untrusted: flatten it so it cannot read as structure or tags. */
-const clean = (value: string | null) => value?.replace(/[<>]/g, " ").replace(/\s+/g, " ").trim() ?? null;
+export const clean = (value: string | null) => value?.replace(/[<>]/g, " ").replace(/\s+/g, " ").trim() ?? null;
 
 export type SreSimilarIncidentToolScope = {
   organizationId: string;
