@@ -659,6 +659,7 @@ async function createOrGetIncidentForAlertHistory(alertHistoryId: string, failur
         createdAt: new Date(),
       });
       await recordRepeatAlert(tx, declared.id, firedAt);
+      await escalateSeverity(tx, declared.id, severity);
       return {
         skipped: false as const,
         organizationId,

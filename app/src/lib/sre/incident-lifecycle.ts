@@ -837,6 +837,13 @@ export async function recordRepeatAlert(tx: Executor, incidentId: string, firedA
         eq(sreIncidents.id, incidentId),
         ne(sreIncidents.status, "resolved"),
         sql`${sreIncidents.lastAlertAt} is distinct from ${fired}`,
+        // A late failure from before an automatic reopen's previous resolve belongs to the closed open period.
+        sql`not exists (
+          select 1 from ${sreIncidentTimelineEvents} e
+          where e.incident_id = ${sreIncidents.id}
+            and e.event_data->>'state' = 'reopened'
+            and (e.event_data->>'previousResolvedAt')::timestamptz > ${fired}
+        )`,
       ),
     )
     .returning({ id: sreIncidents.id });
@@ -962,7 +969,12 @@ export async function reopenRecentlyAutoResolved(
   await tx.insert(sreIncidentTimelineEvents).values({
     incidentId: latest.id,
     eventType: "state_change",
-    eventData: { state: "reopened", comment: "Failure returned within 30 minutes of automatic recovery" },
+    eventData: {
+      state: "reopened",
+      comment: "Failure returned within 30 minutes of automatic recovery",
+      // Where the new open period's alert count starts (see recordRepeatAlert).
+      previousResolvedAt: latest.resolvedAt.toISOString(),
+    },
     actorType: "system",
     createdAt: now,
   });

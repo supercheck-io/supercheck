@@ -481,8 +481,14 @@ it("counts alerts and measures the outage per open period after a reopen (INC-9)
   // The first open period started long ago.
   await mockDatabase.update(schema.sreIncidents).set({ createdAt: new Date(base - 3 * 60 * 60_000) }).where(eq(schema.sreIncidents.id, first.id));
   await alert("monitor_failure", minutes(20));
-  const [count] = await mockDatabase.select({ alertCount: schema.sreIncidents.alertCount }).from(schema.sreIncidents).where(eq(schema.sreIncidents.id, first.id));
-  expect(count.alertCount).toBe(1);
+  const alertCount = async () =>
+    (await mockDatabase.select({ alertCount: schema.sreIncidents.alertCount }).from(schema.sreIncidents).where(eq(schema.sreIncidents.id, first.id)))[0].alertCount;
+  expect(await alertCount()).toBe(1);
+  // A late failure from the closed period does not count in the new one; a new failure does.
+  await alert("monitor_failure", minutes(1));
+  expect(await alertCount()).toBe(1);
+  await alert("monitor_failure", minutes(22));
+  expect(await alertCount()).toBe(2);
   await alert("monitor_recovery", minutes(30));
   const [row] = await incidents();
   expect(row.status).toBe("resolved");
@@ -652,4 +658,16 @@ it("raises severity when a more severe failure reopens an incident (INC-8)", asy
   const rows = await incidents();
   expect(rows).toHaveLength(1);
   expect(rows[0]).toMatchObject({ status: "triggered", severity: "sev1" });
+});
+
+it("raises a declared incident's severity when a more severe alert of a listed monitor joins it (INC-8)", async () => {
+  const [declared] = await mockDatabase
+    .insert(schema.sreIncidents)
+    .values({ organizationId: orgId, projectId, incidentNumber: 1, title: "Checkout slow", severity: "sev3", status: "triggered", createdByUserId: userId })
+    .returning();
+  await mockDatabase.insert(schema.sreIncidentResources).values({ incidentId: declared.id, resourceType: "monitor", resourceId: monitorId } as never);
+  await alert("monitor_failure", minutes(0));
+  const rows = await incidents();
+  expect(rows).toHaveLength(1);
+  expect(rows[0].severity).toBe("sev2");
 });
