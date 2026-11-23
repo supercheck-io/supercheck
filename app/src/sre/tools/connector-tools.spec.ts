@@ -261,6 +261,27 @@ describe("MCP connectors in the AI tool layer", () => {
       expect(future.end.getTime() - future.start.getTime()).toBe(30 * 60_000);
     });
 
+    it("refuses an end time more than 30 days back, so an anchored window cannot walk through history", async () => {
+      const { execute } = setup(lokiRow);
+      await expect(
+        searchIncidentLiveConnectorEvidence(
+          { ...scope, serviceId },
+          { ...search, query: '{service_name="checkout-api"}', endAt: new Date(Date.now() - 31 * 24 * 60 * 60_000).toISOString() },
+        ),
+      ).rejects.toThrow("endAt must be within the last 30 days");
+      expect(execute).not.toHaveBeenCalled();
+    });
+
+    it("scrubs the connector's own secret from a provider error before it is stored or returned", async () => {
+      const { execute, values } = setup(lokiRow);
+      jest.mocked(resolveConnectorCredential).mockResolvedValue({ value: { secret: "Opaque9Q7x" } } as never);
+      execute.mockRejectedValue(new Error("upstream rejected key Opaque9Q7x"));
+      await expect(
+        searchIncidentLiveConnectorEvidence({ ...scope, serviceId }, { ...search, query: '{service_name="checkout-api"}' }),
+      ).rejects.toThrow("upstream rejected key [REDACTED]");
+      expect(JSON.stringify(values.mock.calls)).not.toContain("Opaque9Q7x");
+    });
+
     it("rejects an end time that is not an ISO 8601 timestamp", () => {
       const tools = createSreConnectorTools({ ...scope, serviceId });
       const schema = tools.searchLiveConnectorEvidence.inputSchema as z.ZodTypeAny;

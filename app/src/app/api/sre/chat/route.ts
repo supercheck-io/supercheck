@@ -100,7 +100,7 @@ function buildChatPrompt(input: {
     `Project: ${input.projectName}`,
     input.incidentId ? `Incident ID: ${input.incidentId}` : "Incident ID: none",
     input.incidentId
-      ? "Call getIncident first for the incident's title, severity, status, start time and service. Anchor live connector searches on its startedAt (pass endAt a little after it) instead of searching only the last hour."
+      ? "Call getIncident first for the incident's title, severity, status, start time and service. Anchor live connector searches on its reopenedAt when set, otherwise its startedAt (pass endAt a little after it), instead of searching only the last hour."
       : null,
     input.incidentId
       ? "Use available read-only evidence tools before giving incident-specific conclusions."
@@ -468,7 +468,8 @@ export async function POST(request: NextRequest) {
             ? createSreConnectorTools(connectorToolScope)
             : {}),
         },
-        budget: { maxSteps: 4, maxOutputTokens: 1200, timeoutMs: 45_000 },
+        // One step goes to getIncident in an incident chat; the last step answers without tools.
+        budget: { maxSteps: 5, maxOutputTokens: 1200, timeoutMs: 45_000 },
         finalStepWithoutTools: true,
         onStepFinish: (event) =>
           send("agent.step", sanitizeSreAgentStepEvent(event)),

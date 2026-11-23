@@ -55,26 +55,35 @@ describe("sanitizeConnectorEvidence", () => {
     expect(result.resultHash).toHaveLength(64);
   });
 
-  it("redacts the connector's own credential values that no pattern recognises", () => {
-    const credential = { secret: "Opaque9Q7x", headerName: "X-Key", region: "eu", port: 4318, nested: { a: "deep" } };
+  it("redacts the connector's own secret values that no pattern recognises, and keeps identifiers", () => {
+    const credential = {
+      secret: "Opaque9Q7x\n",
+      applicationKey: "AppKey77zz",
+      headerName: "X-Custom-Auth",
+      region: "us-east-1",
+      tenantId: "tenant-0000-1111",
+      port: 4318,
+      nested: { a: "deep-secret" },
+    };
     const secrets = connectorCredentialSecrets(credential);
-    expect(secrets).toEqual(["Opaque9Q7x", "X-Key", "eu"]);
+    expect(secrets).toEqual(["Opaque9Q7x\n", "Opaque9Q7x", "AppKey77zz"]);
     const [row] = sanitizeConnectorEvidence(
       [{
         ...item,
-        sourceUri: "https://grafana.internal/d/1?q=Opaque9Q7x",
+        sourceUri: "https://console.example/us-east-1/tenant-0000-1111?q=Opaque9Q7x",
         title: "echo Opaque9Q7x",
-        summary: "header X-Key: Opaque9Q7xOpaque9Q7x in eu",
+        summary: "header X-Custom-Auth: Opaque9Q7xOpaque9Q7x app AppKey77zz in us-east-1",
         rawContent: "value Opaque9Q7x",
         citation: { ...item.citation, query: "search Opaque9Q7x" },
       }],
       {},
       secrets,
     ).items;
-    expect(JSON.stringify(row)).not.toContain("Opaque9Q7x");
-    // Values shorter than six characters are too common to replace safely.
-    expect(row.summary).toContain(" eu");
-    expect(row.summary).toContain("X-Key");
+    expect(JSON.stringify(row)).not.toMatch(/Opaque9Q7x|AppKey77zz/);
+    // Identifiers stay readable so links and summaries keep working.
+    expect(row.summary).toContain("X-Custom-Auth");
+    expect(row.summary).toContain("us-east-1");
+    expect(row.sourceUri).toContain("tenant-0000-1111");
   });
 
   it("enforces row limits", () => {

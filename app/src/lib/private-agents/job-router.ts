@@ -56,16 +56,23 @@ export type PrivateAgentSreConnectorJobSpec = {
   filters: Record<string, unknown>;
 };
 
-// Callers build the window ending at "now", so an exact end never repeats. The key keeps the window length and
-// floors its end to this bucket so identical searches a moment apart share one job. The executed window is unchanged.
-// shortcut: inside one bucket a search after a credential rotation can join the earlier job; shrink the bucket if that matters.
+// The key keeps the window length, floors its end to this bucket and adds the bucket the request was made in, so
+// identical searches a moment apart share one job while a repeat later (even with the same fixed end) gets a fresh
+// one. The executed window is unchanged.
+// shortcut: inside one bucket a repeat joins the earlier job even if it failed or ran before a credential rotation;
+// shrink the bucket or skip failed jobs on conflict if that matters.
 const IDEMPOTENCY_WINDOW_BUCKET_MS = 30_000;
 
-export function sreConnectorJobIdempotencyKey(privateAgentId: string, jobSpec: PrivateAgentSreConnectorJobSpec) {
+export function sreConnectorJobIdempotencyKey(
+  privateAgentId: string,
+  jobSpec: PrivateAgentSreConnectorJobSpec,
+  issuedAt: Date,
+) {
   const start = Date.parse(jobSpec.timeWindow.start);
   const end = Date.parse(jobSpec.timeWindow.end);
   return hashConnectorPayload({
     privateAgentId,
+    issuedBucket: Math.floor(issuedAt.getTime() / IDEMPOTENCY_WINDOW_BUCKET_MS),
     jobSpec: {
       ...jobSpec,
       timeWindow: { durationMs: end - start, endBucket: Math.floor(end / IDEMPOTENCY_WINDOW_BUCKET_MS) },
@@ -159,7 +166,7 @@ export function routeSreConnectorQuery(
     routed: true,
     jobClass: "sre_connector_query",
     privateAgentId: agent.id,
-    idempotencyKey: sreConnectorJobIdempotencyKey(agent.id, jobSpec),
+    idempotencyKey: sreConnectorJobIdempotencyKey(agent.id, jobSpec, request.now ?? new Date()),
     jobSpecHash,
     jobSpec,
   };

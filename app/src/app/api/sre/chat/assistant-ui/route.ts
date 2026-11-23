@@ -199,7 +199,7 @@ function buildAssistantUiSystemPrompt(input: {
     `- Project: ${input.projectName}`,
     input.incidentId ? `- Scoped incident ID: ${input.incidentId}` : null,
     input.incidentId
-      ? "- Call getIncident first for the incident's title, severity, status, start time and service. Anchor live connector searches on its startedAt (pass endAt a little after it) instead of searching only the last hour."
+      ? "- Call getIncident first for the incident's title, severity, status, start time and service. Anchor live connector searches on its reopenedAt when set, otherwise its startedAt (pass endAt a little after it), instead of searching only the last hour."
       : null,
     "- This chat is read-only. Do not suggest production mutations or destructive commands.",
     input.incidentId

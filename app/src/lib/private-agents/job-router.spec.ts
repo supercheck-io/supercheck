@@ -81,14 +81,14 @@ describe("routeSreConnectorQuery", () => {
   });
 
   it("gives identical searches a few milliseconds apart one idempotency key but keeps each exact window", () => {
-    const at = (end: number, minutes = 10) =>
+    const at = (end: number, minutes = 10, now = new Date(end)) =>
       routeSreConnectorQuery({
         organizationId: "org_1",
         projectId: "project_1",
         connector,
         params: { ...params, timeWindow: { start: new Date(end - minutes * 60_000), end: new Date(end) } },
         agents: [agent],
-        now: new Date("2026-06-21T10:10:00.000Z"),
+        now,
       });
     const end = Date.parse("2026-06-21T10:10:00.000Z") + 1_000;
     const first = at(end);
@@ -98,10 +98,14 @@ describe("routeSreConnectorQuery", () => {
     expect(second.jobSpec.timeWindow.end).not.toBe(first.jobSpec.timeWindow.end);
     expect(second.jobSpecHash).not.toBe(first.jobSpecHash);
     const longer = at(end, 30);
-    const later = at(end + 60_000);
+    const later = at(end + 60_000, 10, new Date(end));
     if (!longer.routed || !later.routed) throw new Error("expected routed");
     expect(longer.idempotencyKey).not.toBe(first.idempotencyKey);
     expect(later.idempotencyKey).not.toBe(first.idempotencyKey);
+    // A fixed (anchored) end repeated later must not rejoin the old job.
+    const repeat = at(end, 10, new Date(end + 31_000));
+    if (!repeat.routed) throw new Error("expected routed");
+    expect(repeat.idempotencyKey).not.toBe(first.idempotencyKey);
   });
 
   it("uses direct execution when no private agent is configured", () => {

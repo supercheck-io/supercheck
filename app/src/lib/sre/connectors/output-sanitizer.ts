@@ -61,9 +61,16 @@ export function redactConnectorText(value: string): string {
 
 const MIN_EXACT_SECRET_CHARS = 6;
 
-/** String values of a connector credential, for exact-match redaction of output that echoes them back. */
+// Credential fields that hold a secret. Identifiers (region, tenant, subscription, header name, user) appear in
+// legitimate evidence and links, so they are left to the patterns.
+const SECRET_CREDENTIAL_KEY = /secret|token|password|passwd|pwd|apikey|api_key|key$|credential|private/i;
+
+/** Secret values of a connector credential (raw and trimmed), for exact-match redaction of output that echoes them. */
 export function connectorCredentialSecrets(credential: Record<string, unknown> | null | undefined): string[] {
-  return Object.values(credential ?? {}).filter((value): value is string => typeof value === "string");
+  const values = Object.entries(credential ?? {})
+    .filter(([key, value]) => typeof value === "string" && SECRET_CREDENTIAL_KEY.test(key))
+    .flatMap(([, value]) => [value as string, (value as string).trim()]);
+  return [...new Set(values)];
 }
 
 /**
