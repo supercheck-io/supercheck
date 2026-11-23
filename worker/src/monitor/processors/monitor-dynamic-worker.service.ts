@@ -677,15 +677,19 @@ export class MonitorDynamicWorkerService
         await this.closeSkippedGroup(job);
         return null;
       }
-      return deferForCapacity(job, async (reason) => {
-        this.logger.error(
-          `Monitor ${job.data.monitorId} check dropped: ${reason}`,
-        );
-        // Remember why, so the final-failure handler does not turn "never got a slot" into downtime.
-        job.data = { ...job.data, _capacityGaveUp: true } as never;
-        await this.rememberFlags(job);
-        await this.closeSkippedGroup(job);
-      });
+      return deferForCapacity(
+        job,
+        async (reason) => {
+          this.logger.error(
+            `Monitor ${job.data.monitorId} check dropped: ${reason}`,
+          );
+          // Remember why, so the final-failure handler does not turn "never got a slot" into downtime.
+          job.data = { ...job.data, _capacityGaveUp: true } as never;
+          await this.rememberFlags(job);
+          await this.closeSkippedGroup(job);
+        },
+        error,
+      );
     }
   }
 

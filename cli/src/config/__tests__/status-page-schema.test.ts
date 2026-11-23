@@ -56,6 +56,13 @@ describe('other schema rules', () => {
     expect(() => statusPageDefinitionSchema.parse({ name: 'A', language: 'en-us' })).toThrow()
   })
 
+  it('drops alertOnRecovery from a job alertConfig like the server does, so deploy is idempotent', () => {
+    const job = jobDefinitionSchema.parse({ name: 'Nightly', tests: ['a'], alertConfig: { enabled: true, alertOnRecovery: true, alertOnSuccess: true } })
+    expect(job.alertConfig).toEqual({ enabled: true, alertOnSuccess: true })
+    const monitor = monitorDefinitionSchema.parse({ name: 'M', type: 'website', target: 'https://example.com', alertConfig: { enabled: true, alertOnRecovery: true } })
+    expect(monitor.alertConfig).toEqual({ enabled: true, alertOnRecovery: true })
+  })
+
   it('rejects job tags with a clear message', () => {
     const result = jobDefinitionSchema.safeParse({ name: 'Nightly', tests: ['a'], tags: ['x'] })
     expect(result.success).toBe(false)
