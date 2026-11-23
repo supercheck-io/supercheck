@@ -8,6 +8,7 @@ jest.mock("@/lib/project-context", () => ({
 }));
 jest.mock("@/lib/rbac/middleware", () => ({
   requirePermissions: jest.fn(async () => undefined),
+  checkPermissionWithContext: jest.fn(() => true),
 }));
 jest.mock("next/cache", () => ({ revalidatePath: jest.fn() }));
 jest.mock("@/lib/audit-logger", () => ({ logAuditEvent: jest.fn() }));

@@ -15,6 +15,7 @@ import { and, asc, eq, inArray, lt, ne, sql } from "drizzle-orm";
 import { isDeletingError } from "@/lib/deletion/errors";
 import { db } from "@/utils/db";
 import {
+  incidents,
   monitors,
   sreServices,
   statusPageComponentMonitors,
@@ -42,6 +43,8 @@ import {
 } from "@/lib/services/subscription-service";
 import { generateProxyUrl } from "@/lib/asset-proxy";
 import { removeServiceResourceLinks } from "@/lib/resource-deletion/linked-records";
+import { writeStatusPageIncidentUpdate } from "@/lib/status-page-incident-update";
+import { getSystemMessages } from "@/lib/status-page-system-messages";
 
 const UNVERIFIED_DOMAIN_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -998,6 +1001,22 @@ export async function deleteComponent(
     if (!component) return fail("not_found", "Component not found or access denied");
 
     await db.transaction(async (tx) => {
+      // Locked first, as reconciliation does, so a tick cannot open an automatic incident the lookup below misses.
+      await tx.select({ id: statusPageComponents.id }).from(statusPageComponents).where(eq(statusPageComponents.id, componentId)).for("update");
+      // Reconciliation finds an automatic incident by its component, so once the component is gone it would stay open forever.
+      const automatic = await tx.query.incidents.findMany({
+        where: and(eq(incidents.sourceComponentId, componentId), eq(incidents.statusPageId, statusPageId), ne(incidents.status, "resolved")),
+      });
+      for (const incident of automatic) {
+        await writeStatusPageIncidentUpdate(tx, incident, {
+          incidentId: incident.id,
+          statusPageId,
+          status: "resolved",
+          body: getSystemMessages(statusPage.language ?? "en").componentRemovedBody,
+          deliverNotifications: incident.deliverNotifications ?? true,
+          restoreComponentStatus: false,
+        }, userId);
+      }
       await retireOrphanedSubscribers({ componentId }, tx);
       await removeServiceResourceLinks(tx, "status_page_component", [componentId]);
       await tx

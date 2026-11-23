@@ -29,6 +29,7 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { formatAgo, useNow } from "@/components/sre/incidents/incident-age";
 import { IconTile, SectionTitle, toneButton, type IconTone } from "@/components/sre/incidents/incident-ui";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { UserCell } from "@/components/ui/user-cell";
 import { useSreIncidentTimeline } from "@/hooks/use-sre";
@@ -84,16 +85,33 @@ function formatTime(value: Date | string) {
   return new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }).format(new Date(value));
 }
 
+type PublicStatus = "investigating" | "identified" | "monitoring" | "resolved";
+const KEEP_STATUS = "keep";
+const PUBLIC_STATUSES: Array<{ value: PublicStatus; label: string }> = [
+  { value: "investigating", label: "Investigating" },
+  { value: "identified", label: "Identified" },
+  { value: "monitoring", label: "Monitoring" },
+  { value: "resolved", label: "Resolved" },
+];
+
+/** Who is emailed, from each post's own notify setting. */
+function notifyNote(posts: Array<{ deliverNotifications: boolean }>) {
+  if (posts.every((post) => post.deliverNotifications)) return "subscribers are emailed";
+  if (posts.every((post) => !post.deliverNotifications)) return "subscribers are not emailed";
+  return "subscribers are emailed where the post has notifications on";
+}
+
 export function IncidentTimeline({
   incidentId,
   canUpdate,
-  canPostToStatusPage = false,
+  statusPagePosts = [],
 }: {
   incidentId: string;
   canUpdate: boolean;
-  /** Set only when the incident has an open linked status page incident and the user may update status pages. */
-  canPostToStatusPage?: boolean;
+  /** Open public incidents linked to this incident; empty when the user may not update status pages. */
+  statusPagePosts?: Array<{ statusPageName: string; deliverNotifications: boolean }>;
 }) {
+  const canPostToStatusPage = statusPagePosts.length > 0;
   const id = useId();
   const { projectId } = useProjectContext();
   const queryClient = useQueryClient();
@@ -102,6 +120,7 @@ export function IncidentTimeline({
   const [text, setText] = useState("");
   const [pending, setPending] = useState(false);
   const [postToStatusPage, setPostToStatusPage] = useState(false);
+  const [publicStatus, setPublicStatus] = useState<PublicStatus | typeof KEEP_STATUS>(KEEP_STATUS);
   const [drafting, setDrafting] = useState(false);
   const [showAll, setShowAll] = useState(false);
   const events = query.data?.success ? query.data.events : [];
@@ -122,7 +141,13 @@ export function IncidentTimeline({
   const post = async () => {
     if (pending || drafting || !text.trim()) return;
     setPending(true);
-    const result = await addSreIncidentUpdate({ incidentId, text, ...(canPostToStatusPage && postToStatusPage ? { postToStatusPage: true } : {}) })
+    const result = await addSreIncidentUpdate({
+      incidentId,
+      text,
+      ...(canPostToStatusPage && postToStatusPage
+        ? { postToStatusPage: true, ...(publicStatus !== KEEP_STATUS ? { statusPageStatus: publicStatus } : {}) }
+        : {}),
+    })
       .catch(() => null)
       .finally(() => setPending(false));
     if (!result?.success) {
@@ -132,6 +157,7 @@ export function IncidentTimeline({
     if (result.warning) toast.warning(result.warning);
     setText("");
     setPostToStatusPage(false);
+    setPublicStatus(KEEP_STATUS);
     // Posting a note also makes the author a watcher, which the header reads from the detail query.
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: getSreIncidentTimelineQueryKey(projectId, incidentId) }),
@@ -175,10 +201,23 @@ export function IncidentTimeline({
             Draft customer update with AI
           </Button>
           {canPostToStatusPage && (
-            <label className="flex items-center gap-2 text-sm text-muted-foreground">
+            <label className="flex items-center gap-2 text-sm text-muted-foreground" title={statusPagePosts.map((post) => post.statusPageName).join(", ")}>
               <Checkbox checked={postToStatusPage} onCheckedChange={(checked) => setPostToStatusPage(checked === true)} disabled={pending} />
-              Also post to status page (subscribers are emailed)
+              {statusPagePosts.length === 1 ? "Also post to status page" : `Also post to ${statusPagePosts.length} status pages`} ({notifyNote(statusPagePosts)})
             </label>
+          )}
+          {canPostToStatusPage && postToStatusPage && (
+            <Select value={publicStatus} onValueChange={(value) => setPublicStatus(value as PublicStatus | typeof KEEP_STATUS)} disabled={pending}>
+              <SelectTrigger className="h-7 w-auto gap-1.5 px-2 text-sm" aria-label="Public status">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={KEEP_STATUS}>Keep public status</SelectItem>
+                {PUBLIC_STATUSES.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           )}
           </div>
           </div>

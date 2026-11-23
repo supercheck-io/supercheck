@@ -4,6 +4,7 @@ import { db } from "@/utils/db";
 import { incidents, statusPages } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
 import { z } from "zod";
+import { PUBLIC_INCIDENT_COLUMNS, PUBLIC_UPDATE_COLUMNS, pickPublicIncident, toPublicUpdate } from "@/lib/status-pages/public-incident-dto";
 
 // UUID validation schema
 const uuidSchema = z.string().uuid("Invalid ID format");
@@ -64,23 +65,7 @@ export async function getPublicIncidentDetail(
         eq(incidents.id, incidentId),
         eq(incidents.statusPageId, statusPageId)
       ),
-      columns: {
-        id: true,
-        name: true,
-        status: true,
-        impact: true,
-        impactOverride: true,
-        body: true,
-        scheduledFor: true,
-        scheduledUntil: true,
-        shortlink: true,
-        monitoringAt: true,
-        resolvedAt: true,
-        createdAt: true,
-        updatedAt: true,
-        // EXCLUDED: statusPageId (redundant), createdByUserId, deliverNotifications,
-        // backfillDate, backfilled, metadata, reminder/auto-transition settings
-      },
+      columns: PUBLIC_INCIDENT_COLUMNS,
     });
 
     if (!incident) {
@@ -110,23 +95,16 @@ export async function getPublicIncidentDetail(
     const updates = await db.query.incidentUpdates.findMany({
       where: (incidentUpdates, { eq, and, lte }) =>
         and(eq(incidentUpdates.incidentId, incidentId), lte(incidentUpdates.displayAt, new Date())),
-      columns: {
-        id: true,
-        body: true,
-        status: true,
-        displayAt: true,
-        createdAt: true,
-        // EXCLUDED: incidentId (redundant), createdByUserId, deliverNotifications
-      },
+      columns: PUBLIC_UPDATE_COLUMNS,
       orderBy: (incidentUpdates, { desc }) => [desc(incidentUpdates.displayAt)],
     });
 
     return {
       success: true,
       incident: {
-        ...incident,
+        ...pickPublicIncident(incident),
         affectedComponents: affectedComponents.filter((ic) => ic.component?.showcase).map((ic) => ({ id: ic.component.id, name: ic.component.name, status: ic.component.status })),
-        updates: updates.map((u) => ({ ...u, createdAt: u.displayAt ?? u.createdAt })),
+        updates: updates.map(toPublicUpdate),
       },
       language: statusPage.language,
     };

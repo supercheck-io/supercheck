@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { Check, ChevronLeft, FileText, LayoutDashboard, Loader2, MoreHorizontal, Sparkles } from "lucide-react";
+import { Check, ChevronLeft, CircleCheck, FileText, LayoutDashboard, Loader2, MoreHorizontal, Sparkles } from "lucide-react";
 
 import type { SreIncidentDetail } from "@/actions/sre-incidents";
 import type { SreServiceListItem } from "@/actions/sre-services";
@@ -18,6 +18,7 @@ import { PostmortemCard } from "@/components/sre/incidents/postmortem-card";
 import { OPEN_POSTMORTEM_EVENT, ResolveSreIncidentDialog } from "@/components/sre/incidents/resolve-sre-incident-dialog";
 import { SimilarIncidentsCard } from "@/components/sre/incidents/similar-incidents-card";
 import { SreInvestigationPanel } from "@/components/sre/incidents/sre-investigation-panel";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -134,6 +135,11 @@ export function SreIncidentDetailView({
   const fromBrief = rootCauseFromBrief(detail);
   const summarySource = fromBrief ? "brief" : investigation ? "investigation" : "triage";
   const overviewGap = inconclusiveReason(detail, `/incidents/${incident.id}?edit=service`);
+  const publicIncidents = detail.publicIncidents ?? [];
+  const openPublicIncidents = publicIncidents.filter((post) => ["investigating", "identified", "monitoring"].includes(post.status));
+  // The public side is over but the incident is still open: prompt, never close it automatically (a resolve needs a summary).
+  const publicAllResolved = open && permissions.canUpdate && publicIncidents.length > 0 && publicIncidents.every((post) => post.status === "resolved");
+  const statusPagePosts = permissions.canPostToStatusPage ? openPublicIncidents : [];
 
   const runControls = permissions.canInvestigate ? (
     <SreInvestigationPanel
@@ -228,6 +234,20 @@ export function SreIncidentDetailView({
         </div>
       </header>
 
+      {publicAllResolved && (
+        <Alert variant="success" role="status" className="shrink-0" data-testid="public-resolved-banner">
+          <CircleCheck className="h-4 w-4" />
+          <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+            <AlertDescription>
+              {publicIncidents.length === 1 ? "The public post is resolved." : "All public posts are resolved."} Resolve this incident too?
+            </AlertDescription>
+            <Button size="sm" variant="outline" onClick={() => setResolveOpen(true)}>
+              Resolve incident
+            </Button>
+          </div>
+        </Alert>
+      )}
+
       {/* Tabs sit above both columns so the first card on each side starts on the same line. */}
       <Tabs value={activeTab} onValueChange={changeTab} className="flex min-h-0 min-w-0 flex-1 flex-col gap-4">
         <TabsList className="h-auto w-full shrink-0 flex-wrap justify-start self-start sm:w-auto">
@@ -288,10 +308,7 @@ export function SreIncidentDetailView({
               <IncidentTimeline
                 incidentId={incident.id}
                 canUpdate={permissions.canUpdate && open}
-                canPostToStatusPage={
-                  Boolean(permissions.canPostToStatusPage) &&
-                  ["investigating", "identified", "monitoring"].includes(detail.publicIncident?.status ?? "")
-                }
+                statusPagePosts={statusPagePosts}
               />
             </TabsContent>
 
@@ -351,6 +368,7 @@ export function SreIncidentDetailView({
           defaultSummary={defaultResolutionNote(detail.recoveredAt, incident.rootCauseSummary)}
           open={resolveOpen}
           onOpenChange={setResolveOpen}
+          statusPages={statusPagePosts.map((post) => post.statusPageName)}
         />
       )}
     </div>

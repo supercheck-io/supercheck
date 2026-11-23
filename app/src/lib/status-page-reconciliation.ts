@@ -125,6 +125,10 @@ export async function linkStatusPageIncidentsToSreIncident(
  * pointing at it while another still-open public incident is linked to the same SRE incident.
  */
 export async function repointSreStatusPageSlot(tx: Tx, resolvedIncidentId: string) {
+  // Serialise on the linked SRE incident: two posts resolving at once would each read the other as open and could
+  // leave the pointer on a resolved one. After the lock, each read sees the other's committed change.
+  const [link] = await tx.select({ sreIncidentId: incidents.sreIncidentId }).from(incidents).where(eq(incidents.id, resolvedIncidentId)).limit(1);
+  if (link?.sreIncidentId) await tx.select({ id: sreIncidents.id }).from(sreIncidents).where(eq(sreIncidents.id, link.sreIncidentId)).for("update");
   const [owner] = await tx
     .select({ id: sreIncidents.id })
     .from(sreIncidents)
@@ -214,6 +218,46 @@ export async function restoreResolvedIncidentComponents(tx: Tx, incidentId: stri
       .where(and(inArray(statusPageComponents.id, group.ids), eq(statusPageComponents.statusPageId, statusPageId), eq(statusPageComponents.status, group.from)));
   }
 }
+
+/**
+ * Before an open public incident is deleted: components it affects that another open, manually posted incident still
+ * affects take the worst status of those (what reconciliation derives), so the status the deleted one set does not
+ * outlive the link that explains it. The rest are restored as on a resolve.
+ */
+export async function restoreComponentsOfDeletedIncident(tx: Tx, incidentId: string, statusPageId: string) {
+  await restoreResolvedIncidentComponents(tx, incidentId, statusPageId);
+  const remaining = await tx
+    .select({ componentId: incidentComponents.componentId, newStatus: incidentComponents.newStatus, scheduledFor: incidents.scheduledFor, sourceComponentId: incidents.sourceComponentId })
+    .from(incidentComponents)
+    .innerJoin(incidents, eq(incidents.id, incidentComponents.incidentId))
+    .where(
+      and(
+        inArray(incidentComponents.componentId, tx.select({ id: incidentComponents.componentId }).from(incidentComponents).where(eq(incidentComponents.incidentId, incidentId))),
+        ne(incidents.id, incidentId),
+        eq(incidents.statusPageId, statusPageId),
+        notInArray(incidents.status, ["resolved", "scheduled"]),
+      ),
+    );
+  const byComponent = new Map<string, ComponentStatus[]>();
+  for (const row of remaining) {
+    // Automatic incidents follow their monitors, as in reconciliation. Manual ones override monitor health there too
+    // (manualStatus ?? calculated), so monitored components get the same value the next tick would write.
+    if (row.sourceComponentId === row.componentId) continue;
+    const statuses = byComponent.get(row.componentId) ?? [];
+    statuses.push(row.scheduledFor ? "under_maintenance" : (row.newStatus as ComponentStatus));
+    byComponent.set(row.componentId, statuses);
+  }
+  for (const [componentId, statuses] of byComponent) {
+    const status = COMPONENT_SEVERITY.find((candidate) => statuses.includes(candidate));
+    if (!status) continue;
+    await tx
+      .update(statusPageComponents)
+      .set({ status, updatedAt: new Date() })
+      .where(and(eq(statusPageComponents.id, componentId), eq(statusPageComponents.statusPageId, statusPageId)));
+  }
+}
+
+const COMPONENT_SEVERITY: ComponentStatus[] = ["major_outage", "partial_outage", "degraded_performance", "under_maintenance", "operational"];
 
 /** Returns false when another replica holds the reconcile lock (the tick did nothing). */
 export async function reconcileStatusPages(): Promise<boolean> {
@@ -328,13 +372,7 @@ export async function reconcileStatusPages(): Promise<boolean> {
             ne(incidents.status, "scheduled"),
           ),
         );
-      const severity: ComponentStatus[] = [
-        "major_outage",
-        "partial_outage",
-        "degraded_performance",
-        "under_maintenance",
-        "operational",
-      ];
+      const severity = COMPONENT_SEVERITY;
       const manualStatuses = active
         .filter((entry) => entry.incident.sourceComponentId !== component.id)
         .map((entry) =>

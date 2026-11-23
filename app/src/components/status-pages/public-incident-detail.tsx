@@ -2,7 +2,7 @@
 
 import React from "react";
 import Image from "next/image";
-import { formatMaintenanceWindow } from "@/lib/incident-schedule";
+import { formatMaintenanceWindow, statusPageTimeZone } from "@/lib/incident-schedule";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, Bell, CheckCircle2, Clock, Wrench } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -79,6 +79,8 @@ type PublicIncidentDetailProps = {
   /** URL prefix for custom-domain links. Empty string for proxy-rewritten requests, full internal path for direct access. */
   customDomainRoutePrefix?: string;
   language?: string;
+  /** The status page's time zone; times show in it, with the zone named. */
+  timeZone?: string | null;
 };
 
 export function PublicIncidentDetail({
@@ -94,18 +96,19 @@ export function PublicIncidentDetail({
   isCustomDomain = false,
   customDomainRoutePrefix = "",
   language = "en",
+  timeZone,
 }: PublicIncidentDetailProps) {
   useStatusPageFavicon(faviconLogo);
 
   const t = getTranslations(language);
   const locale = getLocaleForLanguage(language);
-  const utcDateTimeFormatter = new Intl.DateTimeFormat(locale, {
+  const dateTimeFormatter = new Intl.DateTimeFormat(locale, {
     year: "numeric",
     month: "short",
     day: "numeric",
     hour: "2-digit",
     minute: "2-digit",
-    timeZone: "UTC",
+    timeZone: statusPageTimeZone(timeZone),
     timeZoneName: "short",
   });
 
@@ -127,7 +130,7 @@ export function PublicIncidentDetail({
     : `/status-pages/${statusPageId}/public`;
 
   const formatTime = (date: Date | null) =>
-    date ? utcDateTimeFormatter.format(new Date(date)) : t.recently;
+    date ? dateTimeFormatter.format(new Date(date)) : t.recently;
 
   // Shown when the incident has no updates yet, so the timeline is never empty.
   const timeline: IncidentUpdate[] = incident.updates.length
@@ -212,7 +215,7 @@ export function PublicIncidentDetail({
               <span className="inline-flex items-center gap-1.5">
                 <Wrench className="h-4 w-4 flex-shrink-0" />
                 {t.scheduledMaintenance}:{" "}
-                {formatMaintenanceWindow(locale, incident.scheduledFor, incident.scheduledUntil)}
+                {formatMaintenanceWindow(locale, incident.scheduledFor, incident.scheduledUntil, timeZone)}
               </span>
             )}
           </div>
