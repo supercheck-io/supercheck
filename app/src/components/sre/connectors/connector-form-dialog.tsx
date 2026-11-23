@@ -2,7 +2,7 @@
 
 import { ConnectorTypeIcon } from "@/components/logo/connector-logos";
 import { useState, useTransition, type FormEvent } from "react";
-import { KeyRound, Loader2, Network, PlugZap, ShieldCheck } from "lucide-react";
+import { KeyRound, Loader2, Network, PlugZap, ShieldAlert, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -484,6 +484,21 @@ export function ConnectorFormDialog({
                             This appears to be an internal address. Select
                             Private Agent so Supercheck can reach it without
                             exposing the service publicly.
+                          </p>
+                        </div>
+                      )}
+                    {executionMode === "private_agent" &&
+                      /^http:\/\//i.test(endpointUrl.trim()) && (
+                        <div
+                          role="status"
+                          className="mt-1 flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 p-2.5 text-xs text-amber-700 dark:text-amber-300"
+                        >
+                          <ShieldAlert className="h-4 w-4 shrink-0" aria-hidden="true" />
+                          <p>
+                            This endpoint uses plain HTTP, so the Private Agent
+                            sends the credential and query results to it
+                            unencrypted. Use https:// if the service supports
+                            it.
                           </p>
                         </div>
                       )}
