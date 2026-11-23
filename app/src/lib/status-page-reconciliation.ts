@@ -125,6 +125,10 @@ export async function linkStatusPageIncidentsToSreIncident(
  * pointing at it while another still-open public incident is linked to the same SRE incident.
  */
 export async function repointSreStatusPageSlot(tx: Tx, resolvedIncidentId: string) {
+  // Serialise on the linked SRE incident: two posts resolving at once would each read the other as open and could
+  // leave the pointer on a resolved one. After the lock, each read sees the other's committed change.
+  const [link] = await tx.select({ sreIncidentId: incidents.sreIncidentId }).from(incidents).where(eq(incidents.id, resolvedIncidentId)).limit(1);
+  if (link?.sreIncidentId) await tx.select({ id: sreIncidents.id }).from(sreIncidents).where(eq(sreIncidents.id, link.sreIncidentId)).for("update");
   const [owner] = await tx
     .select({ id: sreIncidents.id })
     .from(sreIncidents)

@@ -33,7 +33,8 @@ export default async function IncidentDetailPage({
       // The same public fields as the public page: the full row would put internal columns in the RSC payload.
       incident={{
         ...pickPublicIncident(result.incident),
-        updates: result.incident.updates.map(toPublicUpdate),
+        // Newest shown first, by when each update is displayed, as on the public page.
+        updates: result.incident.updates.map(toPublicUpdate).sort((a, b) => new Date(b.createdAt ?? 0).getTime() - new Date(a.createdAt ?? 0).getTime()),
         statusPage: result.incident.statusPage,
       }}
       idOrSubdomain={resolvedParams.id}

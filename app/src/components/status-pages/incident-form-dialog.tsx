@@ -540,7 +540,14 @@ export function IncidentFormDialog({
                     }
                     className="max-h-44 overflow-y-auto rounded-lg border"
                   >
-                    {components.length === 0 ? (
+                    {sreIncident && pickedStatusPageId && pickedPage.error ? (
+                      <div role="alert" className="flex items-center justify-center gap-2 px-3 py-6 text-xs text-failure">
+                        Components could not be loaded.
+                        <Button type="button" variant="outline" size="sm" onClick={() => void pickedPage.refetch()}>
+                          Retry
+                        </Button>
+                      </div>
+                    ) : components.length === 0 ? (
                       <p className="px-3 py-6 text-center text-xs text-muted-foreground">
                         {!statusPageId
                           ? "Select a status page to see its components."

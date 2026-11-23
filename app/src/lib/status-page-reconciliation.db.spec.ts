@@ -744,6 +744,30 @@ describe("SRE incident linked to several status pages", () => {
     await expect(publish).resolves.toEqual({ published: ["Status"], failed: [], forbidden: false });
   });
 
+  it("locks a hand-posted incident's components before the incident when publishing a resolution", async () => {
+    const { actor, sre, post } = await scope();
+    await mockDatabase.delete(schema.statusPageComponentMonitors);
+    const posted = await post(pageId, componentId);
+    const incidentId = posted.success ? posted.incident.id : "";
+    let publish!: ReturnType<typeof publishSreResolutionToStatusPages>;
+    await client.begin(async (reconciler) => {
+      await reconciler`SELECT id FROM status_page_components WHERE id = ${componentId} FOR UPDATE`;
+      publish = publishSreResolutionToStatusPages(actor, sre.id, "Fixed");
+      let waiting = false;
+      for (let attempt = 0; attempt < 100; attempt++) {
+        const rows = await client`SELECT pid FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock' AND query LIKE '%status_page_components%'`;
+        if (rows.length) { waiting = true; break; }
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+      expect(waiting).toBe(true);
+      await reconciler`SET LOCAL lock_timeout = '500ms'`;
+      // A maintenance window ends the same way: component, then incident.
+      await reconciler`SELECT id FROM incidents WHERE id = ${incidentId} FOR UPDATE`;
+    });
+    await expect(publish).resolves.toEqual({ published: ["Status"], failed: [], forbidden: false });
+    expect((await mockDatabase.query.statusPageComponents.findFirst({ where: eq(schema.statusPageComponents.id, componentId) }))?.status).toBe("operational");
+  });
+
   it("does not reopen an automatic public incident resolved from SRE while its monitor still fails", async () => {
     const { actor, sre } = await scope();
     await mockDatabase.update(schema.statusPageComponents).set({ autoCreateIncidents: true, updatedAt: new Date() }).where(eq(schema.statusPageComponents.id, componentId));

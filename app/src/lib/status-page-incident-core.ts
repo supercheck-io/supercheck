@@ -17,8 +17,7 @@ import {
   getSystemMessages,
 } from "@/lib/status-page-system-messages";
 import { eq, and, inArray, notInArray, sql } from "drizzle-orm";
-import { repointSreStatusPageSlot, restoreResolvedIncidentComponents } from "@/lib/status-page-reconciliation";
-import { incidentScheduleFields } from "@/lib/incident-schedule";
+import { writeStatusPageIncidentUpdate } from "@/lib/status-page-incident-update";
 import { updateIncidentStatusSchema, type UpdateIncidentStatusData } from "@/lib/validations/incident-status";
 
 export const createIncidentSchema = z.object({
@@ -224,6 +223,10 @@ export async function createStatusPageIncident(
           )
           .for("update");
         if (!source) throw new Error("SRE incident not found or access denied");
+        // Checked under the SRE incident's lock, which its resolve also takes: an open post attached after the
+        // resolve would be missed by the resolve's publish and stay open.
+        if (source.status === "resolved" && validatedData.status !== "resolved")
+          throw new IncidentLinkError("This incident is resolved. Post a resolved update or reopen the incident first.");
         linkedSource = source;
       }
       // Create the incident
@@ -386,86 +389,6 @@ export async function createStatusPageIncident(
       message: "Failed to create incident. Please try again.",
     };
   }
-}
-
-type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
-
-/**
- * Writes one public status change and its update inside `tx`: the step every status change shares (manual update,
- * SRE resolve fan-out, component delete). Returns null when `expectedStatus` is set and no longer matches.
- */
-export async function writeStatusPageIncidentUpdate(
-  tx: Tx,
-  existing: Pick<typeof incidents.$inferSelect, "id" | "statusPageId" | "status" | "sourceComponentId">,
-  data: UpdateIncidentStatusData,
-  userId: string | null,
-  expectedStatus?: string,
-) {
-  const suppresses = data.status === "resolved" && existing.sourceComponentId;
-  // Lock the component before the incident, matching reconciliation order (component, then its automatic incident).
-  if (suppresses) {
-    await tx
-      .select({ id: statusPageComponents.id })
-      .from(statusPageComponents)
-      .where(eq(statusPageComponents.id, existing.sourceComponentId!))
-      .for("update");
-  }
-  if (expectedStatus) {
-    const [current] = await tx
-      .select({ status: incidents.status })
-      .from(incidents)
-      .where(eq(incidents.id, existing.id))
-      .for("update");
-    if (current?.status !== expectedStatus) return null;
-  }
-  // A manual resolve of an automatically detected incident must not be
-  // undone by the next reconciliation tick while the monitor is still down.
-  if (suppresses) {
-    await tx
-      .update(statusPageComponents)
-      .set({ autoIncidentSuppressed: true, updatedAt: new Date() })
-      .where(eq(statusPageComponents.id, existing.sourceComponentId!));
-  }
-
-  const [incident] = await tx
-    .update(incidents)
-    .set({
-      status: data.status,
-      updatedAt: new Date(),
-      // A follow-up note on an already resolved incident keeps when it ended.
-      resolvedAt: data.status === "resolved" ? sql`coalesce(${incidents.resolvedAt}, now())` : null,
-      ...(data.status === "monitoring" ? { monitoringAt: new Date() } : {}),
-      ...incidentScheduleFields(data.status, data.scheduledFor, data.scheduledUntil, existing.status),
-    })
-    .where(and(eq(incidents.id, existing.id), eq(incidents.statusPageId, existing.statusPageId)))
-    .returning();
-
-  const [update] = await tx
-    .insert(incidentUpdates)
-    .values({
-      incidentId: existing.id,
-      createdByUserId: userId,
-      body: data.body,
-      status: data.status,
-      deliverNotifications: data.deliverNotifications,
-      displayAt: new Date(),
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    })
-    .returning();
-
-  if (data.deliverNotifications) {
-    await tx.insert(statusPageNotificationEvents).values({ incidentId: incident.id, updateId: update.id });
-  }
-
-  // Restore follows the reconciliation rules (see restoreResolvedIncidentComponents).
-  if (data.status === "resolved" && data.restoreComponentStatus) {
-    await restoreResolvedIncidentComponents(tx, existing.id, existing.statusPageId);
-  }
-
-  if (data.status === "resolved") await repointSreStatusPageSlot(tx, incident.id);
-
-  return { incident, update };
 }
 
 export type UpdateStatusPageIncidentResult =

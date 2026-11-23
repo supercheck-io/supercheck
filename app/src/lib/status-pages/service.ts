@@ -43,7 +43,7 @@ import {
 } from "@/lib/services/subscription-service";
 import { generateProxyUrl } from "@/lib/asset-proxy";
 import { removeServiceResourceLinks } from "@/lib/resource-deletion/linked-records";
-import { writeStatusPageIncidentUpdate } from "@/lib/status-page-incident-core";
+import { writeStatusPageIncidentUpdate } from "@/lib/status-page-incident-update";
 import { getSystemMessages } from "@/lib/status-page-system-messages";
 
 const UNVERIFIED_DOMAIN_TTL_MS = 7 * 24 * 60 * 60 * 1000;

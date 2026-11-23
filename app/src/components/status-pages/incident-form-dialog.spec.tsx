@@ -7,13 +7,21 @@ jest.mock("@/actions/create-incident", () => ({ createIncident: jest.fn() }));
 jest.mock("@/actions/sre-incidents", () => ({ getSreIncidents: jest.fn(async () => ({ success: true, incidents: [] })) }));
 jest.mock("sonner", () => ({ toast: { success: jest.fn(), error: jest.fn() } }));
 let mockPages = [{ id: "sp-1", name: "Public status" }, { id: "sp-2", name: "Enterprise status" }];
+let mockDetailError: Error | null = null;
+const mockRefetch = jest.fn();
 jest.mock("@/hooks/use-status-pages", () => ({
   useStatusPages: () => ({ statusPages: mockPages, loading: false }),
-  useStatusPageDetail: (id: string | null) => ({ components: id ? [{ id: `${id}-api`, name: `API on ${id}` }] : [], isLoading: false }),
+  useStatusPageDetail: (id: string | null) => ({
+    components: id && !mockDetailError ? [{ id: `${id}-api`, name: `API on ${id}` }] : [],
+    isLoading: false,
+    error: id ? mockDetailError : null,
+    refetch: mockRefetch,
+  }),
 }));
 
 beforeEach(() => {
   jest.clearAllMocks();
+  mockDetailError = null;
   mockPages = [{ id: "sp-1", name: "Public status" }, { id: "sp-2", name: "Enterprise status" }];
 });
 
@@ -37,4 +45,15 @@ it("says so when the incident is already on every status page", () => {
   mockPages = [{ id: "sp-1", name: "Public status" }];
   render(<IncidentFormDialog open onOpenChange={jest.fn()} onSuccess={jest.fn()} sreIncident={{ id: "sre-1", title: "Checkout errors" }} excludeStatusPageIds={["sp-1"]} />);
   expect(screen.getByText("This incident is already on every status page in this project.")).toBeInTheDocument();
+});
+
+it("shows a failed component load with a retry, not as a page without components", () => {
+  mockDetailError = new Error("network");
+  render(<IncidentFormDialog open onOpenChange={jest.fn()} onSuccess={jest.fn()} sreIncident={{ id: "sre-1", title: "Checkout errors" }} />);
+  fireEvent.click(screen.getByRole("combobox", { name: "Status page *" }));
+  fireEvent.click(screen.getByRole("option", { name: "Public status" }));
+  expect(screen.getByRole("alert")).toHaveTextContent("Components could not be loaded.");
+  expect(screen.queryByText("No components available. Add a component first.")).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+  expect(mockRefetch).toHaveBeenCalled();
 });
