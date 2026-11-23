@@ -8,12 +8,16 @@ const chain = (rows: unknown[]) => {
   c.then = (r: (v: unknown) => unknown) => Promise.resolve(undefined).then(r);
   return c;
 };
-const tx = { update: () => chain([{ id: "i", name: "n" }]), insert: () => chain([{ id: "u" }]) };
+const mockLock = jest.fn(async () => []);
+const lockChain: Record<string, unknown> = {};
+for (const m of ["from", "where", "orderBy"]) lockChain[m] = () => lockChain;
+lockChain.for = mockLock;
+const tx = { update: () => chain([{ id: "i", name: "n" }]), insert: () => chain([{ id: "u" }]), select: () => lockChain };
 jest.mock("@/utils/db", () => ({
   db: {
     query: {
       statusPages: { findFirst: jest.fn(async () => ({ id: "p" })) },
-      incidents: { findFirst: jest.fn(async () => ({ id: "i", sourceComponentId: null })) },
+      incidents: { findFirst: jest.fn(async () => ({ id: "00000000-0000-4000-8000-000000000001", statusPageId: "00000000-0000-4000-8000-000000000002", sourceComponentId: null })) },
     },
     transaction: jest.fn(async (run: (t: unknown) => unknown) => run(tx)),
   },
@@ -25,7 +29,7 @@ jest.mock("@/lib/project-context", () => ({
     project: { id: "00000000-0000-4000-8000-000000000003" },
   })),
 }));
-jest.mock("@/lib/rbac/middleware", () => ({ requirePermissions: jest.fn(async () => undefined) }));
+jest.mock("@/lib/rbac/middleware", () => ({ requirePermissions: jest.fn(async () => undefined), checkPermissionWithContext: jest.fn(() => true) }));
 jest.mock("next/cache", () => ({ revalidatePath: jest.fn() }));
 jest.mock("@/lib/audit-logger", () => ({ logAuditEvent: jest.fn() }));
 jest.mock("@/lib/status-page-reconciliation", () => ({
@@ -43,11 +47,16 @@ const base = {
   restoreComponentStatus: true,
 };
 
-beforeEach(() => mockRestore.mockReset());
+beforeEach(() => {
+  mockRestore.mockReset();
+  mockLock.mockClear();
+});
 
 it("restores through the shared reconciliation rules when resolving with the box ticked", async () => {
   expect((await updateIncidentStatus(base)).success).toBe(true);
   expect(mockRestore).toHaveBeenCalledWith(tx, base.incidentId, base.statusPageId);
+  // Its components are locked before anything else, matching reconciliation's order.
+  expect(mockLock).toHaveBeenCalledWith("update");
 });
 
 it("leaves components alone when the box is not ticked", async () => {

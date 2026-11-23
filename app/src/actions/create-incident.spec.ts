@@ -32,11 +32,15 @@ it("scopes the for-update locks on the status page and SRE incident to the org a
       from: () => ({
         where: (condition: unknown) => {
           wheres.push(condition);
-          return { for: async () => [{ statusPageIncidentId: "already-linked" }] };
+          return { for: async () => [{ statusPageIncidentId: null }] };
         },
       }),
     }),
     query: { incidents: { findFirst: jest.fn().mockResolvedValue(undefined) } },
+    // Only the two locks are under test: stop at the first write.
+    insert: () => {
+      throw new Error("stop after the locks");
+    },
   };
   (db.transaction as jest.Mock).mockImplementation((callback: (t: typeof tx) => unknown) => callback(tx));
   const result = await createIncident({
@@ -80,4 +84,31 @@ it("checks a status page and its components belong to the project before a decla
   expect(await findStatusPageTargetError(scope, uuid(1), [uuid(2)])).toBe("A selected component is not on this status page.");
   (db as unknown as { select: jest.Mock }).select = jest.fn(() => ({ from: () => ({ where: async () => [{ id: uuid(2) }] }) }));
   expect(await findStatusPageTargetError(scope, uuid(1), [uuid(2), uuid(2)])).toBeNull();
+});
+
+it("reports a failed lookup as a publish failure instead of failing the resolve that already committed", async () => {
+  const { publishSreResolutionToStatusPages } = await import("@/lib/status-page-incident-core");
+  (db as unknown as { select: jest.Mock }).select = jest.fn(() => {
+    throw new Error("connection lost");
+  });
+  const actor = { userId: "u", organizationId: "o", orgPendingDeletion: false, project: { id: "p", userRole: "org_owner" } };
+  await expect(publishSreResolutionToStatusPages(actor, uuid(2), "Fixed")).resolves.toEqual({ published: [], failed: ["the linked status pages"], forbidden: false });
+});
+
+it("refuses an open post for a resolved SRE incident, checked under its row lock", async () => {
+  (db.query.statusPages.findFirst as jest.Mock).mockResolvedValue({ id: uuid(1), language: "en" });
+  (db.query.sreIncidents.findFirst as jest.Mock).mockResolvedValue({ id: uuid(2) });
+  (db as unknown as { select: jest.Mock }).select = jest.fn(() => ({ from: () => ({ where: async () => [{ id: uuid(3) }] }) }));
+  const insert = jest.fn();
+  (db.transaction as jest.Mock).mockImplementation(async (callback) => callback({
+    select: () => ({ from: () => ({ where: () => ({ for: async () => [{ status: "resolved", statusPageIncidentId: null }] }) }) }),
+    query: { incidents: { findFirst: async () => undefined } },
+    insert,
+  }));
+  const result = await createIncident({
+    statusPageId: uuid(1), sreIncidentId: uuid(2), name: "Outage", status: "investigating", impact: "minor",
+    affectedComponentIds: [uuid(3)], componentStatus: "partial_outage", deliverNotifications: false,
+  } as never);
+  expect(result).toEqual({ success: false, message: "This incident is resolved. Post a resolved update or reopen the incident first." });
+  expect(insert).not.toHaveBeenCalled();
 });

@@ -10,6 +10,8 @@ describe('schema config human output', () => {
     const text = lines.join('')
     expect(text).toContain('project')
     expect(text.length).toBeGreaterThan(200)
+    // A transformed field (job alertConfig) still lists its properties.
+    expect(text).toContain('jobs[].alertConfig.alertOnSuccess')
   }, 8000)
   it('flattens optional and array fields', () => {
     const rows = flattenSchema({ type: 'object', properties: { a: { optional: true, value: { type: 'string' } }, b: { type: 'array', items: { type: 'number' } } } })

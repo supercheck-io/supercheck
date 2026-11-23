@@ -5,6 +5,7 @@ import { incidents, statusPages } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
 import { retireOrphanedSubscribers } from "@/lib/incident-notifications/retire-orphaned-subscribers";
 import { revalidatePath } from "next/cache";
+import { repointSreStatusPageSlot, restoreComponentsOfDeletedIncident } from "@/lib/status-page-reconciliation";
 import { requireProjectContext } from "@/lib/project-context";
 import { requirePermissions } from "@/lib/rbac/middleware";
 import { logAuditEvent } from "@/lib/audit-logger";
@@ -86,6 +87,11 @@ export async function deleteIncident(id: string, statusPageId: string) {
     // Delete the incident (cascade will handle related records)
     await db.transaction(async (tx) => {
       await retireOrphanedSubscribers({ incidentId: id }, tx);
+      // An open incident set its components' status; deleting it must not leave them degraded.
+      if (incident.status !== "resolved" && incident.status !== "scheduled") {
+        await restoreComponentsOfDeletedIncident(tx, id, statusPageId);
+      }
+      await repointSreStatusPageSlot(tx, id);
       await tx
         .delete(incidents)
         .where(

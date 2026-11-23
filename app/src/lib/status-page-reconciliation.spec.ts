@@ -55,20 +55,24 @@ describe("repointSreStatusPageSlot", () => {
     const chain: Record<string, unknown> = {};
     for (const m of ["from", "where", "orderBy"]) chain[m] = () => chain;
     chain.limit = async () => queue.shift() ?? [];
-    return { tx: { select: () => chain, update: () => ({ set }) } as never, set };
+    const lock = jest.fn(async () => []);
+    chain.for = lock;
+    return { tx: { select: () => chain, update: () => ({ set }) } as never, set, lock };
   }
+  const linked = [{ sreIncidentId: "sre-1" }];
 
-  it("moves the slot to another open public incident of the same SRE incident", async () => {
-    const { tx, set } = makeRepointTx([[{ id: "sre-1" }], [{ id: "sp-2" }]]);
+  it("moves the slot to another open public incident of the same SRE incident, holding the SRE incident's lock", async () => {
+    const { tx, set, lock } = makeRepointTx([linked, [{ id: "sre-1" }], [{ id: "sp-2" }]]);
     await repointSreStatusPageSlot(tx, "sp-1");
+    expect(lock).toHaveBeenCalledWith("update");
     expect(set).toHaveBeenCalledWith({ statusPageIncidentId: "sp-2" });
   });
 
   it("clears the slot when no other public incident is open, and does nothing when the incident owns no slot", async () => {
-    const none = makeRepointTx([[{ id: "sre-1" }], []]);
+    const none = makeRepointTx([linked, [{ id: "sre-1" }], []]);
     await repointSreStatusPageSlot(none.tx, "sp-1");
     expect(none.set).toHaveBeenCalledWith({ statusPageIncidentId: null });
-    const unowned = makeRepointTx([[]]);
+    const unowned = makeRepointTx([[], []]);
     await repointSreStatusPageSlot(unowned.tx, "sp-1");
     expect(unowned.set).not.toHaveBeenCalled();
   });

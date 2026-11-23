@@ -33,6 +33,7 @@ import {
   type CreateIncidentData,
 } from "@/actions/create-incident";
 import { getSreIncidents } from "@/actions/sre-incidents";
+import { useStatusPageDetail, useStatusPages } from "@/hooks/use-status-pages";
 import { toast } from "sonner";
 import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -60,10 +61,18 @@ type Component = {
 type IncidentFormDialogProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  statusPageId: string;
-  components: Component[];
   onSuccess: () => void;
-};
+} & (
+  | { statusPageId: string; components: Component[]; sreIncident?: undefined; excludeStatusPageIds?: undefined }
+  | {
+      /** Opened from an SRE incident: the person picks the page, and the post is linked to this incident. */
+      statusPageId?: undefined;
+      components?: undefined;
+      sreIncident: { id: string; title: string };
+      /** Pages that already have a post for this incident (one post per page). */
+      excludeStatusPageIds?: string[];
+    }
+);
 
 const incidentFormSchema = z
   .object({
@@ -172,12 +181,22 @@ const componentStatusOptions: { value: ComponentStatus; label: string }[] = [
 export function IncidentFormDialog({
   open,
   onOpenChange,
-  statusPageId,
-  components,
+  statusPageId: fixedStatusPageId,
+  components: fixedComponents,
+  sreIncident,
+  excludeStatusPageIds,
   onSuccess,
 }: IncidentFormDialogProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSreLinkOpen, setIsSreLinkOpen] = useState(false);
+  const [pickedStatusPageId, setPickedStatusPageId] = useState<string | null>(null);
+  const statusPages = useStatusPages({ enabled: open && Boolean(sreIncident) });
+  const pickedPage = useStatusPageDetail(open && sreIncident ? pickedStatusPageId : null);
+  const statusPageId = fixedStatusPageId ?? pickedStatusPageId;
+  const components: Component[] = fixedComponents ?? (pickedStatusPageId ? pickedPage.components : []);
+  const pageOptions = ((statusPages.statusPages ?? []) as Array<{ id: string; name: string }>).filter(
+    (page) => !excludeStatusPageIds?.includes(page.id),
+  );
 
   const {
     register,
@@ -210,8 +229,8 @@ export function IncidentFormDialog({
   useEffect(() => {
     if (open) {
       reset({
-        name: "",
-        sreIncidentId: "",
+        name: sreIncident?.title.slice(0, 200) ?? "",
+        sreIncidentId: sreIncident?.id ?? "",
         scheduledFor: "",
         scheduledUntil: "",
         deliverNotifications: true,
@@ -222,20 +241,26 @@ export function IncidentFormDialog({
         affectedComponentIds: [],
       });
       setIsSreLinkOpen(false);
+      setPickedStatusPageId(null);
     }
-  }, [open, reset]);
+  }, [open, reset, sreIncident?.id, sreIncident?.title]);
 
   const [sreIncidents, setSreIncidents] = useState<
     Array<{ id: string; title: string }>
   >([]);
   useEffect(() => {
-    if (open)
+    // From an SRE incident the link is fixed, so the list is not needed.
+    if (open && !sreIncident)
       void getSreIncidents({ scope: "all" }).then((result) => {
         if (result.success) setSreIncidents(result.incidents);
       });
-  }, [open]);
+  }, [open, sreIncident]);
 
   const onSubmit = async (data: IncidentFormData) => {
+    if (!statusPageId) {
+      toast.error("Select a status page");
+      return;
+    }
     setIsSubmitting(true);
 
     try {
@@ -280,9 +305,9 @@ export function IncidentFormDialog({
     }
   };
 
-  const linkedSreIncident = sreIncidents.find(
-    (incident) => incident.id === watch("sreIncidentId"),
-  );
+  const linkedSreIncident =
+    sreIncident ??
+    sreIncidents.find((incident) => incident.id === watch("sreIncidentId"));
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -301,6 +326,44 @@ export function IncidentFormDialog({
           className="flex min-h-0 flex-1 flex-col"
         >
           <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-6 py-5">
+            {sreIncident && (
+              <div className="space-y-1.5">
+                <Label htmlFor="incident-status-page">Status page *</Label>
+                <Select
+                  value={pickedStatusPageId ?? undefined}
+                  onValueChange={(value) => {
+                    setPickedStatusPageId(value);
+                    setValue("affectedComponentIds", []);
+                  }}
+                  disabled={isSubmitting}
+                >
+                  <SelectTrigger id="incident-status-page">
+                    <SelectValue
+                      placeholder={
+                        statusPages.loading
+                          ? "Loading status pages..."
+                          : "Select a status page"
+                      }
+                    />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {pageOptions.map((page) => (
+                      <SelectItem key={page.id} value={page.id}>
+                        {page.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {!statusPages.loading && pageOptions.length === 0 && (
+                  <p className="text-xs text-muted-foreground">
+                    {excludeStatusPageIds?.length
+                      ? "This incident is already on every status page in this project."
+                      : "This project has no status pages."}
+                  </p>
+                )}
+              </div>
+            )}
+
             <div className="space-y-1.5">
               <Label htmlFor="name">Title *</Label>
               <Input
@@ -477,9 +540,20 @@ export function IncidentFormDialog({
                     }
                     className="max-h-44 overflow-y-auto rounded-lg border"
                   >
-                    {components.length === 0 ? (
+                    {sreIncident && pickedStatusPageId && pickedPage.error ? (
+                      <div role="alert" className="flex items-center justify-center gap-2 px-3 py-6 text-xs text-failure">
+                        Components could not be loaded.
+                        <Button type="button" variant="outline" size="sm" onClick={() => void pickedPage.refetch()}>
+                          Retry
+                        </Button>
+                      </div>
+                    ) : components.length === 0 ? (
                       <p className="px-3 py-6 text-center text-xs text-muted-foreground">
-                        No components available. Add a component first.
+                        {!statusPageId
+                          ? "Select a status page to see its components."
+                          : sreIncident && pickedPage.isLoading
+                            ? "Loading components..."
+                            : "No components available. Add a component first."}
                       </p>
                     ) : (
                       components.map((component) => (
@@ -564,6 +638,12 @@ export function IncidentFormDialog({
               </div>
             )}
 
+            {sreIncident ? (
+              <p className="text-xs text-muted-foreground">
+                Linked to this incident. Only the title and message you write
+                here are published; internal evidence and notes stay private.
+              </p>
+            ) : (
             <Collapsible open={isSreLinkOpen} onOpenChange={setIsSreLinkOpen}>
               <CollapsibleTrigger asChild>
                 <Button
@@ -621,6 +701,7 @@ export function IncidentFormDialog({
                 </p>
               </CollapsibleContent>
             </Collapsible>
+            )}
           </div>
 
           <div className="flex flex-col gap-3 border-t bg-muted/30 px-6 py-3 sm:flex-row sm:items-center sm:justify-between">

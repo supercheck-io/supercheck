@@ -22,7 +22,8 @@ const del = jest.fn(() => makeChain());
 const txSelect = jest.fn((..._a: unknown[]) => makeChain());
 const transaction = jest.fn(async (run: (tx: unknown) => unknown) =>
   run({
-    query: { statusPages: { findFirst: (...a: unknown[]) => pageFindFirst(...a) } },
+    // Open automatic incidents of a deleted component (resolved in the same transaction; covered by the DB spec).
+    query: { statusPages: { findFirst: (...a: unknown[]) => pageFindFirst(...a) }, incidents: { findMany: async () => [] } },
     select: (...a: unknown[]) => (txSelect as jest.Mock)(...a),
     update: (...a: unknown[]) => (update as jest.Mock)(...a),
     insert: (...a: unknown[]) => (insert as jest.Mock)(...a),

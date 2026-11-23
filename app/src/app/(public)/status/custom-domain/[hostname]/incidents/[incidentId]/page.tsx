@@ -99,6 +99,7 @@ export default async function CustomDomainIncidentDetailPage({
       supportUrl={statusPage.supportUrl}
       hideBranding={isStatusPageBrandingHidden()}
       language={result.language}
+      timeZone={statusPage.timezone}
       isPublicView
       isCustomDomain
       customDomainRoutePrefix={customDomainRoutePrefix}

@@ -14,7 +14,8 @@ jest.mock("@tanstack/react-query", () => ({
 jest.mock("@/hooks/use-project-context", () => ({
   useProjectContext: () => ({ projectId: "project-1" }),
 }));
-jest.mock("sonner", () => ({ toast: { success: jest.fn() } }));
+jest.mock("sonner", () => ({ toast: { success: jest.fn(), warning: jest.fn() } }));
+import { toast } from "sonner";
 
 describe("ResolveSreIncidentDialog", () => {
   const originalFetch = global.fetch;
@@ -63,6 +64,35 @@ describe("ResolveSreIncidentDialog", () => {
       }),
     );
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("publishes the resolution to the linked status pages by default, and can opt out", async () => {
+    jest.mocked(fetch).mockResolvedValue({
+      ok: true,
+      json: async () => ({ success: true, message: "Incident #3 resolved", statusPageMessage: "Resolution posted to Public status", warning: "The resolution could not be posted to Enterprise status. Post it from the status page." }),
+    } as Response);
+    const { unmount } = render(<ResolveSreIncidentDialog incidentId="incident-1" defaultSummary="Rolled back." open onOpenChange={jest.fn()} statusPages={["Public status", "Enterprise status"]} />);
+    const publish = screen.getByLabelText("Publish resolution to 2 status pages");
+    expect(publish).toBeChecked();
+    expect(screen.getByText(/Public status, Enterprise status/)).toBeInTheDocument();
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Resolve incident" }));
+    await waitFor(() => expect(toast.success).toHaveBeenCalled());
+    expect(JSON.parse(jest.mocked(fetch).mock.calls[0][1]!.body as string)).toEqual({ comment: "Rolled back.", publishToStatusPages: true });
+    expect(toast.warning).toHaveBeenCalledWith("The resolution could not be posted to Enterprise status. Post it from the status page.");
+    expect(toast.success).toHaveBeenCalledWith("Incident #3 resolved", expect.objectContaining({ description: expect.stringContaining("Resolution posted to Public status") }));
+    unmount();
+
+    jest.mocked(fetch).mockClear();
+    render(<ResolveSreIncidentDialog incidentId="incident-1" defaultSummary="Rolled back." open onOpenChange={jest.fn()} statusPages={["Public status"]} />);
+    fireEvent.click(screen.getByLabelText("Publish resolution to the status page"));
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Resolve incident" }));
+    await waitFor(() => expect(fetch).toHaveBeenCalled());
+    expect(JSON.parse(jest.mocked(fetch).mock.calls[0][1]!.body as string)).toEqual({ comment: "Rolled back." });
+  });
+
+  it("offers no publish option without open linked status pages", () => {
+    render(<ResolveSreIncidentDialog incidentId="incident-1" open onOpenChange={jest.fn()} />);
+    expect(screen.queryByLabelText(/Publish resolution/)).not.toBeInTheDocument();
   });
 
   it.each(["denied", "disconnected"])(

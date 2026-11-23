@@ -67,7 +67,7 @@ export type ManualIncidentResult =
       ok: true;
       incident: { id: string; incidentNumber: number; title: string };
       statusPageIncidentId?: string;
-      /** The incident exists; only the public post failed. Retry from the incident's "Post to status page". */
+      /** The incident exists; only the public post failed. Retry with "Post to status page" in the incident's properties. */
       warning?: "status_page_failed";
     }
   | { ok: false; code: "invalid"; error: string; fieldErrors?: Record<string, string[]> }

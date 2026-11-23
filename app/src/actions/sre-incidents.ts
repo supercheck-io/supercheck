@@ -5,6 +5,7 @@ import { createHash } from "crypto";
 import { revalidatePath } from "next/cache";
 import {
   and,
+  asc,
   desc,
   eq,
   gte,
@@ -225,7 +226,8 @@ export type SreIncidentDetail = {
   watching?: boolean;
   /** Set when the source's checks passed again after the incident opened and no failure has returned since. */
   recoveredAt?: string | null;
-  publicIncident?: { id: string; statusPageId: string; status: string } | null;
+  /** Public incidents linked to this incident, one per status page, oldest first. */
+  publicIncidents?: Array<{ id: string; statusPageId: string; statusPageName: string; status: string; deliverNotifications: boolean }>;
   /** Services and monitors a person listed as affected (deleted ones left out). */
   affectedResources?: IncidentResourceView[];
   incident: SreIncidentListItem & {
@@ -1178,7 +1180,12 @@ export async function getSreIncidentDetails(
       )
       .orderBy(desc(linkedAlertFields.firedAt))
       .limit(20);
-    const [publicIncident] = incident.statusPageIncidentId ? await db.select({ id: statusPageIncidents.id, statusPageId: statusPageIncidents.statusPageId, status: statusPageIncidents.status }).from(statusPageIncidents).innerJoin(statusPages, eq(statusPages.id, statusPageIncidents.statusPageId)).where(and(eq(statusPageIncidents.id, incident.statusPageIncidentId), eq(statusPages.organizationId, organizationId), eq(statusPages.projectId, project.id))) : [];
+    const publicIncidents = await db
+      .select({ id: statusPageIncidents.id, statusPageId: statusPageIncidents.statusPageId, statusPageName: statusPages.name, status: statusPageIncidents.status, deliverNotifications: sql<boolean>`coalesce(${statusPageIncidents.deliverNotifications}, true)` })
+      .from(statusPageIncidents)
+      .innerJoin(statusPages, eq(statusPages.id, statusPageIncidents.statusPageId))
+      .where(and(eq(statusPageIncidents.sreIncidentId, incident.id), eq(statusPages.organizationId, organizationId), eq(statusPages.projectId, project.id)))
+      .orderBy(asc(statusPageIncidents.createdAt));
 
     const watching = await isWatchingIncident(incident.id, userId);
     const recoveredAt = await getSourceRecoveredAt(incident.id);
@@ -1189,7 +1196,7 @@ export async function getSreIncidentDetails(
       detail: {
         watching,
         recoveredAt,
-        publicIncident: publicIncident ?? null,
+        publicIncidents,
         affectedResources,
         linkedAlerts,
         currentUserId: userId,
