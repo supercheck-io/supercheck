@@ -131,6 +131,13 @@ const connectorSearchInputSchema = z.object({
     .max(MAX_TIME_WINDOW_MINUTES)
     .optional()
     .default(60),
+  endAt: z
+    .string()
+    .datetime({ offset: true })
+    .optional()
+    .describe(
+      "Optional ISO 8601 end of the time window, for example a few minutes after the incident's startedAt. Defaults to now; a future time is treated as now. The window still ends here and spans at most timeWindowMinutes, capped by the connector.",
+    ),
   maxRows: z.number().int().min(1).max(MAX_TOOL_ROWS).optional().default(5),
   maxBytes: z.number().int().min(1024).max(256_000).optional().default(256_000),
   maxSeconds: z.number().int().min(1).max(15).optional().default(15),
@@ -821,6 +828,8 @@ export async function searchIncidentLiveConnectorEvidence(
   }
 
   const now = new Date();
+  // The model may anchor the window on the incident start; never past now, and the length cap below still applies.
+  const windowEnd = input.endAt ? new Date(Math.min(Date.parse(input.endAt), now.getTime())) : now;
   // The connector's window is the policy maximum; clamp instead of failing the connector.
   const requestedWindowMinutes = Math.min(
     input.timeWindowMinutes,
@@ -830,12 +839,15 @@ export async function searchIncidentLiveConnectorEvidence(
   const effectiveTimeWindowMinutes = stagedStage
     ? boundedStageWindowMinutes(stagedStage, requestedWindowMinutes)
     : requestedWindowMinutes;
+  const searchedWindow = input.endAt
+    ? `${effectiveTimeWindowMinutes} minutes ending ${windowEnd.toISOString()}`
+    : `the last ${effectiveTimeWindowMinutes} minutes`;
   const params = {
     query: input.query,
     serviceId: primaryServiceId,
     timeWindow: {
-      start: new Date(now.getTime() - effectiveTimeWindowMinutes * 60_000),
-      end: now,
+      start: new Date(windowEnd.getTime() - effectiveTimeWindowMinutes * 60_000),
+      end: windowEnd,
     },
     budget: {
       maxRows: Math.min(outputLimits.maxRows, input.maxRows, MAX_TOOL_ROWS),
@@ -1040,7 +1052,7 @@ export async function searchIncidentLiveConnectorEvidence(
         evidence: persistedEvidence.map(summarizeEvidenceItem),
         truncated,
         persisted: Boolean(scope.incidentId),
-        message: `${scope.incidentId ? "Persisted" : "Returned"} ${persistedEvidence.length} connector evidence item(s)${windowClamped ? ` (searched the last ${effectiveTimeWindowMinutes} minutes; the connector's maximum window is ${requestedWindowMinutes} minutes)` : ""}`,
+        message: `${scope.incidentId ? "Persisted" : "Returned"} ${persistedEvidence.length} connector evidence item(s)${windowClamped ? ` (searched ${searchedWindow}; the connector's maximum window is ${requestedWindowMinutes} minutes)` : ""}`,
       };
     }
 
@@ -1089,6 +1101,7 @@ export async function searchIncidentLiveConnectorEvidence(
       query: input.query,
       stage: stagedStage,
       timeWindowMinutes: effectiveTimeWindowMinutes,
+      ...(input.endAt ? { endAt: windowEnd.toISOString() } : {}),
     }),
   );
 
@@ -1150,7 +1163,7 @@ export async function searchIncidentLiveConnectorEvidence(
       truncated: sanitized.truncated,
       persisted: Boolean(scope.incidentId),
       message: `${scope.incidentId ? "Persisted" : "Returned"} ${insertedEvidence.length} connector evidence item(s)${
-        windowClamped ? ` (searched the last ${effectiveTimeWindowMinutes} minutes; the connector's maximum window is ${requestedWindowMinutes} minutes)` : ""
+        windowClamped ? ` (searched ${searchedWindow}; the connector's maximum window is ${requestedWindowMinutes} minutes)` : ""
       }${
         sanitized.truncated || insertedEvidence.length >= Math.min(outputLimits.maxRows, input.maxRows, MAX_TOOL_ROWS)
           ? ". This is a capped sample, not a complete list: it does not prove that other matching events are absent. Query for the specific signal (for example errors) explicitly."

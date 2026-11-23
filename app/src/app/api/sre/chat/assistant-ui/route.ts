@@ -41,7 +41,7 @@ import { SRE_ERROR_QUERY_RULE } from "@/lib/sre/connectors/agent-query-guidance"
 import { extractCitations, SRE_CITATIONS_ATTACHMENT, type SreChatCitation } from "@/lib/sre/chat-citations";
 import { createSreConnectorTools } from "@/sre/tools/connector-tools";
 import { createSreSimilarIncidentTools } from "@/sre/tools/similar-incident-tools";
-import { createSreEvidenceTools } from "@/sre/tools/evidence-tools";
+import { createSreEvidenceTools, createSreIncidentTool } from "@/sre/tools/evidence-tools";
 import { requireSreSameOriginRequest, requireSreSubscription } from "../../_auth";
 
 import { permissionDeniedResponse } from "@/lib/deletion/org-state";
@@ -198,6 +198,9 @@ function buildAssistantUiSystemPrompt(input: {
       : "General Copilot chat rules:",
     `- Project: ${input.projectName}`,
     input.incidentId ? `- Scoped incident ID: ${input.incidentId}` : null,
+    input.incidentId
+      ? "- Call getIncident first for the incident's title, severity, status, start time and service. Anchor live connector searches on its startedAt (pass endAt a little after it) instead of searching only the last hour."
+      : null,
     "- This chat is read-only. Do not suggest production mutations or destructive commands.",
     input.incidentId
       ? "- Use available stored evidence tools before making incident-specific claims. Cite the evidence ids you rely on, written as evidence <id>. For \"have we seen this before\" questions call findSimilarIncidents and say that past incidents may be unrelated."
@@ -592,6 +595,11 @@ export async function POST(request: NextRequest) {
               ...connectorToolScope,
               incidentId: conversation.incidentId,
             }),
+            ...createSreIncidentTool({
+              organizationId: context.organizationId,
+              projectId: context.project.id,
+              incidentId: conversation.incidentId,
+            }),
             ...createSreSimilarIncidentTools({
               organizationId: context.organizationId,
               projectId: context.project.id,
@@ -644,18 +652,25 @@ export async function POST(request: NextRequest) {
       // On a client disconnect onFinish can run from cancel() with isAborted false, so check the outcome too.
       if (isAborted || outcome?.status === "aborted") {
         const partial = getTextFromUiMessage(responseMessage);
+        const supersede = regenerating && regenerateTargetId ? regenerateTargetId : null;
+        // A stopped regeneration that produced nothing leaves the original reply in place.
+        if (supersede && !partial) return;
         try {
-          await appendSreMessage({
-            id: assistantMessageId,
-            organizationId: context.organizationId,
-            projectId: context.project.id,
-            userId: context.userId,
-            conversationId: activeConversationId,
-            role: "assistant",
-            content: partial || "This reply was interrupted before it finished.",
-            attachments: [{ type: SRE_MESSAGE_INTERRUPTED }],
-            modelId,
-          });
+          await appendSreMessage(
+            {
+              id: assistantMessageId,
+              organizationId: context.organizationId,
+              projectId: context.project.id,
+              userId: context.userId,
+              conversationId: activeConversationId,
+              role: "assistant",
+              content: partial || "This reply was interrupted before it finished.",
+              attachments: [{ type: SRE_MESSAGE_INTERRUPTED }],
+              modelId,
+            },
+            // The partial regeneration replaces its target, as a finished one does, so a reload shows one reply.
+            ...(supersede ? [{ supersedeMessageId: supersede }] : []),
+          );
         } catch (error) {
           logger.error({ error }, "Failed to store interrupted Copilot reply");
         }

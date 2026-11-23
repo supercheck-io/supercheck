@@ -238,6 +238,36 @@ describe("MCP connectors in the AI tool layer", () => {
       expect(result.message).toContain("searched the last 60 minutes; the connector's maximum window is 60 minutes");
     });
 
+    it("anchors the window on a supplied end time, never past now, still clamped to the connector maximum", async () => {
+      const { execute } = setup(lokiRow);
+      const result = await searchIncidentLiveConnectorEvidence(
+        { ...scope, serviceId },
+        { ...search, query: '{service_name="checkout-api"}', timeWindowMinutes: 360, endAt: "2026-11-20T10:15:00+00:00" },
+      );
+      const { timeWindow } = execute.mock.calls[0][0];
+      expect(timeWindow.end.toISOString()).toBe("2026-11-20T10:15:00.000Z");
+      expect(timeWindow.start.toISOString()).toBe("2026-11-20T09:15:00.000Z");
+      expect(result.message).toContain("searched 60 minutes ending 2026-11-20T10:15:00.000Z");
+
+      const { execute: executeFuture } = setup(lokiRow);
+      const before = Date.now();
+      await searchIncidentLiveConnectorEvidence(
+        { ...scope, serviceId },
+        { ...search, query: '{service_name="checkout-api"}', timeWindowMinutes: 30, endAt: "2999-01-01T00:00:00Z" },
+      );
+      const future = executeFuture.mock.calls[0][0].timeWindow;
+      expect(future.end.getTime()).toBeGreaterThanOrEqual(before);
+      expect(future.end.getTime()).toBeLessThanOrEqual(Date.now());
+      expect(future.end.getTime() - future.start.getTime()).toBe(30 * 60_000);
+    });
+
+    it("rejects an end time that is not an ISO 8601 timestamp", () => {
+      const tools = createSreConnectorTools({ ...scope, serviceId });
+      const schema = tools.searchLiveConnectorEvidence.inputSchema as z.ZodTypeAny;
+      expect(schema.safeParse({ connectorId, query: "up", endAt: "yesterday" }).success).toBe(false);
+      expect(schema.safeParse({ connectorId, query: "up", endAt: "2026-11-20T10:15:00Z" }).success).toBe(true);
+    });
+
     it("adds no note for a window inside the connector limit", async () => {
       setup(lokiRow);
       const result = await searchIncidentLiveConnectorEvidence(
