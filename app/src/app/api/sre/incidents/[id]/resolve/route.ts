@@ -25,7 +25,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   const auth = await requireSreApiPermissions([{ resource: "sre_incident", action: "update" }]);
   if (!auth.success) return auth.response;
   try {
-    const parsedId = z.string().uuid().safeParse((await params).id);
+    const parsedId = z.string().uuid().transform((id) => id.toLowerCase()).safeParse((await params).id);
     const read = await readJsonBody(request, 64 * 1024);
     if (read instanceof NextResponse && read.status === 413) return read;
     const parsedBody = bodySchema.safeParse(read instanceof NextResponse ? null : read.body);

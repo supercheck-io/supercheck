@@ -90,6 +90,16 @@ describe("incident lifecycle actions", () => {
     expect(Object.values(lifecycle).every((fn) => fn.mock.calls.length === 0)).toBe(true);
   });
 
+  it("lowercases the incident id and names a commander change as one", async () => {
+    lifecycle.assignIncident.mockResolvedValue({ ok: true, incident: { incidentNumber: 1 }, changed: true });
+    expect(
+      await assignSreIncident({ incidentId: incidentId.toUpperCase(), assigneeUserId: mockCtx.userId, role: "commander" }),
+    ).toEqual({ success: true, message: "Commander set" });
+    expect(checkUpdateRateLimit).toHaveBeenCalledWith(mockCtx.userId, incidentId);
+    expect(lifecycle.assignIncident).toHaveBeenCalledWith(actor, incidentId, mockCtx.userId, "commander");
+    expect(await assignSreIncident({ incidentId, assigneeUserId: null, role: "commander" })).toMatchObject({ message: "Commander cleared" });
+  });
+
   it("lowercases the assignee id before it reaches the lifecycle and timeline", async () => {
     lifecycle.assignIncident.mockResolvedValue({ ok: true, incident: { incidentNumber: 1 }, changed: true });
     await assignSreIncident({ incidentId, assigneeUserId: "018F0000-0000-7000-8000-0000000000E1" });

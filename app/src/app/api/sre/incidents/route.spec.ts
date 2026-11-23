@@ -35,6 +35,14 @@ describe("incident number lookup", () => {
     expect(await response.json()).toEqual({ success: true, truncated: false, incidents: [{ id: "incident-uuid", incidentNumber: 42, rootCauseSummary: null, statusLabel: "Unknown" }] });
   });
 
+  it("orders by updatedAt then id so the 500-row cap is deterministic", async () => {
+    const orderBy = jest.fn().mockReturnThis();
+    mockSelect.mockReturnValue({ from: jest.fn().mockReturnThis(), leftJoin: jest.fn().mockReturnThis(), where: jest.fn().mockReturnThis(), groupBy: jest.fn().mockReturnThis(), orderBy, limit: jest.fn().mockResolvedValue([]) });
+    await GET(new NextRequest("https://example.com/api/sre/incidents"));
+    const sqls = orderBy.mock.calls[0].map((o: unknown) => new PgDialect().sqlToQuery(o as never).sql);
+    expect(sqls).toEqual(['"sre_incidents"."updated_at" desc', '"sre_incidents"."id" desc']);
+  });
+
   it("reports truncation and returns only the first 500 rows when more exist", async () => {
     const limit = jest.fn().mockResolvedValue(Array.from({ length: 501 }, (_, i) => ({ id: `i${i}`, incidentNumber: i })));
     mockSelect.mockReturnValue({ from: jest.fn().mockReturnThis(), leftJoin: jest.fn().mockReturnThis(), where: jest.fn().mockReturnThis(), groupBy: jest.fn().mockReturnThis(), orderBy: jest.fn().mockReturnThis(), limit });

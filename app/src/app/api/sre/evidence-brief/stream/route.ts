@@ -6,10 +6,13 @@ import { z } from "zod";
 import { streamEvidenceBrief } from "@/lib/sre/evidence-brief-generator";
 import { runSreEvidenceBriefGeneration } from "@/lib/sre/evidence-brief-orchestrator";
 import { isAuthError, requireAuthContext, authErrorStatus } from "@/lib/auth-context";
+import { readJsonBody } from "@/lib/http/read-capped-json";
 import { createLogger } from "@/lib/logger/index";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { checkSreEvidenceBriefRateLimit } from "@/lib/sre/sre-rate-limiter";
 import { requireSreSameOriginRequest, requireSreSubscription } from "../../_auth";
+
+const MAX_BODY_BYTES = 4 * 1024;
 
 const requestSchema = z.object({
   incidentId: z.string().uuid(),
@@ -31,17 +34,6 @@ export async function POST(request: NextRequest) {
     return sameOriginError;
   }
 
-  let parsed: z.infer<typeof requestSchema>;
-
-  try {
-    parsed = requestSchema.parse(await request.json());
-  } catch {
-    return NextResponse.json(
-      { success: false, error: "Invalid incident ID" },
-      { status: 400 },
-    );
-  }
-
   let context: Awaited<ReturnType<typeof requireAuthContext>>;
   try {
     context = await requireAuthContext();
@@ -52,6 +44,17 @@ export async function POST(request: NextRequest) {
     );
   }
   const { userId, organizationId, orgPendingDeletion, project } = context;
+  // Authenticate before reading the body, so an anonymous caller cannot make us buffer one.
+  const read = await readJsonBody(request, MAX_BODY_BYTES);
+  if (read instanceof NextResponse) return read;
+  const parsedBody = requestSchema.safeParse(read.body);
+  if (!parsedBody.success) {
+    return NextResponse.json(
+      { success: false, error: "Invalid incident ID" },
+      { status: 400 },
+    );
+  }
+  const parsed = parsedBody.data;
   if (!isSreEnabled()) {
     return NextResponse.json(
       { error: "AI SRE is disabled", code: "feature_disabled", enabledBy: "SRE_ENABLED" },

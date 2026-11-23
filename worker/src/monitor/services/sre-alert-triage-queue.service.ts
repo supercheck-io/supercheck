@@ -4,9 +4,9 @@ import { buildRedisOptions } from '../../common/redis/redis-options';
 import { Queue } from 'bullmq';
 
 export const SRE_ALERT_TRIAGE_QUEUE_NAME = 'sre-alert-triage';
-/** Backoff between in-place retries of a recovery enqueue. */
+/** Backoff between in-place retries of an enqueue. */
 export const RECOVERY_ENQUEUE_DELAYS_MS = [250, 1_000];
-/** Per-attempt cap on a recovery enqueue, so a Redis outage cannot hold the recovery alert. */
+/** Per-attempt cap on an enqueue, so a Redis outage cannot hold the alert path. */
 export const RECOVERY_ENQUEUE_ATTEMPT_TIMEOUT_MS = 2_000;
 
 // Keep in sync with backgroundTriageJobSchema in app/src/sre/lib/background-alert-triage.ts.
@@ -59,20 +59,16 @@ export class SreAlertTriageQueueService implements OnModuleDestroy {
       return;
     }
 
-    try {
-      const queue = this.getQueue();
-      await Promise.all(
-        sentRows.map((row) =>
-          queue.add(
-            'triage-alert-history',
-            { alertHistoryId: row.id },
-            { jobId: `sre-alert-triage-${row.id}` },
-          ),
+    await Promise.all(
+      sentRows.map((row) =>
+        this.addBounded(
+          'triage-alert-history',
+          { alertHistoryId: row.id },
+          `sre-alert-triage-${row.id}`,
+          'Failed to enqueue SRE alert triage jobs',
         ),
-      );
-    } catch (error) {
-      this.logger.error('Failed to enqueue SRE alert triage jobs', error);
-    }
+      ),
+    );
   }
 
   /**
@@ -83,19 +79,12 @@ export class SreAlertTriageQueueService implements OnModuleDestroy {
     if (!this.isEnabled()) {
       return true; // incidents are off: nothing to retry
     }
-    try {
-      await this.getQueue().add(
-        'source-failure',
-        { sourceFailure: failure },
-        {
-          jobId: `sre-failure-${failure.sourceType}-${failure.sourceId}-${Date.parse(failure.firedAt)}`,
-        },
-      );
-      return true;
-    } catch (error) {
-      this.logger.error('Failed to enqueue SRE source failure job', error);
-      return false;
-    }
+    return this.addBounded(
+      'source-failure',
+      { sourceFailure: failure },
+      `sre-failure-${failure.sourceType}-${failure.sourceId}-${Date.parse(failure.firedAt)}`,
+      'Failed to enqueue SRE source failure job',
+    );
   }
 
   /**
@@ -106,8 +95,26 @@ export class SreAlertTriageQueueService implements OnModuleDestroy {
     if (!this.isEnabled()) {
       return true; // incidents are off: nothing to retry
     }
-    // Retried in place: the caller sends the user's recovery alert either way, so a short Redis blip
-    // must not leave the incident open. The jobId makes a retry after an unacknowledged add a no-op.
+    return this.addBounded(
+      'source-recovery',
+      { sourceRecovery: recovery },
+      // One job per recovery; a fixed id would be dropped while the last one is retained.
+      `sre-recovery-${recovery.sourceType}-${recovery.sourceId}-${Date.parse(recovery.recoveredAt)}`,
+      'Failed to enqueue SRE source recovery job',
+    );
+  }
+
+  /**
+   * Retried in place and bounded per attempt: while Redis is disconnected an add waits in the client's
+   * offline queue indefinitely, which would stall the monitor or job path that sends the user's alert.
+   * The jobId makes a retry after an unacknowledged (or timed-out, later landing) add a no-op.
+   */
+  private async addBounded(
+    name: string,
+    data: SreAlertTriageQueueJob,
+    jobId: string,
+    failureMessage: string,
+  ): Promise<boolean> {
     for (
       let attempt = 0;
       attempt < RECOVERY_ENQUEUE_DELAYS_MS.length + 1;
@@ -115,20 +122,11 @@ export class SreAlertTriageQueueService implements OnModuleDestroy {
     ) {
       let timer: NodeJS.Timeout | undefined;
       try {
-        // Bounded: while Redis is disconnected an add waits in the client's offline queue indefinitely.
-        // A timed-out add that lands later is harmless, since the next attempt reuses its jobId.
         await Promise.race([
-          this.getQueue().add(
-            'source-recovery',
-            { sourceRecovery: recovery },
-            // One job per recovery; a fixed id would be dropped while the last one is retained.
-            {
-              jobId: `sre-recovery-${recovery.sourceType}-${recovery.sourceId}-${Date.parse(recovery.recoveredAt)}`,
-            },
-          ),
+          this.getQueue().add(name, data, { jobId }),
           new Promise<never>((_, reject) => {
             timer = setTimeout(
-              () => reject(new Error('Recovery enqueue timed out')),
+              () => reject(new Error(`SRE ${name} enqueue timed out`)),
               RECOVERY_ENQUEUE_ATTEMPT_TIMEOUT_MS,
             );
           }),
@@ -137,7 +135,7 @@ export class SreAlertTriageQueueService implements OnModuleDestroy {
       } catch (error) {
         const delay = RECOVERY_ENQUEUE_DELAYS_MS[attempt];
         if (delay === undefined) {
-          this.logger.error('Failed to enqueue SRE source recovery job', error);
+          this.logger.error(failureMessage, error);
           return false;
         }
         await new Promise((resolve) => setTimeout(resolve, delay));

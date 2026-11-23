@@ -6,7 +6,7 @@ const inserts: unknown[] = [];
 
 function chain(result: unknown[]) {
   const node: Record<string, unknown> = {};
-  for (const name of ["from", "where", "limit", "leftJoin", "innerJoin", "orderBy", "set", "returning"]) {
+  for (const name of ["from", "where", "limit", "leftJoin", "innerJoin", "orderBy", "set", "returning", "for"]) {
     node[name] = jest.fn(() => node);
   }
   node.values = jest.fn((value: unknown) => {
@@ -84,6 +84,14 @@ describe("assignIncident", () => {
   it("returns not_found for an incident outside the project", async () => {
     selectQueue.push([{ id: assignee }], []);
     expect(await assignIncident(actor, incidentId, assignee)).toMatchObject({ ok: false, code: "not_found" });
+  });
+
+  it("refuses to assign or set a commander on a resolved incident", async () => {
+    selectQueue.push([{ id: assignee }], [{ current: null, status: "resolved" }]);
+    expect(await assignIncident(actor, incidentId, assignee)).toMatchObject({ ok: false, code: "conflict", error: expect.stringMatching(/reopen/i) });
+    expect(executor.update).not.toHaveBeenCalled();
+    expect(inserts).toHaveLength(0);
+    expect(notifyIncidentEvent).not.toHaveBeenCalled();
   });
 
   it("assigns, records the timeline, audits and notifies once", async () => {

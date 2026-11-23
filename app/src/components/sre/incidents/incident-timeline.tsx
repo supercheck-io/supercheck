@@ -57,6 +57,7 @@ const STATE_VISUAL: Record<string, { icon: LucideIcon; tone: IconTone }> = {
   created_from_alert_history: { icon: Siren, tone: "rose" },
   created_from_background_alert_triage: { icon: Siren, tone: "rose" },
   triage_failed: { icon: TriangleAlert, tone: "rose" },
+  triage_skipped: { icon: TriangleAlert, tone: "amber" },
 };
 
 /** Icon and colour for a timeline row, so the kind of event reads before its text. */

@@ -203,6 +203,59 @@ describe('SreAlertTriageQueueService', () => {
     errorSpy.mockRestore();
   });
 
+  it.each([
+    [
+      'alert history rows',
+      (service: SreAlertTriageQueueService) =>
+        service.enqueueAlertHistoryRows([{ id: 'h1', status: 'sent' }]),
+      undefined,
+    ],
+    [
+      'a source failure',
+      (service: SreAlertTriageQueueService) =>
+        service.enqueueSourceFailure({
+          sourceType: 'monitor',
+          sourceId: 'm1',
+          type: 'monitor_failure',
+          message: 'down',
+          firedAt: '2026-10-28T10:00:00.000Z',
+        }),
+      false,
+    ],
+  ] as const)(
+    'bounds and retries the enqueue of %s while Redis is disconnected',
+    async (_label, enqueue, expected) => {
+      jest.useFakeTimers();
+      const errorSpy = jest
+        .spyOn(Logger.prototype, 'error')
+        .mockImplementation();
+      const add = jest.fn(
+        (_name: string, _data: unknown, _opts: unknown) =>
+          new Promise(() => undefined),
+      );
+      mockQueueConstructor.mockImplementationOnce(() => ({
+        add,
+        on: jest.fn(),
+        close: jest.fn().mockResolvedValue(undefined),
+      }));
+      const result = enqueue(new SreAlertTriageQueueService(configService));
+      await jest.advanceTimersByTimeAsync(
+        RECOVERY_ENQUEUE_ATTEMPT_TIMEOUT_MS *
+          (RECOVERY_ENQUEUE_DELAYS_MS.length + 1) +
+          RECOVERY_ENQUEUE_DELAYS_MS.reduce((a, b) => a + b, 0),
+      );
+      await expect(result).resolves.toBe(expected);
+      expect(add).toHaveBeenCalledTimes(RECOVERY_ENQUEUE_DELAYS_MS.length + 1);
+      // Every attempt reuses one job id, so an add that lands late is not duplicated.
+      expect(
+        new Set(add.mock.calls.map((call) => JSON.stringify(call[2]))).size,
+      ).toBe(1);
+      expect(errorSpy).toHaveBeenCalledTimes(1);
+      errorSpy.mockRestore();
+      jest.useRealTimers();
+    },
+  );
+
   it.each(INCIDENT_GATE_CONTRACT)(
     'incident gate contract: SRE_ENABLED=%j -> %s',
     async (sre, expected) => {

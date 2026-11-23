@@ -9,6 +9,18 @@ describe("describeTimelineEvent notification rows", () => {
   });
 });
 
+describe("describeTimelineEvent system rows", () => {
+  it("names a skipped AI triage with its reason", () => {
+    const event = { eventType: "state_change", eventData: { state: "triage_skipped", reason: "daily_limit", comment: "Daily AI usage limit reached." } };
+    expect(describeTimelineEvent(event)).toEqual({ title: "AI triage skipped", body: "Daily AI usage limit reached." });
+  });
+
+  it("shows a severity raised by an alert as an edit", () => {
+    const event = { eventType: "state_change", eventData: { state: "incident_updated", previous: { severity: "sev2" }, current: { severity: "sev1" }, comment: "Severity raised by a more severe alert" } };
+    expect(describeTimelineEvent(event)).toEqual({ title: "Incident updated", body: "Severity: SEV2 → SEV1" });
+  });
+});
+
 describe("parsePostmortemTimeline", () => {
   it("reads draft lines as moments and maps known titles back to their events", () => {
     const moments = parsePostmortemTimeline(

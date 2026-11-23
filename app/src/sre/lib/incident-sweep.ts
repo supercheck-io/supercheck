@@ -66,7 +66,7 @@ export async function sweepSreIncidents(now = new Date()) {
 }
 
 // Necessary conditions (the exact recovery check is sourceRecoveredSince): open, automatically created (never by a person),
-// unacknowledged (an acknowledged incident stays open for its owner, so the worker signal alone leaves its note), trigger source in the same org/project, one-check recovery threshold, autoResolve not off.
+// unacknowledged (an acknowledged incident stays open for its owner, so the worker signal alone leaves its note), trigger source in the same org/project, autoResolve not off.
 const openAutomaticIncident = (alertConfig: typeof monitors.alertConfig | typeof jobs.alertConfig, sourceType: SourceType, now: Date) =>
   and(
     ne(sreIncidents.status, "resolved"),
@@ -79,7 +79,6 @@ const openAutomaticIncident = (alertConfig: typeof monitors.alertConfig | typeof
     eq(sreAlertEvents.projectId, sreIncidents.projectId),
     eq(sreAlertEvents.sourceType, sourceType),
     sql`${alertConfig}->>'autoResolveIncident' is distinct from 'false'`,
-    sql`(${alertConfig}->>'recoveryThreshold' is null or ${alertConfig}->>'recoveryThreshold' in ('0', '1'))`,
   );
 
 type RecoveryCandidate = {
@@ -172,11 +171,10 @@ export async function reconcileRecoveries(now = new Date(), deadline = Infinity)
   let count = 0;
   for (const source of await findRecoveryCandidates(now)) {
     if (Date.now() > deadline) break;
-    // The same rules as the worker signal; no streak can be proven from stored state, so a longer threshold is left to it.
-    if ((source.alertConfig?.recoveryThreshold ?? 1) > 1 || source.alertConfig?.autoResolveIncident === false) continue;
+    if (source.alertConfig?.autoResolveIncident === false) continue;
     try {
-      // Source still down, or a failure newer than its recovery: null, nothing is touched.
-      const recoveredAt = await sourceRecoveredSince(source.sourceType, source.sourceId, source.lastAlertAt);
+      // Source still down, its recovery threshold not met yet, or a failure newer than its recovery: null, nothing is touched.
+      const recoveredAt = await sourceRecoveredSince(source.sourceType, source.sourceId, source.lastAlertAt, source.alertConfig?.recoveryThreshold);
       if (!recoveredAt) continue;
       const recovery = await handleSourceRecovery({
         organizationId: source.organizationId,

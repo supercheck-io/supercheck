@@ -35,7 +35,7 @@ const logger = createLogger({ module: "sre-incident-lifecycle" }) as {
 };
 
 const assignSchema = z.object({
-  incidentId: z.string().uuid(),
+  incidentId: z.string().uuid().transform((value) => value.toLowerCase()),
   // Lowercased: timeline lookups key users by the database's lowercase ids.
   assigneeUserId: z.string().uuid().transform((value) => value.toLowerCase()).nullable(),
   role: z.enum(["assignee", "commander"]).default("assignee"),
@@ -116,7 +116,10 @@ export async function assignSreIncident(
     refresh(parsed.data.incidentId);
     return {
       success: true,
-      message: parsed.data.assigneeUserId ? "Incident assigned" : "Incident unassigned",
+      message:
+        parsed.data.role === "commander"
+          ? parsed.data.assigneeUserId ? "Commander set" : "Commander cleared"
+          : parsed.data.assigneeUserId ? "Incident assigned" : "Incident unassigned",
     };
   } catch (error) {
     logger.error({ error }, "Error assigning SRE incident");

@@ -71,7 +71,7 @@ export async function GET(request: NextRequest) {
     .from(sreIncidents)
     .leftJoin(sreServices, eq(sreIncidents.primaryServiceId, sreServices.id))
     .where(and(...filters))
-    .orderBy(desc(sreIncidents.updatedAt))
+    .orderBy(desc(sreIncidents.updatedAt), desc(sreIncidents.id))
     .limit(INCIDENT_LIST_LIMIT + 1);
 
   return NextResponse.json({
