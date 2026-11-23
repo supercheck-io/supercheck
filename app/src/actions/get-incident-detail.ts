@@ -4,7 +4,7 @@ import { db } from "@/utils/db";
 import { incidents, incidentUpdates, statusPages } from "@/db/schema";
 import { and, eq, desc, inArray } from "drizzle-orm";
 import { createLogger } from "@/lib/logger/index";
-import { permissionDeniedResult } from "@/lib/deletion/org-state";
+import { OrgPendingDeletionError, permissionDeniedResult } from "@/lib/deletion/org-state";
 import { requireProjectContext } from "@/lib/project-context";
 import { requirePermissions } from "@/lib/rbac/middleware";
 import { z } from "zod";
@@ -41,7 +41,11 @@ export async function getIncidentDetail(incidentId: string) {
         { status_page: ["view"] },
         { organizationId, projectId: project.id }
       );
-    } catch {
+    } catch (error) {
+      // Only a denial is a permission result; anything else (a failed lookup) is an error, handled below.
+      const denied =
+        error instanceof OrgPendingDeletionError || (error instanceof Error && error.message.includes("Access denied"));
+      if (!denied) throw error;
       return {
         ...(await permissionDeniedResult(organizationId, "Insufficient permissions to view incidents")),
         incident: null,

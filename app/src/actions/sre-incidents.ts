@@ -1379,6 +1379,8 @@ export async function updateSreIncident(
                 renotifyRetryAt: null,
                 escalateFailures: 0,
                 escalateRetryAt: null,
+                // A new open period counts its own alerts (none yet).
+                alertCount: 0,
                 reopenedAt: now,
               }
             : {}),
@@ -1443,7 +1445,12 @@ export async function updateSreIncident(
         await tx.insert(sreIncidentTimelineEvents).values({
           incidentId: parsed.data.id,
           eventType: "state_change",
-          eventData: { state: "reopened", comment: "Reopened from the incident editor" },
+          eventData: {
+            state: "reopened",
+            comment: "Reopened from the incident editor",
+            // Failures from before this resolve belong to the closed period (see recordRepeatAlert).
+            ...(current.resolvedAt ? { previousResolvedAt: current.resolvedAt.toISOString() } : {}),
+          },
           actorType: "user",
           actorUserId: userId,
           createdAt: now,

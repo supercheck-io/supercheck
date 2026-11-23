@@ -128,7 +128,8 @@ describe("getSreIncidentDetails investigation summary", () => {
 
   it("reopening from the editor clears the acknowledgement, records the reopen and notifies", async () => {
     const incidentId = "00000000-0000-4000-8000-000000000001";
-    (db.query.sreIncidents.findFirst as jest.Mock).mockResolvedValue({ id: incidentId, status: "resolved", severity: "sev2" });
+    const resolvedAt = new Date("2026-01-01T10:00:00.000Z");
+    (db.query.sreIncidents.findFirst as jest.Mock).mockResolvedValue({ id: incidentId, status: "resolved", severity: "sev2", resolvedAt });
     const sets: Array<Record<string, unknown>> = [];
     const inserted: Array<Record<string, unknown>> = [];
     (db.transaction as jest.Mock).mockImplementation(async (callback) => callback({
@@ -143,6 +144,9 @@ describe("getSreIncidentDetails investigation summary", () => {
     });
     expect(result).toMatchObject({ success: true });
     expect(sets[0]).toMatchObject({ acknowledgedAt: null, acknowledgedByUserId: null, renotifiedAt: null, renotifyCount: 0, renotifyStoppedAt: null, escalatedAt: null, resolvedAt: null });
+    // A new open period: its own alert count, and late failures from the closed period are not counted in it.
+    expect(sets[0]).toMatchObject({ alertCount: 0 });
+    expect(inserted[1].eventData).toMatchObject({ state: "reopened", previousResolvedAt: resolvedAt.toISOString() });
     // The previous resolution stays on the incident.
     expect(sets[0]).not.toHaveProperty("resolutionSummary");
     expect(inserted.map((row) => (row.eventData as { state: string }).state)).toEqual(["incident_updated", "reopened"]);

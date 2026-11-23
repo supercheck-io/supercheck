@@ -9,6 +9,7 @@ jest.mock("@/utils/db", () => ({
 jest.mock("@/lib/project-context", () => ({ requireProjectContext: jest.fn() }));
 jest.mock("@/lib/rbac/middleware", () => ({ requirePermissions: jest.fn() }));
 jest.mock("@/lib/deletion/org-state", () => ({
+  OrgPendingDeletionError: class OrgPendingDeletionError extends Error {},
   permissionDeniedResult: jest.fn(async (_org: string, message: string) => ({ success: false, error: message, message })),
 }));
 jest.mock("@/lib/logger/index", () => ({ createLogger: () => ({ error: jest.fn() }) }));
@@ -39,11 +40,17 @@ it("returns the incident with only public status page fields", async () => {
 });
 
 it("reports a permission failure distinctly, without reading the incident", async () => {
-  (requirePermissions as jest.Mock).mockRejectedValue(new Error("Access denied: Missing status_page:view permission"));
+  (requirePermissions as jest.Mock).mockRejectedValue(new Error("Permission check failed: Access denied: Missing status_page:view permission"));
   expect(await getIncidentDetail(id)).toMatchObject({
     success: false,
     incident: null,
     message: "Insufficient permissions to view incidents",
   });
+  expect(findFirst).not.toHaveBeenCalled();
+});
+
+it("reports a failed permission lookup as an error, not as a denial", async () => {
+  (requirePermissions as jest.Mock).mockRejectedValue(new Error("Permission check failed: connection terminated"));
+  expect(await getIncidentDetail(id)).toEqual({ success: false, message: "Failed to fetch incident details", incident: null });
   expect(findFirst).not.toHaveBeenCalled();
 });
