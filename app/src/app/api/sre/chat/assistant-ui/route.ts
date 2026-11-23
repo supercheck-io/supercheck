@@ -185,6 +185,9 @@ function fitPromptHistory(messages: SreAssistantUiMessage[], maxChars: number) {
   return [...kept, ...trailing];
 }
 
+/** Error code the Copilot thread reloads on; kept in step with `sre-assistant-ui-thread.tsx`. */
+const REPLY_REPLACED_CODE = "reply_replaced";
+
 function buildAssistantUiSystemPrompt(input: {
   projectName: string;
   incidentId: string | null;
@@ -459,7 +462,15 @@ export async function POST(request: NextRequest) {
       );
       if (regenerating) {
         const target = regenerateTargetId ? stored.get(regenerateTargetId) : undefined;
-        if (target?.role !== "assistant" || isSreMessageSuperseded(target)) {
+        // Replaced, or never saved because another tab regenerated the same reply first: the client reloads the
+        // saved replies (and their ids) instead of retrying with a reply that does not exist.
+        if (!target || isSreMessageSuperseded(target)) {
+          return NextResponse.json(
+            { error: "This reply was replaced in another tab. The chat was reloaded with the saved replies.", code: REPLY_REPLACED_CODE },
+            { status: 409 },
+          );
+        }
+        if (target.role !== "assistant") {
           return NextResponse.json(
             { error: "Copilot message to regenerate was not found" },
             { status: 400 },

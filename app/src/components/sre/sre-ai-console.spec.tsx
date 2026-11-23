@@ -19,13 +19,16 @@ jest.mock("@/components/sre/sre-assistant-ui-thread", () => ({
     initialMessages,
     incidentId,
     onError,
+    onReplyReplaced,
   }: {
     initialMessages: Array<{ content: string }>;
     incidentId?: string | null;
     onError?: (message: string) => void;
+    onReplyReplaced?: () => void;
   }) => (
     <div data-testid="chat-thread" data-incident={incidentId ?? ""}>
       <button type="button" onClick={() => onError?.("Rate limited")}>Fail send</button>
+      <button type="button" onClick={() => onReplyReplaced?.()}>Reply replaced</button>
       {initialMessages.map((message, index) => (
         <p key={`${message.content}-${index}`}>{message.content}</p>
       ))}
@@ -388,5 +391,24 @@ describe("SreAiConsole", () => {
     fireEvent.keyDown(document, { key: "Escape" });
     fireEvent.click(screen.getByRole("button", { name: "History" }));
     expect(onRequestHistoryRefresh).toHaveBeenCalledTimes(2);
+  });
+
+  it("reloads the chat's saved replies after another tab replaced the reply it names", () => {
+    const history = (messages: string[]) => [
+      {
+        conversationId: "chat-1",
+        incidentId: null,
+        title: "Q",
+        updatedAt: "2026-10-09",
+        messages: messages.map((content, i) => ({ id: `m${i}`, role: (i % 2 ? "assistant" : "user") as "user" | "assistant", content, modelId: null })),
+      },
+    ];
+    const refresh = jest.fn();
+    const { rerender } = render(<SreAiConsole initialHistories={history(["q", "unsaved reply"])} onRequestHistoryRefresh={refresh} />);
+    fireEvent.click(screen.getByRole("button", { name: "Reply replaced" }));
+    expect(refresh).toHaveBeenCalledTimes(1);
+    rerender(<SreAiConsole initialHistories={history(["q", "saved reply from the other tab"])} onRequestHistoryRefresh={refresh} />);
+    expect(screen.getByText("saved reply from the other tab")).toBeInTheDocument();
+    expect(screen.queryByText("unsaved reply")).not.toBeInTheDocument();
   });
 });

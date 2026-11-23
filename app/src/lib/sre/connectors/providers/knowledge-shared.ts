@@ -136,6 +136,22 @@ export function fenceUntrustedTitle(provider: string, title: string) {
   return `[Untrusted ${label} title] ${text || "item"}`;
 }
 
+const KNOWLEDGE_TITLE_LABELS: Partial<Record<string, string>> = {
+  jira: "Jira",
+  confluence: "Confluence",
+  notion: "Notion",
+};
+
+/**
+ * A Private Agent evidence title as it may be stored: knowledge titles (Jira, Confluence, Notion) are third-party text
+ * and get the untrusted label like the direct path; other connector titles are returned unchanged. Every writer of
+ * Private Agent evidence uses this, because the first writer of a result hash wins the dedupe.
+ */
+export function privateAgentEvidenceTitle(connectorType: string, title: string) {
+  const label = KNOWLEDGE_TITLE_LABELS[connectorType];
+  return label ? fenceUntrustedTitle(label, title).slice(0, 500) : title;
+}
+
 export function singleLine(value: string) {
   return value
     .replace(/[\u0000-\u001f\u007f<>]+/g, " ")

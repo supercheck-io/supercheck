@@ -13,6 +13,7 @@ import { describeEvidenceBrief, reportHeadline } from "@/lib/sre/evidence-brief-
 import { logAuditEvent } from "@/lib/audit-logger";
 import { createLogger } from "@/lib/logger/index";
 import { normalizePrivateAgentEvidenceSummaries } from "@/lib/sre/connector-job-evidence";
+import { privateAgentEvidenceTitle } from "@/lib/sre/connectors/providers/knowledge-shared";
 import {
   isLiveSearchConnectorType,
   SRE_CONNECTOR_TYPES,
@@ -84,7 +85,7 @@ function connectorSourceType(value: string) {
     : null;
 }
 
-async function importCompletedPrivateAgentConnectorEvidence(input: {
+export async function importCompletedPrivateAgentConnectorEvidence(input: {
   organizationId: string;
   projectId: string;
   incidentId: string;
@@ -178,7 +179,7 @@ async function importCompletedPrivateAgentConnectorEvidence(input: {
             sourceType,
             sourceConnectorId: connector.id,
             sourceUri: item.sourceUri,
-            title: item.title,
+            title: privateAgentEvidenceTitle(connector.type, item.title),
             summary: item.summary,
             rawContentExcerpt: truncate(item.summary, 1800),
             evidenceType: item.evidenceType,

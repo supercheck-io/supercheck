@@ -118,3 +118,22 @@ it("keeps a regenerated reply in the replaced reply's place when the transcript 
   const visible = (await listSreMessages({ ...scope })).filter((row) => !isSreMessageSuperseded(row)).map((row) => row.content);
   expect(visible).toEqual(["U1", "A1 again", "U2", "A2"]);
 });
+
+it("keeps the regenerated reply in bounded history even when it ties with the replaced reply at the limit", async () => {
+  await mockDatabase.update(schema.sreChatMessages).set({ createdAt: new Date("2026-11-20T10:00:00Z") }).where(eq(schema.sreChatMessages.id, originalReplyId));
+  const replacement = await regenerated("replacement");
+  await mockDatabase.insert(schema.sreChatMessages).values(
+    Array.from({ length: 3 }, (_, i) => ({
+      conversationId: scope.conversationId,
+      role: "user" as const,
+      content: `later ${i}`,
+      createdAt: new Date(Date.parse("2026-11-20T10:01:00Z") + i * 1000),
+    })),
+  );
+  // Limit 4 leaves exactly one slot for the original/replacement pair.
+  const rows = await listSreMessages({ ...scope, limit: 4 });
+  expect(rows.map((row) => row.content)).toEqual(["replacement", "later 0", "later 1", "later 2"]);
+  expect(rows[0].id).toBe(replacement.id);
+  // The replaced reply never takes a slot: a larger limit returns the same visible rows, not the original as well.
+  expect((await listSreMessages({ ...scope, limit: 5 })).map((row) => row.content)).toEqual(["replacement", "later 0", "later 1", "later 2"]);
+});

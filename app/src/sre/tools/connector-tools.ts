@@ -58,7 +58,7 @@ const logger = createLogger({ module: "sre-connector-tools" }) as {
 };
 import { flatCredentialFields } from "@/lib/sre/connectors/providers/provider-credentials";
 import { describeMcpToolsForModel } from "@/lib/sre/connectors/providers/mcp";
-import { fenceUntrustedTitle } from "@/lib/sre/connectors/providers/knowledge-shared";
+import { privateAgentEvidenceTitle } from "@/lib/sre/connectors/providers/knowledge-shared";
 import { db } from "@/utils/db";
 import {
   executeMcpToolCall,
@@ -434,12 +434,6 @@ function evidenceInsertValue(
   };
 }
 
-const KNOWLEDGE_TITLE_LABELS: Partial<Record<string, string>> = {
-  jira: "Jira",
-  confluence: "Confluence",
-  notion: "Notion",
-};
-
 export async function collectPrivateAgentEvidence(input: {
   scope: SreConnectorToolScope;
   connector: ConnectorRow;
@@ -448,16 +442,11 @@ export async function collectPrivateAgentEvidence(input: {
   resultSummary: Record<string, unknown> | null;
   maxItems: number;
 }) {
-  const knowledgeLabel = KNOWLEDGE_TITLE_LABELS[input.connector.type];
   // Jira and Confluence titles from a Private Agent are third-party text: label them like the direct path does.
   const summaries = normalizePrivateAgentEvidenceSummaries(
     input.resultSummary,
     input.maxItems,
-  ).map((item) =>
-    knowledgeLabel
-      ? { ...item, title: fenceUntrustedTitle(knowledgeLabel, item.title).slice(0, 500) }
-      : item,
-  );
+  ).map((item) => ({ ...item, title: privateAgentEvidenceTitle(input.connector.type, item.title) }));
   if (summaries.length === 0) return [];
   const incidentId = input.scope.incidentId;
   if (!incidentId) {

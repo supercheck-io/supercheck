@@ -5,7 +5,7 @@ import {
   getQuickRepliesForAssistantText,
 } from "./sre-generative-ui";
 import { CopilotChatHelp } from "./sre-copilot-chat-help";
-import { INCIDENT_STARTERS, SreAssistantUiThread, historyMessagesToUiMessages, InterruptedNotice } from "./sre-assistant-ui-thread";
+import { INCIDENT_STARTERS, SreAssistantUiThread, historyMessagesToUiMessages, InterruptedNotice, isReplyReplacedError } from "./sre-assistant-ui-thread";
 import { AssistantChatTransport, useChatRuntime } from "@assistant-ui/react-ai-sdk";
 import { useProjectContext } from "@/hooks/use-project-context";
 
@@ -283,5 +283,13 @@ describe("InterruptedNotice", () => {
   it("shows when the server flagged the reply as interrupted", () => {
     render(<InterruptedNotice status={{ type: "complete" }} interrupted />);
     expect(screen.getByText("Reply was interrupted.")).toBeInTheDocument();
+  });
+});
+
+describe("isReplyReplacedError", () => {
+  it("recognises only the route's reply_replaced code", () => {
+    expect(isReplyReplacedError(new Error(JSON.stringify({ error: "x", code: "reply_replaced" })))).toBe(true);
+    expect(isReplyReplacedError(new Error(JSON.stringify({ error: "Copilot message to regenerate was not found" })))).toBe(false);
+    expect(isReplyReplacedError(new Error("network down"))).toBe(false);
   });
 });

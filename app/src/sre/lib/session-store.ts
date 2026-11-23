@@ -186,7 +186,10 @@ export async function listSreConversations(input: ListSreConversationsInput) {
     .limit(parsed.limit ?? 50);
 }
 
-/** With `limit`, returns the newest `limit` messages, still oldest first. */
+/**
+ * With `limit`, returns the newest `limit` messages, still oldest first. Replies replaced by a regeneration are left
+ * out before the limit (a replacement shares its original's `createdAt`), and `id` breaks timestamp ties.
+ */
 export async function listSreMessages(
   input: z.infer<typeof conversationLookupSchema> & { limit?: number },
 ) {
@@ -195,9 +198,14 @@ export async function listSreMessages(
   const base = db
     .select()
     .from(sreChatMessages)
-    .where(eq(sreChatMessages.conversationId, conversation.id));
-  if (!limit) return base.orderBy(asc(sreChatMessages.createdAt));
-  const newest = await base.orderBy(desc(sreChatMessages.createdAt)).limit(limit);
+    .where(
+      and(
+        eq(sreChatMessages.conversationId, conversation.id),
+        sql`not (coalesce(${sreChatMessages.attachments}, '[]'::jsonb) @> ${JSON.stringify([{ type: SRE_MESSAGE_SUPERSEDED }])}::jsonb)`,
+      ),
+    );
+  if (!limit) return base.orderBy(asc(sreChatMessages.createdAt), asc(sreChatMessages.id));
+  const newest = await base.orderBy(desc(sreChatMessages.createdAt), desc(sreChatMessages.id)).limit(limit);
   return newest.reverse();
 }
 

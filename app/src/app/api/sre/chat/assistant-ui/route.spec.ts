@@ -592,13 +592,19 @@ describe("Copilot assistant-ui chat API", () => {
     expect(mockAppendSreMessage).not.toHaveBeenCalledWith(expect.objectContaining({ role: "user" }));
   });
 
-  it.each([
-    ["a user row", "user"],
-    ["an unknown id", null],
-  ])("returns 400 when the regenerate target is %s", async (_name, role) => {
-    mockListSreMessagesByIds.mockResolvedValue(role ? [storedRow(AID(1), role, "q")] : []);
+  it("returns 400 when the regenerate target is a user row", async () => {
+    mockListSreMessagesByIds.mockResolvedValue([storedRow(AID(1), "user", "q")]);
     const response = await regenerate(AID(1));
     expect(response.status).toBe(400);
+    expect(streamText).not.toHaveBeenCalled();
+  });
+
+  it("tells the client to reload when its reply was never saved because another tab regenerated it first", async () => {
+    // The losing tab's reply id is not stored; the winner superseded the original.
+    mockListSreMessagesByIds.mockResolvedValue([storedRow(AID(2), "assistant", "a2")]);
+    const response = await regenerate(AID(1));
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({ code: "reply_replaced" });
     expect(streamText).not.toHaveBeenCalled();
   });
 
@@ -670,7 +676,7 @@ describe("Copilot assistant-ui chat API", () => {
     );
 
     mockListSreMessagesByIds.mockResolvedValue([storedRow(AID(1), "assistant", "a1", [{ type: "superseded" }])]);
-    expect((await regenerate(AID(1))).status).toBe(400);
+    expect((await regenerate(AID(1))).status).toBe(409);
   });
 
   it("a stopped regeneration replaces its target with the partial reply, so a reload shows one reply", async () => {
