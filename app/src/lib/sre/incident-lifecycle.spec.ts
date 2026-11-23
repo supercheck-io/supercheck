@@ -6,7 +6,7 @@ const inserts: unknown[] = [];
 
 function chain(result: unknown[]) {
   const node: Record<string, unknown> = {};
-  for (const name of ["from", "where", "limit", "leftJoin", "innerJoin", "orderBy", "set", "returning"]) {
+  for (const name of ["from", "where", "limit", "leftJoin", "innerJoin", "orderBy", "set", "returning", "for"]) {
     node[name] = jest.fn(() => node);
   }
   node.values = jest.fn((value: unknown) => {

@@ -247,7 +247,9 @@ export async function assignIncident(
       .select({ current: column, status: sreIncidents.status })
       .from(sreIncidents)
       .where(scope(actor, incidentId))
-      .limit(1);
+      .limit(1)
+      // Locked so a resolve committing in between cannot leave a resolved incident reassigned.
+      .for("update");
     if (!before) return null;
     if (before.status === "resolved") return "resolved" as const;
 

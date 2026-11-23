@@ -202,6 +202,15 @@ describe("checkSreIncidentUpdateRateLimit", () => {
     ).resolves.toEqual({ allowed: true, remaining: 29 });
   });
 
+  it("keys the bucket by the lowercase incident id, so id casing cannot split it", async () => {
+    const evalCommand = jest.fn().mockResolvedValue([1, 1, Date.now()]);
+    mockGetRedisConnection.mockResolvedValue({ status: "ready", eval: evalCommand });
+    await checkSreIncidentUpdateRateLimit("user-1", "0190AAAA-BBBB-7CCC-8DDD-EEEEFFFF0000");
+    await checkSreIncidentUpdateRateLimit("user-1", "0190aaaa-bbbb-7ccc-8ddd-eeeeffff0000");
+    expect(evalCommand.mock.calls[0][2]).toBe(evalCommand.mock.calls[1][2]);
+    mockGetRedisConnection.mockReset();
+  });
+
   it("limits at 30 writes per minute per user and incident", async () => {
     const oldest = Date.now() - 1_000;
     const evalCommand = jest.fn().mockResolvedValueOnce([0, 30, oldest]);

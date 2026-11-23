@@ -204,7 +204,7 @@ export async function checkSreEvidenceBriefRateLimit(
   incidentId: string,
 ): Promise<SreRateLimitResult> {
   return checkSreRateLimit(
-    `evidence-brief:${userId}:${incidentId}`,
+    `evidence-brief:${userId}:${incidentId.toLowerCase()}`,
     3,
     60 * 1000,
   );
@@ -219,7 +219,7 @@ export async function checkSreInvestigationRateLimit(
   incidentId: string,
 ): Promise<SreRateLimitResult> {
   return checkSreRateLimit(
-    `investigation:${userId}:${incidentId}`,
+    `investigation:${userId}:${incidentId.toLowerCase()}`,
     3,
     5 * 60 * 1000,
   );
@@ -234,7 +234,7 @@ export async function checkSreTriageRateLimit(
   incidentId: string,
 ): Promise<SreRateLimitResult> {
   return checkSreRateLimit(
-    `triage:${userId}:${incidentId}`,
+    `triage:${userId}:${incidentId.toLowerCase()}`,
     10,
     5 * 60 * 1000,
   );
@@ -262,7 +262,7 @@ export async function checkSreIncidentUpdateRateLimit(
   incidentId: string,
 ): Promise<SreRateLimitResult> {
   const result = await checkSreRateLimit(
-    `incident-update:${userId}:${incidentId}`,
+    `incident-update:${userId}:${incidentId.toLowerCase()}`,
     30,
     60 * 1000,
   );
@@ -314,7 +314,7 @@ export async function checkSrePostmortemRateLimit(
   incidentId: string,
 ): Promise<SreRateLimitResult> {
   return checkSreRateLimit(
-    `postmortem:${userId}:${incidentId}`,
+    `postmortem:${userId}:${incidentId.toLowerCase()}`,
     5,
     60 * 60 * 1000,
   );
@@ -328,7 +328,7 @@ export async function checkSreStatusDraftRateLimit(
   userId: string,
   incidentId: string,
 ): Promise<SreRateLimitResult> {
-  return checkSreRateLimit(`status-draft:${userId}:${incidentId}`, 10, 60 * 60 * 1000);
+  return checkSreRateLimit(`status-draft:${userId}:${incidentId.toLowerCase()}`, 10, 60 * 60 * 1000);
 }
 
 /**
