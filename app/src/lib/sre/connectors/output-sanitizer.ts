@@ -60,6 +60,7 @@ export function redactConnectorText(value: string): string {
 }
 
 const MIN_EXACT_SECRET_CHARS = 6;
+const MIN_CLIPPED_SECRET_CHARS = 4;
 
 // Credential fields that hold a secret. Identifiers (region, tenant, subscription, header name, user) appear in
 // legitimate evidence and links, so they are left to the patterns.
@@ -83,6 +84,13 @@ export function redactExactSecrets(value: string, secrets: readonly string[]): s
   for (const secret of secrets) {
     if (secret.length < MIN_EXACT_SECRET_CHARS) continue;
     for (let i = value.indexOf(secret); i !== -1; i = value.indexOf(secret, i + 1)) spans.push([i, i + secret.length]);
+    // Providers clip long text before it gets here, which can cut a secret short: catch its leading part at the end.
+    for (let len = Math.min(secret.length - 1, value.length); len >= MIN_CLIPPED_SECRET_CHARS; len--) {
+      if (value.endsWith(secret.slice(0, len))) {
+        spans.push([value.length - len, value.length]);
+        break;
+      }
+    }
   }
   if (spans.length === 0) return value;
   spans.sort((a, b) => a[0] - b[0]);

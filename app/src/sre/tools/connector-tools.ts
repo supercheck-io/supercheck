@@ -474,9 +474,9 @@ export async function collectPrivateAgentEvidence(input: {
   }
 
   return db.transaction(async (tx) => {
-    // No unique index backs the dedupe: serialize per incident so two runs persisting the same result cannot both
-    // miss the existing row and insert it twice.
-    await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`sre-evidence-dedupe:${incidentId}`}))`);
+    // No unique index backs the dedupe: serialize per incident so two writers persisting the same result cannot both
+    // miss the existing row and insert it twice. Same key as the evidence brief's Private Agent import.
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${incidentId}))`);
     const persisted = [];
     for (const item of summaries) {
       const [existing] = await tx

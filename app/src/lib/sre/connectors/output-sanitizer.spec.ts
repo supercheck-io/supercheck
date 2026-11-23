@@ -86,6 +86,14 @@ describe("sanitizeConnectorEvidence", () => {
     expect(row.sourceUri).toContain("tenant-0000-1111");
   });
 
+  it("redacts the leading part of a secret that a provider clipped at the end of a title", () => {
+    const [row] = sanitizeConnectorEvidence([{ ...item, title: "auth failed for key Opaque9Q" }], {}, ["Opaque9Q7xZZ"]).items;
+    expect(row.title).toBe("auth failed for key [REDACTED]");
+    // A three-character overlap is too common to treat as a secret.
+    const [plain] = sanitizeConnectorEvidence([{ ...item, title: "status Opa" }], {}, ["Opaque9Q7xZZ"]).items;
+    expect(plain.title).toBe("status Opa");
+  });
+
   it("enforces row limits", () => {
     const result = sanitizeConnectorEvidence([item, { ...item, id: "evidence_2" }], {
       maxRows: 1,

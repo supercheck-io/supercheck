@@ -131,6 +131,7 @@ async function importCompletedPrivateAgentConnectorEvidence(input: {
     await tx.execute(
       sql`select pg_advisory_xact_lock(hashtext(${input.incidentId}))`,
     );
+    // The live connector search (collectPrivateAgentEvidence) takes the same lock before its own dedupe.
     const imported = [];
 
     for (const { job, connector } of completedJobs) {
