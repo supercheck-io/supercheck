@@ -252,6 +252,12 @@ describe("copyConnectors", () => {
     const [row] = await mockDatabase.select().from(schema.externalConnectors).where(eq(schema.externalConnectors.id, res.id!));
     expect(row).toMatchObject({ projectId: projTgt, permissionLevel: "read", sideEffectLevel: "none", status: "configured" });
   });
+  it("refuses to copy a non-MCP connector whose stored URL carries a query string", async () => {
+    const src = await seedConnector(orgA, projSrc, "Legacy", { endpoint: "https://93.184.216.34/api?token=abc" });
+    const [res] = await copyConnectors(scope, [src]);
+    expect(res).toMatchObject({ status: "failed" });
+    expect(await mockDatabase.select().from(schema.externalConnectors).where(eq(schema.externalConnectors.projectId, projTgt))).toHaveLength(0);
+  });
   it("concurrent copies of the same connector create one row", async () => {
     const src = await seedConnector(orgA, projSrc, "Prom");
     const results = await Promise.all([copyConnectors(scope, [src]), copyConnectors(scope, [src])]);

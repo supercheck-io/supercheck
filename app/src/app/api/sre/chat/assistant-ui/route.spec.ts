@@ -92,6 +92,9 @@ jest.mock("@/sre/tools/evidence-tools", () => ({
     listNativeEvidence: { description: "native evidence tool" },
     listConnectorEvidence: { description: "connector evidence tool" },
   })),
+  createSreIncidentTool: jest.fn(() => ({
+    getIncident: { description: "incident facts tool" },
+  })),
 }));
 
 jest.mock("@/sre/tools/similar-incident-tools", () => ({
@@ -589,13 +592,19 @@ describe("Copilot assistant-ui chat API", () => {
     expect(mockAppendSreMessage).not.toHaveBeenCalledWith(expect.objectContaining({ role: "user" }));
   });
 
-  it.each([
-    ["a user row", "user"],
-    ["an unknown id", null],
-  ])("returns 400 when the regenerate target is %s", async (_name, role) => {
-    mockListSreMessagesByIds.mockResolvedValue(role ? [storedRow(AID(1), role, "q")] : []);
+  it("returns 400 when the regenerate target is a user row", async () => {
+    mockListSreMessagesByIds.mockResolvedValue([storedRow(AID(1), "user", "q")]);
     const response = await regenerate(AID(1));
     expect(response.status).toBe(400);
+    expect(streamText).not.toHaveBeenCalled();
+  });
+
+  it("tells the client to reload when its reply was never saved because another tab regenerated it first", async () => {
+    // The losing tab's reply id is not stored; the winner superseded the original.
+    mockListSreMessagesByIds.mockResolvedValue([storedRow(AID(2), "assistant", "a2")]);
+    const response = await regenerate(AID(1));
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({ code: "reply_replaced" });
     expect(streamText).not.toHaveBeenCalled();
   });
 
@@ -667,15 +676,41 @@ describe("Copilot assistant-ui chat API", () => {
     );
 
     mockListSreMessagesByIds.mockResolvedValue([storedRow(AID(1), "assistant", "a1", [{ type: "superseded" }])]);
-    expect((await regenerate(AID(1))).status).toBe(400);
+    expect((await regenerate(AID(1))).status).toBe(409);
   });
 
-  it("keeps the original reply when the regeneration is stopped before it finishes", async () => {
+  it("a stopped regeneration replaces its target with the partial reply, so a reload shows one reply", async () => {
     streamAborted = true;
+    assistantResponseText = "Partial answ";
     mockListSreMessagesByIds.mockResolvedValue([storedRow(AID(1), "assistant", "a1"), storedRow(AID(2), "assistant", "a2")]);
     await regenerate(AID(1));
     await onFinishPromise;
-    expect(mockAppendSreMessage).not.toHaveBeenCalledWith(expect.anything(), { supersedeMessageId: expect.anything() });
+    // Transcript after reload: U1, the partial A1' (interrupted, kept out of prompts), U2, A2; A1 is superseded.
+    expect(mockAppendSreMessage).toHaveBeenCalledTimes(1);
+    expect(mockAppendSreMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ role: "assistant", content: "Partial answ", attachments: [{ type: "interrupted" }] }),
+      { supersedeMessageId: AID(1) },
+    );
+  });
+
+  it("a regeneration stopped before any text persists nothing and keeps the original reply", async () => {
+    streamOutcomeAborted = true;
+    assistantResponseText = "";
+    mockListSreMessagesByIds.mockResolvedValue([storedRow(AID(1), "assistant", "a1"), storedRow(AID(2), "assistant", "a2")]);
+    await regenerate(AID(1));
+    await onFinishPromise;
+    expect(mockAppendSreMessage).not.toHaveBeenCalled();
+  });
+
+  it("records the token usage of every model step against the organization's daily cap", async () => {
+    await send({ messages: [userTurn("u1", "hi")] });
+    const { onStepFinish } = jest.mocked(streamText).mock.calls[0][0] as unknown as { onStepFinish: (event: unknown) => unknown };
+    const usage = { inputTokens: 120, outputTokens: 30, totalTokens: 150 };
+    await onStepFinish({ usage });
+    expect(jest.requireMock("@/lib/sre/sre-daily-token-limit").recordSreTokenUsage).toHaveBeenCalledWith(
+      "018f0000-0000-7000-8000-000000000002",
+      usage,
+    );
   });
 
   it("returns 413 for a request body over the size bound", async () => {
@@ -792,6 +827,14 @@ describe("Copilot assistant-ui chat API", () => {
       expect(mockCreateSreEvidenceTools).toHaveBeenCalledWith(
         expect.objectContaining({ incidentId }),
       );
+      expect(jest.requireMock("@/sre/tools/evidence-tools").createSreIncidentTool).toHaveBeenCalledWith({
+        organizationId: "018f0000-0000-7000-8000-000000000002",
+        projectId: "018f0000-0000-7000-8000-000000000003",
+        incidentId,
+      });
+      // The model learns the incident from the tool and anchors connector windows on its start.
+      expect(jest.mocked(streamText).mock.calls[0][0].system).toContain("Call getIncident first");
+      expect(jest.mocked(streamText).mock.calls[0][0].system).toContain("startedAt");
       expect(mockCreateSreConnectorTools).toHaveBeenCalledWith(
         expect.objectContaining({ incidentId }),
       );
@@ -800,6 +843,7 @@ describe("Copilot assistant-ui chat API", () => {
           system: expect.stringContaining("Incident-scoped Copilot chat rules"),
           tools: expect.objectContaining({
             listNativeEvidence: expect.any(Object),
+            getIncident: expect.any(Object),
             findSimilarIncidents: expect.any(Object),
             listIncidentConnectors: expect.any(Object),
           }),

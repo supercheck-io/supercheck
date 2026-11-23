@@ -27,6 +27,8 @@ describe('Private Agent endpoint transport', () => {
     '168.63.129.16',
     'fd00:ec2::254',
     '64:ff9b::a9fe:a9fe',
+    '64:ff9b:1:a9fe:a9fe::',
+    '64:ff9b:1::a9fe:a9fe',
     '2002:a9fe:a9fe::',
     '::127.0.0.1',
     '192.0.0.192',
@@ -61,6 +63,39 @@ describe('Private Agent endpoint transport', () => {
         r.text(),
       ),
     ).rejects.toThrow('cannot target localhost');
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  it('fails a DNS lookup that never answers after the timeout', async () => {
+    jest.useFakeTimers();
+    try {
+      mockLookup.mockReturnValueOnce(new Promise(() => undefined));
+      global.fetch = jest.fn();
+      const pending = requestPrivateAgentEndpoint(
+        'https://hung.example.com',
+        {},
+        (r) => r.text(),
+      );
+      const assertion = expect(pending).rejects.toThrow('timed out');
+      await jest.advanceTimersByTimeAsync(10_000);
+      await assertion;
+      expect(global.fetch).not.toHaveBeenCalled();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('stops a DNS lookup when the request is aborted', async () => {
+    mockLookup.mockReturnValueOnce(new Promise(() => undefined));
+    global.fetch = jest.fn();
+    const controller = new AbortController();
+    const pending = requestPrivateAgentEndpoint(
+      'https://hung.example.com',
+      { signal: controller.signal },
+      (r) => r.text(),
+    );
+    controller.abort();
+    await expect(pending).rejects.toThrow('aborted');
     expect(global.fetch).not.toHaveBeenCalled();
   });
 

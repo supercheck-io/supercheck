@@ -26,7 +26,7 @@ jest.mock("@/sre/lib/investigation-runner", () => ({
 jest.mock("@/sre/lib/triage-runner", () => ({ startSreIncidentTriage: jest.fn(), completeSreIncidentTriage: jest.fn() }));
 
 import { maybeAutoInvestigateOnOpen } from "./auto-investigate";
-import { insertSreRun, MAX_AUTO_RUNNING_PER_ORG, SreOrgConcurrencyError } from "./run-insert";
+import { insertSreRun, MAX_AUTO_RUNNING_PER_ORG, MAX_MANUAL_RUNNING_PER_ORG, SreOrgConcurrencyError } from "./run-insert";
 
 const execFileAsync = promisify(execFile);
 const name = `auto_investigate_${randomUUID().replaceAll("-", "")}`;
@@ -186,4 +186,57 @@ it("admits at most the per-organization cap of simultaneous automatic runs acros
   );
   expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(MAX_AUTO_RUNNING_PER_ORG);
   expect(results.filter((r) => r.status === "rejected" && r.reason instanceof SreOrgConcurrencyError)).toHaveLength(6 - MAX_AUTO_RUNNING_PER_ORG);
+});
+
+it("admits at most the higher per-organization cap of simultaneous manual runs across incidents", async () => {
+  const total = MAX_MANUAL_RUNNING_PER_ORG + 4;
+  const incidents = await Promise.all(
+    Array.from({ length: total }, (_, i) =>
+      mockDatabase
+        .insert(schema.sreIncidents)
+        .values({ organizationId: input.organizationId, projectId: input.projectId, incidentNumber: 100 + i, title: "Manual", severity: "sev3" })
+        .returning()
+        .then(([row]) => row),
+    ),
+  );
+  const results = await Promise.allSettled(
+    incidents.map((incident) =>
+      insertSreRun(mockDatabase, {
+        organizationId: input.organizationId,
+        projectId: input.projectId,
+        incidentId: incident.id,
+        agentType: "triage",
+        status: "running",
+        origin: "manual",
+        modelId: "m",
+      }),
+    ),
+  );
+  expect(MAX_MANUAL_RUNNING_PER_ORG).toBeGreaterThan(MAX_AUTO_RUNNING_PER_ORG);
+  expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(MAX_MANUAL_RUNNING_PER_ORG);
+  const refused = results.filter((r): r is PromiseRejectedResult => r.status === "rejected");
+  expect(refused).toHaveLength(total - MAX_MANUAL_RUNNING_PER_ORG);
+  for (const r of refused) {
+    expect(r.reason).toBeInstanceOf(SreOrgConcurrencyError);
+    expect(r.reason.message).toContain("Try again when one finishes");
+  }
+});
+
+it("counts manual runs toward the automatic cap, so a busy organization skips automatic triage", async () => {
+  const incidents = await Promise.all(
+    Array.from({ length: MAX_AUTO_RUNNING_PER_ORG }, (_, i) =>
+      mockDatabase
+        .insert(schema.sreIncidents)
+        .values({ organizationId: input.organizationId, projectId: input.projectId, incidentNumber: 200 + i, title: "Busy", severity: "sev3" })
+        .returning()
+        .then(([row]) => row),
+    ),
+  );
+  for (const incident of incidents) {
+    await insertSreRun(mockDatabase, {
+      organizationId: input.organizationId, projectId: input.projectId, incidentId: incident.id,
+      agentType: "triage", status: "running", origin: "manual", modelId: "m",
+    });
+  }
+  expect(await maybeAutoInvestigateOnOpen(input)).toEqual({ handled: false, reason: "org_concurrency_limit" });
 });

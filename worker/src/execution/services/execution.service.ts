@@ -10,6 +10,7 @@ import { RedisService } from './redis.service';
 import { ReportUploadService } from '../../common/services/report-upload.service';
 import {
   ContainerExecutorService,
+  EXECUTION_QUOTA_ERROR,
   WORKER_INTERRUPTED_ERROR,
 } from '../../common/security/container-executor.service';
 import {
@@ -131,6 +132,7 @@ interface PlaywrightExecutionResult {
   success: boolean;
   cancelled?: boolean;
   interrupted?: boolean;
+  capacityExhausted?: boolean;
   started?: boolean;
   error: string | null;
   stdout: string;
@@ -599,6 +601,9 @@ export class ExecutionService implements OnModuleDestroy {
         userCancelled = true;
         throw new Error('Execution cancelled by user');
       }
+      // The execution quota was full and no pod exists: re-queue instead of failing the run.
+      if (execResult.capacityExhausted && !containerRan)
+        throw new ExecutionCapacityError(EXECUTION_QUOTA_ERROR);
       if (execResult.interrupted) {
         // The pod never started: let the queue delay the run so a new worker runs it.
         if (!containerRan)
@@ -1107,6 +1112,9 @@ export class ExecutionService implements OnModuleDestroy {
         userCancelled = true;
         throw new Error('Execution cancelled by user');
       }
+      // The execution quota was full and no pod exists: re-queue instead of failing the run.
+      if (execResult.capacityExhausted && !jobStarted)
+        throw new ExecutionCapacityError(EXECUTION_QUOTA_ERROR);
       if (execResult.interrupted) {
         interrupted = true;
         // The pod never started: let the queue delay the run so a new worker runs it.
@@ -1482,6 +1490,7 @@ export class ExecutionService implements OnModuleDestroy {
         success: execResult.success,
         cancelled: execResult.cancelled,
         interrupted: execResult.interrupted,
+        capacityExhausted: execResult.capacityExhausted,
         started: execResult.started,
         error: extractedError, // Use the extracted error message
         stdout: execResult.stdout,
@@ -1882,6 +1891,7 @@ export class ExecutionService implements OnModuleDestroy {
     success: boolean;
     cancelled?: boolean;
     interrupted?: boolean;
+    capacityExhausted?: boolean;
     started?: boolean;
     stdout: string;
     stderr: string;
@@ -1986,6 +1996,7 @@ export class ExecutionService implements OnModuleDestroy {
       success: containerResult.success,
       cancelled: containerResult.cancelled,
       interrupted: containerResult.interrupted,
+      capacityExhausted: containerResult.capacityExhausted,
       started: containerResult.started,
       stdout: redactedStdout,
       stderr: redactedStderr,

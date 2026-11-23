@@ -75,7 +75,7 @@ export type AppendSreMessageInput = z.infer<typeof appendMessageSchema>;
 export class SreSessionStoreError extends Error {
   constructor(
     message: string,
-    readonly code: "invalid_input" | "not_found" | "incident_not_found",
+    readonly code: "invalid_input" | "not_found" | "incident_not_found" | "already_superseded",
   ) {
     super(message);
     this.name = "SreSessionStoreError";
@@ -186,7 +186,10 @@ export async function listSreConversations(input: ListSreConversationsInput) {
     .limit(parsed.limit ?? 50);
 }
 
-/** With `limit`, returns the newest `limit` messages, still oldest first. */
+/**
+ * With `limit`, returns the newest `limit` messages, still oldest first. Replies replaced by a regeneration are left
+ * out before the limit (a replacement shares its original's `createdAt`), and `id` breaks timestamp ties.
+ */
 export async function listSreMessages(
   input: z.infer<typeof conversationLookupSchema> & { limit?: number },
 ) {
@@ -195,9 +198,14 @@ export async function listSreMessages(
   const base = db
     .select()
     .from(sreChatMessages)
-    .where(eq(sreChatMessages.conversationId, conversation.id));
-  if (!limit) return base.orderBy(asc(sreChatMessages.createdAt));
-  const newest = await base.orderBy(desc(sreChatMessages.createdAt)).limit(limit);
+    .where(
+      and(
+        eq(sreChatMessages.conversationId, conversation.id),
+        sql`not (coalesce(${sreChatMessages.attachments}, '[]'::jsonb) @> ${JSON.stringify([{ type: SRE_MESSAGE_SUPERSEDED }])}::jsonb)`,
+      ),
+    );
+  if (!limit) return base.orderBy(asc(sreChatMessages.createdAt), asc(sreChatMessages.id));
+  const newest = await base.orderBy(desc(sreChatMessages.createdAt), desc(sreChatMessages.id)).limit(limit);
   return newest.reverse();
 }
 
@@ -243,6 +251,10 @@ export async function appendSreMessage(input: AppendSreMessageInput, options: { 
     }
 
     const now = new Date();
+    // A regenerated reply takes the replaced reply's place in the transcript, so a reload keeps it after its question.
+    const replaced = options.supersedeMessageId
+      ? await flagSuperseded(tx, conversation.id, options.supersedeMessageId)
+      : null;
     const [message] = await tx
       .insert(sreChatMessages)
       .values({
@@ -256,7 +268,7 @@ export async function appendSreMessage(input: AppendSreMessageInput, options: { 
         investigationRunId: parsed.investigationRunId ?? null,
         modelId: parsed.modelId ?? null,
         tokenCount: parsed.tokenCount ?? null,
-        createdAt: now,
+        createdAt: replaced?.createdAt ?? now,
       })
       .returning();
 
@@ -264,10 +276,6 @@ export async function appendSreMessage(input: AppendSreMessageInput, options: { 
       .update(sreChatConversations)
       .set({ updatedAt: now })
       .where(eq(sreChatConversations.id, conversation.id));
-
-    if (options.supersedeMessageId) {
-      await flagSuperseded(tx, conversation.id, options.supersedeMessageId);
-    }
 
     return message;
   });
@@ -282,13 +290,29 @@ export async function markSreMessageSuperseded(
   await flagSuperseded(db, conversation.id, messageId);
 }
 
-function flagSuperseded(executor: Pick<typeof db, "update">, conversationId: string, messageId: string) {
-  return executor
+/**
+ * Claims the reply for one regeneration: only a reply not yet superseded is flagged. When two tabs regenerate the
+ * same reply, the second claim finds no row and throws, rolling back that tab's appended reply (no duplicate).
+ */
+async function flagSuperseded(executor: Pick<typeof db, "update">, conversationId: string, messageId: string) {
+  const supersededMarker = JSON.stringify([{ type: SRE_MESSAGE_SUPERSEDED }]);
+  const [claimed] = await executor
     .update(sreChatMessages)
     .set({
-      attachments: sql`coalesce(${sreChatMessages.attachments}, '[]'::jsonb) || ${JSON.stringify([{ type: SRE_MESSAGE_SUPERSEDED }])}::jsonb`,
+      attachments: sql`coalesce(${sreChatMessages.attachments}, '[]'::jsonb) || ${supersededMarker}::jsonb`,
     })
-    .where(and(eq(sreChatMessages.id, messageId), eq(sreChatMessages.conversationId, conversationId)));
+    .where(
+      and(
+        eq(sreChatMessages.id, messageId),
+        eq(sreChatMessages.conversationId, conversationId),
+        sql`not (coalesce(${sreChatMessages.attachments}, '[]'::jsonb) @> ${supersededMarker}::jsonb)`,
+      ),
+    )
+    .returning({ id: sreChatMessages.id, createdAt: sreChatMessages.createdAt });
+  if (!claimed) {
+    throw new SreSessionStoreError("The reply was already replaced or is not in this conversation", "already_superseded");
+  }
+  return claimed;
 }
 
 export async function archiveSreConversation(

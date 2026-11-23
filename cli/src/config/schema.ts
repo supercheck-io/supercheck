@@ -92,7 +92,11 @@ export const jobDefinitionSchema = z.object({
   jobType: z.enum(['playwright', 'k6']).optional(),
   tests: z.array(z.string()).min(1),
   cronSchedule: z.string().optional(),
-  alertConfig: alertConfigSchema.optional(),
+  // Jobs have no recovery alert (the server drops the key; `alertOnSuccess` covers a passing run), so drop it too and deploy shows no diff.
+  alertConfig: alertConfigSchema.transform((alert) => {
+    delete alert.alertOnRecovery
+    return alert
+  }).optional(),
 }, {
   error: (issue) => {
     if (issue.code === 'unrecognized_keys' && issue.keys.includes('tags')) {

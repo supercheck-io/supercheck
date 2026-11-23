@@ -6,8 +6,13 @@ import { z } from "zod";
 
 import { loadTimelineRefs } from "@/lib/sre/timeline-refs";
 
-import { sreIncidents, sreIncidentTimelineEvents, incidents as statusPageIncidents, statusPages, user } from "@/db/schema";
-import { updateIncidentStatus } from "@/actions/update-incident-status";
+import { sreIncidents, sreIncidentTimelineEvents, user } from "@/db/schema";
+import {
+  describeStatusPagePublish,
+  listOpenLinkedStatusPageIncidents,
+  publishSreResolutionToStatusPages,
+  updateStatusPageIncident,
+} from "@/lib/status-page-incident-core";
 import { createLogger } from "@/lib/logger/index";
 import { requireProjectContext } from "@/lib/project-context";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
@@ -39,12 +44,16 @@ const incidentIdSchema = z.object({ incidentId: z.string().uuid() });
 const resolveSchema = z.object({
   incidentId: z.string().uuid(),
   summary: z.string().trim().min(1, "A resolution summary is required").max(MAX_RESOLUTION_SUMMARY_LENGTH),
+  /** Also resolve every open public incident linked to this incident. */
+  publishToStatusPages: z.boolean().optional(),
 });
 const updateSchema = z.object({
   incidentId: z.string().uuid(),
   text: z.string().trim().min(1, "Update cannot be empty").max(MAX_INCIDENT_UPDATE_LENGTH),
-  /** Also publish the note as an update on the incident's linked status page incident. */
+  /** Also publish the note as an update on every open status page incident linked to this incident. */
   postToStatusPage: z.boolean().optional(),
+  /** The public status the post moves to; by default each public incident keeps its own. */
+  statusPageStatus: z.enum(["investigating", "identified", "monitoring", "resolved"]).optional(),
 });
 
 export type SreIncidentActionResult =
@@ -187,36 +196,21 @@ export async function resolveSreIncident(
     const result = await resolveIncident(auth.actor, parsed.data.incidentId, parsed.data.summary);
     if (!result.ok) return { success: false, error: result.error };
     refresh(parsed.data.incidentId);
+    // After the resolve committed: a failed public post is a warning, never a rollback.
+    const publish = result.changed && parsed.data.publishToStatusPages
+      ? describeStatusPagePublish(await publishSreResolutionToStatusPages(auth.context, parsed.data.incidentId, parsed.data.summary))
+      : undefined;
     return {
       success: true,
       message: result.changed
-        ? `Incident #${result.incident.incidentNumber} resolved`
+        ? `Incident #${result.incident.incidentNumber} resolved${publish?.note ? `. ${publish.note}` : ""}`
         : `Incident #${result.incident.incidentNumber} was already resolved`,
+      ...(publish?.warning ? { warning: publish.warning } : {}),
     };
   } catch (error) {
     logger.error({ error }, "Error resolving SRE incident");
     return { success: false, error: "Failed to resolve incident" };
   }
-}
-
-/** The linked public incident, unless it is resolved or scheduled maintenance (those need their own flow). */
-async function findOpenStatusPageIncident(actor: IncidentActor, incidentId: string) {
-  const [row] = await db
-    .select({ id: statusPageIncidents.id, statusPageId: statusPageIncidents.statusPageId, status: statusPageIncidents.status })
-    .from(sreIncidents)
-    .innerJoin(statusPageIncidents, eq(statusPageIncidents.id, sreIncidents.statusPageIncidentId))
-    .innerJoin(statusPages, eq(statusPages.id, statusPageIncidents.statusPageId))
-    .where(
-      and(
-        eq(sreIncidents.id, incidentId),
-        eq(sreIncidents.organizationId, actor.organizationId),
-        eq(sreIncidents.projectId, actor.projectId),
-        eq(statusPages.organizationId, actor.organizationId),
-        eq(statusPages.projectId, actor.projectId),
-      ),
-    )
-    .limit(1);
-  return row && ["investigating", "identified", "monitoring"].includes(row.status) ? row : null;
 }
 
 export async function addSreIncidentUpdate(
@@ -232,33 +226,39 @@ export async function addSreIncidentUpdate(
     const limited = await updateRateLimitError(auth.actor, parsed.data.incidentId);
     if (limited) return { success: false, error: limited };
     // Checked before the note is written, so a refused post never leaves a half-done update.
-    let statusPageTarget: { id: string; statusPageId: string; status: string } | null = null;
+    let targets: Awaited<ReturnType<typeof listOpenLinkedStatusPageIncidents>> = [];
     if (parsed.data.postToStatusPage) {
       if (!checkPermissionWithContext("status_page", "update", auth.context)) {
         return { success: false, error: "Insufficient permissions to post to the status page" };
       }
-      statusPageTarget = await findOpenStatusPageIncident(auth.actor, parsed.data.incidentId);
-      if (!statusPageTarget) {
+      targets = await listOpenLinkedStatusPageIncidents(auth.actor, parsed.data.incidentId);
+      if (targets.length === 0) {
         return { success: false, error: "This incident has no open status page incident to post to" };
       }
     }
     const result = await addIncidentUpdate(auth.actor, parsed.data.incidentId, parsed.data.text);
     if (!result.ok) return { success: false, error: result.error };
     refresh(parsed.data.incidentId);
-    if (statusPageTarget) {
-      // The existing status page path writes the update and queues subscriber emails.
-      const posted = await updateIncidentStatus({
-        incidentId: statusPageTarget.id,
-        statusPageId: statusPageTarget.statusPageId,
-        status: statusPageTarget.status as "investigating" | "identified" | "monitoring",
-        body: parsed.data.text,
-        deliverNotifications: true,
-        restoreComponentStatus: false,
-      }, { expectedStatus: statusPageTarget.status }).catch(() => null);
-      if (!posted?.success) {
-        return { success: true, message: "Update added", warning: `The status page post failed: ${posted?.message ?? "try again from the status page"}` };
+    if (targets.length > 0) {
+      const failed: string[] = [];
+      for (const target of targets) {
+        // The status page path writes the update and queues subscriber emails when that post has notifications on.
+        const status = parsed.data.statusPageStatus ?? (target.status as "investigating" | "identified" | "monitoring");
+        const posted = await updateStatusPageIncident(auth.context, {
+          incidentId: target.id,
+          statusPageId: target.statusPageId,
+          status,
+          body: parsed.data.text,
+          deliverNotifications: target.deliverNotifications,
+          restoreComponentStatus: status === "resolved",
+        }, { expectedStatus: target.status }).catch(() => null);
+        if (!posted?.success) failed.push(`${target.statusPageName}: ${posted?.message ?? "try again from the status page"}`);
       }
-      return { success: true, message: "Update added and posted to the status page" };
+      if (failed.length === targets.length) {
+        return { success: true, message: "Update added", warning: `The status page post failed. ${failed.join("; ")}` };
+      }
+      const message = `Update added and posted to ${targets.length - failed.length === 1 ? "the status page" : `${targets.length - failed.length} status pages`}`;
+      return failed.length ? { success: true, message, warning: `Some status page posts failed. ${failed.join("; ")}` } : { success: true, message };
     }
     return { success: true, message: "Update added" };
   } catch (error) {

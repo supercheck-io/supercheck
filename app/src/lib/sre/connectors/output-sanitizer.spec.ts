@@ -1,4 +1,4 @@
-import { redactConnectorText, sanitizeConnectorEvidence } from "./output-sanitizer";
+import { connectorCredentialSecrets, redactConnectorText, sanitizeConnectorEvidence } from "./output-sanitizer";
 import { type ConnectorEvidenceItem } from "./connector-base";
 
 const item: ConnectorEvidenceItem = {
@@ -53,6 +53,45 @@ describe("sanitizeConnectorEvidence", () => {
     expect(result.items[0].rawContent).not.toContain("hunter2");
     expect(result.items[0].rawContent).not.toContain("ghp_");
     expect(result.resultHash).toHaveLength(64);
+  });
+
+  it("redacts the connector's own secret values that no pattern recognises, and keeps identifiers", () => {
+    const credential = {
+      secret: "Opaque9Q7x\n",
+      applicationKey: "AppKey77zz",
+      headerName: "X-Custom-Auth",
+      region: "us-east-1",
+      tenantId: "tenant-0000-1111",
+      port: 4318,
+      nested: { a: "deep-secret" },
+    };
+    const secrets = connectorCredentialSecrets(credential);
+    expect(secrets).toEqual(["Opaque9Q7x\n", "Opaque9Q7x", "AppKey77zz"]);
+    const [row] = sanitizeConnectorEvidence(
+      [{
+        ...item,
+        sourceUri: "https://console.example/us-east-1/tenant-0000-1111?q=Opaque9Q7x",
+        title: "echo Opaque9Q7x",
+        summary: "header X-Custom-Auth: Opaque9Q7xOpaque9Q7x app AppKey77zz in us-east-1",
+        rawContent: "value Opaque9Q7x",
+        citation: { ...item.citation, query: "search Opaque9Q7x" },
+      }],
+      {},
+      secrets,
+    ).items;
+    expect(JSON.stringify(row)).not.toMatch(/Opaque9Q7x|AppKey77zz/);
+    // Identifiers stay readable so links and summaries keep working.
+    expect(row.summary).toContain("X-Custom-Auth");
+    expect(row.summary).toContain("us-east-1");
+    expect(row.sourceUri).toContain("tenant-0000-1111");
+  });
+
+  it("redacts the leading part of a secret that a provider clipped at the end of a title", () => {
+    const [row] = sanitizeConnectorEvidence([{ ...item, title: "auth failed for key Opaque9Q" }], {}, ["Opaque9Q7xZZ"]).items;
+    expect(row.title).toBe("auth failed for key [REDACTED]");
+    // A three-character overlap is too common to treat as a secret.
+    const [plain] = sanitizeConnectorEvidence([{ ...item, title: "status Opa" }], {}, ["Opaque9Q7xZZ"]).items;
+    expect(plain.title).toBe("status Opa");
   });
 
   it("enforces row limits", () => {

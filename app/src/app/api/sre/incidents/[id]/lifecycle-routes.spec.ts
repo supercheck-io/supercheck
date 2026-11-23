@@ -8,6 +8,11 @@ jest.mock("@/lib/sre/incident-lifecycle", () => ({
   acknowledgeIncident: (...a: unknown[]) => lifecycle.acknowledgeIncident(...a),
   assignIncident: (...a: unknown[]) => lifecycle.assignIncident(...a),
 }));
+const publishSreResolutionToStatusPages = jest.fn();
+jest.mock("@/lib/status-page-incident-core", () => ({
+  ...jest.requireActual("@/lib/status-page-incident-core"),
+  publishSreResolutionToStatusPages: (...a: unknown[]) => publishSreResolutionToStatusPages(...a),
+}));
 let allowed = true;
 let rateLimit: { allowed: boolean; resetTime?: number } = { allowed: true };
 jest.mock("@/lib/logger/index", () => ({ createLogger: () => ({ error: jest.fn() }) }));
@@ -110,6 +115,29 @@ describe("incident lifecycle routes", () => {
     expect(lifecycle.resolveIncident).toHaveBeenLastCalledWith(scope, id, "fixed");
     await resolve(post({ resolutionSummary: "rolled back" }), params);
     expect(lifecycle.resolveIncident).toHaveBeenLastCalledWith(scope, id, "rolled back");
+  });
+
+  it("resolve publishes to linked status pages only when the body asks and the call resolved it", async () => {
+    lifecycle.resolveIncident.mockResolvedValue({ ok: true, incident: { id, incidentNumber: 3, title: "t" }, changed: true });
+    const plain = await (await resolve(post({ comment: "fixed" }), params)).json();
+    expect(plain).not.toHaveProperty("statusPages");
+    expect(publishSreResolutionToStatusPages).not.toHaveBeenCalled();
+
+    publishSreResolutionToStatusPages.mockResolvedValue({ published: ["Public status"], failed: ["Enterprise status"], forbidden: false });
+    const body = await (await resolve(post({ comment: "fixed", publishToStatusPages: true }), params)).json();
+    expect(publishSreResolutionToStatusPages).toHaveBeenCalledWith(expect.objectContaining({ userId: "user-1", organizationId: "org-1" }), id, "fixed");
+    expect(body).toMatchObject({
+      success: true,
+      statusPages: { published: ["Public status"], failed: ["Enterprise status"], forbidden: false },
+      statusPageMessage: "Resolution posted to Public status",
+      warning: "The resolution could not be posted to Enterprise status. Post it from the status page.",
+    });
+
+    publishSreResolutionToStatusPages.mockClear();
+    lifecycle.resolveIncident.mockResolvedValue({ ok: true, incident: { id, incidentNumber: 3, title: "t" }, changed: false });
+    await resolve(post({ comment: "fixed", publishToStatusPages: true }), params);
+    expect(publishSreResolutionToStatusPages).not.toHaveBeenCalled();
+    expect((await resolve(post({ comment: "fixed", publishToStatusPages: "yes" }), params)).status).toBe(400);
   });
 
   it("resolve rejects a missing or oversized summary with 400", async () => {

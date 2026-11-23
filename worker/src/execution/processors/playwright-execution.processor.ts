@@ -389,8 +389,10 @@ export class PlaywrightExecutionProcessor
       return result;
     } catch (error) {
       if (error instanceof ExecutionCapacityError) {
-        return deferForCapacity(job, (reason) =>
-          this.failRunAfterCapacityWait(runId, reason),
+        return deferForCapacity(
+          job,
+          (reason) => this.failRunAfterCapacityWait(runId, reason),
+          error,
         );
       }
       if (error instanceof ResultNotPersistedError) {
@@ -753,8 +755,10 @@ export class PlaywrightExecutionProcessor
       return result;
     } catch (error: unknown) {
       if (error instanceof ExecutionCapacityError) {
-        return deferForCapacity(job, (reason) =>
-          this.failRunAfterCapacityWait(runId, reason),
+        return deferForCapacity(
+          job,
+          (reason) => this.failRunAfterCapacityWait(runId, reason),
+          error,
         );
       }
       if (error instanceof ResultNotPersistedError) {

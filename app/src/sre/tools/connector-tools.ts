@@ -1,4 +1,4 @@
-import { and, desc, DrizzleQueryError, eq, ilike, inArray, isNull, like, or } from "drizzle-orm";
+import { and, desc, DrizzleQueryError, eq, ilike, inArray, isNull, like, or, sql } from "drizzle-orm";
 import { tool } from "ai";
 import { z } from "zod";
 
@@ -28,6 +28,8 @@ import {
   renderDiagnosticQueryTemplate,
   resolveConnectorCredential,
   sanitizeConnectorEvidence,
+  connectorCredentialSecrets,
+  redactExactSecrets,
   stagedEvidenceToolName,
   STAGED_EVIDENCE_STAGES,
   validateStagedEvidenceTransition,
@@ -56,6 +58,7 @@ const logger = createLogger({ module: "sre-connector-tools" }) as {
 };
 import { flatCredentialFields } from "@/lib/sre/connectors/providers/provider-credentials";
 import { describeMcpToolsForModel } from "@/lib/sre/connectors/providers/mcp";
+import { privateAgentEvidenceTitle } from "@/lib/sre/connectors/providers/knowledge-shared";
 import { db } from "@/utils/db";
 import {
   executeMcpToolCall,
@@ -65,6 +68,8 @@ import {
 
 const MAX_TOOL_ROWS = 10;
 const MAX_TIME_WINDOW_MINUTES = 6 * 60;
+// An anchored window may look back to an older incident's start, but not through unbounded history.
+const MAX_END_AT_LOOKBACK_MS = 30 * 24 * 60 * 60_000;
 export const supportedLiveConnectorTypes = [
   "github",
   "kubernetes",
@@ -129,6 +134,13 @@ const connectorSearchInputSchema = z.object({
     .max(MAX_TIME_WINDOW_MINUTES)
     .optional()
     .default(60),
+  endAt: z
+    .string()
+    .datetime({ offset: true })
+    .optional()
+    .describe(
+      "Optional ISO 8601 end of the time window, for example a few minutes after the incident's startedAt. Defaults to now; a future time is treated as now; the window must start within the last 30 days. The window still ends here and spans at most timeWindowMinutes, capped by the connector.",
+    ),
   maxRows: z.number().int().min(1).max(MAX_TOOL_ROWS).optional().default(5),
   maxBytes: z.number().int().min(1024).max(256_000).optional().default(256_000),
   maxSeconds: z.number().int().min(1).max(15).optional().default(15),
@@ -422,7 +434,7 @@ function evidenceInsertValue(
   };
 }
 
-async function collectPrivateAgentEvidence(input: {
+export async function collectPrivateAgentEvidence(input: {
   scope: SreConnectorToolScope;
   connector: ConnectorRow;
   jobId: string;
@@ -430,10 +442,11 @@ async function collectPrivateAgentEvidence(input: {
   resultSummary: Record<string, unknown> | null;
   maxItems: number;
 }) {
+  // Jira and Confluence titles from a Private Agent are third-party text: label them like the direct path does.
   const summaries = normalizePrivateAgentEvidenceSummaries(
     input.resultSummary,
     input.maxItems,
-  );
+  ).map((item) => ({ ...item, title: privateAgentEvidenceTitle(input.connector.type, item.title) }));
   if (summaries.length === 0) return [];
   const incidentId = input.scope.incidentId;
   if (!incidentId) {
@@ -450,6 +463,9 @@ async function collectPrivateAgentEvidence(input: {
   }
 
   return db.transaction(async (tx) => {
+    // No unique index backs the dedupe: serialize per incident so two writers persisting the same result cannot both
+    // miss the existing row and insert it twice. Same key as the evidence brief's Private Agent import.
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${incidentId}))`);
     const persisted = [];
     for (const item of summaries) {
       const [existing] = await tx
@@ -807,6 +823,9 @@ export async function searchIncidentLiveConnectorEvidence(
   }
 
   const now = new Date();
+  // The model may anchor the window on the incident start; never past now, and the length cap below still applies.
+  const windowEnd = input.endAt ? new Date(Math.min(Date.parse(input.endAt), now.getTime())) : now;
+
   // The connector's window is the policy maximum; clamp instead of failing the connector.
   const requestedWindowMinutes = Math.min(
     input.timeWindowMinutes,
@@ -816,12 +835,18 @@ export async function searchIncidentLiveConnectorEvidence(
   const effectiveTimeWindowMinutes = stagedStage
     ? boundedStageWindowMinutes(stagedStage, requestedWindowMinutes)
     : requestedWindowMinutes;
+  if (now.getTime() - (windowEnd.getTime() - effectiveTimeWindowMinutes * 60_000) > MAX_END_AT_LOOKBACK_MS) {
+    throw new ConnectorQueryRejectedError("The search window must start within the last 30 days");
+  }
+  const searchedWindow = input.endAt
+    ? `${effectiveTimeWindowMinutes} minutes ending ${windowEnd.toISOString()}`
+    : `the last ${effectiveTimeWindowMinutes} minutes`;
   const params = {
     query: input.query,
     serviceId: primaryServiceId,
     timeWindow: {
-      start: new Date(now.getTime() - effectiveTimeWindowMinutes * 60_000),
-      end: now,
+      start: new Date(windowEnd.getTime() - effectiveTimeWindowMinutes * 60_000),
+      end: windowEnd,
     },
     budget: {
       maxRows: Math.min(outputLimits.maxRows, input.maxRows, MAX_TOOL_ROWS),
@@ -1026,7 +1051,7 @@ export async function searchIncidentLiveConnectorEvidence(
         evidence: persistedEvidence.map(summarizeEvidenceItem),
         truncated,
         persisted: Boolean(scope.incidentId),
-        message: `${scope.incidentId ? "Persisted" : "Returned"} ${persistedEvidence.length} connector evidence item(s)${windowClamped ? ` (searched the last ${effectiveTimeWindowMinutes} minutes; the connector's maximum window is ${requestedWindowMinutes} minutes)` : ""}`,
+        message: `${scope.incidentId ? "Persisted" : "Returned"} ${persistedEvidence.length} connector evidence item(s)${windowClamped ? ` (searched ${searchedWindow}; the connector's maximum window is ${requestedWindowMinutes} minutes)` : ""}`,
       };
     }
 
@@ -1075,15 +1100,18 @@ export async function searchIncidentLiveConnectorEvidence(
       query: input.query,
       stage: stagedStage,
       timeWindowMinutes: effectiveTimeWindowMinutes,
+      ...(input.endAt ? { endAt: windowEnd.toISOString() } : {}),
     }),
   );
 
+  let credentialSecrets: string[] = [];
   try {
     const credentialResolution = await resolveConnectorCredential({
       organizationId: scope.organizationId,
       projectId: scope.projectId,
       connectorId: connector.id,
     });
+    credentialSecrets = connectorCredentialSecrets(credentialResolution?.value);
     const directConnector = createDirectConnector({
       ...definition,
       endpointUrl: connectorEndpointUrl,
@@ -1095,6 +1123,7 @@ export async function searchIncidentLiveConnectorEvidence(
     const sanitized = sanitizeConnectorEvidence(
       rawEvidence,
       policyDecision.effectiveLimits,
+      credentialSecrets,
     );
     const insertedEvidence =
       scope.incidentId && sanitized.items.length
@@ -1135,7 +1164,7 @@ export async function searchIncidentLiveConnectorEvidence(
       truncated: sanitized.truncated,
       persisted: Boolean(scope.incidentId),
       message: `${scope.incidentId ? "Persisted" : "Returned"} ${insertedEvidence.length} connector evidence item(s)${
-        windowClamped ? ` (searched the last ${effectiveTimeWindowMinutes} minutes; the connector's maximum window is ${requestedWindowMinutes} minutes)` : ""
+        windowClamped ? ` (searched ${searchedWindow}; the connector's maximum window is ${requestedWindowMinutes} minutes)` : ""
       }${
         sanitized.truncated || insertedEvidence.length >= Math.min(outputLimits.maxRows, input.maxRows, MAX_TOOL_ROWS)
           ? ". This is a capped sample, not a complete list: it does not prove that other matching events are absent. Query for the specific signal (for example errors) explicitly."
@@ -1143,6 +1172,8 @@ export async function searchIncidentLiveConnectorEvidence(
       }`,
     };
   } catch (error) {
+    // A provider error can echo the credential back; scrub it before it is logged, stored or shown to the model.
+    if (error instanceof Error) error.message = redactExactSecrets(error.message, credentialSecrets);
     // Log first: if the error row also fails (e.g. the same bad data), the cause still reaches the logs.
     logger.warn(
       { err: error instanceof Error ? redactConnectorText(error.message).slice(0, 500) : String(error), connectorType: connector.type, toolName },

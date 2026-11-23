@@ -20,6 +20,8 @@ describe("splunk provider", () => {
     "| inputcsv secrets.csv",
     "index=a | fit LinearRegression x into m",
     "| from savedsearch:mysearch",
+    "index=main | dbxoutput output=\"orders\"",
+    "index=main | dbxlookup lookup=\"accounts\"",
   ])("rejects write or unsafe search %s", (spl) => {
     expect(() => assertReadOnlySpl(spl)).toThrow();
   });
