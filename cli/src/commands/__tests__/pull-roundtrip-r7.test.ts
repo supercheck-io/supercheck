@@ -35,6 +35,11 @@ describe('pull round trip', () => {
     expect(def.config).toEqual({ timeoutSeconds: 60, aiEndpoint })
   })
 
+  it('never writes alertOnRecovery for a job (jobs have no recovery alert)', () => {
+    const [def] = buildJobDefinitions([{ id: 'j', name: 'J', tests: [], alertConfig: { enabled: true, alertOnFailure: true, alertOnRecovery: true, alertOnSuccess: true } } as never], new Map())
+    expect(def.alertConfig).toEqual({ enabled: true, alertOnFailure: true, alertOnSuccess: true })
+  })
+
   it('warns when a pulled job cron is not 5 fields', () => {
     mockWarn.mockClear()
     buildJobDefinitions([{ id: 'j', name: 'Every second', cronSchedule: '* * * * * *', tests: [] } as never], new Map())

@@ -11,7 +11,10 @@ import { CancellationService } from '../services/cancellation.service';
 import { EventEmitter } from 'events';
 import { PassThrough, Writable } from 'stream';
 import { registerIntakeStopper, trackInFlight } from '../shutdown-intake';
-import { WORKER_INTERRUPTED_ERROR } from './container-executor.service';
+import {
+  EXECUTION_QUOTA_ERROR,
+  WORKER_INTERRUPTED_ERROR,
+} from './container-executor.service';
 
 const defaultOptions: ContainerExecutionOptions = {
   inlineScriptContent: 'console.log("hello")',
@@ -269,6 +272,32 @@ describe('ContainerExecutorService', () => {
         );
       });
 
+      it('ends the pod wait as quota exhaustion when quota kept the pod from being created', async () => {
+        let now = 0;
+        const clock = jest.spyOn(Date, 'now').mockImplementation(() => now);
+        try {
+          service['coreApi'] = {
+            listNamespacedPod: jest.fn().mockResolvedValue({ items: [] }),
+            listNamespacedEvent: jest.fn().mockResolvedValue({
+              items: [{ message: 'pods "j" is forbidden: exceeded quota: q' }],
+            }),
+          } as unknown as NonNullable<(typeof service)['coreApi']>;
+          service['sleep'] = jest.fn().mockImplementation(async () => {
+            now += 10_000;
+          });
+          const error = await service['waitForExecutionPod']('job-q').then(
+            () => null,
+            (e: unknown) => e,
+          );
+          expect(error).toBeInstanceOf(Error);
+          expect(String((error as Error).message)).toMatch(
+            /held back by the execution quota/,
+          );
+        } finally {
+          clock.mockRestore();
+        }
+      });
+
       it('does not let a stalled events call block pod polling', async () => {
         jest.useFakeTimers();
         try {
@@ -276,7 +305,7 @@ describe('ContainerExecutorService', () => {
           withEvents(jest.fn().mockReturnValue(new Promise(() => undefined)));
           const pending = service['failIfPodRejected']('job-d');
           await jest.advanceTimersByTimeAsync(5_000);
-          await expect(pending).resolves.toBeUndefined();
+          await expect(pending).resolves.toBe(false);
           expect(warn).toHaveBeenCalled();
         } finally {
           jest.useRealTimers();
@@ -301,6 +330,134 @@ describe('ContainerExecutorService', () => {
           ),
         ).toHaveLength(1);
       });
+    });
+
+    describe('execution quota', () => {
+      // Shaped like @kubernetes/client-node's ApiException (code, body, message).
+      class ApiException extends Error {
+        constructor(
+          readonly code: number,
+          message: string,
+          readonly body: unknown,
+          readonly headers: Record<string, string>,
+        ) {
+          super(message);
+        }
+      }
+      const quotaRejection = () =>
+        new ApiException(
+          403,
+          'HTTP-Code: 403\nMessage: Unknown API Status Code!\nBody: "jobs.batch \\"sc-exec\\" is forbidden: exceeded quota: execution-limits, requested: count/jobs.batch=1"',
+          'jobs.batch "sc-exec" is forbidden: exceeded quota: execution-limits',
+          {},
+        );
+
+      it('reports a Job rejected by the quota as unstarted capacity exhaustion, without the raw cluster text', async () => {
+        service['batchApi'] = {
+          createNamespacedJob: jest.fn().mockRejectedValue(quotaRejection()),
+        } as unknown as NonNullable<(typeof service)['batchApi']>;
+        service['deleteExecutionJob'] = jest.fn().mockResolvedValue(undefined);
+        const result = await service.executeInContainer(null, ['node'], {
+          ...defaultOptions,
+          runId: 'run-q1',
+        });
+        expect(result).toMatchObject({
+          success: false,
+          capacityExhausted: true,
+          started: false,
+          billableMs: 0,
+          error: EXECUTION_QUOTA_ERROR,
+          stderr: EXECUTION_QUOTA_ERROR,
+        });
+        expect(JSON.stringify(result)).not.toMatch(/exceeded quota|403/);
+      });
+
+      it('does not re-queue when the quota-held Job cannot be deleted', async () => {
+        service['batchApi'] = {
+          deleteNamespacedJob: jest
+            .fn()
+            .mockRejectedValue(new Error('timeout')),
+        } as unknown as NonNullable<(typeof service)['batchApi']>;
+        await expect(
+          service['confirmNoExecutionPod']('job-q', true),
+        ).resolves.toBe(false);
+        await expect(
+          service['confirmNoExecutionPod']('job-q', false),
+        ).resolves.toBe(true);
+      });
+
+      it('keeps a non-quota 403 (RBAC) as an ordinary failure', async () => {
+        service['batchApi'] = {
+          createNamespacedJob: jest
+            .fn()
+            .mockRejectedValue(
+              new ApiException(
+                403,
+                'HTTP-Code: 403 forbidden: User cannot create jobs',
+                'forbidden',
+                {},
+              ),
+            ),
+        } as unknown as NonNullable<(typeof service)['batchApi']>;
+        service['deleteExecutionJob'] = jest.fn().mockResolvedValue(undefined);
+        const result = await service.executeInContainer(null, ['node'], {
+          ...defaultOptions,
+          runId: 'run-q2',
+        });
+        expect(result.capacityExhausted).toBeUndefined();
+        expect(result.error).toMatch(/User cannot create jobs/);
+      });
+
+      it.each([
+        ['no pod exists after the Job is deleted', [], true],
+        ['a pod exists', [{ metadata: { name: 'pod-q' } }], false],
+      ])(
+        'after the Secrets exist, re-queues a quota-held run only when %s',
+        async (_label, pods, requeued) => {
+          const deleteNamespacedJob = jest.fn().mockResolvedValue({});
+          service['batchApi'] = {
+            createNamespacedJob: jest
+              .fn()
+              .mockResolvedValue({ metadata: { uid: 'job-uid' } }),
+            deleteNamespacedJob,
+          } as unknown as NonNullable<(typeof service)['batchApi']>;
+          // Two empty pod polls while quota events repeat, then the listing after the Job delete.
+          service['coreApi'] = {
+            listNamespacedPod: jest
+              .fn()
+              .mockResolvedValueOnce({ items: [] })
+              .mockResolvedValueOnce({ items: [] })
+              .mockResolvedValue({ items: pods }),
+            listNamespacedEvent: jest.fn().mockResolvedValue({
+              items: [{ message: 'exceeded quota: execution-limits' }],
+            }),
+          } as unknown as NonNullable<(typeof service)['coreApi']>;
+          service['createExecutionSecret'] = jest
+            .fn()
+            .mockResolvedValue(undefined);
+          let now = 10_000;
+          service['sleep'] = jest.fn().mockImplementation(async () => {
+            now += 60_000;
+          });
+          service['deleteExecutionJob'] = jest
+            .fn()
+            .mockResolvedValue(undefined);
+          const clock = jest.spyOn(Date, 'now').mockImplementation(() => now);
+          let result;
+          try {
+            result = await service.executeInContainer(null, ['node'], {
+              ...defaultOptions,
+              runId: 'run-q3',
+            });
+          } finally {
+            clock.mockRestore();
+          }
+          expect(deleteNamespacedJob).toHaveBeenCalled();
+          expect(result.error).toBe(EXECUTION_QUOTA_ERROR);
+          expect(result.capacityExhausted).toBe(requeued ? true : undefined);
+          expect(result.started).toBe(!requeued);
+        },
+      );
     });
 
     it('maps any failure after shutdown deleted the run Job to an interrupted result', async () => {

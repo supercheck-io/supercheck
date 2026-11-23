@@ -37,6 +37,25 @@ import { TIMEOUTS } from '../constants/timeouts.constants';
 /** Recorded for a run whose execution Job the shutdown drain deleted. */
 export const WORKER_INTERRUPTED_ERROR = 'Interrupted by worker restart';
 
+/** Shown instead of the cluster's raw ResourceQuota text when no execution slot is free. */
+export const EXECUTION_QUOTA_ERROR =
+  'Execution capacity is full: the run did not start and waits for a free slot';
+
+/** The pod never appeared because the namespace ResourceQuota stayed full. */
+class ExecutionQuotaError extends Error {}
+
+/** A Kubernetes API 403 caused by the namespace ResourceQuota (not RBAC or admission policy). */
+function isQuotaRejection(error: unknown): boolean {
+  if (error instanceof ExecutionQuotaError) return true;
+  const { code, body, message } = (error ?? {}) as {
+    code?: unknown;
+    body?: unknown;
+    message?: unknown;
+  };
+  const text = `${typeof message === 'string' ? message : ''} ${typeof body === 'string' ? body : JSON.stringify(body ?? '')}`;
+  return code === 403 && /exceeded quota/i.test(text);
+}
+
 export interface ContainerExecutionOptions {
   /**
    * Run ID for cancellation tracking.
@@ -148,6 +167,8 @@ export interface ContainerExecutionResult {
   started?: boolean;
   /** The worker restart ended this execution (its Job was deleted by shutdown, or never created). Not a user cancellation. */
   interrupted?: boolean;
+  /** The namespace ResourceQuota was full and no pod exists, so the run never started and can be re-queued. */
+  capacityExhausted?: boolean;
   error?: string;
 }
 
@@ -1151,6 +1172,32 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
       // Any failure after shutdown deleted this run's Job is the restart, not a fault of the run.
       const deletedByShutdown = this.shutdownDeletedRunIds.has(trackKey);
       const message = error instanceof Error ? error.message : String(error);
+      if (
+        !deletedByShutdown &&
+        !hasStartEvidence(startEvidence) &&
+        isQuotaRejection(error)
+      ) {
+        // The raw quota text is for operators only; users see EXECUTION_QUOTA_ERROR.
+        this.logger.warn(
+          `[${jobName}] Execution quota is full: ${message.slice(0, 500)}`,
+        );
+        const unstarted = await this.confirmNoExecutionPod(
+          jobName,
+          secretsReady,
+        );
+        return {
+          success: false,
+          exitCode: 1,
+          stdout: '',
+          stderr: EXECUTION_QUOTA_ERROR,
+          duration: Date.now() - startTime,
+          billableMs: 0,
+          timedOut,
+          started: !unstarted,
+          ...(unstarted ? { capacityExhausted: true } : {}),
+          error: EXECUTION_QUOTA_ERROR,
+        };
+      }
       return {
         success: false,
         exitCode: 1,
@@ -1665,6 +1712,7 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
     const timeoutAt = Date.now() + 120_000;
     const labelSelector = `job-name=${jobName}`;
     let lastEventCheck = 0;
+    let quotaBlocked = false;
 
     while (Date.now() < timeoutAt) {
       // Shutdown deleted the Job before its pod was listed: no pod will ever appear.
@@ -1690,11 +1738,16 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
         ContainerExecutorService.POD_EVENT_CHECK_MS
       ) {
         lastEventCheck = Date.now();
-        await this.failIfPodRejected(jobName);
+        quotaBlocked = (await this.failIfPodRejected(jobName)) || quotaBlocked;
       }
       await this.sleep(1000);
     }
 
+    if (quotaBlocked) {
+      throw new ExecutionQuotaError(
+        `Execution pod for job ${jobName} was held back by the execution quota for 120s`,
+      );
+    }
     throw new Error(
       `Execution pod for job ${jobName} did not appear within 120s`,
     );
@@ -1704,10 +1757,11 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
    * Throws when the cluster's admission control rejected the Job's pod, so the
    * run fails at once as an infrastructure error instead of waiting out the
    * 120s pod timeout. Quota exhaustion is transient and not treated as a
-   * rejection. Any event-read failure (e.g. 403 on older RBAC) falls back to
+   * rejection; it returns true so the caller can re-queue the run once the pod
+   * wait ends. Any event-read failure (e.g. 403 on older RBAC) falls back to
    * waiting for the pod.
    */
-  private async failIfPodRejected(jobName: string): Promise<void> {
+  private async failIfPodRejected(jobName: string): Promise<boolean> {
     let items: k8s.CoreV1Event[];
     try {
       // Bounded so a stalled events call cannot block pod polling or its 120s deadline.
@@ -1738,7 +1792,7 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
           `Cannot read execution events (${message}); pod admission failures will surface as a pod timeout. Grant "events" get/list in the execution namespace to fail fast.`,
         );
       }
-      return;
+      return false;
     }
     const denied = items.find(
       (event) =>
@@ -1754,6 +1808,35 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
       throw new Error(
         `Infrastructure error: Execution pod was rejected by the cluster: ${reason}`,
       );
+    }
+    return items.some((event) => /exceeded quota/i.test(event.message ?? ''));
+  }
+
+  /**
+   * True when no pod of this Job exists or can still be created, so a re-queued run cannot
+   * execute twice. Before the Secrets exist the container cannot start; afterwards the Job is
+   * deleted first (the controller then creates no pod) and its pods are listed.
+   */
+  private async confirmNoExecutionPod(
+    jobName: string,
+    secretsReady: boolean,
+  ): Promise<boolean> {
+    if (!secretsReady) return true;
+    try {
+      // Not deleteExecutionJob: it swallows failures, and a Job that survives could still start a pod.
+      await this.batchApi!.deleteNamespacedJob({
+        name: jobName,
+        namespace: this.executionNamespace,
+        gracePeriodSeconds: 0,
+        propagationPolicy: 'Background',
+      });
+      const pods = await this.coreApi!.listNamespacedPod({
+        namespace: this.executionNamespace,
+        labelSelector: `job-name=${jobName}`,
+      });
+      return pods.items.length === 0;
+    } catch {
+      return false;
     }
   }
 

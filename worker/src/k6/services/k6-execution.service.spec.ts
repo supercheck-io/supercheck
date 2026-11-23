@@ -35,7 +35,10 @@ import {
 import { S3Service } from '../../execution/services/s3.service';
 import { DbService } from '../../execution/services/db.service';
 import { RedisService } from '../../execution/services/redis.service';
-import { ContainerExecutorService } from '../../common/security/container-executor.service';
+import {
+  ContainerExecutorService,
+  EXECUTION_QUOTA_ERROR,
+} from '../../common/security/container-executor.service';
 import { VariableResolverService } from '../../common/services/variable-resolver.service';
 
 // Mock execa
@@ -1317,9 +1320,15 @@ describe('K6ExecutionService', () => {
     );
 
     describe.each([
-      ['never started', 0, true],
-      ['interrupted after it started', 30_000, false],
-    ])('a run %s by a worker restart', (_name, billableMs, delayed) => {
+      ['never started because of a worker restart', 0, true, false],
+      [
+        'interrupted by a worker restart after it started',
+        30_000,
+        false,
+        false,
+      ],
+      ['held back by the execution quota', 0, true, true],
+    ])('a run %s', (_name, billableMs, delayed, quota) => {
       async function runInterrupted() {
         const fs = jest.requireMock('fs/promises');
         fs.access.mockRejectedValue(new Error('missing HTML'));
@@ -1352,6 +1361,14 @@ describe('K6ExecutionService', () => {
           timedOut: false,
           cancelled: false,
           interrupted: true,
+          // A full quota is not a restart: only the capacity flag says the pod never started.
+          ...(quota
+            ? {
+                interrupted: false,
+                capacityExhausted: true,
+                error: EXECUTION_QUOTA_ERROR,
+              }
+            : {}),
         } as never);
         try {
           return await service
