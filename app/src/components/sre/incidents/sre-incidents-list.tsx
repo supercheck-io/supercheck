@@ -7,6 +7,7 @@ import {
   useState,
 } from "react";
 import {
+  RefreshCw,
   Search,
   Siren,
   X,
@@ -42,6 +43,9 @@ type SreIncidentsListProps = {
   onScopeChange?: (scope: "active" | "all") => void;
   /** The rows are the previous scope's while the requested one loads. */
   loadingScope?: boolean;
+  /** Reloads the list after a failed load. */
+  onRetry?: () => void;
+  retrying?: boolean;
 };
 
 type QuickFilter = "active" | "mine" | "unassigned" | "all";
@@ -249,6 +253,8 @@ export function SreIncidentsList({
   hasIncidents = false,
   onScopeChange,
   loadingScope = false,
+  onRetry,
+  retrying = false,
 }: SreIncidentsListProps) {
   const router = useRouter();
   const isMobile = useIsMobile();
@@ -342,6 +348,14 @@ export function SreIncidentsList({
         title="Incidents unavailable"
         description={loadError}
         icon={<Siren className="h-10 w-10" />}
+        action={
+          onRetry && (
+            <Button type="button" variant="outline" onClick={onRetry} disabled={retrying}>
+              <RefreshCw className={retrying ? "animate-spin" : undefined} aria-hidden="true" />
+              Try again
+            </Button>
+          )
+        }
       />
     );
   }

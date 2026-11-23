@@ -37,7 +37,7 @@ test.describe('Declare an incident @incidents', () => {
       await viewerPage.goto('/incidents', { waitUntil: 'domcontentloaded' });
       await waitForHydration(viewerPage);
       await expect(viewerPage.getByRole('heading', { name: /incidents/i }).first()).toBeVisible();
-      await expect(viewerPage.getByRole('button', { name: 'New incident' })).toHaveCount(0);
+      await expect(viewerPage.getByRole('button', { name: 'Declare incident' })).toHaveCount(0);
       const denied = await viewerPage.request.post('/api/sre/incidents', { data: { title: 'Should not exist' } });
       expect(denied.status()).toBe(403);
     } finally {

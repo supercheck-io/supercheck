@@ -63,7 +63,7 @@ test.describe("AI SRE incident, brief, and investigation lifecycle @aisre @criti
       // A project with no incidents shows the first-run state instead of the table.
       await expect(page.getByText("No incidents", { exact: true })).toBeVisible();
       await page
-        .getByRole("button", { name: "New incident", exact: true })
+        .getByRole("button", { name: "Declare incident", exact: true })
         .click();
       const dialog = page.getByRole("dialog", { name: "Declare incident" });
       await dialog.getByLabel("Title").fill(incidentTitle);

@@ -43,6 +43,7 @@ export function ResolveSreIncidentDialog({
   const { projectId } = useProjectContext();
   const queryClient = useQueryClient();
   const commentId = useId();
+  const errorId = useId();
   const [internalOpen, setInternalOpen] = useState(false);
   const open = controlledOpen ?? internalOpen;
   const setOpen = onOpenChange ?? setInternalOpen;
@@ -85,7 +86,7 @@ export function ResolveSreIncidentDialog({
         setOpen(false);
         setComment(defaultSummary.slice(0, 2000));
         toast.success(body.message ?? "Incident resolved", {
-          description: "You can generate a post-mortem draft from the incident timeline.",
+          description: "You can generate a post-mortem draft in the Post-mortem tab.",
           action: {
             label: "Post-mortem",
             onClick: () => window.dispatchEvent(new Event(OPEN_POSTMORTEM_EVENT)),
@@ -143,11 +144,13 @@ export function ResolveSreIncidentDialog({
             maxLength={2000}
             disabled={pending}
             placeholder="Describe the fix and the checks you used to verify recovery."
+            aria-invalid={Boolean(error)}
+            aria-describedby={error ? errorId : undefined}
             // Grows with the text up to a cap, then scrolls, so the dialog buttons stay on screen.
             className="max-h-60 overflow-y-auto"
           />
           {error && (
-            <p role="alert" className="text-sm text-destructive">
+            <p id={errorId} role="alert" className="text-sm text-destructive">
               {error}
             </p>
           )}

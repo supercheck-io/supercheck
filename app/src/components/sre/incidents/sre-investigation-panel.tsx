@@ -278,7 +278,7 @@ export function SreReportSnapshotMenuItem({
         queryKey: getSreIncidentDetailQueryKey(projectId, incidentId),
       });
     } catch {
-      toast.error("Could not confirm the saved snapshot. Refresh the incident and try again.");
+      toast.error("Failed to confirm the saved snapshot. Refresh the incident and try again.");
     }
   };
 

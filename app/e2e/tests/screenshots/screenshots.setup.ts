@@ -121,7 +121,7 @@ setup('sign up and seed screenshot data', async ({ page, baseURL, playwright }) 
   await createService(page, 'payments-worker', 'production');
   await page.goto('/incidents');
   await waitForHydration(page);
-  await page.getByRole('button', { name: 'New incident' }).click();
+  await page.getByRole('button', { name: 'Declare incident' }).click();
   const incidentDialog = page.getByRole('dialog', { name: 'Declare incident' });
   await incidentDialog.getByLabel('Title').fill('Checkout latency above 2s');
   await incidentDialog.getByLabel('Initial notes').fill('p95 latency on checkout-api rose after the 14:00 deploy.');

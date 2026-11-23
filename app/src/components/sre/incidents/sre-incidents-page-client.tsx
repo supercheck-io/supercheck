@@ -33,6 +33,8 @@ function IncidentsTab() {
             ? query.error.message
             : "Failed to load incidents"
         }
+        onRetry={() => void query.refetch()}
+        retrying={query.isFetching}
       />
     );
   }
@@ -46,6 +48,8 @@ function IncidentsTab() {
       hasIncidents={query.data.success ? query.data.hasIncidents : false}
       onScopeChange={setScope}
       loadingScope={query.isPlaceholderData}
+      onRetry={() => void query.refetch()}
+      retrying={query.isFetching}
     />
   );
 }

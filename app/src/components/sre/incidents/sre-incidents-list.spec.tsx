@@ -153,14 +153,14 @@ describe("SreIncidentsList", () => {
     const { rerender } = render(
       <NewIncidentAction />,
     );
-    const button = screen.getByRole("button", { name: /new incident/i });
+    const button = screen.getByRole("button", { name: /declare incident/i });
     expect(button).toBeDisabled();
     fireEvent.click(button);
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     mockRole = "project_editor";
     mockProjectLoading = false;
     rerender(<NewIncidentAction />);
-    expect(screen.getByRole("button", { name: /new incident/i })).toBeEnabled();
+    expect(screen.getByRole("button", { name: /declare incident/i })).toBeEnabled();
   });
 
   it("explains permission failures and keeps creation unavailable", () => {
@@ -170,7 +170,7 @@ describe("SreIncidentsList", () => {
       "Permissions unavailable",
     );
     expect(
-      screen.queryByRole("button", { name: /new incident/i }),
+      screen.queryByRole("button", { name: /declare incident/i }),
     ).not.toBeInTheDocument();
   });
 
@@ -178,7 +178,7 @@ describe("SreIncidentsList", () => {
     mockRole = "project_viewer";
     render(<NewIncidentAction />);
     expect(
-      screen.queryByRole("button", { name: /new incident/i }),
+      screen.queryByRole("button", { name: /declare incident/i }),
     ).not.toBeInTheDocument();
   });
   it("opens the dialog from ?new=1 and removes the parameter when it closes", () => {
@@ -251,6 +251,18 @@ describe("SreIncidentsList", () => {
     render(<SreIncidentsList incidents={[]} loadError={null} hasIncidents loadingScope />);
     expect(screen.getByText("Loading data...")).toBeInTheDocument();
     expect(screen.queryByText("No incidents match the current filters.")).not.toBeInTheDocument();
+  });
+
+  it("offers a retry on a failed load", () => {
+    const onRetry = jest.fn();
+    const { rerender } = render(
+      <SreIncidentsList incidents={[]} loadError="Network down" onRetry={onRetry} />,
+    );
+    expect(screen.getByText("Incidents unavailable")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+    expect(onRetry).toHaveBeenCalledTimes(1);
+    rerender(<SreIncidentsList incidents={[]} loadError="Network down" onRetry={onRetry} retrying />);
+    expect(screen.getByRole("button", { name: "Try again" })).toBeDisabled();
   });
 
   it("explains an empty filtered result", () => {

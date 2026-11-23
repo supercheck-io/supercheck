@@ -129,7 +129,7 @@ describe("IncidentTimeline", () => {
   it("shows loading, error and empty states", () => {
     mockQuery = { isPending: true };
     const view = render(<IncidentTimeline incidentId="i1" canUpdate />);
-    expect(screen.getByText("Loading timeline...")).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("Loading timeline...");
     mockQuery = { isPending: false, data: { success: false, error: "Not allowed", events: [] } };
     view.rerender(<IncidentTimeline incidentId="i1" canUpdate />);
     expect(screen.getByRole("alert")).toHaveTextContent("Not allowed");
