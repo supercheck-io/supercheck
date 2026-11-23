@@ -41,6 +41,10 @@ export const WORKER_INTERRUPTED_ERROR = 'Interrupted by worker restart';
 export const EXECUTION_QUOTA_ERROR =
   'Execution capacity is full: the run did not start and waits for a free slot';
 
+/** Capacity was full, but the run could not be proven unstarted, so it is not re-queued. */
+export const EXECUTION_QUOTA_UNCONFIRMED_ERROR =
+  'Execution capacity was full and the run could not be confirmed as not started, so it was not retried';
+
 /** The pod never appeared because the namespace ResourceQuota stayed full. */
 class ExecutionQuotaError extends Error {}
 
@@ -239,6 +243,7 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
     ]);
   private static readonly SLOW_POD_STARTUP_WARN_MS = 5_000;
   private static readonly POD_EVENT_CHECK_MS = 5_000;
+  private static readonly QUOTA_POD_RECHECK_MS = 2_000;
   /** Consecutive unverifiable activity checks (10s apart) before failing loudly. */
   private static readonly MAX_UNCERTAIN_EXECUTION_CHECKS = 30;
   private static readonly OUTCOME_POLL_FAST_UNTIL_MS = 15_000;
@@ -1181,6 +1186,21 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
         this.logger.warn(
           `[${jobName}] Execution quota is full: ${message.slice(0, 500)}`,
         );
+        // Cancelled while the quota held the pod: a cancellation, never a re-queue.
+        if (killed) {
+          return {
+            success: false,
+            exitCode: 137,
+            stdout: '',
+            stderr: '',
+            duration: Date.now() - startTime,
+            billableMs: 0,
+            timedOut,
+            started: false,
+            cancelled: true,
+            error: 'Execution cancelled (exit code 137)',
+          };
+        }
         const unstarted = await this.confirmNoExecutionPod(
           jobName,
           secretsReady,
@@ -1189,13 +1209,17 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
           success: false,
           exitCode: 1,
           stdout: '',
-          stderr: EXECUTION_QUOTA_ERROR,
+          stderr: unstarted
+            ? EXECUTION_QUOTA_ERROR
+            : EXECUTION_QUOTA_UNCONFIRMED_ERROR,
           duration: Date.now() - startTime,
           billableMs: 0,
           timedOut,
           started: !unstarted,
           ...(unstarted ? { capacityExhausted: true } : {}),
-          error: EXECUTION_QUOTA_ERROR,
+          error: unstarted
+            ? EXECUTION_QUOTA_ERROR
+            : EXECUTION_QUOTA_UNCONFIRMED_ERROR,
         };
       }
       return {
@@ -1829,12 +1853,19 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
         namespace: this.executionNamespace,
         gracePeriodSeconds: 0,
         propagationPolicy: 'Background',
+      }).catch((error: unknown) => {
+        // Already gone (e.g. deleted by the cancellation poller): nothing can create a pod.
+        if ((error as { code?: unknown })?.code !== 404) throw error;
       });
-      const pods = await this.coreApi!.listNamespacedPod({
-        namespace: this.executionNamespace,
-        labelSelector: `job-name=${jobName}`,
-      });
-      return pods.items.length === 0;
+      const listPods = () =>
+        this.coreApi!.listNamespacedPod({
+          namespace: this.executionNamespace,
+          labelSelector: `job-name=${jobName}`,
+        });
+      if ((await listPods()).items.length > 0) return false;
+      // A pod create the Job controller already had in flight can land just after the delete.
+      await this.sleep(ContainerExecutorService.QUOTA_POD_RECHECK_MS);
+      return (await listPods()).items.length === 0;
     } catch {
       return false;
     }
