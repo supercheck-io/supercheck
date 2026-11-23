@@ -579,6 +579,7 @@ export async function applySourceRecovery(
       incidentNumber: sreIncidents.incidentNumber,
       title: sreIncidents.title,
       createdAt: sreIncidents.createdAt,
+      reopenedAt: sreIncidents.reopenedAt,
       acknowledgedAt: sreIncidents.acknowledgedAt,
       assigneeUserId: sreIncidents.assigneeUserId,
     })
@@ -651,7 +652,7 @@ export async function applySourceRecovery(
     seen.add(incident.id);
     const now = source.recoveredAt;
     if (source.autoResolve && !incident.acknowledgedAt) {
-      const summary = `Recovered automatically: ${source.targetName} passed again after ${describeDuration(now.getTime() - incident.createdAt.getTime())}.`;
+      const summary = `Recovered automatically: ${source.targetName} passed again after ${describeDuration(now.getTime() - (incident.reopenedAt ?? incident.createdAt).getTime())}.`;
       const [updated] = await tx
         .update(sreIncidents)
         .set({
@@ -946,6 +947,9 @@ export async function reopenRecentlyAutoResolved(
       renotifyRetryAt: null,
       escalateFailures: 0,
       escalateRetryAt: null,
+      // A new open period: it counts its own alerts, starting with the one that reopened it.
+      alertCount: 1,
+      lastAlertAt: source.firedAt,
       reopenedAt: now,
       updatedAt: now,
     })

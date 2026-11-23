@@ -408,6 +408,20 @@ describe("one message per event for alert-triggered incidents", () => {
     expect(params).not.toContain("ssl_expiring");
   });
 
+  it("bounds the delivery check by the incident's own trigger time when it has no alert row (INC-11)", async () => {
+    chains.length = 0;
+    const firedAt = new Date("2026-01-01T10:00:00.000Z");
+    selectQueue.push([incident], people, [{ ...source[0], dedupKey: "project-1:monitor:mon-1:monitor_failure", firedAt }], [], [provider]);
+    await notifyIncidentEvent({ ...base, assigneeUserId: null, event: "created" } as never);
+    const { PgDialect } = jest.requireActual("drizzle-orm/pg-core");
+    const params = chains
+      .filter((node) => node.where.mock.calls.length)
+      .map((node) => new PgDialect().sqlToQuery(node.where.mock.calls[0][0]).params)
+      .find((p: unknown[]) => p.includes("monitor_failure"));
+    // Not "any delivery in the last 15 minutes": only rows sent since this incident's trigger fired.
+    expect(params).toContainEqual(firedAt.toISOString());
+  });
+
   it("posts created to channels when every alert delivery failed", async () => {
     await run({ event: "created" }, [{ status: "failed" }]);
     expect(fetchPublicEndpoint).toHaveBeenCalledTimes(1);

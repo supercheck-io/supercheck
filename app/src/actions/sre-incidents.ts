@@ -44,6 +44,7 @@ import {
 } from "@/db/schema";
 import { logAuditEvent } from "@/lib/audit-logger";
 import { alertIncidentTitle } from "@/lib/sre/alert-labels";
+import { alertSeverity } from "@/lib/sre/alert-severity";
 import { createLogger } from "@/lib/logger/index";
 import {
   ALERT_CORRELATION_LIMITS,
@@ -511,29 +512,6 @@ export async function getSreIncidentAnalytics(): Promise<
       analytics: null,
     };
   }
-}
-
-function deriveSeverity(type: string, message: string): SreSeverity {
-  const normalizedType = type.toLowerCase();
-  const normalizedMessage = message.toLowerCase();
-
-  if (
-    normalizedMessage.includes("sev1") ||
-    normalizedMessage.includes("critical") ||
-    normalizedType.includes("timeout")
-  ) {
-    return "sev1";
-  }
-
-  if (normalizedType.includes("failure") || normalizedType.includes("failed")) {
-    return "sev2";
-  }
-
-  if (normalizedType.includes("ssl") || normalizedMessage.includes("expir")) {
-    return "sev3";
-  }
-
-  return "sev4";
 }
 
 function deriveAlertStatus(type: string): SreAlertStatus {
@@ -1615,7 +1593,7 @@ export async function createSreIncidentFromAlert(
     const severity =
       configuredSeverity && ["sev1", "sev2", "sev3", "sev4"].includes(configuredSeverity)
         ? configuredSeverity
-        : deriveSeverity(alert.type, alert.message);
+        : alertSeverity(alert.type);
     const alertStatus = deriveAlertStatus(alert.type);
     const firedAt = alert.sentAt ?? new Date();
     // Same identity as automatic incidents: source plus alert type (not the per-channel key).

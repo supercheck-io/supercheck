@@ -247,18 +247,24 @@ describe("recovery reconcile", () => {
     expect(await statusOf(manual, acked, noSource)).toEqual({ [manual]: "triggered", [acked]: "triggered", [noSource]: "triggered" });
   });
 
-  it("respects autoResolveIncident=false and a recovery threshold above 1", async () => {
+  it("respects autoResolveIncident=false and a recovery threshold above 1 (resolves only once the streak is met)", async () => {
     const off = await tenant();
     await setMonitor(off, "up", 10, { autoResolveIncident: false });
     const offId = await incident(off, { alertMinutesAgo: 30 });
     const streak = await tenant();
     await setMonitor(streak, "up", 10, { recoveryThreshold: 3 });
     const streakId = await incident(streak, { alertMinutesAgo: 30 });
+    await mockDatabase.insert(schema.monitorResults).values({ monitorId: streak.monitorId, checkedAt: minutesAgo(5), status: "up", isUp: true, consecutiveSuccessCount: 2 });
+    // The worker's one recovery signal was lost; the monitor has since passed 3 checks in a row.
+    const met = await tenant();
+    await setMonitor(met, "up", 10, { recoveryThreshold: 3 });
+    const metId = await incident(met, { alertMinutesAgo: 30 });
+    await mockDatabase.insert(schema.monitorResults).values({ monitorId: met.monitorId, checkedAt: minutesAgo(5), status: "up", isUp: true, consecutiveSuccessCount: 3 });
     const one = await tenant();
     await setMonitor(one, "up", 10, { recoveryThreshold: 1, autoResolveIncident: true });
     const oneId = await incident(one, { alertMinutesAgo: 30 });
-    expect(await reconcileRecoveries()).toBe(1);
-    expect(await statusOf(offId, streakId, oneId)).toEqual({ [offId]: "triggered", [streakId]: "triggered", [oneId]: "resolved" });
+    expect(await reconcileRecoveries()).toBe(2);
+    expect(await statusOf(offId, streakId, metId, oneId)).toEqual({ [offId]: "triggered", [streakId]: "triggered", [metId]: "resolved", [oneId]: "resolved" });
   });
 
   it("job source: resolves when the latest run passed, not when it failed", async () => {

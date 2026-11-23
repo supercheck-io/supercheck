@@ -75,6 +75,7 @@ import {
 import { completeSreIncidentTriage, startSreIncidentTriage } from "@/sre/lib/triage-runner";
 import { db } from "@/utils/db";
 import { sreDailyTokenLimitResponse } from "@/lib/sre/sre-daily-token-limit";
+import { maybeAutoInvestigateOnOpen } from "@/sre/lib/auto-investigate";
 import { processSreBackgroundAlertTriageJob, startAutomaticIncidentTriage } from "./background-alert-triage";
 
 const mockIsSreBackgroundAlertTriageEnabled = isSreBackgroundAlertTriageEnabled as jest.Mock;
@@ -551,5 +552,58 @@ describe("startAutomaticIncidentTriage (shared with the recovery sweep)", () => 
     (completeSreIncidentTriage as jest.Mock).mockResolvedValue({ success: true });
     expect(await startAutomaticIncidentTriage(scope)).toEqual({ success: true, investigationRunId: "run-2" });
     expect(startSreIncidentTriage).toHaveBeenLastCalledWith({ ...scope, userId: null, origin: "auto" });
+  });
+  describe("records a terminal skip on the incident timeline, once (INC-6)", () => {
+    const skipped = () =>
+      inserts.filter((value) => (value as { eventData?: { state?: string } }).eventData?.state === "triage_skipped") as Array<{
+        incidentId: string;
+        actorType: string;
+        eventData: { reason: string; comment: string };
+      }>;
+    beforeEach(() => {
+      selectQueue.length = 0;
+      inserts.length = 0;
+      mockAutomatic.mockReturnValue(true);
+    });
+
+    it.each([
+      ["daily_limit", () => (sreDailyTokenLimitResponse as jest.Mock).mockResolvedValueOnce({ status: 429 }), /Daily AI usage limit/],
+      ["ai_not_configured", () => (validateAIConfiguration as jest.Mock).mockImplementation(() => { throw new Error("no key"); }), /No AI provider/],
+      [
+        "triage_billing",
+        () => (startSreIncidentTriage as jest.Mock).mockResolvedValueOnce({ success: false, status: 402, error: "Your trial allowance for AI SRE is used. Subscribe to continue." }),
+        /trial allowance/,
+      ],
+    ])("%s", async (reason, arrange, message) => {
+      arrange();
+      expect(await startAutomaticIncidentTriage(scope)).toEqual({ skipped: true, reason });
+      expect(skipped()).toEqual([
+        { incidentId: "inc-1", eventType: "state_change", actorType: "system", createdAt: expect.any(Date), eventData: { state: "triage_skipped", reason, comment: expect.stringMatching(message) } },
+      ]);
+    });
+
+    it("not again when the incident already has one", async () => {
+      selectQueue.push([{ id: "event-1" }]);
+      (sreDailyTokenLimitResponse as jest.Mock).mockResolvedValueOnce({ status: 429 });
+      await startAutomaticIncidentTriage(scope);
+      expect(skipped()).toEqual([]);
+    });
+
+    it("not for automation off, a busy incident or a deferrable skip", async () => {
+      (sreDailyTokenLimitResponse as jest.Mock).mockResolvedValueOnce({ status: 503 });
+      await startAutomaticIncidentTriage(scope);
+      (startSreIncidentTriage as jest.Mock).mockResolvedValueOnce({ success: false, status: 409, reason: "org_concurrency_limit", error: "busy" });
+      await startAutomaticIncidentTriage(scope);
+      mockAutomatic.mockReturnValue(false);
+      await startAutomaticIncidentTriage(scope);
+      expect(skipped()).toEqual([]);
+    });
+
+    it("for the project's automatic investigation refused by billing when nothing else will try", async () => {
+      mockAutomatic.mockReturnValue(false);
+      (maybeAutoInvestigateOnOpen as jest.Mock).mockResolvedValueOnce({ handled: false, reason: "subscription_required" });
+      expect(await startAutomaticIncidentTriage(scope)).toEqual({ skipped: true, reason: "ai_disabled" });
+      expect(skipped()).toMatchObject([{ eventData: { reason: "triage_billing", comment: "An active subscription is required to use AI SRE." } }]);
+    });
   });
 });

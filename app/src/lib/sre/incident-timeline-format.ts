@@ -21,6 +21,7 @@ export const STATE_LABELS: Record<string, string> = {
   created_from_alert_history: "Incident created from alert",
   created_from_background_alert_triage: "Incident created from alert",
   triage_failed: "AI triage failed",
+  triage_skipped: "AI triage skipped",
 };
 
 function str(value: unknown, max = 600) {
