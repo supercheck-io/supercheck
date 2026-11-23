@@ -784,6 +784,22 @@ it("restores component status when an open public incident is deleted", async ()
   expect((await mockDatabase.query.statusPageComponents.findFirst())?.status).toBe("operational");
 });
 
+it("leaves a component at the remaining open incident's status when another is deleted, then restores it", async () => {
+  const page = (await mockDatabase.query.statusPages.findFirst())!;
+  await mockDatabase.delete(schema.statusPageComponentMonitors);
+  const actor = { userId: (await mockDatabase.query.user.findFirst())!.id, organizationId: page.organizationId, orgPendingDeletion: false, project: { id: page.projectId!, userRole: "org_owner" } };
+  const post = (name: string, componentStatus: "partial_outage" | "major_outage") =>
+    createStatusPageIncident(actor, { statusPageId: pageId, name, status: "investigating", impact: "major", body: name, affectedComponentIds: [componentId], componentStatus, deliverNotifications: false });
+  const first = await post("A", "partial_outage");
+  const second = await post("B", "major_outage");
+  expect((await mockDatabase.query.statusPageComponents.findFirst())?.status).toBe("major_outage");
+  expect(await deleteIncident(second.success ? second.incident.id : "", pageId)).toMatchObject({ success: true });
+  // A is still open: the component shows A's status, as reconciliation would set it.
+  expect((await mockDatabase.query.statusPageComponents.findFirst())?.status).toBe("partial_outage");
+  expect(await deleteIncident(first.success ? first.incident.id : "", pageId)).toMatchObject({ success: true });
+  expect((await mockDatabase.query.statusPageComponents.findFirst())?.status).toBe("operational");
+});
+
 it("keeps when an incident ended when a follow-up note is posted as resolved", async () => {
   const [incident] = await mockDatabase.insert(schema.incidents).values({ statusPageId: pageId, name: "Errors", status: "investigating", impact: "major" }).returning();
   // Every post starts with its first update, as createStatusPageIncident writes it.

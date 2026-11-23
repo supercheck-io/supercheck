@@ -85,3 +85,12 @@ it("checks a status page and its components belong to the project before a decla
   (db as unknown as { select: jest.Mock }).select = jest.fn(() => ({ from: () => ({ where: async () => [{ id: uuid(2) }] }) }));
   expect(await findStatusPageTargetError(scope, uuid(1), [uuid(2), uuid(2)])).toBeNull();
 });
+
+it("reports a failed lookup as a publish failure instead of failing the resolve that already committed", async () => {
+  const { publishSreResolutionToStatusPages } = await import("@/lib/status-page-incident-core");
+  (db as unknown as { select: jest.Mock }).select = jest.fn(() => {
+    throw new Error("connection lost");
+  });
+  const actor = { userId: "u", organizationId: "o", orgPendingDeletion: false, project: { id: "p", userRole: "org_owner" } };
+  await expect(publishSreResolutionToStatusPages(actor, uuid(2), "Fixed")).resolves.toEqual({ published: [], failed: ["the linked status pages"], forbidden: false });
+});

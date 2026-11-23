@@ -588,7 +588,12 @@ export async function publishSreResolutionToStatusPages(
   summary: string,
 ): Promise<StatusPagePublishResult> {
   if (!checkPermissionWithContext("status_page", "update", actor)) return { published: [], failed: [], forbidden: true };
-  const rows = await listOpenLinkedStatusPageIncidents({ organizationId: actor.organizationId, projectId: actor.project.id }, sreIncidentId);
+  // The resolve already committed, so a failed lookup is reported as a failed post, never as a failed resolve.
+  const rows = await listOpenLinkedStatusPageIncidents({ organizationId: actor.organizationId, projectId: actor.project.id }, sreIncidentId).catch((error) => {
+    console.error("Error listing linked status page incidents:", error);
+    return null;
+  });
+  if (!rows) return { published: [], failed: ["the linked status pages"], forbidden: false };
   const result: StatusPagePublishResult = { published: [], failed: [], forbidden: false };
   for (const row of rows) {
     const posted = await updateStatusPageIncident(
