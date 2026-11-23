@@ -21,7 +21,6 @@ export const StatusPageVerificationEmail = ({
       preview={`${t.emailSubjectVerify} ${statusPageName}. ${t.emailVerifyExpiry}.`}
       title={statusPageName}
       lang={language}
-      showBrand={false}
       showStandardFooter={false}
       footer={
         <SubscriberFooter notice={`${t.emailVerifySentNotice} ${statusPageName}.`} links={[]} poweredBy={t.poweredBy} />

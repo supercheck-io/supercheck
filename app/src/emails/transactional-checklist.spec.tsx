@@ -79,6 +79,12 @@ describe.each(templates)("%s follows the transactional email checklist", (_name,
     expect(visible).not.toContain("!");
   });
 
+  it("opens with the same Supercheck header lockup as every other email", () => {
+    const header = html.slice(html.indexOf("<body"), html.indexOf("<h1"));
+    // Wordmark sits in its own middle-aligned cell of the lockup row, not as a stacked label.
+    expect(header).toMatch(/<td[^>]*vertical-align:middle[^>]*>\s*<p[^>]*>Supercheck<\/p>\s*<\/td>/);
+  });
+
   it("says why it was sent", () => {
     expect(visible).toMatch(/You received this|You are receiving this|This email was sent because|You're now subscribed/);
   });
@@ -230,5 +236,20 @@ describe("footer (F19)", () => {
     expect(html).not.toContain("supercheck.io/privacy");
     expect(html).not.toContain("supercheck.io/terms");
     expect(html).toContain("You received this");
+  });
+});
+
+describe("header logo", () => {
+  const prev = process.env.NEXT_PUBLIC_APP_URL;
+  afterEach(() => {
+    if (prev === undefined) delete process.env.NEXT_PUBLIC_APP_URL;
+    else process.env.NEXT_PUBLIC_APP_URL = prev;
+  });
+
+  it("puts the landing-page logo beside the wordmark, on subscriber emails too", () => {
+    process.env.NEXT_PUBLIC_APP_URL = "https://app.io";
+    const html = renderToStaticMarkup(<StatusPageVerificationEmail verificationUrl="https://app.io/status/verify/t" statusPageName="Acme Status" />);
+    const header = html.slice(html.indexOf("<body"), html.indexOf("<h1"));
+    expect(header).toMatch(/<tr[^>]*>\s*<td[^>]*padding-right:10px[^>]*>\s*<img[^>]*src="https:\/\/app\.io\/supercheck-logo\.png"[^>]*>\s*<\/td>\s*<td[^>]*>\s*<p[^>]*>Supercheck<\/p>/);
   });
 });

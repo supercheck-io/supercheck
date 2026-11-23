@@ -90,7 +90,6 @@ export const IncidentNotificationEmail = ({
       preview={`${incidentName}: ${statusLabel}${scheduledWindow ? ` (${scheduledWindow})` : ""}`}
       title={statusPageName}
       lang={language}
-      showBrand={false}
       showStandardFooter={false}
       footer={
         <SubscriberFooter

@@ -23,7 +23,6 @@ export const StatusPageWelcomeEmail = ({
       preview={`${t.emailNowSubscribed} ${statusPageName}. ${t.verifiedWillReceive}`}
       title={statusPageName}
       lang={language}
-      showBrand={false}
       showStandardFooter={false}
       footer={
         <SubscriberFooter

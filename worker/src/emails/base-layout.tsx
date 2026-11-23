@@ -97,10 +97,23 @@ export const BaseLayout = ({
         <Container className="sc-container" style={container}>
           {/* Header */}
           <Section style={header}>
-            {showBrand && logoUrl && (
-              <Img src={logoUrl} width="32" height="32" alt="" style={logo} />
+            {/* Same lockup as the landing page: logo tile beside the wordmark. A table keeps it on one row in Outlook. */}
+            {showBrand && (
+              <table role="presentation" cellPadding={0} cellSpacing={0} border={0} align="center" style={brandRow}>
+                <tbody>
+                  <tr>
+                    {logoUrl && (
+                      <td style={brandLogoCell}>
+                        <Img src={logoUrl} width="28" height="28" alt="" style={logo} />
+                      </td>
+                    )}
+                    <td style={brandTextCell}>
+                      <Text style={brand}>Supercheck</Text>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
             )}
-            {showBrand && <Text style={brand}>Supercheck</Text>}
             <Heading style={headerTitle}>{title}</Heading>
           </Section>
 
@@ -186,9 +199,21 @@ const header = {
 };
 
 const logo = {
-  margin: "0 auto 8px",
-  display: "inline-block",
-  borderRadius: "8px",
+  display: "block",
+  borderRadius: "6px",
+};
+
+const brandRow = {
+  margin: "0 auto 14px",
+};
+
+const brandLogoCell = {
+  verticalAlign: "middle" as const,
+  paddingRight: "10px",
+};
+
+const brandTextCell = {
+  verticalAlign: "middle" as const,
 };
 
 const reasonText = {
@@ -205,12 +230,11 @@ const reasonLink = {
 
 const brand = {
   color: "#ffffff",
-  margin: "0 0 8px",
-  fontSize: "13px",
+  margin: "0",
+  fontSize: "18px",
   fontWeight: "700" as const,
-  letterSpacing: "0.12em",
-  textTransform: "uppercase" as const,
-  opacity: 0.85,
+  lineHeight: "28px",
+  letterSpacing: "-0.02em",
 };
 
 const headerTitle = {
