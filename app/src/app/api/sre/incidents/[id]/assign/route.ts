@@ -8,7 +8,7 @@ import { readJsonBody } from "@/lib/http/read-capped-json";
 
 // null unassigns. `role: "commander"` sets the optional incident commander instead of the assignee.
 const bodySchema = z.object({
-  assigneeUserId: z.string().uuid().nullable(),
+  assigneeUserId: z.string().uuid().transform((id) => id.toLowerCase()).nullable(),
   role: z.enum(["assignee", "commander"]).default("assignee"),
 });
 
@@ -20,7 +20,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   const auth = await requireSreApiPermissions([{ resource: "sre_incident", action: "update" }]);
   if (!auth.success) return auth.response;
   try {
-    const parsedId = z.string().uuid().safeParse((await params).id);
+    const parsedId = z.string().uuid().transform((id) => id.toLowerCase()).safeParse((await params).id);
     const read = await readJsonBody(request, 64 * 1024);
     if (read instanceof NextResponse && read.status === 413) return read;
     const parsedBody = bodySchema.safeParse(read instanceof NextResponse ? null : read.body);
@@ -37,13 +37,17 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       parsedBody.data.role,
     );
     if (!result.ok) {
-      return NextResponse.json({ error: result.error }, { status: result.code === "not_found" ? 404 : 400 });
+      return NextResponse.json({ error: result.error }, { status: result.code === "not_found" ? 404 : result.code === "conflict" ? 409 : 400 });
     }
     return NextResponse.json({
       success: true,
       incident: result.incident,
       changed: result.changed,
-      message: `Incident #${result.incident.incidentNumber} ${parsedBody.data.assigneeUserId ? "assigned" : "unassigned"}`,
+      message: `Incident #${result.incident.incidentNumber} ${
+        parsedBody.data.role === "commander"
+          ? parsedBody.data.assigneeUserId ? "commander set" : "commander cleared"
+          : parsedBody.data.assigneeUserId ? "assigned" : "unassigned"
+      }`,
     });
   } catch (error) {
     logger.error({ error }, "Error updating SRE incident");

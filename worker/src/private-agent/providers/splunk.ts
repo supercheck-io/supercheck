@@ -41,6 +41,9 @@ const BLOCKED_COMMANDS = [
   'dump',
   'rest',
   'dbxquery',
+  // DB Connect writes rows to an external database or runs a lookup query against one.
+  'dbxoutput',
+  'dbxlookup',
   'curl',
   'webhook',
   'savedsearch',

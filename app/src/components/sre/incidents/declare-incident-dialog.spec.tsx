@@ -94,7 +94,8 @@ describe("DeclareIncidentDialog", () => {
       summary: "Users report 500s",
       statusPage: { statusPageId: "sp-1", componentIds: ["c-1"], impact: "minor", message: "Investigating", notifySubscribers: true },
     }));
-    expect(mockToast.warning).toHaveBeenCalledWith(expect.stringContaining("status page post failed"), expect.objectContaining({ action: expect.objectContaining({ label: "Post to status page" }) }));
+    // The dialog opens the incident, whose Properties hold the retry.
+    expect(mockToast.warning).toHaveBeenCalledWith(expect.stringContaining("status page post failed"), { description: "Post it again with Post to status page on the incident, or from the status page's Status updates tab." });
   });
 
   it("toggles monitors in the picker and sends the chosen service and commander", async () => {

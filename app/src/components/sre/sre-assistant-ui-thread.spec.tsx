@@ -5,7 +5,7 @@ import {
   getQuickRepliesForAssistantText,
 } from "./sre-generative-ui";
 import { CopilotChatHelp } from "./sre-copilot-chat-help";
-import { INCIDENT_STARTERS, SreAssistantUiThread, historyMessagesToUiMessages, InterruptedNotice } from "./sre-assistant-ui-thread";
+import { INCIDENT_STARTERS, SreAssistantUiThread, historyMessagesToUiMessages, InterruptedNotice, isReplyReplacedError } from "./sre-assistant-ui-thread";
 import { AssistantChatTransport, useChatRuntime } from "@assistant-ui/react-ai-sdk";
 import { useProjectContext } from "@/hooks/use-project-context";
 
@@ -251,6 +251,23 @@ describe("regenerate request", () => {
     expect(request("regenerate-message").messageId).toBe("a9");
     expect(request("regenerate-message", "a3").messageId).toBe("a3");
   });
+
+  it("keeps naming the original reply after a regeneration stopped before any text", () => {
+    const { request, runtimeOptions } = prepare([
+      { id: "u1", role: "user", content: "q", modelId: null },
+      { id: "a1", role: "assistant", content: "a", modelId: null },
+    ]);
+    request("regenerate-message");
+    runtimeOptions.onFinish({ message: { id: "a2", role: "assistant", parts: [] }, messages: [], isAbort: true });
+    expect(request("regenerate-message").messageId).toBe("a1");
+    // A stopped regeneration that produced text is stored and replaces a1.
+    runtimeOptions.onFinish({ message: { id: "a3", role: "assistant", parts: [{ type: "text", text: "par" }] }, messages: [], isAbort: true });
+    expect(request("regenerate-message").messageId).toBe("a3");
+    // A new message stopped before any text is stored as a stub under its own id.
+    request("submit-message");
+    runtimeOptions.onFinish({ message: { id: "a4", role: "assistant", parts: [] }, messages: [], isAbort: true });
+    expect(request("regenerate-message").messageId).toBe("a4");
+  });
 });
 
 describe("InterruptedNotice", () => {
@@ -266,5 +283,13 @@ describe("InterruptedNotice", () => {
   it("shows when the server flagged the reply as interrupted", () => {
     render(<InterruptedNotice status={{ type: "complete" }} interrupted />);
     expect(screen.getByText("Reply was interrupted.")).toBeInTheDocument();
+  });
+});
+
+describe("isReplyReplacedError", () => {
+  it("recognises only the route's reply_replaced code", () => {
+    expect(isReplyReplacedError(new Error(JSON.stringify({ error: "x", code: "reply_replaced" })))).toBe(true);
+    expect(isReplyReplacedError(new Error(JSON.stringify({ error: "Copilot message to regenerate was not found" })))).toBe(false);
+    expect(isReplyReplacedError(new Error("network down"))).toBe(false);
   });
 });

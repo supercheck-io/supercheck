@@ -283,6 +283,9 @@ export function AlertSettings({
   const recoveryAlertsOn =
     context === "job" ? !!config.alertOnSuccess : !!config.alertOnRecovery;
   // Monitors follow the shared rule (opt-in with alerts off); jobs keep their own default.
+  // A job opens incidents only from a failure or timeout alert: without one the toggle is hidden (its stored value
+  // cannot fire, and is kept so turning the alert back on restores it).
+  const jobHasNoIncidentTrigger = context === "job" && !config.alertOnFailure && !config.alertOnTimeout;
   const incidentsOn =
     context === "monitor"
       ? incidentsEnabled(config)
@@ -763,7 +766,7 @@ export function AlertSettings({
         )}
 
         {/* Incidents. A monitor opens them without alerts or channels, so this shows even with alerts off. */}
-        {(config.enabled || context === "monitor") && (
+        {(config.enabled || context === "monitor") && !jobHasNoIncidentTrigger && (
         <div className="space-y-4" data-testid="alert-incident-settings">
           <Label className="text-sm font-medium">Incidents</Label>
           <div className="flex items-center justify-between gap-4">

@@ -18,15 +18,17 @@ jest.mock("@/lib/sre/incident-notifier", () => ({ notifyIncidentEvent: jest.fn(a
 jest.mock("@/lib/sre/sre-daily-token-limit", () => ({ sreDailyTokenLimitResponse: jest.fn(async () => null) }));
 jest.mock("@/lib/audit-logger", () => ({ logAuditEvent: jest.fn(async () => undefined) }));
 jest.mock("@/sre/lib/triage-runner", () => ({ startSreIncidentTriage: jest.fn(), completeSreIncidentTriage: jest.fn() }));
+jest.mock("@/lib/ai/ai-provider", () => ({ validateAIConfiguration: jest.fn() }));
 jest.mock("@/lib/auth-context", () => ({ requireAuthContext: jest.fn(), isAuthError: () => false }));
 jest.mock("@/lib/rbac/middleware", () => ({ checkPermissionWithContext: () => true }));
 
-import { processSreBackgroundAlertTriageJob } from "./background-alert-triage";
+import { processSreBackgroundAlertTriageJob, recordTriageSkipped } from "./background-alert-triage";
 import { GET as getAlertHistory } from "@/app/api/alerts/history/route";
 import { requireAuthContext } from "@/lib/auth-context";
 import { resolveIncident } from "@/lib/sre/incident-lifecycle";
 import { linkedAlertFields } from "@/lib/sre/incident-alert-snapshot";
 import { notifyIncidentEvent } from "@/lib/sre/incident-notifier";
+import { startSreIncidentTriage } from "@/sre/lib/triage-runner";
 
 const execFileAsync = promisify(execFile);
 const name = `alert_incidents_${randomUUID().replaceAll("-", "")}`;
@@ -371,11 +373,126 @@ it("alert history does not link alerts to unrelated or later incidents", async (
   ]);
 });
 
-it("leaves a late failure open when the recovery threshold needs more than one check", async () => {
-  await mockDatabase.update(schema.monitors).set({ status: "up", lastStatusChangeAt: minutes(5), alertConfig: { enabled: true, notificationProviders: [], alertOnFailure: true, failureThreshold: 1, recoveryThreshold: 3 } }).where(eq(schema.monitors.id, monitorId));
+describe("a late failure with a recovery threshold above 1 (INC-4)", () => {
+  const threshold = (recoveryThreshold: number) => ({ enabled: true, notificationProviders: [], alertOnFailure: true, failureThreshold: 1, recoveryThreshold });
+  const passes = (count: number) =>
+    mockDatabase.insert(schema.monitorResults).values({ monitorId, checkedAt: minutes(6), status: "up", isUp: true, consecutiveSuccessCount: count });
+
+  it("stays open until the monitor passed the threshold in a row", async () => {
+    await mockDatabase.update(schema.monitors).set({ status: "up", lastStatusChangeAt: minutes(5), alertConfig: threshold(3) }).where(eq(schema.monitors.id, monitorId));
+    await passes(2);
+    await alert("monitor_failure", minutes(0));
+    expect((await incidents())[0].status).toBe("triggered");
+  });
+
+  it("resolves once the monitor passed the threshold in a row, since the signal was already spent", async () => {
+    await mockDatabase.update(schema.monitors).set({ status: "up", lastStatusChangeAt: minutes(5), alertConfig: threshold(3) }).where(eq(schema.monitors.id, monitorId));
+    await passes(3);
+    expect(await alert("monitor_failure", minutes(0))).toMatchObject({ skipped: true, reason: "recovered_before_triage" });
+    expect((await incidents())[0].status).toBe("resolved");
+  });
+
+  it("reads a multi-location monitor's aggregated pass count, bounded by the check cycles since it came up", async () => {
+    const config = (count: number) => ({ locationConfig: { enabled: true, locations: ["us-east", "eu-central"] }, aggregatedAlertState: { consecutiveSuccessCount: count } }) as never;
+    const cycle = (group: string, at: Date) =>
+      mockDatabase.insert(schema.monitorResults).values(
+        (["us-east", "eu-central"] as const).map((location) => ({ monitorId, location, executionGroupId: group, checkedAt: at, status: "up" as const, isUp: true, consecutiveSuccessCount: 5 })),
+      );
+    await mockDatabase.update(schema.monitors).set({ status: "up", lastStatusChangeAt: minutes(5), alertConfig: threshold(2), config: config(1) }).where(eq(schema.monitors.id, monitorId));
+    await cycle("g1", minutes(5)); // a per-location row's own count does not count for a multi-location monitor
+    await alert("monitor_failure", minutes(0));
+    expect((await incidents())[0].status).toBe("triggered");
+    // A count kept from before this recovery (10) is bounded by the one cycle run since the monitor came up.
+    await mockDatabase.update(schema.monitors).set({ config: config(10) }).where(eq(schema.monitors.id, monitorId));
+    await alert("monitor_failure", minutes(1));
+    expect((await incidents())[0].status).toBe("triggered");
+    await cycle("g2", minutes(6));
+    await alert("monitor_failure", minutes(2));
+    expect((await incidents())[0].status).toBe("resolved");
+  });
+
+  it("resolves a job only when its last N runs since the failure all passed", async () => {
+    await mockDatabase.update(schema.jobs).set({ alertConfig: threshold(2) } as never).where(eq(schema.jobs.id, jobId));
+    await mockDatabase.insert(schema.runs).values({ jobId, projectId, status: "passed", completedAt: minutes(6) } as never);
+    await alert("job_failed", minutes(0), { job: true });
+    expect((await incidents())[0].status).toBe("triggered");
+    await mockDatabase.insert(schema.runs).values({ jobId, projectId, status: "passed", completedAt: minutes(7) } as never);
+    await alert("job_failed", minutes(1), { job: true });
+    expect((await incidents())[0].status).toBe("resolved");
+  });
+});
+
+it("never triages a resolved incident when a deferred failure job is retried after the resolve (INC-2)", async () => {
+  process.env.SRE_AUTOMATION_ENABLED = "true";
+  jest.mocked(startSreIncidentTriage).mockResolvedValue({ success: false, status: 409, reason: "org_concurrency_limit", error: "busy" } as never);
+  const [row] = await mockDatabase
+    .insert(schema.alertHistory)
+    .values({ message: "down", type: "monitor_failure", target: "Checkout API", targetType: "monitor", monitorId, provider: "slack", status: "sent", sentAt: minutes(0) })
+    .returning();
+  expect(await processSreBackgroundAlertTriageJob({ alertHistoryId: row.id })).toMatchObject({ skipped: true, reason: "org_concurrency_limit" });
+  await alert("monitor_recovery", minutes(5));
+  const before = await mockDatabase.select().from(schema.sreIncidents).where(eq(schema.sreIncidents.organizationId, orgId));
+  const timelineBefore = await states(before[0].id);
+
+  expect(await processSreBackgroundAlertTriageJob({ alertHistoryId: row.id })).toMatchObject({ skipped: true, reason: "resolved_incident" });
+  expect(startSreIncidentTriage).toHaveBeenCalledTimes(1);
+  const after = await mockDatabase.select().from(schema.sreIncidents).where(eq(schema.sreIncidents.organizationId, orgId));
+  expect(after).toEqual(before);
+  expect(await states(before[0].id)).toEqual(timelineBefore);
+});
+
+it("skips a queued failure for a paused or disabled monitor, but still resolves on its recovery (INC-3)", async () => {
   await alert("monitor_failure", minutes(0));
+  await mockDatabase.update(schema.monitors).set({ status: "paused" }).where(eq(schema.monitors.id, monitorId));
+  expect(await alert("monitor_failure", minutes(2))).toMatchObject({ skipped: true, reason: "source_paused" });
+  await alert("monitor_recovery", minutes(5));
+  expect((await incidents()).map((r) => r.status)).toEqual(["resolved"]);
+
+  await mockDatabase.update(schema.monitors).set({ status: "down", enabled: false }).where(eq(schema.monitors.id, monitorId));
+  expect(await alert("monitor_failure", minutes(60))).toMatchObject({ skipped: true, reason: "source_paused" });
+  expect(await incidents()).toHaveLength(1);
+});
+
+it("sets severity by alert type only, and raises it when a more severe alert joins (INC-8)", async () => {
+  await alert("job_failed", minutes(0), { job: true, message: "a critical sev1 export failed" });
+  const [opened] = await incidents();
+  expect(opened.severity).toBe("sev2");
+  await alert("job_timeout", minutes(2), { job: true });
+  const rows = await incidents();
+  expect(rows).toHaveLength(1);
+  expect(rows[0].severity).toBe("sev1");
+  const edits = await mockDatabase
+    .select({ data: schema.sreIncidentTimelineEvents.eventData, actor: schema.sreIncidentTimelineEvents.actorType })
+    .from(schema.sreIncidentTimelineEvents)
+    .where(eq(schema.sreIncidentTimelineEvents.incidentId, opened.id));
+  expect(edits.filter((e) => (e.data as { state?: string }).state === "incident_updated")).toEqual([
+    { actor: "system", data: expect.objectContaining({ previous: { severity: "sev2" }, current: { severity: "sev1" } }) },
+  ]);
+  // A less severe alert never lowers it.
+  await alert("job_failed", minutes(4), { job: true });
+  expect((await incidents())[0].severity).toBe("sev1");
+});
+
+it("counts alerts and measures the outage per open period after a reopen (INC-9)", async () => {
+  await alert("monitor_failure", minutes(0));
+  await alert("monitor_failure", minutes(2));
+  await alert("monitor_recovery", minutes(10));
+  const [first] = await incidents();
+  // The first open period started long ago.
+  await mockDatabase.update(schema.sreIncidents).set({ createdAt: new Date(base - 3 * 60 * 60_000) }).where(eq(schema.sreIncidents.id, first.id));
+  await alert("monitor_failure", minutes(20));
+  const alertCount = async () =>
+    (await mockDatabase.select({ alertCount: schema.sreIncidents.alertCount }).from(schema.sreIncidents).where(eq(schema.sreIncidents.id, first.id)))[0].alertCount;
+  expect(await alertCount()).toBe(1);
+  // A late failure from the closed period does not count in the new one; a new failure does.
+  await alert("monitor_failure", minutes(1));
+  expect(await alertCount()).toBe(1);
+  await alert("monitor_failure", minutes(22));
+  expect(await alertCount()).toBe(2);
+  await alert("monitor_recovery", minutes(30));
   const [row] = await incidents();
-  expect(row.status).toBe("triggered");
+  expect(row.status).toBe("resolved");
+  expect(row.resolutionSummary).not.toMatch(/\dh/);
 });
 
 it("never auto-resolves an SSL expiry incident from an up/down recovery", async () => {
@@ -517,4 +634,40 @@ it("leaves the alert firing when the recovery is older than the latest failure",
   await alert("monitor_recovery", minutes(10));
   const rows = await mockDatabase.select({ status: schema.sreAlertEvents.status }).from(schema.sreAlertEvents);
   expect(rows.map((r) => r.status)).toEqual(["firing"]);
+});
+
+it("records a skipped AI triage once per open period, also when two writers race (INC-6)", async () => {
+  await alert("monitor_failure", minutes(0));
+  const [row] = await incidents();
+  const skips = async () => (await states(row.id)).filter((state) => state === "triage_skipped");
+  await Promise.all([recordTriageSkipped(row.id, "daily_limit"), recordTriageSkipped(row.id, "daily_limit")]);
+  await recordTriageSkipped(row.id, "ai_not_configured");
+  expect(await skips()).toHaveLength(1);
+  // A reopened incident is a new open period: it says why it got no triage either.
+  await mockDatabase.update(schema.sreIncidents).set({ reopenedAt: new Date(Date.now() + 1000) }).where(eq(schema.sreIncidents.id, row.id));
+  await new Promise((resolve) => setTimeout(resolve, 1100));
+  await recordTriageSkipped(row.id, "daily_limit");
+  expect(await skips()).toHaveLength(2);
+});
+
+it("raises severity when a more severe failure reopens an incident (INC-8)", async () => {
+  await alert("job_failed", minutes(0), { job: true });
+  await alert("job_success", minutes(10), { job: true });
+  expect((await incidents())[0]).toMatchObject({ status: "resolved", severity: "sev2" });
+  await alert("job_timeout", minutes(15), { job: true });
+  const rows = await incidents();
+  expect(rows).toHaveLength(1);
+  expect(rows[0]).toMatchObject({ status: "triggered", severity: "sev1" });
+});
+
+it("raises a declared incident's severity when a more severe alert of a listed monitor joins it (INC-8)", async () => {
+  const [declared] = await mockDatabase
+    .insert(schema.sreIncidents)
+    .values({ organizationId: orgId, projectId, incidentNumber: 1, title: "Checkout slow", severity: "sev3", status: "triggered", createdByUserId: userId })
+    .returning();
+  await mockDatabase.insert(schema.sreIncidentResources).values({ incidentId: declared.id, resourceType: "monitor", resourceId: monitorId } as never);
+  await alert("monitor_failure", minutes(0));
+  const rows = await incidents();
+  expect(rows).toHaveLength(1);
+  expect(rows[0].severity).toBe("sev2");
 });

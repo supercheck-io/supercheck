@@ -18,6 +18,7 @@ jest.mock("@/lib/queue", () => ({
 
 jest.mock("@/sre/lib/background-alert-triage", () => ({
   processSreBackgroundAlertTriageJob: jest.fn(),
+  recordTriageSkipped: jest.fn(),
 }));
 
 jest.mock("@/sre/lib/feature-gates", () => ({
@@ -25,7 +26,7 @@ jest.mock("@/sre/lib/feature-gates", () => ({
 }));
 
 import { DelayedError, Worker } from "bullmq";
-import { processSreBackgroundAlertTriageJob } from "@/sre/lib/background-alert-triage";
+import { processSreBackgroundAlertTriageJob, recordTriageSkipped } from "@/sre/lib/background-alert-triage";
 import { isSreBackgroundAlertTriageEnabled } from "@/sre/lib/feature-gates";
 import {
   initializeSreAlertTriageProcessor,
@@ -127,7 +128,7 @@ describe("initializeSreAlertTriageProcessor", () => {
     });
 
     it("gives up deferring once the window since the first block has passed", async () => {
-      const limited = { success: true, skipped: true, reason: "org_concurrency_limit" };
+      const limited = { success: true, skipped: true, reason: "org_concurrency_limit", incidentId: "inc-1" };
       (processSreBackgroundAlertTriageJob as jest.Mock).mockResolvedValue(limited);
       const handler = await getHandler();
       const moveToDelayed = jest.fn();
@@ -136,6 +137,8 @@ describe("initializeSreAlertTriageProcessor", () => {
         handler({ data: { orgLimitFirstBlockedAt: Date.now() - ORG_LIMIT_DEFER_WINDOW_MS - 1 }, moveToDelayed }, "tok"),
       ).resolves.toEqual(limited);
       expect(moveToDelayed).not.toHaveBeenCalled();
+      // The incident is left without AI triage: its timeline says why.
+      expect(recordTriageSkipped).toHaveBeenCalledWith("inc-1", "org_concurrency_limit");
     });
 
     it("does not throw for skipped jobs", async () => {

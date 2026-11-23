@@ -30,6 +30,7 @@ import { createSafeTempPath } from '../../common/security/path-validator';
 import {
   ContainerExecutorService,
   WORKER_INTERRUPTED_ERROR,
+  EXECUTION_QUOTA_ERROR,
 } from '../../common/security/container-executor.service';
 import {
   findFirstFileByNames,
@@ -456,6 +457,7 @@ export class K6ExecutionService {
         timedOut: boolean;
         cancelled?: boolean;
         interrupted?: boolean;
+        capacityExhausted?: boolean;
         started?: boolean;
         billableMs?: number;
         billingVirtualUsers?: number;
@@ -540,11 +542,15 @@ export class K6ExecutionService {
       }
       // The pod never started: let the queue delay the run so a new worker runs it.
       if (
-        execResult.interrupted &&
+        (execResult.interrupted || execResult.capacityExhausted) &&
         !containerStarted &&
         totalBillableMs === 0
       ) {
-        throw new ExecutionCapacityError(WORKER_INTERRUPTED_ERROR);
+        throw new ExecutionCapacityError(
+          execResult.capacityExhausted
+            ? EXECUTION_QUOTA_ERROR
+            : WORKER_INTERRUPTED_ERROR,
+        );
       }
       const interrupted = execResult.interrupted === true;
       interruptedRun = interrupted;
@@ -951,6 +957,7 @@ export class K6ExecutionService {
     timedOut: boolean;
     cancelled?: boolean;
     interrupted?: boolean;
+    capacityExhausted?: boolean;
     started?: boolean;
     billableMs?: number;
     billingVirtualUsers?: number;
@@ -1148,6 +1155,7 @@ export class K6ExecutionService {
         // Stopped by a trial limit: a failed run, not a user cancellation.
         cancelled: containerResult.cancelled && !stopReason,
         interrupted: containerResult.interrupted,
+        capacityExhausted: containerResult.capacityExhausted,
         started: containerResult.started,
         billableMs: containerResult.billableMs ?? 0,
         billingVirtualUsers: allocation.value(),

@@ -1,13 +1,16 @@
 "use server";
 
 import { db } from "@/utils/db";
-import { incidents, incidentUpdates } from "@/db/schema";
-import { eq, desc } from "drizzle-orm";
+import { incidents, incidentUpdates, statusPages } from "@/db/schema";
+import { and, eq, desc, inArray } from "drizzle-orm";
+import { createLogger } from "@/lib/logger/index";
+import { OrgPendingDeletionError, permissionDeniedResult } from "@/lib/deletion/org-state";
 import { requireProjectContext } from "@/lib/project-context";
 import { requirePermissions } from "@/lib/rbac/middleware";
 import { z } from "zod";
 
 // UUID validation schema
+const logger = createLogger({ module: "get-incident-detail" }) as { error: (data: unknown, message?: string) => void };
 const uuidSchema = z.string().uuid("Invalid ID format");
 
 /**
@@ -33,14 +36,34 @@ export async function getIncidentDetail(incidentId: string) {
     const { organizationId, project } = await requireProjectContext();
 
     // Check RBAC permissions
-    await requirePermissions(
-      { status_page: ["view"] },
-      { organizationId, projectId: project.id }
-    );
+    try {
+      await requirePermissions(
+        { status_page: ["view"] },
+        { organizationId, projectId: project.id }
+      );
+    } catch (error) {
+      // Only a denial is a permission result; anything else (a failed lookup) is an error, handled below.
+      const denied =
+        error instanceof OrgPendingDeletionError || (error instanceof Error && error.message.includes("Access denied"));
+      if (!denied) throw error;
+      return {
+        ...(await permissionDeniedResult(organizationId, "Insufficient permissions to view incidents")),
+        incident: null,
+      };
+    }
 
-    // Get incident with all updates and verify ownership
+    // Scope to the caller's org and project in the query itself, not after the read.
     const incident = await db.query.incidents.findFirst({
-      where: eq(incidents.id, incidentId),
+      where: and(
+        eq(incidents.id, incidentId),
+        inArray(
+          incidents.statusPageId,
+          db
+            .select({ id: statusPages.id })
+            .from(statusPages)
+            .where(and(eq(statusPages.organizationId, organizationId), eq(statusPages.projectId, project.id))),
+        ),
+      ),
       with: {
         updates: {
           orderBy: [desc(incidentUpdates.createdAt)],
@@ -66,33 +89,21 @@ export async function getIncidentDetail(incidentId: string) {
       };
     }
 
-    // SECURITY: Verify ownership - incident's status page must belong to user's org AND project
-    if (
-      incident.statusPage?.organizationId !== organizationId ||
-      incident.statusPage?.projectId !== project.id
-    ) {
-      return {
-        success: false,
-        message: "Incident not found or access denied",
-        incident: null,
-      };
-    }
-
     // Return incident without internal org/project fields from status page
     return {
       success: true,
       incident: {
         ...incident,
         statusPage: {
-          id: incident.statusPage.id,
-          name: incident.statusPage.name,
-          headline: incident.statusPage.headline,
-          subdomain: incident.statusPage.subdomain,
+          id: incident.statusPage!.id,
+          name: incident.statusPage!.name,
+          headline: incident.statusPage!.headline,
+          subdomain: incident.statusPage!.subdomain,
         },
       },
     };
   } catch (error) {
-    console.error("Error fetching incident detail:", error);
+    logger.error({ error }, "Error fetching incident detail");
     return {
       success: false,
       message: "Failed to fetch incident details",

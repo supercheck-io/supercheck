@@ -197,11 +197,24 @@ describe("IncidentTimeline", () => {
     const { unmount } = render(<IncidentTimeline incidentId="i1" canUpdate />);
     expect(screen.queryByLabelText(/Also post to status page/)).not.toBeInTheDocument();
     unmount();
-    render(<IncidentTimeline incidentId="i1" canUpdate canPostToStatusPage />);
+    render(<IncidentTimeline incidentId="i1" canUpdate statusPagePosts={[{ statusPageName: "Public status", deliverNotifications: false }]} />);
+    // The label follows the post's own notify setting.
+    expect(screen.getByLabelText("Also post to status page (subscribers are not emailed)")).toBeInTheDocument();
+    expect(screen.queryByRole("combobox", { name: "Public status" })).not.toBeInTheDocument();
     fireEvent.change(screen.getByPlaceholderText("Add a note for your team..."), { target: { value: "Customers affected" } });
     fireEvent.click(screen.getByLabelText(/Also post to status page/));
+    // Ticked: the public status can move with the post; by default it is kept.
+    expect(screen.getByRole("combobox", { name: "Public status" })).toHaveTextContent("Keep public status");
     fireEvent.click(screen.getByRole("button", { name: "Add note" }));
     await waitFor(() => expect(addUpdate).toHaveBeenCalledWith({ incidentId: "i1", text: "Customers affected", postToStatusPage: true }));
+  });
+
+  it("names how many status pages a post reaches and who is emailed", () => {
+    const { unmount } = render(<IncidentTimeline incidentId="i1" canUpdate statusPagePosts={[{ statusPageName: "A", deliverNotifications: true }, { statusPageName: "B", deliverNotifications: true }]} />);
+    expect(screen.getByLabelText("Also post to 2 status pages (subscribers are emailed)")).toBeInTheDocument();
+    unmount();
+    render(<IncidentTimeline incidentId="i1" canUpdate statusPagePosts={[{ statusPageName: "A", deliverNotifications: true }, { statusPageName: "B", deliverNotifications: false }]} />);
+    expect(screen.getByLabelText("Also post to 2 status pages (subscribers are emailed where the post has notifications on)")).toBeInTheDocument();
   });
 
   it("fills the box with an AI draft for the person to edit, and posts nothing by itself", async () => {
@@ -237,7 +250,7 @@ describe("IncidentTimeline", () => {
 
   it("warns when the note was saved but the status page post failed", async () => {
     addUpdate.mockResolvedValue({ success: true, warning: "The status page post failed: nope" });
-    render(<IncidentTimeline incidentId="i1" canUpdate canPostToStatusPage />);
+    render(<IncidentTimeline incidentId="i1" canUpdate statusPagePosts={[{ statusPageName: "Public status", deliverNotifications: true }]} />);
     fireEvent.change(screen.getByPlaceholderText("Add a note for your team..."), { target: { value: "x" } });
     fireEvent.click(screen.getByRole("button", { name: "Add note" }));
     await waitFor(() => expect(toast.warning).toHaveBeenCalledWith("The status page post failed: nope"));

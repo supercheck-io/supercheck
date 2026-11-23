@@ -16,6 +16,7 @@ import {
 } from "@/db/schema";
 import { db } from "@/utils/db";
 import { monitorConfigForRead, monitorResultForRead, monitorTargetForRead } from "@/lib/monitor-read-config";
+import { alertSeverity } from "@/lib/sre/alert-severity";
 import { linkedAlertFields } from "@/lib/sre/incident-alert-snapshot";
 import { MONITOR_READ_COLUMNS } from "@/lib/monitor-response";
 
@@ -110,29 +111,6 @@ function addEvidence(
 
 function hasNonEmptyText(value: string | null | undefined) {
   return typeof value === "string" && value.trim().length > 0;
-}
-
-function deriveNativeSeverity(type: string, message: string) {
-  const normalizedType = type.toLowerCase();
-  const normalizedMessage = message.toLowerCase();
-
-  if (
-    normalizedMessage.includes("sev1") ||
-    normalizedMessage.includes("critical") ||
-    normalizedType.includes("timeout")
-  ) {
-    return "sev1";
-  }
-
-  if (normalizedType.includes("failure") || normalizedType.includes("failed")) {
-    return "sev2";
-  }
-
-  if (normalizedType.includes("ssl") || normalizedMessage.includes("expir")) {
-    return "sev3";
-  }
-
-  return "sev4";
 }
 
 function resolveWindow(anchor: Date | null, fallback: Date): NativeEvidenceWindow {
@@ -251,7 +229,7 @@ export async function collectNativeEvidence(input: {
           id: alert.id,
           fingerprintHash: hash(`${input.organizationId}:${dedupKey}`),
           dedupKey,
-          severity: deriveNativeSeverity(alert.type, alert.message),
+          severity: alertSeverity(alert.type),
           status: alert.status === "sent" ? "firing" : "resolved",
           sourceType,
           sourceId,

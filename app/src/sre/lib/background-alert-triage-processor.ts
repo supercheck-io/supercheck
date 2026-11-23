@@ -1,7 +1,7 @@
 import { DelayedError, Worker } from "bullmq";
 
 import { getRedisConnection, queueLogger } from "@/lib/queue";
-import { processSreBackgroundAlertTriageJob } from "@/sre/lib/background-alert-triage";
+import { processSreBackgroundAlertTriageJob, recordTriageSkipped } from "@/sre/lib/background-alert-triage";
 import { SRE_ALERT_TRIAGE_QUEUE_NAME, type SreAlertTriageQueueJob } from "@/sre/lib/background-alert-triage-queue";
 import { isSreBackgroundAlertTriageEnabled } from "@/sre/lib/feature-gates";
 import { watchConsumer } from "@/lib/consumer-watchdog";
@@ -54,6 +54,8 @@ export async function initializeSreAlertTriageProcessor() {
             await job.moveToDelayed(Date.now() + ORG_LIMIT_DEFER_DELAY_MS, token);
             throw new DelayedError();
           }
+          // Gave up waiting: the incident keeps no AI finding, so say why on its timeline.
+          if (result.incidentId) await recordTriageSkipped(result.incidentId, result.reason);
         }
         // Throw on real failures so BullMQ applies its attempts/backoff instead of marking the job completed.
         if (!result.success) {

@@ -458,15 +458,23 @@ const TRIGGER_ALERT_TYPES = ["monitor_failure", "job_failed", "job_timeout", "ss
 /**
  * True when the triggering alert (its own type, not any alert for the source) was delivered (status `sent`) to some
  * channel. With the triggering row known, only rows of the same outage (monitors) or run (jobs) count, so a delivery
- * from an earlier outage cannot hide a failed page; otherwise any such row in the last 15 minutes.
+ * from an earlier outage cannot hide a failed page; otherwise only rows sent since that row (one without an outage
+ * key) or since the incident's own trigger fired (opened without an alert row), and the last 15 minutes only when
+ * neither time is known.
  */
-async function triggerAlertDelivered(sourceType: "monitor" | "job", sourceId: string, dedupKey: string | null, triggerAlertHistoryId?: string) {
+async function triggerAlertDelivered(
+  sourceType: "monitor" | "job",
+  sourceId: string,
+  dedupKey: string | null,
+  triggerAlertHistoryId: string | undefined,
+  triggerFiredAt: Date | null,
+) {
   // Alert event dedup keys end with the alert type (see background-alert-triage).
   const keyType = dedupKey?.split(":").pop();
   const types = TRIGGER_ALERT_TYPES.filter((type) => type === keyType);
   const [trigger] = triggerAlertHistoryId && isUuid(triggerAlertHistoryId)
     ? await db
-        .select({ outageKey: alertHistory.outageKey, runId: alertHistory.runId })
+        .select({ outageKey: alertHistory.outageKey, runId: alertHistory.runId, sentAt: alertHistory.sentAt })
         .from(alertHistory)
         .where(and(eq(alertHistory.id, triggerAlertHistoryId), sourceType === "monitor" ? eq(alertHistory.monitorId, sourceId) : eq(alertHistory.jobId, sourceId)))
         .limit(1)
@@ -476,7 +484,7 @@ async function triggerAlertDelivered(sourceType: "monitor" | "job", sourceId: st
       ? eq(alertHistory.outageKey, trigger.outageKey)
       : sourceType === "job" && trigger?.runId
         ? eq(alertHistory.runId, trigger.runId)
-        : gte(alertHistory.sentAt, new Date(Date.now() - 15 * 60_000));
+        : gte(alertHistory.sentAt, trigger?.sentAt ?? triggerFiredAt ?? new Date(Date.now() - 15 * 60_000));
   const rows = await db
     .select({ status: alertHistory.status })
     .from(alertHistory)
@@ -536,6 +544,7 @@ export async function notifyIncidentEvent(input: IncidentNotifyInput): Promise<b
         status: sreIncidents.status,
         acknowledgedAt: sreIncidents.acknowledgedAt,
         renotifyStoppedAt: sreIncidents.renotifyStoppedAt,
+        lastAlertAt: sreIncidents.lastAlertAt,
         assigneeUserId: sreIncidents.assigneeUserId,
         commanderUserId: sreIncidents.commanderUserId,
         serviceId: sreIncidents.primaryServiceId,
@@ -701,7 +710,12 @@ export async function notifyIncidentEvent(input: IncidentNotifyInput): Promise<b
 
     // Providers linked to the monitor/job that raised the alert; other incidents use the project policy.
     const [source] = await db
-      .select({ sourceType: sreAlertEvents.sourceType, sourceId: sreAlertEvents.sourceId, dedupKey: sreAlertEvents.dedupKey })
+      .select({
+        sourceType: sreAlertEvents.sourceType,
+        sourceId: sreAlertEvents.sourceId,
+        dedupKey: sreAlertEvents.dedupKey,
+        firedAt: sreIncidentAlerts.alertFiredAt,
+      })
       .from(sreIncidentAlerts)
       .innerJoin(sreAlertEvents, eq(sreAlertEvents.id, sreIncidentAlerts.alertEventId))
       .where(and(eq(sreIncidentAlerts.incidentId, incident.id), eq(sreIncidentAlerts.role, "trigger")))
@@ -720,7 +734,7 @@ export async function notifyIncidentEvent(input: IncidentNotifyInput): Promise<b
     // `created` for a monitor or job whose own alert reached nobody: add the policy channels as a fallback.
     let addPolicyFallback = false;
     if (fromMonitorOrJob && (input.event === "created" || reopenedByAlert)) {
-      if (await triggerAlertDelivered(source.sourceType as "monitor" | "job", source.sourceId as string, source.dedupKey, input.triggerAlertHistoryId)) {
+      if (await triggerAlertDelivered(source.sourceType as "monitor" | "job", source.sourceId as string, source.dedupKey, input.triggerAlertHistoryId, reopenedByAlert ? incident.lastAlertAt : source.firedAt)) {
         return attempted === 0 || sent > 0;
       }
       addPolicyFallback = true;

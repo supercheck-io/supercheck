@@ -21,7 +21,8 @@ export const MAX_MCP_MODEL_TOOLS = 15;
 const MAX_STRING_ARGUMENT_CHARS = 2_000;
 const MAX_SCHEMA_DEPTH = 5;
 const TOOL_NAME = /^[A-Za-z0-9_.:-]{1,128}$/;
-const FORBIDDEN_HEADER_NAMES = new Set([
+// Hop-by-hop and protocol headers must not be overridable by the stored credential; same list as the worker's mcp-client.
+export const MCP_FORBIDDEN_HEADER_NAMES = new Set([
   "host",
   "content-length",
   "content-type",
@@ -30,6 +31,8 @@ const FORBIDDEN_HEADER_NAMES = new Set([
   "connection",
   "mcp-session-id",
   "mcp-protocol-version",
+  "mcp-method",
+  "mcp-name",
   "cookie",
 ]);
 
@@ -52,7 +55,7 @@ export function mcpHeaderNameError(name: string | null | undefined) {
   if (!/^[A-Za-z0-9-]{1,64}$/.test(trimmed)) {
     return "Header name may only contain letters, digits and hyphens";
   }
-  if (FORBIDDEN_HEADER_NAMES.has(trimmed.toLowerCase())) {
+  if (MCP_FORBIDDEN_HEADER_NAMES.has(trimmed.toLowerCase())) {
     return "That header name is reserved and cannot carry a credential";
   }
   return null;
