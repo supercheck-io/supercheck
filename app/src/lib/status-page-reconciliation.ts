@@ -240,7 +240,8 @@ export async function restoreComponentsOfDeletedIncident(tx: Tx, incidentId: str
     );
   const byComponent = new Map<string, ComponentStatus[]>();
   for (const row of remaining) {
-    // Automatic incidents follow their monitors, as in reconciliation.
+    // Automatic incidents follow their monitors, as in reconciliation. Manual ones override monitor health there too
+    // (manualStatus ?? calculated), so monitored components get the same value the next tick would write.
     if (row.sourceComponentId === row.componentId) continue;
     const statuses = byComponent.get(row.componentId) ?? [];
     statuses.push(row.scheduledFor ? "under_maintenance" : (row.newStatus as ComponentStatus));
