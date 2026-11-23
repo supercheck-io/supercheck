@@ -30,6 +30,7 @@ import { createSafeTempPath } from '../../common/security/path-validator';
 import {
   ContainerExecutorService,
   WORKER_INTERRUPTED_ERROR,
+  EXECUTION_QUOTA_ERROR,
 } from '../../common/security/container-executor.service';
 import {
   findFirstFileByNames,
@@ -547,7 +548,7 @@ export class K6ExecutionService {
       ) {
         throw new ExecutionCapacityError(
           execResult.capacityExhausted
-            ? (execResult.error ?? WORKER_INTERRUPTED_ERROR)
+            ? EXECUTION_QUOTA_ERROR
             : WORKER_INTERRUPTED_ERROR,
         );
       }

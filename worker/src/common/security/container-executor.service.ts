@@ -1872,7 +1872,15 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
       if (!(await noPods())) return false;
       // A pod create the Job controller already had in flight can land just after the delete.
       await this.sleep(ContainerExecutorService.QUOTA_POD_RECHECK_MS);
-      return await noPods();
+      if (!(await noPods())) return false;
+      // Pod lists show only current pods; a pod created and then garbage-collected between them
+      // leaves the controller's SuccessfulCreate event, which outlives the pod.
+      // shortcut: events are best-effort (a dropped event hides a start); a Job suspend or Secret delete barrier needs more worker RBAC.
+      const { items } = await this.coreApi!.listNamespacedEvent({
+        namespace: this.executionNamespace,
+        fieldSelector: `involvedObject.name=${jobName},reason=SuccessfulCreate`,
+      });
+      return items.length === 0;
     } catch {
       return false;
     }

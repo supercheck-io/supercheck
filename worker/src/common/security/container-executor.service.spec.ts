@@ -450,6 +450,27 @@ describe('ContainerExecutorService', () => {
         expect(calls[0]).toBe('list');
       });
 
+      it('does not re-queue when the Job created a pod that was removed before any listing saw it', async () => {
+        service['batchApi'] = {
+          deleteNamespacedJob: jest.fn().mockResolvedValue({}),
+        } as unknown as NonNullable<(typeof service)['batchApi']>;
+        const listNamespacedEvent = jest.fn().mockResolvedValue({
+          items: [{ reason: 'SuccessfulCreate', message: 'Created pod: p' }],
+        });
+        service['coreApi'] = {
+          listNamespacedPod: jest.fn().mockResolvedValue({ items: [] }),
+          listNamespacedEvent,
+        } as unknown as NonNullable<(typeof service)['coreApi']>;
+        service['sleep'] = jest.fn().mockResolvedValue(undefined);
+        await expect(
+          service['confirmNoExecutionPod']('job-q', true),
+        ).resolves.toBe(false);
+        expect(listNamespacedEvent).toHaveBeenCalledWith({
+          namespace: expect.any(String),
+          fieldSelector: 'involvedObject.name=job-q,reason=SuccessfulCreate',
+        });
+      });
+
       it('reports a run cancelled while the quota held its pod as cancelled, not re-queued', async () => {
         service['batchApi'] = {
           createNamespacedJob: jest
@@ -529,9 +550,14 @@ describe('ContainerExecutorService', () => {
               .mockResolvedValueOnce({ items: [] })
               .mockResolvedValueOnce({ items: [] })
               .mockResolvedValue({ items: pods }),
-            listNamespacedEvent: jest.fn().mockResolvedValue({
-              items: [{ message: 'exceeded quota: execution-limits' }],
-            }),
+            // Quota FailedCreate events only: the Job never created a pod.
+            listNamespacedEvent: jest
+              .fn()
+              .mockImplementation(async ({ fieldSelector }) => ({
+                items: String(fieldSelector).includes('SuccessfulCreate')
+                  ? []
+                  : [{ message: 'exceeded quota: execution-limits' }],
+              })),
           } as unknown as NonNullable<(typeof service)['coreApi']>;
           service['createExecutionSecret'] = jest
             .fn()

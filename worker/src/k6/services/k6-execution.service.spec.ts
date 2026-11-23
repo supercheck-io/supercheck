@@ -1366,7 +1366,8 @@ describe('K6ExecutionService', () => {
             ? {
                 interrupted: false,
                 capacityExhausted: true,
-                error: EXECUTION_QUOTA_ERROR,
+                // Redaction can rewrite the text; the deferral must still see a quota wait.
+                error: 'Execution capacity is full: [REDACTED]',
               }
             : {}),
         } as never);
@@ -1401,6 +1402,10 @@ describe('K6ExecutionService', () => {
             expect((outcome as { error: unknown }).error).toBeInstanceOf(
               ExecutionCapacityError,
             );
+            if (quota)
+              expect((outcome as { error: Error }).error.message).toBe(
+                EXECUTION_QUOTA_ERROR,
+              );
             expect(
               (mockS3Service as unknown as { uploadDirectory: jest.Mock })
                 .uploadDirectory,
