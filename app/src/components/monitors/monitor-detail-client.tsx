@@ -108,10 +108,10 @@ import { useQueryClient } from "@tanstack/react-query";
 import { formatUptime, getResumeStatus, invalidateMonitorCaches, invalidateDeletedMonitorCaches } from "./monitor-actions";
 import { useLocationMetadata } from "@/hooks/use-locations";
 import { HeartbeatPingUrlPanel } from "./heartbeat-ping-url-panel";
-import { HeartbeatPingHistory } from "./heartbeat-ping-history";
+import { HeartbeatPingHistory, heartbeatResultKind } from "./heartbeat-ping-history";
 import { HeartbeatStateBadge } from "./heartbeat-state-badge";
 import { useFitPanelRows } from "./use-fit-panel-rows";
-import { formatHeartbeatMinutes, formatPingAgo, formatPingDue, formatRunDuration } from "./heartbeat-format";
+import { formatHeartbeatMinutes, formatPingAgo, formatPingDue, formatRunningFor, formatRunDuration } from "./heartbeat-format";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { rawCutoff } from "@/lib/raw-cutoff";
 
@@ -651,9 +651,17 @@ export function MonitorDetailClient({
   // Heartbeat: the job pings us, so the stats are about pings, not checks (spec 4.6)
   const heartbeat = monitor.type === "heartbeat" ? monitor.heartbeat : undefined;
   const isHeartbeat = monitor.type === "heartbeat";
-  // The latest run only: a ping without /start has no duration, and an older run's must not stand in for it.
   const hasRunDurations = responseTimeData.some((d) => d.time !== null);
-  const lastRunDuration = formatRunDuration(monitor.recentResults?.[0]?.responseTimeMs);
+  // Duration exists only once the job calls /start (Healthchecks.io and Cronitor work the same way); until then the stat and column stay hidden.
+  const tracksRunDuration = Boolean(heartbeat?.lastStartAt) || hasRunDurations;
+  // The latest run only: a ping without /start has no duration, and an older run's must not stand in for it. A missed run never ran, so it is skipped.
+  const lastRun = monitor.recentResults?.find((r) => heartbeatResultKind(r).kind !== "missed");
+  const lastRunDuration = formatRunDuration(lastRun?.responseTimeMs);
+  // A /start newer than the last ping means the job is running now.
+  const runningSince =
+    heartbeat?.lastStartAt && heartbeat.state !== "paused" && (!heartbeat.lastPingAt || new Date(heartbeat.lastStartAt) > new Date(heartbeat.lastPingAt))
+      ? new Date(heartbeat.lastStartAt)
+      : null;
   // Never pinged: stays pending and never alerts, so there is no deadline to show
   const neverPinged = Boolean(heartbeat && !heartbeat.lastPingAt);
   const nextPingAt = heartbeat && !neverPinged && heartbeat.nextExpectedAt ? new Date(heartbeat.nextExpectedAt) : null;
@@ -1317,13 +1325,23 @@ export function MonitorDetailClient({
                 value={heartbeat.state === "paused" ? "Paused" : nextPingAt ? formatPingDue(nextPingAt, clockNow) : null}
                 tooltip={heartbeat.state !== "paused" && nextPingAt ? format(nextPingAt, STAMP) : undefined}
               />
-              <MetricStat
-                icon={<Timer className="h-4 w-4 text-muted-foreground" />}
-                label="Last run"
-                valueTestId="heartbeat-stat-duration"
-                value={lastRunDuration}
-                tooltip={lastRunDuration ? undefined : "Call /start to record duration"}
-              />
+              {tracksRunDuration ? (
+                <MetricStat
+                  icon={<Timer className="h-4 w-4 text-muted-foreground" />}
+                  label="Last run"
+                  valueTestId="heartbeat-stat-duration"
+                  value={runningSince ? formatRunningFor(runningSince, clockNow) : lastRunDuration}
+                  tooltip={runningSince ? `Started ${format(runningSince, STAMP)}` : undefined}
+                />
+              ) : (
+                <MetricStat
+                  icon={<XCircle className="h-4 w-4 text-muted-foreground" />}
+                  label="Failed (24h)"
+                  valueTestId="heartbeat-stat-failed"
+                  value={monitorStats ? `${monitorStats.period24h.totalChecks - monitorStats.period24h.upChecks} of ${monitorStats.period24h.totalChecks}` : null}
+                  tooltip={monitorStats ? "Missed or failed runs out of the runs expected in the last 24 hours" : undefined}
+                />
+              )}
             </MetricGroup>
             <MetricGroup title="Uptime">
               <MetricStat
@@ -1465,6 +1483,7 @@ export function MonitorDetailClient({
                 total={totalResultsCount}
                 onPageChange={setCurrentPage}
                 onFitRows={fitResults ? setFitRows : undefined}
+                showDuration={tracksRunDuration}
                 headerActions={resultsFilters}
                 filter={
                   failuresOnly || selectedDate

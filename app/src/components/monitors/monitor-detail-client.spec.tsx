@@ -38,12 +38,13 @@ let mockFetching = false;
 let mockPlaceholder = false;
 let locationFilterProps: { availableLocations: string[] } | null = null;
 jest.mock("@/hooks/use-monitor-details", () => ({
-  useMonitorStats: () => ({ stats: null }),
+  useMonitorStats: () => ({ stats: mockStats }),
   useMonitorResults: () => ({ results: mockResults, pagination: mockPagination, isFetching: mockFetching, isPlaceholderData: mockPlaceholder }),
   useMonitorPermissions: () => ({ canEdit: true, canDelete: true, canToggle: true, isLoading: false }),
 }));
 jest.mock("@/components/shared/report-viewer", () => ({ ReportViewer: () => null }));
 jest.mock("@/components/monitors/ai-monitor-analyze-button", () => ({ AIMonitorAnalyzeButton: () => null }));
+let mockStats: unknown = null;
 let chartProps: { data: { firstToken?: number | null }[]; showFirstToken?: boolean } | null = null;
 jest.mock("@/components/monitors/response-time-line-chart", () => ({
   ResponseTimeBarChart: (props: typeof chartProps) => {
@@ -454,7 +455,38 @@ describe("heartbeat monitor detail", () => {
     render(<MonitorDetailClient monitor={heartbeatMonitor("pending", { nextExpectedAt: new Date(Date.now() - 60_000).toISOString() })} />);
     expect(screen.getByTestId("heartbeat-stat-last-ping")).toHaveTextContent("No pings yet");
     expect(screen.getByTestId("heartbeat-stat-next")).toHaveTextContent("—");
-    expect(screen.getByTestId("heartbeat-stat-duration")).toHaveTextContent("—");
+    expect(screen.queryByTestId("heartbeat-stat-duration")).toBeNull();
+    expect(screen.getByTestId("heartbeat-stat-failed")).toHaveTextContent("—");
+  });
+
+  it("shows failed runs instead of a run duration and hides the duration column until the job calls /start", () => {
+    mockStats = { period24h: { totalChecks: 15, upChecks: 2, uptimePercentage: 13.33, avgResponseTimeMs: null, p95ResponseTimeMs: null }, period30d: { totalChecks: 15, upChecks: 2, uptimePercentage: 13.33, avgResponseTimeMs: null, p95ResponseTimeMs: null } };
+    const plain = { ...runRow, responseTimeMs: null };
+    try {
+      render(<MonitorDetailClient monitor={heartbeatMonitor("up", pinged(), [plain])} />);
+    } finally {
+      mockStats = null;
+    }
+    expect(screen.queryByText("Last run")).toBeNull();
+    expect(screen.getByTestId("heartbeat-stat-failed")).toHaveTextContent("13 of 15");
+    expect(screen.queryByRole("columnheader", { name: "Run duration" })).toBeNull();
+  });
+
+  it("shows the duration stat and column once the job has called /start", () => {
+    render(<MonitorDetailClient monitor={heartbeatMonitor("up", pinged({ lastStartAt: new Date(Date.now() - 120_000).toISOString() }))} />);
+    expect(screen.getByText("Last run")).toBeInTheDocument();
+    expect(screen.queryByTestId("heartbeat-stat-failed")).toBeNull();
+  });
+
+  it("shows the last real run's duration when the newest row is a missed run", () => {
+    const missed = { ...runRow, id: "r0", isUp: false, responseTimeMs: null, details: { heartbeat: { kind: "missed" } } };
+    render(<MonitorDetailClient monitor={heartbeatMonitor("down", pinged(), [missed, runRow])} />);
+    expect(screen.getByTestId("heartbeat-stat-duration")).toHaveTextContent("4 min 08 s");
+  });
+
+  it("shows a run in progress while /start is newer than the last ping", () => {
+    render(<MonitorDetailClient monitor={heartbeatMonitor("up", pinged({ lastStartAt: new Date(Date.now() - 5 * 60_000 - 1000).toISOString(), lastPingAt: new Date(Date.now() - 3_600_000).toISOString() }), [runRow])} />);
+    expect(screen.getByTestId("heartbeat-stat-duration")).toHaveTextContent(/^Running · 5m$/);
   });
 
   it("shows overdue when down", () => {

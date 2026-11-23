@@ -47,6 +47,14 @@ describe("HeartbeatPingHistory", () => {
     expect(within(rows[1]).getAllByRole("cell")[2]).toHaveTextContent("—");
   });
 
+  it("drops the run duration column when the monitor does not track duration", () => {
+    render(<HeartbeatPingHistory {...props} total={1} showDuration={false} results={[row("a", true, { heartbeat: { kind: "ping", userAgent: "curl/8.7.1" } })]} />);
+    expect(screen.queryByRole("columnheader", { name: "Run duration" })).toBeNull();
+    const cells = within(screen.getByTestId("heartbeat-ping-row")).getAllByRole("cell");
+    expect(cells).toHaveLength(3);
+    expect(cells[2]).toHaveTextContent("curl/8.7.1");
+  });
+
   it("falls back to up/down for rows without heartbeat details", () => {
     expect(heartbeatResultKind(row("x", true))).toEqual({ kind: "ping", userAgent: null });
     expect(heartbeatResultKind(row("y", false, { heartbeat: { kind: "other" } }))).toEqual({ kind: "missed", userAgent: null });

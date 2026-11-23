@@ -65,6 +65,8 @@ interface HeartbeatPingHistoryProps {
   totalPages: number;
   total: number;
   onPageChange: (page: number) => void;
+  /** Off until the job calls /start: without it every run duration would be a dash. */
+  showDuration?: boolean;
   /**
    * Called with the rows that fit the panel's own height (desktop only). The panel is a fixed-height
    * flex child, so it is measured directly; useFitPageSize measures the page and would shrink forever here.
@@ -86,6 +88,7 @@ export function HeartbeatPingHistory({
   total,
   onPageChange,
   onFitRows,
+  showDuration = true,
   headerActions,
   filter,
 }: HeartbeatPingHistoryProps) {
@@ -147,7 +150,7 @@ export function HeartbeatPingHistory({
                 <TableRow>
                   <TableHead scope="col" className="px-4 text-xs font-medium text-muted-foreground whitespace-nowrap">Time</TableHead>
                   <TableHead scope="col" className="px-4 text-xs font-medium text-muted-foreground whitespace-nowrap">Result</TableHead>
-                  <TableHead scope="col" className="px-4 text-xs font-medium text-muted-foreground whitespace-nowrap">Run duration</TableHead>
+                  {showDuration && <TableHead scope="col" className="px-4 text-xs font-medium text-muted-foreground whitespace-nowrap">Run duration</TableHead>}
                   <TableHead scope="col" className="px-4 text-xs font-medium text-muted-foreground whitespace-nowrap">Client</TableHead>
                 </TableRow>
               </TableHeader>
@@ -165,7 +168,7 @@ export function HeartbeatPingHistory({
                           {RESULT[kind].label}
                         </TableBadge>
                       </TableCell>
-                      <TableCell className="px-4 tabular-nums">{duration ?? <NoDuration hint={kind !== "missed"} />}</TableCell>
+                      {showDuration && <TableCell className="px-4 tabular-nums">{duration ?? <NoDuration hint={kind !== "missed"} />}</TableCell>}
                       <TableCell className="w-full max-w-0 px-4 font-mono text-xs">
                         {kind === "missed" ? (
                           <TruncatedTextWithTooltip text="No ping before the grace period ended" className="font-sans text-muted-foreground" maxWidth="100%" />
