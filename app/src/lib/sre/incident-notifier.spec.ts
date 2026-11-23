@@ -159,6 +159,13 @@ it("uses the event time, not the render time, for other events", async () => {
   expect(props.detail).toBeUndefined();
 });
 
+it("names the trigger alert's service when the incident has no primary service", async () => {
+  renderIncidentUpdateEmail.mockResolvedValueOnce({ subject: "s", html: "h", text: "t" });
+  selectQueue.push([{ ...incident, serviceName: null, triggerServiceName: "Payments" }], people, []);
+  await notifyIncidentEvent(base);
+  expect(renderIncidentUpdateEmail.mock.calls[0][0].serviceName).toBe("Payments");
+});
+
 it("does not email the actor about their own assignment", async () => {
   selectQueue.push([incident], people, []);
   await notifyIncidentEvent({ ...base, assigneeUserId: "actor" });

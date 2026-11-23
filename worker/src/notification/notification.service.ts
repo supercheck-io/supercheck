@@ -966,7 +966,8 @@ export class NotificationService implements OnApplicationShutdown {
         footer: formatted.footer,
         type: this.emailAlertType(payload),
         appUrl,
-        resource: emailResourceLink(payload),
+        // No configured app URL: the dashboard link would point at localhost, so no button.
+        resource: appUrl ? emailResourceLink(payload) : undefined,
       });
 
       const emailContent = {

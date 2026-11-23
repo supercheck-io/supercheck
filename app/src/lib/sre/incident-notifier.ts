@@ -549,8 +549,16 @@ export async function notifyIncidentEvent(input: IncidentNotifyInput): Promise<b
       .from(sreIncidents)
       .leftJoin(sreServices, eq(sreServices.id, sreIncidents.primaryServiceId))
       .leftJoin(sreIncidentAlerts, and(eq(sreIncidentAlerts.incidentId, sreIncidents.id), eq(sreIncidentAlerts.role, "trigger")))
-      .leftJoin(sreAlertEvents, eq(sreAlertEvents.id, sreIncidentAlerts.alertEventId))
-      .leftJoin(triggerService, eq(triggerService.id, sreAlertEvents.serviceId))
+      // Tenant-bound joins: alert text from another org or project must never reach this org's channels.
+      .leftJoin(
+        sreAlertEvents,
+        and(
+          eq(sreAlertEvents.id, sreIncidentAlerts.alertEventId),
+          eq(sreAlertEvents.organizationId, sreIncidents.organizationId),
+          eq(sreAlertEvents.projectId, sreIncidents.projectId),
+        ),
+      )
+      .leftJoin(triggerService, and(eq(triggerService.id, sreAlertEvents.serviceId), eq(triggerService.organizationId, sreIncidents.organizationId)))
       .where(
         and(
           eq(sreIncidents.id, input.incidentId),
@@ -558,6 +566,7 @@ export async function notifyIncidentEvent(input: IncidentNotifyInput): Promise<b
           eq(sreIncidents.projectId, input.projectId),
         ),
       )
+      .orderBy(sreIncidentAlerts.createdAt)
       .limit(1);
     if (!incident) {
       if (input.report) input.report.skipped = true;
@@ -576,7 +585,8 @@ export async function notifyIncidentEvent(input: IncidentNotifyInput): Promise<b
     const occurredAt = (created && incident.triggerFiredAt) || new Date();
     const serviceName = incident.serviceName ?? incident.triggerServiceName ?? undefined;
     // Alert text can carry URLs with credentials: redact before it reaches email or chat.
-    const triggerDetail = created ? safeText(incident.triggerDescription || incident.triggerTitle, MAX_DETAIL_LENGTH) : null;
+    // Leaves room for safeText's "… [truncated]" marker within MAX_DETAIL_LENGTH.
+    const triggerDetail = created ? safeText(incident.triggerDescription || incident.triggerTitle, MAX_DETAIL_LENGTH - 15) : null;
     const detail = (input.detail ?? triggerDetail ?? undefined)?.replace(/\s+/g, " ").trim().slice(0, MAX_DETAIL_LENGTH);
 
     // Participants (owner, commander, and the owner being replaced) get a direct email for

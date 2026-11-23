@@ -1924,6 +1924,26 @@ describe('NotificationService', () => {
       expect(byTitle['Monitor Details']).toBeUndefined();
     });
 
+    it('has no main button when no app URL is configured (never a localhost link)', async () => {
+      const prev = {
+        a: process.env.APP_URL,
+        b: process.env.NEXT_PUBLIC_APP_URL,
+      };
+      delete process.env.APP_URL;
+      delete process.env.NEXT_PUBLIC_APP_URL;
+      try {
+        mockEmailTemplateService.renderMonitorAlertEmail.mockClear();
+        await service.sendNotification(emailProvider, basePayload);
+        expect(
+          mockEmailTemplateService.renderMonitorAlertEmail.mock.calls[0][0]
+            .resource,
+        ).toBeUndefined();
+      } finally {
+        if (prev.a !== undefined) process.env.APP_URL = prev.a;
+        if (prev.b !== undefined) process.env.NEXT_PUBLIC_APP_URL = prev.b;
+      }
+    });
+
     it('emailResourceLink falls back to the jobs page label without a run', () => {
       expect(
         emailResourceLink({

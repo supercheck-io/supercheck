@@ -12,7 +12,7 @@ import {
 } from "@/lib/status-page-translations";
 import { getPublicStatusPageUrl } from "@/lib/domain-utils";
 import { getEffectiveStatusPageDomain } from "@/lib/status-page-domain";
-import { formatMaintenanceWindow } from "@/lib/incident-schedule";
+import { formatMaintenanceWindow, statusPageTimeZone } from "@/lib/incident-schedule";
 import { emailAppUrl } from "@/emails/base-layout";
 
 /**
@@ -149,7 +149,7 @@ export async function sendIncidentNotifications(
     };
 
     const incidentStatus = update?.status ?? incident.status;
-    const timeZone = statusPage.timezone || "UTC";
+    const timeZone = statusPageTimeZone(statusPage.timezone);
     const emailParamsTemplate = {
       statusPageName: statusPage.name,
       statusPageUrl,
