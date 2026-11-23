@@ -59,12 +59,46 @@ export function redactConnectorText(value: string): string {
   return REDACTION_PATTERNS.reduce((current, [pattern, replacement]) => current.replace(pattern, replacement), bounded);
 }
 
+const MIN_EXACT_SECRET_CHARS = 6;
+
+/** String values of a connector credential, for exact-match redaction of output that echoes them back. */
+export function connectorCredentialSecrets(credential: Record<string, unknown> | null | undefined): string[] {
+  return Object.values(credential ?? {}).filter((value): value is string => typeof value === "string");
+}
+
+/**
+ * Replaces every occurrence of the connector's own secrets, which patterns cannot recognise (a short
+ * opaque password, a custom header value). Overlapping matches are merged so no fragment is left behind;
+ * the same approach as the Private Agent's redactMcpText.
+ */
+export function redactExactSecrets(value: string, secrets: readonly string[]): string {
+  const spans: Array<[number, number]> = [];
+  for (const secret of secrets) {
+    if (secret.length < MIN_EXACT_SECRET_CHARS) continue;
+    for (let i = value.indexOf(secret); i !== -1; i = value.indexOf(secret, i + 1)) spans.push([i, i + secret.length]);
+  }
+  if (spans.length === 0) return value;
+  spans.sort((a, b) => a[0] - b[0]);
+  let redacted = "";
+  let cursor = 0;
+  for (const [start, end] of spans) {
+    if (start < cursor) {
+      cursor = Math.max(cursor, end);
+      continue;
+    }
+    redacted += `${value.slice(cursor, start)}[REDACTED]`;
+    cursor = end;
+  }
+  return redacted + value.slice(cursor);
+}
+
 export function sanitizeConnectorEvidence(
   items: ConnectorEvidenceItem[],
-  limits: Partial<ConnectorOutputLimits> = {}
+  limits: Partial<ConnectorOutputLimits> = {},
+  secrets: readonly string[] = [],
 ): SanitizedConnectorOutput {
   const effectiveLimits = { ...DEFAULT_CONNECTOR_OUTPUT_LIMITS, ...limits };
-  const rows = items.slice(0, effectiveLimits.maxRows).map(redactEvidenceItem);
+  const rows = items.slice(0, effectiveLimits.maxRows).map((item) => redactEvidenceItem(item, secrets));
   const budgetedRows: ConnectorEvidenceItem[] = [];
   let byteLength = 0;
   let truncated = items.length > rows.length;
@@ -88,19 +122,21 @@ export function sanitizeConnectorEvidence(
   };
 }
 
-function redactEvidenceItem(item: ConnectorEvidenceItem): ConnectorEvidenceItem {
-  const rawContent = item.rawContent ? redactConnectorText(item.rawContent) : undefined;
+function redactEvidenceItem(item: ConnectorEvidenceItem, secrets: readonly string[]): ConnectorEvidenceItem {
+  // Exact secrets first: a pattern rewrite could split a secret and hide it from the exact match.
+  const redact = (value: string) => redactConnectorText(redactExactSecrets(value, secrets));
+  const rawContent = item.rawContent ? redact(item.rawContent) : undefined;
 
   return {
     ...item,
-    sourceUri: safeEvidenceSourceUri(redactConnectorText(item.sourceUri)),
+    sourceUri: safeEvidenceSourceUri(redact(item.sourceUri)),
     // Clip after redacting so a secret cut at the limit cannot escape its pattern.
-    title: redactConnectorText(item.title).slice(0, MAX_EVIDENCE_TITLE_CHARS),
-    summary: redactConnectorText(item.summary),
+    title: redact(item.title).slice(0, MAX_EVIDENCE_TITLE_CHARS),
+    summary: redact(item.summary),
     rawContent,
     citation: {
       ...item.citation,
-      query: redactConnectorText(item.citation.query),
+      query: redact(item.citation.query),
     },
   };
 }

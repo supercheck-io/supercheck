@@ -40,6 +40,7 @@ import {
   connectorCredentialRequirementError,
   redactConnectorText,
   sanitizeConnectorEvidence,
+  connectorCredentialSecrets,
   SRE_CONNECTOR_TYPES,
   type ConnectorCredentialValue,
   type ConnectorDefinition,
@@ -1829,6 +1830,7 @@ export async function searchSreConnectorEvidence(
     const sanitized = sanitizeConnectorEvidence(
       rawEvidence,
       decision.effectiveLimits,
+      connectorCredentialSecrets(credential),
     );
     const durationMs = Date.now() - startedAt;
     const inputSummary = JSON.stringify({

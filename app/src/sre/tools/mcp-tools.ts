@@ -18,6 +18,7 @@ import {
   mcpEndpointUrl,
   queueMcpPrivateAgentJob,
 } from "@/lib/sre/mcp-private-agent-job";
+import { fenceUntrustedTitle } from "@/lib/sre/connectors/providers/knowledge-shared";
 import { releasePrivateAgentJobWaiter } from "@/lib/sre/private-agent-job-cancel";
 import { waitForPrivateAgentConnectorJob } from "@/lib/sre/private-agent-job-waiter";
 import { checkSreConnectorSearchRateLimit } from "@/lib/sre/sre-rate-limiter";
@@ -255,7 +256,7 @@ export async function executeMcpToolCall(input: {
     (item) => ({
       id: item.id,
       sourceUri: redactConnectorText(item.sourceUri).slice(0, 1000),
-      title: redactConnectorText(item.title),
+      title: fenceUntrustedTitle("MCP", redactConnectorText(item.title)).slice(0, 500),
       summary: ensureMcpFence(redactConnectorText(item.summary).slice(0, 1800), resolved.tool.name),
       evidenceType: "document",
       observedAt: item.observedAt,

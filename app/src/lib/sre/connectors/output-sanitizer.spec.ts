@@ -1,4 +1,4 @@
-import { redactConnectorText, sanitizeConnectorEvidence } from "./output-sanitizer";
+import { connectorCredentialSecrets, redactConnectorText, sanitizeConnectorEvidence } from "./output-sanitizer";
 import { type ConnectorEvidenceItem } from "./connector-base";
 
 const item: ConnectorEvidenceItem = {
@@ -53,6 +53,28 @@ describe("sanitizeConnectorEvidence", () => {
     expect(result.items[0].rawContent).not.toContain("hunter2");
     expect(result.items[0].rawContent).not.toContain("ghp_");
     expect(result.resultHash).toHaveLength(64);
+  });
+
+  it("redacts the connector's own credential values that no pattern recognises", () => {
+    const credential = { secret: "Opaque9Q7x", headerName: "X-Key", region: "eu", port: 4318, nested: { a: "deep" } };
+    const secrets = connectorCredentialSecrets(credential);
+    expect(secrets).toEqual(["Opaque9Q7x", "X-Key", "eu"]);
+    const [row] = sanitizeConnectorEvidence(
+      [{
+        ...item,
+        sourceUri: "https://grafana.internal/d/1?q=Opaque9Q7x",
+        title: "echo Opaque9Q7x",
+        summary: "header X-Key: Opaque9Q7xOpaque9Q7x in eu",
+        rawContent: "value Opaque9Q7x",
+        citation: { ...item.citation, query: "search Opaque9Q7x" },
+      }],
+      {},
+      secrets,
+    ).items;
+    expect(JSON.stringify(row)).not.toContain("Opaque9Q7x");
+    // Values shorter than six characters are too common to replace safely.
+    expect(row.summary).toContain(" eu");
+    expect(row.summary).toContain("X-Key");
   });
 
   it("enforces row limits", () => {
