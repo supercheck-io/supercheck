@@ -128,7 +128,7 @@ export function DeclareIncidentDialog({
       }
       if (result.warning === "status_page_failed") {
         toast.warning(`${result.message}, but the status page post failed`, {
-          description: "Post it again with Post to status page on the incident.",
+          description: "Post it again with Post to status page on the incident, or from the status page's Status updates tab.",
         });
       } else {
         toast.success(result.message);
