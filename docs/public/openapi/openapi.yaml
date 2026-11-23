@@ -109,10 +109,12 @@ paths:
                 format: uuid
       responses:
         "200":
-          description: "Tenant-scoped incident list including statusLabel (the user-facing
-            status: Triggered, Acknowledged, Investigating, Fixing, Monitoring
-            or Resolved; status stays the stored value), assigneeUserId,
-            acknowledgedAt, acknowledgedByUserId, commanderUserId, mitigatedAt
+          description: "Tenant-scoped incident list, newest update first, at most 500
+            rows; `truncated` is true when more matched (narrow the filters).
+            Each row includes statusLabel (the user-facing status: Triggered,
+            Acknowledged, Investigating, Fixing, Monitoring or Resolved; status
+            stays the stored value), assigneeUserId, acknowledgedAt,
+            acknowledgedByUserId, commanderUserId, mitigatedAt,
             resolutionSummary, alertCount (the opening alert plus repeats while
             the incident stayed open) and lastAlertAt (when the latest alert
             fired)"
@@ -126,13 +128,13 @@ paths:
       operationId: declareSreIncident
       summary: Declare an incident
       description: Opens an incident by hand, with the same numbering, timeline,
-        notifications and re-notify as alert-opened incidents. Only title and
-        severity are needed. Affected monitors (or monitors mapped to affected
-        services) attach their next alerts to this incident instead of opening a
-        new one. With statusPage, a linked public incident is posted after the
-        incident is saved; if that post fails the incident is kept and the
-        response carries warning status_page_failed. Limited to 10 per minute
-        per user and 60 per hour per organization.
+        notifications and re-notify as alert-opened incidents. Only title is
+        required; severity defaults to sev3. Affected monitors (or monitors
+        mapped to affected services) attach their next alerts to this incident
+        instead of opening a new one. With statusPage, a linked public incident
+        is posted after the incident is saved; if that post fails the incident
+        is kept and the response carries warning status_page_failed. Limited to
+        10 per minute per user and 60 per hour per organization.
       tags:
         - AI SRE
       requestBody:
@@ -291,7 +293,7 @@ paths:
           description: "Incident details including statusLabel (the user-facing status:
             Triggered, Acknowledged, Investigating, Fixing, Monitoring or
             Resolved; status stays the stored value), assigneeUserId,
-            acknowledgedAt, acknowledgedByUserId, commanderUserId, mitigatedAt
+            acknowledgedAt, acknowledgedByUserId, commanderUserId, mitigatedAt,
             resolutionSummary, alertCount (the opening alert plus repeats while
             the incident stayed open) and lastAlertAt (when the latest alert
             fired)"
@@ -584,11 +586,19 @@ paths:
       responses:
         "200":
           description: Triage result
+        "400":
+          description: Invalid body (`incidentId` must be a UUID)
+        "401":
+          description: Authentication required
         "402":
           description: An active organization subscription and valid billing customer are
             required on Supercheck Cloud.
+        "403":
+          description: Insufficient permission, or organization pending deletion
         "429":
-          description: Rate limited
+          description: "Rate limited (10 starts per 5 minutes per person and incident) or
+            the organization's daily AI token limit reached (`code:
+            daily_ai_limit`); see Retry-After"
         "503":
           description: SRE is disabled, or subscription verification or the service is
             temporarily unavailable.
@@ -787,6 +797,37 @@ paths:
                     - string
                     - "null"
                   format: uuid
+                title:
+                  type:
+                    - string
+                    - "null"
+                  maxLength: 200
+                  description: Title for a new conversation. Defaults to the first 80 characters
+                    of `message`; ignored when `conversationId` is set.
+                attachments:
+                  type: array
+                  maxItems: 3
+                  default: []
+                  description: Text context added to the prompt and stored with the message.
+                  items:
+                    type: object
+                    required:
+                      - type
+                      - title
+                      - content
+                    properties:
+                      type:
+                        type: string
+                        enum:
+                          - text
+                      title:
+                        type: string
+                        minLength: 1
+                        maxLength: 120
+                      content:
+                        type: string
+                        minLength: 1
+                        maxLength: 2000
                 useLiveConnectorTools:
                   type: boolean
                   default: true
@@ -796,12 +837,21 @@ paths:
                     incident chat stays scoped to its linked service.
       responses:
         "200":
-          description: Server-sent event stream
+          description: 'Server-sent event stream of named events (`event:` line, JSON
+            `data:`): `conversation` `{ id, incidentId, status }`; `message` for
+            the stored user message `{ id, role }`; `agent.step` per agent step
+            (tool names and redacted argument summaries); `agent.fallback` `{
+            reason: "ai_unavailable" }` when the model failed and a fallback
+            reply is stored; `message` for the reply `{ id, role, content,
+            modelId }`. The stream always ends with `done` `{ ok: true }` or
+            `error` `{ message }`.'
         "402":
           description: An active organization subscription and valid billing customer are
             required on Supercheck Cloud.
         "429":
-          description: Rate limited
+          description: "Rate limited (30 messages per minute per person) or the
+            organization's daily AI token limit reached (`code:
+            daily_ai_limit`); see Retry-After"
         "503":
           description: SRE is disabled, or subscription verification or the service is
             temporarily unavailable.
@@ -825,12 +875,17 @@ paths:
                   format: uuid
       responses:
         "200":
-          description: Server-sent event stream
+          description: "Server-sent event stream of unnamed `data:` lines, each JSON with
+            a `type`: `content` `{ content }` for each text chunk, then exactly
+            one terminal event, `done` `{ message, evidenceCount,
+            connectorEvidenceCount, investigationRunId, brief: {
+            suspectedFailureDomain, summary, confidenceScore, citedEvidenceIds,
+            provider } }` or `error` `{ error }`."
         "402":
           description: An active organization subscription and valid billing customer are
             required on Supercheck Cloud.
         "429":
-          description: Rate limited
+          description: Rate limited (3 per minute per person and incident); see Retry-After
         "503":
           description: SRE is disabled, or subscription verification or the service is
             temporarily unavailable.

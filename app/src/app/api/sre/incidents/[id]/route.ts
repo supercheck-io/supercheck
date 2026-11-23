@@ -24,6 +24,8 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
       title: sreIncidents.title,
       severity: sreIncidents.severity,
       status: sreIncidents.status,
+      alertCount: sreIncidents.alertCount,
+      lastAlertAt: sreIncidents.lastAlertAt,
       primaryServiceId: sreIncidents.primaryServiceId,
       primaryServiceName: sreServices.name,
       assigneeUserId: sreIncidents.assigneeUserId,

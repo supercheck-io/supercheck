@@ -4,7 +4,7 @@ description: Configure services, read-only integrations, saved queries, and Priv
 icon: Wrench
 ---
 
-Organization owners and admins configure AI SRE from **Settings → Organization**; only they can open this page. Project admins can still add connectors from the **AI SRE** step of [Project setup](/docs/app/project-setup) and through the API. Responders start from **Respond → Incidents**; **Copilot** and **Services** sit under **Respond**. Open **Setup guide** (under **More** on Integrations, or beside **Add service** and **Add query**) to review setup status.
+Organization owners and admins configure AI SRE from **Settings → Organization**; only they can open this page. Project admins can still add connectors from the **AI SRE** step of [Project setup](/docs/app/project-setup) and read them through the API (`GET /api/sre/integrations`; connectors are created and changed in the app only). Responders start from **Respond → Incidents**; **Copilot** and **Services** sit under **Respond**. Open **Setup guide** (under **More** on Integrations, or beside **Add service** and **Add query**) to review setup status.
 
 <Callout type="info">
 **Self-hosted:** configure an [AI provider](/docs/app/deployment/self-hosted#optional-configuration) to use AI SRE. Connectors and Private Agents are optional; start with stored evidence.
@@ -39,6 +39,8 @@ Set name, tier, **Status** (**Active** or **Deprecated**), environment, owner te
 | **Dependencies** | Service relationships. Expand **Suggested dependencies** to approve or reject discoveries and review past decisions |
 
 Beside the tabs, **Service health** shows the status with an explanation, counts of active incidents, firing alerts, linked resources and dependencies, and the service's owner, repository, Slack channel and tags. The health score appears when nothing is open or firing. **Recent alerts** and **Recent deployments** follow. Suggested relationships are not used as dependencies or for alert correlation until an authorized user approves them.
+
+To link a resource, open the service, then **Resources → Link resource**. Pick the **Resource type** (**Monitor**, **Job**, **Test**, **Status component** or **k6 run**), the **Resource**, and the **Relationship** (**Monitors service**, **Owned by service** or **Service depends on resource**), then **Link resource**. Alerts from a linked monitor or job open incidents on this service, so its owner is assigned and connectors scoped to it are searched.
 
 ## Integrations
 
