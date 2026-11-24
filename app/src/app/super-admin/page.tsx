@@ -183,7 +183,7 @@ export default function AdminDashboard() {
           isQueuesTab ? "min-h-0 lg:min-h-[400px]" : "",
         )}
       >
-        <CardContent className="flex min-h-0 flex-1 flex-col p-6">
+        <CardContent data-fit-fill className="flex min-h-0 flex-1 flex-col p-6">
       <Tabs
         value={activeTab}
         className={cn(
