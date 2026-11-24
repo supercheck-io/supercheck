@@ -98,6 +98,42 @@ describe("useFitPageSize layout feedback", () => {
     }
   });
 
+  it("fits to the tallest rendered row so taller rows never add a page scrollbar", () => {
+    const originalResizeObserver = global.ResizeObserver;
+    const frames: FrameRequestCallback[] = [];
+    jest.spyOn(window, "requestAnimationFrame").mockImplementation((cb: FrameRequestCallback) => frames.push(cb));
+    jest.spyOn(window, "cancelAnimationFrame").mockImplementation(() => undefined);
+    global.ResizeObserver = class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    } as unknown as typeof ResizeObserver;
+
+    const { result, unmount } = renderHook(() => useFitPageSize());
+    const card = document.createElement("div");
+    card.setAttribute("data-fit-fill", "");
+    const body = document.createElement("tbody");
+    // The first row is short; a later row has a second line, as a status cell can.
+    for (const height of [49, 66]) {
+      const row = document.createElement("tr");
+      row.appendChild(document.createElement("td"));
+      row.appendChild(document.createElement("td"));
+      jest.spyOn(row, "getBoundingClientRect").mockImplementation(() => ({ top: 0, bottom: height, height }) as DOMRect);
+      body.appendChild(row);
+    }
+    card.appendChild(body);
+    document.body.appendChild(card);
+    jest.spyOn(body, "getBoundingClientRect").mockImplementation(() => ({ top: 100, bottom: 110, height: 10 }) as DOMRect);
+    jest.spyOn(card, "getBoundingClientRect").mockImplementation(() => ({ top: 0, bottom: window.innerHeight, height: window.innerHeight }) as DOMRect);
+    act(() => result.current.bodyRef(body));
+    act(() => frames.splice(0).forEach((cb) => cb(0)));
+    expect(result.current.pageSize).toBe(Math.floor((window.innerHeight - 100 - 1) / 66));
+    unmount();
+    card.remove();
+    jest.restoreAllMocks();
+    global.ResizeObserver = originalResizeObserver;
+  });
+
   it("stops resizing when the measured size flips on every frame", () => {
     const originalResizeObserver = global.ResizeObserver;
     const frames: FrameRequestCallback[] = [];

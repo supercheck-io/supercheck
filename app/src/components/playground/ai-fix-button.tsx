@@ -296,9 +296,10 @@ export function AIFixButton({
   return (
     <Button
       size="sm"
+      variant="outline"
       onClick={handleAIFix}
       disabled={disabled || isProcessing || !failedScript?.trim()}
-      className="flex items-center gap-2 mr-1 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white border-0 shadow-lg transition-all duration-200"
+      className="flex items-center gap-2"
     >
       {isProcessing ? (
         <>
@@ -307,7 +308,7 @@ export function AIFixButton({
         </>
       ) : (
         <>
-          <Sparkles className="h-4 w-4" />
+          <Sparkles className="h-4 w-4 text-ai" />
           AI Fix
         </>
       )}
