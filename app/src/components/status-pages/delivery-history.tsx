@@ -14,9 +14,10 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { RefreshCw } from "lucide-react";
 import { InfoHint, InfoHintList } from "./info-hint";
 import { toast } from "sonner";
+
+const PENDING_POLL_MS = 5_000;
 
 type Delivery = Awaited<
   ReturnType<typeof getStatusPageDeliveries>
@@ -36,6 +37,13 @@ export function DeliveryHistory({ statusPageId }: { statusPageId: string }) {
   useEffect(() => {
     void load();
   }, [load]);
+  // A pending delivery (new, or just retried) is sent by the worker later; reload until it settles.
+  const hasPending = deliveries.some((delivery) => delivery.status === "pending");
+  useEffect(() => {
+    if (!hasPending) return;
+    const id = window.setInterval(() => void load(), PENDING_POLL_MS);
+    return () => window.clearInterval(id);
+  }, [hasPending, load]);
   return (
     <section className="space-y-3">
       <div className="flex items-center justify-between gap-3">
@@ -49,10 +57,6 @@ export function DeliveryHistory({ statusPageId }: { statusPageId: string }) {
             </InfoHintList>
           </InfoHint>
         </div>
-        <Button variant="outline" size="sm" className="h-8 gap-1.5" onClick={() => void load()}>
-          <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />
-          Refresh
-        </Button>
       </div>
       {error ? (
         <p role="alert" className="text-sm text-destructive">

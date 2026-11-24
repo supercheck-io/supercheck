@@ -25,7 +25,6 @@ import {
   Network,
   Pencil,
   Plus,
-  RefreshCw,
   Siren,
   Trash2,
   X,
@@ -207,6 +206,12 @@ export function ServiceDetailView({ initialDetail }: ServiceDetailViewProps) {
   const queryClient = useQueryClient();
   const { projectId } = useProjectContext();
   const [detail, setDetail] = useState(initialDetail);
+  // The page query refetches (focus, interval); show its newer data instead of the first snapshot.
+  const [shownInitial, setShownInitial] = useState(initialDetail);
+  if (initialDetail !== shownInitial) {
+    setShownInitial(initialDetail);
+    setDetail(initialDetail);
+  }
   const [dependencyOpen, setDependencyOpen] = useState(false);
   const [editingDependency, setEditingDependency] =
     useState<SreServiceDependencyItem | null>(null);
@@ -226,8 +231,6 @@ export function ServiceDetailView({ initialDetail }: ServiceDetailViewProps) {
   const [relationship, setRelationship] =
     useState<SreServiceDetail["resources"][number]["relationship"]>("monitors");
   const [isPending, startTransition] = useTransition();
-  // Its own pending flag, so a mutation does not spin the Refresh button (it still disables it).
-  const [refreshing, startRefresh] = useTransition();
 
   const availableServices = detail.services.filter(
     (service) =>
@@ -421,21 +424,6 @@ export function ServiceDetailView({ initialDetail }: ServiceDetailViewProps) {
         <div className="flex shrink-0 flex-wrap items-center gap-2 self-start">
           <NewIncidentAction variant="detail" defaults={{ serviceId: detail.service.id }} />
           <ServiceMaintenanceAction serviceId={detail.service.id} />
-        <Button
-          variant="outline"
-          size="sm"
-          className="shrink-0"
-          onClick={() =>
-            startRefresh(async () => {
-              await refresh();
-            })
-          }
-          disabled={refreshing || isPending}
-          aria-label="Refresh service details"
-        >
-          <RefreshCw className={cn("h-4 w-4", refreshing && "animate-spin")} />
-          Refresh
-        </Button>
         </div>
       </header>
 

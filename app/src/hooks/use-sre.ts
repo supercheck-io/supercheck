@@ -116,6 +116,9 @@ export function useSreServiceDetail(serviceId: string) {
     queryFn: () => getSreServiceDetail({ id: serviceId }),
     enabled: Boolean(projectId && serviceId),
     staleTime: 60_000,
+    // Health, incidents and alerts change elsewhere; the page has no Refresh button.
+    refetchOnWindowFocus: true,
+    refetchInterval: 60_000,
     meta: MEMORY_ONLY_QUERY,
   });
 }

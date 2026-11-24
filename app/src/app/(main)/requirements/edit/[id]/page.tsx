@@ -37,7 +37,7 @@ export default function EditRequirementPage({ params }: { params: Promise<{ id: 
 
     if (isLoading) {
         return (
-            <div>
+            <div data-fit-fill className="flex flex-1 flex-col">
                 <PageBreadcrumbs items={breadcrumbs} />
                 <RequirementFormSkeleton />
             </div>
@@ -49,7 +49,7 @@ export default function EditRequirementPage({ params }: { params: Promise<{ id: 
     }
 
     return (
-        <div>
+        <div data-fit-fill className="flex flex-1 flex-col">
             <PageBreadcrumbs items={breadcrumbs} />
             <RequirementForm
                 mode="edit"

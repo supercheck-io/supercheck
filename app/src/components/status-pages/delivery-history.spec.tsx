@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { act, render, screen } from "@testing-library/react";
 import { DeliveryHistory } from "./delivery-history";
 
 const getDeliveries = jest.fn();
@@ -22,4 +22,26 @@ it("hides the warning when nothing can be retried", async () => {
   render(<DeliveryHistory statusPageId="p1" />);
   expect(await screen.findByText("Outage")).toBeInTheDocument();
   expect(screen.queryByTestId("retry-duplicate-note")).toBeNull();
+});
+
+it("reloads while a delivery is pending and stops once it settles", async () => {
+  jest.useFakeTimers();
+  try {
+    getDeliveries
+      .mockResolvedValueOnce({ success: true, deliveries: [delivery("pending")] })
+      .mockResolvedValue({ success: true, deliveries: [delivery("delivered")] });
+    render(<DeliveryHistory statusPageId="p1" />);
+    expect(await screen.findByText("pending")).toBeInTheDocument();
+    await act(async () => {
+      jest.advanceTimersByTime(5_000);
+    });
+    expect(await screen.findByText("delivered")).toBeInTheDocument();
+    const calls = getDeliveries.mock.calls.length;
+    await act(async () => {
+      jest.advanceTimersByTime(15_000);
+    });
+    expect(getDeliveries).toHaveBeenCalledTimes(calls);
+  } finally {
+    jest.useRealTimers();
+  }
 });

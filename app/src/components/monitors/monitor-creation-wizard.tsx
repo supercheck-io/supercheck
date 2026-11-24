@@ -479,7 +479,7 @@ export function MonitorCreationWizard() {
   // Step 1: Monitor Configuration
   if (currentStep === "monitor") {
     return (
-      <div className="space-y-4">
+      <div className="flex flex-1 flex-col">
         <MonitorForm
           onSave={handleMonitorNext}
           onCancel={handleCancel}
@@ -499,8 +499,8 @@ export function MonitorCreationWizard() {
   // Step 2: Location Configuration
   if (currentStep === "location") {
     return (
-      <div className="space-y-6 p-4">
-        <Card>
+      <div className="flex flex-1 flex-col p-4">
+        <Card className="flex-1">
           <CardHeader>
             <CardTitle>
               Location Settings{" "}
@@ -533,8 +533,8 @@ export function MonitorCreationWizard() {
 
   // Step 3: Alert Configuration
   return (
-    <div className="space-y-6 p-4">
-      <Card>
+    <div className="flex flex-1 flex-col p-4">
+      <Card className="flex-1">
         <CardHeader>
           <CardTitle>
             Alert Settings{" "}

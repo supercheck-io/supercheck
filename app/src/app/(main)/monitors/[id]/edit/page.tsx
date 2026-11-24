@@ -97,7 +97,7 @@ export default function EditMonitorPage({
 
   if (loading || permissionsLoading || (id && permissionsConfirmed && !canEdit)) {
     return (
-      <div>
+      <div data-fit-fill className="flex flex-1 flex-col">
         <PageBreadcrumbs
           items={[
             { label: "Home", href: "/" },
@@ -112,7 +112,7 @@ export default function EditMonitorPage({
 
   if (error || !monitor) {
     return (
-      <div>
+      <div data-fit-fill className="flex flex-1 flex-col">
         <PageBreadcrumbs
           items={[
             { label: "Home", href: "/" },
@@ -303,7 +303,7 @@ export default function EditMonitorPage({
   };
 
   return (
-    <div>
+    <div data-fit-fill className="flex flex-1 flex-col">
       <PageBreadcrumbs items={breadcrumbs} />
       <MonitorForm
         initialData={formData}
