@@ -199,6 +199,16 @@ describe("ServiceDetailView", () => {
     },
   );
 
+  it("shows newer data when the page query refetches", () => {
+    const initial = detailFixture();
+    const { rerender } = render(<ServiceDetailView initialDetail={initial} />);
+    expect(screen.getByText("Checkout service")).toBeInTheDocument();
+    rerender(
+      <ServiceDetailView initialDetail={{ ...initial, service: { ...initial.service, description: "Checkout service v2" } }} />,
+    );
+    expect(screen.getByText("Checkout service v2")).toBeInTheDocument();
+  });
+
   it("keeps topology mutations hidden from read-only viewers", () => {
     render(<ServiceDetailView initialDetail={detailFixture()} />);
 

@@ -17,6 +17,8 @@ import {
 import { InfoHint, InfoHintList } from "./info-hint";
 import { toast } from "sonner";
 
+const PENDING_POLL_MS = 5_000;
+
 type Delivery = Awaited<
   ReturnType<typeof getStatusPageDeliveries>
 >["deliveries"][number];
@@ -35,6 +37,13 @@ export function DeliveryHistory({ statusPageId }: { statusPageId: string }) {
   useEffect(() => {
     void load();
   }, [load]);
+  // A pending delivery (new, or just retried) is sent by the worker later; reload until it settles.
+  const hasPending = deliveries.some((delivery) => delivery.status === "pending");
+  useEffect(() => {
+    if (!hasPending) return;
+    const id = window.setInterval(() => void load(), PENDING_POLL_MS);
+    return () => window.clearInterval(id);
+  }, [hasPending, load]);
   return (
     <section className="space-y-3">
       <div className="flex items-center justify-between gap-3">

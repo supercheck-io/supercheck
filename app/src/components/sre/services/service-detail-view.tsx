@@ -206,6 +206,12 @@ export function ServiceDetailView({ initialDetail }: ServiceDetailViewProps) {
   const queryClient = useQueryClient();
   const { projectId } = useProjectContext();
   const [detail, setDetail] = useState(initialDetail);
+  // The page query refetches (focus, interval); show its newer data instead of the first snapshot.
+  const [shownInitial, setShownInitial] = useState(initialDetail);
+  if (initialDetail !== shownInitial) {
+    setShownInitial(initialDetail);
+    setDetail(initialDetail);
+  }
   const [dependencyOpen, setDependencyOpen] = useState(false);
   const [editingDependency, setEditingDependency] =
     useState<SreServiceDependencyItem | null>(null);
