@@ -13,9 +13,9 @@ export default function StatusPagesPage() {
   ];
 
   return (
-    <div>
+    <div data-fit-fill className="flex flex-1 flex-col">
       <PageBreadcrumbs items={breadcrumbs} />
-      <Card className="m-4 shadow-sm">
+      <Card data-fit-fill className="m-4 shadow-sm flex-1">
         <CardContent className="p-6">
           {/* Suspense boundary required because StatusPagesList (or its children) might use useSearchParams() */}
           <Suspense

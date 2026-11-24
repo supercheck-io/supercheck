@@ -10,9 +10,9 @@ const breadcrumbs = [
 
 export default function CreateJobPage() {
   return (
-    <div>
+    <div data-fit-fill className="flex flex-1 flex-col">
       <PageBreadcrumbs items={breadcrumbs} />
-      <Card className="m-4 shadow-sm hover:shadow-md transition-shadow duration-200">
+      <Card data-fit-fill className="m-4 shadow-sm hover:shadow-md transition-shadow duration-200 flex-1">
         <CardContent className="p-6">
           <JobCreationCard />
         </CardContent>

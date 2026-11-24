@@ -118,7 +118,7 @@ Checks a chat-completions API the way your app calls it. Each check sends one sh
 
 Two optional limits raise warnings without failing the check or opening an incident. **Warn when first token is slower than (ms)** warns after 3 slow checks in a row. **Warn when a call uses more tokens than** warns once per stretch above the limit. The monitor also warns when the served model differs from the last check, for example when a provider swaps `gpt-4o-mini` snapshots. See [Alerts](/docs/app/communicate/alerts#alert-types).
 
-Each result records first-token time, total time, the served model and token counts (plus cost when the provider reports it). The reply text is not stored. On the monitor page, **AI details** beside the availability chart shows the latest check's first token, tokens per call, prompt and completion tokens, and the requested and served model. The results table and response-time chart also show first-token time.
+Each result records first-token time, total time, the served model and token counts (plus cost when the provider reports it). The reply text is not stored. On the monitor page, **AI details** beside the availability chart shows the latest check's first token, tokens per call, prompt and completion tokens, and the requested and served model. A served model from a different model than the one requested is marked **(differs)**; a dated version of it (`gpt-4o-2024-08-06` for `gpt-4o`) is not. The results table and response-time chart also show first-token time.
 
 A secret in use by a monitor cannot be deleted, renamed or made non-secret. The error names up to five monitors. Point them at another secret first. Rotating the secret's value is always allowed.
 

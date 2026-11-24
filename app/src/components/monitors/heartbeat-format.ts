@@ -77,3 +77,8 @@ export function formatPingDue(at: Date, now: number = Date.now()): string {
   const ms = at.getTime() - now;
   return ms >= 0 ? `in ${compactSpan(ms)}` : `overdue ${compactSpan(-ms)}`;
 }
+
+/** A run in progress since its /start: "Running · <1m", "Running · 12m". */
+export function formatRunningFor(since: Date, now: number = Date.now()): string {
+  return `Running · ${compactSpan(Math.max(0, now - since.getTime()))}`;
+}

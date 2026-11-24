@@ -863,8 +863,8 @@ function OrgAdminDashboardContent() {
   const isOrgOwner = normalizeRole(currentUserRole) === "org_owner";
 
   return (
-    <div>
-      <Card className="shadow-sm hover:shadow-md transition-shadow duration-200 m-4">
+    <div data-fit-fill className="flex flex-1 flex-col">
+      <Card data-fit-fill className="shadow-sm hover:shadow-md transition-shadow duration-200 m-4 flex-1">
         <CardContent className="p-6 overflow-hidden">
       <Tabs
         value={activeTab}

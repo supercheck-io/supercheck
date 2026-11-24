@@ -7,6 +7,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { TableBadge } from "@/components/ui/table-badge";
+import { DetailPopoverHeader } from "@/components/shared/detail-popover";
 import type { McpMonitorState, McpToolChange } from "@/db/schema/types";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -113,22 +114,15 @@ export function McpToolsPanel({ baseline, changes, pending = false, failure, met
   const recentChange = useRecentChange(changes, now);
 
   return (
-    <div className="space-y-3" data-testid="mcp-tools-panel">
-      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm font-semibold">
-        <Plug className="h-4 w-4 text-type-purple" aria-hidden />
-        Tools
-        {baseline && (
-          <span className="font-normal text-muted-foreground" data-testid="mcp-tool-count">
-            {tools.length}
-          </span>
-        )}
-        {meta && (
-          <span className="min-w-0 break-words text-xs font-normal text-muted-foreground" data-testid="mcp-server-meta">
-            {meta}
-          </span>
-        )}
-      </div>
-      <div className="space-y-4">
+    <div data-testid="mcp-tools-panel">
+      <DetailPopoverHeader
+        icon={Plug}
+        iconClass="text-type-purple"
+        title="Tools"
+        aside={baseline ? <span className="text-sm text-muted-foreground" data-testid="mcp-tool-count">{tools.length}</span> : null}
+        meta={meta ? <span data-testid="mcp-server-meta">{meta}</span> : null}
+      />
+      <div className="space-y-4 p-4">
         {failure && (
           <Alert variant="error" data-testid="mcp-failure">
             <AlertCircle className="h-4 w-4" aria-hidden />
@@ -198,7 +192,7 @@ export function McpToolsButton(props: McpToolsPanelProps) {
           )}
         </Button>
       </PopoverTrigger>
-      <PopoverContent align="end" className="max-h-[min(70vh,32rem)] w-[min(28rem,calc(100vw-2rem))] overflow-y-auto">
+      <PopoverContent align="end" className="max-h-[min(70vh,32rem)] w-[min(28rem,calc(100vw-2rem))] overflow-y-auto p-0">
         <McpToolsPanel {...props} />
       </PopoverContent>
     </Popover>

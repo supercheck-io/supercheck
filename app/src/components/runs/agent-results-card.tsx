@@ -1,10 +1,10 @@
-import { AlertCircle, Bot, CheckCircle2, Coins, Repeat, Timer, Wrench, type LucideIcon } from "lucide-react";
+import { AlertCircle, Bot, CheckCircle2, Coins, Repeat, Timer, Wrench } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Skeleton } from "@/components/ui/skeleton";
+import { DetailPopoverHeader, DetailStat as Stat } from "@/components/shared/detail-popover";
 import { typeText } from "@/lib/type-tones";
-import { cn } from "@/lib/utils";
 
 export type AgentRunSummary = {
   tests: Array<{
@@ -26,18 +26,6 @@ const seconds = (ms?: number) => (typeof ms === "number" ? `${(ms / 1000).toFixe
 
 // Full pass, partial, none.
 const rateTone = (rate: number) => (rate >= 1 ? "text-success" : rate > 0 ? "text-warning" : "text-failure");
-
-function Stat({ icon: Icon, iconClass, label, value, valueClass }: { icon: LucideIcon; iconClass: string; label: string; value: string; valueClass?: string }) {
-  return (
-    <div className="flex min-w-0 items-center gap-2">
-      <Icon className={cn("h-4 w-4 shrink-0", iconClass)} aria-hidden="true" />
-      <div className="min-w-0">
-        <div className="text-[11px] font-medium text-muted-foreground">{label}</div>
-        <div className={cn("text-sm font-semibold tabular-nums", valueClass)}>{value}</div>
-      </div>
-    </div>
-  );
-}
 
 export function AgentResultsButton({ agent, loading = false, error = false }: { agent?: AgentRunSummary | null; loading?: boolean; error?: boolean }) {
   if (!loading && !error && !agent?.tests?.length) return null;
@@ -61,15 +49,12 @@ export function AgentResultsButton({ agent, loading = false, error = false }: { 
         aria-label="Agent results"
         data-testid="agent-results-card"
       >
-        <div className="flex items-center gap-2 border-b px-4 py-3">
-          <Bot className={cn("h-4 w-4", typeText("test", "agent"))} aria-hidden="true" />
-          <h4 className="text-sm font-semibold">Agent results</h4>
-          {!loading && !error && agent?.tests.length ? (
-            <span className="ml-auto text-xs text-muted-foreground">
-              {agent.tests.length} {agent.tests.length === 1 ? "test" : "tests"}
-            </span>
-          ) : null}
-        </div>
+        <DetailPopoverHeader
+          icon={Bot}
+          iconClass={typeText("test", "agent")}
+          title="Agent results"
+          meta={!loading && !error && agent?.tests.length ? `${agent.tests.length} ${agent.tests.length === 1 ? "test" : "tests"}` : null}
+        />
         <div className="space-y-2 p-3">
         {loading ? (
           <Skeleton className="h-16 w-full" data-testid="agent-results-loading" />

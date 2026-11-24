@@ -234,10 +234,10 @@ function NotificationsPage() {
 
 
   return (
-    <div className="">
+    <div data-fit-fill className="flex flex-1 flex-col">
       <PageBreadcrumbs items={breadcrumbs} />
-      <div className="">
-        <Card className="m-4 shadow-sm">
+      <div data-fit-fill className="flex flex-1 flex-col">
+        <Card data-fit-fill className="m-4 shadow-sm flex-1">
           <CardContent className="p-6">
             <div className="space-y-4">
               <Tabs value={tab} onValueChange={onTabChange} className="w-full">
