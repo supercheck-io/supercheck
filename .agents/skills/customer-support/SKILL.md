@@ -19,7 +19,7 @@ Do not speculate about a root cause in the first reply. "Known" and "not known y
 
 ## Intake
 
-Ask for: deployment (cloud or self-hosted), version (app and CLI), organization and project, the resource id (monitor, job, test, run, incident), UTC timestamps, browser and OS for UI issues, and the exact error text with the 20 lines around it.
+Ask for: deployment (cloud or self-hosted), version (app and CLI), organization and project, the resource id (monitor, job, test, run, incident), UTC timestamps, browser and OS for UI issues, and the exact error text with the 20 lines around it — with passwords, tokens, trigger keys, secret values and cookies already removed. Say that in the request itself, so a credential is never sent in the first place.
 
 Never ask for or accept: a password, CLI or API token, trigger key, secret variable value, database dump, session cookie, or a full HAR. If a screenshot or log contains a credential, ask for a redacted copy and tell the user to revoke what was exposed.
 
