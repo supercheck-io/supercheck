@@ -75,18 +75,11 @@ export function StatsCard({
 
   return (
     <Card className={cn("relative h-full overflow-hidden", className)}>
-      <CardContent className="flex h-full flex-col justify-between gap-4 p-6">
-        <div className="flex items-start justify-between gap-3">
+      <CardContent className="flex h-full items-center justify-between gap-4 p-6">
+        <div className="min-w-0 space-y-1">
           <p className="text-sm font-medium text-muted-foreground">{title}</p>
-          {Icon && (
-            <div className={cn("rounded-lg p-2.5", styles.iconBg)}>
-              <Icon className={cn("h-5 w-5", styles.iconColor)} />
-            </div>
-          )}
-        </div>
-        <div className="min-w-0 space-y-1.5">
           <div className="flex items-baseline gap-2">
-            <span className="text-4xl font-semibold tracking-tight tabular-nums">
+            <span className="text-3xl font-semibold tracking-tight tabular-nums">
               {typeof value === "number" ? value.toLocaleString() : value}
             </span>
             {showTrendNearValue && (
@@ -116,6 +109,11 @@ export function StatsCard({
             <p className="text-xs text-muted-foreground">{trend.label}</p>
           )}
         </div>
+        {Icon && (
+          <div className={cn("shrink-0 rounded-lg p-2.5", styles.iconBg)}>
+            <Icon className={cn("h-5 w-5", styles.iconColor)} />
+          </div>
+        )}
       </CardContent>
     </Card>
   );

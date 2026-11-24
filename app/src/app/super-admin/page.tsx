@@ -212,7 +212,7 @@ export default function AdminDashboard() {
         />
 
         <TabsContent value="overview" className="mt-0 flex min-h-0 flex-1 flex-col">
-          <div className="grid flex-1 auto-rows-[minmax(176px,1fr)] gap-4 sm:grid-cols-2">
+          <div className="grid flex-1 auto-rows-[minmax(144px,1fr)] gap-4 sm:grid-cols-2">
             <StatsCard
               title="Total Users"
               value={stats.users.totalUsers}
