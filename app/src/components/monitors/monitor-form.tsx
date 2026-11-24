@@ -1238,8 +1238,8 @@ export function MonitorForm({
 
   if (showLocationSettings) {
     return (
-      <div className="space-y-4 p-4 min-h-[calc(100vh-8rem)]">
-        <Card>
+      <div className="flex flex-1 flex-col p-4">
+        <Card className="flex-1">
           <CardHeader>
             <CardTitle>
               Location Settings{" "}
@@ -1285,8 +1285,8 @@ export function MonitorForm({
 
   if (showAlerts) {
     return (
-      <div className="space-y-4 p-4 min-h-[calc(100vh-8rem)]">
-        <Card>
+      <div className="flex flex-1 flex-col p-4">
+        <Card className="flex-1">
           <CardHeader>
             <CardTitle>
               Alert Settings{" "}
@@ -1350,8 +1350,8 @@ export function MonitorForm({
   }
 
   return (
-    <div className="space-y-4 p-4 min-h-[calc(100vh-8rem)]">
-      <Card>
+    <div className="flex flex-1 flex-col p-4">
+      <Card className="flex-1">
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
           <div>
             <div className="flex items-center gap-2">

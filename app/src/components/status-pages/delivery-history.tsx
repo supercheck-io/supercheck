@@ -14,7 +14,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { RefreshCw } from "lucide-react";
 import { InfoHint, InfoHintList } from "./info-hint";
 import { toast } from "sonner";
 
@@ -49,10 +48,6 @@ export function DeliveryHistory({ statusPageId }: { statusPageId: string }) {
             </InfoHintList>
           </InfoHint>
         </div>
-        <Button variant="outline" size="sm" className="h-8 gap-1.5" onClick={() => void load()}>
-          <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />
-          Refresh
-        </Button>
       </div>
       {error ? (
         <p role="alert" className="text-sm text-destructive">

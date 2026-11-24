@@ -15,7 +15,7 @@ export default function CreateRequirementPage() {
     ];
 
     return (
-        <div>
+        <div data-fit-fill className="flex flex-1 flex-col">
             <PageBreadcrumbs items={breadcrumbs} />
             <RequirementForm
                 mode="create"

@@ -12,7 +12,7 @@ const breadcrumbs = [
 
 export default function CreateK6JobPage() {
   return (
-    <div>
+    <div data-fit-fill className="flex flex-1 flex-col">
       <PageBreadcrumbs items={breadcrumbs} />
       {/* Suspense boundary required because JobCreationWizardK6 uses useSearchParams() */}
       <Suspense

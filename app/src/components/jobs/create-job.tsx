@@ -139,8 +139,8 @@ export function CreateJob({
   });
 
   return (
-    <div className="space-y-4 p-4">
-      <Card>
+    <div className="flex flex-1 flex-col p-4">
+      <Card className="flex-1">
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-6">
           <div>
             <CardTitle>Create New Job</CardTitle>

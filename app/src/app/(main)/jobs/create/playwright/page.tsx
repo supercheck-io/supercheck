@@ -12,7 +12,7 @@ const breadcrumbs = [
 
 export default function CreatePlaywrightJobPage() {
   return (
-    <div>
+    <div data-fit-fill className="flex flex-1 flex-col">
       <PageBreadcrumbs items={breadcrumbs} />
       {/* Suspense boundary required because JobCreationWizard uses useSearchParams() */}
       <Suspense

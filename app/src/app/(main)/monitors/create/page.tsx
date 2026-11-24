@@ -41,7 +41,7 @@ export default async function CreateMonitorPage({ searchParams }: CreateMonitorP
     ];
 
     return (
-      <div>
+      <div data-fit-fill className="flex flex-1 flex-col">
         <PageBreadcrumbs items={breadcrumbs} />
         {/* Suspense boundary required because MonitorCreationWizard uses useSearchParams() */}
         <Suspense
@@ -62,12 +62,12 @@ export default async function CreateMonitorPage({ searchParams }: CreateMonitorP
     // Redirect to the existing create page with monitor options
     return (
 
-      <div>
+      <div data-fit-fill className="flex flex-1 flex-col">
         <PageBreadcrumbs items={[
           { label: "Monitors", href: "/monitors" },
           { label: "Create", href: "/monitors/create" },
         ]} />
-        <Card className="shadow-sm hover:shadow-md transition-shadow duration-200 m-4">
+        <Card data-fit-fill className="shadow-sm hover:shadow-md transition-shadow duration-200 m-4 flex-1">
           <CardContent>
             <div className="p-2 mt-4">
               <div className="flex items-center gap-2">
@@ -113,7 +113,7 @@ export default async function CreateMonitorPage({ searchParams }: CreateMonitorP
   ];
 
   return (
-    <div>
+    <div data-fit-fill className="flex flex-1 flex-col">
       <PageBreadcrumbs items={breadcrumbs} />
       {/* Suspense boundary required because MonitorCreationWizard uses useSearchParams() */}
       <Suspense

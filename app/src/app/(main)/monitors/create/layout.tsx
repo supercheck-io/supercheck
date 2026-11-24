@@ -18,7 +18,7 @@ export default function CreateMonitorLayout({ children }: CreateMonitorLayoutPro
   ];
 
   return (
-    <div>
+    <div className="flex flex-1 flex-col">
       <PageBreadcrumbs items={breadcrumbs} />
       {children}
     </div>

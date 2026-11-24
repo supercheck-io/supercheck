@@ -286,7 +286,7 @@ export function JobCreationWizardK6() {
   };
 
   return (
-    <div>
+    <div className="flex flex-1 flex-col">
       {currentStep === "job" ? (
         <CreateJob
           hideAlerts={true}
@@ -304,8 +304,8 @@ export function JobCreationWizardK6() {
           performanceMode={true}
         />
       ) : (
-        <div className="space-y-6 p-4">
-          <Card>
+        <div className="flex flex-1 flex-col p-4">
+          <Card className="flex-1">
             <CardHeader>
               <CardTitle>
                 Alert Settings{" "}

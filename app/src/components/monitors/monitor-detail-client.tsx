@@ -1343,14 +1343,14 @@ export function MonitorDetailClient({
           <div className="mt-4 grid grid-cols-[repeat(auto-fit,minmax(280px,1fr))] gap-3" data-testid="heartbeat-overview">
             <MetricGroup title="Pings">
               <MetricStat
-                icon={<Clock className="h-4 w-4 text-muted-foreground" />}
+                icon={<Clock className="h-4 w-4 text-purple-500" />}
                 label="Last ping"
                 valueTestId="heartbeat-stat-last-ping"
                 value={heartbeat.lastPingAt ? formatPingAgo(new Date(heartbeat.lastPingAt), clockNow) : "No pings yet"}
                 tooltip={heartbeat.lastPingAt ? format(new Date(heartbeat.lastPingAt), STAMP) : undefined}
               />
               <MetricStat
-                icon={<CalendarClock className="h-4 w-4 text-muted-foreground" />}
+                icon={<CalendarClock className="h-4 w-4 text-blue-500" />}
                 label="Next ping"
                 valueTestId="heartbeat-stat-next"
                 value={heartbeat.state === "paused" ? "Paused" : nextPingAt ? formatPingDue(nextPingAt, clockNow) : null}
@@ -1358,7 +1358,7 @@ export function MonitorDetailClient({
               />
               {tracksRunDuration ? (
                 <MetricStat
-                  icon={<Timer className="h-4 w-4 text-muted-foreground" />}
+                  icon={<Timer className="h-4 w-4 text-sky-500" />}
                   label="Last run"
                   valueTestId="heartbeat-stat-duration"
                   value={runningSince ? formatRunningFor(runningSince, clockNow) : lastRunDuration}
@@ -1366,7 +1366,7 @@ export function MonitorDetailClient({
                 />
               ) : (
                 <MetricStat
-                  icon={<XCircle className="h-4 w-4 text-muted-foreground" />}
+                  icon={<XCircle className="h-4 w-4 text-failure" />}
                   label="Failed (24h)"
                   valueTestId="heartbeat-stat-failed"
                   value={monitorStats ? `${monitorStats.period24h.totalChecks - monitorStats.period24h.upChecks} of ${monitorStats.period24h.totalChecks}` : null}
