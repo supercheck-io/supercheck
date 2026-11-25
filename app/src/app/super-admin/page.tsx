@@ -209,7 +209,7 @@ export default function AdminDashboard() {
         />
 
         <TabsContent value="overview" className="mt-0">
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <StatsCard
               title="Total Users"
               value={stats.users.totalUsers}
