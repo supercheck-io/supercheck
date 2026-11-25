@@ -19,6 +19,7 @@ import {
   SquareLibrary,
 } from "lucide-react";
 import { DataTableFacetedFilter } from "@/components/ui/data-table-faceted-filter";
+import { ConnectorProjectSwitch } from "@/components/sre/connectors/connector-project-switch";
 import { DataTableViewOptions } from "@/components/ui/data-table-view-options";
 import { SRE_CONNECTOR_CATALOG } from "@/components/sre/connectors/connector-catalog";
 
@@ -101,6 +102,7 @@ export function ConnectorsToolbar<TData>({
       </div>
 
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+        <ConnectorProjectSwitch />
         <DataTableViewOptions table={table} />
         <DropdownMenu>
           <DropdownMenuTrigger asChild>

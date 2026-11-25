@@ -60,7 +60,6 @@ import { DeleteOrganizationButton } from "@/components/org-admin/delete-organiza
 import { MemberAccessDialog } from "@/components/members/MemberAccessDialog";
 import { PrivateAgentsAdminView } from "@/components/sre/private-agents/private-agents-admin-view";
 import { ConnectorAdminView } from "@/components/sre/connectors/connector-admin-view";
-import { ConnectorProjectNotice } from "@/components/sre/connectors/connector-project-notice";
 import { DiagnosticQueriesAdminView } from "@/components/sre/connectors/diagnostic-queries-admin-view";
 import { FormInput } from "@/components/ui/form-input";
 import {
@@ -1266,8 +1265,6 @@ function OrgAdminDashboardContent() {
               <DataTableSkeleton columns={6} rows={5} />
             </div>
           ) : (
-            <>
-            <ConnectorProjectNotice />
             <ConnectorAdminView
               key={projectId}
               initialConnectors={connectors}
@@ -1279,7 +1276,6 @@ function OrgAdminDashboardContent() {
               onSetupChanged={handleSreSetupChanged}
               onOpenSavedQueries={() => handleSavedQueriesOpenChange(true)}
             />
-            </>
           )}
         </TabsContent>
 

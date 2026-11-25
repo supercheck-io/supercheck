@@ -33,6 +33,7 @@ import type { SreOnboardingStatus } from "@/actions/sre-onboarding";
 import { DashboardEmptyState } from "@/components/dashboard/dashboard-empty-state";
 import { ConnectorCredentialDialog } from "@/components/sre/connectors/connector-credential-dialog";
 import { ConnectorFormDialog } from "@/components/sre/connectors/connector-form-dialog";
+import { ConnectorProjectSwitch } from "@/components/sre/connectors/connector-project-switch";
 import { McpToolsDialog } from "@/components/sre/connectors/mcp-tools-dialog";
 import {
   AlertDialog,
@@ -642,6 +643,7 @@ export function ConnectorAdminView({
         title="Integrations unavailable"
         description={loadError}
         icon={<Cable className="h-10 w-10" />}
+        action={<ConnectorProjectSwitch />}
       />
     );
   }
@@ -657,6 +659,7 @@ export function ConnectorAdminView({
           action={
             <div className="flex flex-col gap-2 sm:flex-row">
               <SreSetupGuideDialog status={setupStatus} />
+              <ConnectorProjectSwitch />
               <Button onClick={() => setIsCreateOpen(true)}>
                 <Plus className="mr-2 h-4 w-4" />
                 Add connector

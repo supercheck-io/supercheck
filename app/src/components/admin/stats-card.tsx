@@ -75,49 +75,45 @@ export function StatsCard({
 
   return (
     <Card className={cn("relative h-full overflow-hidden", className)}>
-      <CardContent className="p-5 h-full">
-        <div className="flex items-start justify-between">
-          <div className="space-y-1.5 min-w-0">
-            <p className="text-sm font-medium text-muted-foreground">{title}</p>
-            <div className="flex items-baseline gap-2">
-              <span className="text-2xl font-semibold tracking-tight">
-                {typeof value === "number" ? value.toLocaleString() : value}
-              </span>
-              {showTrendNearValue && (
-                <span
-                  className={cn(
-                    "text-xs font-medium",
-                    trend.isPositive !== false
-                      ? "text-success"
-                      : "text-failure"
-                  )}
-                >
-                  {trend.isPositive !== false ? "+" : ""}
-                  {trend.value}
-                </span>
-              )}
-            </div>
-            {metaText && (
-              <p
+      <CardContent className="flex h-full items-center justify-between gap-4 p-6">
+        <div className="min-w-0 space-y-1">
+          <p className="text-sm font-medium text-muted-foreground">{title}</p>
+          <div className="flex items-baseline gap-2">
+            <span className="text-3xl font-semibold tracking-tight tabular-nums">
+              {typeof value === "number" ? value.toLocaleString() : value}
+            </span>
+            {showTrendNearValue && (
+              <span
                 className={cn(
-                  "text-xs text-muted-foreground",
-                  metaInline ? "truncate whitespace-nowrap" : undefined
+                  "text-xs font-medium",
+                  trend.isPositive !== false ? "text-success" : "text-failure"
                 )}
-                title={metaInline ? metaText : undefined}
               >
-                {metaText}
-              </p>
-            )}
-            {trend && !metaInline && (
-              <p className="text-xs text-muted-foreground">{trend.label}</p>
+                {trend.isPositive !== false ? "+" : ""}
+                {trend.value}
+              </span>
             )}
           </div>
-          {Icon && (
-            <div className={cn("rounded-lg p-2", styles.iconBg)}>
-              <Icon className={cn("h-4 w-4", styles.iconColor)} />
-            </div>
+          {metaText && (
+            <p
+              className={cn(
+                "text-sm text-muted-foreground",
+                metaInline ? "truncate whitespace-nowrap" : undefined
+              )}
+              title={metaInline ? metaText : undefined}
+            >
+              {metaText}
+            </p>
+          )}
+          {trend && !metaInline && (
+            <p className="text-xs text-muted-foreground">{trend.label}</p>
           )}
         </div>
+        {Icon && (
+          <div className={cn("shrink-0 rounded-lg p-2.5", styles.iconBg)}>
+            <Icon className={cn("h-5 w-5", styles.iconColor)} />
+          </div>
+        )}
       </CardContent>
     </Card>
   );
