@@ -32,6 +32,17 @@ jest.mock("@/actions/sre-connectors", () => ({
   validateSreConnector: jest.fn(),
 }));
 
+jest.mock("@/hooks/use-project-context", () => ({
+  useProjectContextSafe: () => ({
+    currentProject: { id: "p1", name: "Alpha" },
+    projects: [
+      { id: "p1", name: "Alpha" },
+      { id: "p2", name: "Beta" },
+    ],
+    switchProject: jest.fn(),
+  }),
+}));
+
 const connector = {
   id: "018f0000-0000-7000-8000-000000000001",
   name: "CloudWatch prod",
@@ -94,6 +105,10 @@ describe("ConnectorAdminView", () => {
 
     expect(
       screen.getByRole("button", { name: /setup guide/i }),
+    ).toBeInTheDocument();
+    // An empty project list still lets the user move to a project that has connectors.
+    expect(
+      screen.getByRole("button", { name: /switch project/i }),
     ).toBeInTheDocument();
     expect(
       screen.queryByRole("dialog", { name: "Add connector" }),

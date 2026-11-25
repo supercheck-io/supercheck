@@ -107,11 +107,12 @@ export function useFitPageSize(fixedSize?: number) {
       window.scrollY +
       Math.min(window.innerHeight, scroller ? scroller.getBoundingClientRect().bottom : window.innerHeight);
     // Single-cell rows are "No results" or loading placeholders, not data rows.
-    const firstRow = body.rows[0];
-    const rowHeight =
-      firstRow && firstRow.cells.length > 1
-        ? firstRow.getBoundingClientRect().height
-        : DEFAULT_ROW_HEIGHT;
+    // Rows can differ in height (a status cell adds a second line), so fit to the tallest
+    // rendered row; using the first row let a taller row push the page into a scrollbar.
+    const dataRows = Array.from(body.rows).filter((row) => row.cells.length > 1);
+    const rowHeight = dataRows.length
+      ? Math.max(...dataRows.map((row) => row.getBoundingClientRect().height))
+      : DEFAULT_ROW_HEIGHT;
     const next = fitRows({
       viewportBottom,
       bodyTop: bodyRect.top + scrollOffset,

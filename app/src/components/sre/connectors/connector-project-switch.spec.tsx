@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 
-import { ConnectorProjectNotice } from "./connector-project-notice";
+import { ConnectorProjectSwitch } from "./connector-project-switch";
 
 const switchProject = jest.fn();
 let mockProjects = [
@@ -8,17 +8,15 @@ let mockProjects = [
   { id: "p2", name: "Beta" },
 ];
 jest.mock("@/hooks/use-project-context", () => ({
-  useProjectContext: () => ({
+  useProjectContextSafe: () => ({
     currentProject: { id: "p1", name: "Alpha" },
     projects: mockProjects,
     switchProject,
   }),
 }));
 
-it("names the project and switches to another one", async () => {
-  render(<ConnectorProjectNotice />);
-  expect(screen.getByText("Alpha")).toBeInTheDocument();
-  expect(screen.getByText(/AI SRE uses them to investigate incidents/)).toBeInTheDocument();
+it("switches to another project", async () => {
+  render(<ConnectorProjectSwitch />);
 
   fireEvent.keyDown(screen.getByRole("button", { name: /switch project/i }), { key: "Enter", code: "Enter" });
   fireEvent.click(await screen.findByRole("menuitem", { name: "Beta" }));
@@ -27,6 +25,6 @@ it("names the project and switches to another one", async () => {
 
 it("hides the switch control when there is one project", () => {
   mockProjects = [{ id: "p1", name: "Alpha" }];
-  render(<ConnectorProjectNotice />);
+  render(<ConnectorProjectSwitch />);
   expect(screen.queryByRole("button", { name: /switch project/i })).not.toBeInTheDocument();
 });
