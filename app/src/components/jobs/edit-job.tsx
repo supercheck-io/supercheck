@@ -450,8 +450,8 @@ export default function EditJob({ jobId, initialJobData }: EditJobProps) {
   // Step 2: Alert Settings
   if (currentStep === 'alerts') {
     return (
-      <div className="space-y-4">
-        <Card>
+      <div className="flex min-h-0 flex-1 flex-col">
+        <Card className="flex flex-1 flex-col">
           <CardHeader>
             <CardTitle>Alert Settings <span className="text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">Optional</span></CardTitle>
             <CardDescription>
@@ -500,8 +500,8 @@ export default function EditJob({ jobId, initialJobData }: EditJobProps) {
   // Step 3: CI/CD Settings
   if (currentStep === 'cicd') {
     return (
-      <div className="space-y-4">
-        <Card>
+      <div className="flex min-h-0 flex-1 flex-col">
+        <Card className="flex flex-1 flex-col">
           <CardHeader>
             <CardTitle>CI/CD Settings <span className="text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">Optional</span> <UrlTriggerTooltip jobId={jobId} /></CardTitle>
             <CardDescription>
@@ -542,8 +542,8 @@ export default function EditJob({ jobId, initialJobData }: EditJobProps) {
   }
 
   return (
-    <div className="space-y-4">
-      <Card>
+    <div className="flex min-h-0 flex-1 flex-col">
+      <Card className="flex flex-1 flex-col">
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-6">
           <div>
             <CardTitle>Edit Job</CardTitle>

@@ -186,10 +186,7 @@ export default function AdminDashboard() {
         <CardContent data-fit-fill className="flex min-h-0 flex-1 flex-col p-6">
       <Tabs
         value={activeTab}
-        className={cn(
-          "w-full space-y-4",
-          (isQueuesTab || activeTab === "overview") && "flex min-h-0 flex-1 flex-col",
-        )}
+        className={cn("w-full space-y-4", isQueuesTab && "flex min-h-0 flex-1 flex-col")}
         onValueChange={handleTabChange}
       >
         <PageHeader
@@ -211,8 +208,8 @@ export default function AdminDashboard() {
           }
         />
 
-        <TabsContent value="overview" className="mt-0 flex min-h-0 flex-1 flex-col">
-          <div className="grid flex-1 auto-rows-[minmax(144px,1fr)] gap-4 sm:grid-cols-2">
+        <TabsContent value="overview" className="mt-0">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <StatsCard
               title="Total Users"
               value={stats.users.totalUsers}
