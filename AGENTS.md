@@ -1,6 +1,6 @@
 # AGENTS.md - Development Guidelines for Supercheck
 
-Instructions for coding agents working in this repository. Domain detail lives in `.agents/skills/` (also linked from `.claude/skills/`); load the skill matching the area you change.
+Instructions for coding agents working in this repository. Domain detail lives in `.agents/skills/` (also linked from `.claude/skills/`); load the skill matching the area you change. Customer-facing work adds two: `marketing` for site, launch and comparison copy, and `customer-support` for support replies and triage.
 
 ## Temporary files
 

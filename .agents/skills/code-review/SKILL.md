@@ -44,12 +44,36 @@ flowchart LR
 - Deployment: immutable versions, secret handling, gVisor/network/namespace isolation, resource ceilings, autoscaling, health, and destructive blast radius.
 - CLI/recorder public compatibility and AGPL versus Apache/third-party NOTICE obligations.
 
+## Prove before reporting
+
+Report a finding only when all four hold. Otherwise drop it or downgrade it to a question.
+
+1. You can cite the exact file and line.
+2. You can name the concrete failure: the input, the path, and the wrong outcome.
+3. You read the current source, not the diff alone, and the call path still reaches the defect.
+4. You know what would catch it — a test, a type error, a runtime guard — or why nothing can.
+
+A finding that fails 1 or 2 is a hypothesis. Label it, or leave it out.
+
+## Silent failures
+
+This product's job is noticing failure. An error swallowed on a failure path is therefore a critical defect, not a style note: the check reads healthy, the alert never sends, the run looks finished, the capacity is never released. Look for:
+
+- `catch {}` or `.catch(() => {})` around alert delivery, run finalisation, capacity release, audit writes, queue enqueue, or cleanup.
+- A rejected operation whose rejection is dropped: a missing `await`, a floating promise, `Promise.all` without a handler, a callback nobody awaits.
+- A failure path that returns the success shape (`{ success: true }`, `up`, `passed`, 2xx) or skips the terminal write.
+- A retry or timeout that ends without a terminal state, leaving a run `running` or a reservation held.
+- A default that erases the difference between "no data" and "healthy": a missing region counted up, an unstarted check rendered as a pass, an unreadable certificate rendered as valid.
+
+Say which status, alert or record is wrong, and for whom.
+
 ## Findings format
 
 - Order by severity: critical/security/data loss, functional regression, reliability/performance, maintainability, suggestion.
 - Give exact file/line, concrete failure scenario, affected users/system, and smallest safe correction.
 - Avoid style-only noise unless repository tooling enforces it or it materially obscures correctness.
 - Record important investigated claims that are not defects so reviewers understand intentional behavior.
+- For a pull-request review, give every finding a disposition: fixed, declined with the reason, or stale because the code moved. Never drop one silently, and never treat an unanswered thread as resolved.
 
 ## Verification and decision
 
