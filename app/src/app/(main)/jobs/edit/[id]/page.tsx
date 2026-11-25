@@ -58,7 +58,7 @@ export default function EditJobPage() {
   }
 
   return (
-    <div className="p-4 space-y-4">
+    <div data-fit-fill className="flex flex-1 flex-col p-4">
       <PageBreadcrumbs items={breadcrumbs} />
       {/* Suspense boundary required because EditJob uses useSearchParams() */}
       <Suspense
