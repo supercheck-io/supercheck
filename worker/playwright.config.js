@@ -106,10 +106,14 @@ module.exports = defineConfig({
   },
 
   /* Suite timeout: max time for ALL tests combined to complete */
-  // 5 minutes total. A limited (trial) run sets PLAYWRIGHT_GLOBAL_TIMEOUT_MS to the time it reserved.
+  // 60 minutes total (fork: was 5 minutes). Keep in step with TEST_EXECUTION_TIMEOUT_MS, which sets the
+  // pod's activeDeadlineSeconds. A limited (trial) run sets PLAYWRIGHT_GLOBAL_TIMEOUT_MS to the time it reserved.
   globalTimeout: (() => {
+    const MAX_GLOBAL_TIMEOUT_MS = 3600000;
     const reserved = Number.parseInt(process.env.PLAYWRIGHT_GLOBAL_TIMEOUT_MS || '', 10);
-    return Number.isSafeInteger(reserved) && reserved >= 1000 ? Math.min(reserved, 300000) : 300000;
+    return Number.isSafeInteger(reserved) && reserved >= 1000
+      ? Math.min(reserved, MAX_GLOBAL_TIMEOUT_MS)
+      : MAX_GLOBAL_TIMEOUT_MS;
   })(),
 
   /* Optimized settings for Supercheck execution environment */
@@ -231,5 +235,5 @@ module.exports = defineConfig({
   ],
 
   /* Performance and cleanup optimizations */
-  maxFailures: process.env.CI ? 5 : undefined, // Stop after 5 failures in CI
+  maxFailures: undefined, // fork: no failure cap (was 5 in CI)
 });
