@@ -1,0 +1,102 @@
+name: Build Worker Image (fork)
+
+# Fork-only: builds just the worker image (linux/amd64) and pushes it to this
+# repository's GHCR namespace. Skips the upstream release gate (signed tags,
+# release certification, multi-arch, Sentry) in build-multiarch.yml.
+
+on:
+  push:
+    branches: ["fix/worker-playwright-global-timeout"]
+    paths:
+      - "worker/**"
+      - ".github/workflows/build-worker-fork.yml"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Image tag (e.g. 1.6.0-ld1)"
+        required: false
+        type: string
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}/worker
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-worker-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build and push worker
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+
+      - name: Compute tags
+        id: meta
+        shell: bash
+        env:
+          INPUT_TAG: ${{ github.event.inputs.tag }}
+        run: |
+          set -Eeuo pipefail
+          short_sha="${GITHUB_SHA::7}"
+          base="$(node -p "require('./worker/package.json').version")"
+          version="${INPUT_TAG:-${base}-ld-${short_sha}}"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          image="${REGISTRY}/${IMAGE_NAME}"
+          # GHCR requires a lowercase repository path.
+          image="$(echo "$image" | tr '[:upper:]' '[:lower:]')"
+          echo "image=${image}" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push worker image
+        id: build
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: ./worker
+          file: ./worker/Dockerfile
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.version }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+          build-args: |
+            SUPERCHECK_VERSION=${{ steps.meta.outputs.version }}
+          cache-from: type=registry,ref=${{ steps.meta.outputs.image }}:buildcache
+          cache-to: type=registry,ref=${{ steps.meta.outputs.image }}:buildcache,mode=max,ignore-error=true
+
+      - name: Summary
+        env:
+          IMAGE: ${{ steps.meta.outputs.image }}
+          VERSION: ${{ steps.meta.outputs.version }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          {
+            echo "### Worker image pushed"
+            echo ""
+            echo "- Image: \`${IMAGE}:${VERSION}\`"
+            echo "- Digest: \`${DIGEST}\`"
+            echo ""
+            echo "Set \`WORKER_IMAGE=${IMAGE}:${VERSION}\` in the compose file."
+          } >> "$GITHUB_STEP_SUMMARY"
